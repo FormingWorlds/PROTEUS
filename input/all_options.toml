@@ -186,13 +186,14 @@ version = "2.0"
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo = 0.1       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced input value of bond albedo; float (0 to 1) or str (path to CSV)
-    rayleigh        = false     # enable rayleigh scattering
+    rayleigh        = true     # enable rayleigh scattering
     tmp_minimum     = 0.5       # temperature floor on solver
     tmp_maximum     = 5000.0    # temperature ceiling on solver
 
     module  = "agni"            # Which atmosphere module to use
 
     [atmos_clim.agni]
+        verbosity       = 1             # output verbosity for agni (0:none, 1:info, 2:debug)
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         p_obs           = 0.02          # bar, level probed in transmission
         spectral_group  = "Honeyside"   # which gas opacities to include
@@ -204,22 +205,29 @@ version = "2.0"
         solution_atol   = 0.5           # solver absolute tolerance
         solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = false         # include volatile rainout upon condensation
-        latent_heat     = false         # include latent heat release by phase change?
+        surf_roughness  = 1e-3          # characteristic surface roughness [m]
+        surf_windspeed  = 2.0           # characteristic surface wind speed [m/s].
+        rainout         = true          # include volatile condensation/evaporation aloft
+        latent_heat     = false         # include latent heat release when `rainout=true`?
+        oceans          = true          # form liquid oceans at planet surface?
+        convection      = true          # include convective heat transport, with MLT
+        conduction      = true          # include conductive heat transport, with Fourier's law
+        sens_heat       = true          # include sensible heat flux near surface, with TKE scheme
         real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
         dx_max_ini      = 300.0         # initial maximum temperature step [kelvin] allowed by solver
         dx_max          = 35.0          # maximum temperature step [kelvin] allowed by solver
         max_steps       = 70            # max steps allowed by solver during each iteration
         perturb_all     = true          # updated entire jacobian each step?
-        mlt_criterion   = "l"           # MLT convection stability criterion; (l)edoux or (s)chwarzschild
+        mlt_criterion   = "s"           # MLT convection stability criterion; (l)edoux or (s)chwarzschild
         fastchem_floor        = 150.0   # Minimum temperature allowed to be sent to FC
         fastchem_maxiter_chem = 60000   # Maximum FC iterations (chemistry)
         fastchem_maxiter_solv = 20000   # Maximum FC iterations (internal solver)
         fastchem_xtol_chem    = 1e-4    # FC solver tolerance (chemistry)
         fastchem_xtol_elem    = 1e-4    # FC solver tolerance (elemental)
-        ini_profile     = 'loglinear'   # Initial guess for temperature profile shape
+        ini_profile     = 'isothermal'  # Initial guess for temperature profile shape
         ls_default      = 2             # Default linesearch method (0:none, 1:gs, 2:bt)
+        fdo             = 2             # finite-difference order (options: 2, 4)
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure

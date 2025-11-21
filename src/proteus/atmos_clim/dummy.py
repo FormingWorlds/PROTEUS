@@ -115,7 +115,6 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     output["p_xuv"]   = hf_row["P_surf"]
     output["R_xuv"]   = R_obs
     output["p_obs"]   = hf_row["P_surf"]
-    output["ocean_areacov"] = 0.0
-    output["ocean_maxdepth"]= 0.0
+    output["P_surf_clim"]   = hf_row["P_surf"]
 
     return output
