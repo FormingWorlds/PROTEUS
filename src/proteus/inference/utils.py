@@ -14,22 +14,21 @@ Functions:
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
+from functools import partial
+from math import log, sqrt
+
 import numpy as np
 import pandas as pd
 import toml
 import torch
 from botorch.utils.transforms import unnormalize
-
-from gpytorch.kernels import MaternKernel, RBFKernel
-from collections.abc import Sequence
-from gpytorch.priors.torch_priors import LogNormalPrior
 from gpytorch.constraints.constraints import GreaterThan
+from gpytorch.kernels import MaternKernel, RBFKernel
+from gpytorch.priors.torch_priors import LogNormalPrior
 
+from proteus.inference.objective import eval_obj
 from proteus.utils.constants import gas_list
-from objective import eval_obj
-
-from math import log, sqrt
-from functools import partial
 
 # Use double precision for tensor computations
 dtype = torch.double

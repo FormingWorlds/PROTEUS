@@ -14,6 +14,38 @@ from proteus.utils.constants import gas_list
 from proteus.utils.coupler import get_proteus_directories
 
 dtype = torch.double
+LOG_CLIP = 1e-30
+
+def variable_is_logarithmic(varname:str) -> bool:
+    """Does this physical variable naturally vary across orders several of magnitude?
+
+    This variable should also be positive-valued.
+
+    Args:
+        varname (str): Name of variable.
+
+    Returns:
+        out (bool): True if scales logarithmically.
+    """
+
+    # Linear-scaling is default behaviour
+    out = False
+
+    # Check specific variables
+    if varname in ("P_surf","P_surf_clim",
+             "rho_obs", "p_obs", "p_xuv",
+             "Time",
+             "semimajorax","eccentricity"):
+        out = True
+
+    # Check compositional variables
+    elif "_vmr" in varname:
+        out = True
+    elif "_bar" in varname:
+        out = True
+
+    return out
+
 
 def update_toml(config_file: str,
                 updates: dict,
@@ -123,9 +155,9 @@ def eval_obj(sim_dict, tru_dict):
     tru_vals = []
     for k in sim_dict.keys():
         # some variables scale logarithmically
-        if ("vmr" in k) or (k in ("P_surf","Time","semimajorax")):
-            sim_vals.append(log10( max(sim_dict[k],1e-30) ))
-            tru_vals.append(log10( max(tru_dict[k],1e-30) ))
+        if variable_is_logarithmic(k):
+            sim_vals.append(log10( max(sim_dict[k],LOG_CLIP) ))
+            tru_vals.append(log10( max(tru_dict[k],LOG_CLIP) ))
         # others are just linear
         else:
             sim_vals.append(sim_dict[k])

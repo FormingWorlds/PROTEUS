@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
-from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 LOCKFILE_NAME="keepalive"
-AGNI_MIN_VERSION="1.7.8"
+AGNI_MIN_VERSION="1.8.0"
 
 def _get_current_time():
     '''
@@ -497,12 +497,15 @@ def GetHelpfileKeys():
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
             "T_star", # [K]
 
+
             # Observational (from infinity)
             "p_obs",    # observered radius [bar]
             "R_obs",    # observed radius [m]
             "rho_obs",  # observed bulk density [kg m-3]
             "transit_depth", "eclipse_depth", # [1], [1]
-            "bond_albedo", # bolometric bond albedo [1]
+
+            "albedo_pl",   # input bond albedo [1]
+            "bond_albedo", # output bond albedo [1]
 
             # Imaginary part of k2 Love Number
             "Imk2", # [1]
@@ -510,14 +513,11 @@ def GetHelpfileKeys():
             # Escape
             "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
 
-            # Surface liquid-ocean statistics
-            "ocean_areacov", "ocean_maxdepth", # [1], [m]
-
-            # Atmospheric composition
+            # Atmospheric composition from outgassing
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
             ]
 
-    # gases
+    # gases from outgassing
     for s in gas_list:
         keys.append(s+"_mol_atm")
         keys.append(s+"_mol_solid")
@@ -527,7 +527,7 @@ def GetHelpfileKeys():
         keys.append(s+"_kg_solid")
         keys.append(s+"_kg_liquid")
         keys.append(s+"_kg_total")
-        keys.append(s+"_vmr")
+        keys.append(s+"_vmr")       # surface volume mixing ratio
         keys.append(s+"_bar")
 
     # element masses
@@ -536,6 +536,13 @@ def GetHelpfileKeys():
         keys.append(e+"_kg_solid")
         keys.append(e+"_kg_liquid")
         keys.append(e+"_kg_total")
+
+    # from atmosphere climate calculation
+    keys.append("P_surf_clim")      # updated psurf after climate calc
+    keys.append("ocean_areacov")    # area fraction [1]
+    keys.append("ocean_maxdepth")   # max depth [m]
+    for s in gas_list:
+        keys.append(s+"_ocean")     # surface reservoir [kg/m^2]
 
     # Diagnostic variables...
 
@@ -891,6 +898,13 @@ def set_directories(config: Config) -> dict[str, str]:
             raise EnvironmentError("The RAD_DIR environment variable has not been set")
         else:
             dirs["rad"] = os.environ.get('RAD_DIR')
+
+    # Temporary directory
+    if config.params.out.logging == "DEBUG":
+        dirs["temp"] = dirs["output"]
+    else:
+        dirs["temp"] = create_tmp_folder()
+    log.info(f"Temporary-file working dir: {dirs["temp"]}")
 
     # Get abspaths
     for key in dirs.keys():

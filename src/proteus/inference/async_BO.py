@@ -21,14 +21,11 @@ import time
 from functools import partial
 from multiprocessing import Manager, Process
 
-import numpy
 import torch
-from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
-from scipy.stats.qmc import Halton
 
 from proteus.inference.BO import BO_step, init_locs
+from proteus.inference.utils import get_kernel_w_prior
 from proteus.utils.coupler import get_proteus_directories
-from utils import get_kernel_w_prior
 
 # Tensor dtype for all computations
 dtype = torch.double

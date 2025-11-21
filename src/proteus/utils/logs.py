@@ -70,7 +70,7 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
     level = str(level).strip().upper()
     if level not in ["INFO", "DEBUG", "ERROR", "WARNING"]:
         raise ValueError(f"Invalid log level: {level}")
-    level_code = logging.getLevelName(level)
+    level_code = logging.getLevelNamesMapping()[level]
 
     # Add terminal output to logger
     if logterm:
