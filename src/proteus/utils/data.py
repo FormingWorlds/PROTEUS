@@ -64,6 +64,68 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
     log.error(f"Could not obtain data for Zenodo record {zenodo_id}")
     return False
 
+def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
+    """
+    Download a single file from a Zenodo record into the specified local folder.
+
+    Inputs
+    ------
+    zenodo_id : str
+        Zenodo record ID to download from.
+    folder_dir : Path
+        Local directory where the file will be downloaded.
+    zenodo_path : str
+        Path/filename inside the Zenodo record, e.g. "subdir/file.txt" or "file.txt".
+
+    Returns
+    -------
+    bool
+        True if download succeeded, False otherwise.
+    """
+
+    # Where to log zenodo_get output
+    out = os.path.join(GetFWLData(), "zenodo_get_file.log")
+    log.debug(f"    zenodo_get (file {zenodo_path}), logging to {out}")
+
+    # Make sure local base directory exists
+    folder_dir.mkdir(parents=True, exist_ok=True)
+
+    # Local target path (preserves any subdirectory structure in zenodo_path)
+    target_path = folder_dir / zenodo_path
+
+    for i in range(MAX_ATTEMPTS):
+
+        # Remove any existing copy of the file
+        safe_rm(target_path)
+
+        # Make sure parent directory exists (in case zenodo_path contains subdirs)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Try making request: use -g to select just this path/pattern
+        with open(out, 'w') as hdl:
+            proc = sp.run(
+                ["zenodo_get", zenodo_id, "-o", str(folder_dir), "-g", zenodo_path],
+                stdout=hdl,
+                stderr=hdl,
+            )
+
+        # Worked ok?
+        if (proc.returncode == 0) and target_path.exists():
+            return True
+
+        log.warning(
+            f"Failed to get file '{zenodo_path}' from Zenodo (ID {zenodo_id}), "
+            f"attempt {i+1}/{MAX_ATTEMPTS}"
+        )
+        sleep(RETRY_WAIT)
+
+    # Return status indicating failure
+    log.error(
+        f"Could not obtain file '{zenodo_path}' from Zenodo record {zenodo_id}"
+    )
+    return False
+
+
 def md5(_fname):
     """Return the md5 hash of a file."""
 
@@ -369,7 +431,7 @@ def download_stellar_spectra():
         desc = 'stellar spectra'
     )
 
-def download_phoenix():
+def download_phoenix():  # update later
     """
     Download phoenix synthetic spectra
     """
@@ -381,16 +443,17 @@ def download_phoenix():
         desc = 'phoenix synthetic stellar spectra'
     )
 
-def download_muscles():
-    """
-    Download muscles stellar spectra
-    """
-    download(
-        folder = 'Muscles',
-        target = "stellar_spectra",
-        osf_id =  None,
-        zenodo_id= '',
-        desc = 'muscles stellar spectra'
+def download_muscles(star_name: str) -> bool:
+    muscles_zenodo_id = ""  # still needs to be filled in
+    data_dir   = GetFWLData() / "stellar_spectra"
+    folder_dir = data_dir / "Muscles"
+    star_filename = f"{star_name.strip().lower().replace(' ', '-')}.txt"
+    log.info(f"Downloading MUSCLES file {star_filename}")
+
+    return get_zenodo_file(
+        zenodo_id=muscles_zenodo_id,
+        folder_dir=folder_dir,
+        zenodo_path=star_filename,
     )
 
 def download_exoplanet_data():
