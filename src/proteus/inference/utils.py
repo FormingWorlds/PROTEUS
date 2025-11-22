@@ -14,11 +14,21 @@ Functions:
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
+from functools import partial
+from math import log, sqrt
+
 import numpy as np
 import pandas as pd
 import toml
 import torch
 from botorch.utils.transforms import unnormalize
+from gpytorch.constraints.constraints import GreaterThan
+from gpytorch.kernels import MaternKernel, RBFKernel
+from gpytorch.priors.torch_priors import LogNormalPrior
+
+from proteus.inference.objective import eval_obj
+from proteus.utils.constants import gas_list
 
 # Use double precision for tensor computations
 dtype = torch.double
@@ -42,7 +52,6 @@ def get_nested(config: dict, key: str, sep: str = "."):
         val = val[part]  # Drill down into nested dictionary
     return val
 
-
 def flatten(d, parent_key: str = '', sep: str = '.'):
     """Flatten a nested dictionary to a single-level dict with dot-separated keys.
 
@@ -64,7 +73,6 @@ def flatten(d, parent_key: str = '', sep: str = '.'):
             # Leaf node: record the value
             items.append((new_key, v))
     return dict(items)
-
 
 def print_results(D, logs, config, output, n_init):
     """Identify the best evaluation and print its observables and inferred parameters.
@@ -106,7 +114,7 @@ def print_results(D, logs, config, output, n_init):
     sim_opt = list(df.iloc[-1][observables].T)
 
     # Load and flatten the input TOML for this run
-    in_path = f"{output}workers/w_{w}/i_{id}/init_coupler.toml"
+    in_path = f"{output}/workers/w_{w}/i_{id}/init_coupler.toml"
     with open(in_path, "r") as f:
         input = toml.load(f)
     input = flatten(input)  # flatten nested config
@@ -144,3 +152,59 @@ def print_results(D, logs, config, output, n_init):
         print(f"{k:28s}   {x_med:.4f} ± {x_std:.4f}")
     print("-----------------------------------")
     print(" ")
+
+def get_kernel_w_prior(
+    ard_num_dims: int,
+    batch_shape: torch.Size | None = None,
+    use_rbf_kernel: bool = True,
+    active_dims: Sequence[int] | None = None,
+    nu: float | None = None
+) -> MaternKernel | RBFKernel:
+    """Returns an RBF or Matern kernel with priors
+    from  [Hvarfner2024vanilla]_.
+
+    Args:
+        ard_num_dims: Number of feature dimensions for ARD.
+        batch_shape: Batch shape for the covariance module.
+        use_rbf_kernel: Whether to use an RBF kernel. If False, uses a Matern kernel.
+        active_dims: The set of input dimensions to compute the covariances on.
+            By default, the covariance is computed using the full input tensor.
+            Set this if you'd like to ignore certain dimensions.
+
+    Returns:
+        A Kernel constructed according to the given arguments. The prior is constrained
+        to have lengthscales larger than 0.025 for numerical stability.
+    """
+    base_class = RBFKernel if use_rbf_kernel else partial(MaternKernel, nu=nu)
+    lengthscale_prior = LogNormalPrior(loc=sqrt(2) + log(ard_num_dims) * 0.5, scale=sqrt(3))
+    base_kernel = base_class(
+        ard_num_dims=ard_num_dims,
+        batch_shape=batch_shape,
+        lengthscale_prior=lengthscale_prior,
+        lengthscale_constraint=GreaterThan(
+            2.5e-2, transform=None, initial_value=lengthscale_prior.mode
+        ),
+        # pyre-ignore[6] GPyTorch type is unnecessarily restrictive.
+        active_dims=active_dims,
+    )
+    return base_kernel
+
+
+def get_obs(out_csv, observables: list[str]):
+    df_row = pd.read_csv(out_csv, delimiter=r"\s+").iloc[-1]
+
+    # Handle case where atmosphere has escaped
+    #   Set VMRs and MMW to zero
+    if df_row["P_surf"] < 1e-30:
+        df_row["atm_kg_per_mol"] = 0.0
+        for g in gas_list:
+            df_row[g+"_vmr"] = 0.0
+
+    return df_row[observables].T
+
+def get_obj(true_obs: dict, n, path):
+    obs_names = true_obs.keys()
+    results = [eval_obj(get_obs(path + f"workers/w_-1/i_{i}/runtime_helpfile.csv", obs_names), true_obs) for i in range(n**2)]
+    Y = torch.vstack(results).reshape(n, n)
+
+    return Y
