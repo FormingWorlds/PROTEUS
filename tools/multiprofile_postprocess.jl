@@ -1,5 +1,15 @@
 #!/usr/bin/env -S julia
 
+# script to perform radiative-convective equilibrium postprocessing
+# at multiple zenith angles based on a single PROTEUS atmosphere output file
+# similar to postprocess.jl but loops over multiple angles and saves
+# separate .nc files for each angle.
+
+# Usage: julia multiprofile_postprocess.jl <output_dir> <angles>
+# where <output_dir> is the PROTEUS simulation output directory
+# and <angles> is a comma-separated list of zenith angles in degrees
+# Example: julia multiprofile_postprocess.jl ./outputdir 0,30,60,85
+
 PROTEUS_DIR = dirname(dirname(abspath(@__FILE__)))
 println("PROTEUS_DIR = $PROTEUS_DIR")
 
@@ -16,7 +26,7 @@ import AGNI.energy as energy
 import AGNI.solver as solver
 
 # function largely based on setup_atmosphere! in atmosphere.jl and setup_atmos_from_nc! from postprocess.jl but
-#for different zenith angles
+# for different zenith angles
 
 function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::String, zenith_angle::Float64)
     @info @sprintf("Setting up atmosphere with custom zenith_angle=%.1f\n", zenith_angle)
@@ -147,7 +157,7 @@ function postprocess_at_angle(output_dir::String, atmfile::String, spfile::Strin
                                     latent=false,
                                     rainout=false,
                                     max_steps=100,
-                                    max_runtime=600,
+                                    max_runtime=600.0,
                                     modprint=1,
                                     modplot=0,
                                     conv_atol=1.0,
@@ -289,14 +299,17 @@ end
 
 # Main entry point when called from command line
 function main()
-    if length(ARGS) < 3
-        println("Usage: julia multiprofile_postprocess.jl <output_dir> <spfile> <angles>")
+    if length(ARGS) < 2
+        println("Usage: julia multiprofile_postprocess.jl <output_dir> <angles>")
         exit(1)
     end
 
+    #create spectral file path, simply inside output_dir
+    spfile = joinpath(abspath(ARGS[1]), "runtime.sf")
+
     #trigger multi-angle postprocessing with given arguments
-    postprocess_multiple_angles(abspath(ARGS[1]), abspath(ARGS[2]),
-                                parse.(Float64, split(ARGS[3], ",")))
+    postprocess_multiple_angles(abspath(ARGS[1]), spfile,
+                                parse.(Float64, split(ARGS[2], ",")))
 end
 
 main()
