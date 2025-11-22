@@ -167,7 +167,7 @@ def sample_from_bounds(output:str, ref_config:str,
     #     Each of the parameters are evaluated in space 0-1, normalised to the bounds
     #     This variable is 2D, with shape [nsamp, dims]
 
-    sampler = Halton(d=dims, rng=np.random.default_rng(seed), scramble=True)
+    sampler = Halton(d=dims, seed=np.random.default_rng(seed), scramble=True)
     X = sampler.random(n=nsamp)
     X = torch.tensor(X, dtype=dtype)
 

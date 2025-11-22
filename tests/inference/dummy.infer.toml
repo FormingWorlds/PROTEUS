@@ -4,10 +4,10 @@
 seed = 1
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "infer_toy/BO/"
+output = "dummy_inference"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/demos/dummy.toml"
+ref_config = "tests/inference/base.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 2        # Number of random samples if starting from scratch.
