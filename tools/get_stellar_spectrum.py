@@ -154,7 +154,7 @@ def DownloadModernSpectrum(name, distance):
                 f.write(new_str)
 
             if negaflux:
-                print("\tWARNING: The stellar spectrum contained flux value(s) <= 0.0 ! These were set to zero." % wl)
+                print("\tWARNING: The stellar spectrum contained flux value(s) <= 0.0 ! These were set to zero.")
 
         case 'vpl':
             cert = False  # This is not good, but it will stay for now.
