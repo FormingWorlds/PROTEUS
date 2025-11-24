@@ -44,6 +44,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
 
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+
       # https://stackoverflow.com/a/65356209
       - name: Install system dependencies
         run: ${{ matrix.INSTALL_DEPS }}
