@@ -81,6 +81,14 @@ jobs:
         run: |
           ./tools/get_vulcan.sh
 
+      # Restore cached lookup-data for PROTEUS
+      - name: Get FWL data from cache
+        uses: actions/cache@v4
+        id: cache-fwl-data
+        with:
+          path: ${{ env.FWL_DATA }}
+          key: fwl-data-2
+
       # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v6
@@ -103,20 +111,12 @@ jobs:
         run:
           proteus install-all --export-env
 
-      # Get lookup data for PROTEUS
-      - name: Get FWL data from cache
-        uses: actions/cache@v4
-        id: cache-fwl-data
-        with:
-          path: ${{ env.FWL_DATA }}
-          key: fwl-data-2
-
       # Get FWL data
-      - name: Get additional FWL data
-        if: steps.cache-fwl-data.cache-hit != 'true'
-        run: |
-          proteus get stellar
-          proteus get spectral --name Frostflow --bands 48
+      # - name: Get additional FWL data
+      #   if: steps.cache-fwl-data.cache-hit != 'true'
+      #   run: |
+      #     proteus get stellar
+      #     proteus get spectral --name Frostflow --bands 48
 
       # Run PROTEUS tests
       - name: Test with pytest
