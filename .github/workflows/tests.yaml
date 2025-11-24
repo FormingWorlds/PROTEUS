@@ -46,9 +46,17 @@ jobs:
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
-        if: runner.os == 'Ubuntu'
+        if: runner.os == 'Linux'
         with:
           tool-cache: false
+
+      - name: Free Disk Space (MacOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
 
       # https://stackoverflow.com/a/65356209
       - name: Install system dependencies
