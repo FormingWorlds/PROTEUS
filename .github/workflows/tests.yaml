@@ -69,7 +69,7 @@ jobs:
 
       # Checkout PROTEUS
       - name: Checkout PROTEUS
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Get Lovepy
       - name: Get Lovepy
@@ -83,7 +83,7 @@ jobs:
 
       # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
