@@ -101,7 +101,7 @@ jobs:
         id: cache-virtualenv
         with:
           path: ${{ env.pythonLocation }}
-          key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
+          key: ${{ env.pythonLocation }}-${{ hashFiles('./pyproject.toml') }}
 
       - name: Install PROTEUS (repo only)
         run:
