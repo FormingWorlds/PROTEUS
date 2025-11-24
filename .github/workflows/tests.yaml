@@ -20,7 +20,7 @@ jobs:
     name: Run Coverage and Tests
     strategy:
       matrix:
-        os: ['ubuntu-latest', 'macos-latest']
+        os: ['ubuntu-latest', 'macos-14']
         python-version: ['3.12','3.13']
         include:
           - os: ubuntu-latest
@@ -28,7 +28,7 @@ jobs:
             CC: gcc
             CXX: g++
             FC: gfortran
-          - os: macos-latest
+          - os: macos-14
             INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran
             CC: gcc
             CXX: g++
