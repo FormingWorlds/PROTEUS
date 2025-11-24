@@ -16,12 +16,19 @@ import time
 
 import matplotlib.pyplot as plt
 import torch
-from botorch.acquisition import LogExpectedImprovement, UpperConfidenceBound
+from botorch.acquisition import (
+    LogExpectedImprovement,
+    UpperConfidenceBound,
+    qLogExpectedImprovement,
+)
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
 from botorch.optim import optimize_acqf
+from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
+
+from proteus.inference.utils import get_kernel_w_prior
 
 # Set tensor dtype for consistent precision
 dtype = torch.double
@@ -38,6 +45,165 @@ def unit_bounds(d):
     # Build bounds [[0,...,0], [1,...,1]]
     bounds = torch.tensor([[0] * d, [1] * d], dtype=dtype)
     return bounds
+
+
+def BO_step(D, B, f, k, acqf, lock, worker_id, x_in = None):
+
+    """Perform a single Bayesian optimization step.
+
+    Fits a GP to current data, optimizes an acquisition function,
+    updates busy points, evaluates the objective, and logs timing.
+
+    Args:
+        D (dict): Shared dict containing 'X' and 'Y' lists of data.
+        B (dict): Shared dict mapping worker IDs to busy input points.
+        f (callable): Objective function to evaluate.
+        k (Kernel): GPyTorch kernel for the GP covariance.
+        acqf (str): Acquisition function.
+        lock (multiprocessing.Lock): Lock for synchronizing shared state.
+        worker_id (int): ID of the calling worker.
+        x_in (torch.Tensor, optional): Initial input for the first iteration.
+
+    Returns:
+        tuple: (x_next, y_next, bo_duration, eval_duration,
+                lock_duration, fit_duration, acq_duration, min_dist)
+    """
+
+    t_0_bo = time.perf_counter()
+    noise = 1e-4
+
+    if x_in is None:
+
+        t_0_lock = time.perf_counter()
+        with lock:
+            X = D["X"]
+            Y = D["Y"]
+            busys = list(B.values())
+
+        t_1_lock = time.perf_counter()
+
+        busys = torch.cat(busys, dim=0)
+
+        d = X.shape[-1]
+
+        best = Y.max().item()
+
+        t_0_fit = time.perf_counter()
+        gp = SingleTaskGP(  train_X=X,
+                            train_Y=Y,
+                            covar_module=k,
+                            train_Yvar=torch.full_like(Y, noise),
+                            input_transform=Normalize(d=d),
+                            outcome_transform=Standardize(m=1),
+                            )
+
+        lik = gp.likelihood
+        mll = ExactMarginalLogLikelihood(lik, gp)
+        fit_gpytorch_mll(mll, optimizer=fit_gpytorch_mll_torch,
+                         kwargs={"pick_best_of_all_attempts" : True, "max_attempts" : 10})
+
+        t_1_fit = time.perf_counter()
+
+        t_0_ac = time.perf_counter()
+
+        # build acquisition function
+        if acqf == "UCB":
+            acqf = UpperConfidenceBound(gp, beta = 2.)
+        elif acqf =="LogEI":
+            acqf = LogExpectedImprovement(gp, best_f=best)
+        elif acqf =="E-LogEI":
+            acqf = qLogExpectedImprovement(gp, best_f=best, X_pending=busys)
+        else:
+            raise ValueError("Unknown acquisition function, choices are UCB or LogEI")
+
+        x, _ = optimize_acqf(   acq_function=acqf, # expects outputs shape (N)
+                                bounds=unit_bounds(d),
+                                q=1,
+                                num_restarts=10,
+                                raw_samples=1000*d,
+                                options={"maxiter": 1000},
+                            )
+
+        t_1_ac = time.perf_counter()
+
+        mask = torch.ones(busys.size(0), dtype=torch.bool)
+        mask[worker_id] = False
+        b = busys[mask]
+        dist = torch.min(torch.cdist(b, x)).item()
+
+        if d == 1:
+            plot_iter(gp=gp, acqf=acqf, X=X, Y=Y, next_x=x,
+                    busys=b, dir = "plots/iters/", name=f"BO_{len(X)}_.png")
+
+    else:
+        x = x_in
+
+        dist = None
+
+        t_0_lock = 0
+        t_1_lock = 0
+        t_0_fit = 0
+        t_1_fit = 0
+        t_0_ac = 0
+        t_1_ac = 0
+
+    t_1_bo = time.perf_counter()
+
+    t_2_lock = time.perf_counter()
+    with lock:
+        B[worker_id] = x
+    t_3_lock = time.perf_counter()
+
+    t_0_ev = time.perf_counter()
+    y = f(x)
+    t_1_ev = time.perf_counter()
+
+    return x, y, t_1_bo - t_0_bo, t_1_ev - t_0_ev, t_3_lock-t_2_lock+t_1_lock-t_0_lock, t_1_fit-t_0_fit, t_1_ac-t_0_ac, dist
+
+def init_locs(n_workers: int, D: dict) -> torch.Tensor:
+    """Generate initial sample locations using batch acqf.
+
+    Args:
+        n_workers (int): Number of initial points to generate.
+        D (dict): Shared dict with key 'X' to infer problem dimension.
+
+    Returns:
+        torch.Tensor: Tensor of shape (n_workers, d) in [0,1]^d for initial sampling.
+    """
+
+    X, Y = D["X"], D["Y"]
+
+    d = X.shape[-1]
+
+    best = Y.max().item()
+
+    noise = 1e-4
+    kernel = get_kernel_w_prior(d, use_rbf_kernel=False, nu=1.5)
+    gp = SingleTaskGP(  train_X=X,
+                        train_Y=Y,
+                        covar_module=kernel,
+                        input_transform=Normalize(d=d),
+                        outcome_transform=Standardize(m=1),
+                        train_Yvar=torch.full_like(Y, noise)
+                        )
+
+    lik = gp.likelihood
+    mll = ExactMarginalLogLikelihood(lik, gp)
+    fit_gpytorch_mll(mll, optimizer=fit_gpytorch_mll_torch,
+                     kwargs={"pick_best_of_all_attempts" : True, "max_attempts" : 10})
+
+    # build acquisition function
+    acqf = qLogExpectedImprovement(gp, best_f=best)
+
+    x_batch, _ = optimize_acqf( acq_function=acqf,
+                                bounds=unit_bounds(d),
+                                q=n_workers,
+                                num_restarts=10,
+                                raw_samples=1000*d,
+                                options={"maxiter": 1000},
+                                )
+
+    return x_batch # (n_workers, d)
 
 
 def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
@@ -107,121 +273,3 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
     os.makedirs(dir, exist_ok=True)
     fig.savefig(path, dpi = 300)
     plt.close(fig)
-
-
-
-def BO_step(D, B, f, k, acqf, n_restarts, n_samples, lock, worker_id, x_in = None):
-
-    """Perform a single Bayesian optimization step.
-
-    Fits a GP to current data, optimizes an acquisition function,
-    updates busy points, evaluates the objective, and logs timing.
-
-    Args:
-        D (dict): Shared dict containing 'X' and 'Y' lists of data.
-        B (dict): Shared dict mapping worker IDs to busy input points.
-        f (callable): Objective function to evaluate.
-        k (Kernel): GPyTorch kernel for the GP covariance.
-        acqf (str): Acquisition function.
-        n_restarts (int): Number of restarts for acquisition optimization.
-        n_samples (int): Number of raw samples for acquisition optimization.
-        lock (multiprocessing.Lock): Lock for synchronizing shared state.
-        worker_id (int): ID of the calling worker.
-        x_in (torch.Tensor, optional): Initial input for the first iteration.
-
-    Returns:
-        tuple: (x_next, y_next, bo_duration, eval_duration,
-                lock_duration, fit_duration, acq_duration, min_dist)
-    """
-
-    t_0_bo = time.perf_counter()
-    # noise = 1e-4
-
-    if x_in is None:
-
-        t_0_lock = time.perf_counter()
-        with lock:
-            X = D["X"]
-            Y = D["Y"]
-            busys = list(B.values())
-        t_1_lock = time.perf_counter()
-
-        d = X.shape[-1]
-
-        best = Y.max().item()
-
-        t_0_fit = time.perf_counter()
-        gp = SingleTaskGP(  train_X=X,
-                            train_Y=Y,
-                            covar_module=k,
-                            # train_Yvar=torch.full_like(Y, noise),
-                            input_transform=Normalize(d=d),
-                            outcome_transform=Standardize(m=1),
-                            )
-
-        lik = gp.likelihood
-        mll = ExactMarginalLogLikelihood(lik, gp)
-        fit_gpytorch_mll(mll)
-
-        t_1_fit = time.perf_counter()
-
-        t_0_ac = time.perf_counter()
-
-        # build acquisition function
-        if acqf == "UCB":
-            acqf = UpperConfidenceBound(gp, beta = 2.)
-        elif acqf =="LogEI":
-            acqf = LogExpectedImprovement(gp, best_f=best)
-        else:
-            raise ValueError("Unknown acquisition function, choices are UCB or LogEI")
-
-        x, _ = optimize_acqf(   acq_function=acqf, # expects outputs shape (N)
-                                bounds=unit_bounds(d),
-                                q=1,
-                                num_restarts=n_restarts,
-                                raw_samples=n_samples,
-                                options={"batch_limit": 1, "maxiter": 200},
-                            )
-
-        t_1_ac = time.perf_counter()
-
-
-        busys = torch.cat(busys, dim=0)
-        mask = torch.ones(busys.size(0), dtype=torch.bool)
-        mask[worker_id] = False
-        b = busys[mask]
-        dist = torch.min(torch.cdist(b, x)).item()
-
-        # if dist < 1e-2:
-        #     print("close query!")
-        #     print("busys\n", busys)
-        #     print("query", x)
-
-        if d == 1:
-            plot_iter(gp=gp, acqf=acqf, X=X, Y=Y, next_x=x,
-                    busys=b, dir = "plots/iters/", name=f"BO_{len(X)}_.png")
-
-    else:
-        x = x_in
-
-        dist = None
-
-        t_0_lock = 0
-        t_1_lock = 0
-        t_0_fit = 0
-        t_1_fit = 0
-        t_0_ac = 0
-        t_1_ac = 0
-
-    t_1_bo = time.perf_counter()
-
-    t_2_lock = time.perf_counter()
-    with lock:
-        B[worker_id] = x
-    t_3_lock = time.perf_counter()
-
-    t_0_ev = time.perf_counter()
-    y = f(x)
-    t_1_ev = time.perf_counter()
-
-    return x, y, t_1_bo - t_0_bo, t_1_ev - t_0_ev, t_3_lock-t_2_lock+t_1_lock-t_0_lock, t_1_fit-t_0_fit, t_1_ac-t_0_ac, dist
