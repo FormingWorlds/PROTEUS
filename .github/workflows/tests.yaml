@@ -46,6 +46,7 @@ jobs:
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
+        if: runner.os == 'Ubuntu'
         with:
           tool-cache: false
 
