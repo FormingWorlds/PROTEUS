@@ -8,6 +8,14 @@ import pickle
 import pytest
 from helpers import PROTEUS_ROOT
 
+# -----------
+# Pytest will hang on process completion when using multiprocessing, by default
+#    Add these lines to ensure that the processes do not block
+#    See issue: https://github.com/pytest-dev/pytest/issues/11174#issuecomment-1921876937
+import multiprocessing as mp # noqa
+mp.set_start_method("spawn", force=True) # noqa
+# -----------
+
 from proteus.inference.inference import infer_from_config
 
 OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_inference'
