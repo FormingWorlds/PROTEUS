@@ -1,20 +1,20 @@
 # This test runs the BO inference scheme with PROTEUS for a few evaluations
+# ruff: noqa: E402, I001
 from __future__ import annotations
 
 import filecmp
+
+# Pytest will hang on process completion when using multiprocessing, by default
+#    Add these lines to ensure that the processes do not block
+#    See issue: https://github.com/pytest-dev/pytest/issues/11174#issuecomment-1921876937
+import multiprocessing as mp
+mp.set_start_method("spawn", force=True)
+
 import os
 import pickle
 
 import pytest
 from helpers import PROTEUS_ROOT
-
-# -----------
-# Pytest will hang on process completion when using multiprocessing, by default
-#    Add these lines to ensure that the processes do not block
-#    See issue: https://github.com/pytest-dev/pytest/issues/11174#issuecomment-1921876937
-import multiprocessing as mp # noqa
-mp.set_start_method("spawn", force=True) # noqa
-# -----------
 
 from proteus.inference.inference import infer_from_config
 
