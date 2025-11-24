@@ -89,7 +89,7 @@ version = "2.0"
         solution_atol   = 0.5          # solver absolute tolerance
         solution_rtol   = 0.12          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = false         # volatile condensation
+        rainout   = false         # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
 [escape]

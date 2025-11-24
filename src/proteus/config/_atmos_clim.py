@@ -39,8 +39,8 @@ def valid_agni(instance, attribute, value):
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
         raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
 
-    if instance.agni.latent_heat and not instance.agni.condensation:
-        raise ValueError("`atmos_clim.agni`: Must set `condensation=true` if setting `latent_heat=true`")
+    if instance.agni.latent_heat and not instance.agni.rainout:
+        raise ValueError("`atmos_clim.agni`: Must set `rainout=true` if setting `latent_heat=true`")
 
     # set spectral files?
     if not instance.agni.spectral_group:
@@ -63,6 +63,8 @@ class Agni:
 
     Attributes
     ----------
+    verbosity: int
+        Logging and output verbosity for agni (0:none, 1:info, 2:debug)
     p_top: float
         Top of atmosphere grid pressure [bar].
     p_obs: float
@@ -85,10 +87,26 @@ class Agni:
         Relative tolerance on the atmosphere solution.
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
-    condensation: bool
-        Enable volatile rainout in the atmosphere and ocean formation below.
+    surf_roughness: float
+        Characteristic surface roughness scale [metres].
+    surf_windspeed: float
+        Characteristic surface wind speed [m/s].
+    phs_timescale: float
+        Characteristic timescale of phase changes [seconds].
+    evap_efficiency: bool
+        Efficiency of raindrop re-evaporation (0 to 1).
+    rainout: bool
+        Enable volatile condensation and evaporation in the atmosphere.
+    oceans: bool
+        Enable volatile ocean formation at the surface.
     latent_heat: bool
-        Account for latent heat from condense/evap when solving temperature profile.
+        Account for latent heat from condense/evap when solving temperature profile. Requires `condensation=true`.
+    convection: bool
+        Account for convective heat transport, using MLT.
+    conduction: bool
+        Account for conductive heat transport, using Fourier's law.
+    sens_heat: bool
+        Include sensible heat flux at surface
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
     psurf_thresh: float
@@ -119,44 +137,49 @@ class Agni:
         Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
     """
 
+    verbosity: int          = field(default=1, validator=in_((0,1,2,)))
     spectral_group: str     = field(default=None)
     spectral_bands: str     = field(default=None)
     p_top: float            = field(default=1e-5, validator=gt(0))
     p_obs: float            = field(default=20e-3, validator=gt(0))
     surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
-    num_levels: int         = field(default=40, validator=ge(15))
+    num_levels: int         = field(default=40, validator=ge(25))
     chemistry: str          = field(default="none",
                                     validator=in_((None, "eq")),
                                     converter=none_if_none)
     solve_energy: bool      = field(default=True)
     solution_atol: float    = field(default=0.5,  validator=gt(0))
     solution_rtol: float    = field(default=0.15,  validator=gt(0))
+    surf_roughness: float   = field(default=1e-3, validator=gt(0))
+    surf_windspeed: float   = field(default=2.0,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
-    condensation: bool      = field(default=False)
+    phs_timescale: float    = field(default=1e6, validator=gt(0))
+    evap_efficiency: float  = field(default=0.01, validator=(le(1), ge(0)))
+    rainout: bool           = field(default=True)
+    oceans: bool            = field(default=True)
     latent_heat: bool       = field(default=False)
+    convection: bool        = field(default=True)
+    conduction: bool        = field(default=True)
+    sens_heat: bool         = field(default=True)
     real_gas: bool          = field(default=False)
     psurf_thresh: float     = field(default=0.1, validator=ge(0))
     dx_max: float           = field(default=35.0,  validator=gt(1))
     dx_max_ini: float       = field(default=300.0, validator=gt(1))
     max_steps: int          = field(default=70, validator=gt(2))
     perturb_all: bool       = field(default=True)
-    mlt_criterion: str      = field(default='l', validator=in_(('l','s',)))
+    mlt_criterion: str      = field(default='s', validator=in_(('l','s',)))
     fastchem_floor:float        = field(default=150.0, validator=gt(0.0))
     fastchem_maxiter_chem:int   = field(default=60000, validator=gt(200))
     fastchem_maxiter_solv:int   = field(default=20000, validator=gt(200))
     fastchem_xtol_chem:float    = field(default=1e-4,  validator=gt(0.0))
     fastchem_xtol_elem:float    = field(default=1e-4,  validator=gt(0.0))
-    ini_profile: str        = field(default='loglinear',
+    ini_profile: str        = field(default='isothermal',
                                     converter=lowercase,
                                     validator=in_(('loglinear','isothermal',
                                                    'dry_adiabat','analytic'))
                                     )
     ls_default: int         = field(default=2, validator=in_((0,1,2)))
-
-    @property
-    def chemistry_int(self) -> int:
-        """Return integer state for agni."""
-        return 1 if self.chemistry else 0
+    fdo: int                = field(default=2, validator=in_((2,4)))
 
 def valid_janus(instance, attribute, value):
     if instance.module != "janus":
