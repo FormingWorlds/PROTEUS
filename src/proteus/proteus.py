@@ -384,11 +384,10 @@ class Proteus:
                 self.sinst_prev = self.hf_row["Time"]
 
                 update_stellar_quantities(self.hf_row, self.config, stellar_track=self.stellar_track)
-            else:
-            # Calculate a new (historical) stellar spectrum
+            
             if (abs(self.hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (
-                self.loops["total"] == 0
-            ):
+                self.loops["total"] == 0):
+
                 self.sspec_prev = self.hf_row["Time"]
                 update_stellar_spectrum = True
 

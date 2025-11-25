@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "albedo_test_fluxscaling"
+        path        = "run_colder_planet_cloudy"
         logging     = "INFO"
         plot_mod    = 3      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -127,7 +127,7 @@ version = "2.0"
 [orbit]
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
     instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
-    semimajoraxis = 1.0         # initial semi-major axis of planet's orbit [AU]
+    semimajoraxis = 3.0         # initial semi-major axis of planet's orbit [AU]
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
     zenith_angle = 48.19        # characteristic zenith angle [degrees]
     s0_factor = 0.375           # instellation scale factor [dimensionless]
@@ -207,7 +207,7 @@ version = "2.0"
         overlap_method  = "ee"          # gas overlap method
         surf_roughness  = 1e-3          # characteristic surface roughness [m]
         surf_windspeed  = 2.0           # characteristic surface wind speed [m/s].
-        rainout         = true          # include volatile condensation/evaporation aloft
+        rainout         = false          # include volatile condensation/evaporation aloft
         latent_heat     = false         # include latent heat release when `rainout=true`?
         oceans          = true          # form liquid oceans at planet surface?
         convection      = true          # include convective heat transport, with MLT
