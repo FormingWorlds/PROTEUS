@@ -27,7 +27,7 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     # Parameters
     gamma           = config.atmos_clim.dummy.gamma
     zenith_angle    = config.orbit.zenith_angle
-    albedo_pl       = config.atmos_clim.albedo_pl
+    albedo_pl       = float(hf_row["albedo_pl"])
     inst_sf         = config.orbit.s0_factor
     albedo_s        = config.atmos_clim.surf_greyalbedo
     skin_d          = config.atmos_clim.surface_d
@@ -111,12 +111,10 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     output["F_olr"]   = fluxes["fl_U_LW"]     # OLR
     output["F_sct"]   = fluxes["fl_U_SW"]     # Scattered SW flux
     output["R_obs"]   = R_obs
-    output["rho_obs"] = 3 * hf_row["M_int"] / (4*np.pi*R_obs**3)
     output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
     output["p_xuv"]   = hf_row["P_surf"]
     output["R_xuv"]   = R_obs
     output["p_obs"]   = hf_row["P_surf"]
-    output["ocean_areacov"] = 0.0
-    output["ocean_maxdepth"]= 0.0
+    output["P_surf_clim"]   = hf_row["P_surf"]
 
     return output

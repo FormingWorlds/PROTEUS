@@ -25,24 +25,24 @@ from proteus.utils.plot import get_colour, latexify
 # Target times for sampling profile [log years]
 tau_target = [3, 4, 5, 7, 9]
 
+# Potential planet names
+pl_names = {
+    "tr1b" : "trappist1b",
+    "tr1e":  "trappist1e",
+    "tr1a":  "trappist1alpha",
+    "earth": "earth",
+    "venus": "venus",
+}
+
 def postproc_once(simdir:str):
     '''Run postprocessing steps for a single simulation'''
-    print(f"Simulation dir: {simdir}")
+    print(f"    simulation dir: {simdir}")
 
     # Determine file name
-    try:
-        name = os.path.basename(simdir).split("_")[-1].replace("/","")
-        match name:
-            case "tr1b":
-                name = "trappist1b"
-            case "tr1e":
-                name = "trappist1e"
-            case "tr1a":
-                name = "trappist1alpha"
-            case _:
-                pass
-    except Exception:
-        name = "PLANET"
+    name = "PLANET"
+    for k in pl_names.keys():
+        if f"chili_{k}" in simdir:
+            name = str(k)
 
     # Read simulation helpfile
     hfpath = os.path.join(simdir, "runtime_helpfile.csv")
@@ -51,7 +51,7 @@ def postproc_once(simdir:str):
     hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 
     # Copy config
-    print("Copy config file")
+    print("    copy config file")
     config_path = os.path.join(simdir, "init_coupler.toml")
     copyfile(config_path, os.path.join(simdir,f"evolution-proteus-{name}-config.in"))
 
@@ -85,21 +85,21 @@ def postproc_once(simdir:str):
 
 
     # Write to scalar CSV
-    print("Write CSV file for scalars")
+    print("    write CSV file for scalars")
     outpath = os.path.join(simdir, f"evolution-proteus-{name}-data.csv")
-    print(f"    {outpath}")
     pd.DataFrame(out).to_csv(outpath, sep=',', index=False, float_format="%.10e")
 
     # Write TPZ profiles at required times
-    print("Write CSV files for profiles")
+    print("    write CSV files for profiles")
     for tau in tau_target:
         tau_time = 10**tau
         iclose = np.argmin(np.abs(tau_time - out["t(yr)"]))
         tclose = out["t(yr)"][iclose]
-        print(f"    tau{tau} -> {tclose:.2e} yr")
         if (tclose > tau_time*10) or (tclose < tau_time/10):
-            print("    too far from target time, skipping")
+            print(f"      tau{tau} -> too far from target time, skipping")
             continue
+        else:
+            print(f"      tau{tau} -> {tclose:.2e} yr")
 
         ncfile = os.path.join(simdir, "data", f"{tclose:.0f}_atm.nc")
         with nc.Dataset(ncfile) as ds:
@@ -110,12 +110,11 @@ def postproc_once(simdir:str):
         H = "T(K),p(bar),z(m)"
         csvname = f"evolution-proteus-{name}-tau{tau}-data.csv"
         f = os.path.join(simdir,csvname)
-        print(f"      {f}")
         np.savetxt(f, X, fmt="%.10e", delimiter=',', header=H)
 
 
     # Make plot...
-    print("Make plot")
+    print("    make plot")
     fig, axes = plt.subplots(2, 3, figsize=(20, 10), sharex=False)
 
     # Panel 1 : Surface Temperature
@@ -185,21 +184,45 @@ def postproc_once(simdir:str):
     fig.tight_layout()
     fig.savefig(os.path.join(simdir, "chili.pdf"), dpi=300, bbox_inches='tight')
 
+    return name
+
 def postproc_grid(griddir:str):
     '''Postprocess a grid of models'''
 
     print(f"Postprocessing cases in {griddir}")
 
     # Identify cases in grid
-    cases = glob(griddir+"/case_*/")
+    cases = glob(griddir+"/case_*")
     if len(cases) > 0:
         print(f"Found {len(cases)} cases")
     else:
         raise RuntimeError(f"Cannot find cases in {griddir}")
 
     # Run them
+    N = len(cases)
+    for i,c in enumerate(cases):
+        print(f"[{i+1:2d}/{N:-2d}]  case:{c.split("_")[-1]}")
+        name = postproc_once(c)
+        print("-----------------------------")
+        print(" ")
+
+    # Make overview plot of all grid cases
+    print("Make overview plot")
+    fig,ax = plt.subplots(1,1, figsize=(7,5))
     for c in cases:
-        postproc_once(c)
+        hf_all = pd.read_csv(os.path.join(c,"runtime_helpfile.csv"), delimiter=r'\s+')
+        x = np.array(hf_all["Time"].iloc[:])
+        y = np.array(hf_all["T_surf"].iloc[:])
+        l = c.split("_")[-1].replace("/","")
+        ax.plot(x,y,label=l, lw=1.5, alpha=0.8, zorder=4)
+    ax.set(xscale='log', xlabel='Time [yr]', ylabel=r'$\rm T_{surf}$ [K]')
+    ax.set_title(f"Planet: {name}")
+    ax.set_xlim(left=10.0)
+    ax.grid(zorder=-2, alpha=0.8)
+    ax.legend(fontsize=10)
+    fig.savefig(os.path.join(griddir,"chili_grid.pdf"), bbox_inches='tight')
+
+    print(" ")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

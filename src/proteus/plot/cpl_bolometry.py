@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-
 def plot_bolometry(hf_all:pd.DataFrame, output_dir: str, plot_format: str="pdf", t0: float=100.0):
 
     time = np.array(hf_all["Time"] )
@@ -26,17 +25,23 @@ def plot_bolometry(hf_all:pd.DataFrame, output_dir: str, plot_format: str="pdf",
     # make plot
     lw = 1.2
     scale = 1.1
-    fig,axl = plt.subplots(1,1, figsize=(7*scale,4*scale))
+    fig,(axt,axl) = plt.subplots(2,1, figsize=(7*scale,4*scale), sharex=True)
 
-    # left axis
-    axl.plot(time, hf_all["transit_depth"]*1e6, lw=lw, color='k')
-    axl.set_ylabel("Bolometric transit depth [ppm]")
+    # top axis
+    axt.plot(time, hf_all["albedo_pl"]*100,   lw=lw, color='tab:orange', label="albedo_pl")
+    axt.plot(time, hf_all["bond_albedo"]*100, lw=lw, color='tab:blue', label="bond_albedo")
+    axt.set(ylabel="Albedo [%]", ylim=(0,100))
+    axt.legend()
 
-    # right axis
+    # bottom axis (left spine)
+    axl.plot(time, hf_all["transit_depth"]*1e6, lw=lw, color='k', zorder=2)
+    axl.set_ylabel("Transit depth [ppm]")
+
+    # bottom axis (right spine)
     axr = axl.twinx()
     color = "tab:red"
-    axr.plot(time, hf_all["eclipse_depth"]*1e6, lw=lw, color=color)
-    axr.set_ylabel("Bolometric eclipse depth [ppm]")
+    axr.plot(time, hf_all["eclipse_depth"]*1e6, lw=lw, color=color, zorder=3)
+    axr.set_ylabel("Eclipse depth [ppm]")
     axr.yaxis.label.set_color(color)
     axr.tick_params(axis='y', colors=color)
 
@@ -44,7 +49,8 @@ def plot_bolometry(hf_all:pd.DataFrame, output_dir: str, plot_format: str="pdf",
     axl.set_xlabel("Time [yr]")
     axl.set_xscale("log")
     axl.set_xlim(left=t0, right=np.amax(time))
-    axl.grid(alpha=0.2)
+    axt.grid(alpha=0.2, zorder=-2)
+    axl.grid(alpha=0.2, zorder=-2)
 
     plt.close()
     plt.ioff()

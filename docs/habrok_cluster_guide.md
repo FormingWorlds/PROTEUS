@@ -30,7 +30,7 @@ Once you are connected to one of the interactive servers, use these steps to con
     echo "module purge" >>  "$HOME/.bashrc"
     ```
     ```console
-    echo "module load netCDF-Fortran"  >>  "$HOME/.bashrc"
+    echo "module load netCDF-Fortran libarchive"  >>  "$HOME/.bashrc"
     ```
 
 2. Log out of Habrok, and then login again
@@ -64,7 +64,7 @@ The parallel and GPU partitions are limited to 5 and 3 days respectively; they s
 
 There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.rug.nl/habrok/job_management/scheduling_system) with SLURM.
 
-- To submit your script, run:
+- To submit a generic script, run:
     ```console
     sbatch name_of_your_script.sh
     ```
@@ -74,4 +74,9 @@ There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.ru
     squeue -u $USER
     ```
 
-See the section on running grids in the PROTEUS [usage guide](./usage.html#running-grids-of-simulations)
+See the section on running grids in the PROTEUS [usage guide](./usage.html#running-grids-of-simulations). These instructions will detail how to submit grids to the nodes via SLURM.
+
+You can also submit single PROTEUS runs to the nodes. For example:
+```console
+sbatch --mem-per-cpu=3G --time=1440 --wrap "proteus start -oc input/all_options.toml"
+```

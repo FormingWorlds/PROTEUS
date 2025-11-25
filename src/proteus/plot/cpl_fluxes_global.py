@@ -28,7 +28,7 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
     log.info("Plot global fluxes")
 
     F_net = np.array(hf_crop["F_atm"])
-    F_asf = np.array(hf_crop["F_ins"]) * config.orbit.s0_factor * (1.0 - config.atmos_clim.albedo_pl) * np.cos(config.orbit.zenith_angle * np.pi/180.0)
+    F_asf = np.array(hf_crop["F_ins"]) * config.orbit.s0_factor * (1.0 - np.array(hf_crop["albedo_pl"])) * np.cos(config.orbit.zenith_angle * np.pi/180.0)
     F_olr = np.array(hf_crop["F_olr"])
     F_upw = np.array(hf_crop["F_olr"]) + np.array(hf_crop["F_sct"])
     F_int = np.array(hf_crop["F_int"])

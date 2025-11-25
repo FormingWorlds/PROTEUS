@@ -14,6 +14,38 @@ from proteus.utils.constants import gas_list
 from proteus.utils.coupler import get_proteus_directories
 
 dtype = torch.double
+LOG_CLIP = 1e-30
+
+def variable_is_logarithmic(varname:str) -> bool:
+    """Does this physical variable naturally vary across orders several of magnitude?
+
+    This variable should also be positive-valued.
+
+    Args:
+        varname (str): Name of variable.
+
+    Returns:
+        out (bool): True if scales logarithmically.
+    """
+
+    # Linear-scaling is default behaviour
+    out = False
+
+    # Check specific variables
+    if varname in ("P_surf","P_surf_clim",
+             "rho_obs", "p_obs", "p_xuv",
+             "Time",
+             "semimajorax","eccentricity"):
+        out = True
+
+    # Check compositional variables
+    elif "_vmr" in varname:
+        out = True
+    elif "_bar" in varname:
+        out = True
+
+    return out
+
 
 def update_toml(config_file: str,
                 updates: dict,
@@ -54,12 +86,11 @@ def run_proteus(parameters: dict,
                 observables: list[str],
                 ref_config: str,
                 output: str,
-                max_attempts: int = 2) -> pd.Series:
+                ) -> pd.Series:
 
     """Run the PROTEUS simulator and return selected observables.
 
     Builds a per-run TOML file, invokes the `proteus` CLI, and reads the resulting CSV.
-    Retries up to `max_attempts` times on failure, with a small perturbation.
 
     Args:
         parameters (dict): Parameter-value pairs to set in the simulation config.
@@ -68,7 +99,6 @@ def run_proteus(parameters: dict,
         observables (list[str]): Names of output columns to return.
         ref_config (str): Path to the reference TOML config template.
         output (str): Path to output relative to PROTEUS output folder
-        max_attempts (int): Maximum retry count on simulator failure.
 
     Returns:
         pd.Series: Last row of the simulator output containing requested observables.
@@ -114,6 +144,10 @@ def run_proteus(parameters: dict,
 
     return df_row[observables].T
 
+def log_warp(sq_dist):
+    warped_dist = -torch.log10(sq_dist + 1e-10)
+    return warped_dist
+
 def eval_obj(sim_dict, tru_dict):
     '''Evaluate objective function, given simulated and true values of observables'''
 
@@ -121,9 +155,9 @@ def eval_obj(sim_dict, tru_dict):
     tru_vals = []
     for k in sim_dict.keys():
         # some variables scale logarithmically
-        if ("vmr" in k) or (k in ("P_surf","Time","semimajorax")):
-            sim_vals.append(log10( max(sim_dict[k],1e-30) ))
-            tru_vals.append(log10( max(tru_dict[k],1e-30) ))
+        if variable_is_logarithmic(k):
+            sim_vals.append(log10( max(sim_dict[k],LOG_CLIP) ))
+            tru_vals.append(log10( max(tru_dict[k],LOG_CLIP) ))
         # others are just linear
         else:
             sim_vals.append(sim_dict[k])
@@ -134,11 +168,16 @@ def eval_obj(sim_dict, tru_dict):
     true_y = torch.tensor(tru_vals, dtype=dtype).reshape(1, -1)
 
     # Compute normalized difference and squared distance
+
     diff = torch.ones(1, 1, dtype=dtype) - sim / true_y
     sq_dist = (diff ** 2).sum(dim=1, keepdim=True)
 
-    # Return final objective
-    return torch.ones(1, 1, dtype=dtype) - sq_dist
+    # obj = torch.ones(1, 1, dtype=dtype) - sq_dist
+
+    # print("\n",sim, true_y, obj, "\n")
+
+    obj = log_warp(sq_dist)
+    return obj
 
 def J(x: torch.Tensor,
       parameters: list[str],
@@ -152,7 +191,7 @@ def J(x: torch.Tensor,
     Transforms normalized `x` to raw parameters, runs the simulator,
     and computes the squared-error based objective:
 
-        J = 1 - sum((1 - sim/true)^2)
+        J = log_10(sum((1 - sim/true)^2) + 1e-10)
 
     Args:
         x (torch.Tensor): Normalized input tensor of shape (1, d).

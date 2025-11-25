@@ -76,7 +76,7 @@ def InitAtm(dirs:dict, config:Config):
                 lwm = 0.8, # Liquid water mass fraction [kg/kg]
                 clfr = 0.8, # Water cloud fraction
                 albedo_s = config.atmos_clim.surf_greyalbedo,
-                albedo_pl = config.atmos_clim.albedo_pl,
+                albedo_pl = 0.0, # will be overwritten
                 zenith_angle = config.orbit.zenith_angle,
                 )
 
@@ -131,7 +131,8 @@ def UpdateStateAtm(atm, config:Config, hf_row:dict, tropopause):
     atm.setVolatiles(vol_mixing)
 
     atm.instellation = hf_row["F_ins"]
-    atm.tmp_magma = hf_row["T_magma"]
+    atm.albedo_pl = hf_row["albedo_pl"]
+    atm.tmp_magma  = hf_row["T_magma"]
     if tropopause == "skin":
         atm.trppT = hf_row["T_skin"]
     else:
@@ -174,8 +175,6 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
             Output variables, as a dict
 
     """
-
-    from janus.utils.observed_rho import calc_observed_rho
 
     # Runtime info
     log.debug("Running JANUS...")
@@ -271,18 +270,17 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
+    # Calculated surface pressure (might be different to input)
+    P_surf_clim = atm.ps / 1e5 # bar
+
     # observables
     p_obs = float(config.atmos_clim.janus.p_obs)*1e5 # converted to Pa
     r_arr = np.array(atm.z[:]) + hf_row["R_int"]
-    rho_obs = -1.0
     if atm.height_error:
         log.error("Hydrostatic integration failed in JANUS!")
     else:
         # find observed level [m] at p ~ p_obs
         _, r_obs = get_radius_from_pressure(atm.p, r_arr, p_obs)
-
-        # calc observed density [kg m-3]
-        rho_obs = calc_observed_rho(atm)
 
     # XUV height in atm
     if config.escape.module == 'zephyrus':
@@ -290,7 +288,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         p_xuv = config.escape.zephyrus.Pxuv # [bar]
     else:
         # escape level set to surface
-        p_xuv = hf_row["P_surf"] # [bar]
+        p_xuv = P_surf_clim # [bar]
     p_xuv, r_xuv = get_radius_from_pressure(atm.p, r_arr, p_xuv*1e5) # [Pa], [m]
 
     # final things to store
@@ -302,10 +300,8 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["albedo"] = atm.SW_flux_up[0] / atm.SW_flux_down[0]
     output["p_obs"]  = p_obs/1e5        # observed level [bar]
     output["R_obs"]  = r_obs            # observed level [m]
-    output["rho_obs"]= rho_obs          # observed density [kg m-3]
     output["p_xuv"]  = p_xuv/1e5        # Closest pressure from Pxuv    [bar]
     output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
-    output["ocean_areacov"] = 0.0
-    output["ocean_maxdepth"]= 0.0
+    output["P_surf_clim"] = P_surf_clim # calculated surface pressure [bar]
 
     return output

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, le
+from attrs.validators import ge, gt, in_
 
 from ._converters import none_if_none
 
@@ -114,7 +114,7 @@ class Star:
         converter=none_if_none,
     )
 
-    mass: float = field(validator=(ge(0.1), le(1.25)))
+    mass: float = field(validator=gt(0))
     age_ini: float = field(validator=gt(0))
 
     mors: Mors       = field(factory=Mors,      validator=valid_mors)

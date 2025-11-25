@@ -95,7 +95,7 @@ version = "2.0"
         solution_atol = 2.0
         solution_rtol = 0.13
         overlap_method = "ee"
-        condensation = false
+        rainout = false
         real_gas = true
 
 [escape]

@@ -319,7 +319,7 @@ def plots_perf_converge(D, T, n_init, directory):
     Y_best = np.array(Y_best)
     T = np.array(T)            # Assume T aligns with Y
 
-    oracle = 1.  # Change as appropriate
+    oracle = 10.  # Change as appropriate
     regret = np.abs(Y_best - oracle)
     log_regret = np.log10(regret + 1e-12)  # add small number to avoid log(0)
     n = np.arange(len(Y_best))

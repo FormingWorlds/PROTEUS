@@ -67,7 +67,8 @@ version = "2.0"
 
     [atmos_clim.agni]
         p_top          = 1e-4
-        condensation   = true
+        rainout        = false
+        oceans         = true
         spectral_group = "Dayspring"
         spectral_bands = "48"
 

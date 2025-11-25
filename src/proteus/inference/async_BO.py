@@ -21,12 +21,10 @@ import time
 from functools import partial
 from multiprocessing import Manager, Process
 
-import numpy
 import torch
-from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
-from scipy.stats.qmc import Halton
 
-from proteus.inference.BO import BO_step
+from proteus.inference.BO import BO_step, init_locs
+from proteus.inference.utils import get_kernel_w_prior
 from proteus.utils.coupler import get_proteus_directories
 
 # Tensor dtype for all computations
@@ -58,29 +56,6 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
     # Persist the timestamps
     with open(os.path.join(output_dir, "Ts.pkl"), "wb") as f_ts:
         pickle.dump(list(Ts), f_ts)
-
-
-def init_locs(n_workers: int, D: dict, seed:int) -> torch.Tensor:
-    """Generate initial sample locations using a Halton sequence.
-
-    Args:
-        n_workers (int): Number of initial points to generate.
-        D (dict): Shared dict with key 'X' to infer problem dimension.
-        seed (int): Seed for reproducibility.
-
-    Returns:
-        torch.Tensor: Tensor of shape (n_workers, d) in [0,1]^d for initial sampling.
-    """
-    # Determine the input dimension from existing data
-    d = D["X"].shape[-1]
-
-    # Create a scrambled Halton sampler
-    sampler = Halton(d=d, rng=numpy.random.default_rng(seed), scramble=True)
-    samples = sampler.random(n=n_workers)
-
-    # Convert to Torch tensor
-    return torch.tensor(samples, dtype=dtype)
-
 
 def worker(
     process_fun,
@@ -191,20 +166,17 @@ def worker(
 
         task_id += 1
 
-
 def parallel_process(
     objective_builder,
     kernel: str,
     acqf: str,
-    n_restarts: int,
-    n_samples: int,
     n_workers: int,
     max_len: int,
     output: str,
-    seed: int,
-    ref_config,
-    observables,
-    parameters
+    seed:int,
+    ref_config: str,
+    observables: dict,
+    parameters: dict
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -215,21 +187,22 @@ def parallel_process(
         objective_builder (callable): Factory to build per-worker objective f.
         kernel (str): Covariance kernel for the Gaussian process.
         acqf (str): Acquisition function for BO step.
-        n_restarts (int): Number of restarts in acquisition optimization.
-        n_samples (int): Number of raw samples for acquisition optimization.
         n_workers (int): Number of parallel worker processes.
         max_len (int): Target total number of evaluations, including initial data.
         output (str): Output directory for checkpoints and plots.
-        seed (int): Seed for random state, ensuring reproducibility
-        ref_config: Reference config to pass to objective_builder.
-        observables: List or dict of target observable values.
-        parameters: Dict of parameter bounds for inference.
+        seed (int): Random seed for some degree of reproducibility
+        ref_config (str): Path to reference config to pass to objective_builder.
+        observables (dict): Target observables (keys) and values.
+        parameters (dict):  Parameters (keys) with bounds (values) for inference.
 
     Returns:
         D_final (dict): Final 'X' and 'Y' data after all evaluations.
         logs (list): List of per-evaluation log dicts.
         T (list): List of elapsed times from the start of optimization.
     """
+
+    # torch.manual_seed(seed)
+
     # Partially apply builder and BO_step with fixed settings
     build_obj = partial(
         objective_builder,
@@ -242,21 +215,33 @@ def parallel_process(
     # Build kernel
     d = len(parameters)
     if kernel == "RBF":
-        kernel = get_covar_module_with_dim_scaled_prior(ard_num_dims=d,
-                                                        use_rbf_kernel=True)
-    elif kernel == "MAT":
-        # defaults to Matern-5/2
-        kernel = get_covar_module_with_dim_scaled_prior(ard_num_dims=d,
-                                                        use_rbf_kernel=False)
+        kernel = get_kernel_w_prior(ard_num_dims=d,
+                                    use_rbf_kernel=True)
+    elif kernel == "MAT1/2":
+
+        kernel = get_kernel_w_prior(ard_num_dims=d,
+                                    use_rbf_kernel=False,
+                                    nu=0.5
+                                    )
+    elif kernel == "MAT3/2":
+
+        kernel = get_kernel_w_prior(ard_num_dims=d,
+                                    use_rbf_kernel=False,
+                                    nu=1.5
+                                    )
+    elif kernel == "MAT5/2":
+
+        kernel = get_kernel_w_prior(ard_num_dims=d,
+                                    use_rbf_kernel=False,
+                                    nu=2.5
+                                    )
     else:
-        raise ValueError("Unknown kernel, choices are RBF or MAT")
+        raise ValueError("Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}")
 
     process_fun = partial(
         BO_step,
         k=kernel,
         acqf=acqf,
-        n_restarts=n_restarts,
-        n_samples=n_samples
     )
 
     # Absolute path to shared output dir
@@ -282,7 +267,7 @@ def parallel_process(
     log_list = mgr.list([None] * n_init) # no logs from init data
 
     # Generate initial candidate locations and busy-map
-    X_init = init_locs(n_workers, D_shared, seed)
+    X_init = init_locs(n_workers, D_shared)
     B = mgr.dict()
 
     # Shared list for end times

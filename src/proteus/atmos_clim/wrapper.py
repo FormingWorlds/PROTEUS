@@ -50,14 +50,28 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
     log.info("Solving atmosphere...")
 
-    # Warnings
-    if config.atmos_clim.albedo_pl > 1.0e-9:
+    # Update bond albedo
+    if config.atmos_clim.albedo_from_file or (config.atmos_clim.albedo_pl > 1.0e-9):
+
+        # Warn if invalid
         if config.atmos_clim.rayleigh:
             log.warning("Physically inconsistent options selected: "
                         "`albedo_pl > 0` and `rayleigh = True`")
         if config.atmos_clim.cloud_enabled:
             log.warning("Physically inconsistent options selected: "
                         "`albedo_pl > 0` and `cloud_enabled = True`")
+
+        # Update value of input albedo
+        if config.atmos_clim.albedo_from_file:
+            hf_row["albedo_pl"] = float(atmos_o.albedo_o.evaluate(hf_row["T_surf"]))
+            log.info(f"Set albedo by interpolation: {hf_row['albedo_pl']*100:.3f}%")
+        else:
+            hf_row["albedo_pl"] = float(config.atmos_clim.albedo_pl)
+            log.debug(f"Set albedo by config: {hf_row['albedo_pl']*100:.3f}%")
+
+    else:
+        # Held at zero
+        hf_row["albedo_pl"] = 0.0
 
     # Handle new surface temperature
     if config.atmos_clim.surf_state == 'mixed_layer':
@@ -115,7 +129,7 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
             # first run?
             if no_atm:
-                activate_julia(dirs)
+                activate_julia(dirs, config.atmos_clim.agni.verbosity)
                 # surface temperature guess
                 hf_row["T_surf"] = hf_row["T_magma"]
             else:
@@ -134,16 +148,12 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
                 UpdateStatusfile(dirs, 22)
                 raise RuntimeError("Atmosphere struct not allocated")
 
-        # Check if atmosphere is transparent
-        transparent = bool(hf_row["P_surf"] < config.atmos_clim.agni.psurf_thresh)  # bar
-
         # Update profile
-        atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs, transparent)
+        atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs, config)
 
         # Run solver
         atmos_o._atm, atm_output = run_agni(atmos_o._atm,
-                                            loop_counter["total"], dirs, config, hf_row,
-                                            transparent)
+                                            loop_counter["total"], dirs, config, hf_row)
 
     elif config.atmos_clim.module == 'dummy':
         # Import
@@ -157,6 +167,7 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
             hf_row[key] = atm_output[key]
 
     # Copy special cases
+    hf_row["rho_obs"]     = 3 * hf_row["M_tot"] / (4*pi*hf_row["R_obs"]**3)
     hf_row["F_net"]       = hf_row["F_int"] - hf_row["F_atm"]
     hf_row["bond_albedo"] = atm_output["albedo"]
 
