@@ -71,10 +71,6 @@ version = "2.0"
         spectral_group = "Dayspring"
         spectral_bands = "48"
 
-    [atmos_clim.agni]
-        spectral_group = "Dayspring"
-        spectral_bands = "48"
-
 [escape]
     module = "zephyrus"
 
