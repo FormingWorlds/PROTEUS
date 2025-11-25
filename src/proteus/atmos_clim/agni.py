@@ -309,6 +309,13 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, config:Config):
     # ---------------------
     # Update instellation flux
     atmos.instellation = float(hf_row["F_ins"])
+    log.info("albedo of planet from tables:%.3f"%hf_row["albedo_pl"])
+    #value=jl.getfield(atmos, jl.Symbol("albedo_b"))
+    #log.info("albedo of planet computed before reattributing:%.3f"%value)
+    setfield = getattr(jl, "setfield!")
+    setfield(atmos, jl.Symbol("albedo_b"), float(hf_row["albedo_pl"]))
+    value=jl.getfield(atmos, jl.Symbol("albedo_b"))
+    log.info("albedo of planet computed after reattributing:%.3f"%value)
 
     # ---------------------
     # Update compositions
