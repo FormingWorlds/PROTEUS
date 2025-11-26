@@ -4,15 +4,15 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from proteus.utils.constants import element_list, secs_per_year
 from proteus.escape.common import calc_unfract_fluxes
+from proteus.utils.constants import element_list, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
-def run_escape(config:Config, hf_row:dict, dt:float):
+def run_escape(config:Config, hf_row:dict, dirs:dict, dt:float):
     """Run Escape submodule.
 
     Generic function to run escape calculation using ZEPHYRUS or dummy.
@@ -23,6 +23,8 @@ def run_escape(config:Config, hf_row:dict, dt:float):
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        dirs: dict
+            Dictionary of directories
         dt : float
             Time interval over which escape is occuring [yr]
     """
@@ -40,7 +42,7 @@ def run_escape(config:Config, hf_row:dict, dt:float):
 
     elif config.escape.module == 'boreas':
         from proteus.escape.boreas import run_boreas
-        run_boreas(config, hf_row)
+        run_boreas(config, hf_row, dirs)
 
     else:
         raise ValueError(f"Invalid escape model: {config.escape.module}")

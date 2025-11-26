@@ -170,6 +170,8 @@ def CommentFromStatus(status:int):
             desc = "Error (Tides/orbit model)"
         case 27:
             desc = "Error (Outgassing model)"
+        case 28:
+            desc = "Error (Escape model)"
         # Default case
         case _:
             desc = "UNHANDLED STATUS (%d)" % status

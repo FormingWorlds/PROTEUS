@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import element_list, secs_per_year, R_earth
+from proteus.utils.constants import R_earth, element_list, secs_per_year
 from proteus.utils.plot import get_colour
 
 if TYPE_CHECKING:

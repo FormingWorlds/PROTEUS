@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import redirect_stdout
 from typing import TYPE_CHECKING
 
 import boreas
@@ -9,12 +10,13 @@ import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
 from proteus.utils.constants import AU, element_list, gas_list
-from proteus.utils.helper import eval_gas_mmw
+from proteus.utils.helper import UpdateStatusfile, eval_gas_mmw
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
+log.write = lambda msg: log.info(msg.rstrip('\n')) if msg != '\n' else None # print() redirect
 
 # Get set of shared-supported gases
 BOREAS_GASES = set(boreas.ModelParams().kappa.keys()) & set(gas_list)
@@ -22,7 +24,7 @@ BOREAS_GASES = set(boreas.ModelParams().kappa.keys()) & set(gas_list)
 # Get set of shared-supported elements
 BOREAS_ELEMS = set(boreas.ModelParams().sigma_XUV.keys()) & set(element_list)
 
-def run_boreas(config:Config, hf_row:dict):
+def run_boreas(config:Config, hf_row:dict, dirs:dict):
     """Run BOREAS escape model.
 
     Calculates the mass loss rate of each element.
@@ -35,6 +37,8 @@ def run_boreas(config:Config, hf_row:dict):
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        dirs: dict
+            Dictionary of directories.
     """
 
     log.info("Running escape...")
@@ -75,16 +79,25 @@ def run_boreas(config:Config, hf_row:dict):
     params._recompute_composites()
     params._init_opacities()
 
-    # Init compute objects
-    mass_loss       = boreas.MassLoss(params)
-    fractionation   = boreas.Fractionation(params)
+    # Do escape computation with BOREAS
+    # Redirect print() calls inside BOREAS to -> PROTEUS' log.info()
+    with redirect_stdout(log):
+        try:
+            mass_loss       = boreas.MassLoss(params)
+            fractionation   = boreas.Fractionation(params)
 
-    # Run bulk mass loss calculation
-    ml_result = mass_loss.compute_mass_loss_parameters(
-                    [params.mplanet], [params.rplanet], [params.Teq])
+            # Run bulk mass loss calculation
+            ml_result = mass_loss.compute_mass_loss_parameters(
+                            [params.mplanet], [params.rplanet], [params.Teq])
 
-    # Run fractionation calculation
-    fr_result = fractionation.execute(ml_result, mass_loss)[0]
+            # Run fractionation calculation
+            fr_result = fractionation.execute(ml_result, mass_loss)[0]
+
+        # Safely capture errors
+        except RuntimeError as e:
+            UpdateStatusfile(dirs, 28)
+            log.error(e)
+            raise RuntimeError("Encountered problem when running BOREAS module")
 
     # Print info
     regime_map = {"RL":"recomb-limited", "EL":"energy-limited", "DL":"diffusion-limited"}
