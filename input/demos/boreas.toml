@@ -98,6 +98,10 @@ version = "2.0"
         condensation = false
         real_gas = true
 
+    [atmos_clim.janus]
+        spectral_group = "Dayspring"
+        spectral_bands = "16"
+
 [escape]
 
     reservoir = "outgas"  # Escaping reservoir when fractionation disabled
