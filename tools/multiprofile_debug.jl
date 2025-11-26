@@ -2,31 +2,19 @@
 
 # script to perform radiative-convective equilibrium postprocessing
 # at multiple zenith angles based on a single PROTEUS atmosphere output file
-# similar to postprocess.jl but loops over multiple angles and saves
-# separate .nc files for each angle.
-
-# Usage: julia multiprofile_postprocess.jl <output_dir> <angles>
-# where <output_dir> is the PROTEUS simulation output directory
-# and <angles> is a comma-separated list of zenith angles in degrees
-# Example: julia multiprofile_postprocess.jl ./outputdir 0,30,60,85
 
 PROTEUS_DIR = dirname(dirname(abspath(@__FILE__)))
 println("PROTEUS_DIR = $PROTEUS_DIR")
 
-#absolute path to AGNI environment for Julia
 ROOT_DIR = abspath(PROTEUS_DIR, "AGNI/")
 using Pkg
 Pkg.activate(ROOT_DIR)
 
-#import required packages
 using Printf, LoggingExtras, NCDatasets, Glob, Dates, DataStructures
 using AGNI
 import AGNI.atmosphere as atmosphere
 import AGNI.energy as energy
 import AGNI.solver as solver
-
-# function largely based on setup_atmosphere! in atmosphere.jl and setup_atmos_from_nc! from postprocess.jl but
-# for different zenith angles
 
 function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::String, zenith_angle::Float64)
     @info @sprintf("Setting up atmosphere with custom zenith_angle=%.1f\n", zenith_angle)
@@ -37,13 +25,11 @@ function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::Str
         nlev_c::Int = length(ds["p"][:])
         input_pl::Array{Float64,1} = ds["pl"][:]
 
-        # determine min/max pressure and convert to bar
         p_top_pa = minimum(input_pl)
         p_boa_pa = maximum(input_pl)
         p_top_bar = p_top_pa / 1.0e5
         p_boa_bar = p_boa_pa / 1.0e5
 
-        # read in gases and vmrs
         raw_gases::Array{Char,2} = ds["gases"][:,:]
         num_gas::Int = size(raw_gases)[2]
         input_gases::Array{String,1} = []
@@ -58,17 +44,14 @@ function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::Str
             input_vmrs_scalar[g] = raw_vmrs[i, end]
         end
 
-        #get other inputs for atmosphere setup from .nc file
         input_tsurf::Float64   = ds["tmp_surf"][1]
         input_radius::Float64  = ds["planet_radius"][1]
         input_gravity::Float64 = ds["surf_gravity"][1]
         input_inst::Float64   = ds["instellation"][1]
         # set instellation factor to 1.0 for RCE postprocessing
-        #input_s0fact::Float64 = 1.0
-        input_s0fact::Float64 = ds["inst_factor"][1]
+        input_s0fact::Float64 = 1.0
         input_albedo::Float64 = ds["bond_albedo"][1]
 
-        # flags required for atmosphere setup
         input_flag_rayleigh::Bool = true
         try; input_flag_rayleigh = Bool(ds["flag_rayleigh"][1] == 'y'); catch; end
         input_flag_thermo::Bool = true
@@ -78,13 +61,11 @@ function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::Str
 
         close(ds)
 
-        #check for user in case the spectral file is missing
         if !ispath(spfile)
             @error("Cannot find spectral file $spfile")
             exit(1)
         end
 
-        # SETUP ATMOSPHERE with function from atmosphere.jl
         atmos = atmosphere.Atmos_t()
         atmosphere.setup!(atmos, ROOT_DIR, output_dir,
                                 spfile,
@@ -104,9 +85,6 @@ function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::Str
             @error("Failed to allocate atmosphere")
             exit(1)
         end
-
-        # Load initial state (final T-P profile form simulation) from file so we can start RCE from there
-        # to ensure easier convergence than starting from scratch
 
         ds = Dataset(ncfile, "r")
         try
@@ -137,19 +115,45 @@ function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::Str
     end
 end
 
-# Perform postprocessing at a single zenith angle. This function runs the RCE solver and saves output to a new .nc file. A different
-#.nc file is created for each zenith angle because I was running into issues trying to store multiple angles in a single file or merging files.
 function postprocess_at_angle(output_dir::String, atmfile::String, spfile::String, angle::Float64)
     println("\n" * "="^60)
     println("Processing zenith angle = $angle")
     println("="^60)
 
-    # calls the SETUP ATMOSPHERE function
     atmos = setup_atmos_multiangle!(output_dir, atmfile, spfile, angle)
 
-    # SOLVE FOR RADIATIVE-CONVECTIVE EQUILIBRIUM for the given atmosphere and zenith angle
-    println("  Solving for radiative-convective equilibrium...")
+    # TEST SINGLE RADIATIVE TRANSFER FIRST
+    println("  [DEBUG] Testing single radiative transfer before solver...")
+    println("  [DEBUG] Starting at: $(Dates.format(now(), "HH:MM:SS"))")
+    flush(stdout)
 
+    t_start = time()
+    energy.reset_fluxes!(atmos)
+    println("  [DEBUG] Fluxes reset ($(round(time()-t_start, digits=2))s)")
+    flush(stdout)
+
+    t_lw_start = time()
+    energy.radtrans!(atmos, true, calc_cf=false)  # LW without contribution function
+    t_lw = time() - t_lw_start
+    println("  [DEBUG] LW radtrans complete ($(round(t_lw, digits=2))s) - OLR=$(atmos.flux_u_lw[1]) W/m2")
+    flush(stdout)
+
+    t_sw_start = time()
+    energy.radtrans!(atmos, false)  # SW
+    t_sw = time() - t_sw_start
+    println("  [DEBUG] SW radtrans complete ($(round(t_sw, digits=2))s) - SW_down=$(atmos.flux_d_sw[1]) W/m2")
+    flush(stdout)
+
+    println("  [DEBUG] Single radtrans test successful! Total time: $(round(t_lw + t_sw, digits=2))s")
+    println("  [DEBUG] Estimated time per iteration: ~$(round((t_lw + t_sw)*2, digits=2))s")
+    flush(stdout)
+
+    # SOLVE FOR RADIATIVE-CONVECTIVE EQUILIBRIUM
+    println("\n  Solving for radiative-convective equilibrium...")
+    println("  [DEBUG] Solver starting at: $(Dates.format(now(), "HH:MM:SS"))")
+    flush(stdout)
+
+    t_solver_start = time()
     success = solver.solve_energy!(atmos,
                                     sol_type=3,
                                     chem=false,
@@ -159,16 +163,21 @@ function postprocess_at_angle(output_dir::String, atmfile::String, spfile::Strin
                                     latent=false,
                                     rainout=false,
                                     max_steps=100,
-                                    max_runtime=7200.0,
-                                    modprint=1,
+                                    max_runtime=1200.0,
+                                    modprint=1,          # Print every step
                                     dx_max=35.0,
                                     modplot=0,
                                     conv_atol=0.5,
                                     conv_rtol=0.15,
-                                    ls_method=2,
+                                    ls_method=0,        # trying with no line search
                                     method=1,
                                     perturb_all=false
                                     )
+
+    t_solver = time() - t_solver_start
+    println("  [DEBUG] Solver finished at: $(Dates.format(now(), "HH:MM:SS"))")
+    println("  [DEBUG] Total solver time: $(round(t_solver/60, digits=2)) minutes")
+    flush(stdout)
 
     if !success
         @warn("Failed to converge for zenith angle $angle - using best solution found")
@@ -176,7 +185,6 @@ function postprocess_at_angle(output_dir::String, atmfile::String, spfile::Strin
         println("  --> Equilibrium found!")
     end
 
-    # printout some results, similar to what is given in a PROTEUS simulation
     println("\n  RESULTS:")
     println("    Zenith angle: $angle")
     println("    LW flux at TOA: $(atmos.flux_u_lw[1]) W/m2")
@@ -194,24 +202,20 @@ function postprocess_at_angle(output_dir::String, atmfile::String, spfile::Strin
     nlev_l = length(atmos.pl)
     num_gases = length(atmos.gas_names)
 
-    #save gases accordingly
     gas_array = zeros(Float64, num_gases, nlev_c)
     for (i, gas_name) in enumerate(gas_names)
         gas_array[i, :] = atmos.gas_vmr[gas_name][:]
     end
 
-    #resulting fluxes if they can be helpful for analysis
     flux_u_lw = copy(atmos.flux_u_lw[:])
     flux_d_lw = copy(atmos.flux_d_lw[:])
     flux_u_sw = copy(atmos.flux_u_sw[:])
     flux_d_sw = copy(atmos.flux_d_sw[:])
 
-    #deallocate atmosphere
     atmosphere.deallocate!(atmos)
     GC.gc(); GC.gc()
     sleep(2.0)
 
-    # SAVE TO NETCDF with filename based on zenith angle and original atmfile
     output_file = replace(atmfile, ".nc" => "_z$(Int(round(angle))).nc")
     println("  Saving to: $(basename(output_file))")
 
@@ -261,22 +265,18 @@ function postprocess_at_angle(output_dir::String, atmfile::String, spfile::Strin
         close(ds_out)
     end
 
+
     println("  --> COMPLETE\n")
 end
-
-# Main function to postprocess multiple angles. loops over given angles and calls postprocess_at_angle for each one
-# angles can be given as a vector of Float64 values for simplicity
 
 function postprocess_multiple_angles(output_dir::String, spfile::String, angles::Vector{Float64})
     output_dir = abspath(output_dir)
     data_dir = joinpath(output_dir, "data")
 
-    # Find the latest atmosphere file in the data directory by looking for larger number in filenames
     files = Glob.glob("*_atm.nc", data_dir)
     nums = [parse(Int, match(r"(\d+)_atm\.nc", basename(f)).captures[1]) for f in files]
     atmfile = files[argmax(nums)]
 
-    # Extra information for logging in case something goes wrong
     println("\n" * "="^60)
     println("MULTI-ANGLE POSTPROCESSING WITH RCE SOLVER")
     println("="^60)
@@ -285,7 +285,6 @@ function postprocess_multiple_angles(output_dir::String, spfile::String, angles:
     println("Angles: $angles")
     println("="^60)
 
-    # calls postprocess_at_angle for each angle given by command
     for (i, angle) in enumerate(angles)
         println("\n>>> Angle $i of $(length(angles))")
         postprocess_at_angle(output_dir, atmfile, spfile, angle)
@@ -294,26 +293,19 @@ function postprocess_multiple_angles(output_dir::String, spfile::String, angles:
     println("\n" * "="^60)
     println("*** ALL ANGLES COMPLETE ***")
     println("="^60)
-
-    # print resulting filenames for user
-    # the files are conveniently stored in the same directory as the original atmosphere file (i.e. data folder in output directory)
     for angle in angles
         println("  $(basename(replace(atmfile, ".nc" => "_z$(Int(round(angle))).nc")))")
     end
     println("="^60)
 end
 
-# Main entry point when called from command line
 function main()
     if length(ARGS) < 2
         println("Usage: julia multiprofile_postprocess.jl <output_dir> <angles>")
         exit(1)
     end
 
-    #create spectral file path, simply inside output_dir
     spfile = joinpath(abspath(ARGS[1]), "runtime.sf")
-
-    #trigger multi-angle postprocessing with given arguments
     postprocess_multiple_angles(abspath(ARGS[1]), spfile,
                                 parse.(Float64, split(ARGS[2], ",")))
 end
