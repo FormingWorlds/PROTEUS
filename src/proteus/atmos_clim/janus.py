@@ -270,6 +270,9 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
+    # Calculated surface pressure (might be different to input)
+    P_surf_clim = atm.ps / 1e5 # bar
+
     # observables
     p_obs = float(config.atmos_clim.janus.p_obs)*1e5 # converted to Pa
     r_arr = np.array(atm.z[:],   copy=True, dtype=float) + hf_row["R_int"]
@@ -303,8 +306,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["R_obs"]  = r_obs            # observed level [m]
     output["p_xuv"]  = p_xuv            # Closest pressure to Pxuv    [bar]
     output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
-    output["ocean_areacov"] = 0.0
-    output["ocean_maxdepth"]= 0.0
+    output["P_surf_clim"] = P_surf_clim # calculated surface pressure [bar]
 
     # set composition at Pxuv
     for g in gas_list:
