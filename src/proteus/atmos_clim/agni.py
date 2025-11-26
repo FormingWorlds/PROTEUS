@@ -665,7 +665,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         T_obs = float(atmos.tmp_surf)
     else:
         R_obs = float(atmos.transspec_r)
-        T_obs = float(atmos.transspec_t)
+        T_obs = float(atmos.transspec_tmp)
 
     # Print info to user
     if config.atmos_clim.agni.oceans:
