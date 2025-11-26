@@ -41,7 +41,7 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
     """
 
     out = os.path.join(GetFWLData(), "zenodo_download.log")
-    log.debug("    zenodo_get, logging to %s"%out)
+    # log.debug("    zenodo_get, logging to %s"%out)
     for i in range(MAX_ATTEMPTS):
 
         # remove folder
@@ -96,7 +96,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
     #     They will be saved to a txt file in folder_dir
     md5sums_path = os.path.join(folder_dir, "md5sums.txt")
     out = os.path.join(GetFWLData(), "zenodo_validate.log")
-    log.debug("    zenodo_get, logging to %s"%out)
+    # log.debug("    zenodo_get, logging to %s"%out)
     zenodo_ok = False
     for i in range(MAX_ATTEMPTS):
 
