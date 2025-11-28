@@ -13,6 +13,39 @@ stars_online = {
     "nrel": ["sun"]
 }
 
+star_distance_pc = {
+    # From NASA exoplanet archive if not otherwise noted
+    "v-eps-eri": 3.20260,
+    "gj876":     4.67517,
+    "gj551":     1.30119,
+    "gj436":     9.75321,
+    "gj1214":    14.6427,
+    "trappist-1": 12.429888806540756,
+    "gj1132":     12.613,
+    "gj15a":      3.56228,
+    "gj163":      15.1285,
+    "gj176":      9.470450,
+    "gj581":      6.298100,
+    "gj649":      10.37960,
+    "gj667c":     7.24396,
+    "gj674":      4.548960,
+    "gj676a":     16.0272,
+    "gj699":      1.826550,
+    "gj729":      2.9759,    # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=GJ+729
+    "gj832":      4.964350,
+    "hd40307":    12.9363,
+    "hd85512":   11.2810,
+    "hd97658":   21.5618,
+    "l-980-5":    13.3731,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=L980-5
+    "lhs-2686":   12.1893,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=LHS+2686
+    "l-98-59":    10.6194,
+    "hd128167":   15.756,    # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+128167
+    "hd114710":    9.1975,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+114710
+    "hd206860":    18.133,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+206860
+    "hd22049":     3.20260,  # Same as Epsilon Eridani (v-eps-eri), but different identifier in vpl database
+    "sun": 0.0               # For NREL case, distance is irrelevant
+}
+
 def DownloadModernSpectrum(name, distance):
     """Get a contemporary stellar spectrum
 
