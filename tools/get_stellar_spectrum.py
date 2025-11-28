@@ -230,7 +230,7 @@ def DownloadModernSpectrum(name, distance=None):
 
         case 'nrel':
             cert = certifi.where()
-            source = "https://www.nrel.gov/grid/solar-resource/assets/data/newguey2003.txt"  # Set to Sun only.
+            source = "https://www.nrel.gov/media/docs/libraries/grid/newguey2003.txt"  # Set to Sun only.
             resp = requests.get(source, verify=cert) # Download file
 
             if (resp.status_code != 200):
