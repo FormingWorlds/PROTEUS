@@ -47,7 +47,7 @@ star_distance_pc = {
     "sun": 0.0               # For NREL case, distance is irrelevant
 }
 
-def DownloadModernSpectrum(name, distance):
+def DownloadModernSpectrum(name, distance=None):
     """Get a contemporary stellar spectrum
 
     Scaled to 1 AU from the star. Append "#lowres" to star name to use
@@ -58,7 +58,7 @@ def DownloadModernSpectrum(name, distance):
         name : str
             Name of star (with '#lowres' if required)
         distance : float
-            Distance to star [ly]
+            Distance to star [pc] (optional; if not provided, uses value from star_distance_pc)
     Returns
     ----------
         filename : str
@@ -74,11 +74,9 @@ def DownloadModernSpectrum(name, distance):
     import requests
     from astropy.io import fits
 
-    # Convert stellar parameters
-    distance = float(distance) * 3.0856775814914e18 # Convert pc -> cm
     name     = str(name).strip().lower()
 
-    # Check if lowres
+     # Check if lowres
     name_split = name.split("#")
     if (len(name_split) == 1):
         lowres = False
@@ -88,12 +86,7 @@ def DownloadModernSpectrum(name, distance):
         raise Exception("Invalid unable to parse star name '%s'!" % name)
     name = name_split[0]
 
-    print("\tParameters: [star = %s, distance = %1.2e cm, lowres = %s]" % (name, distance,lowres))
-
-    r_scale = 1.496e+13  # 1 AU in cm
-
     # Get database and name of star
-    name = name.strip()
     database = ''
     star = ''
     for k in stars_online.keys():
@@ -105,6 +98,29 @@ def DownloadModernSpectrum(name, distance):
         raise Exception("Could not find star '%s' in stellar databases!" % name)
     else:
         print("\tFound star in '%s' database" % database)
+
+    # Determine distance to star in parsec
+    if distance is None:
+        try:
+            distance = star_distance_pc[star]
+        except KeyError:
+            raise Exception(
+                "Distance to star '%s' not found in star_distance_pc; "
+                "please provide an explicit distance override (in pc)." % star
+            )
+    else:
+        distance = float(distance)
+
+    # Convert pc -> cm
+    pc_in_cm = 3.0856775814914e18
+    distance_cm = distance * pc_in_cm
+
+    print(
+        "\tParameters: [star = %s, distance = %1.2e cm, lowres = %s]"
+        % (star, distance_cm, lowres)
+    )
+
+    r_scale = 1.496e+13  # 1 AU in cm
 
     # Convert data from database source format to plain text file
     plaintext_spectrum = "spec_%s.txt" % star
@@ -130,8 +146,6 @@ def DownloadModernSpectrum(name, distance):
                 source = f"https://archive.stsci.edu/missions/hlsp/muscles/{v}/{star}/hlsp_muscles_multi_multi_{star}_broadband_{v}_adapt-{resstr}-res-sed.fits"
                 print(f"looking for: {source}")
                 resp = requests.get(source, verify=cert) # Download file
-
-                print(f"\tResponse code: {resp.status_code}")
 
                 if resp.status_code != 404:
                     ok = True
@@ -168,7 +182,7 @@ def DownloadModernSpectrum(name, distance):
             fl_arr = []
             for n,w in enumerate(spec['WAVELENGTH']):
                 wl = w * 0.1  # Convert å to nm
-                fl = float(spec['FLUX'][n])*10.0 * (distance / r_scale )**2  # Convert units and scale flux
+                fl = float(spec['FLUX'][n])*10.0 * (distance_cm / r_scale )**2  # Convert units and scale flux
 
                 negaflux = negaflux or (fl <= 0)
                 fl = max(0.0,fl)
@@ -207,7 +221,7 @@ def DownloadModernSpectrum(name, distance):
                         li = line.split()
 
                         wl = float(li[0]) * 1.0e3  # Convert um to nm
-                        fl = float(li[1]) * 1.0e4  * (distance / r_scale )**2  # Convert units and scale flux
+                        fl = float(li[1]) * 1.0e4  * (distance_cm / r_scale )**2  # Convert units and scale flux
 
                         new_str += "%1.7e\t%1.7e \n" % (wl,fl)
 
@@ -265,9 +279,8 @@ Commands:
     'get'
         Downloads and converts spectrum for given star.
         'param1' : star name (append '#lowres' to star name to avoid large files)
-        'param2' : distance from Earth in units of Ly
+        'param2' : distance from Earth in units of pc (optional; if not provided, uses value from star_distance_pc)
             """)
-
 
 # Run script
 if __name__ == "__main__":
@@ -286,8 +299,13 @@ if __name__ == "__main__":
 
         case "get":
             star = str(sys.argv[2])
-            sdst = float(sys.argv[3])
-            DownloadModernSpectrum(star,sdst)
+            if len(sys.argv) >= 4:
+                # Override distance in pc
+                sdst = float(sys.argv[3])
+            else:
+                # Use distance from star_distance_pc
+                sdst = None
+            DownloadModernSpectrum(star, sdst)
 
         case "help":
             PrintHelp()
