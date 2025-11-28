@@ -33,6 +33,7 @@ star_distance_pc = {
     "gj699":      1.826550,
     "gj729":      2.9759,    # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=GJ+729
     "gj832":      4.964350,
+    "gj832_synth": 4.964350, # synthetic spectrum, same distance as gj832
     "hd40307":    12.9363,
     "hd85512":   11.2810,
     "hd97658":   21.5618,
@@ -74,7 +75,7 @@ def DownloadModernSpectrum(name, distance):
     from astropy.io import fits
 
     # Convert stellar parameters
-    distance = float(distance) * 9.46073047e17 # Convert ly -> cm
+    distance = float(distance) * 3.0856775814914e18 # Convert pc -> cm
     name     = str(name).strip().lower()
 
     # Check if lowres
