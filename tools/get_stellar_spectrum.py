@@ -187,7 +187,29 @@ def DownloadModernSpectrum(name, distance=None):
             with open(database_spectrum, "wb") as f:
                 f.write(resp.content)
 
-            from astropy.io import fits
+            with fits.open(database_spectrum) as hdul:
+                spec = hdul[1].data
+                cols = hdul[1].columns
+
+                wave_unit_raw = cols["WAVELENGTH"].unit or ""
+                flux_unit_raw = cols["FLUX"].unit or ""
+
+            wave_unit = wave_unit_raw.lower()
+            flux_unit = flux_unit_raw.lower()
+
+            print(f"Wavelength unit: {wave_unit}; Flux unit: {flux_unit}")
+
+            assert "angstrom" in wave_unit, (
+                f"Unexpected WAVELENGTH unit '{wave_unit_raw}' "
+                "(expected something with 'Angstrom')"
+            )
+
+            for token in ("erg", "s-1", "cm-2", "angstrom-1"):
+                assert token in flux_unit, (
+                    f"Unexpected FLUX unit '{flux_unit_raw}' "
+                    f"(missing '{token}', expected 'erg s-1 cm-2 Angstrom-1')"
+                )
+
             # from astropy.table import Table
 
             # Epsilon Eridani is 10.475 light years away and with 0.735 solar radius
@@ -196,7 +218,8 @@ def DownloadModernSpectrum(name, distance=None):
             # GJ436 is 31.8 light years away and has 0.42 solar radius
             # GJ1214 is 47.5 light years away and has 0.2064 solar radius
             # TRAPPIST-1 is 40.66209 ly away and has 0.1192 solar radius
-            spec = fits.getdata(database_spectrum, 1)
+
+            # Units in MUSCLES FITS files:
 
             # WAVELENGTH : midpoint of the wavelength bin in Angstroms
             # WAVELENGTH0: left (blue) edge of the wavelength bin in Angstroms
@@ -209,7 +232,7 @@ def DownloadModernSpectrum(name, distance=None):
             fl_arr = []
             for n,w in enumerate(spec['WAVELENGTH']):
                 wl = w * 0.1  # Convert å to nm
-                fl = float(spec['FLUX'][n])*10.0 * (distance_cm / r_scale )**2  # Convert units and scale flux
+                fl = float(spec['FLUX'][n])*10.0 * (distance_cm / r_scale )**2  # Convert units erg s-1 cm-2 Angstroms-1 --> erg s-1 cm-2 nm-1 and scale flux
 
                 negaflux = negaflux or (fl <= 0)
                 fl = max(0.0,fl)
