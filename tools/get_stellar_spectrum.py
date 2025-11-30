@@ -199,6 +199,8 @@ def DownloadModernSpectrum(name, distance=None):
 
             print(f"Wavelength unit: {wave_unit}; Flux unit: {flux_unit}")
 
+            # test units !
+
             assert "angstrom" in wave_unit, (
                 f"Unexpected WAVELENGTH unit '{wave_unit_raw}' "
                 "(expected something with 'Angstrom')"
@@ -271,7 +273,7 @@ def DownloadModernSpectrum(name, distance=None):
                         li = line.split()
 
                         wl = float(li[0]) * 1.0e3  # Convert um to nm
-                        fl = float(li[1]) * 1.0e4  * (distance_cm / r_scale )**2  # Convert units and scale flux
+                        fl = float(li[1]) * 1.0e4  * (distance_cm / r_scale )**2  # Convert units: W/cm^2/micron -> erg/cm^2/s/nm and scale flux
 
                         new_str += "%1.7e\t%1.7e \n" % (wl,fl)
 
