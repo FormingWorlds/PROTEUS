@@ -8,42 +8,53 @@ import sys
 import numpy as np
 
 stars_online = {
-    "muscles": ["gj1132", "gj1214", "gj15a", "gj163", "gj176", "gj436", "gj551", "gj581", "gj649", "gj667c", "gj674", "gj676a", "gj699", "gj729", "gj832", "gj832_synth", "gj849", "gj876", "hd40307", "hd85512", "hd97658", "l-980-5", "lhs-2686", "trappist-1", "v-eps-eri", "l-98-59"],
+    "muscles": ["gj1132", "gj1214", "gj15a", "gj163", "gj176", "gj436", "gj551", "gj581", "gj649", "gj667c", "gj674", "gj676a", "gj699", "gj729", "gj832", "gj849", "gj876", "hd40307", "hd85512", "hd97658", "l-980-5", "lhs-2686", "trappist-1", "v-eps-eri", "l-98-59", "hat-p-12", "hat-p-26", "hd-149026", "l-678-39", "lp-791-18", "toi-193", "wasp-127", "wasp-17", "wasp-43", "wasp-77a"], #"gj832_synth" requires different url, is in a zip somewhere else
     "vpl": ["hd128167", "hd114710", "hd206860", "hd22049"],
     "nrel": ["sun"]
 }
 
 star_distance_pc = {
     # From NASA exoplanet archive if not otherwise noted
-    "v-eps-eri": 3.20260,
-    "gj876":     4.67517,
-    "gj551":     1.30119,
-    "gj436":     9.75321,
-    "gj1214":    14.6427,
-    "trappist-1": 12.429888806540756,
-    "gj1132":     12.613,
-    "gj15a":      3.56228,
-    "gj163":      15.1285,
-    "gj176":      9.470450,
-    "gj581":      6.298100,
-    "gj649":      10.37960,
-    "gj667c":     7.24396,
-    "gj674":      4.548960,
-    "gj676a":     16.0272,
-    "gj699":      1.826550,
-    "gj729":      2.9759,    # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=GJ+729
-    "gj832":      4.964350,
-    "gj832_synth": 4.964350, # synthetic spectrum, same distance as gj832
-    "hd40307":    12.9363,
-    "hd85512":   11.2810,
-    "hd97658":   21.5618,
-    "l-980-5":    13.3731,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=L980-5
-    "lhs-2686":   12.1893,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=LHS+2686
-    "l-98-59":    10.6194,
-    "hd128167":   15.756,    # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+128167
-    "hd114710":    9.1975,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+114710
-    "hd206860":    18.133,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+206860
-    "hd22049":     3.20260,  # Same as Epsilon Eridani (v-eps-eri), but different identifier in vpl database
+    "v-eps-eri":    3.20260,
+    "gj876":        4.67517,
+    "gj551":        1.30119,
+    "gj436":        9.75321,
+    "gj1214":       14.6427,
+    "trappist-1":   12.429888806540756,
+    "gj1132":       12.613,
+    "gj15a":        3.56228,
+    "gj163":        15.1285,
+    "gj176":        9.470450,
+    "gj581":        6.298100,
+    "gj649":        10.37960,
+    "gj667c":       7.24396,
+    "gj674":        4.548960,
+    "gj676a":       16.0272,
+    "gj699":        1.826550,
+    "gj729":        2.9759,    # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=GJ+729
+    "gj832":        4.964350,
+    "gj832_synth":  4.964350, # synthetic spectrum, same distance as gj832
+    "gj849" :       8.800580,
+    "hd40307":      12.9363,
+    "hd85512":      11.2810,
+    "hd97658":      21.5618,
+    "l-980-5":      13.3731,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=L980-5
+    "lhs-2686":     12.1893,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=LHS+2686
+    "l-98-59":      10.6194,
+    "hd128167":     15.756,    # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+128167
+    "hd114710":     9.1975,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+114710
+    "hd206860":     18.133,   # from Gaia EDR3, see https://simbad.u-strasbg.fr/simbad/sim-basic?Ident=HD+206860
+    "hd22049":      3.20260,  # Same as Epsilon Eridani (v-eps-eri), but different identifier in vpl database
+    "hat-p-12":     142.751,
+    "hat-p-26":     141.837,
+    "hd-149026":    75.8643,
+    "l-678-39":     9.44181,
+    "lp-791-18":    26.4927,
+    "toi-173":      80.4373,
+    "wasp-127":     159.507,
+    "wasp-17":      405.908,
+    "wasp-43":      86.7467,
+    "wasp-77a":     105.166,
     "sun": 0.0               # For NREL case, distance is irrelevant
 }
 
@@ -141,15 +152,31 @@ def DownloadModernSpectrum(name, distance=None):
                 resstr = "var"
 
             ok = False
-            for v in ["v22","v23-v24","v25"]:
+            resp = None
 
-                source = f"https://archive.stsci.edu/missions/hlsp/muscles/{v}/{star}/hlsp_muscles_multi_multi_{star}_broadband_{v}_adapt-{resstr}-res-sed.fits"
-                print(f"looking for: {source}")
-                resp = requests.get(source, verify=cert) # Download file
+            version_sets = [
+                ("v22",      ["v22"]),
+                ("v23-v24",  ["v23", "v24"]),
+                ("v25",      ["v25"]),
+            ]
 
-                if resp.status_code != 404:
-                    ok = True
-                    break
+            for dir_version, file_versions in version_sets:
+                for file_version in file_versions:
+                    source = (
+                        f"https://archive.stsci.edu/missions/hlsp/muscles/"
+                        f"{dir_version}/{star}/"
+                        f"hlsp_muscles_multi_multi_{star}_broadband_{file_version}_"
+                        f"adapt-{resstr}-res-sed.fits"
+                    )
+                    print(f"looking for: {source}")
+                    resp = requests.get(source, verify=cert)
+
+                    if resp.status_code != 404:
+                        ok = True
+                        break  # stop trying other file_versions for this dir_version
+
+                if ok:
+                    break  # stop trying other dir_version paths
 
             if not ok:
                 raise Exception("Could not find file on MUSCLES website")
@@ -278,7 +305,9 @@ Commands:
         No parameters.
     'get'
         Downloads and converts spectrum for given star.
-        'param1' : star name (append '#lowres' to star name to avoid large files)
+        'param1' : star name (append '#lowres' to star name to avoid large files),
+                   or database name ('muscles', 'vpl', 'nrel') to download all stars
+                   from that database.
         'param2' : distance from Earth in units of pc (optional; if not provided, uses value from star_distance_pc)
             """)
 
@@ -298,14 +327,33 @@ if __name__ == "__main__":
                     print("%12s    (%7s)" % (s,k))
 
         case "get":
-            star = str(sys.argv[2])
-            if len(sys.argv) >= 4:
-                # Override distance in pc
-                sdst = float(sys.argv[3])
+            target = str(sys.argv[2]).lower()
+
+            # Case 1: param1 is a database name -> download all stars in that database
+            if target in stars_online:
+                db_name = target
+                use_lowres = False
+
+                # Optional: "lowres" as param2 for MUSCLES
+                if len(sys.argv) >= 4 and sys.argv[3].lower() == "lowres" and db_name == "muscles":
+                    use_lowres = True
+
+                print(f"Downloading spectra for all stars in '{db_name}' database...")
+                for s in stars_online[db_name]:
+                    star_name = s + ("#lowres" if use_lowres else "")
+                    print(f"\n=== {star_name} ({db_name}) ===")
+                    DownloadModernSpectrum(star_name, None)
+
+            # Case 2: param1 is a star name -> download that star
             else:
-                # Use distance from star_distance_pc
-                sdst = None
-            DownloadModernSpectrum(star, sdst)
+                star = target
+                if len(sys.argv) >= 4:
+                    # Override distance in pc
+                    sdst = float(sys.argv[3])
+                else:
+                    # Use distance from star_distance_pc
+                    sdst = None
+                DownloadModernSpectrum(star, sdst)
 
         case "help":
             PrintHelp()
