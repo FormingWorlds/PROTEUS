@@ -6,6 +6,8 @@ import os
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
+from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.helper import find_nearest
 
@@ -217,9 +219,6 @@ class Albedo_t():
     """
 
     def __init__(self, csvfile:str):
-
-        import pandas as pd
-        from scipy.interpolate import PchipInterpolator
 
         # Data table
         self._data:pd.DataFrame = None
