@@ -24,6 +24,11 @@ MAX_ATTEMPTS = 3
 MAX_DLTIME   = 120.0 # seconds
 RETRY_WAIT   = 5.0   # seconds
 
+ARAGOG_BASIC = (
+    "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa",
+    "Melting_curves/Wolf_Bower+2018",
+    )
+
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
 def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
@@ -180,6 +185,13 @@ def get_zenodo_record(folder: str) -> str | None:
         "Honeyside/256" : "15799731",
         "Honeyside/4096": "15696457",
         "Oak/318"       : "15743843",
+
+        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018': '15877374',
+        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_400GPa': '15877424',
+        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': '17417017',
+        'Melting_curves/Monteux+600': '15728091',
+        'Melting_curves/Monteux-600': '15728138',
+        'Melting_curves/Wolf_Bower+2018': '15728072',
     }
     return zenodo_map.get(folder, None)
 
@@ -365,23 +377,20 @@ def download_interior_lookuptables(clean=False):
     """
     Download basic interior lookup tables
     """
-    from aragog.data import basic_list as _aragog_basic
-    from aragog.data import get_zenodo_record as _aragog_zenodo
-    from aragog.data import project_id as _aragog_osf
     log.debug("Download basic interior lookup tables")
 
     data_dir = GetFWLData() / "interior_lookup_tables"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    for dir in _aragog_basic:
+    for dir in ARAGOG_BASIC:
         folder_dir = data_dir / dir
         if clean:
             safe_rm(folder_dir.as_posix())
         download(
             folder = dir,
             target = data_dir,
-            osf_id = _aragog_osf,
-            zenodo_id = _aragog_zenodo(dir),
+            osf_id = "phsxf",
+            zenodo_id = get_zenodo_record(dir),
             desc = f"Interior lookup tables: {dir}"
             )
 
@@ -389,9 +398,6 @@ def download_melting_curves(config:Config, clean=False):
     """
     Download melting curve data
     """
-    from aragog.data import get_zenodo_record as _aragog_zenodo
-    from aragog.data import project_id as _aragog_osf
-
     log.debug("Download melting curve data")
     dir = "Melting_curves/" + config.interior.melting_dir
 
@@ -404,8 +410,8 @@ def download_melting_curves(config:Config, clean=False):
     download(
         folder = dir,
         target = data_dir,
-        osf_id = _aragog_osf,
-        zenodo_id=_aragog_zenodo(dir),
+        osf_id = "phsxf",
+        zenodo_id = get_zenodo_record(dir),
         desc = f"Melting curve data: {dir}"
         )
 
