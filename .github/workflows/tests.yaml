@@ -132,24 +132,25 @@ jobs:
       #     proteus get stellar
       #     proteus get spectral --name Frostflow --bands 48
 
-      # Run PROTEUS tests
-      - name: Test with pytest
-        run: coverage run -m pytest
-
       # Store content of FWL data folder
       - name: Record FWL data folder
         run: |
           CUR=$(pwd)
           cd $FWL_DATA
           tree > $CUR/output/FWL_DATA.txt
+          echo $CUR/output/FWL_DATA.txt
           cd $CUR
+
+      # Run PROTEUS tests
+      - name: Test with pytest
+        run: coverage run -m pytest
 
       # Upload result if tests fail
       - name: Upload result on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: integration-physical
+          name: proteus_output_folder
           path: output/
 
       - name: Report coverage
