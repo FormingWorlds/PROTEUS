@@ -410,32 +410,30 @@ def download_stellar_tracks(track:str):
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 
-def download_interior_lookuptables(clean:bool=False):
+def download_interior_lookuptables(clean=False):
     """
     Download interior lookup tables
     """
-    from aragog.data import DownloadLookupTableData
+    from aragog.data import DownloadLookupTableData, basic_list
     log.debug("Get interior lookup tables")
 
-    # remove old data
     if clean:
-        safe_rm((GetFWLData() / "interior_lookup_tables").as_posix())
+        for dir in basic_list:
+            safe_rm((GetFWLData() / "interior_lookup_tables" / dir).as_posix())
 
     DownloadLookupTableData()
 
-def download_melting_curves(config:Config, clean:bool=False):
+def download_melting_curves(config:Config, clean=False):
     """
     Download melting curve data
     """
     from aragog.data import DownloadLookupTableData
     log.debug("Get melting curve data")
 
-
-    # remove old data
+    dir = "Melting_curves/" + config.interior.melting_dir
     if clean:
-        safe_rm((GetFWLData() / "Melting_curves").as_posix())
-
-    DownloadLookupTableData("Melting_curves/" + config.interior.melting_dir)
+        safe_rm(dir)
+    DownloadLookupTableData()
 
 def _get_sufficient(config:Config, clean:bool=False):
     # Star stuff

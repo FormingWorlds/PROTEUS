@@ -5,10 +5,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-import netCDF4 as nc
 import numpy as np
-import pandas as pd
-from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.helper import find_nearest
 
@@ -61,6 +58,8 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
         out : dict
             Dictionary containing numpy arrays of data from the file.
     """
+
+    import netCDF4 as nc
 
     # open file
     if not os.path.isfile(nc_fpath):
@@ -218,6 +217,9 @@ class Albedo_t():
     """
 
     def __init__(self, csvfile:str):
+
+        import pandas as pd
+        from scipy.interpolate import PchipInterpolator
 
         # Data table
         self._data:pd.DataFrame = None
