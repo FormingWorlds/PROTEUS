@@ -414,7 +414,7 @@ def _update_input_data(config_path: Path):
         configuration = read_config_object(config_path)
         download_sufficient_data(configuration, clean=True)
         click.secho("✅ Additional data has been downloaded.", fg="green")
-        return True 
+        return True
 
     else:
         click.echo(
