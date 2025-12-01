@@ -21,7 +21,8 @@ log = logging.getLogger("fwl."+__name__)
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 MAX_ATTEMPTS = 3
-RETRY_WAIT   = 5.0 # seconds
+MAX_DLTIME   = 120.0 # seconds
+RETRY_WAIT   = 5.0   # seconds
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
@@ -50,7 +51,10 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
 
         # try making request
         with open(out,'w') as hdl:
-            proc = sp.run(["zenodo_get", zenodo_id,"-o", folder_dir],
+            proc = sp.run(["zenodo_get",
+                            "-o", folder_dir,
+                            "-t", MAX_DLTIME,
+                            zenodo_id],
                             stdout=hdl, stderr=hdl)
 
         # worked ok?
@@ -96,7 +100,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
     #     They will be saved to a txt file in folder_dir
     md5sums_path = os.path.join(folder_dir, "md5sums.txt")
     out = os.path.join(GetFWLData(), "zenodo_validate.log")
-    log.debug("    zenodo_get, logging to %s"%out)
+    # log.debug("    zenodo_get, logging to %s"%out)
     zenodo_ok = False
     for i in range(MAX_ATTEMPTS):
 
@@ -105,7 +109,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 
         # try making request
         with open(out,'w') as hdl:
-            proc = sp.run([ "zenodo_get", zenodo_id, "-m" ],
+            proc = sp.run([ "zenodo_get", "-m", zenodo_id ],
                             stdout=hdl, stderr=hdl, cwd=folder_dir)
 
         # process exited fine and file exists?

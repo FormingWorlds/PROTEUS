@@ -14,6 +14,10 @@ on:
       - ready_for_review
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   test:
     # if: github.event.pull_request.draft == false
@@ -80,6 +84,8 @@ jobs:
 
       - name: Cache Julia
         uses: julia-actions/cache@v2
+        with:
+          include-matrix: 'false'
 
       # Checkout PROTEUS
       - name: Checkout PROTEUS
@@ -132,18 +138,19 @@ jobs:
       #     proteus get stellar
       #     proteus get spectral --name Frostflow --bands 48
 
-      # Store content of FWL data folder
+      # Run PROTEUS tests
+      - name: Test with pytest
+        run: coverage run -m pytest
+
+      # Record  the content of the FWL_DATA folder
       - name: Record FWL data folder
         run: |
           CUR=$(pwd)
           cd $FWL_DATA
           tree
-          tree > $CUR/output/FWL_DATA.txt
+          echo $FWL_DATA > $CUR/output/FWL_DATA.txt 
+          tree >> $CUR/output/FWL_DATA.txt
           cd $CUR
-
-      # Run PROTEUS tests
-      - name: Test with pytest
-        run: coverage run -m pytest
 
       # Upload result if tests fail
       - name: Upload result on failure
