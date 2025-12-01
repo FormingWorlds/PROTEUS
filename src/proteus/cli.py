@@ -194,9 +194,10 @@ def interiordata(config_path: Path):
     """Get interior lookup tables and melting curves"""
     from .utils.data import download_interior_lookuptables, download_melting_curves
 
+    download_interior_lookuptables(clean=True)
+
     configuration = read_config_object(config_path)
     download_melting_curves(configuration, clean=True)
-    download_interior_lookuptables(clean=True)
 
 @click.command()
 def socrates():

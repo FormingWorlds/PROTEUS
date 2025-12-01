@@ -53,7 +53,7 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
         with open(out,'w') as hdl:
             proc = sp.run(["zenodo_get",
                             "-o", folder_dir,
-                            "-t", MAX_DLTIME,
+                            "-t", f"{MAX_DLTIME:.1f}",
                             zenodo_id],
                             stdout=hdl, stderr=hdl)
 
@@ -361,6 +361,54 @@ def download_spectral_file(name:str, bands:str):
     )
 
 
+def download_interior_lookuptables(clean=False):
+    """
+    Download basic interior lookup tables
+    """
+    from aragog.data import basic_list as _aragog_basic
+    from aragog.data import get_zenodo_record as _aragog_zenodo
+    from aragog.data import project_id as _aragog_osf
+    log.debug("Download basic interior lookup tables")
+
+    data_dir = GetFWLData() / "interior_lookup_tables"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    for dir in _aragog_basic:
+        folder_dir = data_dir / dir
+        if clean:
+            safe_rm(folder_dir.as_posix())
+        download(
+            folder = dir,
+            target = data_dir,
+            osf_id = _aragog_osf,
+            zenodo_id = _aragog_zenodo(dir),
+            desc = f"Interior lookup tables: {dir}"
+            )
+
+def download_melting_curves(config:Config, clean=False):
+    """
+    Download melting curve data
+    """
+    from aragog.data import get_zenodo_record as _aragog_zenodo
+    from aragog.data import project_id as _aragog_osf
+
+    log.debug("Download melting curve data")
+    dir = "Melting_curves/" + config.interior.melting_dir
+
+    data_dir = GetFWLData() / "interior_lookup_tables"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    folder_dir = data_dir / dir
+    if clean:
+        safe_rm(folder_dir.as_posix())
+    download(
+        folder = dir,
+        target = data_dir,
+        osf_id = _aragog_osf,
+        zenodo_id=_aragog_zenodo(dir),
+        desc = f"Melting curve data: {dir}"
+        )
+
 def download_stellar_spectra():
     """
     Download stellar spectra
@@ -410,30 +458,7 @@ def download_stellar_tracks(track:str):
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 
-def download_interior_lookuptables(clean=False):
-    """
-    Download interior lookup tables
-    """
-    from aragog.data import DownloadLookupTableData, basic_list
-    log.debug("Get interior lookup tables")
 
-    if clean:
-        for dir in basic_list:
-            safe_rm((GetFWLData() / "interior_lookup_tables" / dir).as_posix())
-
-    DownloadLookupTableData()
-
-def download_melting_curves(config:Config, clean=False):
-    """
-    Download melting curve data
-    """
-    from aragog.data import DownloadLookupTableData
-    log.debug("Get melting curve data")
-
-    dir = "Melting_curves/" + config.interior.melting_dir
-    if clean:
-        safe_rm(dir)
-    DownloadLookupTableData()
 
 def _get_sufficient(config:Config, clean:bool=False):
     # Star stuff
