@@ -24,12 +24,12 @@ jobs:
         python-version: ['3.12','3.13']
         include:
           - os: ubuntu-latest
-            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev
+            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev tree
             CC: gcc
             CXX: g++
             FC: gfortran
           - os: macos-14
-            INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran
+            INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
             CC: gcc
             CXX: g++
             FC: gfortran
@@ -136,15 +136,21 @@ jobs:
       - name: Test with pytest
         run: coverage run -m pytest
 
+      # Store content of FWL data folder
+      - name: Record FWL data folder
+        run: |
+          CUR=$(pwd)
+          cd $FWL_DATA
+          tree > $CUR/output/FWL_DATA.txt
+          cd $CUR
+
       # Upload result if tests fail
-      - name: Upload result as artifact
+      - name: Upload result on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: integration-physical
-          path: |
-            output/physical/plot/plot_*.png
-            output/physical/runtime_helpfile.csv
+          path: output/
 
       - name: Report coverage
         run: |
