@@ -410,27 +410,34 @@ def download_stellar_tracks(track:str):
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 
-def download_interior_lookuptables():
+def download_interior_lookuptables(clean:bool=False):
     """
     Download interior lookup tables
     """
     from aragog.data import DownloadLookupTableData
     log.debug("Get interior lookup tables")
+
+    # remove old data
+    if clean:
+        safe_rm((GetFWLData() / "interior_lookup_tables").as_posix())
+
     DownloadLookupTableData()
 
-def download_melting_curves(config:Config):
+def download_melting_curves(config:Config, clean:bool=False):
     """
     Download melting curve data
     """
     from aragog.data import DownloadLookupTableData
     log.debug("Get melting curve data")
-    dir = (
-        "Melting_curves/"
-        + config.interior.melting_dir
-    )
-    DownloadLookupTableData(dir)
 
-def _get_sufficient(config:Config):
+
+    # remove old data
+    if clean:
+        safe_rm((GetFWLData() / "Melting_curves").as_posix())
+
+    DownloadLookupTableData("Melting_curves/" + config.interior.melting_dir)
+
+def _get_sufficient(config:Config, clean:bool=False):
     # Star stuff
     if config.star.module == "mors":
         download_stellar_spectra()
@@ -462,11 +469,11 @@ def _get_sufficient(config:Config):
 
     # Interior look up tables
     if config.interior.module == "aragog":
-        download_interior_lookuptables()
-        download_melting_curves(config)
+        download_interior_lookuptables(clean=clean)
+        download_melting_curves(config, clean=clean)
 
 
-def download_sufficient_data(config:Config):
+def download_sufficient_data(config:Config, clean:bool=False):
     """
     Download the required data based on the current options
     """
@@ -480,7 +487,7 @@ def download_sufficient_data(config:Config):
     else:
         # Try to get data
         try:
-            _get_sufficient(config)
+            _get_sufficient(config, clean=clean)
 
         # Some issue. Usually due to lack of internet connection, but print the error
         #     anyway so that the user knows what happened.

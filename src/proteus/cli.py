@@ -393,11 +393,11 @@ def append_to_shell_rc(
 def is_julia_installed() -> bool:
     return shutil.which("julia") is not None
 
-def _update_input_data(config_path):
+def _update_input_data(config_path: Path, clean:bool):
     if config_path.exists():
         # Only try data download if a config file is present.
         configuration = read_config_object(config_path)
-        download_sufficient_data(configuration)
+        download_sufficient_data(configuration, clean=clean)
         click.secho("✅ Additional data has been downloaded.", fg="green")
     else:
         click.echo(
@@ -515,7 +515,7 @@ def install_all(export_env: bool, config_path: Path):
         )
 
     # --- Step 6: Update input data ---
-    _update_input_data(config_path)
+    _update_input_data(config_path, clean=True)
     (root / "output").mkdir(exist_ok=True)
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
@@ -632,7 +632,7 @@ def update_all(export_env: bool, config_path: Path):
         )
 
     # --- Step 7: Update input data ---
-    _update_input_data(config_path)
+    _update_input_data(config_path, clean=False)
 
     click.secho("🎉 PROTEUS update completed!", fg="green")
 
