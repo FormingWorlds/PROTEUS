@@ -516,6 +516,7 @@ def install_all(export_env: bool, config_path: Path):
 
     # --- Step 6: Update input data ---
     _update_input_data(config_path)
+    (root / "output").mkdir(exist_ok=True)
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
 
