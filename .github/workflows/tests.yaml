@@ -144,23 +144,25 @@ jobs:
 
       # Record  the content of the FWL_DATA folder
       - name: Record FWL data folder
+        if: ${{ !cancelled() }}
         run: |
           CUR=$(pwd)
           cd $FWL_DATA
           tree
-          echo $FWL_DATA > $CUR/output/FWL_DATA.txt 
+          echo $FWL_DATA > $CUR/output/FWL_DATA.txt
           tree >> $CUR/output/FWL_DATA.txt
           cd $CUR
 
       # Upload result if tests fail
       - name: Upload result on failure
-        if: failure()
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: proteus_output_folder
           path: output/
 
       - name: Report coverage
+        if: ${{ !failure() }}
         run: |
           coverage json
           export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
