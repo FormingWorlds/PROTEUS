@@ -175,7 +175,7 @@ jobs:
           coverage report
 
       - name: Make coverage badge
-        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' }}
+        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' && !failure() }}
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}
