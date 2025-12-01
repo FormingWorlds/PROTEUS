@@ -63,9 +63,8 @@ function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::Str
         input_radius::Float64  = ds["planet_radius"][1]
         input_gravity::Float64 = ds["surf_gravity"][1]
         input_inst::Float64   = ds["instellation"][1]
-        # set instellation factor to 1.0 for RCE postprocessing
-        #input_s0fact::Float64 = 1.0
-        input_s0fact::Float64 = ds["inst_factor"][1]
+        input_s0fact::Float64 = 1.0
+        #input_s0fact::Float64 = ds["inst_factor"][1]
         input_albedo::Float64 = ds["bond_albedo"][1]
 
         # flags required for atmosphere setup
@@ -96,7 +95,7 @@ function setup_atmos_multiangle!(output_dir::String, ncfile::String, spfile::Str
                                 flag_gcontinuum=input_flag_continuum,
                                 flag_rayleigh=input_flag_rayleigh,
                                 thermo_functions=input_flag_thermo,
-                                overlap_method="ro"
+                                overlap_method="ee"
                                 )
 
         code = atmosphere.allocate!(atmos, "")
@@ -158,6 +157,7 @@ function postprocess_at_angle(output_dir::String, atmfile::String, spfile::Strin
                                     conduct=true,
                                     latent=false,
                                     rainout=false,
+                                    grey_start=false,
                                     max_steps=100,
                                     max_runtime=7200.0,
                                     modprint=1,
@@ -167,7 +167,7 @@ function postprocess_at_angle(output_dir::String, atmfile::String, spfile::Strin
                                     conv_rtol=0.15,
                                     ls_method=2,
                                     method=1,
-                                    perturb_all=false
+                                    perturb_all=true
                                     )
 
     if !success
