@@ -238,20 +238,21 @@ def DownloadModernSpectrum(name, distance=None):
             wave_unit = wave_unit_raw.lower()
             flux_unit = flux_unit_raw.lower()
 
-            print(f"Wavelength unit: {wave_unit}; Flux unit: {flux_unit}")
+            # warn if units are off
 
-            # test units !
+            ok_wave = "ang" in wave_unit or "aa" in wave_unit # 'angstrom', 'ang', 'aa',
 
-            #assert "angstrom" in wave_unit, (
-              #  f"Unexpected WAVELENGTH unit '{wave_unit_raw}' "
-               # "(expected something with 'Angstrom')"
-            #)
+            # squish spaces to make '/cm^2', '/cm2', 'cm-2' etc easier
+            fu = flux_unit.replace(" ", "")
+            ok_flux = (
+                "erg" in fu
+                and ("s-1" in fu or "/s" in fu)
+                and ("cm-2" in fu or "/cm2" in fu or "/cm^2" in fu)
+                and ("ang" in fu or "aa" in fu)
+            )
 
-           # for token in ("erg", "s-1", "cm-2", "angstrom-1"):
-              #  assert token in flux_unit, (
-                #    f"Unexpected FLUX unit '{flux_unit_raw}' "
-                #    f"(missing '{token}', expected 'erg s-1 cm-2 Angstrom-1')"
-               # )
+            if not (ok_wave and ok_flux):
+                print("\tWARNING: Unusual units in MUSCLES FITS file: WAVELENGTH={wave_unit}, FLUX={flux_unit}.\n\tProceeding as if WAVELENGTH is in Angstrom and FLUX is in erg s-1 cm-2 per Angstrom.")
 
             # from astropy.table import Table
 
