@@ -14,6 +14,10 @@ on:
       - ready_for_review
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: write
+
 jobs:
   test:
     # if: github.event.pull_request.draft == false
@@ -24,12 +28,12 @@ jobs:
         python-version: ['3.12','3.13']
         include:
           - os: ubuntu-latest
-            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev
+            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev tree
             CC: gcc
             CXX: g++
             FC: gfortran
           - os: macos-14
-            INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran
+            INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
             CC: gcc
             CXX: g++
             FC: gfortran
@@ -80,6 +84,8 @@ jobs:
 
       - name: Cache Julia
         uses: julia-actions/cache@v2
+        with:
+          include-matrix: 'false'
 
       # Checkout PROTEUS
       - name: Checkout PROTEUS
@@ -136,17 +142,27 @@ jobs:
       - name: Test with pytest
         run: coverage run -m pytest
 
+      # Record  the content of the FWL_DATA folder
+      - name: Record FWL data folder
+        if: ${{ !cancelled() }}
+        run: |
+          CUR=$(pwd)
+          cd $FWL_DATA
+          tree
+          echo $FWL_DATA > $CUR/output/FWL_DATA.txt
+          tree >> $CUR/output/FWL_DATA.txt
+          cd $CUR
+
       # Upload result if tests fail
-      - name: Upload result as artifact
-        if: failure()
+      - name: Upload result on failure
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: integration-physical
-          path: |
-            output/physical/plot/plot_*.png
-            output/physical/runtime_helpfile.csv
+          name: proteus_output_folder
+          path: output/
 
       - name: Report coverage
+        if: ${{ !failure() }}
         run: |
           coverage json
           export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
@@ -159,7 +175,7 @@ jobs:
           coverage report
 
       - name: Make coverage badge
-        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' }}
+        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' && !failure() }}
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}

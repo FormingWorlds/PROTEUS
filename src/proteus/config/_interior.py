@@ -224,10 +224,14 @@ class Interior:
         Parameters for running the dummy module.
     melting_dir: str
         Set of melting curves to use in the model.
+    lookup_dir: str
+        Set of lookup data files to use in the model (e.g. equations of state).
     """
 
     module: str             = field(validator=in_(('spider', 'aragog', 'dummy')))
     melting_dir: str        = field(default="Monteux-600",validator=valid_path)
+    lookup_dir: str         = field(default="1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa",
+                                        validator=valid_path)
     radiogenic_heat: bool   = field(default=True)
     tidal_heat: bool        = field(default=True)
 
