@@ -183,6 +183,21 @@ def reference():
     download_exoplanet_data()
     download_massradius_data()
 
+@click.command()
+@click.option(
+    "--config-path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("input/all_options.toml"),
+    help="Path to the TOML config file",
+)
+def interiordata(config_path: Path):
+    """Get interior lookup tables and melting curves"""
+    from .utils.data import download_interior_lookuptables, download_melting_curves
+
+    download_interior_lookuptables(clean=True)
+
+    configuration = read_config_object(config_path)
+    download_melting_curves(configuration, clean=True)
 
 @click.command()
 def socrates():
@@ -213,6 +228,7 @@ get.add_command(spectral)
 get.add_command(surfaces)
 get.add_command(reference)
 get.add_command(stellar)
+get.add_command(interiordata)
 get.add_command(socrates)
 get.add_command(petsc)
 get.add_command(spider)
@@ -393,16 +409,19 @@ def append_to_shell_rc(
 def is_julia_installed() -> bool:
     return shutil.which("julia") is not None
 
-def _update_input_data(config_path):
+def _update_input_data(config_path: Path):
     if config_path.exists():
         # Only try data download if a config file is present.
         configuration = read_config_object(config_path)
-        download_sufficient_data(configuration)
+        download_sufficient_data(configuration, clean=True)
         click.secho("✅ Additional data has been downloaded.", fg="green")
+        return True
+
     else:
         click.echo(
             f"⚠️ No config file found at {config_path}, skipping data download."
         )
+        return False
 
 @cli.command()
 @click.option(
@@ -516,6 +535,7 @@ def install_all(export_env: bool, config_path: Path):
 
     # --- Step 6: Update input data ---
     _update_input_data(config_path)
+    (root / "output").mkdir(exist_ok=True)
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
 

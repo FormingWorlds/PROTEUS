@@ -62,7 +62,7 @@ plugins:
     handlers:
       python:
         paths: [src]
-        import:
+        inventories:
         - https://installer.readthedocs.io/en/stable/objects.inv
         - https://docs.python.org/3/objects.inv
         - https://numpy.org/doc/stable/objects.inv
