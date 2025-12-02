@@ -183,8 +183,14 @@ def DownloadModernSpectrum(name, distance=None):
                             "Could not find 'hlsp_muscles_model_all_gj832-r1e5_na_v1_synth-spec.fits' inside synthetic tarball"
                         )
 
-                    tar.extract(fits_member, path=".")
+                    tar.extract(fits_member, path=".", filter="data")
                     database_spectrum = fits_member.name  # path to the FITS we will use
+
+                    try:
+                        os.remove(tar_path)
+                        print(f"\tRemoved temporary tarball '{tar_path}'")
+                    except OSError as e:
+                        print(f"\tWARNING: could not remove temporary tarball '{tar_path}': {e}")
             else:
 
                 if lowres:
