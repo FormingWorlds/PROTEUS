@@ -252,13 +252,13 @@ def DownloadModernSpectrum(name, distance=None):
             fu = flux_unit.replace(" ", "")
             ok_flux = (
                 "erg" in fu
-                and ("s-1" in fu or "/s" in fu)
-                and ("cm-2" in fu or "/cm2" in fu or "/cm^2" in fu)
+                and ("s-1" in fu or "/s" in fu or "s" in fu or "s^-1" in fu)
+                and ("cm-2" in fu or "cm2" in fu or "cm^2" in fu or "cm^-2" in fu)
                 and ("ang" in fu or "aa" in fu)
             )
 
             if not (ok_wave and ok_flux):
-                print("\tWARNING: Unusual units in MUSCLES FITS file: WAVELENGTH={wave_unit}, FLUX={flux_unit}.\n\tProceeding as if WAVELENGTH is in Angstrom and FLUX is in erg s-1 cm-2 per Angstrom.")
+                print(f"\tWARNING: Unusual units in MUSCLES FITS file: WAVELENGTH={wave_unit}, FLUX={flux_unit}.\n\tProceeding as if WAVELENGTH is in Angstrom and FLUX is in erg s-1 cm-2 per Angstrom.")
 
             # from astropy.table import Table
 
