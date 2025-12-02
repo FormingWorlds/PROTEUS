@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import torch
 from botorch.utils.transforms import unnormalize
-from objective import prot_builder, run_proteus
+
+from proteus.inference.objective import prot_builder, run_proteus
 
 dtype = torch.double
 # Fix random seed for reproducibility
@@ -79,4 +80,4 @@ f = prot_builder(
 
 # Compute objective at random input
 y = f(x)
-print("\nobjective value at random input (should be optimal, i.e., 1.0):", y.item())
+print("\nobjective value at random input (should be optimal, i.e., 10.0):", y.item())

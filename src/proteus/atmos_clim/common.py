@@ -5,7 +5,6 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-import netCDF4 as nc
 import numpy as np
 import pandas as pd
 from scipy.interpolate import PchipInterpolator
@@ -61,6 +60,8 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
         out : dict
             Dictionary containing numpy arrays of data from the file.
     """
+
+    import netCDF4 as nc
 
     # open file
     if not os.path.isfile(nc_fpath):

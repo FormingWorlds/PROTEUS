@@ -683,6 +683,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Get all output times
     output_times = []
+    plot_times = []
     if spider:
         from proteus.interior.spider import get_all_output_times
         output_times = get_all_output_times( output_dir )
@@ -713,38 +714,37 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Samples for plotting profiles
     if len(output_times) > 0:
-        nsamp = 7
         tmin = 1.0
         if np.amax(output_times) > 1e3:
             tmin = 1e3
-        plot_times, _ = sample_times(output_times, nsamp, tmin=tmin)
+        plot_times, _ = sample_times(output_times, num_snapshots, tmin=tmin)
         log.debug("Snapshots to plot:" + str(plot_times))
 
-    # Interior profiles
-    if not dummy_int:
-        int_data = read_interior_data(output_dir, config.interior.module, plot_times)
-        plot_interior(output_dir, plot_times, int_data,
-                              config.interior.module, config.params.out.plot_fmt)
-
-    # Atmosphere profiles
-    if not dummy_atm:
-        atm_data = read_atmosphere_data(output_dir, plot_times)
-
-        # Atmosphere temperature/height profiles
-        plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
-
-        # Atmospheric chemistry
-        plot_chem_atmosphere(output_dir, config.atmos_chem.module,
-                                plot_format=config.params.out.plot_fmt,
-                                plot_offchem=False)
-
-        # Atmosphere and interior, stacked radially
+        # Interior profiles
         if not dummy_int:
-            plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
-                            config.interior.module, config.params.out.plot_fmt)
+            int_data = read_interior_data(output_dir, config.interior.module, plot_times)
+            plot_interior(output_dir, plot_times, int_data,
+                                config.interior.module, config.params.out.plot_fmt)
 
-        # Energy flux profiles
-        plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+        # Atmosphere profiles
+        if not dummy_atm:
+            atm_data = read_atmosphere_data(output_dir, plot_times)
+
+            # Atmosphere temperature/height profiles
+            plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
+
+            # Atmospheric chemistry
+            plot_chem_atmosphere(output_dir, config.atmos_chem.module,
+                                    plot_format=config.params.out.plot_fmt,
+                                    plot_offchem=False)
+
+            # Atmosphere and interior, stacked radially
+            if not dummy_int:
+                plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
+                                config.interior.module, config.params.out.plot_fmt)
+
+            # Energy flux profiles
+            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:
@@ -788,12 +788,12 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
             plot_sflux_cross(output_dir,modern_age=modern_age,
                             plot_format=config.params.out.plot_fmt)
 
-            if not dummy_int:
+            if plot_times and not dummy_int:
                 plot_interior_cmesh(output_dir, plot_times, int_data,
                                         config.interior.module,
                                         plot_format=config.params.out.plot_fmt)
 
-            if not dummy_atm:
+            if plot_times and not dummy_atm:
                 plot_emission(output_dir, plot_times,
                                     plot_format=config.params.out.plot_fmt)
 
