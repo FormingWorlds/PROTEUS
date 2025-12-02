@@ -23,6 +23,7 @@ output
 slurm*.out
 *.pkl
 spec*.txt
+*.txt
 
 # Development installations
 fwl_data

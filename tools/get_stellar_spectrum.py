@@ -134,8 +134,8 @@ def DownloadModernSpectrum(name, distance=None):
     r_scale = 1.496e+13  # 1 AU in cm
 
     # Convert data from database source format to plain text file
-    plaintext_spectrum = "spec_%s.txt" % star
-    database_spectrum  = "spec_%s.%s" % (star,database)
+    plaintext_spectrum = f"{star}.txt"
+    database_spectrum  = f"{star}.{database}"
     print("\tDownloading spectrum and writing file '%s'" % plaintext_spectrum)
 
     if (os.path.isfile(plaintext_spectrum)):
