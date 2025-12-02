@@ -1,5 +1,0 @@
-
-		begin
-      f = addfile("/Users/users/cesario/formingworlds/cesario/PROTEUS/output/LHS1478-full/data/4500917120_atm_z0.nc","r")
-      print(f)
-		end
