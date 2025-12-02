@@ -163,8 +163,8 @@ function postprocess_at_angle(output_dir::String, atmfile::String, spfile::Strin
                                     modprint=1,
                                     dx_max=35.0,
                                     modplot=0,
-                                    conv_atol=0.5,
-                                    conv_rtol=0.15,
+                                    conv_atol=0.05,
+                                    conv_rtol=0.01,
                                     ls_method=2,
                                     method=1,
                                     perturb_all=true
