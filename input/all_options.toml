@@ -286,6 +286,7 @@ version = "2.0"
     rheo_phi_loc    = 0.6           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
     melting_dir     = "Monteux-600" # Name of folder constaining melting curves
+    lookup_dir      = "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa" # Name of folder with EOS tables, etc.
 
 
     module = "aragog"       # Which interior module to use
