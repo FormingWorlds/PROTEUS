@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import subprocess as sp
+import zipfile
 from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
@@ -30,6 +31,11 @@ ARAGOG_BASIC = (
     )
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
+
+def _phoenix_param(x: float | int | str) -> str:
+    x = float(x)
+    return f"{x:+0.1f}"  # e.g. +0.5, -1.0
+
 
 def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
     """
@@ -489,17 +495,47 @@ def download_stellar_spectra():
         desc = 'stellar spectra'
     )
 
-def download_phoenix():  # update later
+def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
     """
-    Download phoenix synthetic spectra
+    Download and unpack a PHOENIX spectra ZIP like
+    FeH+0.5_alpha+0.0_phoenixMedRes_R05000.zip
+    into <FWL_DATA>/stellar_spectra/PHOENIX.
     """
-    download(
-        folder = 'Phoenix',
-        target = "stellar_spectra",
-        osf_id =  None,
-        zenodo_id= '',
-        desc = 'phoenix synthetic stellar spectra'
-    )
+    phoenix_zenodo_id = "17674612"
+
+    feh_str = _phoenix_param(FeH)
+    alpha_str = _phoenix_param(alpha)
+    zip_name = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
+
+    data_dir = GetFWLData() / "stellar_spectra"
+    folder_dir = data_dir / "PHOENIX"
+    folder_dir.mkdir(parents=True, exist_ok=True)
+
+    log.info(f"Downloading PHOENIX spectra {zip_name}")
+
+    if not get_zenodo_file(
+        zenodo_id=phoenix_zenodo_id,
+        folder_dir=folder_dir,
+        zenodo_path=zip_name,
+    ):
+        log.error(f"Failed to download PHOENIX ZIP {zip_name} from Zenodo {phoenix_zenodo_id}")
+        return False
+
+    zip_path = folder_dir / zip_name
+
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(folder_dir)
+    except zipfile.BadZipFile as e:
+        log.error(f"Downloaded PHOENIX ZIP is corrupted: {zip_path}")
+        log.error(str(e))
+        safe_rm(zip_path)
+        return False
+    else:
+        safe_rm(zip_path)
+        log.info(f"PHOENIX spectra unpacked to {folder_dir}")
+        return True
+
 
 def download_muscles(star_name: str) -> bool:
     muscles_zenodo_id = "17802209"  # still needs to be filled in
