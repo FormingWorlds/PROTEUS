@@ -502,9 +502,9 @@ def download_phoenix():  # update later
     )
 
 def download_muscles(star_name: str) -> bool:
-    muscles_zenodo_id = ""  # still needs to be filled in
+    muscles_zenodo_id = "17802209"  # still needs to be filled in
     data_dir   = GetFWLData() / "stellar_spectra"
-    folder_dir = data_dir / "Muscles"
+    folder_dir = data_dir / "MUSCLES"
     star_filename = f"{star_name.strip().lower().replace(' ', '-')}.txt"
     log.info(f"Downloading MUSCLES file {star_filename}")
 
