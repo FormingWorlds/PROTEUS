@@ -16,6 +16,12 @@ def valid_mors(instance, attribute, value):
     if instance.mors.star_name is None:
         raise ValueError("Must provide mors.star_name")
 
+    src = instance.mors.spectrum_source
+
+    if src == "phoenix":
+        if instance.mors.alpha is None or instance.mors.FeH is None:
+            raise ValueError("mors.alpha and mors.FeH must be set when using PHOENIX spectra")
+
     set_pcntle = instance.mors.rot_pcntle is not None
     set_period = instance.mors.rot_period is not None
 
