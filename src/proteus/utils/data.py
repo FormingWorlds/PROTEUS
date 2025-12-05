@@ -591,7 +591,25 @@ def download_stellar_tracks(track:str):
 def _get_sufficient(config:Config, clean:bool=False):
     # Star stuff
     if config.star.module == "mors":
-        download_stellar_spectra()
+        src = config.star.mors.spectrum_source
+
+        if src == "named" or src == "none":
+            download_stellar_spectra()
+
+        elif src == "muscles":
+            download_muscles(config.star.mors.star_name)
+
+        elif src == "phoenix":
+            FeH = config.star.mors.FeH
+            alpha = config.star.mors.alpha
+            log.info(
+                "Using PHOENIX spectra with [Fe/H]=%.2f, [alpha/Fe]=%.2f "
+                "(defaults are solar: 0.0, 0.0 if not set).",
+                FeH, alpha,
+            )
+            download_phoenix(alpha=alpha, FeH=FeH)
+
+
         if config.star.mors.tracks == 'spada':
             download_stellar_tracks("Spada")
         else:
