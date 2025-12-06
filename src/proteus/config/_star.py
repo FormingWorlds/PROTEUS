@@ -53,14 +53,21 @@ class Mors:
     star_name: str
         Name of the star, to find appropriate stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars).
     spectrum_source: str
-        Source of stellar spectra. Choices: 'named', 'muscles', 'phoenix', 'none'.
+        Source of stellar spectra. Choices: 'solar', 'muscles', 'phoenix', 'none'.
     FeH: float
         Stellar metallicity [Fe/H] to be used for PHOENIX synthetic spectra,
         if spectrum_source is 'phoenix'.
     alpha: float
         Alpha-element enhancement [alpha/Fe] to be used for PHOENIX synthetic spectra,
         if spectrum_source is 'phoenix'.
+    radius: float | None
+        Stellar radius [R_sun]. If 'none', radius will be calculated, if PHOENIX is used. # add more
+    log_g: float | None
+        Surface gravity [cgs]. If 'none', log g will be calculated, if PHOENIX is used. # add more
+    Teff: float | None
+        Effective temperature [K]. If 'none', Teff will be calculated, if PHOENIX is used. # add more
     """
+
     age_now         = field(default=None)
     star_name       = field(default=None)
     rot_pcntle      = field(default=None, converter=none_if_none)
@@ -68,13 +75,20 @@ class Mors:
     tracks: str     = field(default='spada', validator=in_(('spada', 'baraffe')))
 
     spectrum_source: str = field(
-        default="named",
-        validator=in_(("named", "muscles", "phoenix", "none")),
+        default="solar",
+        validator=in_(("solar", "muscles", "phoenix", "none")),
     )
+
+    ### PHOENIX parameters
 
     # Solar by default
     FeH: float = field(default=0.0)   # [Fe/H]
     alpha: float = field(default=0.0) # [alpha/Fe]
+
+    # calculated if none
+    radius: float | None = field(default=None, validator=optional(gt(0)))
+    log_g: float | None = field(default=None, validator=optional(gt(0)))
+    Teff: float | None = field(default=None, validator=optional(gt(0)))
 
 def valid_stardummy(instance, attribute, value):
     if instance.module != "dummy":
@@ -122,8 +136,6 @@ class Star:
         Stellar mass [M_sun]. Note that for Mors,
         it should be between 0.1 and 1.25 solar masses.
         Values outside of the valid range will be clipped.
-    radius: float | None
-        Stellar radius [R_sun]. If 'none', radius will be calculated. # add more
     age_ini: float
         Age of system at model initialisation [Gyr].
     module: str | None
@@ -140,7 +152,6 @@ class Star:
     )
 
     mass: float = field(validator=gt(0))
-    radius: float | None = field(default=None, validator=optional(gt(0)))
     age_ini: float = field(validator=gt(0))
 
     mors: Mors       = field(factory=Mors,      validator=valid_mors)
