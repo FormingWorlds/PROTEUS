@@ -495,6 +495,22 @@ def download_stellar_spectra():
         desc = 'stellar spectra'
     )
 
+def download_solar_spectrum():
+    """
+    Download NREL solar spectrum
+    """
+    named_zenodo_id = "15721440"
+    data_dir   = GetFWLData() / "stellar_spectra"
+    folder_dir = data_dir / "Named"
+    filename = "sun.txt"
+    log.info(f"Downloading solar spectrum {filename}")
+
+    return get_zenodo_file(
+        zenodo_id=named_zenodo_id,
+        folder_dir=folder_dir,
+        zenodo_path=filename,
+    )
+
 def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
     """
     Download and unpack a PHOENIX spectra ZIP like
@@ -538,7 +554,7 @@ def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
 
 
 def download_muscles(star_name: str) -> bool:
-    muscles_zenodo_id = "17802209"  # still needs to be filled in
+    muscles_zenodo_id = "17802209"
     data_dir   = GetFWLData() / "stellar_spectra"
     folder_dir = data_dir / "MUSCLES"
     star_filename = f"{star_name.strip().lower().replace(' ', '-')}.txt"
@@ -593,8 +609,8 @@ def _get_sufficient(config:Config, clean:bool=False):
     if config.star.module == "mors":
         src = config.star.mors.spectrum_source
 
-        if src == "named" or src == "none":
-            download_stellar_spectra()
+        if src == "solar" or src == "none":
+            download_solar_spectrum()
 
         elif src == "muscles":
             download_muscles(config.star.mors.star_name)
