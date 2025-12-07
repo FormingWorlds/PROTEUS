@@ -118,6 +118,34 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
         "alpha":  alpha,
     }
 
+def phoenix_to_grid(*, Teff, logg, FeH, alpha):
+    """
+    Round (Teff, logg, FeH, alpha) to the nearest PHOENIX grid point.
+
+    Alpha is allowed to be nonzero only for FeH <= 0 and
+    3500 K <= Teff <= 8000 K (using the snapped Teff).
+    """
+
+    # Teff grid: 2300–7000 (100 K), 7200–12000 (200 K)
+    Teff_grid = np.concatenate([
+        np.arange(2300., 7000. + 1e-6, 100.),
+        np.arange(7200., 12000. + 1e-6, 200.),
+    ])
+    logg_grid  = np.arange(0., 6. + 1e-6, 0.5)
+    FeH_grid   = np.concatenate([[-4., -3.], np.arange(-2., 1. + 1e-6, 0.5)])
+    alpha_grid = np.arange(-0.2, 1.2 + 1e-6, 0.2)
+
+    Teff = float(Teff_grid[np.abs(Teff_grid - Teff).argmin()])
+    logg = float(logg_grid[np.abs(logg_grid - logg).argmin()])
+    FeH  = float(FeH_grid[np.abs(FeH_grid - FeH).argmin()])
+
+    if (FeH <= 0.0) and (3500. <= Teff <= 8000.):
+        alpha = float(alpha_grid[np.abs(alpha_grid - alpha).argmin()])
+    else:
+        alpha = 0.0
+
+    return {"Teff": Teff, "logg": logg, "FeH": FeH, "alpha": alpha}
+
 def init_star(handler:Proteus):
     '''
     Star-related things to be done when the simulation begins.
