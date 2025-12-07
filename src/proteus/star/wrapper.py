@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
+from proteus.utils.constants import AU, M_sun, R_sun, const_G, const_sigma, ergcm2stoWm2
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
@@ -22,6 +22,94 @@ MASS_LIM = {
     "spada":   (0.10, 1.25),
     "baraffe": (0.01, 1.40)
 }
+
+def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = None):
+    """
+    Build PHOENIX parameters.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Proteus object instance
+    stellar_track :
+        MORS stellar track object (mors.Star or BaraffeTrack), if available.
+        If provided, it is used to compute Teff and radius when missing.
+    age_yr : float, optional
+        Stellar age in years at which PHOENIX should represent the star.
+        If None, defaults to config.star.mors.age_now.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys: 'Teff', 'logg', 'radius', 'FeH', 'alpha'.
+
+        - Teff   : effective temperature [K]
+        - logg   : surface gravity log10(g [cgs])
+        - radius : stellar radius [R_sun]
+        - FeH    : [Fe/H]
+        - alpha  : [alpha/M]
+    """
+    star_cfg = handler.config.star
+    mors_cfg = star_cfg.mors
+
+    if age_yr is None:
+        age_yr = mors_cfg.age_now * 1e9  # Gyr -> yr
+
+    # Composition parameters from config
+    FeH   = mors_cfg.FeH
+    alpha = mors_cfg.alpha
+
+    # Overrides from config
+    Teff   = getattr(mors_cfg, "Teff", None)
+    radius = getattr(mors_cfg, "radius", None)  # [R_sun]
+    logg   = getattr(mors_cfg, "log_g", None)   # log10(g [cgs])
+
+    # If we have a stellar track, use it to fill missing Teff / radius
+    if stellar_track is not None:
+        age_Myr = age_yr / 1e6
+
+        # Track type: 'spada' vs 'baraffe'
+        track_type = mors_cfg.tracks
+
+        if Teff is None:
+            match track_type:
+                case "spada":
+                    Teff = float(stellar_track.Value(age_Myr, "Teff"))
+                case "baraffe":
+                    Teff = float(stellar_track.BaraffeStellarTeff(age_yr))
+            log.info(f"Assuming calculated effective temperature {Teff:.0f} K from {track_type} tracks")
+
+
+        if radius is None:
+            match track_type:
+                case "spada":
+                    radius = float(stellar_track.Value(age_Myr, "Rstar"))  # [R_sun]
+                case "baraffe":
+                    radius = float(stellar_track.BaraffeStellarRadius(age_yr))  # [R_sun]
+            log.info(f"Assuming calculated stellar radius {radius:.0f} R_sun from {track_type} tracks")
+
+    # If log g is missing but we know mass and radius, compute it
+    if logg is None and radius is not None:
+        # Only use allowed mass range for the chosen tracks
+        Mstar = float(star_cfg.mass)
+        if Mstar < MASS_LIM[mors_cfg.tracks][0] or Mstar > MASS_LIM[mors_cfg.tracks][1]:
+            log.warning(f"Cannot compute log g: stellar mass {Mstar} Msun outside of allowed range for {mors_cfg.tracks} tracks. Please set log g manually.")
+
+        M_kg = Mstar * M_sun
+        R_m  = radius * R_sun
+
+        g_cgs = const_G * M_kg / (R_m**2) * 100.0  # m/s^2 -> cm/s^2
+        logg  = float(np.log10(g_cgs))
+
+        log.info(f"Assuming calculated surface gravity log g = {logg:.2f} from mass and radius")
+
+    return {
+        "Teff":   Teff,
+        "logg":   logg,
+        "radius": radius,
+        "FeH":    FeH,
+        "alpha":  alpha,
+    }
 
 def init_star(handler:Proteus):
     '''
