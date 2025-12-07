@@ -64,7 +64,7 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
     radius = getattr(mors_cfg, "radius", None)  # [R_sun]
     logg   = getattr(mors_cfg, "log_g", None)   # log10(g [cgs])
 
-    # If we have a stellar track, use it to fill missing Teff / radius
+    # If we have a stellar track, use it to fill Teff / radius
     if stellar_track is not None:
         age_Myr = age_yr / 1e6
 
@@ -72,28 +72,35 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
         track_type = mors_cfg.tracks
 
         if Teff is None:
-            match track_type:
-                case "spada":
-                    Teff = float(stellar_track.Value(age_Myr, "Teff"))
-                case "baraffe":
-                    Teff = float(stellar_track.BaraffeStellarTeff(age_yr))
+            if track_type == "spada":
+                Teff = float(stellar_track.Value(age_Myr, "Teff"))
+            else:  # baraffe
+                Teff = float(stellar_track.BaraffeStellarTeff(age_yr))
             log.info(f"Assuming calculated effective temperature {Teff:.0f} K from {track_type} tracks")
 
-
         if radius is None:
-            match track_type:
-                case "spada":
-                    radius = float(stellar_track.Value(age_Myr, "Rstar"))  # [R_sun]
-                case "baraffe":
-                    radius = float(stellar_track.BaraffeStellarRadius(age_yr))  # [R_sun]
+            if track_type == "spada":
+                radius = float(stellar_track.Value(age_Myr, "Rstar"))  # [R_sun]
+            else:  # baraffe
+                radius = float(stellar_track.BaraffeStellarRadius(age_yr))  # [R_sun]
             log.info(f"Assuming calculated stellar radius {radius:.0f} R_sun from {track_type} tracks")
 
     # If log g is missing but we know mass and radius, compute it
     if logg is None and radius is not None:
         # Only use allowed mass range for the chosen tracks
         Mstar = float(star_cfg.mass)
-        if Mstar < MASS_LIM[mors_cfg.tracks][0] or Mstar > MASS_LIM[mors_cfg.tracks][1]:
-            log.warning(f"Cannot compute log g: stellar mass {Mstar} Msun outside of allowed range for {mors_cfg.tracks} tracks. Please set log g manually.")
+        Mmin, Mmax = MASS_LIM[mors_cfg.tracks]
+
+        if not (Mmin <= Mstar <= Mmax):
+            msg = (
+                f"Cannot compute log g: stellar mass {Mstar:.3f} Msun outside of "
+                f"allowed range [{Mmin:.2f}, {Mmax:.2f}] for {mors_cfg.tracks} tracks. "
+                "Please set log g manually or adjust the star mass."
+            )
+            log.error(msg)
+
+            UpdateStatusfile(handler.directories, 23)
+            raise ValueError(msg)
 
         M_kg = Mstar * M_sun
         R_m  = radius * R_sun
