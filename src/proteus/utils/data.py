@@ -501,7 +501,7 @@ def download_solar_spectrum():
     """
     named_zenodo_id = "15721440"
     data_dir   = GetFWLData() / "stellar_spectra"
-    folder_dir = data_dir / "Named"
+    folder_dir = data_dir / "solar"
     filename = "sun.txt"
     log.info(f"Downloading solar spectrum {filename}")
 
