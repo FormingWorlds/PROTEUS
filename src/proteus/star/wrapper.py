@@ -95,7 +95,7 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
             msg = (
                 f"Cannot compute log g: stellar mass {Mstar:.3f} Msun outside of "
                 f"allowed range [{Mmin:.2f}, {Mmax:.2f}] for {mors_cfg.tracks} tracks. "
-                "Please set log g manually or adjust the star mass."
+                "Please set log g manually, adjust the star mass or use a different stellar track."
             )
             log.error(msg)
 
