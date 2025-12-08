@@ -52,6 +52,8 @@ class Mors:
         Observed estimated age of the star [Gyr].
     star_name: str
         Name of the star, to find appropriate stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars).
+    star_path: str
+        Path to custom stellar spectra. If 'none', star_name will be used to find spectra in default locations.
     spectrum_source: str
         Source of stellar spectra. Choices: 'solar', 'muscles', 'phoenix', 'none'.
     FeH: float
@@ -69,7 +71,8 @@ class Mors:
     """
 
     age_now         = field(default=None)
-    star_name       = field(default=None)
+    star_name       = field(default=None, converter=none_if_none)
+    star_path       = field(default=None, converter=none_if_none)
     rot_pcntle      = field(default=None, converter=none_if_none)
     rot_period      = field(default=None, converter=none_if_none)
     tracks: str     = field(default='spada', validator=in_(('spada', 'baraffe')))
