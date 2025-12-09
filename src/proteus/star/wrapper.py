@@ -157,6 +157,13 @@ def _phoenix_filename(Teff: float, logg: float, FeH: float, alpha: float) -> str
     alpha_s = f"{alpha:+.1f}"
     return f"LTE_T{Tstr}_logg{logg_s}_FeH{feh_s}_alpha{alpha_s}_phoenixMedRes_R05000.txt"
 
+def _phoenix_filename(Teff: float, logg: float, FeH: float, alpha: float) -> str:
+    Tstr    = f"{int(round(Teff)):05d}"
+    logg_s  = f"{logg:.2f}"
+    feh_s   = f"{FeH:+.1f}"
+    alpha_s = f"{alpha:+.1f}"
+    return f"LTE_T{Tstr}_logg{logg_s}_FeH{feh_s}_alpha{alpha_s}_phoenixMedRes_R05000.txt"
+
 def init_star(handler:Proteus):
     '''
     Star-related things to be done when the simulation begins.
