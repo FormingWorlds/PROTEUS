@@ -4,11 +4,13 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from proteus.utils.constants import AU, M_sun, R_sun, const_G, const_sigma, ergcm2stoWm2
+from proteus.utils.data import GetFWLData, download_phoenix
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
@@ -163,6 +165,71 @@ def _phoenix_filename(Teff: float, logg: float, FeH: float, alpha: float) -> str
     feh_s   = f"{FeH:+.1f}"
     alpha_s = f"{alpha:+.1f}"
     return f"LTE_T{Tstr}_logg{logg_s}_FeH{feh_s}_alpha{alpha_s}_phoenixMedRes_R05000.txt"
+
+def get_phoenix_modern_spectrum(handler: Proteus, stellar_track=None, age_yr: float | None = None) -> Path:
+    """
+    Get a PHOENIX 'modern' spectrum scaled to 1 AU and return its path.
+
+    Raw files in stellar_spectra/PHOENIX/
+    Scaled 1 AU files in stellar_spectra/PHOENIX/1AU/
+    """
+
+    # parameters
+    params = phoenix_params(handler, stellar_track=stellar_track, age_yr=age_yr)
+    if params["Teff"] is None or params["radius"] is None or params["logg"] is None:
+        raise ValueError("PHOENIX requires Teff, radius and log g to be known.")
+
+    grid = phoenix_to_grid(Teff=params["Teff"], logg=params["logg"], FeH=params["FeH"], alpha=params["alpha"],)
+
+    Teff_g, logg_g, FeH_g, alpha_g = grid["Teff"], grid["logg"], grid["FeH"], grid["alpha"]
+
+    log.info(f"PHOENIX grid params: Teff={Teff_g:.0f} K, logg={logg_g:.2f}, [Fe/H]=+{FeH_g:.1f}, [alpha/M]=+{alpha_g:.1f}")
+
+    base_dir   = GetFWLData() / "stellar_spectra" / "PHOENIX"
+    raw_dir    = base_dir
+    au_dir  = base_dir / "1AU"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    au_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_name  = _phoenix_filename(Teff_g, logg_g, FeH_g, alpha_g)
+    raw_path  = raw_dir / raw_name
+    au_path = au_dir / raw_name
+
+    # make sure raw PHOENIX file exists
+    if not raw_path.exists():
+        log.info(f"PHOENIX file {raw_name} not found, downloading grid [Fe/H]=+{FeH_g:.1f}, [alpha/M]=+{alpha_g:.1f}")
+        if not download_phoenix(alpha=alpha_g, FeH=FeH_g):
+            raise RuntimeError(f"Failed to download PHOENIX grid for [Fe/H]={FeH_g:+.1f}, [alpha/M]={alpha_g:+.1f}")
+        if not raw_path.exists():
+            raise RuntimeError(f"PHOENIX file still missing after download: {raw_path}")
+
+    # scale from stellar surface to 1 AU and save to PHOENIX/1AU
+    if (not au_path.exists()) or (au_path.stat().st_mtime < raw_path.stat().st_mtime):
+        data = np.loadtxt(raw_path, comments="#")
+        wl = data[:, 0]
+        fl_surface = data[:, 1]
+
+        R_m   = params["radius"] * R_sun
+        scale = (R_m / AU) ** 2
+        fl_1au = fl_surface * scale
+
+        header = (
+            "# PHOENIX spectrum scaled to 1 AU\n"
+            f"# Teff={Teff_g:.0f} logg={logg_g:.2f} [Fe/H]={FeH_g:+.1f} [alpha/M]={alpha_g:+.1f}\n"
+            "# WL(nm)\tFlux(erg/cm^2/s/nm) at 1 AU"
+        )
+
+        np.savetxt(
+            au_path,
+            np.column_stack([wl, fl_1au]),
+            header=header,
+            comments="",
+            fmt="%.8e",
+            delimiter="\t",
+        )
+        log.info(f"Wrote PHOENIX 1 AU spectrum to {au_path}")
+
+    return au_path
 
 def init_star(handler:Proteus):
     '''
