@@ -609,8 +609,15 @@ def _get_sufficient(config:Config, clean:bool=False):
     if config.star.module == "mors":
         src = config.star.mors.spectrum_source
 
-        if src == "solar" or src == "none":
+        if src == "solar":
             download_solar_spectrum()
+
+        elif src is None:
+            # try muscles first
+            muscles_ok =  download_muscles(config.star.mors.star_name)
+            if not muscles_ok:
+                log.info("No MUSCLES spectrum found; downloading solar spectrum by default.")
+                download_solar_spectrum
 
         elif src == "muscles":
             download_muscles(config.star.mors.star_name)
@@ -619,12 +626,9 @@ def _get_sufficient(config:Config, clean:bool=False):
             FeH = config.star.mors.FeH
             alpha = config.star.mors.alpha
             log.info(
-                "Using PHOENIX spectra with [Fe/H]=%.2f, [alpha/Fe]=%.2f "
-                "(defaults are solar: 0.0, 0.0 if not set).",
-                FeH, alpha,
-            )
+                f"Downloading PHOENIX spectra with [Fe/H]={FeH:.2f}, [alpha/Fe]={alpha:.2f}"
+                "(defaults are solar: 0.0, 0.0 if not set).")
             download_phoenix(alpha=alpha, FeH=FeH)
-
 
         if config.star.mors.tracks == 'spada':
             download_stellar_tracks("Spada")
@@ -656,7 +660,6 @@ def _get_sufficient(config:Config, clean:bool=False):
     if config.interior.module == "aragog":
         download_interior_lookuptables(clean=clean)
         download_melting_curves(config, clean=clean)
-
 
 def download_sufficient_data(config:Config, clean:bool=False):
     """
