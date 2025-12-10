@@ -779,7 +779,7 @@ def plot_grid_status(cases_data, plot_dir: Path, grid_name: str, status_colors: 
         ax.text(
             i, count + 1,
             f"{count} ({percentage:.1f}%)",
-            ha='center', va='bottom', fontsize=10
+            ha='center', va='bottom', fontsize=15
         )
 
     # Boxed total in upper right
@@ -1018,11 +1018,14 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
                 if val not in grouped_data.get(data_key, {}):
                     continue
                 raw = np.array(grouped_data[data_key][val]) * out_settings.get("scale", 1.0)
-                # Plot ECDf if output == df['H_kg_atm'] then plot only values > 1e10
+                # Plot ECDf if output == df['H_kg_atm'] then plot only values > 1e10 AND psurf > 1 bar
                 if output_name.endswith('_kg_atm'):
-                    raw = raw[raw > 0]
+                    raw = np.clip(raw, 1e15, None)
+                elif output_name.endswith('P_surf'):
+                    raw = np.clip(raw, 1, None)
                 else:
                     raw = raw
+
                 sns.ecdfplot(
                     data=raw,
                     log_scale=out_settings.get("log_scale", False),
@@ -1079,10 +1082,9 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
 
     # Tweak layout and save
     plt.tight_layout(rect=[0.08, 0.02, 1, 0.97])
-    #filename = "ecdf_grid_plot.png"
-    #out_path = os.path.join(plots_path, filename)
-    #fig.savefig(out_path, dpi=300)
-    fig.savefig('/home2/p315557/PROTEUS/nogit_files/nogit_code/paper1_plots/plots/1Msun_ecdf_grid_plot_species.png', dpi=300)
+    filename = "ecdf_grid_plot.png"
+    out_path = os.path.join(plots_path, filename)
+    fig.savefig(out_path, dpi=300)
     plt.close(fig)
 
     #print(f"Grid ECDF plot saved at {out_path}")
