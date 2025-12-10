@@ -82,14 +82,14 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
                 Teff = float(stellar_track.Value(age_Myr, "Teff"))
             else:  # baraffe
                 Teff = float(stellar_track.BaraffeStellarTeff(age_yr))
-            log.info(f"Assuming calculated effective temperature {Teff:.0f} K from {track_type} tracks")
+            log.info(f"PHOENIX: Assuming calculated effective temperature {Teff:.0f} K from {track_type} tracks")
 
         if radius is None:
             if track_type == "spada":
                 radius = float(stellar_track.Value(age_Myr, "Rstar"))  # [R_sun]
             else:  # baraffe
                 radius = float(stellar_track.BaraffeStellarRadius(age_yr))  # [R_sun]
-            log.info(f"Assuming calculated stellar radius {radius:.0f} R_sun from {track_type} tracks")
+            log.info(f"PHOENIX: Assuming calculated stellar radius {radius:.0f} R_sun from {track_type} tracks")
 
     # If log g is missing but we know mass and radius, compute it
     if logg is None and radius is not None:
@@ -114,7 +114,7 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
         g_cgs = const_G * M_kg / (R_m**2) * 100.0  # m/s^2 -> cm/s^2
         logg  = float(np.log10(g_cgs))
 
-        log.info(f"Assuming calculated surface gravity log g = {logg:.2f} from mass and radius")
+        log.info(f"PHOENIX: Assuming calculated surface gravity log g = {logg:.2f} from mass and radius")
 
     return {
         "Teff":   Teff,
