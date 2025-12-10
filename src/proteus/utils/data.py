@@ -550,6 +550,7 @@ def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
     folder_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Downloading PHOENIX spectra {zip_name}")
+    log.info("This may take a while.")
 
     if not get_zenodo_file(
         zenodo_id=phoenix_zenodo_id,
@@ -657,9 +658,8 @@ def _get_sufficient(config:Config, clean:bool=False):
         elif src == "phoenix":
             FeH = config.star.mors.FeH
             alpha = config.star.mors.alpha
-            log.info(
-                f"Downloading PHOENIX spectra with [Fe/H]={FeH:.2f}, [alpha/Fe]={alpha:.2f}"
-                " (defaults are solar: 0.0, 0.0 if not set).")
+            log.info(f"Downloading PHOENIX spectra with [Fe/H]={FeH:.2f}, [alpha/Fe]={alpha:.2f}.")
+            log.info("Defaults are solar: 0.0, 0.0 if not set.")
             download_phoenix(alpha=alpha, FeH=FeH)
 
         if config.star.mors.tracks == 'spada':
