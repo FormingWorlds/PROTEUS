@@ -26,7 +26,7 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 # Escape efficiency factor set directly
 ["escape.zephyrus.efficiency"]
     method = "direct"
-    values = [0.1, 1.0]
+    values = [0.1, 0.15, 0.2]
 
 # Planet bulk C/H ratio set directly
 ["delivery.elements.CH_ratio"]
@@ -46,3 +46,5 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     count     = 4
 
 # Add CMF
+# Period form 0.44 days to 2 days
+# O2 rich star

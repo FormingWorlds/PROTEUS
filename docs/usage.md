@@ -236,6 +236,19 @@ To do so, the user should go to `PROTEUS/src/proteus/grid/run_grid_analysis.py` 
 
 2. In the Step 2 of the same function, the user should also modify accordingly the `param_settings_single` and `output_settings_single` object for generating single plots (same for the grid plot with `param_settings_grid` and `output_settings_grid`).For this, the user should add the input parameters and output extracted from the grid, if this is not already present in the script and comment the one useless for the grid.
 
+## Postprocessing of results with AGNI for multiprofile analysis
+
+PROTEUS includes a functionality to postprocess the planet's atmosphere for a number of zenith angles.
+This allows the user to obtain localized thermal profiles based on the angle of irradation on the atmosphere, 
+this is particularly useful for first-hand results on tidally locked planets.
+
+Access the atmospheric postprocessing functionality via the command line interface, while in `PROTEUS`:
+
+```console
+julia tools/multiprofile_postprocess.jl output/[outputdir] 0,36,45,89
+```
+This example finds results for 4 zenith angles, namely [0,36,45,89], but the script works for any number of zenith angles and creates a new `..._atm_z{angle}.nc` file in the `data` directory, within the output directory, for each angle.
+
 ## Archiving output files
 
 Running PROTEUS can generate a large number of files, which is problematic when also running

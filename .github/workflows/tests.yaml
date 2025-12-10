@@ -14,22 +14,26 @@ on:
       - ready_for_review
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: write
+
 jobs:
   test:
     # if: github.event.pull_request.draft == false
     name: Run Coverage and Tests
     strategy:
       matrix:
-        os: ['ubuntu-latest', 'macos-latest']
+        os: ['ubuntu-latest', 'macos-14']
         python-version: ['3.12','3.13']
         include:
           - os: ubuntu-latest
-            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev
+            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev tree
             CC: gcc
             CXX: g++
             FC: gfortran
-          - os: macos-latest
-            INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran
+          - os: macos-14
+            INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
             CC: gcc
             CXX: g++
             FC: gfortran
@@ -43,6 +47,20 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        if: runner.os == 'Linux'
+        with:
+          tool-cache: false
+
+      - name: Free Disk Space (MacOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
 
       # https://stackoverflow.com/a/65356209
       - name: Install system dependencies
@@ -66,10 +84,12 @@ jobs:
 
       - name: Cache Julia
         uses: julia-actions/cache@v2
+        with:
+          include-matrix: 'false'
 
       # Checkout PROTEUS
       - name: Checkout PROTEUS
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Get Lovepy
       - name: Get Lovepy
@@ -81,9 +101,17 @@ jobs:
         run: |
           ./tools/get_vulcan.sh
 
+      # Restore cached lookup-data for PROTEUS
+      - name: Get FWL data from cache
+        uses: actions/cache@v4
+        id: cache-fwl-data
+        with:
+          path: ${{ env.FWL_DATA }}
+          key: fwl-data-2
+
       # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -93,7 +121,7 @@ jobs:
         id: cache-virtualenv
         with:
           path: ${{ env.pythonLocation }}
-          key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
+          key: ${{ env.pythonLocation }}-${{ hashFiles('./pyproject.toml') }}
 
       - name: Install PROTEUS (repo only)
         run:
@@ -103,36 +131,38 @@ jobs:
         run:
           proteus install-all --export-env
 
-      # Get lookup data for PROTEUS
-      - name: Get FWL data from cache
-        uses: actions/cache@v4
-        id: cache-fwl-data
-        with:
-          path: ${{ env.FWL_DATA }}
-          key: fwl-data-2
-
       # Get FWL data
-      - name: Get additional FWL data
-        if: steps.cache-fwl-data.cache-hit != 'true'
-        run: |
-          proteus get stellar
-          proteus get spectral --name Frostflow --bands 48
+      # - name: Get additional FWL data
+      #   if: steps.cache-fwl-data.cache-hit != 'true'
+      #   run: |
+      #     proteus get stellar
+      #     proteus get spectral --name Frostflow --bands 48
 
       # Run PROTEUS tests
       - name: Test with pytest
         run: coverage run -m pytest
 
+      # Record  the content of the FWL_DATA folder
+      - name: Record FWL data folder
+        if: ${{ !cancelled() }}
+        run: |
+          CUR=$(pwd)
+          cd $FWL_DATA
+          tree
+          echo $FWL_DATA > $CUR/output/FWL_DATA.txt
+          tree >> $CUR/output/FWL_DATA.txt
+          cd $CUR
+
       # Upload result if tests fail
-      - name: Upload result as artifact
-        if: failure()
+      - name: Upload result on failure
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
-          name: integration-physical
-          path: |
-            output/physical/plot/plot_*.png
-            output/physical/runtime_helpfile.csv
+          name: proteus_output_folder
+          path: output/
 
       - name: Report coverage
+        if: ${{ !failure() }}
         run: |
           coverage json
           export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
@@ -145,7 +175,7 @@ jobs:
           coverage report
 
       - name: Make coverage badge
-        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' }}
+        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' && !failure() }}
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}

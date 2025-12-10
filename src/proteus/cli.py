@@ -183,6 +183,21 @@ def reference():
     download_exoplanet_data()
     download_massradius_data()
 
+@click.command()
+@click.option(
+    "--config-path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("input/all_options.toml"),
+    help="Path to the TOML config file",
+)
+def interiordata(config_path: Path):
+    """Get interior lookup tables and melting curves"""
+    from .utils.data import download_interior_lookuptables, download_melting_curves
+
+    download_interior_lookuptables(clean=True)
+
+    configuration = read_config_object(config_path)
+    download_melting_curves(configuration, clean=True)
 
 @click.command()
 def socrates():
@@ -213,6 +228,7 @@ get.add_command(spectral)
 get.add_command(surfaces)
 get.add_command(reference)
 get.add_command(stellar)
+get.add_command(interiordata)
 get.add_command(socrates)
 get.add_command(petsc)
 get.add_command(spider)
@@ -417,12 +433,31 @@ def append_to_shell_rc(
 def is_julia_installed() -> bool:
     return shutil.which("julia") is not None
 
+def _update_input_data(config_path: Path):
+    if config_path.exists():
+        # Only try data download if a config file is present.
+        configuration = read_config_object(config_path)
+        download_sufficient_data(configuration, clean=True)
+        click.secho("✅ Additional data has been downloaded.", fg="green")
+        return True
+
+    else:
+        click.echo(
+            f"⚠️ No config file found at {config_path}, skipping data download."
+        )
+        return False
 
 @cli.command()
 @click.option(
     "--export-env", is_flag=True, help="Add FWL_DATA and RAD_DIR to shell rc."
 )
-def install_all(export_env: bool):
+@click.option(
+    "--config-path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("input/all_options.toml"),
+    help="Path to the TOML config file",
+)
+def install_all(export_env: bool, config_path: Path):
     """Install PROTEUS, required submodules, and get lookup data from online sources."""
     # --- Step 0: Check available disk space---
     available_disk_space_in_B = shutil.disk_usage(".").free
@@ -521,6 +556,10 @@ def install_all(export_env: bool):
         click.secho(
             "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
         )
+
+    # --- Step 6: Update input data ---
+    _update_input_data(config_path)
+    (root / "output").mkdir(exist_ok=True)
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
 
@@ -635,16 +674,8 @@ def update_all(export_env: bool, config_path: Path):
             "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
         )
 
-    # --- Step 7: Update input data.
-    if config_path.exists():
-        # Only try data download if a config file is present.
-        configuration = read_config_object(config_path)
-        download_sufficient_data(configuration)
-        click.secho("✅ Additional data has been downloaded.", fg="green")
-    else:
-        click.echo(
-            f"⚠️ No config file found at {config_path}, skipping data download."
-        )
+    # --- Step 7: Update input data ---
+    _update_input_data(config_path)
 
     click.secho("🎉 PROTEUS update completed!", fg="green")
 

@@ -21,7 +21,13 @@ log = logging.getLogger("fwl."+__name__)
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 MAX_ATTEMPTS = 3
-RETRY_WAIT   = 5.0 # seconds
+MAX_DLTIME   = 120.0 # seconds
+RETRY_WAIT   = 5.0   # seconds
+
+ARAGOG_BASIC = (
+    "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa",
+    "Melting_curves/Wolf_Bower+2018",
+    )
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
@@ -50,7 +56,10 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
 
         # try making request
         with open(out,'w') as hdl:
-            proc = sp.run(["zenodo_get", zenodo_id,"-o", folder_dir],
+            proc = sp.run(["zenodo_get",
+                            "-o", folder_dir,
+                            "-t", f"{MAX_DLTIME:.1f}",
+                            zenodo_id],
                             stdout=hdl, stderr=hdl)
 
         # worked ok?
@@ -96,7 +105,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
     #     They will be saved to a txt file in folder_dir
     md5sums_path = os.path.join(folder_dir, "md5sums.txt")
     out = os.path.join(GetFWLData(), "zenodo_validate.log")
-    log.debug("    zenodo_get, logging to %s"%out)
+    # log.debug("    zenodo_get, logging to %s"%out)
     zenodo_ok = False
     for i in range(MAX_ATTEMPTS):
 
@@ -105,7 +114,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 
         # try making request
         with open(out,'w') as hdl:
-            proc = sp.run([ "zenodo_get", zenodo_id, "-m" ],
+            proc = sp.run([ "zenodo_get", "-m", zenodo_id ],
                             stdout=hdl, stderr=hdl, cwd=folder_dir)
 
         # process exited fine and file exists?
@@ -176,6 +185,13 @@ def get_zenodo_record(folder: str) -> str | None:
         "Honeyside/256" : "15799731",
         "Honeyside/4096": "15696457",
         "Oak/318"       : "15743843",
+
+        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018': '15877374',
+        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_400GPa': '15877424',
+        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': '17417017',
+        'Melting_curves/Monteux+600': '15728091',
+        'Melting_curves/Monteux-600': '15728138',
+        'Melting_curves/Wolf_Bower+2018': '15728072',
     }
     return zenodo_map.get(folder, None)
 
@@ -357,6 +373,48 @@ def download_spectral_file(name:str, bands:str):
     )
 
 
+def download_interior_lookuptables(clean=False):
+    """
+    Download basic interior lookup tables
+    """
+    log.debug("Download basic interior lookup tables")
+
+    data_dir = GetFWLData() / "interior_lookup_tables"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    for dir in ARAGOG_BASIC:
+        folder_dir = data_dir / dir
+        if clean:
+            safe_rm(folder_dir.as_posix())
+        download(
+            folder = dir,
+            target = data_dir,
+            osf_id = "phsxf",
+            zenodo_id = get_zenodo_record(dir),
+            desc = f"Interior lookup tables: {dir}"
+            )
+
+def download_melting_curves(config:Config, clean=False):
+    """
+    Download melting curve data
+    """
+    log.debug("Download melting curve data")
+    dir = "Melting_curves/" + config.interior.melting_dir
+
+    data_dir = GetFWLData() / "interior_lookup_tables"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    folder_dir = data_dir / dir
+    if clean:
+        safe_rm(folder_dir.as_posix())
+    download(
+        folder = dir,
+        target = data_dir,
+        osf_id = "phsxf",
+        zenodo_id = get_zenodo_record(dir),
+        desc = f"Melting curve data: {dir}"
+        )
+
 def download_stellar_spectra():
     """
     Download stellar spectra
@@ -406,27 +464,9 @@ def download_stellar_tracks(track:str):
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 
-def download_interior_lookuptables():
-    """
-    Download interior lookup tables
-    """
-    from aragog.data import DownloadLookupTableData
-    log.debug("Get interior lookup tables")
-    DownloadLookupTableData()
 
-def download_melting_curves(config:Config):
-    """
-    Download melting curve data
-    """
-    from aragog.data import DownloadLookupTableData
-    log.debug("Get melting curve data")
-    dir = (
-        "Melting_curves/"
-        + config.interior.melting_dir
-    )
-    DownloadLookupTableData(dir)
 
-def _get_sufficient(config:Config):
+def _get_sufficient(config:Config, clean:bool=False):
     # Star stuff
     if config.star.module == "mors":
         download_stellar_spectra()
@@ -458,11 +498,11 @@ def _get_sufficient(config:Config):
 
     # Interior look up tables
     if config.interior.module == "aragog":
-        download_interior_lookuptables()
-        download_melting_curves(config)
+        download_interior_lookuptables(clean=clean)
+        download_melting_curves(config, clean=clean)
 
 
-def download_sufficient_data(config:Config):
+def download_sufficient_data(config:Config, clean:bool=False):
     """
     Download the required data based on the current options
     """
@@ -476,7 +516,7 @@ def download_sufficient_data(config:Config):
     else:
         # Try to get data
         try:
-            _get_sufficient(config)
+            _get_sufficient(config, clean=clean)
 
         # Some issue. Usually due to lack of internet connection, but print the error
         #     anyway so that the user knows what happened.
