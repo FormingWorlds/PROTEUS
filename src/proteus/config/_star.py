@@ -77,10 +77,7 @@ class Mors:
     rot_period      = field(default=None, converter=none_if_none)
     tracks: str     = field(default='spada', validator=in_(('spada', 'baraffe')))
 
-    spectrum_source: str = field(
-        default="solar",
-        validator=in_(("solar", "muscles", "phoenix", "none")),
-    )
+    spectrum_source: str = field(default=None, validator=in_(("solar", "muscles", "phoenix", None)), converter=none_if_none)
 
     ### PHOENIX parameters
 
