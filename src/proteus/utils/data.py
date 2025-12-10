@@ -32,9 +32,26 @@ ARAGOG_BASIC = (
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
-def _phoenix_param(x: float | int | str) -> str:
+def _phoenix_param(x: float | int | str, kind: str) -> str:
+    """
+    Format a PHOENIX parameter.
+
+    kind:
+        "FeH"   -> FeH = 0.0  -> "-0.0" (handles inconsistency in filenames)
+        "alpha" -> alpha = 0.0 -> "+0.0"
+    """
     x = float(x)
-    return f"{x:+0.1f}"  # e.g. +0.5, -1.0
+
+    # zero case
+    if abs(x) < 1e-9:
+        if kind.lower() == "feh":
+            return "-0.0"
+        elif kind.lower() == "alpha":
+            return "+0.0"
+
+    # Normal case, e.g. +0.5, -1.0
+    return f"{x:+0.1f}"
+
 
 
 def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
@@ -519,12 +536,17 @@ def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
     """
     phoenix_zenodo_id = "17674612"
 
-    feh_str = _phoenix_param(FeH)
-    alpha_str = _phoenix_param(alpha)
-    zip_name = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
+    feh_str   = _phoenix_param(FeH, kind="FeH")
+    alpha_str = _phoenix_param(alpha, kind="alpha")
+    zip_name  = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
 
     data_dir = GetFWLData() / "stellar_spectra"
-    folder_dir = data_dir / "PHOENIX"
+    folder_dir = data_dir / "PHOENIX" / f"FeH{feh_str}_alpha{alpha_str}"
+
+    if folder_dir.exists() and any(folder_dir.iterdir()):
+        log.info(f"PHOENIX spectra already present in {folder_dir}")
+        return True
+
     folder_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Downloading PHOENIX spectra {zip_name}")
@@ -557,7 +579,7 @@ def download_muscles(star_name: str) -> bool:
     muscles_zenodo_id = "17802209"
     data_dir   = GetFWLData() / "stellar_spectra"
     folder_dir = data_dir / "MUSCLES"
-    star_filename = f"{star_name.strip().lower().replace(' ', '-')}.txt"
+    star_filename = f"{star_name.strip().lower().replace(' ', '-').replace("gj-", 'gj')}.txt" # lowercase, and; "trappist 1" -> "trappist-1", but "gj 876" or "gj-876" -> "gj876"
     log.info(f"Downloading MUSCLES file {star_filename}")
 
     return get_zenodo_file(
@@ -613,21 +635,31 @@ def _get_sufficient(config:Config, clean:bool=False):
             download_solar_spectrum()
 
         elif src is None:
-            # try muscles first
-            muscles_ok =  download_muscles(config.star.mors.star_name)
-            if not muscles_ok:
-                log.info("No MUSCLES spectrum found; downloading solar spectrum by default.")
-                download_solar_spectrum
+            if config.star.mors.star_name.lower() != "sun":
+                muscles_ok =  download_muscles(config.star.mors.star_name)
+                if muscles_ok:
+                    log.info("Spectrum source not set. MUSCLES spectrum found and downloaded.")
+                    log.info("To always use MUSCLES, set star.mors.spectrum_source = 'muscles'.")
+                else:
+                    log.info("Spectrum source not set. No MUSCLES spectrum found; downloading solar spectrum by default.")
+                    log.info("To use a MUSCLES spectrum, check the available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html and set star.mors.spectrum_source = 'muscles'.")
+                    download_solar_spectrum()
+            else:
+                download_solar_spectrum()
 
         elif src == "muscles":
-            download_muscles(config.star.mors.star_name)
+            muscles_ok = download_muscles(config.star.mors.star_name)
+            if not muscles_ok:
+                log.error(f"Could not download MUSCLES spectrum for star {config.star.mors.star_name}.")
+                log.error("Check the MUSCLES available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html to verify the star name.")
+                log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
 
         elif src == "phoenix":
             FeH = config.star.mors.FeH
             alpha = config.star.mors.alpha
             log.info(
                 f"Downloading PHOENIX spectra with [Fe/H]={FeH:.2f}, [alpha/Fe]={alpha:.2f}"
-                "(defaults are solar: 0.0, 0.0 if not set).")
+                " (defaults are solar: 0.0, 0.0 if not set).")
             download_phoenix(alpha=alpha, FeH=FeH)
 
         if config.star.mors.tracks == 'spada':
