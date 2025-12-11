@@ -10,7 +10,6 @@ from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
 
-import numpy as np
 import platformdirs
 from osfclient.api import OSF
 
@@ -18,6 +17,7 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 from proteus.utils.helper import safe_rm
+from proteus.utils.phoenix_helper import phoenix_param, phoenix_to_grid
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -32,53 +32,6 @@ ARAGOG_BASIC = (
     )
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
-
-#### PHOENIX spectra utilities ####
-def _phoenix_param(x: float | int | str, kind: str) -> str:
-    """
-    Format a PHOENIX parameter.
-
-    kind:
-        "FeH"   -> FeH = 0.0  -> "-0.0" (handles inconsistency in filenames)
-        "alpha" -> alpha = 0.0 -> "+0.0"
-    """
-    x = float(x)
-
-    # zero case
-    if abs(x) < 1e-9:
-        if kind.lower() == "feh":
-            return "-0.0"
-        elif kind.lower() == "alpha":
-            return "+0.0"
-
-    # Normal case, e.g. +0.5, -1.0
-    return f"{x:+0.1f}"
-
-def _phoenix_to_grid(FeH: float | int | str, alpha: float | int | str) -> tuple[float, float]:
-    """
-    Map (FeH, alpha) to the nearest PHOENIX composition grid point.
-
-    - FeH grid: [-4.0, -3.0, -2.0, -1.5, ..., +1.0] (step 0.5 from -2 to +1)
-    - alpha grid: -0.2 .. +1.2 in steps of 0.2
-
-    PHOENIX allows non-zero alpha only for FeH <= 0. For FeH > 0, alpha is forced to 0.
-    """
-    FeH = float(FeH)
-    alpha = float(alpha)
-
-    FeH_grid   = np.concatenate([[-4., -3.], np.arange(-2., 1. + 1e-6, 0.5)])
-    alpha_grid = np.arange(-0.2, 1.2 + 1e-6, 0.2)
-
-    # Map FeH to nearest grid value
-    FeH_g = float(FeH_grid[np.abs(FeH_grid - FeH).argmin()])
-
-    # Map alpha only if FeH <= 0; otherwise, force 0.0
-    if FeH_g <= 0.0:
-        alpha_g = float(alpha_grid[np.abs(alpha_grid - alpha).argmin()])
-    else:
-        alpha_g = 0.0
-
-    return FeH_g, alpha_g
 
 def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
     """
@@ -559,14 +512,14 @@ def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
     Download and unpack a PHOENIX spectra ZIP like
     FeH+0.5_alpha+0.0_phoenixMedRes_R05000.zip
     into <FWL_DATA>/stellar_spectra/PHOENIX.
+
+    NOTE: Assumes alpha and FeH are already mapped to nearest grid point.
     """
+
     phoenix_zenodo_id = "17674612"
 
-    # Map requested composition to nearest grid point
-    FeH_g, alpha_g = _phoenix_to_grid(FeH, alpha)
-
-    feh_str   = _phoenix_param(FeH_g,   kind="FeH")
-    alpha_str = _phoenix_param(alpha_g, kind="alpha")
+    feh_str   = phoenix_param(FeH,   kind="FeH")
+    alpha_str = phoenix_param(alpha, kind="alpha")
     zip_name  = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
 
     data_dir = GetFWLData() / "stellar_spectra"
@@ -616,7 +569,7 @@ def download_muscles(star_name: str) -> bool:
     muscles_zenodo_id = "17802209"
     data_dir   = GetFWLData() / "stellar_spectra"
     folder_dir = data_dir / "MUSCLES"
-    star_filename = f"{star_name.strip().lower().replace(' ', '-').replace("gj-", 'gj')}.txt" # lowercase, and; "trappist 1" -> "trappist-1", but "gj 876" or "gj-876" -> "gj876"
+    star_filename = f"{star_name.strip().lower().replace(' ', '-').replace('gj-', 'gj')}.txt" # lowercase, and; "trappist 1" -> "trappist-1", but "gj 876" or "gj-876" -> "gj876"
     log.info(f"Downloading MUSCLES file {star_filename}")
 
     # first download readme
@@ -701,11 +654,19 @@ def _get_sufficient(config:Config, clean:bool=False):
 
         elif src == "phoenix":
             log.info("Spectrum source set to 'phoenix'. Downloading PHOENIX grid.")
-            FeH = config.star.mors.FeH
+            FeH   = config.star.mors.FeH
             alpha = config.star.mors.alpha
-            log.info(f"Downloading PHOENIX spectra with [Fe/H]={FeH:.2f}, [alpha/Fe]={alpha:.2f}.")
+
+            # make sure what is downloaded matches nearest grid point
+            Teff_override = getattr(config.star.mors, "Teff", None) # Optional Teff override in the config -> relevant for mapping alpha fraction to grid
+            grid   = phoenix_to_grid(FeH=FeH, alpha=alpha, Teff=Teff_override)
+            FeH_g  = grid["FeH"]
+            alpha_g = grid["alpha"]
+
+            log.info(f"Downloading PHOENIX spectra with [Fe/H]={FeH_g:.2f}, [alpha/M]={alpha_g:.2f}.")
+            log.info("Note that the requested values are mapped to the nearest grid point.")
             log.info("Defaults are solar: 0.0, 0.0 if not set.")
-            download_phoenix(alpha=alpha, FeH=FeH)
+            download_phoenix(alpha=alpha_g, FeH=FeH_g)
 
         if config.star.mors.tracks == 'spada':
             download_stellar_tracks("Spada")
