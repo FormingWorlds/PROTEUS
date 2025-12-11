@@ -10,6 +10,7 @@ import numpy as np
 from proteus.utils.constants import AU, M_sun, R_sun, const_G
 from proteus.utils.data import GetFWLData, download_phoenix
 from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.phoenix_helper import phoenix_filename, phoenix_param, phoenix_to_grid
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -62,7 +63,7 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
         log.info("PHOENIX: Using solar metallicity [Fe/H]=0.0. "
                 "Set star.mors.FeH to change the composition.")
     if alpha == 0.0:
-        log.info("PHOENIX: Using solar [alpha/Fe]=0.0. "
+        log.info("PHOENIX: Using solar [alpha/M]=0.0. "
                 "Set star.mors.alpha to change the alpha fraction.")
 
     # Overrides from config
@@ -124,67 +125,6 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
         "alpha":  alpha,
     }
 
-def phoenix_to_grid(*, Teff, logg, FeH, alpha):
-    """
-    Round (Teff, logg, FeH, alpha) to the nearest PHOENIX grid point.
-
-    Alpha is allowed to be nonzero only for FeH <= 0 and
-    3500 K <= Teff <= 8000 K (using the snapped Teff).
-    """
-
-    # Teff grid: 2300–7000 (100 K), 7200–12000 (200 K)
-    Teff_grid = np.concatenate([
-        np.arange(2300., 7000. + 1e-6, 100.),
-        np.arange(7200., 12000. + 1e-6, 200.),
-    ])
-    logg_grid  = np.arange(0., 6. + 1e-6, 0.5)
-    FeH_grid   = np.concatenate([[-4., -3.], np.arange(-2., 1. + 1e-6, 0.5)])
-    alpha_grid = np.arange(-0.2, 1.2 + 1e-6, 0.2)
-
-    Teff = float(Teff_grid[np.abs(Teff_grid - Teff).argmin()])
-    logg = float(logg_grid[np.abs(logg_grid - logg).argmin()])
-    FeH  = float(FeH_grid[np.abs(FeH_grid - FeH).argmin()])
-
-    if (FeH <= 0.0) and (3500. <= Teff <= 8000.):
-        alpha = float(alpha_grid[np.abs(alpha_grid - alpha).argmin()])
-    else:
-        alpha = 0.0
-
-    return {"Teff": Teff, "logg": logg, "FeH": FeH, "alpha": alpha}
-
-def _format_phoenix_param(x: float | int | str, kind: str) -> str:
-    """
-    Format a PHOENIX parameter.
-
-    kind:
-        "FeH"   -> FeH = 0.0   -> "-0.0" (handles inconsistency in filenames)
-        "alpha" -> alpha = 0.0 -> "+0.0"
-    """
-    x = float(x)
-
-    # zero case
-    if abs(x) < 1e-9:
-        kind_lower = kind.lower()
-        if kind_lower == "feh":
-            return "-0.0"
-        if kind_lower == "alpha":
-            return "+0.0"
-
-    # Normal case, e.g. +0.5, -1.0
-    return f"{x:+0.1f}"
-
-
-def _phoenix_filename(Teff: float, logg: float, FeH: float, alpha: float) -> str:
-    """
-    Build PHOENIX filename like:
-    LTE_T02300_logg1.00_FeH+0.5_alpha+0.0_phoenixMedRes_R05000.txt
-    """
-    Tstr    = f"{int(round(Teff)):05d}"      # e.g. 2300 -> "02300"
-    logg_s  = f"{logg:.2f}"                  # "1.00"
-    feh_s   = _format_phoenix_param(FeH,   kind="FeH")
-    alpha_s = _format_phoenix_param(alpha, kind="alpha")
-
-    return (f"LTE_T{Tstr}_logg{logg_s}_FeH{feh_s}_alpha{alpha_s}_phoenixMedRes_R05000.txt")
 
 def get_phoenix_modern_spectrum(handler: Proteus, stellar_track=None, age_yr: float | None = None) -> Path:
     """
@@ -199,7 +139,7 @@ def get_phoenix_modern_spectrum(handler: Proteus, stellar_track=None, age_yr: fl
     if params["Teff"] is None or params["radius"] is None or params["logg"] is None:
         raise ValueError("PHOENIX requires Teff, radius and log g to be known.")
 
-    grid = phoenix_to_grid(Teff=params["Teff"], logg=params["logg"], FeH=params["FeH"], alpha=params["alpha"],)
+    grid = phoenix_to_grid(FeH=params["FeH"], alpha=params["alpha"], Teff=params["Teff"], logg=params["logg"])
 
     Teff_g, logg_g, FeH_g, alpha_g = grid["Teff"], grid["logg"], grid["FeH"], grid["alpha"]
 
@@ -207,8 +147,8 @@ def get_phoenix_modern_spectrum(handler: Proteus, stellar_track=None, age_yr: fl
 
     base_dir = GetFWLData() / "stellar_spectra" / "PHOENIX"
 
-    feh_str   = _format_phoenix_param(FeH_g,   kind="FeH")
-    alpha_str = _format_phoenix_param(alpha_g, kind="alpha")
+    feh_str   = phoenix_param(FeH_g,   kind="FeH")
+    alpha_str = phoenix_param(alpha_g, kind="alpha")
     comp_dir  = f"FeH{feh_str}_alpha{alpha_str}"
 
     raw_dir = base_dir / comp_dir
@@ -216,22 +156,26 @@ def get_phoenix_modern_spectrum(handler: Proteus, stellar_track=None, age_yr: fl
     raw_dir.mkdir(parents=True, exist_ok=True)
     au_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_name = _phoenix_filename(Teff_g, logg_g, FeH_g, alpha_g)
+    raw_name = phoenix_filename(Teff_g, logg_g, FeH_g, alpha_g)
     raw_path = raw_dir / raw_name
     au_path  = au_dir / raw_name
 
     # make sure raw PHOENIX file exists
     if not raw_path.exists():
-        log.info(
-            "PHOENIX file %s not found, downloading grid [Fe/H]=%+0.1f, [alpha/M]=%+0.1f",
-            raw_name, FeH_g, alpha_g
-        )
-        if not download_phoenix(alpha=alpha_g, FeH=FeH_g):
-            raise RuntimeError(
-                f"Failed to download PHOENIX grid for [Fe/H]={FeH_g:+0.1f}, [alpha/M]={alpha_g:+0.1f}"
+        if not handler.config.params.offline:
+            log.info(
+                "PHOENIX file %s not found, downloading grid [Fe/H]=%+0.1f, [alpha/M]=%+0.1f",
+                raw_name, FeH_g, alpha_g
             )
-        if not raw_path.exists():
-            raise RuntimeError(f"PHOENIX file still missing after download: {raw_path}")
+            if not download_phoenix(alpha=alpha_g, FeH=FeH_g):
+                raise RuntimeError(
+                    f"Failed to download PHOENIX grid for [Fe/H]={FeH_g:+0.1f}, [alpha/M]={alpha_g:+0.1f}"
+                )
+            if not raw_path.exists():
+                raise RuntimeError(f"PHOENIX file still missing after download: {raw_path}")
+        else:
+            log.error("Running in offline mode, but appropriate phoenix file is not available.")
+            raise FileNotFoundError(f"PHOENIX file not found: {raw_path} (offline mode)")
 
     # scale from stellar surface to 1 AU and save to PHOENIX/1AU
     if (not au_path.exists()) or (au_path.stat().st_mtime < raw_path.stat().st_mtime):
