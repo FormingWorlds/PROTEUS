@@ -81,17 +81,14 @@ def load_grid_cases(grid_dir: Path):
         else:
             print(f"WARNING : Missing status file in {case.name}")
 
-        # THIS IS ONLY FOR MY CURRENT GRID ON HABROK
-        # if status in ('Unknown', 'Empty'):
-        #     status = 'Disk quota exceeded'
-
+        # Combine all info about simulations into a list of dictionaries
         combined_data.append({
             'init_parameters': init_params,
             'output_values'  : df,
             'status'         : status
         })
 
-    # --- summary printout ---
+    #
     statuses = [c['status'] for c in combined_data]
     status_counts = pd.Series(statuses).value_counts().sort_values(ascending=False)
 
