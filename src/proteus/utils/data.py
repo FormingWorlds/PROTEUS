@@ -653,7 +653,7 @@ def _get_sufficient(config:Config, clean:bool=False):
                 log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
 
         elif src == "phoenix":
-            log.info("Spectrum source set to 'phoenix'. Downloading PHOENIX grid.")
+            log.info("Spectrum source set to 'phoenix'.")
             FeH   = config.star.mors.FeH
             alpha = config.star.mors.alpha
 
@@ -665,7 +665,6 @@ def _get_sufficient(config:Config, clean:bool=False):
 
             log.info(f"Downloading PHOENIX spectra with [Fe/H]={FeH_g:.2f}, [alpha/M]={alpha_g:.2f}.")
             log.info("Note that the requested values are mapped to the nearest grid point.")
-            log.info("Defaults are solar: 0.0, 0.0 if not set.")
             download_phoenix(alpha=alpha_g, FeH=FeH_g)
 
         if config.star.mors.tracks == 'spada':
@@ -705,6 +704,7 @@ def download_sufficient_data(config:Config, clean:bool=False):
     """
 
     log.info("Getting physical and reference data")
+    log.info("")
 
     if config.params.offline:
         # Don't try to get data

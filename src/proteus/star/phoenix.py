@@ -60,11 +60,9 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
     alpha = mors_cfg.alpha
 
     if FeH == 0.0:
-        log.info("PHOENIX: Using solar metallicity [Fe/H]=0.0. "
-                "Set star.mors.FeH to change the composition.")
+        log.info("PHOENIX: Using solar metallicity [Fe/H]=0.0. Set star.mors.FeH to change the composition.")
     if alpha == 0.0:
-        log.info("PHOENIX: Using solar [alpha/M]=0.0. "
-                "Set star.mors.alpha to change the alpha fraction.")
+        log.info("PHOENIX: Using solar [alpha/M]=0.0. Set star.mors.alpha to change the alpha fraction.")
 
     # Overrides from config
     Teff   = getattr(mors_cfg, "Teff", None)
@@ -90,7 +88,7 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
                 radius = float(stellar_track.Value(age_Myr, "Rstar"))  # [R_sun]
             else:  # baraffe
                 radius = float(stellar_track.BaraffeStellarRadius(age_yr))  # [R_sun]
-            log.info(f"PHOENIX: Assuming calculated stellar radius {radius:.0f} R_sun from {track_type} tracks")
+            log.info(f"PHOENIX: Assuming calculated stellar radius {radius:.2f} R_sun from {track_type} tracks")
 
     # If log g is missing but we know mass and radius, compute it
     if logg is None and radius is not None:
@@ -143,7 +141,14 @@ def get_phoenix_modern_spectrum(handler: Proteus, stellar_track=None, age_yr: fl
 
     Teff_g, logg_g, FeH_g, alpha_g = grid["Teff"], grid["logg"], grid["FeH"], grid["alpha"]
 
-    log.info("PHOENIX grid params: Teff=%.0f K, logg=%.2f, [Fe/H]=%+0.1f, [alpha/M]=%+0.1f", Teff_g, logg_g, FeH_g, alpha_g)
+    # Since Teff might be calculated from the stellar track, it might happen that the phoenix grid downloaded earlier (which was still agnostic of Teff) does not contain the necessary Teff, because of a forbidden Teff/alpha combination.
+    # In that case, the appropriate grid (with alpha=0) will be downloaded. Here the user is informed about this.
+    if Teff_g < 3500 or Teff_g > 8000:
+        if abs(params["alpha"]) > 1e-6:
+            log.info("A new grid might be downloaded.")
+
+    log.info("PHOENIX: using grid params Teff=%.0f K, logg=%.2f, [Fe/H]=%+0.1f, [alpha/M]=%+0.1f", Teff_g, logg_g, FeH_g, alpha_g)
+    log.info("")
 
     base_dir = GetFWLData() / "stellar_spectra" / "PHOENIX"
 
@@ -201,6 +206,6 @@ def get_phoenix_modern_spectrum(handler: Proteus, stellar_track=None, age_yr: fl
             fmt="%.8e",
             delimiter="\t",
         )
-        log.info(f"Wrote PHOENIX 1 AU spectrum to {au_path}")
+        log.info("Scaled PHOENIX spectrum to 1 AU.")
 
     return au_path

@@ -39,6 +39,7 @@ def init_star(handler:Proteus):
     '''
 
     log.info("Preparing stellar model")
+    log.info("")
 
     # Dummy star module does not require preparation
 
@@ -140,6 +141,7 @@ def init_star(handler:Proteus):
             raise ValueError(f"Unknown spectrum_source: {src}")
 
         log.info(f"Using stellar spectrum file: {star_modern_path}")
+        log.info("")
 
         # Copy modern spectrum to output folder, for posterity.
         star_backup_path = os.path.join(handler.directories["output/data"], "-1.sflux")
