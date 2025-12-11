@@ -1,15 +1,41 @@
 # Reference data
 
-## Stars
-Data taken primarily from MUSCLES and NREL.
-Available options can be found by running the following command:
+## Stellar spectra
+
+PROTEUS can use:
+- **Observed spectra** from MUSCLES / Mega-MUSCLES and NREL (for the Sun)
+- **Synthetic PHOENIX spectra**
+
+By default, observed spectra are searched in:
+
+- `$FWL_DATA/stellar_spectra/MUSCLES`  – MUSCLES / Mega-MUSCLES stars
+- `$FWL_DATA/stellar_spectra/solar`    – solar reference spectrum (`sun.txt`)
+
+To see which files you have installed, run for example:
+
 ```console
-ls $FWL_DATA/stellar_spectra/Named
+ls $FWL_DATA/stellar_spectra/MUSCLES
+ls $FWL_DATA/stellar_spectra/solar
 ```
+
+For PHOENIX spectra, files are stored under: `$FWL_DATA/stellar_spectra/PHOENIX`, where each subdirectory corresponds to a metallicity / alpha combination, e.g. FeH-0.5_alpha+0.0/.
+
+### Custom stellar spectrum
+
+### PHOENIX use
+
+If you would like to use a PHOENIX spectrum, set `spectrum_source = "phoenix"` in your config file (under `star.mors`).
+
+**NOTE:** no parameters need to be set, but if you leave the parameters empty, element abundances (Fe/H, alpha/M) will be assumed to be solar, and other parameters (surface gravity, effective temperature, stellar radius) will be calculated from the star mass.
+
+
+### MUSCLES/ NREL: Available observed stars
+
+Note: The filenames below live in `$FWL_DATA/stellar_spectra/MUSCLES`, except for the Sun, which is in `$FWL_DATA/stellar_spectra/solar/sun.txt`.
 
 ### Epsilon Eridani
 
-* File name:  `eps-eri.txt`
+* File name:  `v-eps-eri.txt`
 * URL:   [https://en.wikipedia.org/wiki/Epsilon_Eridani]()
 * Spectral type:  K2V
 * Teff:  5049 K
