@@ -51,6 +51,7 @@ def init_star(handler:Proteus):
 
         if mors_cfg.star_path is not None:
             star_modern_path = mors_cfg.star_path
+            log.info("Using custom stellar spectrum path.")
         else:
             starname_input = mors_cfg.star_name
             starname_proper = starname_input.strip().lower().replace(" ", "-").replace("gj-", "gj") + ".txt"
