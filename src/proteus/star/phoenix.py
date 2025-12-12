@@ -147,7 +147,7 @@ def get_phoenix_modern_spectrum(handler: Proteus, stellar_track=None, age_yr: fl
         if abs(params["alpha"]) > 1e-6:
             log.info("A new grid might be downloaded.")
 
-    log.info("PHOENIX: using grid params Teff=%.0f K, logg=%.2f, [Fe/H]=%+0.1f, [alpha/M]=%+0.1f", Teff_g, logg_g, FeH_g, alpha_g)
+    log.info("PHOENIX: Using grid params Teff=%.0f K, logg=%.2f, [Fe/H]=%+0.1f, [alpha/M]=%+0.1f", Teff_g, logg_g, FeH_g, alpha_g)
     log.info("")
 
     base_dir = GetFWLData() / "stellar_spectra" / "PHOENIX"
