@@ -86,9 +86,9 @@ class Mors:
     alpha: float = field(default=0.0) # [alpha/Fe]
 
     # calculated if none
-    radius: float | None = field(default=None, validator=optional(gt(0)))
-    log_g: float | None = field(default=None, validator=optional(gt(0)))
-    Teff: float | None = field(default=None, validator=optional(gt(0)))
+    radius: float | None = field(default=None, validator=optional(gt(0)), converter=none_if_none)
+    log_g: float | None = field(default=None, validator=optional(gt(0)),  converter=none_if_none)
+    Teff: float | None = field(default=None, validator=optional(gt(0)), converter=none_if_none)
 
 def valid_stardummy(instance, attribute, value):
     if instance.module != "dummy":
