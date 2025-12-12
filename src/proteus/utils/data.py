@@ -630,8 +630,9 @@ def _get_sufficient(config:Config, clean:bool=False):
             src = config.star.mors.spectrum_source
 
             if src == "solar":
-                log.info("Spectrum source set to 'solar'; downloading solar spectrum.")
-                download_solar_spectrum()
+                log.info("Spectrum source set to 'solar'.")
+                if not os.path.exists(GetFWLData() / "stellar_spectra" / "solar" / "sun.txt"):
+                    download_solar_spectrum()
 
             elif src is None:
                 if config.star.mors.star_name.lower() != "sun":
