@@ -585,7 +585,9 @@ You can set these under `star.mors` in your config file.
 
 ### Using a custom stellar spectrum
 
-If you prefer to use your own stellar spectrum, you can input its filepath under the parameter `star_path`. The `star_name` parameter can then be left blank. There are a few things to take into account when using a custom stellar spectrum:
+If you prefer to use your own stellar spectrum, you can input its filepath under the parameter `star_path`. Make sure you input its absolute path, even if it is in the $FWL_DATA directory. **NOTE**: this parameter will override all other stellar spectrum config parameters!
+
+There are a few things to take into account when using a custom stellar spectrum:
 
 - The file should be a two-column ASCII file, with the first column the **wavelength** in **nm**, and the second column the **flux** in **erg/s/cm^2/nm**. Headers should be indicated with `#`.
 - The spectrum must be **scaled to 1 AU**.
