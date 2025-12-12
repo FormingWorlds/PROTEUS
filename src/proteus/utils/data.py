@@ -625,47 +625,49 @@ def download_stellar_tracks(track:str):
 def _get_sufficient(config:Config, clean:bool=False):
     # Star stuff
     if config.star.module == "mors":
-        src = config.star.mors.spectrum_source
 
-        if src == "solar":
-            log.info("Spectrum source set to 'solar'; downloading solar spectrum.")
-            download_solar_spectrum()
+        if config.star.mors.star_path is None:
+            src = config.star.mors.spectrum_source
 
-        elif src is None:
-            if config.star.mors.star_name.lower() != "sun":
-                muscles_ok =  download_muscles(config.star.mors.star_name)
-                if muscles_ok:
-                    log.info("Spectrum source not set. MUSCLES spectrum found and downloaded.")
-                    log.info("To always use MUSCLES, set star.mors.spectrum_source = 'muscles'.")
-                else:
-                    log.info("Spectrum source not set. No MUSCLES spectrum found; downloading solar spectrum by default.")
-                    log.info("To use a MUSCLES spectrum, check the available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html and set star.mors.spectrum_source = 'muscles'.")
-                    download_solar_spectrum()
-            else:
+            if src == "solar":
+                log.info("Spectrum source set to 'solar'; downloading solar spectrum.")
                 download_solar_spectrum()
 
-        elif src == "muscles":
-            log.info("Spectrum source set to 'muscles'. Downloading MUSCLES spectrum.")
-            muscles_ok = download_muscles(config.star.mors.star_name)
-            if not muscles_ok:
-                log.error(f"Could not download MUSCLES spectrum for star {config.star.mors.star_name}.")
-                log.error("Check the MUSCLES available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html to verify the star name.")
-                log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
+            elif src is None:
+                if config.star.mors.star_name.lower() != "sun":
+                    muscles_ok =  download_muscles(config.star.mors.star_name)
+                    if muscles_ok:
+                        log.info("Spectrum source not set. MUSCLES spectrum found and downloaded.")
+                        log.info("To always use MUSCLES, set star.mors.spectrum_source = 'muscles'.")
+                    else:
+                        log.info("Spectrum source not set. No MUSCLES spectrum found; downloading solar spectrum by default.")
+                        log.info("To use a MUSCLES spectrum, check the available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html and set star.mors.spectrum_source = 'muscles'.")
+                        download_solar_spectrum()
+                else:
+                    download_solar_spectrum()
 
-        elif src == "phoenix":
-            log.info("Spectrum source set to 'phoenix'.")
-            FeH   = config.star.mors.FeH
-            alpha = config.star.mors.alpha
+            elif src == "muscles":
+                log.info("Spectrum source set to 'muscles'. Downloading MUSCLES spectrum.")
+                muscles_ok = download_muscles(config.star.mors.star_name)
+                if not muscles_ok:
+                    log.error(f"Could not download MUSCLES spectrum for star {config.star.mors.star_name}.")
+                    log.error("Check the MUSCLES available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html to verify the star name.")
+                    log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
 
-            # make sure what is downloaded matches nearest grid point
-            Teff_override = getattr(config.star.mors, "Teff", None) # Optional Teff override in the config -> relevant for mapping alpha fraction to grid
-            grid   = phoenix_to_grid(FeH=FeH, alpha=alpha, Teff=Teff_override)
-            FeH_g  = grid["FeH"]
-            alpha_g = grid["alpha"]
+            elif src == "phoenix":
+                log.info("Spectrum source set to 'phoenix'.")
+                FeH   = config.star.mors.FeH
+                alpha = config.star.mors.alpha
 
-            log.info(f"Downloading PHOENIX spectra with [Fe/H]={FeH_g:.2f}, [alpha/M]={alpha_g:.2f}.")
-            log.info("Note that the requested values are mapped to the nearest grid point.")
-            download_phoenix(alpha=alpha_g, FeH=FeH_g)
+                # make sure what is downloaded matches nearest grid point
+                Teff_override = getattr(config.star.mors, "Teff", None) # Optional Teff override in the config -> relevant for mapping alpha fraction to grid
+                grid   = phoenix_to_grid(FeH=FeH, alpha=alpha, Teff=Teff_override)
+                FeH_g  = grid["FeH"]
+                alpha_g = grid["alpha"]
+
+                log.info(f"Downloading PHOENIX spectra with [Fe/H]={FeH_g:.2f}, [alpha/M]={alpha_g:.2f}.")
+                log.info("Note that the requested values are mapped to the nearest grid point.")
+                download_phoenix(alpha=alpha_g, FeH=FeH_g)
 
         if config.star.mors.tracks == 'spada':
             download_stellar_tracks("Spada")

@@ -48,97 +48,101 @@ def init_star(handler:Proteus):
         import mors
         mors_cfg = handler.config.star.mors
         fwl_dir  = handler.directories["fwl"]
-        starname_input = mors_cfg.star_name
-        starname_proper = starname_input.strip().lower().replace(" ", "-").replace("gj-", "gj") + ".txt"
 
-        solar_path = os.path.join(fwl_dir, "stellar_spectra/solar", starname_proper)
-        muscles_path = os.path.join(fwl_dir, "stellar_spectra/MUSCLES", starname_proper)
-
-        src = mors_cfg.spectrum_source
-
-        # spectrum_source = None -> try solar, then MUSCLES
-        if src is None:
-            if os.path.exists(solar_path):
-                star_modern_path = solar_path
-            elif os.path.exists(muscles_path):
-                star_modern_path = muscles_path
-            else:
-                log.error(f"No stellar spectrum found for '{mors_cfg.star_name}' in reference data.")
-                log.error("Check the available spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html.")
-                UpdateStatusfile(handler.directories, 23)
-                raise FileNotFoundError(
-                    f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'.")
-
-        # spectrum_source = 'solar'
-        elif src == 'solar':
-            if os.path.exists(solar_path):
-                star_modern_path = solar_path
-            elif os.path.exists(muscles_path):
-                log.warning(f"Requested solar spectrum for '{mors_cfg.star_name}', but file cannot be found in solar reference data. ")
-                log.warning("Using available MUSCLES spectrum.")
-                log.warning("To use MUSCLES by default, set star.mors.spectrum_source = 'muscles'.")
-                star_modern_path = muscles_path
-            else:
-                log.error(f"Requested solar spectrum for '{mors_cfg.star_name}', but the file cannot be found in reference data.")
-                log.error("If you would like to use the NREL modern solar spectrum, please set star.mors.star_name = 'sun'.")
-                UpdateStatusfile(handler.directories, 23)
-                raise FileNotFoundError(f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'.")
-
-        # spectrum_source = 'muscles'
-        elif src == 'muscles':
-            if os.path.exists(muscles_path):
-                star_modern_path = muscles_path
-            elif os.path.exists(solar_path):
-                log.warning(f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data.")
-                log.warning("The file is available in solar reference data. Using that instead.")
-                log.warning("To use solar by default, set star.mors.spectrum_source = 'solar'.")
-                star_modern_path = solar_path
-            else:
-                log.error(f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data.")
-                log.error("Check the available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html.")
-                log.error(
-                    "If available, MUSCLES spectra can be downloaded via the command line: "
-                    f"python -c \"from proteus.utils.data import download_muscles; download_muscles('{mors_cfg.star_name}')\"."
-                )
-                log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
-                UpdateStatusfile(handler.directories, 23)
-                raise FileNotFoundError(f"No MUSCLES spectrum for '{mors_cfg.star_name}'.")
-
-        # spectrum_source = 'phoenix'
-        elif src == 'phoenix':
-            # Build a temporary stellar track so PHOENIX can infer Teff, radius, log g
-            Mstar_tmp = float(handler.config.star.mass)
-            Mstar_tmp = max(Mstar_tmp, MASS_LIM[mors_cfg.tracks][0])
-            Mstar_tmp = min(Mstar_tmp, MASS_LIM[mors_cfg.tracks][1])
-
-            if mors_cfg.tracks == 'spada':
-                age_now_Myr = mors_cfg.age_now * 1000  # convert Gyr to Myr
-                pcntle = mors_cfg.rot_pcntle
-                period = mors_cfg.rot_period
-
-                if pcntle is not None:
-                    age_rot_Myr = 1.0
-                    period = None
-                else:
-                    age_rot_Myr = age_now_Myr
-
-                track_for_phoenix = mors.Star(
-                    Mstar=Mstar_tmp,
-                    Age=age_rot_Myr,
-                    percentile=pcntle,
-                    Prot=period
-                )
-            else:  # 'baraffe'
-                track_for_phoenix = mors.BaraffeTrack(Mstar_tmp)
-
-            star_modern_path = str(
-                get_phoenix_modern_spectrum(handler, stellar_track=track_for_phoenix)
-            )
-
+        if mors_cfg.star_path is not None:
+            star_modern_path = mors_cfg.star_path
         else:
-            log.error(f"Unknown star.mors.spectrum_source = {src}")
-            UpdateStatusfile(handler.directories, 23)
-            raise ValueError(f"Unknown spectrum_source: {src}")
+            starname_input = mors_cfg.star_name
+            starname_proper = starname_input.strip().lower().replace(" ", "-").replace("gj-", "gj") + ".txt"
+
+            solar_path = os.path.join(fwl_dir, "stellar_spectra/solar", starname_proper)
+            muscles_path = os.path.join(fwl_dir, "stellar_spectra/MUSCLES", starname_proper)
+
+            src = mors_cfg.spectrum_source
+
+            # spectrum_source = None -> try solar, then MUSCLES
+            if src is None:
+                if os.path.exists(solar_path):
+                    star_modern_path = solar_path
+                elif os.path.exists(muscles_path):
+                    star_modern_path = muscles_path
+                else:
+                    log.error(f"No stellar spectrum found for '{mors_cfg.star_name}' in reference data.")
+                    log.error("Check the available spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html.")
+                    UpdateStatusfile(handler.directories, 23)
+                    raise FileNotFoundError(
+                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'.")
+
+            # spectrum_source = 'solar'
+            elif src == 'solar':
+                if os.path.exists(solar_path):
+                    star_modern_path = solar_path
+                elif os.path.exists(muscles_path):
+                    log.warning(f"Requested solar spectrum for '{mors_cfg.star_name}', but file cannot be found in solar reference data. ")
+                    log.warning("Using available MUSCLES spectrum.")
+                    log.warning("To use MUSCLES by default, set star.mors.spectrum_source = 'muscles'.")
+                    star_modern_path = muscles_path
+                else:
+                    log.error(f"Requested solar spectrum for '{mors_cfg.star_name}', but the file cannot be found in reference data.")
+                    log.error("If you would like to use the NREL modern solar spectrum, please set star.mors.star_name = 'sun'.")
+                    UpdateStatusfile(handler.directories, 23)
+                    raise FileNotFoundError(f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'.")
+
+            # spectrum_source = 'muscles'
+            elif src == 'muscles':
+                if os.path.exists(muscles_path):
+                    star_modern_path = muscles_path
+                elif os.path.exists(solar_path):
+                    log.warning(f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data.")
+                    log.warning("The file is available in solar reference data. Using that instead.")
+                    log.warning("To use solar by default, set star.mors.spectrum_source = 'solar'.")
+                    star_modern_path = solar_path
+                else:
+                    log.error(f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data.")
+                    log.error("Check the available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html.")
+                    log.error(
+                        "If available, MUSCLES spectra can be downloaded via the command line: "
+                        f"python -c \"from proteus.utils.data import download_muscles; download_muscles('{mors_cfg.star_name}')\"."
+                    )
+                    log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
+                    UpdateStatusfile(handler.directories, 23)
+                    raise FileNotFoundError(f"No MUSCLES spectrum for '{mors_cfg.star_name}'.")
+
+            # spectrum_source = 'phoenix'
+            elif src == 'phoenix':
+                # Build a temporary stellar track so PHOENIX can infer Teff, radius, log g
+                Mstar_tmp = float(handler.config.star.mass)
+                Mstar_tmp = max(Mstar_tmp, MASS_LIM[mors_cfg.tracks][0])
+                Mstar_tmp = min(Mstar_tmp, MASS_LIM[mors_cfg.tracks][1])
+
+                if mors_cfg.tracks == 'spada':
+                    age_now_Myr = mors_cfg.age_now * 1000  # convert Gyr to Myr
+                    pcntle = mors_cfg.rot_pcntle
+                    period = mors_cfg.rot_period
+
+                    if pcntle is not None:
+                        age_rot_Myr = 1.0
+                        period = None
+                    else:
+                        age_rot_Myr = age_now_Myr
+
+                    track_for_phoenix = mors.Star(
+                        Mstar=Mstar_tmp,
+                        Age=age_rot_Myr,
+                        percentile=pcntle,
+                        Prot=period
+                    )
+                else:  # 'baraffe'
+                    track_for_phoenix = mors.BaraffeTrack(Mstar_tmp)
+
+                star_modern_path = str(
+                    get_phoenix_modern_spectrum(handler, stellar_track=track_for_phoenix)
+                )
+
+            else:
+                log.error(f"Unknown star.mors.spectrum_source = {src}")
+                UpdateStatusfile(handler.directories, 23)
+                raise ValueError(f"Unknown spectrum_source: {src}")
 
         log.info(f"Using stellar spectrum file: {star_modern_path}")
         log.info("")
