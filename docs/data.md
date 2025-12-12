@@ -551,15 +551,37 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
 ### Using a PHOENIX synthetic spectrum
 
-If you would like to use a PHOENIX spectrum, set `spectrum_source = "phoenix"` in your config file.
+To use a Med-Res PHOENIX synthetic spectrum, set:
+
+- `spectrum_source = "phoenix"`
+
+PHOENIX spectra are stored under:
+- `$FWL_DATA/stellar_spectra/PHOENIX/`
+
+Each subdirectory corresponds to a metallicity / alpha combination, e.g.
+`FeH-0.5_alpha+0.0/`.
 
 #### Parameters
 
-PHOENIX requires four parameters: effective temperature `Teff` in K, surface gravity `log_g` in dex, the metallicity `FeH` and the alpha element abundance `alpha`.  Furthermore, a stellar radius `radius` in R_sun is required to scale the stellar spectrum from the star surface to 1 AU.
+PHOENIX models are defined on a grid in:
 
-You can set these under `star.mors` in the config file.
+- `Teff` (K) — effective temperature
+- `log_g` (dex) — surface gravity
+- `FeH` (dex) — metallicity
+- `alpha` (dex) — alpha enhancement
 
-**NOTE:** no parameters need to be set, but if you leave the parameters empty in the config file, `FeH` and `alpha` will be assumed to be solar, and other parameters `log_g`, `Teff`, `radius` will be calculated from the star mass using the stellar evolution module mors.
+In addition, PROTEUS needs the stellar radius:
+
+- `radius` (R☉)
+
+This is used to scale the model spectrum (surface flux) to the flux at 1 AU.
+
+You can set these under `star.mors` in your config file.
+
+**Defaults / fallbacks**
+- If `FeH` and/or `alpha` are not set, they default to solar (0.0).
+- If `Teff`, `log_g`, and/or `radius` are not set, they are estimated by the stellar evolution module (`mors`) from the stellar mass (if provided).
+
 
 ### Using a custom stellar spectrum
 
