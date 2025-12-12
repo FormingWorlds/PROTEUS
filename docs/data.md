@@ -1,5 +1,16 @@
 # Reference data
 
+## Contents
+
+- [Stellar spectra](#stellar-spectra)
+  - [Using solar spectrum](#using-solar-spectrum)
+  - [Using a (Mega-)MUSCLES observed spectrum](#using-a-mega-muscles-observed-spectrum)
+  - [Using a PHOENIX synthetic spectrum](#using-a-phoenix-synthetic-spectrum)
+  - [Using a custom stellar spectrum](#using-a-custom-stellar-spectrum)
+- [Surfaces](#surfaces)
+- [Exoplanet population data](#exoplanet-population-data)
+- [Mass-radius relations](#mass-radius-relations)
+
 ## Stellar spectra
 
 PROTEUS can use:
@@ -31,14 +42,23 @@ To use the NREL observed spectrum of the Sun, set `spectrum_source = "solar"` or
 * **Spectral type:**  G2V
 * **Teff:**  5772 K
 * **Age:**   4.6 Gyr
-* **Luminosity:**   1.0 solar
-* **Mass:**     1.0 solar
-* **Radius:**     1.0 solar
+* **Luminosity:**   1.0 L☉
+* **Mass:**     1.0 M☉
+* **Radius:**     1.0 R☉
 * **Source:** [Gueymard 2003](https://www.sciencedirect.com/science/article/pii/S0038092X03003967), [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html)
 
-### Using a (Mega-)Muscles observed spectrum
+### Using a (Mega-)MUSCLES observed spectrum
 
-To use an observed stellar spectrum by the Muscles or Mega-Muscles survey, set `spectrum_source = "muscles"` and set `star_name` to the name of the star. Make sure you use star names as listed below, since stars are often known under different names. More information about MUSCLES spectra can be found here: https://zenodo.org/records/17802209 (where the scaled MUSCLES spectra are stored), or here: https://archive.stsci.edu/hlsp/muscles (original MUSCLES spectra).
+PROTEUS can use observed stellar spectra from the MUSCLES and Mega-MUSCLES surveys. To use one of these observed spectra:
+
+- Set `spectrum_source = "muscles"`
+- Set `star_name` to one of the keys listed below (these names **must match** the installed spectrum filenames / dataset keys; many targets have multiple common aliases, but PROTEUS expects the specific `star_name` string shown here).
+
+By default, PROTEUS looks for MUSCLES/Mega-MUSCLES spectra under:
+
+- `$FWL_DATA/stellar_spectra/MUSCLES`
+
+Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
 #### Epsilon Eridani
 
@@ -353,7 +373,7 @@ To use an observed stellar spectrum by the Muscles or Mega-Muscles survey, set `
 - **Star name:** `gj832`
 - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440
 - **Spectral type:** M1-M3V
-- **Teff:** ~3500 - 3500 K
+- **Teff:** ~3500-3500 K
 - **Age:** ~4–12 Gyr
 - **Luminosity:** ~0.03 L☉
 - **Mass:** 0.45 M☉
@@ -392,7 +412,7 @@ To use an observed stellar spectrum by the Muscles or Mega-Muscles survey, set `
 
 #### HAT-P-26
 
-- **Star name:** `hat-p-16`
+- **Star name:** `hat-p-26`
 - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-26
 - **Spectral type:** K1V
 - **Teff:** ~5050 K
@@ -451,9 +471,9 @@ To use an observed stellar spectrum by the Muscles or Mega-Muscles survey, set `
 - **Star name:** `l-980-5`
 - **URL:** https://simbad.u-strasbg.fr/simbad/sim-id?Ident=l+980-5
 - **Spectral type:** M4V
-- **Teff:** ~3400 (based on spectral type)
+- **Teff:** ?
 - **Age:** ?
-- **Luminosity:** ~ 0.04 (based on spectral type)
+- **Luminosity:** ?
 - **Mass:** ?
 - **Radius:** ?
 - **Source:** Mega-MUSCLES
@@ -465,9 +485,9 @@ To use an observed stellar spectrum by the Muscles or Mega-Muscles survey, set `
 - **Star name:** `lhs-2686`
 - **URL:** https://simbad.cds.unistra.fr/simbad/sim-id?Ident=LHS+2686
 - **Spectral type:** M5V
-- **Teff:** ~3200 K (based on spectral type)
+- **Teff:** ?
 - **Age:** ?
-- **Luminosity:** ~0.04 (based on spectral type)
+- **Luminosity:** ?
 - **Mass:** ?
 - **Radius:** ?
 - **Source:** Mega-MUSCLES
@@ -531,7 +551,7 @@ To use an observed stellar spectrum by the Muscles or Mega-Muscles survey, set `
 
 ### Using a PHOENIX synthetic spectrum
 
-If you would like to use a PHOENIX spectrum, set `spectrum_source = "phoenix"` in your config file (under `star.mors`).
+If you would like to use a PHOENIX spectrum, set `spectrum_source = "phoenix"` in your config file.
 
 #### Parameters
 
