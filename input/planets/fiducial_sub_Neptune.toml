@@ -94,7 +94,8 @@ version = "2.0"
         rot_pctle = 50.0    # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 2.4     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/gj849.txt" # stellar spectrum
+        star_name   = "gj849"
+        spectrum_source = "muscles"
 
     [star.dummy]
         calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations

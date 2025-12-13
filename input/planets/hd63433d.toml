@@ -23,7 +23,10 @@ version = "2.0"
         rot_pcntle = 50.0       # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 0.414     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
+        star_name   = "sun"
+        spectrum_source = "solar"
+
+
 
 # Orbital system
 [orbit]
