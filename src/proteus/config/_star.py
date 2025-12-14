@@ -62,12 +62,12 @@ class Mors:
     alpha: float
         Alpha-element enhancement [alpha/Fe] to be used for PHOENIX synthetic spectra,
         if spectrum_source is 'phoenix'.
-    radius: float | None
-        Stellar radius [R_sun]. If 'none', radius will be calculated, if PHOENIX is used. # add more
-    log_g: float | None
-        Surface gravity [cgs]. If 'none', log g will be calculated, if PHOENIX is used. # add more
-    Teff: float | None
-        Effective temperature [K]. If 'none', Teff will be calculated, if PHOENIX is used. # add more
+    radius: float
+        Stellar radius [R_sun]. If 'none', radius will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
+    log_g: float
+        Surface gravity [cgs]. If 'none', log g will be calculated will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
+    Teff: float
+        Effective temperature [K]. If 'none', Teff will be calculated will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
     """
 
     age_now         = field(default=None)
@@ -86,9 +86,9 @@ class Mors:
     alpha: float = field(default=0.0) # [alpha/Fe]
 
     # calculated if none
-    radius: float | None = field(default=None, validator=optional(gt(0)), converter=none_if_none)
-    log_g: float | None = field(default=None, validator=optional(gt(0)),  converter=none_if_none)
-    Teff: float | None = field(default=None, validator=optional(gt(0)), converter=none_if_none)
+    radius: float | str = field(default=None, validator=optional(gt(0)), converter=none_if_none)
+    log_g: float | str  = field(default=None, validator=optional(gt(0)),  converter=none_if_none)
+    Teff: float | str = field(default=None, validator=optional(gt(0)), converter=none_if_none)
 
 def valid_stardummy(instance, attribute, value):
     if instance.module != "dummy":
