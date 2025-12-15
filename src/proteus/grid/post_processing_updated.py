@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -124,13 +125,14 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     # ---------------------------------------------------------
     # 1) Load tested grid parameter definitions
     # ---------------------------------------------------------
-    tested_params = toml.load(grid_dir / "copy.grid.toml")
+    raw_params = toml.load(grid_dir / "copy.grid.toml")
 
-    # Keep only actual grid parameters (ignore control keys)
-    tested_params = {
-        k: v for k, v in tested_params.items()
-        if "." in k
-    }
+    # Keep only the parameters and their values (ignore 'method' keys)
+    tested_params = {}
+    for key, value in raw_params.items():
+        if isinstance(value, dict) and "values" in value:
+            # Only store the 'values' list
+            tested_params[key] = value["values"]
 
     grid_param_paths = list(tested_params.keys())
 
@@ -507,8 +509,9 @@ def plot_grid_status(cases_data: list, grid_dir: str | Path, grid_name: str):
     total_simulations = len(cases_data)
     for i, count in enumerate(status_counts.values):
         percentage = (count / total_simulations) * 100
+        offset = 0.005 * status_counts.max()  # 1% of the max count
         ax.text(
-            i, count + 1,
+            i, count + offset,
             f"{count} ({percentage:.1f}%)",
             ha='center', va='bottom', fontsize=14
         )
@@ -519,8 +522,7 @@ def plot_grid_status(cases_data: list, grid_dir: str | Path, grid_name: str):
         f"Total number of simulations : {total_simulations}",
         transform=plt.gca().transAxes,
         ha='right', va='top',
-        fontsize=16,
-        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1)
+        fontsize=16
     )
 
     plt.grid(alpha=0.2, axis='y')
@@ -533,6 +535,206 @@ def plot_grid_status(cases_data: list, grid_dir: str | Path, grid_name: str):
 
     output_dir = grid_dir / "post_processing" / "grid_plots"
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"{grid_name}_summary_grid_statuses.png"
+    output_file = output_dir / f"summary_grid_statuses_{grid_name}.png"
     plt.savefig(output_file, dpi=300)
     plt.close()
+
+def group_output_by_parameter(df,grid_parameters,outputs):
+    """
+    Groups output values (like solidification times) by a specific grid parameter.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing simulation results including value of the grid parameter and the corresponding extracted output.
+
+    grid_parameters : str
+        Column name of the grid parameter to group by (like 'escape.zephyrus.Pxuv').
+
+    outputs : str
+        Column name of the output to extract (like 'solidification_time').
+
+    Returns
+    -------
+    dict
+        Dictionary where each key is of the form '[output]_per_[parameter]', and each value is a dict {param_value: [output_values]}.
+    """
+    grouped = {}
+
+    for param in grid_parameters:
+        for output in outputs:
+            key_name = f"{output}_per_{param}"
+            value_dict = {}
+            for param_value in df[param].dropna().unique():
+                subset = df[df[param] == param_value]
+                output_values = subset[output].replace([np.inf, -np.inf], np.nan)
+                output_values = output_values.dropna()
+                output_values = output_values[output_values > 0]  # Remove zeros and negatives
+
+                value_dict[param_value] = output_values
+
+            grouped[key_name] = value_dict
+
+    return grouped
+
+def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, output_settings: dict, grid_dir: str | Path, grid_name: str):
+    """
+    Creates a grid of ECDF plots where each row corresponds to one input parameter
+    and each column corresponds to one output. Saves the resulting figure as a PNG.
+
+    Parameters
+    ----------
+
+    grid_params : dict
+        A mapping from parameter names (e.g. "orbit.semimajoraxis") to arrays/lists of tested values.
+
+    grouped_data : dict
+        Dictionary where each key is of the form '[output]_per_[parameter]', and each value is a dict {param_value: [output_values]}.
+
+    param_settings : dict
+        For each input-parameter key, a dict containing:
+            - "label": label of the colormap for the corresponding input parameter
+            - "colormap": a matplotlib colormap (e.g. mpl.cm.plasma)
+            - "log_scale": bool, whether to color-normalize on a log scale
+
+    output_settings : dict
+        For each output key, a dict containing:
+            - "label": label of the x-axis for the corresponding output quantity
+            - "log_scale": bool, whether to plot the x-axis on log scale
+            - "scale":    float, a factor to multiply raw values by before plotting
+
+    plots_path : str
+        Path to the grid where to create "single_plots_ecdf" and save all .png plots
+    """
+    # List of parameter names (rows) and output names (columns)
+    param_names = list(param_settings.keys())
+    out_names   = list(output_settings.keys())
+
+    # Create subplot grid: rows = parameters, columns = outputs
+    n_rows = len(param_names)
+    n_cols = len(out_names)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
+
+    # Loop through parameters (rows) and outputs (columns)
+    for i, param_name in enumerate(param_names):
+        tested_param = grid_params.get(param_name, [])
+        if not tested_param:
+            print(f"⚠️ Skipping {param_name} — no tested values found in grid_params")
+            continue
+
+        settings = param_settings[param_name]
+
+        # Determine coloring
+        is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
+        if is_numeric:
+            vmin, vmax = min(tested_param), max(tested_param)
+            if vmin == vmax:
+                # avoid log/normalize errors with constant values
+                vmin, vmax = vmin - 1e-9, vmax + 1e-9
+            if settings.get("log_scale", False):
+                norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
+            else:
+                norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+            def color_func(v):
+                return settings["colormap"](norm(v))
+            colorbar_needed = True
+        else:
+            unique_vals = sorted(set(tested_param))
+            cmap = mpl.colormaps.get_cmap(settings["colormap"]).resampled(len(unique_vals))
+            color_map = {val: cmap(j) for j, val in enumerate(unique_vals)}
+            def color_func(v):
+                return color_map[v]
+            colorbar_needed = False
+
+        for j, output_name in enumerate(out_names):
+            ax = axes[i][j]
+            out_settings = output_settings[output_name]
+
+            # Add panel number in upper-left corner
+            panel_number = i * n_cols + j + 1  # number of panels left-to-right, top-to-bottom
+            ax.text(
+                0.02, 0.98,               # relative position in axes coordinates
+                str(panel_number),         # text to display
+                transform=ax.transAxes,    # use axis-relative coordinates
+                fontsize=18,
+                fontweight='bold',
+                va='top',                  # vertical alignment
+                ha='left',                  # horizontal alignment
+                color='black'
+            )
+
+            # Plot one ECDF per tested parameter value
+            for val in tested_param:
+                data_key = f"{output_name}_per_{param_name}"
+                if val not in grouped_data.get(data_key, {}):
+                    continue
+                raw = np.array(grouped_data[data_key][val]) * out_settings.get("scale", 1.0)
+                # Plot ECDf if output == df['H_kg_atm'] then plot only values > 1e10 AND psurf > 1 bar
+                if output_name.endswith('_kg_atm'):
+                    raw = np.clip(raw, 1e15, None)
+                elif output_name.endswith('P_surf'):
+                    raw = np.clip(raw, 1, None)
+                else:
+                    raw = raw
+
+                sns.ecdfplot(
+                    data=raw,
+                    log_scale=out_settings.get("log_scale", False),
+                    color=color_func(val),
+                    linewidth=4,
+                    linestyle='-',
+                    ax=ax
+                )
+
+            # Configure x-axis labels, ticks, grids
+            if i == n_rows - 1:
+                ax.set_xlabel(out_settings["label"], fontsize=22)
+                ax.xaxis.set_label_coords(0.5, -0.3)
+                ax.tick_params(axis='x', labelsize=22)
+            else:
+                ax.tick_params(axis='x', labelbottom=False)
+
+            # Configure y-axis (shared label added later)
+            if j == 0:
+                ax.set_ylabel("")
+                ticks = [0.0, 0.5, 1.0]
+                ax.set_yticks(ticks)
+                ax.tick_params(axis='y', labelsize=22)
+            else:
+                ax.set_ylabel("")
+                ax.set_yticks(ticks)
+                ax.tick_params(axis='y', labelleft=False)
+
+            ax.grid(alpha=0.4)
+
+        # After plotting all outputs for this parameter (row), add colorbar or legend
+        if colorbar_needed:
+            sm = mpl.cm.ScalarMappable(cmap=settings["colormap"], norm=norm)
+            # attach the colorbar to the right‐most subplot in row i:
+            rightmost_ax = axes[i, -1]
+            cbar = fig.colorbar(sm,ax=rightmost_ax,pad=0.03,aspect=10)
+            cbar.set_label(settings["label"], fontsize=24)
+            # This is for plot 0.194Msun
+            # if param_name == "orbit.semimajoraxis":
+            #     cbar.ax.yaxis.set_label_coords(9.5, 0.5)
+            # else:
+            #     cbar.ax.yaxis.set_label_coords(6, 0.5)
+            # This is for 1Msun
+            cbar.ax.yaxis.set_label_coords(6, 0.5)
+            ticks = sorted(set(tested_param))
+            cbar.set_ticks(ticks)
+            cbar.ax.tick_params(labelsize=22)
+        else:
+            handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=4, label=str(val)) for val in unique_vals]
+            ax.legend(handles=handles, fontsize=24,bbox_to_anchor=(1.01, 1), loc='upper left')
+
+    # Add a single, shared y-axis label
+    fig.text(0.04, 0.5, 'Normalized cumulative fraction of simulations', va='center', rotation='vertical', fontsize=40)
+
+    # Tweak layout and save
+    plt.tight_layout(rect=[0.08, 0.02, 1, 0.97])
+    output_dir = grid_dir / "post_processing" / "grid_plots"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"ecdf_grid_plot_{grid_name}.png"
+    fig.savefig(output_file, dpi=300)
+    plt.close(fig)
