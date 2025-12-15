@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import ast
-import os
-import re
 from pathlib import Path
 
 import numpy as np
@@ -95,101 +92,66 @@ def load_grid_cases(grid_dir: Path):
 
     return combined_data
 
-def get_grid_parameters_from_toml(grid_dir: str):
+def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     """
-    Extract grid parameter names and values from a PROTEUS ensemble TOML file.
+    Extract tested grid parameters per case using:
+      - copy.grid.toml to determine which parameters were varied
+      - init_parameters already loaded by load_grid_cases
 
     Parameters
     ----------
-    toml_path : str
-        Path to the ensemble TOML file (e.g. input/ensembles/blabla.toml)
+    cases_data : list
+        Output of load_grid_cases.
+    grid_dir : str or Path
+        Path to the grid directory containing copy.grid.toml.
 
     Returns
     -------
-    param_grid : dict
-        Dictionary where each key is a parameter name and the value is a list
-        of all grid values for that parameter.
+    case_params : dict
+        Dictionary mapping case index -> {parameter_name: value}
+    tested_params : dict
+        Dictionary of tested grid parameters and their grid values
+        (directly from copy.grid.toml)
     """
 
     grid_dir = Path(grid_dir)
-    toml_path = grid_dir / "copy.grid.toml"
 
-    if not os.path.exists(toml_path):
-        print(f"Error: TOML file not found at {toml_path}")
-        return {}
+    # ---------------------------------------------------------
+    # 1) Load tested grid parameter definitions
+    # ---------------------------------------------------------
+    tested_params = toml.load(grid_dir / "copy.grid.toml")
 
-    with open(toml_path, "r") as f:
-        lines = f.readlines()
+    # Keep only actual grid parameters (ignore control keys)
+    tested_params = {
+        k: v for k, v in tested_params.items()
+        if "." in k
+    }
 
-    param_grid = {}
+    grid_param_paths = list(tested_params.keys())
 
-    # Regex patterns
-    section_pattern = re.compile(r'^\s*\["(.+?)"\]\s*$')
-    method_pattern = re.compile(r'^\s*method\s*=\s*"(.+?)"\s*$')
-    values_pattern = re.compile(r'^\s*values\s*=\s*(\[.*\])\s*$')
-    start_pattern  = re.compile(r'^\s*start\s*=\s*([0-9.eE+-]+)\s*$')
-    stop_pattern   = re.compile(r'^\s*stop\s*=\s*([0-9.eE+-]+)\s*$')
-    count_pattern  = re.compile(r'^\s*count\s*=\s*(\d+)\s*$')
+    # ---------------------------------------------------------
+    # 2) Extract those parameters from loaded cases
+    # ---------------------------------------------------------
+    case_params = {}
 
-    current_param = None
-    current_method = None
-    start = stop = count = None
+    for idx, case in enumerate(cases_data):
+        params_for_case = {}
+        init_params = case["init_parameters"]
 
-    for line in lines:
-        line = line.strip()
+        for path in grid_param_paths:
+            keys = path.split(".")
+            val = init_params
 
-        # Skip empty lines and comments
-        if not line or line.startswith("#"):
-            continue
-
-        # Detect new parameter block
-        section_match = section_pattern.match(line)
-        if section_match:
-            current_param = section_match.group(1)
-            current_method = None
-            start = stop = count = None
-            continue
-
-        if current_param is None:
-            continue
-
-        # Detect method
-        method_match = method_pattern.match(line)
-        if method_match:
-            current_method = method_match.group(1)
-            continue
-
-        # Direct method values
-        values_match = values_pattern.match(line)
-        if values_match and current_method == "direct":
             try:
-                values = ast.literal_eval(values_match.group(1))
-                param_grid[current_param] = values
-            except Exception as e:
-                print(f"Error parsing values for {current_param}: {e}")
-            continue
+                for k in keys:
+                    val = val[k]
+                params_for_case[path] = val
+            except (KeyError, TypeError):
+                params_for_case[path] = None
 
-        # Logspace parameters
-        start_match = start_pattern.match(line)
-        if start_match:
-            start = float(start_match.group(1))
-            continue
+        case_params[idx] = params_for_case
 
-        stop_match = stop_pattern.match(line)
-        if stop_match:
-            stop = float(stop_match.group(1))
-            continue
-
-        count_match = count_pattern.match(line)
-        if count_match:
-            count = int(count_match.group(1))
-
-            # Once all three exist, generate logspace
-            if current_method == "logspace" and start is not None and stop is not None:
-                values = np.logspace(np.log10(start), np.log10(stop), count).tolist()
-                param_grid[current_param] = values
-
-    return param_grid
+    return case_params
 
 def extract_grid_output(cases_data: list, parameter_name: str):
     """
@@ -281,59 +243,203 @@ def extract_solidification_time(cases_data: list, grid_dir: str | Path):
 
     return solidification_times
 
-
-def export_simulation_summary(cases_data: list, grid_dir: str | Path, param_grid: dict, output_file: str | Path):
+def generate_summary_csv(
+    cases_data: list,
+    case_params: dict,
+    grid_dir: str | Path,
+    grid_name: str
+):
     """
-    Export a summary of simulation cases to a CSV file with tested grid parameters only.
+    Export a summary of simulation cases to a TSV file using
+    already-loaded data only.
 
-    Parameters
-    ----------
-    cases_data : list
-        List of dictionaries containing simulation data.
-    grid_dir : str or Path
-        Path to the grid folder containing `cfgs/case_XXXXXX.toml` files.
-    param_grid : dict
-        Dictionary of tested grid parameters (from get_grid_parameters_from_toml).
-        Only these parameters will be included from each case.
-    output_file : str or Path
-        Path to the output CSV file.
+    Column order:
+      - case metadata
+      - tested grid parameters
+      - runtime_helpfile.csv (last timestep)
+      - solidification_time
     """
-    grid_dir = Path(grid_dir)
-    output_file = Path(output_file)
+    # ---------------------------------------------------------
+    # Compute solidification times ONCE
+    # ---------------------------------------------------------
+    solidification_times = extract_solidification_time(cases_data, grid_dir)
 
     summary_rows = []
-    tested_param_names = list(param_grid.keys())
 
     for case_index, case in enumerate(cases_data):
         row = {}
 
-        # Case number and status
-        row['case_number'] = case_index
-        row['status'] = case['status']
+        # -----------------------------------------------------
+        # Case metadata
+        # -----------------------------------------------------
+        row["case_number"] = case_index
+        row["status"] = case["status"]
 
-        # Load tested parameters from the case TOML
-        case_toml = grid_dir / f"cfgs/case_{case_index:06d}.toml"
-        if case_toml.exists():
-            try:
-                case_params = toml.load(open(case_toml))
-                for param in tested_param_names:
-                    row[param] = case_params.get(param, None)
-            except Exception as e:
-                print(f"Warning: Could not read {case_toml}: {e}")
-        else:
-            print(f"Warning: TOML file not found for case {case_index}: {case_toml}")
+        # -----------------------------------------------------
+        # Tested grid parameters
+        # -----------------------------------------------------
+        params = case_params.get(case_index, {})
+        for k, v in params.items():
+            row[k] = v
 
-        # Output values (last time step)
-        df = case['output_values']
+        # -----------------------------------------------------
+        # Output values (last timestep)
+        # -----------------------------------------------------
+        df = case["output_values"]
         if df is not None:
             for col in df.columns:
                 row[col] = df[col].iloc[-1]
 
+        # -----------------------------------------------------
+        # Solidification time (LAST column)
+        # -----------------------------------------------------
+        row["solidification_time"] = solidification_times[case_index]
+
         summary_rows.append(row)
 
-    # Create DataFrame
+    # ---------------------------------------------------------
+    # Create DataFrame and save
+    # ---------------------------------------------------------
     summary_df = pd.DataFrame(summary_rows)
+    output_dir = grid_dir / "post_processing" / "extracted_data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"{grid_name}_final_extracted_data_all.csv"
+    summary_df.to_csv(output_file, sep="\t", index=False)
 
-    # Save as tab-separated CSV
-    summary_df.to_csv(output_file, sep='\t', index=False)
-    print(f"Simulation summary exported to {output_file}")
+def generate_completed_summary_csv(
+    cases_data: list,
+    case_params: dict,
+    grid_dir: str | Path,
+    grid_name: str
+):
+    """
+    Export a summary of simulation cases to a TSV file, but only
+    include cases whose status starts with 'completed'.
+
+    Column order:
+      - case metadata
+      - tested grid parameters
+      - runtime_helpfile.csv (last timestep)
+      - solidification_time
+    """
+    # ---------------------------------------------------------
+    # Compute solidification times ONCE
+    # ---------------------------------------------------------
+    solidification_times = extract_solidification_time(cases_data, grid_dir)
+
+    summary_rows = []
+
+    for case_index, case in enumerate(cases_data):
+        status = case.get("status", "").lower()
+        if not status.startswith("completed"):
+            continue  # skip non-completed cases
+
+        row = {}
+
+        # -----------------------------------------------------
+        # Case metadata
+        # -----------------------------------------------------
+        row["case_number"] = case_index
+        row["status"] = case["status"]
+
+        # -----------------------------------------------------
+        # Tested grid parameters
+        # -----------------------------------------------------
+        params = case_params.get(case_index, {})
+        for k, v in params.items():
+            row[k] = v
+
+        # -----------------------------------------------------
+        # Output values (last timestep)
+        # -----------------------------------------------------
+        df = case["output_values"]
+        if df is not None:
+            for col in df.columns:
+                row[col] = df[col].iloc[-1]
+
+        # -----------------------------------------------------
+        # Solidification time (LAST column)
+        # -----------------------------------------------------
+        row["solidification_time"] = solidification_times[case_index]
+
+        summary_rows.append(row)
+
+    # ---------------------------------------------------------
+    # Create DataFrame and save
+    # ---------------------------------------------------------
+    summary_df = pd.DataFrame(summary_rows)
+    output_dir = grid_dir / "post_processing" / "extracted_data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Updated CSV name to indicate filtered results
+    output_file = output_dir / f"{grid_name}_final_extracted_data_completed.csv"
+    summary_df.to_csv(output_file, sep="\t", index=False)
+
+def generate_running_error_summary_csv(
+    cases_data: list,
+    case_params: dict,
+    grid_dir: str | Path,
+    grid_name: str
+):
+    """
+    Export a summary of simulation cases to a TSV file, but only
+    include cases whose status starts with 'Running' or 'Error'.
+
+    Column order:
+      - case metadata
+      - tested grid parameters
+      - runtime_helpfile.csv (last timestep)
+      - solidification_time
+    """
+    # ---------------------------------------------------------
+    # Compute solidification times ONCE
+    # ---------------------------------------------------------
+    solidification_times = extract_solidification_time(cases_data, grid_dir)
+
+    summary_rows = []
+
+    for case_index, case in enumerate(cases_data):
+        status = case.get("status", "").lower()
+        if not (status.startswith("running") or status.startswith("error")):
+            continue  # skip cases that are neither running nor error
+
+        row = {}
+
+        # -----------------------------------------------------
+        # Case metadata
+        # -----------------------------------------------------
+        row["case_number"] = case_index
+        row["status"] = case["status"]
+
+        # -----------------------------------------------------
+        # Tested grid parameters
+        # -----------------------------------------------------
+        params = case_params.get(case_index, {})
+        for k, v in params.items():
+            row[k] = v
+
+        # -----------------------------------------------------
+        # Output values (last timestep)
+        # -----------------------------------------------------
+        df = case["output_values"]
+        if df is not None:
+            for col in df.columns:
+                row[col] = df[col].iloc[-1]
+
+        # -----------------------------------------------------
+        # Solidification time (LAST column)
+        # -----------------------------------------------------
+        row["solidification_time"] = solidification_times[case_index]
+
+        summary_rows.append(row)
+
+    # ---------------------------------------------------------
+    # Create DataFrame and save
+    # ---------------------------------------------------------
+    summary_df = pd.DataFrame(summary_rows)
+    output_dir = grid_dir / "post_processing" / "extracted_data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Updated CSV name to indicate filtered results
+    output_file = output_dir / f"{grid_name}_final_extracted_data_running_error.csv"
+    summary_df.to_csv(output_file, sep="\t", index=False)
