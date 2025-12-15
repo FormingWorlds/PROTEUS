@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import toml
 
+# ---------------------------------------------------------
+# Data loading and processing functions
+# ---------------------------------------------------------
 
 def load_grid_cases(grid_dir: Path):
     """
@@ -151,7 +156,7 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
 
         case_params[idx] = params_for_case
 
-    return case_params
+    return case_params, tested_params
 
 def extract_grid_output(cases_data: list, parameter_name: str):
     """
@@ -443,3 +448,91 @@ def generate_running_error_summary_csv(
     # Updated CSV name to indicate filtered results
     output_file = output_dir / f"{grid_name}_final_extracted_data_running_error.csv"
     summary_df.to_csv(output_file, sep="\t", index=False)
+
+# ---------------------------------------------------------
+# Plotting functions
+# ---------------------------------------------------------
+
+def plot_grid_status(cases_data: list, grid_dir: str | Path, grid_name: str):
+    """
+    Plot the status of simulations from the PROTEUS grid with improved x-axis readability.
+
+    Parameters
+    ----------
+    cases_data : list
+        List of dictionaries returned by `load_grid_cases`.
+
+    plot_dir : Path
+        Path to the plots directory.
+
+    grid_name : str
+        Name of the grid, used for the plot title.
+
+    status_colors : dict, optional
+        A dictionary mapping statuses to specific colors. If None, a default palette is used.
+    """
+
+    # Extract and clean statuses
+    statuses = [case.get('status', 'Unknown') for case in cases_data]
+    statuses = pd.Series(statuses, name='Status')
+    status_counts = statuses.value_counts().sort_values(ascending=False)
+
+    # Set colors for the bars
+    palette = sns.color_palette("Accent", len(status_counts))
+    formatted_status_keys = [s.replace(" (", " \n (") for s in status_counts.index]
+    palette = dict(zip(formatted_status_keys, palette))
+
+    # Prepare dataframe for plotting
+    plot_df = pd.DataFrame({
+        'Status': formatted_status_keys,
+        'Count': status_counts.values
+    })
+
+    plt.figure(figsize=(11, 7))
+    ax = sns.barplot(
+        data=plot_df,
+        x='Status',
+        y='Count',
+        hue='Status',
+        palette=palette,
+        dodge=False,
+        edgecolor='black'
+    )
+
+    # Remove legend if it was created
+    if ax.legend_:
+        ax.legend_.remove()
+
+    # Add value labels above bars
+    total_simulations = len(cases_data)
+    for i, count in enumerate(status_counts.values):
+        percentage = (count / total_simulations) * 100
+        ax.text(
+            i, count + 1,
+            f"{count} ({percentage:.1f}%)",
+            ha='center', va='bottom', fontsize=14
+        )
+
+    # Boxed total in upper right
+    plt.gca().text(
+        0.97, 0.94,
+        f"Total number of simulations : {total_simulations}",
+        transform=plt.gca().transAxes,
+        ha='right', va='top',
+        fontsize=16,
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1)
+    )
+
+    plt.grid(alpha=0.2, axis='y')
+    plt.title(f"Simulation status summary for grid {grid_name}", fontsize=16)
+    plt.xlabel("Simulation status", fontsize=16)
+    plt.ylabel("Number of simulations", fontsize=16)
+    plt.yticks(fontsize=14)
+    plt.xticks(fontsize=14)
+    plt.tight_layout()
+
+    output_dir = grid_dir / "post_processing" / "grid_plots"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / f"{grid_name}_summary_grid_statuses.png"
+    plt.savefig(output_file, dpi=300)
+    plt.close()
