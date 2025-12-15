@@ -95,7 +95,7 @@ def load_grid_cases(grid_dir: Path):
 
     return combined_data
 
-def get_grid_parameters_from_toml(toml_path: str):
+def get_grid_parameters_from_toml(grid_dir: str):
     """
     Extract grid parameter names and values from a PROTEUS ensemble TOML file.
 
@@ -110,6 +110,9 @@ def get_grid_parameters_from_toml(toml_path: str):
         Dictionary where each key is a parameter name and the value is a list
         of all grid values for that parameter.
     """
+
+    grid_dir = Path(grid_dir)
+    toml_path = grid_dir / "copy.grid.toml"
 
     if not os.path.exists(toml_path):
         print(f"Error: TOML file not found at {toml_path}")
@@ -229,73 +232,108 @@ def extract_grid_output(cases_data: list, parameter_name: str):
 
     return parameter_values
 
-def extract_solidification_time(cases_data: list):
-    """
-    Extract the solidification time at the time step where the condition
-    'Phi_global' < phi_crit is first satisfied for each planet.
+def load_phi_crit(grid_dir: str | Path):
+    grid_dir = Path(grid_dir)
+    ref_file = grid_dir / "ref_config.toml"
 
-    Parameters
-    ----------
-    cases_data : list
-        List of dictionaries containing simulation data.
+    if not ref_file.exists():
+        raise FileNotFoundError(f"ref_config.toml not found in {grid_dir}")
 
-    phi_crit : float
-        The critical melt fraction value below which a planet is considered solidified.
-        A typical value is 0.005.
+    ref = toml.load(open(ref_file))
 
-    Returns
-    -------
-    solidification_times : list
-        A list containing the solidification times for all solidified planets of the grid.
-        If a planet never solidifies, it will have a NaN in the list.
-    """
+    # Navigate structure safely
+    try:
+        phi_crit = ref["params"]["stop"]["solid"]["phi_crit"]
+    except KeyError:
+        raise KeyError("phi_crit not found in ref_config.toml")
+
+    return phi_crit
+
+def extract_solidification_time(cases_data: list, grid_dir: str | Path):
+    # Load phi_crit once
+    phi_crit = load_phi_crit(grid_dir)
 
     solidification_times = []
     columns_printed = False
 
     for i, case in enumerate(cases_data):
         df = case['output_values']
-        # Check if the required columns exist in the dataframe
+
         if df is None:
-            solidification_times.append(np.nan)  # Append NaN if no output values
+            solidification_times.append(np.nan)
             continue
 
         if 'Phi_global' in df.columns and 'Time' in df.columns:
-            solidification_params = case['init_parameters'].get('params.stop.solid.phi_crit')
-            if solidification_params is None or 'phi_crit' not in solidification_params:
-                raise ValueError(f"Error: 'phi_crit' not found in init_parameters of case {i}. ")
-            phi_crit = solidification_params['phi_crit']
-
             condition = df['Phi_global'] < phi_crit
+
             if condition.any():
-                first_index = condition.idxmax()
-                solid_time = df.loc[first_index, 'Time'] # Get the index of the time at which the condition is first satisfied
-                solidification_times.append(solid_time)
+                idx = condition.idxmax()
+                solidification_times.append(df.loc[idx, 'Time'])
             else:
-                solidification_times.append(np.nan)  # Append NaN if condition is not satisfied
+                solidification_times.append(np.nan)
+
         else:
             if not columns_printed:
-                print("Warning: 'Phi_global' and/or 'Time' columns not found in some cases.")
-                print(f"Available columns: {', '.join(df.columns)}")
+                print("Warning: Missing Phi_global or Time column.")
+                print("Columns available:", df.columns.tolist())
                 columns_printed = True
-            solidification_times.append(np.nan)  # Append NaN if columns are missing
-
-    # Count the number of cases with a status = '10 Completed (solidified)'
-    status_10_cases = [case for case in cases_data if (case.get('status') or '').strip() == 'Completed (solidified)']
-    completed_count = len(status_10_cases)
-    # Count only valid solidification times (non-NaN)
-    valid_solidification_times = [time for time in solidification_times if not np.isnan(time) and time > 0.0]
-    valid_solidified_count = len(valid_solidification_times)
-
-    print('-----------------------------------------------------------')
-    print(f"Extracted solidification times (Phi_global < {phi_crit})")
-    print(f"→ Found {valid_solidified_count} valid solidified cases based on Phi_global")
-    print(f"→ Found {completed_count} cases with status 'Completed (solidified)' ")
-    # Check if the number of valid solidified cases matches the number of cases with status '10 Completed (solidified)' in the grid, to be sure the extraction is correct
-    if valid_solidified_count != completed_count:
-        print("WARNING: The number of valid solidified planets does not match the number of planets with status: 'Completed (solidified)'")
-    else:
-        print("Solidified planets count matches the number of planets with status: 'Completed (solidified)'.")
-    print('-----------------------------------------------------------')
+            solidification_times.append(np.nan)
 
     return solidification_times
+
+
+def export_simulation_summary(cases_data: list, grid_dir: str | Path, param_grid: dict, output_file: str | Path):
+    """
+    Export a summary of simulation cases to a CSV file with tested grid parameters only.
+
+    Parameters
+    ----------
+    cases_data : list
+        List of dictionaries containing simulation data.
+    grid_dir : str or Path
+        Path to the grid folder containing `cfgs/case_XXXXXX.toml` files.
+    param_grid : dict
+        Dictionary of tested grid parameters (from get_grid_parameters_from_toml).
+        Only these parameters will be included from each case.
+    output_file : str or Path
+        Path to the output CSV file.
+    """
+    grid_dir = Path(grid_dir)
+    output_file = Path(output_file)
+
+    summary_rows = []
+    tested_param_names = list(param_grid.keys())
+
+    for case_index, case in enumerate(cases_data):
+        row = {}
+
+        # Case number and status
+        row['case_number'] = case_index
+        row['status'] = case['status']
+
+        # Load tested parameters from the case TOML
+        case_toml = grid_dir / f"cfgs/case_{case_index:06d}.toml"
+        if case_toml.exists():
+            try:
+                case_params = toml.load(open(case_toml))
+                for param in tested_param_names:
+                    row[param] = case_params.get(param, None)
+            except Exception as e:
+                print(f"Warning: Could not read {case_toml}: {e}")
+        else:
+            print(f"Warning: TOML file not found for case {case_index}: {case_toml}")
+
+        # Output values (last time step)
+        df = case['output_values']
+        if df is not None:
+            for col in df.columns:
+                row[col] = df[col].iloc[-1]
+
+        summary_rows.append(row)
+
+    # Create DataFrame
+    summary_df = pd.DataFrame(summary_rows)
+
+    # Save as tab-separated CSV
+    summary_df.to_csv(output_file, sep='\t', index=False)
+    print(f"Simulation summary exported to {output_file}")

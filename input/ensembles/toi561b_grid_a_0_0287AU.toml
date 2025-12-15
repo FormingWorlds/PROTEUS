@@ -1,7 +1,7 @@
 # Config file for running a grid of forward models
 
 # Path to output folder where grid will be saved (relative to PROTEUS output folder)
-output = "scratch/grid_toi561b"
+output = "scratch/toi561b_grid_a_0_0287AU"
 
 # Make `output` a symbolic link to this absolute location. To disable: set to empty string.
 symlink = ""
@@ -23,10 +23,38 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 #    Each table name must be written in double quotes.
 #    See examples below
 
+# Semi-major axis set directly
+# We investigate 2 scenarios: period = 0.44 days (a=0.0106 AU, correct one) and test at 2 days (a=0.0287 AU) to reduce escape ?
+["orbit.semimajoraxis"]
+    method = "direct"
+    values = [0.0287]
+
+# Core-Radius Fraction (CRF) set directly
+["struct.corefrac"]
+    method = "direct"
+    values = [0.40, 0.55]
+
+# Bond albedo set directly
+["atmos_clim.albedo_pl"]
+    method = "direct"
+    values = [0.0, 0.6]
+
 # Escape efficiency factor set directly
 ["escape.zephyrus.efficiency"]
     method = "direct"
-    values = [0.1, 0.3]
+    values = [0.01, 0.1]
+
+# Oxygen fugacity set directly
+["outgas.fO2_shift_IW"]
+    method = "direct"
+    values = [0, 4]
+
+# Hydrogen inventory set by arange
+["delivery.elements.H_oceans"]
+    method = "logspace"
+    start    = 1.0
+    stop     = 1000.0
+    count     = 4
 
 # Planet bulk C/H ratio set directly
 ["delivery.elements.CH_ratio"]
@@ -38,24 +66,4 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     method = "direct"
     values = [0.216, 2.16, 21.6]
 
-# Hydrogen inventory set by arange
-["delivery.elements.H_oceans"]
-    method = "logspace"
-    start    = 1.0
-    stop     = 1000.0
-    count     = 4
-
-# Core-Mass Fraction (CMF) set directly
-["struct.corefrac"]
-    method = "direct"
-    values = [0.25, 0.40, 0.55]
-
-# Bond albedo set directly
-["atmos_clim.albedo_pl"]
-    method = "direct"
-    values = [0.0, 0.2, 0.4, 0.6]
-
-# # Semi-major axis set directly to have period = 0.44 days (correct) and test at 2 days
-# ["orbit.semimajoraxis"]
-#     method = "direct"
-#     values = [0.0106, 0.0287]
+# Stellar rotation period to test ?

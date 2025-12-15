@@ -5,38 +5,32 @@ from pathlib import Path
 import post_processing_updated as pp
 
 # Point this to your actual grid folder
-grid_path = Path("//projects/p315557/Paper_1/DATA/Grids/escape_grid_1Msun")
+grid_name = "escape_grid_1Msun"
+grid_path = Path(f"/projects/p315557/Paper_1/DATA/Grids/{grid_name}")
 
 # Test function load_grid_cases
 data = pp.load_grid_cases(grid_path)
-print("\nFirst case keys:")
-print(data[0].keys())
-print("\nFirst case status:")
-print(data[0]["status"])
-print("\nFirst case init parameters (top level keys):")
-print(data[0]["init_parameters"].keys())
-print("\nFirst case output dataframe head:")
-print(data[0]["output_values"].head())
 
 # Test function get_grid_parameters_from_toml
-param_grid = pp.get_grid_parameters_from_toml('/home2/p315557/PROTEUS/input/ensembles/escape_grid_1Msun.toml')
-print("\nExtracted grid parameters:\n")
-for k, v in param_grid.items():
-    print(f"{k} -> {v}")
-print("\nTotal parameters found:", len(param_grid))
+param_grid = pp.get_grid_parameters_from_toml(grid_path)
+print("\nExtracted grid parameters:", param_grid)
 
 # Test function extract_grid_output
-test_parameter = "P_surf"   # <-- change this to a real column
-values = pp.extract_grid_output(data, test_parameter)
-print("\nExtracted Values:")
-print(values)
-print("\nTotal extracted values:", len(values))
+output_get = "P_surf", "T_surf"
+for output in output_get:
+    values = pp.extract_grid_output(data, output)
+    #print("\nExtracted output values for parameter", output)
+    #print(values)
+
+# Test function to extract Phi_crit
+phi_crit_values = pp.load_phi_crit(grid_path)
+#print("\nExtracted Phi_crit Values:")
+#print(phi_crit_values)
 
 # Test function extract_solidification_time
+solid_times = pp.extract_solidification_time(data, grid_path)
+#print("\nExtracted Solidification Times:")
+#print(solid_times)
 
-try:
-    solid_times = pp.extract_solidification_time(data)
-    print("\nExtracted Solidification Times:")
-    print(solid_times)
-except ValueError as e:
-    print(f"\nError caught: {e}")
+# Test function extract_grid_output_at_solidificationcreate csv
+pp.export_simulation_summary(data, grid_path, param_grid, "nogit_csv_output/simulation_summary.csv")
