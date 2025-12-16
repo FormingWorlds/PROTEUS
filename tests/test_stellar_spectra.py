@@ -182,7 +182,7 @@ def test_phoenix_to_grid_disallows_alpha_when_feh_positive(caplog):
 
     assert grid["FeH"] == 0.5
     assert grid["alpha"] == 0.0
-    assert any("using [alpha/Fe]=0.0" in rec.message for rec in caplog.records)
+    assert any("using [alpha/M]=0.0" in rec.message for rec in caplog.records)
 
 
 def test_phoenix_filename_format():
