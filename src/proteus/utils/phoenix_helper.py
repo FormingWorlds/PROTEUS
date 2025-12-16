@@ -96,10 +96,10 @@ def phoenix_to_grid(*, FeH, alpha, Teff=None, logg=None):
 
     # Decide whether alpha is allowed to be non-zero
     if Teff_g is not None:
-        alpha_allowed = (FeH_g <= 0.0) and (3500. <= Teff_g <= 8000.)
+        alpha_allowed = (FeH_g <= 0.0) and (FeH_g > -4.0) and (3500. <= Teff_g <= 8000.)
     else:
-        # No Teff info -> only enforce FeH <= 0
-        alpha_allowed = (FeH_g <= 0.0)
+        # No Teff info -> only enforce FeH <= 0 and > -4.0
+        alpha_allowed = (FeH_g <= 0.0) and (FeH_g > -4.0)
 
     if alpha_allowed:
         alpha_g = float(alpha_grid[np.abs(alpha_grid - alpha).argmin()])
@@ -108,9 +108,9 @@ def phoenix_to_grid(*, FeH, alpha, Teff=None, logg=None):
 
         # warn user about alpha override
         if abs(alpha) > 1e-6 and Teff_g is not None:
-            log.warning("Requested [alpha/M]=%+.1f is not available for [Fe/H]=%+.1f, Teff=%.0f; using [alpha/Fe]=0.0 instead.", alpha, FeH_g, Teff_g)
+            log.warning("Requested [alpha/M]=%+.1f is not available for [Fe/H]=%+.1f, Teff=%.0f; using [alpha/M]=0.0 instead.", alpha, FeH_g, Teff_g)
         elif abs(alpha) > 1e-6:
-            log.warning("Requested [alpha/M]=%+.1f is not available for [Fe/H]=%+.1f; using [alpha/Fe]=0.0 instead.", alpha, FeH_g)
+            log.warning("Requested [alpha/M]=%+.1f is not available for [Fe/H]=%+.1f; using [alpha/M]=0.0 instead.", alpha, FeH_g)
 
     return {
         "Teff":  Teff_g,
