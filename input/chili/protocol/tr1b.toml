@@ -72,8 +72,8 @@ age_now = 7.6
 rot_pcntle = 50.0
 rot_period = "none"
 tracks = "spada"
-star_name = "sun"
-spectrum_source = "solar"
+star_name = "trappist-1"
+spectrum_source = "muscles"
 
 [star.dummy]
 Teff = 5772.0
