@@ -166,6 +166,97 @@ def stellar():
         download_stellar_tracks(track)
     download_stellar_spectra()
 
+# muscles and solar star names available online (on zenodo)
+STARS_ONLINE = {
+    "muscles": [ "gj1132", "gj1214", "gj15a", "gj163", "gj176", "gj436", "gj551", "gj581",
+        "gj649", "gj667c", "gj674", "gj676a", "gj699", "gj729", "gj832",
+        "gj832_synth", "gj849", "gj876", "hd40307", "hd85512", "hd97658",
+        "l-980-5", "lhs-2686", "trappist-1", "v-eps-eri", "l-98-59", "hat-p-12",
+        "hat-p-26", "hd-149026", "l-678-39", "lp-791-18", "toi-193", "wasp-127",
+        "wasp-17", "wasp-43", "wasp-77a",],
+    "nrel": ["sun"],}
+
+@click.command()
+@click.option(
+    "--star",
+    "star_name",
+    required=False,
+    type=str,
+    default=None,
+    help="Star name for MUSCLES spectrum (e.g. 'trappist-1', 'gj876').",
+)
+@click.option(
+    "--all",
+    "download_all",
+    is_flag=True,
+    default=False,
+    help="Download all available MUSCLES spectra.",
+)
+def muscles(star_name: str | None, download_all: bool):
+    """Download MUSCLES stellar spectrum(s)."""
+    from .utils.data import download_muscles
+
+    if download_all:
+        targets = STARS_ONLINE["muscles"]
+    else:
+        if not star_name:
+            raise click.ClickException("Provide --star NAME or use --all.")
+        targets = [star_name]
+
+    ok, failed = 0, []
+
+    for s in targets:
+        click.echo(f"Downloading MUSCLES: {s} ...")
+        if download_muscles(s):
+            ok += 1
+        else:
+            failed.append(s)
+
+    click.secho(f"Done. OK: {ok}/{len(targets)}", fg="green" if ok else "red")
+
+    if failed:
+        # Don’t hard-fail if some succeeded
+        click.secho(f"Failed ({len(failed)}): {', '.join(failed)}", fg="yellow")
+        if ok == 0:
+            raise click.ClickException("All MUSCLES downloads failed.")
+
+@click.command()
+@click.option("--feh", "FeH", required=True, type=float, help="Metallicity [Fe/H].")
+@click.option("--alpha", required=True, type=float, help="Alpha enhancement [alpha/M].")
+@click.option(
+    "--teff",
+    required=False,
+    type=float,
+    default=None,
+    help="Optional Teff [K] to choose the correct PHOENIX alpha availability.",
+)
+def phoenix(FeH: float, alpha: float, teff: float | None):
+    """Download PHOENIX grid ZIP for the nearest allowed (FeH, alpha) point."""
+    from .utils.data import download_phoenix
+    from .utils.phoenix_helper import phoenix_to_grid
+
+    grid = phoenix_to_grid(FeH=FeH, alpha=alpha, Teff=teff)
+    ok = download_phoenix(alpha=grid["alpha"], FeH=grid["FeH"])
+    if not ok:
+        raise click.ClickException(
+            f"Failed to download PHOENIX grid for [Fe/H]={grid['FeH']:+.1f}, "
+            f"[alpha/M]={grid['alpha']:+.1f}."
+        )
+    else:
+        click.secho(
+            f"Downloaded PHOENIX grid for [Fe/H]={grid['FeH']:+.1f}, "
+            f"[alpha/M]={grid['alpha']:+.1f}.",
+            fg="green",
+        )
+
+@click.command()
+def solar():
+    """Download the NREL modern solar spectrum."""
+    from .utils.data import download_solar_spectrum
+
+    ok = download_solar_spectrum()
+    if not ok:
+        raise click.ClickException("Failed to download solar spectrum.")
 
 @click.command()
 def surfaces():
@@ -226,6 +317,9 @@ def spider():
 cli.add_command(get)
 get.add_command(spectral)
 get.add_command(surfaces)
+get.add_command(muscles)
+get.add_command(phoenix)
+get.add_command(solar)
 get.add_command(reference)
 get.add_command(stellar)
 get.add_command(interiordata)

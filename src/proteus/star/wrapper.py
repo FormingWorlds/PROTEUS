@@ -101,10 +101,8 @@ def init_star(handler:Proteus):
                 else:
                     log.error(f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data.")
                     log.error("Check the available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html.")
-                    log.error(
-                        "If available, MUSCLES spectra can be downloaded via the command line: "
-                        f"python -c \"from proteus.utils.data import download_muscles; download_muscles('{mors_cfg.star_name}')\"."
-                    )
+                    log.error(f"If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {mors_cfg.star_name}")
+                    log.error("To download all MUSCLES spectra: proteus get muscles --all")
                     log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(f"No MUSCLES spectrum for '{mors_cfg.star_name}'.")
