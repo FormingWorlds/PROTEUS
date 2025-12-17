@@ -145,6 +145,23 @@ Use the CLI to package the results of a grid into a zip file; e.g. for sharing o
 ```console
 proteus grid-pack -o output/grid_demo/
 ```
+## Postprocessing of grid results
+
+Results from a PROTEUS grid can be post-processed using the `proteus grid-analyse` command. This generates ECDF plots that summarize the last time step of all simulation cases in the grid. (For more details on ECDF plots, see the [Seaborn `ecdfplot` documentation](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html).)
+
+Before running the command, update the `example.grid_analyse.toml` file to match your grid. Specify the input parameters used in your simulations and select the output variables you want to visualize. To post-process a grid and generate ECDF plots for further analysis, run the following command:
+
+```
+proteus grid-analyse input/ensembles/example.grid_analyse.toml
+```
+
+Executing the command creates a `post_processing` folder inside your grid directory containing all post-processing outputs:  
+
+- Extracted data: CSV files with simulation status, input parameters, and output values at the last time step are stored in:  
+  `post_processing/extracted_data/`  
+- Plots: Status summaries and ECDF grid plots are saved in:  
+  `post_processing/plots/`  
+
 
 ## Retrieval scheme (Bayesian optimisation)
 
@@ -181,39 +198,6 @@ proteus observe -c [cfgfile]
 ```
 
 PROTEUS will perform this step automatically if enabled in the configuration file.
-
-## Postprocessing of PROTEUS simulation grids
-
-Results from a PROTEUS grid can be post-processed using the `proteus grid-analyse` command.
-
-This will generate 3 CSV files, depending on simulations statuses, from the grid results and ECDF plots
-(see [seaborn.ecdfplot doc](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html)).
-Here is the structure of the generated `post_processing` folder inside the grid directory :
-
-```console
-your_grid_name/
- ├─case_00000                               <---- case of your grid (for the structure refer to the tree from the [## Output and results] section)
- ├─case_00001  
- ├─...  
- ├─cfgs                                           <---- folder with all the `input.toml` files for all cases
- ├─logs                                           <---- folder with all the `proteus_case_number.log` files for all cases
- ├─manager.log                                    <---- the log file of the grid
- ├─slurm_dispatch.sh                              <---- if use_slurm=True in `grid_proteus.py`, this is the slurm file to submit with `sbatch` command
- ├─post_processing                                <---- this folder contains all the output from this script
- │ └─extracted_data                               <---- folder with the generated CSV file
- │   └─your_grid_name_final_extracted_data.csv    <---- CSV file containing the tested input parameters and extracted output from the grid
- │ └─plots_grid                                   <---- folder with the generated plots
- │  ├─ecdf_grid_plot_your_grid_name.png           <---- Grid plot to visualize all tested input parameters vs extracted outputs using ECDF distribution
- │  └─summary_grid_statuses_your_grid_name.png    <---- Summary plot of statuses for all cases of the grid
- │     └─...
-```
- To post-processed the grid and generate ECDF plots for further analysis, use the proteus command line interface:
-
-```console
-proteus grid-analyse /path/to/example.grid_analyse.toml
-```
-
-`/path/to/example.grid_analyse.toml` is the  path to the toml file containing grid analysis configuration.
 
 ## Postprocessing of results with AGNI for multiprofile analysis
 
