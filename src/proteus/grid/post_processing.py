@@ -738,14 +738,6 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
                     continue
                 raw = np.array(grouped_data[data_key][val]) * out_settings.get("scale", 1.0)
 
-                # # Handle special cases for clipping
-                # if output_name.endswith('_kg_atm'):
-                #     raw = np.clip(raw, 1e15, None)
-                # elif output_name.endswith('P_surf'):
-                #     raw = np.clip(raw, 1, None)
-                # else:
-                #     raw = raw
-
                 # Plot ECDF
                 sns.ecdfplot(
                     data=raw,
@@ -881,4 +873,4 @@ def main(grid_analyse_toml_file: str | Path = None):
 
 
 if __name__ == "__main__":
-    main( "/home2/p315557/PROTEUS/input/ensembles/example.grid_analyse.toml")
+    main()
