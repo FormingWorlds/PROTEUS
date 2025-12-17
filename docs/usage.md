@@ -184,57 +184,36 @@ PROTEUS will perform this step automatically if enabled in the configuration fil
 
 ## Postprocessing of PROTEUS simulation grids
 
-Results from a PROTEUS grid can be post-processed using the `proteus grid-analyze` command.
+Results from a PROTEUS grid can be post-processed using the `proteus grid-analyse` command.
 
-This will generate a CSV file with extracted data (`your_grid_name_extracted_data.csv`) from the grid results and ECDF plots
+This will generate 3 CSV files, depending on simulations statuses, from the grid results and ECDF plots
 (see [seaborn.ecdfplot doc](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html)).
-Here is the structure of the generated `post_processing_grid` folder inside the grid directory :
+Here is the structure of the generated `post_processing` folder inside the grid directory :
 
 ```console
 your_grid_name/
  ├─case_00000                               <---- case of your grid (for the structure refer to the tree from the [## Output and results] section)
  ├─case_00001  
  ├─...  
- ├─cfgs                                     <---- folder with all the `input.toml` files for all cases
- ├─logs                                     <---- folder with all the `proteus_case_number.log` files for all cases
- ├─manager.log                              <---- the log file of the grid
- ├─slurm_dispatch.sh                        <---- if use_slurm=True in `grid_proteus.py`, this is the slurm file to submit with `sbatch` command
- ├─post_processing_grid                     <---- this folder contains all the output from this script
- │ └─extracted_data                         <---- folder with the generated CSV file
- │   └─your_grid_name_extracted_data.csv    <---- CSV file containing the tested input parameters and extracted output from the grid
- │ └─plots_grid                             <---- folder with the generated plots
- │  ├─ecdf_grid_plot.png                    <---- Grid plot to visualize all tested input parameters vs extracted outputs using ECDF distribution
- │  ├─grid_statuses_summary.png             <---- Summary plot of statuses for all cases of the grid
- │  └─single_plots_ecdf                     <---- folder with all the single ECDF plots corresponding to all the panels from the grid plot
- │     ├─ecdf_[extracted_output]_per_[input_param].png     <---- Single plot using ECDF distribution to visualize one tested input parameter vs one extracted output for all cases
+ ├─cfgs                                           <---- folder with all the `input.toml` files for all cases
+ ├─logs                                           <---- folder with all the `proteus_case_number.log` files for all cases
+ ├─manager.log                                    <---- the log file of the grid
+ ├─slurm_dispatch.sh                              <---- if use_slurm=True in `grid_proteus.py`, this is the slurm file to submit with `sbatch` command
+ ├─post_processing                                <---- this folder contains all the output from this script
+ │ └─extracted_data                               <---- folder with the generated CSV file
+ │   └─your_grid_name_final_extracted_data.csv    <---- CSV file containing the tested input parameters and extracted output from the grid
+ │ └─plots_grid                                   <---- folder with the generated plots
+ │  ├─ecdf_grid_plot_your_grid_name.png           <---- Grid plot to visualize all tested input parameters vs extracted outputs using ECDF distribution
+ │  └─summary_grid_statuses_your_grid_name.png    <---- Summary plot of statuses for all cases of the grid
  │     └─...
 ```
-
-
  To post-processed the grid and generate ECDF plots for further analysis, use the proteus command line interface:
 
 ```console
-proteus grid-analyze /path/to/grid/ [grid_name]
+proteus grid-analyse /path/to/example.grid_analyse.toml
 ```
 
-The user can also specify to update the CSV file with new output to extract for instance by adding the `--update-csv` flag, using :
-
-```console
-proteus grid-analyze /path/to/grid/ [grid_name] --update-csv
-```
-
-To get more information about this command, run :
-
-```console
-proteus grid-analyze --help
-```
-
-*Note to the user : update `output_to_extract` and other plotting parameters for your grid*
-
-1. The user can choose the output to extract for each simulations at the last time-step (from the `runtime_helpfile.csv` file of each cases) like 'esc_rate_total','Phi_global','P_surf','T_surf','M_planet'...
-To do so, the user should go to `PROTEUS/src/proteus/grid/run_grid_analysis.py` and modify the variable `output_to_extract` within the `run_grid_analyze` function.
-
-2. In the Step 2 of the same function, the user should also modify accordingly the `param_settings_single` and `output_settings_single` object for generating single plots (same for the grid plot with `param_settings_grid` and `output_settings_grid`).For this, the user should add the input parameters and output extracted from the grid, if this is not already present in the script and comment the one useless for the grid.
+`/path/to/example.grid_analyse.toml` is the  path to the toml file containing grid analysis configuration.
 
 ## Postprocessing of results with AGNI for multiprofile analysis
 

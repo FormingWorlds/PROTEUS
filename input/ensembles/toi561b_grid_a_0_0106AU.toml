@@ -49,12 +49,18 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     method = "direct"
     values = [0, 4]
 
-# Hydrogen inventory set by arange
+# # Hydrogen inventory set by arange
+# ["delivery.elements.H_oceans"]
+#     method = "logspace"
+#     start    = 1.0
+#     stop     = 1000.0
+#     count     = 4
+
+# Hydrogen inventory set directly
 ["delivery.elements.H_oceans"]
-    method = "logspace"
-    start    = 1.0
-    stop     = 1000.0
-    count     = 4
+    method = "direct"
+    values = [1.0, 10.0, 100.0, 1000.0]
+
 
 # Planet bulk C/H ratio set directly
 ["delivery.elements.CH_ratio"]

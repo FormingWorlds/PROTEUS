@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import matplotlib as mpl
-import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import toml
+from matplotlib import cm
 
 # ---------------------------------------------------------
 # Data loading, extraction, and CSV generation functions
@@ -173,44 +174,6 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
         case_params[idx] = params_for_case
 
     return case_params, tested_params
-
-# def extract_grid_output(cases_data: list, parameter_name: str):
-#     """
-#     Extract a specific output for each simulation of the grid at the last time step.
-
-#     Parameters
-#     ----------
-#     cases_data : list
-#         List of dictionaries containing simulation data.
-
-#     parameter_name : str
-#         The name of the parameter to extract from 'output_values'.
-
-#     Returns
-#     -------
-#     output_values : list
-#         A list containing the extracted values of the specified parameter for all cases of the grid.
-#     """
-
-#     output_last_step = []
-#     columns_printed = False  # Flag to print columns only once
-
-#     for case_index, case in enumerate(cases_data):
-#         df = case['output_values']
-#         if df is None:
-#             print(f"Warning: No output values found for case number '{case_index}'")
-#             output_last_step.append(np.nan)  # Append NaN if no output values
-#             continue  # Skip cases with no output
-#         if parameter_name in df.columns:
-#             parameter_value = df[parameter_name].iloc[-1]
-#             output_last_step.append(parameter_value)
-#         else:
-#             if not columns_printed:
-#                 print(f"Warning: Parameter '{parameter_name}' does not exist in case '{case['init_parameters'].get('name', 'Unknown')}'")
-#                 print(f"Available columns in this case: {', '.join(df.columns)}")
-#                 columns_printed = True
-
-#     return output_last_step
 
 def load_phi_crit(grid_dir: str | Path):
     """"
@@ -837,3 +800,85 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
     output_file = output_dir / f"ecdf_grid_plot_{grid_name}.png"
     fig.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close(fig)
+
+# ---------------------------------------------------------
+# main
+# ---------------------------------------------------------
+def main(grid_analyse_toml_file: str | Path = None):
+
+    # Load configuration from grid_analyse.toml
+    with open(grid_analyse_toml_file, "rb") as f:
+        cfg = tomllib.load(f)
+
+    # Get grid path and name
+    grid_path = Path(cfg["grid_path"])
+    grid_name = get_grid_name(grid_path)
+
+    print(grid_path)
+    print(f"Analyzing grid: {grid_name}")
+
+    # Load grid data
+    data = load_grid_cases(grid_path)
+    input_param_grid_per_case, tested_params_grid = get_tested_grid_parameters(
+        data, grid_path
+    )
+
+    # --- Summary CSVs ---
+    update_csv = cfg.get("update_csv", True)
+
+    summary_dir = grid_path / "post_processing" / "extracted_data"
+    summary_csv_all = summary_dir / f"{grid_name}_final_extracted_data_all.csv"
+    summary_csv_completed = summary_dir / f"{grid_name}_final_extracted_data_completed.csv"
+    summary_csv_running_error = summary_dir / f"{grid_name}_final_extracted_data_running_error.csv"
+
+    if update_csv:
+        generate_summary_csv(
+            data, input_param_grid_per_case, grid_path, grid_name
+        )
+        generate_completed_summary_csv(
+            data, input_param_grid_per_case, grid_path, grid_name
+        )
+        generate_running_error_summary_csv(
+            data, input_param_grid_per_case, grid_path, grid_name
+        )
+    else:
+        # Check that CSVs exist
+        for f in [summary_csv_all, summary_csv_completed, summary_csv_running_error]:
+            if not f.exists():
+                raise FileNotFoundError(
+                    f"{f.name} not found in {summary_dir}, "
+                    "but update_csv is set to False. Please set update_csv to True to generate it."
+                )
+
+    # --- Plot grid status ---
+    if cfg.get("plot_status", True):
+        all_simulations_data_csv = pd.read_csv(summary_csv_all, sep="\t")
+        plot_grid_status(all_simulations_data_csv, grid_path, grid_name)
+        print("Plot grid status summary is available.")
+
+    # --- ECDF plots ---
+    if cfg.get("plot_ecdf", True):
+        completed_simulations_data_csv = pd.read_csv(summary_csv_completed, sep="\t")
+        columns_output = list(cfg["output_variables"].keys())
+        grouped_data = {}
+        for col in columns_output:
+            group = group_output_by_parameter(
+                completed_simulations_data_csv,
+                tested_params_grid,
+                [col],
+            )
+            grouped_data.update(group)
+
+        param_settings_grid, output_settings_grid = load_ecdf_plot_settings(cfg)
+        ecdf_grid_plot(
+            grouped_data,
+            param_settings_grid,
+            output_settings_grid,
+            grid_path,
+            grid_name,
+        )
+        print("ECDF grid plot is available.")
+
+
+if __name__ == "__main__":
+    main( "/home2/p315557/PROTEUS/input/ensembles/example.grid_analyse.toml")
