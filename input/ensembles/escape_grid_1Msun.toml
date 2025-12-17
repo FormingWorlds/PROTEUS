@@ -57,3 +57,73 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 ["delivery.elements.H_oceans"]
     method = "direct"
     values = [1.0, 5.0, 10.0]
+
+# Plotting configuration for ECDF
+[plot.input_parameters]
+
+    [plot.parameters.atmos_clim.module]
+        label = "Atmosphere module"
+        colormap = "viridis"
+        log_scale = false
+
+    [plot.parameters.orbit.semimajoraxis]
+        label = "a [AU]"
+        colormap = "viridis"
+        log_scale = false
+
+    [plot.parameters.escape.zephyrus.efficiency]
+    label = "\\rm \\epsilon"
+    colormap = "viridis"
+    log_scale = false
+
+    [plot.parameters.escape.zephyrus.Pxuv]
+    label = "P_{\\rm XUV} [bar]"
+    colormap = "viridis"
+    log_scale = true
+
+    [plot.parameters.outgas.fO2_shift_IW]
+    label = "\\rm \\log_{10} fO_2 [IW]"
+    colormap = "viridis"
+    log_scale = false
+
+    [plot.parameters.delivery.elements.CH_ratio]
+    label = "C/H ratio"
+    colormap = "viridis"
+    log_scale = false
+
+    [plot.parameters.delivery.elements.H_oceans]
+    label = "[H] [oceans]"
+    colormap = "viridis"
+    log_scale = false
+
+[plot.outputs]
+
+    [plot.outputs.solidification_time]
+    label = "Solidification [yr]"
+    log_scale = true
+    scale = 1.0
+
+    [plot.outputs.Phi_global]
+    label = "Melt fraction [%]"
+    log_scale = false
+    scale = 100.0
+
+    [plot.outputs.T_surf]
+    label = "T_{\\rm surf} [10^3 K]"
+    log_scale = false
+    scale = 0.001
+
+    [plot.outputs.P_surf]
+    label = "P_{\\rm surf} [bar]"
+    log_scale = true
+    scale = 1.0
+
+    [plot.outputs.atm_kg_per_mol]
+    label = "MMW [g/mol]"
+    log_scale = false
+    scale = 1000.0
+
+    [plot.outputs.esc_rate_total]
+    label = "Escape rate [kg/s]"
+    log_scale = true
+    scale = 1.0

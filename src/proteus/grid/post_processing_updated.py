@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import matplotlib as mpl
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -10,8 +11,27 @@ import seaborn as sns
 import toml
 
 # ---------------------------------------------------------
-# Data loading and processing functions
+# Data loading, extraction, and CSV generation functions
 # ---------------------------------------------------------
+
+def get_grid_name(grid_path: str | Path) -> str:
+    """
+    Returns the grid name (last part of the path) from the given grid path.
+
+    Parameters
+    ----------
+    grid_path : str or Path
+        Full path to the grid directory.
+
+    Returns
+    -------
+    grid_name : str
+        Name of the grid directory.
+    """
+    grid_path = Path(grid_path)
+    if not grid_path.is_dir():
+        raise ValueError(f"{grid_path} is not a valid directory")
+    return grid_path.name
 
 def load_grid_cases(grid_dir: Path):
     """
@@ -28,7 +48,7 @@ def load_grid_cases(grid_dir: Path):
     ----------
         combined_data : list
             List of dictionaries, each containing:
-                - 'init_parameters' (dict): Parameters loaded from `init_coupler.toml`.
+                - 'init_parameters' (dict): All input parameters loaded from `init_coupler.toml`.
                 - 'output_values' (pandas.DataFrame): Data from `runtime_helpfile.csv`.
                 - 'status' (str): Status string from the `status` file, or 'Unknown' if unavailable.
     """
@@ -53,7 +73,7 @@ def load_grid_cases(grid_dir: Path):
             except Exception as e:
                 print(f"Error reading init file in {case.name}: {e}")
 
-        # Read runtime_helpfile.csv if available
+        # Read runtime_helpfile.csv
         df = None
         if runtime_file.exists():
             try:
@@ -61,7 +81,7 @@ def load_grid_cases(grid_dir: Path):
             except Exception as e:
                 print(f"WARNING : Error reading runtime_helpfile.csv for {case.name}: {e}")
 
-        # Read status file if available
+        # Read status file
         status = 'Unknown'
         if status_file.exists():
             try:
@@ -84,10 +104,9 @@ def load_grid_cases(grid_dir: Path):
             'status'         : status
         })
 
-    #
+    # Print summary of statuses
     statuses = [c['status'] for c in combined_data]
     status_counts = pd.Series(statuses).value_counts().sort_values(ascending=False)
-
     print('-----------------------------------------------------------')
     print(f"Total number of simulations: {len(statuses)}")
     print('-----------------------------------------------------------')
@@ -101,8 +120,8 @@ def load_grid_cases(grid_dir: Path):
 def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     """
     Extract tested grid parameters per case using:
-      - copy.grid.toml to determine which parameters were varied
-      - init_parameters already loaded by load_grid_cases
+      - copy.grid.toml to determine which parameters were varied in the grid
+      - init_parameters already loaded by load_grid_cases for each simulation of the grid
 
     Parameters
     ----------
@@ -116,15 +135,12 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     case_params : dict
         Dictionary mapping case index -> {parameter_name: value}
     tested_params : dict
-        Dictionary of tested grid parameters and their grid values
-        (directly from copy.grid.toml)
+        Dictionary of tested grid parameters and their grid values (directly from copy.grid.toml)
     """
 
     grid_dir = Path(grid_dir)
 
-    # ---------------------------------------------------------
-    # 1) Load tested grid parameter definitions
-    # ---------------------------------------------------------
+    # 1. Load tested input parameters in the grid
     raw_params = toml.load(grid_dir / "copy.grid.toml")
 
     # Keep only the parameters and their values (ignore 'method' keys)
@@ -136,9 +152,7 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
 
     grid_param_paths = list(tested_params.keys())
 
-    # ---------------------------------------------------------
-    # 2) Extract those parameters from loaded cases
-    # ---------------------------------------------------------
+    # 2.Extract those parameters from loaded cases for each case of the grid
     case_params = {}
 
     for idx, case in enumerate(cases_data):
@@ -160,48 +174,59 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
 
     return case_params, tested_params
 
-def extract_grid_output(cases_data: list, parameter_name: str):
-    """
-    Extract a specific parameter from the 'output_values' of each simulation case.
+# def extract_grid_output(cases_data: list, parameter_name: str):
+#     """
+#     Extract a specific output for each simulation of the grid at the last time step.
+
+#     Parameters
+#     ----------
+#     cases_data : list
+#         List of dictionaries containing simulation data.
+
+#     parameter_name : str
+#         The name of the parameter to extract from 'output_values'.
+
+#     Returns
+#     -------
+#     output_values : list
+#         A list containing the extracted values of the specified parameter for all cases of the grid.
+#     """
+
+#     output_last_step = []
+#     columns_printed = False  # Flag to print columns only once
+
+#     for case_index, case in enumerate(cases_data):
+#         df = case['output_values']
+#         if df is None:
+#             print(f"Warning: No output values found for case number '{case_index}'")
+#             output_last_step.append(np.nan)  # Append NaN if no output values
+#             continue  # Skip cases with no output
+#         if parameter_name in df.columns:
+#             parameter_value = df[parameter_name].iloc[-1]
+#             output_last_step.append(parameter_value)
+#         else:
+#             if not columns_printed:
+#                 print(f"Warning: Parameter '{parameter_name}' does not exist in case '{case['init_parameters'].get('name', 'Unknown')}'")
+#                 print(f"Available columns in this case: {', '.join(df.columns)}")
+#                 columns_printed = True
+
+#     return output_last_step
+
+def load_phi_crit(grid_dir: str | Path):
+    """"
+    Load the critical melt fraction (phi_crit) from the reference configuration file of the grid.
 
     Parameters
     ----------
-    cases_data : list
-        List of dictionaries containing simulation data.
-
-    parameter_name : str
-        The name of the parameter to extract from 'output_values'.
+    grid_dir : str or Path
+        Path to the grid directory containing ref_config.toml.
 
     Returns
     -------
-    parameter_values : list
-        A list containing the extracted values of the specified parameter for all cases of the grid.
+    phi_crit : float
+        The critical melt fraction value loaded from the reference configuration.
+
     """
-
-    parameter_values = []
-    columns_printed = False  # Flag to print columns only once
-
-    for case_index, case in enumerate(cases_data):
-        df = case['output_values']
-        if df is None:
-            print(f"Warning: No output values found for case number '{case_index}'")
-            parameter_values.append(np.nan)  # Append NaN if no output values
-            continue  # Skip cases with no output
-        if parameter_name in df.columns:
-            parameter_value = df[parameter_name].iloc[-1]
-            parameter_values.append(parameter_value)
-        else:
-            if not columns_printed:
-                print(f"Warning: Parameter '{parameter_name}' does not exist in case '{case['init_parameters'].get('name', 'Unknown')}'")
-                print(f"Available columns in this case: {', '.join(df.columns)}")
-                columns_printed = True
-
-    # Print the extracted output values for the specified parameter
-    print(f"Extracted output (at last time step) : {parameter_name} ")
-
-    return parameter_values
-
-def load_phi_crit(grid_dir: str | Path):
     grid_dir = Path(grid_dir)
     ref_file = grid_dir / "ref_config.toml"
 
@@ -210,7 +235,7 @@ def load_phi_crit(grid_dir: str | Path):
 
     ref = toml.load(open(ref_file))
 
-    # Navigate structure safely
+    # Find phi_crit value
     try:
         phi_crit = ref["params"]["stop"]["solid"]["phi_crit"]
     except KeyError:
@@ -219,6 +244,24 @@ def load_phi_crit(grid_dir: str | Path):
     return phi_crit
 
 def extract_solidification_time(cases_data: list, grid_dir: str | Path):
+    """"
+    Extract solidification time for each simulation of the grid for
+    the condition Phi_global < phi_crit at last time step.
+
+    Parameters
+    ----------
+    cases_data : list
+        List of dictionaries containing simulation data.
+
+    grid_dir : str or Path
+        Path to the grid directory containing ref_config.toml.
+
+    Returns
+    -------
+    solidification_times : list
+        A list containing the solidification times for all cases of the grid.
+    """
+
     # Load phi_crit once
     phi_crit = load_phi_crit(grid_dir)
 
@@ -232,6 +275,7 @@ def extract_solidification_time(cases_data: list, grid_dir: str | Path):
             solidification_times.append(np.nan)
             continue
 
+        # Condition for complete solidification
         if 'Phi_global' in df.columns and 'Time' in df.columns:
             condition = df['Phi_global'] < phi_crit
 
@@ -239,7 +283,7 @@ def extract_solidification_time(cases_data: list, grid_dir: str | Path):
                 idx = condition.idxmax()
                 solidification_times.append(df.loc[idx, 'Time'])
             else:
-                solidification_times.append(np.nan)
+                solidification_times.append(np.nan) # if planet is not solidified, append NaN
 
         else:
             if not columns_printed:
@@ -250,92 +294,70 @@ def extract_solidification_time(cases_data: list, grid_dir: str | Path):
 
     return solidification_times
 
-def generate_summary_csv(
-    cases_data: list,
-    case_params: dict,
-    grid_dir: str | Path,
-    grid_name: str
-):
+def generate_summary_csv(cases_data: list, case_params: dict, grid_dir: str | Path, grid_name: str):
     """
-    Export a summary of simulation cases to a TSV file using
-    already-loaded data only.
+    Generate CSV file summarizing all simulation cases in the grid, including:
+        - Case status
+        - Values of tested grid parameters
+        - All extracted values from runtime_helpfile.csv (at last timestep)
+        - Solidification time
 
-    Column order:
-      - case metadata
-      - tested grid parameters
-      - runtime_helpfile.csv (last timestep)
-      - solidification_time
+    Parameters
+    ----------
+    cases_data : list
+        List of dictionaries containing simulation data.
+    case_params : dict
+        Dictionary mapping case index -> {parameter_name: value}
+    grid_dir : str or Path
+        Path to the grid directory containing ref_config.toml.
+    grid_name : str
+        Name of the grid.
     """
-    # ---------------------------------------------------------
-    # Compute solidification times ONCE
-    # ---------------------------------------------------------
+
+    # Compute solidification times
     solidification_times = extract_solidification_time(cases_data, grid_dir)
 
+    # Extract data for each case
     summary_rows = []
-
     for case_index, case in enumerate(cases_data):
         row = {}
 
-        # -----------------------------------------------------
-        # Case metadata
-        # -----------------------------------------------------
+        # Case status
         row["case_number"] = case_index
         row["status"] = case["status"]
 
-        # -----------------------------------------------------
-        # Tested grid parameters
-        # -----------------------------------------------------
+        # Values of tested grid parameters for each case
         params = case_params.get(case_index, {})
         for k, v in params.items():
             row[k] = v
 
-        # -----------------------------------------------------
-        # Output values (last timestep)
-        # -----------------------------------------------------
+        # Output values (at last timestep)
         df = case["output_values"]
         if df is not None:
             for col in df.columns:
                 row[col] = df[col].iloc[-1]
 
-        # -----------------------------------------------------
-        # Solidification time (LAST column)
-        # -----------------------------------------------------
+        # Solidification time
         row["solidification_time"] = solidification_times[case_index]
 
         summary_rows.append(row)
 
-    # ---------------------------------------------------------
-    # Create DataFrame and save
-    # ---------------------------------------------------------
+    # Create DataFrame and save it in the grid directory in post_processing/extracted_data/
     summary_df = pd.DataFrame(summary_rows)
     output_dir = grid_dir / "post_processing" / "extracted_data"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"{grid_name}_final_extracted_data_all.csv"
     summary_df.to_csv(output_file, sep="\t", index=False)
 
-def generate_completed_summary_csv(
-    cases_data: list,
-    case_params: dict,
-    grid_dir: str | Path,
-    grid_name: str
-):
+def generate_completed_summary_csv(cases_data: list, case_params: dict, grid_dir: str | Path, grid_name: str):
     """
-    Export a summary of simulation cases to a TSV file, but only
-    include cases whose status starts with 'completed'.
-
-    Column order:
-      - case metadata
-      - tested grid parameters
-      - runtime_helpfile.csv (last timestep)
-      - solidification_time
+    Same function as generate_summary_csv, but only include fully 'Completed' cases.
     """
-    # ---------------------------------------------------------
-    # Compute solidification times ONCE
-    # ---------------------------------------------------------
+    # Compute solidification times
     solidification_times = extract_solidification_time(cases_data, grid_dir)
 
+    # Extract data for each fully completed case
     summary_rows = []
-
     for case_index, case in enumerate(cases_data):
         status = case.get("status", "").lower()
         if not status.startswith("completed"):
@@ -343,68 +365,44 @@ def generate_completed_summary_csv(
 
         row = {}
 
-        # -----------------------------------------------------
-        # Case metadata
-        # -----------------------------------------------------
+        # Case status
         row["case_number"] = case_index
         row["status"] = case["status"]
 
-        # -----------------------------------------------------
-        # Tested grid parameters
-        # -----------------------------------------------------
+        # Values of tested grid parameters for each case
         params = case_params.get(case_index, {})
         for k, v in params.items():
             row[k] = v
 
-        # -----------------------------------------------------
-        # Output values (last timestep)
-        # -----------------------------------------------------
+        # Output values (at last timestep)
         df = case["output_values"]
         if df is not None:
             for col in df.columns:
                 row[col] = df[col].iloc[-1]
 
-        # -----------------------------------------------------
-        # Solidification time (LAST column)
-        # -----------------------------------------------------
+        # Solidification time
         row["solidification_time"] = solidification_times[case_index]
 
         summary_rows.append(row)
 
-    # ---------------------------------------------------------
     # Create DataFrame and save
-    # ---------------------------------------------------------
     summary_df = pd.DataFrame(summary_rows)
     output_dir = grid_dir / "post_processing" / "extracted_data"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Updated CSV name to indicate filtered results
+    # Updated CSV name to indicate only completed cases
     output_file = output_dir / f"{grid_name}_final_extracted_data_completed.csv"
     summary_df.to_csv(output_file, sep="\t", index=False)
 
-def generate_running_error_summary_csv(
-    cases_data: list,
-    case_params: dict,
-    grid_dir: str | Path,
-    grid_name: str
-):
+def generate_running_error_summary_csv(cases_data: list, case_params: dict, grid_dir: str | Path, grid_name: str):
     """
-    Export a summary of simulation cases to a TSV file, but only
-    include cases whose status starts with 'Running' or 'Error'.
-
-    Column order:
-      - case metadata
-      - tested grid parameters
-      - runtime_helpfile.csv (last timestep)
-      - solidification_time
+    Same function as generate_summary_csv, but only include 'Running' and 'Error' cases.
     """
-    # ---------------------------------------------------------
-    # Compute solidification times ONCE
-    # ---------------------------------------------------------
+    # Compute solidification times
     solidification_times = extract_solidification_time(cases_data, grid_dir)
 
+    # Extract data for each running or error case
     summary_rows = []
-
     for case_index, case in enumerate(cases_data):
         status = case.get("status", "").lower()
         if not (status.startswith("running") or status.startswith("error")):
@@ -412,42 +410,32 @@ def generate_running_error_summary_csv(
 
         row = {}
 
-        # -----------------------------------------------------
-        # Case metadata
-        # -----------------------------------------------------
+        # Case status
         row["case_number"] = case_index
         row["status"] = case["status"]
 
-        # -----------------------------------------------------
-        # Tested grid parameters
-        # -----------------------------------------------------
+        # Values of tested grid parameters for each case
         params = case_params.get(case_index, {})
         for k, v in params.items():
             row[k] = v
 
-        # -----------------------------------------------------
-        # Output values (last timestep)
-        # -----------------------------------------------------
+        # Output values (at last timestep)
         df = case["output_values"]
         if df is not None:
             for col in df.columns:
                 row[col] = df[col].iloc[-1]
 
-        # -----------------------------------------------------
-        # Solidification time (LAST column)
-        # -----------------------------------------------------
+        # Solidification time
         row["solidification_time"] = solidification_times[case_index]
 
         summary_rows.append(row)
 
-    # ---------------------------------------------------------
     # Create DataFrame and save
-    # ---------------------------------------------------------
     summary_df = pd.DataFrame(summary_rows)
     output_dir = grid_dir / "post_processing" / "extracted_data"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Updated CSV name to indicate filtered results
+    # Updated CSV name to indicate only running/error cases
     output_file = output_dir / f"{grid_name}_final_extracted_data_running_error.csv"
     summary_df.to_csv(output_file, sep="\t", index=False)
 
@@ -455,93 +443,195 @@ def generate_running_error_summary_csv(
 # Plotting functions
 # ---------------------------------------------------------
 
-def plot_grid_status(cases_data: list, grid_dir: str | Path, grid_name: str):
+def plot_grid_status(df: pd.DataFrame, grid_dir: str | Path, grid_name: str):
     """
-    Plot the status of simulations from the PROTEUS grid with improved x-axis readability.
+    Plot histogram summary of number of simulation statuses in
+    the grid using the generated CSV file for all cases.
 
     Parameters
     ----------
-    cases_data : list
-        List of dictionaries returned by `load_grid_cases`.
+    df : pandas.DataFrame
+        DataFrame loaded from grid_name_final_extracted_data_all.csv.
 
-    plot_dir : Path
-        Path to the plots directory.
+    grid_dir : Path
+        Path to the grid directory.
 
     grid_name : str
-        Name of the grid, used for the plot title.
-
-    status_colors : dict, optional
-        A dictionary mapping statuses to specific colors. If None, a default palette is used.
+        Name of the grid.
     """
 
-    # Extract and clean statuses
-    statuses = [case.get('status', 'Unknown') for case in cases_data]
-    statuses = pd.Series(statuses, name='Status')
-    status_counts = statuses.value_counts().sort_values(ascending=False)
+    if "status" not in df.columns:
+        raise ValueError("CSV must contain a 'status' column")
 
-    # Set colors for the bars
-    palette = sns.color_palette("Accent", len(status_counts))
+    # Clean and count statuses
+    statuses = df["status"].astype(str)
+    status_counts = statuses.value_counts().sort_values(ascending=False)
+    total_simulations = len(df)
+
+    # Format status labels for better readability
     formatted_status_keys = [s.replace(" (", " \n (") for s in status_counts.index]
+    palette = sns.color_palette("Accent", len(status_counts))
     palette = dict(zip(formatted_status_keys, palette))
 
-    # Prepare dataframe for plotting
+    # Prepare DataFrame for plotting
     plot_df = pd.DataFrame({
-        'Status': formatted_status_keys,
-        'Count': status_counts.values
+        "Status": formatted_status_keys,
+        "Count": status_counts.values
     })
 
+    # Plot histogram
     plt.figure(figsize=(11, 7))
     ax = sns.barplot(
         data=plot_df,
-        x='Status',
-        y='Count',
-        hue='Status',
+        x="Status",
+        y="Count",
+        hue="Status",
         palette=palette,
         dodge=False,
-        edgecolor='black'
+        edgecolor="black"
     )
 
-    # Remove legend if it was created
+    # Remove legend
     if ax.legend_:
         ax.legend_.remove()
 
-    # Add value labels above bars
-    total_simulations = len(cases_data)
+    # Add counts and percentages above bars per status
     for i, count in enumerate(status_counts.values):
-        percentage = (count / total_simulations) * 100
-        offset = 0.005 * status_counts.max()  # 1% of the max count
+        percentage = 100 * count / total_simulations
+        offset = 0.01 * status_counts.max()
         ax.text(
-            i, count + offset,
+            i,
+            count + offset,
             f"{count} ({percentage:.1f}%)",
-            ha='center', va='bottom', fontsize=14
+            ha="center",
+            va="bottom",
+            fontsize=14
         )
 
-    # Boxed total in upper right
-    plt.gca().text(
-        0.97, 0.94,
+    # Add total number of simulations text
+    ax.text(
+        0.97,
+        0.94,
         f"Total number of simulations : {total_simulations}",
-        transform=plt.gca().transAxes,
-        ha='right', va='top',
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
         fontsize=16
     )
 
-    plt.grid(alpha=0.2, axis='y')
-    plt.title(f"Simulation status summary for grid {grid_name}", fontsize=16)
-    plt.xlabel("Simulation status", fontsize=16)
-    plt.ylabel("Number of simulations", fontsize=16)
-    plt.yticks(fontsize=14)
-    plt.xticks(fontsize=14)
-    plt.tight_layout()
+    # Formatting
+    ax.grid(alpha=0.2, axis="y")
+    ax.set_title(f"Simulation status summary for grid {grid_name}", fontsize=16)
+    ax.set_xlabel("Simulation status", fontsize=16)
+    ax.set_ylabel("Number of simulations", fontsize=16)
+    ax.tick_params(axis="x", labelsize=14)
+    ax.tick_params(axis="y", labelsize=14)
 
-    output_dir = grid_dir / "post_processing" / "grid_plots"
+    # Save
+    output_dir = Path(grid_dir) / "post_processing" / "grid_plots"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"summary_grid_statuses_{grid_name}.png"
-    plt.savefig(output_file, dpi=300)
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
 
-def group_output_by_parameter(df,grid_parameters,outputs):
+def flatten_input_parameters(d: dict, parent_key: str = "") -> dict:
     """
-    Groups output values (like solidification times) by a specific grid parameter.
+    Flattens a nested input-parameter dictionary from a TOML configuration
+    into a flat mapping of dot-separated parameter paths to their plotting
+    configuration.
+
+    Parameters
+    ----------
+    d : dict
+        Nested dictionary describing input parameters (from TOML).
+    parent_key : str, optional
+        Accumulated parent key for recursive calls.
+
+    Returns
+    -------
+    flat : dict
+        Dictionary mapping parameter paths (e.g. ``"escape.zephyrus.Pxuv"``)
+        to their corresponding configuration dictionaries.
+    """
+
+    flat = {}
+
+    for k, v in d.items():
+        if k == "colormap":
+            continue
+
+        new_key = f"{parent_key}.{k}" if parent_key else k
+
+        if isinstance(v, dict) and "label" in v:
+            # Leaf parameter block
+            flat[new_key] = v
+        elif isinstance(v, dict):
+            # Recurse deeper
+            flat.update(flatten_input_parameters(v, new_key))
+
+    return flat
+
+def load_ecdf_plot_settings(cfg):
+    """
+    Load ECDF plotting settings for both input parameters and output variables
+    from a configuration dictionary loaded from TOML.
+
+    Parameters
+    ----------
+    cfg : dict
+        Configuration dictionary loaded from a TOML file.
+
+    Returns
+    -------
+    param_settings : dict
+        Mapping of input-parameter paths to plotting settings. Each value
+        is a dict containing:
+            - "label" : str
+                Label for the parameter (used in colorbar).
+            - "colormap" : matplotlib colormap
+                Colormap used to color ECDF curves.
+            - "log_scale" : bool
+                Whether to normalize colors on a logarithmic scale.
+
+    output_settings : dict
+        Mapping of output variable names to plotting settings. Each value
+        is a dict containing:
+            - "label" : str
+                X-axis label for the ECDF plot.
+            - "log_scale" : bool
+                Whether to use a logarithmic x-axis.
+            - "scale" : float
+                Factor applied to raw output values before plotting.
+    """
+
+    # Load input parameter settings
+    raw_params = cfg["input_parameters"]
+    default_cmap = getattr(cm, raw_params.get("colormap", "viridis"))
+
+    # Flatten input parameters dictionary
+    flat_params = flatten_input_parameters(raw_params)
+
+    param_settings = {}
+    for key, val in flat_params.items():
+        param_settings[key] = {
+            "label": val.get("label", key),
+            "colormap": default_cmap,
+            "log_scale": val.get("log_scale", False),
+        }
+
+    output_settings = {}
+    for key, val in cfg.get("output_variables", {}).items():
+        output_settings[key] = {
+            "label": val.get("label", key),
+            "log_scale": val.get("log_scale", False),
+            "scale": val.get("scale", 1.0),
+        }
+
+    return param_settings, output_settings
+
+def group_output_by_parameter(df, grid_parameters, outputs):
+    """
+    Groups output values (like P_surf) by a specific grid parameter.
 
     Parameters
     ----------
@@ -549,10 +639,10 @@ def group_output_by_parameter(df,grid_parameters,outputs):
         DataFrame containing simulation results including value of the grid parameter and the corresponding extracted output.
 
     grid_parameters : str
-        Column name of the grid parameter to group by (like 'escape.zephyrus.Pxuv').
+        Column name of the grid parameter to group by (like 'escape.zephyrus.efficiency').
 
     outputs : str
-        Column name of the output to extract (like 'solidification_time').
+        Column name of the output to extract (like 'P_surf').
 
     Returns
     -------
@@ -567,9 +657,9 @@ def group_output_by_parameter(df,grid_parameters,outputs):
             value_dict = {}
             for param_value in df[param].dropna().unique():
                 subset = df[df[param] == param_value]
-                output_values = subset[output].replace([np.inf, -np.inf], np.nan)
-                output_values = output_values.dropna()
-                output_values = output_values[output_values > 0]  # Remove zeros and negatives
+                output_values = subset[output].replace([np.inf, -np.inf], np.nan) # Replace inf with NaN
+                output_values = output_values.dropna() # Remove NaN values
+                output_values = output_values[output_values > 0]  # Keep only positive values
 
                 value_dict[param_value] = output_values
 
@@ -577,16 +667,22 @@ def group_output_by_parameter(df,grid_parameters,outputs):
 
     return grouped
 
-def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, output_settings: dict, grid_dir: str | Path, grid_name: str):
+def latex(label: str) -> str:
     """
-    Creates a grid of ECDF plots where each row corresponds to one input parameter
+    Wraps a label in dollar signs for LaTeX formatting if it contains 2 backslashes.
+    """
+    return f"${label}$" if "\\" in label else label
+
+def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: dict, grid_dir: str | Path, grid_name: str):
+    """
+    Creates ECDF grid plots where each row corresponds to one input parameter
     and each column corresponds to one output. Saves the resulting figure as a PNG.
 
     Parameters
     ----------
 
     grid_params : dict
-        A mapping from parameter names (e.g. "orbit.semimajoraxis") to arrays/lists of tested values.
+        Dictionary of tested grid parameters and their grid values (directly from copy.grid.toml)
 
     grouped_data : dict
         Dictionary where each key is of the form '[output]_per_[parameter]', and each value is a dict {param_value: [output_values]}.
@@ -599,21 +695,31 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
 
     output_settings : dict
         For each output key, a dict containing:
-            - "label": label of the x-axis for the corresponding output quantity
+            - "label": label of the x-axis for the corresponding output column
             - "log_scale": bool, whether to plot the x-axis on log scale
-            - "scale":    float, a factor to multiply raw values by before plotting
+            - "scale": float, a factor to multiply raw values by before plotting
 
     plots_path : str
         Path to the grid where to create "single_plots_ecdf" and save all .png plots
     """
+
+    # Load tested grid parameters
+    raw_params = toml.load(grid_dir / "copy.grid.toml")
+    tested_params = {}
+    for key, value in raw_params.items():
+        if isinstance(value, dict) and "values" in value:
+            # Only store the 'values' list
+            tested_params[key] = value["values"]
+    grid_params = tested_params
+
     # List of parameter names (rows) and output names (columns)
     param_names = list(param_settings.keys())
     out_names   = list(output_settings.keys())
 
-    # Create subplot grid: rows = parameters, columns = outputs
+    # Create subplot grid: rows = input parameters, columns = outputs variables
     n_rows = len(param_names)
     n_cols = len(out_names)
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.75 * n_rows), squeeze=False, gridspec_kw={'wspace': 0.1,  'hspace': 0.2})
 
     # Loop through parameters (rows) and outputs (columns)
     for i, param_name in enumerate(param_names):
@@ -621,15 +727,13 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
         if not tested_param:
             print(f"⚠️ Skipping {param_name} — no tested values found in grid_params")
             continue
-
         settings = param_settings[param_name]
 
-        # Determine coloring
+        # Determine if parameter is numeric or string for coloring
         is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
         if is_numeric:
             vmin, vmax = min(tested_param), max(tested_param)
             if vmin == vmax:
-                # avoid log/normalize errors with constant values
                 vmin, vmax = vmin - 1e-9, vmax + 1e-9
             if settings.get("log_scale", False):
                 norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
@@ -651,16 +755,17 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
             out_settings = output_settings[output_name]
 
             # Add panel number in upper-left corner
-            panel_number = i * n_cols + j + 1  # number of panels left-to-right, top-to-bottom
+            panel_number = i * n_cols + j + 1
             ax.text(
-                0.02, 0.98,               # relative position in axes coordinates
-                str(panel_number),         # text to display
-                transform=ax.transAxes,    # use axis-relative coordinates
+                0.03, 0.95,
+                str(panel_number),
+                transform=ax.transAxes,
                 fontsize=18,
                 fontweight='bold',
-                va='top',                  # vertical alignment
-                ha='left',                  # horizontal alignment
-                color='black'
+                va='top',
+                ha='left',
+                color='black',
+                bbox=dict(facecolor='white', edgecolor='silver', boxstyle='round,pad=0.2', alpha=0.8)
             )
 
             # Plot one ECDF per tested parameter value
@@ -669,14 +774,16 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
                 if val not in grouped_data.get(data_key, {}):
                     continue
                 raw = np.array(grouped_data[data_key][val]) * out_settings.get("scale", 1.0)
-                # Plot ECDf if output == df['H_kg_atm'] then plot only values > 1e10 AND psurf > 1 bar
-                if output_name.endswith('_kg_atm'):
-                    raw = np.clip(raw, 1e15, None)
-                elif output_name.endswith('P_surf'):
-                    raw = np.clip(raw, 1, None)
-                else:
-                    raw = raw
 
+                # # Handle special cases for clipping
+                # if output_name.endswith('_kg_atm'):
+                #     raw = np.clip(raw, 1e15, None)
+                # elif output_name.endswith('P_surf'):
+                #     raw = np.clip(raw, 1, None)
+                # else:
+                #     raw = raw
+
+                # Plot ECDF
                 sns.ecdfplot(
                     data=raw,
                     log_scale=out_settings.get("log_scale", False),
@@ -688,7 +795,7 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
 
             # Configure x-axis labels, ticks, grids
             if i == n_rows - 1:
-                ax.set_xlabel(out_settings["label"], fontsize=22)
+                ax.set_xlabel(latex(out_settings["label"]), fontsize=22)
                 ax.xaxis.set_label_coords(0.5, -0.3)
                 ax.tick_params(axis='x', labelsize=22)
             else:
@@ -708,33 +815,25 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
             ax.grid(alpha=0.4)
 
         # After plotting all outputs for this parameter (row), add colorbar or legend
-        if colorbar_needed:
+        if colorbar_needed: # colorbar for numeric parameters
             sm = mpl.cm.ScalarMappable(cmap=settings["colormap"], norm=norm)
-            # attach the colorbar to the right‐most subplot in row i:
-            rightmost_ax = axes[i, -1]
+            rightmost_ax = axes[i, -1] # Get the rightmost axis in the current row
             cbar = fig.colorbar(sm,ax=rightmost_ax,pad=0.03,aspect=10)
-            cbar.set_label(settings["label"], fontsize=24)
-            # This is for plot 0.194Msun
-            # if param_name == "orbit.semimajoraxis":
-            #     cbar.ax.yaxis.set_label_coords(9.5, 0.5)
-            # else:
-            #     cbar.ax.yaxis.set_label_coords(6, 0.5)
-            # This is for 1Msun
+            cbar.set_label(latex(settings["label"]), fontsize=24)
             cbar.ax.yaxis.set_label_coords(6, 0.5)
             ticks = sorted(set(tested_param))
             cbar.set_ticks(ticks)
             cbar.ax.tick_params(labelsize=22)
-        else:
+        else: # legend for string parameters
             handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=4, label=str(val)) for val in unique_vals]
             ax.legend(handles=handles, fontsize=24,bbox_to_anchor=(1.01, 1), loc='upper left')
 
     # Add a single, shared y-axis label
-    fig.text(0.04, 0.5, 'Normalized cumulative fraction of simulations', va='center', rotation='vertical', fontsize=40)
+    fig.text(0.07, 0.5, 'Empirical cumulative fraction of grid simulations', va='center', rotation='vertical', fontsize=40)
 
-    # Tweak layout and save
-    plt.tight_layout(rect=[0.08, 0.02, 1, 0.97])
+    # Save figure
     output_dir = grid_dir / "post_processing" / "grid_plots"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"ecdf_grid_plot_{grid_name}.png"
-    fig.savefig(output_file, dpi=300)
+    fig.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close(fig)

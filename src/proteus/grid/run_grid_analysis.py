@@ -164,13 +164,15 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
     # ECDF Grid Plot
     # The user needs to comment the parameters he didn't used in the grid/ add the ones non-listed here. Same for the outputs.
     param_settings_grid = {
-        "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.Paired,    "log_scale": False},
-        "orbit.semimajoraxis":        {"label": "a [AU]",                                 "colormap": cm.plasma,   "log_scale": False},
-        "escape.zephyrus.efficiency": {"label": r"$\rm \epsilon$",                            "colormap": cm.spring,   "log_scale": False},
-        "escape.zephyrus.Pxuv":       {"label": r"P$_{\rm XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
-        "outgas.fO2_shift_IW":        {"label": r"$\rm \log_{10} fO_2 [IW]$",                "colormap": cm.coolwarm, "log_scale": False},
-        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-        "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": False},
+        #"atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.Paired,    "log_scale": False},
+        "orbit.semimajoraxis":        {"label": "a [AU]",                                 "colormap": cm.Spectral,   "log_scale": False},
+        "struct.corefrac":            {"label": "CRF",                                      "colormap": cm.Spectral,    "log_scale": False},
+        "atmos_clim.albedo_pl":       {"label": r"$A_b$",                                   "colormap": cm.Spectral,   "log_scale": False},
+        "escape.zephyrus.efficiency": {"label": r"$\rm \epsilon$",                            "colormap": cm.Spectral,   "log_scale": False},
+        "outgas.fO2_shift_IW":        {"label": r"$\rm \log_{10} fO_2 [IW]$",                "colormap": cm.Spectral, "log_scale": False},
+        "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.Spectral,   "log_scale": True},
+        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.Spectral,   "log_scale": False},
+        "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.Spectral,  "log_scale": True},
         # "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": True},
         # "escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
         # "escape.module":           {"label": "Escape module",                              "colormap": cm.RdYlGn,  "log_scale": False}

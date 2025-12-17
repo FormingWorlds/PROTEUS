@@ -59,11 +59,11 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 # Planet bulk C/H ratio set directly
 ["delivery.elements.CH_ratio"]
     method = "direct"
-    values = [0.1, 1.0, 2.0]
+    values = [0.1, 2.0] # 1.0 out
 
 # Planet bulk S/H ratio set directly
 ["delivery.elements.SH_ratio"]
     method = "direct"
-    values = [0.216, 2.16, 21.6]
+    values = [0.216, 21.6] # 2.16 out
 
 # Stellar rotation period to test ?
