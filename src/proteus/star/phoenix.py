@@ -56,8 +56,8 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
         age_yr = mors_cfg.age_now * 1e9  # Gyr -> yr
 
     # Composition parameters from config
-    FeH   = mors_cfg.FeH
-    alpha = mors_cfg.alpha
+    FeH   = mors_cfg.phoenix_FeH
+    alpha = mors_cfg.phoenix_alpha
 
     if FeH == 0.0:
         log.info("PHOENIX: Using solar metallicity [Fe/H]=0.0. Set star.mors.FeH to change the composition.")
@@ -65,9 +65,9 @@ def phoenix_params(handler:Proteus, stellar_track=None, age_yr: float | None = N
         log.info("PHOENIX: Using solar [alpha/M]=0.0. Set star.mors.alpha to change the alpha fraction.")
 
     # Overrides from config
-    Teff   = getattr(mors_cfg, "Teff", None)
-    radius = getattr(mors_cfg, "radius", None)  # [R_sun]
-    logg   = getattr(mors_cfg, "log_g", None)   # log10(g [cgs])
+    Teff   = getattr(mors_cfg, "phoenix_Teff", None)
+    radius = getattr(mors_cfg, "phoenix_radius", None)  # [R_sun]
+    logg   = getattr(mors_cfg, "phoenix_log_g", None)   # log10(g [cgs])
 
     # If we have a stellar track, use it to fill Teff / radius
     if stellar_track is not None:

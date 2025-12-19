@@ -121,13 +121,13 @@ version = "2.0"
         spectrum_source = "solar"   # Spectrum source: 'solar' for solar spectra; 'muscles' for MUSCLES spectra; 'phoenix' for synthetic PHOENIX spectrum; see docs/data.md
 
         # PHOENIX parameters, only relevant if spectrum_source = "phoenix". Defaults to solar (0.0).
-        FeH         = 0.0           # metallicity [Fe/H]
-        alpha       = 0.0           # alpha enhancement [α/M]
+        phoenix_FeH         = 0.0           # metallicity [Fe/H]
+        phoenix_alpha       = 0.0           # alpha enhancement [α/M]
 
         # if None, calculated by mors
-        radius      = "none"        # Stellar radius [R_sun] used for PHOENIX spectrum scaling
-        log_g       = "none"        # Stellar surface gravity [dex]
-        Teff        = "none"        # Stellar effective temperature [K]
+        phoenix_radius      = "none"        # Stellar radius [R_sun] used for PHOENIX spectrum scaling
+        phoenix_log_g       = "none"        # Stellar surface gravity [dex]
+        phoenix_Teff        = "none"        # Stellar effective temperature [K]
 
     [star.dummy]
         radius           = 1.0      # Constant stellar radius [R_sun]

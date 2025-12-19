@@ -41,12 +41,12 @@ def _make_handler(
 ):
     mors = SimpleNamespace(
         age_now=age_now,
-        FeH=FeH,
-        alpha=alpha,
+        phoenix_FeH=FeH,
+        phoenix_alpha=alpha,
         tracks=tracks,
-        Teff=Teff,
-        radius=radius,
-        log_g=logg,
+        phoenix_Teff=Teff,
+        phoenix_radius=radius,
+        phoenix_log_g=logg,
     )
     star = SimpleNamespace(mass=mass, mors=mors)
     params = SimpleNamespace(offline=offline)
@@ -128,11 +128,11 @@ def _make_handler_for_init_star(
         age_now=4.6,      # Gyr
         rot_pcntle=50.0,
         rot_period=None,
-        FeH=0.0,
-        alpha=0.0,
-        Teff=None,
-        radius=None,
-        log_g=None,
+        phoenix_FeH=0.0,
+        phoenix_alpha=0.0,
+        phoenix_Teff=None,
+        phoenix_radius=None,
+        phoenix_log_g=None,
     )
     star = SimpleNamespace(module="mors", mass=1.0, mors=mors, bol_scale=1.0)
     params = SimpleNamespace(offline=offline)

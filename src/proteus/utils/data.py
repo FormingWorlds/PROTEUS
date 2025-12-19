@@ -657,11 +657,11 @@ def _get_sufficient(config:Config, clean:bool=False):
 
             elif src == "phoenix":
                 log.info("Spectrum source set to 'phoenix'.")
-                FeH   = config.star.mors.FeH
-                alpha = config.star.mors.alpha
+                FeH   = config.star.mors.phoenix_FeH
+                alpha = config.star.mors.phoenix_alpha
 
                 # make sure what is downloaded matches nearest grid point
-                Teff_override = getattr(config.star.mors, "Teff", None) # Optional Teff override in the config -> relevant for mapping alpha fraction to grid
+                Teff_override = getattr(config.star.mors, "phoenix_Teff", None) # Optional Teff override in the config -> relevant for mapping alpha fraction to grid
                 grid   = phoenix_to_grid(FeH=FeH, alpha=alpha, Teff=Teff_override)
                 FeH_g  = grid["FeH"]
                 alpha_g = grid["alpha"]
