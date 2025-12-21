@@ -507,6 +507,20 @@ def download_solar_spectrum():
         zenodo_path=filename,
     )
 
+def download_all_solar_spectra():
+    """
+    Download all solar spectra (nrel, VPL past, VPL present, VPL future)
+    """
+    log.info("Downloading solar spectra to 'solar' folder")
+
+    download(
+        folder = 'solar',
+        target = "stellar_spectra",
+        osf_id = None,
+        zenodo_id= '17981836',
+        desc = 'solar spectra'
+    )
+
 def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
     """
     Download and unpack a PHOENIX spectra ZIP like
@@ -631,8 +645,12 @@ def _get_sufficient(config:Config, clean:bool=False):
 
             if src == "solar":
                 log.info("Spectrum source set to 'solar'.")
-                if not os.path.exists(GetFWLData() / "stellar_spectra" / "solar" / "sun.txt"):
-                    download_solar_spectrum()
+                solar_dir = GetFWLData() / "stellar_spectra" / "solar"
+                sun_now   = solar_dir / "sun.txt"
+                sun_06ga  = solar_dir / "Sun0.6Ga.txt"
+
+                if (not sun_now.exists()) or (not sun_06ga.exists()):
+                    download_all_solar_spectra()
 
             elif src is None:
                 if config.star.mors.star_name.lower() != "sun":

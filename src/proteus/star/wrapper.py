@@ -53,20 +53,39 @@ def init_star(handler:Proteus):
             star_modern_path = mors_cfg.star_path
             log.info("Using custom stellar spectrum path.")
         else:
-            starname_input = mors_cfg.star_name
-            starname_proper = starname_input.strip().lower().replace(" ", "-").replace("gj-", "gj") + ".txt"
+            starname_input = mors_cfg.star_name.strip()
+            star_file = starname_input.lower().replace(" ", "-").replace("gj-", "gj") + ".txt"
 
-            solar_path = os.path.join(fwl_dir, "stellar_spectra/solar", starname_proper)
-            muscles_path = os.path.join(fwl_dir, "stellar_spectra/MUSCLES", starname_proper)
+            # Solar special cases
+            solar_key = starname_input.lower().replace(" ", "")
+
+            # Make sure lowercase keys match available solar files
+            solar_map = {"sun": "sun.txt",
+                "sun0.6ga": "Sun0.6Ga.txt",
+                "sun1.8ga": "Sun1.8Ga.txt",
+                "sun2.7ga": "Sun2.7Ga.txt",
+                "sun3.8ga": "Sun3.8Ga.txt",
+                "sun4.4ga": "Sun4.4Ga.txt",
+                "sun5.6gyr": "Sun5.6Gyr.txt",
+                "sunmodern": "SunModern.txt"}
+
+            # Paths to MUSCLES spectra
+            muscles_path = os.path.join(fwl_dir, "stellar_spectra/MUSCLES", star_file)
+
+            # Pick the intended solar_path:
+            if solar_key in solar_map:
+                solar_path = os.path.join(fwl_dir, "stellar_spectra/solar", solar_map[solar_key])
+            else:
+                solar_path = os.path.join(fwl_dir, "stellar_spectra/solar", star_file)
 
             src = mors_cfg.spectrum_source
 
-            # spectrum_source = None -> try solar, then MUSCLES
+            # spectrum_source = None -> try MUSCLES, then solar
             if src is None:
-                if os.path.exists(solar_path):
-                    star_modern_path = solar_path
-                elif os.path.exists(muscles_path):
+                if os.path.exists(muscles_path):
                     star_modern_path = muscles_path
+                elif os.path.exists(solar_path):
+                    star_modern_path = solar_path
                 else:
                     log.error(f"No stellar spectrum found for '{mors_cfg.star_name}' in reference data.")
                     log.error("Check the available spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html.")

@@ -261,15 +261,16 @@ def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch
 
 # init_star() spectrum selection tests
 
-def test_init_star_source_none_prefers_solar_when_available(tmp_path, monkeypatch):
+def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypatch):
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
     handler = _make_handler_for_init_star(tmp_path, spectrum_source=None)
 
-    starname_proper = "gj876.txt"
-    solar = tmp_path / "stellar_spectra" / "solar" / starname_proper
-    muscles = tmp_path / "stellar_spectra" / "MUSCLES" / starname_proper
+    star_file = "gj876.txt"
+    solar = tmp_path / "stellar_spectra" / "solar" / star_file
+    muscles = tmp_path / "stellar_spectra" / "MUSCLES" / star_file
+
     _write_spectrum_file(solar, fl=(10.0, 20.0))
     _write_spectrum_file(muscles, fl=(30.0, 40.0))
 
@@ -277,7 +278,7 @@ def test_init_star_source_none_prefers_solar_when_available(tmp_path, monkeypatc
 
     backup = tmp_path / "out" / "data" / "-1.sflux"
     arr = np.loadtxt(backup)
-    assert np.allclose(arr[:, 1], np.array([10.0, 20.0]))
+    assert np.allclose(arr[:, 1], np.array([30.0, 40.0]))
 
 
 def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeypatch):

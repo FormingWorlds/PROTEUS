@@ -20,7 +20,7 @@ PROTEUS can use:
 By default, observed spectra are searched in:
 
 - `$FWL_DATA/stellar_spectra/MUSCLES`  – MUSCLES / Mega-MUSCLES stars
-- `$FWL_DATA/stellar_spectra/solar`    – solar reference spectrum (`sun.txt`)
+- `$FWL_DATA/stellar_spectra/solar`    – solar spectra (modern, past, future)
 
 To see which files you have installed, run for example:
 
@@ -31,9 +31,20 @@ ls $FWL_DATA/stellar_spectra/solar
 
 For PHOENIX spectra, files are stored under: `$FWL_DATA/stellar_spectra/PHOENIX`, where each subdirectory corresponds to a metallicity / alpha combination, e.g. FeH-0.5_alpha+0.0/.
 
-### Using solar spectrum
+### Using solar spectra
 
-To use the NREL observed spectrum of the Sun, set `spectrum_source = "solar"` or do not set the parameter at all, and set `star_name = "sun"`.
+To use the modern NREL observed spectrum of the Sun, set `spectrum_source = "solar"` or do not set the parameter at all, and set `star_name = "sun"`.
+
+To use a different solar spectrum, for example a **'young sun'** spectrum, there are [VPL spectra](https://live-vpl-test.pantheonsite.io/models/evolution-of-solar-flux/) available by Claire et al. (2012). In this case, set `spectrum_source = "solar"` and choose one of the following options for `star_name`:
+- `Sun0.6Ga` A young sun of 0.6 Gyr ago (age ~ 4.0 Gyr)
+- `Sun1.8Ga` A young sun of 1.8 Gyr ago (age ~ 2.8 Gyr)
+- `Sun2.4Ga` A young sun of 2.4 Gyr ago (age ~ 2.2 Gyr)
+- `Sun2.7Ga` A young sun of 2.7 Gyr ago (age ~ 1.9 Gyr)
+- `Sun3.8Ga` A young sun of 3.8 Gyr ago (age ~ 800 Myr)
+- `Sun4.4Ga` A young sun of 4.4 Gyr ago (age ~ 200 Myr)
+- `Sun5.6Gyr` A future sun of an age of 5.6 Gyr
+- `SunModern` A modern solar spectrum, can be chosen as an alternative to the NREL spectrum listed above.
+
 
 ####  The Sun
 
@@ -45,7 +56,7 @@ To use the NREL observed spectrum of the Sun, set `spectrum_source = "solar"` or
 * **Luminosity:**   1.0 L☉
 * **Mass:**     1.0 M☉
 * **Radius:**     1.0 R☉
-* **Source:** [Gueymard 2003](https://www.sciencedirect.com/science/article/pii/S0038092X03003967), [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html)
+* **Source:** [Gueymard 2003](https://www.sciencedirect.com/science/article/pii/S0038092X03003967), [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html), [Claire et al. 2012](https://iopscience.iop.org/article/10.1088/0004-637X/757/1/95)
 
 ### Using a (Mega-)MUSCLES observed spectrum
 
