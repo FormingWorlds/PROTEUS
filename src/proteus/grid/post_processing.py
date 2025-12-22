@@ -196,7 +196,8 @@ def load_phi_crit(grid_dir: str | Path):
     if not ref_file.exists():
         raise FileNotFoundError(f"ref_config.toml not found in {grid_dir}")
 
-    ref = toml.load(open(ref_file))
+    with ref_file.open("rb") as f:
+        ref = toml.load(f)
 
     # Find phi_crit value
     try:
