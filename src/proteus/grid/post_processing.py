@@ -70,7 +70,7 @@ def load_grid_cases(grid_dir: Path):
         init_params = {}
         if init_file.exists():
             try:
-                init_params = toml.load(open(init_file))
+                init_params = toml.load(init_file)
             except Exception as e:
                 print(f"Error reading init file in {case.name}: {e}")
 
