@@ -145,6 +145,23 @@ Use the CLI to package the results of a grid into a zip file; e.g. for sharing o
 ```console
 proteus grid-pack -o output/grid_demo/
 ```
+## Postprocessing of grid results
+
+Results from a PROTEUS grid can be post-processed using the `proteus grid-analyse` command. This generates ECDF plots that summarize the last time step of all simulation cases in the grid. (For more details on ECDF plots, see the [Seaborn `ecdfplot` documentation](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html).)
+
+Before running the command, update the `example.grid_analyse.toml` file to match your grid. Specify the input parameters used in your simulations and select the output variables you want to visualize. To post-process a grid and generate ECDF plots for further analysis, run the following command:
+
+```
+proteus grid-analyse input/ensembles/example.grid_analyse.toml
+```
+
+Executing the command creates a `post_processing` folder inside your grid directory containing all post-processing outputs:  
+
+- Extracted data: CSV files with simulation status, input parameters, and output values at the last time step are stored in:  
+  `post_processing/extracted_data/`  
+- Plots: Status summaries and ECDF grid plots are saved in:  
+  `post_processing/plots/`  
+
 
 ## Retrieval scheme (Bayesian optimisation)
 
