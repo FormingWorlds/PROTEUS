@@ -513,13 +513,9 @@ def download_all_solar_spectra():
     """
     log.info("Downloading solar spectra to 'solar' folder")
 
-    download(
-        folder = 'solar',
-        target = "stellar_spectra",
-        osf_id = None,
-        zenodo_id= '17981836',
-        desc = 'solar spectra'
-    )
+    return download_zenodo_folder(
+        zenodo_id='17981836',
+        folder_dir=GetFWLData() / "stellar_spectra" / "solar")
 
 def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
     """
