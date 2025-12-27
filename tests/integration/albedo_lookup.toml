@@ -21,7 +21,8 @@ version = "2.0"
     [star.mors]
         rot_pcntle = 50.0       # Rotation percentile
         age_now = 4.567         # Current age of star used for scaling [Gyr]
-        spec    = "stellar_spectra/Named/sun.txt"   # Stellar spectrum
+        star_name = "sun"
+        spectrum_source = "solar"
 
 [orbit]
     semimajoraxis   = 1.0       # [AU]

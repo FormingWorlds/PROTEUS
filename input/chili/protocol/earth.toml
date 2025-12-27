@@ -69,10 +69,11 @@ age_ini = 0.05
 
 [star.mors]
 age_now = 4.567
-spec = "stellar_spectra/Named/sun.txt"
 rot_pcntle = 50.0
 rot_period = "none"
 tracks = "spada"
+star_name = "sun"
+spectrum_source = "solar"
 
 [star.dummy]
 Teff = 5772.0
