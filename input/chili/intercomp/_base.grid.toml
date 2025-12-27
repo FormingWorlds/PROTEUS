@@ -9,7 +9,7 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 
 ["delivery.elements.H_kg"]
     method = "direct"
-    values = [1.60e20, 4.70e20, 7.80e20, 16e20]
+    values = [1.60e20, 7.80e20, 16e20]
 
 ["delivery.elements.C_kg"]
     method = "direct"
