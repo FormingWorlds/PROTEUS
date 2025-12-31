@@ -2,11 +2,13 @@ name: CI Tests for PROTEUS # Continuous Integration Tests for PROTEUS
 
 # Trigger on pushes/PRs to main and dev branches, plus manual workflow_dispatch
 # Aligned with existing tests.yaml structure for consistency
+# Temporarily includes tl/test_ecosystem_v1 for testing
 on:
   push:
     branches:
       - main
       - dev
+      - tl/test_ecosystem_v1
   pull_request:
     branches:
       - main
