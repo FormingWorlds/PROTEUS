@@ -83,6 +83,7 @@ develop = [
     "pillow",
     "pip-tools",
     "pytest >= 8.1",
+    "pytest-cov",
     "pytest-dependency",
 ]
 
@@ -106,9 +107,53 @@ proteus = ["juliapkg.json"]
 [tool.coverage.run]
 branch = true
 source = ["proteus"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/conftest.py",
+]
 
 [tool.pytest.ini_options]
+minversion = "8.1"
+addopts = [
+    "--cov=src",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--showlocals",
+]
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.report]
+fail_under = 5  # % coverage threshold for the entire PROTEUS ecosystem, increase manually
+show_missing = true
+precision = 2
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.ruff]
 line-length = 96

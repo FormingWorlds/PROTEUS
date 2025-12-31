@@ -1,0 +1,123 @@
+name: CI # Continuous Integration
+
+# Trigger on pushes/PRs to main/develop and manual workflow_dispatch
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  # Test suite with matrix testing across Python versions
+  # Provides fast feedback on code quality and coverage
+  test-matrix:
+    name: Test Suite
+    strategy:
+      fail-fast: false
+      matrix:
+        # Test against multiple Python versions for compatibility
+        python-version: ['3.11', '3.12', '3.13']
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # Checkout code with full history for accurate coverage analysis
+      # Note: submodules are recursive to include CALLIOPE, JANUS, MORS, VULCAN, ZEPHYRUS, Zalmoxis, aragog, others
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # Configure Python environment with pip caching for faster builds
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      # Install all development dependencies including pytest-cov for coverage analysis
+      # See: docs/testing_infrastructure.md for testing configuration details
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[develop]"
+
+      # Display installed packages for debugging version conflicts
+      - name: Display installed packages
+        run: pip list
+
+      # Run comprehensive test suite with multiple coverage report formats
+      # fail-under: Enforces minimum coverage threshold to prevent regressions
+      # Reports: term-missing (terminal), xml (Codecov), html (artifacts)
+      # See: pyproject.toml [tool.coverage.report] for threshold and exclusions
+      - name: Run tests with coverage
+        run: |
+          pytest \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-fail-under=5 \
+            tests/
+
+      # Upload coverage to Codecov for trend tracking and PR annotations
+      # Only runs on Python 3.11 to avoid duplicate uploads
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.11'
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-${{ matrix.python-version }}
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      # Preserve HTML coverage report as artifact for 30 days
+      # Allows reviewers to inspect coverage details without local test run
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.11'
+        with:
+          name: coverage-report-py${{ matrix.python-version }}
+          path: htmlcov/
+          retention-days: 30
+
+  # Linting job to catch code style and formatting issues early
+  # Separate from test job to avoid blocking tests on style issues (fail-fast=false)
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check code style and formatting using ruff
+      # Ruff is much faster than traditional linters and catches common issues
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Use Python 3.11 as standard for linting (no need for full matrix)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # Install development dependencies including ruff linter
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[develop]"
+
+      # Run ruff linting checks (imports, naming, style)
+      # Catches common issues: unused imports, incorrect naming, undefined names, etc.
+      - name: Run ruff linting
+        run: ruff check src/ tests/
+
+      # Run ruff formatting check (no changes, report only)
+      # Ensure consistent code style across the project
+      # See: pyproject.toml [tool.ruff] for configuration
+      - name: Run ruff formatting check
+        run: ruff format --check src/ tests/

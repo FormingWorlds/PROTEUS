@@ -1,0 +1,92 @@
+name: Reusable Test Quality Gate for PROTEUS Ecosystem
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version to use for testing'
+        required: false
+        type: string
+        default: '3.11'
+      coverage-threshold:
+        description: 'Minimum coverage percentage required'
+        required: false
+        type: number
+        default: 5
+      working-directory:
+        description: 'Working directory for the project (if in subdirectory)'
+        required: false
+        type: string
+        default: '.'
+      pytest-args:
+        description: 'Additional pytest arguments'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  test:
+    name: Test (Python ${{ inputs.python-version }})
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better coverage analysis
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[develop]"
+
+      - name: Display installed packages
+        run: pip list
+
+      - name: Run pytest with coverage
+        run: |
+          pytest \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-fail-under=${{ inputs.coverage-threshold }} \
+            ${{ inputs.pytest-args }} \
+            tests/
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-${{ inputs.python-version }}
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-${{ inputs.python-version }}
+          path: htmlcov/
+          retention-days: 30
+
+      - name: Check coverage threshold
+        if: failure()
+        run: |
+          echo "❌ Coverage check failed!"
+          echo "Current coverage is below the required threshold of ${{ inputs.coverage-threshold }}%"
+          echo "Please add more tests or adjust the threshold in the workflow."
+          exit 1
