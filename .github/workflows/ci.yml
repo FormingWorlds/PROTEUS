@@ -104,6 +104,12 @@ jobs:
       - name: Checkout PROTEUS
         uses: actions/checkout@v6
 
+      # Clone MORS and aragog repos (not submodules, but separate repos for testing)
+      - name: Clone MORS and aragog for local testing
+        run: |
+          git clone https://github.com/FormingWorlds/MORS.git
+          git clone https://github.com/FormingWorlds/aragog.git
+
       # Get Lovepy
       - name: Get Lovepy
         run: |
