@@ -140,6 +140,11 @@ jobs:
         run:
           python -m pip install -e .[develop]
 
+      - name: Install local MORS and aragog packages (overriding PyPI versions)
+        run: |
+          python -m pip install -e ./MORS
+          python -m pip install -e ./aragog
+
       - name: Install all PROTEUS external repo dependencies via cli.py.
         run:
           proteus install-all --export-env
