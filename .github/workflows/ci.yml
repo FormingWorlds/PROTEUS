@@ -100,7 +100,7 @@ jobs:
         with:
           include-matrix: 'false'
 
-      # Checkout PROTEUS - includes recursive submodules for CALLIOPE, JANUS, MORS, VULCAN, ZEPHYRUS, Zalmoxis, aragog
+      # Checkout PROTEUS
       - name: Checkout PROTEUS
         uses: actions/checkout@v6
 
@@ -108,7 +108,7 @@ jobs:
       - name: Clone MORS and aragog for local testing
         run: |
           git clone https://github.com/FormingWorlds/MORS.git
-          git clone https://github.com/FormingWorlds/aragog.git
+          git clone --branch tl/deprecation_fixes_line138 https://github.com/FormingWorlds/aragog.git
 
       # Get Lovepy
       - name: Get Lovepy
