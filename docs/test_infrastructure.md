@@ -184,7 +184,7 @@ directory = "htmlcov"
 
 **GitHub Actions Workflows:**
 
-1. **Main CI Workflow** (`.github/workflows/ci.yml`)
+1. **Main CI Workflow** (`.github/workflows/ci_tests.yml`)
    - Matrix testing: Python 3.11, 3.12, 3.13
    - Runs pytest with coverage
    - Linting with ruff
@@ -297,7 +297,7 @@ See [CALLIOPE test files](https://github.com/FormingWorlds/CALLIOPE/tree/main/te
    - Add pytest and coverage configurations (see Architecture section)
    - Include `pytest-cov` in `[project.optional-dependencies]`
 
-2. **.github/workflows/ci.yml**
+2. **.github/workflows/ci_tests.yml**
    - Set up matrix testing
    - Configure coverage threshold
    - Add linting step
@@ -405,7 +405,7 @@ To be adapted for future modules as needed:
 
 1. **Setup Infrastructure** ✅
    - ✅ Create reusable workflow (`.github/workflows/proteus_test_quality_gate.yml`)
-   - ✅ Create CI workflow (`.github/workflows/ci.yml`)
+   - ✅ Create CI workflow (`.github/workflows/ci_tests.yml`)
    - ✅ Update pyproject.toml with pytest/coverage configuration
    - ✅ Create tools (restructure, validate, analyze scripts)
    - ✅ Create comprehensive documentation
@@ -557,7 +557,7 @@ See [CALLIOPE implementation](https://github.com/FormingWorlds/CALLIOPE/blob/mai
 
 **Step 3: Create/Update CI Workflow**
 
-Create `.github/workflows/ci.yml` in your module. Two options:
+Create `.github/workflows/ci_tests.yml` in your module. Two options:
 
 **Option A: Use Reusable Workflow (Recommended)**
 
@@ -583,7 +583,7 @@ jobs:
 
 **Option B: Full Custom Workflow (More Control)**
 
-Copy from PROTEUS `.github/workflows/ci.yml` and customize for your module's dependencies.
+Copy from PROTEUS `.github/workflows/ci_tests.yml` and customize for your module's dependencies.
 
 **Step 4: Validate and Test**
 
@@ -1327,7 +1327,7 @@ pytest
 
 - [ ] **Setup** (30 min)
   - [ ] Copy PROTEUS pyproject.toml pytest/coverage sections
-  - [ ] Create/update `.github/workflows/ci.yml`
+  - [ ] Create/update `.github/workflows/ci_tests.yml`
   - [ ] Set appropriate `fail_under` threshold (20-30%)
   - [ ] Add pytest-cov to develop dependencies
 

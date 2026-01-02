@@ -135,7 +135,10 @@ markers = [
 ]
 
 [tool.coverage.report]
-fail_under = 69  # Achieved 69.23% in CI run 20665842329 - maintain high bar
+# Coverage threshold - automatically updated by CI when coverage increases
+# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml
+# This value can only increase or stay the same (coverage ratcheting mechanism)
+fail_under = 69
 show_missing = true
 precision = 2
 exclude_lines = [

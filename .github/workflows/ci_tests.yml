@@ -210,7 +210,7 @@ jobs:
 
       # Run PROTEUS tests with coverage
       # Tests are organized in tests/ directory mirroring src/ folder structure
-      # See: docs/testing_infrastructure.md for test organization guidelines
+      # See: docs/test_infrastructure.md for test organization guidelines
       # pytest configuration: pyproject.toml [tool.pytest.ini_options]
       - name: Test with pytest
         run: coverage run -m pytest
@@ -269,6 +269,28 @@ jobs:
           coverage report >> $GITHUB_STEP_SUMMARY
           echo $'\n```' >> $GITHUB_STEP_SUMMARY
           coverage report
+
+      # Update coverage threshold (automatic ratcheting mechanism)
+      # Only runs on main branch with Python 3.13 to avoid redundant updates
+      # Automatically increases threshold when coverage improves, never decreases
+      - name: Update coverage threshold
+        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' && runner.os == 'Linux' && !failure() }}
+        run: |
+          # Automatically ratchet coverage threshold upward when tests pass on main
+          python tools/update_coverage_threshold.py
+
+          # Check if pyproject.toml was modified
+          if git diff --quiet pyproject.toml; then
+            echo "No coverage threshold update needed"
+          else
+            echo "Coverage threshold increased - committing update"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add pyproject.toml
+            COVERAGE_PCT=$(python -c 'import json; print(json.load(open("coverage.json"))["totals"]["percent_covered"])')
+            git commit -m "ci: Auto-update coverage threshold to ${COVERAGE_PCT}% [skip ci]"
+            git push
+          fi
 
       # Create dynamic coverage badge for documentation
       # Only runs on main branch with Python 3.13 to avoid redundant updates
