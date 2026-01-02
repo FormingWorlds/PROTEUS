@@ -132,6 +132,16 @@ jobs:
         run: |
           ./tools/get_vulcan.sh
 
+      # Clone SOCRATES before cache restore (needed for hash-based cache keys)
+      - name: Clone SOCRATES for cache key generation
+        run: |
+          git clone https://github.com/nichollsh/SOCRATES.git socrates
+
+      # Clone AGNI before cache restore (needed for hash-based cache keys)
+      - name: Clone AGNI for cache key generation
+        run: |
+          git clone https://github.com/nichollsh/AGNI.git AGNI
+
       # Restore cached lookup-data for PROTEUS
       - name: Get FWL data from cache
         uses: actions/cache@v4
