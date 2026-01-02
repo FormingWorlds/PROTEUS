@@ -29,44 +29,23 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    # Test suite with matrix testing across Python versions and OS platforms
-    # Provides comprehensive coverage and ensures cross-platform compatibility
-    # Full matrix (Ubuntu + macOS) only runs on nightly schedule; push/PR runs Ubuntu only
-    name: Run Coverage and Tests
-    strategy:
-      fail-fast: false  # Continue testing all matrix combinations even if one fails
-      matrix:
-        os: ['ubuntu-latest', 'macos-latest']
-        python-version: ['3.13']
-        include:
-          # Ubuntu-specific system dependencies for compiled extensions
-          # netcdf: Required for data I/O operations
-          # libssl-dev: Required for cryptographic operations
-          - os: ubuntu-latest
-            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev tree
-            CC: gcc
-            CXX: g++
-            FC: gfortran
-          # macOS lane runs only on scheduled nightly builds
-          - os: macos-latest
-            INSTALL_DEPS: brew uninstall --force pkg-config; rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
-            CC: gcc
-            CXX: g++
-            FC: gfortran
-
-    # Only run macOS on scheduled (nightly) builds; always run Ubuntu
-    if: ${{ github.event_name == 'schedule' || matrix.os == 'ubuntu-latest' }}
-
+  test-linux:
+    # Ubuntu lane runs on every push/PR
+    name: Run Coverage and Tests (Ubuntu)
     env:
+      INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev tree
+      CC: gcc
+      CXX: g++
+      FC: gfortran
+      PYTHON_VERSION: '3.13'
       FWL_DATA: ${{ github.workspace }}/fwl_data
       PROTEUS_DIR: ${{ github.workspace }}
       RAD_DIR: ${{ github.workspace }}/socrates
       AGNI_DIR: ${{ github.workspace }}/AGNI
       JULIA_NUM_THREADS: 1
 
-    runs-on: ${{ matrix.os }}
-    steps:
+    runs-on: ubuntu-latest
+    steps: &test-steps
 
       # Check available disk space before deciding to clean
       - name: Check available disk space
@@ -94,7 +73,7 @@ jobs:
 
       # https://stackoverflow.com/a/65356209
       - name: Install system dependencies
-        run: ${{ matrix.INSTALL_DEPS }}
+        run: ${{ env.INSTALL_DEPS }}
 
       # MacOS only: create symbolic link for gfortran
       - name: Symlink gfortran
@@ -156,10 +135,10 @@ jobs:
           key: fwl-data-2
 
       # Setup Python using the version defined in the matrix
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ env.PYTHON_VERSION }}
 
       # Try to restore the Python environment from the cache
       - name: Restore Python environment from cache
@@ -277,7 +256,7 @@ jobs:
       # Only runs on main branch with Python 3.13 to avoid redundant updates
       # Automatically increases threshold when coverage improves, never decreases
       - name: Update coverage threshold
-        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' && runner.os == 'Linux' && !failure() }}
+        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.13' && runner.os == 'Linux' && !failure() }}
         run: |
           # Automatically ratchet coverage threshold upward when tests pass on main
           python tools/update_coverage_threshold.py
@@ -299,7 +278,7 @@ jobs:
       # Only runs on main branch with Python 3.13 to avoid redundant updates
       # Badge URL: stored in GitHub Gist for display in README
       - name: Make coverage badge
-        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' && runner.os == 'Linux' && !failure() }}
+        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.13' && runner.os == 'Linux' && !failure() }}
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}
@@ -310,3 +289,22 @@ jobs:
           minColorRange: 50
           maxColorRange: 90
           valColorRange: ${{ env.total }}
+
+  test-macos:
+    # macOS lane only on scheduled nightly builds
+    name: Run Coverage and Tests (macOS nightly)
+    if: ${{ github.event_name == 'schedule' }}
+    env:
+      INSTALL_DEPS: brew uninstall --force pkg-config; rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
+      CC: gcc
+      CXX: g++
+      FC: gfortran
+      PYTHON_VERSION: '3.13'
+      FWL_DATA: ${{ github.workspace }}/fwl_data
+      PROTEUS_DIR: ${{ github.workspace }}
+      RAD_DIR: ${{ github.workspace }}/socrates
+      AGNI_DIR: ${{ github.workspace }}/AGNI
+      JULIA_NUM_THREADS: 1
+
+    runs-on: macos-latest
+    steps: *test-steps
