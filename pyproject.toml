@@ -117,10 +117,8 @@ omit = [
 [tool.pytest.ini_options]
 minversion = "8.1"
 addopts = [
-    "--cov=proteus",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
+    # Coverage options removed - CI uses "coverage run -m pytest" instead
+    # Coverage reports configured in [tool.coverage.report] section
     "--strict-markers",
     "--strict-config",
     "-ra",
