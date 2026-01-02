@@ -209,7 +209,14 @@ def run_interior(dirs:dict, config:Config,
     # Read output
     for k in output.keys():
         if k in hf_row.keys():
-            hf_row[k] = output[k]
+            val = output[k]
+            # Convert numpy arrays to scalars for NumPy 2.0 compatibility
+            if hasattr(val, '__len__') and hasattr(val, 'item') and len(val) == 1:
+                hf_row[k] = val.item() if hasattr(val, 'item') else float(val[0])
+            elif hasattr(val, 'item') and not hasattr(val, '__len__'):
+                hf_row[k] = val.item()
+            else:
+                hf_row[k] = val
 
     # Update rheological parameters
     #    Only calculate viscosity here if using dummy module
