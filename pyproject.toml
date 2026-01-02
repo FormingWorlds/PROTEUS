@@ -135,7 +135,7 @@ markers = [
 ]
 
 [tool.coverage.report]
-fail_under = 5  # % coverage threshold for the entire PROTEUS ecosystem, increase manually
+fail_under = 69  # Achieved 69.23% in CI run 20665842329 - maintain high bar
 show_missing = true
 precision = 2
 exclude_lines = [

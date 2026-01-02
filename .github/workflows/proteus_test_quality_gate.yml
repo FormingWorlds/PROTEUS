@@ -7,12 +7,12 @@ on:
         description: 'Python version to use for testing'
         required: false
         type: string
-        default: '3.11'
+        default: '3.13'
       coverage-threshold:
-        description: 'Minimum coverage percentage required'
+        description: 'Minimum coverage percentage required (recommend 30-70%)'
         required: false
         type: number
-        default: 5
+        default: 30
       working-directory:
         description: 'Working directory for the project (if in subdirectory)'
         required: false
