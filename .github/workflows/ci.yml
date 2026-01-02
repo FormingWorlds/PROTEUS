@@ -153,27 +153,26 @@ jobs:
           python -m pip install -e ./MORS
           python -m pip install -e ./aragog
 
-      # Cache SOCRATES compiled binaries to avoid 7-8 minute recompilation
-      # Key based on SOCRATES repository content hash for automatic invalidation
-      - name: Cache SOCRATES binaries
-        uses: actions/cache@v4
-        id: cache-socrates
+      # Restore SOCRATES binaries from cache if available
+      # Uses weekly cache key to allow periodic refreshes while maintaining speed
+      - name: Restore SOCRATES cache
+        uses: actions/cache/restore@v4
+        id: cache-socrates-restore
         with:
           path: socrates/
-          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code', 'socrates/configure') }}
+          key: socrates-bins-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             socrates-bins-${{ runner.os }}-
 
-      # Cache AGNI Julia depot to avoid 3-4 minute package installation
-      # Includes both Julia packages and AGNI installation
-      - name: Cache AGNI Julia depot
-        uses: actions/cache@v4
-        id: cache-agni
+      # Restore AGNI Julia depot from cache if available
+      - name: Restore AGNI cache
+        uses: actions/cache/restore@v4
+        id: cache-agni-restore
         with:
           path: |
             AGNI/
             ~/.julia/
-          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/*.jl', 'AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
+          key: agni-depot-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             agni-depot-${{ runner.os }}-
 
@@ -213,6 +212,24 @@ jobs:
         with:
           name: proteus_output_folder
           path: output/
+
+      # Save SOCRATES binaries for next run (only if not already cached)
+      - name: Save SOCRATES cache
+        if: steps.cache-socrates-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: socrates/
+          key: socrates-bins-${{ runner.os }}-${{ github.run_id }}
+
+      # Save AGNI installation for next run (only if not already cached)
+      - name: Save AGNI cache
+        if: steps.cache-agni-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            AGNI/
+            ~/.julia/
+          key: agni-depot-${{ runner.os }}-${{ github.run_id }}
 
       # Generate and report coverage metrics
       # Reports coverage as JSON, terminal output, and GitHub step summary
