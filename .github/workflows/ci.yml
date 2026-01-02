@@ -63,9 +63,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
 
+      # Check available disk space before deciding to clean
+      - name: Check available disk space
+        id: check-disk
+        if: runner.os == 'Linux'
+        run: |
+          AVAILABLE=$(df / | awk 'NR==2 {print int($4 / ($2 / 100))}')
+          echo "available_percent=$AVAILABLE" >> $GITHUB_OUTPUT
+          echo "Disk usage: ${AVAILABLE}%"
+
+      # Only run cleanup if disk usage > 20% (i.e., <80% free)
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.check-disk.outputs.available_percent < 80
         with:
           tool-cache: false
 
