@@ -2,13 +2,14 @@ name: CI Tests for PROTEUS # Continuous Integration Tests for PROTEUS
 
 # Trigger on pushes/PRs to main and dev branches, plus manual workflow_dispatch
 # Aligned with existing tests.yaml structure for consistency
-# Temporarily includes tl/test_ecosystem_v1 for testing
+# Temporarily includes tl/test_ecosystem_v1 and v2 for testing
 on:
   push:
     branches:
       - main
       - dev
       - tl/test_ecosystem_v1
+      - tl/test_ecosystem_v2
   pull_request:
     branches:
       - main
@@ -151,6 +152,30 @@ jobs:
         run: |
           python -m pip install -e ./MORS
           python -m pip install -e ./aragog
+
+      # Cache SOCRATES compiled binaries to avoid 7-8 minute recompilation
+      # Key based on SOCRATES repository content hash for automatic invalidation
+      - name: Cache SOCRATES binaries
+        uses: actions/cache@v4
+        id: cache-socrates
+        with:
+          path: socrates/
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code', 'socrates/configure') }}
+          restore-keys: |
+            socrates-bins-${{ runner.os }}-
+
+      # Cache AGNI Julia depot to avoid 3-4 minute package installation
+      # Includes both Julia packages and AGNI installation
+      - name: Cache AGNI Julia depot
+        uses: actions/cache@v4
+        id: cache-agni
+        with:
+          path: |
+            AGNI/
+            ~/.julia/
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/*.jl', 'AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
+          restore-keys: |
+            agni-depot-${{ runner.os }}-
 
       - name: Install all PROTEUS external repo dependencies via cli.py.
         run:
