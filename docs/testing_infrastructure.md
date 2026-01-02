@@ -234,6 +234,57 @@ Pass/Fail → Merge gate
 - **Output:** Module-by-module coverage with priority list
 - **Usage:** `bash tools/coverage_analysis.sh`
 
+#### 4. `tools/update_coverage_threshold.py` (Optional - CALLIOPE Pattern)
+- **Purpose:** Automatically ratchet coverage threshold upward
+- **Trigger:** Runs on main branch when coverage increases
+- **Behavior:** Updates `fail_under` in pyproject.toml, prevents regression
+- **Usage:** Automated via CI (see CALLIOPE for implementation)
+
+### Ecosystem Integration Standards
+
+#### Codecov Integration
+
+All ecosystem modules should integrate with Codecov for ecosystem-wide coverage tracking:
+
+```yaml
+- name: Upload coverage reports to Codecov
+  uses: codecov/codecov-action@v4
+  if: always()
+  with:
+    files: ./coverage.xml
+    flags: unittests
+    name: codecov-${{ matrix.python-version }}-${{ matrix.os }}
+    fail_ci_if_error: false  # Non-blocking on feature branches
+  env:
+    CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+```
+
+For main branch: Set `CODECOV_TOKEN` as repository secret for full reporting.
+
+#### HTML Artifact Uploads
+
+Archive HTML coverage reports for 30 days:
+
+```yaml
+- name: Upload coverage HTML report
+  uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: coverage-report-${{ matrix.python-version }}-${{ matrix.os }}
+    path: htmlcov/
+    retention-days: 30
+```
+
+#### Test Quality & Documentation
+
+Best practice: Add comprehensive inline comments to test files:
+- Module docstring: Explain overall test purpose
+- Test comments: Document what each test validates
+- Context: Include formulas, principles, or domain knowledge relevant to assertions
+- Cross-references: Link to source code when helpful
+
+See [CALLIOPE test files](https://github.com/FormingWorlds/CALLIOPE/tree/main/tests) for exemplary documentation.
+
 ---
 
 ## Configuration
@@ -335,9 +386,17 @@ To be adapted for future modules as needed:
 - CI duration: ~18 minutes (with dependencies)
 - Features: Hash-based caching, dynamic badges, comprehensive reporting
 
+**CALLIOPE** ✅ Phase 2 Pilot Complete
+- Coverage: 18.68% (branch coverage, auto-ratcheting at 18%)
+- CI duration: ~5 minutes (6-job matrix: 2 OS × 3 Python versions)
+- Features: Coverage ratcheting, Codecov integration, HTML artifacts, comprehensive documentation
+- Status: Reference implementation for ecosystem integration
+- See: [CALLIOPE testing guide](https://proteus-framework.org/CALLIOPE/TESTS) for ratcheting mechanism
+
 **Ecosystem Modules** - Ready for deployment
-- CALLIOPE, JANUS, MORS: Have test.yaml, need full integration
-- VULCAN, ZEPHYRUS: Need CI setup
+- CALLIOPE: ✅ Phase 2 Pilot (use as reference implementation)
+- JANUS, MORS: Phase 2b/2c (template from CALLIOPE)
+- VULCAN, ZEPHYRUS: Need CI setup (can use CALLIOPE pattern)
 - aragog: Already integrated in PROTEUS CI
 
 ### Rollout Strategy
@@ -372,7 +431,16 @@ For each submodule (CALLIOPE, JANUS, MORS, VULCAN, ZEPHYRUS, Zalmoxis, aragog):
 
 ### Quick Start: 4-Step Deployment for Ecosystem Modules
 
-**Step 1: Copy Configuration from PROTEUS**
+**Using CALLIOPE as Reference Implementation**
+
+CALLIOPE (Phase 2 pilot) has completed all ecosystem integration standards and includes innovations beyond the base standard. When implementing for other modules (JANUS, MORS, etc.), use CALLIOPE as a reference:
+
+- Test structure and quality: [CALLIOPE tests](https://github.com/FormingWorlds/CALLIOPE/tree/main/tests)
+- Workflow configuration: [CALLIOPE ci_tests.yml](https://github.com/FormingWorlds/CALLIOPE/blob/main/.github/workflows/ci_tests.yml)
+- Coverage ratcheting: [CALLIOPE update_coverage_threshold.py](https://github.com/FormingWorlds/CALLIOPE/blob/main/tools/update_coverage_threshold.py)
+- Documentation: [CALLIOPE testing guide](https://proteus-framework.org/CALLIOPE/TESTS)
+
+**Step 1: Copy Configuration from CALLIOPE or PROTEUS**
 
 ```bash
 # Clone PROTEUS repo if you haven't already
@@ -451,7 +519,7 @@ develop = [
 - **Q4:** Increase to 50-60%
 - **Year 2:** Target 70%+
 
-Example progression for CALLIOPE:
+Example progression for new module:
 
 ```toml
 fail_under = 30  # January 2026
@@ -459,6 +527,33 @@ fail_under = 40  # April 2026
 fail_under = 50  # July 2026
 fail_under = 60  # October 2026
 ```
+
+**Advanced: Automatic Coverage Ratcheting (CALLIOPE Innovation)**
+
+For sustainable growth without manual threshold updates, CALLIOPE implements automatic ratcheting:
+
+```toml
+[tool.coverage.report]
+# Coverage threshold - automatically updated by CI when coverage increases
+# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml
+# This value can only increase or stay the same (coverage ratcheting mechanism)
+fail_under = 18
+```
+
+Implementation steps:
+
+1. Create `tools/update_coverage_threshold.py` to read current coverage and update threshold
+2. Add CI step that runs on main branch (specific Python/OS combo) to trigger updates
+3. Commit updates with `[skip ci]` to prevent cascade builds
+4. Document mechanism in pyproject.toml for team visibility
+
+Benefits:
+- ✅ Automatic progress tracking
+- ✅ Sustainable threshold growth
+- ✅ Eliminates manual updates
+- ✅ Enforces continuous improvement
+
+See [CALLIOPE implementation](https://github.com/FormingWorlds/CALLIOPE/blob/main/tools/update_coverage_threshold.py) for reference code and [CALLIOPE testing guide](https://proteus-framework.org/CALLIOPE/TESTS) for detailed documentation.
 
 **Step 3: Create/Update CI Workflow**
 
