@@ -3,6 +3,7 @@ name: CI Tests for PROTEUS # Continuous Integration Tests for PROTEUS
 # Trigger on pushes/PRs to main and dev branches, plus manual workflow_dispatch
 # Aligned with existing tests.yaml structure for consistency
 # Temporarily includes tl/test_ecosystem_v1 and v2 for testing
+# Nightly 02:00 UTC schedule runs the full OS matrix (Ubuntu + macOS)
 on:
   push:
     branches:
@@ -20,6 +21,8 @@ on:
       - synchronize
       - ready_for_review
   workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
 
 permissions:
   actions: write
@@ -29,14 +32,13 @@ jobs:
   test:
     # Test suite with matrix testing across Python versions and OS platforms
     # Provides comprehensive coverage and ensures cross-platform compatibility
+    # Full matrix (Ubuntu + macOS) only runs on nightly schedule; push/PR runs Ubuntu only
     name: Run Coverage and Tests
     strategy:
       fail-fast: false  # Continue testing all matrix combinations even if one fails
       matrix:
-        os: ['ubuntu-latest']
+        os: ['ubuntu-latest', 'macos-latest']
         python-version: ['3.13']
-        # To re-enable Python 3.12 later, uncomment below:
-        # python-version: ['3.12', '3.13']
         include:
           # Ubuntu-specific system dependencies for compiled extensions
           # netcdf: Required for data I/O operations
@@ -46,12 +48,15 @@ jobs:
             CC: gcc
             CXX: g++
             FC: gfortran
-          # macOS lane temporarily disabled; re-enable when current fixes are verified
-          # - os: macos-14
-          #   INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
-          #   CC: gcc
-          #   CXX: g++
-          #   FC: gfortran
+          # macOS lane runs only on scheduled nightly builds
+          - os: macos-latest
+            INSTALL_DEPS: brew uninstall --force pkg-config; rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
+            CC: gcc
+            CXX: g++
+            FC: gfortran
+
+    # Only run macOS on scheduled (nightly) builds; always run Ubuntu
+    if: ${{ github.event_name == 'schedule' || matrix.os == 'ubuntu-latest' }}
 
     env:
       FWL_DATA: ${{ github.workspace }}/fwl_data
