@@ -223,7 +223,7 @@ def run_interior(dirs:dict, config:Config,
     # Check that the new temperature is remotely reasonable
     if not (0 < hf_row["T_magma"] < 1e6):
         UpdateStatusfile(dirs, 21)
-        raise ValueError("T_magma is out of range: %g K"%hf_row["T_magma"])
+        raise ValueError("T_magma is out of range: %g K" % float(hf_row["T_magma"]))
 
 
     # Update dry interior mass
