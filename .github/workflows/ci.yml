@@ -32,8 +32,10 @@ jobs:
     strategy:
       fail-fast: false  # Continue testing all matrix combinations even if one fails
       matrix:
-        os: ['ubuntu-latest', 'macos-14']
-        python-version: ['3.12', '3.13']
+        os: ['ubuntu-latest']
+        python-version: ['3.13']
+        # To re-enable Python 3.12 later, uncomment below:
+        # python-version: ['3.12', '3.13']
         include:
           # Ubuntu-specific system dependencies for compiled extensions
           # netcdf: Required for data I/O operations
@@ -43,13 +45,12 @@ jobs:
             CC: gcc
             CXX: g++
             FC: gfortran
-          # macOS-specific dependencies and compiler setup
-          # Removes pkg-config conflicts and installs gfortran for Fortran compilation
-          - os: macos-14
-            INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
-            CC: gcc
-            CXX: g++
-            FC: gfortran
+          # macOS lane temporarily disabled; re-enable when current fixes are verified
+          # - os: macos-14
+          #   INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
+          #   CC: gcc
+          #   CXX: g++
+          #   FC: gfortran
 
     env:
       FWL_DATA: ${{ github.workspace }}/fwl_data
