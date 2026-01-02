@@ -154,17 +154,18 @@ jobs:
           python -m pip install -e ./aragog
 
       # Restore SOCRATES binaries from cache if available
-      # Uses weekly cache key to allow periodic refreshes while maintaining speed
+      # Cache key based on source file hashes - invalidates when source changes
       - name: Restore SOCRATES cache
         uses: actions/cache/restore@v4
         id: cache-socrates-restore
         with:
           path: socrates/
-          key: socrates-bins-${{ runner.os }}-${{ github.run_id }}
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code') }}
           restore-keys: |
             socrates-bins-${{ runner.os }}-
 
       # Restore AGNI Julia depot from cache if available
+      # Cache key based on AGNI dependency hashes - invalidates when dependencies change
       - name: Restore AGNI cache
         uses: actions/cache/restore@v4
         id: cache-agni-restore
@@ -172,7 +173,7 @@ jobs:
           path: |
             AGNI/
             ~/.julia/
-          key: agni-depot-${{ runner.os }}-${{ github.run_id }}
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
           restore-keys: |
             agni-depot-${{ runner.os }}-
 
@@ -214,14 +215,16 @@ jobs:
           path: output/
 
       # Save SOCRATES binaries for next run (only if not already cached)
+      # Cache key based on source file hashes - invalidates when source changes
       - name: Save SOCRATES cache
         if: steps.cache-socrates-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: socrates/
-          key: socrates-bins-${{ runner.os }}-${{ github.run_id }}
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code') }}
 
       # Save AGNI installation for next run (only if not already cached)
+      # Cache key based on AGNI dependency hashes - invalidates when dependencies change
       - name: Save AGNI cache
         if: steps.cache-agni-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -229,7 +232,7 @@ jobs:
           path: |
             AGNI/
             ~/.julia/
-          key: agni-depot-${{ runner.os }}-${{ github.run_id }}
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
 
       # Generate and report coverage metrics
       # Reports coverage as JSON, terminal output, and GitHub step summary
