@@ -170,8 +170,7 @@ jobs:
           key: ${{ env.pythonLocation }}-${{ hashFiles('./pyproject.toml') }}
 
       - name: Install PROTEUS (repo only)
-        run:
-          python -m pip install -e .[develop]
+        run: python -m pip install -e .[develop]
 
       - name: Install local MORS and aragog packages (overriding PyPI versions)
         run: |
@@ -203,8 +202,7 @@ jobs:
             agni-depot-${{ runner.os }}-
 
       - name: Install all PROTEUS external repo dependencies via cli.py.
-        run:
-          proteus install-all --export-env
+        run: proteus install-all --export-env
 
       # Get FWL data
       # - name: Get additional FWL data
