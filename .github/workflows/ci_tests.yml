@@ -178,13 +178,7 @@ jobs:
         id: cache-socrates-restore
         with:
           path: socrates/
-          key: |
-            socrates-bins-${{ runner.os }}-${{ hashFiles(
-              'socrates/**/*.f90',
-              'socrates/**/*.F90',
-              'socrates/**/*.c',
-              'socrates/build_code'
-            ) }}
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code') }}
           restore-keys: |
             socrates-bins-${{ runner.os }}-
 
@@ -257,13 +251,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: socrates/
-          key: |
-            socrates-bins-${{ runner.os }}-${{ hashFiles(
-              'socrates/**/*.f90',
-              'socrates/**/*.F90',
-              'socrates/**/*.c',
-              'socrates/build_code'
-            ) }}
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code') }}
 
       # Save AGNI installation for next run (only if not already cached)
       # Cache key based on AGNI dependency hashes - invalidates when dependencies change
@@ -519,13 +507,7 @@ jobs:
         id: cache-socrates-restore
         with:
           path: socrates/
-          key: |
-            socrates-bins-${{ runner.os }}-${{ hashFiles(
-              'socrates/**/*.f90',
-              'socrates/**/*.F90',
-              'socrates/**/*.c',
-              'socrates/build_code'
-            ) }}
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code') }}
           restore-keys: |
             socrates-bins-${{ runner.os }}-
 
@@ -598,13 +580,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: socrates/
-          key: |
-            socrates-bins-${{ runner.os }}-${{ hashFiles(
-              'socrates/**/*.f90',
-              'socrates/**/*.F90',
-              'socrates/**/*.c',
-              'socrates/build_code'
-            ) }}
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code') }}
 
       # Save AGNI installation for next run (only if not already cached)
       # Cache key based on AGNI dependency hashes - invalidates when dependencies change

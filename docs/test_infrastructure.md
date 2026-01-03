@@ -140,7 +140,6 @@ addopts = [
     "-ra",
     "--showlocals",
 ]
-```
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
