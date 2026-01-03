@@ -26,10 +26,10 @@ for src_dir in $(find src/proteus -type d -not -path "*/__pycache__" -not -path 
 
     if [ ! -d "$test_dir" ]; then
         echo "[X] Missing: $test_dir (for src/proteus/$module)"
-        ((missing_count++))
+        missing_count=$((missing_count + 1))
     else
         echo "[+] Found: $test_dir"
-        ((found_count++))
+        found_count=$((found_count + 1))
     fi
 done
 
@@ -67,7 +67,7 @@ for test_dir in tests/*/; do
 
     if [ ! -f "${test_dir}__init__.py" ]; then
         echo -e "${YELLOW}!${NC}  Missing: ${test_dir}__init__.py"
-        ((init_missing++))
+        init_missing=$((init_missing + 1))
     fi
 done
 
