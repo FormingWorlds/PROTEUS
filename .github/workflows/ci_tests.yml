@@ -168,7 +168,8 @@ jobs:
           path: |
             AGNI/
             ~/.julia/
-          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml',
+            'AGNI/**/Manifest.toml') }}
           restore-keys: |
             agni-depot-${{ runner.os }}-
 
@@ -232,7 +233,8 @@ jobs:
           path: |
             AGNI/
             ~/.julia/
-          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml',
+            'AGNI/**/Manifest.toml') }}
 
       # Generate and report coverage metrics
       # Reports coverage as JSON, terminal output, and GitHub step summary
@@ -425,7 +427,8 @@ jobs:
           path: |
             AGNI/
             ~/.julia/
-          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml',
+            'AGNI/**/Manifest.toml') }}
           restore-keys: |
             agni-depot-${{ runner.os }}-
 
@@ -489,7 +492,8 @@ jobs:
           path: |
             AGNI/
             ~/.julia/
-          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml',
+            'AGNI/**/Manifest.toml') }}
 
       # Generate and report coverage metrics
       # Reports coverage as JSON, terminal output, and GitHub step summary
