@@ -32,7 +32,7 @@ jobs:
       CC: gcc
       CXX: g++
       FC: gfortran
-      PYTHON_VERSION: '3.13'
+      PYTHON_VERSION: '3.12'
       FWL_DATA: ${{ github.workspace }}/fwl_data
       PROTEUS_DIR: ${{ github.workspace }}
       RAD_DIR: ${{ github.workspace }}/socrates
@@ -134,13 +134,38 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install PROTEUS (repo only)
+      - name: Install PROTEUS base package
         run: python -m pip install -e .[develop]
 
-      - name: Install local MORS and aragog packages (overriding PyPI versions)
+      # Developer install: Install submodules as editable packages
+      - name: Install MORS (editable)
+        run: python -m pip install -e ./MORS
+
+      - name: Install aragog (editable)
+        run: python -m pip install -e ./aragog
+
+      - name: Install JANUS (editable)
         run: |
-          python -m pip install -e ./MORS
-          python -m pip install -e ./aragog
+          git clone https://github.com/FormingWorlds/JANUS.git
+          python -m pip install -e ./JANUS
+
+      - name: Install CALLIOPE (editable)
+        run: |
+          git clone https://github.com/FormingWorlds/CALLIOPE.git
+          python -m pip install -e ./CALLIOPE
+
+      - name: Install ZEPHYRUS (editable)
+        run: |
+          git clone https://github.com/FormingWorlds/ZEPHYRUS.git
+          python -m pip install -e ./ZEPHYRUS
+
+      # Clone SPIDER (no build, just clone for reference)
+      - name: Clone SPIDER
+        run: |
+          mkdir -p SPIDER
+          curl -LsS https://osf.io/download/s8gb9/ > SPIDER/spider.zip
+          unzip -qq SPIDER/spider.zip -d SPIDER
+          rm SPIDER/spider.zip
 
       # Restore SOCRATES binaries from cache if available
       # Cache key based on source file hashes - invalidates when source changes
@@ -159,21 +184,13 @@ jobs:
           restore-keys: |
             socrates-bins-${{ runner.os }}-
 
-      # Build SOCRATES binaries (incl. prep_spec) when cache is missing and always export bin to PATH
-      - name: Build SOCRATES tools
+      # Developer install: Build SOCRATES using tools/get_socrates.sh
+      - name: Build SOCRATES
         run: |
-          cd socrates
-          if [ ! -x bin/prep_spec ]; then
-            ./configure
-            ./build_code
+          if [ ! -x socrates/bin/prep_spec ]; then
+            ./tools/get_socrates.sh socrates
           fi
-          echo "$PWD/bin" >> $GITHUB_PATH
-
-      # Generate Julia wrappers/constants for SOCRATES (rad_pcf.jl, etc.)
-      - name: Generate SOCRATES Julia wrappers
-        run: |
-          cd socrates/julia
-          RAD_DIR=${{ env.RAD_DIR }} julia --project=. src/generate_wrappers.jl
+          echo "$PWD/socrates/bin" >> $GITHUB_PATH
 
       # Restore AGNI Julia depot from cache if available
       # Cache key based on AGNI dependency hashes - invalidates when dependencies change
@@ -189,14 +206,12 @@ jobs:
           restore-keys: |
             agni-depot-${{ runner.os }}-
 
-      # Ensure AGNI Julia environment (incl. Plots) is instantiated
-      - name: Instantiate AGNI Julia environment
+      # Developer install: Build AGNI using get_agni.sh (skip tests with arg 0)
+      - name: Build AGNI
         run: |
           cd AGNI
-          julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
-
-      - name: Install all PROTEUS external repo dependencies via cli.py.
-        run: proteus install-all --export-env
+          bash src/get_agni.sh 0
+          cd ..
 
       # Get FWL data
       # - name: Get additional FWL data
@@ -339,7 +354,7 @@ jobs:
       CC: gcc
       CXX: g++
       FC: gfortran
-      PYTHON_VERSION: '3.13'
+      PYTHON_VERSION: '3.12'
       FWL_DATA: ${{ github.workspace }}/fwl_data
       PROTEUS_DIR: ${{ github.workspace }}
       RAD_DIR: ${{ github.workspace }}/socrates
@@ -424,13 +439,38 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install PROTEUS (repo only)
+      - name: Install PROTEUS base package
         run: python -m pip install -e .[develop]
 
-      - name: Install local MORS and aragog packages (overriding PyPI versions)
+      # Developer install: Install submodules as editable packages
+      - name: Install MORS (editable)
+        run: python -m pip install -e ./MORS
+
+      - name: Install aragog (editable)
+        run: python -m pip install -e ./aragog
+
+      - name: Install JANUS (editable)
         run: |
-          python -m pip install -e ./MORS
-          python -m pip install -e ./aragog
+          git clone https://github.com/FormingWorlds/JANUS.git
+          python -m pip install -e ./JANUS
+
+      - name: Install CALLIOPE (editable)
+        run: |
+          git clone https://github.com/FormingWorlds/CALLIOPE.git
+          python -m pip install -e ./CALLIOPE
+
+      - name: Install ZEPHYRUS (editable)
+        run: |
+          git clone https://github.com/FormingWorlds/ZEPHYRUS.git
+          python -m pip install -e ./ZEPHYRUS
+
+      # Clone SPIDER (no build, just clone for reference)
+      - name: Clone SPIDER
+        run: |
+          mkdir -p SPIDER
+          curl -LsS https://osf.io/download/s8gb9/ > SPIDER/spider.zip
+          unzip -qq SPIDER/spider.zip -d SPIDER
+          rm SPIDER/spider.zip
 
       # Restore SOCRATES binaries from cache if available
       # Cache key based on source file hashes - invalidates when source changes
@@ -449,21 +489,13 @@ jobs:
           restore-keys: |
             socrates-bins-${{ runner.os }}-
 
-      # Build SOCRATES binaries (incl. prep_spec) when cache is missing and always export bin to PATH
-      - name: Build SOCRATES tools
+      # Developer install: Build SOCRATES using tools/get_socrates.sh
+      - name: Build SOCRATES
         run: |
-          cd socrates
-          if [ ! -x bin/prep_spec ]; then
-            ./configure
-            ./build_code
+          if [ ! -x socrates/bin/prep_spec ]; then
+            ./tools/get_socrates.sh socrates
           fi
-          echo "$PWD/bin" >> $GITHUB_PATH
-
-      # Generate Julia wrappers/constants for SOCRATES (rad_pcf.jl, etc.)
-      - name: Generate SOCRATES Julia wrappers
-        run: |
-          cd socrates/julia
-          RAD_DIR=${{ env.RAD_DIR }} julia --project=. src/generate_wrappers.jl
+          echo "$PWD/socrates/bin" >> $GITHUB_PATH
 
       # Restore AGNI Julia depot from cache if available
       # Cache key based on AGNI dependency hashes - invalidates when dependencies change
@@ -479,14 +511,12 @@ jobs:
           restore-keys: |
             agni-depot-${{ runner.os }}-
 
-      # Ensure AGNI Julia environment (incl. Plots) is instantiated
-      - name: Instantiate AGNI Julia environment
+      # Developer install: Build AGNI using get_agni.sh (skip tests with arg 0)
+      - name: Build AGNI
         run: |
           cd AGNI
-          julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
-
-      - name: Install all PROTEUS external repo dependencies via cli.py.
-        run: proteus install-all --export-env
+          bash src/get_agni.sh 0
+          cd ..
 
       # Get FWL data
       # - name: Get additional FWL data
