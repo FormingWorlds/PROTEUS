@@ -637,8 +637,9 @@ For modules with external dependencies (SOCRATES, AGNI, VULCAN), caching can sav
 
 ```yaml
 # Clone dependencies BEFORE cache restore (critical!)
+# Pin to specific commit/tag for reproducibility and security
 - name: Clone SOCRATES
-  run: git clone https://github.com/nichollsh/SOCRATES.git socrates
+  run: git clone --depth 1 --branch v1.2.3 https://github.com/nichollsh/SOCRATES.git socrates
 
 # Now cache restore can hash the source files
 - name: Restore SOCRATES cache

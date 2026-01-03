@@ -63,8 +63,6 @@ Tests for proteus.${module} module
 """
 from __future__ import annotations
 
-import pytest
-
 
 def test_placeholder():
     """Placeholder test - replace with actual tests"""

@@ -222,8 +222,13 @@ def run_interior(dirs:dict, config:Config,
                         hf_row[k] = arr.item()
                     else:
                         hf_row[k] = val
-                except Exception:
-                    hf_row[k] = val
+                except Exception as exc:
+                    log.warning(
+                        "Failed to convert output value for key %r (%r) to a NumPy array/scalar: %s",
+                        k,
+                        val,
+                        exc,
+                    )
 
     # Update rheological parameters
     #    Only calculate viscosity here if using dummy module

@@ -27,7 +27,13 @@ from pathlib import Path
 try:  # Python 3.11+
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreters
-    import tomli as tomllib  # type: ignore
+    try:
+        import tomli as tomllib  # type: ignore
+    except ModuleNotFoundError:
+        raise ImportError(
+            "tomllib (Python 3.11+) or tomli package is required. "
+            "Install with: pip install tomli"
+        ) from None
 
 import tomlkit
 
