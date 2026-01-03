@@ -4,7 +4,7 @@
 
 set -e
 
-echo "🔍 Validating test structure..."
+echo "[*] Validating test structure..."
 echo ""
 
 # Colors for output
@@ -25,13 +25,14 @@ for src_dir in $(find src/proteus -type d -not -path "*/__pycache__" -not -path 
     test_dir="tests/$module"
 
     if [ ! -d "$test_dir" ]; then
-        echo -e "${RED}✗${NC} Missing: $test_dir (for src/proteus/$module)"
+        echo "[✗] Missing: $test_dir (for src/proteus/$module)"
         ((missing_count++))
     else
-        echo -e "${GREEN}✓${NC} Found: $test_dir"
+        echo "[✓] Found: $test_dir"
         ((found_count++))
     fi
 done
+
 
 echo ""
 echo "Checking for test files in each directory..."
@@ -47,9 +48,9 @@ for test_dir in tests/*/; do
     test_files=$(find "$test_dir" -name "test_*.py" 2>/dev/null | wc -l)
 
     if [ "$test_files" -eq 0 ]; then
-        echo -e "${YELLOW}⚠${NC}  No test files in $test_dir"
+        echo "[!]  No test files in $test_dir"
     else
-        echo -e "${GREEN}✓${NC} $test_files test file(s) in $test_dir"
+        echo "[✓] $test_files test file(s) in $test_dir"
     fi
 done
 
@@ -71,7 +72,7 @@ for test_dir in tests/*/; do
 done
 
 if [ "$init_missing" -eq 0 ]; then
-    echo -e "${GREEN}✓${NC} All test directories have __init__.py"
+    echo "[✓] All test directories have __init__.py"
 fi
 
 echo ""
@@ -83,9 +84,9 @@ echo "  __init__.py files missing: $init_missing"
 echo ""
 
 if [ "$missing_count" -eq 0 ] && [ "$init_missing" -eq 0 ]; then
-    echo -e "${GREEN}✓ Test structure is complete!${NC}"
+    echo "[✓] Test structure is complete!"
     exit 0
 else
-    echo -e "${YELLOW}⚠ Run 'bash tools/restructure_tests.sh' to fix issues${NC}"
+    echo "[!] Run 'bash tools/restructure_tests.sh' to fix issues"
     exit 1
 fi
