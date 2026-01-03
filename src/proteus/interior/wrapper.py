@@ -224,9 +224,10 @@ def run_interior(dirs:dict, config:Config,
                         hf_row[k] = val
                 except Exception as exc:
                     log.warning(
-                        "Failed to convert output value for key %r (%r) to a NumPy array/scalar: %s",
+                        "Failed to convert output value for key %r (%r) to a NumPy array/scalar (%s: %s)",
                         k,
                         val,
+                        type(exc).__name__,
                         exc,
                     )
 

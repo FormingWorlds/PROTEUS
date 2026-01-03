@@ -119,8 +119,11 @@ omit = [
 minversion = "8.1"
 addopts = [
     # Global coverage options removed from addopts.
-    # CI uses "coverage run -m pytest" with [tool.coverage.*] settings;
-    # pytest-cov is available for local use (e.g. `pytest --cov`) but not enabled here.
+    # CI uses "coverage run -m pytest" with [tool.coverage.*] settings.
+    # For local development, use either:
+    #   1. "coverage run -m pytest" (matches CI behavior, compatible with coverage ratcheting)
+    #   2. "pytest --cov" (uses pytest-cov, convenient but slightly different from CI)
+    # Both approaches work; choose based on preference.
     "--strict-markers",
     "--strict-config",
     "-ra",

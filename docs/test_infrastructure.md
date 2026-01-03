@@ -648,7 +648,7 @@ For modules with external dependencies (SOCRATES, AGNI, VULCAN), caching can sav
   with:
     path: socrates/
     # Hash changes = cache miss = recompile (correct behavior)
-    key: socrates-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.c') }}
+    key: |\n      socrates-${{ runner.os }}-${{ hashFiles(\n        'socrates/**/*.f90',\n        'socrates/**/*.c'\n      ) }}
     restore-keys: |
       socrates-${{ runner.os }}-
 

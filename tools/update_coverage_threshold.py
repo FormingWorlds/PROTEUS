@@ -104,6 +104,8 @@ def update_threshold_in_pyproject(new_threshold: float) -> bool:
     current_value = float(report_section.get("fail_under", 0))
     new_value = float(f"{new_threshold:.2f}")
 
+    # Ratcheting mechanism: only update if new threshold is strictly higher
+    # Equality case (new == current) returns False to indicate no update needed
     if new_value <= current_value:
         return False
 
@@ -146,7 +148,10 @@ def main() -> int:
             return 1
 
     except Exception as e:
-        print(f"❌ Error updating coverage threshold: {e}", file=sys.stderr)
+        print(
+            f"❌ Error updating coverage threshold ({type(e).__name__}): {e}",
+            file=sys.stderr,
+        )
         return 1
 
 

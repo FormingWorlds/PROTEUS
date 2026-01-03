@@ -59,7 +59,7 @@ coverage report --include="src/proteus/*" --omit="*/tests/*,*/__pycache__/*" | t
     file=$(echo "$line" | awk '{print $1}')
     coverage=$(echo "$line" | awk '{print $NF}' | tr -d '%')
 
-    if is_number "$coverage" && [ "$coverage" -lt 50 ]; then
+    if is_number "$coverage" && { echo "$coverage < 50" | bc -l > /dev/null 2>&1; }; then
         echo "- $file (${coverage}%)"
     fi
 done

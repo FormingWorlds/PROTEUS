@@ -285,7 +285,12 @@ jobs:
     name: Run Coverage and Tests (macOS nightly)
     if: ${{ github.event_name == 'schedule' }}
     env:
-      INSTALL_DEPS: brew uninstall --force pkg-config; rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
+      INSTALL_DEPS: >
+        brew uninstall --force pkg-config;
+        rm -f /opt/homebrew/bin/pkg-config;
+        rm -f /opt/homebrew/share/aclocal/pkg.m4;
+        rm -f /opt/homebrew/share/man/man1/pkg-config.1;
+        brew install gfortran netcdf netcdf-fortran tree
       CC: gcc
       CXX: g++
       FC: gfortran
@@ -298,24 +303,8 @@ jobs:
 
     runs-on: macos-latest
     steps:
-      # Check available disk space before deciding to clean
-      - name: Check available disk space
-        id: check-disk
-        if: runner.os == 'Linux'
-        run: |
-          AVAILABLE=$(df / | awk 'NR==2 {print int($4 / ($2 / 100))}')
-          echo "available_percent=$AVAILABLE" >> $GITHUB_OUTPUT
-          echo "Disk usage: ${AVAILABLE}%"
-
-      # Only run cleanup if disk usage > 20% (i.e., <80% free)
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@main
-        if: runner.os == 'Linux' && steps.check-disk.outputs.available_percent < 80
-        with:
-          tool-cache: false
-
+      # Free disk space on macOS runner
       - name: Free Disk Space (MacOS)
-        if: runner.os == 'macOS'
         run: |
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
@@ -493,8 +482,6 @@ jobs:
           coverage report >> $GITHUB_STEP_SUMMARY
           echo $'\n```' >> $GITHUB_STEP_SUMMARY
           coverage report
-
-
 
       # Create dynamic coverage badge for documentation
       # Only runs on main branch with Python 3.13 to avoid redundant updates
