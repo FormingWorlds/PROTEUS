@@ -169,6 +169,12 @@ jobs:
           fi
           echo "$PWD/bin" >> $GITHUB_PATH
 
+      # Generate Julia wrappers/constants for SOCRATES (rad_pcf.jl, etc.)
+      - name: Generate SOCRATES Julia wrappers
+        run: |
+          cd socrates/julia
+          RAD_DIR=${{ env.RAD_DIR }} julia --project=. src/generate_wrappers.jl
+
       # Restore AGNI Julia depot from cache if available
       # Cache key based on AGNI dependency hashes - invalidates when dependencies change
       - name: Restore AGNI cache
@@ -452,6 +458,12 @@ jobs:
             ./build_code
           fi
           echo "$PWD/bin" >> $GITHUB_PATH
+
+      # Generate Julia wrappers/constants for SOCRATES (rad_pcf.jl, etc.)
+      - name: Generate SOCRATES Julia wrappers
+        run: |
+          cd socrates/julia
+          RAD_DIR=${{ env.RAD_DIR }} julia --project=. src/generate_wrappers.jl
 
       # Restore AGNI Julia depot from cache if available
       # Cache key based on AGNI dependency hashes - invalidates when dependencies change
