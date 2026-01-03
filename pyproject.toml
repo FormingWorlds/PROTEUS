@@ -78,8 +78,11 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
 develop = [
-    "bump-my-version",    # coverage[toml] for ratcheting script; pytest-cov for pytest integration
-    # Note: pytest-cov depends on coverage, so coverage extras are for the standalone tool    "coverage[toml]",
+    "bump-my-version",
+    # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
+    # pytest-cov provides pytest integration for "pytest --cov" convenience (slightly different from CI)
+    # Note: Both work independently; CI uses "coverage run -m pytest", developers can use either approach
+    "coverage[toml]",
     "tomlkit>=0.11.0",
     "pillow",
     "pip-tools",

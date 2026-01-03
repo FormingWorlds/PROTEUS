@@ -124,19 +124,23 @@ tests/
 #### 2. Configuration (pyproject.toml)
 
 **pytest Configuration:**
+
 ```toml
 [tool.pytest.ini_options]
 minversion = "8.1"
 addopts = [
-    "--cov=src",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
+    # Global coverage options removed from addopts.
+    # CI uses "coverage run -m pytest" with [tool.coverage.*] settings.
+    # For local development, use either:
+    #   1. "coverage run -m pytest" (matches CI behavior, compatible with coverage ratcheting)
+    #   2. "pytest --cov" (uses pytest-cov, convenient but slightly different from CI)
+    # Both approaches work; choose based on preference.
     "--strict-markers",
     "--strict-config",
     "-ra",
     "--showlocals",
 ]
+```
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
@@ -161,10 +165,11 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Coverage threshold - automatically updated by CI when coverage increases (recommended)
-# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml
-# This value can only increase or stay the same (coverage ratcheting mechanism)
-fail_under = 30  # Will auto-ratchet upward as tests are added
+# Coverage threshold - automatically updated by CI when coverage increases.
+# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml.
+# The ratcheting (only ever increasing or staying the same) is enforced in CI;
+# do not manually decrease this value in pyproject.toml.
+fail_under = 69  # Current auto-ratcheted threshold
 show_missing = true
 precision = 2
 exclude_lines = [

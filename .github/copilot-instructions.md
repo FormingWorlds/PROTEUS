@@ -47,6 +47,10 @@ When helping with installation or dependency issues, always reference these guid
 
 ## 2. Testing Standards (pytest)
 - **Framework:** Use `pytest` exclusively in the `tests/` directory.
+- **Coverage Tool:** Two equivalent approaches are supported:
+  - Local: `pytest --cov` (uses pytest-cov plugin, convenient)
+  - CI/Local: `coverage run -m pytest` (matches CI exactly, compatible with ratcheting)
+  - Choose based on preference; both work correctly.
 - **Speed:** Unit tests must run in <100ms. Aggressively mock heavy simulations, I/O, and external APIs using `unittest.mock`.
 - **Integration:** Mark slow tests (full simulation loops) with `@pytest.mark.slow`.
 - **Markers:** Use pytest markers: `@pytest.mark.unit` for unit tests, `@pytest.mark.integration` for integration tests.
