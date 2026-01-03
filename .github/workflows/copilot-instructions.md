@@ -1,7 +1,42 @@
-# PROTEUS Copilot Guidelines
+# PROTEUS Ecosystem Copilot Guidelines
 
-You are an expert Scientific Software Engineer working on the PROTEUS project.
-When generating code or tests for this repository, you must adhere to the following rules:
+You are an expert Scientific Software Engineer working on the PROTEUS ecosystem.
+
+## Ecosystem Structure
+
+PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
+
+- **[PROTEUS](https://github.com/FormingWorlds/PROTEUS)** (main repository): Core coupling framework and orchestration
+- **[AGNI](https://github.com/nichollsh/AGNI)**: Radiative-convective atmospheric energy module (Julia)
+- **[SOCRATES](https://github.com/nichollsh/SOCRATES)**: Spectral radiative transfer code (Fortran)
+- **[CALLIOPE](https://github.com/FormingWorlds/CALLIOPE)**: Volatile in-/outgassing and thermodynamics module (Python)
+- **[JANUS](https://github.com/FormingWorlds/JANUS)**: 1D convective atmosphere module (Python)
+- **[MORS](https://github.com/FormingWorlds/MORS)**: Stellar evolution module (Python)
+- **[ARAGOG](https://github.com/FormingWorlds/aragog)**: Interior thermal evolution module based on T-P formalism (Python)
+- **[SPIDER](https://github.com/djbower/spider)**: Interior thermal evolution module based on T-S formalism (Fortran)
+- **[VULCAN](https://github.com/FormingWorlds/VULCAN)**: Atmospheric chemistry module (Python)
+- **[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS)**: Atmospheric escape module (Python)
+- **[Love.jl](https://github.com/FormingWorlds/Love.jl)**: Tidal evolution module (Julia)
+
+**Important:** Each module is maintained in its own GitHub repository but is typically cloned/installed within the PROTEUS directory structure for integrated development. When working on any module in the ecosystem, apply these guidelines consistently.
+
+## Scope of These Guidelines
+
+**These guidelines apply to ALL Python modules in the PROTEUS ecosystem.** Whether you are working in:
+- The main PROTEUS repository
+- A standalone module (CALLIOPE, JANUS, MORS, etc.)
+- Tests for any ecosystem component
+
+Follow the same standards for testing, coverage, code quality, and infrastructure.
+
+## Installation & Dependencies
+
+For installation instructions and dependency management across the ecosystem:
+- **Main installation guide:** `docs/installation.md` - Standard user and developer installation procedures
+- **Local machine setup:** `docs/local_machine_guide.md` - Platform-specific setup (macOS, Linux, Windows)
+- **Cluster setup:** `docs/kapteyn_cluster_guide.md` - HPC cluster configuration (see also `habrok_cluster_guide.md`, `snellius_cluster_guide.md`)
+
+When helping with installation or dependency issues, always reference these guides first. The `proteus install-all` command handles most submodule installations automatically. However, whenever possible, prefer the developer installation steps outlined in the installation guide for editable installs.
 
 ## 1. Test Infrastructure & Organization
 - **Structure:** Tests MUST mirror the source code structure exactly. For every file in `src/<package>/`, create a corresponding `tests/<package>/test_<filename>.py`.
@@ -32,4 +67,4 @@ When generating code or tests for this repository, you must adhere to the follow
 
 ## 5. Safety & Determinism
 - **Randomness:** Explicitly set seeds (e.g., `np.random.seed(42)`) in tests.
-- **Files:** Do not generate tests that produce large output files; use `tempfile` or mocks.
+- **Files:** Do not generate tests that produce large output files (unless explicitly instructed); use `tempfile` or mocks.
