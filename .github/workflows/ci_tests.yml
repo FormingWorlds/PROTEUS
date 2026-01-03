@@ -94,15 +94,6 @@ jobs:
       - name: Checkout PROTEUS
         uses: actions/checkout@v6
 
-      # Validate test structure mirrors source (per test_infrastructure.md)
-      # This ensures tests are discoverable and properly organized
-      - name: Validate test structure
-        run: bash tools/validate_test_structure.sh
-
-      # Validate pytest test discovery
-      - name: Validate pytest test discovery
-        run: python -m pytest --collect-only -q tests/ | head -20
-
       # Clone MORS and aragog repos (not submodules, but separate repos for testing)
       - name: Clone MORS and aragog for local testing
         run: |
@@ -283,13 +274,27 @@ jobs:
             'AGNI/**/Manifest.toml') }}
 
       # Generate and report coverage metrics
-      # Reports coverage as JSON, terminal output, and GitHub step summary
+      # Reports coverage as JSON, XML, HTML, and terminal output per test_infrastructure.md
       # Coverage configuration: pyproject.toml [tool.coverage.report]
+      - name: Generate coverage reports
+        run: |
+          coverage json
+          coverage xml
+          coverage html
+          coverage report
+
+      # Validate test structure and discovery (after Python and dependencies installed)
+      - name: Validate test structure
+        run: bash tools/validate_test_structure.sh
+
+      - name: Validate pytest test discovery
+        run: python -m pytest --collect-only -q tests/ | head -30
+
+      # Report coverage to GitHub step summary
       - name: Report coverage
         id: report-coverage
         if: ${{ !failure() }}
         run: |
-          coverage json
           export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
           echo "Total coverage: $TOTAL"
           echo "total=$TOTAL" >> $GITHUB_ENV
@@ -429,15 +434,6 @@ jobs:
       - name: Checkout PROTEUS
         uses: actions/checkout@v6
 
-      # Validate test structure mirrors source (per test_infrastructure.md)
-      # This ensures tests are discoverable and properly organized
-      - name: Validate test structure
-        run: bash tools/validate_test_structure.sh
-
-      # Validate pytest test discovery
-      - name: Validate pytest test discovery
-        run: python -m pytest --collect-only -q tests/ | head -20
-
       # Clone MORS and aragog repos (not submodules, but separate repos for testing)
       - name: Clone MORS and aragog for local testing
         run: |
@@ -618,12 +614,26 @@ jobs:
             'AGNI/**/Manifest.toml') }}
 
       # Generate and report coverage metrics
-      # Reports coverage as JSON, terminal output, and GitHub step summary
+      # Reports coverage as JSON, XML, HTML, and terminal output per test_infrastructure.md
       # Coverage configuration: pyproject.toml [tool.coverage.report]
+      - name: Generate coverage reports
+        run: |
+          coverage json
+          coverage xml
+          coverage html
+          coverage report
+
+      # Validate test structure and discovery (after Python and dependencies installed)
+      - name: Validate test structure
+        run: bash tools/validate_test_structure.sh
+
+      - name: Validate pytest test discovery
+        run: python -m pytest --collect-only -q tests/ | head -30
+
+      # Report coverage to GitHub step summary
       - name: Report coverage
         if: ${{ !failure() }}
         run: |
-          coverage json
           export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
           echo "Total coverage: $TOTAL"
           echo "total=$TOTAL" >> $GITHUB_ENV
@@ -634,5 +644,5 @@ jobs:
           coverage report
 
       # Create dynamic coverage badge for documentation
-      # Only runs on main branch with Python 3.13 to avoid redundant updates
+      # Only runs on main branch with Python 3.12 to avoid redundant updates
       # Badge URL: stored in GitHub Gist for display in README
