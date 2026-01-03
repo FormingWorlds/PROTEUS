@@ -275,7 +275,16 @@ jobs:
             git add pyproject.toml
             COVERAGE_PCT=$(python -c 'import json; print(json.load(open("coverage.json"))["totals"]["percent_covered"])')
             git commit -m "ci: Auto-update coverage threshold to ${COVERAGE_PCT}% [skip ci]"
-            git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
+            # Rebase on top of the latest main to avoid conflicts from concurrent pushes
+            if ! git pull --rebase origin "${{ github.ref_name }}"; then
+              echo "Rebase failed (likely due to concurrent updates). Aborting automatic coverage threshold push."
+              git rebase --abort || true
+              exit 0
+            fi
+            git push origin HEAD:${{ github.ref_name }} || {
+              echo "Failed to push coverage threshold update. You may need to resolve conflicts or permissions issues."
+              exit 1
+            }
           fi
 
       # Create dynamic coverage badge for documentation

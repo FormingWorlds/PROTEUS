@@ -164,7 +164,7 @@ omit = [
 # Coverage threshold - automatically updated by CI when coverage increases (recommended)
 # See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml
 # This value can only increase or stay the same (coverage ratcheting mechanism)
-fail_under = 5  # Will auto-ratchet upward as tests are added
+fail_under = 30  # Will auto-ratchet upward as tests are added
 show_missing = true
 precision = 2
 exclude_lines = [
@@ -750,7 +750,7 @@ jobs:
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-report=html \
-            --cov-fail-under=5 \
+            --cov-fail-under=30 \
             tests/
 
       - name: Upload coverage to Codecov

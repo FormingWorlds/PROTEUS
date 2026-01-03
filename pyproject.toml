@@ -78,9 +78,9 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
 develop = [
-    "bump-my-version",
-    "coverage[toml]",
-    "tomlkit",
+    "bump-my-version",    # coverage[toml] for ratcheting script; pytest-cov for pytest integration
+    # Note: pytest-cov depends on coverage, so coverage extras are for the standalone tool    "coverage[toml]",
+    "tomlkit>=0.11.0",
     "pillow",
     "pip-tools",
     "pytest >= 8.1",
@@ -140,9 +140,10 @@ markers = [
 ]
 
 [tool.coverage.report]
-# Coverage threshold - automatically updated by CI when coverage increases
-# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml
-# This value can only increase or stay the same (coverage ratcheting mechanism)
+# Coverage threshold - automatically updated by CI when coverage increases.
+# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml.
+# The ratcheting (only ever increasing or staying the same) is enforced in CI;
+# do not manually decrease this value in pyproject.toml.
 fail_under = 69
 show_missing = true
 precision = 2

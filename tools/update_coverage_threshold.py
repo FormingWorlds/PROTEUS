@@ -29,11 +29,11 @@ try:  # Python 3.11+
 except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreters
     try:
         import tomli as tomllib  # type: ignore
-    except ModuleNotFoundError:
+    except ModuleNotFoundError as e:
         raise ImportError(
             "tomllib (Python 3.11+) or tomli package is required. "
             "Install with: pip install tomli"
-        ) from None
+        ) from e
 
 import tomlkit
 
@@ -147,6 +147,12 @@ def main() -> int:
             print("    Tests should have failed. Threshold not updated.")
             return 1
 
+    except FileNotFoundError as e:
+        print(f"❌ Error: Required file not found: {e}", file=sys.stderr)
+        return 1
+    except (ValueError, KeyError) as e:
+        print(f"❌ Error: Invalid coverage data or configuration ({type(e).__name__}): {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(
             f"❌ Error updating coverage threshold ({type(e).__name__}): {e}",

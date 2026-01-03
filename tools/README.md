@@ -163,6 +163,8 @@ TOTAL: 58%
 ## Contributing
 
 When adding new tools:
-1. Make scripts executable: `chmod +x tools/your_script.sh`
+
+1. Ensure scripts include proper shebang: `#!/bin/bash`
 2. Add documentation to this README
-3. Include help text in the script: `your_script.sh --help`
+3. Invoke scripts as: `bash tools/your_script.sh` (or make executable with `chmod +x` and call directly)
+4. Include help text or documentation in the script
