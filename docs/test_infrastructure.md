@@ -161,7 +161,10 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 5  # Adjust based on current coverage
+# Coverage threshold - automatically updated by CI when coverage increases (recommended)
+# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml
+# This value can only increase or stay the same (coverage ratcheting mechanism)
+fail_under = 5  # Will auto-ratchet upward as tests are added
 show_missing = true
 precision = 2
 exclude_lines = [
@@ -371,12 +374,12 @@ The testing infrastructure is designed for:
 - **MORS** - Stellar evolution module
 - **VULCAN** - Atmospheric chemistry module
 - **ZEPHYRUS** - Escape module
-- **Zalmoxis** - Interior evolution module
+- **Zalmoxis** - Interior structure module
 - **aragog** - Interior module (alternative)
 
 To be adapted for future modules as needed:
-- **AGNI**
-- **OBLIQUA**
+- **AGNI** (Julia)
+- **OBLIQUA** (Julia)
 - Others
 
 ### Current Status
@@ -486,7 +489,10 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 30  # Start with realistic threshold; increase by 5-10% quarterly
+# Coverage threshold - automatically updated by CI when coverage increases (recommended)
+# See: tools/update_coverage_threshold.py for ratcheting mechanism
+# Alternative: manually increase by 5-10% quarterly if not using auto-ratcheting
+fail_under = 30  # Start with realistic threshold
 show_missing = true
 precision = 2
 exclude_lines = [
@@ -514,18 +520,30 @@ develop = [
 ```
 
 **Coverage Threshold Guidance:**
+
+**Option 1: Automatic Ratcheting (Recommended - CALLIOPE Pattern)**
+- Set initial baseline (20-30%)
+- Implement `tools/update_coverage_threshold.py`
+- CI automatically increases threshold when coverage improves
+- No manual updates needed
+- See CALLIOPE for reference implementation
+
+**Option 2: Manual Quarterly Updates (Fallback)**
 - **Start:** 20-30% (realistic baseline)
 - **Q2:** Increase to 35-40%
 - **Q4:** Increase to 50-60%
 - **Year 2:** Target 70%+
 
-Example progression for new module:
+Example progression with automatic ratcheting:
 
 ```toml
-fail_under = 30  # January 2026
-fail_under = 40  # April 2026
-fail_under = 50  # July 2026
-fail_under = 60  # October 2026
+# Initial setup
+fail_under = 30  # January 2026 (starting point)
+# After this, CI auto-updates as tests are added:
+fail_under = 34  # Auto-updated by CI
+fail_under = 42  # Auto-updated by CI
+fail_under = 58  # Auto-updated by CI
+# Reaches 70%+ naturally through continuous improvement
 ```
 
 **Advanced: Automatic Coverage Ratcheting (CALLIOPE Innovation)**
@@ -845,13 +863,22 @@ Goal: 80%+ coverage
 
 **Coverage Threshold Growth Plan:**
 
+**Recommended: Automatic Ratcheting (CALLIOPE Pattern)**
+
+```toml
+# PROTEUS Example (auto-ratcheting active)
+fail_under = 69  # Auto-updated by CI as coverage increases
+
+# CALLIOPE Example (auto-ratcheting active)
+fail_under = 18  # Auto-updated by CI as coverage increases
+```
+
+**Alternative: Manual Updates (if not using auto-ratcheting)**
+
 Start with realistic baseline, increase gradually:
 
 ```toml
-# PROTEUS Example (achieved 69.23%, enforcing 69%)
-fail_under = 69  # Target: maintain high bar
-
-# New Module Example (starting from 20-30%)
+# New Module Example (manual quarterly updates)
 fail_under = 30   # January 2026
 fail_under = 40   # April 2026 (+10%)
 fail_under = 50   # July 2026 (+10%)
@@ -859,7 +886,14 @@ fail_under = 60   # October 2026 (+10%)
 fail_under = 70   # January 2027 (+10%)
 ```
 
-**Why this pace?**
+**Why automatic ratcheting?**
+- ✅ Zero maintenance: No manual updates needed
+- ✅ Continuous improvement: Threshold grows with tests
+- ✅ Never regresses: Coverage can only increase or stay same
+- ✅ Motivating: Visible automatic progress
+- ✅ Sustainable: Doesn't block development
+
+**Why this pace (if manual)?**
 - ✅ Realistic: Allows time to write tests
 - ✅ Motivating: Visible progress
 - ✅ Sustainable: Doesn't block development
@@ -1139,92 +1173,235 @@ pytest --pdb
 
 ## Best Practices
 
+### Working with GitHub Copilot
+
+GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines (`.github/workflows/copilot-instructions.md`). These instructions ensure consistent code quality and testing practices across all modules.
+
+**Key Copilot Guidelines:**
+
+1. **Test Infrastructure & Organization**
+   - Copilot will automatically structure tests to mirror source code exactly
+   - For every file in `src/<package>/`, Copilot creates `tests/<package>/test_<filename>.py`
+   - Use `pytest --collect-only` to verify test discovery
+   - Run `bash tools/validate_test_structure.sh` to validate structure
+
+2. **Testing Standards**
+   - Framework: `pytest` exclusively in `tests/` directory
+   - Speed: Unit tests must run in <100ms (Copilot will use mocks aggressively)
+   - Markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.slow`
+   - Floats: Never use `==` for floats; use `pytest.approx(val, rel=1e-5)` or `np.testing.assert_allclose`
+   - Physics: Ensure physically valid inputs (e.g., T > 0K) unless testing error handling
+
+3. **Coverage Requirements**
+   - Check `pyproject.toml` [tool.coverage.report] `fail_under` for current threshold
+   - Coverage threshold automatically increases on main branch (never decreases)
+   - All PRs must pass the coverage threshold defined in CI
+
+4. **Code Quality & Style**
+   - Linting: Follow `ruff` standards (line length < 92 chars, max indentation 3 levels)
+   - Type hints: Use standard Python type hints
+   - Docstrings: Include brief docstrings describing the physical scenario
+
+5. **Safety & Determinism**
+   - Randomness: Explicitly set seeds (e.g., `np.random.seed(42)`) in tests
+   - Files: Do not generate tests that produce large output files; use `tempfile` or mocks
+
+**Best Practices for Working with Copilot:**
+
+- **Reference the guidelines:** When asking Copilot to generate tests, mention "following the PROTEUS test infrastructure guidelines"
+- **Iterative refinement:** Use Copilot to generate initial test structure, then refine with domain knowledge
+- **Validate generated code:** Always run `pytest --collect-only` and validate coverage after Copilot generates tests
+- **Provide context:** Give Copilot context about the physical scenario being tested for better docstrings
+- **Ecosystem consistency:** Copilot instructions apply to ALL Python modules (PROTEUS, CALLIOPE, JANUS, MORS, etc.)
+
 ### Testing Philosophy
 
 1. **Test behavior, not implementation**
    - Focus on what code does, not how
    - Tests should survive refactoring
+   - Validate outputs and side effects, not internal state
 
-2. **Write tests first (TDD)**
+2. **Write tests first when possible (TDD)**
    - Clarifies requirements
    - Ensures testability
    - Provides instant feedback
+   - Prevents over-engineering
 
 3. **Keep tests simple and focused**
    - One concept per test
-   - Clear test names
-   - Easy to understand
+   - Clear, descriptive test names
+   - Easy to understand and maintain
+   - Avoid test interdependencies
 
 4. **Use appropriate test types**
-   - Unit tests: Single functions/methods
-   - Integration tests: Multiple components
-   - System tests: End-to-end workflows
+   - **Unit tests** (`@pytest.mark.unit`): Single functions/methods, fast (<100ms), isolated
+   - **Integration tests** (`@pytest.mark.integration`): Multiple components, moderate speed
+   - **Slow tests** (`@pytest.mark.slow`): Full simulation loops, computationally intensive
 
 ### Test Organization
 
-1. **Mirror source structure**
+1. **Mirror source structure exactly**
+   - Tests in `tests/<package>/test_<module>.py` match `src/<package>/<module>.py`
    - Easy to find related tests
-   - Consistent across project
+   - Consistent across entire ecosystem
+   - Enables automated validation
 
 2. **One test file per source file**
    - When practical
    - Keeps tests organized
+   - Clear 1:1 mapping
+   - Use `tools/validate_test_structure.sh` to verify
 
 3. **Group related tests**
    - Use test classes for related tests
-   - Share fixtures via conftest.py
+   - Share fixtures via `conftest.py`
+   - Organize by functionality within test files
 
 4. **Use descriptive names**
    ```python
-   # Good
+   # Good: Clear what is being tested
    def test_temperature_conversion_celsius_to_kelvin():
-       pass
+       """Test conversion from Celsius to Kelvin returns correct value."""
+       result = convert_temperature(100, 'C', 'K')
+       assert result == pytest.approx(373.15, rel=1e-5)
 
-   # Less good
+   # Less good: Vague, unclear what is tested
    def test_conversion():
        pass
    ```
 
+5. **Document test intent**
+   - Include docstrings explaining what scenario is tested
+   - Add inline comments for non-obvious assertions
+   - Reference formulas, physical principles, or domain knowledge
+   - See [CALLIOPE test files](https://github.com/FormingWorlds/CALLIOPE/tree/main/tests) for examples
+
 ### Coverage Strategy
 
-1. **Focus on critical paths**
-   - Core business logic
-   - Error handling
-   - Edge cases
+1. **Focus on critical paths first**
+   - Core business logic and calculations
+   - Physical models and simulations
+   - Error handling and edge cases
+   - Public APIs and interfaces
 
-2. **Don't chase 100%**
-   - 80%+ is excellent
-   - Diminishing returns above that
-   - Some code is hard to test (UI, I/O)
+2. **Set realistic thresholds**
+   - Start: 20-30% for new modules
+   - Q2 target: 35-40%
+   - Q4 target: 50-60%
+   - Long-term: 70%+ (like PROTEUS at 69%)
+   - Don't chase 100% - focus on value
 
-3. **Use exclude patterns**
-   - Debug code
-   - Abstract methods
-   - Type checking blocks
+3. **Use exclude patterns strategically**
+   - Debug code and development utilities
+   - Abstract methods that subclasses implement
+   - Type checking blocks (`if TYPE_CHECKING:`)
+   - Intentionally untestable code (mark with `# pragma: no cover`)
 
-4. **Track trends**
-   - Coverage going up? ✓
-   - Coverage dropping? Investigate
+4. **Track trends over time**
+   - Coverage going up? ✓ Good progress
+   - Coverage dropping? Investigate and address
+   - Use automatic ratcheting (CALLIOPE pattern) to prevent regression
+   - Review coverage reports in PR reviews
 
-### Test Markers
+5. **Prioritize based on risk**
+   - High-risk code: Aim for 90%+ coverage
+   - Medium-risk code: Aim for 70%+ coverage
+   - Low-risk code: Aim for 50%+ coverage
+   - Use `bash tools/coverage_analysis.sh` to identify gaps
 
-Use markers consistently:
+### Test Quality Standards
+
+1. **Write clear, maintainable tests**
+   - Use descriptive test names that explain the scenario
+   - Include docstrings for complex test cases
+   - Add inline comments for non-obvious assertions
+   - Document the physical principle being validated
+
+2. **Follow the AAA pattern**
+   ```python
+   def test_atmospheric_pressure_at_surface():
+       """Test that surface pressure calculation matches expected value."""
+       # Arrange: Set up test data
+       temperature = 300.0  # K
+       gravity = 9.8  # m/s^2
+
+       # Act: Perform the calculation
+       pressure = calculate_surface_pressure(temperature, gravity)
+
+       # Assert: Verify the result
+       expected = 101325.0  # Pa (standard atmosphere)
+       assert pressure == pytest.approx(expected, rel=0.01)
+   ```
+
+3. **Test one concept per test function**
+   - Each test should validate a single behavior
+   - If a test has multiple asserts, they should all relate to the same concept
+   - Split complex scenarios into multiple focused tests
+
+4. **Use appropriate assertions**
+   - For floats: `pytest.approx(value, rel=1e-5)` or `np.testing.assert_allclose`
+   - For arrays: `np.testing.assert_array_equal` or `assert_allclose`
+   - For exceptions: `pytest.raises(ExceptionType)`
+   - For warnings: `pytest.warns(WarningType)`
+
+5. **Mock external dependencies**
+   - File I/O operations
+   - Network calls and APIs
+   - Heavy computations (for unit tests)
+   - System calls and OS interactions
+
+   ```python
+   from unittest.mock import Mock, patch
+
+   @pytest.mark.unit
+   def test_data_loader_calls_file_reader():
+       """Test that data loader correctly calls file reader."""
+       with patch('module.read_file') as mock_read:
+           mock_read.return_value = {'data': [1, 2, 3]}
+           result = load_data('dummy_path')
+           mock_read.assert_called_once_with('dummy_path')
+           assert result['data'] == [1, 2, 3]
+   ```
+
+### Test Markers and Organization
+
+Use markers consistently across all ecosystem modules:
 
 ```python
 @pytest.mark.unit
 def test_pure_function():
-    """Fast, isolated test"""
+    """Fast, isolated test of a single function."""
     pass
 
 @pytest.mark.integration
 def test_component_interaction():
-    """Tests multiple components"""
+    """Tests multiple components working together."""
     pass
 
 @pytest.mark.slow
 def test_long_computation():
-    """Takes >1 second"""
+    """Takes >1 second - typically full simulations."""
     pass
+```
+
+**Run selectively:**
+
+```bash
+# Fast feedback: unit tests only (~seconds)
+pytest -m unit
+
+# Before commit: all except slow (~minutes)
+pytest -m "not slow"
+
+# Nightly/full CI: everything (~hours for PROTEUS)
+pytest
+```
+
+**Benefits of markers:**
+- **Fast iteration:** Run unit tests while developing
+- **Efficient CI:** Skip slow tests on feature branches
+- **Clear categorization:** Know what each test validates
+- **Selective debugging:** Focus on relevant test category
 ```
 
 **Run selectively:**
@@ -1328,7 +1505,8 @@ pytest
 - [ ] **Setup** (30 min)
   - [ ] Copy PROTEUS pyproject.toml pytest/coverage sections
   - [ ] Create/update `.github/workflows/ci_tests.yml`
-  - [ ] Set appropriate `fail_under` threshold (20-30%)
+  - [ ] Set initial `fail_under` threshold (20-30%)
+  - [ ] Consider implementing automatic ratcheting (tools/update_coverage_threshold.py)
   - [ ] Add pytest-cov to develop dependencies
 
 - [ ] **Test Structure** (30-60 min)

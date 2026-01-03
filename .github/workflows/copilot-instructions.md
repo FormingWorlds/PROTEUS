@@ -55,7 +55,7 @@ When helping with installation or dependency issues, always reference these guid
 
 ## 3. Coverage Requirements
 - **Threshold:** Check `pyproject.toml` [tool.coverage.report] `fail_under` for current threshold.
-- **Ratcheting:** Coverage threshold automatically increases on main branch (never decreases).
+- **Automatic Ratcheting:** Coverage threshold automatically increases on main branch via `tools/update_coverage_threshold.py` (never decreases). See CALLIOPE for reference implementation.
 - **Reports:** Run `pytest --cov --cov-report=html` and inspect `htmlcov/index.html` for gaps.
 - **Analysis:** Use `bash tools/coverage_analysis.sh` to identify low-coverage modules needing tests.
 - **Quality Gate:** All PRs must pass the coverage threshold defined in CI (see `.github/workflows/proteus_test_quality_gate.yml`).
