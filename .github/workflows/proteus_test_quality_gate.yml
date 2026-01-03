@@ -9,7 +9,7 @@ on:
         type: string
         default: '3.13'
       coverage-threshold:
-        description: 'Minimum coverage percentage required (recommend 30-70%)'
+        description: 'Minimum coverage percentage required (recommend 30-80%)'
         required: false
         type: number
         default: 30

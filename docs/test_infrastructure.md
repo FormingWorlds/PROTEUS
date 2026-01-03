@@ -385,7 +385,7 @@ To be adapted for future modules as needed:
 ### Current Status
 
 **PROTEUS** ✅ Complete
-- Coverage: 69.23% (target: 70%+)
+- Coverage: 69.23% (target: 80%+)
 - CI duration: ~18 minutes (with dependencies)
 - Features: Hash-based caching, dynamic badges, comprehensive reporting
 
@@ -532,7 +532,7 @@ develop = [
 - **Start:** 20-30% (realistic baseline)
 - **Q2:** Increase to 35-40%
 - **Q4:** Increase to 50-60%
-- **Year 2:** Target 70%+
+- **Year 2:** Target 80%+
 
 Example progression with automatic ratcheting:
 
@@ -543,7 +543,8 @@ fail_under = 30  # January 2026 (starting point)
 fail_under = 34  # Auto-updated by CI
 fail_under = 42  # Auto-updated by CI
 fail_under = 58  # Auto-updated by CI
-# Reaches 70%+ naturally through continuous improvement
+fail_under = 80  # Auto-updated by CI
+# Reaches 80%+ naturally through continuous improvement
 ```
 
 **Advanced: Automatic Coverage Ratcheting (CALLIOPE Innovation)**
@@ -897,7 +898,7 @@ fail_under = 70   # January 2027 (+10%)
 - ✅ Realistic: Allows time to write tests
 - ✅ Motivating: Visible progress
 - ✅ Sustainable: Doesn't block development
-- ✅ Long-term: Reaches 70%+ in 1 year
+- ✅ Long-term: Reaches 80%+ in ~18 months
 
 ---
 
@@ -1288,7 +1289,7 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Start: 20-30% for new modules
    - Q2 target: 35-40%
    - Q4 target: 50-60%
-   - Long-term: 70%+ (like PROTEUS at 69%)
+   - Long-term: 80%+ (ecosystem standard)
    - Don't chase 100% - focus on value
 
 3. **Use exclude patterns strategically**
@@ -1304,9 +1305,9 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Review coverage reports in PR reviews
 
 5. **Prioritize based on risk**
-   - High-risk code: Aim for 90%+ coverage
-   - Medium-risk code: Aim for 70%+ coverage
-   - Low-risk code: Aim for 50%+ coverage
+   - High-risk code: Aim for 95%+ coverage
+   - Medium-risk code: Aim for 80%+ coverage
+   - Low-risk code: Aim for 60%+ coverage
    - Use `bash tools/coverage_analysis.sh` to identify gaps
 
 ### Test Quality Standards
