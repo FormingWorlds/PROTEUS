@@ -94,6 +94,15 @@ jobs:
       - name: Checkout PROTEUS
         uses: actions/checkout@v6
 
+      # Validate test structure mirrors source (per test_infrastructure.md)
+      # This ensures tests are discoverable and properly organized
+      - name: Validate test structure
+        run: bash tools/validate_test_structure.sh
+
+      # Validate pytest test discovery
+      - name: Validate pytest test discovery
+        run: python -m pytest --collect-only -q tests/ | head -20
+
       # Clone MORS and aragog repos (not submodules, but separate repos for testing)
       - name: Clone MORS and aragog for local testing
         run: |
@@ -291,11 +300,32 @@ jobs:
           echo $'\n```' >> $GITHUB_STEP_SUMMARY
           coverage report
 
+      # Upload coverage reports to Codecov (per test_infrastructure.md)
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-${{ env.PYTHON_VERSION }}-${{ runner.os }}
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      # Upload coverage HTML report as artifact (per test_infrastructure.md)
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-py${{ env.PYTHON_VERSION }}-${{ runner.os }}
+          path: htmlcov/
+          retention-days: 30
+
       # Update coverage threshold (automatic ratcheting mechanism)
-      # Only runs on main branch with Python 3.13 to avoid redundant updates
+      # Only runs on main branch with Python 3.12 to avoid redundant updates
       # Automatically increases threshold when coverage improves, never decreases
       - name: Update coverage threshold
-        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.13' && runner.os == 'Linux' && !failure() }}
+        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.12' && runner.os == 'Linux' && !failure() }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -325,10 +355,10 @@ jobs:
           fi
 
       # Create dynamic coverage badge for documentation
-      # Only runs on main branch with Python 3.13 to avoid redundant updates
+      # Only runs on main branch with Python 3.12 to avoid redundant updates
       # Badge URL: stored in GitHub Gist for display in README
       - name: Make coverage badge
-        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.13' && runner.os == 'Linux' && !failure() }}
+        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.12' && runner.os == 'Linux' && !failure() }}
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}
@@ -398,6 +428,15 @@ jobs:
       # Checkout PROTEUS
       - name: Checkout PROTEUS
         uses: actions/checkout@v6
+
+      # Validate test structure mirrors source (per test_infrastructure.md)
+      # This ensures tests are discoverable and properly organized
+      - name: Validate test structure
+        run: bash tools/validate_test_structure.sh
+
+      # Validate pytest test discovery
+      - name: Validate pytest test discovery
+        run: python -m pytest --collect-only -q tests/ | head -20
 
       # Clone MORS and aragog repos (not submodules, but separate repos for testing)
       - name: Clone MORS and aragog for local testing
