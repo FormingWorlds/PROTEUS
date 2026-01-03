@@ -40,7 +40,7 @@ for test_dir in tests/*/; do
     module=$(basename "$test_dir")
 
     # Skip special directories
-    if [[ "$module" == "data" || "$module" == "helpers" || "$module" == *__pycache__* ]]; then
+    if [[ "$module" == "data" || "$module" == "helpers" || "$module" == "integration" || "$module" == *__pycache__* ]]; then
         continue
     fi
 
