@@ -1403,19 +1403,6 @@ pytest
 - **Efficient CI:** Skip slow tests on feature branches
 - **Clear categorization:** Know what each test validates
 - **Selective debugging:** Focus on relevant test category
-```
-
-**Run selectively:**
-```bash
-# Fast feedback: unit tests only
-pytest -m unit
-
-# Before commit: all except slow
-pytest -m "not slow"
-
-# Nightly: everything
-pytest
-```
 
 ### Fixture Best Practices
 
@@ -1424,6 +1411,7 @@ pytest
    - Compose when needed
 
 2. **Use appropriate scope**
+
    ```python
    @pytest.fixture(scope="function")  # Default, new each test
    def data():
@@ -1435,6 +1423,7 @@ pytest
    ```
 
 3. **Clean up resources**
+
    ```python
    @pytest.fixture
    def temp_file(tmp_path):
@@ -1491,11 +1480,11 @@ pytest
 
 ## References
 
-- **pytest:** https://docs.pytest.org/
-- **coverage.py:** https://coverage.readthedocs.io/
-- **GitHub Actions:** https://docs.github.com/en/actions
-- **Reusable Workflows:** https://docs.github.com/en/actions/using-workflows/reusing-workflows
-- **ruff:** https://docs.astral.sh/ruff/
+- **pytest:** <https://docs.pytest.org/>
+- **coverage.py:** <https://coverage.readthedocs.io/>
+- **GitHub Actions:** <https://docs.github.com/en/actions>
+- **Reusable Workflows:** <https://docs.github.com/en/actions/using-workflows/reusing-workflows>
+- **ruff:** <https://docs.astral.sh/ruff/>
 
 ---
 
@@ -1538,5 +1527,5 @@ pytest
 ---
 
 **Maintained by:** FormingWorlds team
-**Last updated:** 2026-01-02
+**Last updated:** January 2026
 **Questions?** Open an issue on GitHub

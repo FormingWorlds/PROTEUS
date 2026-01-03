@@ -22,19 +22,31 @@ mkdir -p tests/utils
 # Move top-level test files to appropriate subdirectories
 # test_config.py -> tests/config/
 if [ -f tests/test_config.py ]; then
-    mv tests/test_config.py tests/config/test_config.py
-    echo "Moved test_config.py -> config/"
+    if [ -f tests/config/test_config.py ]; then
+        echo "Skipped moving test_config.py (destination exists)"
+    else
+        mv tests/test_config.py tests/config/test_config.py
+        echo "Moved test_config.py -> config/"
+    fi
 fi
 
 # test_cpl_*.py files are plot-related -> tests/plot/
 if [ -f tests/test_cpl_colours.py ]; then
-    mv tests/test_cpl_colours.py tests/plot/test_cpl_colours.py
-    echo "Moved test_cpl_colours.py -> plot/"
+    if [ -f tests/plot/test_cpl_colours.py ]; then
+        echo "Skipped moving test_cpl_colours.py (destination exists)"
+    else
+        mv tests/test_cpl_colours.py tests/plot/test_cpl_colours.py
+        echo "Moved test_cpl_colours.py -> plot/"
+    fi
 fi
 
 if [ -f tests/test_cpl_helpers.py ]; then
-    mv tests/test_cpl_helpers.py tests/plot/test_cpl_helpers.py
-    echo "Moved test_cpl_helpers.py -> plot/"
+    if [ -f tests/plot/test_cpl_helpers.py ]; then
+        echo "Skipped moving test_cpl_helpers.py (destination exists)"
+    else
+        mv tests/test_cpl_helpers.py tests/plot/test_cpl_helpers.py
+        echo "Moved test_cpl_helpers.py -> plot/"
+    fi
 fi
 
 # test_cli.py and test_init.py stay at top level as they test root-level functionality

@@ -24,6 +24,13 @@ import json
 import sys
 from pathlib import Path
 
+try:  # Python 3.11+
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreters
+    import tomli as tomllib  # type: ignore
+
+import tomlkit
+
 
 def read_current_coverage() -> float:
     """Read the current test coverage percentage from coverage.json.
@@ -63,25 +70,11 @@ def read_threshold_from_pyproject() -> float:
     if not pyproject_file.exists():
         raise FileNotFoundError("pyproject.toml not found")
 
-    content = pyproject_file.read_text()
-
-    # Find the fail_under line in [tool.coverage.report] section
-    in_coverage_section = False
-    for line in content.split("\n"):
-        if "[tool.coverage.report]" in line:
-            in_coverage_section = True
-            continue
-
-        if in_coverage_section:
-            if line.strip().startswith("["):
-                # Entered a new section, stop looking
-                break
-            if "fail_under" in line:
-                # Extract value: "fail_under = 69" -> 69.0
-                value = line.split("=")[1].strip()
-                return float(value)
-
-    raise ValueError("fail_under setting not found in pyproject.toml")
+    data = tomllib.loads(pyproject_file.read_text())
+    try:
+        return float(data["tool"]["coverage"]["report"]["fail_under"])
+    except KeyError as exc:
+        raise ValueError("fail_under setting not found in pyproject.toml") from exc
 
 
 def update_threshold_in_pyproject(new_threshold: float) -> bool:
@@ -94,37 +87,24 @@ def update_threshold_in_pyproject(new_threshold: float) -> bool:
         True if file was updated, False if no change needed
     """
     pyproject_file = Path("pyproject.toml")
-    content = pyproject_file.read_text()
-    lines = content.split("\n")
+    if not pyproject_file.exists():
+        raise FileNotFoundError("pyproject.toml not found")
 
-    # Find and update the fail_under line
-    updated = False
-    in_coverage_section = False
-    for i, line in enumerate(lines):
-        if "[tool.coverage.report]" in line:
-            in_coverage_section = True
-            continue
+    document = tomlkit.parse(pyproject_file.read_text())
+    report_section = document.get("tool", {}).get("coverage", {}).get("report")
+    if report_section is None:
+        raise ValueError("[tool.coverage.report] section not found in pyproject.toml")
 
-        if in_coverage_section:
-            if line.strip().startswith("["):
-                # Entered a new section
-                in_coverage_section = False
-                continue
-            if "fail_under" in line:
-                # Update the line with new threshold (rounded to 2 decimals)
-                old_line = line
-                # Preserve indentation and format
-                indent = len(line) - len(line.lstrip())
-                new_line = " " * indent + f"fail_under = {new_threshold:.2f}"
-                lines[i] = new_line
-                updated = (old_line != new_line)
-                break
+    current_value = float(report_section.get("fail_under", 0))
+    new_value = float(f"{new_threshold:.2f}")
 
-    if updated:
-        pyproject_file.write_text("\n".join(lines))
-        print(f"✅ Updated pyproject.toml: fail_under = {new_threshold:.2f}")
+    if new_value <= current_value:
+        return False
 
-    return updated
+    report_section["fail_under"] = new_value
+    pyproject_file.write_text(tomlkit.dumps(document))
+    print(f"✅ Updated pyproject.toml: fail_under = {new_value:.2f}")
+    return True
 
 
 def main() -> int:

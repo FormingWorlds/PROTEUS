@@ -5,5 +5,6 @@ from __future__ import annotations
 
 
 def test_placeholder():
-    """Placeholder test - replace with actual tests"""
+    """Placeholder test - replace with actual tests."""
+    # TODO: replace with real coverage once utilities gain dedicated tests.
     pass

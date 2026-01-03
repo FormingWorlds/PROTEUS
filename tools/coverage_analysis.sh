@@ -22,6 +22,10 @@ echo "=========================================="
 echo "Coverage by Module:"
 echo "=========================================="
 
+is_number() {
+    [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]
+}
+
 # Generate coverage report by module
 coverage report --include="src/proteus/*" --omit="*/tests/*,*/__pycache__/*" | tail -n +3 | head -n -2 | while read -r line; do
     # Extract filename and coverage percentage
@@ -29,7 +33,7 @@ coverage report --include="src/proteus/*" --omit="*/tests/*,*/__pycache__/*" | t
     coverage=$(echo "$line" | awk '{print $NF}' | tr -d '%')
 
     # Color code based on coverage
-    if [ ! -z "$coverage" ] && [ "$coverage" -eq "$coverage" ] 2>/dev/null; then
+    if is_number "$coverage"; then
         if [ "$coverage" -ge 80 ]; then
             color="\033[0;32m"  # Green
             status="✓"
@@ -55,10 +59,8 @@ coverage report --include="src/proteus/*" --omit="*/tests/*,*/__pycache__/*" | t
     file=$(echo "$line" | awk '{print $1}')
     coverage=$(echo "$line" | awk '{print $NF}' | tr -d '%')
 
-    if [ ! -z "$coverage" ] && [ "$coverage" -eq "$coverage" ] 2>/dev/null; then
-        if [ "$coverage" -lt 50 ]; then
-            echo "- $file (${coverage}%)"
-        fi
+    if is_number "$coverage" && [ "$coverage" -lt 50 ]; then
+        echo "- $file (${coverage}%)"
     fi
 done
 

@@ -45,7 +45,7 @@ jobs:
       JULIA_NUM_THREADS: 1
 
     runs-on: ubuntu-latest
-    steps: &test-steps
+    steps:
 
       # Check available disk space before deciding to clean
       - name: Check available disk space
@@ -62,7 +62,6 @@ jobs:
         if: runner.os == 'Linux' && steps.check-disk.outputs.available_percent < 80
         with:
           tool-cache: false
-
       - name: Free Disk Space (MacOS)
         if: runner.os == 'macOS'
         run: |
@@ -140,13 +139,261 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # Try to restore the Python environment from the cache
-      - name: Restore Python environment from cache
-        uses: actions/cache@v4
-        id: cache-virtualenv
+      - name: Install PROTEUS (repo only)
+        run: python -m pip install -e .[develop]
+
+      - name: Install local MORS and aragog packages (overriding PyPI versions)
+        run: |
+          python -m pip install -e ./MORS
+          python -m pip install -e ./aragog
+
+      # Restore SOCRATES binaries from cache if available
+      # Cache key based on source file hashes - invalidates when source changes
+      - name: Restore SOCRATES cache
+        uses: actions/cache/restore@v4
+        id: cache-socrates-restore
         with:
-          path: ${{ env.pythonLocation }}
-          key: ${{ env.pythonLocation }}-${{ hashFiles('./pyproject.toml') }}
+          path: socrates/
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code') }}
+          restore-keys: |
+            socrates-bins-${{ runner.os }}-
+
+      # Restore AGNI Julia depot from cache if available
+      # Cache key based on AGNI dependency hashes - invalidates when dependencies change
+      - name: Restore AGNI cache
+        uses: actions/cache/restore@v4
+        id: cache-agni-restore
+        with:
+          path: |
+            AGNI/
+            ~/.julia/
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
+          restore-keys: |
+            agni-depot-${{ runner.os }}-
+
+      - name: Install all PROTEUS external repo dependencies via cli.py.
+        run: proteus install-all --export-env
+
+      # Get FWL data
+      # - name: Get additional FWL data
+      #   if: steps.cache-fwl-data.cache-hit != 'true'
+      #   run: |
+      #     proteus get stellar
+      #     proteus get spectral --name Frostflow --bands 48
+
+      # Run PROTEUS tests with coverage
+      # Tests are organized in tests/ directory mirroring src/ folder structure
+      # See: docs/test_infrastructure.md for test organization guidelines
+      # pytest configuration: pyproject.toml [tool.pytest.ini_options]
+      - name: Test with pytest
+        run: coverage run -m pytest
+
+      # Record the content of the FWL_DATA folder
+      - name: Record FWL data folder
+        if: ${{ !cancelled() }}
+        run: |
+          CUR=$(pwd)
+          cd $FWL_DATA
+          tree
+          echo $FWL_DATA > $CUR/output/FWL_DATA.txt
+          tree >> $CUR/output/FWL_DATA.txt
+          cd $CUR
+
+      # Upload result if tests fail
+      - name: Upload result on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: proteus_output_folder
+          path: output/
+
+      # Save SOCRATES binaries for next run (only if not already cached)
+      # Cache key based on source file hashes - invalidates when source changes
+      - name: Save SOCRATES cache
+        if: steps.cache-socrates-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: socrates/
+          key: socrates-bins-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.F90', 'socrates/**/*.c', 'socrates/build_code') }}
+
+      # Save AGNI installation for next run (only if not already cached)
+      # Cache key based on AGNI dependency hashes - invalidates when dependencies change
+      - name: Save AGNI cache
+        if: steps.cache-agni-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            AGNI/
+            ~/.julia/
+          key: agni-depot-${{ runner.os }}-${{ hashFiles('AGNI/**/Project.toml', 'AGNI/**/Manifest.toml') }}
+
+      # Generate and report coverage metrics
+      # Reports coverage as JSON, terminal output, and GitHub step summary
+      # Coverage configuration: pyproject.toml [tool.coverage.report]
+      - name: Report coverage
+        id: report-coverage
+        if: ${{ !failure() }}
+        run: |
+          coverage json
+          export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          echo "Total coverage: $TOTAL"
+          echo "total=$TOTAL" >> $GITHUB_ENV
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "### Total coverage: ${TOTAL}%" >> $GITHUB_STEP_SUMMARY
+          echo $'\n```' >> $GITHUB_STEP_SUMMARY
+          coverage report >> $GITHUB_STEP_SUMMARY
+          echo $'\n```' >> $GITHUB_STEP_SUMMARY
+          coverage report
+
+      # Update coverage threshold (automatic ratcheting mechanism)
+      # Only runs on main branch with Python 3.13 to avoid redundant updates
+      # Automatically increases threshold when coverage improves, never decreases
+      - name: Update coverage threshold
+        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.13' && runner.os == 'Linux' && !failure() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Automatically ratchet coverage threshold upward when tests pass on main
+          python tools/update_coverage_threshold.py
+
+          # Check if pyproject.toml was modified
+          if git diff --quiet pyproject.toml; then
+            echo "No coverage threshold update needed"
+          else
+            echo "Coverage threshold increased - committing update"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add pyproject.toml
+            COVERAGE_PCT=$(python -c 'import json; print(json.load(open("coverage.json"))["totals"]["percent_covered"])')
+            git commit -m "ci: Auto-update coverage threshold to ${COVERAGE_PCT}% [skip ci]"
+            git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
+          fi
+
+      # Create dynamic coverage badge for documentation
+      # Only runs on main branch with Python 3.13 to avoid redundant updates
+      # Badge URL: stored in GitHub Gist for display in README
+      - name: Make coverage badge
+        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.13' && runner.os == 'Linux' && !failure() }}
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: b4ee7dab92e20644bcb3a5ad09f71165
+          filename: covbadge.svg
+          label: Coverage
+          message: ${{ steps.report-coverage.outputs.total }}%
+          minColorRange: 50
+          maxColorRange: 90
+          valColorRange: ${{ steps.report-coverage.outputs.total }}
+
+  test-macos:
+    # macOS lane only on scheduled nightly builds
+    name: Run Coverage and Tests (macOS nightly)
+    if: ${{ github.event_name == 'schedule' }}
+    env:
+      INSTALL_DEPS: brew uninstall --force pkg-config; rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
+      CC: gcc
+      CXX: g++
+      FC: gfortran
+      PYTHON_VERSION: '3.13'
+      FWL_DATA: ${{ github.workspace }}/fwl_data
+      PROTEUS_DIR: ${{ github.workspace }}
+      RAD_DIR: ${{ github.workspace }}/socrates
+      AGNI_DIR: ${{ github.workspace }}/AGNI
+      JULIA_NUM_THREADS: 1
+
+    runs-on: macos-latest
+    steps:
+      # Check available disk space before deciding to clean
+      - name: Check available disk space
+        id: check-disk
+        if: runner.os == 'Linux'
+        run: |
+          AVAILABLE=$(df / | awk 'NR==2 {print int($4 / ($2 / 100))}')
+          echo "available_percent=$AVAILABLE" >> $GITHUB_OUTPUT
+          echo "Disk usage: ${AVAILABLE}%"
+
+      # Only run cleanup if disk usage > 20% (i.e., <80% free)
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        if: runner.os == 'Linux' && steps.check-disk.outputs.available_percent < 80
+        with:
+          tool-cache: false
+
+      - name: Free Disk Space (MacOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      # https://stackoverflow.com/a/65356209
+      - name: Install system dependencies
+        run: ${{ env.INSTALL_DEPS }}
+
+      # MacOS only: create symbolic link for gfortran
+      - name: Symlink gfortran
+        if: runner.os == 'macOS'
+        run: |
+          if [ ! -L /opt/homebrew/bin/gfortran ]; then
+            sudo ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+          fi
+          sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/ || true
+          which gfortran
+
+      # Setup Julia
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+
+      - name: Cache Julia
+        uses: julia-actions/cache@v2
+        with:
+          include-matrix: 'false'
+
+      # Checkout PROTEUS
+      - name: Checkout PROTEUS
+        uses: actions/checkout@v6
+
+      # Clone MORS and aragog repos (not submodules, but separate repos for testing)
+      - name: Clone MORS and aragog for local testing
+        run: |
+          git clone https://github.com/FormingWorlds/MORS.git
+          git clone https://github.com/FormingWorlds/aragog.git
+
+      # Get Lovepy
+      - name: Get Lovepy
+        run: |
+          ./tools/get_lovepy.sh
+
+      # Get VULCAN
+      - name: Get VULCAN
+        run: |
+          ./tools/get_vulcan.sh
+
+      # Clone SOCRATES before cache restore (needed for hash-based cache keys)
+      - name: Clone SOCRATES for cache key generation
+        run: |
+          git clone https://github.com/nichollsh/SOCRATES.git socrates
+
+      # Clone AGNI before cache restore (needed for hash-based cache keys)
+      - name: Clone AGNI for cache key generation
+        run: |
+          git clone https://github.com/nichollsh/AGNI.git AGNI
+
+      # Restore cached lookup-data for PROTEUS
+      - name: Get FWL data from cache
+        uses: actions/cache@v4
+        id: cache-fwl-data
+        with:
+          path: ${{ env.FWL_DATA }}
+          key: fwl-data-2
+
+      # Setup Python using the version defined in the matrix
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install PROTEUS (repo only)
         run: python -m pip install -e .[develop]
@@ -271,40 +518,11 @@ jobs:
             git add pyproject.toml
             COVERAGE_PCT=$(python -c 'import json; print(json.load(open("coverage.json"))["totals"]["percent_covered"])')
             git commit -m "ci: Auto-update coverage threshold to ${COVERAGE_PCT}% [skip ci]"
-            git push
-          fi
+            git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
 
       # Create dynamic coverage badge for documentation
       # Only runs on main branch with Python 3.13 to avoid redundant updates
       # Badge URL: stored in GitHub Gist for display in README
-      - name: Make coverage badge
-        if: ${{ github.ref == 'refs/heads/main' && env.PYTHON_VERSION == '3.13' && runner.os == 'Linux' && !failure() }}
-        uses: schneegans/dynamic-badges-action@v1.7.0
-        with:
-          auth: ${{ secrets.GIST_TOKEN }}
-          gistID: b4ee7dab92e20644bcb3a5ad09f71165
-          filename: covbadge.svg
-          label: Coverage
-          message: ${{ env.total }}%
-          minColorRange: 50
-          maxColorRange: 90
-          valColorRange: ${{ env.total }}
-
-  test-macos:
-    # macOS lane only on scheduled nightly builds
-    name: Run Coverage and Tests (macOS nightly)
-    if: ${{ github.event_name == 'schedule' }}
-    env:
-      INSTALL_DEPS: brew uninstall --force pkg-config; rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran tree
-      CC: gcc
-      CXX: g++
-      FC: gfortran
-      PYTHON_VERSION: '3.13'
-      FWL_DATA: ${{ github.workspace }}/fwl_data
-      PROTEUS_DIR: ${{ github.workspace }}
-      RAD_DIR: ${{ github.workspace }}/socrates
-      AGNI_DIR: ${{ github.workspace }}/AGNI
-      JULIA_NUM_THREADS: 1
-
-    runs-on: macos-latest
-    steps: *test-steps

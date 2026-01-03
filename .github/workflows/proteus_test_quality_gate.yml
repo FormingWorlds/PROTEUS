@@ -68,7 +68,7 @@ jobs:
         uses: codecov/codecov-action@v4
         if: always()
         with:
-          files: ./coverage.xml
+          files: ${{ inputs.working-directory }}/coverage.xml
           flags: unittests
           name: codecov-${{ inputs.python-version }}
           fail_ci_if_error: false
@@ -82,11 +82,3 @@ jobs:
           name: coverage-report-${{ inputs.python-version }}
           path: htmlcov/
           retention-days: 30
-
-      - name: Check coverage threshold
-        if: failure()
-        run: |
-          echo "❌ Coverage check failed!"
-          echo "Current coverage is below the required threshold of ${{ inputs.coverage-threshold }}%"
-          echo "Please add more tests or adjust the threshold in the workflow."
-          exit 1

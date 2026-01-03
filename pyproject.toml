@@ -80,6 +80,7 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 develop = [
     "bump-my-version",
     "coverage[toml]",
+    "tomlkit",
     "pillow",
     "pip-tools",
     "pytest >= 8.1",
@@ -117,8 +118,9 @@ omit = [
 [tool.pytest.ini_options]
 minversion = "8.1"
 addopts = [
-    # Coverage options removed - CI uses "coverage run -m pytest" instead
-    # Coverage reports configured in [tool.coverage.report] section
+    # Global coverage options removed from addopts.
+    # CI uses "coverage run -m pytest" with [tool.coverage.*] settings;
+    # pytest-cov is available for local use (e.g. `pytest --cov`) but not enabled here.
     "--strict-markers",
     "--strict-config",
     "-ra",
