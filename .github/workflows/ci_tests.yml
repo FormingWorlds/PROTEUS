@@ -94,6 +94,10 @@ jobs:
       - name: Checkout PROTEUS
         uses: actions/checkout@v6
 
+      # Early fast-fail: validate test directory mirrors src structure
+      - name: Validate test structure
+        run: bash tools/validate_test_structure.sh
+
       # Clone MORS and aragog repos (not submodules, but separate repos for testing)
       - name: Clone MORS and aragog for local testing
         run: |
@@ -283,10 +287,7 @@ jobs:
           coverage html
           coverage report
 
-      # Validate test structure and discovery (after Python and dependencies installed)
-      - name: Validate test structure
-        run: bash tools/validate_test_structure.sh
-
+      # Validate pytest test discovery
       - name: Validate pytest test discovery
         run: python -m pytest --collect-only -q tests/ | head -30
 
@@ -434,6 +435,10 @@ jobs:
       - name: Checkout PROTEUS
         uses: actions/checkout@v6
 
+      # Early fast-fail: validate test directory mirrors src structure
+      - name: Validate test structure
+        run: bash tools/validate_test_structure.sh
+
       # Clone MORS and aragog repos (not submodules, but separate repos for testing)
       - name: Clone MORS and aragog for local testing
         run: |
@@ -623,10 +628,7 @@ jobs:
           coverage html
           coverage report
 
-      # Validate test structure and discovery (after Python and dependencies installed)
-      - name: Validate test structure
-        run: bash tools/validate_test_structure.sh
-
+      # Validate pytest test discovery
       - name: Validate pytest test discovery
         run: python -m pytest --collect-only -q tests/ | head -30
 

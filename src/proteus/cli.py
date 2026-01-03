@@ -414,13 +414,11 @@ def _update_input_data(config_path: Path):
         # Only try data download if a config file is present.
         configuration = read_config_object(config_path)
         download_sufficient_data(configuration, clean=True)
-        click.secho("✅ Additional data has been downloaded.", fg="green")
+        click.secho("[+] Additional data has been downloaded.", fg="green")
         return True
 
     else:
-        click.echo(
-            f"⚠️ No config file found at {config_path}, skipping data download."
-        )
+        click.echo(f"[!] No config file found at {config_path}, skipping data download.")
         return False
 
 @cli.command()
@@ -442,7 +440,7 @@ def install_all(export_env: bool, config_path: Path):
     required_disk_space_in_GB = 5
     if not available_disk_space_in_GB > required_disk_space_in_GB:
         click.secho(
-            f"⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
+            f"[!] You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
             fg="yellow",
         )
         click.secho(
@@ -450,7 +448,7 @@ def install_all(export_env: bool, config_path: Path):
             fg="yellow",
         )
         click.secho(
-            "❌ Aborting installation — 'proteus install-all'.",
+            "[x] Aborting installation -- 'proteus install-all'.",
             fg="red",
         )
         raise SystemExit(1)
@@ -460,21 +458,21 @@ def install_all(export_env: bool, config_path: Path):
     # --- Step 1: FWL_DATA directory ---
     fwl_data = resolve_fwl_data_dir()
     fwl_data.mkdir(parents=True, exist_ok=True)
-    click.secho(f"✅ FWL_DATA directory: {fwl_data}", fg="green")
+    click.secho(f"[+] FWL_DATA directory: {fwl_data}", fg="green")
 
     # --- Step 2: Install SOCRATES ---
     root = Path.cwd()
     socrates_dir = root / "socrates"
     if not socrates_dir.exists():
-        click.secho("🌤️ Installing SOCRATES...", fg="blue")
+        click.secho("[+] Installing SOCRATES...", fg="blue")
         try:
             subprocess.run(["bash", "tools/get_socrates.sh"], check=True)
         except subprocess.CalledProcessError as e:
-            click.secho("❌ Failed to install SOCRATES", fg="red")
+            click.secho("[x] Failed to install SOCRATES", fg="red")
             click.echo(e)
             raise SystemExit(1)
     else:
-        click.secho("✅ SOCRATES already present", fg="green")
+        click.secho("[+] SOCRATES already present", fg="green")
 
     rad_dir = socrates_dir.resolve()
     os.environ.setdefault("RAD_DIR", str(rad_dir))
@@ -483,7 +481,7 @@ def install_all(export_env: bool, config_path: Path):
 
     # --- Step 3: Julia check ---
     if not is_julia_installed():
-        click.secho("⚠️ Julia not found in PATH.", fg="yellow")
+        click.secho("[!] Julia not found in PATH.", fg="yellow")
         click.secho(
             "   Proteus requires Julia for AGNI.",
             fg="yellow",
@@ -494,7 +492,7 @@ def install_all(export_env: bool, config_path: Path):
         )
         click.secho(f'   Current PATH: {os.environ["PATH"]}', fg="white")
         click.secho(
-            "❌ Aborting installation — 'proteus install-all' cannot proceed without Julia.",
+            "[x] Aborting installation -- 'proteus install-all' cannot proceed without Julia.",
             fg="red",
         )
         raise SystemExit(1)
@@ -502,7 +500,7 @@ def install_all(export_env: bool, config_path: Path):
     # --- Step 4: Install AGNI ---
     agni_dir = root / "AGNI"
     if not agni_dir.exists():
-        click.secho("🧪 Installing AGNI...", fg="blue")
+        click.secho("[+] Installing AGNI...", fg="blue")
         try:
             subprocess.run(
                 ["git", "clone", "https://github.com/nichollsh/AGNI.git"],
@@ -512,32 +510,32 @@ def install_all(export_env: bool, config_path: Path):
                 ["bash", "src/get_agni.sh", "0"], cwd=agni_dir, env=env, check=True
             )
         except subprocess.CalledProcessError as e:
-            click.secho("❌ Failed to install AGNI", fg="red")
+            click.secho("[x] Failed to install AGNI", fg="red")
             click.echo(e)
             raise SystemExit(1)
     else:
-        click.secho("✅ AGNI already present", fg="green")
+        click.secho("[+] AGNI already present", fg="green")
 
     # --- Step 5: Export environment variables ---
     if export_env:
         for var, value in {"FWL_DATA": fwl_data, "RAD_DIR": rad_dir}.items():
             rc_file = append_to_shell_rc(var, str(value))
             if rc_file:
-                click.secho(f"✅ Exported {var} to {rc_file}", fg="green")
+                click.secho(f"[+] Exported {var} to {rc_file}", fg="green")
             else:
                 click.secho(
-                    f"ℹ️ {var} already exported or shell not recognized",
+                    f"[i] {var} already exported or shell not recognized",
                     fg="cyan",
                 )
         click.secho(
-            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
+            "[i] Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
         )
 
     # --- Step 6: Update input data ---
     _update_input_data(config_path)
     (root / "output").mkdir(exist_ok=True)
 
-    click.secho("🎉 PROTEUS installation completed!", fg="green")
+    click.secho("[+] PROTEUS installation completed!", fg="green")
 
 
 @cli.command()
@@ -561,7 +559,7 @@ def update_all(export_env: bool, config_path: Path):
     required_disk_space_in_GB = 5
     if not available_disk_space_in_GB > required_disk_space_in_GB:
         click.secho(
-            f"⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
+            f"[!] You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
             fg="yellow",
         )
         click.secho(
@@ -569,7 +567,7 @@ def update_all(export_env: bool, config_path: Path):
             fg="yellow",
         )
         click.secho(
-            "❌ Aborting installation — 'proteus update-all'.",
+            "[x] Aborting installation -- 'proteus update-all'.",
             fg="red",
         )
         raise SystemExit(1)
@@ -586,24 +584,24 @@ def update_all(export_env: bool, config_path: Path):
         fwl_data = resolve_fwl_data_dir()
     except EnvironmentError:
         click.secho(
-            "❌ FWL_DATA not set. Run `proteus install-all` first.", fg="red"
+            "[x] FWL_DATA not set. Run `proteus install-all` first.", fg="red"
         )
         raise SystemExit(1)
-    click.secho(f"📂 Using FWL_DATA: {fwl_data}", fg="green")
+    click.secho(f"[+] Using FWL_DATA: {fwl_data}", fg="green")
 
     # --- Step 3: Update SOCRATES ---
     socrates_dir = root / "socrates"
     if socrates_dir.exists():
-        click.secho("🌤️ Updating SOCRATES...", fg="blue")
+        click.secho("[+] Updating SOCRATES...", fg="blue")
         try:
             subprocess.run(["bash", "tools/get_socrates.sh"], check=True)
-            click.secho("✅ SOCRATES updated", fg="green")
+            click.secho("[+] SOCRATES updated", fg="green")
         except subprocess.CalledProcessError as e:
-            click.secho("❌ Failed to update SOCRATES", fg="red")
+            click.secho("[x] Failed to update SOCRATES", fg="red")
             click.echo(e)
     else:
         click.secho(
-            "⚠️ SOCRATES not found. Run `proteus install-all`.", fg="yellow"
+            "[!] SOCRATES not found. Run `proteus install-all`.", fg="yellow"
         )
 
     rad_dir = socrates_dir.resolve()
@@ -611,13 +609,13 @@ def update_all(export_env: bool, config_path: Path):
 
     # --- Step 4: Julia check ---
     if not is_julia_installed():
-        click.secho("⚠️ Julia not found in PATH.", fg="yellow")
+        click.secho("[!] Julia not found in PATH.", fg="yellow")
         click.secho("   Cannot update AGNI without Julia.", fg="yellow")
     else:
         # --- Step 5: Update AGNI ---
         agni_dir = root / "AGNI"
         if agni_dir.exists():
-            click.secho("🧪 Updating AGNI...", fg="blue")
+            click.secho("[+] Updating AGNI...", fg="blue")
             try:
                 subprocess.run(["git", "pull"], cwd=agni_dir, check=True)
                 subprocess.run(
@@ -626,13 +624,13 @@ def update_all(export_env: bool, config_path: Path):
                     env=os.environ,
                     check=True,
                 )
-                click.secho("✅ AGNI updated", fg="green")
+                click.secho("[+] AGNI updated", fg="green")
             except subprocess.CalledProcessError as e:
-                click.secho("❌ Failed to update AGNI", fg="red")
+                click.secho("[x] Failed to update AGNI", fg="red")
                 click.echo(e)
         else:
             click.secho(
-                "⚠️ AGNI not found. Run `proteus install-all`.", fg="yellow"
+                "[!] AGNI not found. Run `proteus install-all`.", fg="yellow"
             )
 
     # --- Step 6: Refresh environment exports ---
@@ -640,20 +638,20 @@ def update_all(export_env: bool, config_path: Path):
         for var, value in {"FWL_DATA": fwl_data, "RAD_DIR": rad_dir}.items():
             rc_file = append_to_shell_rc(var, str(value))
             if rc_file:
-                click.secho(f"✅ Exported {var} to {rc_file}", fg="green")
+                click.secho(f"[+] Exported {var} to {rc_file}", fg="green")
             else:
                 click.secho(
-                    f"ℹ️ {var} already exported or shell not recognized",
+                    f"[i] {var} already exported or shell not recognized",
                     fg="cyan",
                 )
         click.secho(
-            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
+            "[i] Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
         )
 
     # --- Step 7: Update input data ---
     _update_input_data(config_path)
 
-    click.secho("🎉 PROTEUS update completed!", fg="green")
+    click.secho("[+] PROTEUS update completed!", fg="green")
 
 
 if __name__ == "__main__":

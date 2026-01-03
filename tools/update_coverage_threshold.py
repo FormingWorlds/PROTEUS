@@ -111,7 +111,7 @@ def update_threshold_in_pyproject(new_threshold: float) -> bool:
 
     report_section["fail_under"] = new_value
     pyproject_file.write_text(tomlkit.dumps(document))
-    print(f"✅ Updated pyproject.toml: fail_under = {new_value:.2f}")
+    print(f"[+] Updated pyproject.toml: fail_under = {new_value:.2f}")
     return True
 
 
@@ -135,27 +135,34 @@ def main() -> int:
 
         # Only update if new threshold is higher than current
         if new_threshold > current_threshold:
-            print(f"📈 Coverage increased! Updating threshold: {current_threshold:.2f}% → {new_threshold:.2f}%")
+            print(
+                f"[+] Coverage increased! Updating threshold: "
+                f"{current_threshold:.2f}% -> {new_threshold:.2f}%"
+            )
             update_threshold_in_pyproject(new_threshold)
             return 0
         elif new_threshold == current_threshold:
-            print(f"✓ Coverage threshold already at {current_threshold:.2f}% (no update needed)")
+            print(f"[=] Coverage threshold already at {current_threshold:.2f}% (no update needed)")
             return 1
         else:
             # Coverage decreased - this should trigger a test failure via pytest-cov
-            print(f"⚠️  Coverage decreased: {new_threshold:.2f}% < {current_threshold:.2f}%")
+            print(f"[!] Coverage decreased: {new_threshold:.2f}% < {current_threshold:.2f}%")
             print("    Tests should have failed. Threshold not updated.")
             return 1
 
     except FileNotFoundError as e:
-        print(f"❌ Error: Required file not found: {e}", file=sys.stderr)
+        print(f"[x] Error: Required file not found: {e}", file=sys.stderr)
         return 1
     except (ValueError, KeyError) as e:
-        print(f"❌ Error: Invalid coverage data or configuration ({type(e).__name__}): {e}", file=sys.stderr)
+        print(
+            f"[x] Error: Invalid coverage data or configuration "
+            f"({type(e).__name__}): {e}",
+            file=sys.stderr,
+        )
         return 1
     except Exception as e:
         print(
-            f"❌ Error updating coverage threshold ({type(e).__name__}): {e}",
+            f"[x] Error updating coverage threshold ({type(e).__name__}): {e}",
             file=sys.stderr,
         )
         return 1

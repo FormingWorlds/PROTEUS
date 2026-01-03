@@ -4,7 +4,7 @@
 
 set -e
 
-echo "🔍 Analyzing test coverage by module..."
+echo "[+] Analyzing test coverage by module..."
 echo ""
 
 # Check if coverage is installed
@@ -36,13 +36,13 @@ coverage report --include="src/proteus/*" --omit="*/tests/*,*/__pycache__/*" | t
     if is_number "$coverage"; then
         if [ "$coverage" -ge 80 ]; then
             color="\033[0;32m"  # Green
-            status="✓"
+            status="OK"
         elif [ "$coverage" -ge 50 ]; then
             color="\033[1;33m"  # Yellow
-            status="⚠"
+            status="WARN"
         else
             color="\033[0;31m"  # Red
-            status="✗"
+            status="LOW"
         fi
 
         echo -e "${color}${status} ${file}: ${coverage}%\033[0m"
@@ -71,7 +71,7 @@ echo "=========================================="
 coverage report --include="src/proteus/*" --omit="*/tests/*,*/__pycache__/*" | tail -n 1
 
 echo ""
-echo "💡 Tips:"
+echo "Tips:"
 echo "  - View detailed report: open htmlcov/index.html"
 echo "  - Test specific module: pytest tests/[module]/"
 echo "  - Check missing lines: coverage report --show-missing"
