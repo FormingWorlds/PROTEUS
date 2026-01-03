@@ -159,6 +159,16 @@ jobs:
           restore-keys: |
             socrates-bins-${{ runner.os }}-
 
+      # Build SOCRATES binaries (incl. prep_spec) when cache is missing and always export bin to PATH
+      - name: Build SOCRATES tools
+        run: |
+          cd socrates
+          if [ ! -x bin/prep_spec ]; then
+            ./configure
+            ./build_code
+          fi
+          echo "$PWD/bin" >> $GITHUB_PATH
+
       # Restore AGNI Julia depot from cache if available
       # Cache key based on AGNI dependency hashes - invalidates when dependencies change
       - name: Restore AGNI cache
@@ -172,6 +182,12 @@ jobs:
             'AGNI/**/Manifest.toml') }}
           restore-keys: |
             agni-depot-${{ runner.os }}-
+
+      # Ensure AGNI Julia environment (incl. Plots) is instantiated
+      - name: Instantiate AGNI Julia environment
+        run: |
+          cd AGNI
+          julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
       - name: Install all PROTEUS external repo dependencies via cli.py.
         run: proteus install-all --export-env
@@ -427,6 +443,16 @@ jobs:
           restore-keys: |
             socrates-bins-${{ runner.os }}-
 
+      # Build SOCRATES binaries (incl. prep_spec) when cache is missing and always export bin to PATH
+      - name: Build SOCRATES tools
+        run: |
+          cd socrates
+          if [ ! -x bin/prep_spec ]; then
+            ./configure
+            ./build_code
+          fi
+          echo "$PWD/bin" >> $GITHUB_PATH
+
       # Restore AGNI Julia depot from cache if available
       # Cache key based on AGNI dependency hashes - invalidates when dependencies change
       - name: Restore AGNI cache
@@ -440,6 +466,12 @@ jobs:
             'AGNI/**/Manifest.toml') }}
           restore-keys: |
             agni-depot-${{ runner.os }}-
+
+      # Ensure AGNI Julia environment (incl. Plots) is instantiated
+      - name: Instantiate AGNI Julia environment
+        run: |
+          cd AGNI
+          julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
       - name: Install all PROTEUS external repo dependencies via cli.py.
         run: proteus install-all --export-env
