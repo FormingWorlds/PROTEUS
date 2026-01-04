@@ -22,6 +22,7 @@ on:
     branches:
       - main
       - dev
+      - 'tl/test_ecosystem_v4'  # Temporary: allow testing on feature branch
   workflow_dispatch:  # Allow manual triggering for testing
 
 permissions:
