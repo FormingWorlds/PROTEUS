@@ -163,7 +163,7 @@ version = "2.0"
         coremassfrac               = 0.325                          # core mass fraction [non-dim.]
         mantle_mass_fraction       = 0                              # mantle mass fraction [non-dim.]
         weight_iron_frac           = 0.325                          # iron fraction in the planet [non-dim.]
-        temperature_mode           = "linear"                   # Input temperature profile choices: "isothermal", "linear", "prescribed"
+        temperature_mode           = "linear"                       # Input temperature profile choices: "isothermal", "linear", "prescribed"
         surface_temperature        = 3500                           # Surface temperature [K], required for temperature_mode="isothermal" or "linear"
         center_temperature         = 6000                           # Center temperature [K], required for temperature_mode="linear"
         temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # filename with a prescribed temperature profile, required for temperature_mode="prescribed"
