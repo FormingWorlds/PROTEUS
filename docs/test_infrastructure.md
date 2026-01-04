@@ -168,7 +168,7 @@ omit = [
 # See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml.
 # The ratcheting (only ever increasing or staying the same) is enforced in CI;
 # do not manually decrease this value in pyproject.toml.
-fail_under = 69  # Current auto-ratcheted threshold
+fail_under = 69  # Example auto-ratcheted threshold as of January 2026; check your pyproject.toml for the current value
 show_missing = true
 precision = 2
 exclude_lines = [
