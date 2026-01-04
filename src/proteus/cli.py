@@ -528,7 +528,7 @@ def install_all(export_env: bool, config_path: Path):
                     fg="cyan",
                 )
         click.secho(
-            "[i] Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
+            "[>] Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
         )
 
     # --- Step 6: Update input data ---
