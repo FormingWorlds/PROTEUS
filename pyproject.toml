@@ -140,6 +140,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "smoke: marks tests as smoke tests (quick validation with real binaries, 1 timestep, low res)",
 ]
 
 [tool.coverage.report]
