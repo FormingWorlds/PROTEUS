@@ -5,6 +5,7 @@ repo_name: GitHub
 
 nav:
   - Home: index.md
+  - Docs restructure plan: diataxis_restructure_plan.md
   - Model description: model.md
   - Installing PROTEUS:
     - Installation: installation.md
