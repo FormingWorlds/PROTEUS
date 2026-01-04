@@ -419,7 +419,7 @@ version = "2.0"
         ini_mix     = "profile" # Initial mixing ratios (profile, outgas)
         fix_surf    = false     # Fixed surface mixing ratios
         network     = "SNCHO"   # Class of chemical network to use (CHO, NCHO, SNCHO)
-        save_frames = true      # Plot frames during iterations
+        save_frames = false      # Plot frames during iterations
         yconv_cri   = 0.05      # Convergence criterion, value of mixing ratios
         slope_cri   = 0.0001    # Convergence criterion, rate of change of mixing ratios
 
