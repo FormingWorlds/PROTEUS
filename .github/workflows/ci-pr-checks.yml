@@ -138,9 +138,14 @@ jobs:
 
           # AGNI rebuild (only if Julia sources changed)
           if [ -d "AGNI" ]; then
+            # Check if any .jl files were modified in AGNI
             cd AGNI
-            echo "Re-instantiating AGNI packages..."
-            julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+            if git diff --name-only HEAD origin/main | grep -q '\.jl$'; then
+              echo "AGNI Julia sources changed, re-instantiating packages..."
+              julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+            else
+              echo "No AGNI changes detected, skipping rebuild"
+            fi
             cd /opt/proteus
           fi
 
