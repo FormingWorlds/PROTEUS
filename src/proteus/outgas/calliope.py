@@ -1,5 +1,5 @@
 # Function and classes used to run CALLIOPE
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 import logging
 from typing import TYPE_CHECKING

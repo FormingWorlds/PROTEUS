@@ -1,5 +1,5 @@
 # Aragog interior module
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 import glob
 import logging

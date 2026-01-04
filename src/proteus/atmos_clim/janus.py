@@ -1,5 +1,5 @@
 # Functions used to handle atmosphere thermodynamics (running JANUS, etc.)
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001
 
 import glob
 import logging
