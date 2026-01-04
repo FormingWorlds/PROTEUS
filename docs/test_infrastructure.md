@@ -372,6 +372,7 @@ def test_long_running_process():
 ### PROTEUS Ecosystem Components
 
 The testing infrastructure is designed for:
+
 - **PROTEUS** - Main coupling framework
 - **CALLIOPE** - Outgassing module
 - **JANUS** - Atmosphere-climate module
@@ -652,7 +653,7 @@ For modules with external dependencies (SOCRATES, AGNI, VULCAN), caching can sav
   with:
     path: socrates/
     # Hash changes = cache miss = recompile (correct behavior)
-    key: |\n      socrates-${{ runner.os }}-${{ hashFiles(\n        'socrates/**/*.f90',\n        'socrates/**/*.c'\n      ) }}
+    key: socrates-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.c') }}
     restore-keys: |
       socrates-${{ runner.os }}-
 
@@ -1170,7 +1171,7 @@ pytest --pdb
 ### Getting Help
 
 1. Check this documentation
-2. Review [tools/README.md](../tools/README.md)
+2. Review tools/README.md in the repository
 3. Check pytest documentation: https://docs.pytest.org/
 4. Check coverage.py documentation: https://coverage.readthedocs.io/
 5. Open an issue on GitHub

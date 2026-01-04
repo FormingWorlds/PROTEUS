@@ -6,42 +6,49 @@ repo_name: GitHub
 nav:
   - Home: index.md
   - Model description: model.md
-  - Installation: installation.md
-  - Using PROTEUS: usage.md
-  - Configuration: config.md
-  - Testing infrastructure: test_infrastructure.md
-  - Contributing: CONTRIBUTING.md
-  - Bibliography: bibliography.md
-  - Troubleshooting: troubleshooting.md
-  - Bayesian inference: inference.md
-  - Reference data: data.md
-  - Kapteyn cluster: kapteyn_cluster_guide.md
-  - Snellius cluster: snellius_cluster_guide.md
-  - Habrok cluster: habrok_cluster_guide.md
+  - Installing PROTEUS:
+    - Installation: installation.md
+    - Machine specifics:
+      - Local machines: local_machine_guide.md
+      - Kapteyn cluster: kapteyn_cluster_guide.md
+      - Snellius cluster: snellius_cluster_guide.md
+      - Habrok cluster: habrok_cluster_guide.md
+    - Troubleshooting: troubleshooting.md
+  - Using PROTEUS:
+    - Running simulations: usage.md
+    - Configuration: config.md
+    - Reference data: data.md
+    - Bibliography: bibliography.md
+    - Bayesian inference (alpha): inference.md
+  - Developing PROTEUS:
+    - Contributing: CONTRIBUTING.md
+  - Continuous Integration:
+    - Test infrastructure: test_infrastructure.md
+    - Building tests: test_infrastructure.md
   - Contact: contact.md
   - Code of Conduct: CODE_OF_CONDUCT.md
   - Funding: funding.md
   - Source code: https://github.com/FormingWorlds/PROTEUS
   - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
-  - 🔗 MORS:  https://fwl-mors.readthedocs.io/
-  - 🔗 JANUS: https://fwl-janus.readthedocs.io/
-  - 🔗 ZEPHYRUS: https://github.com/FormingWorlds/ZEPHYRUS/
-  - 🔗 CALLIOPE: https://fwl-calliope.readthedocs.io/
-  - 🔗 AGNI: https://h-nicholls.space/AGNI/
-  - 🔗 LovePy: https://github.com/nichollsh/lovepy
-  - 🔗 VULCAN: https://github.com/FormingWorlds/VULCAN
-  - 🔗 Zalmoxis: https://github.com/FormingWorlds/Zalmoxis
-  - 🔗 Aragog: https://github.com/FormingWorlds/aragog
-  - 🔗 SPIDER: https://github.com/djbower/spider
+  - PROTEUS ecosystem:
+    - 🔗 MORS:  https://fwl-mors.readthedocs.io/
+    - 🔗 JANUS: https://fwl-janus.readthedocs.io/
+    - 🔗 ZEPHYRUS: https://github.com/FormingWorlds/ZEPHYRUS/
+    - 🔗 CALLIOPE: https://fwl-calliope.readthedocs.io/
+    - 🔗 AGNI: https://h-nicholls.space/AGNI/
+    - 🔗 LovePy: https://github.com/nichollsh/lovepy
+    - 🔗 VULCAN: https://github.com/FormingWorlds/VULCAN
+    - 🔗 Zalmoxis: https://github.com/FormingWorlds/Zalmoxis
+    - 🔗 Aragog: https://github.com/FormingWorlds/aragog
+    - 🔗 SPIDER: https://github.com/djbower/spider
 
 theme:
   name: material
   palette:
     primary: black
     accent: deep orange
-
-extra_css:
-  - stylesheets/extra.css
+  features:
+    - navigation.expand
 
 markdown_extensions:
   - admonition

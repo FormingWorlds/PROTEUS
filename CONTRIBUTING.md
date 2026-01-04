@@ -156,6 +156,12 @@ If you are adding new pages, make sure to update the listing in the [`mkdocs.yml
 
 The documentation is hosted on [readthedocs](https://readthedocs.io/projects/fwl-proteus).
 
+**Common error: `mkdocs serve` not reloading on save**
+
+On some machines the development server starts successfully, but does not auto-reload the browser when you modify or save a file. This is often caused by an incompatibility between `mkdocs` and newer versions of the `click` library (specifically versions `8.1.4` and above): ```pip freeze | grep click```.
+If you see a version `8.1.8` or `8.3+`, you must downgrade. To fix this issue, downgrade the `click` library to a compatible version:
+```pip install "click<8.1"```. Then restart via the `mkdocs serve` command, and auto-reloading should work again.
+
 ### Making a release
 
 The versioning scheme we use is [CalVer](https://calver.org/), in the format `YY.MM.DD`, without a leading 'v'. This means that releases are made based on the date of the release.
