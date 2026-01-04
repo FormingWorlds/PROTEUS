@@ -209,7 +209,28 @@ def run_interior(dirs:dict, config:Config,
     # Read output
     for k in output.keys():
         if k in hf_row.keys():
-            hf_row[k] = output[k]
+            val = output[k]
+            # Convert numpy arrays and scalars to Python scalars for NumPy 2.0 compatibility
+            if isinstance(val, np.generic):
+                hf_row[k] = val.item()
+            elif np.isscalar(val):
+                hf_row[k] = val
+            else:
+                try:
+                    arr = np.asarray(val)
+                    if arr.size == 1 and hasattr(arr, "item"):
+                        hf_row[k] = arr.item()
+                    else:
+                        hf_row[k] = val
+                except Exception as exc:
+                    log.error(
+                        "Failed to convert output value for key %r (%r) to a NumPy array/scalar (%s: %s)",
+                        k,
+                        val,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    raise
 
     # Update rheological parameters
     #    Only calculate viscosity here if using dummy module
@@ -223,7 +244,7 @@ def run_interior(dirs:dict, config:Config,
     # Check that the new temperature is remotely reasonable
     if not (0 < hf_row["T_magma"] < 1e6):
         UpdateStatusfile(dirs, 21)
-        raise ValueError("T_magma is out of range: %g K"%hf_row["T_magma"])
+        raise ValueError("T_magma is out of range: %g K" % float(hf_row["T_magma"]))
 
 
     # Update dry interior mass
@@ -259,14 +280,14 @@ def run_interior(dirs:dict, config:Config,
 
     # Print result of interior module
     if verbose:
-        log.info("    T_magma    = %.3f K"%hf_row["T_magma"])
-        log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
-        log.info("    RF_depth   = %.3f  " %hf_row["RF_depth"])
-        log.info("    F_int      = %.2e W m-2" %hf_row["F_int"])
+        log.info("    T_magma    = %.3f K" % float(hf_row["T_magma"]))
+        log.info("    Phi_global = %.3f  " % float(hf_row["Phi_global"]))
+        log.info("    RF_depth   = %.3f  " % float(hf_row["RF_depth"]))
+        log.info("    F_int      = %.2e W m-2" % float(hf_row["F_int"]))
         if config.interior.tidal_heat:
-            log.info("    F_tidal    = %.2e W m-2" %hf_row["F_tidal"])
+            log.info("    F_tidal    = %.2e W m-2" % float(hf_row["F_tidal"]))
         if config.interior.radiogenic_heat:
-            log.info("    F_radio    = %.2e W m-2" %hf_row["F_radio"])
+            log.info("    F_radio    = %.2e W m-2" % float(hf_row["F_radio"]))
 
     # Actual time step size
     interior_o.dt = float(sim_time) - hf_row["Time"]

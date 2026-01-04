@@ -9,6 +9,7 @@ nav:
   - Installation: installation.md
   - Using PROTEUS: usage.md
   - Configuration: config.md
+  - Testing infrastructure: test_infrastructure.md
   - Contributing: CONTRIBUTING.md
   - Bibliography: bibliography.md
   - Troubleshooting: troubleshooting.md
