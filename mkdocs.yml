@@ -51,7 +51,6 @@ nav:
       - Test Structure: reference/test-structure.md
       - Test Configuration: reference/test-config.md
       - CI/CD Workflows: reference/ci-workflows.md
-    - API Documentation: reference/api/
 
   # Community & Links
   - Community:
