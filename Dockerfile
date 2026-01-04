@@ -27,6 +27,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # - libssl-dev: SSL support
 # - curl, wget: Download tools
 # - unzip: Archive extraction
+# - rsync: File synchronization for CI code overlay
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gfortran \
     gcc \
@@ -40,6 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     unzip \
+    rsync \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
