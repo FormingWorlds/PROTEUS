@@ -116,14 +116,15 @@ jobs:
           echo "Checking if Fortran/C source files changed..."
 
           # SPIDER rebuild (only if sources changed)
-          if [ -d "SPIDER" ]; then
-            cd SPIDER
-            make -q || {
-              echo "SPIDER needs rebuild..."
-              make -j$(nproc)
-            }
-            cd /opt/proteus
-          fi
+          # Note: SPIDER is not built in the Docker image or CI
+          # if [ -d "SPIDER" ] && [ -f "SPIDER/makefile" ]; then
+          #   cd SPIDER
+          #   make -q || {
+          #     echo "SPIDER needs rebuild..."
+          #     make -j$(nproc)
+          #   }
+          #   cd /opt/proteus
+          # fi
 
           # SOCRATES rebuild (only if sources changed)
           if [ -d "socrates" ]; then
