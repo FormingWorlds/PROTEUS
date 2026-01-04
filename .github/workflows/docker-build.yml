@@ -36,6 +36,15 @@ jobs:
     timeout-minutes: 120  # Compilation can take time
 
     steps:
+      - name: Free disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker system prune -af
+          echo "Disk space after cleanup:"
+          df -h
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
