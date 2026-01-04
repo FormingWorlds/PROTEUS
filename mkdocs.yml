@@ -5,34 +5,66 @@ repo_name: GitHub
 
 nav:
   - Home: index.md
-  - Docs restructure plan: diataxis_restructure_plan.md
-  - Model description: model.md
-  - Installing PROTEUS:
-    - Installation: installation.md
-    - Machine specifics:
-      - Local machines: local_machine_guide.md
-      - Kapteyn cluster: kapteyn_cluster_guide.md
-      - Snellius cluster: snellius_cluster_guide.md
-      - Habrok cluster: habrok_cluster_guide.md
-    - Troubleshooting: troubleshooting.md
-  - Using PROTEUS:
-    - Running simulations: usage.md
-    - Configuration: config.md
-    - Reference data: data.md
-    - Bibliography: bibliography.md
-    - Bayesian inference (alpha): inference.md
-  - Developing PROTEUS:
-    - Contributing: CONTRIBUTING.md
-  - Continuous Integration:
-    - Test infrastructure: test_infrastructure.md
-    - Building tests: test_infrastructure.md
-  - Contact: contact.md
-  - Code of Conduct: CODE_OF_CONDUCT.md
-  - Funding: funding.md
-  - Source code: https://github.com/FormingWorlds/PROTEUS
-  - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
-  - PROTEUS ecosystem:
-    - 🔗 MORS:  https://fwl-mors.readthedocs.io/
+  - 📋 Documentation Restructure Plan: diataxis_restructure_plan.md
+
+  # Tutorials (Learning-oriented)
+  - Tutorials:
+    - Getting Started: how-to/simulations/run-simulation.md
+
+  # How-To Guides (Problem-oriented)
+  - How-To Guides:
+    - Installation:
+      - Install PROTEUS: how-to/installation/install.md
+      - Local Machine Setup: setup/local-setup.md
+      - Cluster Setup:
+        - Kapteyn Cluster: setup/kapteyn-setup.md
+        - Habrok Cluster: setup/habrok-setup.md
+        - Snellius Cluster: setup/snellius-setup.md
+    - Running Simulations:
+      - Run a Simulation: how-to/simulations/run-simulation.md
+      - Grid Simulations: how-to/simulations/grid-simulations.md
+      - Remote Clusters: how-to/simulations/remote-clusters.md
+      - Archiving Results: how-to/simulations/archiving.md
+      - Offline Chemistry: how-to/simulations/offline-chemistry.md
+      - Synthetic Observations: how-to/simulations/synthetic-observations.md
+      - Bayesian Inference: how-to/simulations/bayesian-inference.md
+    - Development:
+      - Contributing: how-to/development/contribute.md
+      - Write Tests: how-to/development/write-tests.md
+      - Run Tests: how-to/development/run-tests.md
+    - Troubleshooting: how-to/troubleshoot.md
+
+  # Explanation (Understanding-oriented)
+  - Explanation:
+    - Architecture: explanation/architecture.md
+    - Ecosystem: explanation/ecosystem.md
+    - Design Decisions: explanation/design-decisions.md
+    - Scientific Background:
+      - Planetary Evolution: explanation/scientific-background/planetary-evolution.md
+
+  # Reference (Information-oriented)
+  - Reference:
+    - Configuration Options: config.md
+    - Data Formats: reference/data-formats.md
+    - Bibliography: reference/bibliography.md
+    - Testing:
+      - Test Structure: reference/test-structure.md
+      - Test Configuration: reference/test-config.md
+      - CI/CD Workflows: reference/ci-workflows.md
+    - API Documentation: reference/api/
+
+  # Community & Links
+  - Community:
+    - Contact: contact.md
+    - Code of Conduct: CODE_OF_CONDUCT.md
+    - Funding: funding.md
+
+  - External Links:
+    - Source Code: https://github.com/FormingWorlds/PROTEUS
+    - Issues: https://github.com/FormingWorlds/PROTEUS/issues
+
+  - PROTEUS Ecosystem:
+    - 🔗 MORS: https://fwl-mors.readthedocs.io/
     - 🔗 JANUS: https://fwl-janus.readthedocs.io/
     - 🔗 ZEPHYRUS: https://github.com/FormingWorlds/ZEPHYRUS/
     - 🔗 CALLIOPE: https://fwl-calliope.readthedocs.io/
@@ -42,6 +74,24 @@ nav:
     - 🔗 Zalmoxis: https://github.com/FormingWorlds/Zalmoxis
     - 🔗 Aragog: https://github.com/FormingWorlds/aragog
     - 🔗 SPIDER: https://github.com/djbower/spider
+
+  # Old Documentation Structure (deprecated)
+  - Old Menu (Deprecated):
+    - ⚠️ README: old_structure/README.md
+    - Model Description: model.md
+    - Old Installation: installation.md
+    - Old Usage Guide: usage.md
+    - Old Troubleshooting: troubleshooting.md
+    - Old Inference Guide: inference.md
+    - Old Contributing: CONTRIBUTING.md
+    - Old Structure Files:
+      - Bibliography (old): old_structure/bibliography.md
+      - Data (old): old_structure/data.md
+      - Local Setup (old): old_structure/local_machine_guide.md
+      - Kapteyn (old): old_structure/kapteyn_cluster_guide.md
+      - Habrok (old): old_structure/habrok_cluster_guide.md
+      - Snellius (old): old_structure/snellius_cluster_guide.md
+      - Test Infrastructure (old): old_structure/test_infrastructure.md
 
 theme:
   name: material

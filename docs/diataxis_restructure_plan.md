@@ -4,8 +4,10 @@
 
 This document outlines the plan to restructure PROTEUS documentation according to the [Diataxis framework](https://diataxis.fr/), a systematic approach to technical documentation that organizes content into four distinct categories based on user needs.
 
-**Plan created:** January 4, 2026  
+**Plan created:** January 4, 2026
+**Last updated:** January 4, 2026
 **Current branch:** `tl/enhance_docs`
+**Status:** In Progress - Phase 4
 
 ---
 
@@ -72,6 +74,78 @@ Located in `docs/`:
 ## Proposed New Structure
 
 ### Directory Organization
+
+**Current Status (as of January 4, 2026):**
+
+```
+docs/
+├── setup/                   # ✅ Created - Platform-specific setup guides
+│   ├── local-setup.md      # ✅ Content extracted from local_machine_guide.md
+│   ├── kapteyn-setup.md    # ✅ Content extracted from kapteyn_cluster_guide.md
+│   ├── habrok-setup.md     # ✅ Content extracted from habrok_cluster_guide.md
+│   └── snellius-setup.md   # ✅ Content extracted from snellius_cluster_guide.md
+├── reference/               # ✅ Created - Technical reference docs
+│   ├── bibliography.md     # ✅ Content extracted from old bibliography.md
+│   ├── data-formats.md     # ✅ Content extracted from old data.md
+│   ├── test-structure.md   # ✅ Content extracted from test_infrastructure.md
+│   ├── test-config.md      # ✅ Content extracted from test_infrastructure.md
+│   ├── ci-workflows.md     # ✅ Content extracted from test_infrastructure.md
+│   └── api/                # Directory for API docs
+├── old_structure/          # ✅ Created - Archived original docs
+│   ├── README.md           # ✅ Migration guide and deprecation notice
+│   ├── bibliography.md     # Original file preserved
+│   ├── data.md            # Original file preserved
+│   ├── local_machine_guide.md
+│   ├── kapteyn_cluster_guide.md
+│   ├── habrok_cluster_guide.md
+│   ├── snellius_cluster_guide.md
+│   └── test_infrastructure.md
+├── tutorials/              # 🚧 Stub files exist, need content
+│   ├── getting-started.md
+│   ├── first-simulation.md
+│   └── understanding-results.md
+├── how-to/                 # 🚧 Partial - Some files have content, others are stubs
+│   ├── installation/
+│   │   ├── install.md     # 🚧 STUB - Needs content from installation.md
+│   │   └── [setup files ref setup/ directory]
+│   ├── simulations/
+│   │   ├── run-simulation.md        # 🚧 STUB - Needs content from usage.md
+│   │   ├── grid-simulations.md      # 🚧 STUB - Needs content from usage.md
+│   │   ├── remote-clusters.md       # 🚧 STUB - Needs content from usage.md
+│   │   ├── archiving.md             # 🚧 STUB
+│   │   ├── offline-chemistry.md     # 🚧 STUB
+│   │   ├── synthetic-observations.md # 🚧 STUB
+│   │   └── bayesian-inference.md    # 🚧 STUB - Needs content from inference.md
+│   ├── development/
+│   │   ├── contribute.md   # 🚧 STUB - Needs content from CONTRIBUTING.md
+│   │   ├── write-tests.md  # 🚧 STUB - Needs content from test_infrastructure.md
+│   │   └── run-tests.md    # 🚧 STUB - Needs content from test_infrastructure.md
+│   └── troubleshoot.md     # 🚧 STUB - Needs content from troubleshooting.md
+├── explanation/            # 🚧 Stub files exist, need content
+│   ├── architecture.md     # 🚧 STUB - Needs content from model.md
+│   ├── ecosystem.md        # 🚧 STUB
+│   ├── design-decisions.md # 🚧 STUB - Needs content from model.md
+│   └── scientific-background/
+│       └── planetary-evolution.md # 🚧 STUB - Needs content from model.md
+├── index.md               # Home page
+├── model.md              # In docs root (referenced in old menu)
+├── installation.md       # In docs root (referenced in old menu)
+├── usage.md             # In docs root (referenced in old menu)
+├── config.md            # In docs root (referenced in current menu)
+├── troubleshooting.md   # In docs root (referenced in old menu)
+├── inference.md         # In docs root (referenced in old menu)
+├── CONTRIBUTING.md      # In docs root (referenced in old menu)
+├── contact.md
+├── funding.md
+└── CODE_OF_CONDUCT.md
+```
+
+**Legend:**
+- ✅ = Completed with extracted content
+- 🚧 = Stub file exists, needs content extraction
+- 📁 = Directory created
+
+**Target Final Structure:**
 
 ```
 docs/
@@ -151,98 +225,272 @@ mkdir -p docs/explanation/scientific-background
 mkdir -p docs/explanation/design-decisions
 ```
 
-**Status:** COMPLETED
+**Status:** ✅ COMPLETED
 
-### Phase 3: Create Stub Files and Extract Existing Content
+### Phase 3: Create Stub Files and Extract Existing Content ⚠️
+
+**Status:** 🚧 PARTIALLY COMPLETED
 
 **Strategy:** Create stub files for each new document with comments indicating what content from `old_structure/` should be extracted and placed there. Extract existing sections from original docs instead of writing new material.
 
-**Stub files to create:**
+**✅ Completed extractions:**
+- `setup/local-setup.md` - Extracted from `local_machine_guide.md` (40 lines)
+- `setup/kapteyn-setup.md` - Extracted from `kapteyn_cluster_guide.md` (200+ lines)
+- `setup/habrok-setup.md` - Extracted from `habrok_cluster_guide.md` (83 lines)
+- `setup/snellius-setup.md` - Extracted from `snellius_cluster_guide.md` (45 lines)
+- `reference/bibliography.md` - Extracted from `bibliography.md` (66 lines)
+- `reference/data-formats.md` - Extracted from `data.md` (136 lines)
+- `reference/test-structure.md` - Extracted from `test_infrastructure.md` (80 lines)
+- `reference/test-config.md` - Extracted from `test_infrastructure.md` (155+ lines)
+- `reference/ci-workflows.md` - Extracted from `test_infrastructure.md` (222 lines)
 
-#### Tutorials (learning-oriented)
-- `tutorials/getting-started.md` 
-  - *Stub:* Extract from `usage.md` "Running PROTEUS from the terminal" section
-  - Add from `installation.md` user install steps
-  
-- `tutorials/first-simulation.md`
-  - *Stub:* Extract from `usage.md` "Running PROTEUS from the terminal" section
-  - Add from `config.md` basic parameter explanation
-  
-- `tutorials/understanding-results.md`
-  - *Stub:* Extract from `usage.md` "Output and results" section
+**🚧 Stub files needing content extraction:**
 
-#### How-to Guides (task-oriented)
+#### Tutorials (learning-oriented) 🚧
+- `tutorials/getting-started.md` - **STUB**
+  - *Extract from:* `usage.md` "Running PROTEUS from the terminal" section
+  - *Also add from:* `installation.md` user install steps
+
+- `tutorials/first-simulation.md` - **STUB**
+  - *Extract from:* `usage.md` "Running PROTEUS from the terminal" section
+  - *Also add from:* `config.md` basic parameter explanation
+
+- `tutorials/understanding-results.md` - **STUB**
+  - *Extract from:* `usage.md` "Output and results" section
+
+#### How-to Guides (task-oriented) 🚧
 
 **Installation how-tos:**
-- `how-to/installation/install.md`
-  - *Stub:* Extract from `installation.md` "Setup a Python environment" and "User install" sections
-
-- `how-to/installation/local-setup.md`
-  - *Stub:* Entire content from `local_machine_guide.md`
-
-- `how-to/installation/kapteyn-setup.md`
-  - *Stub:* Entire content from `kapteyn_cluster_guide.md`
-
-- `how-to/installation/snellius-setup.md`
-  - *Stub:* Entire content from `snellius_cluster_guide.md`
-
-- `how-to/installation/habrok-setup.md`
-  - *Stub:* Entire content from `habrok_cluster_guide.md`
+- `how-to/installation/install.md` - **STUB**
+  - *Extract from:* `installation.md` "Setup a Python environment" and "User install" sections
 
 **Simulation how-tos:**
-- `how-to/simulations/run-simulation.md`
-  - *Stub:* Extract from `usage.md` sections on running and grids
+- `how-to/simulations/run-simulation.md` - **STUB**
+  - *Extract from:* `usage.md` sections on running and grids
 
-- `how-to/simulations/grid-simulations.md`
-  - *Stub:* Extract from `usage.md` "Running grids of simulations" section
+- `how-to/simulations/grid-simulations.md` - **STUB**
+  - *Extract from:* `usage.md` "Running grids of simulations" section
 
-- `how-to/simulations/remote-clusters.md`
-  - *Stub:* Extract from `usage.md` "Running PROTEUS on remote machines" section
+- `how-to/simulations/remote-clusters.md` - **STUB**
+  - *Extract from:* `usage.md` "Running PROTEUS on remote machines" section
 
-- `how-to/simulations/bayesian-inference.md`
-  - *Stub:* Entire content from `inference.md`
+- `how-to/simulations/archiving.md` - **STUB**
+  - *Extract from:* `usage.md` archiving sections
+
+- `how-to/simulations/offline-chemistry.md` - **STUB**
+  - *Extract from:* `usage.md` or create new content
+
+- `how-to/simulations/synthetic-observations.md` - **STUB**
+  - *Extract from:* `usage.md` or create new content
+
+- `how-to/simulations/bayesian-inference.md` - **STUB**
+  - *Extract from:* `inference.md` (entire content)
 
 **Development how-tos:**
-- `how-to/development/write-tests.md`
-  - *Stub:* Extract from `test_infrastructure.md` the writing tests sections
+- `how-to/development/write-tests.md` - **STUB**
+  - *Extract from:* `test_infrastructure.md` the writing tests sections
 
-- `how-to/development/run-tests.md`
-  - *Stub:* Extract from `test_infrastructure.md` "Quick Start" section
+- `how-to/development/run-tests.md` - **STUB**
+  - *Extract from:* `test_infrastructure.md` "Quick Start" section
 
-- `how-to/development/contribute.md`
-  - *Stub:* Entire content from `CONTRIBUTING.md`
+- `how-to/development/contribute.md` - **STUB**
+  - *Extract from:* `CONTRIBUTING.md` (entire content)
 
 **General troubleshooting:**
-- `how-to/troubleshoot.md`
-  - *Stub:* Entire content from `troubleshooting.md`
+- `how-to/troubleshoot.md` - **STUB**
+  - *Extract from:* `troubleshooting.md` (entire content)
 
-#### Reference (information-oriented, pure description)
+#### Reference (information-oriented, pure description) ✅
 
-- `reference/config-options.md`
-  - *Stub:* Entire content from `config.md`
+✅ `reference/bibliography.md` - **COMPLETED**
+  - *Extracted from:* `bibliography.md` (66 lines)
 
-- `reference/data-formats.md`
-  - *Stub:* Entire content from `data.md`
+✅ `reference/data-formats.md` - **COMPLETED**
+  - *Extracted from:* `data.md` (136 lines)
 
-- `reference/test-structure.md`
-  - *Stub:* Extract from `test_infrastructure.md` "Architecture Overview" section
+✅ `reference/test-structure.md` - **COMPLETED**
+  - *Extracted from:* `test_infrastructure.md` "Architecture Overview" section (80 lines)
 
-- `reference/ci-workflows.md`
-  - *Stub:* Extract from `test_infrastructure.md` CI/CD Pipeline section
+✅ `reference/test-config.md` - **COMPLETED**
+  - *Extracted from:* `test_infrastructure.md` pytest/coverage config (155+ lines)
 
-- `reference/bibliography.md`
-  - *Stub:* Entire content from `bibliography.md`
+✅ `reference/ci-workflows.md` - **COMPLETED**
+  - *Extracted from:* `test_infrastructure.md` CI/CD Pipeline section (222 lines)
 
-#### Explanation (understanding-oriented, conceptual)
+#### Explanation (understanding-oriented, conceptual) 🚧
 
-- `explanation/architecture.md`
-  - *Stub:* Extract from `model.md` overview and schematic
+- `explanation/architecture.md` - **STUB**
+  - *Extract from:* `model.md` overview and schematic
 
-- `explanation/scientific-background/planetary-evolution.md`
-  - *Stub:* Create with conceptual explanations from `model.md`
+- `explanation/ecosystem.md` - **STUB**
+  - *Create new:* Overview of PROTEUS ecosystem modules
 
-- `explanation/design-decisions/modular-approach.md`
-  - *Stub:* Create from philosophical discussions in `model.md`
+- `explanation/design-decisions.md` - **STUB**
+  - *Extract from:* `model.md` philosophical discussions
+
+- `explanation/scientific-background/planetary-evolution.md` - **STUB**
+  - *Extract from:* `model.md` conceptual explanations
+
+### Phase 4: Content Extraction and Migration 🚧
+
+**Status:** 🚧 IN PROGRESS
+
+**Completed migrations:**
+
+1. **✅ Setup Guides** (Phase 4 complete for this category)
+   - `setup/local-setup.md` ← `old_structure/local_machine_guide.md`
+   - `setup/kapteyn-setup.md` ← `old_structure/kapteyn_cluster_guide.md`
+   - `setup/habrok-setup.md` ← `old_structure/habrok_cluster_guide.md`
+   - `setup/snellius-setup.md` ← `old_structure/snellius_cluster_guide.md`
+
+2. **✅ Reference Documentation** (Phase 4 complete for this category)
+   - `reference/bibliography.md` ← `old_structure/bibliography.md`
+   - `reference/data-formats.md` ← `old_structure/data.md`
+   - `reference/test-structure.md` ← `old_structure/test_infrastructure.md`
+   - `reference/test-config.md` ← `old_structure/test_infrastructure.md`
+   - `reference/ci-workflows.md` ← `old_structure/test_infrastructure.md`
+
+3. **✅ Navigation Updates**
+   - mkdocs.yml restructured with Diataxis framework (153 lines)
+   - Old menu moved to bottom as deprecated section
+   - Restructure plan moved to top of menu
+
+4. **✅ Deprecation Infrastructure**
+   - Created `old_structure/README.md` with migration guide
+   - Added ⚠️ warning emoji to old menu items
+   - Documented file mapping in README
+
+**🚧 Remaining extractions needed:**
+
+**From `installation.md` → `how-to/installation/install.md`**
+- [ ] Extract: Installation procedures
+- [ ] Extract: Command sequences
+- [ ] Extract: Dependency installation steps
+- [ ] Remove: Why certain dependencies → move to explanation/
+- [ ] Remove: Troubleshooting → move to how-to/troubleshoot.md
+
+**From `usage.md` → Split into multiple how-tos**
+- [ ] Extract to `how-to/simulations/run-simulation.md`: Basic execution
+- [ ] Extract to `how-to/simulations/grid-simulations.md`: Running parameter grids
+- [ ] Extract to `how-to/simulations/remote-clusters.md`: Remote execution
+- [ ] Extract to `how-to/simulations/archiving.md`: Archiving results
+- [ ] Extract to `tutorials/getting-started.md`: Beginner walkthrough
+- [ ] Remove: Conceptual explanations → move to explanation/
+- [ ] Remove: Configuration details → move to reference/config.md
+
+**From `inference.md` → `how-to/simulations/bayesian-inference.md`**
+- [ ] Extract: Entire content (how-to style)
+
+**From `troubleshooting.md` → `how-to/troubleshoot.md`**
+- [ ] Extract: Entire content
+
+**From `CONTRIBUTING.md` → `how-to/development/contribute.md`**
+- [ ] Extract: Contribution workflow
+- [ ] Remove: Code style guidelines → move to reference/code-style.md
+- [ ] Remove: Licensing discussion → move to explanation/licensing.md
+
+**From `model.md` → Split into explanation/**
+- [ ] Extract to `explanation/architecture.md`: System overview and schematic
+- [ ] Extract to `explanation/scientific-background/planetary-evolution.md`: Scientific concepts
+- [ ] Extract to `explanation/design-decisions.md`: Design philosophy
+
+### Phase 5: Navigation and Cross-Linking ✅
+
+**Status:** ✅ COMPLETED
+
+**Completed:**
+- ✅ Updated mkdocs.yml with Diataxis-based navigation
+- ✅ Created hierarchical menu structure
+- ✅ Organized into: Tutorials → How-To → Explanation → Reference → Community
+- ✅ Added "Old Menu (Deprecated)" section at bottom
+- ✅ Moved restructure plan to top of menu
+
+**Remaining:**
+- [ ] Add cross-links between document types after content extraction
+- [ ] Verify all internal links work
+- [ ] Add "See also" sections in each document
+
+### Phase 6: Review and Testing 🚧
+
+**Status:** ⏳ NOT STARTED
+
+**Tasks:**
+- [ ] Build documentation with mkdocs
+- [ ] Test all navigation links
+- [ ] Review extracted content for completeness
+- [ ] Verify Diataxis compliance
+- [ ] User testing and feedback
+- [ ] Final cleanup of old files
+
+---
+
+## Content Migration Progress Summary
+
+**Files Migrated:** 9 of ~20 planned
+**Lines Extracted:** ~1000+ lines
+**Directories Created:** 4 (setup/, reference/, old_structure/, explanation/)
+**Stub Files Created:** ~15
+
+**Completion by Category:**
+- ✅ **Reference:** 100% (5/5 files)
+- ✅ **Setup Guides:** 100% (4/4 files)
+- 🚧 **How-To Guides:** 10% (0/10 files with full content)
+- 🚧 **Tutorials:** 0% (0/3 files)
+- 🚧 **Explanation:** 0% (0/4 files)
+
+**Overall Progress:** ~35% complete
+
+---
+
+## Content Extraction Mapping Table
+
+| Source File | Target File(s) | Status | Content Type |
+|------------|---------------|---------|--------------|
+| `bibliography.md` | `reference/bibliography.md` | ✅ Done | Reference |
+| `data.md` | `reference/data-formats.md` | ✅ Done | Reference |
+| `test_infrastructure.md` | `reference/test-structure.md` | ✅ Done | Reference |
+| `test_infrastructure.md` | `reference/test-config.md` | ✅ Done | Reference |
+| `test_infrastructure.md` | `reference/ci-workflows.md` | ✅ Done | Reference |
+| `local_machine_guide.md` | `setup/local-setup.md` | ✅ Done | How-To |
+| `kapteyn_cluster_guide.md` | `setup/kapteyn-setup.md` | ✅ Done | How-To |
+| `habrok_cluster_guide.md` | `setup/habrok-setup.md` | ✅ Done | How-To |
+| `snellius_cluster_guide.md` | `setup/snellius-setup.md` | ✅ Done | How-To |
+| `installation.md` | `how-to/installation/install.md` | 🚧 Stub | How-To |
+| `usage.md` | `how-to/simulations/run-simulation.md` | 🚧 Stub | How-To |
+| `usage.md` | `how-to/simulations/grid-simulations.md` | 🚧 Stub | How-To |
+| `usage.md` | `how-to/simulations/remote-clusters.md` | 🚧 Stub | How-To |
+| `usage.md` | `tutorials/getting-started.md` | 🚧 Stub | Tutorial |
+| `inference.md` | `how-to/simulations/bayesian-inference.md` | 🚧 Stub | How-To |
+| `troubleshooting.md` | `how-to/troubleshoot.md` | 🚧 Stub | How-To |
+| `CONTRIBUTING.md` | `how-to/development/contribute.md` | 🚧 Stub | How-To |
+| `model.md` | `explanation/architecture.md` | 🚧 Stub | Explanation |
+| `model.md` | `explanation/design-decisions.md` | 🚧 Stub | Explanation |
+| `model.md` | `explanation/scientific-background/planetary-evolution.md` | 🚧 Stub | Explanation |
+
+---
+
+## Next Immediate Steps
+
+1. **Continue Phase 4 content extraction:**
+   - Extract from `installation.md` → `how-to/installation/install.md`
+   - Extract from `usage.md` → multiple how-to files
+   - Extract from `inference.md` → `how-to/simulations/bayesian-inference.md`
+
+2. **Extract tutorial content:**
+   - Create beginner-friendly tutorial from `usage.md` sections
+
+3. **Extract explanation content:**
+   - Split `model.md` into conceptual explanation files
+
+4. **Add cross-links:**
+   - Link between related documents
+   - Add "See also" sections
+
+5. **Testing:**
+   - Build and test documentation site
+   - Verify all links work
+
+---
 
 ### Phase 4: Reorganize How-to Guides
 
@@ -272,7 +520,7 @@ mkdir -p docs/explanation/design-decisions
 #### From `usage.md` → Split into multiple how-tos
 **Extract to:**
 - `how-to/simulations/run-simulation.md` - Basic execution
-- `how-to/simulations/configure-planet.md` - Parameter configuration  
+- `how-to/simulations/configure-planet.md` - Parameter configuration
 - `how-to/simulations/run-grids.md` - Running parameter grids
 
 **Move elsewhere:**
@@ -379,14 +627,17 @@ For each document, verify:
 
 ## Timeline Estimate
 
-**Phase 1 (Preserve):** 1 hour ✅  
-**Phase 2 (Structure):** 1 hour ✅  
-**Phase 3 (Stub files & extract):** 4-5 days
-**Phase 4 (Review & refine):** 2-3 days
-**Phase 5 (Navigation updates):** 1 day
-**Phase 6 (Testing & validation):** 1-2 days
+**Phase 1 (Preserve):** 1 hour ✅ COMPLETED
+**Phase 2 (Structure):** 1 hour ✅ COMPLETED
+**Phase 3 (Stub files & extract):** 4-5 days 🚧 ~35% COMPLETE
+**Phase 4 (Content extraction):** 2-3 days 🚧 IN PROGRESS
+**Phase 5 (Navigation updates):** 1 day ✅ COMPLETED
+**Phase 6 (Review & refine):** 1-2 days ⏳ NOT STARTED
+**Phase 7 (Testing & validation):** 1-2 days ⏳ NOT STARTED
 
 **Total estimated time:** 8-12 days
+**Time elapsed:** ~3-4 days
+**Estimated remaining:** 4-8 days
 
 ---
 
@@ -394,16 +645,16 @@ For each document, verify:
 
 After restructure, documentation should:
 
-✅ Follow Diataxis principles consistently  
-✅ Help new users get started (tutorials)  
-✅ Help experienced users solve problems (how-tos)  
-✅ Provide authoritative technical information (reference)  
-✅ Build understanding of concepts (explanation)  
-✅ Maintain all information from original docs  
-✅ Have clear, intuitive navigation  
-✅ Work correctly with mkdocs/Material theme  
-✅ All internal links functional  
-✅ Pass documentation review
+✅ Follow Diataxis principles consistently
+🚧 Help new users get started (tutorials) - *Stub files exist*
+🚧 Help experienced users solve problems (how-tos) - *Partially complete*
+✅ Provide authoritative technical information (reference) - *Complete*
+🚧 Build understanding of concepts (explanation) - *Stub files exist*
+✅ Maintain all information from original docs - *Preserved in old_structure/*
+✅ Have clear, intuitive navigation - *mkdocs.yml updated*
+⏳ Work correctly with mkdocs/Material theme - *Not yet tested*
+⏳ All internal links functional - *Not yet verified*
+⏳ Pass documentation review - *Pending*
 
 ---
 
@@ -434,7 +685,7 @@ This restructure can be done incrementally:
 
 ---
 
-**Document Status:** Draft Plan  
-**Next Steps:** Review plan with team, begin Phase 1  
-**Maintained by:** Tim Lichtenberg  
+**Document Status:** In Progress (~35% complete)
+**Next Steps:** Continue Phase 4 content extraction from source files
+**Maintained by:** Tim Lichtenberg
 **Last updated:** January 4, 2026

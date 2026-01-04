@@ -1,9 +1,9 @@
-# Local Machine Guide
+# Local Machine Setup
 
 These steps should be performed before installing PROTEUS on your computer.
 They do not apply when running PROTEUS on a server or HPC cluster. For instructions on configuring PROTEUS on a remote machine, see the cluster guide pages.
 
-Once you have followed these steps, go back to the main [installation](installation.html) guide page.
+Once you have followed these steps, go back to the main [installation](../installation.md) guide page.
 
 ## Apple MacOS
 

@@ -19,8 +19,8 @@ Structure outline:
 5. Inspecting results (from usage.md output section)
 6. Summary and what was learned
 
-Key principle: Focus on DOING, not explaining. Steps should be concrete 
-with clear expected outputs. Minimal explanations - link to reference/explanation 
+Key principle: Focus on DOING, not explaining. Steps should be concrete
+with clear expected outputs. Minimal explanations - link to reference/explanation
 docs for deeper learning.
 
 Expected length: ~400-600 lines
