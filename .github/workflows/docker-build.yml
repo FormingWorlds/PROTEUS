@@ -18,7 +18,7 @@ on:
       - 'Dockerfile'
       - 'tools/get_*.sh'
       - '.github/workflows/docker-build.yml'
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Allow manual triggering for testing
 
 permissions:
   contents: read
