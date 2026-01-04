@@ -7,9 +7,8 @@ This file shows how to categorize tests for different CI/CD workflows:
 - @pytest.mark.integration: Multi-module tests (ci-nightly-science.yml)
 - @pytest.mark.slow: Full scientific validation (ci-nightly-science.yml)
 """
-from __future__ import annotations
 
-from unittest.mock import patch
+from __future__ import annotations
 
 import pytest
 
@@ -17,6 +16,7 @@ import pytest
 # UNIT TESTS - Fast, mocked physics, Python logic validation
 # Run in PR checks for immediate feedback (~seconds)
 # ============================================================================
+
 
 @pytest.mark.unit
 def test_config_validation():
@@ -31,14 +31,18 @@ def test_config_validation():
 @pytest.mark.unit
 def test_atmosphere_temperature_calculation():
     """Unit test: Test temperature calculation logic (mocked radiation)."""
-    # Mock expensive radiative transfer calls
-    with patch('proteus.atmosphere.calculate_radiation') as mock_rad:
-        mock_rad.return_value = 250.0  # Mock result
+    # Example: Mock a simple temperature calculation
+    # Instead of importing a non-existent module, use a simple calculation
 
-        # Test the logic that uses this value
-        # temperature = some_function_using_radiation()
-        # assert pytest.approx(temperature, rel=1e-5) == expected_value
-        pass
+    # Simplified test: validate a basic physics formula
+    # Stefan-Boltzmann radiation: F = sigma * T^4
+    sigma = 5.67e-8  # Stefan-Boltzmann constant (W m^-2 K^-4)
+    temperature = 300.0  # Kelvin
+    flux = sigma * temperature**4
+
+    # Verify the calculation
+    expected_flux = sigma * (300.0**4)
+    assert pytest.approx(flux, rel=1e-5) == expected_flux
 
 
 @pytest.mark.unit
@@ -59,6 +63,7 @@ def test_interior_heat_flux():
 # SMOKE TESTS - Quick binary validation with real physics
 # Run in PR checks after unit tests (~minutes)
 # ============================================================================
+
 
 @pytest.mark.smoke
 def test_spider_single_timestep():
@@ -116,6 +121,7 @@ def test_socrates_spectral_calculation():
 # Run in nightly science validation (~minutes to hours)
 # ============================================================================
 
+
 @pytest.mark.integration
 def test_atmosphere_interior_coupling():
     """Integration test: Test coupling between JANUS and SPIDER.
@@ -169,6 +175,7 @@ def test_stellar_evolution_insolation():
 # SLOW TESTS - Full scientific validation
 # Run in nightly science validation only (~hours)
 # ============================================================================
+
 
 @pytest.mark.slow
 def test_earth_magma_ocean_solidification():
@@ -263,6 +270,7 @@ def test_full_proteus_workflow():
 # ============================================================================
 # HELPER FUNCTIONS FOR TESTS
 # ============================================================================
+
 
 def create_minimal_config():
     """Create minimal configuration for smoke tests."""

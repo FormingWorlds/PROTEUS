@@ -14,7 +14,7 @@ ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'albedo_lookup'
 config_path = PROTEUS_ROOT / 'tests' / 'integration' / 'albedo_lookup.toml'
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope='module')
 def albedo_run():
     runner = Proteus(config_path=config_path)
 
@@ -22,9 +22,9 @@ def albedo_run():
 
     return runner
 
+
 # check result
 def test_albedo_helpfile(albedo_run):
-
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
@@ -38,16 +38,16 @@ def test_albedo_helpfile(albedo_run):
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 
+
 # check albedo interpolation
 def test_albedo_interp(albedo_run):
-
     # check loaded data ok
     assert albedo_run.atmos_o.albedo_o.ok
 
     # read data file
     data = pd.read_csv(ref_dir / 'cloudy.csv')
-    data_tmp = data["tmp"][:]
-    data_alb = pd.Series(data["albedo"])
+    data_tmp = data['tmp'][:]
+    data_alb = pd.Series(data['albedo'])
     inte_alb = pd.Series(data_alb)
 
     # interpolate as at runtime
@@ -65,12 +65,12 @@ def test_albedo_physics(albedo_run):
     row_1 = hf_all.iloc[-1]
 
     # planet cools down
-    assert row_0["F_atm"] > 0
+    assert row_0['F_atm'] > 0
 
     # albedo in range
-    assert 0 < row_0["albedo_pl"] < 1
-    assert 0 < row_1["albedo_pl"] < 1
+    assert 0 < row_0['albedo_pl'] < 1
+    assert 0 < row_1['albedo_pl'] < 1
 
     # reasonable surface temperatures
-    assert row_1["T_surf"] < row_0["T_surf"]
-    assert row_1["T_surf"] > 100.0
+    assert row_1['T_surf'] < row_0['T_surf']
+    assert row_1['T_surf'] > 100.0

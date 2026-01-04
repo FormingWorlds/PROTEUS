@@ -12,6 +12,7 @@ It demonstrates:
 Usage:
     python test.py
 """
+
 from __future__ import annotations
 
 import torch
@@ -24,10 +25,10 @@ dtype = torch.double
 torch.manual_seed(1)
 
 # Reference configuration for the PROTEUS simulator
-ref = "input/demos/dummy.toml"
-output = "output/inference/"
+ref = 'input/demos/dummy.toml'
+output = 'output/inference/'
 
-print("\nperform sanity check")
+print('\nperform sanity check')
 
 # Define parameter bounds matching prot_builder setup
 params = {
@@ -39,7 +40,7 @@ params = {
     'outgas.fO2_shift_IW': [-4.0, 4.0],
 }
 # Observabels to consider
-obs = ["R_int", "M_planet", "transit_depth", "bond_albedo"]
+obs = ['R_int', 'M_planet', 'transit_depth', 'bond_albedo']
 
 # List of parameter keys for ordering
 keys = list(params.keys())
@@ -50,23 +51,17 @@ d = len(keys)
 # Generate a normalized random point in [0,1]^d
 x = torch.rand(1, d, dtype=dtype)
 # Unnormalize to raw parameter values for display
-bounds = torch.tensor([[params[k][0] for k in keys],
-                       [params[k][1] for k in keys]], dtype=dtype)
+bounds = torch.tensor([[params[k][0] for k in keys], [params[k][1] for k in keys]], dtype=dtype)
 raw_x = unnormalize(x, bounds).flatten()
-print("\nrandom inputs (raw):", raw_x)
+print('\nrandom inputs (raw):', raw_x)
 
 # Build raw parameter dict for direct simulator invocation
 rand_par = {keys[i]: raw_x[i].item() for i in range(d)}
 # Run PROTEUS directly and display simulator outputs
 rand_obs = run_proteus(
-    parameters=rand_par,
-    observables=obs,
-    worker=0,
-    iter=0,
-    output=output,
-    ref_config=ref
+    parameters=rand_par, observables=obs, worker=0, iter=0, output=output, ref_config=ref
 ).to_dict()
-print("\nsimulated observables:", rand_obs)
+print('\nsimulated observables:', rand_obs)
 
 # Build prot_builder objective function
 f = prot_builder(
@@ -80,4 +75,4 @@ f = prot_builder(
 
 # Compute objective at random input
 y = f(x)
-print("\nobjective value at random input (should be optimal, i.e., 10.0):", y.item())
+print('\nobjective value at random input (should be optimal, i.e., 10.0):', y.item())

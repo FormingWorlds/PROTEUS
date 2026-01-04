@@ -1,6 +1,7 @@
 """
 Tests for proteus.observe module
 """
+
 from __future__ import annotations
 
 

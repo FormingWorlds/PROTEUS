@@ -9,12 +9,13 @@ from proteus.config import Config
 from proteus.utils.constants import AU, R_sun, Teff_sun, const_sigma
 from proteus.utils.phys import planck_wav
 
-log = logging.getLogger("fwl."+__name__)
+log = logging.getLogger('fwl.' + __name__)
 
-PLANCK_MIN_TEMPERATURE:float = 0.1
+PLANCK_MIN_TEMPERATURE: float = 0.1
 
-def get_star_radius(config:Config):
-    '''
+
+def get_star_radius(config: Config):
+    """
     Get stellar radius, in units of R_sun
 
     Uses an empirical scaling law if `calculate_radius = True`. Otherwise takes value from
@@ -29,7 +30,7 @@ def get_star_radius(config:Config):
     -----------
         R_star : float
             Stellar radius [solar radii]
-    '''
+    """
 
     if config.star.dummy.calculate_radius:
         # Exponents for mass-radius relation and mass-luminoisty relation, which are
@@ -45,13 +46,14 @@ def get_star_radius(config:Config):
 
         # Exponent derived from mass-radius and mass-luminosity relation
         exponent = 4 / (b / a - 2)
-        return (config.star.dummy.Teff/Teff_sun)**exponent
+        return (config.star.dummy.Teff / Teff_sun) ** exponent
 
     else:
         return config.star.dummy.radius
 
-def generate_spectrum(tmp:float, R_star:float):
-    '''
+
+def generate_spectrum(tmp: float, R_star: float):
+    """
     Get stellar spectrum at 1 AU, assuming that the star emits like a blackbody.
 
     Parameters
@@ -67,14 +69,14 @@ def generate_spectrum(tmp:float, R_star:float):
             Wavelength bin centres [nm]
         fl_arr : list
             Stellar spectral flux density at 1 AU from star [erg s-1 cm-2 nm-1]
-    '''
+    """
 
-    log.debug("Generating stellar spectrum at Teff=%.0f K"%tmp)
+    log.debug('Generating stellar spectrum at Teff=%.0f K' % tmp)
 
     # Allocate wavelength array
     wl_min = 1e-10  # 0.1 nm
-    wl_max = 1e-1   # 10 cm
-    wl_pts = 600    # number of points to sample
+    wl_max = 1e-1  # 10 cm
+    wl_pts = 600  # number of points to sample
     wl_arr = np.logspace(np.log10(wl_min), np.log10(wl_max), wl_pts)
 
     # Allocate flux array with zeros
@@ -84,13 +86,12 @@ def generate_spectrum(tmp:float, R_star:float):
 
     # Else, for non-zero effective temperatures...
     if tmp > PLANCK_MIN_TEMPERATURE:
-
         # Evaluate planck function in each bin
-        for i,wav in enumerate(wl_arr):
-            fl_arr[i] = planck_wav(tmp, wav) # W m-2 m-1 at stellar surface
+        for i, wav in enumerate(wl_arr):
+            fl_arr[i] = planck_wav(tmp, wav)  # W m-2 m-1 at stellar surface
 
         # Scale from stellar surface to 1 AU
-        fl_arr *= (R_star*R_sun/AU)**2
+        fl_arr *= (R_star * R_sun / AU) ** 2
 
         # Convert m-1 to nm-1
         fl_arr *= 1e-9
@@ -104,12 +105,13 @@ def generate_spectrum(tmp:float, R_star:float):
     # Return as lists
     return list(wl_arr), list(fl_arr)
 
-def calc_star_luminosity(tmp:float, R_star:float):
-    '''
+
+def calc_star_luminosity(tmp: float, R_star: float):
+    """
     Calculate star's bolometric luminosity.
 
     Assumes that the star emits like a blackbody.
-    '''
+    """
 
     # Evaluate stefan-boltzmann law at Teff
     lum = 0.0
@@ -119,8 +121,8 @@ def calc_star_luminosity(tmp:float, R_star:float):
     return lum
 
 
-def calc_instellation(tmp:float, R_star:float, sep:float):
-    '''
+def calc_instellation(tmp: float, R_star: float, sep: float):
+    """
     Calculate planet's instellation based on the star's luminosity.
 
     Parameters
@@ -136,7 +138,7 @@ def calc_instellation(tmp:float, R_star:float, sep:float):
     -----------
         S_0 : float
             Instellation [W m-2]
-    '''
+    """
 
     # Get luminosity
     L_bol = calc_star_luminosity(tmp, R_star)

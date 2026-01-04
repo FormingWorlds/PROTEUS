@@ -14,21 +14,22 @@ out_dir = PROTEUS_ROOT / 'output' / 'dummy'
 ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope='module')
 def dummy_run():
-    config_path = PROTEUS_ROOT /'tests' / 'integration' / 'dummy.toml'
+    config_path = PROTEUS_ROOT / 'tests' / 'integration' / 'dummy.toml'
 
     runner = Proteus(config_path=config_path)
 
     runner.start(offline=True)
 
+
 # run the integration
 def test_dummy_run(dummy_run):
     assert filecmp.cmp(out_dir / 'status', ref_dir / 'status', shallow=False)
 
+
 # check result
 def test_dummy_helpfile(dummy_run):
-
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
@@ -42,9 +43,11 @@ def test_dummy_helpfile(dummy_run):
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 
+
 # Check stellar spectra
 def test_dummy_stellar(dummy_run):
     assert filecmp.cmp(out_dir / 'data' / '0.sflux', ref_dir / '0.sflux', shallow=False)
+
 
 # Check physics
 def test_dummy_physics(dummy_run):
@@ -53,11 +56,11 @@ def test_dummy_physics(dummy_run):
     row_1 = hf_all.iloc[-1]
 
     # planet cools down
-    assert row_0["F_atm"] > 0
+    assert row_0['F_atm'] > 0
 
     # eccentricity should decrease
-    assert row_1["eccentricity"] < row_0["eccentricity"]
+    assert row_1['eccentricity'] < row_0['eccentricity']
 
     # reasonable surface temperatures
-    assert row_1["T_surf"] < row_0["T_surf"]
-    assert row_1["T_surf"] > 100.0
+    assert row_1['T_surf'] < row_0['T_surf']
+    assert row_1['T_surf'] > 100.0

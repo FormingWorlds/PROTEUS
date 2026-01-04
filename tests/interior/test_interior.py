@@ -1,6 +1,7 @@
 """
 Tests for proteus.interior module
 """
+
 from __future__ import annotations
 
 

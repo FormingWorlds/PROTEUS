@@ -19,7 +19,7 @@ PATHS = chain(
 
 @pytest.fixture
 def cfg():
-    path = PROTEUS_ROOT / 'input' / 'demos'/ 'dummy.toml'
+    path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
     obj = read_config_object(path)
 
     assert isinstance(obj, Config)
@@ -36,9 +36,9 @@ def test_none_if_none():
 
 @pytest.mark.parametrize('path', PATHS)
 def test_proteus_init(path):
-    if "nogit" in str(path):
+    if 'nogit' in str(path):
         return
-    print(f"Testing config at {path}")
+    print(f'Testing config at {path}')
     runner = Proteus(config_path=path)
     assert isinstance(runner.config, Config)
 
@@ -56,9 +56,7 @@ def test_calliope_is_included():
 
 
 def test_delivery_get_pressure():
-    conf = Volatiles(
-        N2 = 123.0
-    )
+    conf = Volatiles(N2=123.0)
     assert conf.get_pressure('N2') == 123.0
     with pytest.raises(AttributeError):
         conf.get_pressure('fails')

@@ -1,6 +1,7 @@
 """
 Tests for proteus.orbit module
 """
+
 from __future__ import annotations
 
 

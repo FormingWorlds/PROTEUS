@@ -17,21 +17,22 @@ if TYPE_CHECKING:
 
 from proteus.utils.helper import safe_rm
 
-log = logging.getLogger("fwl."+__name__)
+log = logging.getLogger('fwl.' + __name__)
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 MAX_ATTEMPTS = 3
-MAX_DLTIME   = 120.0 # seconds
-RETRY_WAIT   = 5.0   # seconds
+MAX_DLTIME = 120.0  # seconds
+RETRY_WAIT = 5.0  # seconds
 
 ARAGOG_BASIC = (
-    "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa",
-    "Melting_curves/Wolf_Bower+2018",
-    )
+    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa',
+    'Melting_curves/Wolf_Bower+2018',
+)
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
-def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
+
+def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
     """
     Download a specific Zenodo record into specified folder
 
@@ -46,45 +47,45 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
             Did the download/request complete successfully?
     """
 
-    out = os.path.join(GetFWLData(), "zenodo_download.log")
-    log.debug("    zenodo_get, logging to %s"%out)
+    out = os.path.join(GetFWLData(), 'zenodo_download.log')
+    log.debug('    zenodo_get, logging to %s' % out)
     for i in range(MAX_ATTEMPTS):
-
         # remove folder
         safe_rm(folder_dir)
         folder_dir.mkdir(parents=True)
 
         # try making request
-        with open(out,'w') as hdl:
-            proc = sp.run(["zenodo_get",
-                            "-o", folder_dir,
-                            "-t", f"{MAX_DLTIME:.1f}",
-                            zenodo_id],
-                            stdout=hdl, stderr=hdl)
+        with open(out, 'w') as hdl:
+            proc = sp.run(
+                ['zenodo_get', '-o', folder_dir, '-t', f'{MAX_DLTIME:.1f}', zenodo_id],
+                stdout=hdl,
+                stderr=hdl,
+            )
 
         # worked ok?
-        if (proc.returncode==0) and os.path.exists(folder_dir):
+        if (proc.returncode == 0) and os.path.exists(folder_dir):
             return True
         else:
-            log.warning(f"Failed to get data from Zenodo (ID {zenodo_id})")
+            log.warning(f'Failed to get data from Zenodo (ID {zenodo_id})')
             sleep(RETRY_WAIT)
 
     # Return status indicating that file/folder is invalid, if failed
-    log.error(f"Could not obtain data for Zenodo record {zenodo_id}")
+    log.error(f'Could not obtain data for Zenodo record {zenodo_id}')
     return False
+
 
 def md5(_fname):
     """Return the md5 hash of a file."""
 
     # https://stackoverflow.com/a/3431838
     hash_md5 = hashlib.md5()
-    with open(_fname, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
+    with open(_fname, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b''):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
 
-def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6)->bool:
+def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6) -> bool:
     """
     Validate the content of a specific Zenodo-provided folder by checking md5 hashes
 
@@ -103,37 +104,37 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 
     # Use zenodo_get to obtain md5 hashes
     #     They will be saved to a txt file in folder_dir
-    md5sums_path = os.path.join(folder_dir, "md5sums.txt")
-    out = os.path.join(GetFWLData(), "zenodo_validate.log")
+    md5sums_path = os.path.join(folder_dir, 'md5sums.txt')
+    out = os.path.join(GetFWLData(), 'zenodo_validate.log')
     # log.debug("    zenodo_get, logging to %s"%out)
     zenodo_ok = False
     for i in range(MAX_ATTEMPTS):
-
         # remove file
         safe_rm(md5sums_path)
 
         # try making request
-        with open(out,'w') as hdl:
-            proc = sp.run([ "zenodo_get", "-m", zenodo_id ],
-                            stdout=hdl, stderr=hdl, cwd=folder_dir)
+        with open(out, 'w') as hdl:
+            proc = sp.run(
+                ['zenodo_get', '-m', zenodo_id], stdout=hdl, stderr=hdl, cwd=folder_dir
+            )
 
         # process exited fine and file exists?
-        zenodo_ok = (proc.returncode==0) and os.path.isfile(md5sums_path)
+        zenodo_ok = (proc.returncode == 0) and os.path.isfile(md5sums_path)
 
         # try again?
         if zenodo_ok:
             break
         else:
-            log.warning(f"Failed to get checksum from Zenodo (ID {zenodo_id})")
+            log.warning(f'Failed to get checksum from Zenodo (ID {zenodo_id})')
             sleep(RETRY_WAIT)
 
     # Return status indicating that file/folder is invalid, if failed
     if not zenodo_ok:
-        log.error(f"Could not obtain checksum for Zenodo record {zenodo_id}")
+        log.error(f'Could not obtain checksum for Zenodo record {zenodo_id}')
         return False
 
     # Read hashes file
-    with open(md5sums_path,'r') as hdl:
+    with open(md5sums_path, 'r') as hdl:
         md5sums = hdl.readlines()
 
     # Check each item in the record...
@@ -143,7 +144,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 
         # exit here if file does not exist
         if not os.path.exists(file):
-            log.warning(f"Detected missing file {name} (Zenodo record {zenodo_id})")
+            log.warning(f'Detected missing file {name} (Zenodo record {zenodo_id})')
             return False
 
         # don't check the hashes of very large files, because it's slow
@@ -153,8 +154,8 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
         # check the actual hash of the file on disk, compare to expected
         sum_actual = md5(file).strip()
         if sum_actual != sum_expect:
-            log.warning(f"Detected invalid file {name} (Zenodo record {zenodo_id})")
-            log.warning(f"    expected hash {sum_expect}, got {sum_actual}")
+            log.warning(f'Detected invalid file {name} (Zenodo record {zenodo_id})')
+            log.warning(f'    expected hash {sum_expect}, got {sum_actual}')
             return False
 
     return True
@@ -172,20 +173,19 @@ def get_zenodo_record(folder: str) -> str | None:
         - str | None : Zenodo record ID or None if not found
     """
     zenodo_map = {
-        "Frostflow/16"  : "15799743",
-        "Frostflow/48"  : "15696415",
-        "Frostflow/256" : "15799754",
-        "Frostflow/4096": "15799776",
-        "Dayspring/16"  : "15799318",
-        "Dayspring/48"  : "15721749",
-        "Dayspring/256" : "15799474",
-        "Dayspring/4096": "15799495",
-        "Honeyside/16"  : "15799607",
-        "Honeyside/48"  : "15799652",
-        "Honeyside/256" : "15799731",
-        "Honeyside/4096": "15696457",
-        "Oak/318"       : "15743843",
-
+        'Frostflow/16': '15799743',
+        'Frostflow/48': '15696415',
+        'Frostflow/256': '15799754',
+        'Frostflow/4096': '15799776',
+        'Dayspring/16': '15799318',
+        'Dayspring/48': '15721749',
+        'Dayspring/256': '15799474',
+        'Dayspring/4096': '15799495',
+        'Honeyside/16': '15799607',
+        'Honeyside/48': '15799652',
+        'Honeyside/256': '15799731',
+        'Honeyside/4096': '15696457',
+        'Oak/318': '15743843',
         '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018': '15877374',
         '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_400GPa': '15877424',
         '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': '17417017',
@@ -194,6 +194,7 @@ def get_zenodo_record(folder: str) -> str | None:
         'Melting_curves/Wolf_Bower+2018': '15728072',
     }
     return zenodo_map.get(folder, None)
+
 
 def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
     """
@@ -216,6 +217,7 @@ def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
                 file.write_to(f)
             break
 
+
 def GetFWLData() -> Path:
     """
     Get path to FWL data directory on the disk
@@ -232,6 +234,7 @@ def get_osf(id: str):
     project = osf.project(id)
     return project.storage('osfstorage')
 
+
 def check_needs_update(dir, zenodo):
     """
     Check whether the folder 'dir' needs to be re-downloaded.
@@ -243,7 +246,7 @@ def check_needs_update(dir, zenodo):
         - zenodo : zenodo record ID
     """
 
-    log.debug(f"Checking whether {dir} needs updating (record {zenodo})")
+    log.debug(f'Checking whether {dir} needs updating (record {zenodo})')
 
     # Trivial case where folder is missing
     if not os.path.isdir(dir):
@@ -251,10 +254,11 @@ def check_needs_update(dir, zenodo):
 
     # Folder exists but cannot check hashes, so exit here
     if not zenodo:
-        return False # don't update
+        return False  # don't update
 
     # Folder exists... use Zenodo to check MD5 hashes
     return not validate_zenodo_folder(zenodo, dir)
+
 
 def download(
     *,
@@ -263,7 +267,7 @@ def download(
     osf_id: str,
     zenodo_id: str | None = None,
     desc: str,
-    force: bool = False
+    force: bool = False,
 ) -> bool:
     """
     Generic download function.
@@ -288,7 +292,7 @@ def download(
     bool
         True if the file was downloaded successfully, False otherwise
     """
-    log.debug(f"Get {desc}?")
+    log.debug(f'Get {desc}?')
 
     # Check that target FWL_DATA folder exists
     data_dir = GetFWLData() / target
@@ -302,7 +306,7 @@ def download(
 
     # Update the folder
     if folder_invalid:
-        log.info(f"Downloading {desc} to {data_dir}")
+        log.info(f'Downloading {desc} to {data_dir}')
         success = False
 
         # Try Zenodo in the first instance
@@ -313,7 +317,7 @@ def download(
                     # files validated ok?
                     success = validate_zenodo_folder(zenodo_id, folder_dir)
         except RuntimeError as e:
-            log.warning(f"    Zenodo download failed: {e}")
+            log.warning(f'    Zenodo download failed: {e}')
             folder_dir.rmdir()
         if success:
             return True
@@ -324,15 +328,15 @@ def download(
             download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
             success = True
         except RuntimeError as e:
-            log.warning(f"    OSF download failed: {e}")
+            log.warning(f'    OSF download failed: {e}')
         if success:
             return True
 
-        log.error(f"    Failed to download {desc} from IDs: Zenodo {zenodo_id}, OSF {osf_id}")
+        log.error(f'    Failed to download {desc} from IDs: Zenodo {zenodo_id}, OSF {osf_id}')
         return False
 
     else:
-        log.debug(f"    {desc} already exists")
+        log.debug(f'    {desc} already exists')
     return True
 
 
@@ -341,14 +345,15 @@ def download_surface_albedos():
     Download reflectance data for various surface materials
     """
     download(
-        folder = 'Hammond24',
-        target = "surface_albedos",
-        osf_id = '2gcd9',
-        zenodo_id = '15880455',
-        desc = 'surface reflectance data'
+        folder='Hammond24',
+        target='surface_albedos',
+        osf_id='2gcd9',
+        zenodo_id='15880455',
+        desc='surface reflectance data',
     )
 
-def download_spectral_file(name:str, bands:str):
+
+def download_spectral_file(name: str, bands: str):
     """
     Download spectral file.
 
@@ -360,16 +365,16 @@ def download_spectral_file(name:str, bands:str):
     """
     # Check name and bands
     if not isinstance(name, str) or (len(name) < 1):
-        raise Exception("Must provide name of spectral file")
+        raise Exception('Must provide name of spectral file')
     if not isinstance(bands, str) or (len(bands) < 1):
-        raise Exception("Must provide number of bands in spectral file")
+        raise Exception('Must provide number of bands in spectral file')
 
     download(
-        folder = f'{name}/{bands}',
-        target = "spectral_files",
-        osf_id = 'vehxg',
-        zenodo_id= get_zenodo_record(f'{name}/{bands}'),
-        desc = f'{name}{bands} spectral file',
+        folder=f'{name}/{bands}',
+        target='spectral_files',
+        osf_id='vehxg',
+        zenodo_id=get_zenodo_record(f'{name}/{bands}'),
+        desc=f'{name}{bands} spectral file',
     )
 
 
@@ -377,9 +382,9 @@ def download_interior_lookuptables(clean=False):
     """
     Download basic interior lookup tables
     """
-    log.debug("Download basic interior lookup tables")
+    log.debug('Download basic interior lookup tables')
 
-    data_dir = GetFWLData() / "interior_lookup_tables"
+    data_dir = GetFWLData() / 'interior_lookup_tables'
     data_dir.mkdir(parents=True, exist_ok=True)
 
     for dir in ARAGOG_BASIC:
@@ -387,44 +392,46 @@ def download_interior_lookuptables(clean=False):
         if clean:
             safe_rm(folder_dir.as_posix())
         download(
-            folder = dir,
-            target = data_dir,
-            osf_id = "phsxf",
-            zenodo_id = get_zenodo_record(dir),
-            desc = f"Interior lookup tables: {dir}"
-            )
+            folder=dir,
+            target=data_dir,
+            osf_id='phsxf',
+            zenodo_id=get_zenodo_record(dir),
+            desc=f'Interior lookup tables: {dir}',
+        )
 
-def download_melting_curves(config:Config, clean=False):
+
+def download_melting_curves(config: Config, clean=False):
     """
     Download melting curve data
     """
-    log.debug("Download melting curve data")
-    dir = "Melting_curves/" + config.interior.melting_dir
+    log.debug('Download melting curve data')
+    dir = 'Melting_curves/' + config.interior.melting_dir
 
-    data_dir = GetFWLData() / "interior_lookup_tables"
+    data_dir = GetFWLData() / 'interior_lookup_tables'
     data_dir.mkdir(parents=True, exist_ok=True)
 
     folder_dir = data_dir / dir
     if clean:
         safe_rm(folder_dir.as_posix())
     download(
-        folder = dir,
-        target = data_dir,
-        osf_id = "phsxf",
-        zenodo_id = get_zenodo_record(dir),
-        desc = f"Melting curve data: {dir}"
-        )
+        folder=dir,
+        target=data_dir,
+        osf_id='phsxf',
+        zenodo_id=get_zenodo_record(dir),
+        desc=f'Melting curve data: {dir}',
+    )
+
 
 def download_stellar_spectra():
     """
     Download stellar spectra
     """
     download(
-        folder = 'Named',
-        target = "stellar_spectra",
-        osf_id = '8r2sw',
-        zenodo_id= '15721440',
-        desc = 'stellar spectra'
+        folder='Named',
+        target='stellar_spectra',
+        osf_id='8r2sw',
+        zenodo_id='15721440',
+        desc='stellar spectra',
     )
 
 
@@ -433,11 +440,11 @@ def download_exoplanet_data():
     Download exoplanet data
     """
     download(
-        folder = 'Exoplanets',
-        target = "planet_reference",
-        osf_id = 'fzwr4',
-        zenodo_id= '15727878',
-        desc = 'exoplanet data'
+        folder='Exoplanets',
+        target='planet_reference',
+        osf_id='fzwr4',
+        zenodo_id='15727878',
+        desc='exoplanet data',
     )
 
 
@@ -446,45 +453,45 @@ def download_massradius_data():
     Download mass-radius data
     """
     download(
-        folder = 'Zeng2019',
-        target = "mass_radius",
-        osf_id = 'xge8t',
-        zenodo_id= '15727899',
-        desc = 'mass radius data'
+        folder='Zeng2019',
+        target='mass_radius',
+        osf_id='xge8t',
+        zenodo_id='15727899',
+        desc='mass radius data',
     )
 
 
-def download_stellar_tracks(track:str):
+def download_stellar_tracks(track: str):
     """
     Download stellar evolution tracks
 
     Uses the function built-into MORS.
     """
     from mors.data import DownloadEvolutionTracks
-    log.debug("Get evolution tracks")
+
+    log.debug('Get evolution tracks')
     DownloadEvolutionTracks(track)
 
 
-
-def _get_sufficient(config:Config, clean:bool=False):
+def _get_sufficient(config: Config, clean: bool = False):
     # Star stuff
-    if config.star.module == "mors":
+    if config.star.module == 'mors':
         download_stellar_spectra()
         if config.star.mors.tracks == 'spada':
-            download_stellar_tracks("Spada")
+            download_stellar_tracks('Spada')
         else:
-            download_stellar_tracks("Baraffe")
+            download_stellar_tracks('Baraffe')
 
     # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
         # High-res file often used for post-processing
-        download_spectral_file("Honeyside","4096")
+        download_spectral_file('Honeyside', '4096')
 
         # Get the spectral file we need for this simluation
         from proteus.atmos_clim.common import get_spfile_name_and_bands
+
         group, bands = get_spfile_name_and_bands(config)
         download_spectral_file(group, bands)
-
 
     # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
@@ -497,21 +504,21 @@ def _get_sufficient(config:Config, clean:bool=False):
     download_massradius_data()
 
     # Interior look up tables
-    if config.interior.module == "aragog":
+    if config.interior.module == 'aragog':
         download_interior_lookuptables(clean=clean)
         download_melting_curves(config, clean=clean)
 
 
-def download_sufficient_data(config:Config, clean:bool=False):
+def download_sufficient_data(config: Config, clean: bool = False):
     """
     Download the required data based on the current options
     """
 
-    log.info("Getting physical and reference data")
+    log.info('Getting physical and reference data')
 
     if config.params.offline:
         # Don't try to get data
-        log.warning("Running in offline mode. Will not check for reference data.")
+        log.warning('Running in offline mode. Will not check for reference data.')
 
     else:
         # Try to get data
@@ -521,17 +528,17 @@ def download_sufficient_data(config:Config, clean:bool=False):
         # Some issue. Usually due to lack of internet connection, but print the error
         #     anyway so that the user knows what happened.
         except OSError as e:
-            log.warning("Problem when downloading/checking reference data")
+            log.warning('Problem when downloading/checking reference data')
             log.warning(str(e))
 
-    log.info(" ")
+    log.info(' ')
 
 
 def _none_dirs():
     from proteus.utils.helper import get_proteus_dir
 
-    dirs = {"proteus":get_proteus_dir()}
-    dirs["tools"] = os.path.join(dirs["proteus"],"tools")
+    dirs = {'proteus': get_proteus_dir()}
+    dirs['tools'] = os.path.join(dirs['proteus'], 'tools')
     return dirs
 
 
@@ -540,30 +547,30 @@ def get_socrates(dirs=None):
     Download and install SOCRATES
     """
 
-    log.info("Setting up SOCRATES")
+    log.info('Setting up SOCRATES')
 
     # None dirs
     if dirs is None:
         dirs = _none_dirs()
 
     # Get path
-    workpath = os.path.join(dirs["proteus"], "SOCRATES")
+    workpath = os.path.join(dirs['proteus'], 'SOCRATES')
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
-        log.debug("    already set up")
+        log.debug('    already set up')
         return
 
     # Download, configure, and build
-    log.debug("Running get_socrates.sh")
-    cmd = [os.path.join(dirs["tools"],"get_socrates.sh"), workpath]
-    out = os.path.join(dirs["proteus"], "nogit_setup_socrates.log")
-    log.debug("    logging to %s"%out)
-    with open(out,'w') as hdl:
+    log.debug('Running get_socrates.sh')
+    cmd = [os.path.join(dirs['tools'], 'get_socrates.sh'), workpath]
+    out = os.path.join(dirs['proteus'], 'nogit_setup_socrates.log')
+    log.debug('    logging to %s' % out)
+    with open(out, 'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
     # Set environment
-    os.environ["RAD_DIR"] = workpath
-    log.debug("    done")
+    os.environ['RAD_DIR'] = workpath
+    log.debug('    done')
 
 
 def get_petsc(dirs=None):
@@ -571,28 +578,28 @@ def get_petsc(dirs=None):
     Download and install PETSc
     """
 
-    log.info("Setting up PETSc")
+    log.info('Setting up PETSc')
 
     if dirs is None:
         dirs = _none_dirs()
 
     # Get path
-    workpath = os.path.join(dirs["proteus"], "petsc")
+    workpath = os.path.join(dirs['proteus'], 'petsc')
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         # already downloaded
-        log.debug("    already set up")
+        log.debug('    already set up')
         return
 
     # Download, configure, and build
-    log.debug("Running get_petsc.sh")
-    cmd = [os.path.join(dirs["tools"],"get_petsc.sh"), workpath]
-    out = os.path.join(dirs["proteus"], "nogit_setup_petsc.log")
-    log.debug("    logging to %s"%out)
-    with open(out,'w') as hdl:
+    log.debug('Running get_petsc.sh')
+    cmd = [os.path.join(dirs['tools'], 'get_petsc.sh'), workpath]
+    out = os.path.join(dirs['proteus'], 'nogit_setup_petsc.log')
+    log.debug('    logging to %s' % out)
+    with open(out, 'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
-    log.debug("    done")
+    log.debug('    done')
 
 
 def get_spider(dirs=None):
@@ -606,25 +613,26 @@ def get_spider(dirs=None):
     # Need to install PETSc first
     get_petsc(dirs)
 
-    log.info("Setting up SPIDER")
+    log.info('Setting up SPIDER')
 
     # Get path
-    workpath = os.path.join(dirs["proteus"], "SPIDER")
+    workpath = os.path.join(dirs['proteus'], 'SPIDER')
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         # already downloaded
-        log.debug("    already set up")
+        log.debug('    already set up')
         return
 
     # Download, configure, and build
-    log.debug("Running get_spider.sh")
-    cmd = [os.path.join(dirs["tools"],"get_spider.sh"), workpath]
-    out = os.path.join(dirs["proteus"], "nogit_setup_spider.log")
-    log.debug("    logging to %s"%out)
-    with open(out,'w') as hdl:
+    log.debug('Running get_spider.sh')
+    cmd = [os.path.join(dirs['tools'], 'get_spider.sh'), workpath]
+    out = os.path.join(dirs['proteus'], 'nogit_setup_spider.log')
+    log.debug('    logging to %s' % out)
+    with open(out, 'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
-    log.debug("    done")
+    log.debug('    done')
+
 
 def download_Seager_EOS():
     """
@@ -632,12 +640,13 @@ def download_Seager_EOS():
     """
 
     download(
-    folder='EOS_Seager2007',
-    target='EOS_material_properties',
-    osf_id='dpkjb',
-    zenodo_id= '15727998',
-    desc='EOS Seager2007 material files'
-)
+        folder='EOS_Seager2007',
+        target='EOS_material_properties',
+        osf_id='dpkjb',
+        zenodo_id='15727998',
+        desc='EOS Seager2007 material files',
+    )
+
 
 def get_Seager_EOS():
     """
@@ -653,42 +662,46 @@ def get_Seager_EOS():
             - material_properties_water_planets: Material properties for water planets.
     """
     # Define the EOS folder path
-    eos_folder = FWL_DATA_DIR / "EOS_material_properties" / "EOS_Seager2007"
+    eos_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
 
     # Download the EOS material properties if not already present
     if not eos_folder.exists():
-        log.debug("Get EOS material properties from Seager et al. (2007)")
+        log.debug('Get EOS material properties from Seager et al. (2007)')
         download_Seager_EOS()
 
     # Build the material_properties_iron_silicate_planets dictionary for iron/silicate planets according to Seager et al. (2007)
     material_properties_iron_silicate_planets = {
-        "mantle": {
+        'mantle': {
             # Mantle properties based on bridgmanite
-            "rho0": 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite
-            "eos_file": eos_folder / "eos_seager07_silicate.txt"  # Path to silicate mantle file
+            'rho0': 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite
+            'eos_file': eos_folder
+            / 'eos_seager07_silicate.txt',  # Path to silicate mantle file
         },
-        "core": {
+        'core': {
             # For liquid iron alloy outer core
-            "rho0": 8300,  # From Table 1 of Seager et al. (2007) for the epsilon phase of iron of Fe
-            "eos_file": eos_folder / "eos_seager07_iron.txt"  # Path to iron core file
-        }
+            'rho0': 8300,  # From Table 1 of Seager et al. (2007) for the epsilon phase of iron of Fe
+            'eos_file': eos_folder / 'eos_seager07_iron.txt',  # Path to iron core file
+        },
     }
     # Build the material_properties_water_planets dictionary for water planets according to Seager et al. (2007)
     material_properties_water_planets = {
-        "core": {
+        'core': {
             # For liquid iron alloy outer core
-            "rho0": 8300,  # From Table 1 of Seager et al. (2007) for the epsilon phase of iron of Fe in kg/m^3
-            "eos_file": eos_folder / "eos_seager07_iron.txt"  # Name of the file with tabulated EOS data
+            'rho0': 8300,  # From Table 1 of Seager et al. (2007) for the epsilon phase of iron of Fe in kg/m^3
+            'eos_file': eos_folder
+            / 'eos_seager07_iron.txt',  # Name of the file with tabulated EOS data
         },
-        "bridgmanite_shell": {
-                # Inner mantle properties based on bridgmanite
-                "rho0": 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite in kg/m^3
-                "eos_file": eos_folder / "eos_seager07_silicate.txt"  # Name of the file with tabulated EOS data
+        'bridgmanite_shell': {
+            # Inner mantle properties based on bridgmanite
+            'rho0': 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite in kg/m^3
+            'eos_file': eos_folder
+            / 'eos_seager07_silicate.txt',  # Name of the file with tabulated EOS data
         },
-        "water_ice_layer": {
+        'water_ice_layer': {
             # Outer water ice layer in ice VII phase
-                "rho0": 1460,  # From Table 1 of Seager et al. (2007) for H2O in ice VII phase in kg/m^3
-                "eos_file": eos_folder / "eos_seager07_water.txt"  # Name of the file with tabulated EOS data
-        }
+            'rho0': 1460,  # From Table 1 of Seager et al. (2007) for H2O in ice VII phase in kg/m^3
+            'eos_file': eos_folder
+            / 'eos_seager07_water.txt',  # Name of the file with tabulated EOS data
+        },
     }
     return material_properties_iron_silicate_planets, material_properties_water_planets

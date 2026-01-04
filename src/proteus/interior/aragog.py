@@ -11,6 +11,7 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import platformdirs
+
 from aragog import Output, Solver, aragog_file_logger
 from aragog.parser import (
     Parameters,
@@ -24,7 +25,6 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
@@ -33,30 +33,34 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
-                                   platformdirs.user_data_dir('fwl_data')))
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 
-class AragogRunner():
-
-    def __init__(self, config: Config, dirs: dict, hf_row: dict, hf_all:
-                 pd.DataFrame, interior_o: Interior_t):
+class AragogRunner:
+    def __init__(
+        self,
+        config: Config,
+        dirs: dict,
+        hf_row: dict,
+        hf_all: pd.DataFrame,
+        interior_o: Interior_t,
+    ):
         AragogRunner.setup_logger(config, dirs)
-        dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
-                                            interior_o)
+        dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
         self.aragog_solver = interior_o.aragog_solver
 
     @staticmethod
     def setup_logger(config: Config, dirs: dict):
         file_level = logging.getLevelName(config.interior.aragog.logging)
-        aragog_file_logger(console_level=logging.WARNING, file_level=file_level,
-                           log_dir=dirs["output"])
+        aragog_file_logger(
+            console_level=logging.WARNING, file_level=file_level, log_dir=dirs['output']
+        )
 
     @staticmethod
-    def compute_time_step(config: Config, dirs: dict, hf_row: dict,
-                          hf_all: pd.DataFrame, interior_o: Interior_t) -> (
-            float):
+    def compute_time_step(
+        config: Config, dirs: dict, hf_row: dict, hf_all: pd.DataFrame, interior_o: Interior_t
+    ) -> float:
         if interior_o.ic == 1:
             return 0.0
         else:
@@ -64,13 +68,13 @@ class AragogRunner():
             return next_step(config, dirs, hf_row, hf_all, step_sf)
 
     @staticmethod
-    def setup_or_update_solver(config: Config, hf_row: dict,
-                               interior_o: Interior_t, dt: float, dirs: dict):
+    def setup_or_update_solver(
+        config: Config, hf_row: dict, interior_o: Interior_t, dt: float, dirs: dict
+    ):
         if interior_o.aragog_solver is None:
-            AragogRunner.setup_solver(config, hf_row, interior_o, dirs["output"])
+            AragogRunner.setup_solver(config, hf_row, interior_o, dirs['output'])
             if config.params.resume:
-                AragogRunner.update_solver(dt, hf_row, interior_o,
-                                   output_dir=dirs["output"])
+                AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             interior_o.aragog_solver.initialize()
         else:
             if interior_o.ic == 1:
@@ -80,240 +84,232 @@ class AragogRunner():
             interior_o.aragog_solver.reset()
 
     @staticmethod
-    def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:str):
-
+    def setup_solver(config: Config, hf_row: dict, interior_o: Interior_t, outdir: str):
         scalings = _ScalingsParameters(
-            radius = R_earth, # scaling radius [m]
-            temperature = 4000, # scaling temperature [K]
-            density = 4000, # scaling density
-            time = secs_per_year, # scaling time [sec]
-            )
+            radius=R_earth,  # scaling radius [m]
+            temperature=4000,  # scaling temperature [K]
+            density=4000,  # scaling density
+            time=secs_per_year,  # scaling time [sec]
+        )
 
         solver = _SolverParameters(
-            start_time = 0,
-            end_time = 0,
-            atol = config.interior.aragog.tolerance,
-            rtol = config.interior.aragog.tolerance,
-            tsurf_poststep_change = config.interior.aragog.tsurf_poststep_change,
-            event_triggering = config.interior.aragog.event_triggering,
-            )
+            start_time=0,
+            end_time=0,
+            atol=config.interior.aragog.tolerance,
+            rtol=config.interior.aragog.tolerance,
+            tsurf_poststep_change=config.interior.aragog.tsurf_poststep_change,
+            event_triggering=config.interior.aragog.event_triggering,
+        )
 
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux
-            outer_boundary_condition = 4,
+            outer_boundary_condition=4,
             # first guess surface heat flux [W/m2]
-            outer_boundary_value = hf_row["F_atm"],
+            outer_boundary_value=hf_row['F_atm'],
             # 1 = core cooling model
             # 2 = prescribed heat flux
             # 3 = prescribed temperature
-            inner_boundary_condition =  (
-                config.interior.aragog.inner_boundary_condition),
+            inner_boundary_condition=(config.interior.aragog.inner_boundary_condition),
             # core temperature [K], if inner_boundary_condition = 3
-            inner_boundary_value = (
-                config.interior.aragog.inner_boundary_value),
+            inner_boundary_value=(config.interior.aragog.inner_boundary_value),
             # only used in gray body BC, outer_boundary_condition = 1
-            emissivity = 1,
+            emissivity=1,
             # only used in gray body BC, outer_boundary_condition = 1
-            equilibrium_temperature = hf_row["T_eqm"],
+            equilibrium_temperature=hf_row['T_eqm'],
             # used if inner_boundary_condition = 1
-            core_heat_capacity = 880,
-            )
+            core_heat_capacity=880,
+        )
 
         # Define the inner_radius for the mesh
-        if config.struct.module == "self":
-            inner_radius = config.struct.corefrac * hf_row["R_int"] # core radius [m]
-        elif config.struct.module == "zalmoxis":
+        if config.struct.module == 'self':
+            inner_radius = config.struct.corefrac * hf_row['R_int']  # core radius [m]
+        elif config.struct.module == 'zalmoxis':
             # Define the inner_radius based on the core radius from Zalmoxis
             from proteus.interior.zalmoxis import zalmoxis_solver
-            inner_radius = zalmoxis_solver(config, outdir, hf_row) # core radius [m]
+
+            inner_radius = zalmoxis_solver(config, outdir, hf_row)  # core radius [m]
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 
         mesh = _MeshParameters(
             # planet radius [m]
-            outer_radius = hf_row["R_int"],
+            outer_radius=hf_row['R_int'],
             # core radius [m]
-            inner_radius = inner_radius,
+            inner_radius=inner_radius,
             # basic nodes
-            number_of_nodes = config.interior.aragog.num_levels,
-            mixing_length_profile = "constant",
-            core_density = config.struct.core_density,
-            eos_method = 1, # 1: Adams-Williamson / 2: User defined
-            surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
-            gravitational_acceleration = hf_row["gravity"], # [m/s-2]
-            adiabatic_bulk_modulus = config.interior.aragog.bulk_modulus, # AW-EOS parameter [Pa]
-            mass_coordinates = config.interior.aragog.mass_coordinates,
-            )
+            number_of_nodes=config.interior.aragog.num_levels,
+            mixing_length_profile='constant',
+            core_density=config.struct.core_density,
+            eos_method=1,  # 1: Adams-Williamson / 2: User defined
+            surface_density=4090,  # AdamsWilliamsonEOS parameter [kg/m3]
+            gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
+            adiabatic_bulk_modulus=config.interior.aragog.bulk_modulus,  # AW-EOS parameter [Pa]
+            mass_coordinates=config.interior.aragog.mass_coordinates,
+        )
 
         # Update the mesh if the module is 'zalmoxis'
         if config.struct.module == 'zalmoxis':
             mesh.eos_method = 2  # User-defined EOS based on Zalmoxis
-            mesh.eos_file = os.path.join(outdir, "data", "zalmoxis_output.dat") # Zalmoxis output file with mantle parameters
+            mesh.eos_file = os.path.join(
+                outdir, 'data', 'zalmoxis_output.dat'
+            )  # Zalmoxis output file with mantle parameters
 
         energy = _EnergyParameters(
-            conduction = config.interior.aragog.conduction,
-            convection = config.interior.aragog.convection,
-            gravitational_separation = (
-                config.interior.aragog.gravitational_separation),
-            mixing = config.interior.aragog.mixing,
-            dilatation = config.interior.aragog.dilatation,
-            radionuclides = config.interior.radiogenic_heat,
-            tidal = config.interior.tidal_heat,
-            tidal_array = interior_o.tides
-            )
+            conduction=config.interior.aragog.conduction,
+            convection=config.interior.aragog.convection,
+            gravitational_separation=(config.interior.aragog.gravitational_separation),
+            mixing=config.interior.aragog.mixing,
+            dilatation=config.interior.aragog.dilatation,
+            radionuclides=config.interior.radiogenic_heat,
+            tidal=config.interior.tidal_heat,
+            tidal_array=interior_o.tides,
+        )
 
         initial_condition = _InitialConditionParameters(
             # 1 = linear profile
             # 2 = user-defined profile
             # 3 = adiabatic profile
-            initial_condition = config.interior.aragog.initial_condition,
+            initial_condition=config.interior.aragog.initial_condition,
             # initial top temperature (K)
-            surface_temperature = config.interior.aragog.ini_tmagma,
-            basal_temperature = config.interior.aragog.basal_temperature,
-            init_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
-            )
+            surface_temperature=config.interior.aragog.ini_tmagma,
+            basal_temperature=config.interior.aragog.basal_temperature,
+            init_file=os.path.join(
+                FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
+            ),
+        )
 
         # Get look up data directory, will be configurable in the future
-        LOOK_UP_DIR = (
-            FWL_DATA_DIR /
-            "interior_lookup_tables/" /
-            config.interior.lookup_dir
-        )
-        MELTING_DIR = (
-            FWL_DATA_DIR /
-            "interior_lookup_tables/Melting_curves/"
-        )
+        LOOK_UP_DIR = FWL_DATA_DIR / 'interior_lookup_tables/' / config.interior.lookup_dir
+        MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
 
         # check data exist
-        if not (LOOK_UP_DIR / "heat_capacity_melt.dat").is_file():
-            raise FileNotFoundError(f"Aragog lookup data {LOOK_UP_DIR}")
+        if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+            raise FileNotFoundError(f'Aragog lookup data {LOOK_UP_DIR}')
 
         phase_liquid = _PhaseParameters(
-            density = LOOK_UP_DIR / "density_melt.dat",
-            viscosity = 1E2,
-            heat_capacity = LOOK_UP_DIR / "heat_capacity_melt.dat",
-            melt_fraction = 1,
-            thermal_conductivity = 4,
-            #thermal_expansivity = 1.0E-5,
-            thermal_expansivity = LOOK_UP_DIR / "thermal_exp_melt.dat",
-            )
+            density=LOOK_UP_DIR / 'density_melt.dat',
+            viscosity=1e2,
+            heat_capacity=LOOK_UP_DIR / 'heat_capacity_melt.dat',
+            melt_fraction=1,
+            thermal_conductivity=4,
+            # thermal_expansivity = 1.0E-5,
+            thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_melt.dat',
+        )
 
         phase_solid = _PhaseParameters(
-            density = LOOK_UP_DIR / "density_solid.dat",
-            viscosity = 1E21,
-            heat_capacity = LOOK_UP_DIR / "heat_capacity_solid.dat",
-            melt_fraction = 0,
-            thermal_conductivity = 4,
-            #thermal_expansivity = 1.0E-5,
-            thermal_expansivity = LOOK_UP_DIR / "thermal_exp_solid.dat",
-            )
+            density=LOOK_UP_DIR / 'density_solid.dat',
+            viscosity=1e21,
+            heat_capacity=LOOK_UP_DIR / 'heat_capacity_solid.dat',
+            melt_fraction=0,
+            thermal_conductivity=4,
+            # thermal_expansivity = 1.0E-5,
+            thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_solid.dat',
+        )
 
         phase_mixed = _PhaseMixedParameters(
-            latent_heat_of_fusion = 4e6,
-            rheological_transition_melt_fraction = config.interior.rheo_phi_loc,
-            rheological_transition_width = config.interior.rheo_phi_wid,
-            solidus = MELTING_DIR / config.interior.melting_dir / "solidus.dat",
-            liquidus = (MELTING_DIR / config.interior.melting_dir /
-                       "liquidus.dat"),
-            phase = "mixed",
-            phase_transition_width = 0.1,
-            grain_size = config.interior.grain_size,
-            )
+            latent_heat_of_fusion=4e6,
+            rheological_transition_melt_fraction=config.interior.rheo_phi_loc,
+            rheological_transition_width=config.interior.rheo_phi_wid,
+            solidus=MELTING_DIR / config.interior.melting_dir / 'solidus.dat',
+            liquidus=(MELTING_DIR / config.interior.melting_dir / 'liquidus.dat'),
+            phase='mixed',
+            phase_transition_width=0.1,
+            grain_size=config.interior.grain_size,
+        )
 
         radionuclides = []
         if config.interior.radiogenic_heat:
             # offset by age_ini, which converts model simulation time to the
             # actual age
             radio_t0 = config.delivery.radio_tref - config.star.age_ini
-            radio_t0 *= 1e9 # Convert Gyr to yr
+            radio_t0 *= 1e9  # Convert Gyr to yr
 
             def _append_radnuc(_iso, _cnc):
                 radionuclides.append(
                     _Radionuclide(
-                        name = _iso,
-                        t0_years = radio_t0,
-                        abundance = radnuc_data[_iso]["abundance"],
-                        concentration = _cnc,
-                        heat_production = radnuc_data[_iso]["heatprod"],
-                        half_life_years = radnuc_data[_iso]["halflife"],
-                    ))
+                        name=_iso,
+                        t0_years=radio_t0,
+                        abundance=radnuc_data[_iso]['abundance'],
+                        concentration=_cnc,
+                        heat_production=radnuc_data[_iso]['heatprod'],
+                        half_life_years=radnuc_data[_iso]['halflife'],
+                    )
+                )
 
             if config.delivery.radio_K > 0.0:
-                _append_radnuc("k40", config.delivery.radio_K)
+                _append_radnuc('k40', config.delivery.radio_K)
 
             if config.delivery.radio_Th > 0.0:
-                _append_radnuc("th232", config.delivery.radio_Th)
+                _append_radnuc('th232', config.delivery.radio_Th)
 
             if config.delivery.radio_U > 0.0:
-                _append_radnuc("u235", config.delivery.radio_U)
-                _append_radnuc("u238", config.delivery.radio_U)
+                _append_radnuc('u235', config.delivery.radio_U)
+                _append_radnuc('u238', config.delivery.radio_U)
 
         param = Parameters(
-            boundary_conditions = boundary_conditions,
-            energy = energy,
-            initial_condition = initial_condition,
-            mesh = mesh,
-            phase_solid = phase_solid,
-            phase_liquid = phase_liquid,
-            phase_mixed = phase_mixed,
-            radionuclides = radionuclides,
-            scalings = scalings,
-            solver = solver,
-            )
+            boundary_conditions=boundary_conditions,
+            energy=energy,
+            initial_condition=initial_condition,
+            mesh=mesh,
+            phase_solid=phase_solid,
+            phase_liquid=phase_liquid,
+            phase_mixed=phase_mixed,
+            radionuclides=radionuclides,
+            scalings=scalings,
+            solver=solver,
+        )
 
         interior_o.aragog_solver = Solver(param)
 
     @staticmethod
-    def update_solver(dt:float, hf_row:dict, interior_o:Interior_t,
-                                output_dir:str = None):
-
+    def update_solver(dt: float, hf_row: dict, interior_o: Interior_t, output_dir: str = None):
         # Set solver time
         # hf_row["Time"] is in yr so do not need to scale as long as scaling
         # time is secs_per_year
-        interior_o.aragog_solver.parameters.solver.start_time = hf_row["Time"]
-        interior_o.aragog_solver.parameters.solver.end_time = (hf_row["Time"]
-                                                               + dt)
+        interior_o.aragog_solver.parameters.solver.start_time = hf_row['Time']
+        interior_o.aragog_solver.parameters.solver.end_time = hf_row['Time'] + dt
 
         # Get temperature field from previous run
-        if output_dir is not None: # read it from output directory
-            Tfield = read_last_Tfield(output_dir, hf_row["Time"])
-        else: # get it from solver
+        if output_dir is not None:  # read it from output directory
+            Tfield = read_last_Tfield(output_dir, hf_row['Time'])
+        else:  # get it from solver
             Tfield = interior_o.aragog_solver.temperature_staggered[:, -1]
 
         # Update initial condition
-        Tfield = (Tfield /
-                  interior_o.aragog_solver.parameters.scalings.temperature)
+        Tfield = Tfield / interior_o.aragog_solver.parameters.scalings.temperature
         # switch to user-defined init
-        (interior_o.aragog_solver.parameters.initial_condition.
-         initial_condition) = 2
-        (interior_o.aragog_solver.parameters.initial_condition.
-         init_temperature) = Tfield
+        (interior_o.aragog_solver.parameters.initial_condition.initial_condition) = 2
+        (interior_o.aragog_solver.parameters.initial_condition.init_temperature) = Tfield
 
         # Update boundary conditions
-        (interior_o.aragog_solver.parameters.boundary_conditions.
-         outer_boundary_value) = hf_row["F_atm"]
+        (interior_o.aragog_solver.parameters.boundary_conditions.outer_boundary_value) = hf_row[
+            'F_atm'
+        ]
 
         # Update tidal heating within the mantle
         interior_o.aragog_solver.parameters.energy.tidal_array = (
-            interior_o.tides /
-            interior_o.aragog_solver.parameters.scalings.power_per_mass)
+            interior_o.tides / interior_o.aragog_solver.parameters.scalings.power_per_mass
+        )
 
     @staticmethod
-    def update_structure(config: Config, hf_row:dict, interior_o:Interior_t):
+    def update_structure(config: Config, hf_row: dict, interior_o: Interior_t):
         """This update is needed during the inital phase of Proteus
         (interior_o.ic == 1) as we sometimes run Aragog multiple times to solve
         the structure which affects the interior mesh.
         """
-        if config.struct.module == "self":
+        if config.struct.module == 'self':
             interior_o.aragog_solver.parameters.mesh.outer_radius = (
-                hf_row["R_int"]
-                / interior_o.aragog_solver.parameters.scalings.radius)
+                hf_row['R_int'] / interior_o.aragog_solver.parameters.scalings.radius
+            )
             interior_o.aragog_solver.parameters.mesh.inner_radius = (
-                config.struct.corefrac * hf_row["R_int"]
-                / interior_o.aragog_solver.parameters.scalings.radius)
+                config.struct.corefrac
+                * hf_row['R_int']
+                / interior_o.aragog_solver.parameters.scalings.radius
+            )
             interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = (
-                hf_row["gravity"]
-                / interior_o.aragog_solver.parameters.scalings.gravitational_acceleration)
+                hf_row['gravity']
+                / interior_o.aragog_solver.parameters.scalings.gravitational_acceleration
+            )
 
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver
@@ -323,96 +319,92 @@ class AragogRunner():
         sim_time = self.aragog_solver.parameters.solver.end_time
 
         # Write output to a file
-        self.write_output(dirs["output"], sim_time)
+        self.write_output(dirs['output'], sim_time)
 
         return sim_time, output
 
-    def write_output(self, output_dir:str, time:float):
-
+    def write_output(self, output_dir: str, time: float):
         aragog_output: Output = Output(self.aragog_solver)
 
-        fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
-        aragog_output.write_at_time(fpath,-1)
+        fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+        aragog_output.write_at_time(fpath, -1)
 
-    def get_output(self, hf_row:dict, interior_o:Interior_t):
-
+    def get_output(self, hf_row: dict, interior_o: Interior_t):
         aragog_output: Output = Output(self.aragog_solver)
-        aragog_output.state.update(aragog_output.solution.y,
-                                   aragog_output.solution.t)
-        output = {"M_mantle": aragog_output.mantle_mass,
-                  "T_magma": aragog_output.solution_top_temperature,
-                  "Phi_global": aragog_output.melt_fraction_global,
-                  "RF_depth": aragog_output.rheological_front,
-                  "F_int": aragog_output.total_heat_flux_basic[-3, -1]} # node near top
+        aragog_output.state.update(aragog_output.solution.y, aragog_output.solution.t)
+        output = {
+            'M_mantle': aragog_output.mantle_mass,
+            'T_magma': aragog_output.solution_top_temperature,
+            'Phi_global': aragog_output.melt_fraction_global,
+            'RF_depth': aragog_output.rheological_front,
+            'F_int': aragog_output.total_heat_flux_basic[-3, -1],
+        }  # node near top
 
-        if output["Phi_global"] > (1.0 - 1.0e-8):
-            output["M_mantle_liquid"] = output["M_mantle"]
-            output["M_mantle_solid"] = 0.0
-        elif output["Phi_global"] < 1.e-8:
-            output["M_mantle_liquid"] = 0.0
-            output["M_mantle_solid"] = output["M_mantle"]
+        if output['Phi_global'] > (1.0 - 1.0e-8):
+            output['M_mantle_liquid'] = output['M_mantle']
+            output['M_mantle_solid'] = 0.0
+        elif output['Phi_global'] < 1.0e-8:
+            output['M_mantle_liquid'] = 0.0
+            output['M_mantle_solid'] = output['M_mantle']
         else:
-            output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]
-            output["M_mantle_solid"] = (output["M_mantle"] *
-                                        (1.0 - output["Phi_global"]))
+            output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
+            output['M_mantle_solid'] = output['M_mantle'] * (1.0 - output['Phi_global'])
 
         # TODO: CHANGE THESE TO USE REALISTIC CALCULATION FOR ARAGOG
-        output["Phi_global_vol"]    = float(output["Phi_global"])
-        output["T_pot"]             = float(output["T_magma"])
+        output['Phi_global_vol'] = float(output['Phi_global'])
+        output['T_pot'] = float(output['T_magma'])
 
         # Calculate surface area
-        radii = aragog_output.radii_km_basic * 1e3 # [m]
-        area  = 4 * np.pi * radii[-1]**2 # [m^2]
+        radii = aragog_output.radii_km_basic * 1e3  # [m]
+        area = 4 * np.pi * radii[-1] ** 2  # [m^2]
 
         # Mass at each mesh layer
-        mass_s = aragog_output.mass_staggered[:,-1] # [kg]
+        mass_s = aragog_output.mass_staggered[:, -1]  # [kg]
 
         # Radiogenic heating
-        Hradio_s = aragog_output.heating_radio[:,-1]  # [W kg-1]
-        output["F_radio"] = np.dot(Hradio_s, mass_s) / area  # [W m-2]
+        Hradio_s = aragog_output.heating_radio[:, -1]  # [W kg-1]
+        output['F_radio'] = np.dot(Hradio_s, mass_s) / area  # [W m-2]
 
         # Tidal heating flux
-        Htidal_s = aragog_output.heating_tidal[:,-1]  # [W kg-1]
-        output["F_tidal"] = np.dot(Htidal_s, mass_s)/area
+        Htidal_s = aragog_output.heating_tidal[:, -1]  # [W kg-1]
+        output['F_tidal'] = np.dot(Htidal_s, mass_s) / area
 
         # Store arrays
         # FIX ME - Should extract values from staggered nodes rather than cropping
         # basic nodes.
-        interior_o.phi      = np.array(aragog_output.melt_fraction_staggered[:,-1])
-        interior_o.visc     = np.power(
-            10.0, aragog_output.log10_viscosity_staggered[:,-1])
-        interior_o.density  = np.array(
-            aragog_output.density_basic[:,-1])[1:]
-        interior_o.radius   = radii[:] # length N+1
-        interior_o.mass     = mass_s[:]
-        interior_o.temp     = np.array(
-            aragog_output.temperature_K_staggered[:,-1])
-        interior_o.pres     = np.array(
-            aragog_output.pressure_GPa_staggered[:,-1] * 1e9)
+        interior_o.phi = np.array(aragog_output.melt_fraction_staggered[:, -1])
+        interior_o.visc = np.power(10.0, aragog_output.log10_viscosity_staggered[:, -1])
+        interior_o.density = np.array(aragog_output.density_basic[:, -1])[1:]
+        interior_o.radius = radii[:]  # length N+1
+        interior_o.mass = mass_s[:]
+        interior_o.temp = np.array(aragog_output.temperature_K_staggered[:, -1])
+        interior_o.pres = np.array(aragog_output.pressure_GPa_staggered[:, -1] * 1e9)
 
         return output
 
-def read_last_Tfield(output_dir:str, time:float):
 
+def read_last_Tfield(output_dir: str, time: float):
     # Read Aragog output at last run
-    fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
+    fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
     out = read_ncdf(fpath)
 
     # Get temperature field at basic nodes and interpolate to staggered nodes
-    T_basic = out["temp_b"]
+    T_basic = out['temp_b']
     N_basic = len(T_basic)
-    T_staggered = (T_basic[0:N_basic-1] + T_basic[1:N_basic] ) / 2.0
+    T_staggered = (T_basic[0 : N_basic - 1] + T_basic[1:N_basic]) / 2.0
 
     return T_staggered
 
-def get_all_output_times(output_dir:str):
-    files = glob.glob(output_dir+"/data/*_int.nc")
-    years = [int(f.split("/")[-1].split("_int")[0]) for f in files]
+
+def get_all_output_times(output_dir: str):
+    files = glob.glob(output_dir + '/data/*_int.nc')
+    years = [int(f.split('/')[-1].split('_int')[0]) for f in files]
     mask = np.argsort(years)
 
     return [years[i] for i in mask]
 
-def read_ncdf(fpath:str):
+
+def read_ncdf(fpath: str):
     out = {}
     ds = nc.Dataset(fpath)
 
@@ -422,6 +414,6 @@ def read_ncdf(fpath:str):
     ds.close()
     return out
 
-def read_ncdfs(output_dir:str, times:list):
-    return [read_ncdf(os.path.join(output_dir, "data", "%d_int.nc"%t))
-            for t in times]
+
+def read_ncdfs(output_dir: str, times: list):
+    return [read_ncdf(os.path.join(output_dir, 'data', '%d_int.nc' % t)) for t in times]

@@ -1,6 +1,7 @@
 """
 Tests for proteus.atmos_clim module
 """
+
 from __future__ import annotations
 
 

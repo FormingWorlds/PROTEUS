@@ -1,6 +1,7 @@
 """
 Tests for proteus.outgas module
 """
+
 from __future__ import annotations
 
 

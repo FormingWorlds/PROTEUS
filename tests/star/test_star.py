@@ -1,6 +1,7 @@
 """
 Tests for proteus.star module
 """
+
 from __future__ import annotations
 
 
