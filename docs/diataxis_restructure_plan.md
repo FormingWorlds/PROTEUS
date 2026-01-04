@@ -126,7 +126,7 @@ docs/
 
 ## Implementation Plan
 
-### Phase 1: Preserve Existing Documentation
+### Phase 1: Preserve Existing Documentation ✅
 
 **Action:** Move all current docs to `docs/old_structure/`
 
@@ -135,12 +135,9 @@ mkdir -p docs/old_structure
 # Original files will be moved here for reference
 ```
 
-**Purpose:**
-- Preserve all existing content
-- Ensure no information is lost
-- Allow comparison during restructure
+**Status:** COMPLETED
 
-### Phase 2: Create Directory Structure
+### Phase 2: Create Directory Structure ✅
 
 **Action:** Create new Diataxis-aligned directories
 
@@ -154,47 +151,98 @@ mkdir -p docs/explanation/scientific-background
 mkdir -p docs/explanation/design-decisions
 ```
 
-### Phase 3: Create New Tutorial Content
+**Status:** COMPLETED
 
-**NEW FILES TO CREATE:**
+### Phase 3: Create Stub Files and Extract Existing Content
 
-#### `tutorials/getting-started.md`
-**Purpose:** Complete beginner's first experience with PROTEUS
+**Strategy:** Create stub files for each new document with comments indicating what content from `old_structure/` should be extracted and placed there. Extract existing sections from original docs instead of writing new material.
 
-**Content approach (Diataxis principles):**
-- Learning-oriented: focus on what the user learns, not what they produce
-- Concrete steps: specific commands and expected outputs
-- Meaningful progress: visible results at each step
-- Minimal explanation: link to explanation docs, don't explain inline
-- Encourage repetition: make it easy to go back and try again
+**Stub files to create:**
 
-**Suggested outline:**
-1. Prerequisites check
-2. Install PROTEUS (link to how-to/install.md)
-3. Download required data
-4. Run a minimal example simulation
-5. Check the outputs
-6. What you've learned
+#### Tutorials (learning-oriented)
+- `tutorials/getting-started.md` 
+  - *Stub:* Extract from `usage.md` "Running PROTEUS from the terminal" section
+  - Add from `installation.md` user install steps
+  
+- `tutorials/first-simulation.md`
+  - *Stub:* Extract from `usage.md` "Running PROTEUS from the terminal" section
+  - Add from `config.md` basic parameter explanation
+  
+- `tutorials/understanding-results.md`
+  - *Stub:* Extract from `usage.md` "Output and results" section
 
-#### `tutorials/first-simulation.md`
-**Purpose:** Learn to configure and run a custom simulation
+#### How-to Guides (task-oriented)
 
-**Content approach:**
-- Build on getting-started tutorial
-- Create a simple planet scenario
-- Configure basic parameters
-- Run and interpret results
-- Modify and re-run
+**Installation how-tos:**
+- `how-to/installation/install.md`
+  - *Stub:* Extract from `installation.md` "Setup a Python environment" and "User install" sections
 
-#### `tutorials/understanding-results.md`
-**Purpose:** Learn to navigate and interpret PROTEUS outputs
+- `how-to/installation/local-setup.md`
+  - *Stub:* Entire content from `local_machine_guide.md`
 
-**Content approach:**
-- Explore output directory structure
-- Load data from output files
-- Create basic plots
-- Identify successful vs. failed runs
-- Understand key output metrics
+- `how-to/installation/kapteyn-setup.md`
+  - *Stub:* Entire content from `kapteyn_cluster_guide.md`
+
+- `how-to/installation/snellius-setup.md`
+  - *Stub:* Entire content from `snellius_cluster_guide.md`
+
+- `how-to/installation/habrok-setup.md`
+  - *Stub:* Entire content from `habrok_cluster_guide.md`
+
+**Simulation how-tos:**
+- `how-to/simulations/run-simulation.md`
+  - *Stub:* Extract from `usage.md` sections on running and grids
+
+- `how-to/simulations/grid-simulations.md`
+  - *Stub:* Extract from `usage.md` "Running grids of simulations" section
+
+- `how-to/simulations/remote-clusters.md`
+  - *Stub:* Extract from `usage.md` "Running PROTEUS on remote machines" section
+
+- `how-to/simulations/bayesian-inference.md`
+  - *Stub:* Entire content from `inference.md`
+
+**Development how-tos:**
+- `how-to/development/write-tests.md`
+  - *Stub:* Extract from `test_infrastructure.md` the writing tests sections
+
+- `how-to/development/run-tests.md`
+  - *Stub:* Extract from `test_infrastructure.md` "Quick Start" section
+
+- `how-to/development/contribute.md`
+  - *Stub:* Entire content from `CONTRIBUTING.md`
+
+**General troubleshooting:**
+- `how-to/troubleshoot.md`
+  - *Stub:* Entire content from `troubleshooting.md`
+
+#### Reference (information-oriented, pure description)
+
+- `reference/config-options.md`
+  - *Stub:* Entire content from `config.md`
+
+- `reference/data-formats.md`
+  - *Stub:* Entire content from `data.md`
+
+- `reference/test-structure.md`
+  - *Stub:* Extract from `test_infrastructure.md` "Architecture Overview" section
+
+- `reference/ci-workflows.md`
+  - *Stub:* Extract from `test_infrastructure.md` CI/CD Pipeline section
+
+- `reference/bibliography.md`
+  - *Stub:* Entire content from `bibliography.md`
+
+#### Explanation (understanding-oriented, conceptual)
+
+- `explanation/architecture.md`
+  - *Stub:* Extract from `model.md` overview and schematic
+
+- `explanation/scientific-background/planetary-evolution.md`
+  - *Stub:* Create with conceptual explanations from `model.md`
+
+- `explanation/design-decisions/modular-approach.md`
+  - *Stub:* Create from philosophical discussions in `model.md`
 
 ### Phase 4: Reorganize How-to Guides
 
@@ -248,165 +296,7 @@ mkdir -p docs/explanation/design-decisions
 - `reference/code-style.md` - Style guidelines
 - `explanation/licensing.md` - Licensing philosophy
 
-### Phase 5: Organize Reference Material
 
-**PURE DESCRIPTION ONLY - No instructions or explanations**
-
-#### `config.md` → `reference/config-options.md`
-**Transform to:**
-- Alphabetical list of all configuration options
-- Type, default value, constraints for each
-- Brief factual description only
-- Links to how-tos for usage examples
-- Links to explanation for concepts
-
-#### `data.md` → Split into:
-- `reference/data-sources.md` - Where data comes from (Zenodo/OSF)
-- `reference/data-formats.md` - File format specifications
-- `reference/spectral-files.md` - Spectral data details
-
-#### `bibliography.md` → `reference/bibliography.md`
-**Keep as-is** (already pure reference)
-
-#### NEW: `reference/test-structure.md`
-**Content from test_infrastructure.md:**
-- Required directory structure
-- Naming conventions
-- File organization rules
-
-#### NEW: `reference/test-config.md`
-**Content from test_infrastructure.md:**
-- pytest configuration options
-- Coverage settings
-- Marker definitions
-
-#### NEW: `reference/ci-workflows.md`
-**Content from test_infrastructure.md:**
-- Workflow descriptions
-- Job definitions
-- Environment variables
-- Artifact specifications
-
-### Phase 6: Create Explanation Content
-
-**UNDERSTANDING-ORIENTED - Discussion and context**
-
-#### From `model.md` → Split into:
-- `explanation/architecture.md` - Overall system architecture
-- `explanation/coupling.md` - How coupling works
-- `explanation/scientific-background/` - Scientific concepts
-
-#### NEW: `explanation/ecosystem.md`
-**Content:**
-- Overview of PROTEUS module ecosystem
-- How modules relate to each other
-- When to use which module
-- Module interdependencies
-
-#### NEW: `explanation/design-decisions/`
-**Topics to cover:**
-- Why modular architecture?
-- Why Python 3.12+?
-- Why Linux/MacOS only?
-- Why Zenodo/OSF for data?
-- Why this testing approach?
-
-#### NEW: `explanation/testing-strategy.md`
-**Content from test_infrastructure.md:**
-- Philosophy behind testing approach
-- Why mirror source structure?
-- Coverage strategy rationale
-- Diataxis testing guidelines context
-
-#### NEW: Scientific background pages
-**Extract from existing docs:**
-- Atmospheric evolution concepts
-- Interior dynamics theory
-- Stellar evolution background
-- Magma ocean physics
-- Volatile cycling
-
-### Phase 7: Update Home Page
-
-#### Restructure `index.md`
-**New structure:**
-1. Welcome message
-2. What is PROTEUS? (brief)
-3. Documentation organized by Diataxis
-   - **Tutorials** - If you're new, start here
-   - **How-to Guides** - Recipes for specific tasks
-   - **Reference** - Technical specifications
-   - **Explanation** - Concepts and background
-4. Quick links
-5. Ecosystem modules
-6. Getting help
-
-### Phase 8: Update Navigation (mkdocs.yml)
-
-**New navigation structure:**
-```yaml
-nav:
-  - Home: index.md
-  
-  - Tutorials:
-    - Getting Started: tutorials/getting-started.md
-    - First Simulation: tutorials/first-simulation.md
-    - Understanding Results: tutorials/understanding-results.md
-  
-  - How-to Guides:
-    - Installation:
-      - Install PROTEUS: how-to/installation/install.md
-      - Local Machines: how-to/installation/local-setup.md
-      - Kapteyn Cluster: how-to/installation/kapteyn-setup.md
-      - Snellius Cluster: how-to/installation/snellius-setup.md
-      - Habrok Cluster: how-to/installation/habrok-setup.md
-    - Running Simulations:
-      - Basic Simulation: how-to/simulations/run-simulation.md
-      - Configure Planet: how-to/simulations/configure-planet.md
-      - Parameter Grids: how-to/simulations/run-grids.md
-      - Bayesian Inference: how-to/simulations/bayesian-inference.md
-    - Development:
-      - Setup Dev Environment: how-to/development/dev-setup.md
-      - Write Tests: how-to/development/write-tests.md
-      - Run Tests: how-to/development/run-tests.md
-      - Contribute Code: how-to/development/contribute.md
-      - Add Input Data: how-to/development/add-data.md
-    - Troubleshooting: how-to/troubleshoot.md
-  
-  - Reference:
-    - Configuration: reference/config-options.md
-    - Data Sources: reference/data-sources.md
-    - Data Formats: reference/data-formats.md
-    - Testing:
-      - Test Structure: reference/test-structure.md
-      - Test Configuration: reference/test-config.md
-      - CI Workflows: reference/ci-workflows.md
-    - API Documentation: reference/api/
-    - Bibliography: reference/bibliography.md
-  
-  - Explanation:
-    - Architecture: explanation/architecture.md
-    - Coupling Framework: explanation/coupling.md
-    - Module Ecosystem: explanation/ecosystem.md
-    - Scientific Background: explanation/scientific-background/
-    - Design Decisions: explanation/design-decisions/
-    - Testing Strategy: explanation/testing-strategy.md
-  
-  - Community:
-    - Contact: contact.md
-    - Code of Conduct: CODE_OF_CONDUCT.md
-    - Funding: funding.md
-  
-  - External Links:
-    - Source Code: https://github.com/FormingWorlds/PROTEUS
-    - Issues: https://github.com/FormingWorlds/PROTEUS/issues
-  
-  - Ecosystem Modules:
-    - 🔗 MORS: https://fwl-mors.readthedocs.io/
-    - 🔗 JANUS: https://fwl-janus.readthedocs.io/
-    - 🔗 CALLIOPE: https://fwl-calliope.readthedocs.io/
-    # ... (other modules)
-```
 
 ---
 
@@ -489,16 +379,14 @@ For each document, verify:
 
 ## Timeline Estimate
 
-**Phase 1 (Preserve):** 1 hour
-**Phase 2 (Structure):** 1 hour  
-**Phase 3 (Tutorials):** 2-3 days
-**Phase 4 (How-tos):** 3-4 days
-**Phase 5 (Reference):** 2-3 days
-**Phase 6 (Explanation):** 3-4 days
-**Phase 7 (Index):** 1 day
-**Phase 8 (Navigation):** 1 day
+**Phase 1 (Preserve):** 1 hour ✅  
+**Phase 2 (Structure):** 1 hour ✅  
+**Phase 3 (Stub files & extract):** 4-5 days
+**Phase 4 (Review & refine):** 2-3 days
+**Phase 5 (Navigation updates):** 1 day
+**Phase 6 (Testing & validation):** 1-2 days
 
-**Total estimated time:** 12-16 days
+**Total estimated time:** 8-12 days
 
 ---
 
