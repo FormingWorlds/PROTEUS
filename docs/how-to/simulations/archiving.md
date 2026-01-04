@@ -1,20 +1,37 @@
-# Archiving and Managing Output Files
+# Archiving Output Files
 
-<!--
-PHASE 3 STUB FILE - Content extraction guide
-============================================================
+## Why Archive?
 
-How-to for archiving and extracting output.
+Running PROTEUS, especially large grids of simulations, generates many files. Archiving reduces storage footprint by packing output files into compressed `.tar` archives.
 
-Source material:
-- docs/old_structure/usage.md - "Archiving output files" section
-- docs/old_structure/usage.md - commands: extract-archives, create-archives
+## Automatic Archiving
 
-Content type: Task-oriented
-Instructions for managing large output datasets
+Enable archiving via the configuration option `params.out.archive_mod`. PROTEUS will automatically archive output files according to your settings.
 
-Expected length: ~100-150 lines
-============================================================
--->
+## Extracting Archives
 
-[Content extracted from usage.md]
+To extract archived output files for analysis or visualization:
+
+```console
+proteus extract-archives -c [cfgfile]
+```
+
+## Re-archiving Files
+
+To pack data files back into `.tar` archives after extraction:
+
+```console
+proteus create-archives -c [cfgfile]
+```
+
+This process is fully reversible—you can extract and re-archive as needed.
+
+## Archive Contents
+
+Archived `.tar` files typically contain:
+
+- Atmosphere data files (`.nc` NetCDF files)
+- Interior data (`.json` files)
+- Other simulation outputs
+
+The archive makes files inaccessible until extracted, reducing I/O overhead while maintaining data integrity.
