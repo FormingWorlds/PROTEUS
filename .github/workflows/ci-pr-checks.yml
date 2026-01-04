@@ -38,7 +38,7 @@ jobs:
     name: Unit Tests (Mocked Physics)
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/formingworlds/proteus:latest
+      image: ghcr.io/formingworlds/proteus:${{ github.ref == 'refs/heads/main' && 'latest' || 'tl-test_ecosystem_v4' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: unit-tests
     container:
-      image: ghcr.io/formingworlds/proteus:latest
+      image: ghcr.io/formingworlds/proteus:${{ github.ref == 'refs/heads/main' && 'latest' || 'tl-test_ecosystem_v4' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
