@@ -159,22 +159,30 @@ version = "2.0"
     module       = "self"       # self | zalmoxis
 
     [struct.zalmoxis]
-        verbose                     = false     # verbose printing?
-        coremassfrac                = 0.325     # core mass fraction [non-dim.]
-        inner_mantle_mass_fraction  = 0         # inner mantle mass fraction [non-dim.]
-        weight_iron_frac            = 0.325     # iron fraction in the planet [non-dim.]
-        num_levels                  = 150       # number of Zalmoxis radius layers
-        EOSchoice = "Tabulated:iron/silicate"   # iron/silicate for super-Earths, water for water planets with Earth-like rocky cores
-        max_iterations_outer        = 100       # max. iterations for the outer loop
-        tolerance_outer             = 3e-3      # tolerance for the outer loop
-        max_iterations_inner        = 100       # max. iterations for the inner loop
-        tolerance_inner             = 1e-4      # tolerance for the inner loop
-        relative_tolerance          = 1e-5      # relative tolerance for solve_ivp
-        absolute_tolerance          = 1e-6      # absolute tolerance for solve_ivp
-        target_surface_pressure     = 101325    # target surface pressure
-        pressure_tolerance          = 1e9       # tolerance surface pressure
-        max_iterations_pressure     = 200       # max. iterations for the innermost loop
-        pressure_adjustment_factor  = 1.1       # factor for adjusting the pressure in the innermost loop
+        EOSchoice                  = "Tabulated:iron/Tdep_silicate" # EOS choices: "Tabulated:iron/silicate", "Tabulated:iron/Tdep_silicate", "Tabulated:water"
+        coremassfrac               = 0.325                          # core mass fraction [non-dim.]
+        mantle_mass_fraction       = 0                              # mantle mass fraction [non-dim.]
+        weight_iron_frac           = 0.325                          # iron fraction in the planet [non-dim.]
+        temperature_mode           = "linear"                   # Input temperature profile choices: "isothermal", "linear", "prescribed"
+        surface_temperature        = 3500                           # Surface temperature [K], required for temperature_mode="isothermal" or "linear"
+        center_temperature         = 6000                           # Center temperature [K], required for temperature_mode="linear"
+        temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # filename with a prescribed temperature profile, required for temperature_mode="prescribed"
+        num_levels                 = 150                            # number of Zalmoxis radius layers
+        max_iterations_outer       = 100                            # max. iterations for the outer loop
+        tolerance_outer            = 3e-3                           # tolerance for the outer loop
+        max_iterations_inner       = 100                            # max. iterations for the inner loop
+        tolerance_inner            = 1e-4                           # tolerance for the inner loop
+        relative_tolerance         = 1e-5                           # relative tolerance for solve_ivp
+        absolute_tolerance         = 1e-6                           # absolute tolerance for solve_ivp
+        maximum_step               = 250000                         # maximum integration step size [m]
+        adaptive_radial_fraction   = 0.98                           # radial fraction for transition from adaptive integration to fixed-step integration when using "Tabulated:iron/Tdep_silicate" EOS
+        max_center_pressure_guess  = 0.99e12                        # maximum central pressure guess based on "Tabulated:iron/Tdep_silicate" EOS limit [Pa]
+        target_surface_pressure    = 101325                         # target surface pressure [Pa]
+        pressure_tolerance         = 1e9                            # tolerance surface pressure [Pa]
+        max_iterations_pressure    = 200                            # max. iterations for the innermost loop
+        pressure_adjustment_factor = 1.1                            # factor for adjusting the pressure in the innermost loop
+        verbose                    = false                          # detailed convergence info and warnings printing?
+        iteration_profiles_enabled = false                          # pressure and density profiles for each iteration logging?
 
 # Atmosphere - physics table
 [atmos_clim]
