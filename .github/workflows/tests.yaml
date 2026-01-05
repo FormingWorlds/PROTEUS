@@ -44,7 +44,6 @@ jobs:
       RAD_DIR: ${{ github.workspace }}/socrates
       AGNI_DIR: ${{ github.workspace }}/AGNI
       JULIA_NUM_THREADS: 1
-      PIP_CONSTRAINT: ${{ github.workspace }}/constraints.txt # Use pip constraints to control package versions
 
     runs-on: ${{ matrix.os }}
     steps:
