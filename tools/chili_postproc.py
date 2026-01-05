@@ -258,6 +258,10 @@ def postproc_grid(griddir:str):
 
             fnew = "-".join(fnew)
             fnew = os.path.join(chilidir, fnew)
+            if os.path.isfile(fnew) and os.path.exists(fnew):
+                print("    WARNING: copy of output data file already exists")
+                print(f"             {fnew}")
+                print("    Maybe you have some duplicate grid points?")
 
             copyfile(fold, fnew)
 
