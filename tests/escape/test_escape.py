@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.mark.skip(reason="Placeholder test - implement real tests for escape module")
+@pytest.mark.skip(reason='Placeholder test - implement real tests for escape module')
 def test_placeholder():
     """Placeholder test - replace with actual tests"""
     pass
