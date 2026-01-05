@@ -24,6 +24,7 @@ def albedo_run():
 
 
 # check result
+@pytest.mark.integration
 def test_albedo_helpfile(albedo_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
@@ -40,6 +41,7 @@ def test_albedo_helpfile(albedo_run):
 
 
 # check albedo interpolation
+@pytest.mark.integration
 def test_albedo_interp(albedo_run):
     # check loaded data ok
     assert albedo_run.atmos_o.albedo_o.ok
@@ -59,6 +61,7 @@ def test_albedo_interp(albedo_run):
 
 
 # Check physics
+@pytest.mark.integration
 def test_albedo_physics(albedo_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     row_0 = hf_all.iloc[3]

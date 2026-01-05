@@ -1,9 +1,12 @@
 # Test whether some of the plot helper functions work as expected
 from __future__ import annotations
 
+import pytest
+
 from proteus.utils.plot import _preset_colours, get_colour, latexify
 
 
+@pytest.mark.unit
 def test_get_colour():
     # Test default colours
     assert get_colour('C') == _preset_colours['C']
@@ -16,6 +19,7 @@ def test_get_colour():
     assert get_colour('SiH4C2') == '#b909ff'
 
 
+@pytest.mark.unit
 def test_latexify():
     assert latexify('H2O4') == r'H$_2$O$_4$'
     assert latexify('H') == r'H'

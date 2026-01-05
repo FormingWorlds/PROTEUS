@@ -22,11 +22,13 @@ def grid_run():
     grid_from_config(GRID_CONFIG, test_run=False, check_interval=1)
 
 
+@pytest.mark.unit
 def test_grid_run(grid_run):
     # Call fixture to ensure that it has run without error
     pass
 
 
+@pytest.mark.unit
 def test_grid_config(grid_run):
     # Copy of grid's config exists in output dir
     assert os.path.isfile(OUT_DIR / 'copy.grid.toml')
@@ -38,6 +40,7 @@ def test_grid_config(grid_run):
     assert os.path.isfile(OUT_DIR / 'cfgs' / f'case_{0:06d}.toml')
 
 
+@pytest.mark.unit
 def test_grid_log(grid_run):
     # Read logfile and check for expected statements
     with open(OUT_DIR / 'manager.log', 'r') as hdl:
@@ -47,6 +50,7 @@ def test_grid_log(grid_run):
     assert 'All cases have exited' in lines
 
 
+@pytest.mark.unit
 def test_grid_summarise(grid_run):
     # Test running grid-summarise command
     assert gsummarise(OUT_DIR)
@@ -54,6 +58,7 @@ def test_grid_summarise(grid_run):
     assert gsummarise(OUT_DIR, 'status=11')
 
 
+@pytest.mark.unit
 def test_grid_pack(grid_run):
     # Test running grid-pack command
     assert gpack(OUT_DIR, plots=True, zip=True, rmdir_pack=False)

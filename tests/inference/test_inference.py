@@ -30,11 +30,13 @@ def inference_run():
     infer_from_config(INFER_CONFIG)
 
 
+@pytest.mark.integration
 def test_inference_run(inference_run):
     # Call fixture to ensure that it has run without error
     pass
 
 
+@pytest.mark.integration
 def test_inference_config(inference_run):
     # Copy of grid's config exists in output dir
     assert os.path.isfile(OUT_DIR / 'copy.infer.toml')
@@ -43,6 +45,7 @@ def test_inference_config(inference_run):
     assert filecmp.cmp(OUT_DIR / 'ref_config.toml', BASE_CONFIG, shallow=False)
 
 
+@pytest.mark.integration
 def test_inference_init(inference_run):
     # Check that init data was written
     assert os.path.isfile(OUT_DIR / 'init.pkl')
@@ -54,6 +57,7 @@ def test_inference_init(inference_run):
     assert 'Y' in data.keys()
 
 
+@pytest.mark.integration
 def test_inference_output(inference_run):
     # Check that output results exist
     assert os.path.isfile(OUT_DIR / 'data.pkl')

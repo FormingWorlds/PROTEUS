@@ -27,6 +27,7 @@ def cfg():
     return obj
 
 
+@pytest.mark.unit
 def test_none_if_none():
     assert none_if_none('none') is None
 
@@ -43,6 +44,7 @@ def test_proteus_init(path):
     assert isinstance(runner.config, Config)
 
 
+@pytest.mark.unit
 def test_calliope_is_included():
     conf = Calliope(
         T_floor=0.1,
@@ -55,6 +57,7 @@ def test_calliope_is_included():
         conf.is_included('fails')
 
 
+@pytest.mark.unit
 def test_delivery_get_pressure():
     conf = Volatiles(N2=123.0)
     assert conf.get_pressure('N2') == 123.0

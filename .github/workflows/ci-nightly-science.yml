@@ -3,6 +3,18 @@ name: CI - Nightly Science Validation
 # Purpose: Deep validation of scientific accuracy using pre-built Docker image
 # Runs comprehensive physics simulations to ensure correctness
 # Triggers: Nightly at 03:00 UTC (1 hour after Docker build completes)
+#
+# Test Categories (see docs/test_infrastructure.md):
+#   @pytest.mark.integration  -> 23 multi-module coupling tests
+#   @pytest.mark.slow         -> Full scientific validation tests (hours-long simulations)
+#   @pytest.mark.skip         -> 9 placeholder tests excluded from CI
+#
+# Strategy:
+#   Job 1: Run "slow or integration" tests (~4 hours total)
+#          These are comprehensive physics simulations validating correctness
+#   Job 2: Run "integration and not slow" tests separately (~2 hours)
+#          Multi-module coupling without the slowest tests
+#          Allows tracking integration test results independently
 
 on:
   schedule:
@@ -50,10 +62,14 @@ jobs:
           # proteus get stellar
           # proteus get spectral --name Frostflow --bands 48
 
-      - name: Run slow integration tests
+      - name: Run slow scientific validation tests
         run: |
           cd /opt/proteus
-          pytest -m slow -v --tb=long --maxfail=3 \
+          # Run full scientific validation: slow tests + full integration tests
+          # These are comprehensive simulations (multi-hour runtime)
+          pytest -m "slow or integration" \
+            --ignore=tests/examples \
+            -v --tb=long --maxfail=3 \
             --cov=src \
             --cov-report=term-missing \
             --cov-report=xml \
@@ -122,7 +138,10 @@ jobs:
       - name: Run integration tests
         run: |
           cd /opt/proteus
-          pytest -m integration -v --tb=long \
+          # Run multi-module coupling tests and integration validation
+          pytest -m "integration and not slow" \
+            --ignore=tests/examples \
+            -v --tb=long \
             --cov=src \
             --cov-report=term-missing \
             --cov-report=xml \

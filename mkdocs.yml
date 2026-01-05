@@ -10,6 +10,7 @@ nav:
   - Using PROTEUS: usage.md
   - Configuration: config.md
   - Testing infrastructure: test_infrastructure.md
+  - Test categorization: test_categorization.md
   - Contributing: CONTRIBUTING.md
   - Bibliography: bibliography.md
   - Troubleshooting: troubleshooting.md

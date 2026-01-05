@@ -24,11 +24,13 @@ def dummy_run():
 
 
 # run the integration
+@pytest.mark.integration
 def test_dummy_run(dummy_run):
     assert filecmp.cmp(out_dir / 'status', ref_dir / 'status', shallow=False)
 
 
 # check result
+@pytest.mark.integration
 def test_dummy_helpfile(dummy_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
@@ -45,11 +47,13 @@ def test_dummy_helpfile(dummy_run):
 
 
 # Check stellar spectra
+@pytest.mark.integration
 def test_dummy_stellar(dummy_run):
     assert filecmp.cmp(out_dir / 'data' / '0.sflux', ref_dir / '0.sflux', shallow=False)
 
 
 # Check physics
+@pytest.mark.integration
 def test_dummy_physics(dummy_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     row_0 = hf_all.iloc[3]

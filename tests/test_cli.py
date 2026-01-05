@@ -1,6 +1,7 @@
 # Test PROTEUS terminal CLI and commands
 from __future__ import annotations
 
+import pytest
 from click.testing import CliRunner
 
 from proteus import __version__ as proteus_version
@@ -9,6 +10,7 @@ from proteus import cli
 runner = CliRunner()
 
 
+@pytest.mark.unit
 def test_doctor():
     # run PROTEUS doctor command
     response = runner.invoke(cli.doctor, [])
@@ -22,6 +24,7 @@ def test_doctor():
     assert 'fwl-mors' in response.output
 
 
+@pytest.mark.unit
 def test_version():
     # run PROTEUS version command
     response = runner.invoke(cli.cli, ['--version'])
@@ -33,6 +36,7 @@ def test_version():
     assert str(proteus_version) in response.output
 
 
+@pytest.mark.unit
 def test_get():
     # run PROTEUS get command
     response = runner.invoke(cli.get, ['reference'])

@@ -33,6 +33,7 @@ def dummy_agni_run():
     return runner
 
 
+@pytest.mark.integration
 def test_dummy_agni_run(dummy_agni_run):
     """
     Test that the AGNI run completes without error and produces correct output
@@ -52,6 +53,7 @@ def test_dummy_agni_run(dummy_agni_run):
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 
 
+@pytest.mark.integration
 @pytest.mark.dependency()
 def test_dummy_agni_archive(dummy_agni_run):
     """
@@ -75,6 +77,7 @@ def test_dummy_agni_archive(dummy_agni_run):
     assert os.path.isfile(os.path.join(data_dir, '0_atm.nc'))
 
 
+@pytest.mark.integration
 @pytest.mark.dependency(depends=['test_dummy_agni_archive'])
 def test_dummy_agni_atmosphere(dummy_agni_run):
     """
@@ -104,6 +107,7 @@ def test_dummy_agni_atmosphere(dummy_agni_run):
         )
 
 
+@pytest.mark.integration
 @pytest.mark.dependency(depends=['test_dummy_agni_archive'])
 def test_dummy_agni_offchem(dummy_agni_run):
     """

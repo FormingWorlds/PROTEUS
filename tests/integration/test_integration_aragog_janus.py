@@ -43,6 +43,7 @@ def aragog_janus_run():
     return runner
 
 
+@pytest.mark.integration
 def test_aragog_janus_run(aragog_janus_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
@@ -58,6 +59,7 @@ def test_aragog_janus_run(aragog_janus_run):
     assert_frame_equal(hf_all, hf_ref, rtol=6e-3)
 
 
+@pytest.mark.integration
 def test_aragog_janus_spectrum(aragog_janus_run):
     # Check stellar spectrum
 
@@ -67,6 +69,7 @@ def test_aragog_janus_spectrum(aragog_janus_run):
     assert filecmp.cmp(_out, _ref, shallow=False)
 
 
+@pytest.mark.integration
 def test_aragog_janus_atmosphere(aragog_janus_run):
     # Keys to load and test
     _out = out_dir / 'data' / '402_atm.nc'
@@ -90,6 +93,7 @@ def test_aragog_janus_atmosphere(aragog_janus_run):
         )
 
 
+@pytest.mark.integration
 def test_aragog_janus_interior(aragog_janus_run):
     # Keys to load and test
     _out = out_dir / 'data' / '402_int.nc'
@@ -113,6 +117,7 @@ def test_aragog_janus_interior(aragog_janus_run):
         )
 
 
+@pytest.mark.integration
 @pytest.mark.xfail(raises=AssertionError)
 @pytest.mark.parametrize('image', IMAGE_LIST)
 def test_aragog_janus_plot(aragog_janus_run, image):

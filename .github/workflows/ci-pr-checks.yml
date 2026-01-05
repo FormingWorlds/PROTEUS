@@ -5,8 +5,14 @@ name: CI - Fast PR Checks
 #   1. Use pre-compiled Docker image (ghcr.io/formingworlds/proteus:latest)
 #   2. Overlay PR code changes onto the container
 #   3. Smart rebuild: Only recompile changed source files (make handles this)
-#   4. Run unit tests with mocked physics (fast)
-#   5. Run smoke tests with real binaries (1 timestep, low res)
+#   4. Run @pytest.mark.unit tests with mocked physics (fast, ~2-5 min total)
+#   5. Run @pytest.mark.smoke tests with real binaries (1 timestep, low res, ~2-5 min)
+#   6. Exclude placeholder tests (@pytest.mark.skip) - these are placeholders for future implementation
+#
+# Test Categories (see docs/test_infrastructure.md):
+#   @pytest.mark.unit    -> 23 fast tests with mocked physics (target: <100ms each)
+#   @pytest.mark.smoke   -> Quick binary validation (target: <30s each)
+#   @pytest.mark.skip    -> 9 placeholder tests not yet implemented (excluded from CI)
 
 on:
   pull_request:
@@ -65,7 +71,11 @@ jobs:
       - name: Run unit tests with coverage
         run: |
           cd /opt/proteus
-          pytest -m unit --cov=src --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=10
+          # Run unit tests, excluding placeholder tests and examples
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
+            --cov=src --cov-report=term-missing --cov-report=xml --cov-report=html \
+            --cov-fail-under=69
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v4
@@ -152,7 +162,11 @@ jobs:
       - name: Run smoke tests
         run: |
           cd /opt/proteus
-          pytest -m smoke -v --tb=short
+          # Run smoke tests with real binaries (1 timestep, low resolution)
+          # Skip placeholder tests that are not yet implemented
+          pytest -m "smoke and not skip" \
+            --ignore=tests/examples \
+            -v --tb=short
 
       - name: Upload smoke test artifacts
         uses: actions/upload-artifact@v4
