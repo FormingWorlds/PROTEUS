@@ -13,11 +13,12 @@ from shutil import copyfile, rmtree
 import matplotlib as mpl
 
 mpl.use("Agg") # noqa
+import tomllib
+
 import matplotlib.pyplot as plt
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
-import tomllib
 
 from proteus.config import read_config_object
 from proteus.utils.constants import R_earth, vol_list
