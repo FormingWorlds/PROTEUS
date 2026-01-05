@@ -48,6 +48,17 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Read full coverage threshold
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import pathlib
+          import tomllib
+
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          val = float(data["tool"]["coverage"]["report"]["fail_under"])
+          print(f"FULL_COV_FAIL_UNDER={val}")
+          PY
+
       - name: Overlay code onto container
         run: |
           echo "Copying code over container base..."
@@ -73,7 +84,19 @@ jobs:
             --cov=src \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-report=html
+            --cov-report=html \
+            --cov-fail-under=${FULL_COV_FAIL_UNDER}
+
+      - name: Generate coverage JSON
+        run: |
+          cd /opt/proteus
+          coverage json -o coverage-nightly.json
+
+      - name: Ratchet full coverage threshold
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          python tools/update_coverage_threshold.py --coverage-file coverage-nightly.json --target full
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v4

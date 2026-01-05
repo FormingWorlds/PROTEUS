@@ -56,12 +56,61 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Prevent threshold decreases vs main
+        run: |
+          git fetch origin main
+          python - <<'PY'
+          import pathlib
+          import subprocess
+          import tomllib
+
+          base = "origin/main"
+          current = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          base_text = subprocess.check_output(["git", "show", f"{base}:pyproject.toml"], text=True)
+          base_data = tomllib.loads(base_text)
+
+          paths = {
+              "full": ["tool", "coverage", "report", "fail_under"],
+              "fast": ["tool", "proteus", "coverage_fast", "fail_under"],
+          }
+
+          def get_val(data, path):
+              for key in path:
+                  data = data[key]
+              return float(data)
+
+          for label, path in paths.items():
+              cur = get_val(current, path)
+              base_val = get_val(base_data, path)
+              if cur < base_val:
+                  raise SystemExit(f"{label} fail_under decreased: {cur} < {base_val}")
+
+          print("Coverage thresholds have not decreased vs main.")
+          PY
+
       - name: Overlay PR code onto container
         run: |
           echo "Copying PR code over container base..."
           rsync -av --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
           cd /opt/proteus
           pip install -e ".[develop]" --no-deps
+
+      - name: Install CI helper tools
+        run: |
+          cd /opt/proteus
+          pip install diff-cover
+
+      - name: Read fast coverage threshold
+        run: |
+          cd /opt/proteus
+          python - <<'PY' >> "$GITHUB_ENV"
+          import pathlib
+          import tomllib
+
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          val = float(data["tool"]["proteus"]["coverage_fast"]["fail_under"])
+          print(f"FAST_COV_FAIL_UNDER={val}")
+          PY
 
       - name: Validate test structure
         run: |
@@ -72,12 +121,31 @@ jobs:
         run: |
           cd /opt/proteus
           # Run unit tests, excluding placeholder tests and examples
-                    # Note: Coverage threshold is lower for unit tests only (20% vs 69% for full suite)
-                    # This is intentional - unit tests focus on fast feedback, not comprehensive coverage
           pytest -m "unit and not skip" \
             --ignore=tests/examples \
             --cov=src --cov-report=term-missing --cov-report=xml --cov-report=html \
-            --cov-fail-under=20
+            --cov-fail-under=${FAST_COV_FAIL_UNDER} \
+            --durations=0 \
+            --durations-min=0 | tee pytest-unit.log
+
+      - name: Generate coverage JSON
+        run: |
+          cd /opt/proteus
+          coverage json -o coverage-unit.json
+
+      - name: Diff coverage on changed lines (fast suite)
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
+        run: |
+          cd /opt/proteus
+          git fetch origin "$BASE_REF"
+          diff-cover coverage.xml --compare-branch "origin/${BASE_REF}" --fail-under=80
+
+      - name: Ratchet fast coverage threshold
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v4
@@ -96,6 +164,14 @@ jobs:
         with:
           name: unit-coverage-html
           path: /opt/proteus/htmlcov/
+          retention-days: 7
+
+      - name: Upload unit pytest log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-pytest-log
+          path: /opt/proteus/pytest-unit.log
           retention-days: 7
 
   smoke-tests:

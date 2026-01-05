@@ -166,6 +166,12 @@ exclude_lines = [
 [tool.coverage.html]
 directory = "htmlcov"
 
+[tool.proteus.coverage_fast]
+# Fast CI (unit + smoke) coverage gate; ratcheted independently from full suite
+# This lower bar is intended for mocked/fast tests only and will auto-increase
+# when the fast suite gains coverage. Do not decrease manually.
+fail_under = 20
+
 [tool.ruff]
 line-length = 96
 target-version = "py312"
