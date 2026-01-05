@@ -58,6 +58,7 @@ jobs:
 
       - name: Prevent threshold decreases vs main
         run: |
+          git config --global --add safe.directory /__w/PROTEUS/PROTEUS
           git fetch origin main
           python - <<'PY'
           import pathlib
