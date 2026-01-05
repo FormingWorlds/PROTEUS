@@ -99,6 +99,12 @@ def load_zalmoxis_material_dictionaries():
     return get_zalmoxis_EOS()
 
 def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE):
+    """Loads the solidus and liquidus functions for Zalmoxis based on the EOS choice.
+    Args:
+        EOS_CHOICE (str): The EOS choice for Zalmoxis.
+    Returns:
+        tuple: A tuple containing the solidus and liquidus functions.
+    """
     if EOS_CHOICE == "Tabulated:iron/Tdep_silicate":
         return get_zalmoxis_melting_curves()
 
