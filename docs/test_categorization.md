@@ -9,13 +9,13 @@ This document explains how PROTEUS tests are categorized and how they flow throu
 All tests in PROTEUS are marked with pytest markers to enable targeted test selection:
 
 ### @pytest.mark.unit
-**Purpose**: Fast validation of Python logic with mocked physics  
-**Runtime**: <100ms per test (target)  
-**Count**: 23 tests  
-**Runs In**: `ci-pr-checks.yml` (PR validation, ~2-5 minutes total)  
+**Purpose**: Fast validation of Python logic with mocked physics
+**Runtime**: <100ms per test (target)
+**Count**: 23 tests
+**Runs In**: `ci-pr-checks.yml` (PR validation, ~2-5 minutes total)
 **Coverage**: Python interfaces, configuration parsing, utilities
 
-> See [Testing Infrastructure - Best Practices](test_infrastructure.md#best-practices) for guidance on writing effective unit tests.  
+> See [Testing Infrastructure - Best Practices](test_infrastructure.md#best-practices) for guidance on writing effective unit tests.
 
 **Example Tests**:
 - `tests/config/test_config.py` - Configuration system
@@ -24,11 +24,11 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 - `tests/plot/test_cpl_*.py` - Plotting functions
 
 ### @pytest.mark.smoke
-**Purpose**: Quick validation that binaries work with new Python code  
-**Runtime**: <30s per test (target)  
-**Count**: 0 currently (none implemented yet)  
-**Runs In**: `ci-pr-checks.yml` (PR validation, optional)  
-**Coverage**: Binary execution, real atmospheric models  
+**Purpose**: Quick validation that binaries work with new Python code
+**Runtime**: <30s per test (target)
+**Count**: 0 currently (none implemented yet)
+**Runs In**: `ci-pr-checks.yml` (PR validation, optional)
+**Coverage**: Binary execution, real atmospheric models
 
 **When to use**: Tests that run a physics module for 1 timestep at low resolution
 
@@ -38,11 +38,11 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 - SOCRATES single spectral calculation
 
 ### @pytest.mark.integration
-**Purpose**: Multi-module coupling and interaction tests  
-**Runtime**: Minutes to hours  
-**Count**: 23 tests (real integration tests)  
-**Runs In**: `ci-nightly-science.yml` (nightly validation, ~2 hours)  
-**Coverage**: PROTEUS workflow, module coupling, data exchange  
+**Purpose**: Multi-module coupling and interaction tests
+**Runtime**: Minutes to hours
+**Count**: 23 tests (real integration tests)
+**Runs In**: `ci-nightly-science.yml` (nightly validation, ~2 hours)
+**Coverage**: PROTEUS workflow, module coupling, data exchange
 
 **Example Tests**:
 - `tests/integration/test_integration_dummy.py` - PROTEUS with dummy modules (4 tests)
@@ -51,11 +51,11 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 - `tests/integration/test_albedo_lookup.py` - Albedo interpolation (3 tests)
 
 ### @pytest.mark.slow
-**Purpose**: Full scientific validation with comprehensive simulations  
-**Runtime**: Hours (up to 4 hours total for all slow tests)  
-**Count**: 0 currently (none implemented - would extend integration tests)  
-**Runs In**: `ci-nightly-science.yml` (nightly validation, optional job)  
-**Coverage**: Full physics accuracy, long-term evolution, benchmark comparisons  
+**Purpose**: Full scientific validation with comprehensive simulations
+**Runtime**: Hours (up to 4 hours total for all slow tests)
+**Count**: 0 currently (none implemented - would extend integration tests)
+**Runs In**: `ci-nightly-science.yml` (nightly validation, optional job)
+**Coverage**: Full physics accuracy, long-term evolution, benchmark comparisons
 
 **When to use**: Tests that simulate Earth magma ocean, Venus greenhouse, Super-Earth evolution, etc.
 
@@ -66,11 +66,11 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 - Full PROTEUS workflow end-to-end (4-8 hours)
 
 ### @pytest.mark.skip (Placeholder Tests)
-**Purpose**: Structural placeholders for modules that need test implementation  
-**Runtime**: Skipped (not executed)  
-**Count**: 9 tests  
-**Runs In**: Not executed (marked with @pytest.mark.skip)  
-**Status**: TODO - Need implementation  
+**Purpose**: Structural placeholders for modules that need test implementation
+**Runtime**: Skipped (not executed)
+**Count**: 9 tests
+**Runs In**: Not executed (marked with @pytest.mark.skip)
+**Status**: TODO - Need implementation
 
 **Files**:
 - `tests/escape/test_escape.py`
@@ -88,8 +88,8 @@ These placeholder tests exist to maintain test directory structure. Replace thei
 ## CI/CD Pipeline
 
 ### Fast PR Checks (`ci-pr-checks.yml`)
-**Trigger**: Pull requests to `main` or `dev`, pushes to feature branches  
-**Duration**: ~5-10 minutes  
+**Trigger**: Pull requests to `main` or `dev`, pushes to feature branches
+**Duration**: ~5-10 minutes
 **Strategy**:
 1. Use pre-built Docker image with compiled physics
 2. Overlay PR code changes
@@ -104,12 +104,12 @@ pytest -m "unit and not skip" --ignore=tests/examples \
   --cov=src --cov-fail-under=69
 ```
 
-**Test Output**: Coverage report, ruff errors  
+**Test Output**: Coverage report, ruff errors
 **Artifacts**: HTML coverage report
 
 ### Nightly Science Validation (`ci-nightly-science.yml`)
-**Trigger**: Scheduled at 03:00 UTC daily (1 hour after Docker build)  
-**Duration**: ~4-6 hours total  
+**Trigger**: Scheduled at 03:00 UTC daily (1 hour after Docker build)
+**Duration**: ~4-6 hours total
 **Strategy**:
 1. Use latest pre-built Docker image
 2. Run comprehensive integration tests
@@ -127,7 +127,7 @@ pytest -m "integration and not slow" --ignore=tests/examples \
   --cov=src
 ```
 
-**Test Output**: Coverage reports, physics validation results  
+**Test Output**: Coverage reports, physics validation results
 **Artifacts**: HTML coverage, simulation outputs, test logs
 
 ## Test Discovery & Organization
@@ -229,7 +229,7 @@ When implementing tests for a module, follow this checklist:
 3. **Add test function with marker**:
    ```python
    import pytest
-   
+
    @pytest.mark.unit
    def test_my_feature():
        """Brief description of what this tests."""
@@ -243,7 +243,7 @@ When implementing tests for a module, follow this checklist:
    @pytest.mark.skip(reason="Placeholder test")
    def test_placeholder():
        pass
-   
+
    # After:
    @pytest.mark.unit
    def test_my_feature():

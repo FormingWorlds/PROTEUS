@@ -1496,12 +1496,12 @@ PROTEUS has completed a comprehensive test cleanup and categorization effort. Fo
   - Fast tests with mocked physics for rapid PR feedback
   - Target: <100ms per test
   - Located in: `tests/config/`, `tests/grid/`, `tests/plot/`, `tests/inference/`
-  
+
 - **Integration tests:** 23 tests (marked with `@pytest.mark.integration`)
   - Multi-module coupling and workflow validation
   - Duration: ~2 hours for all integration tests
   - Located in: `tests/integration/`
-  
+
 - **Placeholder tests:** 9 modules marked with `@pytest.mark.skip`
   - Need implementation (currently just structural placeholders)
   - Modules: escape, orbit, interior, atmos_clim, outgas, utils, observe, star, atmos_chem
@@ -1511,7 +1511,7 @@ PROTEUS has completed a comprehensive test cleanup and categorization effort. Fo
   - Command: `pytest -m "unit and not skip" --ignore=tests/examples --cov-fail-under=69`
   - Provides rapid feedback for contributors
   - Enforces 69% coverage threshold (auto-ratcheting)
-  
+
 - **Nightly Validation** (`ci-nightly-science.yml`): Runs integration tests (~4-6 hours)
   - Job 1: `pytest -m "slow or integration" --ignore=tests/examples`
   - Job 2: `pytest -m "integration and not slow" --ignore=tests/examples`
@@ -1570,9 +1570,9 @@ def test_calculate_escape_rate_basic():
             pressure=1e5,     # Pa
             composition={'H2': 0.9, 'He': 0.1}
         )
-        
+
         rate = calculate_escape_rate(planet_mass=1e24, planet_radius=6e6)
-        
+
         # Verify escape rate is physically reasonable
         assert rate > 0, "Escape rate must be positive"
         assert rate < 1e10, "Escape rate exceeds physical limits"
