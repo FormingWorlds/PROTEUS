@@ -224,7 +224,7 @@ def postproc_grid(griddir:str):
     N = len(cases)
     for i,c in enumerate(cases):
         print(f"[{i+1:2d}/{N:-2d}]  case:{c.split("_")[-1]}")
-        name = postproc_once(c, plot=False)
+        name = postproc_once(c, plot=True)
 
         # Copy files to common folder
         print("    copy files")
@@ -250,7 +250,7 @@ def postproc_grid(griddir:str):
             # insert Ckg identifier
             if np.isclose(Ckg, np.amin(arr_Ckg)):
                 fnew.insert(5,"Clow")
-            elif np.isclose(Hkg, np.amax(arr_Ckg)):
+            elif np.isclose(Ckg, np.amax(arr_Ckg)):
                 fnew.insert(5,"Chigh")
             else:
                 fnew.insert(5,"Cmid")
