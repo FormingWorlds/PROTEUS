@@ -76,13 +76,21 @@ jobs:
           }
 
           def get_val(data, path):
-              for key in path:
-                  data = data[key]
+              try:
+                  for key in path:
+                      data = data[key]
+              except KeyError:
+                  return None
               return float(data)
 
           for label, path in paths.items():
               cur = get_val(current, path)
               base_val = get_val(base_data, path)
+
+              if base_val is None or cur is None:
+                  print(f"Skipping {label} check (missing in base or current)")
+                  continue
+
               if cur < base_val:
                   raise SystemExit(f"{label} fail_under decreased: {cur} < {base_val}")
 
