@@ -138,6 +138,7 @@ jobs:
             --durations-min=0 | tee pytest-unit.log
 
       - name: Generate coverage JSON
+        continue-on-error: true
         run: |
           cd /opt/proteus
           coverage json -o coverage-unit.json
