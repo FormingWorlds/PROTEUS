@@ -2,7 +2,10 @@
 
 This document describes the standardized testing infrastructure for PROTEUS and the wider ecosystem.
 
-> **Related documentation:** For details on test categories and CI/CD workflow specifics, see [Test Categorization](test_categorization.md).
+> **Related documentation:**
+>
+> - [Test Categorization](test_categorization.md) — Test markers and CI/CD pipeline flow
+> - [Docker CI Architecture](docker_ci_architecture.md) — Detailed Dockerfile, image build strategy, and implementation reference
 
 ## Table of Contents
 
@@ -730,29 +733,29 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Consistent across entire ecosystem
    - Enables automated validation
 
-1. **One test file per source file**
+2. **One test file per source file**
    - When practical
    - Keeps tests organized
    - Clear 1:1 mapping
    - Use `tools/validate_test_structure.sh` to verify
 
-1. **Group related tests**
+3. **Group related tests**
    - Use test classes for related tests
    - Share fixtures via `conftest.py`
    - Organize by functionality within test files
 
-1. **Use descriptive names**
+4. **Use descriptive names**
 
 ```python
-   # Good: Clear what is being tested
-   def test_temperature_conversion_celsius_to_kelvin():
-       """Test conversion from Celsius to Kelvin returns correct value."""
-       result = convert_temperature(100, 'C', 'K')
-       assert result == pytest.approx(373.15, rel=1e-5)
+# Good: Clear what is being tested
+def test_temperature_conversion_celsius_to_kelvin():
+    """Test conversion from Celsius to Kelvin returns correct value."""
+    result = convert_temperature(100, 'C', 'K')
+    assert result == pytest.approx(373.15, rel=1e-5)
 
-   # Less good: Vague, unclear what is tested
-   def test_conversion():
-       pass
+# Less good: Vague, unclear what is tested
+def test_conversion():
+    pass
 ```
 
 1. **Document test intent**
@@ -883,7 +886,8 @@ pytest -m "not slow"
 pytest
 ```
 
-**Benefits of markers:**
+**Benefits of markers**:
+
 - **Fast iteration:** Run unit tests while developing
 - **Efficient CI:** Skip slow tests on feature branches
 - **Clear categorization:** Know what each test validates
@@ -963,154 +967,15 @@ pytest
 
 ---
 
-## Current State & Next Steps
+## Placeholder Test Modules
 
-### Current Test Suite Status (January 2026)
+Nine modules have placeholder tests requiring implementation: `escape`, `orbit`, `interior`, `atmos_clim`, `outgas`, `utils`, `observe`, `star`, `atmos_chem`.
 
-PROTEUS has completed a comprehensive test cleanup and categorization effort. For detailed information about each test category and CI/CD pipeline flow, see [Test Categorization](test_categorization.md).
+To implement: Remove `@pytest.mark.skip`, add markers (`@pytest.mark.unit` or `@pytest.mark.integration`), and write tests following the [Test Writing Guidelines](#test-writing-guidelines). See [Test Categorization](test_categorization.md) for examples.
 
-**Test Breakdown:**
-- **Unit tests:** 23 tests (marked with `@pytest.mark.unit`)
-  - Fast tests with mocked physics for rapid PR feedback
-  - Target: <100ms per test
-  - Located in: `tests/config/`, `tests/grid/`, `tests/plot/`, `tests/inference/`
+---
 
-- **Integration tests:** 23 tests (marked with `@pytest.mark.integration`)
-  - Multi-module coupling and workflow validation
-  - Duration: ~2 hours for all integration tests
-  - Located in: `tests/integration/`
-
-- **Placeholder tests:** 9 modules marked with `@pytest.mark.skip`
-  - Need implementation (currently just structural placeholders)
-  - Modules: escape, orbit, interior, atmos_clim, outgas, utils, observe, star, atmos_chem
-
-**CI/CD Integration:**
-- **PR Checks** (`ci-pr-checks.yml`): Runs only unit tests (~5-10 minutes)
-  - Command: `pytest -m "unit and not skip" --ignore=tests/examples --cov-fail-under=69`
-  - Provides rapid feedback for contributors
-  - Enforces 69% coverage threshold (auto-ratcheting)
-
-- **Nightly Validation** (`ci-nightly-science.yml`): Runs integration tests (~4-6 hours)
-  - Job 1: `pytest -m "slow or integration" --ignore=tests/examples`
-  - Job 2: `pytest -m "integration and not slow" --ignore=tests/examples`
-  - Comprehensive physics validation
-
-### Implementing Placeholder Tests
-
-The following 9 modules currently have placeholder tests that need implementation:
-
-1. **tests/escape/test_escape.py** - Atmospheric escape module tests
-2. **tests/orbit/test_orbit.py** - Orbital mechanics module tests
-3. **tests/interior/test_interior.py** - Interior evolution module tests
-4. **tests/atmos_clim/test_atmos_clim.py** - Atmospheric climate module tests
-5. **tests/outgas/test_outgas.py** - Outgassing module tests
-6. **tests/utils/test_utils.py** - Utility functions tests
-7. **tests/observe/test_observe.py** - Observation module tests
-8. **tests/star/test_star.py** - Stellar evolution module tests
-9. **tests/atmos_chem/test_atmos_chem.py** - Atmospheric chemistry module tests
-
-**Implementation Checklist:**
-
-For each placeholder test:
-- [ ] Remove `@pytest.mark.skip` decorator
-- [ ] Add appropriate marker (`@pytest.mark.unit` or `@pytest.mark.integration`)
-- [ ] Write real test functions that:
-  - Test actual module functionality
-  - Use mocking for external dependencies (unit tests)
-  - Validate physics with appropriate tolerances
-  - Run in <100ms (unit) or document longer duration (integration)
-- [ ] Add comprehensive docstrings and comments
-- [ ] Verify coverage contribution
-- [ ] Run locally before pushing: `pytest tests/<module>/test_<module>.py -v`
-
-**Example transformation:**
-
-```python
-# BEFORE (placeholder):
-import pytest
-
-@pytest.mark.skip(reason="Placeholder test - implement real tests for escape module")
-def test_escape_placeholder():
-    pass
-
-# AFTER (real unit test):
-import pytest
-from unittest.mock import patch, MagicMock
-from proteus.escape import calculate_escape_rate
-
-@pytest.mark.unit
-def test_calculate_escape_rate_basic():
-    """Test basic escape rate calculation with mocked atmosphere."""
-    # Mock atmospheric parameters
-    with patch('proteus.escape.get_atmosphere') as mock_atm:
-        mock_atm.return_value = MagicMock(
-            temperature=300,  # K
-            pressure=1e5,     # Pa
-            composition={'H2': 0.9, 'He': 0.1}
-        )
-
-        rate = calculate_escape_rate(planet_mass=1e24, planet_radius=6e6)
-
-        # Verify escape rate is physically reasonable
-        assert rate > 0, "Escape rate must be positive"
-        assert rate < 1e10, "Escape rate exceeds physical limits"
-```
-
-### Running Tests Locally
-
-**Quick validation:**
-```bash
-# Run only unit tests (fast: ~30 seconds)
-pytest -m "unit and not skip" --ignore=tests/examples
-
-# Run integration tests (slow: ~2 hours)
-pytest -m "integration and not slow" --ignore=tests/examples
-
-# Run all tests except placeholders
-pytest -m "not skip" --ignore=tests/examples
-
-# Check specific module
-pytest tests/escape/test_escape.py -v
-```
-
-**With coverage:**
-```bash
-# PR-equivalent check
-pytest -m "unit and not skip" --ignore=tests/examples --cov=src --cov-fail-under=69
-
-# Full coverage report
-pytest --cov --cov-report=html
-open htmlcov/index.html
-```
-
-### Contributing Guidelines
-
-When adding new tests to PROTEUS:
-
-1. **Choose appropriate marker:**
-   - `@pytest.mark.unit` for fast, mocked tests (<100ms)
-   - `@pytest.mark.integration` for multi-module tests (seconds to minutes)
-   - `@pytest.mark.slow` for hours-long simulations
-   - `@pytest.mark.smoke` for quick binary validation
-
-2. **Run tests locally before pushing:**
-   ```bash
-   pytest -m unit                    # Fast: ~30 seconds
-   pytest -m "not slow"              # Medium: ~5 minutes
-   pytest -m "slow or integration"   # Comprehensive: 2-4 hours
-   ```
-
-3. **For placeholder implementation:**
-   - See checklist above
-   - Reference existing tests in `tests/config/` and `tests/integration/`
-   - Ask for review from maintainers
-
-4. **Documentation:**
-   - Add docstrings explaining what each test validates
-   - Include physical context where relevant
-   - Comment on expected values and tolerances
-
-### Monitoring & Maintenance
+## Monitoring & Maintenance
 
 **For Maintainers:**
 

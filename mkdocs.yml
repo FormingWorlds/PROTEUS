@@ -11,6 +11,7 @@ nav:
   - Configuration: config.md
   - Testing infrastructure: test_infrastructure.md
   - Test categorization: test_categorization.md
+  - Docker CI architecture: docker_ci_architecture.md
   - Contributing: CONTRIBUTING.md
   - Bibliography: bibliography.md
   - Troubleshooting: troubleshooting.md
