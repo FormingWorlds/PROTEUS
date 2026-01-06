@@ -6,930 +6,82 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 
 ## Table of Contents
 
-1. [Quick Start](#quick-start)
-2. [Architecture Overview](#architecture-overview)
-3. [Configuration](#configuration)
-4. [Ecosystem Rollout](#ecosystem-rollout)
-5. [Developer Workflow](#developer-workflow)
-6. [Troubleshooting](#troubleshooting)
-7. [Best Practices](#best-practices)
+1. [CI/CD Status and Roadmap](#cicd-status-and-roadmap-as-of-2026-01-06)
+2. [Developer Workflow](#developer-workflow)
+3. [Coverage Analysis](#coverage-analysis-workflow)
+4. [Pre-commit Checklist](#pre-commit-checklist)
+5. [Troubleshooting](#troubleshooting)
+6. [Best Practices](#best-practices)
 
 ---
 
-## Quick Start
+## CI/CD Status and Roadmap (as of 2026-01-06)
 
-### Prerequisites
+### CI/CD Current Status
 
-Ensure you have Python 3.11+ and the repository cloned.
+- Fast PR workflow (`ci-pr-checks.yml`): passing (ruff, 10 unit tests, 1 smoke test)
+- Coverage: 18.51% overall; gates — fast: 18%, full: 69%, diff-cover (changed lines): 80%
+- Diff-cover uses a workspace-generated diff (`git diff origin/${BASE_REF}...HEAD` + `--diff-file`) to avoid remote fetch issues inside the container
+- Smoke coverage: PROTEUS initialization via `tests/integration/test_smoke_minimal.py::test_proteus_dummy_init` using `input/demos/dummy.toml`
+- Known issues: Codecov upload needs `CODECOV_TOKEN` on protected branches (currently non-blocking)
 
-### For PROTEUS
+### CI/CD Architecture (Docker-based)
 
-```bash
-# 1. Install development dependencies (includes pytest-cov)
-pip install -e ".[develop]"
+- Prebuilt image: `ghcr.io/formingworlds/proteus:latest` built nightly (~02:00 UTC) via `.github/workflows/docker-build.yml` and on main dependency changes
+- Environment: compiled physics (SOCRATES, AGNI, PETSc) + Python deps from `pyproject.toml`; data paths set via `FWL_DATA`, `RAD_DIR`, `AGNI_DIR`, `PETSC_DIR`
+- PR workflow: `ci-pr-checks.yml` runs inside the image, overlays PR code, and uses make for smart rebuilds of changed sources
+- Nightly workflow: `ci-nightly-science.yml` uses the same image for integration and slow tests, with coverage ratcheting
+- Artifacts: coverage XML/HTML uploaded; Codecov upload is non-blocking when token is missing
 
-# 2. Validate current test structure
-bash tools/validate_test_structure.sh
+### Current Metrics (as of 2026-01-06)
 
-# 3. Restructure tests to mirror source layout (if needed)
-bash tools/restructure_tests.sh
+| Metric | Value | Target | Status |
+| --- | --- | --- | --- |
+| Unit tests | 10 | 23 | 43% |
+| Smoke tests | 1 | 5–7 | 14–20% |
+| Integration tests | 0 | 23 | 0% |
+| Coverage (unit) | 18.51% | 50% | 37% |
+| CI runtime (fast) | ~9 min | <10 min | ✓ On target |
+| Diff-cover threshold | 80% | 80% | ✓ Met |
 
-# 4. Run tests with coverage
-pytest
+### Immediate Next Steps
 
-# 5. View detailed coverage report
-open htmlcov/index.html
+**This week (Fast PR enhancements)**:
 
-# 6. Analyze coverage by module
-bash tools/coverage_analysis.sh
-```
+1. **Merge feature branch** → `main`
+   - All checks passing; recommend branch cleanup after merge
 
-### For Submodules (CALLIOPE, JANUS, MORS, etc.)
+2. **Expand smoke tests** (1–2 hours)
+   - Add test for PROTEUS + JANUS coupling; keep runtime <10 seconds
+   - Expected: 1 → 3–5 smoke tests
 
-```bash
-# Navigate to submodule
-cd <submodule-directory>
+3. **Fix Codecov integration** (30 minutes)
+   - Add `CODECOV_TOKEN` to GitHub repository secrets
+   - Enable full upload instead of non-blocking failures
 
-# Install dependencies
-pip install -e ".[develop]"
+**Next week (Nightly workflow)**:
 
-# Run tests
-pytest --cov
+1. Implement integration tests (JANUS + ARAGOG coupling, multi-step evolution with feedback)
+2. Plan slow test strategy (3–4 hour budget per scenario: Earth magma ocean, Venus runaway greenhouse, Super-Earth evolution)
+3. Configure nightly notifications (email on test failures; optional Slack integration)
 
-# View coverage
-open htmlcov/index.html
-```
+**Following week (Coverage expansion)**:
 
-### Common Commands
-
-```bash
-# Run all tests
-pytest
-
-# Run with verbose output
-pytest -v
-
-# Run specific test categories
-pytest -m unit              # Unit tests only
-pytest -m integration       # Integration tests only
-pytest -m "not slow"        # Skip slow tests
-
-# Run specific module
-pytest tests/config/
-
-# Check test discovery
-pytest --collect-only
-
-# Coverage with missing lines
-pytest --cov --cov-report=term-missing
-```
-
----
-
-## Architecture Overview
-
-### System Design
-
-The testing infrastructure consists of three main components:
-
-#### 1. Test Structure
-- **Principle:** Tests mirror source code structure exactly
-- **Location:** `tests/` directory with subdirectories matching `src/<package>/`
-- **Organization:** One test file per source file when possible
-- **Benefits:** Predictable, navigable, maintainable
-
-**Example:**
-```
-src/proteus/
-├── config/
-│   ├── __init__.py
-│   └── _config.py
-├── interior/
-│   ├── __init__.py
-│   └── wrapper.py
-└── plot/
-    ├── __init__.py
-    └── cpl_global.py
-
-tests/
-├── config/
-│   ├── __init__.py
-│   └── test_config.py
-├── interior/
-│   ├── __init__.py
-│   └── test_wrapper.py
-└── plot/
-    ├── __init__.py
-    └── test_cpl_global.py
-```
-
-#### 2. Configuration (pyproject.toml)
-
-**pytest Configuration:**
-
-```toml
-[tool.pytest.ini_options]
-minversion = "8.1"
-addopts = [
-    # Global coverage options removed from addopts.
-    # CI uses "coverage run -m pytest" with [tool.coverage.*] settings.
-    # For local development, use either:
-    #   1. "coverage run -m pytest" (matches CI behavior, compatible with coverage ratcheting)
-    #   2. "pytest --cov" (uses pytest-cov, convenient but slightly different from CI)
-    # Both approaches work; choose based on preference.
-    "--strict-markers",
-    "--strict-config",
-    "-ra",
-    "--showlocals",
-]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-]
-```
-
-**Coverage Configuration:**
-```toml
-[tool.coverage.run]
-branch = true
-source = ["<package_name>"]
-omit = [
-    "*/tests/*",
-    "*/test_*.py",
-    "*/__pycache__/*",
-    "*/conftest.py",
-]
-
-[tool.coverage.report]
-# Coverage threshold - automatically updated by CI when coverage increases.
-# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml.
-# The ratcheting (only ever increasing or staying the same) is enforced in CI;
-# do not manually decrease this value in pyproject.toml.
-fail_under = 69  # Current auto-ratcheted threshold
-show_missing = true
-precision = 2
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
-    "if typing.TYPE_CHECKING:",
-    "@abstractmethod",
-    "@abc.abstractmethod",
-]
-
-[tool.coverage.html]
-directory = "htmlcov"
-```
-
-#### 3. CI/CD Pipeline
-
-**GitHub Actions Workflows:**
-
-1. **Main CI Workflow** (`.github/workflows/ci_tests.yml`)
-   - Matrix testing: Python 3.11, 3.12, 3.13
-   - Runs pytest with coverage
-   - Linting with ruff
-   - Uploads coverage to Codecov
-   - Generates HTML artifacts
-
-2. **Reusable Quality Gate** (`.github/workflows/proteus_test_quality_gate.yml`)
-   - Centralized workflow for all PROTEUS modules/repositories
-   - Configurable Python version and coverage threshold
-   - Can be called by submodule workflows
-
-**CI/CD Flow:**
-```
-Push/PR → GitHub Actions
-    ↓
-Matrix Testing (3.11, 3.12, 3.13)
-    ↓
-Run pytest --cov
-    ↓
-Check coverage threshold
-    ↓
-Upload reports (Codecov, HTML)
-    ↓
-Lint with ruff
-    ↓
-Pass/Fail → Merge gate
-```
-
-### Available Tools
-
-#### 1. `tools/validate_test_structure.sh`
-- **Purpose:** Check if tests mirror source structure
-- **Output:** Color-coded report of missing directories/files
-- **Usage:** `bash tools/validate_test_structure.sh`
-
-#### 2. `tools/restructure_tests.sh`
-- **Purpose:** Automatically reorganize tests to mirror source
-- **Actions:**
-  - Creates missing directories
-  - Moves misplaced test files
-  - Adds `__init__.py` files
-  - Creates placeholder tests
-- **Usage:** `bash tools/restructure_tests.sh`
-
-#### 3. `tools/coverage_analysis.sh`
-- **Purpose:** Analyze coverage by module and identify priorities
-- **Output:** Module-by-module coverage with priority list
-- **Usage:** `bash tools/coverage_analysis.sh`
-
-#### 4. `tools/update_coverage_threshold.py` (Optional - CALLIOPE Pattern)
-- **Purpose:** Automatically ratchet coverage threshold upward
-- **Trigger:** Runs on main branch when coverage increases
-- **Behavior:** Updates `fail_under` in pyproject.toml, prevents regression
-- **Usage:** Automated via CI (see CALLIOPE for implementation)
-
-### Ecosystem Integration Standards
-
-#### Codecov Integration
-
-All ecosystem modules should integrate with Codecov for ecosystem-wide coverage tracking:
-
-```yaml
-- name: Upload coverage reports to Codecov
-  uses: codecov/codecov-action@v4
-  if: always()
-  with:
-    files: ./coverage.xml
-    flags: unittests
-    name: codecov-${{ matrix.python-version }}-${{ matrix.os }}
-    fail_ci_if_error: false  # Non-blocking on feature branches
-  env:
-    CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-```
-
-For main branch: Set `CODECOV_TOKEN` as repository secret for full reporting.
-
-#### HTML Artifact Uploads
-
-Archive HTML coverage reports for 30 days:
-
-```yaml
-- name: Upload coverage HTML report
-  uses: actions/upload-artifact@v4
-  if: always()
-  with:
-    name: coverage-report-${{ matrix.python-version }}-${{ matrix.os }}
-    path: htmlcov/
-    retention-days: 30
-```
-
-#### Test Quality & Documentation
-
-Best practice: Add comprehensive inline comments to test files:
-- Module docstring: Explain overall test purpose
-- Test comments: Document what each test validates
-- Context: Include formulas, principles, or domain knowledge relevant to assertions
-- Cross-references: Link to source code when helpful
-
-See [CALLIOPE test files](https://github.com/FormingWorlds/CALLIOPE/tree/main/tests) for exemplary documentation.
-
----
-
-## Configuration
-
-### Project Setup
-
-**Required Files:**
-
-1. **pyproject.toml**
-   - Add pytest and coverage configurations (see Architecture section)
-   - Include `pytest-cov` in `[project.optional-dependencies]`
-
-2. **.github/workflows/ci_tests.yml**
-   - Set up matrix testing
-   - Configure coverage threshold
-   - Add linting step
-
-3. **tests/conftest.py**
-   - Define shared fixtures
-   - Configure pytest plugins
-   - Set up test helpers
-
-4. **.gitignore**
-   ```
-   .pytest_cache/
-   .coverage
-   htmlcov/
-   coverage.xml
-   ```
-
-### Dependencies
-
-**Required packages in `[project.optional-dependencies]`:**
-```toml
-develop = [
-    "pytest >= 8.1",
-    "pytest-cov",
-    "coverage[toml]",
-    # ... other dev dependencies
-]
-```
-
-### Test Markers
-
-Define markers in `pyproject.toml`:
-
-```toml
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-]
-```
-
-**Usage in tests:**
-```python
-import pytest
-
-@pytest.mark.unit
-def test_basic_functionality():
-    assert True
-
-@pytest.mark.integration
-def test_module_interaction():
-    # Test multiple components together
-    pass
-
-@pytest.mark.slow
-def test_long_running_process():
-    # Tests that take significant time
-    pass
-```
-
----
-
-## Ecosystem Rollout
-
-### PROTEUS Ecosystem Components
-
-The testing infrastructure is designed for:
-- **PROTEUS** - Main coupling framework
-- **CALLIOPE** - Outgassing module
-- **JANUS** - Atmosphere-climate module
-- **MORS** - Stellar evolution module
-- **VULCAN** - Atmospheric chemistry module
-- **ZEPHYRUS** - Escape module
-- **Zalmoxis** - Interior structure module
-- **aragog** - Interior module (alternative)
-
-To be adapted for future modules as needed:
-- **AGNI** (Julia)
-- **OBLIQUA** (Julia)
-- Others
-
-### Current Status
-
-**PROTEUS** ✅ Complete
-- Coverage: 69.23% (target: 80%+)
-- CI duration: ~18 minutes (with dependencies)
-- Features: Hash-based caching, dynamic badges, comprehensive reporting
-
-**CALLIOPE** ✅ Phase 2 Pilot Complete
-- Coverage: 18.68% (branch coverage, auto-ratcheting at 18%)
-- CI duration: ~5 minutes (6-job matrix: 2 OS × 3 Python versions)
-- Features: Coverage ratcheting, Codecov integration, HTML artifacts, comprehensive documentation
-- Status: Reference implementation for ecosystem integration
-- See: [CALLIOPE testing guide](https://proteus-framework.org/CALLIOPE/TESTS) for ratcheting mechanism
-
-**Ecosystem Modules** - Ready for deployment
-- CALLIOPE: ✅ Phase 2 Pilot (use as reference implementation)
-- JANUS, MORS: Phase 2b/2c (template from CALLIOPE)
-- VULCAN, ZEPHYRUS: Need CI setup (can use CALLIOPE pattern)
-- aragog: Already integrated in PROTEUS CI
-
-### Rollout Strategy
-
-#### Phase 1: PROTEUS (Main Repository) ✅ COMPLETE
-
-1. **Setup Infrastructure** ✅
-   - ✅ Create reusable workflow (`.github/workflows/proteus_test_quality_gate.yml`)
-   - ✅ Create CI workflow (`.github/workflows/ci_tests.yml`)
-   - ✅ Update pyproject.toml with pytest/coverage configuration
-   - ✅ Create tools (restructure, validate, analyze scripts)
-   - ✅ Create comprehensive documentation
-
-2. **Implement Testing** ✅
-   - ✅ Run validation script
-   - ✅ Run restructuring script
-   - ✅ Added 68 test files with full coverage
-   - ✅ Tests running locally and in CI
-   - ✅ CI passes with coverage reporting
-
-3. **Establish Baseline** ✅
-   - ✅ Current coverage: 69.23%
-   - ✅ Coverage threshold: 69% (enforcement level)
-   - ✅ Coverage gaps documented
-   - ✅ Improvement plan active
-
-**Key Achievement:** Hash-based caching deployed and validated (saves ~11-15 min on SOCRATES rebuilds)
-
-#### Phase 2: Ecosystem Integration 🚀 STARTING NOW
-
-For each submodule (CALLIOPE, JANUS, MORS, VULCAN, ZEPHYRUS, Zalmoxis, aragog):
-
-### Quick Start: 4-Step Deployment for Ecosystem Modules
-
-**Using CALLIOPE as Reference Implementation**
-
-CALLIOPE (Phase 2 pilot) has completed all ecosystem integration standards and includes innovations beyond the base standard. When implementing for other modules (JANUS, MORS, etc.), use CALLIOPE as a reference:
-
-- Test structure and quality: [CALLIOPE tests](https://github.com/FormingWorlds/CALLIOPE/tree/main/tests)
-- Workflow configuration: [CALLIOPE ci_tests.yml](https://github.com/FormingWorlds/CALLIOPE/blob/main/.github/workflows/ci_tests.yml)
-- Coverage ratcheting: [CALLIOPE update_coverage_threshold.py](https://github.com/FormingWorlds/CALLIOPE/blob/main/tools/update_coverage_threshold.py)
-- Documentation: [CALLIOPE testing guide](https://proteus-framework.org/CALLIOPE/TESTS)
-
-**Step 1: Copy Configuration from CALLIOPE or PROTEUS**
-
-```bash
-# Clone PROTEUS repo if you haven't already
-git clone https://github.com/FormingWorlds/PROTEUS.git
-
-# Copy relevant sections from PROTEUS pyproject.toml
-cp PROTEUS/pyproject.toml <your-module>/pyproject.toml.backup
-```
-
-**Step 2: Update pyproject.toml**
-
-Add these sections to your module's `pyproject.toml`:
-
-```toml
-# pytest configuration
-[tool.pytest.ini_options]
-minversion = "8.1"
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "-ra",
-    "--showlocals",
-]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-]
-
-# Coverage configuration
-[tool.coverage.run]
-branch = true
-source = ["<package_name>"]  # Change to: calliope, janus, mors, vulcan, etc.
-omit = [
-    "*/tests/*",
-    "*/test_*.py",
-    "*/__pycache__/*",
-    "*/conftest.py",
-]
-
-[tool.coverage.report]
-# Coverage threshold - automatically updated by CI when coverage increases (recommended)
-# See: tools/update_coverage_threshold.py for ratcheting mechanism
-# Alternative: manually increase by 5-10% quarterly if not using auto-ratcheting
-fail_under = 30  # Start with realistic threshold
-show_missing = true
-precision = 2
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
-    "if typing.TYPE_CHECKING:",
-    "@abstractmethod",
-    "@abc.abstractmethod",
-]
-
-[tool.coverage.html]
-directory = "htmlcov"
-
-# In [project.optional-dependencies]
-develop = [
-    "pytest >= 8.1",
-    "pytest-cov",
-    "coverage[toml]",
-    # ... your existing dependencies
-]
-```
-
-**Coverage Threshold Guidance:**
-
-**Option 1: Automatic Ratcheting (Recommended - CALLIOPE Pattern)**
-- Set initial baseline (20-30%)
-- Implement `tools/update_coverage_threshold.py`
-- CI automatically increases threshold when coverage improves
-- No manual updates needed
-- See CALLIOPE for reference implementation
-
-**Option 2: Manual Quarterly Updates (Fallback)**
-- **Start:** 20-30% (realistic baseline)
-- **Q2:** Increase to 35-40%
-- **Q4:** Increase to 50-60%
-- **Year 2:** Target 80%+
-
-Example progression with automatic ratcheting:
-
-```toml
-# Initial setup
-fail_under = 30  # January 2026 (starting point)
-# After this, CI auto-updates as tests are added:
-fail_under = 34  # Auto-updated by CI
-fail_under = 42  # Auto-updated by CI
-fail_under = 58  # Auto-updated by CI
-fail_under = 80  # Auto-updated by CI
-# Reaches 80%+ naturally through continuous improvement
-```
-
-**Advanced: Automatic Coverage Ratcheting (CALLIOPE Innovation)**
-
-For sustainable growth without manual threshold updates, CALLIOPE implements automatic ratcheting:
-
-```toml
-[tool.coverage.report]
-# Coverage threshold - automatically updated by CI when coverage increases
-# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml
-# This value can only increase or stay the same (coverage ratcheting mechanism)
-fail_under = 18
-```
-
-Implementation steps:
-
-1. Create `tools/update_coverage_threshold.py` to read current coverage and update threshold
-2. Add CI step that runs on main branch (specific Python/OS combo) to trigger updates
-3. Commit updates with `[skip ci]` to prevent cascade builds
-4. Document mechanism in pyproject.toml for team visibility
-
-Benefits:
-- ✅ Automatic progress tracking
-- ✅ Sustainable threshold growth
-- ✅ Eliminates manual updates
-- ✅ Enforces continuous improvement
-
-See [CALLIOPE implementation](https://github.com/FormingWorlds/CALLIOPE/blob/main/tools/update_coverage_threshold.py) for reference code and [CALLIOPE testing guide](https://proteus-framework.org/CALLIOPE/TESTS) for detailed documentation.
-
-**Step 3: Create/Update CI Workflow**
-
-Create `.github/workflows/ci_tests.yml` in your module. Two options:
-
-**Option A: Use Reusable Workflow (Recommended)**
-
-```yaml
-name: Tests
-
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
-  workflow_dispatch:
-
-jobs:
-  test:
-    uses: FormingWorlds/PROTEUS/.github/workflows/proteus_test_quality_gate.yml@main
-    with:
-      python-version: '3.13'
-      coverage-threshold: 30
-      working-directory: '.'
-      pytest-args: ''
-```
-
-**Option B: Full Custom Workflow (More Control)**
-
-Copy from PROTEUS `.github/workflows/ci_tests.yml` and customize for your module's dependencies.
-
-**Step 4: Validate and Test**
-
-```bash
-# 1. Validate test structure mirrors source
-bash tools/validate_test_structure.sh
-
-# 2. Run tests locally
-pytest
-
-# 3. Check coverage
-pytest --cov
-
-# 4. Push to GitHub
-git push
-
-# 5. Monitor CI at: https://github.com/FormingWorlds/<module>/actions
-```
-
-#### Advanced Features: Hash-Based Caching Strategy
-
-##### Why Caching Matters
-
-For modules with external dependencies (SOCRATES, AGNI, VULCAN), caching can save **10-15 minutes per run**.
-
-**PROTEUS Implementation:**
-- Compiles SOCRATES only when source code changes
-- Restores Julia dependencies only when Project.toml/Manifest.toml changes
-- Uses hash-based cache keys for deterministic invalidation
-
-##### Hash-Based Caching Pattern
-
-```yaml
-# Clone dependencies BEFORE cache restore (critical!)
-# Pin to specific commit/tag for reproducibility and security
-- name: Clone SOCRATES
-  run: git clone --depth 1 --branch v1.2.3 https://github.com/nichollsh/SOCRATES.git socrates
-
-# Now cache restore can hash the source files
-- name: Restore SOCRATES cache
-  uses: actions/cache/restore@v4
-  id: cache-socrates
-  with:
-    path: socrates/
-    # Hash changes = cache miss = recompile (correct behavior)
-    key: |\n      socrates-${{ runner.os }}-${{ hashFiles(\n        'socrates/**/*.f90',\n        'socrates/**/*.c'\n      ) }}
-    restore-keys: |
-      socrates-${{ runner.os }}-
-
-# Build if cache missed
-- name: Build SOCRATES (if needed)
-  if: steps.cache-socrates.outputs.cache-hit != 'true'
-  run: cd socrates && ./build_code
-
-# Save for next run
-- name: Save SOCRATES cache
-  if: steps.cache-socrates.outputs.cache-hit != 'true'
-  uses: actions/cache/save@v4
-  with:
-    path: socrates/
-    key: socrates-${{ runner.os }}-${{ hashFiles('socrates/**/*.f90', 'socrates/**/*.c') }}
-```
-
-**Key Principles:**
-1. **Clone before cache restore** - Lets hashFiles() work
-2. **Use source file hashes** - Cache invalidates when code changes
-3. **Conditional builds** - Only compile if cache missed
-4. **Conditional saves** - Only save if not already cached
-
-##### Performance Expectations
-
-| Scenario | Duration | Notes |
-|----------|----------|-------|
-| First run (no cache) | 45-60 min | Builds all dependencies |
-| Cache hit (no changes) | 12-18 min | Uses pre-built binaries |
-| After source change | 25-35 min | Recompiles affected dependencies |
-
-##### Troubleshooting Cache Issues
-
-**Problem:** Cache always misses
-
-```
-Key: 'socrates-Linux-' (empty hash?)
-```
-
-**Solution:** Verify directories exist before cache restore step
-
-**Problem:** Old cached binaries used after major refactor
-
-```
-Key: 'socrates-Linux-old_hash' still matched
-```
-
-**Solution:** Update hash patterns when source structure changes
-
----
-
-#### Phase 3: Monitoring & Improvement (Parallel with Phase 2)
-
-```yaml
-name: CI
-
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
-  workflow_dispatch:
-
-jobs:
-  test-matrix:
-    name: Test Suite
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.11', '3.12', '3.13']
-        os: [ubuntu-latest]
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[develop]"
-
-      - name: Display installed packages
-        run: pip list
-
-      - name: Run tests with coverage
-        run: |
-          pytest \
-            --cov=src \
-            --cov-report=term-missing \
-            --cov-report=xml \
-            --cov-report=html \
-            --cov-fail-under=30 \
-            tests/
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: matrix.python-version == '3.11'
-        with:
-          files: ./coverage.xml
-          flags: unittests
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload coverage HTML report
-        uses: actions/upload-artifact@v4
-        if: matrix.python-version == '3.11'
-        with:
-          name: coverage-report
-          path: htmlcov/
-          retention-days: 30
-
-  lint:
-    name: Code Quality
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[develop]"
-
-      - name: Run ruff linting
-        run: ruff check src/ tests/ || true
-
-      - name: Run ruff formatting check
-        run: ruff format --check src/ tests/ || true
-```
-
-**3. Test Structure**
-
-Organize tests to mirror source:
-
-```bash
-# Analyze current structure
-find src/<package> -type d
-find tests -type d
-
-# Create missing directories
-mkdir -p tests/<matching_structure>
-
-# Add __init__.py files
-find tests -type d -exec touch {}/__init__.py \;
-
-# Create basic test files
-# tests/<module>/test_<module>.py
-```
-
-**4. Validation Checklist**
-
-For each submodule:
-
-- [ ] Configuration added to pyproject.toml
-- [ ] CI workflow created
-- [ ] Test dependencies installed
-- [ ] Test structure mirrors source
-- [ ] tests/conftest.py created
-- [ ] .gitignore updated
-- [ ] Tests run locally: `pytest --cov`
-- [ ] Coverage meets threshold
-- [ ] CI passes on push
-- [ ] Codecov integration (optional)
-
-#### Phase 3: Monitoring & Improvement
-
-**Continuous Tasks:**
-
-1. **Coverage Tracking**
-   - Monitor trends weekly
-   - Create issues for gaps
-   - Gradually increase thresholds
-
-2. **Documentation**
-   - Add badges to READMEs
-   - Update contributor guides
-   - Create testing examples
-
-3. **Maintenance**
-   - Review workflows quarterly
-   - Update Python versions
-   - Optimize CI performance
-   - Refactor as code evolves
-
-**Coverage Improvement Strategy:**
-
-```
-Current State → Baseline (e.g., 5-50%)
-    ↓
-Year 1: +10-20% increase
-    ↓
-Year 2: +10-20% increase
-    ↓
-Goal: 80%+ coverage
-```
-
-**Coverage Threshold Growth Plan:**
-
-**Recommended: Automatic Ratcheting (CALLIOPE Pattern)**
-
-```toml
-# PROTEUS Example (auto-ratcheting active)
-fail_under = 69  # Auto-updated by CI as coverage increases
-
-# CALLIOPE Example (auto-ratcheting active)
-fail_under = 18  # Auto-updated by CI as coverage increases
-```
-
-**Alternative: Manual Updates (if not using auto-ratcheting)**
-
-Start with realistic baseline, increase gradually:
-
-```toml
-# New Module Example (manual quarterly updates)
-fail_under = 30   # January 2026
-fail_under = 40   # April 2026 (+10%)
-fail_under = 50   # July 2026 (+10%)
-fail_under = 60   # October 2026 (+10%)
-fail_under = 70   # January 2027 (+10%)
-```
-
-**Why automatic ratcheting?**
-- ✅ Zero maintenance: No manual updates needed
-- ✅ Continuous improvement: Threshold grows with tests
-- ✅ Never regresses: Coverage can only increase or stay same
-- ✅ Motivating: Visible automatic progress
-- ✅ Sustainable: Doesn't block development
-
-**Why this pace (if manual)?**
-- ✅ Realistic: Allows time to write tests
-- ✅ Motivating: Visible progress
-- ✅ Sustainable: Doesn't block development
-- ✅ Long-term: Reaches 80%+ in ~18 months
+1. Unit test coverage targets: grid management 7.6% → 50%, plotting modules 5–23% → 40%
+2. Aim for overall 30% fast gate (from 18%) and 70%+ full gate (approaching ecosystem average)
 
 ---
 
 ## Developer Workflow
 
-### Local Development Cycle
-
-```
-1. Write/modify code
-    ↓
-2. Write/update tests
-    ↓
+1. Write or modify code
+2. Write or update tests
 3. Run tests locally: pytest
-    ↓
 4. Check coverage: pytest --cov
-    ↓
 5. Fix failing tests
-    ↓
 6. Commit changes
-    ↓
 7. Push → CI runs automatically
-    ↓
 8. Monitor CI results
-```
 
 ### Adding New Code
 
@@ -945,6 +97,7 @@ When adding a new module or feature:
 ### Test Writing Guidelines
 
 **Basic test structure:**
+
 ```python
 """
 Tests for <package>.<module>
@@ -987,6 +140,7 @@ def test_performance():
 ```
 
 **Using fixtures (conftest.py):**
+
 ```python
 """Test fixtures and configuration"""
 from __future__ import annotations
@@ -1052,6 +206,7 @@ Before committing:
 **Cause:** pytest-cov not installed
 
 **Solution:**
+
 ```bash
 # Install pytest-cov
 pip install pytest-cov
@@ -1068,6 +223,7 @@ python -c "import pytest_cov; print('pytest-cov:', pytest_cov.__version__)"
 **Cause:** Test coverage dropped below configured threshold
 
 **Solution:**
+
 ```bash
 # Identify uncovered code
 pytest --cov --cov-report=term-missing
@@ -1084,6 +240,7 @@ coverage report --show-missing --skip-covered
 **Cause:** Test discovery issues
 
 **Solution:**
+
 ```bash
 # Check what pytest discovers
 pytest --collect-only
@@ -1103,6 +260,7 @@ pip install -e ".[develop]"
 **Cause:** Package not installed or wrong path
 
 **Solution:**
+
 ```bash
 # Reinstall in editable mode
 pip install -e ".[develop]"
@@ -1122,17 +280,20 @@ ls -la src/<package>/
 **Cause:** Environment differences
 
 **Solution:**
+
 - Check Python version matches
 - Verify all dependencies in pyproject.toml
 - Check for OS-specific code (paths, etc.)
 - Review CI logs for specific errors
 - Test in clean virtual environment
 
+
 #### 6. "Ruff linting fails"
 
 **Cause:** Code style violations
 
 **Solution:**
+
 ```bash
 # Check what fails
 ruff check src/ tests/
@@ -1173,8 +334,8 @@ pytest --pdb
 
 1. Check this documentation
 2. Review [tools/README.md](../tools/README.md)
-3. Check pytest documentation: https://docs.pytest.org/
-4. Check coverage.py documentation: https://coverage.readthedocs.io/
+3. Check [pytest documentation](https://docs.pytest.org/)
+4. Check [coverage.py documentation](https://coverage.readthedocs.io/)
 5. Open an issue on GitHub
 
 ---
@@ -1201,7 +362,7 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Physics: Ensure physically valid inputs (e.g., T > 0K) unless testing error handling
 
 3. **Coverage Requirements**
-   - Check `pyproject.toml` [tool.coverage.report] `fail_under` for current threshold
+   - Check `pyproject.toml` `tool.coverage.report` `fail_under` for current threshold
    - Coverage threshold automatically increases on main branch (never decreases)
    - All PRs must pass the coverage threshold defined in CI
 
@@ -1254,19 +415,20 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Consistent across entire ecosystem
    - Enables automated validation
 
-2. **One test file per source file**
+1. **One test file per source file**
    - When practical
    - Keeps tests organized
    - Clear 1:1 mapping
    - Use `tools/validate_test_structure.sh` to verify
 
-3. **Group related tests**
+1. **Group related tests**
    - Use test classes for related tests
    - Share fixtures via `conftest.py`
    - Organize by functionality within test files
 
-4. **Use descriptive names**
-   ```python
+1. **Use descriptive names**
+
+```python
    # Good: Clear what is being tested
    def test_temperature_conversion_celsius_to_kelvin():
        """Test conversion from Celsius to Kelvin returns correct value."""
@@ -1276,9 +438,9 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    # Less good: Vague, unclear what is tested
    def test_conversion():
        pass
-   ```
+```
 
-5. **Document test intent**
+1. **Document test intent**
    - Include docstrings explaining what scenario is tested
    - Add inline comments for non-obvious assertions
    - Reference formulas, physical principles, or domain knowledge
@@ -1292,26 +454,26 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Error handling and edge cases
    - Public APIs and interfaces
 
-2. **Set realistic thresholds**
+1. **Set realistic thresholds**
    - Start: 20-30% for new modules
    - Q2 target: 35-40%
    - Q4 target: 50-60%
    - Long-term: 80%+ (ecosystem standard)
    - Don't chase 100% - focus on value
 
-3. **Use exclude patterns strategically**
+1. **Use exclude patterns strategically**
    - Debug code and development utilities
    - Abstract methods that subclasses implement
    - Type checking blocks (`if TYPE_CHECKING:`)
    - Intentionally untestable code (mark with `# pragma: no cover`)
 
-4. **Track trends over time**
+1. **Track trends over time**
    - Coverage going up? ✓ Good progress
    - Coverage dropping? Investigate and address
    - Use automatic ratcheting (CALLIOPE pattern) to prevent regression
    - Review coverage reports in PR reviews
 
-5. **Prioritize based on risk**
+1. **Prioritize based on risk**
    - High-risk code: Aim for 95%+ coverage
    - Medium-risk code: Aim for 80%+ coverage
    - Low-risk code: Aim for 60%+ coverage
@@ -1325,8 +487,9 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Add inline comments for non-obvious assertions
    - Document the physical principle being validated
 
-2. **Follow the AAA pattern**
-   ```python
+1. **Follow the AAA pattern**
+
+```python
    def test_atmospheric_pressure_at_surface():
        """Test that surface pressure calculation matches expected value."""
        # Arrange: Set up test data
@@ -1339,26 +502,26 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
        # Assert: Verify the result
        expected = 101325.0  # Pa (standard atmosphere)
        assert pressure == pytest.approx(expected, rel=0.01)
-   ```
+```
 
-3. **Test one concept per test function**
+1. **Test one concept per test function**
    - Each test should validate a single behavior
    - If a test has multiple asserts, they should all relate to the same concept
    - Split complex scenarios into multiple focused tests
 
-4. **Use appropriate assertions**
+1. **Use appropriate assertions**
    - For floats: `pytest.approx(value, rel=1e-5)` or `np.testing.assert_allclose`
    - For arrays: `np.testing.assert_array_equal` or `assert_allclose`
    - For exceptions: `pytest.raises(ExceptionType)`
    - For warnings: `pytest.warns(WarningType)`
 
-5. **Mock external dependencies**
+1. **Mock external dependencies**
    - File I/O operations
    - Network calls and APIs
    - Heavy computations (for unit tests)
    - System calls and OS interactions
 
-   ```python
+```python
    from unittest.mock import Mock, patch
 
    @pytest.mark.unit
