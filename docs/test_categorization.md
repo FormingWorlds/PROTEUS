@@ -11,31 +11,26 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 ### @pytest.mark.unit
 **Purpose**: Fast validation of Python logic with mocked physics
 **Runtime**: <100ms per test (target)
-**Count**: 23 tests
+**Count**: 10 tests (as of 2026-01-06)
 **Runs In**: `ci-pr-checks.yml` (PR validation, ~2-5 minutes total)
 **Coverage**: Python interfaces, configuration parsing, utilities
 
-> See [Testing Infrastructure - Best Practices](test_infrastructure.md#best-practices) for guidance on writing effective unit tests.
-
-**Example Tests**:
-- `tests/config/test_config.py` - Configuration system
-- `tests/test_cli.py` - Command-line interface
-- `tests/grid/test_grid.py` - Grid generation utilities
-- `tests/plot/test_cpl_*.py` - Plotting functions
+**Implemented Tests**:
+- `tests/config/test_config.py` - Configuration system (3 tests)
+- `tests/test_cli.py` - Command-line interface (3 tests)
+- `tests/test_init.py` - Package initialization (1 test)
+- `tests/plot/test_cpl_colours.py` - Color mapping (2 tests)
+- `tests/plot/test_cpl_helpers.py` - Helper functions (1 test)
 
 ### @pytest.mark.smoke
 **Purpose**: Quick validation that binaries work with new Python code
 **Runtime**: <30s per test (target)
-**Count**: 0 currently (none implemented yet)
-**Runs In**: `ci-pr-checks.yml` (PR validation, optional)
-**Coverage**: Binary execution, real atmospheric models
+**Count**: 1 test (as of 2026-01-06)
+**Runs In**: `ci-pr-checks.yml` (PR validation, ~3-5 min with unit tests)
+**Coverage**: Binary execution, real physics module initialization
 
-**When to use**: Tests that run a physics module for 1 timestep at low resolution
-
-**Example tests** (not yet implemented):
-- Single SPIDER timestep at 10 radial points
-- Single JANUS iteration at 20 atmospheric layers
-- SOCRATES single spectral calculation
+**Implemented Tests**:
+- `tests/integration/test_smoke_minimal.py::test_proteus_dummy_init` - PROTEUS initialization with dummy modules (0.3s)
 
 ### @pytest.mark.integration
 **Purpose**: Multi-module coupling and interaction tests
