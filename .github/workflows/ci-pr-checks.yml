@@ -147,10 +147,14 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
-          # Run diff-cover from the checked-out git repo to access history
-          git config --global --add safe.directory /__w/PROTEUS/PROTEUS
+          # Fetch base branch and generate diff file to avoid remote fetch issues in container
           cd /__w/PROTEUS/PROTEUS
-          diff-cover /opt/proteus/coverage.xml --compare-branch "${BASE_REF}" --fail-under=80
+          git config --global --add safe.directory /__w/PROTEUS/PROTEUS
+          git fetch --no-tags --prune --depth=100 origin "${BASE_REF}"
+          git diff "origin/${BASE_REF}...HEAD" > /tmp/pr-changes.diff
+
+          # Run diff-cover using the prepared diff file
+          diff-cover /opt/proteus/coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
 
       - name: Ratchet fast coverage threshold
         continue-on-error: true
