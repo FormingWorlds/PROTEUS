@@ -148,6 +148,8 @@ jobs:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
           cd /opt/proteus
+          # Ensure Git trusts the working directory inside the container
+          git config --global --add safe.directory /opt/proteus
           git fetch origin "$BASE_REF"
           diff-cover coverage.xml --compare-branch "origin/${BASE_REF}" --fail-under=80
 
