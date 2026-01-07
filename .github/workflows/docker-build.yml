@@ -25,6 +25,7 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: write  # Required to trigger other workflows
 
 env:
   REGISTRY: ghcr.io
