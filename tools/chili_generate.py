@@ -71,7 +71,7 @@ for p in ("earth","venus"):
     grd[p]["ref_config"] = f"input/chili/intercomp/{p}.toml"
 
 # ------------------------
-# TRAPPIST-1 b/e/α (Table 4 of protocol paper)
+# TRAPPIST-1 b/e/alpha (Table 4 of protocol paper)
 tnow = 7.6 # Gyr
 for p in ("tr1a","tr1b","tr1e"):
     cfg[p] = deepcopy(cfg["base"])

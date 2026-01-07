@@ -130,7 +130,7 @@ def DownloadModernSpectrum(name, distance):
             wl_arr = []
             fl_arr = []
             for n,w in enumerate(spec['WAVELENGTH']):
-                wl = w * 0.1  # Convert å to nm
+                wl = w * 0.1  # Convert angstrom to nm
                 fl = float(spec['FLUX'][n])*10.0 * (distance / r_scale )**2  # Convert units and scale flux
 
                 negaflux = negaflux or (fl <= 0)
