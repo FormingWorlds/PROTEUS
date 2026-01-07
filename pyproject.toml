@@ -46,7 +46,7 @@ dependencies = [
     "attrs",
     "cattrs",
     "fwl-janus>=24.11.05",
-    "fwl-mors>=25.07.15",
+    "fwl-mors>=26.01.02",
     "fwl-calliope>=25.05.01",
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.01.06",

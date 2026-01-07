@@ -69,10 +69,11 @@ age_ini = 0.05
 
 [star.mors]
 age_now = 7.6
-spec = "stellar_spectra/Named/trappist-1.txt"
 rot_pcntle = 50.0
 rot_period = "none"
 tracks = "spada"
+star_name = "trappist-1"
+spectrum_source = "muscles"
 
 [orbit]
 module = "none"
