@@ -95,3 +95,16 @@ jobs:
       - name: Post-build cleanup
         if: always()
         run: docker system prune -af --volumes
+  trigger-nightly-science:
+    name: Trigger Nightly Science Tests
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.ref == 'refs/heads/tl/test_ecosystem_v5')
+    steps:
+      - name: Trigger nightly science workflow
+        run: |
+          gh workflow run "CI - Nightly Science Validation" \
+            --ref tl/test_ecosystem_v5 \
+            --repo FormingWorlds/PROTEUS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
