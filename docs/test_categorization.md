@@ -4,14 +4,14 @@ This document explains how PROTEUS tests are categorized and how they flow throu
 
 > **Related documentation:** For complete testing infrastructure details including test structure, configuration, and ecosystem rollout, see [Testing Infrastructure](test_infrastructure.md).
 
-Also see the consolidated CI status and planning in [CI/CD Status and Roadmap](ci_status_and_roadmap.md).
+Also see the consolidated CI status and planning in [CI/CD Status and Roadmap](test_infrastructure.md#cicd-status-and-roadmap-as-of-2026-01-06).
 
 ## Test Categories
 
 All tests in PROTEUS are marked with pytest markers to enable targeted test selection:
 
 ### @pytest.mark.unit
- 
+
 **Purpose**: Fast validation of Python logic with mocked physics
 **Runtime**: <100ms per test (target)
 
@@ -30,7 +30,7 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 
 
 ### @pytest.mark.smoke
- 
+
 **Purpose**: Quick validation that binaries work with new Python code
 **Runtime**: <30s per test (target)
 **Count**: 1 test (as of 2026-01-06)
@@ -39,12 +39,12 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 
 
 **Implemented Tests**:
- 
+
 - `tests/integration/test_smoke_minimal.py::test_proteus_dummy_init` - PROTEUS initialization with dummy modules (0.3s)
 
 
 ### @pytest.mark.integration
- 
+
 **Purpose**: Multi-module coupling and interaction tests
 
 **Runtime**: Minutes to hours
@@ -121,7 +121,7 @@ pytest -m "unit and not skip" --ignore=tests/examples \
 
 
 ### Nightly Science Validation (`ci-nightly-science.yml`)
- 
+
 **Trigger**: Scheduled at 03:00 UTC daily (1 hour after Docker build)
 **Duration**: ~4-6 hours total
 **Strategy**:
@@ -148,7 +148,7 @@ pytest -m "integration and not slow" --ignore=tests/examples \
 
 
 ### Directory Structure
- 
+
 ```text
 tests/
 ├── examples/          # Example/demonstration tests (excluded from CI)
@@ -184,19 +184,24 @@ tests/
 
 ### Marker Counts
 
-| Marker | Count | Location |
+Implemented (as of 2026-01-06)
 
-|--------|-------|----------|
-| `@pytest.mark.unit` | 23 | PR checks (~5 min) |
-| `@pytest.mark.smoke` | 0 | PR checks (optional) |
+| Marker | Count | Runs In |
+| --- | --- | --- |
+| `@pytest.mark.unit` | 10 | PR checks (~2–5 min) |
+| `@pytest.mark.smoke` | 1 | PR checks (~3–5 min with unit) |
+| `@pytest.mark.integration` | 0 | Nightly |
+| `@pytest.mark.slow` | 0 | Nightly |
+| `@pytest.mark.skip` | 9 | Excluded from CI |
 
-| `@pytest.mark.integration` | 23 | Nightly (~2 hr) |
+Planned Targets
 
-| `@pytest.mark.slow` | 0 | Nightly (optional) |
-| `@pytest.mark.skip` | 9 | Not executed |
-| **Total Countable** | **46** | — |
-
-| **Placeholder/Skipped** | **9** | — |
+| Marker | Target Count | Notes |
+| --- | --- | --- |
+| `@pytest.mark.unit` | 23 | Coverage expansion priority |
+| `@pytest.mark.smoke` | 5–7 | One per major module |
+| `@pytest.mark.integration` | 23 | Multi-module coupling |
+| `@pytest.mark.slow` | 3–5 | Full scenario validations |
 
 | **Grand Total** | **55** | — |
 

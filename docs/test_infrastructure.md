@@ -47,6 +47,7 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 ### CI/CD Architecture (Docker-based)
 
 - Prebuilt image: `ghcr.io/formingworlds/proteus:latest` built nightly (~02:00 UTC) via `.github/workflows/docker-build.yml` and on main dependency changes
+- Feature branch images: Some feature branches use branch-tagged images (e.g., `ghcr.io/formingworlds/proteus:tl-test_ecosystem_v4`) to validate Docker changes before promotion to `latest`.
 - Environment: compiled physics (SOCRATES, AGNI, PETSc) + Python deps from `pyproject.toml`; data paths set via `FWL_DATA`, `RAD_DIR`, `AGNI_DIR`, `PETSC_DIR`
 - PR workflow: `ci-pr-checks.yml` runs inside the image, overlays PR code, and uses make for smart rebuilds of changed sources
 - Nightly workflow: `ci-nightly-science.yml` uses the same image for integration and slow tests, with coverage ratcheting
@@ -763,6 +764,8 @@ def test_conversion():
    - Add inline comments for non-obvious assertions
    - Reference formulas, physical principles, or domain knowledge
    - See [CALLIOPE test files](https://github.com/FormingWorlds/CALLIOPE/tree/main/tests) for examples
+
+   Note: Placeholder tests exist to maintain directory structure; see the placeholder test list in [Test Categorization](test_categorization.md).
 
 ### Coverage Strategy
 

@@ -5,9 +5,11 @@ name: CI - Nightly Science Validation
 # Triggers: Nightly at 03:00 UTC (1 hour after Docker build completes)
 #
 # Test Categories (see docs/test_infrastructure.md):
-#   @pytest.mark.integration  -> 23 multi-module coupling tests
+#   @pytest.mark.integration  -> Implemented: 0 (as of 2026-01-06); Planned: 23 multi-module coupling tests
 #   @pytest.mark.slow         -> Full scientific validation tests (hours-long simulations)
 #   @pytest.mark.skip         -> 9 placeholder tests excluded from CI
+#
+# Source of truth for counts and targets: docs/test_infrastructure.md
 #
 # Strategy:
 #   Job 1: Run "slow or integration" tests (~4 hours total)

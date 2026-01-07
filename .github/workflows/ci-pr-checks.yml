@@ -10,9 +10,11 @@ name: CI - Fast PR Checks
 #   6. Exclude placeholder tests (@pytest.mark.skip) - these are placeholders for future implementation
 #
 # Test Categories (see docs/test_infrastructure.md):
-#   @pytest.mark.unit    -> 23 fast tests with mocked physics (target: <100ms each)
-#   @pytest.mark.smoke   -> Quick binary validation (target: <30s each)
+#   @pytest.mark.unit    -> 10 fast tests implemented (as of 2026-01-06); planned target: 23 (target: <100ms each)
+#   @pytest.mark.smoke   -> 1 smoke test implemented (as of 2026-01-06); planned target: 5–7 (target: <30s each)
 #   @pytest.mark.skip    -> 9 placeholder tests not yet implemented (excluded from CI)
+#
+# Source of truth for counts and targets: docs/test_infrastructure.md
 
 on:
   pull_request:
