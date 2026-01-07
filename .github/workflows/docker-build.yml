@@ -13,6 +13,7 @@ on:
     branches:
       - main
       - 'tl/test_ecosystem_v4'  # Temporary: allow testing on feature branch
+      - 'tl/test_ecosystem_v5'  # Temporary: allow testing on feature branch
     paths:
       - 'pyproject.toml'
       - 'environment.yml'
