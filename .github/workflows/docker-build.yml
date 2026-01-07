@@ -103,7 +103,7 @@ jobs:
     steps:
       - name: Trigger nightly science workflow
         run: |
-          gh workflow run "CI - Nightly Science Validation" \
+          gh workflow run ci-nightly-science.yml \
             --ref tl/test_ecosystem_v5 \
             --repo FormingWorlds/PROTEUS
         env:
