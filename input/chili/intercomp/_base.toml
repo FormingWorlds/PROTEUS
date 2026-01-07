@@ -117,8 +117,8 @@ spectral_bands = "48"
 p_top = 1e-04
 p_obs = 0.02
 surf_material = "surface_albedos/Hammond24/lunarmarebasalt.dat"
-num_levels = 50
-chemistry = "none"
+num_levels = 45
+chemistry = "eq"
 solve_energy = true
 solution_atol = 0.08
 solution_rtol = 0.1
@@ -133,7 +133,7 @@ ls_default = 1
 max_steps = 70
 perturb_all = true
 mlt_criterion = "s"
-fastchem_floor = 273.0
+fastchem_floor = 500.0
 ini_profile = "isothermal"
 
 [atmos_clim.dummy]

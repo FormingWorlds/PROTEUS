@@ -75,11 +75,6 @@ tracks = "spada"
 star_name = "trappist-1"
 spectrum_source = "muscles"
 
-[star.dummy]
-Teff = 5772.0
-radius = 1.0
-calculate_radius = false
-
 [orbit]
 module = "none"
 semimajoraxis = 0.01154
@@ -93,15 +88,6 @@ mass_sat = 7.347e+22
 semimajoraxis_sat = 300000000.0
 instellation_method = "sma"
 instellationflux = 1.0
-
-[orbit.dummy]
-H_tide = 1e-07
-Phi_tide = "<0.3"
-Imk2 = 0.0
-
-[orbit.lovepy]
-visc_thresh = 1000000000.0
-ncalc = 1000
 
 [struct]
 corefrac = 0.55
@@ -148,19 +134,6 @@ perturb_all = true
 mlt_criterion = "l"
 fastchem_floor = 100.0
 
-[atmos_clim.janus]
-spectral_group = "none"
-spectral_bands = "none"
-p_top = 1e-05
-p_obs = 0.002
-F_atm_bc = 0
-num_levels = 90
-tropopause = "none"
-overlap_method = "ee"
-
-[atmos_clim.dummy]
-gamma = 0.01
-height_factor = 3.0
 
 [atmos_chem]
 module = "vulcan"
@@ -191,9 +164,6 @@ Pxuv = 5e-05
 efficiency = 0.1
 tidal = true
 
-[escape.dummy]
-rate = 0.0
-
 [interior]
 module = "spider"
 melting_dir = "Monteux-600"
@@ -215,36 +185,6 @@ solver_type = "bdf"
 tsurf_atol = 10.0
 tsurf_rtol = 0.02
 
-[interior.aragog]
-logging = "ERROR"
-ini_tmagma = "none"
-basal_temperature = 7000
-init_file = "none"
-num_levels = 100
-initial_condition = 1
-tolerance = 1e-10
-inner_boundary_condition = 1
-inner_boundary_value = 4000
-conduction = true
-convection = true
-gravitational_separation = false
-mixing = false
-dilatation = false
-mass_coordinates = false
-tsurf_poststep_change = 30
-event_triggering = true
-bulk_modulus = 260000000000.0
-
-[interior.dummy]
-ini_tmagma = 3300.0
-tmagma_atol = 30.0
-tmagma_rtol = 0.05
-mantle_tliq = 2700.0
-mantle_tsol = 1700.0
-mantle_rho = 4550.0
-mantle_cp = 1792.0
-H_radio = 0.0
-
 [outgas]
 fO2_shift_IW = 4.0
 module = "calliope"
@@ -265,9 +205,6 @@ include_CO = true
 rtol = 0.0001
 xtol = 1e-06
 solubility = true
-
-[outgas.atmodeller]
-some_parameter = "some_value"
 
 [delivery]
 module = "none"
@@ -293,21 +230,5 @@ SH_ratio = 0.0
 S_kg = 0.0
 S_ppmw = 0.0
 
-[delivery.volatiles]
-H2O = 0
-CO2 = 0
-N2 = 0
-S2 = 0
-SO2 = 0
-H2S = 0
-NH3 = 0
-H2 = 0
-CH4 = 0
-CO = 0
-
 [observe]
 synthesis = "none"
-
-[observe.platon]
-downsample = 8
-clip_vmr = 1e-08
