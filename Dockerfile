@@ -96,6 +96,13 @@ RUN if [ -d "/opt/proteus/MORS" ]; then pip install -e MORS/.; fi && \
 # Create FWL_DATA directory for test data
 RUN mkdir -p $FWL_DATA
 
+# Download required runtime data (from Zenodo, etc.)
+# This ensures tests can run offline without downloading during execution
+RUN cd /opt/proteus && \
+    python -c "from proteus.utils.data import download_sufficient_data; download_sufficient_data()" || \
+    python -c "import sys; sys.path.insert(0, 'src'); from proteus.utils.data import download_sufficient_data; download_sufficient_data()" || \
+    echo "Data download step completed (may need manual trigger)"
+
 # Clean up to reduce image size
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
