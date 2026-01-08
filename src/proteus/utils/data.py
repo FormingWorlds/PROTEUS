@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import subprocess as sp
+import zipfile
 from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 from proteus.utils.helper import safe_rm
+from proteus.utils.phoenix_helper import phoenix_param, phoenix_to_grid
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -74,6 +76,68 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
     # Return status indicating that file/folder is invalid, if failed
     log.error(f"Could not obtain data for Zenodo record {zenodo_id}")
     return False
+
+def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
+    """
+    Download a single file from a Zenodo record into the specified local folder.
+
+    Inputs
+    ------
+    zenodo_id : str
+        Zenodo record ID to download from.
+    folder_dir : Path
+        Local directory where the file will be downloaded.
+    zenodo_path : str
+        Path/filename inside the Zenodo record, e.g. "subdir/file.txt" or "file.txt".
+
+    Returns
+    -------
+    bool
+        True if download succeeded, False otherwise.
+    """
+
+    # Where to log zenodo_get output
+    out = os.path.join(GetFWLData(), "zenodo_get_file.log")
+    log.debug(f"    zenodo_get (file {zenodo_path}), logging to {out}")
+
+    # Make sure local base directory exists
+    folder_dir.mkdir(parents=True, exist_ok=True)
+
+    # Local target path (preserves any subdirectory structure in zenodo_path)
+    target_path = folder_dir / zenodo_path
+
+    for i in range(MAX_ATTEMPTS):
+
+        # Remove any existing copy of the file
+        safe_rm(target_path)
+
+        # Make sure parent directory exists (in case zenodo_path contains subdirs)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Try making request: use -g to select just this path/pattern
+        with open(out, 'w') as hdl:
+            proc = sp.run(
+                ["zenodo_get", zenodo_id, "-o", str(folder_dir), "-g", zenodo_path],
+                stdout=hdl,
+                stderr=hdl,
+            )
+
+        # Worked ok?
+        if (proc.returncode == 0) and target_path.exists():
+            return True
+
+        log.warning(
+            f"Failed to get file '{zenodo_path}' from Zenodo (ID {zenodo_id}), "
+            f"attempt {i+1}/{MAX_ATTEMPTS}"
+        )
+        sleep(RETRY_WAIT)
+
+    # Return status indicating failure
+    log.error(
+        f"Could not obtain file '{zenodo_path}' from Zenodo record {zenodo_id}"
+    )
+    return False
+
 
 def md5(_fname):
     """Return the md5 hash of a file."""
@@ -429,6 +493,108 @@ def download_stellar_spectra():
         desc = 'stellar spectra'
     )
 
+def download_solar_spectrum():
+    """
+    Download NREL solar spectrum
+    """
+    named_zenodo_id = "15721440"
+    data_dir   = GetFWLData() / "stellar_spectra"
+    folder_dir = data_dir / "solar"
+    filename = "sun.txt"
+    log.info(f"Downloading solar spectrum {filename}")
+
+    return get_zenodo_file(
+        zenodo_id=named_zenodo_id,
+        folder_dir=folder_dir,
+        zenodo_path=filename,
+    )
+
+def download_all_solar_spectra():
+    """
+    Download all solar spectra (nrel, VPL past, VPL present, VPL future)
+    """
+    log.info("Downloading solar spectra to 'solar' folder")
+
+    return download_zenodo_folder(
+        zenodo_id='17981836',
+        folder_dir=GetFWLData() / "stellar_spectra" / "solar")
+
+def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
+    """
+    Download and unpack a PHOENIX spectra ZIP like
+    FeH+0.5_alpha+0.0_phoenixMedRes_R05000.zip
+    into <FWL_DATA>/stellar_spectra/PHOENIX.
+
+    NOTE: Assumes alpha and FeH are already mapped to nearest grid point.
+    """
+
+    phoenix_zenodo_id = "17674612"
+
+    feh_str   = phoenix_param(FeH,   kind="FeH")
+    alpha_str = phoenix_param(alpha, kind="alpha")
+    zip_name  = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
+
+    data_dir = GetFWLData() / "stellar_spectra"
+    folder_dir = data_dir / "PHOENIX" / f"FeH{feh_str}_alpha{alpha_str}"
+
+    if folder_dir.exists() and any(folder_dir.iterdir()):
+        log.info(f"PHOENIX spectra already present in {folder_dir}")
+        return True
+
+    folder_dir.mkdir(parents=True, exist_ok=True)
+
+    log.info(f"Downloading PHOENIX spectra {zip_name}")
+    log.info("This may take a while.")
+
+    # first download readme
+    get_zenodo_file(
+        zenodo_id=phoenix_zenodo_id,
+        folder_dir= data_dir / "PHOENIX",
+        zenodo_path="_readme.md",)
+
+    # then download zip
+    if not get_zenodo_file(
+        zenodo_id=phoenix_zenodo_id,
+        folder_dir=folder_dir,
+        zenodo_path=zip_name,
+    ):
+        log.error(f"Failed to download PHOENIX ZIP {zip_name} from Zenodo {phoenix_zenodo_id}")
+        return False
+
+    zip_path = folder_dir / zip_name
+
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(folder_dir)
+    except zipfile.BadZipFile as e:
+        log.error(f"Downloaded PHOENIX ZIP is corrupted: {zip_path}")
+        log.error(str(e))
+        safe_rm(zip_path)
+        return False
+    else:
+        safe_rm(zip_path)
+        log.info(f"PHOENIX spectra unpacked to {folder_dir}")
+        return True
+
+
+def download_muscles(star_name: str) -> bool:
+    muscles_zenodo_id = "17802209"
+    data_dir   = GetFWLData() / "stellar_spectra"
+    folder_dir = data_dir / "MUSCLES"
+    star_filename = f"{star_name.strip().lower().replace(' ', '-').replace('gj-', 'gj')}.txt" # lowercase, and; "trappist 1" -> "trappist-1", but "gj 876" or "gj-876" -> "gj876"
+    log.info(f"Downloading MUSCLES file {star_filename}")
+
+    # first download readme
+    get_zenodo_file(
+        zenodo_id=muscles_zenodo_id,
+        folder_dir= data_dir / "MUSCLES",
+        zenodo_path="_readme.md",)
+
+    return get_zenodo_file(
+        zenodo_id=muscles_zenodo_id,
+        folder_dir=folder_dir,
+        zenodo_path=star_filename,
+    )
 
 def download_exoplanet_data():
     """
@@ -471,7 +637,55 @@ def download_stellar_tracks(track:str):
 def _get_sufficient(config:Config, clean:bool=False):
     # Star stuff
     if config.star.module == "mors":
-        download_stellar_spectra()
+
+        if config.star.mors.star_path is None:
+            src = config.star.mors.spectrum_source
+
+            if src == "solar":
+                log.info("Spectrum source set to 'solar'.")
+                solar_dir = GetFWLData() / "stellar_spectra" / "solar"
+                sun_now   = solar_dir / "sun.txt"
+                sun_06ga  = solar_dir / "Sun0.6Ga.txt"
+
+                if (not sun_now.exists()) or (not sun_06ga.exists()):
+                    download_all_solar_spectra()
+
+            elif src is None:
+                if config.star.mors.star_name.lower() != "sun":
+                    muscles_ok =  download_muscles(config.star.mors.star_name)
+                    if muscles_ok:
+                        log.info("Spectrum source not set. MUSCLES spectrum found and downloaded.")
+                        log.info("To always use MUSCLES, set star.mors.spectrum_source = 'muscles'.")
+                    else:
+                        log.info("Spectrum source not set. No MUSCLES spectrum found; downloading solar spectrum by default.")
+                        log.info("To use a MUSCLES spectrum, check the available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html and set star.mors.spectrum_source = 'muscles'.")
+                        download_solar_spectrum()
+                else:
+                    download_solar_spectrum()
+
+            elif src == "muscles":
+                log.info("Spectrum source set to 'muscles'. Downloading MUSCLES spectrum.")
+                muscles_ok = download_muscles(config.star.mors.star_name)
+                if not muscles_ok:
+                    log.error(f"Could not download MUSCLES spectrum for star {config.star.mors.star_name}.")
+                    log.error("Check the MUSCLES available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html to verify the star name.")
+                    log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
+
+            elif src == "phoenix":
+                log.info("Spectrum source set to 'phoenix'.")
+                FeH   = config.star.mors.phoenix_FeH
+                alpha = config.star.mors.phoenix_alpha
+
+                # make sure what is downloaded matches nearest grid point
+                Teff_override = getattr(config.star.mors, "phoenix_Teff", None) # Optional Teff override in the config -> relevant for mapping alpha fraction to grid
+                grid   = phoenix_to_grid(FeH=FeH, alpha=alpha, Teff=Teff_override)
+                FeH_g  = grid["FeH"]
+                alpha_g = grid["alpha"]
+
+                log.info(f"Downloading PHOENIX spectra with [Fe/H]={FeH_g:.2f}, [alpha/M]={alpha_g:.2f}.")
+                log.info("Note that the requested values are mapped to the nearest grid point.")
+                download_phoenix(alpha=alpha_g, FeH=FeH_g)
+
         if config.star.mors.tracks == 'spada':
             download_stellar_tracks("Spada")
         else:
@@ -503,13 +717,13 @@ def _get_sufficient(config:Config, clean:bool=False):
         download_interior_lookuptables(clean=clean)
         download_melting_curves(config, clean=clean)
 
-
 def download_sufficient_data(config:Config, clean:bool=False):
     """
     Download the required data based on the current options
     """
 
     log.info("Getting physical and reference data")
+    log.info("")
 
     if config.params.offline:
         # Don't try to get data

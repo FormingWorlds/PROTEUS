@@ -25,7 +25,8 @@ version = "2.0"
         rot_period = "none"    # rotation period [days]
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 6    # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/gj176.txt" # stellar spectrum
+        star_name   = "gj176"
+        spectrum_source = "muscles"
 
 # Orbital system
 [orbit]
