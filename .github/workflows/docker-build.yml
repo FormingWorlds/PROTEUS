@@ -141,6 +141,8 @@ jobs:
           echo "Copying code over container base..."
           rsync -av --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
           cd /opt/proteus
+          # Configure git to trust the copied repository
+          git config --global --add safe.directory /opt/proteus
           pip install -e ".[develop]" --no-deps
 
       - name: Run dummy integration test
