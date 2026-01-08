@@ -145,6 +145,13 @@ jobs:
           git config --global --add safe.directory /opt/proteus
           pip install -e ".[develop]" --no-deps
 
+      - name: Debug git state
+        run: |
+          cd /opt/proteus
+          ls -la .git | head -50
+          git status -sb || true
+          git rev-parse HEAD || true
+
       - name: Run dummy integration test
         run: |
           cd /opt/proteus
