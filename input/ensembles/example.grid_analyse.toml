@@ -1,0 +1,85 @@
+# Config file for grid post-processing analysis and plotting
+
+# Path to grid folder
+grid_path = "/projects/p315557/Paper_1/DATA/Grids/escape_grid_1Msun/"
+
+# Post-processing options
+update_csv  = true          # Whether to update the summary CSV file before plotting
+plot_status = true          # Generate status summary plots of the grid
+plot_ecdf   = true          # Generate ECDF grid plot for input parameters and output
+
+# Input parameters configuration for ECDF plot (1 row per input parameter)
+[input_parameters]
+
+    colormap = "viridis"    # Default colormap for all input parameters
+
+    [input_parameters.atmos_clim.module]
+    label = "Atmosphere module"         # label of the input parameter
+    log_scale = false                   # whether to use log scale or not for colorbar depending on parameters range
+
+    [input_parameters.orbit.semimajoraxis]
+    label = "a [AU]"
+    log_scale = false
+
+    [input_parameters.escape.zephyrus.efficiency]
+    label = "\\rm \\epsilon"            # TOML file cannot read Latex command, so use double backslash
+    log_scale = false
+
+    [input_parameters.escape.zephyrus.Pxuv]
+    label = "P_{\\rm XUV}\\,[\\mathrm{bar}]"
+    log_scale = true
+
+    [input_parameters.outgas.fO2_shift_IW]
+    label = "\\log_{10} fO_2\\,[\\Delta IW]"
+    log_scale = false
+
+    [input_parameters.delivery.elements.CH_ratio]
+    label = "C/H ratio"
+    log_scale = false
+
+    [input_parameters.delivery.elements.H_oceans]
+    label = "[H] [oceans]"
+    log_scale = false
+
+# Output variables configuration for ECDF plot (1 column per output variable)
+[output_variables]
+
+    [output_variables.solidification_time]
+    label = "Solidification [yr]"       # label of the output variable on x-axis
+    log_scale = true                    # whether to use log scale or not on x-axis
+    scale = 1.0                         # scaling factor to apply to the output variable values
+
+    [output_variables.Phi_global]
+    label = "Melt fraction [%]"
+    log_scale = false
+    scale = 100.0                       # convert melt fraction to percentage
+
+    [output_variables.T_surf]
+    label = "T_{\\rm surf}\\,[10^{3}\\,\\mathrm{K}]"
+    log_scale = false
+    scale = 0.001                       # convert K to 10^3 K for beyter readability on plot
+
+    [output_variables.P_surf]
+    label = "P_{\\rm surf}\\,[\\mathrm{bar}]"
+    log_scale = true
+    scale = 1.0
+
+    [output_variables.atm_kg_per_mol]
+    label = "MMW [g/mol]"
+    log_scale = false
+    scale = 1000.0                      # convert kg/mol to g/mol
+
+    [output_variables.esc_rate_total]
+    label = "Escape rate [kg/s]"
+    log_scale = true
+    scale = 1.0
+
+    [output_variables.H2O_kg_atm]
+    label = "\\ H_{2}O_\\mathrm{atm} [kg]"
+    log_scale = true
+    scale = 1.0
+
+    [output_variables.C_kg_atm]
+    label = "C_{\\rm atm} [kg]"
+    log_scale = true
+    scale = 1.0
