@@ -123,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/tl/test_ecosystem_v5'
     container:
-      image: ghcr.io/formingworlds/proteus:latest
+      image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
