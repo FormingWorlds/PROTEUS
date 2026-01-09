@@ -38,6 +38,7 @@ jobs:
           echo "Copying code over container base..."
           rsync -av --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
           cd /opt/proteus
+          git config --global --add safe.directory /opt/proteus
           pip install -e ".[develop]" --no-deps
 
       - name: Read full coverage threshold
