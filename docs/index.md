@@ -10,7 +10,7 @@
     <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg">
   </a>
   <a href="https://proteus-framework.org/PROTEUS/">
-    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main">
   </a>
   <a href="https://opensource.org/licenses/Apache-2.0">
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg">
