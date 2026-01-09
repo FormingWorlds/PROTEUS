@@ -39,6 +39,9 @@ jobs:
           rsync -av --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
           cd /opt/proteus
           git config --global --add safe.directory /opt/proteus
+          # Set Julia depot to avoid disk space issues during test runtime
+          export JULIA_DEPOT_PATH=/tmp/julia_depot
+          mkdir -p /tmp/julia_depot
           pip install -e ".[develop]" --no-deps
 
       - name: Read full coverage threshold
@@ -52,6 +55,21 @@ jobs:
           val = float(data["tool"]["coverage"]["report"]["fail_under"])
           print(f"FULL_COV_FAIL_UNDER={val}")
           PY
+
+      - name: Download test data
+        run: |
+          cd /opt/proteus
+          proteus get stellar
+
+      - name: Free up disk space and configure Julia
+        run: |
+          # Clean up temp directory to free space for Julia compilation
+          rm -rf /tmp/* 2>/dev/null || true
+          # Recreate Julia depot in tmp with more space
+          mkdir -p /tmp/julia_depot
+          echo "JULIA_DEPOT_PATH=/tmp/julia_depot" >> $GITHUB_ENV
+          # Check available space
+          df -h /tmp
 
       - name: Run integration coverage (dummy + integration and not slow)
         run: |
