@@ -200,7 +200,7 @@ def validate_module_versions(dirs:dict, config:Config):
         UpdateStatusfile(dirs, 20)
         raise EnvironmentError("Out-of-date modules detected. " \
         "Refer to the Troubleshooting guide on the wiki:\n"\
-        "https://fwl-proteus.readthedocs.io/en/latest/troubleshooting/")
+        "https://proteus-framework.org/PROTEUS/troubleshooting.html")
     log.info(" ")
 
 def print_system_configuration(dirs:dict):

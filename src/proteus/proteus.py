@@ -7,6 +7,10 @@ from pathlib import Path
 
 import numpy as np
 
+# ensure juliacall is imported before torch
+# see issue here: https://github.com/pytorch/pytorch/issues/78829
+from juliacall import Main as jl  # noqa
+
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
 from proteus.utils.constants import (
