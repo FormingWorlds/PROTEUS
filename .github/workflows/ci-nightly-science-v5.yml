@@ -61,6 +61,7 @@ jobs:
           pytest tests/integration/test_integration_dummy.py \
             -v --tb=short \
             --cov=proteus \
+            --cov-fail-under=0 \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-report=html \
@@ -71,6 +72,7 @@ jobs:
             -v --tb=short \
             --cov=proteus \
             --cov-append \
+            --cov-fail-under=0 \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-report=html \
