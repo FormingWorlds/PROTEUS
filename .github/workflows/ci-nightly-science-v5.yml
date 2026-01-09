@@ -52,16 +52,28 @@ jobs:
           print(f"FULL_COV_FAIL_UNDER={val}")
           PY
 
-      - name: Run integration coverage (dummy quick)
+      - name: Run integration coverage (dummy + integration and not slow)
         run: |
           cd /opt/proteus
-          # Quick integration coverage on dummy suite to enable branch-side queries
+          coverage erase
+          # Explicitly include dummy suite first
           pytest tests/integration/test_integration_dummy.py \
             -v --tb=short \
-            --cov=src \
+            --cov=proteus \
             --cov-report=term-missing \
-            --cov-report=xml \
-            --cov-report=html
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml
+          # Then full integration (excluding slow) and append coverage
+          pytest tests/integration \
+            -m "integration and not slow" \
+            -v --tb=short \
+            --cov=proteus \
+            --cov-append \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml
 
       - name: Generate coverage JSON
         run: |
