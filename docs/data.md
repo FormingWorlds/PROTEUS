@@ -36,6 +36,7 @@ For PHOENIX spectra, files are stored under: `$FWL_DATA/stellar_spectra/PHOENIX`
 To use the modern NREL observed spectrum of the Sun, set `spectrum_source = "solar"` or do not set the parameter at all, and set `star_name = "sun"`.
 
 To use a different solar spectrum, for example a **'young sun'** spectrum, there are [VPL spectra](https://live-vpl-test.pantheonsite.io/models/evolution-of-solar-flux/) available by Claire et al. (2012). In this case, set `spectrum_source = "solar"` and choose one of the following options for `star_name`:
+
 - `Sun0.6Ga` A young sun of 0.6 Gyr ago (age ~ 4.0 Gyr)
 - `Sun1.8Ga` A young sun of 1.8 Gyr ago (age ~ 2.8 Gyr)
 - `Sun2.4Ga` A young sun of 2.4 Gyr ago (age ~ 2.2 Gyr)
