@@ -144,7 +144,7 @@ version = "2.0"
     s0_factor = 0.375           # instellation scale factor [dimensionless]
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "lovepy"          # module used to calculate tidal heating
+    module  = "dummy"          # module used to calculate tidal heating
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -167,7 +167,7 @@ version = "2.0"
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
 
-    module       = "self"       # self | zalmoxis
+    module       = "zalmoxis"       # self | zalmoxis
 
     [struct.zalmoxis]
         EOSchoice                  = "Tabulated:iron/Tdep_silicate" # EOS choices: "Tabulated:iron/silicate", "Tabulated:iron/Tdep_silicate", "Tabulated:water"
