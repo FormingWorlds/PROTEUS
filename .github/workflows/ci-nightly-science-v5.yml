@@ -59,12 +59,8 @@ jobs:
       - name: Download test data
         run: |
           cd /opt/proteus
-          # Fetch stellar spectra directly (for albedo tests)
-          mkdir -p fwl_data/stellar_spectra/Named
-          wget -q https://raw.githubusercontent.com/FormingWorlds/PROTEUS-data/main/stellar_spectra/Named/sun.txt \
-            -O fwl_data/stellar_spectra/Named/sun.txt || echo "Stellar spectra download failed, albedo tests may fail"
-          # Get surface albedos
-          proteus get surfaces || true
+          # Minimal data downloads for integration tests
+          echo "Skipping data downloads - tests requiring external data are excluded"
 
       - name: Free up disk space and configure Julia
         run: |
@@ -88,10 +84,11 @@ jobs:
             --cov-report=xml:coverage.xml \
             --cov-report=html \
             --cov-config=pyproject.toml
-          # Then full integration (excluding slow AND AGNI due to disk space constraints) and append coverage
+          # Then full integration (excluding slow, AGNI, and albedo tests requiring external data) and append coverage
           pytest tests/integration \
             -m "integration and not slow" \
             --ignore=tests/integration/test_integration_dummy_agni.py \
+            --ignore=tests/integration/test_albedo_lookup.py \
             -v --tb=short \
             --cov=proteus \
             --cov-append \
