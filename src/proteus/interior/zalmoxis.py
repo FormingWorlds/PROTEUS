@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import platformdirs
 from scipy.interpolate import interp1d
+from zalmoxis.zalmoxis import main
 
 from proteus.config import Config
 from proteus.utils.constants import (
@@ -16,7 +17,6 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import get_zalmoxis_EOS, get_zalmoxis_melting_curves
-from zalmoxis.zalmoxis import main
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
                                    platformdirs.user_data_dir('fwl_data')))
