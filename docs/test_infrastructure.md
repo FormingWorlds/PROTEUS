@@ -353,24 +353,58 @@ def test_performance():
 
 **Using fixtures (conftest.py):**
 
-```python
-"""Test fixtures and configuration"""
-from __future__ import annotations
+The `tests/conftest.py` file provides session-scoped fixtures for common test scenarios. This avoids redundant setup code and ensures consistent parameter sets across the test suite.
 
+**Key Fixtures in conftest.py**:
+
+1. **Physical Parameter Classes** — Three representative exoplanet scenarios:
+   - `EarthLikeParams`: Modern Earth (habitable reference)
+   - `UltraHotSuperEarthParams`: TOI-561 b (ultra-hot, volatile-poor)
+   - `IntermediateSuperEarthParams`: L 98-59 d (volatile-rich magma ocean)
+
+2. **Configuration Path Fixtures**:
+   - `config_earth` → `input/planets/earth.toml`
+   - `config_minimal` → `input/minimal.toml`
+   - `config_dummy` → `input/demos/dummy.toml`
+
+3. **Utility Fixtures**:
+   - `proteus_root` → Absolute path to repository root
+   - `earth_params`, `ultra_hot_params`, `intermediate_params` → Instances of parameter classes
+
+**Example Usage**:
+
+```python
+"""Test habitability with Earth-like parameters"""
 import pytest
 
 
-@pytest.fixture
-def sample_data():
-    """Provide sample data for tests"""
-    return {"key": "value", "number": 42}
+def test_habitability(earth_params):
+    """Unit test: validate equilibrium temperature."""
+    # All parameters pre-loaded from EarthLikeParams
+    assert earth_params.planet_surface_temp > 273  # Above freezing
+    assert earth_params.orbital_semimajor == 1.496e11  # 1 AU
 
 
-@pytest.fixture
-def temp_directory(tmp_path):
-    """Provide a temporary directory for tests"""
-    return tmp_path / "test_dir"
+@pytest.mark.integration
+def test_earth_coupling(config_earth, proteus_root):
+    """Integration test: validate PROTEUS initialization with Earth config."""
+    assert config_earth.exists()
+    # ... load and simulate with real physics modules
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('params_class', [
+    'earth_params',
+    'ultra_hot_params',
+    'intermediate_params'
+])
+def test_multi_scenario_evolution(request, params_class):
+    """Slow test: run evolution for three scenarios."""
+    params = request.getfixturevalue(params_class)
+    # ... run full Gyr-scale simulations
 ```
+
+**Session Scope**: All parameter fixtures use `scope='session'` (cached once per test run) for efficiency. Configuration fixtures depend on `proteus_root`, which must exist for tests to pass.
 
 ### Coverage Analysis Workflow
 

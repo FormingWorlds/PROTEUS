@@ -205,6 +205,65 @@ Planned Targets
 
 | **Grand Total** | **55** | — |
 
+## Test Fixtures and conftest.py
+
+All PROTEUS tests share common configuration and parameter sets through `tests/conftest.py`. This file provides:
+
+### Parameter Classes for Test Scenarios
+
+Three representative exoplanet scenarios are defined as parameter classes (all values in SI units):
+
+1. **EarthLikeParams** — Modern Earth reference
+   - Habitable zone, outgassed interior, thin CO₂-N₂ atmosphere
+   - Use for habitability baseline tests
+
+2. **UltraHotSuperEarthParams** — TOI-561 b
+   - Ultra-short period (0.45 day), extreme irradiation (~100× Earth)
+   - Ultra-low density (4.3 g/cm³) suggests thick volatile envelope
+   - Use for atmospheric escape physics and magma ocean tests
+   - Reference: Teske et al. (arXiv:2509.17231)
+
+3. **IntermediateSuperEarthParams** — L 98-59 d
+   - 3.7-day orbit, H₂-rich atmosphere (MMW ~9 u), permanent magma ocean
+   - Bridges habitability and volatile loss regimes
+   - Use for volatile retention and tidal heating tests
+   - Reference: Nicholls et al. (arXiv:2507.02656)
+
+### Session-Scoped Fixtures
+
+All fixtures use `scope='session'` (cached once per test run for efficiency):
+
+```python
+def test_with_fixtures(earth_params, ultra_hot_params, config_minimal):
+    """Example: use multiple fixtures in one test."""
+    # earth_params: EarthLikeParams instance
+    # ultra_hot_params: UltraHotSuperEarthParams instance
+    # config_minimal: Path to input/minimal.toml
+    pass
+```
+
+**Available Fixtures**:
+
+- `earth_params` → EarthLikeParams instance
+- `ultra_hot_params` → UltraHotSuperEarthParams instance
+- `intermediate_params` → IntermediateSuperEarthParams instance
+- `config_earth` → Path to `input/planets/earth.toml`
+- `config_minimal` → Path to `input/minimal.toml`
+- `config_dummy` → Path to `input/demos/dummy.toml`
+- `proteus_root` → Absolute path to repository root
+
+### Physical Constants in Parameters
+
+All parameter classes use PROTEUS constants from `src/proteus/utils/constants.py`:
+
+- Gravitational constant `const_G`
+- Stefan-Boltzmann constant `const_sigma`
+- Solar mass `M_sun`, Solar radius `R_sun`, Solar luminosity `L_sun`
+- Earth mass `M_earth`, Earth radius `R_earth`
+- Seconds per year `secs_per_year`
+
+This ensures consistency across the entire test suite and with simulations.
+
 ## Running Tests Locally
 
 

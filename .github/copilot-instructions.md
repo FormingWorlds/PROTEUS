@@ -56,6 +56,12 @@ When helping with installation or dependency issues, always reference these guid
 - **Markers:** Use pytest markers: `@pytest.mark.unit` for unit tests, `@pytest.mark.integration` for integration tests.
 - **Floats:** NEVER use `==` for floats. Use `pytest.approx(val, rel=1e-5)` or `np.testing.assert_allclose`.
 - **Physics:** Ensure inputs are physically valid (e.g., T > 0K) unless testing error handling.
+- **Copilot Test Generation:**
+  - **Context:** Always read the `conftest.py` of the current module before generating tests to utilize existing fixtures.
+  - **Mocking Strategy:** Default to `unittest.mock` for ALL external calls (e.g., network, disk I/O, heavy computation modules like `SOCRATES` or `AGNI`). Only use real calls if explicitly requested for integration tests.
+  - **Floats:** Automatically generate assertions using `pytest.approx()` for any floating-point comparisons.
+  - **Parametrization:** Prefer `@pytest.mark.parametrize` over writing multiple similar test functions.
+  - **Physics Checks:** detailed comments explaining *why* a specific input range was chosen (e.g., "Temperature set to 300K to represent habitable zone conditions").
 
 ## 3. Coverage Requirements
 - **Threshold:** Check `pyproject.toml` [tool.coverage.report] `fail_under` for current threshold.
