@@ -6,6 +6,8 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 >
 > - [Test Categorization](test_categorization.md) — Test markers and CI/CD pipeline flow
 > - [Docker CI Architecture](docker_ci_architecture.md) — Detailed Dockerfile, image build strategy, and implementation reference
+> - [Test building](test_building.md) — Follow best practices for building robust, physics-compliant tests
+> - [conftest.py reference](/test/conftest.py) — Fixtures and parameter classes for common test scenarios
 
 ## Table of Contents
 
