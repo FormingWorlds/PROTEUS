@@ -4,9 +4,12 @@
 
 ### Coverage Metrics
 - **Current unit/smoke tests**: 13 tests marked with `@pytest.mark.unit`
-- **New tests added**: 53 tests for `utils/helper.py` (9 component classes, 40 distinct functions tested)
-- **Total**: ~66 unit tests
-- **Current coverage**: 18.51% (fast gate), 69% target (full gate)
+- **New tests added**: 
+  - 53 tests for `utils/helper.py` (9 component classes, 40 distinct functions tested)
+  - 41 tests for `utils/logs.py` (logging infrastructure)
+  - 27 tests for `config/_converters.py` (type conversion utilities)
+- **Total**: ~134 unit tests (as of 2026-01-10)
+- **Current coverage**: 20.22% (fast gate), 69% target (full gate)
 - **Target**: 30% fast gate coverage (by expanding unit tests)
 
 ### Test File Created
@@ -37,52 +40,17 @@ These modules have simple, pure functions with few dependencies. Tests run in <1
 - **Impact**: High — utilities used throughout codebase
 - **Effort**: Low — pure functions, no external dependencies
 
-#### 1.2 `utils/logs.py` (NEW)
-- **Estimated lines**: 150
-- **Functions to test**: ~8 functions
-- **Target tests**: 20-25 unit tests
-- **Effort**: LOW
-  - Simple logging utilities
-  - Pure Python functions
-  - Setup logger, GetCurrentLogfileIndex, GetLogfilePath
-  - No heavy dependencies
+#### 1.2 `utils/logs.py` ✓ **COMPLETED**
+- **Status**: 41 unit tests created and passing
+- **Coverage**: 91.49% of logs.py
+- **Impact**: High — logging used throughout all simulation runs
+- **Effort**: Low — simple logging utilities
 
-**Implementation plan:**
-```python
-# tests/utils/test_logs.py
-@pytest.mark.unit
-def test_setup_logger_creates_file():
-    """Logger setup creates log file with correct path."""
-    
-@pytest.mark.unit
-def test_custom_formatter_includes_timestamp():
-    """CustomFormatter includes datetime in log output."""
-
-@pytest.mark.unit
-def test_get_logfile_path_naming():
-    """GetLogfilePath generates correct filename pattern."""
-```
-
-#### 1.3 `config/_converters.py` (NEW)
-- **Estimated lines**: 80-100
-- **Functions to test**: ~6 functions
-- **Target tests**: 15-20 unit tests
-- **Effort**: LOW
-  - Pure conversion functions (enums, type conversions)
-  - Used during config parsing
-  - Simple input/output validation
-
-**Implementation plan:**
-```python
-# tests/config/test_converters.py
-@pytest.mark.unit
-def test_string_to_bool_conversions():
-    """Test all boolean string conversions."""
-
-@pytest.mark.unit
-def test_enum_parsing():
-    """Test enum name parsing from strings."""
-```
+#### 1.3 `config/_converters.py` ✓ **COMPLETED**
+- **Status**: 27 unit tests created and passing
+- **Coverage**: 100% of _converters.py (4 functions: none_if_none, zero_if_none, dict_replace_none, lowercase)
+- **Impact**: High — converters used for all TOML config parsing
+- **Effort**: Low — pure conversion functions, no dependencies
 
 #### 1.4 `orbit/dummy.py` (NEW)
 - **Lines**: 54
