@@ -31,6 +31,7 @@ on:
       - main
       - dev
       - tl/test_ecosystem_v5
+      - tl/test_ecosystem_v5_fast
   workflow_dispatch:  # Allow manual triggering for testing
 
 permissions:
