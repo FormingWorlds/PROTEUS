@@ -4,6 +4,7 @@ Unit tests for proteus.utils.logs module.
 Tests logging utilities including logger setup, stream redirection, custom formatting,
 and logfile management with various configurations and edge cases.
 """
+
 from __future__ import annotations
 
 import logging
