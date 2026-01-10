@@ -656,7 +656,7 @@ def _get_sufficient(config:Config, clean:bool=False):
                         log.info("To always use MUSCLES, set star.mors.spectrum_source = 'muscles'.")
                     else:
                         log.info("Spectrum source not set. No MUSCLES spectrum found; downloading solar spectrum by default.")
-                        log.info("To use a MUSCLES spectrum, check the available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html and set star.mors.spectrum_source = 'muscles'.")
+                        log.info("To use a MUSCLES spectrum, check the available MUSCLES spectra at https://proteus-framework.org/PROTEUS/data.html#stellar-spectra and set star.mors.spectrum_source = 'muscles'.")
                         download_solar_spectrum()
                 else:
                     download_solar_spectrum()
@@ -666,7 +666,7 @@ def _get_sufficient(config:Config, clean:bool=False):
                 muscles_ok = download_muscles(config.star.mors.star_name)
                 if not muscles_ok:
                     log.error(f"Could not download MUSCLES spectrum for star {config.star.mors.star_name}.")
-                    log.error("Check the MUSCLES available MUSCLES spectra at https://fwl-proteus.readthedocs.io/en/latest/data.html to verify the star name.")
+                    log.error("Check the MUSCLES available MUSCLES spectra at https://proteus-framework.org/PROTEUS/data.html#stellar-spectra to verify the star name.")
                     log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
 
             elif src == "phoenix":

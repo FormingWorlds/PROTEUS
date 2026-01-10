@@ -51,7 +51,7 @@ class Mors:
     age_now: float
         Observed estimated age of the star [Gyr].
     star_name: str
-        Name of the star, to find appropriate stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data.html).
+        Name of the star, to find appropriate stellar spectrum. See [documentation](https://proteus-framework.org/PROTEUS/data.html).
     star_path: str
         Path to custom stellar spectra. If 'none', star_name will be used to find spectra in default locations.
     spectrum_source: str
@@ -126,7 +126,7 @@ class StarDummy:
 class Star:
     """Stellar parameters, model selection.
 
-    You can find useful reference data in the [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars).
+    You can find useful reference data in the [documentation](https://proteus-framework.org/PROTEUS/data.html#stars).
 
     Attributes
     ----------
