@@ -59,7 +59,10 @@ jobs:
       - name: Download test data
         run: |
           cd /opt/proteus
-          proteus get stellar
+          # Only fetch the data needed for integration tests
+          # Stellar spectra for albedo lookups and surface albedo tables
+          proteus get spectral || true
+          proteus get surfaces || true
 
       - name: Free up disk space and configure Julia
         run: |
