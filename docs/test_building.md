@@ -37,5 +37,6 @@ Copy and paste this strictly into the Copilot Chat window:
 > 4.  **Physics:** Ensure test inputs are physically valid (e.g., Kelvin > 0, Pressure > 0) unless testing error handling.
 > 5.  **Coverage:** Target >90% coverage. Handle edge cases (None, empty arrays, negative values where physically impossible).
 > 6.  **Style:** Use `@pytest.mark.parametrize` for data-driven tests. Add a brief docstring to each test explaining the physical scenario being tested.
+> 7.  **Format:** Ruff format all test files before committing.
 >
 > **Generate the tests now.**
