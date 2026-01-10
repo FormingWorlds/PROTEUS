@@ -24,6 +24,7 @@ for consistency across the PROTEUS ecosystem.
 See test_infrastructure.md for full documentation of conftest.py role in the
 testing framework.
 """
+
 from __future__ import annotations
 
 import os
@@ -53,6 +54,7 @@ from proteus.utils.constants import (
 # =============================================================================
 # Physical Parameters for Earth-like Test Scenarios
 # =============================================================================
+
 
 class EarthLikeParams:
     """
@@ -168,7 +170,7 @@ def config_earth(proteus_root: Path):
         - Fails fast if file missing (safety check)
     """
     config_path = proteus_root / 'input' / 'planets' / 'earth.toml'
-    assert config_path.exists(), f"Earth config not found at {config_path}"
+    assert config_path.exists(), f'Earth config not found at {config_path}'
     return config_path
 
 
@@ -190,7 +192,7 @@ def config_minimal(proteus_root: Path):
         - Preferred for smoke tests (@pytest.mark.smoke)
     """
     config_path = proteus_root / 'input' / 'minimal.toml'
-    assert config_path.exists(), f"Minimal config not found at {config_path}"
+    assert config_path.exists(), f'Minimal config not found at {config_path}'
     return config_path
 
 
@@ -213,7 +215,7 @@ def config_dummy(proteus_root: Path):
         - Preferred for @pytest.mark.unit tests
     """
     config_path = proteus_root / 'input' / 'demos' / 'dummy.toml'
-    assert config_path.exists(), f"Dummy config not found at {config_path}"
+    assert config_path.exists(), f'Dummy config not found at {config_path}'
     return config_path
 
 
@@ -373,11 +375,13 @@ class IntermediateSuperEarthParams:
     @classmethod
     def bulk_density_check(cls):
         """Verify bulk density from M and R matches paper value."""
-        volume = (4 / 3) * 3.14159265 * cls.planet_radius ** 3  # m³
+        volume = (4 / 3) * 3.14159265 * cls.planet_radius**3  # m³
         calculated_density = cls.planet_mass / volume  # kg/m³
         paper_density = cls.planet_bulk_density
         agreement = abs(calculated_density - paper_density) / paper_density
-        assert agreement < 0.01, f'Density mismatch: {calculated_density:.0f} vs {paper_density:.0f}'
+        assert agreement < 0.01, (
+            f'Density mismatch: {calculated_density:.0f} vs {paper_density:.0f}'
+        )
         return calculated_density
 
 

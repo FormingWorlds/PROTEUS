@@ -8,6 +8,7 @@ helper functions used throughout PROTEUS for:
 - Status codes and comments
 - Numeric utility functions
 """
+
 from __future__ import annotations
 
 import os
@@ -393,6 +394,7 @@ class TestFindNearest:
     def test_find_nearest_exact_match(self):
         """Find exact match returns the value and its index."""
         import numpy as np
+
         array = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         value, idx = find_nearest(array, 3.0)
         assert value == pytest.approx(3.0)
@@ -402,6 +404,7 @@ class TestFindNearest:
     def test_find_nearest_between_values(self):
         """Target between values returns nearest one."""
         import numpy as np
+
         array = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         value, idx = find_nearest(array, 2.6)
         # Should be 3.0 (closest)
@@ -411,6 +414,7 @@ class TestFindNearest:
     def test_find_nearest_edge_values(self):
         """Values at edges are handled correctly."""
         import numpy as np
+
         array = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
 
         value_low, _ = find_nearest(array, 0.5)
@@ -423,6 +427,7 @@ class TestFindNearest:
     def test_find_nearest_single_element(self):
         """Single element array returns that element."""
         import numpy as np
+
         array = np.array([42.0])
         value, idx = find_nearest(array, 100.0)
         assert value == pytest.approx(42.0)
