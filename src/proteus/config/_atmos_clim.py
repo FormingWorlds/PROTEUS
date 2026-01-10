@@ -74,7 +74,7 @@ class Agni:
     spectral_bands: str
         Number of wavenumer bands in k-table. See documentation.
     surf_material : str
-        File name for material used to set surface single-scattering properties, relative to FWL data directory. Set to 'greybody' to use `surf_greyalbedo`. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#surfaces) for potential options.
+        File name for material used to set surface single-scattering properties, relative to FWL data directory. Set to 'greybody' to use `surf_greyalbedo`. See [documentation](https://proteus-framework.org/PROTEUS/data.html#surfaces) for potential options.
     num_levels: str
         Number of atmospheric grid levels.
     chemistry: str | None
