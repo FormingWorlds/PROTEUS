@@ -146,6 +146,52 @@ jobs:
           cd /opt/proteus
           coverage json -o coverage-unit.json
 
+      - name: Print coverage summary to GitHub summary
+        if: always()
+        run: |
+          cd /opt/proteus
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          # Try to read coverage JSON
+          coverage_file = pathlib.Path("coverage-unit.json")
+
+          if coverage_file.exists():
+              try:
+                  with open(coverage_file) as f:
+                      data = json.load(f)
+                  totals = data.get("totals", {})
+                  line_rate = totals.get("percent_covered", 0)
+                  num_statements = totals.get("num_statements", 0)
+                  covered_lines = totals.get("covered_lines", 0)
+              except (json.JSONDecodeError, KeyError):
+                  line_rate = 0
+                  num_statements = 0
+                  covered_lines = 0
+          else:
+              line_rate = 0
+              num_statements = 0
+              covered_lines = 0
+
+          # Write to GitHub summary
+          summary_file = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
+          summary_content = "## Test Coverage Report (Unit Tests)\n\n"
+          summary_content += f"- **Line Coverage:** {line_rate:.2f}%\n"
+          summary_content += f"- **Covered Lines:** {covered_lines} / {num_statements}\n\n"
+          summary_content += "### Notes\n"
+          summary_content += "- Coverage collected with `pytest --cov` on unit tests\n"
+          summary_content += "- Tests marked with `@pytest.mark.unit` are included\n"
+          summary_content += "- Placeholder tests (`@pytest.mark.skip`) are excluded\n"
+          summary_content += "- See `docs/test_infrastructure.md` for testing strategy\n"
+
+          with open(summary_file, "a") as f:
+              f.write(summary_content)
+
+          print(f"Coverage summary: Line Coverage {line_rate:.2f}% ({covered_lines}/{num_statements})")
+          PY
+
       - name: Diff coverage on changed lines (fast suite)
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
