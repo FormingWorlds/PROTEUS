@@ -14,6 +14,7 @@
 ## Stellar spectra
 
 PROTEUS can use:
+
 - **Observed spectra** from MUSCLES / Mega-MUSCLES and NREL (for the Sun)
 - **Synthetic PHOENIX spectra**
 
