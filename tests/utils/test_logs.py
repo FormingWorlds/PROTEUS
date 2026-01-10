@@ -25,15 +25,25 @@ from proteus.utils.logs import (
 
 
 class TestStreamToLogger:
-    """Unit tests for StreamToLogger stream-to-logger redirection."""
+    """Test suite for StreamToLogger stream-to-logger redirection.
+
+    StreamToLogger redirects stdout/stderr to Python logging, used for capturing
+    output from external binaries (SOCRATES, SPIDER) during PROTEUS simulations.
+    """
 
     @pytest.mark.unit
     def test_init_default_log_level(self):
-        """StreamToLogger initializes with default INFO log level."""
+        """Verify StreamToLogger initializes with INFO log level by default.
+
+        Default INFO level ensures normal simulation output is captured without
+        excessive debug verbosity.
+        """
         mock_logger = MagicMock()
         stream = StreamToLogger(mock_logger)
+
+        # Verify default configuration
         assert stream.log_level == logging.INFO
-        assert stream.linebuf == ''
+        assert stream.linebuf == ''  # Empty buffer at initialization
         assert stream.logger is mock_logger
 
     @pytest.mark.unit
@@ -45,10 +55,18 @@ class TestStreamToLogger:
 
     @pytest.mark.unit
     def test_write_single_line(self):
-        """StreamToLogger writes single line to logger."""
+        """Verify complete line (with newline) is logged immediately.
+
+        Critical for real-time monitoring of long-running physics simulations
+        where timestep progress updates end with newlines.
+        """
         mock_logger = MagicMock()
         stream = StreamToLogger(mock_logger, log_level=logging.DEBUG)
+
+        # Write complete line with newline
         stream.write('Test message\n')
+
+        # Verify immediate logging without buffering
         mock_logger.log.assert_called_once_with(logging.DEBUG, 'Test message')
 
     @pytest.mark.unit
@@ -67,10 +85,18 @@ class TestStreamToLogger:
 
     @pytest.mark.unit
     def test_write_incomplete_line(self):
-        """StreamToLogger buffers incomplete lines without newline."""
+        """Verify incomplete lines (no newline) are buffered, not logged.
+
+        Progress bars and in-place status updates from external modules
+        use carriage returns without newlines; must buffer these.
+        """
         mock_logger = MagicMock()
         stream = StreamToLogger(mock_logger)
+
+        # Write text without trailing newline
         stream.write('Incomplete')
+
+        # Verify buffering: no log call, text stored in linebuf
         assert mock_logger.log.call_count == 0
         assert stream.linebuf == 'Incomplete'
 
@@ -85,11 +111,19 @@ class TestStreamToLogger:
 
     @pytest.mark.unit
     def test_flush_with_content(self):
-        """StreamToLogger flushes buffered content on explicit flush."""
+        """Verify explicit flush() logs buffered incomplete lines.
+
+        Essential for capturing final status messages when simulation terminates
+        without final newline (e.g., convergence criteria met).
+        """
         mock_logger = MagicMock()
         stream = StreamToLogger(mock_logger, log_level=logging.WARNING)
+
+        # Buffer incomplete text
         stream.write('Buffered')
         mock_logger.log.assert_not_called()
+
+        # Explicit flush forces log output
         stream.flush()
         mock_logger.log.assert_called_once_with(logging.WARNING, 'Buffered')
 
@@ -119,11 +153,18 @@ class TestStreamToLogger:
 
 
 class TestCustomFormatter:
-    """Unit tests for CustomFormatter ANSI color logging formatter."""
+    """Test suite for CustomFormatter ANSI color-coded terminal logging.
+
+    Provides color-coded terminal output for PROTEUS runs to quickly identify
+    errors (red), warnings (yellow), and normal progress (green) during development.
+    """
 
     @pytest.mark.unit
     def test_format_info_level(self):
-        """CustomFormatter formats INFO level with correct color code."""
+        """Verify INFO level messages formatted with green color (ANSI 32m).
+
+        Green indicates normal simulation progress (timestep completion, convergence).
+        """
         formatter = CustomFormatter()
         record = logging.LogRecord(
             name='test',
@@ -135,9 +176,12 @@ class TestCustomFormatter:
             exc_info=None,
         )
         result = formatter.format(record)
+
+        # Verify message content preserved
         assert 'INFO' in result
         assert 'Test info message' in result
-        assert '32m' in result  # Green color code
+        # Verify green color code (ANSI 32m)
+        assert '32m' in result
 
     @pytest.mark.unit
     def test_format_warning_level(self):
@@ -159,7 +203,10 @@ class TestCustomFormatter:
 
     @pytest.mark.unit
     def test_format_error_level(self):
-        """CustomFormatter formats ERROR level with correct color code."""
+        """Verify ERROR level messages formatted with red color (ANSI 91m).
+
+        Red highlights critical failures (non-convergence, unphysical states).
+        """
         formatter = CustomFormatter()
         record = logging.LogRecord(
             name='test',
@@ -171,9 +218,12 @@ class TestCustomFormatter:
             exc_info=None,
         )
         result = formatter.format(record)
+
+        # Verify message content preserved
         assert 'ERROR' in result
         assert 'Test error message' in result
-        assert '91m' in result  # Red color code
+        # Verify red color code (ANSI 91m) for visibility
+        assert '91m' in result
 
     @pytest.mark.unit
     def test_format_debug_level(self):
@@ -212,16 +262,25 @@ class TestCustomFormatter:
 
 
 class TestSetupLogger:
-    """Unit tests for setup_logger logger initialization."""
+    """Test suite for setup_logger initialization and configuration.
+
+    Central logger 'fwl' (FormingWorlds) captures all PROTEUS simulation output
+    to files (proteus_XX.log) for post-run analysis and debugging.
+    """
 
     @pytest.mark.unit
     def test_setup_logger_creates_file(self):
-        """setup_logger creates logfile at specified path."""
+        """Verify setup_logger creates FormingWorlds logger with file handler.
+
+        Each PROTEUS run writes to separate log file for parallel ensemble tracking.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             logpath = os.path.join(tmpdir, 'test.log')
             logger = setup_logger(logpath=logpath, logterm=False)
+
+            # Verify logger instance and canonical name
             assert isinstance(logger, logging.Logger)
-            assert logger.name == 'fwl'
+            assert logger.name == 'fwl'  # FormingWorlds standard logger
 
     @pytest.mark.unit
     def test_setup_logger_removes_existing_file(self):
@@ -268,9 +327,15 @@ class TestSetupLogger:
 
     @pytest.mark.unit
     def test_setup_logger_invalid_level_raises(self):
-        """setup_logger raises ValueError for invalid log level."""
+        """Verify setup_logger raises ValueError for invalid log levels.
+
+        Prevents silent failures when config specifies typo in log level
+        (e.g., 'INFOO' instead of 'INFO').
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             logpath = os.path.join(tmpdir, 'test.log')
+
+            # Invalid level should raise immediately, not silently default
             with pytest.raises(ValueError, match='Invalid log level'):
                 setup_logger(logpath=logpath, level='INVALID', logterm=False)
 
@@ -349,14 +414,22 @@ class TestSetupLogger:
 
 
 class TestGetCurrentLogfileIndex:
-    """Unit tests for GetCurrentLogfileIndex logfile enumeration."""
+    """Test suite for GetCurrentLogfileIndex sequential logfile tracking.
+
+    PROTEUS creates numbered log files (proteus_00.log, proteus_01.log, ...)
+    for sequential runs in the same output directory. This function finds
+    the highest existing index to determine the next log filename.
+    """
 
     @pytest.mark.unit
     def test_no_logfiles_returns_minus_one(self):
-        """GetCurrentLogfileIndex returns -1 when no logfiles exist."""
+        """Verify function returns -1 for empty directory (first run).
+
+        -1 signals initial run; next log will be proteus_00.log.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             result = GetCurrentLogfileIndex(tmpdir)
-            assert result == -1
+            assert result == -1  # Sentinel value for "no logs yet"
 
     @pytest.mark.unit
     def test_single_logfile_returns_zero(self):
@@ -377,13 +450,19 @@ class TestGetCurrentLogfileIndex:
 
     @pytest.mark.unit
     def test_gap_in_logfiles(self):
-        """GetCurrentLogfileIndex stops at first gap in sequence."""
+        """Verify function stops at first gap in numbering sequence.
+
+        Prevents overwriting logs when user manually deletes intermediate files
+        (e.g., failed run proteus_02.log). Next run creates proteus_02.log, not _04.log.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             pathlib.Path(os.path.join(tmpdir, 'proteus_00.log')).touch()
             pathlib.Path(os.path.join(tmpdir, 'proteus_01.log')).touch()
-            pathlib.Path(os.path.join(tmpdir, 'proteus_03.log')).touch()  # Gap
+            pathlib.Path(os.path.join(tmpdir, 'proteus_03.log')).touch()  # Gap at _02
+
             result = GetCurrentLogfileIndex(tmpdir)
-            assert result == 1  # Stops at first gap
+            # Returns 1, so next log will fill gap as proteus_02.log
+            assert result == 1
 
     @pytest.mark.unit
     def test_ignores_non_matching_files(self):
@@ -397,13 +476,21 @@ class TestGetCurrentLogfileIndex:
 
 
 class TestGetLogfilePath:
-    """Unit tests for GetLogfilePath logfile path construction."""
+    """Test suite for GetLogfilePath formatted path construction.
+
+    Generates standardized log filenames with zero-padded indices for
+    proper alphabetical sorting in filesystem (proteus_00.log before proteus_10.log).
+    """
 
     @pytest.mark.unit
     def test_constructs_correct_path_index_zero(self):
-        """GetLogfilePath constructs correct path for index 0."""
+        """Verify zero-padded format for first logfile (proteus_00.log).
+
+        Zero-padding ensures alphabetical sort matches numerical order
+        when browsing output directories with 10+ simulation runs.
+        """
         path = GetLogfilePath('/tmp', 0)
-        assert path == '/tmp/proteus_00.log'
+        assert path == '/tmp/proteus_00.log'  # Two-digit padding: 00 not 0
 
     @pytest.mark.unit
     def test_constructs_correct_path_index_five(self):
@@ -419,8 +506,13 @@ class TestGetLogfilePath:
 
     @pytest.mark.unit
     def test_raises_for_index_over_99(self):
-        """GetLogfilePath raises exception for index > 99."""
+        """Verify function raises exception when index exceeds 99.
+
+        Hard limit at 99 logs prevents runaway simulations from filling disk
+        with thousands of log files (each can be 100+ MB for long runs).
+        """
         with pytest.raises(Exception, match='too many'):
+            # Index 100 exceeds two-digit format limit
             GetLogfilePath('/tmp', 100)
 
     @pytest.mark.unit
