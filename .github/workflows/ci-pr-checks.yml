@@ -35,7 +35,7 @@ on:
   workflow_dispatch:  # Allow manual triggering for testing
 
 permissions:
-  contents: read
+  contents: write  # Allow auto-commit of ratcheted coverage thresholds
   packages: read
 
 env:
@@ -210,6 +210,28 @@ jobs:
         run: |
           cd /opt/proteus
           python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast
+
+      - name: Commit ratcheted threshold (if changed)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/tl/test_ecosystem_v5')
+        continue-on-error: true
+        run: |
+          cd /__w/PROTEUS/PROTEUS
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Copy updated pyproject.toml from container to workspace
+          cp /opt/proteus/pyproject.toml /__w/PROTEUS/PROTEUS/pyproject.toml
+
+          # Check if there are changes
+          if git diff --quiet pyproject.toml; then
+            echo "No threshold changes to commit"
+          else
+            git add pyproject.toml
+            COVERAGE=$(grep -A2 '\[tool.proteus.coverage_fast\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
+            git commit -m "ratchet: Auto-update fast coverage threshold to ${COVERAGE}% [skip ci]"
+            git push
+            echo "✓ Committed ratcheted threshold: ${COVERAGE}%"
+          fi
 
       - name: Install gpg for Codecov verification
         if: always()

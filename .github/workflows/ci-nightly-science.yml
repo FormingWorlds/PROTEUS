@@ -25,7 +25,7 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 permissions:
-  contents: read
+  contents: write  # Allow auto-commit of ratcheted coverage thresholds
   packages: read
 
 env:
@@ -134,6 +134,28 @@ jobs:
         run: |
           cd /opt/proteus
           python tools/update_coverage_threshold.py --coverage-file coverage-nightly.json --target full
+
+      - name: Commit ratcheted threshold (main branch only)
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          cd /__w/PROTEUS/PROTEUS
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Copy updated pyproject.toml from container to workspace
+          cp /opt/proteus/pyproject.toml /__w/PROTEUS/PROTEUS/pyproject.toml
+
+          # Check if there are changes
+          if git diff --quiet pyproject.toml; then
+            echo "No threshold changes to commit"
+          else
+            git add pyproject.toml
+            COVERAGE=$(grep -A2 '\[tool.coverage.report\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
+            git commit -m "ratchet: Auto-update full coverage threshold to ${COVERAGE}% [skip ci]"
+            git push
+            echo "✓ Committed ratcheted threshold: ${COVERAGE}%"
+          fi
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v4

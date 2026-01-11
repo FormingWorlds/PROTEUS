@@ -718,11 +718,12 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
 
 3. **Coverage Requirements**
    - **Full integration tests**: Check `pyproject.toml` `[tool.coverage.report]` `fail_under` (currently 69%)
-   - **Fast unit tests**: Check `pyproject.toml` `[tool.proteus.coverage_fast]` `fail_under` (currently 18-22%)
+   - **Fast unit tests**: Check `pyproject.toml` `[tool.proteus.coverage_fast]` `fail_under` (currently 22.42%)
    - **Auto-ratcheting**: Both thresholds automatically increase when coverage improves (never decreases)
-     - Fast gate ratchets on all branches (feature branches encourage unit test coverage)
-     - Full gate ratchets only on main branch after integration tests (production quality)
+     - Fast gate ratchets on all branches and auto-commits to branch (encourages unit test coverage)
+     - Full gate ratchets only on main branch and auto-commits (production quality standard)
      - Ratcheting uses `tools/update_coverage_threshold.py` with appropriate target (`--target fast` or `--target full`)
+     - Commits are made by `github-actions[bot]` with `[skip ci]` to avoid infinite loops
    - All PRs must pass the coverage threshold defined in CI
 
 4. **Code Quality & Style**
