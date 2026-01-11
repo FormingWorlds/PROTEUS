@@ -11,9 +11,14 @@ from juliacall import Main as jl
 from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import get_radius_from_pressure, get_spfile_path
+from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
 from proteus.utils.constants import gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    create_tmp_folder,
+    multiple,
+    safe_rm,
+)
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
@@ -574,8 +579,7 @@ def _solve_transparent(atmos, config:Config):
                                         max_steps=int(max_steps))
     return atmos
 
-def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
-                hf_row:dict):
+def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     """Run AGNI atmosphere model.
 
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -658,8 +662,10 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     albedo = SW_flux_up[0]/SW_flux_down[0]
     if bool(atmos.transparent):
         R_obs = float(hf_row["R_int"])
+        T_obs = float(atmos.tmp_surf)
     else:
         R_obs = float(atmos.transspec_r)
+        T_obs = float(atmos.transspec_tmp)
 
     # Print info to user
     if config.atmos_clim.agni.oceans:
@@ -680,14 +686,15 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
-    # XUV height in atm
-    if config.escape.module == 'zephyrus':
-        # escape level set by zephyrus config
-        p_xuv = config.escape.zephyrus.Pxuv # [bar]
+    # p_xuv from R_xuv
+    if config.escape.xuv_defined_by_radius:
+        r_xuv = hf_row["R_xuv"] # m
+        p_xuv = get_oarr_from_parr(atmos.r, atmos.p, r_xuv)[1] * 1e-5 # bar
+
+    # R_xuv from p_xuv
     else:
-        # escape level set to surface
-        p_xuv = hf_row["P_surf"] # [bar]
-    p_xuv, r_xuv = get_radius_from_pressure(atmos.p, atmos.r, p_xuv*1e5) # [Pa], [m]
+        p_xuv =  hf_row["p_xuv"] # bar
+        r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1] # m
 
     # final things to store
     output = {}
@@ -696,10 +703,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["F_sct"]         = SW_flux_up[0]
     output["T_surf"]        = float(atmos.tmp_surf)
     output["p_obs"]         = float(atmos.transspec_p)/1e5 # convert [Pa] to [bar]
+    output["T_obs"]         = T_obs
     output["R_obs"]         = R_obs
     output["albedo"]        = albedo
-    output["p_xuv"]         = p_xuv/1e5        # Closest pressure from Pxuv    [bars]
-    output["R_xuv"]         = r_xuv            # Radius at Pxuv                [m]
+    output["p_xuv"]         = p_xuv            # Pressure at Rxuv   [bars]
+    output["R_xuv"]         = r_xuv            # Radius at Pxuv     [m]
     output["ocean_areacov"] = float(atmos.ocean_areacov)
     output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
     output["P_surf_clim"]   = float(atmos.p_boa) / 1e5 # Calculated Psurf [bar]
@@ -709,5 +717,10 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
             output[g+"_ocean"] = float(atmos.ocean_tot[g])
         else:
             output[g+"_ocean"] = 0.0
+
+    # set composition at xuv
+    for g in gas_list:
+        _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[g], p_xuv*1e5)
+        hf_row[g+"_vmr_xuv"] = x_xuv
 
     return atmos, output
