@@ -717,8 +717,12 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Physics: Ensure physically valid inputs (e.g., T > 0K) unless testing error handling
 
 3. **Coverage Requirements**
-   - Check `pyproject.toml` `tool.coverage.report` `fail_under` for current threshold
-   - Coverage threshold automatically increases on main branch (never decreases)
+   - **Full integration tests**: Check `pyproject.toml` `[tool.coverage.report]` `fail_under` (currently 69%)
+   - **Fast unit tests**: Check `pyproject.toml` `[tool.proteus.coverage_fast]` `fail_under` (currently 18-22%)
+   - **Auto-ratcheting**: Both thresholds automatically increase on main branch when coverage improves (never decreases)
+     - Fast gate ratchets after `ci-pr-checks.yml` (unit tests)
+     - Full gate ratchets after `ci-nightly-science.yml` (integration tests)
+     - Ratcheting uses `tools/update_coverage_threshold.py` with appropriate target (`--target fast` or `--target full`)
    - All PRs must pass the coverage threshold defined in CI
 
 4. **Code Quality & Style**
