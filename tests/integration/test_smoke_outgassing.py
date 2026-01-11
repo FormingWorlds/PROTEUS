@@ -21,7 +21,7 @@ PROTEUS_ROOT = Path(__file__).parent.parent.parent
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(reason="CALLIOPE integration test - slow, reserved for nightly CI")
+@pytest.mark.skip(reason='CALLIOPE integration test - slow, reserved for nightly CI')
 def test_smoke_calliope_dummy_atmos_outgassing():
     """Test CALLIOPE outgassing + dummy atmosphere coupling (1 timestep).
 
@@ -45,7 +45,7 @@ def test_smoke_calliope_dummy_atmos_outgassing():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load configuration with CALLIOPE outgassing
-        config_path = PROTEUS_ROOT / "input" / "all_options.toml"
+        config_path = PROTEUS_ROOT / 'input' / 'all_options.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
