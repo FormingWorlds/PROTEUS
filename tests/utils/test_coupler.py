@@ -606,3 +606,284 @@ def test_helpfile_scientific_notation_consistency():
 
         assert hf_read['Time'].iloc[0] == pytest.approx(1.234e8, rel=1e-5)
         assert hf_read['M_tot'].iloc[0] == pytest.approx(5.972e24, rel=1e-5)
+
+
+# =============================================================================
+# Test: Version Getter Functions
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_get_spider_version():
+    """Test that _get_spider_version returns expected version string."""
+    from proteus.utils.coupler import _get_spider_version
+
+    version = _get_spider_version()
+    assert isinstance(version, str)
+    assert version == '0.2.0'
+
+
+@pytest.mark.unit
+def test_get_petsc_version():
+    """Test that _get_petsc_version returns expected version string."""
+    from proteus.utils.coupler import _get_petsc_version
+
+    version = _get_petsc_version()
+    assert isinstance(version, str)
+    assert version == '1.3.19.0'
+
+
+@pytest.mark.unit
+def test_get_git_revision_with_mock():
+    """Test that _get_git_revision returns git hash."""
+    from proteus.utils.coupler import _get_git_revision
+
+    with patch('subprocess.check_output') as mock_check_output:
+        mock_check_output.return_value = b'abc123def456789\n'
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = _get_git_revision(tmpdir)
+
+            assert result == 'abc123def456789'
+            mock_check_output.assert_called_once_with(['git', 'rev-parse', 'HEAD'])
+
+
+@pytest.mark.unit
+def test_get_socrates_version_with_mock():
+    """Test that _get_socrates_version reads version file."""
+    from proteus.utils.coupler import _get_socrates_version
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create mock version file
+        version_file = os.path.join(tmpdir, 'version')
+        with open(version_file, 'w') as f:
+            f.write('24.1.0\n')
+
+        # Mock environment variable
+        with patch.dict(os.environ, {'RAD_DIR': tmpdir}):
+            version = _get_socrates_version()
+            assert version == '24.1.0'
+
+
+@pytest.mark.unit
+def test_get_agni_version_with_mock():
+    """Test that _get_agni_version reads TOML file."""
+    from proteus.utils.coupler import _get_agni_version
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create mock Project.toml (AGNI format: top-level version)
+        toml_content = b'name = "AGNI"\nversion = "1.8.0"\n'
+        toml_path = os.path.join(tmpdir, 'Project.toml')
+        with open(toml_path, 'wb') as f:
+            f.write(toml_content)
+
+        dirs = {'agni': tmpdir}
+        version = _get_agni_version(dirs)
+
+        assert version == '1.8.0'
+
+
+@pytest.mark.unit
+def test_get_julia_version_with_mock():
+    """Test that _get_julia_version parses julia --version output."""
+    from proteus.utils.coupler import _get_julia_version
+
+    with patch('subprocess.check_output') as mock_check_output:
+        mock_check_output.return_value = b'julia version 1.9.3\n'
+
+        version = _get_julia_version()
+
+        assert version == '1.9.3'
+        mock_check_output.assert_called_once_with(['julia', '--version'])
+
+
+# =============================================================================
+# Test: Print Functions
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_print_header():
+    """Test that print_header logs header information."""
+    from proteus.utils.coupler import print_header
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_header()
+
+        # Verify logger was called with header content
+        assert mock_log.info.called
+        # Check that PROTEUS and copyright year are mentioned
+        log_calls = [str(call) for call in mock_log.info.call_args_list]
+        assert any('PROTEUS' in str(call) for call in log_calls)
+
+
+@pytest.mark.unit
+def test_print_stoptime_seconds():
+    """Test that print_stoptime formats runtime in seconds."""
+    from proteus.utils.coupler import print_stoptime
+
+    start_time = datetime.now() - pd.Timedelta(seconds=45)
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_stoptime(start_time)
+
+        # Verify logger was called
+        assert mock_log.info.called
+        # Check that seconds formatting was used
+        log_calls = [str(call) for call in mock_log.info.call_args_list]
+        assert any('seconds' in str(call) for call in log_calls)
+
+
+@pytest.mark.unit
+def test_print_stoptime_minutes():
+    """Test that print_stoptime formats runtime in minutes."""
+    from proteus.utils.coupler import print_stoptime
+
+    start_time = datetime.now() - pd.Timedelta(minutes=5, seconds=30)
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_stoptime(start_time)
+
+        # Verify minutes formatting was used
+        log_calls = [str(call) for call in mock_log.info.call_args_list]
+        assert any('minutes' in str(call) for call in log_calls)
+
+
+@pytest.mark.unit
+def test_print_stoptime_hours():
+    """Test that print_stoptime formats runtime in hours."""
+    from proteus.utils.coupler import print_stoptime
+
+    start_time = datetime.now() - pd.Timedelta(hours=2, minutes=15)
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        print_stoptime(start_time)
+
+        # Verify hours formatting was used
+        log_calls = [str(call) for call in mock_log.info.call_args_list]
+        assert any('hours' in str(call) for call in log_calls)
+
+
+@pytest.mark.unit
+def test_print_system_configuration():
+    """Test that print_system_configuration logs system info."""
+    from proteus.utils.coupler import print_system_configuration
+
+    dirs = {'fwl': '/path/to/fwl'}
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        with patch('os.getlogin', return_value='testuser'):
+            print_system_configuration(dirs)
+
+            # Verify logger was called
+            assert mock_log.info.called
+            # Check that key system info was logged
+            log_calls = [str(call) for call in mock_log.info.call_args_list]
+            assert any('Python version' in str(call) for call in log_calls)
+            assert any('testuser' in str(call) for call in log_calls)
+
+
+@pytest.mark.unit
+def test_print_system_configuration_fallback_username():
+    """Test that print_system_configuration handles OSError for username."""
+    from proteus.utils.coupler import print_system_configuration
+
+    dirs = {'fwl': '/path/to/fwl'}
+
+    with patch('proteus.utils.coupler.log') as mock_log:
+        with patch('os.getlogin', side_effect=OSError):
+            with patch('pwd.getpwuid') as mock_getpwuid:
+                mock_getpwuid.return_value.pw_name = 'fallback_user'
+
+                print_system_configuration(dirs)
+
+                # Verify fallback username was used
+                assert mock_log.info.called
+
+
+# =============================================================================
+# Test: Edge Cases and Error Handling
+# =============================================================================
+
+
+@pytest.mark.unit
+def test_write_helpfile_validates_missing_keys():
+    """Test that WriteHelpfileToCSV raises error for missing keys."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a DataFrame with missing keys
+        df = pd.DataFrame({'Time': [1.0]})  # Missing all other required keys
+
+        with pytest.raises(Exception, match='mismatched keys'):
+            WriteHelpfileToCSV(tmpdir, df)
+
+
+@pytest.mark.unit
+def test_zero_helpfile_row_is_immutable_structure():
+    """Test that ZeroHelpfileRow returns new dict each time."""
+    row1 = ZeroHelpfileRow()
+    row2 = ZeroHelpfileRow()
+
+    # Modify first row
+    row1['Time'] = 100.0
+
+    # Second row should still be zero
+    assert row2['Time'] == 0.0
+
+
+@pytest.mark.unit
+def test_helpfile_preserves_column_order():
+    """Test that helpfile operations preserve column order."""
+    keys = GetHelpfileKeys()
+    row = ZeroHelpfileRow()
+    hf = CreateHelpfileFromDict(row)
+
+    # Verify column order matches GetHelpfileKeys
+    assert list(hf.columns) == keys
+
+
+@pytest.mark.unit
+def test_create_lock_file_with_absolute_path():
+    """Test that CreateLockFile works with absolute paths."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        abs_path = os.path.abspath(tmpdir)
+        lockfile_path = CreateLockFile(abs_path)
+
+        assert os.path.isabs(lockfile_path)
+        assert os.path.exists(lockfile_path)
+
+
+@pytest.mark.unit
+def test_extend_helpfile_preserves_dtype():
+    """Test that ExtendHelpfile preserves float dtype."""
+    row1 = ZeroHelpfileRow()
+    row1['Time'] = 1.0
+    hf = CreateHelpfileFromDict(row1)
+
+    row2 = ZeroHelpfileRow()
+    row2['Time'] = 2.0
+    hf_extended = ExtendHelpfile(hf, row2)
+
+    # All columns should be float
+    assert hf_extended['Time'].dtype == float
+
+
+@pytest.mark.unit
+def test_helpfile_handles_large_time_values():
+    """Test that helpfile handles large time values (Gyr scale)."""
+    row = ZeroHelpfileRow()
+    row['Time'] = 4.567e9  # 4.567 Gyr (age of Earth)
+    hf = CreateHelpfileFromDict(row)
+
+    assert hf['Time'].iloc[0] == pytest.approx(4.567e9)
+
+
+@pytest.mark.unit
+def test_helpfile_handles_negative_fluxes():
+    """Test that helpfile handles negative flux values (heat loss)."""
+    row = ZeroHelpfileRow()
+    row['F_int'] = -50.0  # negative = heat loss from interior
+    row['F_atm'] = -100.0  # negative = net radiative cooling
+    hf = CreateHelpfileFromDict(row)
+
+    assert hf['F_int'].iloc[0] == pytest.approx(-50.0)
+    assert hf['F_atm'].iloc[0] == pytest.approx(-100.0)
