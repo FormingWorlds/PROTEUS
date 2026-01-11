@@ -128,7 +128,8 @@ jobs:
           cd /opt/proteus
           coverage json -o coverage-nightly.json
 
-      - name: Ratchet full coverage threshold
+      - name: Ratchet full coverage threshold (main branch only)
+        if: github.ref == 'refs/heads/main'
         continue-on-error: true
         run: |
           cd /opt/proteus
