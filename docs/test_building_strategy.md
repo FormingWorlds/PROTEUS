@@ -13,9 +13,10 @@
   - 19 tests for `utils/terminate.py` (termination criteria logic)
   - 14 tests for `star/dummy.py` (blackbody stellar physics)
   - 13 tests for `interior/dummy.py` (interior thermal evolution)
+  - 36 tests for `utils/coupler.py` (helpfile I/O, state management)
   - 1 smoke test for `atmosphere-interior coupling` (dummy modules, ~2s)
-- **Total**: ~188 tests (187 unit + 1 smoke)
-- **Current coverage**: 23.03% (auto-ratcheted fast gate)
+- **Total**: ~224 tests (223 unit + 1 smoke)
+- **Current coverage**: 23.03% (baseline), projected ~24-25% with coupler tests
 - **Target**: 30% fast gate coverage + 5-7 smoke tests
 
 ### Test File Created
@@ -89,6 +90,13 @@ These modules have more complex logic but are still testable without heavy compu
 - **Physics**: Phase boundaries (solid/partial/molten), radiogenic/tidal heating, Interior_t arrays
 - **Effort**: Moderate — config mocks, Interior_t(nlev_b=2) instantiation
 
+#### 2.4 `utils/coupler.py` ✓ **COMPLETED (NEW)**
+- **Status**: 36 unit tests created and passing
+- **Coverage**: Helpfile operations (creation, row extension, CSV I/O), lock file management, state printing
+- **Scope**: GetHelpfileKeys validation, ZeroHelpfileRow initialization, CreateHelpfileFromDict/ExtendHelpfile row management, WriteHelpfileToCSV/ReadHelpfileFromCSV roundtrip I/O
+- **Physics validation**: Realistic Earth values, extreme exoplanet parameters, float precision preservation, scientific notation consistency
+- **Effort**: Low — pure I/O operations with mocked file system
+
 ---
 
 ### PRIORITY 2.5: Smoke Tests (Fast Integration Validation)
@@ -148,22 +156,7 @@ These tests validate that modules actually couple together correctly with real c
 
 These are heavily used but require careful test design to isolate logic from physics.
 
-#### 3.1 `utils/coupler.py`
-- **Lines**: 979 (LARGE)
-- **Key functions**: 15+ functions
-- **Target tests**: 30-40 unit tests
-- **Effort**: HIGH
-  - Coupling orchestration
-  - File I/O (helpfile handling)
-  - Version checking
-  - Module configuration printing
-
-**Strategy**:
-- Start with pure utility functions (find_git_revision, version parsing)
-- Mock file I/O for helpfile tests
-- Test CSV reading/writing with temp files
-
-#### 3.2 `config/` modules (multiple files)
+#### 3.1 `config/` modules (multiple files)
 - **`_config.py`**: 400+ lines (core config)
 - **`_params.py`**: 298 lines (parameter definitions)
 - **`_interior.py`**: 271 lines (interior config)
@@ -172,6 +165,15 @@ These are heavily used but require careful test design to isolate logic from phy
   - Expand existing `test_config.py` with more scenarios
   - Test validators and defaults
   - Parametrize across different config combinations
+
+#### 3.2 `atmos_clim/common.py` (Atmosphere climate interface)
+- **Lines**: 200+ (interface between modules)
+- **Key functions**: read_atmosphere_data, physical validators
+- **Target**: 15-20 unit tests
+- **Effort**: MODERATE-HIGH
+  - Mocked atmospheric module data
+  - Physical range validation
+  - Specification string parsing
 
 ---
 
@@ -199,9 +201,10 @@ These have fewer users or are harder to test without integration.
 
 ## Implementation Progress (Jan 11, 2026)
 
-### Completed (188 tests, 23.03% coverage)
+### Completed (224 tests, 23.03% baseline coverage)
 - ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
 - ✓ Priority 2.1-2.3: 53 moderate-effort tests (terminate, star/dummy, interior/dummy)
+- ✓ Priority 2.4: 36 coupler module tests (NEW - helpfile I/O, lock files, state printing)
 - ✓ Priority 2.5.1 (partial): 1 smoke test (dummy atmos + dummy interior, SKIPPED due to physics)
 - ✓ Auto-ratcheting working: 18.00% → 22.42% → 23.03% threshold increases
 - ✓ Auto-commit mechanism: github-actions bot commits threshold updates automatically
@@ -217,12 +220,12 @@ These have fewer users or are harder to test without integration.
 3. **Priority 2.5.3-4**: MORS stellar evolution, ZEPHYRUS escape coupling (TODO)
 
 **Parallel track (Unit Tests - after smoke tests)**:
-4. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 25-26% coverage
-5. **Priority 2.4**: `utils/plot.py` (15-20 tests, 2-3 hrs) → target 27-28% coverage
-6. **Config expansion**: Parametrized tests for edge cases → target 30%+ coverage
+4. **Priority 3.1**: `config/_config.py` and config modules (30-40 tests, 3-4 hrs) → target 25-26% coverage
+5. **Priority 3.2**: `atmos_clim/common.py` (15-20 tests, 2 hrs) → target 27-28% coverage
+6. **Config/utils expansion**: Parametrized tests for edge cases → target 30%+ coverage
 
 **Target milestones**:
-- Unit test coverage: 30% fast gate (200+ tests) — PRIMARY FOCUS
+- Unit test coverage: 30% fast gate (240+ tests total) — PRIMARY FOCUS
 - Smoke test suite: 3-4 tests for fast PR checks (currently 2 skipped, need 2-3 active)
 - Timeline: End of Jan 2026
 
