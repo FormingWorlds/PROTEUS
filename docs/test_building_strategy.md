@@ -281,7 +281,7 @@ These have fewer users or are harder to test without integration.
 - ✓ Priority 2.1-2.4: 108 moderate-effort tests (terminate, star/dummy, interior/dummy, coupler)
 - ✓ Priority 3.1: **89 config validator tests** (comprehensive coverage of all validator modules)
   - Core config: 27 tests
-  - Interior validators: 8 tests  
+  - Interior validators: 8 tests
   - Params validators: 10 tests
   - **NEW**: Observe validators: 24 tests (`test_observe_validators.py`)
   - **NEW**: Outgas validators: 20 tests (`test_outgas_validators.py`)

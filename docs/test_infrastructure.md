@@ -28,7 +28,7 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 **Implementation Status**: Fast PR workflow complete and passing ✓ — **Near 30% coverage target**
 
 - ✓ Unit Tests (mocked physics): **457 tests**, ~1 min runtime
-- ✓ Smoke Tests (real binaries): 1 test, ~2 min runtime  
+- ✓ Smoke Tests (real binaries): 1 test, ~2 min runtime
 - ✓ Code Quality (ruff): Pass
 - ✓ Coverage tracking: **29.52%** (fast gate, auto-ratcheting from 18% → 22% → 23% → **29.52%**)
 - ✓ Diff-cover: Changed-lines coverage validation (`--diff-file` approach)
