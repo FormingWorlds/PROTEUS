@@ -396,3 +396,250 @@ def test_run_dummy_int_rf_depth_scaling():
 
     expected_rf_depth = output['Phi_global'] * (1 - 0.6)
     assert output['RF_depth'] == pytest.approx(expected_rf_depth, rel=1e-10)
+
+
+# ============================================================================
+# Test interior.common rheological functions
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_eval_rheoparam_viscosity_solid():
+    """Test viscosity evaluation at zero melt fraction (solid state).
+
+    Physics: Solid mantle (phi=0) should have baseline viscosity par_visc.dotl
+    without rheological reduction from melting. Expected viscosity = 1.0 Pa·s
+    based on par_visc parameters.
+    """
+    from proteus.interior.common import eval_rheoparam
+
+    phi = 0.0  # Solid state
+    visc = eval_rheoparam(phi, 'visc')
+
+    # At phi=0, viscosity is reduced by rheological function but not zero
+    assert visc > 0
+    assert isinstance(visc, (float, np.floating))
+
+
+@pytest.mark.unit
+def test_eval_rheoparam_viscosity_molten():
+    """Test viscosity evaluation at high melt fraction (molten state).
+
+    Physics: Heavily molten mantle (phi=0.35) should have dramatically reduced
+    viscosity due to melt weakening. Viscosity should be much lower than solid case.
+    Venus-like magma ocean scenario: phi ~0.3-0.4.
+    """
+    from proteus.interior.common import eval_rheoparam
+
+    phi_solid = 0.0
+    phi_molten = 0.35
+
+    visc_solid = eval_rheoparam(phi_solid, 'visc')
+    visc_molten = eval_rheoparam(phi_molten, 'visc')
+
+    # Molten state should have lower viscosity than solid
+    assert visc_molten < visc_solid
+    assert visc_molten > 0
+
+
+@pytest.mark.unit
+def test_eval_rheoparam_shear_modulus():
+    """Test shear modulus evaluation across melt fractions.
+
+    Physics: Shear modulus (rigidity) decreases with melt fraction.
+    par_shear parameters are from Kervazo+21 for melt weakening behavior.
+    """
+    from proteus.interior.common import eval_rheoparam
+
+    phi_low = 0.1
+    phi_high = 0.3
+
+    shear_low = eval_rheoparam(phi_low, 'shear')
+    shear_high = eval_rheoparam(phi_high, 'shear')
+
+    # Higher melt fraction should reduce shear modulus
+    assert shear_high < shear_low
+    assert shear_low > 0
+    assert shear_high > 0
+
+
+@pytest.mark.unit
+def test_eval_rheoparam_bulk_modulus():
+    """Test bulk modulus evaluation.
+
+    Physics: Bulk modulus (incompressibility) also affected by melt fraction.
+    Represents resistance to compression in melted material.
+    """
+    from proteus.interior.common import eval_rheoparam
+
+    phi = 0.2
+
+    bulk = eval_rheoparam(phi, 'bulk')
+
+    # Bulk modulus should be positive
+    assert bulk > 0
+    assert isinstance(bulk, (float, np.floating))
+
+
+@pytest.mark.unit
+def test_eval_rheoparam_invalid_parameter():
+    """Test eval_rheoparam raises ValueError for invalid parameter name.
+
+    Physics: Only 'visc', 'shear', 'bulk' are valid rheological parameters
+    in the match statement. Invalid names should fail with clear error.
+    """
+    from proteus.interior.common import eval_rheoparam
+
+    with pytest.raises(ValueError, match='Invalid rheological parameter'):
+        eval_rheoparam(0.2, 'invalid')
+
+
+@pytest.mark.unit
+def test_interior_t_initialization():
+    """Test Interior_t class initialization with default parameters.
+
+    Physics: Interior_t represents mantle column with nlev_b boundary points
+    (creating nlev_s=nlev_b-1 shell layers). All property arrays should be
+    initialized to zero.
+    """
+    from proteus.interior.common import Interior_t
+
+    nlev_b = 5
+    interior = Interior_t(nlev_b)
+
+    assert interior.nlev_b == 5
+    assert interior.nlev_s == 4  # One less layer
+    assert interior.ic == -1  # Initial condition flag
+    assert interior.dt == 1.0  # Default time step [yr]
+    assert len(interior.radius) == 5
+    assert len(interior.tides) == 4
+    assert len(interior.phi) == 4
+
+
+@pytest.mark.unit
+def test_interior_t_update_rheology_solid():
+    """Test update_rheology with solid mantle (zero melt fraction).
+
+    Physics: Solid mantle (all phi=0) should compute rheological parameters
+    without melt weakening. Shear and bulk moduli should be positive and stable.
+    """
+    from proteus.interior.common import Interior_t
+
+    interior = Interior_t(nlev_b=3)
+    interior.phi = np.array([0.0, 0.0])  # Solid mantle
+
+    interior.update_rheology(visc=False)
+
+    # Check that moduli were computed
+    assert len(interior.shear) == 2
+    assert len(interior.bulk) == 2
+    assert all(interior.shear > 0)
+    assert all(interior.bulk > 0)
+    # Viscosity should not be updated when visc=False
+    assert interior.visc[0] == 0.0
+
+
+@pytest.mark.unit
+def test_interior_t_update_rheology_with_viscosity():
+    """Test update_rheology with viscosity calculation enabled.
+
+    Physics: When visc=True, viscosity array is also computed based on melt
+    fraction. Mixed melt-solid case: phi=[0.1, 0.3] creates different
+    viscosities at different depths.
+    """
+    from proteus.interior.common import Interior_t
+
+    interior = Interior_t(nlev_b=3)
+    interior.phi = np.array([0.1, 0.3])  # Partially molten
+
+    interior.update_rheology(visc=True)
+
+    # Viscosity should be computed at different values
+    assert interior.visc[0] > 0
+    assert interior.visc[1] > 0
+    # Different melt fractions should yield different viscosities
+    assert interior.visc[1] < interior.visc[0]
+
+
+@pytest.mark.unit
+def test_get_file_tides_path():
+    """Test get_file_tides constructs correct filepath.
+
+    Physics: Tidal heating array saved in data/ subdirectory with filename
+    'tides_recent.dat' for model resumption from previous state.
+    """
+    from proteus.interior.common import get_file_tides
+
+    outdir = '/tmp/output'
+    fpath = get_file_tides(outdir)
+
+    assert fpath == '/tmp/output/data/tides_recent.dat'
+    assert 'data' in fpath
+    assert 'tides_recent.dat' in fpath
+
+
+@pytest.mark.unit
+def test_interior_t_resume_tides_file_missing(tmp_path):
+    """Test resume_tides when tides_recent.dat doesn't exist.
+
+    Physics: First-time simulation has no previous tides file. Function
+    should log warning and return without error, allowing simulation to
+    continue with default (zero) tidal heating.
+    """
+    from proteus.interior.common import Interior_t
+
+    outdir = str(tmp_path / 'output')
+    interior = Interior_t(nlev_b=3)
+
+    # Should not raise error, just log warning
+    interior.resume_tides(outdir)
+
+    # Tides should remain zero from initialization
+    assert interior.tides[0] == 0.0
+
+
+@pytest.mark.unit
+def test_interior_t_write_and_resume_tides(tmp_path):
+    """Test write_tides and resume_tides round-trip.
+
+    Physics: Simulations can be resumed by saving tidal heating (W/kg) and
+    melt fraction arrays to disk. Reading back should restore exact values
+    (within floating-point precision).
+    """
+    from proteus.interior.common import Interior_t
+
+    outdir = str(tmp_path / 'output')
+    (tmp_path / 'output' / 'data').mkdir(parents=True)
+
+    # Write tides from initial interior state
+    interior_write = Interior_t(nlev_b=4)
+    interior_write.phi = np.array([0.1, 0.2, 0.3])
+    interior_write.tides = np.array([1e-3, 2e-3, 3e-3])
+
+    interior_write.write_tides(outdir)
+
+    # Read back into new interior object
+    interior_read = Interior_t(nlev_b=4)
+    interior_read.resume_tides(outdir)
+
+    # Check values match
+    np.testing.assert_allclose(interior_read.phi, interior_write.phi, rtol=1e-6)
+    np.testing.assert_allclose(interior_read.tides, interior_write.tides, rtol=1e-6)
+
+
+@pytest.mark.unit
+def test_interior_t_single_layer_dummy_interior():
+    """Test Interior_t with single layer (dummy interior setup).
+
+    Physics: Dummy interior models (nlev_b=2) represent single-layer mantle
+    without internal resolution, used for fast calculations.
+    """
+    from proteus.interior.common import Interior_t
+
+    interior = Interior_t(nlev_b=2)
+
+    # Single layer (nlev_s = 1)
+    assert interior.nlev_s == 1
+    assert len(interior.tides) == 1
+    assert len(interior.phi) == 1
+    assert len(interior.radius) == 2  # One more radius point than layers
