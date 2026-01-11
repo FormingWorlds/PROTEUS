@@ -3,13 +3,15 @@
 ## Current Status (2026-01-10)
 
 ### Coverage Metrics
+
 - **Current unit/smoke tests**: 13 tests marked with `@pytest.mark.unit`
-- **New tests added**: 
+- **New tests added**:
   - 53 tests for `utils/helper.py` (9 component classes, 40 distinct functions tested)
   - 41 tests for `utils/logs.py` (logging infrastructure)
   - 27 tests for `config/_converters.py` (type conversion utilities)
-- **Total**: ~134 unit tests (as of 2026-01-10)
-- **Current coverage**: 20.22% (fast gate), 69% target (full gate)
+  - 7 tests for `orbit/dummy.py` (tidal heating dummy module)
+- **Total**: ~141 unit tests (as of 2026-01-11)
+- **Current coverage**: 20.38% (fast gate), 69% target (full gate)
 - **Target**: 30% fast gate coverage (by expanding unit tests)
 
 ### Test File Created
@@ -52,27 +54,12 @@ These modules have simple, pure functions with few dependencies. Tests run in <1
 - **Impact**: High — converters used for all TOML config parsing
 - **Effort**: Low — pure conversion functions, no dependencies
 
-#### 1.4 `orbit/dummy.py` (NEW)
-- **Lines**: 54
-- **Functions**: 1 main function + helper initialization
-- **Target tests**: 8-10 unit tests
-- **Effort**: LOW
-  - Dummy module (simplified physics)
-  - Input: config, interior object
-  - Output: orbital parameters
-  - Easy to mock inputs
+#### 1.4 `orbit/dummy.py` ✓ **COMPLETED**
 
-**Implementation plan:**
-```python
-# tests/orbit/test_dummy.py
-@pytest.mark.unit
-def test_dummy_orbit_returns_zero_eccentricity():
-    """Dummy orbit returns e=0 (circular)."""
-
-@pytest.mark.unit
-def test_dummy_orbit_preserves_period():
-    """Dummy orbit preserves input orbital period."""
-```
+- **Status**: 7 unit tests created and passing
+- **Coverage**: 100% of dummy tidal heating logic
+- **Scope**: < / > threshold heating, boundary equals zero, no-heat path, Imk2 return value, single-layer handling, phi immutability
+- **Effort**: Low — pure arithmetic with simple config mock
 
 ---
 
