@@ -4,15 +4,17 @@
 
 ### Coverage Metrics
 
-- **Current unit/smoke tests**: 13 tests marked with `@pytest.mark.unit`
+- **Baseline unit/smoke tests**: 13 tests marked with `@pytest.mark.unit`
 - **New tests added**:
-  - 53 tests for `utils/helper.py` (9 component classes, 40 distinct functions tested)
+  - 53 tests for `utils/helper.py` (9 component classes, 40 distinct functions)
   - 41 tests for `utils/logs.py` (logging infrastructure)
   - 27 tests for `config/_converters.py` (type conversion utilities)
   - 7 tests for `orbit/dummy.py` (tidal heating dummy module)
-- **Total**: ~141 unit tests (as of 2026-01-11)
-- **Current coverage**: 20.38% (fast gate), 69% target (full gate)
-- **Target**: 30% fast gate coverage (by expanding unit tests)
+  - 19 tests for `utils/terminate.py` (termination criteria logic)
+  - 14 tests for `star/dummy.py` (blackbody stellar physics)
+- **Total**: ~174 unit tests (as of 2026-01-11)
+- **Current coverage**: 21.86% (fast gate), 69% target (full gate)
+- **Target**: 30% fast gate coverage milestone
 
 ### Test File Created
 - `tests/utils/test_helper.py` — 53 comprehensive unit tests covering:
@@ -67,32 +69,19 @@ These modules have simple, pure functions with few dependencies. Tests run in <1
 
 These modules have more complex logic but are still testable without heavy computations.
 
-#### 2.1 `utils/terminate.py`
-- **Lines**: 291
-- **Functions**: 5 main functions
-- **Target tests**: 20-30 unit tests
-- **Effort**: MODERATE
-  - Termination criteria checking (solidification, time, volatiles, etc.)
-  - Logic-based comparisons
-  - Mocking: Mock interior object, config object
+#### 2.1 `utils/terminate.py` ✓ **COMPLETED**
+- **Status**: 19 unit tests created and passing
+- **Coverage**: All termination criteria (solidification, energy balance, escape, disintegration, time/iteration limits, keepalive)
+- **Scope**: Non-strict and strict termination logic with full criterion matrix
+- **Effort**: Moderate — config/handler mocks, comprehensive scenario coverage
 
-**Test categories:**
-- Solidification checks
-- Time-based termination
-- Volatile loss checks
-- Maximum iteration limits
+#### 2.2 `star/dummy.py` ✓ **COMPLETED**
+- **Status**: 14 unit tests created and passing
+- **Coverage**: Radius scaling (direct + empirical), spectrum generation, luminosity (Stefan-Boltzmann), instellation (inverse-square)
+- **Physics**: Solar normalization, temperature dependencies (T⁴), boundary conditions (zero/minimum T)
+- **Effort**: Moderate — real constants and numpy/scipy physics
 
-#### 2.2 `star/dummy.py`
-- **Lines**: 147
-- **Functions**: 3-4 key functions
-- **Target tests**: 12-15 unit tests
-- **Effort**: MODERATE
-  - Dummy stellar evolution
-  - Input: config, time step
-  - Output: stellar radius, luminosity updates
-  - Easy mocking
-
-#### 2.3 `interior/dummy.py`
+#### 2.3 `interior/dummy.py` (PRIORITY NEXT)
 - **Lines**: 131
 - **Functions**: 3-4 key functions
 - **Target tests**: 10-15 unit tests
@@ -156,27 +145,18 @@ These have fewer users or are harder to test without integration.
 
 ---
 
-## Implementation Roadmap (Next 2 weeks)
+## Implementation Progress (Jan 11, 2026)
 
-### Week 1 (Jan 13-17)
-**Goal**: Add 40-60 more unit tests, reach 25-30% fast gate coverage
+### Completed (174 tests, 21.86% coverage)
+- ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
+- ✓ Priority 2.1-2.2: 40 moderate-effort tests (terminate, star/dummy)
 
-1. **Mon (2 hours)**: Implement `test_logs.py` (20-25 tests)
-2. **Tue (2 hours)**: Implement `test_converters.py` (15-20 tests)
-3. **Wed (1.5 hours)**: Implement `test_orbit_dummy.py` (8-10 tests)
-4. **Thu (2 hours)**: Start `test_terminate.py` (first 10-15 tests)
-5. **Fri (1 hour)**: Testing, cleanup, coverage analysis
+### Upcoming (Next ~25 tests)
+1. **Priority 2.3**: `interior/dummy.py` (10-15 tests, ~1.5 hrs) → target 22-23% coverage
+2. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 25%+ coverage
+3. **Stretch**: Config module expansion, additional Priority 2 modules
 
-**Expected result**: 100-130 unit tests, ~25-28% coverage
-
-### Week 2 (Jan 20-24)
-**Goal**: Build remaining dummy modules, start config expansion
-
-1. **Mon-Tue (4 hours)**: Complete `test_terminate.py` + `test_star_dummy.py`
-2. **Wed-Thu (4 hours)**: Expand `test_config.py` with parametrized scenarios
-3. **Fri (1 hour)**: Coverage analysis, prepare for nightly integration tests
-
-**Expected result**: 150-170 unit tests, ~30% coverage (target reached)
+**Target milestone**: 30% fast gate coverage with 200+ unit tests by end of Jan
 
 ---
 
