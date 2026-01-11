@@ -4,6 +4,7 @@ Smoke test for JANUS-Interior coupling.
 Verifies that JANUS atmosphere module can successfully couple with
 dummy interior module and run for at last one timestep (binary execution).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,7 +14,7 @@ from proteus import Proteus
 
 @pytest.mark.janus
 @pytest.mark.smoke
-@pytest.mark.skip(reason="JANUS/SOCRATES runtime instability (hangs)")
+@pytest.mark.skip(reason='JANUS/SOCRATES runtime instability (hangs)')
 def test_smoke_janus_dummy_coupling(tmp_path):
     """
     Test JANUS (atmos) + Dummy (interior) coupling (1 step).
@@ -167,7 +168,7 @@ version = "2.0"
     module = "none"
 """
     # 2. Write config
-    cfg_file = tmp_path / "smoke_janus.toml"
+    cfg_file = tmp_path / 'smoke_janus.toml'
     cfg_file.write_text(toml_content)
 
     # 3. Initialize Proteus

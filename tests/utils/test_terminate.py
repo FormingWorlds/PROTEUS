@@ -260,7 +260,7 @@ def test_check_termination_non_strict_exits_on_first_success(monkeypatch, patch_
     cfg = _cfg()
     h = _handler(cfg)
     h.hf_row['Time'] = 200.0  # triggers max time
-    h.loops['total'] = 5      # satisfy min_iter
+    h.loops['total'] = 5  # satisfy min_iter
     monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
     assert terminate.check_termination(h) is True
     assert h.finished_both is True
@@ -274,7 +274,7 @@ def test_check_termination_strict_requires_two_iterations(monkeypatch, patch_sta
     cfg = _cfg()
     cfg.params.stop.strict = True
     h = _handler(cfg)
-    h.loops['total'] = 5      # satisfy min_iter
+    h.loops['total'] = 5  # satisfy min_iter
     h.hf_row['Time'] = 200.0
     monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
 
@@ -293,7 +293,7 @@ def test_check_termination_strict_resets_if_condition_lost(monkeypatch, patch_st
     cfg = _cfg()
     cfg.params.stop.strict = True
     h = _handler(cfg)
-    h.loops['total'] = 5      # satisfy min_iter
+    h.loops['total'] = 5  # satisfy min_iter
     h.hf_row['Time'] = 200.0
     monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
 

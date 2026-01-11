@@ -7,6 +7,7 @@ Tests plotting helper functions:
 - Time sampling logic
 - Output file sampling logic
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -33,6 +34,7 @@ def test_get_colour_preset():
     assert get_colour('CO2') == _preset_colours['CO2']
     assert get_colour('atm') == _preset_colours['atm']
 
+
 @pytest.mark.unit
 def test_get_colour_generated():
     """Test systematic generation of colours for unknown molecules."""
@@ -42,13 +44,15 @@ def test_get_colour_generated():
     assert c.startswith('#')
     assert len(c) == 7
 
+
 @pytest.mark.unit
 def test_generate_colour_fallback(caplog):
     """Test fallback colour for invalid molecules."""
     # 'InvalidMol' fails parsing, triggers warning and fallback
     c = _generate_colour('InvalidMol')
     assert c == _preset_colours['_fallback']
-    assert "Using fallback colour" in caplog.text
+    assert 'Using fallback colour' in caplog.text
+
 
 @pytest.mark.unit
 def test_latexify():
@@ -57,6 +61,7 @@ def test_latexify():
     assert latexify('CO2') == r'CO$_2$'
     assert latexify('Fe2O3') == r'Fe$_2$O$_3$'
     assert latexify('He') == r'He'
+
 
 @pytest.mark.unit
 def test_latex_float():
@@ -67,6 +72,7 @@ def test_latex_float():
     assert latex_float(0.00001) == r'$1 \times 10^{-5}$'
     assert latex_float(0.01) == '0.01'
 
+
 @pytest.mark.unit
 def test_sample_times_all():
     """Test sampling when requested count exceeds available times."""
@@ -74,6 +80,7 @@ def test_sample_times_all():
     out_t, out_i = sample_times(times, nsamp=10)
     assert out_t == times
     assert out_i == [0, 1, 2, 3]
+
 
 @pytest.mark.unit
 def test_sample_times_log_spacing():
@@ -89,6 +96,7 @@ def test_sample_times_log_spacing():
 
     # Indices should be valid
     assert max(out_i) < len(times)
+
 
 @pytest.mark.unit
 @patch('proteus.utils.plot.glob.glob')
@@ -110,6 +118,7 @@ def test_sample_output_empty(mock_archive, mock_glob):
     t, f = sample_output(handler)
     assert t == []
     assert f == []
+
 
 @pytest.mark.unit
 @patch('proteus.utils.plot.glob.glob')
