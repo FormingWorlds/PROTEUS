@@ -81,14 +81,62 @@ These modules have more complex logic but are still testable without heavy compu
 - **Physics**: Solar normalization, temperature dependencies (T⁴), boundary conditions (zero/minimum T)
 - **Effort**: Moderate — real constants and numpy/scipy physics
 
-#### 2.3 `interior/dummy.py` (PRIORITY NEXT)
-- **Lines**: 131
-- **Functions**: 3-4 key functions
-- **Target tests**: 10-15 unit tests
-- **Effort**: MODERATE
-  - Dummy interior model
-  - Simple evolution equations
-  - Mocking: thermodynamic properties
+#### 2.3 `interior/dummy.py` ✓ **COMPLETED**
+- **Status**: 13 unit tests created and passing
+- **Coverage**: calculate_simple_mantle_mass() + run_dummy_int() + melt fraction physics
+- **Physics**: Phase boundaries (solid/partial/molten), radiogenic/tidal heating, Interior_t arrays
+- **Effort**: Moderate — config mocks, Interior_t(nlev_b=2) instantiation
+
+---
+
+### PRIORITY 2.5: Smoke Tests (Fast Integration Validation)
+
+**Purpose**: End-to-end coupling tests with real binaries but minimal computation (1 timestep, low resolution, <30s each).
+
+**Current status**: 1 smoke test implemented (as of 2026-01-06)
+**Target**: 5-7 smoke tests for fast PR checks
+
+These tests validate that modules actually couple together correctly with real compiled binaries (not mocks), catching integration issues that unit tests miss. They run quickly enough for PR CI but use real physics solvers.
+
+#### 2.5.1 `Atmosphere-Interior Coupling` (TARGET: 2-3 tests)
+- **Scope**: JANUS/AGNI → SPIDER/dummy interior coupling
+- **Tests needed**:
+  - Dummy atmos + dummy interior (1 step, verify flux exchange)
+  - JANUS + dummy interior (1 step, radiation balance check)
+  - AGNI + dummy interior (1 step, verify convergence)
+- **Effort**: MODERATE (2-3 hours total)
+- **Validation**: F_atm ↔ F_int exchange, T_surf updates, no NaN/Inf
+
+#### 2.5.2 `Volatile Outgassing Coupling` (TARGET: 1-2 tests)
+- **Scope**: CALLIOPE ↔ atmosphere module interaction
+- **Tests needed**:
+  - Outgassing → JANUS (1 step, verify fO2 and volatiles update)
+  - Melt-atmosphere equilibration (1 step, check H2O/CO2 partitioning)
+- **Effort**: LOW-MODERATE (1-2 hours)
+- **Validation**: Volatile masses conserved, pressures physically reasonable
+
+#### 2.5.3 `Stellar Evolution Coupling` (TARGET: 1 test)
+- **Scope**: MORS → instellation update
+- **Tests needed**:
+  - MORS evolution (1 step, verify L_star and spectrum updates)
+- **Effort**: LOW (30 min)
+- **Validation**: Luminosity changes with time, instellation scales correctly
+
+#### 2.5.4 `Atmospheric Escape Coupling` (TARGET: 1 test)
+- **Scope**: ZEPHYRUS → atmosphere mass loss
+- **Tests needed**:
+  - Escape rate calculation (1 step, verify mass loss from upper atmosphere)
+- **Effort**: LOW-MODERATE (1 hour)
+- **Validation**: Escape rate > 0 for hot atmospheres, conserves mass
+
+**Implementation strategy**:
+1. Start with dummy module combinations (fastest, easiest to debug)
+2. Add real module tests one at a time
+3. Use low-resolution grids (JANUS: 10 levels, SOCRATES: minimal bands)
+4. Mock external data files (stellar spectra, opacities) where possible
+5. Each smoke test should complete in <30s
+
+**Coverage impact**: Minimal direct coverage (integration tests don't count toward unit coverage), but critical for validating that unit-tested code actually works together.
 
 ---
 
@@ -147,17 +195,28 @@ These have fewer users or are harder to test without integration.
 
 ## Implementation Progress (Jan 11, 2026)
 
-### Completed (174 tests, 22.42% coverage)
+### Completed (187 tests, 22.42% coverage — awaiting CI update)
 - ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
-- ✓ Priority 2.1-2.2: 40 moderate-effort tests (terminate, star/dummy)
+- ✓ Priority 2.1-2.3: 53 moderate-effort tests (terminate, star/dummy, interior/dummy)
 - ✓ Auto-ratcheting working: 18.00% → 22.42% threshold increase confirmed
+- ✓ Auto-commit mechanism: github-actions bot commits threshold updates automatically
 
-### Upcoming (Next ~25 tests to reach 30% target)
-1. **Priority 2.3**: `interior/dummy.py` (10-15 tests, ~1.5 hrs) → target 23-24% coverage
-2. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 26%+ coverage
-3. **Priority 2.4**: `utils/plot.py` (20-25 tests, 2-3 hrs) → target 28-30% coverage
+### Upcoming (Next priorities to reach 30% target)
 
-**Target milestone**: 30% fast gate coverage with 200+ unit tests by end of Jan
+**Short-term (Unit Tests)**:
+1. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 25-26% coverage
+2. **Priority 2.4**: `utils/plot.py` (15-20 tests, 2-3 hrs) → target 27-28% coverage
+3. **Config expansion**: Parametrized tests for edge cases → target 30%+ coverage
+
+**Parallel track (Smoke Tests)**:
+4. **Priority 2.5.1**: Atmosphere-interior coupling (2-3 smoke tests, 2-3 hrs)
+5. **Priority 2.5.2**: Volatile outgassing tests (1-2 smoke tests, 1-2 hrs)
+6. **Priority 2.5.3-4**: Stellar/escape coupling (2 smoke tests, 1.5 hrs)
+
+**Target milestones**:
+- Unit test coverage: 30% fast gate (200+ tests)
+- Smoke test suite: 5-7 tests covering all major coupling pathways
+- Timeline: End of Jan 2026
 
 ---
 
