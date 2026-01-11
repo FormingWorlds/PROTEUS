@@ -13,10 +13,10 @@
   - 19 tests for `utils/terminate.py` (termination criteria logic)
   - 14 tests for `star/dummy.py` (blackbody stellar physics)
   - 13 tests for `interior/dummy.py` (interior thermal evolution)
-  - 36 tests for `utils/coupler.py` (helpfile I/O, state management)
+  - 55 tests for `utils/coupler.py` (helpfile I/O, version getters, print functions)
   - 1 smoke test for `atmosphere-interior coupling` (dummy modules, ~2s)
-- **Total**: ~224 tests (223 unit + 1 smoke)
-- **Current coverage**: 23.03% (baseline), projected ~24-25% with coupler tests
+ **Total**: ~243 tests (242 unit + 1 smoke)
+ **Current coverage**: 23.03% (baseline), projected ~25-26% with new coupler tests
 - **Target**: 30% fast gate coverage + 5-7 smoke tests
 
 ### Test File Created
@@ -91,11 +91,11 @@ These modules have more complex logic but are still testable without heavy compu
 - **Effort**: Moderate — config mocks, Interior_t(nlev_b=2) instantiation
 
 #### 2.4 `utils/coupler.py` ✓ **COMPLETED (NEW)**
-- **Status**: 36 unit tests created and passing
-- **Coverage**: Helpfile operations (creation, row extension, CSV I/O), lock file management, state printing
-- **Scope**: GetHelpfileKeys validation, ZeroHelpfileRow initialization, CreateHelpfileFromDict/ExtendHelpfile row management, WriteHelpfileToCSV/ReadHelpfileFromCSV roundtrip I/O
-- **Physics validation**: Realistic Earth values, extreme exoplanet parameters, float precision preservation, scientific notation consistency
-- **Effort**: Low — pure I/O operations with mocked file system
+ **Status**: 55 unit tests created and passing (36 initial + 19 additional)
+ **Coverage**: Helpfile operations (creation, row extension, CSV I/O), lock file management, state printing, version getters (_get_spider_version, _get_petsc_version, _get_git_revision, _get_socrates_version, _get_agni_version, _get_julia_version), print functions (print_header, print_stoptime, print_system_configuration)
+ **Scope**: Complete helpfile lifecycle, version validation infrastructure, runtime diagnostics, edge case handling (missing keys, negative fluxes, large time values)
+ **Physics validation**: Realistic Earth values, extreme exoplanet parameters, float precision preservation, scientific notation consistency, negative flux handling
+ **Effort**: Low-Moderate — pure I/O + mocked subprocess calls for version checking
 
 ---
 
@@ -201,10 +201,10 @@ These have fewer users or are harder to test without integration.
 
 ## Implementation Progress (Jan 11, 2026)
 
-### Completed (224 tests, 23.03% baseline coverage)
+ ### Completed (243 tests, 23.03% baseline coverage)
 - ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
 - ✓ Priority 2.1-2.3: 53 moderate-effort tests (terminate, star/dummy, interior/dummy)
-- ✓ Priority 2.4: 36 coupler module tests (NEW - helpfile I/O, lock files, state printing)
+ ✓ Priority 2.4: 55 coupler module tests (NEW - helpfile I/O, version getters, print functions)
 - ✓ Priority 2.5.1 (partial): 1 smoke test (dummy atmos + dummy interior, SKIPPED due to physics)
 - ✓ Auto-ratcheting working: 18.00% → 22.42% → 23.03% threshold increases
 - ✓ Auto-commit mechanism: github-actions bot commits threshold updates automatically
