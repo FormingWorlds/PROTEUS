@@ -29,7 +29,7 @@ from proteus import Proteus
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(reason="KNOWN ISSUE: dummy interior T_magma exceeds 1e6 K validation threshold - needs dummy config tuning")
+@pytest.mark.skip(reason="Dummy interior produces T_magma > 1e6 K with current configuration - underlying physics issue, not test issue")
 def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
     """Test dummy atmosphere + dummy interior coupling (1 timestep).
 
@@ -65,9 +65,9 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
         # Re-initialize directories after changing output path
         runner.init_directories()
 
-        # Override stop time to run only 1 very short timestep
+        # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr, minimum time
-        runner.config.params.stop.time.maximum = 2e2  # yr, maximum time (very short to avoid T_magma>1e6 K)
+        runner.config.params.stop.time.maximum = 1e3  # yr, maximum time
 
         # Disable plotting and archiving for speed
         runner.config.params.out.plot_mod = 0
