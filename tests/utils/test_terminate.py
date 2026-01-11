@@ -89,6 +89,7 @@ def patch_statusfile(monkeypatch):
 
 @pytest.mark.unit
 def test_check_solid_triggers_when_phi_below_crit(monkeypatch, patch_statusfile):
+    """Solidification: phi_global below threshold should terminate with code 10."""
     cfg = _cfg()
     h = _handler(cfg, phi_global=0.2)
     assert terminate._check_solid(h) is True
@@ -97,6 +98,7 @@ def test_check_solid_triggers_when_phi_below_crit(monkeypatch, patch_statusfile)
 
 @pytest.mark.unit
 def test_check_solid_skips_when_above_crit(patch_statusfile):
+    """Solidification: above threshold keeps simulation running."""
     cfg = _cfg()
     h = _handler(cfg, phi_global=0.5)
     assert terminate._check_solid(h) is False
@@ -105,6 +107,7 @@ def test_check_solid_skips_when_above_crit(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_radeqm_hits_energy_balance(patch_statusfile):
+    """Energy balance: F_atm == F_tidal yields convergence with status 14."""
     cfg = _cfg()
     h = _handler(cfg)
     h.hf_row['F_atm'] = 1.0
@@ -116,6 +119,7 @@ def test_check_radeqm_hits_energy_balance(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_radeqm_prevent_warming_triggers(monkeypatch, patch_statusfile):
+    """Energy balance: prevent_warming=True exits when cooling stops (status 14)."""
     cfg = _cfg(atmos_clim=SimpleNamespace(prevent_warming=True))
     h = _handler(cfg)
     h.hf_row['F_atm'] = 0.0
@@ -127,6 +131,7 @@ def test_check_radeqm_prevent_warming_triggers(monkeypatch, patch_statusfile):
 
 @pytest.mark.unit
 def test_check_escape_triggers_when_pressure_low(patch_statusfile):
+    """Escape: surface pressure below stop threshold exits with status 15."""
     cfg = _cfg()
     h = _handler(cfg)
     h.hf_row['P_surf'] = 0.5
@@ -136,6 +141,7 @@ def test_check_escape_triggers_when_pressure_low(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_escape_not_triggered_when_pressure_high(patch_statusfile):
+    """Escape: high surface pressure keeps simulation running."""
     cfg = _cfg()
     h = _handler(cfg)
     h.hf_row['P_surf'] = 5.0
@@ -145,6 +151,7 @@ def test_check_escape_not_triggered_when_pressure_high(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_separation_triggers_roche_limit(patch_statusfile):
+    """Disintegration: separation below Roche limit exits with status 16."""
     cfg = _cfg()
     h = _handler(cfg)
     h.hf_row['separation'] = 0.9
@@ -155,6 +162,7 @@ def test_check_separation_triggers_roche_limit(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_spinrate_triggers_breakup(patch_statusfile):
+    """Disintegration: spin faster than breakup exits with status 16."""
     cfg = _cfg()
     h = _handler(cfg)
     h.hf_row['axial_period'] = 4.0
@@ -165,6 +173,7 @@ def test_check_spinrate_triggers_breakup(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_maxtime_triggers(patch_statusfile):
+    """Time limit: exceeding maximum time exits with status 13."""
     cfg = _cfg()
     h = _handler(cfg)
     h.hf_row['Time'] = 200.0
@@ -174,6 +183,7 @@ def test_check_maxtime_triggers(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_mintime_blocks_until_min_elapsed(patch_statusfile):
+    """Minimum time: exit is blocked and status 1 written if finished early."""
     cfg = _cfg()
     cfg.params.stop.time.minimum = 10.0
     h = _handler(cfg)
@@ -184,6 +194,7 @@ def test_check_mintime_blocks_until_min_elapsed(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_mintime_allows_when_above_min(patch_statusfile):
+    """Minimum time: when above minimum, allow exit without touching statusfile."""
     cfg = _cfg()
     cfg.params.stop.time.minimum = 1.0
     h = _handler(cfg)
@@ -194,6 +205,7 @@ def test_check_mintime_allows_when_above_min(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_maxiter_triggers_when_exceeding_limit(patch_statusfile):
+    """Iteration cap: exceeding loop limit exits with status 12."""
     cfg = _cfg()
     h = _handler(cfg)
     h.loops['total'] = 6
@@ -203,6 +215,7 @@ def test_check_maxiter_triggers_when_exceeding_limit(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_miniter_blocks_when_below_minimum(patch_statusfile):
+    """Iteration floor: block exit and write status 1 when below minimum loops."""
     cfg = _cfg()
     h = _handler(cfg)
     h.loops['total'] = 1
@@ -212,6 +225,7 @@ def test_check_miniter_blocks_when_below_minimum(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_miniter_allows_when_above_minimum(patch_statusfile):
+    """Iteration floor: allow exit silently once minimum loop count reached."""
     cfg = _cfg()
     h = _handler(cfg)
     h.loops['total'] = 3
@@ -221,6 +235,7 @@ def test_check_miniter_allows_when_above_minimum(patch_statusfile):
 
 @pytest.mark.unit
 def test_check_keepalive_triggers_when_file_missing(monkeypatch, patch_statusfile):
+    """Keepalive: missing lockfile forces termination with status 25."""
     cfg = _cfg()
     h = _handler(cfg)
     monkeypatch.setattr(terminate.os.path, 'exists', lambda _: False)
@@ -230,6 +245,7 @@ def test_check_keepalive_triggers_when_file_missing(monkeypatch, patch_statusfil
 
 @pytest.mark.unit
 def test_check_keepalive_returns_false_when_present(monkeypatch, patch_statusfile):
+    """Keepalive: existing lockfile leaves simulation running."""
     cfg = _cfg()
     h = _handler(cfg)
     monkeypatch.setattr(terminate.os.path, 'exists', lambda _: True)
@@ -239,6 +255,7 @@ def test_check_keepalive_returns_false_when_present(monkeypatch, patch_statusfil
 
 @pytest.mark.unit
 def test_check_termination_non_strict_exits_on_first_success(monkeypatch, patch_statusfile):
+    """Non-strict: any single criterion triggers immediate exit and flags."""
     cfg = _cfg()
     h = _handler(cfg)
     h.hf_row['Time'] = 200.0  # triggers max time
@@ -251,6 +268,7 @@ def test_check_termination_non_strict_exits_on_first_success(monkeypatch, patch_
 
 @pytest.mark.unit
 def test_check_termination_strict_requires_two_iterations(monkeypatch, patch_statusfile):
+    """Strict mode: requires two consecutive satisfied iterations to exit."""
     cfg = _cfg()
     cfg.params.stop.strict = True
     h = _handler(cfg)
@@ -268,6 +286,7 @@ def test_check_termination_strict_requires_two_iterations(monkeypatch, patch_sta
 
 @pytest.mark.unit
 def test_check_termination_strict_resets_if_condition_lost(monkeypatch, patch_statusfile):
+    """Strict mode: losing condition resets finished_prev and continues run."""
     cfg = _cfg()
     cfg.params.stop.strict = True
     h = _handler(cfg)
