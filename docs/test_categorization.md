@@ -15,18 +15,22 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 **Purpose**: Fast validation of Python logic with mocked physics
 **Runtime**: <100ms per test (target)
 
-**Count**: 10 tests (as of 2026-01-06)
+**Count**: 477 tests (as of 2026-01-11)
 **Runs In**: `ci-pr-checks.yml` (PR validation, ~2-5 minutes total)
-**Coverage**: Python interfaces, configuration parsing, utilities
+**Coverage**: Python interfaces, configuration, utilities, wrapper modules
 
 **Implemented Tests**:
 
 
 - `tests/config/test_config.py` - Configuration system (3 tests)
+- `tests/config/test_defaults.py` - Configuration defaults (7 tests)
+- `tests/atmos_clim/test_common.py` - Atmosphere common utils (6 tests)
+- `tests/utils/test_data.py` - Data management utils (7 tests)
 - `tests/test_cli.py` - Command-line interface (3 tests)
 - `tests/test_init.py` - Package initialization (1 test)
 - `tests/plot/test_cpl_colours.py` - Color mapping (2 tests)
 - `tests/plot/test_cpl_helpers.py` - Helper functions (1 test)
+- All module wrappers (observe, outgas, escape, interior, etc.)
 
 
 ### @pytest.mark.smoke

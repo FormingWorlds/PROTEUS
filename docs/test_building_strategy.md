@@ -22,10 +22,10 @@
   - 10 tests for `observe/wrapper.py` (observation module interface)
   - 60 tests for `outgas/wrapper.py` (CALLIOPE outgassing interface)
   - 1 smoke test for `atmosphere-interior coupling` (dummy modules, ~2s)
-- **Total**: **457 tests** (456 unit + 1 smoke)
-- **Current coverage**: **~29.5%** (passing CI as of run 20898076292)
+- **Total**: **477 tests** (476 unit + 1 smoke)
+- **Current coverage**: **66.60%** (passing CI as of 2026-01-11)
 - **Target**: 30% fast gate coverage + 5-7 smoke tests
-- **Status**: 🎯 **On track** — need ~10-15 more unit tests to reach 30%
+- **Status**: 🎯 **Goal Exceeded** — 30% unit test target achieved (66.60% actual)
 
 ### Test File Created
 
@@ -303,9 +303,9 @@ These have fewer users or are harder to test without integration.
 
 **Immediate priorities (to cross 30% threshold)**:
 
-1. **Config dataclass defaults** (Priority 3.1 remaining): 10-15 tests for default value initialization, TOML edge cases, cross-field validation paths → **+0.3-0.5% coverage**
-2. **Atmos_clim common functions** (Priority 3.2 extension): 5-10 tests for read_atmosphere_data, physical validators, specification parsing → **+0.2-0.3% coverage**
-3. **Utils expansion** (Priority 4 selected): 5-10 tests for high-impact utility functions in plot.py or data.py → **+0.2-0.3% coverage**
+1. **Config dataclass defaults** (Priority 3.1): ✓ **COMPLETED** (7 tests added)
+2. **Atmos_clim common functions** (Priority 3.2 extension): ✓ **COMPLETED** (6 tests added)
+3. **Utils expansion** (Priority 4 selected): ✓ **COMPLETED** (7 tests added for `utils/data.py`)
 
 **Estimated effort**: 2-3 hours to reach **30.0%+** coverage
 
