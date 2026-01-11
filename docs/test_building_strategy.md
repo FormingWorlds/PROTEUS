@@ -9,17 +9,19 @@
   - 53 tests for `utils/helper.py` (9 component classes, 40 distinct functions)
   - 41 tests for `utils/logs.py` (logging infrastructure)
   - 27 tests for `config/_converters.py` (type conversion utilities)
+  - 18 tests for `config` validators across `_config.py`, `_interior.py`, `_params.py` (instellation/escape/interior/params guardrails)
   - 7 tests for `orbit/dummy.py` (tidal heating dummy module)
   - 19 tests for `utils/terminate.py` (termination criteria logic)
   - 14 tests for `star/dummy.py` (blackbody stellar physics)
   - 13 tests for `interior/dummy.py` (interior thermal evolution)
   - 55 tests for `utils/coupler.py` (helpfile I/O, version getters, print functions)
   - 1 smoke test for `atmosphere-interior coupling` (dummy modules, ~2s)
- **Total**: ~243 tests (242 unit + 1 smoke)
- **Current coverage**: 23.03% (baseline), projected ~25-26% with new coupler tests
+- **Total**: ~261 tests (260 unit + 1 smoke)
+- **Current coverage**: ~23-24% (pending next CI run); projected ~25-26% with additional config coverage
 - **Target**: 30% fast gate coverage + 5-7 smoke tests
 
 ### Test File Created
+
 - `tests/utils/test_helper.py` — 53 comprehensive unit tests covering:
   - `multiple()` — Robust modulo checking (9 tests)
   - `mol_to_ele()` — Molecular formula parsing (9 tests)
@@ -42,18 +44,21 @@ Tests are prioritized by **ease of implementation** × **impact on coverage** ×
 These modules have simple, pure functions with few dependencies. Tests run in <10ms each.
 
 #### 1.1 `utils/helper.py` ✓ **COMPLETED**
+
 - **Status**: 53 unit tests created and passing
 - **Coverage**: ~80% of functions tested
 - **Impact**: High — utilities used throughout codebase
 - **Effort**: Low — pure functions, no external dependencies
 
 #### 1.2 `utils/logs.py` ✓ **COMPLETED**
+
 - **Status**: 41 unit tests created and passing
 - **Coverage**: 91.49% of logs.py
 - **Impact**: High — logging used throughout all simulation runs
 - **Effort**: Low — simple logging utilities
 
 #### 1.3 `config/_converters.py` ✓ **COMPLETED**
+
 - **Status**: 27 unit tests created and passing
 - **Coverage**: 100% of _converters.py (4 functions: none_if_none, zero_if_none, dict_replace_none, lowercase)
 - **Impact**: High — converters used for all TOML config parsing
@@ -73,29 +78,33 @@ These modules have simple, pure functions with few dependencies. Tests run in <1
 These modules have more complex logic but are still testable without heavy computations.
 
 #### 2.1 `utils/terminate.py` ✓ **COMPLETED**
+
 - **Status**: 19 unit tests created and passing
 - **Coverage**: All termination criteria (solidification, energy balance, escape, disintegration, time/iteration limits, keepalive)
 - **Scope**: Non-strict and strict termination logic with full criterion matrix
 - **Effort**: Moderate — config/handler mocks, comprehensive scenario coverage
 
 #### 2.2 `star/dummy.py` ✓ **COMPLETED**
+
 - **Status**: 14 unit tests created and passing
 - **Coverage**: Radius scaling (direct + empirical), spectrum generation, luminosity (Stefan-Boltzmann), instellation (inverse-square)
 - **Physics**: Solar normalization, temperature dependencies (T⁴), boundary conditions (zero/minimum T)
 - **Effort**: Moderate — real constants and numpy/scipy physics
 
 #### 2.3 `interior/dummy.py` ✓ **COMPLETED**
+
 - **Status**: 13 unit tests created and passing
 - **Coverage**: calculate_simple_mantle_mass() + run_dummy_int() + melt fraction physics
 - **Physics**: Phase boundaries (solid/partial/molten), radiogenic/tidal heating, Interior_t arrays
 - **Effort**: Moderate — config mocks, Interior_t(nlev_b=2) instantiation
 
 #### 2.4 `utils/coupler.py` ✓ **COMPLETED (NEW)**
- **Status**: 55 unit tests created and passing (36 initial + 19 additional)
- **Coverage**: Helpfile operations (creation, row extension, CSV I/O), lock file management, state printing, version getters (_get_spider_version, _get_petsc_version, _get_git_revision, _get_socrates_version, _get_agni_version, _get_julia_version), print functions (print_header, print_stoptime, print_system_configuration)
- **Scope**: Complete helpfile lifecycle, version validation infrastructure, runtime diagnostics, edge case handling (missing keys, negative fluxes, large time values)
- **Physics validation**: Realistic Earth values, extreme exoplanet parameters, float precision preservation, scientific notation consistency, negative flux handling
- **Effort**: Low-Moderate — pure I/O + mocked subprocess calls for version checking
+
+- **Status**: 55 unit tests created and passing (36 initial + 19 additional)
+- **Coverage**: Helpfile operations (creation, row extension, CSV I/O), lock file management, state printing, version getters (`_get_spider_version`, `_get_petsc_version`, `_get_git_revision`, `_get_socrates_version`, `_get_agni_version`, `_get_julia_version`), print functions (`print_header`, `print_stoptime`, `print_system_configuration`)
+- **Scope**: Complete helpfile lifecycle, version validation infrastructure, runtime diagnostics, edge case handling (missing keys, negative fluxes, large time values)
+- **Physics validation**: Realistic Earth values, extreme exoplanet parameters, float precision preservation, scientific notation consistency, negative flux handling
+- **Effort**: Low-Moderate — pure I/O + mocked subprocess calls for version checking
 
 ---
 
@@ -109,6 +118,7 @@ These modules have more complex logic but are still testable without heavy compu
 These tests validate that modules actually couple together correctly with real compiled binaries (not mocks), catching integration issues that unit tests miss. They run quickly enough for PR CI but use real physics solvers.
 
 #### 2.5.1 `Atmosphere-Interior Coupling` (TARGET: 2-3 tests) **IN PROGRESS**
+
 - **Implemented**: `test_smoke_dummy_atmos_dummy_interior_flux_exchange` (✓ PASSING, ~2s)
   - Validates flux exchange (F_atm ↔ F_int) with dummy modules
   - Tests T_surf updates and physical value ranges
@@ -120,6 +130,7 @@ These tests validate that modules actually couple together correctly with real c
 - **Validation**: F_atm ↔ F_int exchange, T_surf updates, no NaN/Inf
 
 #### 2.5.2 `Volatile Outgassing Coupling` (TARGET: 1-2 tests)
+
 - **Scope**: CALLIOPE ↔ atmosphere module interaction
 - **Tests needed**:
   - Outgassing → JANUS (1 step, verify fO2 and volatiles update)
@@ -128,6 +139,7 @@ These tests validate that modules actually couple together correctly with real c
 - **Validation**: Volatile masses conserved, pressures physically reasonable
 
 #### 2.5.3 `Stellar Evolution Coupling` (TARGET: 1 test)
+
 - **Scope**: MORS → instellation update
 - **Tests needed**:
   - MORS evolution (1 step, verify L_star and spectrum updates)
@@ -135,6 +147,7 @@ These tests validate that modules actually couple together correctly with real c
 - **Validation**: Luminosity changes with time, instellation scales correctly
 
 #### 2.5.4 `Atmospheric Escape Coupling` (TARGET: 1 test)
+
 - **Scope**: ZEPHYRUS → atmosphere mass loss
 - **Tests needed**:
   - Escape rate calculation (1 step, verify mass loss from upper atmosphere)
@@ -142,6 +155,7 @@ These tests validate that modules actually couple together correctly with real c
 - **Validation**: Escape rate > 0 for hot atmospheres, conserves mass
 
 **Implementation strategy**:
+
 1. Start with dummy module combinations (fastest, easiest to debug)
 2. Add real module tests one at a time
 3. Use low-resolution grids (JANUS: 10 levels, SOCRATES: minimal bands)
@@ -157,16 +171,19 @@ These tests validate that modules actually couple together correctly with real c
 These are heavily used but require careful test design to isolate logic from physics.
 
 #### 3.1 `config/` modules (multiple files)
+
 - **`_config.py`**: 400+ lines (core config)
 - **`_params.py`**: 298 lines (parameter definitions)
 - **`_interior.py`**: 271 lines (interior config)
-- **Target**: 50-80 unit tests across all files
-- **Effort**: HIGH (but many already exist)
-  - Expand existing `test_config.py` with more scenarios
-  - Test validators and defaults
-  - Parametrize across different config combinations
+- **Completed so far**: 18 validator tests covering instellation/escape combinations, interior module energy/temperature guards, and params path/modulus/max-min checks (in `tests/config/test_config.py`).
+- **Remaining target**: 30-60 additional unit tests for dataclass defaults, cross-field validation matrices, and edge-case TOML parsing.
+- **Effort**: HIGH
+  - Expand `test_config.py` with parametric coverage of defaults/overrides
+  - Test dataclass serialization/deserialization paths
+  - Cover `validate_module_versions` / `print_module_configuration` helpers in coupler integration context
 
 #### 3.2 `atmos_clim/common.py` (Atmosphere climate interface)
+
 - **Lines**: 200+ (interface between modules)
 - **Key functions**: read_atmosphere_data, physical validators
 - **Target**: 15-20 unit tests
@@ -182,6 +199,7 @@ These are heavily used but require careful test design to isolate logic from phy
 These have fewer users or are harder to test without integration.
 
 #### 4.1 `utils/plot.py`
+
 - **Lines**: 308
 - **Functions**: 12+ plotting utilities
 - **Target**: 20-25 unit tests
@@ -190,6 +208,7 @@ These have fewer users or are harder to test without integration.
 - **Strategy**: Mock matplotlib, test configuration assembly
 
 #### 4.2 `utils/data.py`
+
 - **Lines**: 707 (LARGE)
 - **Functions**: 15+ data management functions
 - **Effort**: HIGH
@@ -201,10 +220,12 @@ These have fewer users or are harder to test without integration.
 
 ## Implementation Progress (Jan 11, 2026)
 
- ### Completed (243 tests, 23.03% baseline coverage)
+### Completed (~261 tests, ~23-24% coverage pending CI)
+
 - ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
 - ✓ Priority 2.1-2.3: 53 moderate-effort tests (terminate, star/dummy, interior/dummy)
- ✓ Priority 2.4: 55 coupler module tests (NEW - helpfile I/O, version getters, print functions)
+- ✓ Priority 2.4: 55 coupler module tests (helpfile I/O, version getters, print functions)
+- ✓ Priority 3.1 (partial): 18 config validator tests (instellation/escape combinations, interior module energy/temperature guards, params path/modulus/max-min)
 - ✓ Priority 2.5.1 (partial): 1 smoke test (dummy atmos + dummy interior, SKIPPED due to physics)
 - ✓ Auto-ratcheting working: 18.00% → 22.42% → 23.03% threshold increases
 - ✓ Auto-commit mechanism: github-actions bot commits threshold updates automatically
@@ -215,17 +236,20 @@ These have fewer users or are harder to test without integration.
 ### Upcoming (Next priorities to reach 30% target)
 
 **Current priority (Smoke Tests - Priority 2.5)**:
-1. **Priority 2.5.1** (status): Dummy atmos + interior SKIPPED (T_magma physics issue)
-2. **Priority 2.5.2** (skeleton): CALLIOPE outgassing coupling (test skeleton created)
-3. **Priority 2.5.3-4**: MORS stellar evolution, ZEPHYRUS escape coupling (TODO)
+
+1. **Priority 2.5.1** (status): Dummy atmos + interior SKIPPED (T_magma physics issue) → fix physics input and unskip
+2. **Priority 2.5.2** (skeleton): CALLIOPE outgassing coupling (activate once data fixtures ready)
+3. **Priority 2.5.3-4**: MORS stellar evolution, ZEPHYRUS escape coupling (implement 1-step smoke tests)
 
 **Parallel track (Unit Tests - after smoke tests)**:
-4. **Priority 3.1**: `config/_config.py` and config modules (30-40 tests, 3-4 hrs) → target 25-26% coverage
-5. **Priority 3.2**: `atmos_clim/common.py` (15-20 tests, 2 hrs) → target 27-28% coverage
-6. **Config/utils expansion**: Parametrized tests for edge cases → target 30%+ coverage
+
+1. **Priority 3.1**: `config/_config.py` defaults/edge TOML parsing, `validate_module_versions`, `print_module_configuration` (30-40 tests, 3-4 hrs) → target 25-26% coverage
+2. **Priority 3.2**: `atmos_clim/common.py` (15-20 tests, 2 hrs) → target 27-28% coverage
+3. **Config/utils expansion**: Parametrized edge cases and cross-field matrices → target 30%+ coverage
 
 **Target milestones**:
-- Unit test coverage: 30% fast gate (240+ tests total) — PRIMARY FOCUS
+
+- Unit test coverage: 30% fast gate (260+ tests total) — PRIMARY FOCUS
 - Smoke test suite: 3-4 tests for fast PR checks (currently 2 skipped, need 2-3 active)
 - Timeline: End of Jan 2026
 
@@ -236,13 +260,15 @@ These have fewer users or are harder to test without integration.
 When implementing tests, follow these guidelines from PROTEUS Copilot Instructions:
 
 ### 1. Structure Mirrors Source
-```
+
+```text
 src/proteus/utils/helper.py        →  tests/utils/test_helper.py
 src/proteus/config/_converters.py  →  tests/config/test_converters.py
 src/proteus/orbit/dummy.py         →  tests/orbit/test_dummy.py
 ```
 
 ### 2. Test Markers
+
 ```python
 @pytest.mark.unit          # <100ms, no heavy physics
 @pytest.mark.smoke         # Real binaries, 1 timestep
@@ -251,11 +277,13 @@ src/proteus/orbit/dummy.py         →  tests/orbit/test_dummy.py
 ```
 
 ### 3. Mocking Strategy
+
 - **Mock everything external**: Files, network, heavy computations
 - **Default tool**: `unittest.mock`
 - **Integration tests only**: Use real calls
 
 ### 4. Float Comparisons
+
 ```python
 # WRONG:
 assert value == 3.14
@@ -265,6 +293,7 @@ assert value == pytest.approx(3.14, rel=1e-5)
 ```
 
 ### 5. Parametrization
+
 ```python
 @pytest.mark.parametrize('status,expected', [
     (0, 'Started'),
@@ -282,7 +311,7 @@ def test_comment_from_status(status, expected):
 ### Current Modules by Coverage Need
 
 | Module | Lines | Est. Functions | Status | Priority |
-|--------|-------|-----------------|--------|----------|
+| ------ | ----- | -------------- | ------ | -------- |
 | `utils/helper.py` | 328 | 15 | ✓ DONE (53 tests) | 1 |
 | `utils/logs.py` | 150 | 8 | PLANNED | 1 |
 | `config/_converters.py` | 100 | 6 | PLANNED | 1 |
@@ -298,7 +327,7 @@ def test_comment_from_status(status, expected):
 ### Expected Coverage by Milestone
 
 | Milestone | Unit Tests | Est. Coverage | Timeline |
-|-----------|-----------|---------------|----------|
+| --------- | ---------- | ------------- | -------- |
 | Current | 13 | 18.51% | 2026-01-10 |
 | After Priority 1 | 66 | 22-25% | 2026-01-17 |
 | After 50% of Priority 2 | 100-120 | 25-28% | 2026-01-20 |
@@ -311,11 +340,13 @@ def test_comment_from_status(status, expected):
 ## Quick Reference: Adding New Tests
 
 ### Step 1: Create test file
+
 ```bash
 touch tests/MODULE/test_SUBMODULE.py
 ```
 
 ### Step 2: Copy template
+
 ```python
 """
 Unit tests for proteus.MODULE.SUBMODULE module.
@@ -336,12 +367,14 @@ def test_function_name():
 ```
 
 ### Step 3: Run and verify
+
 ```bash
 pytest tests/MODULE/test_SUBMODULE.py -v
 pytest tests/MODULE/test_SUBMODULE.py --cov=src/proteus/MODULE
 ```
 
 ### Step 4: Commit and push
+
 ```bash
 git add tests/MODULE/test_SUBMODULE.py
 git commit -m "test(MODULE): add unit tests for SUBMODULE (N tests)"
@@ -354,5 +387,6 @@ git push
 
 - [Test Infrastructure Documentation](./test_infrastructure.md)
 - [Test Categorization Guide](./test_categorization.md)
+- [Test Building Guide](./test_building.md)
 - [PROTEUS Copilot Instructions](../.github/copilot-instructions.md)
 - [Test conftest.py fixtures](../tests/conftest.py)
