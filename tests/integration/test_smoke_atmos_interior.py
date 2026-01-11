@@ -46,63 +46,72 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
 
     Runtime: ~10-15s (1 timestep, dummy modules)
     """
-    # Load dummy configuration (uses dummy atmos + dummy interior)
-    config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+    import tempfile
+    import uuid
 
-    # Initialize PROTEUS
-    runner = Proteus(config_path=config_path)
+    # Create unique temporary output directory for this test
+    unique_id = str(uuid.uuid4())[:8]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Load dummy configuration (uses dummy atmos + dummy interior)
+        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
 
-    # Override stop time to run only 1 timestep
-    runner.config.params.stop.time.minimum = 1e2  # yr, minimum time
-    runner.config.params.stop.time.maximum = 1e3  # yr, maximum time (1 step)
+        # Initialize PROTEUS
+        runner = Proteus(config_path=config_path)
 
-    # Disable plotting and archiving for speed
-    runner.config.params.out.plot_mod = 0
-    runner.config.params.out.write_mod = 0
-    runner.config.params.out.archive_mod = 'none'
+        # Override output path to use temporary directory
+        runner.config.params.out.path = str(Path(tmpdir) / f'smoke_test_{unique_id}')
 
-    try:
-        # Run simulation (1 timestep)
-        runner.start(resume=False, offline=True)
+        # Re-initialize directories after changing output path
+        runner.init_directories()
 
-        # Validate that helpfile was created and populated
-        assert runner.hf_all is not None, 'Helpfile should be created'
-        assert len(runner.hf_all) > 0, 'Helpfile should have at least one row'
+        # Override stop time to run only 1 timestep
+        runner.config.params.stop.time.minimum = 1e2  # yr, minimum time
+        runner.config.params.stop.time.maximum = 1e3  # yr, maximum time (1 step)
 
-        # Get final row
-        final_row = runner.hf_all.iloc[-1]
+        # Disable plotting and archiving for speed
+        runner.config.params.out.plot_mod = 0
+        runner.config.params.out.write_mod = 0
+        runner.config.params.out.archive_mod = 'none'
 
-        # Validate atmospheric flux (F_atm) is written and physical
-        assert 'F_atm' in final_row, 'F_atm should be in helpfile'
-        f_atm = final_row['F_atm']
-        assert not np.isnan(f_atm), 'F_atm should not be NaN'
-        assert not np.isinf(f_atm), 'F_atm should not be Inf'
-        # Magma ocean fluxes can be very high (10-100 kW/m²)
-        assert 0 <= f_atm <= 1e6, f'F_atm should be physical (0-1e6 W/m²), got {f_atm}'
+        try:
+            # Run simulation (1 timestep)
+            runner.start(resume=False, offline=True)
 
-        # Validate interior flux (F_int) is written and physical
-        assert 'F_int' in final_row, 'F_int should be in helpfile'
-        f_int = final_row['F_int']
-        assert not np.isnan(f_int), 'F_int should not be NaN'
-        assert not np.isinf(f_int), 'F_int should not be Inf'
-        assert 0 <= f_int <= 1e6, f'F_int should be physical (0-1e6 W/m²), got {f_int}'
+            # Validate that helpfile was created and populated
+            assert runner.hf_all is not None, 'Helpfile should be created'
+            assert len(runner.hf_all) > 0, 'Helpfile should have at least one row'
 
-        # Validate surface temperature is updated and physical
-        assert 'T_surf' in final_row, 'T_surf should be in helpfile'
-        t_surf = final_row['T_surf']
-        assert not np.isnan(t_surf), 'T_surf should not be NaN'
-        assert not np.isinf(t_surf), 'T_surf should not be Inf'
-        assert 100 <= t_surf <= 5000, f'T_surf should be physical (100-5000 K), got {t_surf}'
+            # Get final row
+            final_row = runner.hf_all.iloc[-1]
 
-        # Validate time progressed
-        assert 'Time' in final_row, 'Time should be in helpfile'
-        assert final_row['Time'] > 0, 'Time should have progressed'
-    finally:
-        # Clean up output directory
-        import shutil
+            # Validate atmospheric flux (F_atm) is written and physical
+            assert 'F_atm' in final_row, 'F_atm should be in helpfile'
+            f_atm = final_row['F_atm']
+            assert not np.isnan(f_atm), 'F_atm should not be NaN'
+            assert not np.isinf(f_atm), 'F_atm should not be Inf'
+            # Magma ocean fluxes can be very high (10-100 kW/m²)
+            assert 0 <= f_atm <= 1e6, f'F_atm should be physical (0-1e6 W/m²), got {f_atm}'
 
-        if Path(runner.directories['output']).exists():
-            shutil.rmtree(runner.directories['output'])
+            # Validate interior flux (F_int) is written and physical
+            assert 'F_int' in final_row, 'F_int should be in helpfile'
+            f_int = final_row['F_int']
+            assert not np.isnan(f_int), 'F_int should not be NaN'
+            assert not np.isinf(f_int), 'F_int should not be Inf'
+            assert 0 <= f_int <= 1e6, f'F_int should be physical (0-1e6 W/m²), got {f_int}'
+
+            # Validate surface temperature is updated and physical
+            assert 'T_surf' in final_row, 'T_surf should be in helpfile'
+            t_surf = final_row['T_surf']
+            assert not np.isnan(t_surf), 'T_surf should not be NaN'
+            assert not np.isinf(t_surf), 'T_surf should not be Inf'
+            assert 100 <= t_surf <= 5000, f'T_surf should be physical (100-5000 K), got {t_surf}'
+
+            # Validate time progressed
+            assert 'Time' in final_row, 'Time should be in helpfile'
+            assert final_row['Time'] > 0, 'Time should have progressed'
+        finally:
+            # Cleanup handled by tempfile context manager
+            pass
 
 
 @pytest.mark.smoke

@@ -120,7 +120,8 @@ def test_check_radeqm_hits_energy_balance(patch_statusfile):
 @pytest.mark.unit
 def test_check_radeqm_prevent_warming_triggers(monkeypatch, patch_statusfile):
     """Energy balance: prevent_warming=True exits when cooling stops (status 14)."""
-    cfg = _cfg(atmos_clim=SimpleNamespace(prevent_warming=True))
+    cfg = _cfg()
+    cfg.atmos_clim.prevent_warming = True
     h = _handler(cfg)
     h.hf_row['F_atm'] = 0.0
     h.hf_row['F_tidal'] = 1.0

@@ -111,12 +111,27 @@ def calc_star_luminosity(tmp: float, R_star: float):
     Calculate star's bolometric luminosity.
 
     Assumes that the star emits like a blackbody.
+
+    Parameters
+    ----------
+        tmp : float
+            Stellar effective temperature (K)
+        R_star : float
+            Stellar radius (R_sun)
+
+    Returns
+    -------
+        lum : float
+            Bolometric luminosity (W)
     """
+
+    # Convert radius from solar radii to meters
+    R_star_m = R_star * R_sun
 
     # Evaluate stefan-boltzmann law at Teff
     lum = 0.0
     if tmp > PLANCK_MIN_TEMPERATURE:
-        lum = 4 * np.pi * R_star * R_star * const_sigma * (tmp**4)
+        lum = 4 * np.pi * R_star_m * R_star_m * const_sigma * (tmp**4)
 
     return lum
 
