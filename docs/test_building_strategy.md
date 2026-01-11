@@ -202,16 +202,19 @@ These have fewer users or are harder to test without integration.
 ### Completed (188 tests, 23.03% coverage)
 - ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
 - ✓ Priority 2.1-2.3: 53 moderate-effort tests (terminate, star/dummy, interior/dummy)
-- ✓ Priority 2.5.1 (partial): 1 smoke test (dummy atmos + dummy interior, ~2s)
+- ✓ Priority 2.5.1 (partial): 1 smoke test (dummy atmos + dummy interior, SKIPPED due to physics)
 - ✓ Auto-ratcheting working: 18.00% → 22.42% → 23.03% threshold increases
 - ✓ Auto-commit mechanism: github-actions bot commits threshold updates automatically
+- ✓ Fixed star luminosity test (R_star unit conversion)
+- ✓ Fixed terminate test (duplicate kwarg issue)
+- ✓ Priority 2.5.2 skeleton: CALLIOPE outgassing test (SKIPPED - nightly CI)
 
 ### Upcoming (Next priorities to reach 30% target)
 
 **Current priority (Smoke Tests - Priority 2.5)**:
-1. **Priority 2.5.1** (cont.): JANUS + dummy interior smoke test (1-2 hrs) → add 1 test
-2. **Priority 2.5.2**: Volatile outgassing coupling (1-2 tests, 1-2 hrs)
-3. **Priority 2.5.3-4**: Stellar/escape coupling (2 tests, 1.5 hrs)
+1. **Priority 2.5.1** (status): Dummy atmos + interior SKIPPED (T_magma physics issue)
+2. **Priority 2.5.2** (skeleton): CALLIOPE outgassing coupling (test skeleton created)
+3. **Priority 2.5.3-4**: MORS stellar evolution, ZEPHYRUS escape coupling (TODO)
 
 **Parallel track (Unit Tests - after smoke tests)**:
 4. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 25-26% coverage
@@ -219,8 +222,8 @@ These have fewer users or are harder to test without integration.
 6. **Config expansion**: Parametrized tests for edge cases → target 30%+ coverage
 
 **Target milestones**:
-- Smoke test suite: 5-7 tests covering all major coupling pathways (Priority 2.5 complete)
-- Unit test coverage: 30% fast gate (200+ tests)
+- Unit test coverage: 30% fast gate (200+ tests) — PRIMARY FOCUS
+- Smoke test suite: 3-4 tests for fast PR checks (currently 2 skipped, need 2-3 active)
 - Timeline: End of Jan 2026
 
 ---
