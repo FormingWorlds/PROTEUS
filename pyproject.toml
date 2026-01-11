@@ -170,7 +170,7 @@ directory = "htmlcov"
 # Fast CI (unit + smoke) coverage gate; ratcheted independently from full suite
 # This lower bar is intended for mocked/fast tests only and will auto-increase
 # when the fast suite gains coverage. Do not decrease manually.
-fail_under = 23.8
+fail_under = 24.64
 
 [tool.ruff]
 line-length = 96
