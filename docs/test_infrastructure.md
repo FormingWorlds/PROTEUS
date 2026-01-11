@@ -95,9 +95,12 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 
 **Following weeks (Integration & slow tests)**:
 
-1. Implement integration tests (JANUS + ARAGOG coupling, multi-step evolution with feedback)
-2. Plan slow test strategy (3–4 hour budget per scenario: Earth magma ocean, Venus runaway greenhouse, Super-Earth evolution)
-3. Configure nightly notifications (email on test failures; optional Slack integration)
+ 1. **Implement Standard Configuration Integration**:
+    - Build `test_std_config.py`
+    - Couple ARAGOG + AGNI + CALLIOPE + ZEPHYRUS + MORS
+    - Verify stable evolution over multiple timesteps
+ 2. Plan slow test strategy (3–4 hour budget per scenario: Earth magma ocean, Venus runaway greenhouse, Super-Earth evolution)
+ 3. Configure nightly notifications (email on test failures; optional Slack integration)
 
 ### Planned Improvements
 
@@ -131,9 +134,10 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 
 **2.1 Integration Test Suite** (Estimated: 1–2 weeks)
 
-- Implement multi-module coupling tests
-- Example: PROTEUS with dummy modules, JANUS + ARAGOG, AGNI + SOCRATES
-- Runtime: ~30 min to 2 hours per test suite
+ - **Target**: Standard Configuration Verification
+ - Modules: ARAGOG (Int) + AGNI (Atm) + CALLIOPE (Out) + ZEPHYRUS (Esc) + MORS (Star)
+ - Runtime: ~30 min to 2 hours per test suite
+ - Note: This replaces disjointed module tests with one scientifically coherent suite.
 
 **2.2 Slow Science Validation Tests** (Estimated: 2–4 weeks)
 

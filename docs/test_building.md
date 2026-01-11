@@ -11,7 +11,7 @@ To get the best results, set up your IDE context before prompting:
 3.  **Open Fixtures:** Open `tests/conftest.py` so Copilot sees available fixtures.
 4.  **Prompt:** Paste the **Master Prompt** (below) into Copilot Chat.
 
-## 2. The Master Prompt
+## 2. The Master Prompt (Unit Tests)
 
 Copy and paste this strictly into the Copilot Chat window:
 
@@ -28,3 +28,22 @@ Copy and paste this strictly into the Copilot Chat window:
 > 7.  **Format:** Ruff format all test files before committing.
 >
 > **Generate the tests now.**
+
+## 3. The Integration Prompt (Standard Configuration)
+
+For Phase 2 validation (coupling ARAGOG+AGNI+CALLIOPE+ZEPHYRUS+MORS), use this prompt:
+
+> **Act as a Senior Scientific Software Engineer for PROTEUS.**
+>
+> I need an integration test for the Standard Configuration (test_std_config.py).
+>
+> 1.  **Scope:** Test the full coupling of ARAGOG, AGNI, CALLIOPE, ZEPHYRUS, and MORS.
+> 2.  **Mocking:** **Do NOT mock** the internal physics interactions between these modules. Mock only *external* I/O (like network downloads) using `unittest.mock`.
+> 3.  **Config:** Use `tests/conftest.py` fixtures (e.g., `intermediate_params`) to set up a realistic super-Earth scenario.
+> 4.  **Verification:**
+>     - **Stable Evolution:** Run for 3+ timesteps without crashing or NaN values.
+>     - **Conservation:** Assert global energy and mass conservation (tolerances: 1e-4).
+>     - **Feedback:** Verify that `T_surf` updates affect `outgassing_rate`, which affects `atmos_mass`, which affects `T_surf`.
+> 5.  **Marker:** Use `@pytest.mark.integration`.
+>
+> **Generate the integration test skeleton.**

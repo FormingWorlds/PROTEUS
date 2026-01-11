@@ -59,8 +59,7 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 **Example Tests**:
 
 - `tests/integration/test_integration_dummy.py` - PROTEUS with dummy modules (4 tests)
-- `tests/integration/test_integration_dummy_agni.py` - PROTEUS + AGNI atmosphere (4 tests)
-- `tests/integration/test_integration_aragog_janus.py` - ARAGOG interior + JANUS atmosphere (5 tests)
+- `tests/integration/test_std_config.py` - Standard Config (ARAGOG+AGNI+CALLIOPE+ZEPHYRUS+MORS) (Planned)
 - `tests/integration/test_albedo_lookup.py` - Albedo interpolation (3 tests)
 
 

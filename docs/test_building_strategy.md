@@ -117,38 +117,24 @@ These modules have more complex logic but are still testable without heavy compu
 
 These tests validate that modules actually couple together correctly with real compiled binaries (not mocks), catching integration issues that unit tests miss. They run quickly enough for PR CI but use real physics solvers.
 
-#### 2.5.1 `Atmosphere-Interior Coupling` (TARGET: 2-3 tests) **COMPLETED**
+#### 2.5.1 `Standard Configuration Integration` (TARGET: 1 comprehensive test) **NEXT PRIORITY**
+
+- **Scope**: Full coupling of the standard PROTEUS configuration.
+- **Components**:
+  - **Interior**: ARAGOG (thermal evolution)
+  - **Atmosphere**: AGNI (radiative-convective equilibrium)
+  - **Outgassing**: CALLIOPE (volatile supply)
+  - **Escape**: ZEPHYRUS (mass loss)
+  - **Star**: MORS (stellar evolution)
+- **Goal**: Verify that the "standard candle" configuration runs stably for multiple timesteps.
+- **Effort**: HIGH (Nightly Science Validation Phase)
+- **Validation**: Energy conservation, mass conservation across all reservoirs, stable feedback loops.
+
+#### 2.5.2 `Atmosphere-Interior Coupling` (TARGET: 1 test) **COMPLETED**
 
 - **Implemented**: `test_smoke_dummy_atmos_dummy_interior_flux_exchange` (✓ PASSING, ~2s)
-- **Implemented**: `test_smoke_janus_dummy_coupling` (✓ IMPLEMENTED, SKIPPED)
-  - Validates full JANUS-Interior coupling loop
-  - Currently marked `@pytest.mark.skip` due to SOCRATES binary instability in test environment
-- **Effort**: COMPLETED
+- **Status**: Completed baseline validation using dummy modules.
 
-#### 2.5.2 `Volatile Outgassing Coupling` (TARGET: 1-2 tests)
-
-- **Scope**: CALLIOPE ↔ atmosphere module interaction
-- **Tests needed**:
-  - Outgassing → JANUS (1 step, verify fO2 and volatiles update)
-  - Melt-atmosphere equilibration (1 step, check H2O/CO2 partitioning)
-- **Effort**: LOW-MODERATE (1-2 hours)
-- **Validation**: Volatile masses conserved, pressures physically reasonable
-
-#### 2.5.3 `Stellar Evolution Coupling` (TARGET: 1 test)
-
-- **Scope**: MORS → instellation update
-- **Tests needed**:
-  - MORS evolution (1 step, verify L_star and spectrum updates)
-- **Effort**: LOW (30 min)
-- **Validation**: Luminosity changes with time, instellation scales correctly
-
-#### 2.5.4 `Atmospheric Escape Coupling` (TARGET: 1 test)
-
-- **Scope**: ZEPHYRUS → atmosphere mass loss
-- **Tests needed**:
-  - Escape rate calculation (1 step, verify mass loss from upper atmosphere)
-- **Effort**: LOW-MODERATE (1 hour)
-- **Validation**: Escape rate > 0 for hot atmospheres, conserves mass
 
 **Implementation strategy**:
 
@@ -290,10 +276,12 @@ These have fewer users or are harder to test without integration.
 
 **Estimated effort**: 2-3 hours to reach **30.0%+** coverage
 
-**Smoke test track (parallel, lower priority)**:
+**Nightly Science Track (Phase 2)**:
 
-1. **Priority 2.5.1**: Fix dummy atmos + interior physics inputs and unskip test
-2. **Priority 2.5.2-4**: Add JANUS+dummy, MORS evolution, ZEPHYRUS escape smoke tests (1-2 hours each)
+1.  **Priority 2.5.1**: Implement `tests/integration/test_std_config.py`.
+    -   Couples: ARAGOG + AGNI + CALLIOPE + ZEPHYRUS + MORS.
+    -   This is the critical "Standard Configuration" for PROTEUS science.
+    -   Replace disjointed smoke tests with this single, high-value integration suite.
 
 **Target milestones**:
 
