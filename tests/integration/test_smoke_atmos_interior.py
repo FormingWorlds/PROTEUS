@@ -29,7 +29,9 @@ from proteus import Proteus
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(reason="Dummy interior produces T_magma > 1e6 K with current configuration - underlying physics issue, not test issue")
+@pytest.mark.skip(
+    reason='Dummy interior produces T_magma > 1e6 K with current configuration - underlying physics issue, not test issue'
+)
 def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
     """Test dummy atmosphere + dummy interior coupling (1 timestep).
 
@@ -105,7 +107,9 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
             t_surf = final_row['T_surf']
             assert not np.isnan(t_surf), 'T_surf should not be NaN'
             assert not np.isinf(t_surf), 'T_surf should not be Inf'
-            assert 100 <= t_surf <= 5000, f'T_surf should be physical (100-5000 K), got {t_surf}'
+            assert 100 <= t_surf <= 5000, (
+                f'T_surf should be physical (100-5000 K), got {t_surf}'
+            )
 
             # Validate time progressed
             assert 'Time' in final_row, 'Time should be in helpfile'
