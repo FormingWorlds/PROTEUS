@@ -205,8 +205,7 @@ jobs:
           # Run diff-cover using the prepared diff file
           diff-cover /opt/proteus/coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
 
-      - name: Ratchet fast coverage threshold (main branch only)
-        if: github.ref == 'refs/heads/main'
+      - name: Ratchet fast coverage threshold
         continue-on-error: true
         run: |
           cd /opt/proteus
