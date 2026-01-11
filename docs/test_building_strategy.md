@@ -23,9 +23,9 @@
   - 60 tests for `outgas/wrapper.py` (CALLIOPE outgassing interface)
   - 1 smoke test for `atmosphere-interior coupling` (dummy modules, ~2s)
 - **Total**: **487 tests** (485 unit + 2 smoke)
-- **Current coverage**: **66.60%** (passing CI as of 2026-01-11)
+- **Current coverage**: **31.45%** (passing CI as of 2026-01-11)
 - **Target**: 30% fast gate coverage + 5-7 smoke tests
-- **Status**: 🎯 **Goal Exceeded** — 30% unit test target shattered (66.60% actual)
+- **Status**: 🎯 **Goal Exceeded** — 30% unit test target achieved (31.45% actual)
 
 ### Test File Created
 
@@ -387,7 +387,7 @@ def test_comment_from_status(status, expected):
 | After Priority 1 | 134 | 22.42% | 2026-01-11 (AM) |
 | After Priority 2 | 242 | 23.03% | 2026-01-11 (Mid) |
 | After Priority 3 (partial) | 457 | **29.52%** | 2026-01-11 (PM) |
-| **Final State (30% Exceeded)** | **487** | **66.60%** | **2026-01-11 (Final)** |
+| **Final State (30% Exceeded)** | **487** | **31.45%** | **2026-01-11 (Final)** |
 
 ---
 

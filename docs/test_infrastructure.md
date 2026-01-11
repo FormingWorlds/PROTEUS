@@ -30,14 +30,14 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 - ✓ Unit Tests (mocked physics): **487 tests**, ~1 min runtime
 - ✓ Smoke Tests (real binaries): 2 tests (1 active, 1 skipped), ~2 min runtime
 - ✓ Code Quality (ruff): Pass
-- ✓ Coverage tracking: **66.60%** (fast gate target exceeded: >30%)
+- ✓ Coverage tracking: **31.45%** (fast gate target exceeded: >30%)
 - ✓ Diff-cover: Changed-lines coverage validation (`--diff-file` approach)
 - ✓ Coverage ratcheting: **Automatic threshold increase on improvements** (github-actions bot commits)
 
 **Key Achievements**:
 
 1. **Massive test expansion**: 13 → **487 tests** (37x increase)
-2. **Coverage improvement**: 18.51% → **66.60%** (Global coverage)
+2. **Coverage improvement**: 18.51% → **31.45%** (Global coverage)
 3. Auto-ratcheting mechanism working perfectly
 4. All three CI jobs pass cleanly (unit, smoke, lint)
 5. Comprehensive wrapper test coverage: atmos_chem, atmos_clim, escape, interior, observe, outgas
@@ -64,7 +64,7 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 | Unit tests | **487** | 470+ | **100%** ✓ |
 | Smoke tests | 2 | 5–7 | 28% |
 | Integration tests | 0 | 23 | 0% |
-| Coverage (unit) | **66.60%** | 30% | **200%** ✓ |
+| Coverage (unit) | **31.45%** | 30% | **104%** ✓ |
 | CI runtime (fast) | ~3 min | <10 min | ✓ Excellent |
 | Diff-cover threshold | 80% | 80% | ✓ Met |
 
@@ -103,7 +103,7 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 
 #### Phase 1: Fast PR Workflow Enhancements (✓ Substantially Complete)
 
-> **Status:** 30% coverage target exceeded (Global coverage: 66.60%)
+> **Status:** 30% coverage target exceeded (Global coverage: 31.45%)
 
 **1.1 Expand Smoke Tests** (✅ **COMPLETED**)
 
@@ -113,7 +113,7 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 
 **1.2 Unit Test Coverage Expansion** (✅ **100% Complete**: 487/470+ tests)
 
-- ✅ Increased coverage from 18.51% → 66.60% (Global)
+- ✅ Increased coverage from 18.51% → 31.45% (Global)
 - ✅ Completed modules:
   - Config validators: 89 comprehensive tests
   - Module wrappers: 107 tests (CALLIOPE outgas, ZEPHYRUS escape, JANUS+SPIDER observe)
