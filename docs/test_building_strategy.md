@@ -13,7 +13,7 @@
   - 19 tests for `utils/terminate.py` (termination criteria logic)
   - 14 tests for `star/dummy.py` (blackbody stellar physics)
 - **Total**: ~174 unit tests (as of 2026-01-11)
-- **Current coverage**: 21.86% (fast gate), 69% target (full gate)
+- **Current coverage**: 22.42% (2164/8433 lines) — auto-ratcheted fast gate
 - **Target**: 30% fast gate coverage milestone
 
 ### Test File Created
@@ -147,14 +147,15 @@ These have fewer users or are harder to test without integration.
 
 ## Implementation Progress (Jan 11, 2026)
 
-### Completed (174 tests, 21.86% coverage)
+### Completed (174 tests, 22.42% coverage)
 - ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
 - ✓ Priority 2.1-2.2: 40 moderate-effort tests (terminate, star/dummy)
+- ✓ Auto-ratcheting working: 18.00% → 22.42% threshold increase confirmed
 
-### Upcoming (Next ~25 tests)
-1. **Priority 2.3**: `interior/dummy.py` (10-15 tests, ~1.5 hrs) → target 22-23% coverage
-2. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 25%+ coverage
-3. **Stretch**: Config module expansion, additional Priority 2 modules
+### Upcoming (Next ~25 tests to reach 30% target)
+1. **Priority 2.3**: `interior/dummy.py` (10-15 tests, ~1.5 hrs) → target 23-24% coverage
+2. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 26%+ coverage
+3. **Priority 2.4**: `utils/plot.py` (20-25 tests, 2-3 hrs) → target 28-30% coverage
 
 **Target milestone**: 30% fast gate coverage with 200+ unit tests by end of Jan
 
