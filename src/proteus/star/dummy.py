@@ -117,7 +117,7 @@ def calc_star_luminosity(tmp: float, R_star: float):
         tmp : float
             Stellar effective temperature (K)
         R_star : float
-            Stellar radius (R_sun)
+            Stellar radius [m]
 
     Returns
     -------
@@ -125,13 +125,10 @@ def calc_star_luminosity(tmp: float, R_star: float):
             Bolometric luminosity (W)
     """
 
-    # Convert radius from solar radii to meters
-    R_star_m = R_star * R_sun
-
     # Evaluate stefan-boltzmann law at Teff
     lum = 0.0
     if tmp > PLANCK_MIN_TEMPERATURE:
-        lum = 4 * np.pi * R_star_m * R_star_m * const_sigma * (tmp**4)
+        lum = 4 * np.pi * R_star * R_star * const_sigma * (tmp**4)
 
     return lum
 

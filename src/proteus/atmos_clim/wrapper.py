@@ -5,6 +5,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 from numpy import pi, unique
 
@@ -114,6 +115,8 @@ def run_atmosphere(
                     "Spectral file does not exist at '%s'" % spectral_file_nostar
                 )
 
+            wl = np.array(wl)
+            fl = np.array(fl)
             idx = unique(wl, return_index=True)[1]
             wl_un = wl[idx]
             fl_un = fl[idx]

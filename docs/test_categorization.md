@@ -4,7 +4,7 @@ This document explains how PROTEUS tests are categorized and how they flow throu
 
 > **Related documentation:** For complete testing infrastructure details including test structure, configuration, and ecosystem rollout, see [Testing Infrastructure](test_infrastructure.md).
 
-Also see the consolidated CI status and planning in [CI/CD Status and Roadmap](test_infrastructure.md#cicd-status-and-roadmap-as-of-2026-01-06).
+Also see the consolidated CI status and planning in [CI/CD Status and Roadmap](test_infrastructure.md#cicd-status-and-roadmap-as-of-2026-01-11).
 
 ## Test Categories
 
@@ -15,7 +15,7 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 **Purpose**: Fast validation of Python logic with mocked physics
 **Runtime**: <100ms per test (target)
 
-**Count**: 477 tests (as of 2026-01-11)
+**Count**: 487 tests (as of 2026-01-11)
 **Runs In**: `ci-pr-checks.yml` (PR validation, ~2-5 minutes total)
 **Coverage**: Python interfaces, configuration, utilities, wrapper modules
 
@@ -30,6 +30,8 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 - `tests/test_init.py` - Package initialization (1 test)
 - `tests/plot/test_cpl_colours.py` - Color mapping (2 tests)
 - `tests/plot/test_cpl_helpers.py` - Helper functions (1 test)
+- `tests/star/test_star.py` - Stellar physics and luminosity/instellation (14 tests)
+- `tests/utils/test_plot.py` - Plotting utilities (mocked matplotlib)
 - All module wrappers (observe, outgas, escape, interior, etc.)
 
 
@@ -45,6 +47,7 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 **Implemented Tests**:
 
 - `tests/integration/test_smoke_minimal.py::test_proteus_dummy_init` - PROTEUS initialization with dummy modules (0.3s)
+- `tests/integration/test_smoke_janus.py` - JANUS-Interior coupling (skipped due to binary instability)
 
 
 ### @pytest.mark.integration
@@ -390,4 +393,4 @@ Coverage is enforced in:
 
 - [Test Infrastructure Documentation](./test_infrastructure.md)
 - [Docker CI Architecture](./docker_ci_architecture.md)
-- [PROTEUS Copilot Instructions](./.github/copilot-instructions.md)
+- [PROTEUS Copilot Instructions](../.github/copilot-instructions.md)

@@ -89,7 +89,7 @@ def test_generate_spectrum_increases_with_radius():
 @pytest.mark.unit
 def test_calc_star_luminosity_solar():
     """Solar Teff and radius yields ~1 solar luminosity."""
-    l = star.calc_star_luminosity(Teff_sun, 1.0)
+    l = star.calc_star_luminosity(Teff_sun, 1.0 * R_sun)
     l_sun = 3.828e26  # watts
     assert l == pytest.approx(l_sun, rel=0.01)
 
@@ -97,22 +97,22 @@ def test_calc_star_luminosity_solar():
 @pytest.mark.unit
 def test_calc_star_luminosity_zero_temp():
     """Zero temperature yields zero luminosity."""
-    l = star.calc_star_luminosity(0.0, 1.0)
+    l = star.calc_star_luminosity(0.0, 1.0 * R_sun)
     assert l == pytest.approx(0.0)
 
 
 @pytest.mark.unit
 def test_calc_star_luminosity_below_min_temp():
     """Below PLANCK_MIN_TEMPERATURE yields zero luminosity."""
-    l = star.calc_star_luminosity(0.01, 1.0)
+    l = star.calc_star_luminosity(0.01, 1.0 * R_sun)
     assert l == pytest.approx(0.0)
 
 
 @pytest.mark.unit
 def test_calc_star_luminosity_scales_with_temp():
     """Luminosity increases steeply with temperature (T^4)."""
-    l1 = star.calc_star_luminosity(5000.0, 1.0)
-    l2 = star.calc_star_luminosity(6000.0, 1.0)
+    l1 = star.calc_star_luminosity(5000.0, 1.0 * R_sun)
+    l2 = star.calc_star_luminosity(6000.0, 1.0 * R_sun)
     assert l2 > l1
     assert l2 / l1 > 1.5
 
