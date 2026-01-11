@@ -144,7 +144,7 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/proteus
-          coverage json -o coverage-unit.json
+          coverage json --fail-under=${FAST_COV_FAIL_UNDER} -o coverage-unit.json
 
       - name: Print coverage summary to GitHub summary
         if: always()
