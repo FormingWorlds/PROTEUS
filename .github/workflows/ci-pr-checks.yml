@@ -211,6 +211,12 @@ jobs:
           cd /opt/proteus
           python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast
 
+      - name: Install gpg for Codecov verification
+        if: always()
+        run: |
+          apt-get update
+          apt-get install -y gnupg
+
       - name: Upload coverage report
         uses: codecov/codecov-action@v4
         if: always()
