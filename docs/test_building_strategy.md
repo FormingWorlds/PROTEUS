@@ -1,6 +1,6 @@
 # Test Building Strategy for PROTEUS
 
-## Current Status (2026-01-10)
+## Current Status (2026-01-11)
 
 ### Coverage Metrics
 
@@ -12,9 +12,11 @@
   - 7 tests for `orbit/dummy.py` (tidal heating dummy module)
   - 19 tests for `utils/terminate.py` (termination criteria logic)
   - 14 tests for `star/dummy.py` (blackbody stellar physics)
-- **Total**: ~174 unit tests (as of 2026-01-11)
-- **Current coverage**: 22.42% (2164/8433 lines) — auto-ratcheted fast gate
-- **Target**: 30% fast gate coverage milestone
+  - 13 tests for `interior/dummy.py` (interior thermal evolution)
+  - 1 smoke test for `atmosphere-interior coupling` (dummy modules, ~2s)
+- **Total**: ~188 tests (187 unit + 1 smoke)
+- **Current coverage**: 23.03% (auto-ratcheted fast gate)
+- **Target**: 30% fast gate coverage + 5-7 smoke tests
 
 ### Test File Created
 - `tests/utils/test_helper.py` — 53 comprehensive unit tests covering:
@@ -93,18 +95,20 @@ These modules have more complex logic but are still testable without heavy compu
 
 **Purpose**: End-to-end coupling tests with real binaries but minimal computation (1 timestep, low resolution, <30s each).
 
-**Current status**: 1 smoke test implemented (as of 2026-01-06)
+**Current status**: 2 smoke tests implemented (1 baseline + 1 new)
 **Target**: 5-7 smoke tests for fast PR checks
 
 These tests validate that modules actually couple together correctly with real compiled binaries (not mocks), catching integration issues that unit tests miss. They run quickly enough for PR CI but use real physics solvers.
 
-#### 2.5.1 `Atmosphere-Interior Coupling` (TARGET: 2-3 tests)
-- **Scope**: JANUS/AGNI → SPIDER/dummy interior coupling
-- **Tests needed**:
-  - Dummy atmos + dummy interior (1 step, verify flux exchange)
-  - JANUS + dummy interior (1 step, radiation balance check)
+#### 2.5.1 `Atmosphere-Interior Coupling` (TARGET: 2-3 tests) **IN PROGRESS**
+- **Implemented**: `test_smoke_dummy_atmos_dummy_interior_flux_exchange` (✓ PASSING, ~2s)
+  - Validates flux exchange (F_atm ↔ F_int) with dummy modules
+  - Tests T_surf updates and physical value ranges
+  - Runtime: 2.07s (excellent for PR CI)
+- **Still needed**:
+  - JANUS + dummy interior (1 step, radiation balance check) **NEXT**
   - AGNI + dummy interior (1 step, verify convergence)
-- **Effort**: MODERATE (2-3 hours total)
+- **Effort**: MODERATE (1.5-2 hrs remaining)
 - **Validation**: F_atm ↔ F_int exchange, T_surf updates, no NaN/Inf
 
 #### 2.5.2 `Volatile Outgassing Coupling` (TARGET: 1-2 tests)
@@ -195,27 +199,28 @@ These have fewer users or are harder to test without integration.
 
 ## Implementation Progress (Jan 11, 2026)
 
-### Completed (187 tests, 22.42% coverage — awaiting CI update)
+### Completed (188 tests, 23.03% coverage)
 - ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
 - ✓ Priority 2.1-2.3: 53 moderate-effort tests (terminate, star/dummy, interior/dummy)
-- ✓ Auto-ratcheting working: 18.00% → 22.42% threshold increase confirmed
+- ✓ Priority 2.5.1 (partial): 1 smoke test (dummy atmos + dummy interior, ~2s)
+- ✓ Auto-ratcheting working: 18.00% → 22.42% → 23.03% threshold increases
 - ✓ Auto-commit mechanism: github-actions bot commits threshold updates automatically
 
 ### Upcoming (Next priorities to reach 30% target)
 
-**Short-term (Unit Tests)**:
-1. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 25-26% coverage
-2. **Priority 2.4**: `utils/plot.py` (15-20 tests, 2-3 hrs) → target 27-28% coverage
-3. **Config expansion**: Parametrized tests for edge cases → target 30%+ coverage
+**Current priority (Smoke Tests - Priority 2.5)**:
+1. **Priority 2.5.1** (cont.): JANUS + dummy interior smoke test (1-2 hrs) → add 1 test
+2. **Priority 2.5.2**: Volatile outgassing coupling (1-2 tests, 1-2 hrs)
+3. **Priority 2.5.3-4**: Stellar/escape coupling (2 tests, 1.5 hrs)
 
-**Parallel track (Smoke Tests)**:
-4. **Priority 2.5.1**: Atmosphere-interior coupling (2-3 smoke tests, 2-3 hrs)
-5. **Priority 2.5.2**: Volatile outgassing tests (1-2 smoke tests, 1-2 hrs)
-6. **Priority 2.5.3-4**: Stellar/escape coupling (2 smoke tests, 1.5 hrs)
+**Parallel track (Unit Tests - after smoke tests)**:
+4. **Priority 3.1**: `utils/coupler.py` (15-20 tests, 3-4 hrs) → target 25-26% coverage
+5. **Priority 2.4**: `utils/plot.py` (15-20 tests, 2-3 hrs) → target 27-28% coverage
+6. **Config expansion**: Parametrized tests for edge cases → target 30%+ coverage
 
 **Target milestones**:
+- Smoke test suite: 5-7 tests covering all major coupling pathways (Priority 2.5 complete)
 - Unit test coverage: 30% fast gate (200+ tests)
-- Smoke test suite: 5-7 tests covering all major coupling pathways
 - Timeline: End of Jan 2026
 
 ---
