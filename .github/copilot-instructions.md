@@ -63,11 +63,12 @@ When helping with installation or dependency issues, always reference these guid
   - **Parametrization:** Prefer `@pytest.mark.parametrize` over writing multiple similar test functions.
   - **Physics Checks:** detailed comments explaining *why* a specific input range was chosen (e.g., "Temperature set to 300K to represent habitable zone conditions").
   - **Instructions:** See `docs/test_building.md` for best practices on building robust tests and `test_building_strategy.md` for current test building strategy.
-  -**Documentation:** Add detailed docstrings to each test explaining the physical scenario being tested. In the header of the test file, include a brief overview of what is being tested and any important context, including a link to all docuementation about testing standards: `docs/test_infrastructure.md`, `docs/test_categorization.md` and `docs/test_building.md`.
+  - **Documentation:** Add detailed docstrings to each test explaining the physical scenario being tested. In the header of the test file, include a brief overview of what is being tested and any important context, including a link to all docuementation about testing standards: `docs/test_infrastructure.md`, `docs/test_categorization.md` and `docs/test_building.md`.
+  - **Formatting:** Ruff format all test files before committing.
 
 ## 3. Coverage Requirements
 - **Threshold:** Check `pyproject.toml` [tool.coverage.report] `fail_under` for current threshold.
-- **Automatic Ratcheting:** Coverage threshold automatically increases on main branch via `tools/update_coverage_threshold.py` (never decreases). See CALLIOPE for reference implementation.
+- **Automatic Ratcheting:** Coverage threshold automatically increases on main branch via `tools/update_coverage_threshold.py` (never decreases).
 - **Reports:** Run `pytest --cov --cov-report=html` and inspect `htmlcov/index.html` for gaps.
 - **Analysis:** Use `bash tools/coverage_analysis.sh` to identify low-coverage modules needing tests.
 - **Quality Gate:** All PRs must pass the coverage threshold defined in CI (see `.github/workflows/proteus_test_quality_gate.yml`).
