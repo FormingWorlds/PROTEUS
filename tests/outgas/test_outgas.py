@@ -24,6 +24,7 @@ Mocking strategy:
 - Use real constants from proteus.utils.constants (element_list, gas_list)
 - Mock logging to avoid console spam during tests
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -211,8 +212,23 @@ def test_run_outgassing_atmosphere_mass_conservation():
     # Setup with known gas masses for all gases in gas_list
     hf_row = {}
     # gas_list has 15 elements, use decreasing masses
-    gas_masses = [1e20, 5e19, 2e19, 1e18, 5e17, 3e17, 1e17, 5e16, 1e16, 1e15, 1e14,
-                  1e13, 1e12, 1e11, 1e10]
+    gas_masses = [
+        1e20,
+        5e19,
+        2e19,
+        1e18,
+        5e17,
+        3e17,
+        1e17,
+        5e16,
+        1e16,
+        1e15,
+        1e14,
+        1e13,
+        1e12,
+        1e11,
+        1e10,
+    ]
     for i, s in enumerate(gas_list):
         hf_row[s + '_kg_atm'] = gas_masses[i]
         hf_row[s + '_vmr'] = 0.1 / len(gas_list)  # Equal fractional mixing
