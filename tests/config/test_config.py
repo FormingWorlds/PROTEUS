@@ -1,4 +1,11 @@
-# Test whether config parser works
+"""Validator and parser coverage for PROTEUS config objects.
+
+This file targets config parsing helpers plus validator guardrails across
+_config.py, _interior.py, and _params.py. See testing standards in
+docs/test_infrastructure.md, docs/test_categorization.md, and
+docs/test_building.md for required structure, speed, and physics validity.
+"""
+
 from __future__ import annotations
 
 from itertools import chain
@@ -31,6 +38,7 @@ PATHS = chain(
 
 @pytest.fixture
 def cfg():
+    """Load the demo dummy config and return the parsed Config object."""
     path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
     obj = read_config_object(path)
 
@@ -41,6 +49,7 @@ def cfg():
 
 @pytest.mark.unit
 def test_none_if_none():
+    """Ensure the converter only treats literal 'none' (case-sensitive) as None."""
     assert none_if_none('none') is None
 
     for val in ('', 'notnone', 'mors', 'None'):
@@ -49,7 +58,9 @@ def test_none_if_none():
 
 @pytest.mark.parametrize('path', PATHS)
 def test_proteus_init(path):
+    """Smoke-test initialization for bundled example configs that should parse."""
     if 'nogit' in str(path):
+        # Skip configs that rely on git metadata when running offline.
         return
     print(f'Testing config at {path}')
     runner = Proteus(config_path=path)
@@ -58,6 +69,7 @@ def test_proteus_init(path):
 
 @pytest.mark.unit
 def test_calliope_is_included():
+    """Calliope includes/excludes species based on boolean flags."""
     conf = Calliope(
         T_floor=0.1,
         include_CO=False,
@@ -71,6 +83,7 @@ def test_calliope_is_included():
 
 @pytest.mark.unit
 def test_delivery_get_pressure():
+    """Volatile partial pressure lookup succeeds for known keys and errors otherwise."""
     conf = Volatiles(N2=123.0)
     assert conf.get_pressure('N2') == 123.0
     with pytest.raises(AttributeError):
@@ -84,6 +97,7 @@ def test_delivery_get_pressure():
 
 @pytest.mark.unit
 def test_instmethod_dummy_rejects_non_dummy_star():
+    """Dummy instellation method is only valid when the star module is also dummy."""
     inst = SimpleNamespace(
         orbit=SimpleNamespace(instellation_method='inst'),
         star=SimpleNamespace(module='janus'),
@@ -94,6 +108,7 @@ def test_instmethod_dummy_rejects_non_dummy_star():
 
 @pytest.mark.unit
 def test_instmethod_evolve_rejects_evolving_inst_method():
+    """Instellation method cannot evolve when evolve flag is already active."""
     inst = SimpleNamespace(orbit=SimpleNamespace(instellation_method='inst', evolve=True))
     with pytest.raises(ValueError):
         instmethod_evolve(inst, None, None)
@@ -101,6 +116,7 @@ def test_instmethod_evolve_rejects_evolving_inst_method():
 
 @pytest.mark.unit
 def test_satellite_evolve_rejects_combination():
+    """Orbit configs cannot enable both satellite and evolve simultaneously."""
     inst = SimpleNamespace(orbit=SimpleNamespace(satellite=True, evolve=True))
     with pytest.raises(ValueError):
         satellite_evolve(inst, None, None)
@@ -108,6 +124,7 @@ def test_satellite_evolve_rejects_combination():
 
 @pytest.mark.unit
 def test_tides_enabled_orbit_requires_orbit_module():
+    """Tidal heating requires an orbit module to propagate the energy source."""
     inst = SimpleNamespace(
         interior=SimpleNamespace(tidal_heat=True), orbit=SimpleNamespace(module=None)
     )
@@ -117,6 +134,7 @@ def test_tides_enabled_orbit_requires_orbit_module():
 
 @pytest.mark.unit
 def test_observe_resolved_atmosphere_requires_non_dummy():
+    """Resolved spectra synthesis is invalid when the climate module is dummy."""
     inst = SimpleNamespace(
         observe=SimpleNamespace(synthesis='platon'), atmos_clim=SimpleNamespace(module='dummy')
     )
@@ -126,6 +144,7 @@ def test_observe_resolved_atmosphere_requires_non_dummy():
 
 @pytest.mark.unit
 def test_spada_zephyrus_requires_mors_spada():
+    """Spada tracks must be selected when Zephyrus escape couples to MORS."""
     inst = SimpleNamespace(
         escape=SimpleNamespace(module='zephyrus'),
         star=SimpleNamespace(module='mors', mors=SimpleNamespace(tracks='notspada')),
@@ -136,6 +155,7 @@ def test_spada_zephyrus_requires_mors_spada():
 
 @pytest.mark.unit
 def test_janus_escape_requires_escape_stop_flag():
+    """Janus escape needs stop.escape flag to prevent runaway mass loss."""
     inst = SimpleNamespace(
         escape=SimpleNamespace(module='zephyrus'),
         atmos_clim=SimpleNamespace(module='janus'),
@@ -152,6 +172,7 @@ def test_janus_escape_requires_escape_stop_flag():
 
 @pytest.mark.unit
 def test_valid_interiordummy_checks_tmagma_and_liquidus():
+    """Dummy interior rejects unrealistically low magma temperature and thin liquidus gap."""
     dummy = SimpleNamespace(ini_tmagma=150.0, mantle_tliq=1500.0, mantle_tsol=1600.0)
     inst = SimpleNamespace(module='dummy', dummy=dummy)
     with pytest.raises(ValueError):
@@ -165,6 +186,7 @@ def test_valid_interiordummy_checks_tmagma_and_liquidus():
 
 @pytest.mark.unit
 def test_valid_aragog_requires_energy_term_and_tmagma():
+    """Aragog interior needs at least one heat transport term and warm initial magma."""
     aragog = SimpleNamespace(
         ini_tmagma=150.0,
         conduction=False,
@@ -189,6 +211,7 @@ def test_valid_aragog_requires_energy_term_and_tmagma():
 
 @pytest.mark.unit
 def test_valid_spider_requires_energy_term_and_entropy():
+    """Spider interior requires an energy transport term and positive entropy."""
     spider = SimpleNamespace(
         ini_entropy=150.0,
         conduction=False,
@@ -218,12 +241,14 @@ def test_valid_spider_requires_energy_term_and_entropy():
 
 @pytest.mark.unit
 def test_valid_path_rejects_empty_string():
+    """Path validators refuse empty strings to avoid silent path defaults."""
     with pytest.raises(ValueError):
         valid_path(None, SimpleNamespace(name='path'), '')
 
 
 @pytest.mark.unit
 def test_max_bigger_than_min_enforces_order():
+    """Maximum must exceed minimum to preserve physically consistent bounds."""
     dummy = SimpleNamespace(minimum=10)
     with pytest.raises(ValueError):
         max_bigger_than_min(dummy, SimpleNamespace(name='maximum'), 5)
@@ -231,6 +256,7 @@ def test_max_bigger_than_min_enforces_order():
 
 @pytest.mark.unit
 def test_valid_mod_rejects_negative():
+    """Modulus-like parameters cannot be negative; None is accepted for defaults."""
     with pytest.raises(ValueError):
         valid_mod(None, SimpleNamespace(name='plot_mod'), -1)
 
