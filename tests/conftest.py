@@ -5,7 +5,7 @@ This module provides:
   1. Parameter classes for three representative exoplanet scenarios spanning
      habitability → magma ocean → extreme irradiation gradient
   2. Pytest fixtures exposing these parameters for use in tests
-  3. Configuration path fixtures for accessing input files
+  3. Configuration path fixtures for accessing standard planet input files
   4. Pytest marker registration for test categorization
 
 All physical parameters use SI units and are sourced from proteus.utils.constants
@@ -15,6 +15,16 @@ for consistency across the PROTEUS ecosystem.
   - EarthLikeParams: Modern Earth (habitable reference)
   - UltraHotSuperEarthParams: TOI-561 b (ultra-hot stripped planet)
   - IntermediateSuperEarthParams: L 98-59 d (volatile-rich magma ocean)
+
+**Configuration Fixtures**:
+  - config_earth: CHILI Protocol Earth
+  - config_fiducial: Fiducial Sub-Neptune
+  - config_l9859d: L 98-59 d (Volatile-rich Super-Earth)
+  - config_gj9827d: GJ 9827 d
+  - config_trappist1c: TRAPPIST-1 c
+  - config_tr1b: CHILI Protocol TRAPPIST-1 b
+  - config_minimal: Minimal setup for smoke tests
+  - config_dummy: Dummy setup for unit tests
 
 **Usage**:
   def test_with_earth(earth_params):
@@ -155,22 +165,88 @@ def proteus_root() -> Path:
 @pytest.fixture(scope='session')
 def config_earth(proteus_root: Path):
     """
-    Load Earth configuration file for integration tests.
+    Load Earth configuration file (CHILI Protocol).
 
     **Depends on**: proteus_root fixture
 
     **Returns**:
-        Path: Path to input/planets/earth.toml (modern Earth scenario)
+        Path: Path to input/chili/protocol/earth.toml
 
     **Raises**:
         AssertionError: If config file not found (PROTEUS not installed properly)
 
     **Notes**:
+        - Source: CHILI Protocol Earth benchmark
         - Requires PROTEUS installed in editable mode
         - Fails fast if file missing (safety check)
     """
-    config_path = proteus_root / 'input' / 'planets' / 'earth.toml'
-    assert config_path.exists(), f'Earth config not found at {config_path}'
+    config_path = proteus_root / 'input' / 'chili' / 'protocol' / 'earth.toml'
+    assert config_path.exists(), f'CHILI Earth config not found at {config_path}'
+    return config_path
+
+
+@pytest.fixture(scope='session')
+def config_fiducial(proteus_root: Path):
+    """
+    Load Fiducial Sub-Neptune configuration file.
+
+    **Returns**:
+        Path: Path to input/planets/fiducial_sub_Neptune.toml
+    """
+    config_path = proteus_root / 'input' / 'planets' / 'fiducial_sub_Neptune.toml'
+    assert config_path.exists(), f'Fiducial config not found at {config_path}'
+    return config_path
+
+
+@pytest.fixture(scope='session')
+def config_l9859d(proteus_root: Path):
+    """
+    Load L 98-59 d configuration file (Volatile-rich Super-Earth).
+
+    **Returns**:
+        Path: Path to input/planets/l9859d.toml
+    """
+    config_path = proteus_root / 'input' / 'planets' / 'l9859d.toml'
+    assert config_path.exists(), f'L 98-59 d config not found at {config_path}'
+    return config_path
+
+
+@pytest.fixture(scope='session')
+def config_gj9827d(proteus_root: Path):
+    """
+    Load GJ 9827 d configuration file.
+
+    **Returns**:
+        Path: Path to input/planets/gj9827d.toml
+    """
+    config_path = proteus_root / 'input' / 'planets' / 'gj9827d.toml'
+    assert config_path.exists(), f'GJ 9827 d config not found at {config_path}'
+    return config_path
+
+
+@pytest.fixture(scope='session')
+def config_trappist1c(proteus_root: Path):
+    """
+    Load TRAPPIST-1 c configuration file.
+
+    **Returns**:
+        Path: Path to input/planets/trappist1c.toml
+    """
+    config_path = proteus_root / 'input' / 'planets' / 'trappist1c.toml'
+    assert config_path.exists(), f'TRAPPIST-1 c config not found at {config_path}'
+    return config_path
+
+
+@pytest.fixture(scope='session')
+def config_tr1b(proteus_root: Path):
+    """
+    Load TRAPPIST-1 b configuration file (CHILI Protocol).
+
+    **Returns**:
+        Path: Path to input/chili/protocol/tr1b.toml
+    """
+    config_path = proteus_root / 'input' / 'chili' / 'protocol' / 'tr1b.toml'
+    assert config_path.exists(), f'CHILI TRAPPIST-1 b config not found at {config_path}'
     return config_path
 
 
