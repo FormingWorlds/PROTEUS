@@ -259,7 +259,7 @@ class Albedo_t():
 
     def evaluate(self, tmp:float) -> float:
         """
-        Evalulate bond albedo at a given temperature [K]
+        Evaluate bond albedo at a given temperature [K]
 
         Parameters
         -----------
