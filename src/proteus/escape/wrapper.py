@@ -68,8 +68,8 @@ def run_dummy(config:Config, hf_row:dict):
 
     Parameters
     ----------
-        Mdot : float
-            Bulk escape rate [kg s-1]
+        config : Config
+            Configuration options for the escape module
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
     """
