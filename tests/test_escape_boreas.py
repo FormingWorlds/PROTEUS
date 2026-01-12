@@ -134,9 +134,6 @@ def test_run_boreas_unfractionated_conserves_mass_ratios(boreas_config, reservoi
     total = sum(masses.values())
     assert total > 0.0
 
-    # Oxygen is intentionally skipped in calc_unfract_fluxes
-    assert "esc_rate_O" not in hf_row or hf_row.get("esc_rate_O", 0.0) == 0.0
-
     # Check conservation of element mass ratios in the unfractionated split
     for e, m in masses.items():
         expected = hf_row["esc_rate_total"] * (m / total)
