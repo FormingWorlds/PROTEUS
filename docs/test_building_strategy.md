@@ -1,294 +1,436 @@
 # Test Building Strategy for PROTEUS
 
-## Current Status (2026-01-11 - Updated Evening)
-
-### Coverage Metrics
-
-- **Baseline unit/smoke tests**: 13 tests marked with `@pytest.mark.unit`
-- **New tests added**:
-  - 53 tests for `utils/helper.py` (9 component classes, 40 distinct functions)
-  - 41 tests for `utils/logs.py` (logging infrastructure)
-  - 27 tests for `config/_converters.py` (type conversion utilities)
-  - 89 tests for `config` validators across `_config.py`, `_interior.py`, `_params.py`, `_observe_validators.py`, `_outgas_validators.py` (comprehensive validation coverage)
-  - 7 tests for `orbit/dummy.py` (tidal heating dummy module)
-  - 19 tests for `utils/terminate.py` (termination criteria logic)
-  - 14 tests for `star/dummy.py` (blackbody stellar physics)
-  - 13 tests for `interior/dummy.py` (interior thermal evolution)
-  - 55 tests for `utils/coupler.py` (helpfile I/O, version getters, print functions)
-  - 9 tests for `atmos_chem/wrapper.py` (VULCAN chemistry module interface)
-  - 20 tests for `atmos_clim/wrapper.py` (dummy atmosphere wrapper)
-  - 25 tests for `escape/wrapper.py` (ZEPHYRUS escape module interface)
-  - 12 tests for `interior/wrapper.py` (interior module interface)
-  - 10 tests for `observe/wrapper.py` (observation module interface)
-  - 60 tests for `outgas/wrapper.py` (CALLIOPE outgassing interface)
-  - 1 smoke test for `atmosphere-interior coupling` (dummy modules, ~2s)
-- **Total**: **487 tests** (485 unit + 2 smoke)
-- **Current coverage**: **31.45%** (passing CI as of 2026-01-11)
-- **Target**: 30% fast gate coverage + 5-7 smoke tests
-- **Status**: 🎯 **Goal Exceeded** — 30% unit test target achieved (31.45% actual)
-
-### Test File Created
-
-- `tests/star/test_star.py` — 14 tests covering stellar physics, luminosity, and instellation.
-- `tests/utils/test_plot.py` — 9 tests covering plotting utilities (mocking matplotlib).
-- `tests/integration/test_smoke_janus.py` — 1 new smoke test module (skipped due to env).
+**Last Updated**: 2026-01-11  
+**Status**: 31.45% coverage (exceeded 30% target), 487 tests
 
 ---
 
-## Prioritized Test Targets
+## Current Status
+
+### Coverage Metrics
+
+- **Total tests**: 487 (485 unit + 2-3 smoke)
+- **Current coverage**: 31.45% (passing CI as of 2026-01-11)
+- **Target**: 30% fast gate coverage + 5-7 smoke tests
+- **Status**: 🎯 **Unit Test Goal Exceeded** — 30% target achieved (31.45% actual)
+
+### Test Status Summary
+
+| Category | Current | Target | Status | Gap |
+|----------|---------|--------|--------|-----|
+| Unit tests | 485 | 470+ | ✅ **103%** | Exceeded |
+| Smoke tests (active) | 3 | 5-7 | ⚠️ **43%** | **-2 to -4 tests** |
+| Integration tests | 0 | 23 | ❌ **0%** | **-23 tests** |
+| Coverage (fast gate) | 31.45% | 30% | ✅ **105%** | Exceeded |
+
+### Active Smoke Tests
+
+| Test | Status | Notes |
+|------|--------|-------|
+| `test_proteus_dummy_init` | ✅ **ACTIVE** | Minimal initialization |
+| `test_smoke_dummy_atmos_dummy_interior_flux_exchange` | ✅ **ACTIVE** | Fixed (ini_tmagma=2000K) |
+| `test_smoke_janus_dummy_coupling` | ✅ **ACTIVE** | Fixed (timeout + minimal config) |
+| `test_integration_calliope_dummy_atmos_outgassing` | ✅ **INTEGRATION** | Moved to nightly CI |
+
+---
+
+## Completed Work
 
 Tests are prioritized by **ease of implementation** × **impact on coverage** × **foundational value**.
 
-### PRIORITY 1: Quick Wins (High impact, low effort)
+### Priority 1: Quick Wins (High impact, low effort) ✓ **COMPLETED**
 
 These modules have simple, pure functions with few dependencies. Tests run in <10ms each.
 
 #### 1.1 `utils/helper.py` ✓ **COMPLETED**
-
 - **Status**: 53 unit tests created and passing
 - **Coverage**: ~80% of functions tested
 - **Impact**: High — utilities used throughout codebase
-- **Effort**: Low — pure functions, no external dependencies
 
 #### 1.2 `utils/logs.py` ✓ **COMPLETED**
-
 - **Status**: 41 unit tests created and passing
 - **Coverage**: 91.49% of logs.py
 - **Impact**: High — logging used throughout all simulation runs
-- **Effort**: Low — simple logging utilities
 
 #### 1.3 `config/_converters.py` ✓ **COMPLETED**
-
 - **Status**: 27 unit tests created and passing
-- **Coverage**: 100% of _converters.py (4 functions: none_if_none, zero_if_none, dict_replace_none, lowercase)
+- **Coverage**: 100% of _converters.py
 - **Impact**: High — converters used for all TOML config parsing
-- **Effort**: Low — pure conversion functions, no dependencies
 
 #### 1.4 `orbit/dummy.py` ✓ **COMPLETED**
-
 - **Status**: 7 unit tests created and passing
 - **Coverage**: 100% of dummy tidal heating logic
-- **Scope**: < / > threshold heating, boundary equals zero, no-heat path, Imk2 return value, single-layer handling, phi immutability
-- **Effort**: Low — pure arithmetic with simple config mock
+- **Impact**: Medium — tidal heating calculations
 
----
-
-### PRIORITY 2: Moderate Effort, High Value (2-4 hours each)
+### Priority 2: Moderate Effort, High Value ✓ **COMPLETED**
 
 These modules have more complex logic but are still testable without heavy computations.
 
 #### 2.1 `utils/terminate.py` ✓ **COMPLETED**
-
 - **Status**: 19 unit tests created and passing
 - **Coverage**: All termination criteria (solidification, energy balance, escape, disintegration, time/iteration limits, keepalive)
-- **Scope**: Non-strict and strict termination logic with full criterion matrix
-- **Effort**: Moderate — config/handler mocks, comprehensive scenario coverage
 
 #### 2.2 `star/dummy.py` ✓ **COMPLETED**
-
 - **Status**: 14 unit tests created and passing
-- **Coverage**: Radius scaling (direct + empirical), spectrum generation, luminosity (Stefan-Boltzmann), instellation (inverse-square)
-- **Physics**: Solar normalization, temperature dependencies (T⁴), boundary conditions (zero/minimum T)
-- **Effort**: Moderate — real constants and numpy/scipy physics
+- **Coverage**: Radius scaling, spectrum generation, luminosity (Stefan-Boltzmann), instellation (inverse-square)
 
 #### 2.3 `interior/dummy.py` ✓ **COMPLETED**
-
 - **Status**: 13 unit tests created and passing
 - **Coverage**: calculate_simple_mantle_mass() + run_dummy_int() + melt fraction physics
-- **Physics**: Phase boundaries (solid/partial/molten), radiogenic/tidal heating, Interior_t arrays
-- **Effort**: Moderate — config mocks, Interior_t(nlev_b=2) instantiation
 
-#### 2.4 `utils/coupler.py` ✓ **COMPLETED (NEW)**
+#### 2.4 `utils/coupler.py` ✓ **COMPLETED**
+- **Status**: 55 unit tests created and passing
+- **Coverage**: Helpfile operations, lock file management, version getters, print functions
 
-- **Status**: 55 unit tests created and passing (36 initial + 19 additional)
-- **Coverage**: Helpfile operations (creation, row extension, CSV I/O), lock file management, state printing, version getters (`_get_spider_version`, `_get_petsc_version`, `_get_git_revision`, `_get_socrates_version`, `_get_agni_version`, `_get_julia_version`), print functions (`print_header`, `print_stoptime`, `print_system_configuration`)
-- **Scope**: Complete helpfile lifecycle, version validation infrastructure, runtime diagnostics, edge case handling (missing keys, negative fluxes, large time values)
-- **Physics validation**: Realistic Earth values, extreme exoplanet parameters, float precision preservation, scientific notation consistency, negative flux handling
-- **Effort**: Low-Moderate — pure I/O + mocked subprocess calls for version checking
-
----
-
-### PRIORITY 2.5: Smoke Tests (Fast Integration Validation)
-
-**Purpose**: End-to-end coupling tests with real binaries but minimal computation (1 timestep, low resolution, <30s each).
-
-**Current status**: 2 smoke tests implemented (1 baseline + 1 new)
-**Target**: 5-7 smoke tests for fast PR checks
-
-These tests validate that modules actually couple together correctly with real compiled binaries (not mocks), catching integration issues that unit tests miss. They run quickly enough for PR CI but use real physics solvers.
-
-#### 2.5.1 `Standard Configuration Integration` (TARGET: 1 comprehensive test) **NEXT PRIORITY**
-
-- **Scope**: Full coupling of the standard PROTEUS configuration.
-- **Components**:
-  - **Interior**: ARAGOG (thermal evolution)
-  - **Atmosphere**: AGNI (radiative-convective equilibrium)
-  - **Outgassing**: CALLIOPE (volatile supply)
-  - **Escape**: ZEPHYRUS (mass loss)
-  - **Star**: MORS (stellar evolution)
-- **Goal**: Verify that the "standard candle" configuration runs stably for multiple timesteps.
-- **Effort**: HIGH (Nightly Science Validation Phase)
-- **Validation**: Energy conservation, mass conservation across all reservoirs, stable feedback loops.
-
-#### 2.5.2 `Atmosphere-Interior Coupling` (TARGET: 1 test) **COMPLETED**
-
-- **Implemented**: `test_smoke_dummy_atmos_dummy_interior_flux_exchange` (✓ PASSING, ~2s)
-- **Status**: Completed baseline validation using dummy modules.
-
-
-**Implementation strategy**:
-
-1. Start with dummy module combinations (fastest, easiest to debug)
-2. Add real module tests one at a time
-3. Use low-resolution grids (JANUS: 10 levels, SOCRATES: minimal bands)
-4. Mock external data files (stellar spectra, opacities) where possible
-5. Each smoke test should complete in <30s
-
-**Coverage impact**: Minimal direct coverage (integration tests don't count toward unit coverage), but critical for validating that unit-tested code actually works together.
-
----
-
-### PRIORITY 3: Foundation/Core Modules (4-8 hours each)
+### Priority 3: Foundation/Core Modules ✓ **COMPLETED**
 
 These are heavily used but require careful test design to isolate logic from physics.
 
 #### 3.1 `config/` modules ✓ **SUBSTANTIALLY COMPLETED**
-
-- **`_config.py`**: 400+ lines (core config)
-- **`_params.py`**: 298 lines (parameter definitions)
-- **`_interior.py`**: 271 lines (interior config)
-- **`_observe_validators.py`**: NEW — observation config validation
-- **`_outgas_validators.py`**: NEW — outgassing config validation
-- **Completed**: 89 validator tests covering:
-  - Core config: instellation/escape combinations, directory paths, module selection (27 tests)
-  - Interior validators: energy/temperature guards, module compatibility (8 tests)
-  - Params validators: path existence, modulus/max-min checks, physical ranges (10 tests)
-  - **NEW**: Observe validators: comprehensive coverage of observation config edge cases (24 tests in `test_observe_validators.py`)
-  - **NEW**: Outgas validators: full matrix coverage of outgassing scenarios including volcanism, solvevol, prevent_warming interactions (20 tests in `test_outgas_validators.py`)
+- **Status**: 89 validator tests created and passing
+- **Coverage**: Core config, interior validators, params validators, observe validators, outgas validators
 - **Remaining**: 10-20 additional tests for dataclass defaults and edge-case TOML parsing
-- **Effort**: LOW (mostly complete)
 
 #### 3.2 `atmos_clim/wrapper.py` ✓ **COMPLETED**
-
 - **Status**: 20 unit tests created and passing
 - **Coverage**: Complete wrapper interface for dummy atmosphere module
-- **Scope**: Fixed surface mode, transparent/opaque atmosphere, skin temperature convergence, prevent warming logic, scale height, zenith angle effects, albedo calculation, output key validation
-- **Physics validation**: Realistic Earth scenarios, extreme exoplanet cases, temperature equilibration, radiative balance
-- **Effort**: COMPLETED
 
 #### 3.3 `atmos_chem/wrapper.py` ✓ **COMPLETED**
-
 - **Status**: 9 unit tests created and passing
 - **Coverage**: VULCAN chemistry module interface
-- **Scope**: Module disabled checks, file I/O operations, result parsing, config preservation, realistic atmospheric chemistry scenarios
-- **Validation**: DataFrame structure, whitespace preservation, error handling
-- **Effort**: COMPLETED
 
----
-
-### PRIORITY 3.5: Module Wrappers ✓ **COMPLETED**
+### Priority 3.5: Module Wrappers ✓ **COMPLETED**
 
 These modules interface with external physics solvers and require careful mocking.
 
 #### 3.5.1 `escape/wrapper.py` ✓ **COMPLETED**
-
 - **Status**: 25 unit tests created and passing
-- **Coverage**: ZEPHYRUS escape module interface (run_escape, run_zephyrus, calc_new_elements)
-- **Scope**: Tidal heating contributions, elemental inventory updates (bulk/outgas reservoirs), mass conservation, escape rate calculations, invalid module handling
-- **Physics validation**: Hot Jupiter scenarios, Earth-like planets, escape efficiency, elemental fractionation
-- **Effort**: COMPLETED
+- **Coverage**: ZEPHYRUS escape module interface
 
 #### 3.5.2 `interior/wrapper.py` ✓ **COMPLETED**
-
 - **Status**: 12 unit tests created and passing
 - **Coverage**: Interior module interface (run_interior dispatcher, dummy/spider/aragog modules)
-- **Scope**: Module selection validation, solver integration, error handling for invalid modules
-- **Validation**: Dispatcher logic, module-specific parameter passing
-- **Effort**: COMPLETED
 
 #### 3.5.3 `observe/wrapper.py` ✓ **COMPLETED**
-
 - **Status**: 10 unit tests created and passing
-- **Coverage**: Observation module interface (run_observe, file I/O, result parsing)
-- **Scope**: Module disabled checks, header/data parsing, spectral output handling, error cases
-- **Validation**: File structure, numeric precision, missing file handling
-- **Effort**: COMPLETED
+- **Coverage**: Observation module interface
 
 #### 3.5.4 `outgas/wrapper.py` ✓ **COMPLETED**
-
 - **Status**: 60 unit tests created and passing
 - **Coverage**: CALLIOPE outgassing interface (comprehensive validation of all major functions)
-- **Scope**: 13 validator functions covering module compatibility, pressure/temperature ranges, mass inventory management, fO2/H2O relationships, melt fraction physics, prevent_warming logic
-- **Physics validation**: Realistic magma ocean scenarios, extreme degassing conditions, thermodynamic consistency, mass conservation
-- **Effort**: COMPLETED — most comprehensive wrapper test suite
 
----
-
-### PRIORITY 4: Lower Priority (Nice to have)
-
-These have fewer users or are harder to test without integration.
+### Priority 4: Lower Priority ✓ **PARTIALLY COMPLETED**
 
 #### 4.1 `utils/plot.py` ✓ **COMPLETED**
-
-- **Lines**: 308
-- **Functions**: 12+ plotting utilities
 - **Status**: 9 unit tests created and passing
-- **Effort**: COMPLETED
-  - Plot configuration and styling
-- **Strategy**: Mocked matplotlib successfully
+- **Coverage**: Plotting utilities (mocked matplotlib)
 
-#### 4.2 `utils/data.py`
+#### 4.2 `utils/data.py` ⏸️ **IN PROGRESS**
+- **Status**: 7 tests covering basic download/validation
+- **Remaining**: ~700 lines, many functions untested
+- **Effort**: HIGH (external data downloads, network calls)
 
-- **Lines**: 707 (LARGE)
-- **Functions**: 15+ data management functions
-- **Effort**: HIGH
-  - External data downloads
-  - File I/O
-  - Mocking: Network calls, file downloads
+### Priority 2.5: Smoke Tests (Fast Integration Validation) ⏸️ **IN PROGRESS**
+
+**Purpose**: End-to-end coupling tests with real binaries but minimal computation (1 timestep, low resolution, <30s each).
+
+**Current status**: 3 smoke tests active (target: 5-7)
+
+#### 2.5.1 `Atmosphere-Interior Coupling` ✓ **COMPLETED**
+- **Implemented**: `test_smoke_dummy_atmos_dummy_interior_flux_exchange` (✓ PASSING, ~10s)
+- **Status**: Fixed and re-enabled (2026-01-11). Lowered `ini_tmagma` from 3500K to 2000K to prevent runaway heating.
+- **Validation**: Flux exchange (F_atm ↔ F_int), T_surf updates, T_magma bounds (200-1e6 K)
+
+#### 2.5.2 `JANUS-Interior Coupling` ✓ **FIXED**
+- **Implemented**: `test_smoke_janus_dummy_coupling` (with timeout protection)
+- **Status**: Fixed (2026-01-11). Added 60s timeout, reduced resolution (num_levels=15, spectral_bands=8).
+- **Note**: May skip if JANUS/SOCRATES binaries unavailable, but won't hang CI.
+
+#### 2.5.3 `CALLIOPE Outgassing` ✓ **MOVED TO INTEGRATION**
+- **Implemented**: `test_integration_calliope_dummy_atmos_outgassing`
+- **Status**: Moved to integration tests (2026-01-11). Changed marker from `@pytest.mark.smoke` to `@pytest.mark.integration`.
+- **Rationale**: CALLIOPE initialization overhead better suited for nightly CI.
+
+**Implementation strategy**:
+1. Start with dummy module combinations (fastest, easiest to debug)
+2. Add real module tests one at a time
+3. Use low-resolution grids (JANUS: 15 levels minimum, SOCRATES: minimal bands)
+4. Mock external data files (stellar spectra, opacities) where possible
+5. Each smoke test should complete in <30s
 
 ---
 
-## Implementation Progress (Jan 11, 2026 - Evening Update)
+## Roadmap & Next Steps
 
-### Completed (457 tests, **29.5% coverage** ✓)
+### Phase 1: Smoke Test Expansion (Immediate — Next 1-2 Weeks)
 
-- ✓ Priority 1.1-1.4: 134 fast unit tests (helper, logs, converters, orbit/dummy)
-- ✓ Priority 2.1-2.4: 108 moderate-effort tests (terminate, star/dummy, interior/dummy, coupler)
-- ✓ Priority 3.1: **89 config validator tests** (comprehensive coverage of all validator modules)
-- ✓ Priority 3.2-3.3: **29 wrapper tests** (atmos_clim, atmos_chem)
-- ✓ Priority 3.5: **107 module wrapper tests** (escape, interior, observe, outgas)
-- ✓ Priority 4.1: **9 plot utility tests** (`utils/plot.py`)
-- ✓ Priority 2.5: **2 smoke tests** (1 active, 1 skipped)
-- ✓ **Auto-ratcheting working**: 18.00% → 22.42% → 23.03% → **29.52%** threshold increases
-- ✓ Auto-commit mechanism: github-actions bot commits threshold updates automatically
-- ✓ All CI checks passing (Code Quality + Unit Tests + Smoke Tests)
-- ✓ Ruff formatting issues resolved
+**Goal**: Reach 5-7 active smoke tests for fast PR validation  
+**Current**: 3 active tests  
+**Needed**: 2-4 additional tests
 
-### Upcoming (Final push to 30%+ target)
+#### Priority 1.1: Add New Smoke Tests
 
-**Current Status**: 29.5% coverage, 457 tests — **need ~10-15 more unit tests to reach 30%**
+**1.1.1 Escape Module Smoke Test** (HIGH)
+- **Target**: `test_smoke_escape_dummy_atmos`
+- **Scope**: ZEPHYRUS escape + dummy atmosphere coupling
+- **Validates**: Mass loss calculations, elemental inventory updates
+- **Configuration**: 1 timestep, minimal resolution
+- **Effort**: 2-3 hours
+- **Impact**: +1 active smoke test
 
-**Immediate priorities (to cross 30% threshold)**:
+**1.1.2 Star Module Smoke Test** (MEDIUM)
+- **Target**: `test_smoke_star_instellation`
+- **Scope**: MORS stellar evolution + dummy atmosphere
+- **Validates**: Stellar luminosity, instellation calculations
+- **Configuration**: Single timestep, fixed orbit
+- **Effort**: 2-3 hours
+- **Impact**: +1 active smoke test
 
-1. **Config dataclass defaults** (Priority 3.1): ✓ **COMPLETED** (7 tests added)
-2. **Atmos_clim common functions** (Priority 3.2 extension): ✓ **COMPLETED** (6 tests added)
-3. **Utils expansion** (Priority 4 selected): ✓ **COMPLETED** (7 tests added for `utils/data.py`)
+**1.1.3 Orbit Module Smoke Test** (MEDIUM)
+- **Target**: `test_smoke_orbit_tidal_heating`
+- **Scope**: LovePy tidal heating + dummy interior
+- **Validates**: Tidal heating calculations, orbital evolution
+- **Configuration**: 1 timestep, simple orbit
+- **Effort**: 3-4 hours
+- **Impact**: +1 active smoke test
 
-**Estimated effort**: 2-3 hours to reach **30.0%+** coverage
+**1.1.4 Outgassing-Atmosphere Coupling** (MEDIUM)
+- **Target**: `test_smoke_outgas_atmos_volatiles`
+- **Scope**: CALLIOPE outgassing + dummy atmosphere (simpler than full CALLIOPE)
+- **Validates**: Volatile mass exchange, fO2 updates
+- **Configuration**: 1 timestep, minimal volatiles
+- **Effort**: 2-3 hours
+- **Impact**: +1 active smoke test
 
-**Nightly Science Track (Phase 2)**:
+**1.1.5 Multi-Module Dummy Chain** (LOW)
+- **Target**: `test_smoke_dummy_full_chain`
+- **Scope**: All dummy modules in sequence (star → orbit → interior → atmos → escape)
+- **Validates**: Full coupling loop with minimal physics
+- **Configuration**: 1 timestep, all dummy modules
+- **Effort**: 1-2 hours
+- **Impact**: +1 active smoke test, validates coupling infrastructure
 
-1.  **Priority 2.5.1**: Implement `tests/integration/test_std_config.py`.
-    -   Couples: ARAGOG + AGNI + CALLIOPE + ZEPHYRUS + MORS.
-    -   This is the critical "Standard Configuration" for PROTEUS science.
-    -   Replace disjointed smoke tests with this single, high-value integration suite.
+**Smoke Test Implementation Template**:
+```python
+# Template for new smoke tests
+@pytest.mark.smoke
+def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
+    """Test MODULE1 + MODULE2 coupling (1 timestep).
+    
+    Physical scenario: [Brief description]
+    
+    Validates:
+    - [Key validation point 1]
+    - [Key validation point 2]
+    - No NaN or Inf values
+    
+    Runtime: <30s (1 timestep, minimal resolution)
+    """
+    # 1. Create minimal TOML config
+    # 2. Initialize Proteus
+    # 3. Run 1 timestep
+    # 4. Validate outputs (no NaN, physical ranges)
+    # 5. Check coupling variables updated
+```
 
-**Target milestones**:
+**Phase 1 Success Criteria**:
+- ✅ 5-7 active smoke tests (currently 3, need 2-4 more)
+- ✅ All smoke tests run in <30s each
+- ✅ Smoke tests pass in CI consistently
 
-- ✓ Unit test coverage: 29.5% achieved
-- ⏳ **30.0%+ fast gate** (470+ tests total) — **2-3 hours remaining**
-- ⏳ Smoke test suite: 3-5 active tests for fast PR checks
-- Timeline: **Week of Jan 13, 2026** for 30%+ completion
+### Phase 2: Integration Test Foundation (Next 2-4 Weeks)
+
+**Goal**: Establish integration test infrastructure and first comprehensive test
+
+#### Priority 2.1: Standard Configuration Integration Test (HIGH)
+
+**Target**: `tests/integration/test_std_config.py`
+
+**Scope**: Full PROTEUS "standard candle" configuration
+- **Interior**: ARAGOG (thermal evolution)
+- **Atmosphere**: AGNI (radiative-convective equilibrium)
+- **Outgassing**: CALLIOPE (volatile supply)
+- **Escape**: ZEPHYRUS (mass loss)
+- **Star**: MORS (stellar evolution)
+
+**Requirements**:
+- Run for multiple timesteps (5-10 timesteps)
+- Validate energy conservation
+- Validate mass conservation across reservoirs
+- Check stable feedback loops
+- Runtime: <5 minutes (low resolution)
+
+**Implementation Plan**:
+1. **Week 1**: Create test structure and minimal config
+   - Define standard configuration TOML
+   - Set up test fixtures for multi-timestep runs
+   - Add validation helpers (energy/mass conservation)
+
+2. **Week 2**: Implement core test logic
+   - Initialize all modules
+   - Run coupling loop for N timesteps
+   - Collect state variables at each timestep
+
+3. **Week 3**: Add validation checks
+   - Energy balance validation
+   - Mass conservation checks
+   - Stability checks (no runaway temperatures/pressures)
+
+4. **Week 4**: Debug and stabilize
+   - Fix any runtime issues
+   - Optimize resolution for <5 min runtime
+   - Add to nightly CI workflow
+
+**Effort**: 16-24 hours (4 weeks, 4-6 hours/week)  
+**Impact**: Foundation for all future integration tests
+
+#### Priority 2.2: Integration Test Infrastructure
+
+**2.2.1 Test Fixtures** (MEDIUM)
+- Create reusable fixtures for multi-timestep runs
+- Add helpers for conservation law validation
+- Create config templates for common scenarios
+
+**2.2.2 CI Integration** (MEDIUM)
+- Add integration test job to `ci-nightly-science.yml`
+- Set up separate job for slow integration tests
+- Configure notifications for failures
+
+**Effort**: 4-6 hours  
+**Impact**: Enables systematic integration test development
+
+**Phase 2 Success Criteria**:
+- ✅ Standard configuration integration test implemented
+- ✅ Test runs stably for 5-10 timesteps
+- ✅ Conservation law validations pass
+- ✅ Integrated into nightly CI
+
+### Phase 3: Coverage Expansion (Ongoing)
+
+**Goal**: Maintain and improve unit test coverage above 30%
+
+#### Priority 3.1: Remaining High-Value Modules
+
+**3.1.1 `utils/data.py` Expansion** (LOW-MEDIUM)
+- **Current**: 7 tests covering basic download/validation
+- **Remaining**: ~700 lines, many functions untested
+- **Focus areas**:
+  - OSF client integration (mocked)
+  - File validation logic
+  - Error handling paths
+- **Effort**: 4-6 hours
+- **Impact**: +5-10% coverage for utils/data.py
+
+**3.1.2 Core Module Edge Cases** (LOW)
+- Add tests for error paths in existing modules
+- Test boundary conditions
+- Validate error messages
+- **Effort**: Ongoing, 1-2 hours per module
+- **Impact**: Improves robustness
+
+**Phase 3 Success Criteria**:
+- ✅ Unit test coverage maintained >30%
+- ✅ New code changes include tests
+- ✅ Coverage ratcheting continues to work
+
+### Timeline Summary
+
+| Phase | Duration | Milestones | Deliverables |
+|-------|----------|------------|--------------|
+| **Phase 1** | 1-2 weeks | 5-7 active smoke tests | 2-4 new smoke tests |
+| **Phase 2** | 2-4 weeks | First integration test | `test_std_config.py` + infrastructure |
+| **Phase 3** | Ongoing | Maintain >30% coverage | Incremental improvements |
+
+### Risk Assessment
+
+#### High-Risk Items
+
+1. **JANUS/SOCRATES Runtime Instability**
+   - **Risk**: Smoke test may never stabilize
+   - **Mitigation**: Timeout added, consider alternative test or move to integration tests only
+
+2. **Standard Configuration Test Complexity**
+   - **Risk**: May require significant debugging time
+   - **Mitigation**: Start with 2-3 modules, add incrementally
+
+3. **CI Runtime Growth**
+   - **Risk**: Adding smoke tests may slow CI
+   - **Mitigation**: Run smoke tests in parallel, optimize test configurations
+
+#### Medium-Risk Items
+
+1. **Dummy Module Physics Issues**
+   - **Risk**: Dummy modules may not be stable enough for smoke tests
+   - **Mitigation**: Fixed T_magma issue, use real modules with minimal resolution if needed
+
+2. **Integration Test Maintenance**
+   - **Risk**: Integration tests may be fragile
+   - **Mitigation**: Focus on stability checks, not exact values
+
+### Recommendations
+
+#### Immediate Actions (This Week)
+
+1. **Add 2-4 New Smoke Tests**
+   - Start with escape module (simpler)
+   - Add star module test
+   - Add orbit module test
+   - Consider multi-module dummy chain
+
+#### Short-Term Actions (Next 2 Weeks)
+
+1. **Plan Standard Configuration Test**
+   - Design test structure
+   - Create configuration template
+   - Set up validation helpers
+
+#### Long-Term Actions (Next Month)
+
+1. **Implement Standard Configuration Test**
+   - Follow 4-week implementation plan
+   - Integrate into nightly CI
+   - Document test structure for future tests
+
+2. **Expand Integration Test Suite**
+   - Add more module combinations
+   - Create test templates
+   - Establish best practices
+
+---
+
+## Coverage Analysis
+
+### Current Modules by Coverage
+
+| Module | Lines | Est. Functions | Status | Tests | Priority |
+| ------ | ----- | -------------- | ------ | ----- | -------- |
+| `utils/helper.py` | 328 | 15 | ✓ DONE | 53 | 1 |
+| `utils/logs.py` | 150 | 8 | ✓ DONE | 41 | 1 |
+| `config/_converters.py` | 100 | 6 | ✓ DONE | 27 | 1 |
+| `orbit/dummy.py` | 54 | 1 | ✓ DONE | 7 | 1 |
+| `utils/terminate.py` | 291 | 5 | ✓ DONE | 19 | 2 |
+| `star/dummy.py` | 147 | 4 | ✓ DONE | 14 | 2 |
+| `interior/dummy.py` | 131 | 4 | ✓ DONE | 13 | 2 |
+| `utils/coupler.py` | 979 | 15+ | ✓ DONE | 55 | 2 |
+| `config/*` (all validators) | 800+ | 20+ | ✓ DONE | 89 | 3 |
+| `atmos_clim/wrapper.py` | 200+ | 8+ | ✓ DONE | 20 | 3 |
+| `atmos_chem/wrapper.py` | 150+ | 6+ | ✓ DONE | 9 | 3 |
+| `escape/wrapper.py` | 250+ | 10+ | ✓ DONE | 25 | 3.5 |
+| `interior/wrapper.py` | 200+ | 8+ | ✓ DONE | 12 | 3.5 |
+| `observe/wrapper.py` | 150+ | 6+ | ✓ DONE | 10 | 3.5 |
+| `outgas/wrapper.py` | 400+ | 15+ | ✓ DONE | 60 | 3.5 |
+| `utils/plot.py` | 308 | 12+ | ✓ DONE | 9 | 4 |
+| `utils/data.py` | 707 | 15+ | ⏸️ IN PROGRESS | 7 | 4 |
+
+### Coverage Milestones
+
+| Milestone | Unit Tests | Coverage | Timeline |
+| --------- | ---------- | -------- | -------- |
+| Baseline | 13 | 18.51% | 2026-01-10 |
+| After Priority 1 | 134 | 22.42% | 2026-01-11 (AM) |
+| After Priority 2 | 242 | 23.03% | 2026-01-11 (Mid) |
+| After Priority 3 (partial) | 457 | 29.52% | 2026-01-11 (PM) |
+| **Final State (30% Exceeded)** | **487** | **31.45%** | **2026-01-11 (Final)** |
 
 ---
 
@@ -340,42 +482,6 @@ assert value == pytest.approx(3.14, rel=1e-5)
 def test_comment_from_status(status, expected):
     assert CommentFromStatus(status) == expected
 ```
-
----
-
-## Coverage Analysis
-
-### Current Modules by Coverage Need
-
-| Module | Lines | Est. Functions | Status | Tests | Priority |
-| ------ | ----- | -------------- | ------ | ----- | -------- |
-| `utils/helper.py` | 328 | 15 | ✓ DONE | 53 | 1 |
-| `utils/logs.py` | 150 | 8 | ✓ DONE | 41 | 1 |
-| `config/_converters.py` | 100 | 6 | ✓ DONE | 27 | 1 |
-| `orbit/dummy.py` | 54 | 1 | ✓ DONE | 7 | 1 |
-| `utils/terminate.py` | 291 | 5 | ✓ DONE | 19 | 2 |
-| `star/dummy.py` | 147 | 4 | ✓ DONE | 14 | 2 |
-| `interior/dummy.py` | 131 | 4 | ✓ DONE | 13 | 2 |
-| `utils/coupler.py` | 979 | 15+ | ✓ DONE | 55 | 2 |
-| `config/*` (all validators) | 800+ | 20+ | ✓ DONE | 89 | 3 |
-| `atmos_clim/wrapper.py` | 200+ | 8+ | ✓ DONE | 20 | 3 |
-| `atmos_chem/wrapper.py` | 150+ | 6+ | ✓ DONE | 9 | 3 |
-| `escape/wrapper.py` | 250+ | 10+ | ✓ DONE | 25 | 3.5 |
-| `interior/wrapper.py` | 200+ | 8+ | ✓ DONE | 12 | 3.5 |
-| `observe/wrapper.py` | 150+ | 6+ | ✓ DONE | 10 | 3.5 |
-| `outgas/wrapper.py` | 400+ | 15+ | ✓ DONE | 60 | 3.5 |
-| `utils/plot.py` | 308 | 12+ | REMAINING | - | 4 |
-| `utils/data.py` | 707 | 15+ | REMAINING | - | 4 |
-
-### Expected Coverage by Milestone
-
-| Milestone | Unit Tests | Est. Coverage | Timeline |
-| --------- | ---------- | ------------- | -------- |
-| Baseline | 13 | 18.51% | 2026-01-10 |
-| After Priority 1 | 134 | 22.42% | 2026-01-11 (AM) |
-| After Priority 2 | 242 | 23.03% | 2026-01-11 (Mid) |
-| After Priority 3 (partial) | 457 | **29.52%** | 2026-01-11 (PM) |
-| **Final State (30% Exceeded)** | **487** | **31.45%** | **2026-01-11 (Final)** |
 
 ---
 
