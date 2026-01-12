@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from proteus.config import read_config_object
-from proteus.escape.boreas import run_boreas, BOREAS_GASES, BOREAS_ELEMS
-from proteus.utils.constants import AU, element_list, R_earth, M_earth
+from proteus.escape.boreas import BOREAS_ELEMS, BOREAS_GASES, run_boreas
+from proteus.utils.constants import AU, M_earth, R_earth, element_list
 
 
 def _make_minimal_hf_row_fractionating() -> dict:
@@ -135,7 +135,7 @@ def test_run_boreas_unfractionated_conserves_mass_ratios(boreas_config, reservoi
     assert total > 0.0
 
     # Oxygen is intentionally skipped in calc_unfract_fluxes
-    assert f"esc_rate_O" not in hf_row or hf_row.get("esc_rate_O", 0.0) == 0.0
+    assert "esc_rate_O" not in hf_row or hf_row.get("esc_rate_O", 0.0) == 0.0
 
     # Check conservation of element mass ratios in the unfractionated split
     for e, m in masses.items():

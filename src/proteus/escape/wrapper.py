@@ -31,7 +31,7 @@ def run_escape(config:Config, hf_row:dict, dirs:dict, dt:float):
 
     if not config.escape.module:
         log.info(f"Escape is disabled, bulk rate = {hf_row["esc_rate_total"]:.2e} kg s-1")
-        run_dummy(0.0, hf_row)
+        run_dummy(config, hf_row)
         return # return now, since elemental inventories will be unchanged
 
     elif config.escape.module == 'dummy':
@@ -74,9 +74,6 @@ def run_dummy(config:Config, hf_row:dict):
             Dictionary of helpfile variables, at this iteration only
     """
 
-    # Set bulk escape rate based on value from user
-    hf_row["esc_rate_total"] = config.escape.dummy.rate
-
     # Set sound speed to zero
     hf_row["cs_xuv"] = 0.0
 
@@ -84,8 +81,18 @@ def run_dummy(config:Config, hf_row:dict):
     hf_row["p_xuv"] = hf_row["P_surf"]
     hf_row["R_xuv"] = hf_row["R_int"]
 
-    # Always unfractionating
-    calc_unfract_fluxes(hf_row, reservoir=config.escape.reservoir,
+    # Set bulk escape rate based on value from user
+    if not config.escape.module:
+        hf_row["esc_rate_total"] = 0.0
+        for e in element_list:
+            if e != 'O':
+                hf_row[f"esc_rate_{e}"] = 0.0
+
+    else:
+        hf_row["esc_rate_total"] = config.escape.dummy.rate
+
+        # Always unfractionating
+        calc_unfract_fluxes(hf_row, reservoir=config.escape.reservoir,
                                     min_thresh=config.outgas.mass_thresh)
 
 def run_zephyrus(config:Config, hf_row:dict)->float:

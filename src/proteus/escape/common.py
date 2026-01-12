@@ -18,7 +18,7 @@ def calc_unfract_fluxes(hf_row:dict, reservoir:str, min_thresh:float):
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
         reservoir: str
-            Element reservoir representing the escaping composition (bulk, outgas, pxuv)
+            Element reservoir representing the escaping composition (bulk, outgas)
         min_thresh: float
             Minimum threshold for element mass [kg]. Inventories below this are set to zero.
     """

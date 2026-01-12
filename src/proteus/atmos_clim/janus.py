@@ -279,6 +279,8 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     t_arr = np.array(atm.tmp[:], copy=True, dtype=float)
     if atm.height_error:
         log.error("Hydrostatic integration failed in JANUS!")
+        r_obs = float(hf_row["R_int"])
+        t_obs = float(hf_row["T_surf"])
     else:
         # find observed level [m] at p ~ p_obs
         _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
@@ -307,6 +309,8 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["p_xuv"]  = p_xuv            # Closest pressure to Pxuv    [bar]
     output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
     output["P_surf_clim"] = P_surf_clim # calculated surface pressure [bar]
+    output["ocean_areacov"] = 0.0
+    output["ocean_maxdepth"]= 0.0
 
     # set composition at Pxuv
     for g in gas_list:
