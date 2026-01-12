@@ -49,7 +49,6 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
     """
 
     out = os.path.join(GetFWLData(), "zenodo_download.log")
-    # log.debug("    zenodo_get, logging to %s"%out)
     for i in range(MAX_ATTEMPTS):
 
         # remove folder
