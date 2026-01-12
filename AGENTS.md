@@ -1,16 +1,44 @@
-# PROTEUS Agent Onboarding Guide
+# PROTEUS AI Agent Guidelines
 
 **Trust these instructions.** Only search if information is incomplete or found to be in error.
 
-**Identity**: You are an expert Scientific Software Engineer working on the PROTEUS ecosystem.
+**Identity & Mission**: You are an expert Scientific Software Engineer working on the PROTEUS ecosystem.
 
-## Repository Overview
+## Scope of These Guidelines
 
-**PROTEUS** is a modular Python framework that simulates the coupled evolution of atmospheres and interiors of rocky planets and exoplanets. It orchestrates multiple physics modules (AGNI, SOCRATES, CALLIOPE, JANUS, MORS, ARAGOG, SPIDER, VULCAN, ZEPHYRUS) written in Python, Julia, Fortran, and C.
+**These guidelines apply to ALL components in the PROTEUS ecosystem.** Whether you are working in:
+
+- The main PROTEUS repository
+- A standalone module (CALLIOPE, JANUS, MORS, etc.)
+- Tests for any ecosystem component
+
+Follow the same standards for testing, coverage, code quality, and infrastructure.
+
+## Ecosystem Structure
+
+PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
+
+- **[PROTEUS](https://github.com/FormingWorlds/PROTEUS)** (main repository): Core coupling framework and orchestration
+- **[AGNI](https://github.com/nichollsh/AGNI)**: Radiative-convective atmospheric energy module (Julia)
+- **[SOCRATES](https://github.com/nichollsh/SOCRATES)**: Spectral radiative transfer code (Fortran)
+- **[CALLIOPE](https://github.com/FormingWorlds/CALLIOPE)**: Volatile in-/outgassing and thermodynamics module (Python)
+- **[JANUS](https://github.com/FormingWorlds/JANUS)**: 1D convective atmosphere module (Python)
+- **[MORS](https://github.com/FormingWorlds/MORS)**: Stellar evolution module (Python)
+- **[ARAGOG](https://github.com/FormingWorlds/aragog)**: Interior thermal evolution module based on T-P formalism (Python)
+- **[SPIDER](https://github.com/djbower/spider)**: Interior thermal evolution module based on T-S formalism (C)
+- **[VULCAN](https://github.com/FormingWorlds/VULCAN)**: Atmospheric chemistry module (Python)
+- **[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS)**: Atmospheric escape module (Python)
+- **[Obliqua](https://github.com/FormingWorlds/Obliqua)**: Tidal evolution module (Julia)
+
+**Important:** Each module is maintained in its own GitHub repository but is typically cloned/installed within the PROTEUS directory structure for integrated development. When working on any module in the ecosystem, apply these guidelines consistently.
+
 
 **Project Type**: Scientific simulation framework
+
 **Languages**: Python 3.12 (primary), Julia, Fortran, C
+
 **Size**: ~98 Python files in `src/proteus/`, multiple submodules
+
 **Target Runtime**: Python 3.12 (Linux/macOS only; Windows not supported)
 
 ## Build & Validation
@@ -247,6 +275,8 @@ pre-commit install -f
 
 **Structure**: Tests MUST mirror source exactly. `src/proteus/config/_config.py` → `tests/config/test_config.py`
 
+**Framework:** Use `pytest` exclusively in the `tests/` directory.
+
 **Markers** (use consistently):
 
 - `@pytest.mark.unit` - Fast Python logic tests (<100ms, mock heavy physics)
@@ -262,7 +292,34 @@ pre-commit install -f
 - **Always** read `tests/conftest.py` before writing tests to use existing fixtures
 - **Always** add docstrings explaining the physical scenario being tested
 
-**Coverage**: Target >90% per module. Use `pytest --cov=src --cov-report=html` to identify gaps.
+- **Coverage Tool:** Two equivalent approaches are supported:
+  - Local: `pytest --cov` (uses pytest-cov plugin, convenient)
+  - CI/Local: `coverage run -m pytest` (matches CI exactly, compatible with ratcheting)
+  - Choose based on preference; both work correctly.
+- **Speed:** Unit tests must run in <100ms. Aggressively mock heavy simulations, I/O, and external APIs using `unittest.mock`.
+- **Integration:** Mark slow tests (full simulation loops) with `@pytest.mark.slow`.
+- **Markers:** Use pytest markers: `@pytest.mark.unit` for unit tests, `@pytest.mark.integration` for integration tests.
+- **Floats:** NEVER use `==` for floats. Use `pytest.approx(val, rel=1e-5)` or `np.testing.assert_allclose`.
+- **Physics:** Ensure inputs are physically valid (e.g., T > 0K) unless testing error handling.
+- **Context:** Always read the `conftest.py` of the current module before generating tests to utilize existing fixtures.
+- **Mocking Strategy:** Default to `unittest.mock` for ALL external calls (e.g., network, disk I/O, heavy computation modules like `SOCRATES` or `AGNI`). Only use real calls if explicitly requested for integration tests.
+- **Floats:** Automatically generate assertions using `pytest.approx()` for any floating-point comparisons.
+- **Parametrization:** Prefer `@pytest.mark.parametrize` over writing multiple similar test functions.
+- **Physics Checks:** detailed comments explaining *why* a specific input range was chosen (e.g., "Temperature set to 300K to represent habitable zone conditions").
+- **Instructions:** See `docs/test_building.md` for best practices on building robust tests and `test_building_strategy.md` for current test building strategy.
+- **Documentation:** Add detailed docstrings to each test explaining the physical scenario being tested. In the header of the test file, include a brief overview of what is being tested and any important context, including a link to all docuementation about testing standards: `docs/test_infrastructure.md`, `docs/test_categorization.md` and `docs/test_building.md`.
+- **Formatting:** Ruff format all test files before committing.
+
+### Coverage Requirements
+- **Threshold:** Check `pyproject.toml` [tool.coverage.report] `fail_under` for current threshold.
+- **Automatic Ratcheting:** Coverage threshold automatically increases on main branch via `tools/update_coverage_threshold.py` (never decreases).
+- **Reports:** Run `pytest --cov --cov-report=html` and inspect `htmlcov/index.html` for gaps.
+- **Analysis:** Use `bash tools/coverage_analysis.sh` to identify low-coverage modules needing tests.
+- **Quality Gate:** All PRs must pass the coverage threshold defined in CI (see `.github/workflows/proteus_test_quality_gate.yml`).
+
+## Safety & Determinism
+- **Randomness:** Explicitly set seeds (e.g., `np.random.seed(42)`) in tests.
+- **Files:** Do not generate tests that produce large output files (unless explicitly instructed); use `tempfile` or mocks.
 
 ## Code Quality
 
