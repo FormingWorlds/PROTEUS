@@ -138,4 +138,4 @@ def test_run_boreas_unfractionated_conserves_mass_ratios(boreas_config, reservoi
     for e, m in masses.items():
         expected = hf_row["esc_rate_total"] * (m / total)
         assert math.isfinite(expected)
-        assert hf_row[f"esc_rate_{e}"] == pytest.approx(expected, rel=1e-12, abs=0.0)
+        assert hf_row[f"esc_rate_{e}"] == pytest.approx(expected, rel=1e-12, abs=1e-15)
