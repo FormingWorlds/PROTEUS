@@ -354,8 +354,16 @@ def gas_vmr_to_emr(gases:dict):
     # Get total mass of all atoms in these gases (per unit mole of mixture)
     M_tot = sum(list(M_e.values()))
 
+    # Guard against zero or non-finite total mass to avoid division by zero
+    if (not np.isfinite(M_tot)) or abs(M_tot) < 1e-30:
+        log.warning(
+            "gas_vmr_to_emr: total elemental mass M_tot is zero or invalid "
+            "for provided gas VMRs; returning empty elemental mass ratios."
+        )
+        return {}
+
     # Get mass mixing ratios of elements
-    emr = {e:M_e[e]/M_tot for e in element_list if M_e[e]>1e-20}
+    emr = {e: M_e[e] / M_tot for e in element_list if M_e[e] > 1e-20}
 
     return emr
 
