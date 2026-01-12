@@ -11,20 +11,22 @@
 **Project Type**: Scientific simulation framework
 **Languages**: Python 3.12 (primary), Julia, Fortran, C
 **Size**: ~98 Python files in `src/proteus/`, multiple submodules
-**Target Runtime**: Python 3.12+ (Linux/macOS only; Windows not supported)
+**Target Runtime**: Python 3.12 (Linux/macOS only; Windows not supported)
 
 ## Build & Validation
 
 For installation instructions and dependency management across the ecosystem:
+
 - **Main installation guide:** `docs/installation.md` - Standard user and developer installation procedures
 - **Local machine setup:** `docs/local_machine_guide.md` - Platform-specific setup (macOS, Linux, Windows)
-- **Cluster setup:** `docs/kapteyn_cluster_guide.md` - HPC cluster configuration (see also `habrok_cluster_guide.md`, `snellius_cluster_guide.md`)
+- **Cluster setup:** `docs/kapteyn_cluster_guide.md` - HPC cluster configuration (see also `docs/habrok_cluster_guide.md`, `docs/snellius_cluster_guide.md`)
 
 When helping with installation or dependency issues, always reference these guides first. The `proteus install-all` command handles most submodule installations automatically. However, whenever possible, prefer the developer installation steps outlined in the installation guide for editable installs.
 
 ### Environment Setup
 
 **Prerequisites**:
+
 1. Python 3.12 (via conda/miniforge or miniconda)
 2. Julia (official installer: `curl -fsSL https://install.julialang.org | sh`)
 3. Git (install via conda if needed: `conda install git`)
@@ -101,6 +103,7 @@ pre-commit install -f
 ```
 
 **User Install** (simpler, non-editable):
+
 ```bash
 git clone https://github.com/FormingWorlds/PROTEUS.git
 cd PROTEUS
@@ -111,6 +114,7 @@ proteus install-all --export-env
 ```
 
 **Important Notes**:
+
 - **FWL_DATA** and **RAD_DIR** must be set before running PROTEUS
 - **PETSc** is downloaded as a specific pre-compiled version from OSF (not built from source)
 - **SPIDER** requires PETSc to be installed first
@@ -120,6 +124,7 @@ proteus install-all --export-env
 ### Build Commands
 
 **No explicit build step** for Python code (installed via `pip install -e .`). Submodules require compilation:
+
 - **SOCRATES** (Fortran): `cd socrates && ./build_code`
 - **SPIDER** (C): `cd SPIDER && make`
 - **AGNI** (Julia): `julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'`
@@ -129,11 +134,13 @@ proteus install-all --export-env
 ### Test Commands
 
 **Run all tests**:
+
 ```bash
 pytest
 ```
 
 **Run by category** (matches CI):
+
 ```bash
 pytest -m unit              # Fast unit tests (<100ms each, mocked physics)
 pytest -m smoke             # Binary validation (1 timestep, low res)
@@ -143,6 +150,7 @@ pytest -m "not slow"        # Everything except slow tests
 ```
 
 **With coverage**:
+
 ```bash
 # Option 1: pytest-cov (convenient)
 pytest --cov=src --cov-report=html
@@ -154,15 +162,18 @@ coverage html
 ```
 
 **Coverage thresholds** (in `pyproject.toml`):
+
 - Fast gate: `[tool.proteus.coverage_fast] fail_under = 31.45`
 - Full suite: `[tool.coverage.report] fail_under = 69`
 
 **Validate test structure**:
+
 ```bash
 bash tools/validate_test_structure.sh
 ```
 
 **Coverage analysis**:
+
 ```bash
 bash tools/coverage_analysis.sh
 ```
@@ -170,6 +181,7 @@ bash tools/coverage_analysis.sh
 ### Lint Commands
 
 **Always run before committing**:
+
 ```bash
 ruff check src/ tests/        # Check for issues
 ruff check --fix src/ tests/ # Auto-fix issues
@@ -177,6 +189,7 @@ ruff format src/ tests/      # Format code
 ```
 
 **Pre-commit hook** (runs automatically on commit):
+
 ```bash
 pre-commit install -f
 ```
@@ -184,6 +197,7 @@ pre-commit install -f
 ### Validation Pipeline
 
 **CI runs on PRs** (`.github/workflows/ci-pr-checks.yml`):
+
 1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=31.45`
 2. **Smoke tests**: `pytest -m "smoke and not skip"`
 3. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
@@ -234,12 +248,14 @@ pre-commit install -f
 **Structure**: Tests MUST mirror source exactly. `src/proteus/config/_config.py` → `tests/config/test_config.py`
 
 **Markers** (use consistently):
+
 - `@pytest.mark.unit` - Fast Python logic tests (<100ms, mock heavy physics)
 - `@pytest.mark.smoke` - Real binary validation (1 timestep, <30s)
 - `@pytest.mark.integration` - Multi-module coupling
 - `@pytest.mark.slow` - Full physics validation (hours)
 
 **Rules**:
+
 - **Never** use `==` for floats. Use `pytest.approx(val, rel=1e-5)` or `np.testing.assert_allclose`
 - **Always** mock external calls (SOCRATES, AGNI, file I/O, network) in unit tests
 - **Always** use physically valid inputs (T > 0K, P > 0) unless testing error handling
@@ -251,6 +267,7 @@ pre-commit install -f
 ## Code Quality
 
 **Style** (enforced by ruff):
+
 - Line length < 96 chars (config allows 96, but prefer < 92)
 - Max indentation 3 levels
 - Variables/functions: `snake_case`
@@ -294,6 +311,7 @@ pytest --pdb                        # Drop into debugger on failure
 ## Key Dependencies
 
 **Not obvious from layout**:
+
 - **SOCRATES** (Fortran): Radiative transfer (compiled, requires `RAD_DIR`)
 - **AGNI** (Julia): Atmospheric energy balance (Julia packages)
 - **SPIDER** (C): Interior evolution (compiled, requires PETSc)
@@ -308,7 +326,7 @@ pytest --pdb                        # Drop into debugger on failure
 - **Coverage ratcheting**: Thresholds auto-increase when coverage improves (committed by `github-actions[bot]`). Never manually decrease.
 - **Test placeholders**: Some tests marked `@pytest.mark.skip` are placeholders. Excluded from CI.
 - **Windows**: Not supported. Linux/macOS only.
-- **Python version**: Must be 3.12+ (targets 3.12).
+- **Python version**: Must be 3.12 (PETSc/SPIDER require Python <= 3.12).
 
 ## Documentation References
 
