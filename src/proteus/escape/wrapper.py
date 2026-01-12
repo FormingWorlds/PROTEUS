@@ -85,8 +85,7 @@ def run_dummy(config:Config, hf_row:dict):
     if not config.escape.module:
         hf_row["esc_rate_total"] = 0.0
         for e in element_list:
-            if e != 'O':
-                hf_row[f"esc_rate_{e}"] = 0.0
+            hf_row[f"esc_rate_{e}"] = 0.0
 
     else:
         hf_row["esc_rate_total"] = config.escape.dummy.rate

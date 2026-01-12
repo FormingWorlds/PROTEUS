@@ -119,6 +119,7 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     output["T_obs"]   = hf_row["T_surf"]
     output["ocean_areacov"] = 0.0
     output["ocean_maxdepth"]= 0.0
+    output["P_surf_clim"] = hf_row["P_surf"]
 
     # gas composition for escape equal to surface composition
     for g in gas_list:
