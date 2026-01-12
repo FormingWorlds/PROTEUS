@@ -368,8 +368,22 @@ def gas_vmr_to_emr(gases:dict):
     return emr
 
 def eval_gas_mmw(gas:str):
-    """Evalulate gas mmw [kg mol-1] from its atoms"""
+    """Evalulate gas mmw [kg mol-1] from its atoms.
 
+    Parameters
+    ----------
+    gas : str
+        Chemical formula of the gas. This should be composed of element symbols
+        (as defined in ``element_mmw``) optionally followed by integer
+        stoichiometric coefficients, for example ``"H2O"``, ``"CO2"`` or
+        ``"CH4"``. If the string is exactly an element symbol present in
+        ``element_mmw``, that elemental molar mass is used directly.
+
+    Returns
+    -------
+    float
+        Molecular mass of the gas in kg mol-1.
+    """
     # gas is just an element
     if gas in element_mmw.keys():
         return element_mmw[gas]
