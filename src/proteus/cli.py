@@ -401,6 +401,23 @@ cli.add_command(offchem)
 cli.add_command(observe)
 
 # ----------------
+# 'grid_analyse' postprocessing commands
+# ----------------
+
+@click.command()
+@click.argument("path_grid_analyse", type=str, required=True)
+
+def grid_analyse(path_grid_analyse: str):
+    """Generate grid analysis plots and CSV summary files from a grid
+    path_grid_analyse : Path to the toml file containing grid analysis configuration
+    """
+    from proteus.grid.post_processing import main
+
+    main(path_grid_analyse)
+
+cli.add_command(grid_analyse)
+
+# ----------------
 # GridPROTEUS and BO inference scheme, runners
 # ----------------
 
