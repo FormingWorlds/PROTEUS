@@ -87,7 +87,10 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
 
     # Decorate middle plot
     ax1.set_ylabel('Esc rate [%s / Myr]'%M_ulbl)
-    ax1.set_ylim(0, np.amax(y))
+    y_max = np.amax(y)
+    if y_max <= 0:
+        y_max = 1e-10
+    ax1.set_ylim(0, y_max)
 
     # Plot Rxuv
     y = hf_crop["R_xuv"]/R_earth
