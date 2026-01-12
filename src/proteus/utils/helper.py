@@ -368,7 +368,7 @@ def gas_vmr_to_emr(gases:dict):
     return emr
 
 def eval_gas_mmw(gas:str):
-    """Evalulate gas mmw [kg mol-1] from its atoms.
+    """Evaluate gas mmw [kg mol-1] from its atoms.
 
     Parameters
     ----------
