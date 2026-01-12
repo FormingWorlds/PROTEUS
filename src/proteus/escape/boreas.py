@@ -33,7 +33,7 @@ def run_boreas(config:Config, hf_row:dict, dirs:dict):
 
     Parameters
     ----------
-        config : dict
+        config : Config
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
