@@ -137,7 +137,7 @@ class Escape:
     reservoir: str
         Escaping composition when not doing fractionation. Choices: bulk, outgas.
     module: str | None
-        Escape module to use. Choices: "none", "dummy", "zephyrus".
+        Escape module to use. Choices: None, "dummy", "zephyrus", "boreas".
     zephyrus: Zephyrus
         Parameters for zephyrus module.
     dummy: EscapeDummy
