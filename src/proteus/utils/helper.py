@@ -314,7 +314,26 @@ def recursive_setattr(obj, attr:str, value):
         recursive_setattr(getattr(obj, L[0]), '.'.join(L[1:]), value)
 
 def gas_vmr_to_emr(gases:dict):
-    """Calculate elemental mass ratios from gas volume mixing ratios
+    """Calculate elemental mass mixing ratios from gas volume mixing ratios.
+
+    Parameters
+    ----------
+    gases : dict
+        Dictionary mapping gas identifiers to their volume mixing ratios.
+        Keys are gas formula strings (for example ``"H2O"``, ``"CO2"``),
+        and values are the corresponding volume mixing ratios (floats) in
+        the gas mixture.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping element symbols to elemental mass mixing ratios.
+        Keys are element symbols present in the input gases (for example
+        ``"H"``, ``"C"``, ``"O"``) and values are the associated mass
+        mixing ratios (floats), computed using :data:`element_mmw` and
+        normalized by the total mass of all elements. Only elements with
+        non-negligible contributions (mass > 1e-20 per unit mole of
+        mixture) are included.
     """
 
     # Numbers and masses of each element
