@@ -268,7 +268,7 @@ version = "2.0"
     [escape.dummy]
         rate        = 0.0           # Bulk unfractionated escape rate [kg s-1]
 
-     [escape.boreas]
+    [escape.boreas]
         fractionate  = true         # Include fractionation in outflow?
         efficiency   = 0.1          # Escape efficiency factor
         sigma_H   = 1.89e-18        # H absorption cross-section in XUV [cm2]
