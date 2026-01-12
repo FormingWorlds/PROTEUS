@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from proteus.config import read_config_object
 from proteus.escape.boreas import BOREAS_ELEMS, BOREAS_GASES, run_boreas
 from proteus.utils.constants import AU, M_earth, R_earth, element_list
+from proteus.utils.helper import get_proteus_dir
 
 
 def _make_minimal_hf_row_fractionating() -> dict:
@@ -85,7 +87,7 @@ def boreas_config() -> object:
 
 def test_run_boreas_fractionating_updates_outputs(boreas_config):
     hf_row = _make_minimal_hf_row_fractionating()
-    dirs = {}
+    dirs = {'output':os.path.join(get_proteus_dir(),"output")}
 
     # Use fractionation mode
     boreas_config.escape.boreas.fractionate = True
@@ -118,7 +120,7 @@ def test_run_boreas_fractionating_updates_outputs(boreas_config):
 @pytest.mark.parametrize("reservoir", ["outgas", "bulk"])  # validate both paths
 def test_run_boreas_unfractionated_conserves_mass_ratios(boreas_config, reservoir):
     hf_row = _make_minimal_hf_row_unfractionated()
-    dirs = {}
+    dirs = {'output':os.path.join(get_proteus_dir(),"output")}
 
     # Provide a pre-computed total escape rate to split
     # The model will compute bulk escape first; we just validate the splitting
