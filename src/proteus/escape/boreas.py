@@ -94,10 +94,10 @@ def run_boreas(config:Config, hf_row:dict, dirs:dict):
             fr_result = fractionation.execute(ml_result, mass_loss)[0]
 
         # Safely capture errors
-        except RuntimeError as e:
+        except Exception as e:
             UpdateStatusfile(dirs, 28)
             log.error(e)
-            raise RuntimeError("Encountered problem when running BOREAS module")
+            raise RuntimeError("Encountered problem when running BOREAS module") from e
 
     # Print info
     regime_map = {"RL":"recomb-limited", "EL":"energy-limited", "DL":"diffusion-limited"}
