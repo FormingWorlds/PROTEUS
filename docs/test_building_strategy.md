@@ -1,6 +1,6 @@
 # Test Building Strategy for PROTEUS
 
-**Last Updated**: 2026-01-11  
+**Last Updated**: 2026-01-11
 **Status**: 31.45% coverage (exceeded 30% target), 487 tests
 
 ---
@@ -164,8 +164,8 @@ These modules interface with external physics solvers and require careful mockin
 
 ### Phase 1: Smoke Test Expansion (Immediate — Next 1-2 Weeks)
 
-**Goal**: Reach 5-7 active smoke tests for fast PR validation  
-**Current**: 3 active tests  
+**Goal**: Reach 5-7 active smoke tests for fast PR validation
+**Current**: 3 active tests
 **Needed**: 2-4 additional tests
 
 #### Priority 1.1: Add New Smoke Tests
@@ -216,14 +216,14 @@ These modules interface with external physics solvers and require careful mockin
 @pytest.mark.smoke
 def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
     """Test MODULE1 + MODULE2 coupling (1 timestep).
-    
+
     Physical scenario: [Brief description]
-    
+
     Validates:
     - [Key validation point 1]
     - [Key validation point 2]
     - No NaN or Inf values
-    
+
     Runtime: <30s (1 timestep, minimal resolution)
     """
     # 1. Create minimal TOML config
@@ -281,7 +281,7 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
    - Optimize resolution for <5 min runtime
    - Add to nightly CI workflow
 
-**Effort**: 16-24 hours (4 weeks, 4-6 hours/week)  
+**Effort**: 16-24 hours (4 weeks, 4-6 hours/week)
 **Impact**: Foundation for all future integration tests
 
 #### Priority 2.2: Integration Test Infrastructure
@@ -296,7 +296,7 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
 - Set up separate job for slow integration tests
 - Configure notifications for failures
 
-**Effort**: 4-6 hours  
+**Effort**: 4-6 hours
 **Impact**: Enables systematic integration test development
 
 **Phase 2 Success Criteria**:
@@ -536,5 +536,5 @@ git push
 - [Test Infrastructure Documentation](./test_infrastructure.md)
 - [Test Categorization Guide](./test_categorization.md)
 - [Test Building Guide](./test_building.md)
-- [PROTEUS Copilot Instructions](../.github/copilot-instructions.md)
+- [PROTEUS AGENT Instructions](../.github/AGENT.md)
 - [Test conftest.py fixtures](../tests/conftest.py)
