@@ -59,12 +59,14 @@ jobs:
       - name: Download test data
         run: |
           cd /opt/proteus
-          # Download ARAGOG lookup data for standard config test
-          # This is required for test_integration_std_config.py
-          proteus get interiordata --config-path input/all_options.toml || echo "Warning: Failed to download interior data, test may skip"
-          # Download stellar evolution tracks (Spada) for MORS module
-          # This is required when star.module='mors' and star.mors.tracks='spada'
-          proteus get stellar || echo "Warning: Failed to download stellar data, test may skip"
+          # Download all required data based on all_options.toml configuration
+          # This ensures all modules (MORS, ARAGOG, AGNI, etc.) have their required data
+          python -c "
+          from proteus.config import read_config_object
+          from proteus.utils.data import download_sufficient_data
+          config = read_config_object('input/all_options.toml')
+          download_sufficient_data(config, clean=False)
+          " || echo "Warning: Some data downloads may have failed, test may skip"
 
       - name: Free up disk space and configure Julia
         run: |
