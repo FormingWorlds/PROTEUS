@@ -39,7 +39,7 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 
 **Purpose**: Quick validation that binaries work with new Python code
 **Runtime**: <30s per test (target)
-**Count**: 1 test (as of 2026-01-06)
+**Count**: 7 tests (as of 2026-01-11)
 
 **Runs In**: `ci-pr-checks.yml` (PR validation, ~3-5 min with unit tests)
 
@@ -47,7 +47,13 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 **Implemented Tests**:
 
 - `tests/integration/test_smoke_minimal.py::test_proteus_dummy_init` - PROTEUS initialization with dummy modules (0.3s)
-- `tests/integration/test_smoke_janus.py` - JANUS-Interior coupling (skipped due to binary instability)
+- `tests/integration/test_smoke_atmos_interior.py::test_smoke_dummy_atmos_dummy_interior_flux_exchange` - Dummy atmosphere + dummy interior coupling (fixed with ini_tmagma=2000K)
+- `tests/integration/test_smoke_modules.py::test_smoke_escape_dummy_atmos` - Escape module + dummy atmosphere coupling
+- `tests/integration/test_smoke_modules.py::test_smoke_star_instellation` - Star module + dummy atmosphere coupling
+- `tests/integration/test_smoke_modules.py::test_smoke_orbit_tidal_heating` - Orbit module + dummy interior coupling
+- `tests/integration/test_smoke_modules.py::test_smoke_outgas_atmos_volatiles` - CALLIOPE outgassing + dummy atmosphere coupling
+- `tests/integration/test_smoke_modules.py::test_smoke_dummy_full_chain` - All dummy modules in sequence
+- `tests/integration/test_smoke_janus.py::test_smoke_janus_dummy_coupling` - JANUS-Interior coupling (skipped due to binary instability)
 
 
 ### @pytest.mark.integration
@@ -194,8 +200,8 @@ Implemented (as of 2026-01-06)
 
 | Marker | Count | Runs In |
 | --- | --- | --- |
-| `@pytest.mark.unit` | 10 | PR checks (~2–5 min) |
-| `@pytest.mark.smoke` | 1 | PR checks (~3–5 min with unit) |
+| `@pytest.mark.unit` | 485 | PR checks (~2–5 min) |
+| `@pytest.mark.smoke` | 7 | PR checks (~3–5 min with unit) |
 | `@pytest.mark.integration` | 0 | Nightly |
 | `@pytest.mark.slow` | 0 | Nightly |
 | `@pytest.mark.skip` | 9 | Excluded from CI |
@@ -204,8 +210,8 @@ Planned Targets
 
 | Marker | Target Count | Notes |
 | --- | --- | --- |
-| `@pytest.mark.unit` | 23 | Coverage expansion priority |
-| `@pytest.mark.smoke` | 5–7 | One per major module |
+| `@pytest.mark.unit` | 470+ | Coverage expansion priority ✅ Exceeded (485) |
+| `@pytest.mark.smoke` | 5–7 | One per major module ✅ Exceeded (7) |
 | `@pytest.mark.integration` | 23 | Multi-module coupling |
 | `@pytest.mark.slow` | 3–5 | Full scenario validations |
 

@@ -1,7 +1,7 @@
 # Test Building Strategy for PROTEUS
 
 **Last Updated**: 2026-01-11
-**Status**: 31.45% coverage (exceeded 30% target), 487 tests
+**Status**: 31.45% coverage (exceeded 30% target), 487 tests, 7 active smoke tests (exceeds 5-7 target)
 
 ---
 
@@ -19,7 +19,7 @@
 | Category | Current | Target | Status | Gap |
 |----------|---------|--------|--------|-----|
 | Unit tests | 485 | 470+ | ✅ **103%** | Exceeded |
-| Smoke tests (active) | 3 | 5-7 | ⚠️ **43%** | **-2 to -4 tests** |
+| Smoke tests (active) | 7 | 5-7 | ✅ **100%** | **Target exceeded** |
 | Integration tests | 0 | 23 | ❌ **0%** | **-23 tests** |
 | Coverage (fast gate) | 31.45% | 30% | ✅ **105%** | Exceeded |
 
@@ -29,7 +29,12 @@
 |------|--------|-------|
 | `test_proteus_dummy_init` | ✅ **ACTIVE** | Minimal initialization |
 | `test_smoke_dummy_atmos_dummy_interior_flux_exchange` | ✅ **ACTIVE** | Fixed (ini_tmagma=2000K) |
-| `test_smoke_janus_dummy_coupling` | ✅ **ACTIVE** | Fixed (timeout + minimal config) |
+| `test_smoke_escape_dummy_atmos` | ✅ **ACTIVE** | Escape module + dummy atmosphere coupling |
+| `test_smoke_star_instellation` | ✅ **ACTIVE** | Star module + dummy atmosphere coupling |
+| `test_smoke_orbit_tidal_heating` | ✅ **ACTIVE** | Orbit module + dummy interior coupling |
+| `test_smoke_outgas_atmos_volatiles` | ✅ **ACTIVE** | CALLIOPE outgassing + dummy atmosphere coupling |
+| `test_smoke_dummy_full_chain` | ✅ **ACTIVE** | All dummy modules in sequence |
+| `test_smoke_janus_dummy_coupling` | ⏸️ **SKIPPED** | JANUS/SOCRATES runtime instability (hangs) |
 | `test_integration_calliope_dummy_atmos_outgassing` | ✅ **INTEGRATION** | Moved to nightly CI |
 
 ---
@@ -162,11 +167,11 @@ These modules interface with external physics solvers and require careful mockin
 
 ## Roadmap & Next Steps
 
-### Phase 1: Smoke Test Expansion (Immediate — Next 1-2 Weeks)
+### Phase 1: Smoke Test Expansion (Immediate — Next 1-2 Weeks) ✅ **COMPLETED**
 
 **Goal**: Reach 5-7 active smoke tests for fast PR validation
-**Current**: 3 active tests
-**Needed**: 2-4 additional tests
+**Current**: 7 active tests ✅ **Target exceeded**
+**Status**: All priority smoke tests implemented and passing
 
 #### Priority 1.1: Add New Smoke Tests
 
@@ -234,7 +239,7 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
 ```
 
 **Phase 1 Success Criteria**:
-- ✅ 5-7 active smoke tests (currently 3, need 2-4 more)
+- ✅ 5-7 active smoke tests (achieved 7, exceeds target)
 - ✅ All smoke tests run in <30s each
 - ✅ Smoke tests pass in CI consistently
 

@@ -29,9 +29,6 @@ from proteus import Proteus
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(
-    reason='Dummy interior produces T_magma > 1e6 K with current configuration - underlying physics issue, not test issue'
-)
 def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
     """Test dummy atmosphere + dummy interior coupling (1 timestep).
 
@@ -66,6 +63,9 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
 
         # Re-initialize directories after changing output path
         runner.init_directories()
+
+        # Fix: Lower ini_tmagma to prevent runaway heating (T_magma > 1e6 K issue)
+        runner.config.interior.dummy.ini_tmagma = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr, minimum time
