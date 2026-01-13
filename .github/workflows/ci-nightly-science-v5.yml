@@ -61,7 +61,7 @@ jobs:
           cd /opt/proteus
           # Download ARAGOG lookup data for standard config test
           # This is required for test_integration_std_config.py
-          proteus get interior || echo "Warning: Failed to download interior data, test may skip"
+          proteus get interiordata --config-path input/all_options.toml || echo "Warning: Failed to download interior data, test may skip"
 
       - name: Free up disk space and configure Julia
         run: |
