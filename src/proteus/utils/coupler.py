@@ -45,13 +45,28 @@ def _get_git_revision(dir: str) -> str:
     """
     # change dir
     cwd = os.getcwd()
-    os.chdir(dir)
+    try:
+        os.chdir(dir)
+    except Exception:
+        # If we can't change to the directory, return unknown
+        return 'unknown'
 
     # get hash (https://stackoverflow.com/a/21901260)
-    hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
-
-    # change dir back
-    os.chdir(cwd)
+    try:
+        hash = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'],
+            stderr=subprocess.DEVNULL,
+            timeout=5,  # Add timeout to prevent hanging
+        ).decode('ascii').strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        # Handle: git not found, not a git repo, git command failed, or any other error
+        hash = 'unknown'
+    finally:
+        # Always change dir back, even if an exception occurred
+        try:
+            os.chdir(cwd)
+        except Exception:
+            pass  # If we can't change back, continue anyway
 
     return hash
 
