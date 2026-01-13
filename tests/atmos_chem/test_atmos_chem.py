@@ -29,9 +29,17 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-# Mock vulcan module before importing wrapper to prevent import errors
+# Mock vulcan modules before importing wrapper to prevent import errors
 # The vulcan.py module tries to import the VULCAN package which isn't available in CI
-with patch.dict('sys.modules', {'vulcan': MagicMock()}):
+mock_vulcan_module = MagicMock()
+mock_vulcan_module.run_vulcan_offline = MagicMock()
+with patch.dict(
+    'sys.modules',
+    {
+        'vulcan': MagicMock(),
+        'proteus.atmos_chem.vulcan': mock_vulcan_module,
+    },
+):
     from proteus.atmos_chem.common import read_result
     from proteus.atmos_chem.wrapper import run_chemistry
 
@@ -163,11 +171,18 @@ def test_run_chemistry_vulcan():
 
     hf_row = {'Time': 1000.0, 'P_surf': 100.0}
 
-    # Mock VULCAN function and result reading
-    # Patch read_result where it's used (in wrapper namespace after import)
+    # Mock VULCAN function and create expected output file for read_result
+    import os
+    import tempfile
+
     with patch('proteus.atmos_chem.vulcan.run_vulcan_offline') as mock_vulcan:
-        with patch('proteus.atmos_chem.wrapper.read_result') as mock_read:
-            # Setup mock result (typical chemistry output)
+        # Create the expected output file that read_result will read
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dirs['output'] = tmpdir
+            offchem_dir = os.path.join(tmpdir, 'offchem')
+            os.makedirs(offchem_dir, exist_ok=True)
+            csv_file = os.path.join(offchem_dir, 'vulcan.csv')
+            # Write expected chemistry result to file
             mock_result = pd.DataFrame(
                 {
                     'species': ['H2O', 'CO2', 'N2', 'O2'],
@@ -175,15 +190,12 @@ def test_run_chemistry_vulcan():
                     'abundance': [1e20, 1e19, 5e17, 3e17],
                 }
             )
-            mock_read.return_value = mock_result
+            mock_result.to_csv(csv_file, sep=' ', index=False)
 
             result = run_chemistry(dirs, config, hf_row)
 
             # Verify VULCAN was called
             mock_vulcan.assert_called_once_with(dirs, config, hf_row)
-
-            # Verify result reading
-            mock_read.assert_called_once_with(dirs['output'], 'vulcan')
 
             # Verify DataFrame is returned
             assert isinstance(result, pd.DataFrame)
@@ -233,11 +245,18 @@ def test_run_chemistry_returns_dataframe():
         }
     )
 
-    # Mock VULCAN function and result reading
-    # Patch read_result where it's used (in wrapper namespace after import)
+    # Mock VULCAN function and create expected output file for read_result
+    import os
+    import tempfile
+
     with patch('proteus.atmos_chem.vulcan.run_vulcan_offline'):
-        with patch('proteus.atmos_chem.wrapper.read_result') as mock_read:
-            mock_read.return_value = chemistry_result
+        # Create the expected output file that read_result will read
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dirs['output'] = tmpdir
+            offchem_dir = os.path.join(tmpdir, 'offchem')
+            os.makedirs(offchem_dir, exist_ok=True)
+            csv_file = os.path.join(offchem_dir, 'vulcan.csv')
+            chemistry_result.to_csv(csv_file, sep=' ', index=False)
 
             result = run_chemistry(dirs, config, hf_row)
 
@@ -272,24 +291,30 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
         'H2_bar': 0.0,
     }
 
-    # Mock VULCAN function and result reading
-    # Patch read_result where it's used (in wrapper namespace after import)
+    # Mock VULCAN function and create expected output file for read_result
+    import os
+    import tempfile
+
+    # Venus-like chemistry result
+    venus_chemistry = pd.DataFrame(
+        {
+            'species': ['CO2', 'H2SO4_aerosol', 'HCl', 'N2', 'Ar'],
+            'vmr': [0.965, 0.03, 0.004, 0.0009, 0.0001],
+        }
+    )
     with patch('proteus.atmos_chem.vulcan.run_vulcan_offline') as mock_v:
-        with patch('proteus.atmos_chem.wrapper.read_result') as mock_r:
-            # Venus-like chemistry result
-            venus_chemistry = pd.DataFrame(
-                {
-                    'species': ['CO2', 'H2SO4_aerosol', 'HCl', 'N2', 'Ar'],
-                    'vmr': [0.965, 0.03, 0.004, 0.0009, 0.0001],
-                }
-            )
-            mock_r.return_value = venus_chemistry
+        # Create the expected output file that read_result will read
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dirs['output'] = tmpdir
+            offchem_dir = os.path.join(tmpdir, 'offchem')
+            os.makedirs(offchem_dir, exist_ok=True)
+            csv_file = os.path.join(offchem_dir, 'vulcan.csv')
+            venus_chemistry.to_csv(csv_file, sep=' ', index=False)
 
             result = run_chemistry(dirs, config, hf_row)
 
             # Verify function was called with correct arguments
             assert mock_v.called
-            assert mock_r.called
 
             # Verify result
             assert result is not None
@@ -312,10 +337,22 @@ def test_run_chemistry_preserves_config():
 
     hf_row = {'Time': 1000.0}
 
-    # Mock VULCAN function and result reading
-    # Patch read_result where it's used (in wrapper namespace after import)
+    # Mock VULCAN function and create expected output file for read_result
+    import os
+    import tempfile
+
     with patch('proteus.atmos_chem.vulcan.run_vulcan_offline') as mock_v:
-        with patch('proteus.atmos_chem.wrapper.read_result'):
+        # Create the expected output file that read_result will read
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dirs['output'] = tmpdir
+            offchem_dir = os.path.join(tmpdir, 'offchem')
+            os.makedirs(offchem_dir, exist_ok=True)
+            csv_file = os.path.join(offchem_dir, 'vulcan.csv')
+            # Create minimal file for read_result
+            pd.DataFrame({'species': ['H2O'], 'vmr': [1.0]}).to_csv(
+                csv_file, sep=' ', index=False
+            )
+
             run_chemistry(dirs, config, hf_row)
 
             # Verify config was passed exactly
