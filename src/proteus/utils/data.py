@@ -51,9 +51,40 @@ def _zenodo_cooldown():
     _last_zenodo_request_time = time.time()
 
 
+def _has_zenodo_token() -> bool:
+    """
+    Check if Zenodo API token is available.
+
+    Returns True if token is configured, False otherwise.
+    """
+    import os
+    from pathlib import Path
+
+    # Check environment variable
+    if os.environ.get('ZENODO_API_TOKEN'):
+        return True
+
+    # Check PyStow config file
+    config_file = Path.home() / ".config" / "zenodo.ini"
+    if config_file.exists():
+        try:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_file)
+            if 'zenodo' in config and config['zenodo'].get('api_token'):
+                return True
+        except Exception:
+            pass
+
+    return False
+
+
 def download_zenodo_folder_client(zenodo_id: str, folder_dir: Path) -> bool:
     """
     Download a Zenodo record using zenodo_client library (primary method).
+
+    Note: zenodo_client requires an API token. For public repositories without
+    a token, this function will return False and fallback methods will be used.
 
     Inputs :
         - zenodo_id : str
@@ -65,20 +96,41 @@ def download_zenodo_folder_client(zenodo_id: str, folder_dir: Path) -> bool:
         - success : bool
             Did the download complete successfully?
     """
+    # Skip zenodo_client if no API token is available (required by library)
+    # This avoids wasting time on operations that will fail
+    if not _has_zenodo_token():
+        log.debug('zenodo_client requires API token - skipping (will use fallback methods)')
+        return False
+
     try:
         from zenodo_client import Zenodo
     except ImportError:
-        log.debug('zenodo_client library not available')
+        log.debug('zenodo_client library not available - will use fallback methods')
+        return False
+    except Exception as e:
+        log.debug(f'Error importing zenodo_client: {e} - will use fallback methods')
         return False
 
     _zenodo_cooldown()
 
     try:
-        zenodo = Zenodo()
+        # Try to create Zenodo client (now we know token should be available)
+        try:
+            zenodo = Zenodo()
+        except Exception as e:
+            # Token check may have been wrong, or token is invalid
+            log.debug(f'zenodo_client configuration issue: {e}')
+            log.debug('  Will use fallback download methods')
+            return False
 
         # Get the record metadata
         _zenodo_cooldown()
-        record = zenodo.get_latest_record(zenodo_id)
+        try:
+            record = zenodo.get_latest_record(zenodo_id)
+        except Exception as e:
+            log.debug(f'Error getting record from zenodo_client: {e}')
+            log.debug('  Will use fallback download methods')
+            return False
 
         if not record or 'files' not in record:
             log.warning(f'No files found in Zenodo record {zenodo_id}')
@@ -142,19 +194,32 @@ def download_zenodo_folder_client(zenodo_id: str, folder_dir: Path) -> bool:
                         # Ensure target directory exists
                         file_path.parent.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(actual_downloaded_path), str(file_path))
-                    downloaded_count += 1
-                    log.debug(f'  Downloaded: {file_key}')
+
+                    # Verify file was moved/copied successfully
+                    if file_path.exists() and file_path.stat().st_size > 0:
+                        downloaded_count += 1
+                        log.debug(f'  Downloaded: {file_key} ({file_path.stat().st_size} bytes)')
+                    else:
+                        log.warning(f'  File {file_key} moved but verification failed')
                 else:
                     log.warning(f'  Failed to download: {file_key} (file not found after download)')
+                    log.debug(f'    downloaded_path: {downloaded_path}')
+                    log.debug(f'    actual_downloaded_path: {actual_downloaded_path}')
             except Exception as e:
                 log.warning(f'  Error downloading {file_key}: {e}')
+                import traceback
+                log.debug(f'  Traceback: {traceback.format_exc()}')
                 continue
 
         # Verify download succeeded
         if folder_dir.exists():
             files = list(folder_dir.rglob('*'))
-            if files and any(f.is_file() for f in files):
-                log.info(f'Successfully downloaded Zenodo record {zenodo_id} using zenodo_client ({downloaded_count} files)')
+            file_count = sum(1 for f in files if f.is_file())
+            if file_count > 0:
+                log.info(f'Successfully downloaded Zenodo record {zenodo_id} using zenodo_client ({downloaded_count} files downloaded, {file_count} total files)')
+                # If downloaded_count doesn't match file_count, some files may have been skipped or already existed
+                if downloaded_count < file_count:
+                    log.debug(f'  Note: {file_count - downloaded_count} files were already present or skipped')
                 return True
             else:
                 log.warning(f'Zenodo download completed but folder is empty (ID {zenodo_id})')
@@ -165,12 +230,17 @@ def download_zenodo_folder_client(zenodo_id: str, folder_dir: Path) -> bool:
 
     except Exception as e:
         log.debug(f'zenodo_client download failed: {e}')
+        import traceback
+        log.debug(f'Traceback: {traceback.format_exc()}')
         return False
 
 
 def download_zenodo_file_client(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
     """
     Download a single file from a Zenodo record using zenodo_client library (primary method).
+
+    Note: zenodo_client requires an API token. For public repositories without
+    a token, this function will return False and fallback methods will be used.
 
     Inputs
     ------
@@ -186,16 +256,32 @@ def download_zenodo_file_client(zenodo_id: str, folder_dir: Path, zenodo_path: s
     bool
         True if download succeeded, False otherwise.
     """
+    # Skip zenodo_client if no API token is available (required by library)
+    # This avoids wasting time on operations that will fail
+    if not _has_zenodo_token():
+        log.debug('zenodo_client requires API token - skipping (will use fallback methods)')
+        return False
+
     try:
         from zenodo_client import Zenodo
     except ImportError:
-        log.debug('zenodo_client library not available')
+        log.debug('zenodo_client library not available - will use fallback methods')
+        return False
+    except Exception as e:
+        log.debug(f'Error importing zenodo_client: {e} - will use fallback methods')
         return False
 
     _zenodo_cooldown()
 
     try:
-        zenodo = Zenodo()
+        # Try to create Zenodo client (now we know token should be available)
+        try:
+            zenodo = Zenodo()
+        except Exception as e:
+            # Token check may have been wrong, or token is invalid
+            log.debug(f'zenodo_client configuration issue: {e}')
+            log.debug('  Will use fallback download methods')
+            return False
 
         # Make sure local base directory exists
         folder_dir.mkdir(parents=True, exist_ok=True)
