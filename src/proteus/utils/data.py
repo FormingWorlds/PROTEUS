@@ -304,6 +304,74 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
     return True
 
 
+# Unified mapping of data sources to Zenodo and OSF identifiers
+DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
+    # Spectral files (OSF project: vehxg)
+    'Frostflow/16': {'zenodo_id': '15799743', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Frostflow/48': {'zenodo_id': '15696415', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Frostflow/256': {'zenodo_id': '15799754', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Frostflow/4096': {'zenodo_id': '15799776', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Dayspring/16': {'zenodo_id': '15799318', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Dayspring/48': {'zenodo_id': '15721749', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Dayspring/256': {'zenodo_id': '15799474', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Dayspring/4096': {'zenodo_id': '15799495', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Honeyside/16': {'zenodo_id': '15799607', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Honeyside/48': {'zenodo_id': '15799652', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Honeyside/256': {'zenodo_id': '15799731', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Honeyside/4096': {'zenodo_id': '15696457', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    'Oak/318': {'zenodo_id': '15743843', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
+    # Interior lookup tables (OSF project: phsxf)
+    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018': {
+        'zenodo_id': '15877374',
+        'osf_id': 'phsxf',
+        'osf_project': 'phsxf',
+    },
+    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_400GPa': {
+        'zenodo_id': '15877424',
+        'osf_id': 'phsxf',
+        'osf_project': 'phsxf',
+    },
+    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': {
+        'zenodo_id': '17417017',
+        'osf_id': 'phsxf',
+        'osf_project': 'phsxf',
+    },
+    # Melting curves (OSF project: phsxf)
+    'Melting_curves/Monteux+600': {'zenodo_id': '15728091', 'osf_id': 'phsxf', 'osf_project': 'phsxf'},
+    'Melting_curves/Monteux-600': {'zenodo_id': '15728138', 'osf_id': 'phsxf', 'osf_project': 'phsxf'},
+    'Melting_curves/Wolf_Bower+2018': {'zenodo_id': '15728072', 'osf_id': 'phsxf', 'osf_project': 'phsxf'},
+    # Surface albedos (OSF project: 2gcd9)
+    'Hammond24': {'zenodo_id': '15880455', 'osf_id': '2gcd9', 'osf_project': '2gcd9'},
+    # Stellar spectra (OSF project: 8r2sw)
+    'Named': {'zenodo_id': '15721440', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
+    # Exoplanet data (OSF project: fzwr4)
+    'Exoplanets': {'zenodo_id': '15727878', 'osf_id': 'fzwr4', 'osf_project': 'fzwr4'},
+    # Mass-radius data (OSF project: xge8t)
+    'Zeng2019': {'zenodo_id': '15727899', 'osf_id': 'xge8t', 'osf_project': 'xge8t'},
+    # Population data (OSF project: dpkjb)
+    'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
+    # EOS material properties (OSF project: dpkjb)
+    'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
+}
+
+
+def get_data_source_info(folder: str) -> dict[str, str] | None:
+    """
+    Get both Zenodo and OSF identifiers for a given folder.
+
+    Parameters
+    ----------
+    folder : str
+        Folder name to get identifiers for
+
+    Returns
+    -------
+    dict[str, str] | None
+        Dictionary with 'zenodo_id', 'osf_id', and 'osf_project' keys, or None if not found
+    """
+    return DATA_SOURCE_MAP.get(folder, None)
+
+
 def get_zenodo_record(folder: str) -> str | None:
     """
     Get Zenodo record ID for a given folder.
@@ -315,29 +383,67 @@ def get_zenodo_record(folder: str) -> str | None:
     Returns :
         - str | None : Zenodo record ID or None if not found
     """
-    zenodo_map = {
-        "Frostflow/16"  : "15799743",
-        "Frostflow/48"  : "15696415",
-        "Frostflow/256" : "15799754",
-        "Frostflow/4096": "15799776",
-        "Dayspring/16"  : "15799318",
-        "Dayspring/48"  : "15721749",
-        "Dayspring/256" : "15799474",
-        "Dayspring/4096": "15799495",
-        "Honeyside/16"  : "15799607",
-        "Honeyside/48"  : "15799652",
-        "Honeyside/256" : "15799731",
-        "Honeyside/4096": "15696457",
-        "Oak/318"       : "15743843",
+    info = get_data_source_info(folder)
+    return info.get('zenodo_id') if info else None
 
-        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018': '15877374',
-        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_400GPa': '15877424',
-        '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': '17417017',
-        'Melting_curves/Monteux+600': '15728091',
-        'Melting_curves/Monteux-600': '15728138',
-        'Melting_curves/Wolf_Bower+2018': '15728072',
-    }
-    return zenodo_map.get(folder, None)
+
+def get_osf_project(folder: str) -> str | None:
+    """
+    Get OSF project ID for a given folder.
+
+    Parameters
+    ----------
+    folder : str
+        Folder name to get the OSF project ID for
+
+    Returns
+    -------
+    str | None
+        OSF project ID or None if not found
+    """
+    info = get_data_source_info(folder)
+    return info.get('osf_project') if info else None
+
+
+def get_zenodo_from_osf(osf_id: str) -> list[str]:
+    """
+    Get all Zenodo record IDs associated with an OSF project.
+
+    Parameters
+    ----------
+    osf_id : str
+        OSF project ID
+
+    Returns
+    -------
+    list[str]
+        List of Zenodo record IDs in that OSF project
+    """
+    return [
+        info['zenodo_id']
+        for info in DATA_SOURCE_MAP.values()
+        if info.get('osf_project') == osf_id and info.get('zenodo_id')
+    ]
+
+
+def get_osf_from_zenodo(zenodo_id: str) -> str | None:
+    """
+    Get OSF project ID associated with a Zenodo record.
+
+    Parameters
+    ----------
+    zenodo_id : str
+        Zenodo record ID
+
+    Returns
+    -------
+    str | None
+        OSF project ID or None if not found
+    """
+    for info in DATA_SOURCE_MAP.values():
+        if info.get('zenodo_id') == zenodo_id:
+            return info.get('osf_project')
+    return None
 
 def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
     """
@@ -428,13 +534,16 @@ def download(
     *,
     folder: str,
     target: str,
-    osf_id: str,
+    osf_id: str | None = None,
     zenodo_id: str | None = None,
     desc: str,
-    force: bool = False
+    force: bool = False,
 ) -> bool:
     """
-    Generic download function.
+    Generic download function with automatic source mapping.
+
+    This function can automatically look up OSF and Zenodo IDs from the unified
+    DATA_SOURCE_MAP if they are not provided. If both are provided, uses them directly.
 
     Attributes
     ----------
@@ -442,10 +551,10 @@ def download(
         Filename to download
     target: str
         name of target directory
-    osf_id: str
-        OSF project id
-    zenodo_id: str
-        Zenodo record id
+    osf_id: str | None
+        OSF project id (optional, will be looked up from mapping if not provided)
+    zenodo_id: str | None
+        Zenodo record id (optional, will be looked up from mapping if not provided)
     desc: str
         Description for logging
     force: bool
@@ -456,7 +565,21 @@ def download(
     bool
         True if the file was downloaded successfully, False otherwise
     """
-    log.debug(f"Get {desc}?")
+    log.debug(f'Get {desc}?')
+
+    # Try to get source info from mapping if IDs not provided
+    source_info = get_data_source_info(folder)
+    if source_info:
+        # Use mapping values if not explicitly provided
+        if zenodo_id is None:
+            zenodo_id = source_info.get('zenodo_id')
+        if osf_id is None:
+            osf_id = source_info.get('osf_project')
+        log.debug(f'Using mapped source info: Zenodo={zenodo_id}, OSF={osf_id}')
+    elif zenodo_id is None and osf_id is None:
+        log.warning(f'No source mapping found for {folder} and no IDs provided')
+        log.warning(f'  Cannot download {desc} without source identifiers')
+        return False
 
     # Check that target FWL_DATA folder exists
     data_dir = GetFWLData() / target
@@ -470,27 +593,30 @@ def download(
 
     # Update the folder
     if folder_invalid:
-        log.info(f"Downloading {desc} to {data_dir}")
+        log.info(f'Downloading {desc} to {data_dir}')
         success = False
 
         # Try Zenodo in the first instance
-        try:
-            if zenodo_id is not None:
+        if zenodo_id is not None:
+            try:
                 # download the folder
                 if download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir):
                     # files validated ok?
                     success = validate_zenodo_folder(zenodo_id, folder_dir)
-        except RuntimeError as e:
-            log.warning(f'    Zenodo download failed: {e}')
-            if folder_dir.exists():
-                try:
-                    folder_dir.rmdir()
-                except Exception:
-                    pass  # Ignore cleanup errors
+            except RuntimeError as e:
+                log.warning(f'    Zenodo download failed: {e}')
+                if folder_dir.exists():
+                    try:
+                        folder_dir.rmdir()
+                    except Exception:
+                        pass  # Ignore cleanup errors
+        else:
+            log.debug('    No Zenodo ID provided, skipping Zenodo download')
+
         if success:
             return True
 
-        # If Zenodo fails, try OSF
+        # If Zenodo fails or not available, try OSF
         if osf_id:
             try:
                 log.info(f'Attempting OSF fallback download (project {osf_id})...')
@@ -515,11 +641,11 @@ def download(
         if success:
             return True
 
-        log.error(f"    Failed to download {desc} from IDs: Zenodo {zenodo_id}, OSF {osf_id}")
+        log.error(f'    Failed to download {desc} from IDs: Zenodo {zenodo_id}, OSF {osf_id}')
         return False
 
     else:
-        log.debug(f"    {desc} already exists")
+        log.debug(f'    {desc} already exists')
     return True
 
 
@@ -527,12 +653,13 @@ def download_surface_albedos():
     """
     Download reflectance data for various surface materials
     """
+    source_info = get_data_source_info('Hammond24')
     download(
-        folder = 'Hammond24',
-        target = "surface_albedos",
-        osf_id = '2gcd9',
-        zenodo_id = '15880455',
-        desc = 'surface reflectance data'
+        folder='Hammond24',
+        target='surface_albedos',
+        osf_id=source_info['osf_project'] if source_info else '2gcd9',
+        zenodo_id=source_info['zenodo_id'] if source_info else '15880455',
+        desc='surface reflectance data',
     )
 
 def download_spectral_file(name:str, bands:str):
@@ -551,12 +678,14 @@ def download_spectral_file(name:str, bands:str):
     if not isinstance(bands, str) or (len(bands) < 1):
         raise Exception("Must provide number of bands in spectral file")
 
+    folder_name = f'{name}/{bands}'
+    source_info = get_data_source_info(folder_name)
     download(
-        folder = f'{name}/{bands}',
-        target = "spectral_files",
-        osf_id = 'vehxg',
-        zenodo_id= get_zenodo_record(f'{name}/{bands}'),
-        desc = f'{name}{bands} spectral file',
+        folder=folder_name,
+        target='spectral_files',
+        osf_id=source_info['osf_project'] if source_info else 'vehxg',
+        zenodo_id=source_info['zenodo_id'] if source_info else get_zenodo_record(folder_name),
+        desc=f'{name}{bands} spectral file',
     )
 
 
@@ -573,13 +702,14 @@ def download_interior_lookuptables(clean=False):
         folder_dir = data_dir / dir
         if clean:
             safe_rm(folder_dir.as_posix())
+        source_info = get_data_source_info(dir)
         download(
-            folder = dir,
-            target = data_dir,
-            osf_id = "phsxf",
-            zenodo_id = get_zenodo_record(dir),
-            desc = f"Interior lookup tables: {dir}"
-            )
+            folder=dir,
+            target=data_dir,
+            osf_id=source_info['osf_project'] if source_info else 'phsxf',
+            zenodo_id=source_info['zenodo_id'] if source_info else get_zenodo_record(dir),
+            desc=f'Interior lookup tables: {dir}',
+        )
 
 def download_melting_curves(config:Config, clean=False):
     """
@@ -594,24 +724,26 @@ def download_melting_curves(config:Config, clean=False):
     folder_dir = data_dir / dir
     if clean:
         safe_rm(folder_dir.as_posix())
+    source_info = get_data_source_info(dir)
     download(
-        folder = dir,
-        target = data_dir,
-        osf_id = "phsxf",
-        zenodo_id = get_zenodo_record(dir),
-        desc = f"Melting curve data: {dir}"
-        )
+        folder=dir,
+        target=data_dir,
+        osf_id=source_info['osf_project'] if source_info else 'phsxf',
+        zenodo_id=source_info['zenodo_id'] if source_info else get_zenodo_record(dir),
+        desc=f'Melting curve data: {dir}',
+    )
 
 def download_stellar_spectra():
     """
     Download stellar spectra
     """
+    source_info = get_data_source_info('Named')
     download(
-        folder = 'Named',
-        target = "stellar_spectra",
-        osf_id = '8r2sw',
-        zenodo_id= '15721440',
-        desc = 'stellar spectra'
+        folder='Named',
+        target='stellar_spectra',
+        osf_id=source_info['osf_project'] if source_info else '8r2sw',
+        zenodo_id=source_info['zenodo_id'] if source_info else '15721440',
+        desc='stellar spectra',
     )
 
 def download_solar_spectrum():
@@ -721,12 +853,13 @@ def download_exoplanet_data():
     """
     Download exoplanet data
     """
+    source_info = get_data_source_info('Exoplanets')
     download(
-        folder = 'Exoplanets',
-        target = "planet_reference",
-        osf_id = 'fzwr4',
-        zenodo_id= '15727878',
-        desc = 'exoplanet data'
+        folder='Exoplanets',
+        target='planet_reference',
+        osf_id=source_info['osf_project'] if source_info else 'fzwr4',
+        zenodo_id=source_info['zenodo_id'] if source_info else '15727878',
+        desc='exoplanet data',
     )
 
 
@@ -734,12 +867,13 @@ def download_massradius_data():
     """
     Download mass-radius data
     """
+    source_info = get_data_source_info('Zeng2019')
     download(
-        folder = 'Zeng2019',
-        target = "mass_radius",
-        osf_id = 'xge8t',
-        zenodo_id= '15727899',
-        desc = 'mass radius data'
+        folder='Zeng2019',
+        target='mass_radius',
+        osf_id=source_info['osf_project'] if source_info else 'xge8t',
+        zenodo_id=source_info['zenodo_id'] if source_info else '15727899',
+        desc='mass-radius data',
     )
 
 
@@ -967,14 +1101,14 @@ def download_Seager_EOS():
     """
     Download EOS material properties from Seager et al. (2007)
     """
-
+    source_info = get_data_source_info('EOS_Seager2007')
     download(
-    folder='EOS_Seager2007',
-    target='EOS_material_properties',
-    osf_id='dpkjb',
-    zenodo_id= '15727998',
-    desc='EOS Seager2007 material files'
-)
+        folder='EOS_Seager2007',
+        target='EOS_material_properties',
+        osf_id=source_info['osf_project'] if source_info else 'dpkjb',
+        zenodo_id=source_info['zenodo_id'] if source_info else '15727998',
+        desc='EOS Seager2007 material files',
+    )
 
 def get_Seager_EOS():
     """
