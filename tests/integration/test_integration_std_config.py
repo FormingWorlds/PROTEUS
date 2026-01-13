@@ -169,9 +169,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     if 'P_surf' in final_row:
         p_surf = final_row['P_surf']
         assert not np.isnan(p_surf), 'P_surf should not be NaN'
-        assert 0 < p_surf <= 1e10, (
-            f'P_surf should be physical (0-1e10 Pa), got {p_surf:.2e}'
-        )
+        assert 0 < p_surf <= 1e10, f'P_surf should be physical (0-1e10 Pa), got {p_surf:.2e}'
 
     if 'F_atm' in final_row:
         f_atm = final_row['F_atm']
