@@ -3,7 +3,7 @@ from __future__ import annotations
 from attrs import define, field
 from attrs.validators import ge, in_, le
 
-from ._converters import none_if_none
+from ._converters import none_if_none, zero_if_none
 
 
 def valid_zephyrus(instance, attribute, value):
@@ -52,7 +52,7 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
-    rate: float = field(default=0.0, validator=ge(0))
+    rate: float = field(default=0.0, validator=ge(0), converter=zero_if_none)
 
 def valid_escapeboreas(instance, attribute, value):
     if instance.module != "boreas":
