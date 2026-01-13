@@ -296,12 +296,16 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
 
 **Scope**: Full PROTEUS "standard candle" configuration
 - **Star**: MORS (stellar evolution)
-- **Orbit**: LovePy (tidal heating)
+- **Orbit**: None (tidal heating disabled in `all_options.toml`)
 - **Interior**: ARAGOG (thermal evolution)
 - **Atmosphere**: AGNI (radiative-convective equilibrium)
 - **Outgassing**: CALLIOPE (volatile supply)
 - **Escape**: ZEPHYRUS (mass loss)
 - **Chemistry**: VULCAN (atmospheric chemistry, optional)
+
+**Note**: The `all_options.toml` configuration uses `orbit.module = "none"` (tidal heating disabled).
+This is the actual standard configuration and may differ from ideal "all modules enabled" scenario.
+The test validates the configuration as-is.
 
 **Requirements**:
 - Run for multiple timesteps (5-10 timesteps)
