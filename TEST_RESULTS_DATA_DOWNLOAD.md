@@ -1,7 +1,7 @@
 # Data Download Improvements - Test Results
 
-**Date**: 2026-01-13  
-**Branch**: `tl/test_ecosystem_v5`  
+**Date**: 2026-01-13
+**Branch**: `tl/test_ecosystem_v5`
 **Commits**:
 - `c894ff87`: Improved robustness and error handling
 - Latest: Unified Zenodo-OSF mapping system
