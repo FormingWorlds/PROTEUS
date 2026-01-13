@@ -154,6 +154,9 @@ def test_run_chemistry_vulcan():
     Physics: VULCAN performs kinetic chemistry calculations to determine
     final atmospheric composition after chemical reactions reach equilibrium.
     """
+    # Import vulcan module to ensure it's available for patching
+    import proteus.atmos_chem.vulcan  # noqa: F401
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
@@ -214,6 +217,9 @@ def test_run_chemistry_returns_dataframe():
     Physics: Chemistry model output must be DataFrame with species,
     VMR, and abundance columns for postprocessing.
     """
+    # Import vulcan module to ensure it's available for patching
+    import proteus.atmos_chem.vulcan  # noqa: F401
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
@@ -250,6 +256,9 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
     Physics: Typical atmospheric state includes surface pressure, temperature,
     mass fractions, and composition from previous modules (outgassing, interior).
     """
+    # Import vulcan module to ensure it's available for patching
+    import proteus.atmos_chem.vulcan  # noqa: F401
+
     dirs = {'output': '/tmp/test', 'input': '/tmp/input'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
@@ -296,6 +305,9 @@ def test_run_chemistry_preserves_config():
     Physics: Config must be fully preserved during delegation to VULCAN
     to maintain physical constraints (temperature, pressure, mixing ratios).
     """
+    # Import vulcan module to ensure it's available for patching
+    import proteus.atmos_chem.vulcan  # noqa: F401
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'

@@ -636,6 +636,8 @@ def test_get_petsc_version():
 @pytest.mark.unit
 def test_get_git_revision_with_mock():
     """Test that _get_git_revision returns git hash."""
+    import subprocess
+
     from proteus.utils.coupler import _get_git_revision
 
     with patch('subprocess.check_output') as mock_check_output:
@@ -645,7 +647,11 @@ def test_get_git_revision_with_mock():
             result = _get_git_revision(tmpdir)
 
             assert result == 'abc123def456789'
-            mock_check_output.assert_called_once_with(['git', 'rev-parse', 'HEAD'])
+            mock_check_output.assert_called_once_with(
+                ['git', 'rev-parse', 'HEAD'],
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
 
 
 @pytest.mark.unit
