@@ -242,7 +242,7 @@ def download_zenodo_folder_client(zenodo_id: str, folder_dir: Path) -> bool:
                 # If downloaded_count doesn't match file_count, some files may have been skipped or already existed
                 if downloaded_count < file_count:
                     skipped = file_count - downloaded_count
-                log.debug(f'  Note: {skipped} files were already present or skipped')
+                    log.debug(f'  Note: {skipped} files were already present or skipped')
                 return True
             else:
                 log.warning(
