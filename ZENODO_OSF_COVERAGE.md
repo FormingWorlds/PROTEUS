@@ -1,13 +1,13 @@
 # Zenodo-OSF Coverage Analysis
 
-**Date**: 2026-01-13  
-**Zenodo Community**: [PROTEUS Framework for Planetary Evolution](https://zenodo.org/communities/proteus_framework/)  
+**Date**: 2026-01-13
+**Zenodo Community**: [PROTEUS Framework for Planetary Evolution](https://zenodo.org/communities/proteus_framework/)
 **OSF Archive**: [https://osf.io/8dumn](https://osf.io/8dumn)
 
 ## Summary
 
-**Total Zenodo records in codebase**: 27  
-**Records with OSF fallback**: 24 (89%)  
+**Total Zenodo records in codebase**: 27
+**Records with OSF fallback**: 24 (89%)
 **Records missing from OSF**: 3 (11%)
 
 ## Zenodo Records Missing from OSF Archive

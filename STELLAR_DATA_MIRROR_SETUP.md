@@ -1,7 +1,7 @@
 # Stellar Spectral Data OSF-Zenodo Mirror Setup
 
-**Date**: 2026-01-13  
-**OSF Project**: https://osf.io/8r2sw  
+**Date**: 2026-01-13
+**OSF Project**: https://osf.io/8r2sw
 **Goal**: Complete 1-to-1 mirror of stellar spectral data from Zenodo to OSF
 
 ## Overview
