@@ -61,12 +61,43 @@ jobs:
           cd /opt/proteus
           # Download all required data based on all_options.toml configuration
           # This ensures all modules (MORS, ARAGOG, AGNI, etc.) have their required data
+          # Use Proteus initialization to trigger automatic data download
           python -c "
-          from proteus.config import read_config_object
-          from proteus.utils.data import download_sufficient_data
-          config = read_config_object('input/all_options.toml')
-          download_sufficient_data(config, clean=False)
-          " || echo "Warning: Some data downloads may have failed, test may skip"
+          import sys
+          from pathlib import Path
+          from proteus import Proteus
+
+          # Create Proteus instance which will download data on start()
+          # But we'll catch the error if data is missing and download it first
+          try:
+              from proteus.config import read_config_object
+              from proteus.utils.data import download_sufficient_data
+              config = read_config_object('input/all_options.toml')
+              print('Downloading required data for all_options.toml...')
+              download_sufficient_data(config, clean=False)
+              print('Data download completed.')
+          except Exception as e:
+              print(f'Warning during data download: {e}')
+              # Try to continue anyway - Proteus.start() will also try to download
+
+          # Verify critical data exists
+          import os
+          fwl_data = os.environ.get('FWL_DATA', '/opt/proteus/fwl_data')
+          aragog_path = Path(fwl_data) / 'interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
+          stellar_path = Path(fwl_data) / 'stellar_evolution_tracks/Spada'
+
+          if not aragog_path.exists():
+              print(f'Warning: ARAGOG data not found at {aragog_path}')
+          if not stellar_path.exists():
+              print(f'Warning: Stellar tracks not found at {stellar_path}')
+              # Try explicit stellar download
+              try:
+                  from proteus.utils.data import download_stellar_tracks
+                  download_stellar_tracks('Spada')
+                  print('Stellar tracks download attempted.')
+              except Exception as e2:
+                  print(f'Warning: Stellar tracks download failed: {e2}')
+          "
 
       - name: Free up disk space and configure Julia
         run: |
