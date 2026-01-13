@@ -1,7 +1,7 @@
 # OSF Upload Status
 
-**Date**: 2026-01-13  
-**OSF Project**: https://osf.io/8r2sw  
+**Date**: 2026-01-13
+**OSF Project**: https://osf.io/8r2sw
 **Token**: Provided and configured
 
 ## Current Status

@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import subprocess as sp
+import time
 import zipfile
 from pathlib import Path
 from time import sleep
@@ -25,6 +26,7 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 MAX_ATTEMPTS = 3
 MAX_DLTIME   = 120.0 # seconds
 RETRY_WAIT   = 5.0   # seconds
+ZENODO_COOLDOWN = 2.0  # seconds between Zenodo API requests to avoid overwhelming server
 
 ARAGOG_BASIC = (
     "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa",
@@ -33,9 +35,25 @@ ARAGOG_BASIC = (
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
-def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
+# Rate limiting for Zenodo API requests
+_last_zenodo_request_time = 0.0
+
+
+def _zenodo_cooldown():
+    """Ensure cooldown between Zenodo API requests to avoid overwhelming the server."""
+    global _last_zenodo_request_time
+    current_time = time.time()
+    time_since_last = current_time - _last_zenodo_request_time
+    if time_since_last < ZENODO_COOLDOWN:
+        wait_time = ZENODO_COOLDOWN - time_since_last
+        log.debug(f'Zenodo cooldown: waiting {wait_time:.2f}s before next request')
+        sleep(wait_time)
+    _last_zenodo_request_time = time.time()
+
+
+def download_zenodo_folder_client(zenodo_id: str, folder_dir: Path) -> bool:
     """
-    Download a specific Zenodo record into specified folder
+    Download a Zenodo record using zenodo_client library (primary method).
 
     Inputs :
         - zenodo_id : str
@@ -44,85 +62,115 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
             Local directory where the Zenodo record will be downloaded
 
     Returns :
-        - zenodo_ok : bool
-            Did the download/request complete successfully?
+        - success : bool
+            Did the download complete successfully?
     """
-    # Check if zenodo_get is available
     try:
-        sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
-    except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError) as e:
-        log.error(f'zenodo_get command not available or not working: {e}')
+        from zenodo_client import Zenodo
+    except ImportError:
+        log.debug('zenodo_client library not available')
         return False
 
-    out = os.path.join(GetFWLData(), 'zenodo_download.log')
-    log.debug(f'    zenodo_get, logging to {out}')
+    _zenodo_cooldown()
 
-    # Use exponential backoff for retries
-    for attempt in range(MAX_ATTEMPTS):
-        # remove folder
-        safe_rm(folder_dir)
+    try:
+        zenodo = Zenodo()
+
+        # Get the record metadata
+        _zenodo_cooldown()
+        record = zenodo.get_latest_record(zenodo_id)
+
+        if not record or 'files' not in record:
+            log.warning(f'No files found in Zenodo record {zenodo_id}')
+            return False
+
         folder_dir.mkdir(parents=True, exist_ok=True)
+        downloaded_count = 0
 
-        # try making request with timeout
-        try:
-            with open(out, 'w') as hdl:
-                # Add timeout to subprocess (MAX_DLTIME + buffer for overhead)
-                proc = sp.run(
-                    ['zenodo_get', '-o', str(folder_dir), '-t', f'{MAX_DLTIME:.1f}', zenodo_id],
-                    stdout=hdl,
-                    stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
-                    timeout=MAX_DLTIME + 30,  # Add buffer for subprocess overhead
-                    check=False,  # Don't raise on non-zero exit
-                )
+        # Download each file in the record
+        for file_info in record['files']:
+            file_key = file_info.get('key', '')
+            if not file_key:
+                continue
 
-            # Check if command succeeded and folder has content
-            if proc.returncode == 0:
-                # Verify folder exists and has files
-                if folder_dir.exists():
-                    # Check if folder has any files (not just empty directory)
-                    files = list(folder_dir.rglob('*'))
-                    if files and any(f.is_file() for f in files):
-                        log.info(f'Successfully downloaded Zenodo record {zenodo_id}')
-                        return True
-                    else:
-                        log.warning(f'Zenodo download completed but folder is empty (ID {zenodo_id})')
-                else:
-                    log.warning(f'Zenodo download completed but folder does not exist (ID {zenodo_id})')
+            # Determine output path (preserve directory structure)
+            if '/' in file_key:
+                file_path = folder_dir / file_key
+                file_path.parent.mkdir(parents=True, exist_ok=True)
             else:
-                # Read error from log file for better diagnostics
-                error_msg = 'Unknown error'
-                try:
-                    with open(out, 'r') as f:
-                        error_lines = f.readlines()[-10:]  # Last 10 lines
-                        error_msg = ''.join(error_lines).strip()
-                except Exception:
-                    pass
-                log.warning(
-                    f'Failed to get data from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS}): '
-                    f'exit code {proc.returncode}. Error: {error_msg[:200]}'
-                )
+                file_path = folder_dir / file_key
 
-        except sp.TimeoutExpired:
-            log.warning(
-                f'zenodo_get timed out after {MAX_DLTIME + 30:.1f}s (ID {zenodo_id}, '
-                f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
-            )
-        except Exception as e:
-            log.warning(f'Unexpected error during Zenodo download (ID {zenodo_id}): {e}')
+            # Skip if already exists
+            if file_path.exists() and file_path.stat().st_size > 0:
+                log.debug(f'  Skipping existing file: {file_key}')
+                continue
 
-        # Exponential backoff: wait longer between retries
-        if attempt < MAX_ATTEMPTS - 1:
-            wait_time = RETRY_WAIT * (2 ** attempt)  # Exponential backoff
-            log.debug(f'Waiting {wait_time:.1f}s before retry...')
-            sleep(wait_time)
+            try:
+                # Download the file using zenodo_client
+                _zenodo_cooldown()
+                downloaded_path = zenodo.download_latest(zenodo_id, file_key)
 
-    # Return status indicating that file/folder is invalid, if failed
-    log.error(f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts')
-    return False
+                # zenodo_client downloads to pystow-managed location
+                # Handle both string and Path return types, or None
+                actual_downloaded_path = None
+                if downloaded_path:
+                    actual_downloaded_path = Path(downloaded_path) if not isinstance(downloaded_path, Path) else downloaded_path
 
-def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
+                # If no path returned or file doesn't exist, try pystow's default location
+                if not actual_downloaded_path or not actual_downloaded_path.exists():
+                    try:
+                        import pystow
+                        module = pystow.module("zenodo", zenodo_id)
+                        # Try common pystow path patterns
+                        possible_paths = [
+                            module.join(zenodo_id, file_key),
+                            module.join(file_key),
+                            Path.home() / ".data" / "zenodo" / zenodo_id / file_key,
+                        ]
+                        for pp in possible_paths:
+                            pp_path = Path(pp) if not isinstance(pp, Path) else pp
+                            if pp_path.exists():
+                                actual_downloaded_path = pp_path
+                                break
+                    except ImportError:
+                        pass  # pystow not available, skip
+
+                if actual_downloaded_path and actual_downloaded_path.exists():
+                    # Move to target location if needed
+                    if actual_downloaded_path.resolve() != file_path.resolve():
+                        import shutil
+                        # Ensure target directory exists
+                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(actual_downloaded_path), str(file_path))
+                    downloaded_count += 1
+                    log.debug(f'  Downloaded: {file_key}')
+                else:
+                    log.warning(f'  Failed to download: {file_key} (file not found after download)')
+            except Exception as e:
+                log.warning(f'  Error downloading {file_key}: {e}')
+                continue
+
+        # Verify download succeeded
+        if folder_dir.exists():
+            files = list(folder_dir.rglob('*'))
+            if files and any(f.is_file() for f in files):
+                log.info(f'Successfully downloaded Zenodo record {zenodo_id} using zenodo_client ({downloaded_count} files)')
+                return True
+            else:
+                log.warning(f'Zenodo download completed but folder is empty (ID {zenodo_id})')
+                return False
+        else:
+            log.warning(f'Zenodo download completed but folder does not exist (ID {zenodo_id})')
+            return False
+
+    except Exception as e:
+        log.debug(f'zenodo_client download failed: {e}')
+        return False
+
+
+def download_zenodo_file_client(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
     """
-    Download a single file from a Zenodo record into the specified local folder.
+    Download a single file from a Zenodo record using zenodo_client library (primary method).
 
     Inputs
     ------
@@ -138,7 +186,304 @@ def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
     bool
         True if download succeeded, False otherwise.
     """
+    try:
+        from zenodo_client import Zenodo
+    except ImportError:
+        log.debug('zenodo_client library not available')
+        return False
 
+    _zenodo_cooldown()
+
+    try:
+        zenodo = Zenodo()
+
+        # Make sure local base directory exists
+        folder_dir.mkdir(parents=True, exist_ok=True)
+
+        # Local target path (preserves any subdirectory structure in zenodo_path)
+        target_path = folder_dir / zenodo_path
+
+        # Skip if already exists
+        if target_path.exists() and target_path.stat().st_size > 0:
+            log.debug(f'  File already exists: {zenodo_path}')
+            return True
+
+        # Make sure parent directory exists
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Download the file
+        _zenodo_cooldown()
+        downloaded_path = zenodo.download_latest(zenodo_id, zenodo_path)
+
+        # zenodo_client downloads to pystow-managed location
+        # Handle both string and Path return types, or None
+        actual_downloaded_path = None
+        if downloaded_path:
+            actual_downloaded_path = Path(downloaded_path) if not isinstance(downloaded_path, Path) else downloaded_path
+
+        # If no path returned or file doesn't exist, try pystow's default location
+        if not actual_downloaded_path or not actual_downloaded_path.exists():
+            try:
+                import pystow
+                module = pystow.module("zenodo", zenodo_id)
+                # Try common pystow path patterns
+                possible_paths = [
+                    module.join(zenodo_id, zenodo_path),
+                    module.join(zenodo_path),
+                    Path.home() / ".data" / "zenodo" / zenodo_id / zenodo_path,
+                ]
+                for pp in possible_paths:
+                    pp_path = Path(pp) if not isinstance(pp, Path) else pp
+                    if pp_path.exists():
+                        actual_downloaded_path = pp_path
+                        break
+            except ImportError:
+                pass  # pystow not available, skip
+
+        if actual_downloaded_path and actual_downloaded_path.exists():
+            # Move to target location if needed
+            if actual_downloaded_path.resolve() != target_path.resolve():
+                import shutil
+                shutil.move(str(actual_downloaded_path), str(target_path))
+
+            if target_path.exists() and target_path.stat().st_size > 0:
+                log.debug(f'Successfully downloaded file {zenodo_path} using zenodo_client')
+                return True
+            else:
+                log.warning(f'Downloaded file is empty: {zenodo_path}')
+                return False
+        else:
+            log.warning(f'Failed to download file: {zenodo_path} (file not found after download)')
+            return False
+
+    except Exception as e:
+        log.debug(f'zenodo_client file download failed: {e}')
+        return False
+
+
+def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
+    """
+    Download a specific Zenodo record into specified folder.
+
+    Uses zenodo_client library as primary method, with fallbacks to zenodo_get
+    command-line tool and web-based download.
+
+    Inputs :
+        - zenodo_id : str
+            Zenodo record ID to download
+        - folder_dir : Path
+            Local directory where the Zenodo record will be downloaded
+
+    Returns :
+        - zenodo_ok : bool
+            Did the download/request complete successfully?
+    """
+    # Primary method: Try zenodo_client library
+    log.debug(f'Attempting to download Zenodo record {zenodo_id} using zenodo_client...')
+    if download_zenodo_folder_client(zenodo_id, folder_dir):
+        return True
+
+    # Fallback 1: Try zenodo_get command-line tool
+    log.debug('zenodo_client failed, trying zenodo_get command-line tool...')
+    try:
+        sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
+    except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError) as e:
+        log.debug(f'zenodo_get command not available: {e}')
+    else:
+        out = os.path.join(GetFWLData(), 'zenodo_download.log')
+        log.debug(f'    zenodo_get, logging to {out}')
+
+        # Use exponential backoff for retries
+        for attempt in range(MAX_ATTEMPTS):
+            # remove folder
+            safe_rm(folder_dir)
+            folder_dir.mkdir(parents=True, exist_ok=True)
+
+            # try making request with timeout
+            try:
+                with open(out, 'w') as hdl:
+                    # Add timeout to subprocess (MAX_DLTIME + buffer for overhead)
+                    proc = sp.run(
+                        ['zenodo_get', '-o', str(folder_dir), '-t', f'{MAX_DLTIME:.1f}', zenodo_id],
+                        stdout=hdl,
+                        stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
+                        timeout=MAX_DLTIME + 30,  # Add buffer for subprocess overhead
+                        check=False,  # Don't raise on non-zero exit
+                    )
+
+                # Check if command succeeded and folder has content
+                if proc.returncode == 0:
+                    # Verify folder exists and has files
+                    if folder_dir.exists():
+                        # Check if folder has any files (not just empty directory)
+                        files = list(folder_dir.rglob('*'))
+                        if files and any(f.is_file() for f in files):
+                            log.info(f'Successfully downloaded Zenodo record {zenodo_id} using zenodo_get')
+                            return True
+                        else:
+                            log.warning(f'Zenodo download completed but folder is empty (ID {zenodo_id})')
+                    else:
+                        log.warning(f'Zenodo download completed but folder does not exist (ID {zenodo_id})')
+                else:
+                    # Read error from log file for better diagnostics
+                    error_msg = 'Unknown error'
+                    try:
+                        with open(out, 'r') as f:
+                            error_lines = f.readlines()[-10:]  # Last 10 lines
+                            error_msg = ''.join(error_lines).strip()
+                    except Exception:
+                        pass
+                    log.warning(
+                        f'Failed to get data from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS}): '
+                        f'exit code {proc.returncode}. Error: {error_msg[:200]}'
+                    )
+
+            except sp.TimeoutExpired:
+                log.warning(
+                    f'zenodo_get timed out after {MAX_DLTIME + 30:.1f}s (ID {zenodo_id}, '
+                    f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
+                )
+            except Exception as e:
+                log.warning(f'Unexpected error during Zenodo download (ID {zenodo_id}): {e}')
+
+            # Exponential backoff: wait longer between retries
+            if attempt < MAX_ATTEMPTS - 1:
+                wait_time = RETRY_WAIT * (2 ** attempt)  # Exponential backoff
+                log.debug(f'Waiting {wait_time:.1f}s before retry...')
+                sleep(wait_time)
+
+    # Fallback 2: Try web-based download
+    log.debug('zenodo_get failed, trying web-based download...')
+    if download_zenodo_folder_web(zenodo_id, folder_dir):
+        return True
+
+    # All methods failed
+    log.error(f'Could not obtain data for Zenodo record {zenodo_id} after trying all methods')
+    return False
+
+
+def download_zenodo_folder_web(zenodo_id: str, folder_dir: Path) -> bool:
+    """
+    Download a Zenodo record using web interface (fallback method).
+
+    Uses direct download URLs from Zenodo web interface via curl.
+
+    Inputs :
+        - zenodo_id : str
+            Zenodo record ID to download
+        - folder_dir : Path
+            Local directory where the Zenodo record will be downloaded
+
+    Returns :
+        - success : bool
+            Did the download complete successfully?
+    """
+    log.debug(f'  Downloading Zenodo {zenodo_id} via web interface...')
+
+    # Get the actual file URLs from Zenodo API
+    import json
+    import urllib.request
+
+    _zenodo_cooldown()
+
+    try:
+        api_url = f"https://zenodo.org/api/records/{zenodo_id}"
+        with urllib.request.urlopen(api_url, timeout=30) as response:
+            data = json.loads(response.read())
+
+        files = data.get('files', [])
+        if not files:
+            log.warning("  ✗ No files found in Zenodo record")
+            return False
+
+    except Exception as e:
+        log.warning(f"  ⚠ Could not get metadata: {e}")
+        return False
+
+    # Download all files from the record
+    folder_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Download all files
+        downloaded_files = 0
+        for f in files:
+            file_url = f['links']['self']
+            file_key = f.get('key', 'unknown')
+            file_size = f.get('size', 0) / 1024 / 1024  # MB
+
+            # Determine output path
+            if '/' in file_key:
+                # Preserve directory structure
+                file_path = folder_dir / file_key
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                file_path = folder_dir / file_key
+
+            # Skip if already exists
+            if file_path.exists() and file_path.stat().st_size > 0:
+                log.debug(f"  ⏭  Skipping (exists): {file_key}")
+                continue
+
+            log.debug(f"  Downloading: {file_key} ({file_size:.2f} MB)...")
+
+            # Apply cooldown before each download
+            _zenodo_cooldown()
+
+            result = sp.run(
+                ['curl', '-L', '-o', str(file_path), file_url],
+                timeout=600,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode == 0 and file_path.exists() and file_path.stat().st_size > 0:
+                downloaded_files += 1
+                log.debug(f"    ✓ Downloaded {file_path.stat().st_size / 1024 / 1024:.2f} MB")
+            else:
+                log.warning(f"    ✗ Failed: {result.stderr[:100] if result.stderr else 'Unknown error'}")
+
+        # Count total files
+        all_files = list(folder_dir.rglob('*'))
+        file_count = sum(1 for f in all_files if f.is_file())
+        if file_count > 0:
+            log.info(f"  ✓ Total: {file_count} files in directory (web download)")
+            return True
+        else:
+            log.warning("  ✗ No files downloaded")
+            return False
+
+    except Exception as e:
+        log.warning(f"  ✗ Error: {e}")
+        return False
+
+def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
+    """
+    Download a single file from a Zenodo record into the specified local folder.
+
+    Uses zenodo_client library as primary method, with fallbacks to zenodo_get
+    command-line tool and web-based download.
+
+    Inputs
+    ------
+    zenodo_id : str
+        Zenodo record ID to download from.
+    folder_dir : Path
+        Local directory where the file will be downloaded.
+    zenodo_path : str
+        Path/filename inside the Zenodo record, e.g. "subdir/file.txt" or "file.txt".
+
+    Returns
+    -------
+    bool
+        True if download succeeded, False otherwise.
+    """
+    # Primary method: Try zenodo_client library
+    log.debug(f"Attempting to download file '{zenodo_path}' from Zenodo {zenodo_id} using zenodo_client...")
+    if download_zenodo_file_client(zenodo_id, folder_dir, zenodo_path):
+        return True
+
+    # Fallback 1: Try zenodo_get command-line tool
+    log.debug("zenodo_client failed, trying zenodo_get command-line tool...")
     # Where to log zenodo_get output
     out = os.path.join(GetFWLData(), "zenodo_get_file.log")
     log.debug(f"    zenodo_get (file {zenodo_path}), logging to {out}")
@@ -158,16 +503,24 @@ def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Try making request: use -g to select just this path/pattern
-        with open(out, 'w') as hdl:
-            proc = sp.run(
-                ["zenodo_get", zenodo_id, "-o", str(folder_dir), "-g", zenodo_path],
-                stdout=hdl,
-                stderr=hdl,
-            )
+        try:
+            with open(out, 'w') as hdl:
+                proc = sp.run(
+                    ["zenodo_get", zenodo_id, "-o", str(folder_dir), "-g", zenodo_path],
+                    stdout=hdl,
+                    stderr=hdl,
+                    timeout=MAX_DLTIME + 30,
+                )
 
-        # Worked ok?
-        if (proc.returncode == 0) and target_path.exists():
-            return True
+            # Worked ok?
+            if (proc.returncode == 0) and target_path.exists() and target_path.stat().st_size > 0:
+                log.debug(f"Successfully downloaded file '{zenodo_path}' using zenodo_get")
+                return True
+        except (FileNotFoundError, sp.TimeoutExpired) as e:
+            log.debug(f"zenodo_get not available or timed out: {e}")
+            break
+        except Exception as e:
+            log.debug(f"zenodo_get error: {e}")
 
         log.warning(
             f"Failed to get file '{zenodo_path}' from Zenodo (ID {zenodo_id}), "
@@ -175,11 +528,97 @@ def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
         )
         sleep(RETRY_WAIT)
 
-    # Return status indicating failure
+    # Fallback 2: Try web-based download
+    log.debug("zenodo_get failed, trying web-based download...")
+    if get_zenodo_file_web(zenodo_id, folder_dir, zenodo_path):
+        return True
+
+    # All methods failed
     log.error(
-        f"Could not obtain file '{zenodo_path}' from Zenodo record {zenodo_id}"
+        f"Could not obtain file '{zenodo_path}' from Zenodo record {zenodo_id} after trying all methods"
     )
     return False
+
+
+def get_zenodo_file_web(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
+    """
+    Download a single file from a Zenodo record using web interface (fallback method).
+
+    Inputs
+    ------
+    zenodo_id : str
+        Zenodo record ID to download from.
+    folder_dir : Path
+        Local directory where the file will be downloaded.
+    zenodo_path : str
+        Path/filename inside the Zenodo record, e.g. "subdir/file.txt" or "file.txt".
+
+    Returns
+    -------
+    bool
+        True if download succeeded, False otherwise.
+    """
+    import json
+    import urllib.request
+
+    _zenodo_cooldown()
+
+    try:
+        # Get record metadata
+        api_url = f"https://zenodo.org/api/records/{zenodo_id}"
+        with urllib.request.urlopen(api_url, timeout=30) as response:
+            data = json.loads(response.read())
+
+        files = data.get('files', [])
+        if not files:
+            log.warning(f"  ✗ No files found in Zenodo record {zenodo_id}")
+            return False
+
+        # Find the specific file
+        target_file = None
+        for f in files:
+            if f.get('key', '') == zenodo_path:
+                target_file = f
+                break
+
+        if not target_file:
+            log.warning(f"  ✗ File '{zenodo_path}' not found in Zenodo record {zenodo_id}")
+            return False
+
+        # Make sure local base directory exists
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        target_path = folder_dir / zenodo_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Skip if already exists
+        if target_path.exists() and target_path.stat().st_size > 0:
+            log.debug(f"  ⏭  File already exists: {zenodo_path}")
+            return True
+
+        # Download the file
+        file_url = target_file['links']['self']
+        file_size = target_file.get('size', 0) / 1024 / 1024  # MB
+        log.debug(f"  Downloading: {zenodo_path} ({file_size:.2f} MB)...")
+
+        _zenodo_cooldown()
+
+        result = sp.run(
+            ['curl', '-L', '-o', str(target_path), file_url],
+            timeout=600,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode == 0 and target_path.exists() and target_path.stat().st_size > 0:
+            log.debug(f"  ✓ Downloaded {target_path.stat().st_size / 1024 / 1024:.2f} MB (web download)")
+            return True
+        else:
+            log.warning(f"  ✗ Failed: {result.stderr[:100] if result.stderr else 'Unknown error'}")
+            return False
+
+    except Exception as e:
+        log.warning(f"  ✗ Error downloading file via web: {e}")
+        return False
 
 
 def md5(_fname):

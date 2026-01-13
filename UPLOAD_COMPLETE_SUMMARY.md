@@ -1,7 +1,7 @@
 # OSF Upload Summary
 
-**Date**: 2026-01-13  
-**OSF Project**: https://osf.io/8r2sw  
+**Date**: 2026-01-13
+**OSF Project**: https://osf.io/8r2sw
 **Status**: Upload in progress
 
 ## Completed Tasks ✅
