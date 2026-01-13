@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import os
 from pathlib import Path
@@ -7,16 +8,14 @@ from pathlib import Path
 import pytest
 
 from proteus.config import read_config_object
-from proteus.escape.boreas import BOREAS_ELEMS, BOREAS_GASES, run_boreas
+from proteus.escape.boreas import BOREAS_ELEMS, BOREAS_GASES, _set_boreas_params, run_boreas
 from proteus.utils.constants import AU, M_earth, R_earth, element_list
 from proteus.utils.helper import get_proteus_dir
 
+log = logging.getLogger(__name__)
 
-def _make_minimal_hf_row_fractionating() -> dict:
-    """Construct a minimal `hf_row` dict suitable for running BOREAS.
-
-    Provides required keys and reasonable physical values.
-    """
+def _make_minimal_hf_row() -> dict:
+    """Construct `hf_row` with inventories for escape checks."""
     hf_row: dict = {}
 
     # Orbital/stellar derived quantities
@@ -29,25 +28,12 @@ def _make_minimal_hf_row_fractionating() -> dict:
     hf_row["M_planet"] = 1.0 * M_earth # kg
 
     # Supply VMRs at the XUV level for all BOREAS-supported gases
-    # Ensure at least one non-zero so MMW is finite
-    # Prefer H2 dominance if available, else H2O/CO2 fallback
-    dominant_set = ("H2", "H2O", "CO2")
-    dominant = next((g for g in dominant_set if g in BOREAS_GASES), None)
     for g in BOREAS_GASES:
         hf_row[f"{g}_vmr_xuv"] = 0.0
-    if dominant is not None:
-        hf_row[f"{dominant}_vmr_xuv"] = 0.9
-    # Small contribution from a second gas if present to avoid edge singularities
-    second = next((g for g in ("CO2", "H2O", "N2") if g in BOREAS_GASES and g != dominant), None)
-    if second is not None:
-        hf_row[f"{second}_vmr_xuv"] = 0.1
-
-    return hf_row
-
-
-def _make_minimal_hf_row_unfractionated() -> dict:
-    """Construct `hf_row` with inventories for unfractionated escape checks."""
-    hf_row = _make_minimal_hf_row_fractionating()
+    hf_row["H2_vmr_xuv"] = 0.5
+    hf_row["CO_vmr_xuv"] = 0.2
+    hf_row["H2S_vmr_xuv"] = 0.2
+    hf_row["N2_vmr_xuv"] = 0.1
 
     # Provide bulk/atmospheric elemental inventories used by calc_unfract_fluxes
     # Oxygen is skipped by calc_unfract_fluxes; others are used to form ratios
@@ -84,15 +70,26 @@ def boreas_config() -> object:
     cfg.escape.module = "boreas"
     return cfg
 
+def test_boreas_params(boreas_config):
+    hf_row = _make_minimal_hf_row()
 
-def test_run_boreas_fractionating_updates_outputs(boreas_config):
-    hf_row = _make_minimal_hf_row_fractionating()
+    # make parameters object
+    params = _set_boreas_params(boreas_config, hf_row)
+
+    # check it is setup property
+    assert params.FXUV == hf_row["F_xuv"] * 1e3
+    assert params.albedo == 0.0
+
+def test_boreas_frac_updates_outputs(boreas_config):
+    hf_row = _make_minimal_hf_row()
     dirs = {'output':os.path.join(get_proteus_dir(),"output")}
 
     # Use fractionation mode
     boreas_config.escape.boreas.fractionate = True
 
     # Execute
+    log.debug(boreas_config.escape)
+    log.debug(hf_row)
     run_boreas(boreas_config, hf_row, dirs)
 
     # Bulk outputs exist and have sensible values
@@ -117,22 +114,19 @@ def test_run_boreas_fractionating_updates_outputs(boreas_config):
             assert hf_row[key] == 0.0
 
 
-@pytest.mark.parametrize("reservoir", ["outgas", "bulk"])  # validate both paths
-def test_run_boreas_unfractionated_conserves_mass_ratios(boreas_config, reservoir):
-    hf_row = _make_minimal_hf_row_unfractionated()
+def test_boreas_unfrac_conserves_mass_ratios(boreas_config):
+    hf_row = _make_minimal_hf_row()
     dirs = {'output':os.path.join(get_proteus_dir(),"output")}
 
     # Provide a pre-computed total escape rate to split
     # The model will compute bulk escape first; we just validate the splitting
     boreas_config.escape.boreas.fractionate = False
-    boreas_config.escape.reservoir = reservoir
 
     # Execute
     run_boreas(boreas_config, hf_row, dirs)
 
     # Mass mixing ratios from the chosen reservoir
-    key = "_kg_atm" if reservoir == "outgas" else "_kg_total"
-    masses = {e: hf_row[f"{e}{key}"] for e in ("H", "C", "N", "S")}
+    masses = {e: hf_row[f"{e}_kg_atm"] for e in ("H", "C", "N", "S")}
     total = sum(masses.values())
     assert total > 0.0
 

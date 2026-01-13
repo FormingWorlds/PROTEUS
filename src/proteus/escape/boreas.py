@@ -24,12 +24,9 @@ BOREAS_GASES = set(boreas.ModelParams().kappa.keys()) & set(gas_list)
 # Get set of shared-supported elements
 BOREAS_ELEMS = set(boreas.ModelParams().sigma_XUV.keys()) & set(element_list)
 
-def run_boreas(config:Config, hf_row:dict, dirs:dict):
-    """Run BOREAS escape model.
 
-    Calculates the mass loss rate of each element.
-    Updates the quantities in hf_row as appropriate, including R_xuv.
-    P_xuv must then be calculated from R_xuv as required.
+def _set_boreas_params(config:Config, hf_row:dict) -> boreas.ModelParams:
+    """Set parameters object for running BOREAS
 
     Parameters
     ----------
@@ -37,11 +34,7 @@ def run_boreas(config:Config, hf_row:dict, dirs:dict):
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-        dirs: dict
-            Dictionary of directories.
     """
-
-    log.info("Running escape...")
 
     # Set parameters for escape
     params          = boreas.ModelParams()
@@ -79,16 +72,46 @@ def run_boreas(config:Config, hf_row:dict, dirs:dict):
     params._recompute_composites()
     params._init_opacities()
 
+    return params
+
+
+def run_boreas(config:Config, hf_row:dict, dirs:dict):
+    """Run BOREAS escape model.
+
+    Calculates the mass loss rate of each element.
+    Updates the quantities in hf_row as appropriate, including R_xuv.
+    P_xuv must then be calculated from R_xuv as required.
+
+    Parameters
+    ----------
+        config : Config
+            Dictionary of configuration options
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+        dirs: dict`
+            Dictionary of directories.
+    """
+
+    log.info("Running escape (BOREAS)...")
+    params = _set_boreas_params(config, hf_row)
+
+
     # Do escape computation with BOREAS
     # Redirect print() calls inside BOREAS to -> PROTEUS' log.info()
     with redirect_stdout(log):
         try:
+            # Init objects
             mass_loss       = boreas.MassLoss(params)
             fractionation   = boreas.Fractionation(params)
 
             # Run bulk mass loss calculation
             ml_result = mass_loss.compute_mass_loss_parameters(
                             [params.mplanet], [params.rplanet], [params.Teq])
+
+            # Check result converged
+            if (ml_result[0]["regime"] == "SKIPPED") or ("RXUV" not in ml_result[0].keys()):
+                log.error(ml_result[0])
+                raise RuntimeError("Bulk mass loss calculation did not converge")
 
             # Run fractionation calculation
             fr_result = fractionation.execute(ml_result, mass_loss)[0]

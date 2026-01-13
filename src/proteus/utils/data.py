@@ -691,7 +691,7 @@ def _get_sufficient(config:Config, clean:bool=False):
     # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
         # High-res file often used for post-processing
-        download_spectral_file("Honeyside","4096")
+        # download_spectral_file("Honeyside","4096")
 
         # Get the spectral file we need for this simluation
         from proteus.atmos_clim.common import get_spfile_name_and_bands
