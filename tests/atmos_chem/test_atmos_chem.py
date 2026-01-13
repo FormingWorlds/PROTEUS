@@ -24,25 +24,27 @@ Mocking strategy:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+import sys
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
 # Mock vulcan modules before importing wrapper to prevent import errors
 # The vulcan.py module tries to import the VULCAN package which isn't available in CI
+# We need to keep the mock in sys.modules throughout the test execution
+mock_vulcan_package = MagicMock()
 mock_vulcan_module = MagicMock()
 mock_run_vulcan_offline = MagicMock()
 mock_vulcan_module.run_vulcan_offline = mock_run_vulcan_offline
-with patch.dict(
-    'sys.modules',
-    {
-        'vulcan': MagicMock(),
-        'proteus.atmos_chem.vulcan': mock_vulcan_module,
-    },
-):
-    from proteus.atmos_chem.common import read_result
-    from proteus.atmos_chem.wrapper import run_chemistry
+
+# Put mocks in sys.modules before any imports (persist throughout test execution)
+sys.modules['vulcan'] = mock_vulcan_package
+sys.modules['proteus.atmos_chem.vulcan'] = mock_vulcan_module
+
+# Imports must come after mocks are set up
+from proteus.atmos_chem.common import read_result  # noqa: E402
+from proteus.atmos_chem.wrapper import run_chemistry  # noqa: E402
 
 
 @pytest.mark.unit
