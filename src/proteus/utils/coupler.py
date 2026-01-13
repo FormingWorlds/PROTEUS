@@ -53,12 +53,21 @@ def _get_git_revision(dir: str) -> str:
 
     # get hash (https://stackoverflow.com/a/21901260)
     try:
-        hash = subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'],
-            stderr=subprocess.DEVNULL,
-            timeout=5,  # Add timeout to prevent hanging
-        ).decode('ascii').strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired, Exception):
+        hash = (
+            subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'],
+                stderr=subprocess.DEVNULL,
+                timeout=5,  # Add timeout to prevent hanging
+            )
+            .decode('ascii')
+            .strip()
+        )
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+        Exception,
+    ):
         # Handle: git not found, not a git repo, git command failed, or any other error
         hash = 'unknown'
     finally:
