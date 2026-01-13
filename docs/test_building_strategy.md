@@ -1,7 +1,7 @@
 # Test Building Strategy for PROTEUS
 
-**Last Updated**: 2026-01-11
-**Status**: 31.24% coverage (exceeded 30% target), 492 tests, 7 active smoke tests (exceeds 5-7 target), all CI tests passing
+**Last Updated**: 2026-01-13
+**Status**: 31.24% coverage (exceeded 30% target), 492 tests, 7 active smoke tests (exceeds 5-7 target), fast CI tests passing, nightly CI data download issues being addressed
 
 ---
 
@@ -363,9 +363,13 @@ The test validates the configuration as-is.
 
 **Phase 2 Success Criteria**:
 - ✅ Standard configuration integration test implemented (`test_integration_std_config.py`)
-- ⏸️ Test runs stably for 5-10 timesteps (requires all real modules - will run in nightly CI)
-- ⏸️ Conservation law validations pass (requires all real modules - will run in nightly CI)
-- ✅ Integrated into nightly CI (test created, will run in `ci-nightly-science.yml`)
+- ⏸️ Test runs stably for 5-10 timesteps (requires all real modules + data - currently skipping due to missing stellar tracks)
+- ⏸️ Conservation law validations pass (requires all real modules + data - currently skipping)
+- ✅ Integrated into nightly CI (`ci-nightly-science-v5.yml`)
+- ⏸️ **Current Issue (2026-01-13)**: Slow integration tests skipping due to missing stellar evolution tracks
+  - Root cause: `zenodo_get` command failing during data download
+  - Fix in progress: Improved data download step with MORS verification and fallback downloads
+  - Tests affected: `test_integration_std_config.py` (both slow tests), `test_integration_aragog_janus.py` (5 tests)
 
 ### Phase 3: Coverage Expansion (Ongoing)
 

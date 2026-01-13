@@ -61,14 +61,25 @@ jobs:
           cd /opt/proteus
           # Download all required data based on all_options.toml configuration
           # This ensures all modules (MORS, ARAGOG, AGNI, etc.) have their required data
-          # Use Proteus initialization to trigger automatic data download
           python -c "
           import sys
+          import os
           from pathlib import Path
-          from proteus import Proteus
+          import traceback
 
-          # Create Proteus instance which will download data on start()
-          # But we'll catch the error if data is missing and download it first
+          # Ensure MORS is available for stellar track downloads
+          try:
+              import mors
+              print(f'MORS version: {mors.__version__ if hasattr(mors, \"__version__\") else \"unknown\"}')
+          except ImportError as e:
+              print(f'ERROR: MORS not available: {e}')
+              print('Installing MORS...')
+              import subprocess
+              subprocess.run([sys.executable, '-m', 'pip', 'install', 'fwl-mors'], check=True)
+              import mors
+              print('MORS installed successfully')
+
+          # Download data using download_sufficient_data
           try:
               from proteus.config import read_config_object
               from proteus.utils.data import download_sufficient_data
@@ -77,26 +88,71 @@ jobs:
               download_sufficient_data(config, clean=False)
               print('Data download completed.')
           except Exception as e:
-              print(f'Warning during data download: {e}')
-              # Try to continue anyway - Proteus.start() will also try to download
+              print(f'ERROR during data download: {e}')
+              traceback.print_exc()
+              # Try to download critical data explicitly
+              print('Attempting explicit data downloads...')
+
+              # Try ARAGOG data
+              try:
+                  from proteus.utils.data import download_interior_lookuptables, download_melting_curves
+                  print('Downloading ARAGOG lookup tables...')
+                  download_interior_lookuptables(clean=False)
+                  download_melting_curves(config, clean=False)
+                  print('ARAGOG data download completed.')
+              except Exception as e_aragog:
+                  print(f'Warning: ARAGOG data download failed: {e_aragog}')
+
+              # Try stellar tracks using MORS directly
+              try:
+                  print('Downloading stellar evolution tracks via MORS...')
+                  from mors.data import DownloadEvolutionTracks
+                  DownloadEvolutionTracks('Spada')
+                  print('Stellar tracks download completed.')
+              except Exception as e_stellar:
+                  print(f'Warning: Stellar tracks download failed: {e_stellar}')
+                  traceback.print_exc()
 
           # Verify critical data exists
-          import os
           fwl_data = os.environ.get('FWL_DATA', '/opt/proteus/fwl_data')
           aragog_path = Path(fwl_data) / 'interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
           stellar_path = Path(fwl_data) / 'stellar_evolution_tracks/Spada'
 
-          if not aragog_path.exists():
-              print(f'Warning: ARAGOG data not found at {aragog_path}')
-          if not stellar_path.exists():
-              print(f'Warning: Stellar tracks not found at {stellar_path}')
-              # Try explicit stellar download
+          print(f'\\nVerifying data downloads...')
+          print(f'FWL_DATA: {fwl_data}')
+
+          if aragog_path.exists():
+              print(f'✓ ARAGOG data found at {aragog_path}')
+          else:
+              print(f'✗ ARAGOG data NOT found at {aragog_path}')
+              # List what's actually there
+              parent = aragog_path.parent
+              if parent.exists():
+                  print(f'  Contents of {parent}:')
+                  for item in list(parent.iterdir())[:5]:
+                      print(f'    - {item.name}')
+
+          if stellar_path.exists():
+              print(f'✓ Stellar tracks found at {stellar_path}')
+              # Check if specific track files exist
+              track_files = list(stellar_path.rglob('*.track1'))
+              if track_files:
+                  print(f'  Found {len(track_files)} track files')
+              else:
+                  print(f'  Warning: No .track1 files found in {stellar_path}')
+          else:
+              print(f'✗ Stellar tracks NOT found at {stellar_path}')
+              # Try one more time with MORS
               try:
-                  from proteus.utils.data import download_stellar_tracks
-                  download_stellar_tracks('Spada')
-                  print('Stellar tracks download attempted.')
-              except Exception as e2:
-                  print(f'Warning: Stellar tracks download failed: {e2}')
+                  print('Attempting final stellar tracks download...')
+                  from mors.data import DownloadEvolutionTracks
+                  DownloadEvolutionTracks('Spada')
+                  if stellar_path.exists():
+                      print('✓ Stellar tracks downloaded successfully')
+                  else:
+                      print('✗ Stellar tracks still not found after download attempt')
+              except Exception as e:
+                  print(f'✗ Final stellar tracks download failed: {e}')
           "
 
       - name: Free up disk space and configure Julia
@@ -123,6 +179,7 @@ jobs:
             --cov-report=html \
             --cov-config=pyproject.toml
           # Then full integration (excluding slow, AGNI, and albedo tests requiring external data) and append coverage
+          # Note: test_integration_aragog_janus.py may fail if stellar tracks aren't available - that's OK for now
           pytest tests/integration \
             -m "integration and not slow" \
             --ignore=tests/integration/test_integration_dummy_agni.py \
