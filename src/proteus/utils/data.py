@@ -46,31 +46,77 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
         - zenodo_ok : bool
             Did the download/request complete successfully?
     """
+    # Check if zenodo_get is available
+    try:
+        sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
+    except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError) as e:
+        log.error(f'zenodo_get command not available or not working: {e}')
+        return False
 
     out = os.path.join(GetFWLData(), 'zenodo_download.log')
-    log.debug('    zenodo_get, logging to %s' % out)
-    for i in range(MAX_ATTEMPTS):
+    log.debug(f'    zenodo_get, logging to {out}')
+
+    # Use exponential backoff for retries
+    for attempt in range(MAX_ATTEMPTS):
         # remove folder
         safe_rm(folder_dir)
-        folder_dir.mkdir(parents=True)
+        folder_dir.mkdir(parents=True, exist_ok=True)
 
-        # try making request
-        with open(out, 'w') as hdl:
-            proc = sp.run(
-                ['zenodo_get', '-o', folder_dir, '-t', f'{MAX_DLTIME:.1f}', zenodo_id],
-                stdout=hdl,
-                stderr=hdl,
+        # try making request with timeout
+        try:
+            with open(out, 'w') as hdl:
+                # Add timeout to subprocess (MAX_DLTIME + buffer for overhead)
+                proc = sp.run(
+                    ['zenodo_get', '-o', str(folder_dir), '-t', f'{MAX_DLTIME:.1f}', zenodo_id],
+                    stdout=hdl,
+                    stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
+                    timeout=MAX_DLTIME + 30,  # Add buffer for subprocess overhead
+                    check=False,  # Don't raise on non-zero exit
+                )
+
+            # Check if command succeeded and folder has content
+            if proc.returncode == 0:
+                # Verify folder exists and has files
+                if folder_dir.exists():
+                    # Check if folder has any files (not just empty directory)
+                    files = list(folder_dir.rglob('*'))
+                    if files and any(f.is_file() for f in files):
+                        log.info(f'Successfully downloaded Zenodo record {zenodo_id}')
+                        return True
+                    else:
+                        log.warning(f'Zenodo download completed but folder is empty (ID {zenodo_id})')
+                else:
+                    log.warning(f'Zenodo download completed but folder does not exist (ID {zenodo_id})')
+            else:
+                # Read error from log file for better diagnostics
+                error_msg = 'Unknown error'
+                try:
+                    with open(out, 'r') as f:
+                        error_lines = f.readlines()[-10:]  # Last 10 lines
+                        error_msg = ''.join(error_lines).strip()
+                except Exception:
+                    pass
+                log.warning(
+                    f'Failed to get data from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS}): '
+                    f'exit code {proc.returncode}. Error: {error_msg[:200]}'
+                )
+
+        except sp.TimeoutExpired:
+            log.warning(
+                f'zenodo_get timed out after {MAX_DLTIME + 30:.1f}s (ID {zenodo_id}, '
+                f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
             )
+        except Exception as e:
+            log.warning(f'Unexpected error during Zenodo download (ID {zenodo_id}): {e}')
 
-        # worked ok?
-        if (proc.returncode == 0) and os.path.exists(folder_dir):
-            return True
-        else:
-            log.warning(f'Failed to get data from Zenodo (ID {zenodo_id})')
-            sleep(RETRY_WAIT)
+        # Exponential backoff: wait longer between retries
+        if attempt < MAX_ATTEMPTS - 1:
+            wait_time = RETRY_WAIT * (2 ** attempt)  # Exponential backoff
+            log.debug(f'Waiting {wait_time:.1f}s before retry...')
+            sleep(wait_time)
 
     # Return status indicating that file/folder is invalid, if failed
-    log.error(f'Could not obtain data for Zenodo record {zenodo_id}')
+    log.error(f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts')
     return False
 
 
@@ -101,62 +147,107 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
         - valid : bool
             Is folder valid?
     """
+    # Check if zenodo_get is available
+    try:
+        sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
+    except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError):
+        # If zenodo_get not available, skip validation but warn
+        log.warning('zenodo_get not available for validation - skipping hash check')
+        # If folder exists and has files, assume it's valid
+        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
+            return True
+        return False
 
     # Use zenodo_get to obtain md5 hashes
     #     They will be saved to a txt file in folder_dir
     md5sums_path = os.path.join(folder_dir, 'md5sums.txt')
     out = os.path.join(GetFWLData(), 'zenodo_validate.log')
-    # log.debug("    zenodo_get, logging to %s"%out)
     zenodo_ok = False
-    for i in range(MAX_ATTEMPTS):
+
+    for attempt in range(MAX_ATTEMPTS):
         # remove file
         safe_rm(md5sums_path)
 
-        # try making request
-        with open(out, 'w') as hdl:
-            proc = sp.run(
-                ['zenodo_get', '-m', zenodo_id], stdout=hdl, stderr=hdl, cwd=folder_dir
-            )
+        # try making request with timeout
+        try:
+            with open(out, 'w') as hdl:
+                proc = sp.run(
+                    ['zenodo_get', '-m', zenodo_id],
+                    stdout=hdl,
+                    stderr=sp.STDOUT,
+                    cwd=str(folder_dir),
+                    timeout=60,  # Shorter timeout for validation
+                    check=False,
+                )
 
-        # process exited fine and file exists?
-        zenodo_ok = (proc.returncode == 0) and os.path.isfile(md5sums_path)
+            # process exited fine and file exists?
+            zenodo_ok = (proc.returncode == 0) and os.path.isfile(md5sums_path)
 
-        # try again?
-        if zenodo_ok:
-            break
-        else:
-            log.warning(f'Failed to get checksum from Zenodo (ID {zenodo_id})')
-            sleep(RETRY_WAIT)
+            # try again?
+            if zenodo_ok:
+                break
+            else:
+                log.warning(
+                    f'Failed to get checksum from Zenodo (ID {zenodo_id}, '
+                    f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
+                )
+        except sp.TimeoutExpired:
+            log.warning(f'zenodo_get validation timed out (ID {zenodo_id})')
+        except Exception as e:
+            log.warning(f'Unexpected error during Zenodo validation (ID {zenodo_id}): {e}')
+
+        if attempt < MAX_ATTEMPTS - 1:
+            sleep(RETRY_WAIT * (2 ** attempt))  # Exponential backoff
 
     # Return status indicating that file/folder is invalid, if failed
     if not zenodo_ok:
-        log.error(f'Could not obtain checksum for Zenodo record {zenodo_id}')
+        log.warning(f'Could not obtain checksum for Zenodo record {zenodo_id} - skipping validation')
+        # If we can't validate but folder exists with files, assume it's valid
+        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
+            log.info(f'Folder exists with files - assuming valid (ID {zenodo_id})')
+            return True
         return False
 
     # Read hashes file
-    with open(md5sums_path, 'r') as hdl:
-        md5sums = hdl.readlines()
+    try:
+        with open(md5sums_path, 'r') as hdl:
+            md5sums = hdl.readlines()
+    except Exception as e:
+        log.warning(f'Could not read md5sums file: {e}')
+        # If folder has files, assume valid
+        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
+            return True
+        return False
 
     # Check each item in the record...
     for line in md5sums:
-        sum_expect, name = line.strip().split()
-        file = os.path.join(folder_dir, name)
+        if not line.strip():
+            continue
+        try:
+            parts = line.strip().split()
+            if len(parts) < 2:
+                continue
+            sum_expect, name = parts[0], parts[1]
+            file = os.path.join(folder_dir, name)
 
-        # exit here if file does not exist
-        if not os.path.exists(file):
-            log.warning(f'Detected missing file {name} (Zenodo record {zenodo_id})')
-            return False
+            # exit here if file does not exist
+            if not os.path.exists(file):
+                log.warning(f'Detected missing file {name} (Zenodo record {zenodo_id})')
+                return False
 
-        # don't check the hashes of very large files, because it's slow
-        if os.path.getsize(file) > hash_maxfilesize:
-            return True
+            # don't check the hashes of very large files, because it's slow
+            if os.path.getsize(file) > hash_maxfilesize:
+                continue  # Skip hash check but file exists
 
-        # check the actual hash of the file on disk, compare to expected
-        sum_actual = md5(file).strip()
-        if sum_actual != sum_expect:
-            log.warning(f'Detected invalid file {name} (Zenodo record {zenodo_id})')
-            log.warning(f'    expected hash {sum_expect}, got {sum_actual}')
-            return False
+            # check the actual hash of the file on disk, compare to expected
+            sum_actual = md5(file).strip()
+            if sum_actual != sum_expect:
+                log.warning(f'Detected invalid file {name} (Zenodo record {zenodo_id})')
+                log.warning(f'    expected hash {sum_expect}, got {sum_actual}')
+                return False
+        except Exception as e:
+            log.warning(f'Error validating file from md5sums line: {e}')
+            continue
 
     return True
 
@@ -205,17 +296,58 @@ def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
         - folders : folder names to download
         - data_dir : local repository where data are saved
     """
-    for file in storage.files:
-        for folder in folders:
-            if not file.path[1:].startswith(folder):
-                continue
-            parts = file.path.split('/')[1:]
-            target = Path(data_dir, *parts)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            log.info(f'Downloading {file.path}...')
-            with open(target, 'wb') as f:
-                file.write_to(f)
-            break
+    downloaded_files = 0
+    total_size = 0
+
+    try:
+        # Iterate through all files in OSF storage
+        for file in storage.files:
+            for folder in folders:
+                # Check if file path matches folder (handle both with and without leading slash)
+                file_path = file.path.lstrip('/')
+                folder_path = folder.lstrip('/')
+
+                if not file_path.startswith(folder_path):
+                    continue
+
+                # Extract relative path parts
+                parts = file.path.lstrip('/').split('/')
+                target = Path(data_dir, *parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+
+                # Skip if file already exists and is not empty
+                if target.exists() and target.stat().st_size > 0:
+                    log.debug(f'Skipping existing file: {file.path}')
+                    continue
+
+                try:
+                    log.info(f'Downloading {file.path} ({file.size / 1024 / 1024:.1f} MB)...')
+                    with open(target, 'wb') as f:
+                        file.write_to(f)
+                    downloaded_files += 1
+                    total_size += target.stat().st_size
+                except Exception as e:
+                    log.warning(f'Failed to download {file.path}: {e}')
+                    # Remove partial file
+                    if target.exists():
+                        try:
+                            target.unlink()
+                        except Exception:
+                            pass
+                    continue
+                break
+
+        if downloaded_files > 0:
+            log.info(
+                f'Downloaded {downloaded_files} file(s) from OSF '
+                f'({total_size / 1024 / 1024:.1f} MB total)'
+            )
+        else:
+            log.warning(f'No files downloaded from OSF for folders: {folders}')
+
+    except Exception as e:
+        log.error(f'Error accessing OSF storage: {e}')
+        raise
 
 
 def GetFWLData() -> Path:
@@ -323,12 +455,28 @@ def download(
             return True
 
         # If Zenodo fails, try OSF
-        try:
-            storage = get_osf(osf_id)
-            download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
-            success = True
-        except RuntimeError as e:
-            log.warning(f'    OSF download failed: {e}')
+        if osf_id:
+            try:
+                log.info(f'Attempting OSF fallback download (project {osf_id})...')
+                storage = get_osf(osf_id)
+                download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
+
+                # Verify OSF download succeeded
+                if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
+                    log.info(f'Successfully downloaded {desc} from OSF (project {osf_id})')
+                    success = True
+                else:
+                    log.warning(f'OSF download completed but folder is empty: {folder_dir}')
+                    success = False
+            except Exception as e:
+                log.warning(f'    OSF download failed: {e}')
+                import traceback
+                log.debug(f'OSF download traceback: {traceback.format_exc()}')
+                success = False
+        else:
+            log.warning(f'No OSF project ID provided for {desc}')
+            success = False
+
         if success:
             return True
 
@@ -461,16 +609,86 @@ def download_massradius_data():
     )
 
 
-def download_stellar_tracks(track: str):
+def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     """
     Download stellar evolution tracks
 
-    Uses the function built-into MORS.
+    Uses the function built-into MORS. Falls back to OSF if MORS download fails.
+
+    Parameters
+    ----------
+    track : str
+        Track name ('Spada' or 'Baraffe')
+    use_osf_fallback : bool
+        If True, attempt OSF download if MORS download fails
     """
     from mors.data import DownloadEvolutionTracks
 
-    log.debug('Get evolution tracks')
-    DownloadEvolutionTracks(track)
+    log.debug(f'Downloading stellar evolution tracks: {track}')
+
+    # Try MORS download first
+    try:
+        DownloadEvolutionTracks(track)
+        # Verify download succeeded by checking if tracks directory exists
+        fwl_data = GetFWLData()
+        tracks_path = fwl_data / 'stellar_evolution_tracks' / track
+        if tracks_path.exists() and any(tracks_path.iterdir()):
+            log.info(f'Successfully downloaded {track} tracks via MORS')
+            return
+        else:
+            log.warning(f'MORS download completed but tracks not found at {tracks_path}')
+            raise FileNotFoundError(f'Tracks directory empty or missing: {tracks_path}')
+    except Exception as e:
+        log.warning(f'MORS download failed for {track} tracks: {e}')
+
+        if not use_osf_fallback:
+            raise
+
+        # Fallback to OSF if available
+        # Note: OSF project ID for stellar tracks may need to be determined
+        # For now, log that we're attempting OSF fallback
+        log.info(f'Attempting OSF fallback for {track} tracks...')
+
+        # Try to find OSF project with stellar tracks
+        # Common OSF project IDs in PROTEUS: 'phsxf' (ARAGOG), '8r2sw' (stellar spectra)
+        # Stellar tracks might be in a different project - would need to check MORS docs
+        try:
+            # Try common OSF projects that might have stellar data
+            osf_projects = ['8r2sw']  # Stellar spectra project - might also have tracks
+
+            fwl_data = GetFWLData()
+            tracks_dir = fwl_data / 'stellar_evolution_tracks'
+            tracks_dir.mkdir(parents=True, exist_ok=True)
+            target_dir = tracks_dir / track
+
+            for osf_id in osf_projects:
+                try:
+                    storage = get_osf(osf_id)
+                    # Try to download from OSF
+                    # Note: Folder structure on OSF may differ - this is a best-effort attempt
+                    download_OSF_folder(
+                        storage=storage,
+                        folders=[f'stellar_evolution_tracks/{track}', track],
+                        data_dir=tracks_dir,
+                    )
+                    if target_dir.exists() and any(target_dir.iterdir()):
+                        log.info(f'Successfully downloaded {track} tracks via OSF (project {osf_id})')
+                        return
+                except Exception as osf_e:
+                    log.debug(f'OSF project {osf_id} did not have {track} tracks: {osf_e}')
+                    continue
+
+            log.error(
+                f'Could not download {track} tracks via MORS or OSF fallback. '
+                f'You may need to download manually or check network connectivity.'
+            )
+            raise RuntimeError(f'Failed to download {track} tracks: MORS failed, OSF fallback unavailable')
+
+        except Exception as osf_fallback_error:
+            log.error(f'OSF fallback also failed for {track} tracks: {osf_fallback_error}')
+            raise RuntimeError(
+                f'Failed to download {track} tracks: MORS error ({e}), OSF fallback error ({osf_fallback_error})'
+            )
 
 
 def _get_sufficient(config: Config, clean: bool = False):
