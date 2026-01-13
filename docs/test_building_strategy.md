@@ -20,7 +20,7 @@
 |----------|---------|--------|--------|-----|
 | Unit tests | 442 | 470+ | ✅ **94%** | On track |
 | Smoke tests (active) | 7 | 5-7 | ✅ **100%** | **Target exceeded** |
-| Integration tests | 4 | 23 | ⏸️ **17%** | **-19 tests** |
+| Integration tests | 6 | 23 | ⏸️ **26%** | **-17 tests** |
 | Coverage (fast gate) | 31.24% | 30% | ✅ **104%** | Exceeded |
 
 ### Active Smoke Tests
@@ -64,7 +64,10 @@ The VULCAN chemistry module tests were failing due to:
   - `test_integration_dummy_extended_run`: 10-timestep extended run validation
   - `test_integration_calliope_multi_timestep`: 5-timestep CALLIOPE outgassing coupling
   - `test_integration_calliope_extended_run`: 10-timestep CALLIOPE extended run
+  - `test_integration_std_config_multi_timestep`: 5-timestep standard config (all real modules)
+  - `test_integration_std_config_extended_run`: 10-timestep extended standard config (@pytest.mark.slow)
 - **Updated CI workflow** to include new integration tests in nightly runs
+- **Standard configuration test** implemented using `input/all_options.toml` (Priority 2.1)
 - **Foundation established** for Phase 2: Integration Test Foundation
 
 ---
@@ -316,10 +319,13 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
      - Must be tested during nightly Science validation
      - Uses: MORS (star), LovePy (orbit), ARAGOG (interior), AGNI (atmosphere), CALLIOPE (outgas), ZEPHYRUS (escape)
 
-2. **Week 2**: Implement core test logic
-   - Initialize all modules
-   - Run coupling loop for N timesteps
-   - Collect state variables at each timestep
+2. **Week 2**: Implement core test logic ✅ **COMPLETED** (2026-01-13)
+   - ✅ Initialize all modules (with graceful skip if modules unavailable)
+   - ✅ Run coupling loop for N timesteps
+   - ✅ Collect state variables at each timestep
+   - ✅ Created `test_integration_std_config.py` with 2 tests:
+     - `test_integration_std_config_multi_timestep`: 5-timestep validation
+     - `test_integration_std_config_extended_run`: 10-timestep extended run (@pytest.mark.slow)
 
 3. **Week 3**: Add validation checks
    - Energy balance validation
@@ -352,10 +358,10 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
 **Impact**: Enables systematic integration test development
 
 **Phase 2 Success Criteria**:
-- ✅ Standard configuration integration test implemented
-- ✅ Test runs stably for 5-10 timesteps
-- ✅ Conservation law validations pass
-- ✅ Integrated into nightly CI
+- ✅ Standard configuration integration test implemented (`test_integration_std_config.py`)
+- ⏸️ Test runs stably for 5-10 timesteps (requires all real modules - will run in nightly CI)
+- ⏸️ Conservation law validations pass (requires all real modules - will run in nightly CI)
+- ✅ Integrated into nightly CI (test created, will run in `ci-nightly-science.yml`)
 
 ### Phase 3: Coverage Expansion (Ongoing)
 

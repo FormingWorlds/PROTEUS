@@ -58,12 +58,14 @@ jobs:
           cd /opt/proteus
           pip install -e ".[develop]" --no-deps
 
-      - name: Run dummy integration test
+      - name: Run quick integration tests
         run: |
           cd /opt/proteus
-          # Quick validation: run test_integration_dummy (4 tests)
-          # Validates basic multi-module coupling without long simulations
+          # Quick validation: run fast integration tests
+          # - test_integration_dummy: Basic multi-module coupling (4 tests)
+          # - test_integration_multi_timestep: Multi-timestep validation with dummy modules (2 tests)
           pytest tests/integration/test_integration_dummy.py \
+            tests/integration/test_integration_multi_timestep.py \
             -v --tb=short
 
   science-validation:
