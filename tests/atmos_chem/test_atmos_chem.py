@@ -167,28 +167,28 @@ def test_run_chemistry_vulcan():
     # Patch read_result where it's used (in wrapper namespace after import)
     with patch('proteus.atmos_chem.vulcan.run_vulcan_offline') as mock_vulcan:
         with patch('proteus.atmos_chem.wrapper.read_result') as mock_read:
-                # Setup mock result (typical chemistry output)
-                mock_result = pd.DataFrame(
-                    {
-                        'species': ['H2O', 'CO2', 'N2', 'O2'],
-                        'vmr': [0.8, 0.15, 0.03, 0.02],
-                        'abundance': [1e20, 1e19, 5e17, 3e17],
-                    }
-                )
-                mock_read.return_value = mock_result
+            # Setup mock result (typical chemistry output)
+            mock_result = pd.DataFrame(
+                {
+                    'species': ['H2O', 'CO2', 'N2', 'O2'],
+                    'vmr': [0.8, 0.15, 0.03, 0.02],
+                    'abundance': [1e20, 1e19, 5e17, 3e17],
+                }
+            )
+            mock_read.return_value = mock_result
 
-                result = run_chemistry(dirs, config, hf_row)
+            result = run_chemistry(dirs, config, hf_row)
 
-                # Verify VULCAN was called
-                mock_vulcan.assert_called_once_with(dirs, config, hf_row)
+            # Verify VULCAN was called
+            mock_vulcan.assert_called_once_with(dirs, config, hf_row)
 
-                # Verify result reading
-                mock_read.assert_called_once_with(dirs['output'], 'vulcan')
+            # Verify result reading
+            mock_read.assert_called_once_with(dirs['output'], 'vulcan')
 
-                # Verify DataFrame is returned
-                assert isinstance(result, pd.DataFrame)
-                assert len(result) == 4  # 4 species
-                assert list(result['species']) == ['H2O', 'CO2', 'N2', 'O2']
+            # Verify DataFrame is returned
+            assert isinstance(result, pd.DataFrame)
+            assert len(result) == 4  # 4 species
+            assert list(result['species']) == ['H2O', 'CO2', 'N2', 'O2']
 
 
 @pytest.mark.unit
@@ -237,15 +237,15 @@ def test_run_chemistry_returns_dataframe():
     # Patch read_result where it's used (in wrapper namespace after import)
     with patch('proteus.atmos_chem.vulcan.run_vulcan_offline'):
         with patch('proteus.atmos_chem.wrapper.read_result') as mock_read:
-                mock_read.return_value = chemistry_result
+            mock_read.return_value = chemistry_result
 
-                result = run_chemistry(dirs, config, hf_row)
+            result = run_chemistry(dirs, config, hf_row)
 
-                # Verify DataFrame structure
-                assert isinstance(result, pd.DataFrame)
-                assert 'species' in result.columns
-                assert 'vmr' in result.columns
-                assert result.shape[0] == 6  # 6 species
+            # Verify DataFrame structure
+            assert isinstance(result, pd.DataFrame)
+            assert 'species' in result.columns
+            assert 'vmr' in result.columns
+            assert result.shape[0] == 6  # 6 species
 
 
 @pytest.mark.unit
@@ -276,24 +276,24 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
     # Patch read_result where it's used (in wrapper namespace after import)
     with patch('proteus.atmos_chem.vulcan.run_vulcan_offline') as mock_v:
         with patch('proteus.atmos_chem.wrapper.read_result') as mock_r:
-                # Venus-like chemistry result
-                venus_chemistry = pd.DataFrame(
-                    {
-                        'species': ['CO2', 'H2SO4_aerosol', 'HCl', 'N2', 'Ar'],
-                        'vmr': [0.965, 0.03, 0.004, 0.0009, 0.0001],
-                    }
-                )
-                mock_r.return_value = venus_chemistry
+            # Venus-like chemistry result
+            venus_chemistry = pd.DataFrame(
+                {
+                    'species': ['CO2', 'H2SO4_aerosol', 'HCl', 'N2', 'Ar'],
+                    'vmr': [0.965, 0.03, 0.004, 0.0009, 0.0001],
+                }
+            )
+            mock_r.return_value = venus_chemistry
 
-                result = run_chemistry(dirs, config, hf_row)
+            result = run_chemistry(dirs, config, hf_row)
 
-                # Verify function was called with correct arguments
-                assert mock_v.called
-                assert mock_r.called
+            # Verify function was called with correct arguments
+            assert mock_v.called
+            assert mock_r.called
 
-                # Verify result
-                assert result is not None
-                assert len(result) == 5
+            # Verify result
+            assert result is not None
+            assert len(result) == 5
 
 
 @pytest.mark.unit
@@ -316,8 +316,8 @@ def test_run_chemistry_preserves_config():
     # Patch read_result where it's used (in wrapper namespace after import)
     with patch('proteus.atmos_chem.vulcan.run_vulcan_offline') as mock_v:
         with patch('proteus.atmos_chem.wrapper.read_result'):
-                run_chemistry(dirs, config, hf_row)
+            run_chemistry(dirs, config, hf_row)
 
-                # Verify config was passed exactly
-                call_args = mock_v.call_args
-                assert call_args[0][1] is config  # Second positional argument is config
+            # Verify config was passed exactly
+            call_args = mock_v.call_args
+            assert call_args[0][1] is config  # Second positional argument is config
