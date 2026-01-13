@@ -133,7 +133,7 @@ version = "2.0"
     s0_factor = 0.375           # instellation scale factor [dimensionless]
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "lovepy"          # module used to calculate tidal heating
+    module  = "none"          # module used to calculate tidal heating
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -272,7 +272,7 @@ version = "2.0"
     module = "aragog"       # Which interior module to use
 
     [interior.spider]
-        num_levels               = 100       # Number of SPIDER grid levels
+        num_levels               = 60       # Number of SPIDER grid levels
         mixing_length            = 2         # Mixing length parameterization
         tolerance                = 1.0e-8    # absolute solver tolerance
         tolerance_rel            = 1.0e-8    # relative solver tolerance
