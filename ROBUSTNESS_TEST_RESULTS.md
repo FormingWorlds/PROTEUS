@@ -1,7 +1,7 @@
 # Data Download Robustness Test Results
 
-**Date**: 2026-01-13  
-**Branch**: `fix/data-download-robustness`  
+**Date**: 2026-01-13
+**Branch**: `fix/data-download-robustness`
 **Test Suite**: `test_data_robustness.py`
 
 ## Summary
