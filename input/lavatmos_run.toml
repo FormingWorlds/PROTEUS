@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "small_planet_cloudy"
+        path        = "run_lavatmos_FeO"
         logging     = "INFO"
         plot_mod    = 3      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -220,7 +220,7 @@ version = "2.0"
         max_steps       = 70            # max steps allowed by solver during each iteration
         perturb_all     = true          # updated entire jacobian each step?
         mlt_criterion   = "s"           # MLT convection stability criterion; (l)edoux or (s)chwarzschild
-        fastchem_floor        = 150.0   # Minimum temperature allowed to be sent to FC
+        fastchem_floor        = 500.0   # Minimum temperature allowed to be sent to FC
         fastchem_maxiter_chem = 60000   # Maximum FC iterations (chemistry)
         fastchem_maxiter_solv = 20000   # Maximum FC iterations (internal solver)
         fastchem_xtol_chem    = 1e-4    # FC solver tolerance (chemistry)
@@ -319,7 +319,11 @@ version = "2.0"
 [outgas]
     fO2_shift_IW    = 4         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
+    silicates = true
+    fastchempath ='/data3/leoni/LavAtmos/FastChem/fastchem3/output/'
+
     module = "calliope"         # Which outgassing module to use
+
 
     [outgas.calliope]
         include_H2O  = true     # Include H2O compound

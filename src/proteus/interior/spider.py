@@ -151,6 +151,7 @@ def get_all_output_times(odir:str):
 
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
+    print(file_l)
     if not file_l:
         raise Exception('Output data directory contains no files')
 

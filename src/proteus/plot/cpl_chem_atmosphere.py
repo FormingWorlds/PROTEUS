@@ -24,7 +24,7 @@ GASES_STANDARD = ("C2H4", "CO", "H2O", "H2SO4", "N2", "O2", "O3", "OH", "H", "SO
                   "CO2", "H2", "H2S", "HCN", "NH2", "NH3", "OCS", "S2", "S6", "S8", "SO2",
                   "N2O", "NO", "NO2", "HNO3", "PH3", "C2H2", "NO3", "N2O5", "HONO",
                   "HO2NO2", "H2O2", "C2H6", "CH3", "H2CO", "HO2", "C",
-                  "N", "O", "S", "SO", "CS2",)
+                  "N", "O", "S", "SO", "CS2","SiO","SiO2","TiO","FeO","MgO","Na")
 
 def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
                             plot_gases:list=None, plot_offchem:bool=True, xmin:float=1e-14):

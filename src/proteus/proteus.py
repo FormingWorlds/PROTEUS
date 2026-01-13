@@ -125,8 +125,8 @@ class Proteus:
         from proteus.outgas.wrapper import (
             calc_target_elemental_inventories,
             check_desiccation,
+            lavatmos_calliope_loop,
             run_desiccated,
-            run_outgassing,
         )
 
         #   stellar spectrum and evolution
@@ -384,7 +384,7 @@ class Proteus:
                 self.sinst_prev = self.hf_row["Time"]
 
                 update_stellar_quantities(self.hf_row, self.config, stellar_track=self.stellar_track)
-            
+
             if (abs(self.hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (
                 self.loops["total"] == 0):
 
@@ -445,7 +445,8 @@ class Proteus:
 
             # solve for atmosphere composition
             else:
-                run_outgassing(self.directories, self.config, self.hf_row)
+                #run_outgassing(self.directories, self.config, self.hf_row)
+                lavatmos_calliope_loop(self.directories, self.config, self.hf_row)
 
             # Add atmosphere mass to interior mass, to get total planet mass
             self.hf_row["M_planet"] = self.hf_row["M_int"] + self.hf_row["M_atm"]

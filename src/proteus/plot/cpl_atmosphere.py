@@ -38,6 +38,7 @@ def plot_atmosphere( output_dir:str, times:list, profiles:list, plot_format="pdf
     pmax = 1.0
 
     for i, t in enumerate( times ):
+        print('time at which temperature plot is created:',t)
         prof = profiles[i]
         label = latex_float(t)+" yr"
         color = sm.to_rgba(t)
@@ -58,13 +59,17 @@ def plot_atmosphere( output_dir:str, times:list, profiles:list, plot_format="pdf
     #####  T-Z
     ax0.set_ylabel(r"Height [km]")
     ax0.set_ylim(bottom=0.0, top=zmax)
+    ax0.set_xlim([200,4000])
 
     #####  T-P
     ax1.set_xlabel("Temperature [K]")
     ax1.set_ylabel("Pressure [bar]")
     ax1.invert_yaxis()
     ax1.set_yscale("log")
-    ax1.set_ylim(bottom=pmax, top=np.amin(parr))
+    #ax1.set_ylim(bottom=pmax, top=np.amin(parr))
+    ax1.set_ylim(bottom=100, top=10**-8)
+
+    ax1.set_xlim([200,4000])
     ax1.yaxis.set_major_locator(LogLocator(numticks=1000))
 
     # Legend

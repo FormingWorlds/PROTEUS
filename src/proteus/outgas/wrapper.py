@@ -8,6 +8,7 @@ import numpy as np
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
+from proteus.outgas.lavatmos import run_lavatmos
 from proteus.utils.constants import element_list, gas_list
 
 if TYPE_CHECKING:
@@ -94,6 +95,8 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
     log.info("    total      = %-9.2f bar"%hf_row["P_surf"])
     log.info("    mmw        = %-9.5f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))
 
+
+
 def run_desiccated(config:Config, hf_row:dict):
     '''
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
@@ -119,3 +122,32 @@ def run_desiccated(config:Config, hf_row:dict):
     for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
+
+
+def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
+
+    '''function which runs lavatmos and calliope in a loop until they have converged.
+    This allows for a consistentt computation of melt outgassing and dissolution
+    Parameters
+    ----------
+        dirs : dict
+            Dictionary of directory paths
+        config : Config
+            Configuration object
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+    '''
+
+    run_outgassing(dirs, config, hf_row)
+    print(config.outgas.silicates)
+    if config.outgas.silicates:
+        print(config.outgas.fastchempath)
+        xerr=hf_row['H2O_vmr']*0.01
+        log.info("error threshold on water abundance: %.6f"%xerr)
+        err=1.0
+        while abs(err)>xerr:
+            old_row=hf_row
+            run_lavatmos(config, hf_row)
+            run_outgassing(dirs, config, hf_row)
+            err=old_row['H2O_vmr']-hf_row['H2O_vmr']
+            log.info("change in water abundance between the last iterations: %.6f"%err)

@@ -93,3 +93,6 @@ class Outgas:
 
     calliope: Calliope      = field(factory=Calliope)
     atmodeller: Atmodeller  = field(factory=Atmodeller)
+
+    silicates: bool = field(default=True)
+    fastchempath: str = field(default="/data3/leoni/LavAtmos/FastChem/fastchem3/output/")
