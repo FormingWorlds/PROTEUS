@@ -42,6 +42,7 @@ from tests.integration.conftest import (
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     """Test standard PROTEUS configuration with all real modules (5 timesteps).
 
@@ -64,10 +65,10 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
 
     Runtime: ~3-5 minutes (5 timesteps, all real modules, low resolution)
 
-    Note: This test requires all real modules to be available (MORS, LovePy,
-    ARAGOG, AGNI, CALLIOPE, ZEPHYRUS). It may skip locally if modules are not
-    available, but MUST run in nightly Science validation CI where all modules
-    are available.
+    Note: Marked as @pytest.mark.slow - runs in nightly Science validation CI only.
+    This test requires all real modules to be available (MORS, LovePy, ARAGOG, AGNI,
+    CALLIOPE, ZEPHYRUS) and ARAGOG lookup data. It may skip locally if modules/data
+    are not available, but MUST run in nightly Science validation CI.
     """
     # Try to run PROTEUS with standard configuration (all_options.toml)
     # Use low resolution and short time limits for CI
