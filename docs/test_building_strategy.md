@@ -20,7 +20,7 @@
 |----------|---------|--------|--------|-----|
 | Unit tests | 442 | 470+ | ✅ **94%** | On track |
 | Smoke tests (active) | 7 | 5-7 | ✅ **100%** | **Target exceeded** |
-| Integration tests | 2 | 23 | ⏸️ **9%** | **-21 tests** |
+| Integration tests | 4 | 23 | ⏸️ **17%** | **-19 tests** |
 | Coverage (fast gate) | 31.24% | 30% | ✅ **104%** | Exceeded |
 
 ### Active Smoke Tests
@@ -59,9 +59,12 @@ The VULCAN chemistry module tests were failing due to:
   - `validate_energy_conservation`: Energy balance validation helper
   - `validate_mass_conservation`: Mass conservation validation helper
   - `validate_stability`: Stability checks (no runaway temperatures/pressures)
-- **Created first multi-timestep integration tests**:
+- **Created multi-timestep integration tests**:
   - `test_integration_dummy_multi_timestep`: 5-timestep validation with dummy modules
   - `test_integration_dummy_extended_run`: 10-timestep extended run validation
+  - `test_integration_calliope_multi_timestep`: 5-timestep CALLIOPE outgassing coupling
+  - `test_integration_calliope_extended_run`: 10-timestep CALLIOPE extended run
+- **Updated CI workflow** to include new integration tests in nightly runs
 - **Foundation established** for Phase 2: Integration Test Foundation
 
 ---
@@ -286,12 +289,16 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
 
 **Target**: `tests/integration/test_std_config.py`
 
+**Configuration**: `input/all_options.toml` (comprehensive PROTEUS configuration)
+
 **Scope**: Full PROTEUS "standard candle" configuration
+- **Star**: MORS (stellar evolution)
+- **Orbit**: LovePy (tidal heating)
 - **Interior**: ARAGOG (thermal evolution)
 - **Atmosphere**: AGNI (radiative-convective equilibrium)
 - **Outgassing**: CALLIOPE (volatile supply)
 - **Escape**: ZEPHYRUS (mass loss)
-- **Star**: MORS (stellar evolution)
+- **Chemistry**: VULCAN (atmospheric chemistry, optional)
 
 **Requirements**:
 - Run for multiple timesteps (5-10 timesteps)
@@ -304,7 +311,10 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
 1. **Week 1**: Create test structure and minimal config ✅ **COMPLETED** (2026-01-11)
    - ✅ Set up test fixtures for multi-timestep runs (`proteus_multi_timestep_run`)
    - ✅ Add validation helpers (energy/mass conservation, stability)
-   - ⏸️ Define standard configuration TOML (pending real modules)
+   - ✅ **Standard configuration TOML identified**: `input/all_options.toml`
+     - This is the comprehensive PROTEUS configuration with all real modules
+     - Must be tested during nightly Science validation
+     - Uses: MORS (star), LovePy (orbit), ARAGOG (interior), AGNI (atmosphere), CALLIOPE (outgas), ZEPHYRUS (escape)
 
 2. **Week 2**: Implement core test logic
    - Initialize all modules
@@ -329,7 +339,9 @@ def test_smoke_MODULE1_MODULE2_coupling(tmp_path):
 **2.2.1 Test Fixtures** ✅ **COMPLETED**
 - ✅ Created reusable fixtures for multi-timestep runs (`proteus_multi_timestep_run`)
 - ✅ Added helpers for conservation law validation (`validate_energy_conservation`, `validate_mass_conservation`, `validate_stability`)
-- ✅ Created simple integration test template (`test_integration_multi_timestep.py`)
+- ✅ Created integration test templates:
+  - `test_integration_multi_timestep.py`: Dummy module multi-timestep tests (2 tests)
+  - `test_integration_calliope_multi_timestep.py`: CALLIOPE outgassing multi-timestep tests (2 tests)
 
 **2.2.2 CI Integration** ⏸️ **PENDING**
 - ⏸️ Add integration test job to `ci-nightly-science.yml`
