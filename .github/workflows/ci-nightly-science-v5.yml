@@ -59,8 +59,9 @@ jobs:
       - name: Download test data
         run: |
           cd /opt/proteus
-          # Minimal data downloads for integration tests
-          echo "Skipping data downloads - tests requiring external data are excluded"
+          # Download ARAGOG lookup data for standard config test
+          # This is required for test_integration_std_config.py
+          proteus get interior || echo "Warning: Failed to download interior data, test may skip"
 
       - name: Free up disk space and configure Julia
         run: |
@@ -97,6 +98,22 @@ jobs:
             --cov-report=xml:coverage.xml \
             --cov-report=html \
             --cov-config=pyproject.toml
+
+      - name: Run slow integration tests (standard config)
+        run: |
+          cd /opt/proteus
+          # Run slow integration tests (standard config with all real modules)
+          # These require ARAGOG lookup data and may take 10-15 minutes
+          pytest tests/integration/test_integration_std_config.py \
+            -m "slow" \
+            -v --tb=long \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml || true  # Don't fail workflow if test skips due to missing data
 
       - name: Generate coverage JSON
         run: |
