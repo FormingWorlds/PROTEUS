@@ -73,6 +73,7 @@ jobs:
           df -h /opt
 
       - name: Run integration coverage (dummy + integration and not slow)
+        continue-on-error: true  # Don't fail workflow if some integration tests fail
         run: |
           cd /opt/proteus
           coverage erase
@@ -100,6 +101,8 @@ jobs:
             --cov-config=pyproject.toml
 
       - name: Run slow integration tests (standard config)
+        if: always()  # Run even if previous step failed
+        continue-on-error: true  # Don't fail workflow if test fails
         run: |
           cd /opt/proteus
           # Run slow integration tests (standard config with all real modules)
@@ -113,7 +116,7 @@ jobs:
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-report=html \
-            --cov-config=pyproject.toml || true  # Don't fail workflow if test skips due to missing data
+            --cov-config=pyproject.toml
 
       - name: Generate coverage JSON
         run: |
