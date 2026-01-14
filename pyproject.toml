@@ -68,6 +68,7 @@ dependencies = [
     "gpytorch",
     "toml",
     "zenodo-get",
+    "zenodo-client",
 ]
 
 [project.urls]

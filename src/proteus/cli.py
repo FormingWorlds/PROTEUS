@@ -139,7 +139,11 @@ cli.add_command(start)
 @click.group()
 def get():
     """Get data and modules"""
-    pass
+    setup_logger(
+        logpath="/tmp/log.txt",
+        logterm=True,
+        level="INFO",
+    )
 
 
 @click.command()
