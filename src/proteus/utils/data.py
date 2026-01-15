@@ -1700,22 +1700,22 @@ def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
     except (zipfile.BadZipFile, FileNotFoundError) as e:
         log.error(f'Downloaded PHOENIX ZIP is corrupted: {zip_path}')
         log.error(str(e))
-        safe_rm(zip_path)
+        safe_rm(str(zip_path))
         # Clean up partially extracted files to prevent false positive on next call
         if folder_dir.exists():
-            safe_rm(folder_dir)
+            safe_rm(folder_dir.as_posix())
         return False
     except Exception as e:
         # Catch all other extraction errors (disk full, permission denied, etc.)
         log.error(f'Failed to extract PHOENIX ZIP {zip_path}: {e}')
         log.error(str(e))
-        safe_rm(zip_path)
+        safe_rm(str(zip_path))
         # Clean up partially extracted files to prevent false positive on next call
         if folder_dir.exists():
-            safe_rm(folder_dir)
+            safe_rm(folder_dir.as_posix())
         return False
     else:
-        safe_rm(zip_path)
+        safe_rm(str(zip_path))
         log.info(f'PHOENIX spectra unpacked to {folder_dir}')
         return True
 
