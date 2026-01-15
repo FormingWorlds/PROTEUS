@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
+from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller, calc_target_masses_atmodeller
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, gas_list
 
@@ -22,6 +23,8 @@ def calc_target_elemental_inventories(dirs:dict, config:Config, hf_row:dict):
 
     if config.outgas.module == 'calliope':
         calc_target_masses(dirs, config, hf_row)
+    elif config.outgas.module == 'atmodeller':
+        calc_target_masses_atmodeller(dirs, config, hf_row)
 
 def check_desiccation(config:Config, hf_row:dict) -> bool:
     """
@@ -68,9 +71,13 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
 
     log.info("Solving outgassing...")
 
+
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
+
+    elif config.outgas.module == 'atmodeller':
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
 
     # calculate total atmosphere mass (from sum of volatile masses)
     hf_row["M_atm"] = 0.0

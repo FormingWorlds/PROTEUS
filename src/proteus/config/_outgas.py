@@ -87,7 +87,7 @@ class Outgas:
     """
     fO2_shift_IW: float
 
-    module: str = field(validator=validators.in_(('calliope',)))
+    module: str = field(validator=validators.in_(('calliope','atmodeller'))) # J'ai ajoute a la liste 'atmodeller'
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
 
