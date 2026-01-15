@@ -1580,17 +1580,41 @@ def download_solar_spectrum():
     """
     Download NREL solar spectrum
     """
-    named_zenodo_id = '15721440'
-    data_dir = GetFWLData() / 'stellar_spectra'
-    folder_dir = data_dir / 'solar'
+    source_info = get_data_source_info('Named')
     filename = 'sun.txt'
     log.info(f'Downloading solar spectrum {filename}')
 
-    return get_zenodo_file(
-        zenodo_id=named_zenodo_id,
-        folder_dir=folder_dir,
+    # Use download() function for OSF fallback support
+    data_dir = GetFWLData() / 'stellar_spectra'
+    folder_dir = data_dir / 'solar'
+    source_file = data_dir / 'Named' / filename
+    target_file = folder_dir / filename
+
+    # Check if file already exists at target location
+    if target_file.exists() and target_file.stat().st_size > 0:
+        log.info(f'Solar spectrum {filename} already exists at {target_file}')
+        return True
+
+    # Download using download() function for OSF fallback
+    if not download(
+        folder='Named',
+        target='stellar_spectra',
+        osf_id=(source_info or {}).get('osf_project', '8r2sw'),
+        zenodo_id=(source_info or {}).get('zenodo_id', '15721440'),
+        desc='NREL solar spectrum',
         zenodo_path=filename,
-    )
+    ):
+        return False
+
+    # Move file from Named/ to solar/ directory
+    if source_file.exists() and not target_file.exists():
+        import shutil
+
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source_file), str(target_file))
+        log.info(f'Moved {filename} from Named/ to solar/ directory')
+
+    return target_file.exists() and target_file.stat().st_size > 0
 
 
 def download_all_solar_spectra():
