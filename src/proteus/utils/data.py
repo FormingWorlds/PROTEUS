@@ -1026,8 +1026,8 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'PHOENIX': {'zenodo_id': '17674612', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # Stellar spectra - MUSCLES (OSF project: 8r2sw)
     'MUSCLES': {'zenodo_id': '17802209', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
-    # Stellar spectra - Solar (OSF project: 8r2sw)
-    'Solar': {'zenodo_id': '17981836', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
+    # Stellar spectra - solar (OSF project: 8r2sw)
+    'solar': {'zenodo_id': '17981836', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # Exoplanet data (OSF project: fzwr4)
     'Exoplanets': {'zenodo_id': '15727878', 'osf_id': 'fzwr4', 'osf_project': 'fzwr4'},
     # Mass-radius data (OSF project: xge8t)
@@ -1621,7 +1621,7 @@ def download_all_solar_spectra():
     """
     Download all solar spectra (nrel, VPL past, VPL present, VPL future)
     """
-    source_info = get_data_source_info('Solar')
+    source_info = get_data_source_info('solar')
     return download(
         folder='solar',
         target='stellar_spectra',

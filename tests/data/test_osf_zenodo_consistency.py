@@ -510,7 +510,7 @@ def run_consistency_tests():
     test_cases = []
 
     # Priority categories (stellar data)
-    priority_categories = ['PHOENIX', 'MUSCLES', 'Solar', 'Named']
+    priority_categories = ['PHOENIX', 'MUSCLES', 'solar', 'Named']
     for folder in priority_categories:
         if folder in DATA_SOURCE_MAP:
             info = DATA_SOURCE_MAP[folder]
