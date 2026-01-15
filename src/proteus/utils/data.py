@@ -1701,6 +1701,18 @@ def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
         log.error(f'Downloaded PHOENIX ZIP is corrupted: {zip_path}')
         log.error(str(e))
         safe_rm(zip_path)
+        # Clean up partially extracted files to prevent false positive on next call
+        if folder_dir.exists():
+            safe_rm(folder_dir)
+        return False
+    except Exception as e:
+        # Catch all other extraction errors (disk full, permission denied, etc.)
+        log.error(f'Failed to extract PHOENIX ZIP {zip_path}: {e}')
+        log.error(str(e))
+        safe_rm(zip_path)
+        # Clean up partially extracted files to prevent false positive on next call
+        if folder_dir.exists():
+            safe_rm(folder_dir)
         return False
     else:
         safe_rm(zip_path)
