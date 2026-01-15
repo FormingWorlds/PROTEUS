@@ -13,8 +13,8 @@ on stellar data (PHOENIX, MUSCLES, Solar - used by MORS).
 
 Note: This test requires the PROTEUS environment to be set up with all
 dependencies installed (platformdirs, osfclient, zenodo_client, etc.).
-Run with: python tests/pr591_tests/test_osf_zenodo_consistency.py
-Or with pytest: pytest tests/pr591_tests/test_osf_zenodo_consistency.py -v
+Run with: python tests/data/test_osf_zenodo_consistency.py
+Or with pytest: pytest tests/data/test_osf_zenodo_consistency.py -v
 """
 
 from __future__ import annotations
