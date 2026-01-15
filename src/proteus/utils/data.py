@@ -484,7 +484,7 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
                         with open(out, 'r') as f:
                             error_lines = f.readlines()[-10:]  # Last 10 lines
                             error_msg = ''.join(error_lines).strip()
-                    except Exception as exc:
+                    except Exception:
                         # Best-effort log enrichment failed; keep generic error message.
                         # Log at debug level so this is visible when diagnosing issues.
                         log.debug(
@@ -688,7 +688,7 @@ def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
         except FileNotFoundError as e:
             log.debug(f'zenodo_get not available: {e}')
             break  # Don't retry if command doesn't exist
-        except sp.TimeoutExpired as e:
+        except sp.TimeoutExpired:
             log.warning(
                 f'zenodo_get timed out after {MAX_DLTIME + 30:.1f}s (ID {zenodo_id}, '
                 f'attempt {i + 1}/{MAX_ATTEMPTS})'

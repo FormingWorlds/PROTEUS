@@ -6,11 +6,14 @@ Tests individual download methods, error handling, retry logic, and edge cases.
 Uses mocks to avoid actual network calls in unit tests.
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock, patch
+
 import pytest
 
 # Add src to path
@@ -38,13 +41,13 @@ class TestZenodoCooldown:
 
     def test_cooldown_enforced(self, monkeypatch):
         """Test that cooldown is enforced between requests."""
+        import time
+
         from proteus.utils import data
         from proteus.utils.data import (
-            _zenodo_cooldown,
-            _last_zenodo_request_time,
             ZENODO_COOLDOWN,
+            _zenodo_cooldown,
         )
-        import time
 
         # Reset global state - use the actual module object
         monkeypatch.setattr(data, '_last_zenodo_request_time', 0.0)
@@ -80,8 +83,9 @@ class TestHasZenodoToken:
 
     def test_token_from_config_file(self, tmp_dir, monkeypatch):
         """Test token detection from config file."""
-        from proteus.utils.data import _has_zenodo_token
         import configparser
+
+        from proteus.utils.data import _has_zenodo_token
 
         # Remove env var
         monkeypatch.delenv('ZENODO_API_TOKEN', raising=False)
@@ -102,13 +106,13 @@ class TestHasZenodoToken:
 
     def test_no_token(self, monkeypatch):
         """Test when no token is available."""
-        from proteus.utils.data import _has_zenodo_token
         from pathlib import Path as PathClass
 
-        monkeypatch.delenv('ZENODO_API_TOKEN', raising=False)
-        # Mock config file to not exist - patch Path.home method
-        original_home = PathClass.home
+        from proteus.utils.data import _has_zenodo_token
 
+        monkeypatch.delenv('ZENODO_API_TOKEN', raising=False)
+
+        # Mock config file to not exist - patch Path.home method
         def mock_home():
             return PathClass('/nonexistent')
 
@@ -161,7 +165,7 @@ class TestDownloadZenodoFolder:
         with patch('pathlib.Path.exists', return_value=True):
             with patch('pathlib.Path.is_file', return_value=True):
                 with patch('pathlib.Path.rglob', return_value=[tmp_dir / 'test.txt']):
-                    result = download_zenodo_folder('12345', tmp_dir)
+                    download_zenodo_folder('12345', tmp_dir)
 
         # Should have attempted download
         assert mock_run.called
@@ -171,8 +175,9 @@ class TestDownloadZenodoFolder:
     @patch('proteus.utils.data.sleep')
     def test_timeout_retry(self, mock_sleep, mock_run, mock_client, tmp_dir):
         """Test timeout handling with retries."""
-        from proteus.utils.data import download_zenodo_folder
         import subprocess
+
+        from proteus.utils.data import download_zenodo_folder
 
         # Client fails, zenodo_get times out then succeeds
         mock_client.return_value = False
@@ -185,7 +190,7 @@ class TestDownloadZenodoFolder:
         with patch('pathlib.Path.exists', return_value=True):
             with patch('pathlib.Path.is_file', return_value=True):
                 with patch('pathlib.Path.rglob', return_value=[tmp_dir / 'test.txt']):
-                    result = download_zenodo_folder('12345', tmp_dir)
+                    download_zenodo_folder('12345', tmp_dir)
 
         # Should have retried
         assert mock_sleep.called  # Should have waited between retries
@@ -211,7 +216,7 @@ class TestDownloadOSFFolder:
         mock_get_osf.return_value = mock_project
 
         # download_OSF_folder uses keyword-only arguments
-        result = download_OSF_folder(
+        download_OSF_folder(
             storage=mock_storage, folders=['test_folder'], data_dir=tmp_dir, force=True
         )
 
@@ -222,7 +227,6 @@ class TestDownloadOSFFolder:
     def test_force_parameter(self, mock_get_osf, tmp_dir):
         """Test that force parameter removes existing files."""
         from proteus.utils.data import download_OSF_folder
-        from proteus.utils.data import safe_rm
 
         # Create existing file
         existing_file = tmp_dir / 'test_folder' / 'file.txt'
@@ -293,8 +297,8 @@ class TestValidateZenodoFolder:
     @patch('proteus.utils.data.sp.run')
     def test_validation_failure_hash_mismatch(self, mock_run, tmp_dir):
         """Test validation failure due to hash mismatch."""
+
         from proteus.utils.data import validate_zenodo_folder
-        import os
 
         # Create test file
         test_file = tmp_dir / 'test.txt'
@@ -335,7 +339,7 @@ class TestDownloadFunction:
         mock_validate.return_value = True
 
         with patch('proteus.utils.data.Path.exists', return_value=True):
-            result = download(
+            download(
                 folder='test',
                 target='test_target',
                 zenodo_id='12345',
@@ -349,8 +353,8 @@ class TestDownloadFunction:
     @patch('proteus.utils.data.get_zenodo_file')
     def test_single_file_download(self, mock_get_file, tmp_dir, monkeypatch):
         """Test single file download with zenodo_path."""
+
         from proteus.utils.data import download
-        import os
 
         mock_get_file.return_value = True
 
@@ -367,7 +371,7 @@ class TestDownloadFunction:
         test_file = target_dir / 'test_file.txt'
         test_file.write_text('test content')
 
-        result = download(
+        download(
             folder='test',
             target='test_target',
             zenodo_id='12345',

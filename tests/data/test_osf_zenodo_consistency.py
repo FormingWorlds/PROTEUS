@@ -17,11 +17,13 @@ Run with: python tests/pr591_tests/test_osf_zenodo_consistency.py
 Or with pytest: pytest tests/pr591_tests/test_osf_zenodo_consistency.py -v
 """
 
+from __future__ import annotations
+
+import hashlib
 import json
 import os
 import sys
 import tempfile
-import hashlib
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -30,9 +32,8 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
 # Import using importlib to load data.py directly without package imports
-import sys
 import importlib.util
-from unittest.mock import MagicMock, patch
+import sys
 
 # Set up environment before loading module
 os.environ.setdefault('FWL_DATA', str(Path.home() / '.fwl_data_test'))
@@ -43,7 +44,7 @@ if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
 # Set up minimal package structure to allow imports
-import types
+import types  # noqa: E402
 
 # Create minimal proteus package structure
 if 'proteus' not in sys.modules:
@@ -314,7 +315,7 @@ def _test_category_consistency(
         print(f'    Zenodo ID: {zenodo_id}, OSF ID: {osf_id}')
 
         # Get file lists from both sources
-        print(f'    Getting file lists...')
+        print('    Getting file lists...')
         zenodo_files = get_zenodo_file_list(zenodo_id)
         osf_files = get_osf_file_list(osf_id, folder)
 
@@ -338,7 +339,7 @@ def _test_category_consistency(
         osf_dir = tmpdir / f'{folder}_osf'
 
         # Download from Zenodo
-        print(f'    Downloading from Zenodo...')
+        print('    Downloading from Zenodo...')
         zenodo_success = False
         try:
             zenodo_success = get_zenodo_file(
@@ -364,7 +365,7 @@ def _test_category_consistency(
         print(f'      ✓ Zenodo: {zenodo_file} ({zenodo_size} bytes)')
 
         # Download from OSF
-        print(f'    Downloading from OSF...')
+        print('    Downloading from OSF...')
         osf_success = False
         try:
             get_osf_func = data_module.get_osf
@@ -407,7 +408,7 @@ def _test_category_consistency(
         print(f'      ✓ OSF: {osf_file} ({osf_size} bytes)')
 
         # Compare files
-        print(f'    Comparing files...')
+        print('    Comparing files...')
 
         # 1. Check file sizes match
         if zenodo_size != osf_size:
@@ -433,7 +434,7 @@ def _test_category_consistency(
             return False, (f'File contents differ (MD5): Zenodo={zenodo_hash}, OSF={osf_hash}')
 
         # 5. Verify files are at expected location when using download() function
-        print(f'    Testing download() function...')
+        print('    Testing download() function...')
         download_success = download(
             folder=folder,
             target='test_downloads',
