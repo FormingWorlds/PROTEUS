@@ -100,7 +100,7 @@ docs = [
 proteus = "proteus.cli:cli"
 
 [tool.setuptools]
-package-dir = {"proteus" = "src/proteus" }
+package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.package-data]
