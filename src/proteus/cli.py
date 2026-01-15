@@ -4,11 +4,11 @@ import os
 
 # Prevent workers from using each other's CPUs to avoid
 #     oversubscription and improve performance
-os.environ["OMP_NUM_THREADS"] = "1"  # noqa
-os.environ["MKL_NUM_THREADS"] = "1"  # noqa
-os.environ["OPENBLAS_NUM_THREADS"] = "1"  # noqa
-os.environ["NUMEXPR_NUM_THREADS"] = "1"  # noqa
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # noqa
+os.environ['OMP_NUM_THREADS'] = '1'  # noqa
+os.environ['MKL_NUM_THREADS'] = '1'  # noqa
+os.environ['OPENBLAS_NUM_THREADS'] = '1'  # noqa
+os.environ['NUMEXPR_NUM_THREADS'] = '1'  # noqa
+os.environ['VECLIB_MAXIMUM_THREADS'] = '1'  # noqa
 
 import shutil
 import subprocess
@@ -24,24 +24,20 @@ from proteus.utils.data import download_sufficient_data
 from proteus.utils.logs import setup_logger
 
 config_option = click.option(
-    "-c",
-    "--config",
-    "config_path",
-    type=click.Path(
-        exists=True, dir_okay=False, path_type=Path, resolve_path=True
-    ),
-    help="Path to config file",
+    '-c',
+    '--config',
+    'config_path',
+    type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
+    help='Path to config file',
     required=True,
 )
 
 output_option = click.option(
-    "-o",
-    "--output",
-    "output_path",
-    type=click.Path(
-        exists=True, dir_okay=True, path_type=Path, resolve_path=True
-    ),
-    help="Path to output folder",
+    '-o',
+    '--output',
+    'output_path',
+    type=click.Path(exists=True, dir_okay=True, path_type=Path, resolve_path=True),
+    help='Path to output folder',
     required=True,
 )
 
@@ -63,19 +59,19 @@ def list_plots(ctx, param, value):
 
     from .plot import plot_dispatch
 
-    click.echo(" ".join(plot_dispatch))
+    click.echo(' '.join(plot_dispatch))
     sys.exit()
 
 
 @click.command()
-@click.argument("plots", nargs=-1)
+@click.argument('plots', nargs=-1)
 @config_option
 @click.option(
-    "-l",
-    "--list",
+    '-l',
+    '--list',
     is_flag=True,
     default=False,
-    help="List available plots and exit",
+    help='List available plots and exit',
     is_eager=True,
     expose_value=False,
     callback=list_plots,
@@ -84,18 +80,18 @@ def plot(plots, config_path: Path):
     """(Re-)generate plots from completed run"""
     from .plot import plot_dispatch
 
-    click.echo(f"Config: {config_path}")
+    click.echo(f'Config: {config_path}')
 
     handler = Proteus(config_path=config_path)
 
-    if "all" in plots:
+    if 'all' in plots:
         plots = list(plot_dispatch.keys())
 
     for plot in plots:
         if plot not in plot_dispatch.keys():
-            click.echo(f"Invalid plot: {plot}")
+            click.echo(f'Invalid plot: {plot}')
         else:
-            click.echo(f"Plotting: {plot}")
+            click.echo(f'Plotting: {plot}')
             plot_func = plot_dispatch[plot]
             plot_func(handler=handler)
 
@@ -110,18 +106,18 @@ cli.add_command(plot)
 @click.command()
 @config_option
 @click.option(
-    "-r",
-    "--resume",
+    '-r',
+    '--resume',
     is_flag=True,
     default=False,
-    help="Resume simulation from disk",
+    help='Resume simulation from disk',
 )
 @click.option(
-    "-o",
-    "--offline",
+    '-o',
+    '--offline',
     is_flag=True,
     default=False,
-    help="Run in offline mode; do not connect to the internet",
+    help='Run in offline mode; do not connect to the internet',
 )
 def start(config_path: Path, resume: bool, offline: bool):
     """Start proteus run"""
@@ -140,17 +136,15 @@ cli.add_command(start)
 def get():
     """Get data and modules"""
     setup_logger(
-        logpath="/tmp/log.txt",
+        logpath='/tmp/log.txt',
         logterm=True,
-        level="INFO",
+        level='INFO',
     )
 
 
 @click.command()
-@click.option(
-    "-n", "--name", "name", type=str, help="Name of spectral file group"
-)
-@click.option("-b", "--bands", "bands", type=str, help="Number of bands")
+@click.option('-n', '--name', 'name', type=str, help='Name of spectral file group')
+@click.option('-b', '--bands', 'bands', type=str, help='Number of bands')
 def spectral(**kwargs):
     """Get spectral files
 
@@ -158,7 +152,7 @@ def spectral(**kwargs):
     """
     from .utils.data import download_spectral_file
 
-    download_spectral_file(kwargs["name"], kwargs["bands"])
+    download_spectral_file(kwargs['name'], kwargs['bands'])
 
 
 @click.command()
@@ -166,73 +160,109 @@ def stellar():
     """Get stellar spectra"""
     from .utils.data import download_stellar_spectra, download_stellar_tracks
 
-    for track in ["Spada", "Baraffe"]:
+    for track in ['Spada', 'Baraffe']:
         download_stellar_tracks(track)
     download_stellar_spectra()
 
+
 # muscles and solar star names available online (on zenodo)
 STARS_ONLINE = {
-    "muscles": [ "gj1132", "gj1214", "gj15a", "gj163", "gj176", "gj436", "gj551", "gj581",
-        "gj649", "gj667c", "gj674", "gj676a", "gj699", "gj729", "gj832",
-        "gj832_synth", "gj849", "gj876", "hd40307", "hd85512", "hd97658",
-        "l-980-5", "lhs-2686", "trappist-1", "v-eps-eri", "l-98-59", "hat-p-12",
-        "hat-p-26", "hd-149026", "l-678-39", "lp-791-18", "toi-193", "wasp-127",
-        "wasp-17", "wasp-43", "wasp-77a",],
-    "nrel": ["sun"],}
+    'muscles': [
+        'gj1132',
+        'gj1214',
+        'gj15a',
+        'gj163',
+        'gj176',
+        'gj436',
+        'gj551',
+        'gj581',
+        'gj649',
+        'gj667c',
+        'gj674',
+        'gj676a',
+        'gj699',
+        'gj729',
+        'gj832',
+        'gj832_synth',
+        'gj849',
+        'gj876',
+        'hd40307',
+        'hd85512',
+        'hd97658',
+        'l-980-5',
+        'lhs-2686',
+        'trappist-1',
+        'v-eps-eri',
+        'l-98-59',
+        'hat-p-12',
+        'hat-p-26',
+        'hd-149026',
+        'l-678-39',
+        'lp-791-18',
+        'toi-193',
+        'wasp-127',
+        'wasp-17',
+        'wasp-43',
+        'wasp-77a',
+    ],
+    'nrel': ['sun'],
+}
+
 
 @click.command()
 @click.option(
-    "--star",
-    "star_name",
+    '--star',
+    'star_name',
     required=False,
     type=str,
     default=None,
     help="Star name for MUSCLES spectrum (e.g. 'trappist-1', 'gj876').",
 )
 @click.option(
-    "--all",
-    "download_all",
+    '--all',
+    'download_all',
     is_flag=True,
     default=False,
-    help="Download all available MUSCLES spectra.",
+    help='Download all available MUSCLES spectra.',
 )
 def muscles(star_name: str | None, download_all: bool):
     """Download MUSCLES stellar spectrum(s)."""
     from .utils.data import download_muscles
 
     if download_all:
-        targets = STARS_ONLINE["muscles"]
+        targets = STARS_ONLINE['muscles']
     else:
         if not star_name:
-            raise click.ClickException("Provide --star NAME or use --all.")
+            raise click.ClickException('Provide --star NAME or use --all.')
         targets = [star_name]
 
     ok, failed = 0, []
 
     for s in targets:
-        click.echo(f"Downloading MUSCLES: {s} ...")
+        click.echo(f'Downloading MUSCLES: {s} ...')
         if download_muscles(s):
             ok += 1
         else:
             failed.append(s)
 
-    click.secho(f"Done. OK: {ok}/{len(targets)}", fg="green" if ok else "red")
+    click.secho(f'Done. OK: {ok}/{len(targets)}', fg='green' if ok else 'red')
 
     if failed:
         # Don’t hard-fail if some succeeded
-        click.secho(f"Failed ({len(failed)}): {', '.join(failed)}", fg="yellow")
+        click.secho(f'Failed ({len(failed)}): {", ".join(failed)}', fg='yellow')
         if ok == 0:
-            raise click.ClickException("All MUSCLES downloads failed.")
+            raise click.ClickException('All MUSCLES downloads failed.')
+
 
 @click.command()
-@click.option("--feh", "FeH", required=True, type=float, help="Metallicity [Fe/H].")
-@click.option("--alpha", required=True, type=float, help="Alpha enhancement [alpha/M].")
+@click.option('--feh', 'FeH', required=True, type=float, help='Metallicity [Fe/H].')
+@click.option('--alpha', required=True, type=float, help='Alpha enhancement [alpha/M].')
 @click.option(
-    "--teff",
+    '--teff',
     required=False,
     type=float,
     default=None,
-    help="Optional Teff [K] to choose the correct PHOENIX alpha availability.",
+    help='Optional Teff [K] to choose the correct PHOENIX alpha availability.',
 )
 def phoenix(FeH: float, alpha: float, teff: float | None):
     """Download PHOENIX grid ZIP for the nearest allowed (FeH, alpha) point."""
@@ -240,18 +270,19 @@ def phoenix(FeH: float, alpha: float, teff: float | None):
     from .utils.phoenix_helper import phoenix_to_grid
 
     grid = phoenix_to_grid(FeH=FeH, alpha=alpha, Teff=teff)
-    ok = download_phoenix(alpha=grid["alpha"], FeH=grid["FeH"])
+    ok = download_phoenix(alpha=grid['alpha'], FeH=grid['FeH'])
     if not ok:
         raise click.ClickException(
-            f"Failed to download PHOENIX grid for [Fe/H]={grid['FeH']:+.1f}, "
-            f"[alpha/M]={grid['alpha']:+.1f}."
+            f'Failed to download PHOENIX grid for [Fe/H]={grid["FeH"]:+.1f}, '
+            f'[alpha/M]={grid["alpha"]:+.1f}.'
         )
     else:
         click.secho(
-            f"Downloaded PHOENIX grid for [Fe/H]={grid['FeH']:+.1f}, "
-            f"[alpha/M]={grid['alpha']:+.1f}.",
-            fg="green",
+            f'Downloaded PHOENIX grid for [Fe/H]={grid["FeH"]:+.1f}, '
+            f'[alpha/M]={grid["alpha"]:+.1f}.',
+            fg='green',
         )
+
 
 @click.command()
 def solar():
@@ -260,7 +291,8 @@ def solar():
 
     ok = download_solar_spectrum()
     if not ok:
-        raise click.ClickException("Failed to download solar spectrum.")
+        raise click.ClickException('Failed to download solar spectrum.')
+
 
 @click.command()
 def surfaces():
@@ -278,12 +310,13 @@ def reference():
     download_exoplanet_data()
     download_massradius_data()
 
+
 @click.command()
 @click.option(
-    "--config-path",
+    '--config-path',
     type=click.Path(dir_okay=False, path_type=Path),
-    default=Path("input/all_options.toml"),
-    help="Path to the TOML config file",
+    default=Path('input/all_options.toml'),
+    help='Path to the TOML config file',
 )
 def interiordata(config_path: Path):
     """Get interior lookup tables and melting curves"""
@@ -293,6 +326,7 @@ def interiordata(config_path: Path):
 
     configuration = read_config_object(config_path)
     download_melting_curves(configuration, clean=True)
+
 
 @click.command()
 def socrates():
@@ -381,7 +415,7 @@ def offchem(config_path: Path):
     """Run offline chemistry on PROTEUS output files"""
     runner = Proteus(config_path=config_path)
     setup_logger(
-        logpath=runner.directories["output"] + "offchem.log",
+        logpath=runner.directories['output'] + 'offchem.log',
         logterm=True,
         level=runner.config.params.out.logging,
     )
@@ -394,7 +428,7 @@ def observe(config_path: Path):
     """Run synthetic observations pipeline"""
     runner = Proteus(config_path=config_path)
     setup_logger(
-        logpath=runner.directories["output"] + "observe.log",
+        logpath=runner.directories['output'] + 'observe.log',
         logterm=True,
         level=runner.config.params.out.logging,
     )
@@ -434,14 +468,15 @@ cli.add_command(infer)
 # Grid status check and grid packaging
 # ----------------
 
+
 @cli.command()
 @output_option
 @click.option(
-    "-s",
-    "--status",
+    '-s',
+    '--status',
     default=None,
     type=str,
-    help="List cases with this status. " \
+    help='List cases with this status. '
     "For example: 'completed', 'running', 'error', or 'code=x' for some error code x.",
 )
 def grid_summarise(output_path: Path, status: str):
@@ -453,6 +488,7 @@ def grid_summarise(output_path: Path, status: str):
     status code.
     """
     from proteus.grid.summarise import summarise as gsummarise
+
     gsummarise(output_path, status)
 
 
@@ -461,7 +497,9 @@ def grid_summarise(output_path: Path, status: str):
 def grid_pack(output_path: Path):
     """Packagage grid points into single ZIP file, for easy backup and sharing"""
     from proteus.grid.pack import pack as gpack
+
     gpack(output_path)
+
 
 # ----------------
 # installer
@@ -470,22 +508,20 @@ def grid_pack(output_path: Path):
 
 def resolve_fwl_data_dir() -> Path:
     """Return the FWL_DATA path (env or default)."""
-    if "FWL_DATA" in os.environ:
-        return Path(os.environ["FWL_DATA"])
+    if 'FWL_DATA' in os.environ:
+        return Path(os.environ['FWL_DATA'])
     else:
         # Return a default path to install FWL data.
-        return Path(__file__).resolve().parent.parent / "FWL_DATA"
+        return Path(__file__).resolve().parent.parent / 'FWL_DATA'
 
 
-def append_to_shell_rc(
-    var: str, value: str, shell: str | None = None
-) -> Path | None:
+def append_to_shell_rc(var: str, value: str, shell: str | None = None) -> Path | None:
     """Append an export line to the appropriate shell rc file."""
-    shell = shell or os.environ.get("SHELL", "")
+    shell = shell or os.environ.get('SHELL', '')
     shell_rc_map = {
-        "bash": ".bashrc",
-        "zsh": ".zshrc",
-        "fish": ".config/fish/config.fish",
+        'bash': '.bashrc',
+        'zsh': '.zshrc',
+        'fish': '.config/fish/config.fish',
     }
 
     for key, rc in shell_rc_map.items():
@@ -497,59 +533,57 @@ def append_to_shell_rc(
                 return None  # Already present
 
             rc_path.parent.mkdir(parents=True, exist_ok=True)
-            with rc_path.open("a") as f:
-                f.write(f"\n# Set by PROTEUS installer\n{export_line}")
+            with rc_path.open('a') as f:
+                f.write(f'\n# Set by PROTEUS installer\n{export_line}')
             return rc_path
 
     return None
 
 
 def is_julia_installed() -> bool:
-    return shutil.which("julia") is not None
+    return shutil.which('julia') is not None
+
 
 def _update_input_data(config_path: Path):
     if config_path.exists():
         # Only try data download if a config file is present.
         configuration = read_config_object(config_path)
         download_sufficient_data(configuration, clean=True)
-        click.secho("✅ Additional data has been downloaded.", fg="green")
+        click.secho('✅ Additional data has been downloaded.', fg='green')
         return True
 
     else:
-        click.echo(
-            f"⚠️ No config file found at {config_path}, skipping data download."
-        )
+        click.echo(f'⚠️ No config file found at {config_path}, skipping data download.')
         return False
 
+
 @cli.command()
+@click.option('--export-env', is_flag=True, help='Add FWL_DATA and RAD_DIR to shell rc.')
 @click.option(
-    "--export-env", is_flag=True, help="Add FWL_DATA and RAD_DIR to shell rc."
-)
-@click.option(
-    "--config-path",
+    '--config-path',
     type=click.Path(dir_okay=False, path_type=Path),
-    default=Path("input/all_options.toml"),
-    help="Path to the TOML config file",
+    default=Path('input/all_options.toml'),
+    help='Path to the TOML config file',
 )
 def install_all(export_env: bool, config_path: Path):
     """Install PROTEUS, required submodules, and get lookup data from online sources."""
     # --- Step 0: Check available disk space---
-    available_disk_space_in_B = shutil.disk_usage(".").free
+    available_disk_space_in_B = shutil.disk_usage('.').free
     G = 1e9
     available_disk_space_in_GB = available_disk_space_in_B / G
     required_disk_space_in_GB = 5
     if not available_disk_space_in_GB > required_disk_space_in_GB:
         click.secho(
-            f"⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
-            fg="yellow",
+            f'⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.',
+            fg='yellow',
         )
         click.secho(
-            f"   To be safe, make sure you have at least {required_disk_space_in_GB:d} GB of free disk space.",
-            fg="yellow",
+            f'   To be safe, make sure you have at least {required_disk_space_in_GB:d} GB of free disk space.',
+            fg='yellow',
         )
         click.secho(
             "❌ Aborting installation — 'proteus install-all'.",
-            fg="red",
+            fg='red',
         )
         raise SystemExit(1)
 
@@ -558,201 +592,187 @@ def install_all(export_env: bool, config_path: Path):
     # --- Step 1: FWL_DATA directory ---
     fwl_data = resolve_fwl_data_dir()
     fwl_data.mkdir(parents=True, exist_ok=True)
-    click.secho(f"✅ FWL_DATA directory: {fwl_data}", fg="green")
+    click.secho(f'✅ FWL_DATA directory: {fwl_data}', fg='green')
 
     # --- Step 2: Install SOCRATES ---
     root = Path.cwd()
-    socrates_dir = root / "socrates"
+    socrates_dir = root / 'socrates'
     if not socrates_dir.exists():
-        click.secho("🌤️ Installing SOCRATES...", fg="blue")
+        click.secho('🌤️ Installing SOCRATES...', fg='blue')
         try:
-            subprocess.run(["bash", "tools/get_socrates.sh"], check=True)
+            subprocess.run(['bash', 'tools/get_socrates.sh'], check=True)
         except subprocess.CalledProcessError as e:
-            click.secho("❌ Failed to install SOCRATES", fg="red")
+            click.secho('❌ Failed to install SOCRATES', fg='red')
             click.echo(e)
             raise SystemExit(1)
     else:
-        click.secho("✅ SOCRATES already present", fg="green")
+        click.secho('✅ SOCRATES already present', fg='green')
 
     rad_dir = socrates_dir.resolve()
-    os.environ.setdefault("RAD_DIR", str(rad_dir))
+    os.environ.setdefault('RAD_DIR', str(rad_dir))
 
     env = os.environ.copy()
 
     # --- Step 3: Julia check ---
     if not is_julia_installed():
-        click.secho("⚠️ Julia not found in PATH.", fg="yellow")
+        click.secho('⚠️ Julia not found in PATH.', fg='yellow')
         click.secho(
-            "   Proteus requires Julia for AGNI.",
-            fg="yellow",
+            '   Proteus requires Julia for AGNI.',
+            fg='yellow',
         )
         click.secho(
-            "   Please install Julia and ensure it is accessible via your shell PATH.",
-            fg="yellow",
+            '   Please install Julia and ensure it is accessible via your shell PATH.',
+            fg='yellow',
         )
-        click.secho(f'   Current PATH: {os.environ["PATH"]}', fg="white")
+        click.secho(f'   Current PATH: {os.environ["PATH"]}', fg='white')
         click.secho(
             "❌ Aborting installation — 'proteus install-all' cannot proceed without Julia.",
-            fg="red",
+            fg='red',
         )
         raise SystemExit(1)
 
     # --- Step 4: Install AGNI ---
-    agni_dir = root / "AGNI"
+    agni_dir = root / 'AGNI'
     if not agni_dir.exists():
-        click.secho("🧪 Installing AGNI...", fg="blue")
+        click.secho('🧪 Installing AGNI...', fg='blue')
         try:
             subprocess.run(
-                ["git", "clone", "https://github.com/nichollsh/AGNI.git"],
+                ['git', 'clone', 'https://github.com/nichollsh/AGNI.git'],
                 check=True,
             )
-            subprocess.run(
-                ["bash", "src/get_agni.sh", "0"], cwd=agni_dir, env=env, check=True
-            )
+            subprocess.run(['bash', 'src/get_agni.sh', '0'], cwd=agni_dir, env=env, check=True)
         except subprocess.CalledProcessError as e:
-            click.secho("❌ Failed to install AGNI", fg="red")
+            click.secho('❌ Failed to install AGNI', fg='red')
             click.echo(e)
             raise SystemExit(1)
     else:
-        click.secho("✅ AGNI already present", fg="green")
+        click.secho('✅ AGNI already present', fg='green')
 
     # --- Step 5: Export environment variables ---
     if export_env:
-        for var, value in {"FWL_DATA": fwl_data, "RAD_DIR": rad_dir}.items():
+        for var, value in {'FWL_DATA': fwl_data, 'RAD_DIR': rad_dir}.items():
             rc_file = append_to_shell_rc(var, str(value))
             if rc_file:
-                click.secho(f"✅ Exported {var} to {rc_file}", fg="green")
+                click.secho(f'✅ Exported {var} to {rc_file}', fg='green')
             else:
                 click.secho(
-                    f"ℹ️ {var} already exported or shell not recognized",
-                    fg="cyan",
+                    f'ℹ️ {var} already exported or shell not recognized',
+                    fg='cyan',
                 )
-        click.secho(
-            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
-        )
+        click.secho('🔁 Please run: source ~/.bashrc (or your shell rc)', fg='yellow')
 
     # --- Step 6: Update input data ---
     _update_input_data(config_path)
-    (root / "output").mkdir(exist_ok=True)
+    (root / 'output').mkdir(exist_ok=True)
 
-    click.secho("🎉 PROTEUS installation completed!", fg="green")
+    click.secho('🎉 PROTEUS installation completed!', fg='green')
 
 
 @cli.command()
 @click.option(
-    "--export-env",
+    '--export-env',
     is_flag=True,
-    help="Re-add FWL_DATA and RAD_DIR to shell rc.",
+    help='Re-add FWL_DATA and RAD_DIR to shell rc.',
 )
 @click.option(
-    "--config-path",
+    '--config-path',
     type=click.Path(dir_okay=False, path_type=Path),
-    default=Path("input/all_options.toml"),
-    help="Path to the TOML config file",
+    default=Path('input/all_options.toml'),
+    help='Path to the TOML config file',
 )
 def update_all(export_env: bool, config_path: Path):
     """Update PROTEUS, submodules, and lookup data from online sources."""
     # --- Step 0: Check available disk space---
-    available_disk_space_in_B = shutil.disk_usage(".").free
+    available_disk_space_in_B = shutil.disk_usage('.').free
     G = 1e9
     available_disk_space_in_GB = available_disk_space_in_B / G
     required_disk_space_in_GB = 5
     if not available_disk_space_in_GB > required_disk_space_in_GB:
         click.secho(
-            f"⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
-            fg="yellow",
+            f'⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.',
+            fg='yellow',
         )
         click.secho(
-            f"   To be safe, make sure you have at least {required_disk_space_in_GB:d} GB of free disk space.",
-            fg="yellow",
+            f'   To be safe, make sure you have at least {required_disk_space_in_GB:d} GB of free disk space.',
+            fg='yellow',
         )
         click.secho(
             "❌ Aborting installation — 'proteus update-all'.",
-            fg="red",
+            fg='red',
         )
         raise SystemExit(1)
     """Update SOCRATES, AGNI, and refresh PROTEUS environment."""
 
     root = Path.cwd()
     # --- Step 1: update all Python packages ---
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-U", "-e", "."], check=True
-    )
+    subprocess.run([sys.executable, '-m', 'pip', 'install', '-U', '-e', '.'], check=True)
 
     # --- Step 2: FWL_DATA check ---
     try:
         fwl_data = resolve_fwl_data_dir()
     except EnvironmentError:
-        click.secho(
-            "❌ FWL_DATA not set. Run `proteus install-all` first.", fg="red"
-        )
+        click.secho('❌ FWL_DATA not set. Run `proteus install-all` first.', fg='red')
         raise SystemExit(1)
-    click.secho(f"📂 Using FWL_DATA: {fwl_data}", fg="green")
+    click.secho(f'📂 Using FWL_DATA: {fwl_data}', fg='green')
 
     # --- Step 3: Update SOCRATES ---
-    socrates_dir = root / "socrates"
+    socrates_dir = root / 'socrates'
     if socrates_dir.exists():
-        click.secho("🌤️ Updating SOCRATES...", fg="blue")
+        click.secho('🌤️ Updating SOCRATES...', fg='blue')
         try:
-            subprocess.run(["bash", "tools/get_socrates.sh"], check=True)
-            click.secho("✅ SOCRATES updated", fg="green")
+            subprocess.run(['bash', 'tools/get_socrates.sh'], check=True)
+            click.secho('✅ SOCRATES updated', fg='green')
         except subprocess.CalledProcessError as e:
-            click.secho("❌ Failed to update SOCRATES", fg="red")
+            click.secho('❌ Failed to update SOCRATES', fg='red')
             click.echo(e)
     else:
-        click.secho(
-            "⚠️ SOCRATES not found. Run `proteus install-all`.", fg="yellow"
-        )
+        click.secho('⚠️ SOCRATES not found. Run `proteus install-all`.', fg='yellow')
 
     rad_dir = socrates_dir.resolve()
-    os.environ.setdefault("RAD_DIR", str(rad_dir))
+    os.environ.setdefault('RAD_DIR', str(rad_dir))
 
     # --- Step 4: Julia check ---
     if not is_julia_installed():
-        click.secho("⚠️ Julia not found in PATH.", fg="yellow")
-        click.secho("   Cannot update AGNI without Julia.", fg="yellow")
+        click.secho('⚠️ Julia not found in PATH.', fg='yellow')
+        click.secho('   Cannot update AGNI without Julia.', fg='yellow')
     else:
         # --- Step 5: Update AGNI ---
-        agni_dir = root / "AGNI"
+        agni_dir = root / 'AGNI'
         if agni_dir.exists():
-            click.secho("🧪 Updating AGNI...", fg="blue")
+            click.secho('🧪 Updating AGNI...', fg='blue')
             try:
-                subprocess.run(["git", "pull"], cwd=agni_dir, check=True)
+                subprocess.run(['git', 'pull'], cwd=agni_dir, check=True)
                 subprocess.run(
-                    ["bash", "src/get_agni.sh", "0"],
+                    ['bash', 'src/get_agni.sh', '0'],
                     cwd=agni_dir,
                     env=os.environ,
                     check=True,
                 )
-                click.secho("✅ AGNI updated", fg="green")
+                click.secho('✅ AGNI updated', fg='green')
             except subprocess.CalledProcessError as e:
-                click.secho("❌ Failed to update AGNI", fg="red")
+                click.secho('❌ Failed to update AGNI', fg='red')
                 click.echo(e)
         else:
-            click.secho(
-                "⚠️ AGNI not found. Run `proteus install-all`.", fg="yellow"
-            )
+            click.secho('⚠️ AGNI not found. Run `proteus install-all`.', fg='yellow')
 
     # --- Step 6: Refresh environment exports ---
     if export_env:
-        for var, value in {"FWL_DATA": fwl_data, "RAD_DIR": rad_dir}.items():
+        for var, value in {'FWL_DATA': fwl_data, 'RAD_DIR': rad_dir}.items():
             rc_file = append_to_shell_rc(var, str(value))
             if rc_file:
-                click.secho(f"✅ Exported {var} to {rc_file}", fg="green")
+                click.secho(f'✅ Exported {var} to {rc_file}', fg='green')
             else:
                 click.secho(
-                    f"ℹ️ {var} already exported or shell not recognized",
-                    fg="cyan",
+                    f'ℹ️ {var} already exported or shell not recognized',
+                    fg='cyan',
                 )
-        click.secho(
-            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
-        )
+        click.secho('🔁 Please run: source ~/.bashrc (or your shell rc)', fg='yellow')
 
     # --- Step 7: Update input data ---
     _update_input_data(config_path)
 
-    click.secho("🎉 PROTEUS update completed!", fg="green")
+    click.secho('🎉 PROTEUS update completed!', fg='green')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     cli()
