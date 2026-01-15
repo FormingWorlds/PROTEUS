@@ -38,6 +38,7 @@ class TestZenodoCooldown:
 
     def test_cooldown_enforced(self, monkeypatch):
         """Test that cooldown is enforced between requests."""
+        from proteus.utils import data
         from proteus.utils.data import (
             _zenodo_cooldown,
             _last_zenodo_request_time,
@@ -45,8 +46,8 @@ class TestZenodoCooldown:
         )
         import time
 
-        # Reset global state
-        monkeypatch.setattr('proteus.utils.data._last_zenodo_request_time', 0.0)
+        # Reset global state - use the actual module object
+        monkeypatch.setattr(data, '_last_zenodo_request_time', 0.0)
 
         # First call should not wait
         start = time.time()
@@ -102,10 +103,16 @@ class TestHasZenodoToken:
     def test_no_token(self, monkeypatch):
         """Test when no token is available."""
         from proteus.utils.data import _has_zenodo_token
+        from pathlib import Path as PathClass
 
         monkeypatch.delenv('ZENODO_API_TOKEN', raising=False)
-        # Mock config file to not exist
-        monkeypatch.setattr('proteus.utils.data.Path.home', lambda: Path('/nonexistent'))
+        # Mock config file to not exist - patch Path.home method
+        original_home = PathClass.home
+
+        def mock_home():
+            return PathClass('/nonexistent')
+
+        monkeypatch.setattr(PathClass, 'home', staticmethod(mock_home))
 
         # Should return False if no token
         result = _has_zenodo_token()

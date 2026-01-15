@@ -270,7 +270,7 @@ def find_common_file(
     return None
 
 
-def test_category(
+def _test_category_consistency(
     category_name: str,
     folder: str,
     zenodo_id: str,
@@ -541,7 +541,7 @@ def run_consistency_tests():
         tmpdir_path = Path(tmpdir)
 
         for category_name, folder, zenodo_id, osf_id in test_cases:
-            success, message = test_category(
+            success, message = _test_category_consistency(
                 category_name, folder, zenodo_id, osf_id, tmpdir_path
             )
 
