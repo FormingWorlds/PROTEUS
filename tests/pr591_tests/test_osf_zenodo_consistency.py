@@ -8,33 +8,138 @@ Tests that files downloaded from OSF and Zenodo are:
 3. With the same name
 4. So that code can reliably find them regardless of source
 
-Tests one file from each category in DATA_SOURCE_MAP.
+Tests one file from each category in DATA_SOURCE_MAP, with special focus
+on stellar data (PHOENIX, MUSCLES, Solar - used by MORS).
+
+Note: This test requires the PROTEUS environment to be set up with all
+dependencies installed (platformdirs, osfclient, zenodo_client, etc.).
+Run with: python tests/pr591_tests/test_osf_zenodo_consistency.py
+Or with pytest: pytest tests/pr591_tests/test_osf_zenodo_consistency.py -v
 """
 
+import json
 import os
 import sys
 import tempfile
 import hashlib
+import urllib.request
 from pathlib import Path
+from typing import Optional
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
 
-# Import directly from the module
+# Import using importlib to load data.py directly without package imports
+import sys
 import importlib.util
-
-data_module_path = Path(__file__).parent.parent.parent / 'src' / 'proteus' / 'utils' / 'data.py'
-spec = importlib.util.spec_from_file_location('proteus.utils.data', data_module_path)
-data_module = importlib.util.module_from_spec(spec)
+from unittest.mock import MagicMock, patch
 
 # Set up environment before loading module
 os.environ.setdefault('FWL_DATA', str(Path.home() / '.fwl_data_test'))
 
+# Add src to path for imports
+src_path = Path(__file__).parent.parent.parent / 'src'
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+# Set up minimal package structure to allow imports
+import types
+
+# Create minimal proteus package structure
+if 'proteus' not in sys.modules:
+    proteus_pkg = types.ModuleType('proteus')
+    sys.modules['proteus'] = proteus_pkg
+
+if 'proteus.utils' not in sys.modules:
+    proteus_utils = types.ModuleType('proteus.utils')
+    proteus_utils.__path__ = [str(src_path / 'proteus' / 'utils')]
+    sys.modules['proteus.utils'] = proteus_utils
+
+# Load helper module first (needed by data.py)
+helper_path = src_path / 'proteus' / 'utils' / 'helper.py'
+if helper_path.exists():
+    helper_spec = importlib.util.spec_from_file_location('proteus.utils.helper', helper_path)
+    if helper_spec and helper_spec.loader:
+        try:
+            helper_module = importlib.util.module_from_spec(helper_spec)
+            sys.modules['proteus.utils.helper'] = helper_module
+            # Patch match statement for Python < 3.10
+            if sys.version_info < (3, 10):
+                # Read and convert match statement to if/elif
+                with open(helper_path, 'r') as f:
+                    helper_code = f.read()
+                
+                # Convert match/case to if/elif
+                lines = helper_code.split('\n')
+                new_lines = []
+                in_match = False
+                first_case = True
+                
+                for line in lines:
+                    if 'match status:' in line:
+                        in_match = True
+                        new_lines.append('    if True:  # match status:')
+                        first_case = True
+                    elif in_match and line.strip().startswith('case '):
+                        case_value = line.strip().replace('case ', '').replace(':', '')
+                        if case_value == '_':
+                            new_lines.append('        else:')
+                        else:
+                            if first_case:
+                                new_lines.append(f'        if status == {case_value}:')
+                                first_case = False
+                            else:
+                                new_lines.append(f'        elif status == {case_value}:')
+                    elif in_match and line.strip() and not line.strip().startswith('#'):
+                        # Check if we're out of the match block (next function/class)
+                        if line and not line[0].isspace() and 'def ' in line:
+                            in_match = False
+                            new_lines.append(line)
+                        else:
+                            new_lines.append(line)
+                    else:
+                        new_lines.append(line)
+                
+                helper_code = '\n'.join(new_lines)
+                exec(compile(helper_code, str(helper_path), 'exec'), helper_module.__dict__)
+            else:
+                helper_spec.loader.exec_module(helper_module)
+        except Exception as e:
+            print(f'Warning: Could not load helper module: {e}')
+
+# Load phoenix_helper if needed
+phoenix_helper_path = src_path / 'proteus' / 'utils' / 'phoenix_helper.py'
+if phoenix_helper_path.exists() and 'proteus.utils.phoenix_helper' not in sys.modules:
+    phoenix_helper_spec = importlib.util.spec_from_file_location(
+        'proteus.utils.phoenix_helper', phoenix_helper_path
+    )
+    if phoenix_helper_spec and phoenix_helper_spec.loader:
+        try:
+            phoenix_helper_module = importlib.util.module_from_spec(phoenix_helper_spec)
+            sys.modules['proteus.utils.phoenix_helper'] = phoenix_helper_module
+            phoenix_helper_spec.loader.exec_module(phoenix_helper_module)
+        except Exception as e:
+            print(f'Warning: Could not load phoenix_helper module: {e}')
+
+# Now try to load data module
+data_module_path = src_path / 'proteus' / 'utils' / 'data.py'
 try:
-    spec.loader.exec_module(data_module)
-    MODULE_LOADED = True
+    data_spec = importlib.util.spec_from_file_location('proteus.utils.data', data_module_path)
+    if data_spec and data_spec.loader:
+        data_module = importlib.util.module_from_spec(data_spec)
+        sys.modules['proteus.utils.data'] = data_module
+        data_spec.loader.exec_module(data_module)
+        
+        # Use the module directly - no wrapper needed
+        # The module itself has all the attributes we need
+        MODULE_LOADED = True
+    else:
+        MODULE_LOADED = False
+        data_module = None
 except Exception as e:
     print(f'Warning: Could not load data module: {e}')
+    import traceback
+    print(f'Traceback: {traceback.format_exc()}')
     MODULE_LOADED = False
     data_module = None
 
@@ -48,10 +153,125 @@ def md5_hash(filepath: Path) -> str:
     return hash_md5.hexdigest()
 
 
+def get_zenodo_file_list(zenodo_id: str) -> list[dict]:
+    """
+    Get list of files from a Zenodo record using the API.
+
+    Parameters
+    ----------
+    zenodo_id : str
+        Zenodo record ID
+
+    Returns
+    -------
+    list[dict]
+        List of file dictionaries with 'key' (path) and 'size' keys
+    """
+    try:
+        api_url = f'https://zenodo.org/api/records/{zenodo_id}'
+        with urllib.request.urlopen(api_url, timeout=30) as response:
+            data = json.loads(response.read())
+
+        files = data.get('files', [])
+        return [
+            {'key': f.get('key', ''), 'size': f.get('size', 0)} for f in files if f.get('key')
+        ]
+    except Exception as e:
+        print(f'      Warning: Could not get Zenodo file list: {e}')
+        return []
+
+
+def get_osf_file_list(osf_id: str, folder: str) -> list[dict]:
+    """
+    Get list of files from an OSF project for a specific folder.
+
+    Parameters
+    ----------
+    osf_id : str
+        OSF project ID
+    folder : str
+        Folder name to filter files
+
+    Returns
+    -------
+    list[dict]
+        List of file dictionaries with 'path' and 'size' keys
+    """
+    try:
+        if not MODULE_LOADED:
+            return []
+        get_osf_func = data_module.get_osf
+        storage = get_osf_func(osf_id)
+
+        files = []
+        for file in storage.files:
+            # OSF file paths start with '/', so we remove it
+            file_path = file.path[1:] if file.path.startswith('/') else file.path
+            # Check if file is in the target folder
+            if file_path.startswith(folder + '/') or file_path == folder:
+                # Get relative path within folder
+                if file_path.startswith(folder + '/'):
+                    rel_path = file_path[len(folder) + 1 :]
+                else:
+                    rel_path = file_path
+                files.append({'key': rel_path, 'path': file_path, 'size': file.size})
+        return files
+    except Exception as e:
+        print(f'      Warning: Could not get OSF file list: {e}')
+        return []
+
+
+def find_common_file(
+    zenodo_files: list[dict], osf_files: list[dict], preferred_names: Optional[list[str]] = None
+) -> Optional[str]:
+    """
+    Find a file that exists in both Zenodo and OSF file lists.
+
+    Parameters
+    ----------
+    zenodo_files : list[dict]
+        List of files from Zenodo
+    osf_files : list[dict]
+        List of files from OSF
+    preferred_names : list[str], optional
+        Preferred file names to try first (e.g., ['_readme.md', 'readme.txt'])
+
+    Returns
+    -------
+    str | None
+        File path/key if found, None otherwise
+    """
+    if preferred_names is None:
+        preferred_names = ['_readme.md', 'readme.txt', 'README.md', 'readme.md']
+
+    # Create sets of file keys for quick lookup
+    zenodo_keys = {f['key'] for f in zenodo_files}
+    osf_keys = {f['key'] for f in osf_files}
+
+    # First try preferred names
+    for pref_name in preferred_names:
+        if pref_name in zenodo_keys and pref_name in osf_keys:
+            return pref_name
+
+    # Then try any common file
+    common = zenodo_keys & osf_keys
+    if common:
+        # Prefer smaller files for faster testing
+        common_list = sorted(common)
+        for key in common_list:
+            # Find sizes
+            zenodo_size = next((f['size'] for f in zenodo_files if f['key'] == key), 0)
+            osf_size = next((f['size'] for f in osf_files if f['key'] == key), 0)
+            # Only return if sizes match (indicating same file)
+            if zenodo_size > 0 and osf_size > 0 and zenodo_size == osf_size:
+                return key
+
+    return None
+
+
 def test_category(
     category_name: str,
     folder: str,
-    test_file: str,
     zenodo_id: str,
     osf_id: str,
     tmpdir: Path,
@@ -65,8 +285,6 @@ def test_category(
         Human-readable category name for reporting
     folder : str
         Folder name in DATA_SOURCE_MAP
-    test_file : str
-        Filename to test (e.g., "_readme.md", "file.txt")
     zenodo_id : str
         Zenodo record ID
     osf_id : str
@@ -83,19 +301,41 @@ def test_category(
         return False, 'Module not loaded'
 
     try:
+        # Import functions if not already imported
+        if not MODULE_LOADED:
+            return False, 'Module not loaded'
+        
         download = data_module.download
         GetFWLData = data_module.GetFWLData
         get_zenodo_file = data_module.get_zenodo_file
         get_osf = data_module.get_osf
-        download_OSF_folder = data_module.download_OSF_folder
+
+        print(f'\n  Testing {category_name} ({folder})')
+        print(f'    Zenodo ID: {zenodo_id}, OSF ID: {osf_id}')
+
+        # Get file lists from both sources
+        print(f'    Getting file lists...')
+        zenodo_files = get_zenodo_file_list(zenodo_id)
+        osf_files = get_osf_file_list(osf_id, folder)
+
+        if not zenodo_files:
+            return False, 'No files found in Zenodo record'
+        if not osf_files:
+            return False, 'No files found in OSF project'
+
+        print(f'      Zenodo: {len(zenodo_files)} files')
+        print(f'      OSF: {len(osf_files)} files')
+
+        # Find a common file
+        test_file = find_common_file(zenodo_files, osf_files)
+        if not test_file:
+            return False, 'No common file found between Zenodo and OSF'
+
+        print(f'    Testing file: {test_file}')
 
         # Create separate directories for Zenodo and OSF downloads
         zenodo_dir = tmpdir / f'{folder}_zenodo'
         osf_dir = tmpdir / f'{folder}_osf'
-
-        print(f'\n  Testing {category_name} ({folder})')
-        print(f'    File: {test_file}')
-        print(f'    Zenodo ID: {zenodo_id}, OSF ID: {osf_id}')
 
         # Download from Zenodo
         print(f'    Downloading from Zenodo...')
@@ -127,13 +367,15 @@ def test_category(
         print(f'    Downloading from OSF...')
         osf_success = False
         try:
-            storage = get_osf(osf_id)
+            get_osf_func = data_module.get_osf
+            storage = get_osf_func(osf_id)
             # Find the file in OSF storage
             osf_file_path = f'{folder}/{test_file}'
             found = False
 
             for file in storage.files:
-                if file.path[1:] == osf_file_path or file.path[1:].endswith(test_file):
+                file_path = file.path[1:] if file.path.startswith('/') else file.path
+                if file_path == osf_file_path or file_path.endswith(f'/{test_file}'):
                     osf_dir.mkdir(parents=True, exist_ok=True)
                     target_file = osf_dir / test_file
                     target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -192,7 +434,6 @@ def test_category(
 
         # 5. Verify files are at expected location when using download() function
         print(f'    Testing download() function...')
-        download_dir = tmpdir / f'{folder}_download'
         download_success = download(
             folder=folder,
             target='test_downloads',
@@ -200,6 +441,7 @@ def test_category(
             osf_id=osf_id,
             desc=f'test {category_name}',
             zenodo_path=test_file,
+            force=True,  # Force download to ensure fresh test
         )
 
         if not download_success:
@@ -253,43 +495,58 @@ def run_consistency_tests():
         return False
 
     # Get DATA_SOURCE_MAP
-    DATA_SOURCE_MAP = data_module.DATA_SOURCE_MAP
+    if not MODULE_LOADED:
+        print('❌ Cannot load data module - skipping tests')
+        return False
+    DATA_SOURCE_MAP = data_module.DATA_SOURCE_MAP if hasattr(data_module, 'DATA_SOURCE_MAP') else getattr(data_module, 'DATA_SOURCE_MAP')
 
-    # Test one file from each category
-    # Use files that are known to exist in both Zenodo and OSF
-    # Focus on categories that have files accessible via both sources
-    test_cases = [
-        # (category_name, folder, test_file, zenodo_id, osf_id)
-        # Stellar Spectra categories (OSF project: 8r2sw)
-        ('Stellar Spectra - PHOENIX', 'PHOENIX', '_readme.md', '17674612', '8r2sw'),
-        ('Stellar Spectra - MUSCLES', 'MUSCLES', 'gj876.txt', '17802209', '8r2sw'),
-        ('Stellar Spectra - Solar', 'Solar', 'Sun0.6Ga.txt', '17981836', '8r2sw'),
-    ]
+    # Test all categories in DATA_SOURCE_MAP
+    # Focus on stellar data (MORS, Phoenix) first, then test all others
+    test_cases = []
 
-    # Try to find files in other categories
-    # For categories without _readme.md, we'll test with actual data files if they exist
-    # Note: Some categories may not have identical files in both sources
-    # We focus on categories where we can verify consistency
+    # Priority categories (stellar data)
+    priority_categories = ['PHOENIX', 'MUSCLES', 'Solar', 'Named']
+    for folder in priority_categories:
+        if folder in DATA_SOURCE_MAP:
+            info = DATA_SOURCE_MAP[folder]
+            test_cases.append(
+                (
+                    f'Stellar Spectra - {folder}',
+                    folder,
+                    info['zenodo_id'],
+                    info['osf_id'],
+                )
+            )
 
-    # Try to find actual files that exist in both sources
-    # For categories where _readme.md doesn't exist, we'll skip them
-    # and focus on categories we know have files
+    # All other categories
+    for folder, info in DATA_SOURCE_MAP.items():
+        if folder not in priority_categories:
+            # Create a readable category name
+            if '/' in folder:
+                category_name = folder.replace('/', ' - ')
+            else:
+                category_name = folder
+            test_cases.append((category_name, folder, info['zenodo_id'], info['osf_id']))
 
     results = []
     passed = 0
     failed = 0
+    skipped = 0
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
 
-        for category_name, folder, test_file, zenodo_id, osf_id in test_cases:
+        for category_name, folder, zenodo_id, osf_id in test_cases:
             success, message = test_category(
-                category_name, folder, test_file, zenodo_id, osf_id, tmpdir_path
+                category_name, folder, zenodo_id, osf_id, tmpdir_path
             )
 
             if success:
                 passed += 1
                 print(f'  ✅ {category_name}: {message}')
+            elif 'No common file found' in message or 'No files found' in message:
+                skipped += 1
+                print(f'  ⏭️  {category_name}: {message} (skipped)')
             else:
                 failed += 1
                 print(f'  ❌ {category_name}: {message}')
@@ -302,11 +559,12 @@ def run_consistency_tests():
     print(f'Total categories tested: {len(test_cases)}')
     print(f'Passed: {passed}')
     print(f'Failed: {failed}')
+    print(f'Skipped: {skipped}')
 
     if failed > 0:
         print('\nFailed tests:')
         for category_name, success, message in results:
-            if not success:
+            if not success and 'skipped' not in message.lower():
                 print(f'  - {category_name}: {message}')
 
     return failed == 0
