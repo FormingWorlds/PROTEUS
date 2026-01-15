@@ -13,6 +13,7 @@ os.environ['VECLIB_MAXIMUM_THREADS'] = '1'  # noqa
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import click
@@ -135,8 +136,10 @@ cli.add_command(start)
 @click.group()
 def get():
     """Get data and modules"""
+    # Use cross-platform temporary directory instead of hardcoded /tmp
+    log_path = Path(tempfile.gettempdir()) / 'proteus_get.log'
     setup_logger(
-        logpath='/tmp/log.txt',
+        logpath=str(log_path),
         logterm=True,
         level='INFO',
     )
