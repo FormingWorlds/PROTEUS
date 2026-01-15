@@ -82,8 +82,8 @@ def _has_zenodo_token() -> bool:
             config.read(config_file)
             if 'zenodo' in config and config['zenodo'].get('api_token'):
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            log.debug(f'Error reading Zenodo config file {config_file}: {exc}')
 
     return False
 
@@ -484,8 +484,13 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
                         with open(out, 'r') as f:
                             error_lines = f.readlines()[-10:]  # Last 10 lines
                             error_msg = ''.join(error_lines).strip()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        # Best-effort log enrichment failed; keep generic error message.
+                        # Log at debug level so this is visible when diagnosing issues.
+                        log.debug(
+                            f'Failed to read zenodo_get log file at {out} for error details.',
+                            exc_info=True,
+                        )
                     attempt_num = attempt + 1
                     log.warning(
                         f'Failed to get data from Zenodo '
@@ -503,7 +508,8 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
 
             # Exponential backoff: wait longer between retries
             if attempt < MAX_ATTEMPTS - 1:
-                wait_time = RETRY_WAIT * (2**attempt)  # Exponential backoff
+                # Exponential backoff with an upper cap to avoid excessively long waits
+                wait_time = min(RETRY_WAIT * (2**attempt), 20)  # capped at 20s
                 log.debug(f'Waiting {wait_time:.1f}s before retry...')
                 sleep(wait_time)
 
@@ -882,13 +888,48 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 
     # Return status indicating that file/folder is invalid, if failed
     if not zenodo_ok:
-        log.warning(
-            f'Could not obtain checksum for Zenodo record {zenodo_id} - skipping validation'
-        )
-        # Gracefully degrade: if folder exists and has files, assume valid
-        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
-            return True
-        return False
+        # Try to get hashes using zenodo_client as fallback
+        if _has_zenodo_token():
+            try:
+                from zenodo_client import Zenodo
+
+                _zenodo_cooldown()
+                zenodo = Zenodo()
+                record_id = zenodo.get_latest_record(zenodo_id)
+                record = zenodo.get_record(record_id)
+                record_data = record.json()
+
+                if record_data and 'files' in record_data:
+                    # Extract md5 hashes from zenodo_client
+                    md5sums = []
+                    for f in record_data['files']:
+                        checksum = f.get('checksum', '')
+                        if checksum and ':' in checksum:
+                            # Checksum format: "md5:abc123..."
+                            md5_hash = checksum.split(':')[1]
+                            file_key = f.get('key', '')
+                            if md5_hash and file_key:
+                                md5sums.append(f'{md5_hash}  {file_key}\n')
+
+                    if md5sums:
+                        # Write md5sums file for compatibility with existing validation logic
+                        with open(md5sums_path, 'w') as hdl:
+                            hdl.writelines(md5sums)
+                        zenodo_ok = True
+                        log.info(
+                            f'Obtained checksums for Zenodo record {zenodo_id} using zenodo_client'
+                        )
+            except Exception as e:
+                log.debug(f'zenodo_client validation fallback failed: {e}')
+
+        if not zenodo_ok:
+            log.warning(
+                f'Could not obtain checksum for Zenodo record {zenodo_id} - skipping validation'
+            )
+            # Gracefully degrade: if folder exists and has files, assume valid
+            if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
+                return True
+            return False
 
     # Read hashes file
     with open(md5sums_path, 'r') as hdl:
@@ -992,6 +1033,9 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     # Mass-radius data (OSF project: xge8t)
     'Zeng2019': {'zenodo_id': '15727899', 'osf_id': 'xge8t', 'osf_project': 'xge8t'},
     # Population data (OSF project: dpkjb)
+    # NOTE: Population and EOS_Seager2007 currently share the same Zenodo ID '15727998'
+    # This appears to be intentional as they are in the same OSF project and may be
+    # part of the same Zenodo record. If this is incorrect, separate Zenodo IDs should be used.
     'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
     # EOS material properties (OSF project: dpkjb)
     'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
@@ -1132,8 +1176,8 @@ def download_OSF_folder(*, storage, folders: list[str], data_dir: Path, force: b
                 if target.exists():
                     try:
                         target.unlink()
-                    except Exception:
-                        pass
+                    except Exception as cleanup_error:
+                        log.warning(f'Failed to remove partial file {target}: {cleanup_error}')
                 continue
             break
 
@@ -1305,12 +1349,15 @@ def download(
                     storage = get_osf(osf_id)
                     # For single file, we need to download from OSF
                     # Find the file in OSF storage
+                    # Use exact path matching to avoid downloading wrong files with same filename
                     osf_file_path = f'{folder}/{zenodo_path}'
                     found = False
                     for file in storage.files:
-                        if file.path[1:] == osf_file_path or file.path[1:].endswith(
-                            zenodo_path
-                        ):
+                        # Prefer exact path match to prevent downloading wrong files with same filename
+                        # in different directories (e.g., folder1/sun.txt vs folder2/sun.txt)
+                        file_path_normalized = file.path[1:]  # Remove leading '/'
+                        if file_path_normalized == osf_file_path:
+                            # Exact match - this is the correct file
                             target_file_path.parent.mkdir(parents=True, exist_ok=True)
                             if force and target_file_path.exists():
                                 safe_rm(target_file_path)
@@ -1623,12 +1670,10 @@ def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
         zip_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(zip_path_source), str(zip_path))
 
-    zip_path = folder_dir / zip_name
-
     try:
         with zipfile.ZipFile(zip_path, 'r') as zf:
             zf.extractall(folder_dir)
-    except zipfile.BadZipFile as e:
+    except (zipfile.BadZipFile, FileNotFoundError) as e:
         log.error(f'Downloaded PHOENIX ZIP is corrupted: {zip_path}')
         log.error(str(e))
         safe_rm(zip_path)

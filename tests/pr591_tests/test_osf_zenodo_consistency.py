@@ -68,13 +68,13 @@ if helper_path.exists():
                 # Read and convert match statement to if/elif
                 with open(helper_path, 'r') as f:
                     helper_code = f.read()
-                
+
                 # Convert match/case to if/elif
                 lines = helper_code.split('\n')
                 new_lines = []
                 in_match = False
                 first_case = True
-                
+
                 for line in lines:
                     if 'match status:' in line:
                         in_match = True
@@ -99,7 +99,7 @@ if helper_path.exists():
                             new_lines.append(line)
                     else:
                         new_lines.append(line)
-                
+
                 helper_code = '\n'.join(new_lines)
                 exec(compile(helper_code, str(helper_path), 'exec'), helper_module.__dict__)
             else:
@@ -129,7 +129,7 @@ try:
         data_module = importlib.util.module_from_spec(data_spec)
         sys.modules['proteus.utils.data'] = data_module
         data_spec.loader.exec_module(data_module)
-        
+
         # Use the module directly - no wrapper needed
         # The module itself has all the attributes we need
         MODULE_LOADED = True
@@ -139,6 +139,7 @@ try:
 except Exception as e:
     print(f'Warning: Could not load data module: {e}')
     import traceback
+
     print(f'Traceback: {traceback.format_exc()}')
     MODULE_LOADED = False
     data_module = None
@@ -304,11 +305,10 @@ def test_category(
         # Import functions if not already imported
         if not MODULE_LOADED:
             return False, 'Module not loaded'
-        
+
         download = data_module.download
         GetFWLData = data_module.GetFWLData
         get_zenodo_file = data_module.get_zenodo_file
-        get_osf = data_module.get_osf
 
         print(f'\n  Testing {category_name} ({folder})')
         print(f'    Zenodo ID: {zenodo_id}, OSF ID: {osf_id}')
@@ -498,7 +498,11 @@ def run_consistency_tests():
     if not MODULE_LOADED:
         print('❌ Cannot load data module - skipping tests')
         return False
-    DATA_SOURCE_MAP = data_module.DATA_SOURCE_MAP if hasattr(data_module, 'DATA_SOURCE_MAP') else getattr(data_module, 'DATA_SOURCE_MAP')
+    DATA_SOURCE_MAP = (
+        data_module.DATA_SOURCE_MAP
+        if hasattr(data_module, 'DATA_SOURCE_MAP')
+        else getattr(data_module, 'DATA_SOURCE_MAP')
+    )
 
     # Test all categories in DATA_SOURCE_MAP
     # Focus on stellar data (MORS, Phoenix) first, then test all others
