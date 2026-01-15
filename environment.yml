@@ -16,3 +16,4 @@ dependencies:
   # Python packages via pip
   - pip:
     - zenodo_client>=0.4.1
+    - osfclient

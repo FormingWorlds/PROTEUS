@@ -69,6 +69,7 @@ dependencies = [
     "toml",
     "zenodo-get",
     "zenodo-client",
+    "osfclient",
 ]
 
 [project.urls]
