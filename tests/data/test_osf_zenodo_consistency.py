@@ -28,122 +28,122 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'src'))
-
-# Import using importlib to load data.py directly without package imports
-import importlib.util
-import sys
-
 # Set up environment before loading module
 os.environ.setdefault('FWL_DATA', str(Path.home() / '.fwl_data_test'))
 
-# Add src to path for imports
-src_path = Path(__file__).parent.parent.parent / 'src'
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
-
-# Set up minimal package structure to allow imports
-import types  # noqa: E402
-
-# Create minimal proteus package structure
-if 'proteus' not in sys.modules:
-    proteus_pkg = types.ModuleType('proteus')
-    sys.modules['proteus'] = proteus_pkg
-
-if 'proteus.utils' not in sys.modules:
-    proteus_utils = types.ModuleType('proteus.utils')
-    proteus_utils.__path__ = [str(src_path / 'proteus' / 'utils')]
-    sys.modules['proteus.utils'] = proteus_utils
-
-# Load helper module first (needed by data.py)
-helper_path = src_path / 'proteus' / 'utils' / 'helper.py'
-if helper_path.exists():
-    helper_spec = importlib.util.spec_from_file_location('proteus.utils.helper', helper_path)
-    if helper_spec and helper_spec.loader:
-        try:
-            helper_module = importlib.util.module_from_spec(helper_spec)
-            sys.modules['proteus.utils.helper'] = helper_module
-            # Patch match statement for Python < 3.10
-            if sys.version_info < (3, 10):
-                # Read and convert match statement to if/elif
-                with open(helper_path, 'r') as f:
-                    helper_code = f.read()
-
-                # Convert match/case to if/elif
-                lines = helper_code.split('\n')
-                new_lines = []
-                in_match = False
-                first_case = True
-
-                for line in lines:
-                    if 'match status:' in line:
-                        in_match = True
-                        new_lines.append('    if True:  # match status:')
-                        first_case = True
-                    elif in_match and line.strip().startswith('case '):
-                        case_value = line.strip().replace('case ', '').replace(':', '')
-                        if case_value == '_':
-                            new_lines.append('        else:')
-                        else:
-                            if first_case:
-                                new_lines.append(f'        if status == {case_value}:')
-                                first_case = False
-                            else:
-                                new_lines.append(f'        elif status == {case_value}:')
-                    elif in_match and line.strip() and not line.strip().startswith('#'):
-                        # Check if we're out of the match block (next function/class)
-                        if line and not line[0].isspace() and 'def ' in line:
-                            in_match = False
-                            new_lines.append(line)
-                        else:
-                            new_lines.append(line)
-                    else:
-                        new_lines.append(line)
-
-                helper_code = '\n'.join(new_lines)
-                exec(compile(helper_code, str(helper_path), 'exec'), helper_module.__dict__)
-            else:
-                helper_spec.loader.exec_module(helper_module)
-        except Exception as e:
-            print(f'Warning: Could not load helper module: {e}')
-
-# Load phoenix_helper if needed
-phoenix_helper_path = src_path / 'proteus' / 'utils' / 'phoenix_helper.py'
-if phoenix_helper_path.exists() and 'proteus.utils.phoenix_helper' not in sys.modules:
-    phoenix_helper_spec = importlib.util.spec_from_file_location(
-        'proteus.utils.phoenix_helper', phoenix_helper_path
-    )
-    if phoenix_helper_spec and phoenix_helper_spec.loader:
-        try:
-            phoenix_helper_module = importlib.util.module_from_spec(phoenix_helper_spec)
-            sys.modules['proteus.utils.phoenix_helper'] = phoenix_helper_module
-            phoenix_helper_spec.loader.exec_module(phoenix_helper_module)
-        except Exception as e:
-            print(f'Warning: Could not load phoenix_helper module: {e}')
-
-# Now try to load data module
-data_module_path = src_path / 'proteus' / 'utils' / 'data.py'
+# Try to import the package normally (relies on installed package)
+# This test should work with the installed package, not by manually loading modules
 try:
-    data_spec = importlib.util.spec_from_file_location('proteus.utils.data', data_module_path)
-    if data_spec and data_spec.loader:
-        data_module = importlib.util.module_from_spec(data_spec)
-        sys.modules['proteus.utils.data'] = data_module
-        data_spec.loader.exec_module(data_module)
+    from proteus.utils import data as data_module
 
-        # Use the module directly - no wrapper needed
-        # The module itself has all the attributes we need
-        MODULE_LOADED = True
-    else:
+    MODULE_LOADED = True
+except ImportError:
+    # Fallback: only if package is not installed, try manual loading
+    # This should not happen in CI where package is installed
+    import importlib.util
+    import types  # noqa: E402
+
+    src_path = Path(__file__).parent.parent.parent / 'src'
+
+    # Set up minimal package structure to allow imports
+    if 'proteus' not in sys.modules:
+        proteus_pkg = types.ModuleType('proteus')
+        sys.modules['proteus'] = proteus_pkg
+
+    if 'proteus.utils' not in sys.modules:
+        proteus_utils = types.ModuleType('proteus.utils')
+        proteus_utils.__path__ = [str(src_path / 'proteus' / 'utils')]
+        sys.modules['proteus.utils'] = proteus_utils
+
+    # Load helper module first (needed by data.py)
+    helper_path = src_path / 'proteus' / 'utils' / 'helper.py'
+    if helper_path.exists():
+        helper_spec = importlib.util.spec_from_file_location(
+            'proteus.utils.helper', helper_path
+        )
+        if helper_spec and helper_spec.loader:
+            try:
+                helper_module = importlib.util.module_from_spec(helper_spec)
+                sys.modules['proteus.utils.helper'] = helper_module
+                # Patch match statement for Python < 3.10
+                if sys.version_info < (3, 10):
+                    # Read and convert match statement to if/elif
+                    with open(helper_path, 'r') as f:
+                        helper_code = f.read()
+
+                    # Convert match/case to if/elif
+                    lines = helper_code.split('\n')
+                    new_lines = []
+                    in_match = False
+                    first_case = True
+
+                    for line in lines:
+                        if 'match status:' in line:
+                            in_match = True
+                            new_lines.append('    if True:  # match status:')
+                            first_case = True
+                        elif in_match and line.strip().startswith('case '):
+                            case_value = line.strip().replace('case ', '').replace(':', '')
+                            if case_value == '_':
+                                new_lines.append('        else:')
+                            else:
+                                if first_case:
+                                    new_lines.append(f'        if status == {case_value}:')
+                                    first_case = False
+                                else:
+                                    new_lines.append(f'        elif status == {case_value}:')
+                        elif in_match and line.strip() and not line.strip().startswith('#'):
+                            # Check if we're out of the match block (next function/class)
+                            if line and not line[0].isspace() and 'def ' in line:
+                                in_match = False
+                                new_lines.append(line)
+                            else:
+                                new_lines.append(line)
+                        else:
+                            new_lines.append(line)
+
+                    helper_code = '\n'.join(new_lines)
+                    exec(compile(helper_code, str(helper_path), 'exec'), helper_module.__dict__)
+                else:
+                    helper_spec.loader.exec_module(helper_module)
+            except Exception as e:
+                print(f'Warning: Could not load helper module: {e}')
+
+    # Load phoenix_helper if needed
+    phoenix_helper_path = src_path / 'proteus' / 'utils' / 'phoenix_helper.py'
+    if phoenix_helper_path.exists() and 'proteus.utils.phoenix_helper' not in sys.modules:
+        phoenix_helper_spec = importlib.util.spec_from_file_location(
+            'proteus.utils.phoenix_helper', phoenix_helper_path
+        )
+        if phoenix_helper_spec and phoenix_helper_spec.loader:
+            try:
+                phoenix_helper_module = importlib.util.module_from_spec(phoenix_helper_spec)
+                sys.modules['proteus.utils.phoenix_helper'] = phoenix_helper_module
+                phoenix_helper_spec.loader.exec_module(phoenix_helper_module)
+            except Exception as e:
+                print(f'Warning: Could not load phoenix_helper module: {e}')
+
+    # Now try to load data module
+    data_module_path = src_path / 'proteus' / 'utils' / 'data.py'
+    try:
+        data_spec = importlib.util.spec_from_file_location(
+            'proteus.utils.data', data_module_path
+        )
+        if data_spec and data_spec.loader:
+            data_module = importlib.util.module_from_spec(data_spec)
+            sys.modules['proteus.utils.data'] = data_module
+            data_spec.loader.exec_module(data_module)
+            MODULE_LOADED = True
+        else:
+            MODULE_LOADED = False
+            data_module = None
+    except Exception as e:
+        print(f'Warning: Could not load data module: {e}')
+        import traceback
+
+        print(f'Traceback: {traceback.format_exc()}')
         MODULE_LOADED = False
         data_module = None
-except Exception as e:
-    print(f'Warning: Could not load data module: {e}')
-    import traceback
-
-    print(f'Traceback: {traceback.format_exc()}')
-    MODULE_LOADED = False
-    data_module = None
 
 
 def md5_hash(filepath: Path) -> str:
