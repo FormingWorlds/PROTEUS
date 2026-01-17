@@ -1530,7 +1530,7 @@ def download_interior_lookuptables(clean=False):
         source_info = get_data_source_info(dir)
         if not download(
             folder=dir,
-            target=data_dir,
+            target='interior_lookup_tables',
             osf_id=(source_info or {}).get('osf_project', 'phsxf'),
             zenodo_id=(source_info or {}).get('zenodo_id') or get_zenodo_record(dir),
             desc=f'Interior lookup tables: {dir}',
@@ -1555,7 +1555,7 @@ def download_melting_curves(config: Config, clean=False):
     source_info = get_data_source_info(dir)
     return download(
         folder=dir,
-        target=data_dir,
+        target='interior_lookup_tables',
         osf_id=(source_info or {}).get('osf_project', 'phsxf'),
         zenodo_id=(source_info or {}).get('zenodo_id') or get_zenodo_record(dir),
         desc=f'Melting curve data: {dir}',
@@ -1676,7 +1676,7 @@ def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
         target='stellar_spectra',
         osf_id=phoenix_osf_id,
         zenodo_id=phoenix_zenodo_id,
-        desc=f'PHOENIX spectra {zip_name}',
+        desc='PHOENIX spectra',
         zenodo_path=zip_name,
     ):
         log.error(
@@ -1744,7 +1744,7 @@ def download_muscles(star_name: str) -> bool:
         target='stellar_spectra',
         osf_id=muscles_osf_id,
         zenodo_id=muscles_zenodo_id,
-        desc=f'MUSCLES spectrum {star_filename}',
+        desc='MUSCLES spectrum',
         zenodo_path=star_filename,
     )
 
