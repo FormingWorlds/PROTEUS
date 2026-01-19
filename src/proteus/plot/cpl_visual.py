@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import patches, ticker
+from shutil import copyfile, rmtree
+
+from subprocess import call
 
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
@@ -41,7 +44,7 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
         log.warning(f"Cannot find file {fpath}")
         if os.path.exists(os.path.join(output_dir,"data","data.tar")):
             log.warning("You may need to extract archived data files")
-        return
+        return False
 
     # Read data
     keys = ["ba_U_LW", "ba_U_SW", "ba_D_SW", "bandmin", "bandmax", "pl", "tmpl", "rl"]
@@ -51,7 +54,7 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
     for k in keys:
         if k not in ds.keys():
             log.error(f"Could not read key '{k}' from NetCDF file")
-            return
+            return False
 
     scale = 1.7
     fig,ax = plt.subplots(1,1, figsize=(4*scale,4*scale))
@@ -199,6 +202,8 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
     fpath = os.path.join(output_dir, "plots", "plot_visual.%s"%plot_format)
     fig.savefig(fpath, dpi=250, bbox_inches='tight')
 
+    return fpath
+
 def plot_visual_entry(handler: Proteus):
 
     # read helpfile
@@ -210,6 +215,79 @@ def plot_visual_entry(handler: Proteus):
         handler.directories["output"],
         plot_format=handler.config.params.out.plot_fmt,
         idx=-1
+   )
+
+def anim_visual(hf_all: pd.DataFrame,  output_dir:str, duration:float=8.0, downsamp_frames:int=5):
+
+
+    # make frames folder (safe if it already exists)
+    framesdir = os.path.join(output_dir,"plots", "frames")
+    rmtree(framesdir)
+    os.makedirs(framesdir, exist_ok=True)
+
+    plot_fmt = "png"
+
+    # For each index...
+    nframes = len(hf_all)
+    idxs = range(0, nframes, downsamp_frames)
+    nframes = len(idxs)
+    fps = int(np.ceil(nframes/duration))
+    for i,iframe in enumerate(idxs):
+        print(f"Plotting frame i={iframe:5d} ({i+1:5d} / {nframes})")
+
+        fpath = plot_visual(
+            hf_all,
+            output_dir,
+            plot_format=plot_fmt,
+            idx=iframe
+        )
+
+        if not fpath:
+            return False
+
+        copyfile(fpath, os.path.join(framesdir,f"{iframe:05d}.{plot_fmt}"))
+
+    # Make animation
+    out_video = os.path.join(output_dir, "plots", f"anim_visual.mp4")
+
+    # ffmpeg input pattern: frames named 0.<ext>, 1.<ext>, ...
+    input_pattern = os.path.join(framesdir, f"%05d.{plot_fmt}")
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-framerate", f"{fps:d}",
+        "-i", input_pattern,
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-vf", '"scale=trunc(iw/2)*2:trunc(ih/2)*2"',
+        "-movflags", "+faststart",
+        out_video,
+    ]
+
+    cmd = ' '.join(cmd)
+    print(f"Running ffmpeg to assemble video: {cmd}")
+    try:
+        ret = call([cmd], shell=True)
+        if ret == 0:
+            log.info(f"Wrote animation to {out_video}")
+        else:
+            log.error(f"ffmpeg returned non-zero exit code: {ret}")
+    except FileNotFoundError:
+        log.error("ffmpeg not found on PATH; cannot assemble animation")
+    except Exception as e:
+        log.error(f"Error running ffmpeg: {e}")
+
+
+def anim_visual_entry(handler: Proteus):
+
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'],
+                                      "runtime_helpfile.csv"), sep=r"\s+")
+
+    anim_visual(
+        hf_all,
+        handler.directories["output"],
    )
 
 

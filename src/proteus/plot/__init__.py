@@ -17,7 +17,7 @@ from proteus.plot.cpl_sflux import plot_sflux_entry
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
 from proteus.plot.cpl_spectra import plot_spectra_entry
 from proteus.plot.cpl_structure import plot_structure_entry
-from proteus.plot.cpl_visual import plot_visual_entry
+from proteus.plot.cpl_visual import plot_visual_entry, anim_visual_entry
 
 plot_dispatch = {
     'atmosphere':           plot_atmosphere_entry,
@@ -38,4 +38,5 @@ plot_dispatch = {
     'emission':             plot_emission_entry,
     'population':           plot_population_entry,
     'visual':               plot_visual_entry,
+    'anim_visual':          anim_visual_entry,
 }
