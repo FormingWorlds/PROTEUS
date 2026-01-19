@@ -415,7 +415,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         easy_start   = False
         grey_start   = False
         dx_max       = float(config.atmos_clim.agni.dx_max)
-        ls_increase  = 1.01
+        ls_increase  = 0.7
         perturb_all  = bool(config.atmos_clim.agni.perturb_all)
         max_steps    = int(config.atmos_clim.agni.max_steps)
         chemistry    = bool(config.atmos_clim.agni.chemistry == 'eq')
