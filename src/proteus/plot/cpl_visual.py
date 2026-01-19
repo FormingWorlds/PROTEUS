@@ -25,7 +25,35 @@ log = logging.getLogger("fwl."+__name__)
 
 
 def plot_visual(hf_all:pd.DataFrame, output_dir:str,
-                    idx=-1, osamp=3, view=12.5, plot_format="pdf"):
+                    idx=-1, osamp=3, view=12.5, plot_format="png"):
+    """Render a visual snapshot of the planet–star system.
+
+    Generates a single frame visualising the planet surface color (from the
+    band-integrated upwelling flux) and surrounding atmospheric shells, along
+    with the star and an inset spectrum derived from NetCDF outputs.
+
+    Parameters
+    ----------
+    hf_all : pandas.DataFrame
+        Runtime helpfile table used to select the time step and metadata
+    output_dir : str
+        Path to the run's output directory containing `data/` and `plots/`.
+
+    idx : int, optional
+        Row index into `hf_all` and the sorted NetCDF files.
+    osamp : int, optional
+        Radial oversampling factor for rendering outer atmospheric levels.
+        Minimum of 2. Defaults to 3.
+    view : float, optional
+        Observer distance in units of planetary radii (`R_int * view`).
+    plot_format : str, optional
+        Image format for the saved figure (e.g., 'pdf', 'png').
+
+    Returns
+    -------
+    str or bool
+        Path to the saved figure on success; False if required data are missing.
+    """
 
     log.info("Plot visual")
 
@@ -208,6 +236,21 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
     return fpath
 
 def plot_visual_entry(handler: Proteus):
+    """Entry point to render a single visual frame.
+
+    Loads the runtime helpfile from the handler's output directory and calls
+    `plot_visual` using the configured plot format for the latest time step.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Active run handler providing `directories` and `config`.
+
+    Returns
+    -------
+    None
+        This function triggers plotting and does not return the saved path.
+    """
 
     # read helpfile
     hf_all = pd.read_csv(os.path.join(handler.directories['output'],
@@ -220,7 +263,31 @@ def plot_visual_entry(handler: Proteus):
         idx=-1
    )
 
-def anim_visual(hf_all: pd.DataFrame,  output_dir:str, duration:float=8.0, downsamp_frames:int=5):
+def anim_visual(hf_all: pd.DataFrame,  output_dir:str,
+                    duration:float=8.0, downsamp_frames:int=4):
+    """Create an MP4 animation from visual frames.
+
+    Renders a sequence of frames using `plot_visual` and assembles them into
+    an animation via `ffmpeg`. Frame number can be downsampled to speed
+    up rendering process. Requires `ffmpeg` to be available on PATH.
+
+    Parameters
+    ----------
+    hf_all : pandas.DataFrame
+        Runtime helpfile table used to select time steps and metadata.
+    output_dir : str
+        Path to the run's output directory.
+
+    duration : float, optional
+        Animation duration in seconds.
+    downsamp_frames : int, optional
+        Downsampling factor for frames (use every Nth timestep).
+
+    Returns
+    -------
+    bool
+        Returns False on failure
+    """
 
 
     # make frames folder (safe if it already exists)
@@ -281,8 +348,25 @@ def anim_visual(hf_all: pd.DataFrame,  output_dir:str, duration:float=8.0, downs
     except Exception as e:
         log.error(f"Error running ffmpeg: {e}")
 
+    return True
+
 
 def anim_visual_entry(handler: Proteus):
+    """Entry point to generate a visual animation.
+
+    Loads the runtime helpfile from the handler's output directory and calls
+    `anim_visual` to render frames and assemble the MP4 animation.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Active run handler providing `directories`.
+
+    Returns
+    -------
+    None
+        This function triggers animation assembly and does not return a value.
+    """
 
     # read helpfile
     hf_all = pd.read_csv(os.path.join(handler.directories['output'],
