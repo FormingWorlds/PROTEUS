@@ -14,7 +14,6 @@ from matplotlib import patches, ticker
 
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
-from proteus.utils.helper import natural_sort
 from proteus.utils.visual import cs_srgb as colsys
 from proteus.utils.visual import interp_spec
 
@@ -25,7 +24,7 @@ log = logging.getLogger("fwl."+__name__)
 
 
 def plot_visual(hf_all:pd.DataFrame, output_dir:str,
-                    idx=-1, osamp=3, view=12.5, plot_format="png"):
+                    idx=-1, osamp=3, view=10.0, plot_format="png"):
     """Render a visual snapshot of the planet–star system.
 
     Generates a single frame visualising the planet surface color (from the
@@ -75,7 +74,7 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
             log.warning("You may need to extract archived data files")
             return False
 
-    fpath = natural_sort(files)[idx]
+    fpath = os.path.join(output_dir, "data", "%.0f_atm.nc"%time)
 
     # Read data
     keys = ["ba_U_LW", "ba_U_SW", "ba_D_SW", "bandmin", "bandmax", "pl", "tmpl", "rl"]
@@ -124,10 +123,13 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
     p_arr = ds["pl"]
     p_max = np.amax(p_arr)
 
+    # plot base layer
+    srf = patches.Circle((0,0), radius=r_min, fc="#492410", zorder=8)
+    ax.add_patch(srf)
+
     # plot surface of planet
     fl_srf = lw[-1,:]+sw[-1,:]
     col = colsys.spec_to_rgb(interp_spec(wl, fl_srf))
-    srf = patches.Circle((0,0), radius=r_min, fc=col, zorder=8)
     srf = patches.Circle((0,0), radius=r_min, fc=col, zorder=n_lev+1, alpha=0.2)
     ax.add_patch(srf)
 
@@ -264,7 +266,7 @@ def plot_visual_entry(handler: Proteus):
    )
 
 def anim_visual(hf_all: pd.DataFrame,  output_dir:str,
-                    duration:float=8.0, downsamp_frames:int=4):
+                    duration:float=8.0, nframes:int=80):
     """Create an MP4 animation from visual frames.
 
     Renders a sequence of frames using `plot_visual` and assembles them into
@@ -280,8 +282,8 @@ def anim_visual(hf_all: pd.DataFrame,  output_dir:str,
 
     duration : float, optional
         Animation duration in seconds.
-    downsamp_frames : int, optional
-        Downsampling factor for frames (use every Nth timestep).
+    nframes : int, optional
+        Number of frames in animation.
 
     Returns
     -------
@@ -291,54 +293,64 @@ def anim_visual(hf_all: pd.DataFrame,  output_dir:str,
 
 
     # make frames folder (safe if it already exists)
-    framesdir = os.path.join(output_dir,"plots", "frames")
-    rmtree(framesdir)
-    os.makedirs(framesdir, exist_ok=True)
+    framesdir = os.path.join(output_dir,"plots", "anim_frames")
+    if os.path.isdir(framesdir):
+        rmtree(framesdir)
+    os.makedirs(framesdir)
 
+    # Must be raster format
     plot_fmt = "png"
 
+    # Work out downsampling factor
+    niters = len(hf_all)
+    print(f"Found dataframe with {niters} iterations")
+    ds_factor = int(max(1,np.floor(niters/nframes)))
+    print(f"Downsampling iterations by a factor of {ds_factor}")
+
     # For each index...
-    nframes = len(hf_all)
-    idxs = range(0, nframes, downsamp_frames)
+    idxs = range(0, niters, ds_factor)
     nframes = len(idxs)
-    fps = int(np.ceil(nframes/duration))
-    for i,iframe in enumerate(idxs):
-        print(f"Plotting frame i={iframe:5d} ({i+1:5d} / {nframes})")
+    fps = int(max(1,round(nframes/duration)))
+    for i,idx in enumerate(idxs):
+
+        idx = max(0,min(idx, niters-1))
+
+        print(f"Plotting iteration {idx:5d} (frame {i+1} / {nframes})")
 
         fpath = plot_visual(
             hf_all,
             output_dir,
             plot_format=plot_fmt,
-            idx=iframe
+            idx=idx
         )
 
         if not fpath:
             return False
 
-        copyfile(fpath, os.path.join(framesdir,f"{iframe:05d}.{plot_fmt}"))
+        copyfile(fpath, os.path.join(framesdir,f"{idx:05d}.{plot_fmt}"))
 
     # Make animation
     out_video = os.path.join(output_dir, "plots", "anim_visual.mp4")
 
     # ffmpeg input pattern: frames named 0.<ext>, 1.<ext>, ...
-    input_pattern = os.path.join(framesdir, f"%05d.{plot_fmt}")
+    input_pattern = os.path.join(framesdir, f"*.{plot_fmt}")
 
     cmd = [
         "ffmpeg",
         "-y",
-        "-framerate", f"{fps:d}",
-        "-i", input_pattern,
-        "-c:v", "libx264",
-        "-pix_fmt", "yuv420p",
-        "-vf", '"scale=trunc(iw/2)*2:trunc(ih/2)*2"',
-        "-movflags", "+faststart",
-        out_video,
+        f"-framerate {fps:d}",
+        "-pattern_type glob",
+        f"-i '{input_pattern}'",
+        "-c:v libx264",
+        "-vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2'",
+        "-pix_fmt yuv420p",
+        f" {out_video}"
     ]
 
     cmd = ' '.join(cmd)
     print(f"Running ffmpeg to assemble video: {cmd}")
     try:
-        ret = call([cmd], shell=True)
+        ret = call([cmd], shell=True, stdout=None)
         if ret == 0:
             log.info(f"Wrote animation to {out_video}")
         else:
