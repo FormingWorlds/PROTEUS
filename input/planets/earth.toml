@@ -5,8 +5,8 @@ version = "2.0"
 [params]
     [params.out]
         path        = "earth"
-        logging     = "INFO"
-        plot_mod    = 12
+        logging     = "DEBUG"
+        plot_mod    = 10
         write_mod   = 2
 
     [params.dt]
@@ -61,7 +61,7 @@ version = "2.0"
     corefrac    = 0.55
 
 [atmos_clim]
-    surf_state      = "fixed"
+    surf_state      = "skin"
     rayleigh        = true
     module          = "agni"
     albedo_pl       = 0.0      # test guess, contribution from clouds
@@ -70,15 +70,22 @@ version = "2.0"
         p_top          = 1e-4
         num_levels     = 40
         dx_max         = 100.0
+        sens_heat      = false
+        cloud_enabled  = false
         rainout        = false
         oceans         = true
         spectral_group = "Dayspring"
         spectral_bands = "48"
-        solution_atol  = 1.0
+        solution_atol  = 2.0
         ls_default     = 2
 
 [escape]
     module = "zephyrus"
+
+    [escape.zephyrus]
+        Pxuv        = 1e-4          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+        efficiency  = 0.15           # Escape efficiency factor
+        tidal       = true         # Tidal contribution enabled
 
 [interior]
     radiogenic_heat = false
@@ -88,6 +95,8 @@ version = "2.0"
 
     [interior.dummy]
         ini_tmagma = 3000.0
+        H_radio    = 8e-12
+        mantle_cp  = 2000.0
 
     [interior.spider]
         ini_entropy = 2900.0

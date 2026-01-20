@@ -160,7 +160,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_star =    sflux_path
 
     # Fast I/O folder
-    if config.atmos_clim.agni.verbosity >= 2:
+    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == "DEBUG"):
         io_dir = dirs["output"]
     else:
         io_dir = create_tmp_folder()
@@ -189,6 +189,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         log.debug(f"Using '{surface_material}' single-scattering surface properties")
         surface_material = os.path.join(dirs["fwl"], surface_material)
         if not os.path.isfile(surface_material):
+            UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(surface_material)
 
     # Boundary pressures
@@ -197,7 +198,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     p_surf = max(p_surf, p_top * 1.1) # this will happen if the atmosphere is stripped
 
     # Setup struct
-    jl.AGNI.atmosphere.setup_b(atmos,
+    succ = jl.AGNI.atmosphere.setup_b(atmos,
                         dirs["agni"], dirs["output"], input_sf,
 
                         hf_row["F_ins"],
@@ -243,8 +244,18 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         tmp_magma=hf_row["T_surf"], tmp_floor=config.atmos_clim.tmp_minimum
                         )
 
+    # Check setup! success
+    if not bool(succ):
+        UpdateStatusfile(dirs, 22)
+        raise RuntimeError("Could not setup atmosphere object")
+
     # Allocate arrays
-    jl.AGNI.atmosphere.allocate_b(atmos,input_star)
+    succ = jl.AGNI.atmosphere.allocate_b(atmos,input_star)
+
+    # Check allocate! success
+    if not bool(succ):
+        UpdateStatusfile(dirs, 22)
+        raise RuntimeError("Could not allocate atmosphere object")
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs["output"],"data","*_atm.nc"))
@@ -269,8 +280,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
             case "analytic":
                 jl.AGNI.setpt.analytic_b(atmos)
             case _:
-                log.error("Invalid initial profile selected")
-                return
+                UpdateStatusfile(dirs, 20)
+                raise ValueError("Invalid initial T(p) profile selected")
 
         # lower-limit on initial profile
         jl.AGNI.setpt.stratosphere_b(atmos, min(400.0, hf_row["T_surf"]))
