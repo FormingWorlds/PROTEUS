@@ -5,14 +5,14 @@ version = "2.0"
 [params]
     [params.out]
         path        = "earth"
-        logging     = "DEBUG"
+        logging     = "INFO"
         plot_mod    = 10
         write_mod   = 2
 
     [params.dt]
         starspec     = 1e8
         starinst     = 1e2
-        minimum      = 5e5
+        minimum      = 1e5
         initial      = 1e5
 
         [params.dt.adaptive]
