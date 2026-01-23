@@ -44,7 +44,10 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
 
     # By element
     total = np.zeros(len(time))
+    log.info(element_list)
     for e in element_list:
+
+        log.info(e)
 
         _lw = lw
         if e == 'H':
@@ -53,7 +56,12 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
 
         # Plot planetary inventory of this element
         y = np.array(hf_crop[e+"_kg_total"])/M_uval
+        if y.ndim == 2:
+            y = y[:, 0]
+        #log.info("mass of element: ",hf_crop[e+"_kg_total"])
+        log.info(y)
         total += y
+        #log.info("total mass in elements: ",total)
         axt.plot(time, y, lw=_lw, ls='dotted', color=col)
 
         # Plot atmospheric inventory of this element

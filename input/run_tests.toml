@@ -31,9 +31,9 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "run_lavatmos_test_Na_SiO"
+        path        = "run_lavatmos_test_plots"
         logging     = "INFO"
-        plot_mod    = 3      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
+        plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 5      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive

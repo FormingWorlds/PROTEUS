@@ -83,6 +83,7 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
         # plot from netCDF (dashed lines)
         key = gas+"_vmr"
         if key in atm_profile.keys():
+            log.info(key)
             xarr = list(atm_profile[key])
             xarr = [xarr[0]] + xarr
             if np.amax(xarr) >= xmin:
