@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import const_R, const_sigma
+from proteus.utils.constants import const_R, const_sigma, gas_list
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -105,6 +105,7 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     log.info("    F_olr      =  %.3e  W m-2" % fluxes["fl_U_LW"])
     log.info("    F_sct      =  %.3e  W m-2" % fluxes["fl_U_SW"])
 
+    # Pack output
     output = {}
     output["T_surf"]  = T_surf_atm
     output["F_atm"]   = F_atm_lim             # Net flux at TOA
@@ -115,6 +116,13 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     output["p_xuv"]   = hf_row["P_surf"]
     output["R_xuv"]   = R_obs
     output["p_obs"]   = hf_row["P_surf"]
-    output["P_surf_clim"]   = hf_row["P_surf"]
+    output["T_obs"]   = hf_row["T_surf"]
+    output["ocean_areacov"] = 0.0
+    output["ocean_maxdepth"]= 0.0
+    output["P_surf_clim"] = hf_row["P_surf"]
+
+    # gas composition for escape equal to surface composition
+    for g in gas_list:
+        hf_row[g+"_vmr_xuv"] = float(hf_row[g+"_vmr"])
 
     return output
