@@ -51,6 +51,7 @@ dependencies = [
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.01.06",
     "fwl-zalmoxis>=26.01.06",
+    "boreas@git+https://github.com/ExoInteriors/BOREAS@0174edb",
     "cmcrameri",
     "juliacall",
     "matplotlib",
@@ -68,6 +69,8 @@ dependencies = [
     "gpytorch",
     "toml",
     "zenodo-get",
+    "zenodo-client",
+    "osfclient",
 ]
 
 [project.urls]
@@ -98,7 +101,7 @@ docs = [
 proteus = "proteus.cli:cli"
 
 [tool.setuptools]
-package-dir = {"proteus" = "src/proteus" }
+package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.package-data]
