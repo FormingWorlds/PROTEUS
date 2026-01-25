@@ -758,22 +758,42 @@ def download_melting_curves(config: Config, clean=False):
     )
 
 
-def download_stellar_spectra():
+def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     """
-    Download stellar spectra
-    """
-    folder = 'Named'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
+    Download stellar spectra folders into ``FWL_DATA/stellar_spectra``.
 
-    download(
-        folder=folder,
-        target='stellar_spectra',
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='stellar spectra',
-    )
+    Notes
+    -----
+    PROTEUS expects different stellar spectra collections in subfolders like:
+    - ``stellar_spectra/solar/``
+    - ``stellar_spectra/MUSCLES/``
+    - ``stellar_spectra/Named/``
+
+    Parameters
+    ----------
+    folders:
+        Specific folders to download. If None, downloads a minimal set that covers
+        common configurations.
+    """
+    if folders is None:
+        # Minimal set for most configurations:
+        # - Named: general named spectra
+        # - solar: solar spectra (e.g., sun.txt, Sun0.6Ga.txt, ...)
+        # - MUSCLES: observed stellar spectra catalogue
+        folders = ('Named', 'solar', 'MUSCLES')
+
+    for folder in folders:
+        source_info = get_data_source_info(folder)
+        if not source_info:
+            raise ValueError(f'No data source mapping found for folder: {folder}')
+
+        download(
+            folder=folder,
+            target='stellar_spectra',
+            osf_id=source_info['osf_project'],
+            zenodo_id=source_info['zenodo_id'],
+            desc=f'stellar spectra ({folder})',
+        )
 
 
 def download_exoplanet_data():
@@ -901,7 +921,15 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
 def _get_sufficient(config: Config, clean: bool = False):
     # Star stuff
     if config.star.module == 'mors':
-        download_stellar_spectra()
+        # Download only the spectra collections that this config may require.
+        # (PHOENIX is handled separately via download_phoenix().)
+        spec_src = config.star.mors.spectrum_source
+        folders: list[str] = ['Named']
+        if spec_src in (None, 'solar'):
+            folders.append('solar')
+        if spec_src in (None, 'muscles'):
+            folders.append('MUSCLES')
+        download_stellar_spectra(folders=tuple(dict.fromkeys(folders)))
         if config.star.mors.tracks == 'spada':
             download_stellar_tracks('Spada')
         else:
