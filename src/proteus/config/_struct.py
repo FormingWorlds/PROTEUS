@@ -143,6 +143,11 @@ class Zalmoxis:
     verbose: bool                           = field(default=False)
     iteration_profiles_enabled: bool        = field(default=False)
 
+    def __attrs_post_init__(self):
+        if self.temperature_mode == "prescribed":
+            if not self.temperature_profile_file:
+                raise ValueError("`temperature_profile_file` must be provided when `temperature_mode` is 'prescribed'.")
+
 @define
 class Struct:
     """Planetary structure (mass, radius).

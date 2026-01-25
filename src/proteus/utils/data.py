@@ -2067,48 +2067,56 @@ def get_zalmoxis_EOS():
     Returns:
         tuple: A tuple containing three dictionaries for iron/silicate planets, iron/Tdep_silicate planets, and water planets.
     """
-    # Define the EOS folder path
-    eos_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
+    # Define the EOS folder paths
+    Seager_eos_folder = FWL_DATA_DIR / "EOS_material_properties" / "EOS_Seager2007"
+    Wolf_Bower_eos_folder = FWL_DATA_DIR / "interior_lookup_tables" / "1TPa-dK09-elec-free" / "MgSiO3_Wolf_Bower_2018_1TPa"
 
     # Download the EOS material properties if not already present
-    if not eos_folder.exists():
-        log.debug('Get EOS material properties from Seager et al. (2007)')
+    if not Seager_eos_folder.exists():
+        log.debug("Get EOS material properties from Seager et al. (2007)")
         download_Seager_EOS()
 
     # Build the material_properties_iron_silicate_planets dictionary for iron/silicate planets according to Seager et al. (2007)
     material_properties_iron_silicate_planets = {
-        'mantle': {
-            # Mantle properties based on bridgmanite
-            'rho0': 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite
-            'eos_file': eos_folder
-            / 'eos_seager07_silicate.txt',  # Path to silicate mantle file
+        "core": {
+            # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
+            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
         },
-        'core': {
-            # For liquid iron alloy outer core
-            'rho0': 8300,  # From Table 1 of Seager et al. (2007) for the epsilon phase of iron of Fe
-            'eos_file': eos_folder / 'eos_seager07_iron.txt',  # Path to iron core file
+        "mantle": {
+            # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
+            "eos_file": Seager_eos_folder / "eos_seager07_silicate.txt"
+        }
+    }
+
+    # Build the material_properties_iron_Tdep_silicate_planets dictionary for iron/silicate planets with temperature-dependent silicate mantle EOS from Wolf & Bower (2018)
+    material_properties_iron_Tdep_silicate_planets = {
+        "core": {
+            # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
+            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
         },
+        "melted_mantle": {
+            # MgSiO3 in melt state, modeled in Wolf & Bower (2018) using their developed high P–T RTpress EOS
+            "eos_file": Wolf_Bower_eos_folder / "density_melt.dat"
+        },
+        "solid_mantle": {
+            # MgSiO3 in solid state, modeled in Wolf & Bower (2018) using their developed high P–T RTpress EOS
+            "eos_file": Wolf_Bower_eos_folder / "density_solid.dat"
+        }
     }
 
     # Build the material_properties_water_planets dictionary for water planets according to Seager et al. (2007)
     material_properties_water_planets = {
-        'core': {
-            # For liquid iron alloy outer core
-            'rho0': 8300,  # From Table 1 of Seager et al. (2007) for the epsilon phase of iron of Fe in kg/m^3
-            'eos_file': eos_folder
-            / 'eos_seager07_iron.txt',  # Name of the file with tabulated EOS data
+        "core": {
+            # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
+            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
         },
-        'bridgmanite_shell': {
-            # Inner mantle properties based on bridgmanite
-            'rho0': 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite in kg/m^3
-            'eos_file': eos_folder
-            / 'eos_seager07_silicate.txt',  # Name of the file with tabulated EOS data
+        "mantle": {
+                # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
+                "eos_file": Seager_eos_folder / "eos_seager07_silicate.txt"
         },
-        'water_ice_layer': {
-            # Outer water ice layer in ice VII phase
-            'rho0': 1460,  # From Table 1 of Seager et al. (2007) for H2O in ice VII phase in kg/m^3
-            'eos_file': eos_folder
-            / 'eos_seager07_water.txt',  # Name of the file with tabulated EOS data
-        },
+        "water_ice_layer": {
+            # Water ice, modeled in Seager et al. (2007) using experimental data, DFT predictions for water ice in phases VIII and X, and DFT calculations
+            "eos_file": Seager_eos_folder / "eos_seager07_water.txt"
+        }
     }
     return material_properties_iron_silicate_planets, material_properties_iron_Tdep_silicate_planets, material_properties_water_planets
