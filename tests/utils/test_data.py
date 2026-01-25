@@ -336,7 +336,7 @@ def test_download_zenodo_folder_exponential_backoff(mock_getfwl, mock_run, tmp_p
         download_zenodo_folder('12345', folder_dir)
 
     # Should have exponential backoff: RETRY_WAIT * (2 ** attempt)
-    expected_waits = [RETRY_WAIT * (2 ** i) for i in range(2)]  # 2 retries = 2 waits
+    expected_waits = [RETRY_WAIT * (2**i) for i in range(2)]  # 2 retries = 2 waits
     assert len(sleep_times) == 2
     assert sleep_times[0] == pytest.approx(expected_waits[0], rel=0.1)
     assert sleep_times[1] == pytest.approx(expected_waits[1], rel=0.1)
@@ -350,7 +350,13 @@ def test_download_zenodo_folder_exponential_backoff(mock_getfwl, mock_run, tmp_p
 @patch('proteus.utils.data.check_needs_update')
 @patch('proteus.utils.data.GetFWLData')
 def test_download_osf_fallback(
-    mock_getfwl, mock_check, mock_get_osf, mock_download_osf, mock_validate, mock_download_zenodo, tmp_path
+    mock_getfwl,
+    mock_check,
+    mock_get_osf,
+    mock_download_osf,
+    mock_validate,
+    mock_download_zenodo,
+    tmp_path,
 ):
     """Test OSF fallback when Zenodo download fails."""
     mock_getfwl.return_value = tmp_path
@@ -397,7 +403,13 @@ def test_download_osf_fallback(
 @patch('proteus.utils.data.check_needs_update')
 @patch('proteus.utils.data.GetFWLData')
 def test_download_automatic_mapping(
-    mock_getfwl, mock_check, mock_get_osf, mock_download_osf, mock_validate, mock_download_zenodo, tmp_path
+    mock_getfwl,
+    mock_check,
+    mock_get_osf,
+    mock_download_osf,
+    mock_validate,
+    mock_download_zenodo,
+    tmp_path,
 ):
     """Test automatic ID lookup from mapping."""
     mock_getfwl.return_value = tmp_path
@@ -509,7 +521,9 @@ def test_validate_zenodo_folder_graceful_degradation(mock_getfwl, mock_run, tmp_
 @patch('proteus.utils.data.validate_zenodo_folder')
 @patch('proteus.utils.data.check_needs_update')
 @patch('proteus.utils.data.GetFWLData')
-def test_download_no_mapping_no_ids(mock_getfwl, mock_check, mock_validate, mock_download_zenodo, tmp_path):
+def test_download_no_mapping_no_ids(
+    mock_getfwl, mock_check, mock_validate, mock_download_zenodo, tmp_path
+):
     """Test download fails gracefully when no mapping and no IDs provided."""
     mock_getfwl.return_value = tmp_path
     mock_check.return_value = True  # Needs update

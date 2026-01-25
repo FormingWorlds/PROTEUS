@@ -196,7 +196,7 @@ def get_spfile_path(fwl_dir: str, config: Config):
     return os.path.join(fwl_dir, 'spectral_files', group, bands, group) + '.sf'
 
 
-def get_oarr_from_parr(p_arr:list, o_arr:list, p_tgt:float) -> tuple:
+def get_oarr_from_parr(p_arr: list, o_arr: list, p_tgt: float) -> tuple:
     """
     Get the value of o_array corresponding to the p_tgt level in p_arr.
 

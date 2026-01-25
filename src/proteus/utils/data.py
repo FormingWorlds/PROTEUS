@@ -84,9 +84,13 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
                         log.info(f'Successfully downloaded Zenodo record {zenodo_id}')
                         return True
                     else:
-                        log.warning(f'Zenodo download completed but folder is empty (ID {zenodo_id})')
+                        log.warning(
+                            f'Zenodo download completed but folder is empty (ID {zenodo_id})'
+                        )
                 else:
-                    log.warning(f'Zenodo download completed but folder does not exist (ID {zenodo_id})')
+                    log.warning(
+                        f'Zenodo download completed but folder does not exist (ID {zenodo_id})'
+                    )
             else:
                 # Read error from log file for better diagnostics
                 error_msg = 'Unknown error'
@@ -111,12 +115,14 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
 
         # Exponential backoff: wait longer between retries
         if attempt < MAX_ATTEMPTS - 1:
-            wait_time = RETRY_WAIT * (2 ** attempt)  # Exponential backoff
+            wait_time = RETRY_WAIT * (2**attempt)  # Exponential backoff
             log.debug(f'Waiting {wait_time:.1f}s before retry...')
             sleep(wait_time)
 
     # Return status indicating that file/folder is invalid, if failed
-    log.error(f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts')
+    log.error(
+        f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts'
+    )
     return False
 
 
@@ -197,11 +203,13 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
             log.warning(f'Unexpected error during Zenodo validation (ID {zenodo_id}): {e}')
 
         if attempt < MAX_ATTEMPTS - 1:
-            sleep(RETRY_WAIT * (2 ** attempt))  # Exponential backoff
+            sleep(RETRY_WAIT * (2**attempt))  # Exponential backoff
 
     # Return status indicating that file/folder is invalid, if failed
     if not zenodo_ok:
-        log.warning(f'Could not obtain checksum for Zenodo record {zenodo_id} - skipping validation')
+        log.warning(
+            f'Could not obtain checksum for Zenodo record {zenodo_id} - skipping validation'
+        )
         # If we can't validate but folder exists with files, assume it's valid
         if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
             log.info(f'Folder exists with files - assuming valid (ID {zenodo_id})')
@@ -286,9 +294,21 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
         'osf_project': 'phsxf',
     },
     # Melting curves (OSF project: phsxf)
-    'Melting_curves/Monteux+600': {'zenodo_id': '15728091', 'osf_id': 'phsxf', 'osf_project': 'phsxf'},
-    'Melting_curves/Monteux-600': {'zenodo_id': '15728138', 'osf_id': 'phsxf', 'osf_project': 'phsxf'},
-    'Melting_curves/Wolf_Bower+2018': {'zenodo_id': '15728072', 'osf_id': 'phsxf', 'osf_project': 'phsxf'},
+    'Melting_curves/Monteux+600': {
+        'zenodo_id': '15728091',
+        'osf_id': 'phsxf',
+        'osf_project': 'phsxf',
+    },
+    'Melting_curves/Monteux-600': {
+        'zenodo_id': '15728138',
+        'osf_id': 'phsxf',
+        'osf_project': 'phsxf',
+    },
+    'Melting_curves/Wolf_Bower+2018': {
+        'zenodo_id': '15728072',
+        'osf_id': 'phsxf',
+        'osf_project': 'phsxf',
+    },
     # Surface albedos (OSF project: 2gcd9)
     'Hammond24': {'zenodo_id': '15880455', 'osf_id': '2gcd9', 'osf_project': '2gcd9'},
     # Stellar spectra (OSF project: 8r2sw)
@@ -610,6 +630,7 @@ def download(
             except Exception as e:
                 log.warning(f'    OSF download failed: {e}')
                 import traceback
+
                 log.debug(f'OSF download traceback: {traceback.format_exc()}')
                 success = False
         else:
@@ -680,8 +701,8 @@ def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = Fals
     Used by `proteus.star.phoenix`. The current implementation downloads the
     PHOENIX bundle via the unified `download()` mechanism.
     """
-    desc = f"PHOENIX stellar spectra (alpha={alpha:+0.1f}, [Fe/H]={FeH:+0.1f})"
-    return download(folder="PHOENIX", target="stellar_spectra", desc=desc, force=force)
+    desc = f'PHOENIX stellar spectra (alpha={alpha:+0.1f}, [Fe/H]={FeH:+0.1f})'
+    return download(folder='PHOENIX', target='stellar_spectra', desc=desc, force=force)
 
 
 def download_interior_lookuptables(clean=False):
@@ -854,7 +875,9 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
                         data_dir=tracks_dir,
                     )
                     if target_dir.exists() and any(target_dir.iterdir()):
-                        log.info(f'Successfully downloaded {track} tracks via OSF (project {osf_id})')
+                        log.info(
+                            f'Successfully downloaded {track} tracks via OSF (project {osf_id})'
+                        )
                         return
                 except Exception as osf_e:
                     log.debug(f'OSF project {osf_id} did not have {track} tracks: {osf_e}')
@@ -864,7 +887,9 @@ def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
                 f'Could not download {track} tracks via MORS or OSF fallback. '
                 f'You may need to download manually or check network connectivity.'
             )
-            raise RuntimeError(f'Failed to download {track} tracks: MORS failed, OSF fallback unavailable')
+            raise RuntimeError(
+                f'Failed to download {track} tracks: MORS failed, OSF fallback unavailable'
+            )
 
         except Exception as osf_fallback_error:
             log.error(f'OSF fallback also failed for {track} tracks: {osf_fallback_error}')

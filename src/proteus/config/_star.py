@@ -13,13 +13,13 @@ def valid_mors(instance, attribute, value):
     if (instance.mors.age_now is None) or (instance.mors.age_now <= 0):
         raise ValueError('mors.age_now must be > 0')
     if instance.mors.star_name is None:
-        raise ValueError("Must provide mors.star_name")
+        raise ValueError('Must provide mors.star_name')
 
     src = instance.mors.spectrum_source
-    if src == "phoenix":
+    if src == 'phoenix':
         if instance.mors.phoenix_alpha is None or instance.mors.phoenix_FeH is None:
             raise ValueError(
-                "mors.phoenix_alpha and mors.phoenix_FeH must be set when using PHOENIX spectra"
+                'mors.phoenix_alpha and mors.phoenix_FeH must be set when using PHOENIX spectra'
             )
 
     set_pcntle = instance.mors.rot_pcntle is not None
@@ -76,24 +76,31 @@ class Mors:
     star_path = field(default=None, converter=none_if_none)
     rot_pcntle = field(default=None, converter=none_if_none)
     rot_period = field(default=None, converter=none_if_none)
-    tracks: str = field(default="spada", validator=in_(("spada", "baraffe")))
+    tracks: str = field(default='spada', validator=in_(('spada', 'baraffe')))
 
     spectrum_source: str = field(
         default=None,
-        validator=in_(("solar", "muscles", "phoenix", None)),
+        validator=in_(('solar', 'muscles', 'phoenix', None)),
         converter=none_if_none,
     )
 
     ### PHOENIX parameters
 
     # Solar by default
-    phoenix_FeH: float = field(default=0.0)   # [Fe/H]
-    phoenix_alpha: float = field(default=0.0) # [alpha/Fe]
+    phoenix_FeH: float = field(default=0.0)  # [Fe/H]
+    phoenix_alpha: float = field(default=0.0)  # [alpha/Fe]
 
     # calculated if none
-    phoenix_radius: float | str = field(default=None, validator=optional(gt(0)), converter=none_if_none)
-    phoenix_log_g: float | str  = field(default=None, validator=optional(gt(0)),  converter=none_if_none)
-    phoenix_Teff: float | str = field(default=None, validator=optional(gt(0)), converter=none_if_none)
+    phoenix_radius: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    phoenix_log_g: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    phoenix_Teff: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+
 
 def valid_stardummy(instance, attribute, value):
     if instance.module != 'dummy':

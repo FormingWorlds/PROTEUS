@@ -363,11 +363,11 @@ class AragogRunner:
 
         # Radiogenic heating
         Hradio_s = aragog_output.heating_radio[:, -1]  # [W kg-1]
-        output["F_radio"] = float(np.dot(Hradio_s, mass_s)) / area  # [W m-2]
+        output['F_radio'] = float(np.dot(Hradio_s, mass_s)) / area  # [W m-2]
 
         # Tidal heating flux
         Htidal_s = aragog_output.heating_tidal[:, -1]  # [W kg-1]
-        output["F_tidal"] = float(np.dot(Htidal_s, mass_s)) / area
+        output['F_tidal'] = float(np.dot(Htidal_s, mass_s)) / area
 
         # Store arrays
         # FIX ME - Should extract values from staggered nodes rather than cropping

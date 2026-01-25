@@ -160,8 +160,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         input_star = sflux_path
 
     # Fast I/O folder
-    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == "DEBUG"):
-        io_dir = dirs["output"]
+    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == 'DEBUG'):
+        io_dir = dirs['output']
     else:
         io_dir = create_tmp_folder()
     log.info(f'Temporary-file working dir: {io_dir}')
@@ -200,21 +200,21 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # Setup struct
     succ = jl.AGNI.atmosphere.setup_b(
         atmos,
-        dirs["agni"],
-        dirs["output"],
+        dirs['agni'],
+        dirs['output'],
         input_sf,
-        hf_row["F_ins"],
+        hf_row['F_ins'],
         config.orbit.s0_factor,
-        float(hf_row["albedo_pl"]),
+        float(hf_row['albedo_pl']),
         config.orbit.zenith_angle,
-        hf_row["T_surf"],
-        hf_row["gravity"],
-        hf_row["R_int"],
+        hf_row['T_surf'],
+        hf_row['gravity'],
+        hf_row['R_int'],
         int(config.atmos_clim.agni.num_levels),
         p_surf,
         p_top,
         vol_dict,
-        "",
+        '',
         IO_DIR=io_dir,
         flag_rayleigh=config.atmos_clim.rayleigh,
         flag_cloud=config.atmos_clim.cloud_enabled,
@@ -237,14 +237,14 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
         skin_d=config.atmos_clim.surface_d,
         skin_k=config.atmos_clim.surface_k,
-        tmp_magma=hf_row["T_surf"],
+        tmp_magma=hf_row['T_surf'],
         tmp_floor=config.atmos_clim.tmp_minimum,
     )
 
     # Check setup! success
     if not bool(succ):
         UpdateStatusfile(dirs, 22)
-        raise RuntimeError("Could not setup atmosphere object")
+        raise RuntimeError('Could not setup atmosphere object')
 
     # Allocate arrays
     succ = jl.AGNI.atmosphere.allocate_b(atmos, input_star)
@@ -252,7 +252,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     # Check allocate! success
     if not bool(succ):
         UpdateStatusfile(dirs, 22)
-        raise RuntimeError("Could not allocate atmosphere object")
+        raise RuntimeError('Could not allocate atmosphere object')
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs['output'], 'data', '*_atm.nc'))
@@ -278,7 +278,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
                 jl.AGNI.setpt.analytic_b(atmos)
             case _:
                 UpdateStatusfile(dirs, 20)
-                raise ValueError("Invalid initial T(p) profile selected")
+                raise ValueError('Invalid initial T(p) profile selected')
 
         # lower-limit on initial profile
         jl.AGNI.setpt.stratosphere_b(atmos, min(400.0, hf_row['T_surf']))
@@ -593,6 +593,7 @@ def _solve_transparent(atmos, config: Config):
     )
     return atmos
 
+
 def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     """Run AGNI atmosphere model.
 
@@ -673,7 +674,7 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     SW_flux_down = np.array(atmos.flux_d_sw)
     albedo = SW_flux_up[0] / SW_flux_down[0]
     if bool(atmos.transparent):
-        R_obs = float(hf_row["R_int"])
+        R_obs = float(hf_row['R_int'])
         T_obs = float(atmos.tmp_surf)
     else:
         R_obs = float(atmos.transspec_r)
@@ -700,29 +701,29 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
 
     # p_xuv from R_xuv
     if config.escape.xuv_defined_by_radius:
-        r_xuv = hf_row["R_xuv"] # m
-        p_xuv = get_oarr_from_parr(atmos.r, atmos.p, r_xuv)[1] * 1e-5 # bar
+        r_xuv = hf_row['R_xuv']  # m
+        p_xuv = get_oarr_from_parr(atmos.r, atmos.p, r_xuv)[1] * 1e-5  # bar
 
     # R_xuv from p_xuv
     else:
-        p_xuv =  hf_row["p_xuv"] # bar
-        r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1] # m
+        p_xuv = hf_row['p_xuv']  # bar
+        r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1]  # m
 
     # final things to store
     output = {}
-    output["F_atm"]         = F_atm_lim
-    output["F_olr"]         = LW_flux_up[0]
-    output["F_sct"]         = SW_flux_up[0]
-    output["T_surf"]        = float(atmos.tmp_surf)
-    output["p_obs"]         = float(atmos.transspec_p)/1e5 # convert [Pa] to [bar]
-    output["T_obs"]         = T_obs
-    output["R_obs"]         = R_obs
-    output["albedo"]        = albedo
-    output["p_xuv"]         = p_xuv            # Pressure at Rxuv   [bars]
-    output["R_xuv"]         = r_xuv            # Radius at Pxuv     [m]
-    output["ocean_areacov"] = float(atmos.ocean_areacov)
-    output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
-    output["P_surf_clim"]   = float(atmos.p_boa) / 1e5 # Calculated Psurf [bar]
+    output['F_atm'] = F_atm_lim
+    output['F_olr'] = LW_flux_up[0]
+    output['F_sct'] = SW_flux_up[0]
+    output['T_surf'] = float(atmos.tmp_surf)
+    output['p_obs'] = float(atmos.transspec_p) / 1e5  # convert [Pa] to [bar]
+    output['T_obs'] = T_obs
+    output['R_obs'] = R_obs
+    output['albedo'] = albedo
+    output['p_xuv'] = p_xuv  # Pressure at Rxuv   [bars]
+    output['R_xuv'] = r_xuv  # Radius at Pxuv     [m]
+    output['ocean_areacov'] = float(atmos.ocean_areacov)
+    output['ocean_maxdepth'] = float(atmos.ocean_maxdepth)
+    output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]
 
     for g in gas_list:
         if g in list(atmos.gas_names):
@@ -733,9 +734,9 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     # set composition at xuv
     for g in gas_list:
         if g in atmos.gas_vmr:
-            _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[g], p_xuv*1e5)
-            hf_row[g+"_vmr_xuv"] = x_xuv
+            _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[g], p_xuv * 1e5)
+            hf_row[g + '_vmr_xuv'] = x_xuv
         else:
-            hf_row[g+"_vmr_xuv"] = 0.0
+            hf_row[g + '_vmr_xuv'] = 0.0
 
     return atmos, output

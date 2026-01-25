@@ -32,9 +32,11 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
+
     Pxuv: float = field(default=5e-5, validator=ge(0))
     efficiency: float = field(default=0.1, validator=(ge(0), le(1)))
     tidal: bool = field(default=False)
+
 
 def valid_escapedummy(instance, attribute, value):
     if instance.module != 'dummy':
@@ -54,11 +56,12 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
+
     rate: float = field(default=0.0, validator=ge(0), converter=zero_if_none)
 
 
 def valid_escapeboreas(instance, attribute, value):
-    if instance.module != "boreas":
+    if instance.module != 'boreas':
         return
 
 
@@ -129,9 +132,9 @@ class EscapeBoreas:
 
 
 def valid_reservoir(instance, attribute, value):
-    ress = ("bulk", "outgas", "pxuv")
+    ress = ('bulk', 'outgas', 'pxuv')
     if instance.reservoir not in ress:
-        raise ValueError(f"Escape reservoir must be one of: {ress}")
+        raise ValueError(f'Escape reservoir must be one of: {ress}')
 
 
 @define
@@ -153,14 +156,14 @@ class Escape:
     """
 
     module: str | None = field(
-        validator=in_((None, "dummy", "zephyrus", "boreas")), converter=none_if_none
+        validator=in_((None, 'dummy', 'zephyrus', 'boreas')), converter=none_if_none
     )
 
     zephyrus: Zephyrus = field(factory=Zephyrus, validator=valid_zephyrus)
     dummy: EscapeDummy = field(factory=EscapeDummy, validator=valid_escapedummy)
     boreas: EscapeBoreas = field(factory=EscapeBoreas, validator=valid_escapeboreas)
 
-    reservoir: str = field(default="outgas", validator=valid_reservoir)
+    reservoir: str = field(default='outgas', validator=valid_reservoir)
 
     @property
     def xuv_defined_by_radius(self) -> bool:
@@ -170,4 +173,4 @@ class Escape:
         on the escape module used. BOREAS calculates both Pxuv and Rxuv, while the default
         assumes that Pxuv is constant, which is used to find Rxuv from the r(p) profile.
         """
-        return self.module == "boreas"
+        return self.module == 'boreas'

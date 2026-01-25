@@ -221,7 +221,9 @@ def validate_energy_conservation(
         if len(flux_imbalance) > 1:
             # Check if imbalance is decreasing or stable (not growing)
             imbalance_trend = np.diff(flux_imbalance)
-            results['flux_stable'] = np.mean(imbalance_trend) <= 0 or np.std(imbalance_trend) < mean_flux
+            results['flux_stable'] = (
+                np.mean(imbalance_trend) <= 0 or np.std(imbalance_trend) < mean_flux
+            )
         else:
             results['flux_stable'] = True
 
@@ -285,7 +287,9 @@ def validate_mass_conservation(
     if len(total_mass) > 1:
         mass_change = total_mass[-1] - total_mass[0]
         initial_mass = total_mass[0]
-        mass_conservation_ratio = abs(mass_change) / initial_mass if initial_mass > 0 else np.inf
+        mass_conservation_ratio = (
+            abs(mass_change) / initial_mass if initial_mass > 0 else np.inf
+        )
 
         results['total_mass_change'] = mass_change
         results['mass_conservation_ratio'] = mass_conservation_ratio

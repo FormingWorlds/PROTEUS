@@ -278,7 +278,7 @@ def test_star_mors_invalid_age():
         module='mors',
         mors=SimpleNamespace(
             age_now=None,  # Invalid: None
-            star_name="sun",
+            star_name='sun',
             rot_pcntle=50.0,
             rot_period=None,
             spectrum_source=None,
@@ -310,7 +310,7 @@ def test_star_mors_missing_spec():
         ),
     )
 
-    with pytest.raises(ValueError, match="Must provide mors.star_name"):
+    with pytest.raises(ValueError, match='Must provide mors.star_name'):
         valid_mors(config, SimpleNamespace(), None)
 
 
@@ -324,7 +324,7 @@ def test_star_mors_rotation_percentile_valid():
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,
-            star_name="sun",
+            star_name='sun',
             rot_pcntle=50.0,  # Valid: 0-100
             rot_period=None,
             spectrum_source=None,
@@ -344,7 +344,7 @@ def test_star_mors_rotation_percentile_bounds():
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,
-            star_name="sun",
+            star_name='sun',
             rot_pcntle=101.0,  # Invalid: > 100
             rot_period=None,
             spectrum_source=None,
@@ -368,7 +368,7 @@ def test_star_mors_rotation_period_positive():
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,
-            star_name="sun",
+            star_name='sun',
             rot_pcntle=None,
             rot_period=25.0,  # Valid: > 0 days
             spectrum_source=None,
@@ -393,7 +393,7 @@ def test_star_mors_rotation_mutual_exclusion():
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,
-            star_name="sun",
+            star_name='sun',
             rot_pcntle=50.0,
             rot_period=25.0,  # Both set - error
             spectrum_source=None,

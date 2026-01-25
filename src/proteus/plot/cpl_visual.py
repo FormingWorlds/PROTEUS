@@ -29,7 +29,7 @@ def plot_visual(
     idx: int = -1,
     osamp: int = 3,
     view: float = 12.5,
-    plot_format: str = "pdf",
+    plot_format: str = 'pdf',
 ):
     """Render a visual snapshot of the planet–star system.
 
@@ -59,7 +59,7 @@ def plot_visual(
     str or bool
         Path to the saved figure on success; False if required data are missing.
     """
-    log.info("Plot visual")
+    log.info('Plot visual')
 
     osamp = max(osamp, 2)
 
@@ -71,19 +71,19 @@ def plot_visual(
     obs = R_int * view
 
     # Get time at this index, and path to NetCDF file
-    time = hf_all["Time"].iloc[idx]
-    files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
+    time = hf_all['Time'].iloc[idx]
+    files = glob.glob(os.path.join(output_dir, 'data', '*_atm.nc'))
     if len(files) == 0:
-        log.warning("No atmosphere NetCDF files found in output folder")
-        if os.path.exists(os.path.join(output_dir, "data", "data.tar")):
-            log.warning("You may need to extract archived data files")
+        log.warning('No atmosphere NetCDF files found in output folder')
+        if os.path.exists(os.path.join(output_dir, 'data', 'data.tar')):
+            log.warning('You may need to extract archived data files')
         return False
 
-    fpath = os.path.join(output_dir, "data", "%.0f_atm.nc" % time)
+    fpath = os.path.join(output_dir, 'data', '%.0f_atm.nc' % time)
     if not os.path.exists(fpath):
-        log.warning(f"Cannot find file {fpath}")
-        if os.path.exists(os.path.join(output_dir, "data", "data.tar")):
-            log.warning("You may need to extract archived data files")
+        log.warning(f'Cannot find file {fpath}')
+        if os.path.exists(os.path.join(output_dir, 'data', 'data.tar')):
+            log.warning('You may need to extract archived data files')
         return False
 
     # Read data
@@ -134,7 +134,7 @@ def plot_visual(
     p_max = np.amax(p_arr)
 
     # plot base layer
-    srf = patches.Circle((0,0), radius=r_min, fc="#492410", zorder=8)
+    srf = patches.Circle((0, 0), radius=r_min, fc='#492410', zorder=8)
     ax.add_patch(srf)
 
     # plot surface of planet
@@ -286,6 +286,7 @@ def plot_visual(
 
     return fpath
 
+
 def plot_visual_entry(handler: Proteus):
     """Entry point to render a single visual frame."""
     # read helpfile
@@ -300,8 +301,10 @@ def plot_visual_entry(handler: Proteus):
         idx=-1,
     )
 
-def anim_visual(hf_all: pd.DataFrame,  output_dir:str,
-                    duration:float=8.0, nframes:int=80):
+
+def anim_visual(
+    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 80
+):
     """Create an MP4 animation from visual frames.
 
     Renders a sequence of frames using `plot_visual` and assembles them into
@@ -326,74 +329,67 @@ def anim_visual(hf_all: pd.DataFrame,  output_dir:str,
         Returns False on failure
     """
 
-
     # make frames folder (safe if it already exists)
-    framesdir = os.path.join(output_dir,"plots", "anim_frames")
+    framesdir = os.path.join(output_dir, 'plots', 'anim_frames')
     if os.path.isdir(framesdir):
         rmtree(framesdir)
     os.makedirs(framesdir)
 
     # Must be raster format
-    plot_fmt = "png"
+    plot_fmt = 'png'
 
     # Work out downsampling factor
     niters = len(hf_all)
-    print(f"Found dataframe with {niters} iterations")
-    ds_factor = int(max(1,np.floor(niters/nframes)))
-    print(f"Downsampling iterations by a factor of {ds_factor}")
+    print(f'Found dataframe with {niters} iterations')
+    ds_factor = int(max(1, np.floor(niters / nframes)))
+    print(f'Downsampling iterations by a factor of {ds_factor}')
 
     # For each index...
     idxs = range(0, niters, ds_factor)
     nframes = len(idxs)
-    fps = int(max(1,round(nframes/duration)))
-    for i,idx in enumerate(idxs):
+    fps = int(max(1, round(nframes / duration)))
+    for i, idx in enumerate(idxs):
+        idx = max(0, min(idx, niters - 1))
 
-        idx = max(0,min(idx, niters-1))
+        print(f'Plotting iteration {idx:5d} (frame {i + 1} / {nframes})')
 
-        print(f"Plotting iteration {idx:5d} (frame {i+1} / {nframes})")
-
-        fpath = plot_visual(
-            hf_all,
-            output_dir,
-            plot_format=plot_fmt,
-            idx=idx
-        )
+        fpath = plot_visual(hf_all, output_dir, plot_format=plot_fmt, idx=idx)
 
         if not fpath:
             return False
 
-        copyfile(fpath, os.path.join(framesdir,f"{idx:05d}.{plot_fmt}"))
+        copyfile(fpath, os.path.join(framesdir, f'{idx:05d}.{plot_fmt}'))
 
     # Make animation
-    out_video = os.path.join(output_dir, "plots", "anim_visual.mp4")
+    out_video = os.path.join(output_dir, 'plots', 'anim_visual.mp4')
 
     # ffmpeg input pattern: frames named 0.<ext>, 1.<ext>, ...
-    input_pattern = os.path.join(framesdir, f"*.{plot_fmt}")
+    input_pattern = os.path.join(framesdir, f'*.{plot_fmt}')
 
     cmd = [
-        "ffmpeg",
-        "-y",
-        f"-framerate {fps:d}",
-        "-pattern_type glob",
+        'ffmpeg',
+        '-y',
+        f'-framerate {fps:d}',
+        '-pattern_type glob',
         f"-i '{input_pattern}'",
-        "-c:v libx264",
+        '-c:v libx264',
         "-vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2'",
-        "-pix_fmt yuv420p",
-        f" {out_video}"
+        '-pix_fmt yuv420p',
+        f' {out_video}',
     ]
 
     cmd = ' '.join(cmd)
-    print(f"Running ffmpeg to assemble video: {cmd}")
+    print(f'Running ffmpeg to assemble video: {cmd}')
     try:
         ret = call([cmd], shell=True, stdout=None)
         if ret == 0:
-            log.info(f"Wrote animation to {out_video}")
+            log.info(f'Wrote animation to {out_video}')
         else:
-            log.error(f"ffmpeg returned non-zero exit code: {ret}")
+            log.error(f'ffmpeg returned non-zero exit code: {ret}')
     except FileNotFoundError:
-        log.error("ffmpeg not found on PATH; cannot assemble animation")
+        log.error('ffmpeg not found on PATH; cannot assemble animation')
     except Exception as e:
-        log.error(f"Error running ffmpeg: {e}")
+        log.error(f'Error running ffmpeg: {e}')
 
     return True
 
@@ -416,13 +412,14 @@ def anim_visual_entry(handler: Proteus):
     """
 
     # read helpfile
-    hf_all = pd.read_csv(os.path.join(handler.directories['output'],
-                                      "runtime_helpfile.csv"), sep=r"\s+")
+    hf_all = pd.read_csv(
+        os.path.join(handler.directories['output'], 'runtime_helpfile.csv'), sep=r'\s+'
+    )
 
     anim_visual(
         hf_all,
-        handler.directories["output"],
-   )
+        handler.directories['output'],
+    )
 
 
 if __name__ == '__main__':

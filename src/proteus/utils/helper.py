@@ -12,7 +12,8 @@ import numpy as np
 
 from proteus.utils.constants import element_list, element_mmw
 
-log = logging.getLogger("fwl." + __name__)
+log = logging.getLogger('fwl.' + __name__)
+
 
 def get_proteus_dir():
     """
@@ -183,7 +184,7 @@ def CommentFromStatus(status: int):
         case 27:
             desc = 'Error (Outgassing model)'
         case 28:
-            desc = "Error (Escape model)"
+            desc = 'Error (Escape model)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status
@@ -330,7 +331,8 @@ def recursive_setattr(obj, attr: str, value):
         L = attr.split('.')
         recursive_setattr(getattr(obj, L[0]), '.'.join(L[1:]), value)
 
-def gas_vmr_to_emr(gases:dict):
+
+def gas_vmr_to_emr(gases: dict):
     """Calculate elemental mass mixing ratios from gas volume mixing ratios.
 
     Parameters
@@ -354,7 +356,7 @@ def gas_vmr_to_emr(gases:dict):
     """
 
     # Numbers and masses of each element
-    M_e = {e:0.0 for e in element_list}
+    M_e = {e: 0.0 for e in element_list}
 
     # Loop over gases
     for g in gases.keys():
@@ -374,8 +376,8 @@ def gas_vmr_to_emr(gases:dict):
     # Guard against zero or non-finite total mass to avoid division by zero
     if (not np.isfinite(M_tot)) or abs(M_tot) < 1e-30:
         log.warning(
-            "gas_vmr_to_emr: total elemental mass M_tot is zero or invalid "
-            "for provided gas VMRs; returning empty elemental mass ratios."
+            'gas_vmr_to_emr: total elemental mass M_tot is zero or invalid '
+            'for provided gas VMRs; returning empty elemental mass ratios.'
         )
         return {}
 
@@ -384,7 +386,8 @@ def gas_vmr_to_emr(gases:dict):
 
     return emr
 
-def eval_gas_mmw(gas:str):
+
+def eval_gas_mmw(gas: str):
     """Evaluate gas mmw [kg mol-1] from its atoms.
 
     Parameters

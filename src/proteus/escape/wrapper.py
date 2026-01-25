@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+
 def run_escape(
     config: Config,
     hf_row: dict,
@@ -38,9 +39,9 @@ def run_escape(
 
     if not config.escape.module:
         # Keep a minimal, dependency-free disabled path for unit tests.
-        hf_row["esc_rate_total"] = 0.0
+        hf_row['esc_rate_total'] = 0.0
         for e in element_list:
-            hf_row[f"esc_rate_{e}"] = 0.0
+            hf_row[f'esc_rate_{e}'] = 0.0
         log.info(f'Escape is disabled, bulk rate = {hf_row["esc_rate_total"]:.2e} kg s-1')
         return
 
@@ -52,6 +53,7 @@ def run_escape(
 
     elif config.escape.module == 'boreas':
         from proteus.escape.boreas import run_boreas
+
         run_boreas(config, hf_row, dirs)
 
     else:
@@ -59,11 +61,11 @@ def run_escape(
 
     log.info(f'Bulk escape rate = {hf_row["esc_rate_total"]:.2e} kg s-1')
 
-    log.info("Elemental escape fluxes:")
+    log.info('Elemental escape fluxes:')
     for e in element_list:
-        esc_e = float(hf_row.get(f"esc_rate_{e}", 0.0))
+        esc_e = float(hf_row.get(f'esc_rate_{e}', 0.0))
         if esc_e > 0:
-            log.info("    %2s = %.2e kg s-1" % (e, esc_e))
+            log.info('    %2s = %.2e kg s-1' % (e, esc_e))
 
     # calculate new elemental inventories from loss over duration `dt`
     solvevol_target = calc_new_elements(
@@ -75,9 +77,10 @@ def run_escape(
 
     # store new elemental inventories
     for e, mass in solvevol_target.items():
-        hf_row[f"{e}_kg_total"] = mass
+        hf_row[f'{e}_kg_total'] = mass
 
-def run_dummy(config:Config, hf_row:dict):
+
+def run_dummy(config: Config, hf_row: dict):
     """Run dummy escape model.
 
     Uses a fixed mass loss rate and does not fractionate.
@@ -91,20 +94,22 @@ def run_dummy(config:Config, hf_row:dict):
     """
 
     # Set sound speed to zero
-    hf_row["cs_xuv"] = 0.0
+    hf_row['cs_xuv'] = 0.0
 
     # Set Pxuv to Psurf (if available)
-    if "P_surf" in hf_row:
-        hf_row["p_xuv"] = hf_row["P_surf"]
-    if "R_int" in hf_row:
-        hf_row["R_xuv"] = hf_row["R_int"]
+    if 'P_surf' in hf_row:
+        hf_row['p_xuv'] = hf_row['P_surf']
+    if 'R_int' in hf_row:
+        hf_row['R_xuv'] = hf_row['R_int']
 
     # Set bulk escape rate based on value from user
-    hf_row["esc_rate_total"] = float(getattr(getattr(config.escape, "dummy", None), "rate", 0.0))
+    hf_row['esc_rate_total'] = float(
+        getattr(getattr(config.escape, 'dummy', None), 'rate', 0.0)
+    )
 
     # Always unfractionating (best-effort: unit tests may not populate all keys)
     try:
-        reservoir = getattr(config.escape, "reservoir", None)
+        reservoir = getattr(config.escape, 'reservoir', None)
         if isinstance(reservoir, str):
             calc_unfract_fluxes(
                 hf_row,
@@ -113,7 +118,8 @@ def run_dummy(config:Config, hf_row:dict):
             )
     except (KeyError, ValueError, TypeError):
         for e in element_list:
-            hf_row[f"esc_rate_{e}"] = 0.0
+            hf_row[f'esc_rate_{e}'] = 0.0
+
 
 def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
     """Run ZEPHYRUS escape model.
@@ -146,13 +152,13 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
         scaling=3,
     )
 
-    hf_row["esc_rate_total"] = mlr
-    hf_row["p_xuv"] = config.escape.zephyrus.Pxuv
-    hf_row["R_xuv"] = 0.0  # to be calc'd by atmosphere module
+    hf_row['esc_rate_total'] = mlr
+    hf_row['p_xuv'] = config.escape.zephyrus.Pxuv
+    hf_row['R_xuv'] = 0.0  # to be calc'd by atmosphere module
 
     # Always unfractionating - escaping in bulk
     try:
-        reservoir = getattr(config.escape, "reservoir", None)
+        reservoir = getattr(config.escape, 'reservoir', None)
         if isinstance(reservoir, str):
             calc_unfract_fluxes(
                 hf_row,
@@ -161,7 +167,7 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
             )
     except (KeyError, ValueError, TypeError):
         for e in element_list:
-            hf_row[f"esc_rate_{e}"] = 0.0
+            hf_row[f'esc_rate_{e}'] = 0.0
 
     return float(mlr)
 
@@ -190,39 +196,39 @@ def calc_new_elements(
     """
     # which reservoir?
     match reservoir:
-        case "bulk":
-            key = "_kg_total"
-        case "outgas":
-            key = "_kg_atm"
-        case "pxuv":
-            raise ValueError("Fractionation at p_xuv is not yet supported")
+        case 'bulk':
+            key = '_kg_total'
+        case 'outgas':
+            key = '_kg_atm'
+        case 'pxuv':
+            raise ValueError('Fractionation at p_xuv is not yet supported')
         case _:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
     # calculate mass of volatile elements in reservoir (except oxygen, which is set by fO2)
     res: dict[str, float] = {}
     for e in element_list:
-        if e == "O":
+        if e == 'O':
             continue
-        res[e] = float(hf_row.get(f"{e}{key}", 0.0))
+        res[e] = float(hf_row.get(f'{e}{key}', 0.0))
     M_vols = float(sum(res.values()))
 
     # check if we just desiccated the planet...
     if M_vols < min_thresh:
-        log.debug("    Total mass of volatiles below threshold in escape calculation")
+        log.debug('    Total mass of volatiles below threshold in escape calculation')
         return res
 
     # compute mass ratios in escaping reservoir
     emr = {e: (res[e] / M_vols if M_vols > 0 else 0.0) for e in res}
 
     # total escaped mass over dt [kg]
-    esc_mass = float(hf_row.get("esc_rate_total", 0.0)) * secs_per_year * float(dt)
+    esc_mass = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
 
     # compute new TOTAL inventories
     tgt: dict[str, float] = {}
     for e in res:
         lost = esc_mass * emr[e]
-        old_total = float(hf_row.get(f"{e}_kg_total", 0.0))
+        old_total = float(hf_row.get(f'{e}_kg_total', 0.0))
         new_total = old_total - lost
         if new_total < min_thresh:
             new_total = 0.0
