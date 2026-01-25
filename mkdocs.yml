@@ -1,5 +1,5 @@
 site_name: PROTEUS
-site_url: https://fwl-proteus.readthedocs.io
+site_url: https://proteus-framework.org/PROTEUS/
 repo_url: https://github.com/FormingWorlds/PROTEUS
 repo_name: GitHub
 
@@ -29,8 +29,8 @@ nav:
   - 🔗 MORS:  https://fwl-mors.readthedocs.io/
   - 🔗 JANUS: https://fwl-janus.readthedocs.io/
   - 🔗 ZEPHYRUS: https://github.com/FormingWorlds/ZEPHYRUS/
-  - 🔗 CALLIOPE: https://fwl-calliope.readthedocs.io/
-  - 🔗 AGNI: https://h-nicholls.space/AGNI/
+  - 🔗 CALLIOPE: https://proteus-framework.org/CALLIOPE/
+  - 🔗 AGNI: https://www.h-nicholls.space/AGNI/
   - 🔗 LovePy: https://github.com/nichollsh/lovepy
   - 🔗 VULCAN: https://github.com/FormingWorlds/VULCAN
   - 🔗 Zalmoxis: https://github.com/FormingWorlds/Zalmoxis
@@ -92,6 +92,7 @@ plugins:
 use_directory_urls: false
 
 watch:
+  - src/
   - docs/
   - README.md
   - CONTRIBUTING.md

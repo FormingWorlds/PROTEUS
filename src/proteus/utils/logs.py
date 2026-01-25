@@ -64,6 +64,10 @@ def setup_logger(logpath: str = 'new.log', level: str = 'INFO', logterm: bool = 
     # https://stackoverflow.com/a/61457119
     custom_logger = logging.getLogger(logger_name)
 
+    # Clear existing handlers to prevent accumulation when setup_logger is called multiple times
+    # (e.g., when CLI command groups are invoked multiple times in tests)
+    custom_logger.handlers.clear()
+
     if os.path.exists(logpath):
         os.remove(logpath)
 

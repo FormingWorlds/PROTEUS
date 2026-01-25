@@ -10,8 +10,9 @@ import shutil
 
 import numpy as np
 
-log = logging.getLogger('fwl.' + __name__)
+from proteus.utils.constants import element_list, element_mmw
 
+log = logging.getLogger("fwl." + __name__)
 
 def get_proteus_dir():
     """
@@ -181,6 +182,8 @@ def CommentFromStatus(status: int):
             desc = 'Error (Tides/orbit model)'
         case 27:
             desc = 'Error (Outgassing model)'
+        case 28:
+            desc = "Error (Escape model)"
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status
@@ -326,3 +329,84 @@ def recursive_setattr(obj, attr: str, value):
     else:
         L = attr.split('.')
         recursive_setattr(getattr(obj, L[0]), '.'.join(L[1:]), value)
+
+def gas_vmr_to_emr(gases:dict):
+    """Calculate elemental mass mixing ratios from gas volume mixing ratios.
+
+    Parameters
+    ----------
+    gases : dict
+        Dictionary mapping gas identifiers to their volume mixing ratios.
+        Keys are gas formula strings (for example ``"H2O"``, ``"CO2"``),
+        and values are the corresponding volume mixing ratios (floats) in
+        the gas mixture.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping element symbols to elemental mass mixing ratios.
+        Keys are element symbols present in the input gases (for example
+        ``"H"``, ``"C"``, ``"O"``) and values are the associated mass
+        mixing ratios (floats), computed using :data:`element_mmw` and
+        normalized by the total mass of all elements. Only elements with
+        non-negligible contributions (mass > 1e-20 per unit mole of
+        mixture) are included.
+    """
+
+    # Numbers and masses of each element
+    M_e = {e:0.0 for e in element_list}
+
+    # Loop over gases
+    for g in gases.keys():
+        # split into atoms
+        atoms = mol_to_ele(g)
+
+        # vmr of this gas
+        vmr = gases[g]
+
+        # add mass of atoms in this molecule to element counter
+        for e in atoms:
+            M_e[e] += atoms[e] * vmr * element_mmw[e]
+
+    # Get total mass of all atoms in these gases (per unit mole of mixture)
+    M_tot = sum(list(M_e.values()))
+
+    # Guard against zero or non-finite total mass to avoid division by zero
+    if (not np.isfinite(M_tot)) or abs(M_tot) < 1e-30:
+        log.warning(
+            "gas_vmr_to_emr: total elemental mass M_tot is zero or invalid "
+            "for provided gas VMRs; returning empty elemental mass ratios."
+        )
+        return {}
+
+    # Get mass mixing ratios of elements
+    emr = {e: M_e[e] / M_tot for e in element_list if M_e[e] > 1e-20}
+
+    return emr
+
+def eval_gas_mmw(gas:str):
+    """Evaluate gas mmw [kg mol-1] from its atoms.
+
+    Parameters
+    ----------
+    gas : str
+        Chemical formula of the gas. This should be composed of element symbols
+        (as defined in ``element_mmw``) optionally followed by integer
+        stoichiometric coefficients, for example ``"H2O"``, ``"CO2"`` or
+        ``"CH4"``. If the string is exactly an element symbol present in
+        ``element_mmw``, that elemental molar mass is used directly.
+
+    Returns
+    -------
+    float
+        Molecular mass of the gas in kg mol-1.
+    """
+    # gas is just an element
+    if gas in element_mmw.keys():
+        return element_mmw[gas]
+
+    atoms = mol_to_ele(gas)
+    mmw = 0.0
+    for e in atoms:
+        mmw += atoms[e] * element_mmw[e]
+    return mmw

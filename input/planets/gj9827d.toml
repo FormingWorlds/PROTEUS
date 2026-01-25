@@ -64,7 +64,8 @@ version = "2.0"
         rot_pcntle = 50.0      # rotation rate
         tracks  = "spada"       # evolution tracks: spada | baraffe
         age_now = 5.465          # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/hd85512.txt" # stellar spectrum
+        star_name   = "hd85512"
+        spectrum_source = "muscles"
 
 # Orbital system
 [orbit]

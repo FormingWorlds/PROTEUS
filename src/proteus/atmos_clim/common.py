@@ -196,29 +196,29 @@ def get_spfile_path(fwl_dir: str, config: Config):
     return os.path.join(fwl_dir, 'spectral_files', group, bands, group) + '.sf'
 
 
-def get_radius_from_pressure(p_arr, r_arr, p_tgt):
+def get_oarr_from_parr(p_arr:list, o_arr:list, p_tgt:float) -> tuple:
     """
-    Get the geometric radius corresponding to a given pressure.
+    Get the value of o_array corresponding to the p_tgt level in p_arr.
 
-    Parameters:
+    Parameters
     ----------------
         p_arr: list
             Pressure array
-        r_arr: list
-            Radius array
+        o_arr: list
+            Other array (e.g. radius)
         p_tgt: float
             Target pressure
 
-    Returns:
+    Returns
     ----------------
         p_close: float
             Closest pressure in the array
-        r_close: float
-            Closest radius in the array
+        o_close: float
+            Closest value in the other array
     """
 
     p_close, idx = find_nearest(p_arr, p_tgt)
-    return float(p_close), float(r_arr[idx])
+    return float(p_close), float(o_arr[idx])
 
 
 class Albedo_t:
@@ -266,7 +266,7 @@ class Albedo_t:
 
     def evaluate(self, tmp: float) -> float:
         """
-        Evalulate bond albedo at a given temperature [K]
+        Evaluate bond albedo at a given temperature [K]
 
         Parameters
         -----------

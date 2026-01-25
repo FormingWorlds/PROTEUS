@@ -36,19 +36,19 @@ par_shear = rheo_t(10.0, 2.10, 7.08e-7, 5.0, 0.4)
 par_bulk = rheo_t(1e9, 2.62, 0.102, 5.0, 0.4)
 
 
-# Evalulate big Phi at a given layer
+# Evaluate big Phi at a given layer
 def _bigphi(phi: float, par: rheo_t):
     return (1.0 - phi) / (1.0 - par.phist)
 
 
-# Evalulate big F at a given layer
+# Evaluate big F at a given layer
 def _bigf(phi: float, par: rheo_t):
     numer = np.pi**0.5 * _bigphi(phi, par) * (1.0 + _bigphi(phi, par) ** par.gamma)
     denom = 2.0 * (1.0 - par.xi)
     return (1.0 - par.xi) * erf(numer / denom)
 
 
-# Evalulate rheological parameter at a given layer
+# Evaluate rheological parameter at a given layer
 def eval_rheoparam(phi: float, which: str):
     match which:
         case 'visc':

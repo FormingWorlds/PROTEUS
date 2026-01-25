@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import glob
 import logging
 import os
+from shutil import copyfile, rmtree
+from subprocess import call
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -21,9 +24,42 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def plot_visual(
-    hf_all: pd.DataFrame, output_dir: str, idx=-1, osamp=3, view=12.5, plot_format='pdf'
+    hf_all: pd.DataFrame,
+    output_dir: str,
+    idx: int = -1,
+    osamp: int = 3,
+    view: float = 12.5,
+    plot_format: str = "pdf",
 ):
-    log.info('Plot visual')
+    """Render a visual snapshot of the planet–star system.
+
+    Generates a single frame visualising the planet surface color (from the
+    band-integrated upwelling flux) and surrounding atmospheric shells, along
+    with the star and an inset spectrum derived from NetCDF outputs.
+
+    Parameters
+    ----------
+    hf_all : pandas.DataFrame
+        Runtime helpfile table used to select the time step and metadata
+    output_dir : str
+        Path to the run's output directory containing `data/` and `plots/`.
+
+    idx : int, optional
+        Row index into `hf_all` and the sorted NetCDF files.
+    osamp : int, optional
+        Radial oversampling factor for rendering outer atmospheric levels.
+        Minimum of 2. Defaults to 3.
+    view : float, optional
+        Observer distance in units of planetary radii (`R_int * view`).
+    plot_format : str, optional
+        Image format for the saved figure (e.g., 'pdf', 'png').
+
+    Returns
+    -------
+    str or bool
+        Path to the saved figure on success; False if required data are missing.
+    """
+    log.info("Plot visual")
 
     osamp = max(osamp, 2)
 
@@ -34,14 +70,21 @@ def plot_visual(
     R_int = float(hf_all['R_int'].iloc[idx])
     obs = R_int * view
 
-    # Get output NetCDF file
-    time = hf_all['Time'].iloc[idx]
-    fpath = os.path.join(output_dir, 'data', '%.0f_atm.nc' % time)
+    # Get time at this index, and path to NetCDF file
+    time = hf_all["Time"].iloc[idx]
+    files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
+    if len(files) == 0:
+        log.warning("No atmosphere NetCDF files found in output folder")
+        if os.path.exists(os.path.join(output_dir, "data", "data.tar")):
+            log.warning("You may need to extract archived data files")
+        return False
+
+    fpath = os.path.join(output_dir, "data", "%.0f_atm.nc" % time)
     if not os.path.exists(fpath):
-        log.warning(f'Cannot find file {fpath}')
-        if os.path.exists(os.path.join(output_dir, 'data', 'data.tar')):
-            log.warning('You may need to extract archived data files')
-        return
+        log.warning(f"Cannot find file {fpath}")
+        if os.path.exists(os.path.join(output_dir, "data", "data.tar")):
+            log.warning("You may need to extract archived data files")
+        return False
 
     # Read data
     keys = ['ba_U_LW', 'ba_U_SW', 'ba_D_SW', 'bandmin', 'bandmax', 'pl', 'tmpl', 'rl']
@@ -51,7 +94,7 @@ def plot_visual(
     for k in keys:
         if k not in ds.keys():
             log.error(f"Could not read key '{k}' from NetCDF file")
-            return
+            return False
 
     scale = 1.7
     fig, ax = plt.subplots(1, 1, figsize=(4 * scale, 4 * scale))
@@ -90,10 +133,13 @@ def plot_visual(
     p_arr = ds['pl']
     p_max = np.amax(p_arr)
 
+    # plot base layer
+    srf = patches.Circle((0,0), radius=r_min, fc="#492410", zorder=8)
+    ax.add_patch(srf)
+
     # plot surface of planet
     fl_srf = lw[-1, :] + sw[-1, :]
     col = colsys.spec_to_rgb(interp_spec(wl, fl_srf))
-    srf = patches.Circle((0, 0), radius=r_min, fc=col, zorder=8)
     srf = patches.Circle((0, 0), radius=r_min, fc=col, zorder=n_lev + 1, alpha=0.2)
     ax.add_patch(srf)
 
@@ -238,8 +284,10 @@ def plot_visual(
     fpath = os.path.join(output_dir, 'plots', 'plot_visual.%s' % plot_format)
     fig.savefig(fpath, dpi=250, bbox_inches='tight')
 
+    return fpath
 
 def plot_visual_entry(handler: Proteus):
+    """Entry point to render a single visual frame."""
     # read helpfile
     hf_all = pd.read_csv(
         os.path.join(handler.directories['output'], 'runtime_helpfile.csv'), sep=r'\s+'
@@ -251,6 +299,130 @@ def plot_visual_entry(handler: Proteus):
         plot_format=handler.config.params.out.plot_fmt,
         idx=-1,
     )
+
+def anim_visual(hf_all: pd.DataFrame,  output_dir:str,
+                    duration:float=8.0, nframes:int=80):
+    """Create an MP4 animation from visual frames.
+
+    Renders a sequence of frames using `plot_visual` and assembles them into
+    an animation via `ffmpeg`. Frame number can be downsampled to speed
+    up rendering process. Requires `ffmpeg` to be available on PATH.
+
+    Parameters
+    ----------
+    hf_all : pandas.DataFrame
+        Runtime helpfile table used to select time steps and metadata.
+    output_dir : str
+        Path to the run's output directory.
+
+    duration : float, optional
+        Animation duration in seconds.
+    nframes : int, optional
+        Number of frames in animation.
+
+    Returns
+    -------
+    bool
+        Returns False on failure
+    """
+
+
+    # make frames folder (safe if it already exists)
+    framesdir = os.path.join(output_dir,"plots", "anim_frames")
+    if os.path.isdir(framesdir):
+        rmtree(framesdir)
+    os.makedirs(framesdir)
+
+    # Must be raster format
+    plot_fmt = "png"
+
+    # Work out downsampling factor
+    niters = len(hf_all)
+    print(f"Found dataframe with {niters} iterations")
+    ds_factor = int(max(1,np.floor(niters/nframes)))
+    print(f"Downsampling iterations by a factor of {ds_factor}")
+
+    # For each index...
+    idxs = range(0, niters, ds_factor)
+    nframes = len(idxs)
+    fps = int(max(1,round(nframes/duration)))
+    for i,idx in enumerate(idxs):
+
+        idx = max(0,min(idx, niters-1))
+
+        print(f"Plotting iteration {idx:5d} (frame {i+1} / {nframes})")
+
+        fpath = plot_visual(
+            hf_all,
+            output_dir,
+            plot_format=plot_fmt,
+            idx=idx
+        )
+
+        if not fpath:
+            return False
+
+        copyfile(fpath, os.path.join(framesdir,f"{idx:05d}.{plot_fmt}"))
+
+    # Make animation
+    out_video = os.path.join(output_dir, "plots", "anim_visual.mp4")
+
+    # ffmpeg input pattern: frames named 0.<ext>, 1.<ext>, ...
+    input_pattern = os.path.join(framesdir, f"*.{plot_fmt}")
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        f"-framerate {fps:d}",
+        "-pattern_type glob",
+        f"-i '{input_pattern}'",
+        "-c:v libx264",
+        "-vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2'",
+        "-pix_fmt yuv420p",
+        f" {out_video}"
+    ]
+
+    cmd = ' '.join(cmd)
+    print(f"Running ffmpeg to assemble video: {cmd}")
+    try:
+        ret = call([cmd], shell=True, stdout=None)
+        if ret == 0:
+            log.info(f"Wrote animation to {out_video}")
+        else:
+            log.error(f"ffmpeg returned non-zero exit code: {ret}")
+    except FileNotFoundError:
+        log.error("ffmpeg not found on PATH; cannot assemble animation")
+    except Exception as e:
+        log.error(f"Error running ffmpeg: {e}")
+
+    return True
+
+
+def anim_visual_entry(handler: Proteus):
+    """Entry point to generate a visual animation.
+
+    Loads the runtime helpfile from the handler's output directory and calls
+    `anim_visual` to render frames and assemble the MP4 animation.
+
+    Parameters
+    ----------
+    handler : Proteus
+        Active run handler providing `directories`.
+
+    Returns
+    -------
+    None
+        This function triggers animation assembly and does not return a value.
+    """
+
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'],
+                                      "runtime_helpfile.csv"), sep=r"\s+")
+
+    anim_visual(
+        hf_all,
+        handler.directories["output"],
+   )
 
 
 if __name__ == '__main__':

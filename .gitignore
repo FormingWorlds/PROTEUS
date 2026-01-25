@@ -263,3 +263,6 @@ Project.toml
 
 # Docker build artifacts
 docker-build.log
+
+# Extracted stellar spectra cache
+zenodo_stellar_spectra_extracted/

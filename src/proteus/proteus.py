@@ -7,6 +7,10 @@ from pathlib import Path
 
 import numpy as np
 
+# ensure juliacall is imported before torch
+# see issue here: https://github.com/pytorch/pytorch/issues/78829
+from juliacall import Main as jl  # noqa
+
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
 from proteus.utils.constants import (
@@ -431,7 +435,7 @@ class Proteus:
             ############### ESCAPE
             if (self.loops['total'] > self.loops['init_loops'] + 2) and (not self.desiccated):
                 PrintHalfSeparator()
-                run_escape(self.config, self.hf_row, self.interior_o.dt, self.stellar_track)
+                run_escape(self.config, self.hf_row, self.directories, self.interior_o.dt)
 
             ############### / ESCAPE
 

@@ -10,9 +10,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-import janus.set_socrates_env  # noqa
-from proteus.atmos_clim.common import get_radius_from_pressure
-from proteus.utils.constants import vap_list, vol_list
+from proteus.atmos_clim.common import get_oarr_from_parr
+from proteus.utils.constants import gas_list, vap_list, vol_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
 if TYPE_CHECKING:
@@ -293,33 +292,49 @@ def RunJANUS(
 
     # observables
     p_obs = float(config.atmos_clim.janus.p_obs) * 1e5  # converted to Pa
-    r_arr = np.array(atm.z[:]) + hf_row['R_int']
+    r_arr = np.array(atm.z[:], copy=True, dtype=float) + hf_row["R_int"]
+    t_arr = np.array(atm.tmp[:], copy=True, dtype=float)
     if atm.height_error:
-        log.error('Hydrostatic integration failed in JANUS!')
+        log.error("Hydrostatic integration failed in JANUS!")
+        r_obs = float(hf_row["R_int"])
+        t_obs = float(hf_row["T_surf"])
     else:
         # find observed level [m] at p ~ p_obs
-        _, r_obs = get_radius_from_pressure(atm.p, r_arr, p_obs)
+        _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
+        _, t_obs = get_oarr_from_parr(atm.p, t_arr, p_obs)  # [Pa], [m]
 
-    # XUV height in atm
-    if config.escape.module == 'zephyrus':
-        # escape level set by zephyrus config
-        p_xuv = config.escape.zephyrus.Pxuv  # [bar]
+    # p_xuv from R_xuv
+    if config.escape.xuv_defined_by_radius:
+        r_xuv = hf_row["R_xuv"]  # m
+        p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5  # bar
+
+    # R_xuv from p_xuv
     else:
-        # escape level set to surface
-        p_xuv = P_surf_clim  # [bar]
-    p_xuv, r_xuv = get_radius_from_pressure(atm.p, r_arr, p_xuv * 1e5)  # [Pa], [m]
+        p_xuv = hf_row["p_xuv"]  # bar
+        r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv * 1e5)[1]  # m
 
     # final things to store
     output = {}
-    output['T_surf'] = atm.ts  # Surface temperature [K]
-    output['F_atm'] = F_atm_lim  # Net flux at TOA
-    output['F_olr'] = atm.LW_flux_up[0]  # OLR
-    output['F_sct'] = atm.SW_flux_up[0]  # Scattered SW flux
-    output['albedo'] = atm.SW_flux_up[0] / atm.SW_flux_down[0]
-    output['p_obs'] = p_obs / 1e5  # observed level [bar]
-    output['R_obs'] = r_obs  # observed level [m]
-    output['p_xuv'] = p_xuv / 1e5  # Closest pressure from Pxuv    [bar]
-    output['R_xuv'] = r_xuv  # Radius at Pxuv                [m]
-    output['P_surf_clim'] = P_surf_clim  # calculated surface pressure [bar]
+    output["T_surf"] = atm.ts  # Surface temperature [K]
+    output["F_atm"] = F_atm_lim  # Net flux at TOA
+    output["F_olr"] = atm.LW_flux_up[0]  # OLR
+    output["F_sct"] = atm.SW_flux_up[0]  # Scattered SW flux
+    output["albedo"] = atm.SW_flux_up[0] / atm.SW_flux_down[0]
+    output["p_obs"] = p_obs / 1e5  # observed level [bar]
+    output["T_obs"] = t_obs  # observed level [K]
+    output["R_obs"] = r_obs  # observed level [m]
+    output["p_xuv"] = p_xuv  # Closest pressure to Pxuv [bar]
+    output["R_xuv"] = r_xuv  # Radius at Pxuv [m]
+    output["P_surf_clim"] = P_surf_clim  # calculated surface pressure [bar]
+    output["ocean_areacov"] = 0.0
+    output["ocean_maxdepth"] = 0.0
+
+    # set composition at Pxuv
+    for g in gas_list:
+        if g in atm.x_gas.keys():
+            _, x_xuv = get_oarr_from_parr(atm.p, atm.x_gas[g], p_xuv * 1e5)
+        else:
+            x_xuv = 0.0
+        hf_row[f"{g}_vmr_xuv"] = x_xuv
 
     return output

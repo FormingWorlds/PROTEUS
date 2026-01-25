@@ -46,11 +46,12 @@ dependencies = [
     "attrs",
     "cattrs",
     "fwl-janus>=24.11.05",
-    "fwl-mors>=25.07.15",
+    "fwl-mors>=26.01.02",
     "fwl-calliope>=25.05.01",
     "fwl-zephyrus>=25.03.11",
-    "fwl-aragog>=25.10.27",
+    "fwl-aragog>=26.01.06",
     "fwl-zalmoxis>=25.09.07",
+    "boreas@git+https://github.com/ExoInteriors/BOREAS@0174edb",
     "cmcrameri",
     "juliacall",
     "matplotlib",
@@ -68,12 +69,15 @@ dependencies = [
     "gpytorch",
     "toml",
     "zenodo-get",
+    "zenodo-client",
+    "osfclient",
 ]
 
 [project.urls]
-homepage = "https://github.com/FormingWorlds/PROTEUS"
+homepage = "https://proteus-framework.org"
 issues = "https://github.com/FormingWorlds/PROTEUS/issues"
-documentation = "https://fwl-proteus.readthedocs.io"
+source = "https://github.com/FormingWorlds/PROTEUS/"
+documentation = "https://proteus-framework.org/PROTEUS/"
 changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
@@ -102,7 +106,7 @@ docs = [
 proteus = "proteus.cli:cli"
 
 [tool.setuptools]
-package-dir = {"proteus" = "src/proteus" }
+package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.package-data]

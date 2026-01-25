@@ -293,11 +293,18 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'Hammond24': {'zenodo_id': '15880455', 'osf_id': '2gcd9', 'osf_project': '2gcd9'},
     # Stellar spectra (OSF project: 8r2sw)
     'Named': {'zenodo_id': '15721440', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
+    # Stellar spectra - PHOENIX (OSF project: 8r2sw)
+    'PHOENIX': {'zenodo_id': '17674612', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
+    # Stellar spectra - MUSCLES (OSF project: 8r2sw)
+    'MUSCLES': {'zenodo_id': '17802209', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
+    # Stellar spectra - solar (OSF project: 8r2sw)
+    'solar': {'zenodo_id': '17981836', 'osf_id': '8r2sw', 'osf_project': '8r2sw'},
     # Exoplanet data (OSF project: fzwr4)
     'Exoplanets': {'zenodo_id': '15727878', 'osf_id': 'fzwr4', 'osf_project': 'fzwr4'},
     # Mass-radius data (OSF project: xge8t)
     'Zeng2019': {'zenodo_id': '15727899', 'osf_id': 'xge8t', 'osf_project': 'xge8t'},
     # Population data (OSF project: dpkjb)
+    # NOTE: Population and EOS_Seager2007 currently share Zenodo ID '15727998'.
     'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
     # EOS material properties (OSF project: dpkjb)
     'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},

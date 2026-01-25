@@ -11,9 +11,14 @@ from juliacall import Main as jl
 from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import get_radius_from_pressure, get_spfile_path
+from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
 from proteus.utils.constants import gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    create_tmp_folder,
+    multiple,
+    safe_rm,
+)
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
@@ -155,8 +160,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         input_star = sflux_path
 
     # Fast I/O folder
-    if config.atmos_clim.agni.verbosity >= 2:
-        io_dir = dirs['output']
+    if (config.atmos_clim.agni.verbosity >= 2) or (config.params.out.logging == "DEBUG"):
+        io_dir = dirs["output"]
     else:
         io_dir = create_tmp_folder()
     log.info(f'Temporary-file working dir: {io_dir}')
@@ -184,6 +189,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         log.debug(f"Using '{surface_material}' single-scattering surface properties")
         surface_material = os.path.join(dirs['fwl'], surface_material)
         if not os.path.isfile(surface_material):
+            UpdateStatusfile(dirs, 20)
             raise FileNotFoundError(surface_material)
 
     # Boundary pressures
@@ -192,23 +198,23 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
     # Setup struct
-    jl.AGNI.atmosphere.setup_b(
+    succ = jl.AGNI.atmosphere.setup_b(
         atmos,
-        dirs['agni'],
-        dirs['output'],
+        dirs["agni"],
+        dirs["output"],
         input_sf,
-        hf_row['F_ins'],
+        hf_row["F_ins"],
         config.orbit.s0_factor,
-        float(hf_row['albedo_pl']),
+        float(hf_row["albedo_pl"]),
         config.orbit.zenith_angle,
-        hf_row['T_surf'],
-        hf_row['gravity'],
-        hf_row['R_int'],
+        hf_row["T_surf"],
+        hf_row["gravity"],
+        hf_row["R_int"],
         int(config.atmos_clim.agni.num_levels),
         p_surf,
         p_top,
         vol_dict,
-        '',
+        "",
         IO_DIR=io_dir,
         flag_rayleigh=config.atmos_clim.rayleigh,
         flag_cloud=config.atmos_clim.cloud_enabled,
@@ -231,12 +237,22 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
         skin_d=config.atmos_clim.surface_d,
         skin_k=config.atmos_clim.surface_k,
-        tmp_magma=hf_row['T_surf'],
+        tmp_magma=hf_row["T_surf"],
         tmp_floor=config.atmos_clim.tmp_minimum,
     )
 
+    # Check setup! success
+    if not bool(succ):
+        UpdateStatusfile(dirs, 22)
+        raise RuntimeError("Could not setup atmosphere object")
+
     # Allocate arrays
-    jl.AGNI.atmosphere.allocate_b(atmos, input_star)
+    succ = jl.AGNI.atmosphere.allocate_b(atmos, input_star)
+
+    # Check allocate! success
+    if not bool(succ):
+        UpdateStatusfile(dirs, 22)
+        raise RuntimeError("Could not allocate atmosphere object")
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs['output'], 'data', '*_atm.nc'))
@@ -261,8 +277,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
             case 'analytic':
                 jl.AGNI.setpt.analytic_b(atmos)
             case _:
-                log.error('Invalid initial profile selected')
-                return
+                UpdateStatusfile(dirs, 20)
+                raise ValueError("Invalid initial T(p) profile selected")
 
         # lower-limit on initial profile
         jl.AGNI.setpt.stratosphere_b(atmos, min(400.0, hf_row['T_surf']))
@@ -406,7 +422,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         easy_start = False
         grey_start = False
         dx_max = float(config.atmos_clim.agni.dx_max)
-        ls_increase = 1.01
+        ls_increase = 0.7
         perturb_all = bool(config.atmos_clim.agni.perturb_all)
         max_steps = int(config.atmos_clim.agni.max_steps)
         chemistry = bool(config.atmos_clim.agni.chemistry == 'eq')
@@ -577,7 +593,6 @@ def _solve_transparent(atmos, config: Config):
     )
     return atmos
 
-
 def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     """Run AGNI atmosphere model.
 
@@ -658,9 +673,11 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     SW_flux_down = np.array(atmos.flux_d_sw)
     albedo = SW_flux_up[0] / SW_flux_down[0]
     if bool(atmos.transparent):
-        R_obs = float(hf_row['R_int'])
+        R_obs = float(hf_row["R_int"])
+        T_obs = float(atmos.tmp_surf)
     else:
         R_obs = float(atmos.transspec_r)
+        T_obs = float(atmos.transspec_tmp)
 
     # Print info to user
     if config.atmos_clim.agni.oceans:
@@ -681,34 +698,44 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
         log.warning('Change in F_atm [W m-2] limited in this step!')
         log.warning('    %g  ->  %g' % (F_atm_new, F_atm_lim))
 
-    # XUV height in atm
-    if config.escape.module == 'zephyrus':
-        # escape level set by zephyrus config
-        p_xuv = config.escape.zephyrus.Pxuv  # [bar]
+    # p_xuv from R_xuv
+    if config.escape.xuv_defined_by_radius:
+        r_xuv = hf_row["R_xuv"] # m
+        p_xuv = get_oarr_from_parr(atmos.r, atmos.p, r_xuv)[1] * 1e-5 # bar
+
+    # R_xuv from p_xuv
     else:
-        # escape level set to surface
-        p_xuv = hf_row['P_surf']  # [bar]
-    p_xuv, r_xuv = get_radius_from_pressure(atmos.p, atmos.r, p_xuv * 1e5)  # [Pa], [m]
+        p_xuv =  hf_row["p_xuv"] # bar
+        r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1] # m
 
     # final things to store
     output = {}
-    output['F_atm'] = F_atm_lim
-    output['F_olr'] = LW_flux_up[0]
-    output['F_sct'] = SW_flux_up[0]
-    output['T_surf'] = float(atmos.tmp_surf)
-    output['p_obs'] = float(atmos.transspec_p) / 1e5  # convert [Pa] to [bar]
-    output['R_obs'] = R_obs
-    output['albedo'] = albedo
-    output['p_xuv'] = p_xuv / 1e5  # Closest pressure from Pxuv    [bars]
-    output['R_xuv'] = r_xuv  # Radius at Pxuv                [m]
-    output['ocean_areacov'] = float(atmos.ocean_areacov)
-    output['ocean_maxdepth'] = float(atmos.ocean_maxdepth)
-    output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]
+    output["F_atm"]         = F_atm_lim
+    output["F_olr"]         = LW_flux_up[0]
+    output["F_sct"]         = SW_flux_up[0]
+    output["T_surf"]        = float(atmos.tmp_surf)
+    output["p_obs"]         = float(atmos.transspec_p)/1e5 # convert [Pa] to [bar]
+    output["T_obs"]         = T_obs
+    output["R_obs"]         = R_obs
+    output["albedo"]        = albedo
+    output["p_xuv"]         = p_xuv            # Pressure at Rxuv   [bars]
+    output["R_xuv"]         = r_xuv            # Radius at Pxuv     [m]
+    output["ocean_areacov"] = float(atmos.ocean_areacov)
+    output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
+    output["P_surf_clim"]   = float(atmos.p_boa) / 1e5 # Calculated Psurf [bar]
 
     for g in gas_list:
         if g in list(atmos.gas_names):
             output[g + '_ocean'] = float(atmos.ocean_tot[g])
         else:
             output[g + '_ocean'] = 0.0
+
+    # set composition at xuv
+    for g in gas_list:
+        if g in atmos.gas_vmr:
+            _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[g], p_xuv*1e5)
+            hf_row[g+"_vmr_xuv"] = x_xuv
+        else:
+            hf_row[g+"_vmr_xuv"] = 0.0
 
     return atmos, output
