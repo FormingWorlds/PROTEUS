@@ -2050,12 +2050,17 @@ def load_melting_curve(melt_file):
         print(f"Error loading melting curve data: {e}")
         return None
 
-def get_zalmoxis_melting_curves():
+def get_zalmoxis_melting_curves(config: Config):
     """
     Loads and returns the solidus and liquidus melting curves for temperature-dependent silicate mantle EOS. This is for use with Zalmoxis.
+    Zalmoxis currently only supports the 'Monteux-600' melting curves directory.
+    Parameters:
+        config: Configuration object containing interior settings
     Returns: A tuple containing the solidus and liquidus data files.
     """
-    melting_curves_folder = FWL_DATA_DIR / "interior_lookup_tables" / "Melting_curves" / "Monteux-600"
+    if config.interior.melting_dir != "Monteux-600":
+        raise ValueError(f"Zalmoxis currently only supports 'Monteux-600' for melting_dir. You have configured '{config.interior.melting_dir}'.")
+    melting_curves_folder = FWL_DATA_DIR / "interior_lookup_tables" / "Melting_curves" / config.interior.melting_dir
     solidus_func = load_melting_curve(melting_curves_folder / "solidus.dat")
     liquidus_func = load_melting_curve(melting_curves_folder / "liquidus.dat")
     melting_curves_functions = (solidus_func, liquidus_func)

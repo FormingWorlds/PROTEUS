@@ -98,7 +98,7 @@ def load_zalmoxis_material_dictionaries():
     """
     return get_zalmoxis_EOS()
 
-def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE):
+def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE, config:Config):
     """Loads the solidus and liquidus functions for Zalmoxis based on the EOS choice.
     Args:
         EOS_CHOICE (str): The EOS choice for Zalmoxis.
@@ -106,12 +106,12 @@ def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE):
         tuple: A tuple containing the solidus and liquidus functions.
     """
     if EOS_CHOICE == "Tabulated:iron/Tdep_silicate":
-        return get_zalmoxis_melting_curves()
+        return get_zalmoxis_melting_curves(config)
 
 def scale_temperature_profile_for_aragog(config:Config, mantle_radii: np.ndarray, mantle_temperature_profile: np.ndarray):
     """Scales the temperature profile obtained from Zalmoxis to match the number of levels required by Aragog.
     Args:
-        config (Config): The configuration object containing the Aragog parameters.
+        config (Config): The configuration object containing the configuration parameters.
         mantle_radii (np.ndarray): The radial positions of the mantle layers from Zalmoxis.
         mantle_temperature_profile (np.ndarray): The temperature profile of the mantle layers from Zalmoxis.
     Returns:
@@ -138,7 +138,7 @@ def scale_temperature_profile_for_aragog(config:Config, mantle_radii: np.ndarray
 def zalmoxis_solver(config:Config, outdir: str, hf_row:dict):
     """Runs the Zalmoxis solver to compute the interior structure of a planet.
     Args:
-        config (Config): The configuration object containing the Zalmoxis parameters.
+        config (Config): The configuration object containing the configuration parameters.
         outdir (str): The output directory where results will be saved.
         hf_row (dict): A dictionary containing the mass of volatiles and other parameters.
     Returns:
@@ -153,7 +153,7 @@ def zalmoxis_solver(config:Config, outdir: str, hf_row:dict):
     open(output_zalmoxis, 'a').close()
 
     # Run the Zalmoxis main function to compute the interior structure
-    model_results = main(config_params, material_dictionaries=load_zalmoxis_material_dictionaries(), melting_curves_functions=load_zalmoxis_solidus_liquidus_functions(config_params["EOS_CHOICE"]), input_dir=os.path.join(outdir, "data"))
+    model_results = main(config_params, material_dictionaries=load_zalmoxis_material_dictionaries(), melting_curves_functions=load_zalmoxis_solidus_liquidus_functions(config_params["EOS_CHOICE"], config), input_dir=os.path.join(outdir, "data"))
 
     # Extract results from the model
     radii = model_results['radii']
