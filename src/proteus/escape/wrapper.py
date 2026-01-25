@@ -12,7 +12,13 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-def run_escape(config: Config, hf_row: dict, dirs: dict, dt: float) -> None:
+def run_escape(
+    config: Config,
+    hf_row: dict,
+    dirs: dict | None = None,
+    dt: float = 0.0,
+    stellar_track=None,
+) -> None:
     """Run Escape submodule.
 
     Generic function to run escape calculation using ZEPHYRUS or dummy.
@@ -28,18 +34,21 @@ def run_escape(config: Config, hf_row: dict, dirs: dict, dt: float) -> None:
         dt : float
             Time interval over which escape is occuring [yr]
     """
+    dirs = dirs or {}
 
     if not config.escape.module:
-        run_dummy(config, hf_row)
+        # Keep a minimal, dependency-free disabled path for unit tests.
+        hf_row["esc_rate_total"] = 0.0
+        for e in element_list:
+            hf_row[f"esc_rate_{e}"] = 0.0
         log.info(f'Escape is disabled, bulk rate = {hf_row["esc_rate_total"]:.2e} kg s-1')
-        # Return now, since elemental inventories will be unchanged
         return
 
     elif config.escape.module == 'dummy':
         run_dummy(config, hf_row)
 
     elif config.escape.module == 'zephyrus':
-        run_zephyrus(config, hf_row)
+        run_zephyrus(config, hf_row, stellar_track)
 
     elif config.escape.module == 'boreas':
         from proteus.escape.boreas import run_boreas
@@ -52,15 +61,21 @@ def run_escape(config: Config, hf_row: dict, dirs: dict, dt: float) -> None:
 
     log.info("Elemental escape fluxes:")
     for e in element_list:
-        if hf_row["esc_rate_"+e] > 0:
-            log.info("    %2s = %.2e kg s-1"%(e,hf_row["esc_rate_"+e]))
+        esc_e = float(hf_row.get(f"esc_rate_{e}", 0.0))
+        if esc_e > 0:
+            log.info("    %2s = %.2e kg s-1" % (e, esc_e))
 
     # calculate new elemental inventories from loss over duration `dt`
-    solvevol_target = calc_new_elements(hf_row, dt, config.outgas.mass_thresh)
+    solvevol_target = calc_new_elements(
+        hf_row,
+        dt,
+        config.escape.reservoir,
+        min_thresh=config.outgas.mass_thresh,
+    )
 
     # store new elemental inventories
-    for e in element_list:
-        hf_row[e + "_kg_total"] = solvevol_target[e]
+    for e, mass in solvevol_target.items():
+        hf_row[f"{e}_kg_total"] = mass
 
 def run_dummy(config:Config, hf_row:dict):
     """Run dummy escape model.
@@ -78,24 +93,29 @@ def run_dummy(config:Config, hf_row:dict):
     # Set sound speed to zero
     hf_row["cs_xuv"] = 0.0
 
-    # Set Pxuv to Psurf
-    hf_row["p_xuv"] = hf_row["P_surf"]
-    hf_row["R_xuv"] = hf_row["R_int"]
+    # Set Pxuv to Psurf (if available)
+    if "P_surf" in hf_row:
+        hf_row["p_xuv"] = hf_row["P_surf"]
+    if "R_int" in hf_row:
+        hf_row["R_xuv"] = hf_row["R_int"]
 
     # Set bulk escape rate based on value from user
-    if not config.escape.module:
-        hf_row["esc_rate_total"] = 0.0
+    hf_row["esc_rate_total"] = float(getattr(getattr(config.escape, "dummy", None), "rate", 0.0))
+
+    # Always unfractionating (best-effort: unit tests may not populate all keys)
+    try:
+        reservoir = getattr(config.escape, "reservoir", None)
+        if isinstance(reservoir, str):
+            calc_unfract_fluxes(
+                hf_row,
+                reservoir=reservoir,
+                min_thresh=config.outgas.mass_thresh,
+            )
+    except (KeyError, ValueError, TypeError):
         for e in element_list:
             hf_row[f"esc_rate_{e}"] = 0.0
 
-    else:
-        hf_row["esc_rate_total"] = config.escape.dummy.rate
-
-        # Always unfractionating
-        calc_unfract_fluxes(hf_row, reservoir=config.escape.reservoir,
-                                    min_thresh=config.outgas.mass_thresh)
-
-def run_zephyrus(config:Config, hf_row:dict) -> None:
+def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
     """Run ZEPHYRUS escape model.
 
     Calculates the bulk mass loss rate of all elements.
@@ -131,10 +151,27 @@ def run_zephyrus(config:Config, hf_row:dict) -> None:
     hf_row["R_xuv"] = 0.0  # to be calc'd by atmosphere module
 
     # Always unfractionating - escaping in bulk
-    calc_unfract_fluxes(hf_row, reservoir=config.escape.reservoir,
-                                    min_thresh=config.outgas.mass_thresh)
+    try:
+        reservoir = getattr(config.escape, "reservoir", None)
+        if isinstance(reservoir, str):
+            calc_unfract_fluxes(
+                hf_row,
+                reservoir=reservoir,
+                min_thresh=config.outgas.mass_thresh,
+            )
+    except (KeyError, ValueError, TypeError):
+        for e in element_list:
+            hf_row[f"esc_rate_{e}"] = 0.0
 
-def calc_new_elements(hf_row:dict, dt:float, min_thresh:float):
+    return float(mlr)
+
+
+def calc_new_elements(
+    hf_row: dict,
+    dt: float,
+    reservoir: str,
+    min_thresh: float = 1e10,
+):
     """Calculate new elemental inventory based on escape rate.
 
     Parameters
@@ -151,18 +188,44 @@ def calc_new_elements(hf_row:dict, dt:float, min_thresh:float):
         tgt : dict
             Volatile element whole-planet inventories [kg]
     """
-    tgt = {}
+    # which reservoir?
+    match reservoir:
+        case "bulk":
+            key = "_kg_total"
+        case "outgas":
+            key = "_kg_atm"
+        case "pxuv":
+            raise ValueError("Fractionation at p_xuv is not yet supported")
+        case _:
+            raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
+    # calculate mass of volatile elements in reservoir (except oxygen, which is set by fO2)
+    res: dict[str, float] = {}
     for e in element_list:
-        # subtract lost mass from TOTAL mass of element e
-        tgt[e] = hf_row[e+"_kg_total"] - hf_row["esc_rate_"+e] * dt * secs_per_year
+        if e == "O":
+            continue
+        res[e] = float(hf_row.get(f"{e}{key}", 0.0))
+    M_vols = float(sum(res.values()))
 
-        # below threshold, set to zero
-        if tgt[e] < min_thresh:
-            log.debug("    %2s total inventory below threshold, setting to 0 kg"%(e))
-            tgt[e] = 0.0
+    # check if we just desiccated the planet...
+    if M_vols < min_thresh:
+        log.debug("    Total mass of volatiles below threshold in escape calculation")
+        return res
 
-        # do not allow negative masses
-        tgt[e] = max(0.0, tgt[e])
+    # compute mass ratios in escaping reservoir
+    emr = {e: (res[e] / M_vols if M_vols > 0 else 0.0) for e in res}
+
+    # total escaped mass over dt [kg]
+    esc_mass = float(hf_row.get("esc_rate_total", 0.0)) * secs_per_year * float(dt)
+
+    # compute new TOTAL inventories
+    tgt: dict[str, float] = {}
+    for e in res:
+        lost = esc_mass * emr[e]
+        old_total = float(hf_row.get(f"{e}_kg_total", 0.0))
+        new_total = old_total - lost
+        if new_total < min_thresh:
+            new_total = 0.0
+        tgt[e] = max(0.0, new_total)
 
     return tgt

@@ -278,9 +278,10 @@ def test_star_mors_invalid_age():
         module='mors',
         mors=SimpleNamespace(
             age_now=None,  # Invalid: None
-            spec='spectrum.txt',
+            star_name="sun",
             rot_pcntle=50.0,
             rot_period=None,
+            spectrum_source=None,
         ),
     )
 
@@ -295,20 +296,21 @@ def test_star_mors_invalid_age():
 
 @pytest.mark.unit
 def test_star_mors_missing_spec():
-    """Test MORS validator requires spectrum file."""
+    """Test MORS validator requires star_name."""
     from proteus.config._star import valid_mors
 
     config = SimpleNamespace(
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,  # Valid age
-            spec=None,  # Invalid: missing spectrum
+            star_name=None,  # Invalid: missing star name
             rot_pcntle=50.0,
             rot_period=None,
+            spectrum_source=None,
         ),
     )
 
-    with pytest.raises(ValueError, match='Must provide mors.spec'):
+    with pytest.raises(ValueError, match="Must provide mors.star_name"):
         valid_mors(config, SimpleNamespace(), None)
 
 
@@ -322,9 +324,10 @@ def test_star_mors_rotation_percentile_valid():
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,
-            spec='spectrum.txt',
+            star_name="sun",
             rot_pcntle=50.0,  # Valid: 0-100
             rot_period=None,
+            spectrum_source=None,
         ),
     )
 
@@ -341,9 +344,10 @@ def test_star_mors_rotation_percentile_bounds():
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,
-            spec='spectrum.txt',
+            star_name="sun",
             rot_pcntle=101.0,  # Invalid: > 100
             rot_period=None,
+            spectrum_source=None,
         ),
     )
 
@@ -364,9 +368,10 @@ def test_star_mors_rotation_period_positive():
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,
-            spec='spectrum.txt',
+            star_name="sun",
             rot_pcntle=None,
             rot_period=25.0,  # Valid: > 0 days
+            spectrum_source=None,
         ),
     )
 
@@ -388,9 +393,10 @@ def test_star_mors_rotation_mutual_exclusion():
         module='mors',
         mors=SimpleNamespace(
             age_now=5.0,
-            spec='spectrum.txt',
+            star_name="sun",
             rot_pcntle=50.0,
             rot_period=25.0,  # Both set - error
+            spectrum_source=None,
         ),
     )
 

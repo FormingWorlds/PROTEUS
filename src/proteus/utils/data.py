@@ -674,6 +674,16 @@ def download_spectral_file(name: str, bands: str):
     )
 
 
+def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = False) -> bool:
+    """Download PHOENIX stellar spectra into `FWL_DATA`.
+
+    Used by `proteus.star.phoenix`. The current implementation downloads the
+    PHOENIX bundle via the unified `download()` mechanism.
+    """
+    desc = f"PHOENIX stellar spectra (alpha={alpha:+0.1f}, [Fe/H]={FeH:+0.1f})"
+    return download(folder="PHOENIX", target="stellar_spectra", desc=desc, force=force)
+
+
 def download_interior_lookuptables(clean=False):
     """
     Download basic interior lookup tables

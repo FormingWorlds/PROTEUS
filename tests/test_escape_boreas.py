@@ -11,6 +11,11 @@ from proteus.utils.constants import AU, M_earth, R_earth, element_list
 
 log = logging.getLogger(__name__)
 
+
+@pytest.fixture(scope="session", autouse=True)
+def _skip_if_no_boreas():
+    pytest.importorskip("boreas")
+
 def _make_minimal_hf_row() -> dict:
     """Construct `hf_row` with inventories for escape checks."""
     hf_row: dict = {}

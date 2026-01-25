@@ -5,7 +5,6 @@ import logging
 from contextlib import redirect_stdout
 from typing import TYPE_CHECKING
 
-import boreas
 import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
@@ -18,11 +17,18 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 log.write = lambda msg: log.info(msg.rstrip('\n')) if msg != '\n' else None # print() redirect
 
-# Get set of shared-supported gases
-BOREAS_GASES = set(boreas.ModelParams().kappa.keys()) & set(gas_list)
+try:
+    import boreas  # type: ignore
+except ModuleNotFoundError:  # optional dependency
+    boreas = None
 
-# Get set of shared-supported elements
-BOREAS_ELEMS = set(boreas.ModelParams().sigma_XUV.keys()) & set(element_list)
+# Get set of shared-supported gases/elements (empty if boreas isn't installed)
+if boreas is None:
+    BOREAS_GASES: set[str] = set()
+    BOREAS_ELEMS: set[str] = set()
+else:
+    BOREAS_GASES = set(boreas.ModelParams().kappa.keys()) & set(gas_list)
+    BOREAS_ELEMS = set(boreas.ModelParams().sigma_XUV.keys()) & set(element_list)
 
 
 def _set_boreas_params(config:Config, hf_row:dict) -> boreas.ModelParams:
@@ -35,6 +41,11 @@ def _set_boreas_params(config:Config, hf_row:dict) -> boreas.ModelParams:
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
     """
+    if boreas is None:
+        raise ModuleNotFoundError(
+            "Optional dependency 'boreas' is not installed. "
+            "Install it (or skip BOREAS tests) to use escape.module='boreas'."
+        )
 
     # Set parameters for escape
     params          = boreas.ModelParams()
