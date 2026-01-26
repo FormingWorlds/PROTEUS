@@ -373,7 +373,7 @@ pytest --pdb                        # Drop into debugger on failure
 - **AGNI** (Julia): Atmospheric energy balance (Julia packages)
 - **SPIDER** (C): Interior evolution (compiled, requires PETSc)
 - **PETSc**: Numerical library (compiled)
-- **Submodules**: CALLIOPE, JANUS, MORS, ARAGOG, ZEPHYRUS (Python packages, installed via `pip install -e`)
+- **Submodules**: CALLIOPE, JANUS, MORS, ARAGOG, ZEPHYRUS (Python packages, see above for installation instructions)
 
 **Data**: Large input files stored on Zenodo/OSF, downloaded automatically on first run (unless `--offline`).
 
