@@ -472,6 +472,14 @@ class Proteus:
 
             ############### / ATMOSPHERE CLIMATE
 
+            ############### ONLINE ATMOSPHERIC CHEMISTRY
+            if self.config.atmos_chem.when == "online": #checking if the toml file says online at atmos_chem and then when
+                if is_snapshot and not self.desiccated: #checking if the loop is a snapshot and runs VULCAN
+                    if self.loops["total"] not in vulcan_completed_loops:
+                        run_chemistry(self.directories, self.config, self.hf_row)
+                        vulcan_completed_loops.add(self.loops["total"]) #adds it to the completed loops/snapshots
+            ############### / ONLINE ATMOSPHERIC CHEMISTRY
+
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
             PrintHalfSeparator()
