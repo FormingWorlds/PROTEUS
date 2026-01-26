@@ -103,7 +103,7 @@ version = "2.0"
 # Orbital system
 [orbit]
     instellation_method = 'inst'        # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
-    instellationflux    = 1             # instellation flux received from the planet in Earth units.
+    instellationflux    = 10            # instellation flux received from the planet in Earth units.
     semimajoraxis       = 0.15          # AU
     eccentricity        = 0.0       	# dimensionless
     zenith_angle        = 54.74     	# degrees
@@ -121,7 +121,7 @@ version = "2.0"
 # Planetary structure - physics table
 [struct]
     set_by       = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot     = 5.0       # M_earth
+    mass_tot     = 4.0       # M_earth
     corefrac     = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
@@ -153,7 +153,7 @@ version = "2.0"
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 1e-1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        rainout   = true          # volatile condensation
+        condensation    = true          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
@@ -251,7 +251,7 @@ version = "2.0"
         metallicity = 1000	 # metallicity relative to solar metallicity
 
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 3546.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 14180.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.32       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass

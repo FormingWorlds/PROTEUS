@@ -46,8 +46,7 @@ version = "2.0"
     [star.mors]
         rot_pcntle = 50.0
         age_now = 4.57 # Gyr
-        star_name = "sun"
-        spectrum_source = "solar"
+        spec    = "stellar_spectra/Named/sun.txt"
 
 [orbit]
     semimajoraxis   = 1.0
@@ -84,7 +83,6 @@ version = "2.0"
 
     [interior.dummy]
         ini_tmagma = 2000.0
-
 
     [interior.aragog]
         ini_tmagma = 3000.0
