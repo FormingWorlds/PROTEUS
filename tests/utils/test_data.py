@@ -606,7 +606,6 @@ def test_download_melting_curves(mock_rm, mock_getfwl, mock_download, tmp_path):
     from unittest.mock import MagicMock
 
     from proteus.config import Config
-
     from proteus.utils.data import download_melting_curves
 
     mock_getfwl.return_value = tmp_path
@@ -705,8 +704,6 @@ def test_GetFWLData(mock_fwl_data_dir, tmp_path):
     from proteus.utils.data import GetFWLData
 
     # Patch FWL_DATA_DIR to return tmp_path
-    mock_fwl_data_dir = tmp_path
-
     with patch('proteus.utils.data.FWL_DATA_DIR', tmp_path):
         result = GetFWLData()
         assert result == tmp_path.absolute()
@@ -753,8 +750,7 @@ def test_get_Seager_EOS_not_exists(mock_download, tmp_path):
     """Test get_Seager_EOS when EOS folder doesn't exist."""
     from proteus.utils.data import get_Seager_EOS
 
-    # EOS folder doesn't exist
-    eos_folder = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
+    # EOS folder doesn't exist (not created, so download will be triggered)
 
     # Patch FWL_DATA_DIR and call function
     with patch('proteus.utils.data.FWL_DATA_DIR', tmp_path):
@@ -856,7 +852,6 @@ def test_download_melting_curves_no_mapping(mock_get_info):
     from unittest.mock import MagicMock
 
     from proteus.config import Config
-
     from proteus.utils.data import download_melting_curves
 
     mock_config = MagicMock(spec=Config)
