@@ -37,6 +37,7 @@ def run_chemistry(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
 
     log.info("Running atmospheric chemistry...")
     module = config.atmos_chem.module
+    when   = getattr(config.atmos_chem, "when", "manually")
 
     if not module:
         # no chemistry
