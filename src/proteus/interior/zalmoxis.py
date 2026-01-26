@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 import numpy as np
+import platformdirs
+from scipy.interpolate import interp1d
 from zalmoxis.zalmoxis import main
 
 from proteus.config import Config
@@ -13,7 +16,10 @@ from proteus.utils.constants import (
     R_earth,
     element_list,
 )
-from proteus.utils.data import get_Seager_EOS
+from proteus.utils.data import get_zalmoxis_EOS, get_zalmoxis_melting_curves
+
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
+                                   platformdirs.user_data_dir('fwl_data')))
 
 # Set up logging
 logger = logging.getLogger('fwl.' + __name__)
@@ -41,7 +47,9 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
     # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
     total_planet_mass = config.struct.mass_tot * M_earth
 
-    logger.info(f'Total target planet mass (dry mass + volatiles): {total_planet_mass} kg')
+    logger.info(
+        f'Total target planet mass (dry mass + volatiles): {total_planet_mass} kg with EOS choice: {config.struct.zalmoxis.EOSchoice}'
+    )
 
     # Calculate the total mass of volatiles in the planet
     M_volatiles = 0.0
@@ -63,6 +71,10 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'core_mass_fraction': config.struct.zalmoxis.coremassfrac,
         'mantle_mass_fraction': config.struct.zalmoxis.mantle_mass_fraction,
         'weight_iron_fraction': config.struct.zalmoxis.weight_iron_frac,
+        'temperature_mode': config.struct.zalmoxis.temperature_mode,
+        'surface_temperature': config.struct.zalmoxis.surface_temperature,
+        'center_temperature': config.struct.zalmoxis.center_temperature,
+        'temp_profile_file': config.struct.zalmoxis.temperature_profile_file,
         'EOS_CHOICE': config.struct.zalmoxis.EOSchoice,
         'num_layers': config.struct.zalmoxis.num_levels,
         'max_iterations_outer': config.struct.zalmoxis.max_iterations_outer,
@@ -71,11 +83,15 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'tolerance_inner': config.struct.zalmoxis.tolerance_inner,
         'relative_tolerance': config.struct.zalmoxis.relative_tolerance,
         'absolute_tolerance': config.struct.zalmoxis.absolute_tolerance,
+        'maximum_step': config.struct.zalmoxis.maximum_step,
+        'adaptive_radial_fraction': config.struct.zalmoxis.adaptive_radial_fraction,
+        'max_center_pressure_guess': config.struct.zalmoxis.max_center_pressure_guess,
         'target_surface_pressure': config.struct.zalmoxis.target_surface_pressure,
         'pressure_tolerance': config.struct.zalmoxis.pressure_tolerance,
         'max_iterations_pressure': config.struct.zalmoxis.max_iterations_pressure,
         'pressure_adjustment_factor': config.struct.zalmoxis.pressure_adjustment_factor,
         'verbose': config.struct.zalmoxis.verbose,
+        'iteration_profiles_enabled': config.struct.zalmoxis.iteration_profiles_enabled,
     }
 
 
@@ -83,15 +99,52 @@ def load_zalmoxis_material_dictionaries():
     """
     Loads the material dictionaries for Zalmoxis.
     Returns:
-        tuple: A tuple containing two dictionaries for iron/silicate and water planets.
+        tuple: A tuple containing three dictionaries for iron/silicate planets, iron/Tdep_silicate planets, and water planets.
     """
-    return get_Seager_EOS()
+    return get_zalmoxis_EOS()
+
+def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE, config:Config):
+    """Loads the solidus and liquidus functions for Zalmoxis based on the EOS choice.
+    Args:
+        EOS_CHOICE (str): The EOS choice for Zalmoxis.
+    Returns:
+        tuple: A tuple containing the solidus and liquidus functions.
+    """
+    if EOS_CHOICE == "Tabulated:iron/Tdep_silicate":
+        return get_zalmoxis_melting_curves(config)
+
+def scale_temperature_profile_for_aragog(config:Config, mantle_radii: np.ndarray, mantle_temperature_profile: np.ndarray):
+    """Scales the temperature profile obtained from Zalmoxis to match the number of levels required by Aragog.
+    Args:
+        config (Config): The configuration object containing the configuration parameters.
+        mantle_radii (np.ndarray): The radial positions of the mantle layers from Zalmoxis.
+        mantle_temperature_profile (np.ndarray): The temperature profile of the mantle layers from Zalmoxis.
+    Returns:
+        np.ndarray: The scaled temperature profile matching the number of levels in Aragog.
+    """
+
+    # Number of levels in Aragog mesh
+    mesh_grid_size = config.interior.aragog.num_levels - 1
+
+    # Create new evenly spaced radial positions for Aragog
+    radii_to_interpolate = np.linspace(mantle_radii[0], mantle_radii[-1], mesh_grid_size)
+
+    # Interpolate the temperature profile onto the new radial positions
+    scaled_temperature_profile = np.interp(radii_to_interpolate, mantle_radii, mantle_temperature_profile)
+
+    # Create a cubic spline interpolation function
+    cubic_interp_func = interp1d(mantle_radii, mantle_temperature_profile, kind='cubic')
+
+    # Interpolate the temperature profile onto the new radial positions
+    scaled_temperature_profile = cubic_interp_func(radii_to_interpolate)
+
+    return scaled_temperature_profile
 
 
 def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
     """Runs the Zalmoxis solver to compute the interior structure of a planet.
     Args:
-        config (Config): The configuration object containing the Zalmoxis parameters.
+        config (Config): The configuration object containing the configuration parameters.
         outdir (str): The output directory where results will be saved.
         hf_row (dict): A dictionary containing the mass of volatiles and other parameters.
     Returns:
@@ -101,9 +154,18 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
     # Load the Zalmoxis configuration parameters
     config_params = load_zalmoxis_configuration(config, hf_row)
 
+    # Get the output location for Zalmoxis output and create the file if it does not exist
+    output_zalmoxis = get_zalmoxis_output_filepath(outdir)
+    open(output_zalmoxis, 'a').close()
+
     # Run the Zalmoxis main function to compute the interior structure
     model_results = main(
-        config_params, material_dictionaries=load_zalmoxis_material_dictionaries()
+        config_params,
+        material_dictionaries=load_zalmoxis_material_dictionaries(),
+        melting_curves_functions=load_zalmoxis_solidus_liquidus_functions(
+            config_params['EOS_CHOICE'], config
+        ),
+        input_dir=os.path.join(outdir, 'data'),
     )
 
     # Extract results from the model
@@ -111,6 +173,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
     density = model_results['density']
     gravity = model_results['gravity']
     pressure = model_results['pressure']
+    temperature = model_results['temperature']
     mass_enclosed = model_results['mass_enclosed']
     cmb_mass = model_results['cmb_mass']
     core_mantle_mass = model_results['core_mantle_mass']
@@ -163,8 +226,6 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
     hf_row['M_core'] = mass_enclosed[cmb_index]
     hf_row['gravity'] = gravity[-1]
 
-    # Get the output location for Zalmoxis output
-    output_zalmoxis = get_zalmoxis_output_filepath(outdir)
     logger.info(f'Saving Zalmoxis output to {output_zalmoxis}')
 
     # Select mantle arrays (to match the mesh needed for Aragog)
@@ -172,12 +233,19 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
     mantle_pressure = pressure[cmb_index:]
     mantle_density = density[cmb_index:]
     mantle_gravity = gravity[cmb_index:]
+    mantle_temperature = temperature[cmb_index:]
+
+    # Scale mantle temperature to match Aragog temperature profile format
+    mantle_temperature_scaled = scale_temperature_profile_for_aragog(config, mantle_radii, mantle_temperature)
+
+    # Write temperature profile to a separate file for Aragog to read
+    np.savetxt(os.path.join(outdir, "data", "zalmoxis_output_temp.txt"), mantle_temperature_scaled)
 
     # Save final grids to the output file for the mantle for Aragog
     with open(output_zalmoxis, 'w') as f:
         for i in range(len(mantle_radii)):
             f.write(
-                f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity[i]:.17e}\n'
+                f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
 
     return cmb_radius

@@ -169,12 +169,9 @@ def solve_structure(
             case 'self':
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case 'zalmoxis':
-                return determine_interior_radius_with_zalmoxis(
-                    dirs, config, hf_all, hf_row, outdir
-                )
-        raise ValueError(
-            f"Invalid structure interior module selected '{config.interior.module}'"
-        )
+                config.orbit.module = 'dummy'  # Switch to dummy orbit module when using Zalmoxis for now
+                return determine_interior_radius_with_zalmoxis(dirs, config, hf_all, hf_row, outdir)
+        raise ValueError(f"Invalid structure interior module selected '{config.interior.module}'")
 
     # Otherwise, error
     else:
