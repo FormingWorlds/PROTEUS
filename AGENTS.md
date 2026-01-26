@@ -148,6 +148,7 @@ proteus install-all --export-env
 - **SPIDER** requires PETSc to be installed first
 - All Python submodules should be installed as editable (`-e`) for development
 - After installation, reload shell: `source ~/.bashrc` or `conda activate proteus`
+- After each file change or edit, ruff format all changed files with `ruff check --fix ` and `ruff format --check`
 
 ### Build Commands
 
@@ -344,6 +345,7 @@ pre-commit install -f
 4. **Run tests locally**: `pytest -m unit` (fast feedback)
 5. **Check coverage**: `pytest --cov=src --cov-report=html`
 6. **Lint**: `ruff check --fix src/ tests/ && ruff format src/ tests/`
+7. **Lint all new files**: `ruff check --fix` and `ruff format` on all newly changed files
 7. **Validate structure**: `bash tools/validate_test_structure.sh`
 8. **Commit**: `git commit -m "feat: description"`
 9. **Push**: CI runs automatically on PR
