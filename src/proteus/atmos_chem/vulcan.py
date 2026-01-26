@@ -371,7 +371,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
 
 def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     """
-    Run VULCAN as a subprocess, postprocessing the final PROTEUS output state.
+    Run VULCAN at every snapshot.
 
     Parameters
     ----------
@@ -398,12 +398,11 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     # ------------------------------------------------------------
 
     if config.atmos_clim.module != 'agni':
-        log.warning("VULCAN offline chemistry only supported with AGNI")
+        log.warning("VULCAN chemistry only supported with AGNI")
         return False
 
     # make folder
-    shutil.rmtree(dirs["output/offchem"], ignore_errors=True)
-    os.makedirs(dirs["output/offchem"])
+    os.makedirs(dirs["output/offchem"], exist_ok=True)
 
     # ------------------------------------------------------------
     # READ DATA FROM PROTEUS RUN
@@ -444,7 +443,7 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     star_fl = star_fl[star_fl > config.atmos_chem.vulcan.clip_fl]
 
     # Write spectrum
-    star_write = dirs["output/offchem"] + "star.dat"
+    star_write = os.path.join(dirs["output/offchem"], "star.dat")
     np.savetxt(star_write, np.array([star_wl, star_fl]).T,
                 header="# WL(nm)    Flux(ergs/cm**2/s/nm)",
                 fmt=["%.4f","%.4e"])
@@ -459,12 +458,12 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     # Write TPK profile
     header  = "#(dyne/cm2)\t(K)\t(cm2/s)\n"
     header += "Pressure\tTemp\tKzz"
-    prof_write = dirs["output/offchem"] + "profile.dat"
+    prof_write = os.path.join(dirs["output/offchem"], "profile.dat")
     np.savetxt(prof_write, np.array([p_arr[::-1], t_arr[::-1], k_arr[::-1]]).T,
                delimiter="\t", header=header, comments='', fmt="%1.5e")
 
     # Write mixing ratios
-    vmr_write = dirs["output/offchem"] + "vmrs.dat"
+    vmr_write = os.path.join(dirs["output/offchem"], "vmrs.dat")
     x_gas = [list(p_arr)]
     header = "#Input composition arrays \nPressure\t"
     for key in atmos.keys():
@@ -639,7 +638,7 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     vcfg.output_dir         =   vulcan_out
     vcfg.plot_dir           =   vulcan_plt
     vcfg.movie_dir          =   vulcan_plt+"/frames/"
-    vcfg.out_name           =   VULCAN_NAME
+    vcfg.out_name           =   vulcan_pkl
 
     # Plotting
     vcfg.plot_TP            = config.atmos_chem.vulcan.save_frames
@@ -658,10 +657,11 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     # RUN VULCAN
     # ------------------------------------------------------------
 
-    # Make chemical network
-    if config.atmos_chem.vulcan.make_funs:
-        log.debug("Performing `make_chem_funs` step...")
+    # Make chemical network (only once in online mode)
+    if config.atmos_chem.vulcan.make_funs and not hasattr(run_vulcan_online, "_made"):
+        log.debug("Performing `make_chem_funs` step (online, once)...")
         vulcan.make_all(vcfg)
+        run_vulcan_online._made = True
         log.debug("    done")
 
     # Call the solver
@@ -671,7 +671,7 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     # READ AND PARSE OUTPUT FILES
     # ------------------------------------------------------------
 
-    result_file = vulcan_out + VULCAN_NAME
+    result_file = os.path.join(vulcan_out, vulcan_pkl)
     if not os.path.exists(result_file):
         log.warning(f"Could not find output file {result_file}")
         return False
@@ -695,7 +695,7 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
             result_dict[gas] = np.array(result["variable"]["ymix"][:,i])
 
     # write csv file, in a human-readable format
-    csv_file = vulcan_out + OUTPUT_NAME
+    csv_file = os.path.join(vulcan_out, vulcan_csv)
     log.debug(f"Writing to {csv_file}")
     header = ""
     Xarr = []
