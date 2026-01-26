@@ -1,7 +1,7 @@
 # Test Building Strategy for PROTEUS
 
-**Last Updated**: 2026-01-13
-**Status**: 31.24% coverage (exceeded 30% target), 492 tests, 7 active smoke tests (exceeds 5-7 target), fast CI tests passing, nightly CI data download issues being addressed
+**Last Updated**: 2026-01-XX (in progress)
+**Status**: 31.24% coverage (exceeded 30% target), 492 tests, 7 active smoke tests (exceeds 5-7 target), fast CI tests passing, data download robustness enhanced with multi-tier fallback system
 
 ---
 
@@ -39,9 +39,17 @@
 
 ---
 
-## Recent Achievements (2026-01-11)
+## Recent Achievements
 
-### All CI Tests Passing ✅
+### Data Download Robustness (2026-01-XX) ✅
+- **Multi-tier fallback system**: `zenodo_client` → `zenodo_get` → web download → OSF fallback
+- **Retry logic**: 3 attempts with exponential backoff (5s, 10s, 20s)
+- **Rate limiting**: 2s cooldown between Zenodo API requests
+- **Token detection**: Automatic fallback when API token unavailable
+- **Impact**: Integration tests should be more resilient to data download failures
+- **Files**: `src/proteus/utils/data.py` (~1883 lines changed)
+
+### All CI Tests Passing (2026-01-11) ✅
 - **Fixed 4 VULCAN unit tests**: Resolved complex import/mocking issues with `proteus.atmos_chem.vulcan` module
 - **All 441 unit tests passing** in latest CI run
 - **All 7 smoke tests passing** consistently
@@ -331,15 +339,18 @@ The test validates the configuration as-is.
      - `test_integration_std_config_multi_timestep`: 5-timestep validation
      - `test_integration_std_config_extended_run`: 10-timestep extended run (@pytest.mark.slow)
 
-3. **Week 3**: Add validation checks
-   - Energy balance validation
-   - Mass conservation checks
-   - Stability checks (no runaway temperatures/pressures)
+3. **Week 3**: Add validation checks ✅ **COMPLETED** (2026-01-13)
+   - ✅ Energy balance validation (flux convergence checks for magma oceans)
+   - ✅ Mass conservation checks (20% tolerance for escape/outgassing)
+   - ✅ Stability checks (no runaway temperatures/pressures, bounded growth validation)
+   - ✅ Comprehensive physical parameter validation (stellar, orbital, interior, atmospheric, volatile, escape)
 
-4. **Week 4**: Debug and stabilize
-   - Fix any runtime issues
-   - Optimize resolution for <5 min runtime
-   - Add to nightly CI workflow
+4. **Week 4**: Debug and stabilize ⏸️ **IN PROGRESS**
+   - ✅ Test structure complete with comprehensive validation
+   - ⏸️ Verify tests pass in nightly CI with improved data download system
+   - ⏸️ Monitor for any runtime issues with real modules
+   - ⏸️ Optimize resolution if needed for <5 min runtime
+   - ✅ Already integrated into nightly CI (`ci-nightly-science-v5.yml`)
 
 **Effort**: 16-24 hours (4 weeks, 4-6 hours/week)
 **Impact**: Foundation for all future integration tests
@@ -363,13 +374,19 @@ The test validates the configuration as-is.
 
 **Phase 2 Success Criteria**:
 - ✅ Standard configuration integration test implemented (`test_integration_std_config.py`)
-- ⏸️ Test runs stably for 5-10 timesteps (requires all real modules + data - currently skipping due to missing stellar tracks)
-- ⏸️ Conservation law validations pass (requires all real modules + data - currently skipping)
+- ✅ Comprehensive validation checks implemented (energy, mass, stability, physical parameters)
+- ⏸️ Test runs stably for 5-10 timesteps (requires all real modules + data - should be more resilient with improved download system)
+- ⏸️ Conservation law validations pass (implemented, needs verification in CI with real modules)
 - ✅ Integrated into nightly CI (`ci-nightly-science-v5.yml`)
-- ⏸️ **Current Issue (2026-01-13)**: Slow integration tests skipping due to missing stellar evolution tracks
-  - Root cause: `zenodo_get` command failing during data download
-  - Fix in progress: Improved data download step with MORS verification and fallback downloads
-  - Tests affected: `test_integration_std_config.py` (both slow tests), `test_integration_aragog_janus.py` (5 tests)
+- ⏸️ **Next**: Monitor next nightly CI run to verify tests pass with improved data download robustness
+- ⏸️ **Data Download Robustness Enhanced (2026-01-XX)**:
+  - ✅ **Multi-tier fallback system implemented**: `zenodo_client` → `zenodo_get` → web download → OSF fallback
+  - ✅ **Retry logic**: 3 attempts with exponential backoff (5s, 10s, 20s)
+  - ✅ **Rate limiting**: 2s cooldown between Zenodo API requests
+  - ✅ **Token detection**: Automatic fallback when API token unavailable
+  - ⏸️ **Integration test status**: Tests implemented with graceful skip logic; should now be more resilient to data download failures
+  - **Next step**: Verify integration tests pass in nightly CI with improved download system
+  - **Tests affected**: `test_integration_std_config.py` (both slow tests), `test_integration_aragog_janus.py` (5 tests)
 
 ### Phase 3: Coverage Expansion (Ongoing)
 
@@ -437,30 +454,48 @@ The test validates the configuration as-is.
 
 #### Immediate Actions (This Week)
 
-1. **Add 2-4 New Smoke Tests**
-   - Start with escape module (simpler)
-   - Add star module test
-   - Add orbit module test
-   - Consider multi-module dummy chain
+1. **Verify Integration Tests with Improved Data Downloads** ✅ **PRIORITY**
+   - Monitor next nightly CI run (`ci-nightly-science-v5.yml`)
+   - Verify `test_integration_std_config.py` tests pass with improved download robustness
+   - Check if `test_integration_aragog_janus.py` tests now pass
+   - Document any remaining issues with data downloads
+
+2. **Expand `utils/data.py` Test Coverage** (if time permits)
+   - Add tests for OSF client integration (mocked)
+   - Test file validation logic edge cases
+   - Test error handling paths in download functions
+   - Target: +5-10% coverage for `utils/data.py`
 
 #### Short-Term Actions (Next 2 Weeks)
 
-1. **Plan Standard Configuration Test**
-   - Design test structure
-   - Create configuration template
-   - Set up validation helpers
+1. **Complete Phase 2: Integration Test Foundation**
+   - ✅ Standard configuration test implemented
+   - ✅ Validation checks implemented
+   - ⏸️ Verify tests pass in nightly CI (pending next run)
+   - ⏸️ Document any runtime optimizations needed
+   - ⏸️ Add more module combination tests (e.g., ARAGOG+JANUS, AGNI+CALLIOPE)
+
+2. **Expand Integration Test Suite**
+   - Add tests for specific module combinations:
+     - ARAGOG + AGNI (interior-atmosphere coupling)
+     - CALLIOPE + ZEPHYRUS (outgassing-escape coupling)
+     - MORS + AGNI (stellar-atmosphere coupling)
+   - Create test templates for new integration tests
+   - Establish best practices documentation
 
 #### Long-Term Actions (Next Month)
 
-1. **Implement Standard Configuration Test**
-   - Follow 4-week implementation plan
-   - Integrate into nightly CI
-   - Document test structure for future tests
+1. **Phase 3: Coverage Expansion**
+   - Maintain >30% unit test coverage
+   - Target: 35-40% coverage by end of Q1
+   - Focus on high-impact modules with low coverage
+   - Continue coverage ratcheting mechanism
 
-2. **Expand Integration Test Suite**
-   - Add more module combinations
-   - Create test templates
-   - Establish best practices
+2. **Slow Test Strategy**
+   - Plan comprehensive physics validation tests
+   - Examples: Earth magma ocean, Venus runaway greenhouse, Super-Earth evolution
+   - Budget: 3-4 hours per scenario for nightly CI
+   - Document test scenarios and expected outcomes
 
 ---
 
@@ -598,10 +633,53 @@ git push
 
 ---
 
+## Next Steps Summary
+
+### Phase 2 Completion (Immediate Priority)
+
+**Status**: Integration test infrastructure complete, validation checks implemented, data download robustness enhanced
+
+**Remaining Tasks**:
+1. **Verify Integration Tests in CI** (1-2 days)
+   - Monitor next nightly CI run (`ci-nightly-science-v5.yml`)
+   - Verify `test_integration_std_config.py` passes with improved data downloads
+   - Check `test_integration_aragog_janus.py` status
+   - Document any remaining issues
+
+2. **Expand Integration Test Coverage** (1-2 weeks)
+   - Add module combination tests (ARAGOG+AGNI, CALLIOPE+ZEPHYRUS, etc.)
+   - Create test templates for new integration tests
+   - Target: 10-15 integration tests total
+
+3. **Optimize Test Runtime** (if needed)
+   - Review test configurations for runtime optimization
+   - Ensure all tests complete within CI time limits
+   - Document runtime expectations
+
+### Phase 3: Coverage Expansion (Ongoing)
+
+**Current**: 31.24% coverage (exceeded 30% target)
+
+**Next Priorities**:
+1. **Expand `utils/data.py` Tests** (4-6 hours)
+   - Current: 7 tests
+   - Target: +10-15 tests for download functions
+   - Focus: OSF client, validation logic, error handling
+
+2. **Core Module Edge Cases** (ongoing)
+   - Add tests for error paths
+   - Test boundary conditions
+   - Validate error messages
+
+3. **Maintain Coverage Threshold**
+   - Continue coverage ratcheting
+   - Ensure new code includes tests
+   - Monitor coverage trends
+
 ## Resources
 
 - [Test Infrastructure Documentation](./test_infrastructure.md)
 - [Test Categorization Guide](./test_categorization.md)
 - [Test Building Guide](./test_building.md)
-- [PROTEUS AGENT Instructions](../.github/AGENT.md)
+- [PROTEUS AGENT Instructions](../AGENTS.md)
 - [Test conftest.py fixtures](../tests/conftest.py)
