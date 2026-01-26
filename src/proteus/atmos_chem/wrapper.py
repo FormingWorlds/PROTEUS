@@ -39,17 +39,31 @@ def run_chemistry(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
     module = config.atmos_chem.module
     when   = getattr(config.atmos_chem, "when", "manually")
 
-    if not module:
-        # no chemistry
+    if not module or module == "none":
         log.warning("Cannot run atmospheric chemistry, no module specified")
         return None
 
-    elif module == 'vulcan':
-        log.debug("Using VULCAN kinetics model")
-        from proteus.atmos_chem.vulcan import run_vulcan_offline
-        run_vulcan_offline(dirs, config, hf_row)
-
-    else:
+    if module != "vulcan":
         raise ValueError(f"Invalid atmos_chem module: {module}")
 
-    return read_result(dirs["output"], module)
+    from proteus.atmos_chem.vulcan import (
+        run_vulcan_offline,
+        run_vulcan_online,
+    )
+
+    if when == "manually":
+        log.debug("Atmospheric chemistry set to 'manually'; skipping")
+        return None
+
+    elif when == "offline":
+        log.debug("Running atmospheric chemistry in OFFLINE mode")
+        run_vulcan_offline(dirs, config, hf_row)
+        return read_result(dirs["output"], module)
+
+    elif when == "online":
+        log.debug("Running atmospheric chemistry in ONLINE mode")
+        run_vulcan_online(dirs, config, hf_row)
+        return None
+
+    else:
+        raise ValueError(f"Invalid atmos_chem.when: '{when}'")
