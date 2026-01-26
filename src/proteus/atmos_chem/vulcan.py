@@ -369,7 +369,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     log.info("    done")
     return success
 
-def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
+def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     """
     Run VULCAN as a subprocess, postprocessing the final PROTEUS output state.
 
