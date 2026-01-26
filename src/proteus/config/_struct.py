@@ -120,13 +120,17 @@ class Zalmoxis:
 
     EOSchoice: str = field(
         default='Tabulated:iron/silicate',
-        validator=in_(('Tabulated:iron/silicate', 'Tabulated:iron/Tdep_silicate', 'Tabulated:water')),
+        validator=in_(
+            ('Tabulated:iron/silicate', 'Tabulated:iron/Tdep_silicate', 'Tabulated:water')
+        ),
     )
 
     coremassfrac: float = field(default=0.325, validator=(gt(0), lt(1)))
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
     weight_iron_frac: float = field(default=0.325, validator=(gt(0), lt(1)))
-    temperature_mode: str = field(default='isothermal', validator=in_(('isothermal', 'linear', 'prescribed')))
+    temperature_mode: str = field(
+        default='isothermal', validator=in_(('isothermal', 'linear', 'prescribed'))
+    )
     surface_temperature: float = field(default=3500, validator=ge(0))
     center_temperature: float = field(default=6000, validator=ge(0))
     temperature_profile_file: Optional[str] = field(default=None)
@@ -154,7 +158,10 @@ class Zalmoxis:
     def __attrs_post_init__(self):
         if self.temperature_mode == 'prescribed':
             if not self.temperature_profile_file:
-                raise ValueError("`temperature_profile_file` must be provided when `temperature_mode` is 'prescribed'.")
+                raise ValueError(
+                    "`temperature_profile_file` must be provided when `temperature_mode` is 'prescribed'."
+                )
+
 
 @define
 class Struct:

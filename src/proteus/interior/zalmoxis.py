@@ -18,8 +18,7 @@ from proteus.utils.constants import (
 )
 from proteus.utils.data import get_zalmoxis_EOS, get_zalmoxis_melting_curves
 
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
-                                   platformdirs.user_data_dir('fwl_data')))
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Set up logging
 logger = logging.getLogger('fwl.' + __name__)
@@ -103,17 +102,21 @@ def load_zalmoxis_material_dictionaries():
     """
     return get_zalmoxis_EOS()
 
-def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE, config:Config):
+
+def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE, config: Config):
     """Loads the solidus and liquidus functions for Zalmoxis based on the EOS choice.
     Args:
         EOS_CHOICE (str): The EOS choice for Zalmoxis.
     Returns:
         tuple: A tuple containing the solidus and liquidus functions.
     """
-    if EOS_CHOICE == "Tabulated:iron/Tdep_silicate":
+    if EOS_CHOICE == 'Tabulated:iron/Tdep_silicate':
         return get_zalmoxis_melting_curves(config)
 
-def scale_temperature_profile_for_aragog(config:Config, mantle_radii: np.ndarray, mantle_temperature_profile: np.ndarray):
+
+def scale_temperature_profile_for_aragog(
+    config: Config, mantle_radii: np.ndarray, mantle_temperature_profile: np.ndarray
+):
     """Scales the temperature profile obtained from Zalmoxis to match the number of levels required by Aragog.
     Args:
         config (Config): The configuration object containing the configuration parameters.
@@ -130,7 +133,9 @@ def scale_temperature_profile_for_aragog(config:Config, mantle_radii: np.ndarray
     radii_to_interpolate = np.linspace(mantle_radii[0], mantle_radii[-1], mesh_grid_size)
 
     # Interpolate the temperature profile onto the new radial positions
-    scaled_temperature_profile = np.interp(radii_to_interpolate, mantle_radii, mantle_temperature_profile)
+    scaled_temperature_profile = np.interp(
+        radii_to_interpolate, mantle_radii, mantle_temperature_profile
+    )
 
     # Create a cubic spline interpolation function
     cubic_interp_func = interp1d(mantle_radii, mantle_temperature_profile, kind='cubic')
@@ -236,10 +241,14 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
     mantle_temperature = temperature[cmb_index:]
 
     # Scale mantle temperature to match Aragog temperature profile format
-    mantle_temperature_scaled = scale_temperature_profile_for_aragog(config, mantle_radii, mantle_temperature)
+    mantle_temperature_scaled = scale_temperature_profile_for_aragog(
+        config, mantle_radii, mantle_temperature
+    )
 
     # Write temperature profile to a separate file for Aragog to read
-    np.savetxt(os.path.join(outdir, "data", "zalmoxis_output_temp.txt"), mantle_temperature_scaled)
+    np.savetxt(
+        os.path.join(outdir, 'data', 'zalmoxis_output_temp.txt'), mantle_temperature_scaled
+    )
 
     # Save final grids to the output file for the mantle for Aragog
     with open(output_zalmoxis, 'w') as f:

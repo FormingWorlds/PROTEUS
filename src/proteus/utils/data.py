@@ -1116,14 +1116,17 @@ def load_melting_curve(melt_file):
         interp_func: Interpolation function for T(P)
     """
     try:
-        data = np.loadtxt(melt_file, comments="#")
+        data = np.loadtxt(melt_file, comments='#')
         pressures = data[:, 0]  # in Pa
         temperatures = data[:, 1]  # in K
-        interp_func = interp1d(pressures, temperatures, kind="linear", bounds_error=False, fill_value=np.nan)
+        interp_func = interp1d(
+            pressures, temperatures, kind='linear', bounds_error=False, fill_value=np.nan
+        )
         return interp_func
     except Exception as e:
-        print(f"Error loading melting curve data: {e}")
+        print(f'Error loading melting curve data: {e}')
         return None
+
 
 def get_zalmoxis_melting_curves(config: Config):
     """
@@ -1133,13 +1136,18 @@ def get_zalmoxis_melting_curves(config: Config):
         config: Configuration object containing interior settings
     Returns: A tuple containing the solidus and liquidus data files.
     """
-    if config.interior.melting_dir != "Monteux-600":
-        raise ValueError(f"Zalmoxis currently only supports 'Monteux-600' for melting_dir. You have configured '{config.interior.melting_dir}'.")
-    melting_curves_folder = FWL_DATA_DIR / "interior_lookup_tables" / "Melting_curves" / config.interior.melting_dir
-    solidus_func = load_melting_curve(melting_curves_folder / "solidus.dat")
-    liquidus_func = load_melting_curve(melting_curves_folder / "liquidus.dat")
+    if config.interior.melting_dir != 'Monteux-600':
+        raise ValueError(
+            f"Zalmoxis currently only supports 'Monteux-600' for melting_dir. You have configured '{config.interior.melting_dir}'."
+        )
+    melting_curves_folder = (
+        FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / config.interior.melting_dir
+    )
+    solidus_func = load_melting_curve(melting_curves_folder / 'solidus.dat')
+    liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus.dat')
     melting_curves_functions = (solidus_func, liquidus_func)
     return melting_curves_functions
+
 
 def get_zalmoxis_EOS():
     """
@@ -1148,55 +1156,64 @@ def get_zalmoxis_EOS():
         tuple: A tuple containing three dictionaries for iron/silicate planets, iron/Tdep_silicate planets, and water planets.
     """
     # Define the EOS folder paths
-    Seager_eos_folder = FWL_DATA_DIR / "EOS_material_properties" / "EOS_Seager2007"
-    Wolf_Bower_eos_folder = FWL_DATA_DIR / "interior_lookup_tables" / "1TPa-dK09-elec-free" / "MgSiO3_Wolf_Bower_2018_1TPa"
+    Seager_eos_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
+    Wolf_Bower_eos_folder = (
+        FWL_DATA_DIR
+        / 'interior_lookup_tables'
+        / '1TPa-dK09-elec-free'
+        / 'MgSiO3_Wolf_Bower_2018_1TPa'
+    )
 
     # Download the EOS material properties if not already present
     if not Seager_eos_folder.exists():
-        log.debug("Get EOS material properties from Seager et al. (2007)")
+        log.debug('Get EOS material properties from Seager et al. (2007)')
         download_Seager_EOS()
 
     # Build the material_properties_iron_silicate_planets dictionary for iron/silicate planets according to Seager et al. (2007)
     material_properties_iron_silicate_planets = {
-        "core": {
+        'core': {
             # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
+            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
         },
-        "mantle": {
+        'mantle': {
             # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_silicate.txt"
-        }
+            'eos_file': Seager_eos_folder / 'eos_seager07_silicate.txt'
+        },
     }
 
     # Build the material_properties_iron_Tdep_silicate_planets dictionary for iron/silicate planets with temperature-dependent silicate mantle EOS from Wolf & Bower (2018)
     material_properties_iron_Tdep_silicate_planets = {
-        "core": {
+        'core': {
             # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
+            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
         },
-        "melted_mantle": {
+        'melted_mantle': {
             # MgSiO3 in melt state, modeled in Wolf & Bower (2018) using their developed high P–T RTpress EOS
-            "eos_file": Wolf_Bower_eos_folder / "density_melt.dat"
+            'eos_file': Wolf_Bower_eos_folder / 'density_melt.dat'
         },
-        "solid_mantle": {
+        'solid_mantle': {
             # MgSiO3 in solid state, modeled in Wolf & Bower (2018) using their developed high P–T RTpress EOS
-            "eos_file": Wolf_Bower_eos_folder / "density_solid.dat"
-        }
+            'eos_file': Wolf_Bower_eos_folder / 'density_solid.dat'
+        },
     }
 
     # Build the material_properties_water_planets dictionary for water planets according to Seager et al. (2007)
     material_properties_water_planets = {
-        "core": {
+        'core': {
             # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
+            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
         },
-        "mantle": {
-                # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
-                "eos_file": Seager_eos_folder / "eos_seager07_silicate.txt"
+        'mantle': {
+            # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
+            'eos_file': Seager_eos_folder / 'eos_seager07_silicate.txt'
         },
-        "water_ice_layer": {
+        'water_ice_layer': {
             # Water ice, modeled in Seager et al. (2007) using experimental data, DFT predictions for water ice in phases VIII and X, and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_water.txt"
-        }
+            'eos_file': Seager_eos_folder / 'eos_seager07_water.txt'
+        },
     }
-    return material_properties_iron_silicate_planets, material_properties_iron_Tdep_silicate_planets, material_properties_water_planets
+    return (
+        material_properties_iron_silicate_planets,
+        material_properties_iron_Tdep_silicate_planets,
+        material_properties_water_planets,
+    )

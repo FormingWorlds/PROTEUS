@@ -166,18 +166,24 @@ class AragogRunner:
         )
 
         # Define initial conditions for prescribing temperature profile
-        if config.struct.module == "self":
+        if config.struct.module == 'self':
             initial_condition_temperature_profile = config.interior.aragog.initial_condition
-            init_file_temperature_profile = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
-        elif config.struct.module == "zalmoxis":
-            if config.struct.zalmoxis.EOSchoice == "Tabulated:iron/Tdep_silicate":
+            init_file_temperature_profile = os.path.join(
+                FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
+            )
+        elif config.struct.module == 'zalmoxis':
+            if config.struct.zalmoxis.EOSchoice == 'Tabulated:iron/Tdep_silicate':
                 # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
                 initial_condition_temperature_profile = 2
-                init_file_temperature_profile = os.path.join(outdir, "data", "zalmoxis_output_temp.txt")
+                init_file_temperature_profile = os.path.join(
+                    outdir, 'data', 'zalmoxis_output_temp.txt'
+                )
             else:
                 # Otherwise, use the initial condition from aragog config
                 initial_condition_temperature_profile = config.interior.aragog.initial_condition
-                init_file_temperature_profile = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
+                init_file_temperature_profile = os.path.join(
+                    FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
+                )
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 
