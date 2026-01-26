@@ -19,9 +19,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
+from proteus.utils.constants import (
+    element_list,
+    secs_per_hour,
+    secs_per_minute,
+    vap_list,
+    vol_list,
+)
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
+
+#from proteus.outgas.wrapper import get_gaslist
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -448,7 +456,7 @@ def CreateLockFile(output_dir:str):
         fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
     return keepalive_file
 
-def GetHelpfileKeys():
+def GetHelpfileKeys(config:Config):
     '''
     Variables to be held in the helpfile.
 
@@ -517,6 +525,11 @@ def GetHelpfileKeys():
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
             ]
 
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
+
     # gases from outgassing
     for s in gas_list:
         keys.append(s+"_mol_atm")
@@ -560,48 +573,48 @@ def GetHelpfileKeys():
 
     return keys
 
-def CreateHelpfileFromDict(d:dict):
+def CreateHelpfileFromDict(d:dict,config:Config):
     '''
     Create helpfile to hold output variables.
     '''
     log.debug("Creating new helpfile from dict")
-    return pd.DataFrame([d], columns=GetHelpfileKeys(), dtype=float)
+    return pd.DataFrame([d], columns=GetHelpfileKeys(config), dtype=float)
 
-def ZeroHelpfileRow():
+def ZeroHelpfileRow(config:Config):
     '''
     Get a dictionary with same keys as helpfile but with values of zero
     '''
     out = {}
-    for k in GetHelpfileKeys():
+    for k in GetHelpfileKeys(config):
         out[k] = 0.0
     return out
 
-def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict):
+def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict,config:Config):
     '''
     Extend helpfile with new row of variables
     '''
     log.debug("Extending helpfile with new row")
 
     # validate keys
-    missing_keys = set(GetHelpfileKeys()) - set(new_row.keys())
+    missing_keys = set(GetHelpfileKeys(config)) - set(new_row.keys())
     if len(missing_keys)>0:
         raise Exception("There are mismatched keys in helpfile: %s"%missing_keys)
 
     # convert row to df
-    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
+    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(config), dtype=float)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True)
 
 
-def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
+def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame,config:Config):
     '''
     Write helpfile to a CSV file
     '''
     log.debug("Writing helpfile to CSV file")
 
     # check for invalid or missing keys
-    difference = set(GetHelpfileKeys()) - set(current_hf.keys())
+    difference = set(GetHelpfileKeys(config)) - set(current_hf.keys())
     if len(difference) > 0:
         raise Exception("There are mismatched keys in helpfile: "+str(difference))
 

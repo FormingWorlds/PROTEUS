@@ -9,12 +9,21 @@ import numpy as np
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
 from proteus.outgas.lavatmos import run_lavatmos
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, vap_list, vol_list
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
+
+def get_gaslist(config:Config):
+
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
+
+    return gas_list
 
 def calc_target_elemental_inventories(dirs:dict, config:Config, hf_row:dict):
     """
@@ -69,6 +78,8 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
 
     log.info("Solving outgassing...")
 
+    gas_list=get_gaslist(config)
+
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
@@ -97,7 +108,7 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
 
 
 
-def run_desiccated(config:Config, hf_row:dict):
+def run_desiccated(hf_row:dict,config:Config):
     '''
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
     has lost its entire volatile inventory.
@@ -112,6 +123,7 @@ def run_desiccated(config:Config, hf_row:dict):
 
     # if desiccated, set all gas masses to zero
     log.info("Desiccation has occurred - no volatiles remaining")
+    gas_list=get_gaslist(config)
 
     # Do not set these to zero - avoid divide by zero elsewhere in the code
     excepted_keys = ["atm_kg_per_mol"]
@@ -141,7 +153,6 @@ def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
     run_outgassing(dirs, config, hf_row)
     print(config.outgas.silicates)
     if config.outgas.silicates:
-        print(config.outgas.fastchempath)
         xerr=hf_row['H2O_vmr']*0.01
         log.info("error threshold on water abundance: %.6f"%xerr)
         err=1.0

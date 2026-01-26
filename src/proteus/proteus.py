@@ -244,7 +244,7 @@ class Proteus:
             self.interior_o.ic = 1
 
             # Create an empty initial row for helpfile
-            self.hf_row = ZeroHelpfileRow()
+            self.hf_row = ZeroHelpfileRow(self.config)
 
             # Stellar mass
             update_stellar_mass(self.hf_row, self.config)
@@ -296,7 +296,7 @@ class Proteus:
             log.info("Resuming the simulation from the disk")
 
             # Read helpfile from disk
-            self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
+            self.hf_all = ReadHelpfileFromCSV(self.directories["output"],self.config)
 
             # Check length
             if len(self.hf_all) <= self.loops["init_loops"] + 1:
@@ -485,14 +485,14 @@ class Proteus:
             # Update full helpfile
             if self.loops["total"] > 1:
                 # append row
-                self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
+                self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row,self.config)
             else:
                 # first iter => generate new HF from dict
-                self.hf_all = CreateHelpfileFromDict(self.hf_row)
+                self.hf_all = CreateHelpfileFromDict(self.hf_row,self.config)
 
             # Write helpfile to disk
             if multiple(self.loops["total"], self.config.params.out.write_mod):
-                WriteHelpfileToCSV(self.directories["output"], self.hf_all)
+                WriteHelpfileToCSV(self.directories["output"], self.hf_all,self.config)
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
@@ -523,7 +523,7 @@ class Proteus:
 
         # Write conditions at the end of simulation
         log.info("Writing data")
-        WriteHelpfileToCSV(self.directories["output"], self.hf_all)
+        WriteHelpfileToCSV(self.directories["output"], self.hf_all,self.config)
 
         # Run offline chemistry
         if self.config.atmos_chem.when == "offline":
@@ -583,7 +583,7 @@ class Proteus:
 
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
-        hf_all = ReadHelpfileFromCSV(self.directories["output"])
+        hf_all = ReadHelpfileFromCSV(self.directories["output"],self.config)
 
         # Check length
         if len(hf_all) < 1:
@@ -603,7 +603,7 @@ class Proteus:
 
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
-        hf_all = ReadHelpfileFromCSV(self.directories["output"])
+        hf_all = ReadHelpfileFromCSV(self.directories["output"],self.config)
 
         # Check length
         if len(hf_all) < 1:

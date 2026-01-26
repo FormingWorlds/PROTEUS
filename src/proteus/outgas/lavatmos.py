@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, vol_list
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -35,7 +35,7 @@ def run_lavatmos(config:Config,hf_row:dict):
     sys.path.insert(1, '/data3/leoni/LavAtmos')
     from lavatmos_goot_runner import container_lavatmos
 
-    print(element_list, gas_list)
+    gas_list= vol_list + config.outgas.vaplist
     lavatmos_dict={'P':0}
 
     #set element fractions in atmosphere for lavatmos run

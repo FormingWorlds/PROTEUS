@@ -12,7 +12,7 @@ from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_radius_from_pressure, get_spfile_path
-from proteus.utils.constants import gas_list
+from proteus.outgas.wrapper import get_gaslist
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
@@ -69,7 +69,11 @@ def activate_julia(dirs:dict, verbosity:int):
     log.debug("AGNI will log to '%s'"%logpath)
 
 
-def _construct_voldict(hf_row:dict, dirs:dict):
+def _construct_voldict(hf_row:dict, dirs:dict, config:Config):
+
+    gas_list=get_gaslist(config)
+
+    print("list of gases used by agni: ",gas_list)
 
     # get from hf_row
     vol_dict = {}
@@ -162,7 +166,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     log.info(f"Temporary-file working dir: {io_dir}")
 
     # composition
-    vol_dict = _construct_voldict(hf_row, dirs)
+    vol_dict = _construct_voldict(hf_row, dirs,config)
 
     # set condensation
     condensates = []
@@ -319,7 +323,7 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, config:Config):
 
     # ---------------------
     # Update compositions
-    vol_dict = _construct_voldict(hf_row, dirs)
+    vol_dict = _construct_voldict(hf_row, dirs,config)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:]  = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
@@ -523,11 +527,14 @@ def _solve_once(atmos, config:Config):
             Atmosphere struct
     """
 
+    #set included vapur species
+    gas_list=get_gaslist(config)
     # set temperature profile
     #    rainout volatiles at surface
     rained = jl.AGNI.chemistry.calc_composition_b(atmos,
                                                     config.atmos_clim.agni.oceans,
                                                     False, False)
+
     rained = bool(rained)
     if rained:
         log.info("    gases are condensing at the surface")
@@ -710,6 +717,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["ocean_areacov"] = float(atmos.ocean_areacov)
     output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
     output["P_surf_clim"]   = float(atmos.p_boa) / 1e5 # Calculated Psurf [bar]
+
+    gas_list=get_gaslist(config)
 
     for g in gas_list:
         if g in list(atmos.gas_names):

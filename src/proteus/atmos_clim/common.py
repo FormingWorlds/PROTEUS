@@ -134,6 +134,8 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
             for igas,gas in enumerate(gas_l):
                 gas_lbl = "".join(  [c.decode(encoding="utf-8") for c in gas] ).strip()
                 out[gas_lbl+"_vmr"] = np.array(gas_x[:,igas])
+                #print("Names of gases saved in AGNI output:",gas_lbl)
+                #print("\n Mixing ratios of gases saved in AGNI output:",out[gas_lbl+"_vmr"])
 
         else:
             out[key] = np.array(ds.variables[key][:])

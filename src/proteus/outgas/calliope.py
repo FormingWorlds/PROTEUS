@@ -317,6 +317,6 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         raise e
 
     # Get result
-    for k in expected_keys():
+    for k in expected_keys(config):
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
