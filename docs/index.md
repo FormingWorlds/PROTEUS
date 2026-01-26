@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml">
-    <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg">
+    <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg?branch=main">
   </a>
   <a href="https://proteus-framework.org/PROTEUS/">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main">
@@ -25,7 +25,7 @@
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg">
   </a>
   <a href="https://proteus-framework.org">
-    <img src="https://img.shields.io/badge/Website-proteus--framework.org-red" />
+    <img src="https://img.shields.io/website?url=https%3A%2F%2Fproteus-framework.org&label=Website&up_message=proteus-framework.org&down_message=proteus-framework.org" />
   </a>
 </p>
 
