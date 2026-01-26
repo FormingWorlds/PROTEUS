@@ -342,6 +342,10 @@ class Proteus:
         
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
+            
+            #Ensure that VULCAN's csv file aligns with nc output files: (multiples of write_mod)    
+            is_snapshot = multiple(self.loops["total"],self.config.params.out.write_mod)
+            
             # New rows
             if self.loops["total"] > 0:
                 # Create new row to hold the updated variables. This will be
