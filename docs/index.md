@@ -42,20 +42,21 @@ See the [model description](model.html) for an outline of the code and its struc
 
 | Name                    | Email address                               |
 | -                       | -                                           |
-| Tim Lichtenberg         | tim.lichtenberg[at]rug.nl                   |
-| Harrison Nicholls       | harrison.nicholls[at]physics.ox.ac.uk       |
-| Laurent Soucasse        | l.soucasse[at]esciencecenter.nl             |
-| Mariana Sastre          | m.c.villamil.sastre[at]rug.nl               |
-| Emma Postolec           | e.n.postolec[at]rug.nl                      |
-| Flavia Pascal           | f.pascal[at]student.rug.nl                  |
-| Ben Riegler             | ben.riegler[at]tum.de                       |
-| Hanno Spreeuw           | h.spreeuw[at]esciencecenter.nl              |
-| Dan J. Bower            | dbower[at]ethz.ch                           |
-| Mark Hammond            | mark.hammond[at]physics.ox.ac.uk            |
-| Stef Smeets             | s.smeets[at]esciencecenter.nl               |
-| Robb Calder             | rdc49[at]cam.ac.uk                          |
-| Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk   |
+| Tim Lichtenberg         | tim.lichtenberg@rug.nl                      |
+| Harrison Nicholls       | harrison.nicholls@physics.ox.ac.uk          |
+| Laurent Soucasse        | l.soucasse@esciencecenter.nl                |
+| Mariana Sastre          | m.c.villamil.sastre@rug.nl                  |
+| Emma Postolec           | e.n.postolec@rug.nl                         |
+| Flavia Pascal           | f.pascal@student.rug.nl                     |
+| Ben Riegler             | ben.riegler@tum.de                          |
+| Hanno Spreeuw           | h.spreeuw@esciencecenter.nl                 |
+| Dan J. Bower            | dbower@ethz.ch                              |
+| Mark Hammond            | mark.hammond@physics.ox.ac.uk               |
+| Stef Smeets             | s.smeets@esciencecenter.nl                  |
+| Robb Calder             | rdc49@cam.ac.uk                             |
+| Raymond Pierrehumbert   | raymond.pierrehumbert@physics.ox.ac.uk      |
+| Karen Stuitje           | e.k.e.stuitje@student.rug.nl                |
 
 ## Citation and credit
 
-If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](CONTRIBUTING.html#licensing-and-credit)
+If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](CONTRIBUTING.html#licensing-and-credit).
