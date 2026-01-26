@@ -95,7 +95,14 @@ def _get_julia_version():
 
 def validate_module_versions(dirs:dict, config:Config):
     '''
-    Check that modules are using compatible versions.
+    Raises an environment error if module versions are invalid/incompatible.
+
+    Parameters
+    -----------
+    - dirs:dict
+        Directories dictionary
+    - config:Config
+        PROTEUS config object
     '''
 
     log.info("Validating module versions")
@@ -130,15 +137,33 @@ def validate_module_versions(dirs:dict, config:Config):
             patch = 0
         return major, minor, patch
 
-    # Check if actual version is compatible with expected version
-    def _valid_ver(act_str, exp_str, name):
-        # return True of expected is None
+    def _valid_ver(act_str:str, exp_str:str, name:str) -> bool:
+        '''Check if found version is compatible with expected version.
+
+        Parameters
+        -----------
+        - act_str:str
+            Actual module version found installed
+        - exp_str:str
+            Expected or required version of the module
+        - name:str
+            Module name
+
+        Returns
+        ----------
+        - bool
+            Version is compatible
+        '''
+
+        # return True if expected is None
         if exp_str is None:
             return True
 
         # convert from string to m/m/p format (or y/m/d format)
         vact = _split_ver(act_str)
         vexp = _split_ver(exp_str)
+
+        log.debug(f"Parsed {name:10s} version as {vact}. Requires>={vexp}")
 
         # Check major, minor, patch
         for i in range(3):
@@ -158,42 +183,39 @@ def validate_module_versions(dirs:dict, config:Config):
             pass
         case 'aragog':
             from aragog import __version__ as aragog_version
-            if not _valid_ver(aragog_version, _get_expver("aragog"), "Aragog"):
-                valid = False
+            valid &= _valid_ver(aragog_version, _get_expver("fwl-aragog"), "Aragog")
 
     # Struct module
     if config.struct.module == 'zalmoxis':
         from zalmoxis import __version__ as zalmoxis_version
-        if not _valid_ver(zalmoxis_version, _get_expver("fwl-zalmoxis"), "ZALMOXIS"):
-            valid = False
+        valid &= _valid_ver(zalmoxis_version, _get_expver("fwl-zalmoxis"), "Zalmoxis")
 
     # Atmosphere module
     match config.atmos_clim.module:
         case 'janus':
             from janus import __version__ as janus_version
-            if not _valid_ver(janus_version, _get_expver("fwl-janus"), "JANUS"):
-                valid = False
+            valid &= _valid_ver(janus_version, _get_expver("fwl-janus"), "JANUS")
         case 'agni':
-            if not _valid_ver(_get_agni_version(dirs), AGNI_MIN_VERSION, "AGNI"):
-                valid = False
+            valid &= _valid_ver(_get_agni_version(dirs), AGNI_MIN_VERSION, "AGNI")
 
     # Outgassing module
     if config.outgas.module == 'calliope':
         from calliope import __version__ as calliope_version
-        if not _valid_ver(calliope_version, _get_expver("fwl-calliope"), "CALLIOPE"):
-            valid = False
+        valid &= _valid_ver(calliope_version, _get_expver("fwl-calliope"), "CALLIOPE")
 
     # Escape module
-    if config.escape.module == 'zephyrus':
-        from zephyrus import __version__ as zephyrus_version
-        if not _valid_ver(zephyrus_version, _get_expver("fwl-zephyrus"), "ZEPHYRUS"):
-            valid = False
+    match config.escape.module:
+        case 'zephyrus':
+            from zephyrus import __version__ as zephyrus_version
+            valid &= _valid_ver(zephyrus_version, _get_expver("fwl-zephyrus"), "ZEPHYRUS")
+        case 'boreas':
+            from boreas import __version__ as boreas_version
+            valid &= _valid_ver(boreas_version, _get_expver("boreas"), "BOREAS")
 
     # Star module
     if config.star.module == 'mors':
         from mors import __version__ as mors_version
-        if not _valid_ver(mors_version, _get_expver("fwl-mors"), "MORS"):
-            valid = False
+        valid &= _valid_ver(mors_version, _get_expver("fwl-mors"), "MORS")
 
     # Exit
     if not valid:
@@ -274,9 +296,13 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
 
     # Escape module
     write = "Escape module     %s" % config.escape.module
-    if config.escape.module == 'zephyrus':
-        from zephyrus import __version__ as zephyrus_version
-        write += " version " + zephyrus_version
+    match config.escape.module:
+        case 'zephyrus':
+            from zephyrus import __version__ as zephyrus_version
+            write += " version " + zephyrus_version
+        case 'boreas':
+            from boreas import __version__ as boreas_version
+            write += " version " + boreas_version
     log.info(write)
 
     # Star module
@@ -497,10 +523,10 @@ def GetHelpfileKeys():
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
             "T_star", # [K]
 
-
-            # Observational (from infinity)
+            # Photospheric properties
             "p_obs",    # observered radius [bar]
             "R_obs",    # observed radius [m]
+            "T_obs",    # observed temperature [K]
             "rho_obs",  # observed bulk density [kg m-3]
             "transit_depth", "eclipse_depth", # [1], [1]
 
@@ -509,9 +535,6 @@ def GetHelpfileKeys():
 
             # Imaginary part of k2 Love Number
             "Imk2", # [1]
-
-            # Escape
-            "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
 
             # Atmospheric composition from outgassing
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
@@ -527,8 +550,9 @@ def GetHelpfileKeys():
         keys.append(s+"_kg_solid")
         keys.append(s+"_kg_liquid")
         keys.append(s+"_kg_total")
-        keys.append(s+"_vmr")       # surface volume mixing ratio
-        keys.append(s+"_bar")
+        keys.append(s+"_vmr")       # vmr at surface
+        keys.append(s+"_bar")       # partial pressure at surface
+        keys.append(s+"_vmr_xuv")   # vmr at XUV level
 
     # element masses
     for e in element_list:
@@ -536,6 +560,12 @@ def GetHelpfileKeys():
         keys.append(e+"_kg_solid")
         keys.append(e+"_kg_liquid")
         keys.append(e+"_kg_total")
+
+    # Escape variables
+    keys.extend(["p_xuv", "R_xuv", "cs_xuv"]) # [bar], [m], [m/s]
+    keys.append("esc_rate_total")   # bulk escape rate [kg/s]
+    for e in element_list:
+        keys.append("esc_rate_"+e)  # escape rate of each element [kg s-1]
 
     # from atmosphere climate calculation
     keys.append("P_surf_clim")      # updated psurf after climate calc

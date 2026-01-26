@@ -260,3 +260,4 @@ cython_debug/
 # Created automatically during PR #351
 Manifest.toml
 Project.toml
+zenodo_stellar_spectra_extracted/
