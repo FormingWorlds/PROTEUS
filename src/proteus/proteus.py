@@ -337,6 +337,9 @@ class Proteus:
         init_orbit(self)
 
         # Main loop
+        #Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
+        vulcan_completed_loops = set()
+        
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
             # New rows
