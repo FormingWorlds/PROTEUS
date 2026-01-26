@@ -413,6 +413,9 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     year = hf_row["Time"]
     log.debug("Reading data for t=%.2e yr"%year)
 
+    vulcan_pkl = f"vulcan_{year}.pkl"
+    vulcan_csv = f"vulcan_{year}.csv"
+
     # Read atmosphere data
     atmos = read_atmosphere_data(dirs["output"], [year],
                                     extra_keys=["pl","tmpl", "x_gas", "Kzz"])[0]
