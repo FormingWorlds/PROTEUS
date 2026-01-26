@@ -35,9 +35,33 @@ nav:
 
 theme:
   name: material
+  custom_dir: docs/overrides
+
+  # Default assets (used unless overridden per palette below)
+  favicon: assets/PROTEUS_black_on_white_logo_only.png
+  logo: assets/PROTEUS_white_on_black.png
+
   palette:
-    primary: black
-    accent: deep orange
+    # Auto: follow system preference (and show a toggle)
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: deep orange
+      favicon: assets/PROTEUS_black_on_white_logo_only.png
+      logo: assets/PROTEUS_white_on_black.png
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      favicon: assets/PROTEUS_white_on_black_logo_only.png
+      logo: assets/PROTEUS_white_on_black.png
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
 
 extra_css:
   - stylesheets/extra.css
