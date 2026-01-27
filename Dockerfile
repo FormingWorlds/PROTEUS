@@ -17,7 +17,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     RAD_DIR=/opt/proteus/socrates \
     AGNI_DIR=/opt/proteus/AGNI \
     PROTEUS_DIR=/opt/proteus \
-    JULIA_NUM_THREADS=1
+    JULIA_NUM_THREADS=1 \
+    JULIA_DEPOT_PATH=/opt/julia_depot
 
 # Install system dependencies (matching docs/installation.md)
 # - gfortran: Fortran compiler for SOCRATES and SPIDER
@@ -93,8 +94,8 @@ RUN if [ -d "/opt/proteus/MORS" ]; then pip install -e MORS/.; fi && \
     if [ -d "/opt/proteus/CALLIOPE" ]; then pip install -e CALLIOPE/.; fi && \
     if [ -d "/opt/proteus/ZEPHYRUS" ]; then pip install -e ZEPHYRUS/.; fi
 
-# Create FWL_DATA directory for test data
-RUN mkdir -p $FWL_DATA
+# Create FWL_DATA and Julia depot directories for test data and AGNI
+RUN mkdir -p $FWL_DATA /opt/julia_depot
 
 # Download required runtime data (from Zenodo, etc.)
 # This ensures tests can run offline without downloading during execution

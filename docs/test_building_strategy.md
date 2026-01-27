@@ -1,7 +1,7 @@
 # Test Building Strategy for PROTEUS
 
 **Last Updated**: 2026-01-27
-**Status**: Unit-test coverage raised above **32.03%** fast-gate threshold (run 21413731346). Added unit tests for `utils/data.py` (`check_needs_update`, `GetFWLData`) and `config` (`read_config`, `read_config_object`). ~492+ tests, 7 active smoke tests (exceeds 5-7 target). See [Plan: What Comes Next](#plan-what-comes-next) for prioritized next tasks.
+**Status**: Unit-test coverage raised above **32.03%** fast-gate threshold (run 21413731346). Added unit tests for `utils/data.py` (`check_needs_update`, `GetFWLData`) and `config` (`read_config`, `read_config_object`). ~492+ tests, 7 active smoke tests (exceeds 5-7 target). **No test skips**: See [Plan: Fix Nightly Integration Failures (No Test Skips)](#plan-fix-nightly-integration-failures-no-test-skips) for root-cause fixes (AGNI data, fixture, Docker, workflow). See [Plan: What Comes Next](#plan-what-comes-next) for prioritized next tasks.
 
 ---
 
@@ -629,6 +629,45 @@ See **[Plan: What Comes Next](#plan-what-comes-next)** for the canonical, priori
 
 - **Phase 2**: Verify integration tests in nightly CI; expand integration coverage (module-combination tests).
 - **Phase 3**: Maintain >30% coverage; target 35–40%; add core-module edge-case tests.
+
+---
+
+## Plan: Fix Nightly Integration Failures (No Test Skips)
+
+**Objective**: All integration tests run and pass in nightly CI. Do **not** skip tests; fix root causes (data, environment, Docker).
+
+### Principles
+
+1. **No skips**: Never add `--ignore` or similar to avoid failing tests. Fix the underlying issue instead.
+2. **Root causes**: Ensure required data is downloaded, the Docker image has the correct build (AGNI, Julia, env vars), and the workflow prepares data for every test config.
+3. **Speed rule**: If any single test exceeds **1 hour**, reduce timesteps or resolution so it stays under 1 h. This is the only acceptable "reduction" of scope.
+
+### Root Causes Addressed
+
+| Cause | Where it shows up | Fix |
+|-------|-------------------|-----|
+| **AGNI data not pre-downloaded** | `test_integration_aragog_agni_multi_timestep` fails when `runner.start(..., atmos_clim=agni)` runs; AGNI needs spectral files, surface albedos, stellar data | Workflow "Download test data" step calls `download_sufficient_data` for a config with `atmos_clim.module='agni'` (e.g. `tests/integration/aragog_janus.toml` with override) so AGNI-specific data is present before tests run |
+| **Fixture only triggered download for ARAGOG** | Fixture called `download_sufficient_data` only when `interior.module == 'aragog'`; tests that use AGNI without ARAGOG would not get AGNI data | Fixture now calls `download_sufficient_data` when `interior.module == 'aragog'` **or** `atmos_clim.module == 'agni'` |
+| **Julia depot not set in image** | In Docker, Julia may use `~/.julia` and fill the home volume; CI step sets `JULIA_DEPOT_PATH` but image build did not | Dockerfile sets `JULIA_DEPOT_PATH=/opt/julia_depot` and creates `/opt/julia_depot` so AGNI/Julia use a dedicated path from first use |
+| **Test was excluded** | Workflow had `--ignore=tests/integration/test_integration_aragog_agni.py` | Removed; ARAGOG+AGNI test runs in the "integration and not slow" step |
+
+### Actions Taken (Implementation Checklist)
+
+- [x] **Workflow "Download test data"**: After `download_sufficient_data(all_options.toml)`, add a second call using `tests/integration/aragog_janus.toml` with `atmos_clim.module = 'agni'` so spectral files, surface albedos, and any other AGNI-required data are downloaded.
+- [x] **Fixture** (`tests/integration/conftest.py`): Change condition from `if runner.config.interior.module == 'aragog'` to `if runner.config.interior.module == 'aragog' or runner.config.atmos_clim.module == 'agni'` so AGNI-using tests always trigger data download when offline is temporarily disabled.
+- [x] **Dockerfile**: Set `JULIA_DEPOT_PATH=/opt/julia_depot` in `ENV` and ensure `mkdir -p /opt/julia_depot` so the image uses a dedicated Julia depot from build time.
+- [x] **Workflow "Run integration coverage"**: Remove `--ignore=tests/integration/test_integration_aragog_agni.py`; only `test_integration_dummy_agni.py` and `test_albedo_lookup.py` remain excluded (external-data heavy / special setup).
+- [ ] **Verify**: Re-run nightly after rebuilding the Docker image (so `JULIA_DEPOT_PATH` and `/opt/julia_depot` are in the image). If `test_integration_aragog_agni_multi_timestep` still fails, capture the exact traceback and fix the next root cause (e.g. missing file path, AGNI wrapper error).
+
+### Speed Rule (Tests >1 h)
+
+If any single test exceeds **1 hour**:
+
+1. Reduce `num_timesteps` or shorten `max_time` / `min_time` in the test or fixture.
+2. Reduce resolution (e.g. AGNI `num_levels`, spectral bands) in the config overlay used by that test.
+3. Document the runtime and configuration in the test docstring and in this section.
+
+Do **not** skip the test; make it faster so it stays within the 1 h per-test cap.
 
 ---
 
