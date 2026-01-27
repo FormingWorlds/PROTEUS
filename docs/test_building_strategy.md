@@ -1,7 +1,7 @@
 # Test Building Strategy for PROTEUS
 
-**Last Updated**: 2026-01-XX (in progress)
-**Status**: 31.24% coverage (exceeded 30% target), 492 tests, 7 active smoke tests (exceeds 5-7 target), fast CI tests passing, data download robustness enhanced with multi-tier fallback system
+**Last Updated**: 2026-01-26
+**Status**: 31.24% coverage (exceeded 30% target), ~492+ tests, 7 active smoke tests (exceeds 5-7 target), fast CI tests passing, data download robustness enhanced; **utils/data.py** has 43 unit tests. See [Plan: What Comes Next](#plan-what-comes-next) for prioritized next tasks.
 
 ---
 
@@ -172,10 +172,10 @@ These modules interface with external physics solvers and require careful mockin
 - **Status**: 9 unit tests created and passing
 - **Coverage**: Plotting utilities (mocked matplotlib)
 
-#### 4.2 `utils/data.py` ⏸️ **IN PROGRESS**
-- **Status**: 7 tests covering basic download/validation
-- **Remaining**: ~700 lines, many functions untested
-- **Effort**: HIGH (external data downloads, network calls)
+#### 4.2 `utils/data.py` ✅ **SUBSTANTIALLY COMPLETED**
+- **Status**: 43 unit tests in `tests/utils/test_data.py` (download wrappers, OSF/Zenodo paths, validation, GetFWLData, get_Seager_EOS; some branches skipped for integration)
+- **Remaining**: Optional—hash-mismatch and OSF exception paths better covered by integration tests
+- **Effort**: LOW for further unit gains; integration coverage is the main lever
 
 ### Priority 2.5: Smoke Tests (Fast Integration Validation) ⏸️ **IN PROGRESS**
 
@@ -394,15 +394,10 @@ The test validates the configuration as-is.
 
 #### Priority 3.1: Remaining High-Value Modules
 
-**3.1.1 `utils/data.py` Expansion** (LOW-MEDIUM)
-- **Current**: 7 tests covering basic download/validation
-- **Remaining**: ~700 lines, many functions untested
-- **Focus areas**:
-  - OSF client integration (mocked)
-  - File validation logic
-  - Error handling paths
-- **Effort**: 4-6 hours
-- **Impact**: +5-10% coverage for utils/data.py
+**3.1.1 `utils/data.py` Expansion** ✅ **SUBSTANTIALLY COMPLETED**
+- **Current**: 43 unit tests in `tests/utils/test_data.py` (download wrappers, OSF paths, validation, GetFWLData, get_Seager_EOS)
+- **Remaining**: Optional edge cases; some branches better covered by integration tests
+- **Effort**: LOW for further unit gains
 
 **3.1.2 Core Module Edge Cases** (LOW)
 - Add tests for error paths in existing modules
@@ -454,17 +449,11 @@ The test validates the configuration as-is.
 
 #### Immediate Actions (This Week)
 
-1. **Verify Integration Tests with Improved Data Downloads** ✅ **PRIORITY**
-   - Monitor next nightly CI run (`ci-nightly-science-v5.yml`)
-   - Verify `test_integration_std_config.py` tests pass with improved download robustness
-   - Check if `test_integration_aragog_janus.py` tests now pass
-   - Document any remaining issues with data downloads
+1. **Verify Integration Tests in Nightly CI** — **PRIORITY** (see [Plan: What Comes Next](#plan-what-comes-next), §1)
+   - Monitor `ci-nightly-science-v5.yml`
+   - Confirm `test_integration_std_config.py` and `test_integration_aragog_janus.py` pass or have documented issues
 
-2. **Expand `utils/data.py` Test Coverage** (if time permits)
-   - Add tests for OSF client integration (mocked)
-   - Test file validation logic edge cases
-   - Test error handling paths in download functions
-   - Target: +5-10% coverage for `utils/data.py`
+2. **utils/data.py** — ✅ Substantially done (43 tests). Optional: add edge-case unit tests when touching that code.
 
 #### Short-Term Actions (Next 2 Weeks)
 
@@ -521,7 +510,7 @@ The test validates the configuration as-is.
 | `observe/wrapper.py` | 150+ | 6+ | ✓ DONE | 10 | 3.5 |
 | `outgas/wrapper.py` | 400+ | 15+ | ✓ DONE | 60 | 3.5 |
 | `utils/plot.py` | 308 | 12+ | ✓ DONE | 9 | 4 |
-| `utils/data.py` | 707 | 15+ | ⏸️ IN PROGRESS | 7 | 4 |
+| `utils/data.py` | 707 | 15+ | ✅ SUBSTANTIAL | 43 | 4 |
 
 ### Coverage Milestones
 
@@ -635,46 +624,96 @@ git push
 
 ## Next Steps Summary
 
-### Phase 2 Completion (Immediate Priority)
+See **[Plan: What Comes Next](#plan-what-comes-next)** for the canonical, prioritized list of tasks. Summary:
 
-**Status**: Integration test infrastructure complete, validation checks implemented, data download robustness enhanced
+- **Phase 2**: Verify integration tests in nightly CI; expand integration coverage (module-combination tests).
+- **Phase 3**: Maintain >30% coverage; target 35–40%; add core-module edge-case tests.
 
-**Remaining Tasks**:
-1. **Verify Integration Tests in CI** (1-2 days)
-   - Monitor next nightly CI run (`ci-nightly-science-v5.yml`)
-   - Verify `test_integration_std_config.py` passes with improved data downloads
-   - Check `test_integration_aragog_janus.py` status
-   - Document any remaining issues
+---
 
-2. **Expand Integration Test Coverage** (1-2 weeks)
-   - Add module combination tests (ARAGOG+AGNI, CALLIOPE+ZEPHYRUS, etc.)
-   - Create test templates for new integration tests
-   - Target: 10-15 integration tests total
+## Plan: What Comes Next
 
-3. **Optimize Test Runtime** (if needed)
-   - Review test configurations for runtime optimization
-   - Ensure all tests complete within CI time limits
-   - Document runtime expectations
+This section is the **canonical plan** for continuing the test roadmap. It aligns with [AGENTS.md](../AGENTS.md), [test_infrastructure.md](test_infrastructure.md), [test_categorization.md](test_categorization.md), and [test_building.md](test_building.md).
 
-### Phase 3: Coverage Expansion (Ongoing)
+### Current Snapshot (as of doc update)
 
-**Current**: 31.24% coverage (exceeded 30% target)
+- **Unit tests**: ~490+ (target 470+ ✅)
+- **Smoke tests**: 7 active (target 5–7 ✅)
+- **Integration tests**: ~6–10 (target 23; gap ~13–17)
+- **Coverage (fast gate)**: >30% ✅
+- **utils/data.py**: 43 unit tests in `tests/utils/test_data.py` ✅
 
-**Next Priorities**:
-1. **Expand `utils/data.py` Tests** (4-6 hours)
-   - Current: 7 tests
-   - Target: +10-15 tests for download functions
-   - Focus: OSF client, validation logic, error handling
+### Priority Order for Next Work
 
-2. **Core Module Edge Cases** (ongoing)
-   - Add tests for error paths
-   - Test boundary conditions
-   - Validate error messages
+#### 1. Verify Phase 2 in CI (Do First)
 
-3. **Maintain Coverage Threshold**
-   - Continue coverage ratcheting
-   - Ensure new code includes tests
-   - Monitor coverage trends
+| Task | Owner | Effort | Success criterion |
+|------|--------|--------|--------------------|
+| Monitor nightly CI `ci-nightly-science-v5.yml` for integration/slow runs | Dev | 0.5 h | Green run or documented failure |
+| If failures: fix `test_integration_std_config.py` / data-download paths | Dev | 1–4 h | Std-config runs 5–10 steps in nightly |
+| If failures: fix or document `test_integration_aragog_janus.py` | Dev | 1–2 h | Clear skip reason or passing tests |
+
+**Deliverable**: Nightly integration/science run is green or has documented, tracked issues.
+
+#### 2. Expand Integration Test Coverage (Short-Term)
+
+| Task | Owner | Effort | Success criterion |
+|------|--------|--------|--------------------|
+| Add **ARAGOG + AGNI** (interior–atmosphere) integration test | Dev | 3–6 h | 1 test, multi-step, stability checks |
+| Add **CALLIOPE + ZEPHYRUS** (outgassing–escape) integration test | Dev | 2–4 h | 1 test, mass/volatile consistency |
+| Add **MORS + AGNI** (stellar–atmosphere) integration test | Dev | 2–4 h | 1 test, instellation/luminosity coupling |
+| Use `tests/integration/conftest.py` fixtures and [Test Building](test_building.md) integration prompt | — | — | All new tests use shared helpers |
+
+**Deliverable**: +3 integration tests; total integration tests move toward 10+.
+
+#### 3. Phase 3: Coverage and Quality (Ongoing)
+
+| Task | Owner | Effort | Success criterion |
+|------|--------|--------|--------------------|
+| Keep fast-gate coverage ≥ current threshold | All | — | No decrease in `[tool.proteus.coverage_fast] fail_under` |
+| Add **core-module edge-case** unit tests (error paths, boundaries) | Dev | 1–2 h/module | Fewer “missing” lines in `coverage report --show-missing` |
+| Run `bash tools/coverage_analysis.sh` and tackle next low-coverage file | Dev | 1–2 h/session | Steady increase in covered lines |
+
+**Deliverable**: Coverage trend flat or up; no unexplained drops.
+
+#### 4. Slow Test Strategy (Backlog)
+
+| Task | Owner | Effort | Success criterion |
+|------|--------|--------|--------------------|
+| Define 2–3 **slow** scenarios (e.g. Earth magma ocean, Venus greenhouse) | Dev/ Science | 2–4 h | Doc section in this file + `@pytest.mark.slow` stubs |
+| Implement one slow scenario end-to-end | Dev | 4–8 h | 1 test in nightly, runtime documented |
+
+**Deliverable**: Written slow-test plan and one implemented scenario.
+
+### Suggested Order of Execution
+
+1. **This week**: Execute **§1 (Verify Phase 2 in CI)**. If nightly is green, move to §2.
+2. **Next 1–2 weeks**: Execute **§2 (Expand Integration Coverage)**. Add the three module-combination tests.
+3. **Ongoing**: Do **§3 (Coverage and Quality)** in the background (e.g. when touching a module).
+4. **When capacity allows**: Start **§4 (Slow Test Strategy)** and implement one scenario.
+
+### Where to Look When Implementing
+
+- **Markers and CI**: [test_categorization.md](test_categorization.md) — `@pytest.mark.unit`, `smoke`, `integration`, `slow` and which runs they use.
+- **How to write tests**: [test_building.md](test_building.md) — Master Prompt for unit tests, Integration Prompt for standard-config-style tests.
+- **Infrastructure and layout**: [test_infrastructure.md](test_infrastructure.md) — layout, fixtures, coverage, CLI.
+- **Agent constraints**: [AGENTS.md](../AGENTS.md) — test commands, coverage thresholds, lint, structure.
+
+### Phase 2 Completion Checklist (from earlier summary)
+
+**Status**: Infrastructure and validation in place; data-download robustness improved.
+
+- [ ] **Verify integration tests in CI** (1–2 days): Nightly run green or issues documented.
+- [ ] **Expand integration coverage** (1–2 weeks): +3 module-combination tests as in §2.
+- [ ] **Optimize runtime** (if needed): Tune configs so nightly stays within time limits.
+
+### Phase 3 Completion Checklist (from earlier summary)
+
+**Current**: Fast-gate coverage >30%.
+
+- [x] **utils/data.py**: 43 unit tests in place.
+- [ ] **Core-module edge cases**: Add tests for error paths and boundaries (see §3).
+- [ ] **Maintain threshold**: Rely on ratcheting; do not lower `fail_under`.
 
 ## Resources
 
