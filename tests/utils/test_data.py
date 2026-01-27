@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from proteus.utils.data import (
+    GetFWLData,
     check_needs_update,
     download,
     download_spectral_file,
@@ -59,6 +60,73 @@ def test_md5(tmp_path):
 
     # MD5 of "hello world" is known constant "5eb63bbbe01eeed093cb22bb8f5acdc3"
     assert md5(str(f)) == '5eb63bbbe01eeed093cb22bb8f5acdc3'
+
+
+@pytest.mark.unit
+def test_check_needs_update_missing_dir(tmp_path):
+    """
+    check_needs_update returns True when the folder does not exist.
+
+    Physical scenario: re-download is required when the target directory
+    is missing (e.g. first run or cleaned cache).
+    """
+    missing = tmp_path / 'nonexistent'
+    assert check_needs_update(str(missing), '12345') is True
+
+
+@pytest.mark.unit
+def test_check_needs_update_no_zenodo(tmp_path):
+    """
+    check_needs_update returns False when zenodo is falsy and dir exists.
+
+    Physical scenario: when no Zenodo ID is provided we cannot validate
+    hashes, so we assume up-to-date and do not trigger re-download.
+    """
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    assert check_needs_update(str(tmp_path), None) is False
+    assert check_needs_update(str(tmp_path), '') is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.validate_zenodo_folder')
+def test_check_needs_update_valid_folder(mock_validate, tmp_path):
+    """
+    check_needs_update returns False when folder exists and validates.
+
+    Physical scenario: folder is present and MD5 hashes match Zenodo;
+    no update needed.
+    """
+    (tmp_path / 'x').mkdir(parents=True, exist_ok=True)
+    mock_validate.return_value = True
+    assert check_needs_update(str(tmp_path / 'x'), '12345') is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.validate_zenodo_folder')
+def test_check_needs_update_invalid_folder(mock_validate, tmp_path):
+    """
+    check_needs_update returns True when folder exists but validation fails.
+
+    Physical scenario: folder is present but hashes mismatch or files
+    missing; re-download is needed.
+    """
+    (tmp_path / 'y').mkdir(parents=True, exist_ok=True)
+    mock_validate.return_value = False
+    assert check_needs_update(str(tmp_path / 'y'), '12345') is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.FWL_DATA_DIR', __file__)
+def test_GetFWLData_returns_absolute_path():
+    """
+    GetFWLData returns an absolute path to the FWL data directory.
+
+    Physical scenario: callers need a single canonical path for data;
+    absolute path avoids ambiguity with cwd.
+    """
+    result = GetFWLData()
+    assert result.is_absolute()
+    assert 'test_data' in str(result) or 'utils' in str(result)
 
 
 @pytest.mark.unit

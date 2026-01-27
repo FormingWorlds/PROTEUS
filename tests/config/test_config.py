@@ -15,7 +15,7 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
-from proteus.config import Config, read_config_object
+from proteus.config import Config, read_config, read_config_object
 from proteus.config._config import (
     instmethod_dummy,
     instmethod_evolve,
@@ -45,6 +45,32 @@ def cfg():
     assert isinstance(obj, Config)
 
     return obj
+
+
+@pytest.mark.unit
+def test_read_config_returns_dict():
+    """
+    read_config returns a raw dict from TOML.
+
+    Physical scenario: config files are TOML; read_config provides
+    the low-level dict before validation/structure.
+    """
+    path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+    raw = read_config(path)
+    assert isinstance(raw, dict)
+    assert 'params' in raw or 'star' in raw or 'orbit' in raw
+
+
+@pytest.mark.unit
+def test_read_config_object_returns_config():
+    """
+    read_config_object returns a validated Config instance.
+
+    Physical scenario: full parse and validate; used by Proteus and tests.
+    """
+    path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+    obj = read_config_object(path)
+    assert isinstance(obj, Config)
 
 
 @pytest.mark.unit

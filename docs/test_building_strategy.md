@@ -1,7 +1,7 @@
 # Test Building Strategy for PROTEUS
 
-**Last Updated**: 2026-01-26
-**Status**: 31.24% coverage (exceeded 30% target), ~492+ tests, 7 active smoke tests (exceeds 5-7 target), fast CI tests passing, data download robustness enhanced; **utils/data.py** has 43 unit tests. See [Plan: What Comes Next](#plan-what-comes-next) for prioritized next tasks.
+**Last Updated**: 2026-01-27
+**Status**: Unit-test coverage raised above **32.03%** fast-gate threshold (run 21413731346). Added unit tests for `utils/data.py` (`check_needs_update`, `GetFWLData`) and `config` (`read_config`, `read_config_object`). ~492+ tests, 7 active smoke tests (exceeds 5-7 target). See [Plan: What Comes Next](#plan-what-comes-next) for prioritized next tasks.
 
 ---
 
@@ -9,10 +9,10 @@
 
 ### Coverage Metrics
 
-- **Total tests**: 492 (442 unit + 7 active smoke + 4 skipped smoke + 39 other)
-- **Current coverage**: 31.24% (passing CI as of 2026-01-11)
-- **Target**: 30% fast gate coverage + 5-7 smoke tests
-- **Status**: 🎯 **Unit Test Goal Exceeded** — 30% target achieved (31.24% actual), all tests passing
+- **Total tests**: 492+ (442+ unit + 7 active smoke + 4 skipped smoke + 39 other)
+- **Current coverage**: Above 32.03% fast-gate threshold (run 21413731346)
+- **Target**: 32.03% fast gate coverage (`[tool.proteus.coverage_fast] fail_under`) + 5-7 smoke tests
+- **Status**: 🎯 **Unit Test Goal Exceeded** — threshold (32.03%) met via added `check_needs_update`/`GetFWLData`/config tests, all tests passing
 
 ### Test Status Summary
 
@@ -173,7 +173,8 @@ These modules interface with external physics solvers and require careful mockin
 - **Coverage**: Plotting utilities (mocked matplotlib)
 
 #### 4.2 `utils/data.py` ✅ **SUBSTANTIALLY COMPLETED**
-- **Status**: 43 unit tests in `tests/utils/test_data.py` (download wrappers, OSF/Zenodo paths, validation, GetFWLData, get_Seager_EOS; some branches skipped for integration)
+- **Status**: 48+ unit tests in `tests/utils/test_data.py` (download wrappers, OSF/Zenodo paths, validation, **check_needs_update**, **GetFWLData**, get_Seager_EOS; some branches skipped for integration)
+- **Added 2026-01-27**: Tests for `check_needs_update` (missing dir, no zenodo, valid/invalid folder) and `GetFWLData` (absolute path) to raise coverage above 32.03% threshold
 - **Remaining**: Optional—hash-mismatch and OSF exception paths better covered by integration tests
 - **Effort**: LOW for further unit gains; integration coverage is the main lever
 
