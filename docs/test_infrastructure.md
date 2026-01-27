@@ -7,11 +7,11 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 > - [Test Categorization](test_categorization.md) — Test markers and CI/CD pipeline flow
 > - [Docker CI Architecture](docker_ci_architecture.md) — Detailed Dockerfile, image build strategy, and implementation reference
 > - [Test building](test_building.md) — Follow best practices for building robust, physics-compliant tests
-> - [conftest.py reference](/test/conftest.py) — Fixtures and parameter classes for common test scenarios
+> - [conftest.py reference](tests/conftest.py) — Fixtures and parameter classes for common test scenarios
 
 ## Table of Contents
 
-1. [CI/CD Status and Roadmap](#cicd-status-and-roadmap-as-of-2026-01-11)
+1. [CI/CD Status and Roadmap](#cicd-status-and-roadmap-as-of-2026-01-27)
 2. [Quick Start](#quick-start)
 3. [Developer Workflow](#developer-workflow)
 4. [Coverage Analysis](#coverage-analysis-workflow)
@@ -21,172 +21,108 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 
 ---
 
-## CI/CD Status and Roadmap (as of 2026-01-11)
+## CI/CD Status and Roadmap (as of 2026-01-27)
 
 ### CI/CD Current Status
 
-**Implementation Status**: Fast PR workflow complete and passing ✓ — **Near 30% coverage target**
+**Implementation Status**: Fast PR workflow complete and passing ✓ — **Fast gate >32%**
 
-- ✓ Unit Tests (mocked physics): **487 tests**, ~1 min runtime
-- ✓ Smoke Tests (real binaries): 2 tests (1 active, 1 skipped), ~2 min runtime
-- ✓ Code Quality (ruff): Pass
-- ✓ Coverage tracking: **31.45%** (fast gate target exceeded: >30%)
-- ✓ Diff-cover: Changed-lines coverage validation (`--diff-file` approach)
-- ✓ Coverage ratcheting: **Automatic threshold increase on improvements** (github-actions bot commits)
+- ✓ Unit Tests (mocked physics): **480+ tests**, ~2–5 min runtime
+- ✓ Smoke Tests (real binaries): multiple smoke tests (some skipped for env/instability), run as `pytest -m "smoke and not skip"`
+- ✓ Code Quality (ruff): Pass (`ruff check src/ tests/`, `ruff format --check src/ tests/`)
+- ✓ Coverage tracking: **32.03%** fast gate (`[tool.proteus.coverage_fast] fail_under` in `pyproject.toml`)
+- ✓ Diff-cover: 80% on changed lines (`diff-cover` with `--diff-file` to avoid remote fetch in container)
+- ✓ Coverage ratcheting: **Automatic threshold increase** via `tools/update_coverage_threshold.py`; `github-actions[bot]` commits on push to `main` or `tl/test_ecosystem_v5`
 
 **Key Achievements**:
 
-1. **Massive test expansion**: 13 → **487 tests** (37x increase)
-2. **Coverage improvement**: 18.51% → **31.45%** (Global coverage)
-3. Auto-ratcheting mechanism working perfectly
-4. All three CI jobs pass cleanly (unit, smoke, lint)
-5. Comprehensive wrapper test coverage: atmos_chem, atmos_clim, escape, interior, observe, outgas
-6. Complete config validator coverage: 89 tests across all validation modules
+1. **Large unit test suite**: 480+ unit tests across config, wrappers, utils, plot, star, escape, etc.
+2. **Fast gate** above 32% (ratcheted in `pyproject.toml`); **full gate** 69% for nightly runs
+3. Auto-ratcheting for both fast (PR) and full (nightly) thresholds
+4. CI jobs: unit-tests → smoke-tests (needs unit-tests), lint in parallel
+5. Test structure validated by `tools/validate_test_structure.sh` (tests mirror `src/proteus/`)
 
 **Known Issues**:
 
-- Codecov upload fails with "Token required because branch is protected" (non-blocking)
+- Codecov upload may fail with "Token required because branch is protected" (non-blocking)
 - GPG verification warnings from codecov action (non-critical)
 
 ### CI/CD Architecture (Docker-based)
 
-- Prebuilt image: `ghcr.io/formingworlds/proteus:latest` built nightly (~02:00 UTC) via `.github/workflows/docker-build.yml` and on main dependency changes
-- Feature branch images: Some feature branches use branch-tagged images (e.g., `ghcr.io/formingworlds/proteus:tl-test_ecosystem_v4`) to validate Docker changes before promotion to `latest`.
-- Environment: compiled physics (SOCRATES, AGNI, PETSc) + Python deps from `pyproject.toml`; data paths set via `FWL_DATA`, `RAD_DIR`, `AGNI_DIR`, `PETSC_DIR`
-- PR workflow: `ci-pr-checks.yml` runs inside the image, overlays PR code, and uses make for smart rebuilds of changed sources
-- Nightly workflow: `ci-nightly-science.yml` uses the same image for integration and slow tests, with coverage ratcheting
-- Artifacts: coverage XML/HTML uploaded; Codecov upload is non-blocking when token is missing
+- **Prebuilt image**: `ghcr.io/formingworlds/proteus:latest` built nightly at 02:00 UTC via `.github/workflows/docker-build.yml`, and on push to `main` / `tl/test_ecosystem_v4` / `tl/test_ecosystem_v5` when relevant paths change (Dockerfile, pyproject.toml, etc.).
+- **PR image choice**: On `main`, CI uses `latest`; on other branches (e.g. `tl/test_ecosystem_v5`), CI uses `ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5`.
+- **Environment**: Compiled physics (SOCRATES, AGNI, PETSc) + Python deps from `pyproject.toml`; data paths via `FWL_DATA`, `RAD_DIR`, `AGNI_DIR`, `PETSC_DIR`.
+- **PR workflow** (`.github/workflows/ci-pr-checks.yml`): Runs in container, overlays PR code onto `/opt/proteus/`, runs `pytest -m "unit and not skip"` with coverage, validates test structure, runs diff-cover, then `pytest -m "smoke and not skip"`. Optionally downloads last **Nightly Science Validation (v5)** coverage artifact to show "estimated total" (unit + integration) in the run summary.
+- **Nightly workflows**:
+  - `ci-nightly-science.yml`: Triggered by schedule (03:00 UTC) and `workflow_dispatch`. Uses `main` + `latest` image. Jobs: quick-integration-test (dummy + multi_timestep), science-validation (`slow or integration`), integration-tests (`integration and not slow`). Full coverage ratcheting on main.
+  - `ci-nightly-science-v5.yml`: Triggered on push to `tl/test_ecosystem_v5` and `workflow_dispatch`. Uses branch image. Runs integration + unit + slow (std_config) with coverage, writes `coverage-integration-only.json` and uploads artifact `v5-branch-nightly-coverage` for use by Fast PR checks.
+- **Reusable workflow**: `proteus_test_quality_gate.yml` — `workflow_call` for ecosystem modules (Python version, coverage threshold, working directory, pytest-args).
+- **Artifacts**: Coverage XML/HTML and optional Codecov upload (non-blocking when token missing).
 
-### Current Metrics (as of 2026-01-11)
+### Current Metrics (as of 2026-01-27)
 
 | Metric | Value | Target | Status |
 | --- | --- | --- | --- |
-| Unit tests | **487** | 470+ | **100%** ✓ |
-| Smoke tests | 2 | 5–7 | 28% |
-| Integration tests | 0 | 23 | 0% |
-| Coverage (unit) | **31.45%** | 30% | **104%** ✓ |
-| CI runtime (fast) | ~3 min | <10 min | ✓ Excellent |
+| Unit tests | **480+** | — | ✓ |
+| Smoke tests | Multiple (some skipped) | 5–7 active | In progress |
+| Integration tests | Yes (dummy, aragog_agni, aragog_janus, std_config, etc.) | — | ✓ |
+| Fast gate coverage | **32.03%** | ratcheted in pyproject.toml | ✓ |
+| Full gate coverage | **69%** | ratcheted in pyproject.toml | ✓ |
+| CI runtime (fast) | ~5–10 min | <10 min | ✓ |
 | Diff-cover threshold | 80% | 80% | ✓ Met |
 
 ### Immediate Next Steps
 
-**This week (Final push to 30%+)**:
+**Current priorities**:
 
-1. **Add 10-15 unit tests** (✓ **COMPLETED**)
-   - Config dataclass defaults (10-15 tests) ✓
-   - Atmos_clim common functions (5-10 tests) ✓
-   - High-impact utils (5-10 tests) ✓
-   - **Target**: Cross 30.0% threshold (✓ Achieved 66.60%)
-
-2. **Expand smoke tests** (✓ **COMPLETED**)
-   - Add JANUS + dummy interior coupling test (Implemented, skipped due to env)
-   - Add MORS stellar evolution test (Covered by unit tests)
-   - Expected: 1 → 2 active smoke tests
-
-3. **Fix Codecov integration** (30 minutes)
-   - Add `CODECOV_TOKEN` to GitHub repository secrets
-   - Enable full upload instead of non-blocking failures
-
-**Next week (Polish & documentation)**:
-
-1. Merge feature branch to main (all checks passing)
-2. Update documentation with final metrics
-3. Plan integration test strategy for nightly CI
-
-**Following weeks (Integration & slow tests)**:
-
- 1. **Implement Standard Configuration Integration**:
-    - Build `test_std_config.py`
-    - Couple ARAGOG + AGNI + CALLIOPE + ZEPHYRUS + MORS
-    - Verify stable evolution over multiple timesteps
- 2. Plan slow test strategy (3–4 hour budget per scenario: Earth magma ocean, Venus runaway greenhouse, Super-Earth evolution)
- 3. Configure nightly notifications (email on test failures; optional Slack integration)
+1. **Fix Codecov integration** (optional): Add `CODECOV_TOKEN` to GitHub repository secrets for full upload instead of non-blocking failures.
+2. **Expand active smoke tests**: Several smoke tests are implemented but skipped (JANUS/SOCRATES instability, AGNI/JANUS binary requirements, CALLIOPE reserved for nightly). Goal: 5–7 active smoke tests running in PRs.
+3. **Integration and slow tests**: `test_integration_std_config.py` exists; nightly v5 runs integration + slow (std_config). Further slow scenarios (Earth magma ocean, Venus runaway, Super-Earth) can be added with a 3–4 hour nightly budget.
+4. **Nightly notifications** (optional): Email or Slack on nightly failures.
 
 ### Planned Improvements
 
-#### Phase 1: Fast PR Workflow Enhancements (✓ Substantially Complete)
+#### Phase 1: Fast PR Workflow (✓ Substantially Complete)
 
-> **Status:** 30% coverage target exceeded (Global coverage: 31.45%)
+- **Unit tests**: 480+ tests; fast gate ratcheted at 32.03% in `pyproject.toml`. Mock-based strategy for Python logic.
+- **Smoke tests**: Multiple smoke tests implemented; some skipped (JANUS/SOCRATES, AGNI, CALLIOPE nightly). Target 5–7 active in PRs.
+- **Lint**: Ruff check and format run in parallel with unit/smoke.
+- **Diff-cover**: 80% on changed lines; threshold-decrease check vs `main` in CI.
 
-**1.1 Expand Smoke Tests** (✅ **COMPLETED**)
+#### Phase 2: Nightly Science Validation
 
-- ✅ Core smoke test implemented (minimal initialization check)
-- ✅ JANUS smoke test implemented (`test_smoke_janus.py`), skipped for stability
-- Early detection of binary incompatibilities with code changes
+- **`ci-nightly-science.yml`**: Schedule 03:00 UTC + `workflow_dispatch`. Quick integration (dummy, multi_timestep), science-validation (`slow or integration`), integration-tests (`integration and not slow`). Full coverage ratcheting on main (69% threshold).
+- **`ci-nightly-science-v5.yml`**: On push to `tl/test_ecosystem_v5`. Integration (dummy + `integration and not slow`), unit append, slow (std_config). Produces `coverage-integration-only.json` and artifact `v5-branch-nightly-coverage` for Fast PR “estimated total” summary.
+- **Integration suite**: `test_integration_dummy.py`, `test_integration_aragog_agni.py`, `test_integration_aragog_janus.py`, `test_integration_std_config.py`, and others. Standard-config coupling (ARAGOG+AGNI+CALLIOPE+ZEPHYRUS+MORS) exercised in nightly.
+- **Full coverage ratcheting**: Implemented via `tools/update_coverage_threshold.py`; full gate 69%.
 
-**1.2 Unit Test Coverage Expansion** (✅ **100% Complete**: 487/470+ tests)
+#### Phase 3: Long-Term (Future)
 
-- ✅ Increased coverage from 18.51% → 31.45% (Global)
-- ✅ Completed modules:
-  - Config validators: 89 comprehensive tests
-  - Module wrappers: 107 tests (CALLIOPE outgas, ZEPHYRUS escape, JANUS+SPIDER observe)
-  - Utils and helpers: Multiple utility function suites
-- ⏳ Remaining to 30%: None (Target achieved)
-- Strategy: Mock-based unit tests for Python logic (unittest.mock for external dependencies)
-
-**1.3 Performance Optimization** (✅ Complete)
-
-- ✅ Fast CI runtime maintained at ~3 minutes (well under 10 minute target)
-- ✅ Parallel job execution (code-quality + unit-tests + smoke-tests)
-- ✅ Optimized Docker image pull/startup
-
-#### Phase 2: Nightly Science Validation (`ci-nightly-science.yml`)
-
-**2.1 Integration Test Suite** (Estimated: 1–2 weeks)
-
- - **Target**: Standard Configuration Verification
- - Modules: ARAGOG (Int) + AGNI (Atm) + CALLIOPE (Out) + ZEPHYRUS (Esc) + MORS (Star)
- - Runtime: ~30 min to 2 hours per test suite
- - Note: This replaces disjointed module tests with one scientifically coherent suite.
-
-**2.2 Slow Science Validation Tests** (Estimated: 2–4 weeks)
-
-- Comprehensive physics accuracy validation
-- Examples: Earth magma ocean solidification, Venus runaway greenhouse, Super-Earth evolution
-- Marker: `@pytest.mark.slow`
-- Budget: 3 hour limit for nightly runs
-
-**2.3 Full Coverage Ratcheting** (Estimated: 1 day)
-
-- Implement automatic threshold increase for full test suite
-- Use `tools/update_coverage_threshold.py` on nightly runs
-- Target: 69% threshold
-
-**2.4 Nightly Notifications** (Estimated: 4 hours)
-
-- Email notifications for failed tests
-- Slack integration
-- GitHub annotations with failure details
-
-#### Phase 3: Long-Term Improvements (Future)
-
-- Regression testing (baseline metrics tracking)
-- Multi-OS testing (Windows/macOS CI jobs)
-- Ecosystem test harmonization (CALLIOPE, JANUS, MORS, VULCAN, ZEPHYRUS)
+- Nightly notifications (email/Slack on failure)
+- Regression baselines, multi-OS CI, ecosystem test harmonization
 
 ### Success Metrics
 
-**Fast PR Workflow** (✓ Substantially achieved):
+**Fast PR Workflow** (✓ Achieved):
 
-- ✅ 457 unit tests, passing consistently (target: 470+)
-- ✅ 1 smoke test, validating binary initialization (target: 5-7)
-- ✅ All ruff checks passing (lint + format)
-- ✅ Automated coverage threshold enforcement via auto-ratcheting (18.51% → 29.52%)
-- ✅ CI runtime ~3 minutes (well under 10 minute target)
+- ✅ 480+ unit tests, `pytest -m "unit and not skip"`, fast gate 32.03%
+- ✅ Smoke tests run as `pytest -m "smoke and not skip"` (some skipped for env)
+- ✅ Ruff check and format; test structure validation
+- ✅ Auto-ratcheting for fast gate on push to main / `tl/test_ecosystem_v5`
+- ✅ CI runtime ~5–10 minutes (under 10 min target)
+- ✅ Diff-cover 80% on changed lines
 
-**Nightly Workflow** (Next priority, timeline: 2–3 weeks):
+**Nightly Workflow** (✓ In place):
 
-- 5+ integration tests (multi-module coupling)
-- 30%+ overall coverage (currently at 29.52%)
-- Runtime <4 hours total
+- Integration tests in `ci-nightly-science.yml` and `ci-nightly-science-v5.yml`
+- Full coverage ratcheting (69% threshold) on main
+- v5 branch nightly artifact feeds Fast PR “estimated total” (unit + integration)
 
-**End Goal** (by Q2 2026):
+**Ongoing goals**:
 
-- 50%+ unit test coverage
-- 20+ integration tests
-- 5–7 smoke tests (one per major module)
-- 5+ slow/science validation tests
-- 3+ other modules using same CI infrastructure
+- 5–7 active smoke tests in PRs (reduce skips where possible)
+- 50%+ unit coverage over time
+- More slow/science scenarios in nightly budget
 
 ### Decision Points
 
@@ -213,14 +149,14 @@ This document describes the standardized testing infrastructure for PROTEUS and 
 
 When you open a PR, the CI system will:
 
-1. ✅ Pull pre-built Docker image (instant)
-2. ✅ Overlay your code changes (seconds)
-3. ✅ Smart rebuild (only changed files, seconds to minutes)
-4. ✅ Run unit tests (2–5 minutes)
-5. ✅ Run smoke tests (5–10 minutes)
-6. ✅ Report back (~10–15 minutes total)
+1. ✅ Pull pre-built Docker image (`latest` on main, branch-tagged on feature branches)
+2. ✅ Overlay your code onto `/opt/proteus/`
+3. ✅ Validate test structure (`tools/validate_test_structure.sh`)
+4. ✅ Run unit tests: `pytest -m "unit and not skip"` with coverage (fast gate 32.03%)
+5. ✅ Run diff-cover (80% on changed lines), then smoke tests: `pytest -m "smoke and not skip"`
+6. ✅ Lint runs in parallel: `ruff check src/ tests/`, `ruff format --check src/ tests/`
 
-**Impact**: ~60 minutes compilation → ~10–15 minutes for Python changes
+**Total**: ~5–10 minutes for typical Python-only PRs. Fortran/AGNI changes trigger smart rebuilds (SOCRATES/AGNI) inside the container.
 
 ### For Test Writers
 
@@ -254,11 +190,11 @@ def test_full_physics():
 # Install development dependencies
 pip install -e ".[develop]"
 
-# Run unit tests (fast)
-pytest -m unit
+# Run unit tests (fast; matches PR unit job)
+pytest -m "unit and not skip"
 
-# Run unit + smoke (what PR checks run)
-pytest -m "unit or smoke"
+# Run unit + smoke (what PR runs: unit then smoke, each excluding skip)
+pytest -m "(unit or smoke) and not skip"
 
 # Run everything except slow
 pytest -m "not slow"
@@ -277,16 +213,13 @@ pytest
 
 ### How It Works
 
-**Smart Rebuild**: The system only recompiles files that changed:
+**Smart Rebuild** (in `ci-pr-checks.yml` smoke-tests job):
 
-```bash
-# In ci-pr-checks.yml
-cd SPIDER
-make -q || make -j$(nproc)  # Only rebuild if needed
-```
-
-- Python-only PR: No recompilation (~instant)
-- Fortran PR: Only changed files (~minutes, not hours)
+- **SOCRATES**: `socrates/build_code` runs; "Nothing to be done" or full rebuild if Fortran changed.
+- **AGNI**: If any `.jl` files changed under `AGNI/`, Julia re-instantiation runs; otherwise skipped.
+- **SPIDER**: Not rebuilt in CI (commented out); container relies on pre-built image.
+- Python-only PR: No recompilation; smoke tests run with existing binaries.
+- Fortran/Julia PR: Only changed components rebuilt (~minutes).
 
 **Test Stratification**: Tests organized by execution time and purpose:
 
@@ -319,11 +252,11 @@ make -q || make -j$(nproc)  # Only rebuild if needed
 
 When adding a new module or feature:
 
-1. **Create source file:** `src/<package>/<module>.py`
-2. **Create test file:** `tests/<module>/test_<module>.py`
-3. **Write tests first** (TDD) or alongside code
-4. **Run tests:** `pytest tests/<module>/`
-5. **Check coverage:** `pytest --cov=src/<package>/<module>`
+1. **Create source file:** `src/proteus/<module>/<file>.py` (or new subdir under `src/proteus/`)
+2. **Create test file:** `tests/<module>/test_<filename>.py` so tests mirror `src/proteus/` (see `tools/validate_test_structure.sh`)
+3. **Write tests first** (TDD) or alongside code; use `@pytest.mark.unit` / `@pytest.mark.smoke` / `@pytest.mark.integration` / `@pytest.mark.slow` as appropriate
+4. **Run tests:** `pytest tests/<module>/` or `pytest -m unit`
+5. **Check coverage:** `pytest --cov=src tests/` or `pytest --cov=proteus` (CI uses `--cov=src` for unit, `--cov=proteus` in nightly v5)
 6. **Validate structure:** `bash tools/validate_test_structure.sh`
 
 ### Test Writing Guidelines
@@ -454,66 +387,33 @@ coverage report --show-missing --skip-covered
 
 Before committing:
 
-- [ ] All tests pass locally
-- [ ] Coverage meets threshold
+- [ ] All tests pass locally: `pytest -m "unit and not skip"` (and smoke if applicable)
+- [ ] Coverage meets threshold (fast gate 32.03% for unit run; see `pyproject.toml`)
 - [ ] No linting errors: `ruff check src/ tests/`
 - [ ] Code formatted: `ruff format src/ tests/`
-- [ ] New tests added for new code
-- [ ] Test structure validated
+- [ ] New tests added for new code; use `@pytest.mark.unit` / `smoke` / `integration` / `slow` as appropriate
+- [ ] Test structure validated: `bash tools/validate_test_structure.sh`
 
 ---
 
-## Implementation Phases
+## Implementation Phases (Reference)
 
-### Phase 2: Expand Testing Coverage (Next 2–3 weeks)
+Docker build and PR workflow are implemented; see [CI/CD Architecture](#cicd-architecture-docker-based) and [Current Metrics](#current-metrics-as-of-2026-01-27).
 
-**2.1 Test Docker Image Build** (Estimated: 1–2 hours)
+**Local Docker checks:**
 
 ```bash
-# Build locally to verify Dockerfile works
+# Build locally to verify Dockerfile (optional; CI uses pre-built image)
 docker build -t proteus-test .
 
-# Test the image
-docker run -it proteus-test bash
+# Run image and run tests
+docker run -it ghcr.io/formingworlds/proteus:latest bash
 # Inside container:
-pytest -m unit
+pytest -m "unit and not skip"
+pytest -m "smoke and not skip"
 ```
 
-**2.2 Push Branch and Monitor** (Estimated: 1 hour)
-
-```bash
-git push origin tl/test_ecosystem_v4
-```
-
-- Watch GitHub Actions for docker-build.yml
-- Verify image pushes to ghcr.io
-- Check if it's publicly accessible
-
-**2.3 Test PR Workflow** (Estimated: 2–4 hours)
-
-- Create test PR from this branch
-- Verify ci-pr-checks.yml runs
-- Check timing improvements
-- Validate test results
-
-### Phase 3: Ecosystem Integration (Following week and beyond)
-
-**3.1 Add Test Markers** (Estimated: 1–2 days)
-
-- Mark existing tests with `@pytest.mark.unit`, `@pytest.mark.smoke`, etc.
-- Start with critical modules (see placeholder list above)
-
-**3.2 Parallel Run** (Estimated: 3–5 days)
-
-- Keep existing CI active
-- Run both systems in parallel
-- Compare results and timing
-
-**3.3 Full Transition** (Estimated: 1 week)
-
-- Once validated, deprecate old CI
-- Update documentation
-- Train team on new system
+**Branch workflows:** Push to `main` or `tl/test_ecosystem_v5` triggers `ci-pr-checks.yml`; image is `latest` on main, `tl-test_ecosystem_v5` on that branch. Use `workflow_dispatch` for manual runs. Nightly v5 (`ci-nightly-science-v5.yml`) runs on push to `tl/test_ecosystem_v5` and uploads coverage artifact for Fast PR “estimated total.”
 
 ---
 
@@ -735,14 +635,12 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
    - Physics: Ensure physically valid inputs (e.g., T > 0K) unless testing error handling
 
 3. **Coverage Requirements**
-   - **Full integration tests**: Check `pyproject.toml` `[tool.coverage.report]` `fail_under` (currently 69%)
-   - **Fast unit tests**: Check `pyproject.toml` `[tool.proteus.coverage_fast]` `fail_under` (currently 22.42%)
-   - **Auto-ratcheting**: Both thresholds automatically increase when coverage improves (never decreases)
-     - Fast gate ratchets on all branches and auto-commits to branch (encourages unit test coverage)
-     - Full gate ratchets only on main branch and auto-commits (production quality standard)
-     - Ratcheting uses `tools/update_coverage_threshold.py` with appropriate target (`--target fast` or `--target full`)
-     - Commits are made by `github-actions[bot]` with `[skip ci]` to avoid infinite loops
-   - All PRs must pass the coverage threshold defined in CI
+   - **Full suite**: `pyproject.toml` `[tool.coverage.report]` `fail_under` (currently 69%)
+   - **Fast gate (unit + smoke)**: `pyproject.toml` `[tool.proteus.coverage_fast]` `fail_under` (currently 32.03%)
+   - **Auto-ratcheting**: Thresholds increase when coverage improves (never decrease); CI blocks decreases vs main
+     - Fast gate: ratcheted on push to main or `tl/test_ecosystem_v5` via `tools/update_coverage_threshold.py --target fast`; `github-actions[bot]` commits `[skip ci]`
+     - Full gate: ratcheted on main in nightly via `--target full`
+   - All PRs must meet the fast gate and diff-cover (80% on changed lines)
 
 4. **Code Quality & Style**
    - Linting: Follow `ruff` standards (line length < 92 chars, max indentation 3 levels)
@@ -788,16 +686,14 @@ GitHub Copilot is configured for the PROTEUS ecosystem with specific guidelines 
 ### Test Organization
 
 1. **Mirror source structure exactly**
-   - Tests in `tests/<package>/test_<module>.py` match `src/<package>/<module>.py`
-   - Easy to find related tests
-   - Consistent across entire ecosystem
-   - Enables automated validation
+   - Tests in `tests/<module>/test_<filename>.py` match `src/proteus/<module>/<filename>.py`
+   - `tools/validate_test_structure.sh` checks that each `src/proteus/<module>/` has a corresponding `tests/<module>/` (special dirs `data`, `helpers`, `integration` are skipped in validation)
+   - Easy to find related tests; consistent across the ecosystem; enables automated validation
 
 2. **One test file per source file**
-   - When practical
-   - Keeps tests organized
-   - Clear 1:1 mapping
-   - Use `tools/validate_test_structure.sh` to verify
+   - When practical: `src/proteus/<module>/foo.py` → `tests/<module>/test_foo.py`
+   - Keeps tests organized; clear 1:1 mapping
+   - Use `bash tools/validate_test_structure.sh` to verify
 
 3. **Group related tests**
    - Use test classes for related tests
@@ -1029,11 +925,18 @@ pytest
 
 ---
 
-## Placeholder Test Modules
+## Skipped Tests (Placeholders and Environment-Limited)
 
-Nine modules have placeholder tests requiring implementation: `escape`, `orbit`, `interior`, `atmos_clim`, `outgas`, `utils`, `observe`, `star`, `atmos_chem`.
+Individual tests (not whole modules) are skipped with `@pytest.mark.skip` where implementation is deferred or the test needs binaries/network that PR CI does not provide. Current skip reasons include:
 
-To implement: Remove `@pytest.mark.skip`, add markers (`@pytest.mark.unit` or `@pytest.mark.integration`), and write tests following the [Test Writing Guidelines](#test-writing-guidelines). See [Test Categorization](test_categorization.md) for examples.
+- **JANUS/SOCRATES**: `test_smoke_janus.py` (runtime instability); `test_smoke_atmos_interior.py` (JANUS/SOCRATES binaries)
+- **AGNI**: `test_smoke_atmos_interior.py` (AGNI/Julia binaries)
+- **CALLIOPE**: `test_smoke_outgassing.py` (slow, reserved for nightly)
+- **Interior**: `test_interior.py` (one test: corefrac=1.0 raises by design)
+- **Data**: `test_download_robustness.py` (network/OSF/Zenodo)
+- **Utils**: `test_data.py` (network-dependent)
+
+CI runs `pytest -m "unit and not skip"` and `pytest -m "smoke and not skip"`, so skipped tests are excluded from PR coverage and smoke runs. To activate a test: remove or narrow `@pytest.mark.skip`, add the right marker (`unit` / `smoke` / `integration`), and follow the [Test Writing Guidelines](#test-writing-guidelines). See [Test Categorization](test_categorization.md) for marker semantics and CI flow.
 
 ---
 
@@ -1047,9 +950,10 @@ To implement: Remove `@pytest.mark.skip`, add markers (`@pytest.mark.unit` or `@
    - Monitor GitHub Actions for failures
 
 2. **Coverage Tracking:**
-   - Auto-ratcheting enforces quality (69% current threshold)
-   - Placeholder tests excluded from coverage
-   - Review coverage reports on Codecov
+   - Fast gate: 32.03% (`[tool.proteus.coverage_fast]`), ratcheted on push to main / `tl/test_ecosystem_v5`
+   - Full gate: 69% (`[tool.coverage.report]`), ratcheted on main in nightly
+   - Tests marked `skip` are excluded from PR runs (`unit and not skip`, `smoke and not skip`)
+   - Review coverage in HTML artifacts and Codecov
 
 3. **Documentation Updates:**
    - Update this guide when adding new test markers
@@ -1111,6 +1015,6 @@ To implement: Remove `@pytest.mark.skip`, add markers (`@pytest.mark.unit` or `@
 
 ---
 
-**Maintained by:** FormingWorlds team
-**Last updated:** January 2026
+**Maintained by:** FormingWorlds team  
+**Last updated:** 2026-01-27  
 **Questions?** Open an issue on GitHub

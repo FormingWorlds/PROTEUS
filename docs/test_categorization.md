@@ -4,7 +4,7 @@ This document explains how PROTEUS tests are categorized and how they flow throu
 
 > **Related documentation:** For complete testing infrastructure details including test structure, configuration, and ecosystem rollout, see [Testing Infrastructure](test_infrastructure.md).
 
-Also see the consolidated CI status and planning in [CI/CD Status and Roadmap](test_infrastructure.md#cicd-status-and-roadmap-as-of-2026-01-11).
+Also see the consolidated CI status and planning in [CI/CD Status and Roadmap](test_infrastructure.md#cicd-status-and-roadmap-as-of-2026-01-27).
 
 ## Test Categories
 
@@ -12,210 +12,176 @@ All tests in PROTEUS are marked with pytest markers to enable targeted test sele
 
 ### @pytest.mark.unit
 
-**Purpose**: Fast validation of Python logic with mocked physics
+**Purpose**: Fast validation of Python logic with mocked physics  
 **Runtime**: <100ms per test (target)
 
-**Count**: 487 tests (as of 2026-01-11)
-**Runs In**: `ci-pr-checks.yml` (PR validation, ~2-5 minutes total)
-**Coverage**: Python interfaces, configuration, utilities, wrapper modules
+**Count**: 480+ tests (as of 2026-01-27)  
+**Runs In**: `ci-pr-checks.yml` — `pytest -m "unit and not skip"` (PR validation, ~2–5 min total)  
+**Coverage**: Fast gate 32.03% in `pyproject.toml` `[tool.proteus.coverage_fast]`; Python interfaces, configuration, utilities, wrapper modules
 
-**Implemented Tests**:
+**Implemented areas** (examples):
 
-
-- `tests/config/test_config.py` - Configuration system (3 tests)
-- `tests/config/test_defaults.py` - Configuration defaults (7 tests)
-- `tests/atmos_clim/test_common.py` - Atmosphere common utils (6 tests)
-- `tests/utils/test_data.py` - Data management utils (7 tests)
-- `tests/test_cli.py` - Command-line interface (3 tests)
-- `tests/test_init.py` - Package initialization (1 test)
-- `tests/plot/test_cpl_colours.py` - Color mapping (2 tests)
-- `tests/plot/test_cpl_helpers.py` - Helper functions (1 test)
-- `tests/star/test_star.py` - Stellar physics and luminosity/instellation (14 tests)
-- `tests/utils/test_plot.py` - Plotting utilities (mocked matplotlib)
-- All module wrappers (observe, outgas, escape, interior, etc.)
+- `tests/config/` — Configuration system, defaults, validators, converters (many tests)
+- `tests/atmos_clim/test_common.py`, `test_atmos_clim.py` — Atmosphere common and wrapper
+- `tests/utils/` — Data, logs, helper, coupler, plot, terminate
+- `tests/test_cli.py`, `tests/test_init.py` — CLI and package init
+- `tests/plot/test_cpl_colours.py`, `test_cpl_helpers.py` — Color mapping and helpers
+- `tests/star/test_star.py` — Stellar physics and instellation
+- `tests/escape/`, `tests/outgas/`, `tests/observe/`, `tests/interior/`, `tests/orbit/`, `tests/atmos_chem/` — Module wrappers
 
 
 ### @pytest.mark.smoke
 
-**Purpose**: Quick validation that binaries work with new Python code
+**Purpose**: Quick validation that binaries work with new Python code  
 **Runtime**: <30s per test (target)
-**Count**: 7 tests (as of 2026-01-11)
 
-**Runs In**: `ci-pr-checks.yml` (PR validation, ~3-5 min with unit tests)
+**Count**: Multiple tests; CI runs `pytest -m "smoke and not skip"`. Some are skipped (env/instability).  
+**Runs In**: `ci-pr-checks.yml` after unit tests (~5–10 min total with unit)
 
+**Implemented tests** (some skipped in CI):
 
-**Implemented Tests**:
-
-- `tests/integration/test_smoke_minimal.py::test_proteus_dummy_init` - PROTEUS initialization with dummy modules (0.3s)
-- `tests/integration/test_smoke_atmos_interior.py::test_smoke_dummy_atmos_dummy_interior_flux_exchange` - Dummy atmosphere + dummy interior coupling (fixed with ini_tmagma=2000K)
-- `tests/integration/test_smoke_modules.py::test_smoke_escape_dummy_atmos` - Escape module + dummy atmosphere coupling
-- `tests/integration/test_smoke_modules.py::test_smoke_star_instellation` - Star module + dummy atmosphere coupling
-- `tests/integration/test_smoke_modules.py::test_smoke_orbit_tidal_heating` - Orbit module + dummy interior coupling
-- `tests/integration/test_smoke_modules.py::test_smoke_outgas_atmos_volatiles` - CALLIOPE outgassing + dummy atmosphere coupling
-- `tests/integration/test_smoke_modules.py::test_smoke_dummy_full_chain` - All dummy modules in sequence
-- `tests/integration/test_smoke_janus.py::test_smoke_janus_dummy_coupling` - JANUS-Interior coupling (skipped due to binary instability)
+- `tests/integration/test_smoke_minimal.py` — PROTEUS dummy init
+- `tests/integration/test_smoke_atmos_interior.py` — Dummy atmosphere + dummy interior; JANUS/AGNI tests **skipped** (binaries)
+- `tests/integration/test_smoke_modules.py` — Escape, star, orbit, outgas, full dummy chain
+- `tests/integration/test_smoke_janus.py` — JANUS–interior coupling (**skipped**: runtime instability)
+- `tests/integration/test_smoke_outgassing.py` — CALLIOPE outgassing (**skipped**: slow, reserved for nightly)
 
 
 ### @pytest.mark.integration
 
-**Purpose**: Multi-module coupling and interaction tests
-
+**Purpose**: Multi-module coupling and interaction tests  
 **Runtime**: Minutes to hours
 
-**Example Tests**:
+**Runs In**: `ci-nightly-science.yml` and `ci-nightly-science-v5.yml` (integration jobs and science-validation)
 
-- `tests/integration/test_integration_dummy.py` - PROTEUS with dummy modules (4 tests)
-- `tests/integration/test_std_config.py` - Standard Config (ARAGOG+AGNI+CALLIOPE+ZEPHYRUS+MORS) (Planned)
-- `tests/integration/test_albedo_lookup.py` - Albedo interpolation (3 tests)
+**Implemented tests** (examples):
+
+- `tests/integration/test_integration_dummy.py` — PROTEUS with dummy modules (4 tests)
+- `tests/integration/test_integration_std_config.py` — Standard config (ARAGOG+AGNI+CALLIOPE+ZEPHYRUS+MORS); some tests also `@pytest.mark.slow`
+- `tests/integration/test_integration_aragog_agni.py` — ARAGOG–AGNI coupling
+- `tests/integration/test_integration_aragog_janus.py` — ARAGOG–JANUS coupling
+- `tests/integration/test_integration_dummy_agni.py` — Dummy + AGNI
+- `tests/integration/test_integration_multi_timestep.py` — Multi-timestep
+- `tests/integration/test_integration_calliope_multi_timestep.py` — CALLIOPE multi-timestep
+- `tests/integration/test_albedo_lookup.py` — Albedo interpolation
+- `tests/grid/test_grid.py`, `tests/inference/test_inference.py` — Grid and inference (integration)
 
 
 ### @pytest.mark.slow
 
+**Purpose**: Full scientific validation with comprehensive simulations  
+**When to use**: Tests that simulate Earth magma ocean, Venus greenhouse, Super-Earth evolution, or long multi-module runs.
 
-**Purpose**: Full scientific validation with comprehensive simulations
+**Runs In**: `ci-nightly-science.yml` (science-validation job) and `ci-nightly-science-v5.yml` (slow std_config run)
 
+**Implemented slow tests**:
 
-**When to use**: Tests that simulate Earth magma ocean, Venus greenhouse, Super-Earth evolution, etc.
+- `tests/integration/test_integration_std_config.py` — Standard-config evolution (ARAGOG+AGNI+CALLIOPE+ZEPHYRUS+MORS); marked `@pytest.mark.integration` and `@pytest.mark.slow`, run in nightly CI only.
 
+**Future/planned scenarios** (budget ~3–4 h in nightly):
 
-**Example tests** (not yet implemented):
-- Earth magma ocean solidification (1-4 hours)
-- Venus runaway greenhouse transition (30 min - 2 hours)
+- Earth magma ocean solidification (1–4 h)
+- Venus runaway greenhouse (30 min–2 h)
+- Super-Earth interior evolution (2–6 h)
 
-- Super-Earth interior evolution (2-6 hours)
-
-**Files**:
-- `tests/escape/test_escape.py`
-- `tests/orbit/test_orbit.py`
-- `tests/interior/test_interior.py`
-- `tests/atmos_clim/test_atmos_clim.py`
-- `tests/outgas/test_outgas.py`
-- `tests/utils/test_utils.py`
-- `tests/observe/test_observe.py`
-- `tests/star/test_star.py`
-- `tests/atmos_chem/test_atmos_chem.py`
-
-
-These placeholder tests exist to maintain test directory structure. Replace their `pass` statements with actual test implementations.
+Module-level tests (`tests/escape/`, `tests/orbit/`, `tests/interior/`, etc.) are mostly unit-tested; add new `@pytest.mark.slow` tests in integration or in those modules when implementing full scenarios.
 
 
 ## CI/CD Pipeline
 
 ### Fast PR Checks (`ci-pr-checks.yml`)
 
-**Trigger**: Pull requests to `main` or `dev`, pushes to feature branches
-**Duration**: ~5-10 minutes
+**Trigger**: Pull requests to `main` or `dev`; pushes to `main`, `dev`, `tl/test_ecosystem_v5`, `tl/test_ecosystem_v5_fast`; `workflow_dispatch`  
+**Duration**: ~5–10 minutes
+
 **Strategy**:
 
-1. Use pre-built Docker image with compiled physics
-2. Overlay PR code changes
-3. Run `@pytest.mark.unit` tests only
-4. Optionally run `@pytest.mark.smoke` tests
-5. Enforce ruff code quality checks
+1. Use pre-built Docker image (`latest` on main, branch-tagged on feature branches)
+2. Overlay PR code onto `/opt/proteus/`; validate test structure
+3. Run `pytest -m "unit and not skip"` with coverage (fast gate)
+4. Run diff-cover (80% on changed lines), then `pytest -m "smoke and not skip"`
+5. Lint runs in parallel: `ruff check src/ tests/`, `ruff format --check src/ tests/`
 
 **Coverage gates**:
 
-- **Fast gate**: 18% overall (low threshold for quick feedback)
-- **Diff-cover**: 80% on changed lines (enforced; uses `--diff-file` to avoid remote fetch inside container)
-- **Full gate**: 69% (auto-ratcheting; enforced on nightly runs and merge to main)
+- **Fast gate**: 32.03% (`[tool.proteus.coverage_fast] fail_under` in `pyproject.toml`; ratcheted on push to main / `tl/test_ecosystem_v5`)
+- **Diff-cover**: 80% on changed lines (enforced; `--diff-file` to avoid remote fetch in container)
+- **Full gate**: 69% (`[tool.coverage.report]`; enforced in nightly, ratcheted on main)
 
-
-**Command**:
+**Command** (unit job):
 ```bash
 pytest -m "unit and not skip" --ignore=tests/examples \
-
-  --cov=src --cov-fail-under=69
+  --cov=src --cov-fail-under=32.03 --cov-report=term-missing --cov-report=xml --cov-report=html
 ```
 
-**Test Output**: Coverage report, ruff errors
-
-**Artifacts**: HTML coverage report
-
+**Artifacts**: HTML coverage, unit pytest log; optional download of last nightly integration coverage for “estimated total” in run summary.
 
 ### Nightly Science Validation (`ci-nightly-science.yml`)
 
-**Trigger**: Scheduled at 03:00 UTC daily (1 hour after Docker build)
-**Duration**: ~4-6 hours total
-**Strategy**:
-1. Use latest pre-built Docker image
-2. Run comprehensive integration tests
-3. Run slow scientific validation tests
-4. Generate detailed coverage reports
+**Trigger**: Schedule 03:00 UTC daily; `workflow_dispatch`  
+**Duration**: ~4–6 hours total
 
-**Commands**:
-```bash
-# Job 1: Slow + Integration tests (comprehensive)
-pytest -m "slow or integration" --ignore=tests/examples \
-  --cov=src
+**Jobs**:
 
-# Job 2: Integration tests only (separate tracking)
-pytest -m "integration and not slow" --ignore=tests/examples \
-  --cov=src
-```
+1. **Quick integration** — `test_integration_dummy.py`, `test_integration_multi_timestep.py` (~15 min)
+2. **Science validation** — `pytest -m "slow or integration"` with full coverage (69% gate), ratcheting on main
+3. **Integration only** — `pytest -m "integration and not slow"` for separate tracking
 
-**Test Output**: Coverage reports, physics validation results
-**Artifacts**: HTML coverage, simulation outputs, test logs
+**Artifacts**: HTML coverage, simulation outputs, test logs.
+
+### Nightly Science Validation v5 (`ci-nightly-science-v5.yml`)
+
+**Trigger**: Push to `tl/test_ecosystem_v5`; `workflow_dispatch`  
+**Purpose**: Branch-specific nightly; runs integration + unit + slow (std_config), writes `coverage-integration-only.json`, uploads artifact `v5-branch-nightly-coverage`. Fast PR checks can use this artifact to show “estimated total” (unit + integration) in the run summary.
 
 ## Test Discovery & Organization
 
-
 ### Directory Structure
+
+Tests mirror `src/proteus/`; `tools/validate_test_structure.sh` checks this (special dirs `data`, `helpers`, `integration` are skipped in module checks).
 
 ```text
 tests/
-├── examples/          # Example/demonstration tests (excluded from CI)
-├── integration/       # Multi-module coupling tests (@pytest.mark.integration)
+├── examples/          # Excluded from CI
+├── integration/       # Multi-module coupling (@pytest.mark.integration, some @pytest.mark.smoke)
 │   ├── test_integration_dummy.py
 │   ├── test_integration_dummy_agni.py
+│   ├── test_integration_aragog_agni.py
 │   ├── test_integration_aragog_janus.py
-│   └── test_albedo_lookup.py
-├── config/           # Configuration tests (@pytest.mark.unit)
-
-├── grid/             # Grid tests (@pytest.mark.unit)
-├── plot/             # Plotting tests (@pytest.mark.unit)
-
-├── escape/           # Placeholder test (@pytest.mark.skip)
-├── orbit/            # Placeholder test (@pytest.mark.skip)
-├── interior/         # Placeholder test (@pytest.mark.skip)
-
-├── atmos_clim/       # Placeholder test (@pytest.mark.skip)
-
-├── atmos_chem/       # Placeholder test (@pytest.mark.skip)
-├── outgas/           # Placeholder test (@pytest.mark.skip)
-├── observe/          # Placeholder test (@pytest.mark.skip)
-
-├── star/             # Placeholder test (@pytest.mark.skip)
-
-├── utils/            # Placeholder test (@pytest.mark.skip)
-├── test_cli.py       # CLI tests (@pytest.mark.unit)
-├── test_init.py      # Init tests (@pytest.mark.unit)
-
-└── inference/        # Inference tests (@pytest.mark.integration)
-
+│   ├── test_integration_std_config.py   # also @pytest.mark.slow
+│   ├── test_integration_multi_timestep.py
+│   ├── test_integration_calliope_multi_timestep.py
+│   ├── test_albedo_lookup.py
+│   └── test_smoke_*.py                  # smoke tests (some skipped)
+├── config/            # @pytest.mark.unit
+├── grid/               # @pytest.mark.integration
+├── inference/          # @pytest.mark.integration
+├── plot/               # @pytest.mark.unit
+├── atmos_chem/         # @pytest.mark.unit
+├── atmos_clim/         # @pytest.mark.unit
+├── escape/             # @pytest.mark.unit (some tests @pytest.mark.skip)
+├── interior/           # @pytest.mark.unit (one test @pytest.mark.skip)
+├── observe/            # @pytest.mark.unit
+├── orbit/              # @pytest.mark.unit
+├── outgas/             # @pytest.mark.unit
+├── star/               # @pytest.mark.unit
+├── utils/              # @pytest.mark.unit (some tests @pytest.mark.skip)
+├── data/               # data/download tests (some @pytest.mark.skip)
+├── test_cli.py         # @pytest.mark.unit
+└── test_init.py       # @pytest.mark.unit
 ```
 
-### Marker Counts
+### Marker Counts (as of 2026-01-27)
 
-Implemented (as of 2026-01-06)
-
-| Marker | Count | Runs In |
+| Marker | Approx. count | Runs In |
 | --- | --- | --- |
-| `@pytest.mark.unit` | 485 | PR checks (~2–5 min) |
-| `@pytest.mark.smoke` | 7 | PR checks (~3–5 min with unit) |
-| `@pytest.mark.integration` | 0 | Nightly |
-| `@pytest.mark.slow` | 0 | Nightly |
-| `@pytest.mark.skip` | 9 | Excluded from CI |
+| `@pytest.mark.unit` | 480+ | PR: `pytest -m "unit and not skip"` |
+| `@pytest.mark.smoke` | Multiple (some skipped) | PR: `pytest -m "smoke and not skip"` |
+| `@pytest.mark.integration` | 25+ | Nightly (`ci-nightly-science*.yml`) |
+| `@pytest.mark.slow` | 2+ (std_config) | Nightly |
+| `@pytest.mark.skip` | Individual tests across files | Excluded from CI |
 
-Planned Targets
-
-| Marker | Target Count | Notes |
-| --- | --- | --- |
-| `@pytest.mark.unit` | 470+ | Coverage expansion priority ✅ Exceeded (485) |
-| `@pytest.mark.smoke` | 5–7 | One per major module ✅ Exceeded (7) |
-| `@pytest.mark.integration` | 23 | Multi-module coupling |
-| `@pytest.mark.slow` | 3–5 | Full scenario validations |
-
-| **Grand Total** | **55** | — |
+**Targets**: 5–7 active smoke tests in PRs; more integration/slow scenarios in nightly. Fast gate 32.03%, full gate 69% (see `pyproject.toml`).
 
 ## Test Fixtures and conftest.py
 
@@ -278,55 +244,48 @@ This ensures consistency across the entire test suite and with simulations.
 
 ## Running Tests Locally
 
-
-
-### All unit tests (fast local development)
+### Unit tests (matches PR unit job)
 
 ```bash
-pytest -m unit
-
+pytest -m "unit and not skip"
 ```
 
-### All smoke tests (optional binary validation)
+### Smoke tests (matches PR smoke job)
 
 ```bash
-pytest -m smoke
+pytest -m "smoke and not skip"
 ```
 
-### Unit + Smoke (what PR checks run)
+### Unit + Smoke (what PR runs)
 
 ```bash
-pytest -m "unit or smoke"
+pytest -m "(unit or smoke) and not skip"
 ```
 
-### All integration tests (slower, ~2+ hours)
+### Integration tests (slower, ~minutes–hours)
 
 ```bash
 pytest -m integration
 ```
 
-### All slow tests (comprehensive, ~4+ hours)
+### Slow tests (nightly scenarios)
 
 ```bash
 pytest -m slow
 ```
 
-### Everything except slow (fast local)
+### Everything except slow
 
 ```bash
 pytest -m "not slow"
 ```
 
-### Everything with coverage
+### With coverage
 
 ```bash
 pytest --cov=src --cov-report=html
-```
-
-### Skip placeholder tests explicitly
-
-```bash
-pytest -m "not skip"
+# or for unit-only coverage check vs fast gate:
+pytest -m "unit and not skip" --cov=src --cov-fail-under=32.03 --cov-report=term-missing
 ```
 
 ## Implementation Checklist for New Tests
@@ -343,7 +302,7 @@ When implementing tests for a module, follow this checklist:
 1. Create the test file (if not exists):
 
 - Location: `tests/<module>/test_<filename>.py`
-- Mirror `src/<package>/` structure
+- Mirror `src/proteus/<module>/<filename>.py`; run `bash tools/validate_test_structure.sh` to verify
 
 1. Add a test function with the correct marker:
 
@@ -378,21 +337,24 @@ def test_my_feature():
 
 1. Run the appropriate test marker group:
 
-- Unit: `pytest -m unit`
+- Unit: `pytest -m "unit and not skip"`
 - Integration: `pytest -m integration`
-- Ensure tests pass
+- Ensure tests pass and, for unit, coverage meets fast gate (32.03%)
 
 ## Coverage Requirements
 
-- **Threshold**: 69% (auto-ratcheting on main branch)
-- **Calculation**: Only real tests count (examples and skipped tests excluded)
-- **Tool**: `pytest-cov` (coverage.py)
-- **Report**: HTML report at `htmlcov/index.html`
+- **Fast gate**: 32.03% (`[tool.proteus.coverage_fast] fail_under` in `pyproject.toml`). Enforced in `ci-pr-checks.yml` for `pytest -m "unit and not skip"`. Ratcheted on push to main or `tl/test_ecosystem_v5`.
+- **Full gate**: 69% (`[tool.coverage.report] fail_under`). Enforced in nightly runs; ratcheted on main.
+- **Diff-cover**: 80% on changed lines in PRs (uses `--diff-file` in container).
+- **Calculation**: Examples and skipped tests are excluded from PR runs (`unit and not skip`, `smoke and not skip`).
+- **Tools**: `pytest --cov` or `coverage run -m pytest`; report at `htmlcov/index.html`.
 
 Coverage is enforced in:
 
-- `ci-pr-checks.yml` for unit tests
-- `ci-nightly-science.yml` for integration tests
+- `ci-pr-checks.yml` — unit tests (fast gate) and diff-cover
+- `ci-nightly-science.yml` and `ci-nightly-science-v5.yml` — integration/slow (full gate on main)
+
+**Last updated**: 2026-01-27
 
 ## References
 
