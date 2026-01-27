@@ -149,6 +149,7 @@ jobs:
 
       - name: Download last nightly coverage (for estimated total)
         if: always()
+        continue-on-error: true  # Do not fail job when no nightly artifact exists yet
         uses: dawidd6/action-download-artifact@v3
         with:
           workflow: ci-nightly-science-v5.yml
@@ -209,10 +210,18 @@ jobs:
               return out
 
           u_pct, u_covered, u_total = read_totals(pathlib.Path("coverage-unit.json"))
-          u_data = json.loads(pathlib.Path("coverage-unit.json").read_text()) if pathlib.Path("coverage-unit.json").exists() else {}
+          u_data = {}
+          try:
+              if pathlib.Path("coverage-unit.json").exists():
+                  u_data = json.loads(pathlib.Path("coverage-unit.json").read_text())
+          except (json.JSONDecodeError, OSError):
+              pass
           i_data = {}
-          if pathlib.Path("coverage-integration-only.json").exists():
-              i_data = json.loads(pathlib.Path("coverage-integration-only.json").read_text())
+          try:
+              if pathlib.Path("coverage-integration-only.json").exists():
+                  i_data = json.loads(pathlib.Path("coverage-integration-only.json").read_text())
+          except (json.JSONDecodeError, OSError):
+              pass
           i_pct, i_covered, i_total = read_totals(pathlib.Path("coverage-integration-only.json"))
 
           # Estimated total: (a) with overlap removed (union), (b) simple sum
