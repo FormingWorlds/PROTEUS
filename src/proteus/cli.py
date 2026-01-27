@@ -101,7 +101,6 @@ def plot(plots, config_path: Path):
 
 
 cli.add_command(plot)
-
 # ----------------
 # 'start' command
 # ----------------
