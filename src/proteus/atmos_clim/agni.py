@@ -246,8 +246,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         UpdateStatusfile(dirs, 22)
         raise RuntimeError('Could not setup atmosphere object')
 
-    # Allocate arrays
-    succ = jl.AGNI.atmosphere.allocate_b(atmos, input_star)
+    # Allocate arrays (check_safe_gas: require at least one dry gas with opacity/thermo)
+    check_safe = bool(getattr(config.atmos_clim.agni, 'check_safe_gas', True))
+    succ = jl.AGNI.atmosphere.allocate_b(atmos, input_star, check_safe_gas=check_safe)
 
     # Check allocate! success
     if not bool(succ):

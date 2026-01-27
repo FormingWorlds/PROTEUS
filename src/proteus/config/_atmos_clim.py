@@ -204,6 +204,16 @@ class Agni:
     )
     ls_default: int = field(default=2, validator=in_((0, 1, 2)))
     fdo: int = field(default=2, validator=in_((2, 4)))
+    check_safe_gas: bool = field(
+        default=True,
+        metadata={
+            'doc': (
+                'Require at least one "safe" gas (dry, has opacity, has thermo) when '
+                'allocating AGNI atmosphere. Set False to allow compositions that '
+                'AGNI would otherwise reject (e.g. for tests or exotic setups).'
+            ),
+        },
+    )
 
 
 def valid_janus(instance, attribute, value):

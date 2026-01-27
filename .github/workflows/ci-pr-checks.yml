@@ -182,18 +182,65 @@ jobs:
               except Exception:
                   return 0, 0, 0
 
+          def norm_path(p):
+              p = p.replace("\\", "/")
+              if "proteus/" in p:
+                  return "proteus/" + p.split("proteus/", 1)[-1]
+              if "src/" in p:
+                  return p.split("src/", 1)[-1]
+              return p
+
+          def line_set_from_files(data):
+              """Set of (norm_path, line) for executed lines."""
+              out = set()
+              for path, fd in data.get("files", {}).items():
+                  n = norm_path(path)
+                  for line in fd.get("executed_lines", []) or []:
+                      out.add((n, line))
+              return out
+
+          def executable_set_from_files(data):
+              """Set of (norm_path, line) for executed | missing (all executable lines)."""
+              out = set()
+              for path, fd in data.get("files", {}).items():
+                  n = norm_path(path)
+                  for line in (fd.get("executed_lines", []) or []) + (fd.get("missing_lines", []) or []):
+                      out.add((n, line))
+              return out
+
           u_pct, u_covered, u_total = read_totals(pathlib.Path("coverage-unit.json"))
+          u_data = json.loads(pathlib.Path("coverage-unit.json").read_text()) if pathlib.Path("coverage-unit.json").exists() else {}
+          i_data = {}
+          if pathlib.Path("coverage-integration-only.json").exists():
+              i_data = json.loads(pathlib.Path("coverage-integration-only.json").read_text())
           i_pct, i_covered, i_total = read_totals(pathlib.Path("coverage-integration-only.json"))
 
-          # Estimated total: (unit covered this PR + integration covered last nightly) / total lines (this PR)
-          # Same codebase; overlap not removed → can slightly overestimate
+          # Estimated total: (a) with overlap removed (union), (b) simple sum
+          has_est = False
+          est_pct_union = None
+          est_covered_union = 0
+          est_total_union = 0
+          est_pct_sum = None
+          est_covered_sum = 0
+          est_total_sum = 0
+          overlap_removed = False
+          if u_data.get("files") and i_data.get("files"):
+              u_exec = line_set_from_files(u_data)
+              i_exec = line_set_from_files(i_data)
+              u_all = executable_set_from_files(u_data)
+              i_all = executable_set_from_files(i_data)
+              union_covered = u_exec | i_exec
+              union_executable = u_all | i_all
+              if union_executable:
+                  est_covered_union = len(union_covered)
+                  est_total_union = len(union_executable)
+                  est_pct_union = min(100.0, 100.0 * est_covered_union / est_total_union)
+                  overlap_removed = True
           if u_total and u_total > 0:
-              est_covered = u_covered + i_covered
-              est_pct = min(100.0, 100.0 * est_covered / u_total)
+              est_covered_sum = u_covered + i_covered
+              est_total_sum = u_total
+              est_pct_sum = min(100.0, 100.0 * est_covered_sum / u_total)
               has_est = True
-          else:
-              est_pct = 0.0
-              has_est = False
 
           summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
           with open(summary_path, "w") as f:
@@ -209,12 +256,22 @@ jobs:
                   f.write("- *No nightly artifact found; use **Nightly Science Validation (v5)** for integration numbers.*\n\n")
               if has_est:
                   f.write("## Estimated total (unit this PR + integration last nightly)\n\n")
-                  f.write(f"- **Estimated line coverage:** **{est_pct:.2f}%**\n")
-                  f.write("- **Formula:** `(unit_covered + integration_covered) / total_lines`, using this PR’s total lines as denominator.\n")
-                  if i_total:
-                      f.write("- Overlap between unit and integration is not removed, so this can slightly overestimate.\n\n")
+                  if overlap_removed:
+                      f.write(
+                          f"- **With overlap removed (union):** **{est_pct_union:.2f}%** — {est_covered_union} / {est_total_union} lines\n"
+                      )
+                      f.write(
+                          f"- **Without overlap removed (simple sum):** **{est_pct_sum:.2f}%** — {est_covered_sum} / {est_total_sum} lines\n\n"
+                      )
+                      f.write("- **Union formula:** covered (file, line) from unit ∪ integration, over union of executable lines.\n")
+                      f.write("- **Simple-sum formula:** `(unit_covered + integration_covered) / unit_total`; double-counts overlap.\n\n")
                   else:
-                      f.write("- Integration from last nightly unavailable; estimated total equals unit coverage above.\n\n")
+                      f.write(
+                          f"- **Estimated line coverage:** **{est_pct_sum:.2f}%** — {est_covered_sum} / {est_total_sum} lines\n\n"
+                      )
+                      f.write("- **Formula:** `(unit_covered + integration_covered) / total_lines` (per-file data missing; overlap not removed).\n\n")
+                  if not i_total:
+                      f.write("- Integration from last nightly unavailable; estimated total uses unit coverage only.\n\n")
               else:
                   f.write("## Estimated total\n\n")
                   f.write("- Not computed (unit coverage data missing).\n\n")
@@ -223,7 +280,8 @@ jobs:
               f.write("- Placeholder tests (`@pytest.mark.skip`) are excluded.\n")
               f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
 
-          print(f"Unit: {u_pct:.2f}% | Integration (last nightly): {i_pct:.2f}% | Estimated total: {est_pct:.2f}%" if has_est else f"Unit: {u_pct:.2f}%")
+          disp_est = f"{est_pct_union:.2f}% (union) / {est_pct_sum:.2f}% (sum)" if overlap_removed and has_est else (f"{est_pct_sum:.2f}%" if has_est else "—")
+          print(f"Unit: {u_pct:.2f}% | Integration (last nightly): {i_pct:.2f}% | Estimated total: {disp_est}")
           PY
 
       - name: Diff coverage on changed lines (fast suite)
