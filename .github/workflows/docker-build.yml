@@ -93,6 +93,21 @@ jobs:
       - name: Image digest
         run: echo "Image pushed with digest ${{ steps.meta.outputs.digest }}"
 
+      - name: Write workflow summary (visible on Actions run page)
+        if: always()
+        run: |
+          echo "# Docker Build – Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Build result" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Status:** ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Digest:** ${{ steps.meta.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Tags" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Post-build cleanup
         if: always()
         run: docker system prune -af --volumes

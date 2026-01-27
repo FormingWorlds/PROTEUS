@@ -169,7 +169,6 @@ jobs:
         run: |
           cd /opt/proteus
           coverage erase
-          # Explicitly include dummy suite first
           pytest tests/integration/test_integration_dummy.py \
             -v --tb=short \
             --cov=proteus \
@@ -178,12 +177,32 @@ jobs:
             --cov-report=xml:coverage.xml \
             --cov-report=html \
             --cov-config=pyproject.toml
-          # Then full integration (excluding slow, AGNI, and albedo tests requiring external data) and append coverage
-          # Note: test_integration_aragog_janus.py may fail if stellar tracks aren't available - that's OK for now
+          # Then full integration (excluding slow, AGNI, and albedo tests requiring external data)
           pytest tests/integration \
             -m "integration and not slow" \
             --ignore=tests/integration/test_integration_dummy_agni.py \
             --ignore=tests/integration/test_albedo_lookup.py \
+            -v --tb=short \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml
+
+      - name: Save integration-only coverage (for Fast PR estimated total)
+        if: always()
+        run: |
+          cd /opt/proteus
+          coverage json -o coverage-integration-only.json || echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-integration-only.json
+
+      - name: Run unit tests with coverage (append for total = unit + integration)
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
             -v --tb=short \
             --cov=proteus \
             --cov-append \
@@ -216,6 +235,36 @@ jobs:
           cd /opt/proteus
           coverage json -o coverage-branch-nightly.json || true
 
+      - name: Write workflow summary (visible on Actions run page)
+        if: always()
+        run: |
+          cd /opt/proteus
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
+          with open(summary_path, "w") as f:
+              f.write("# Nightly Science Validation (v5) – Summary\n\n")
+
+          try:
+              data = json.load(open("coverage-branch-nightly.json"))
+              t = data.get("totals", {})
+              pct = t.get("percent_covered", 0)
+              covered = t.get("covered_lines", 0)
+              total = t.get("num_statements", 0)
+              with open(summary_path, "a") as f:
+                  f.write("## Total test coverage (unit + integration)\n\n")
+                  f.write(f"- **Line coverage:** **{pct:.2f}%**\n")
+                  f.write(f"- **Covered lines:** {covered} / {total}\n\n")
+                  f.write("Coverage includes unit tests, integration tests (dummy + integration), and slow integration tests.\n")
+          except Exception as e:
+              with open(summary_path, "a") as f:
+                  f.write("## Total test coverage\n\n")
+                  f.write(f"*Coverage report not available: {e}*\n")
+          PY
+
       - name: Upload coverage XML and HTML
         if: always()
         uses: actions/upload-artifact@v4
@@ -225,4 +274,5 @@ jobs:
             /opt/proteus/coverage.xml
             /opt/proteus/htmlcov/
             /opt/proteus/coverage-branch-nightly.json
+            /opt/proteus/coverage-integration-only.json
           retention-days: 14
