@@ -378,7 +378,7 @@ The test validates the configuration as-is.
 - ⏸️ Test runs stably for 5-10 timesteps (requires all real modules + data - should be more resilient with improved download system)
 - ⏸️ Conservation law validations pass (implemented, needs verification in CI with real modules)
 - ✅ Integrated into nightly CI (`ci-nightly-science-v5.yml`)
-- ⏸️ **Next**: Monitor next nightly CI run to verify tests pass with improved data download robustness
+- ✅ **Nightly run 21376308695**: Integration and slow tests passed; §1 (Verify Phase 2 in CI) complete.
 - ⏸️ **Data Download Robustness Enhanced (2026-01-XX)**:
   - ✅ **Multi-tier fallback system implemented**: `zenodo_client` → `zenodo_get` → web download → OSF fallback
   - ✅ **Retry logic**: 3 attempts with exponential backoff (5s, 10s, 20s)
@@ -460,7 +460,7 @@ The test validates the configuration as-is.
 1. **Complete Phase 2: Integration Test Foundation**
    - ✅ Standard configuration test implemented
    - ✅ Validation checks implemented
-   - ⏸️ Verify tests pass in nightly CI (pending next run)
+   - ✅ Verify tests pass in nightly CI (run 21376308695 passed)
    - ⏸️ Document any runtime optimizations needed
    - ⏸️ Add more module combination tests (e.g., ARAGOG+JANUS, AGNI+CALLIOPE)
 
@@ -645,7 +645,7 @@ This section is the **canonical plan** for continuing the test roadmap. It align
 
 ### Priority Order for Next Work
 
-#### 1. Verify Phase 2 in CI (Do First)
+#### 1. Verify Phase 2 in CI (Do First) ✅ **DONE**
 
 | Task | Owner | Effort | Success criterion |
 |------|--------|--------|--------------------|
@@ -654,6 +654,8 @@ This section is the **canonical plan** for continuing the test roadmap. It align
 | If failures: fix or document `test_integration_aragog_janus.py` | Dev | 1–2 h | Clear skip reason or passing tests |
 
 **Deliverable**: Nightly integration/science run is green or has documented, tracked issues.
+
+**Status**: Nightly run **21376308695** (workflow *CI - Nightly Science Validation (v5)*, branch `tl/test_ecosystem_v5`) completed successfully. Branch Nightly Coverage (Integration - v5) job passed; integration (dummy + integration and not slow) and slow integration (standard config) steps both succeeded. **§1 complete** for current branch.
 
 #### 2. Expand Integration Test Coverage (Short-Term)
 
@@ -703,7 +705,7 @@ This section is the **canonical plan** for continuing the test roadmap. It align
 
 **Status**: Infrastructure and validation in place; data-download robustness improved.
 
-- [ ] **Verify integration tests in CI** (1–2 days): Nightly run green or issues documented.
+- [x] **Verify integration tests in CI** (1–2 days): Nightly run 21376308695 green; §1 complete.
 - [ ] **Expand integration coverage** (1–2 weeks): +3 module-combination tests as in §2.
 - [ ] **Optimize runtime** (if needed): Tune configs so nightly stays within time limits.
 

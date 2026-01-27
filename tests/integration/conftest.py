@@ -143,6 +143,20 @@ def proteus_multi_timestep_run():
             runner.config.params.out.write_mod = 0
             runner.config.params.out.archive_mod = 'none'
 
+            # Ensure required data exists when using ARAGOG (download if missing).
+            # Runs locally and in CI; no-op or quick when data already present.
+            if runner.config.interior.module == 'aragog':
+                from proteus.utils.data import download_sufficient_data
+
+                was_offline = runner.config.params.offline
+                runner.config.params.offline = False
+                try:
+                    download_sufficient_data(runner.config, clean=False)
+                except OSError:
+                    pass  # e.g. no network; test will fail with FileNotFoundError if data missing
+                finally:
+                    runner.config.params.offline = was_offline
+
             # Run simulation
             runner.start(resume=False, offline=True)
 
