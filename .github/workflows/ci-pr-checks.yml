@@ -131,6 +131,7 @@ jobs:
           bash tools/validate_test_structure.sh
 
       - name: Run unit tests with coverage
+        id: unit-tests
         run: |
           cd /opt/proteus
           # Run unit tests, excluding placeholder tests and examples
@@ -294,6 +295,7 @@ jobs:
           PY
 
       - name: Diff coverage on changed lines (fast suite)
+        id: diff-cover
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
@@ -305,6 +307,19 @@ jobs:
 
           # Run diff-cover using the prepared diff file
           diff-cover /opt/proteus/coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
+
+      - name: Append failure guidance (needs more unit tests)
+        if: (failure() && !cancelled()) && (steps.unit-tests.outcome == 'failure' || steps.diff-cover.outcome == 'failure')
+        run: |
+          {
+            echo ""
+            echo "---"
+            echo "## PR did not pass checks"
+            echo ""
+            echo "This run failed because **unit coverage is below threshold** or **diff-cover on changed lines** is below 80%. The PR likely needs more unit tests."
+            echo ""
+            echo "See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Ratchet fast coverage threshold
         continue-on-error: true
