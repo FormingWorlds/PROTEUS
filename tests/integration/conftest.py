@@ -145,7 +145,10 @@ def proteus_multi_timestep_run():
 
             # Ensure required data exists when using ARAGOG or AGNI (download if missing).
             # Runs locally and in CI; no-op or quick when data already present.
-            if runner.config.interior.module == 'aragog' or runner.config.atmos_clim.module == 'agni':
+            if (
+                runner.config.interior.module == 'aragog'
+                or runner.config.atmos_clim.module == 'agni'
+            ):
                 from proteus.utils.data import download_sufficient_data
 
                 was_offline = runner.config.params.offline

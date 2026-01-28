@@ -173,22 +173,63 @@ jobs:
           echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
           # Check available space in /opt
           df -h /opt
+          # Ensure AGNI Julia environment has all dependencies installed (including Plots)
+          if [ -d "/opt/proteus/AGNI" ]; then
+            echo "Installing AGNI Julia dependencies..."
+            cd /opt/proteus/AGNI
+            julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()' || {
+              echo "Warning: Pkg.instantiate() failed, trying to add Plots explicitly..."
+              julia -e 'using Pkg; Pkg.activate("."); Pkg.add("Plots")'
+            }
+            cd /opt/proteus
+          fi
 
-      - name: Run integration coverage (dummy + integration and not slow)
-        continue-on-error: true  # Don't fail workflow if some integration tests fail
+      - name: Coverage erase and run unit tests (first for combined coverage)
+        continue-on-error: true
         run: |
           cd /opt/proteus
           coverage erase
-          # Run dummy first; do not exit step on failure so second pytest always runs
-          pytest tests/integration/test_integration_dummy.py \
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
             -v --tb=short \
+            --junitxml=/tmp/junit-unit.xml \
             --cov=proteus \
             --cov-fail-under=0 \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-report=html \
-            --cov-config=pyproject.toml \
-            || true
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/unit-output.txt
+
+      - name: Run smoke tests with coverage (append for total = unit + smoke + integration + slow)
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          pytest -m smoke \
+            -v --tb=short \
+            --junitxml=/tmp/junit-smoke.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/smoke-output.txt
+
+      - name: Run integration coverage (dummy + integration and not slow)
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          # Run dummy first; capture output but continue even if it fails
+          pytest tests/integration/test_integration_dummy.py \
+            -v --tb=short \
+            --junitxml=/tmp/junit-dummy.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/dummy-output.txt || true
           # Full integration (excluding slow, albedo); always run so coverage is combined
           # test_integration_dummy_agni and test_albedo_lookup excluded (external-data heavy)
           pytest tests/integration \
@@ -196,53 +237,38 @@ jobs:
             --ignore=tests/integration/test_integration_dummy_agni.py \
             --ignore=tests/integration/test_albedo_lookup.py \
             -v --tb=short \
+            --junitxml=/tmp/junit-integration.xml \
             --cov=proteus \
             --cov-append \
             --cov-fail-under=0 \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-report=html \
-            --cov-config=pyproject.toml \
-            || true
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/integration-output.txt || true
 
-      - name: Save integration-only coverage (for Fast PR estimated total)
+      - name: Save coverage before slow (unit + smoke + integration, for Fast PR reference)
         if: always()
         run: |
           cd /opt/proteus
           coverage json -o coverage-integration-only.json || echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-integration-only.json
 
-      - name: Run unit tests with coverage (append for total = unit + integration)
+      - name: Run slow integration tests (standard config)
         continue-on-error: true
         run: |
           cd /opt/proteus
-          pytest -m "unit and not skip" \
-            --ignore=tests/examples \
-            -v --tb=short \
-            --cov=proteus \
-            --cov-append \
-            --cov-fail-under=0 \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html \
-            --cov-config=pyproject.toml
-
-      - name: Run slow integration tests (standard config)
-        if: always()  # Run even if previous step failed
-        continue-on-error: true  # Don't fail workflow if test fails
-        run: |
-          cd /opt/proteus
           # Run slow integration tests (standard config with all real modules)
-          # These require ARAGOG lookup data and may take 10-15 minutes
+          # These require ARAGOG lookup data and may take 10-15 minutes.
           pytest tests/integration/test_integration_std_config.py \
             -m "slow" \
             -v --tb=long \
+            --junitxml=/tmp/junit-slow.xml \
             --cov=proteus \
             --cov-append \
             --cov-fail-under=0 \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
             --cov-report=html \
-            --cov-config=pyproject.toml
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/slow-output.txt || true
 
       - name: Generate coverage JSON
         if: always()
@@ -260,7 +286,7 @@ jobs:
             echo "Wrote fallback coverage JSON (coverage data was missing or step failed)."
           fi
 
-      - name: Write workflow summary (visible on Actions run page)
+      - name: Write workflow summary and test results report
         if: always()
         run: |
           cd /opt/proteus
@@ -268,33 +294,159 @@ jobs:
           import json
           import os
           import pathlib
+          import sys
+          import xml.etree.ElementTree as ET
+          import re
 
           summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
           cov_path = pathlib.Path("coverage-branch-nightly.json")
 
+          # Collect test results from JUnit XML files
+          junit_files = {
+              'unit': '/tmp/junit-unit.xml',
+              'smoke': '/tmp/junit-smoke.xml',
+              'dummy': '/tmp/junit-dummy.xml',
+              'integration': '/tmp/junit-integration.xml',
+              'slow': '/tmp/junit-slow.xml',
+          }
+
+          failed_tests = []
+          skipped_tests = []
+          total_tests = 0
+          passed_tests = 0
+
+          for category, xml_path in junit_files.items():
+              if not pathlib.Path(xml_path).exists():
+                  continue
+              try:
+                  tree = ET.parse(xml_path)
+                  root = tree.getroot()
+                  for testsuite in root.findall('testsuite'):
+                      total = int(testsuite.get('tests', 0))
+                      failures = int(testsuite.get('failures', 0))
+                      errors = int(testsuite.get('errors', 0))
+                      skipped = int(testsuite.get('skipped', 0))
+                      total_tests += total
+                      passed_tests += (total - failures - errors - skipped)
+
+                      # Collect failed tests
+                      for testcase in testsuite.findall('testcase'):
+                          test_name = f"{testcase.get('classname', '')}::{testcase.get('name', '')}"
+                          failure = testcase.find('failure')
+                          error = testcase.find('error')
+                          skip = testcase.find('skipped')
+
+                          if failure is not None or error is not None:
+                              reason = failure.get('message', '') if failure is not None else error.get('message', '')
+                              failed_tests.append({
+                                  'category': category,
+                                  'test': test_name,
+                                  'reason': reason[:200] if reason else 'Unknown failure'
+                              })
+                          elif skip is not None:
+                              reason = skip.get('message', '')
+                              skipped_tests.append({
+                                  'category': category,
+                                  'test': test_name,
+                                  'reason': reason[:200] if reason else 'Skipped'
+                              })
+              except Exception as e:
+                  print(f"Warning: Could not parse {xml_path}: {e}")
+
+          # Also check output files for additional skipped tests (from pytest.skip() calls)
+          output_files = {
+              'unit': '/tmp/unit-output.txt',
+              'smoke': '/tmp/smoke-output.txt',
+              'dummy': '/tmp/dummy-output.txt',
+              'integration': '/tmp/integration-output.txt',
+              'slow': '/tmp/slow-output.txt',
+          }
+
+          for category, output_path in output_files.items():
+              if not pathlib.Path(output_path).exists():
+                  continue
+              try:
+                  with open(output_path, 'r') as f:
+                      content = f.read()
+                      # Look for SKIPPED lines in pytest output
+                      for line in content.split('\n'):
+                          if 'SKIPPED' in line or 'SKIP' in line:
+                              # Extract test name if possible
+                              match = re.search(r'([^\s]+::[^\s]+)\s+SKIPPED', line)
+                              if match:
+                                  test_name = match.group(1)
+                                  # Check if already in skipped_tests
+                                  if not any(s['test'] == test_name for s in skipped_tests):
+                                      skipped_tests.append({
+                                          'category': category,
+                                          'test': test_name,
+                                          'reason': 'Skipped (from output)'
+                                      })
+              except Exception as e:
+                  print(f"Warning: Could not read {output_path}: {e}")
+
+          # Write summary
           with open(summary_path, "w") as f:
               f.write("# Nightly Science Validation (v5) – Summary\n\n")
 
-          if cov_path.exists():
-              try:
-                  data = json.loads(cov_path.read_text())
-                  t = data.get("totals", {})
-                  pct = t.get("percent_covered", 0)
-                  covered = t.get("covered_lines", 0)
-                  total = t.get("num_statements", 0)
-                  with open(summary_path, "a") as f:
-                      f.write("## Total test coverage (unit + integration)\n\n")
+              # Coverage section
+              if cov_path.exists():
+                  try:
+                      data = json.loads(cov_path.read_text())
+                      t = data.get("totals", {})
+                      pct = t.get("percent_covered", 0)
+                      covered = t.get("covered_lines", 0)
+                      total = t.get("num_statements", 0)
+                      f.write("## Total test coverage (all tests)\n\n")
                       f.write(f"- **Line coverage:** **{pct:.2f}%**\n")
                       f.write(f"- **Covered lines:** {covered} / {total}\n\n")
-                      f.write("Coverage includes unit tests, integration tests (dummy + integration), and slow integration tests.\n")
-              except Exception as e:
-                  with open(summary_path, "a") as f:
+                      f.write("Coverage includes unit, smoke, integration (dummy + non-slow), and slow integration tests.\n\n")
+                  except Exception as e:
                       f.write("## Total test coverage\n\n")
-                      f.write(f"*Coverage file present but invalid: {e}*\n")
-          else:
-              with open(summary_path, "a") as f:
+                      f.write(f"*Coverage file present but invalid: {e}*\n\n")
+              else:
                   f.write("## Total test coverage\n\n")
-                  f.write("*Coverage report not available (job may have timed out, or coverage was not generated).*\n")
+                  f.write("*Coverage report not available (job may have timed out, or coverage was not generated).*\n\n")
+
+              # Test results section
+              f.write("## Test Results Summary\n\n")
+              f.write(f"- **Total tests:** {total_tests}\n")
+              f.write(f"- **Passed:** {passed_tests}\n")
+              f.write(f"- **Failed:** {len(failed_tests)}\n")
+              f.write(f"- **Skipped:** {len(skipped_tests)}\n\n")
+
+              if failed_tests:
+                  f.write("### ❌ Failed Tests\n\n")
+                  for test in failed_tests:
+                      f.write(f"- **{test['category']}:** `{test['test']}`\n")
+                      f.write(f"  - Reason: {test['reason']}\n")
+                  f.write("\n")
+
+              if skipped_tests:
+                  f.write("### ⚠️ Skipped Tests\n\n")
+                  # Group by category
+                  by_category = {}
+                  for test in skipped_tests:
+                      cat = test['category']
+                      if cat not in by_category:
+                          by_category[cat] = []
+                      by_category[cat].append(test)
+                  for cat in sorted(by_category.keys()):
+                      f.write(f"**{cat}:**\n")
+                      for test in by_category[cat]:
+                          f.write(f"- `{test['test']}` - {test['reason']}\n")
+                  f.write("\n")
+
+              if not failed_tests and not skipped_tests:
+                  f.write("✅ All tests passed!\n\n")
+
+          # Exit with non-zero if any tests failed (this will mark the CI run as failed)
+          if failed_tests:
+              print(f"ERROR: {len(failed_tests)} test(s) failed. CI run will be marked as failed.")
+              sys.exit(1)
+          else:
+              print("All tests passed or were skipped. CI run will be marked as passed.")
+              sys.exit(0)
           PY
 
       - name: Upload coverage XML and HTML
