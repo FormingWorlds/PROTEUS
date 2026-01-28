@@ -1,49 +1,59 @@
-# Guide: Building Robust Tests with GitHub Copilot
+# Building Robust Tests
 
-This guide outlines how to configure Copilot and use the standard "Master Prompt" to generate high-quality, physics-compliant unit tests for the PROTEUS ecosystem.
+This guide describes the developer workflow and standard prompts for generating unit and integration tests. For test structure, markers, and CI see [Test Categorization](test_categorization.md) and [Test Infrastructure](test_infrastructure.md).
 
-## 1. Developer Workflow ("The Context Sandwich")
+---
 
-To get the best results, set up your IDE context before prompting:
+## Developer Workflow ("Context Sandwich")
 
-1.  **Open Source:** Open the file you are testing (e.g., `src/janus/convection.py`).
-2.  **Open Destination:** Open/Create the test file (e.g., `tests/janus/test_convection.py`).
-3.  **Open Fixtures:** Open `tests/conftest.py` so Copilot sees available fixtures.
-4.  **Prompt:** Paste the **Master Prompt** (below) into Copilot Chat.
+1. **Open source**: The file under test (e.g. `src/proteus/utils/helper.py`).
+2. **Open destination**: The test file (e.g. `tests/utils/test_helper.py`).
+3. **Open fixtures**: `tests/conftest.py` so available fixtures are in context.
+4. **Prompt**: Paste the **Master Prompt** (unit) or **Integration Prompt** below into the chat.
 
-## 2. The Master Prompt (Unit Tests)
+---
 
-Copy and paste this strictly into the Copilot Chat window:
+## Master Prompt (Unit Tests)
+
+Copy into the chat when generating unit tests:
 
 > **Act as a Senior Scientific Software Engineer for PROTEUS.**
 >
 > I need robust unit tests for the open file. Follow these strict guidelines:
 >
-> 1.  **Architecture:** Mirror the source code structure. If testing `class Convection`, create `class TestConvection`.
-> 2.  **Mocking:** This is a unit test. **Aggressively mock** any heavy physics modules (e.g., `SOCRATES`, `AGNI`) or I/O operations using `unittest.mock`. The test must run in <100ms.
-> 3.  **Precision:** Use `pytest.approx(expected, rel=1e-5)` for all float comparisons. Never use `==`.
-> 4.  **Physics:** Ensure test inputs are physically valid (e.g., Kelvin > 0, Pressure > 0) unless testing error handling.
-> 5.  **Coverage:** Target >90% coverage. Handle edge cases (None, empty arrays, negative values where physically impossible).
-> 6.  **Style:** Use `@pytest.mark.parametrize` for data-driven tests. Add a brief docstring to each test explaining the physical scenario being tested.
-> 7.  **Format:** Ruff format all test files before committing.
+> 1. **Architecture:** Mirror the source. If testing `class Convection`, create `class TestConvection`. File: `tests/<module>/test_<filename>.py` for `src/proteus/<module>/<filename>.py`.
+> 2. **Mocking:** This is a unit test. **Aggressively mock** heavy physics (SOCRATES, AGNI) and I/O with `unittest.mock`. Tests must run in &lt;100 ms.
+> 3. **Precision:** Use `pytest.approx(expected, rel=1e-5)` for all float comparisons. Never use `==` for floats.
+> 4. **Physics:** Use physically valid inputs (e.g. T &gt; 0 K, P &gt; 0) unless testing error handling.
+> 5. **Coverage:** Aim for high coverage; include edge cases (None, empty arrays, invalid values where relevant).
+> 6. **Style:** Use `@pytest.mark.parametrize` for data-driven tests. Add a brief docstring per test describing the scenario. Use `@pytest.mark.unit`.
+> 7. **Format:** Run `ruff format` on test files before committing.
 >
 > **Generate the tests now.**
 
-## 3. The Integration Prompt (Standard Configuration)
+---
 
-For Phase 2 validation (coupling ARAGOG+AGNI+CALLIOPE+ZEPHYRUS+MORS), use this prompt:
+## Integration Prompt (Standard Configuration)
+
+Use when adding or extending integration tests (e.g. ARAGOG+AGNI+CALLIOPE+ZEPHYRUS+MORS):
 
 > **Act as a Senior Scientific Software Engineer for PROTEUS.**
 >
-> I need an integration test for the Standard Configuration (test_std_config.py).
+> I need an integration test for the Standard Configuration (e.g. test_std_config.py or multi-module coupling).
 >
-> 1.  **Scope:** Test the full coupling of ARAGOG, AGNI, CALLIOPE, ZEPHYRUS, and MORS.
-> 2.  **Mocking:** **Do NOT mock** the internal physics interactions between these modules. Mock only *external* I/O (like network downloads) using `unittest.mock`.
-> 3.  **Config:** Use `tests/conftest.py` fixtures (e.g., `intermediate_params`) to set up a realistic super-Earth scenario.
-> 4.  **Verification:**
->     - **Stable Evolution:** Run for 3+ timesteps without crashing or NaN values.
->     - **Conservation:** Assert global energy and mass conservation (tolerances: 1e-4).
->     - **Feedback:** Verify that `T_surf` updates affect `outgassing_rate`, which affects `atmos_mass`, which affects `T_surf`.
-> 5.  **Marker:** Use `@pytest.mark.integration`.
+> 1. **Scope:** Test coupling of the relevant modules (ARAGOG, AGNI, CALLIOPE, ZEPHYRUS, MORS as needed).
+> 2. **Mocking:** **Do not mock** internal physics between these modules. Mock only external I/O (e.g. network downloads) with `unittest.mock`.
+> 3. **Config:** Use fixtures from `tests/conftest.py` and `tests/integration/conftest.py` (e.g. `intermediate_params`, config paths).
+> 4. **Verification:** Stable evolution (multiple timesteps, no crash/NaN); energy and mass conservation with stated tolerances; feedback checks (e.g. T_surf ↔ outgassing ↔ atmos_mass).
+> 5. **Marker:** Use `@pytest.mark.integration` (and `@pytest.mark.slow` if long-running).
 >
 > **Generate the integration test skeleton.**
+
+---
+
+## See Also
+
+- [Test Categorization](test_categorization.md) — Markers, CI pipeline, fixtures
+- [Test Infrastructure](test_infrastructure.md) — Layout, coverage, troubleshooting
+- [Test Building Strategy](test_building_strategy.md) — Status and principles
+- [AGENTS.md](../AGENTS.md) — Test commands and coverage thresholds
