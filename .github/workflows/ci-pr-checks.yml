@@ -132,6 +132,7 @@ jobs:
 
       - name: Run unit tests with coverage
         id: unit-tests
+        continue-on-error: true
         run: |
           cd /opt/proteus
           # Run unit tests, excluding placeholder tests and examples
@@ -141,6 +142,45 @@ jobs:
             --cov-fail-under=${FAST_COV_FAIL_UNDER} \
             --durations=0 \
             --durations-min=0 | tee pytest-unit.log
+
+      - name: Smart rebuild of physics modules
+        run: |
+          cd /opt/proteus
+          echo "Checking if Fortran/C source files changed..."
+
+          # SOCRATES rebuild (only if sources changed)
+          if [ -d "socrates" ]; then
+            cd socrates
+            ./build_code 2>&1 | grep -q "Nothing to be done" || {
+              echo "SOCRATES needs rebuild..."
+              ./build_code
+            }
+            cd /opt/proteus
+          fi
+
+          # AGNI rebuild (only if Julia sources changed)
+          if [ -d "AGNI" ]; then
+            cd AGNI
+            if git diff --name-only HEAD origin/main | grep -q '\.jl$'; then
+              echo "AGNI Julia sources changed, re-instantiating packages..."
+              julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+            else
+              echo "No AGNI changes detected, skipping rebuild"
+            fi
+            cd /opt/proteus
+          fi
+
+      - name: Run smoke tests (append to coverage)
+        id: smoke-tests
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          pytest -m "smoke and not skip" \
+            --ignore=tests/examples \
+            --cov=src --cov-append \
+            --cov-report=term-missing --cov-report=xml --cov-report=html \
+            --durations=0 \
+            --durations-min=0 -v --tb=short | tee pytest-smoke.log
 
       - name: Generate coverage JSON
         continue-on-error: true
@@ -168,6 +208,9 @@ jobs:
 
       - name: Write workflow summary (visible on Actions run page)
         if: always()
+        env:
+          UNIT_OUTCOME: ${{ steps.unit-tests.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke-tests.outcome }}
         run: |
           cd /opt/proteus
           python - <<'PY'
@@ -253,9 +296,14 @@ jobs:
               has_est = True
 
           summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
+          unit_outcome = os.environ.get("UNIT_OUTCOME", "unknown")
+          smoke_outcome = os.environ.get("SMOKE_OUTCOME", "unknown")
           with open(summary_path, "w") as f:
               f.write("# Fast PR Checks – Summary\n\n")
-              f.write("## Total test coverage (unit tests, this run)\n\n")
+              f.write("## Which tests failed\n\n")
+              f.write(f"- **Unit tests:** {unit_outcome}\n")
+              f.write(f"- **Smoke tests:** {smoke_outcome}\n\n")
+              f.write("## Total test coverage (unit + smoke tests, this run)\n\n")
               f.write(f"- **Line coverage:** **{u_pct:.2f}%**\n")
               f.write(f"- **Covered lines:** {u_covered} / {u_total}\n\n")
               f.write("## Integration coverage (last Nightly Science v5 run)\n\n")
@@ -286,7 +334,7 @@ jobs:
                   f.write("## Estimated total\n\n")
                   f.write("- Not computed (unit coverage data missing).\n\n")
               f.write("### Notes\n")
-              f.write("- Unit: `pytest -m \"unit and not skip\"` (this run). Integration: last **Nightly Science Validation (v5)** run.\n")
+              f.write("- Coverage above is from **unit + smoke** tests (this run). Integration: last **Nightly Science Validation (v5)** run.\n")
               f.write("- Placeholder tests (`@pytest.mark.skip`) are excluded.\n")
               f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
 
@@ -309,17 +357,21 @@ jobs:
           diff-cover /opt/proteus/coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
 
       - name: Append failure guidance (needs more unit tests)
-        if: (failure() && !cancelled()) && (steps.unit-tests.outcome == 'failure' || steps.diff-cover.outcome == 'failure')
+        if: (failure() && !cancelled()) && (steps.unit-tests.outcome == 'failure' || steps.smoke-tests.outcome == 'failure' || steps.diff-cover.outcome == 'failure')
         run: |
           {
             echo ""
             echo "---"
             echo "## PR did not pass checks"
             echo ""
-            echo "This run failed because **unit coverage is below threshold** or **diff-cover on changed lines** is below 80%. The PR likely needs more unit tests."
+            echo "This run failed because **unit tests**, **smoke tests**, or **diff-cover on changed lines** did not pass. See the \"Which tests failed\" section above."
             echo ""
             echo "See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail job if unit or smoke tests failed
+        if: always() && (steps.unit-tests.outcome == 'failure' || steps.smoke-tests.outcome == 'failure')
+        run: exit 1
 
       - name: Ratchet fast coverage threshold
         continue-on-error: true
@@ -382,81 +434,17 @@ jobs:
           path: /opt/proteus/pytest-unit.log
           retention-days: 7
 
-  smoke-tests:
-    name: Smoke Tests (Real Binaries)
-    runs-on: ubuntu-latest
-    needs: unit-tests
-    container:
-      image: ghcr.io/formingworlds/proteus:${{ github.ref == 'refs/heads/main' && 'latest' || 'tl-test_ecosystem_v5' }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
-
-    steps:
-      - name: Checkout PR code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Overlay PR code onto container
-        run: |
-          echo "Copying PR code over container base..."
-          rsync -av --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
-          cd /opt/proteus
-          pip install -e ".[develop]" --no-deps
-
-      - name: Smart rebuild of physics modules
-        run: |
-          cd /opt/proteus
-          echo "Checking if Fortran/C source files changed..."
-
-          # SPIDER rebuild (only if sources changed)
-          # Note: SPIDER is not built in the Docker image or CI
-          # if [ -d "SPIDER" ] && [ -f "SPIDER/makefile" ]; then
-          #   cd SPIDER
-          #   make -q || {
-          #     echo "SPIDER needs rebuild..."
-          #     make -j$(nproc)
-          #   }
-          #   cd /opt/proteus
-          # fi
-
-          # SOCRATES rebuild (only if sources changed)
-          if [ -d "socrates" ]; then
-            cd socrates
-            ./build_code 2>&1 | grep -q "Nothing to be done" || {
-              echo "SOCRATES needs rebuild..."
-              ./build_code
-            }
-            cd /opt/proteus
-          fi
-
-          # AGNI rebuild (only if Julia sources changed)
-          if [ -d "AGNI" ]; then
-            # Check if any .jl files were modified in AGNI
-            cd AGNI
-            if git diff --name-only HEAD origin/main | grep -q '\.jl$'; then
-              echo "AGNI Julia sources changed, re-instantiating packages..."
-              julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
-            else
-              echo "No AGNI changes detected, skipping rebuild"
-            fi
-            cd /opt/proteus
-          fi
-
-      - name: Run smoke tests
-        run: |
-          cd /opt/proteus
-          # Run smoke tests with real binaries (1 timestep, low resolution)
-          # Skip placeholder tests that are not yet implemented
-          pytest -m "smoke and not skip" \
-            --ignore=tests/examples \
-            -v --tb=short
-
-      - name: Upload smoke test artifacts
+      - name: Upload smoke pytest log
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
+        with:
+          name: smoke-pytest-log
+          path: /opt/proteus/pytest-smoke.log
+          retention-days: 7
+
+      - name: Upload smoke test artifacts on failure
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.smoke-tests.outcome == 'failure'
         with:
           name: smoke-test-failures
           path: |
