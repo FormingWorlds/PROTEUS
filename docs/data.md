@@ -11,6 +11,16 @@
 - [Exoplanet population data](#exoplanet-population-data)
 - [Mass-radius relations](#mass-radius-relations)
 
+## Automatic data download
+
+PROTEUS automatically downloads large reference data files from [Zenodo](https://zenodo.org/communities/proteus_framework/) on first run. This includes stellar spectra, opacities, equations of state, and other tabulated data.
+
+- **Token is optional**: The code works without a Zenodo API token, using public access.
+- **Higher limits**: Optional API token provides higher rate limits if you download often.
+- **OSF Fallback**: If Zenodo is unavailable, data downloads automatically from [OSF](https://osf.io/8dumn/).
+
+To optionally configure your token, see the [Troubleshooting guide](troubleshooting.html#all-data-download-errors-or-slow-zenodo-downloads).
+
 ## Stellar spectra
 
 PROTEUS can use:

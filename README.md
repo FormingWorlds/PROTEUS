@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml">
-    <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg">
+    <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg?branch=main">
   </a>
   <a href="https://proteus-framework.org/PROTEUS/">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main">
