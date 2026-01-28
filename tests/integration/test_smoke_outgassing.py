@@ -10,6 +10,7 @@ binaries but minimal physics (1 timestep, dummy modules where possible).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -18,10 +19,14 @@ import pytest
 from proteus.proteus import Proteus
 
 PROTEUS_ROOT = Path(__file__).parent.parent.parent
+RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(reason='CALLIOPE integration test - slow, reserved for nightly CI')
+@pytest.mark.skipif(
+    not RUN_NIGHTLY_SMOKE,
+    reason='CALLIOPE integration smoke test reserved for nightly CI with compiled binaries',
+)
 def test_smoke_calliope_dummy_atmos_outgassing():
     """Test CALLIOPE outgassing + dummy atmosphere coupling (1 timestep).
 

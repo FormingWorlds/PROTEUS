@@ -26,6 +26,9 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
       options: --user root
 
+    env:
+      PROTEUS_CI_NIGHTLY: "1"
+
     steps:
       - name: Checkout branch code
         uses: actions/checkout@v4

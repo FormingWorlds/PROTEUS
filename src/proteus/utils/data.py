@@ -1217,3 +1217,18 @@ def get_zalmoxis_EOS():
         material_properties_iron_Tdep_silicate_planets,
         material_properties_water_planets,
     )
+
+
+def get_Seager_EOS():
+    """Backward-compatible Seager EOS helper.
+
+    Returns the Seager et al. (2007) EOS material property dictionaries for
+    iron/silicate and water planets. This mirrors the original
+    ``get_Seager_EOS`` API that older code and tests expect.
+
+    The implementation reuses :func:`get_zalmoxis_EOS` and returns only the
+    iron/silicate and water dictionaries.
+    """
+
+    iron_silicate, _iron_Tdep, water = get_zalmoxis_EOS()
+    return iron_silicate, water

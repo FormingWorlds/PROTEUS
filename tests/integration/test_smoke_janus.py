@@ -7,14 +7,21 @@ dummy interior module and run for at last one timestep (binary execution).
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from proteus import Proteus
 
+RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
+
 
 @pytest.mark.janus
 @pytest.mark.smoke
-@pytest.mark.skip(reason='JANUS/SOCRATES runtime instability (hangs)')
+@pytest.mark.skipif(
+    not RUN_NIGHTLY_SMOKE,
+    reason='JANUS/SOCRATES smoke test reserved for nightly CI with compiled SOCRATES binaries',
+)
 def test_smoke_janus_dummy_coupling(tmp_path):
     """
     Test JANUS (atmos) + Dummy (interior) coupling (1 step).

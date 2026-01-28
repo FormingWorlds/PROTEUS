@@ -18,6 +18,7 @@
 #
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -26,6 +27,9 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+
+# Run JANUS/AGNI smoke tests only in nightly CI (requires compiled binaries)
+RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
 
 @pytest.mark.smoke
@@ -120,7 +124,10 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(reason='JANUS integration requires compiled SOCRATES binaries')
+@pytest.mark.skipif(
+    not RUN_NIGHTLY_SMOKE,
+    reason='JANUS integration smoke test requires compiled SOCRATES binaries (nightly only)',
+)
 def test_smoke_janus_dummy_interior_radiation_balance():
     """Test JANUS + dummy interior coupling (1 timestep).
 
@@ -190,7 +197,10 @@ def test_smoke_janus_dummy_interior_radiation_balance():
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(reason='AGNI integration requires Julia/AGNI binaries')
+@pytest.mark.skipif(
+    not RUN_NIGHTLY_SMOKE,
+    reason='AGNI integration smoke test requires Julia/AGNI binaries (nightly only)',
+)
 def test_smoke_agni_dummy_interior_convergence():
     """Test AGNI + dummy interior coupling (1 timestep).
 
