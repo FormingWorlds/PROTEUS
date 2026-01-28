@@ -2,7 +2,7 @@
     <a href="https://proteus-framework.org">
     <div>
         <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_white.png#gh-light-mode-only" style="vertical-align: middle;" width="60%"/>
-        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/ks/docs/docs/assets/PROTEUS_black_nobkg.png#gh-dark-mode-only" style="vertical-align: middle;" width="60%"/>
+        <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_black_nobkg.png#gh-dark-mode-only" style="vertical-align: middle;" width="60%"/>
     </div>
     </a>
 </h1>
