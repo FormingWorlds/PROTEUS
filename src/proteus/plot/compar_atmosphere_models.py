@@ -17,6 +17,7 @@ from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from proteus.utils.helper import find_nearest
 from proteus.utils.plot import sample_times
 
 if TYPE_CHECKING:
@@ -136,6 +137,32 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
 
     return out
 
+def compare_times(times,plottimes):
+
+    # get samples on log-time scale
+    sample_t = []
+    sample_i = []
+    for s in plottimes: # Sample on log-scale
+        if s in times:
+            sample_t.append(int(s))
+            print('time in list',s)
+        else:
+            print('time not in list')
+            remaining = [int(t) for t in set(times) - set(plottimes)]
+            if len(remaining) == 0:
+                break
+            # Get next nearest time
+            val,_ = find_nearest(remaining,s)
+            print('nearest value found',val)
+            sample_t.append(int(val))
+
+            # Get the index of this time in the original array
+            _,idx = find_nearest(times,val)
+            sample_i.append(int(idx))
+    print(sample_t, sample_i)
+
+    return sample_t, sample_i
+
 def ncdf_flag_to_bool(var)->bool:
     '''Convert NetCDF flag (y/n) to Python bool (true/false)'''
     v = str(var[0].tobytes().decode()).lower()
@@ -151,20 +178,49 @@ def ncdf_flag_to_bool(var)->bool:
 def read_2model_data(output_dir1:str, output_dir2:str, extension, tmin, nsamp, extra_keys=[]):
     """
     Read all p,t,z profiles from NetCDF files in a PROTEUS output folder.
+    compare times at which to plot the output between the two folders and make sure that they agree
     """
 
-    plot_times1, _1 = sample_output(output_dir1, extension, tmin, nsamp)
-    plot_times2, _2 = sample_output(output_dir2, extension, tmin, nsamp)
+    times1, plot_times1, _1 = sample_output(output_dir1, extension, tmin, nsamp)
+    times2, plot_times2, _2 = sample_output(output_dir2, extension, tmin, nsamp)
 
-    print("printing times")
-    print(plot_times1[0])
-    print(plot_times1[-1])
+
+    #set new array bound for the time arrays from two runs: same lower bound (higher minimum ) and same upper bound (lower maximum)
+    lower_bound = max(np.array(plot_times1).min(), np.array(plot_times2).min())   # higher minimum
+    upper_bound = min(np.array(plot_times1).max(), np.array(plot_times2).max())   # lower maximum
+
+    #times1 = np.clip(times1, lower_bound, upper_bound)
+    #times2 = np.clip(times2, lower_bound, upper_bound)
+
+    #check that values in array are not out of bounds
+    for name, arr in {"a": plot_times1, "b": plot_times2}.items():
+        mask_low = arr < lower_bound
+        mask_high = arr > upper_bound
+
+        if np.any(mask_low | mask_high):
+            if name == "a":
+                plot_times1[mask_low] = plot_times2[mask_low]
+                plot_times1[mask_high] = plot_times2[mask_high]
+            else:
+                plot_times2[mask_low] = plot_times1[mask_low]
+                plot_times2[mask_high] = plot_times1[mask_high]
+
+    # replace only the remaining (in-bounds) values in times 2 to have the same array as in times 1
+    mask2 = (plot_times2 < lower_bound) | (plot_times2 > upper_bound)
+    # replace only the remaining (in-bounds) values
+    plot_times2[~mask2] = plot_times1[~mask2]
+
+    #now find nearest value
+
+    final_times1,final_indices1=compare_times(times1,plot_times1)
+    final_times2,final_indices2=compare_times(times2,plot_times2)
+
 
     profiles1 = [read_ncdf_profile(os.path.join(output_dir1, "data", "%.0f_atm.nc"%t),
-                                    extra_keys=extra_keys) for t in plot_times1]
+                                    extra_keys=extra_keys) for t in final_times1]
 
     profiles2 = [read_ncdf_profile(os.path.join(output_dir2, "data", "%.0f_atm.nc"%t),
-                                    extra_keys=extra_keys) for t in plot_times2]
+                                    extra_keys=extra_keys) for t in final_times2]
 
 
     if None in profiles2:
@@ -178,7 +234,7 @@ def read_2model_data(output_dir1:str, output_dir2:str, extension, tmin, nsamp, e
             log.warning("You may need to extract archived data files")
         return
 
-    return plot_times1,plot_times2,profiles1, profiles2
+    return final_times1,final_times2,profiles1, profiles2
 
 
 
@@ -227,12 +283,14 @@ def sample_output(output_dir, extension:str = "_atm.nc", tmin:float = 1.0, nsamp
 
     # get times
     times = [int(f.split("/")[-1].split(extension)[0]) for f in files]
+    #print(times)
 
     out_t, out_i = sample_times(times, nsamp, tmin=tmin)
     out_f = [files[i] for i in out_i]
 
     # return times and file paths
-    return out_t, out_f
+    return np.array(times),np.array(out_t), np.array(out_f)
+
 
 
 def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tmin=1e4, nsamp=5, plot_format="pdf"):
@@ -275,15 +333,10 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
     """
 
 
-    plottimes1,plottimes2,profiles1,profiles2 = read_2model_data(output_dir1,output_dir2, extension, tmin, nsamp)
+    plottimes1, plottimes2, profiles1, profiles2 = read_2model_data(output_dir1,output_dir2, extension, tmin, nsamp)
     t1=int(str(plottimes1[0]))
     t2=int(str(plottimes1[-1]))
-    print(plottimes1)
-    print(plottimes2)
 
-    #if len(times1) < 2:
-       # log.warning("Insufficient data to make plot_atmosphere_cbar")
-       # return
 
     log.info("Plot atmosphere temperatures colourbar")
 
@@ -345,7 +398,7 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
 
     # Save plot
     fname = os.path.join(output_dir1,"plots","plot_atmosphere_comparison.%s"%plot_format)
-    fig.savefig(fname, bbox_inches='tight', dpi=200)
+    fig.savefig(fname, bbox_inches='tight', dpi=300)
 
 
 

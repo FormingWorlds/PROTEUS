@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "run_lavatmos_test_iron_species"
+        path        = "run_lavatmos_alkalis_iron_SiO"
         logging     = "INFO"
         plot_mod    = 3     # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -321,7 +321,7 @@ version = "2.0"
 
     silicates = true
     fastchempath ='/data3/leoni/LavAtmos/FastChem/fastchem3/output/'
-    vaplist = ["SiO", "Fe", "FeO"]
+    vaplist = ["SiO", "Fe", "FeO", "Na", "K"]
 
     module = "calliope"         # Which outgassing module to use
 
