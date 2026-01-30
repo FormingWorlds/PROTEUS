@@ -24,6 +24,8 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # NOTE: Running as root is a security risk. This is acceptable for CI but should
+      # be changed to a non-root user in production deployments.
       options: --user root
 
     env:
@@ -61,7 +63,20 @@ jobs:
           print(f"FULL_COV_FAIL_UNDER={val}")
           PY
 
+      - name: Check disk space before data download
+        run: |
+          echo "=== Disk Space Before Data Download ==="
+          df -h
+          # Check if we have at least 10GB free in /opt
+          available=$(df /opt | tail -1 | awk '{print $4}')
+          available_gb=$(echo "scale=2; $available / 1024 / 1024" | bc)
+          echo "Available space in /opt: ${available_gb}GB"
+          if (( $(echo "$available_gb < 10" | bc -l) )); then
+            echo "WARNING: Less than 10GB available. Tests may fail due to insufficient disk space."
+          fi
+
       - name: Download test data
+        id: download_data
         run: |
           cd /opt/proteus
           # Download all required data based on all_options.toml configuration
@@ -182,10 +197,19 @@ jobs:
           # Exit with error if critical data is missing
           if not aragog_ok or not stellar_ok:
               print('\\nFATAL: Critical data missing. Cannot run tests.')
-              print(f'  ARAGOG data: {\"OK\" if aragog_ok else \"MISSING\"}')
-              print(f'  Stellar tracks: {\"OK\" if stellar_ok else \"MISSING\"}')
+              print(f'  ARAGOG data: {"OK" if aragog_ok else "MISSING"}')
+              print(f'  Stellar tracks: {"OK" if stellar_ok else "MISSING"}')
               sys.exit(1)
           "
+
+      - name: Check disk space after data download
+        if: always()
+        run: |
+          echo "=== Disk Space After Data Download ==="
+          df -h
+          available=$(df /opt | tail -1 | awk '{print $4}')
+          available_gb=$(echo "scale=2; $available / 1024 / 1024" | bc)
+          echo "Available space in /opt: ${available_gb}GB"
 
       - name: Free up disk space and configure Julia
         run: |
@@ -207,6 +231,8 @@ jobs:
           fi
 
       - name: Coverage erase and run unit tests (first for combined coverage)
+        # Only run if data download succeeded
+        if: steps.download_data.outcome == 'success'
         continue-on-error: true
         run: |
           cd /opt/proteus
@@ -223,6 +249,7 @@ jobs:
             --cov-config=pyproject.toml 2>&1 | tee /tmp/unit-output.txt
 
       - name: Run smoke tests with coverage (append for total = unit + smoke + integration + slow)
+        if: steps.download_data.outcome == 'success'
         continue-on-error: true
         run: |
           cd /opt/proteus
@@ -238,6 +265,7 @@ jobs:
             --cov-config=pyproject.toml 2>&1 | tee /tmp/smoke-output.txt
 
       - name: Run integration coverage (dummy + integration and not slow)
+        if: steps.download_data.outcome == 'success'
         continue-on-error: true
         run: |
           cd /opt/proteus
@@ -275,14 +303,17 @@ jobs:
           coverage json -o coverage-integration-only.json || echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-integration-only.json
 
       - name: Run slow integration tests (standard config)
+        if: steps.download_data.outcome == 'success'
         continue-on-error: true
         run: |
           cd /opt/proteus
           # Run slow integration tests (standard config with all real modules)
           # These require ARAGOG lookup data and may take 10-15 minutes.
+          # Add per-test timeout to prevent workflow timeout
           pytest tests/integration/test_integration_std_config.py \
             -m "slow" \
             -v --tb=long \
+            --timeout=900 \
             --junitxml=/tmp/junit-slow.xml \
             --cov=proteus \
             --cov-append \

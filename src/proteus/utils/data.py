@@ -4,6 +4,7 @@ import functools
 import hashlib
 import logging
 import os
+import re
 import subprocess as sp
 from pathlib import Path
 from time import sleep
@@ -48,6 +49,12 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
         - zenodo_ok : bool
             Did the download/request complete successfully?
     """
+    # Sanitize zenodo_id to prevent command injection
+    # Zenodo IDs should only contain digits
+    if not re.match(r'^[0-9]+$', zenodo_id):
+        log.error(f'Invalid Zenodo ID format: {zenodo_id}. Must contain only digits.')
+        return False
+
     # Check if zenodo_get is available
     try:
         sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
@@ -105,12 +112,12 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
                     pass
                 log.warning(
                     f'Failed to get data from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS}): '
-                    f'exit code {proc.returncode}. Error: {error_msg[:200]}'
+                    f'exit code {proc.returncode}. Error: {error_msg[:500]}'
                 )
 
         except sp.TimeoutExpired:
             log.warning(
-                f'zenodo_get timed out after {MAX_DLTIME + 30:.1f}s (ID {zenodo_id}, '
+                f'zenodo_get timed out after {MAX_DLTIME:.1f}s (ID {zenodo_id}, '
                 f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
             )
         except Exception as e:
@@ -156,6 +163,12 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
         - valid : bool
             Is folder valid?
     """
+    # Sanitize zenodo_id to prevent command injection
+    # Zenodo IDs should only contain digits
+    if not re.match(r'^[0-9]+$', zenodo_id):
+        log.error(f'Invalid Zenodo ID format: {zenodo_id}. Must contain only digits.')
+        return False
+
     # Check if zenodo_get is available
     try:
         sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
@@ -245,6 +258,11 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
             if not os.path.exists(file):
                 log.warning(f'Detected missing file {name} (Zenodo record {zenodo_id})')
                 return False
+
+            # skip symbolic links for security
+            if os.path.islink(file):
+                log.debug(f'Skipping symbolic link: {name}')
+                continue
 
             # don't check the hashes of very large files, because it's slow
             if os.path.getsize(file) > hash_maxfilesize:
