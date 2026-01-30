@@ -64,24 +64,28 @@ jobs:
           PY
 
       - name: Check disk space before data download
+        continue-on-error: true
         run: |
           echo "=== Disk Space Before Data Download ==="
           df -h
           # Check if we have at least 10GB free in /opt (using Python instead of bc)
-          python3 << 'PYEOF'
+          python3 << 'PYEOF' || echo "Disk space check failed (non-critical)"
           import subprocess
           import sys
-          result = subprocess.run(['df', '/opt'], capture_output=True, text=True)
-          lines = result.stdout.strip().split('\n')
-          if len(lines) > 1:
-              fields = lines[1].split()
-              available_kb = int(fields[3])
-              available_gb = available_kb / 1024 / 1024
-              print(f'Available space in /opt: {available_gb:.2f}GB')
-              if available_gb < 10:
-                  print('WARNING: Less than 10GB available. Tests may fail due to insufficient disk space.')
-          else:
-              print('Could not parse df output')
+          try:
+              result = subprocess.run(['df', '/opt'], capture_output=True, text=True, check=True)
+              lines = result.stdout.strip().split('\n')
+              if len(lines) > 1:
+                  fields = lines[1].split()
+                  available_kb = int(fields[3])
+                  available_gb = available_kb / 1024 / 1024
+                  print(f'Available space in /opt: {available_gb:.2f}GB')
+                  if available_gb < 10:
+                      print('WARNING: Less than 10GB available. Tests may fail due to insufficient disk space.')
+              else:
+                  print('Could not parse df output')
+          except Exception as e:
+              print(f'Error checking disk space: {e}')
           PYEOF
 
       - name: Download test data
@@ -213,21 +217,25 @@ jobs:
 
       - name: Check disk space after data download
         if: always()
+        continue-on-error: true
         run: |
           echo "=== Disk Space After Data Download ==="
           df -h
           # Check disk space using Python instead of bc
-          python3 << 'PYEOF'
+          python3 << 'PYEOF' || echo "Disk space check failed (non-critical)"
           import subprocess
-          result = subprocess.run(['df', '/opt'], capture_output=True, text=True)
-          lines = result.stdout.strip().split('\n')
-          if len(lines) > 1:
-              fields = lines[1].split()
-              available_kb = int(fields[3])
-              available_gb = available_kb / 1024 / 1024
-              print(f'Available space in /opt: {available_gb:.2f}GB')
-          else:
-              print('Could not parse df output')
+          try:
+              result = subprocess.run(['df', '/opt'], capture_output=True, text=True, check=True)
+              lines = result.stdout.strip().split('\n')
+              if len(lines) > 1:
+                  fields = lines[1].split()
+                  available_kb = int(fields[3])
+                  available_gb = available_kb / 1024 / 1024
+                  print(f'Available space in /opt: {available_gb:.2f}GB')
+              else:
+                  print('Could not parse df output')
+          except Exception as e:
+              print(f'Error checking disk space: {e}')
           PYEOF
 
       - name: Free up disk space and configure Julia
@@ -238,15 +246,46 @@ jobs:
           echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
           # Check available space in /opt
           df -h /opt
-          # Ensure AGNI Julia environment has all dependencies installed (including Plots)
+
+          # Ensure AGNI Julia environment has all dependencies installed
           if [ -d "/opt/proteus/AGNI" ]; then
-            echo "Installing AGNI Julia dependencies..."
+            echo "=== Setting up AGNI Julia environment ==="
             cd /opt/proteus/AGNI
+
+            # First, instantiate the project environment
+            echo "Running Pkg.instantiate()..."
             julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()' || {
-              echo "Warning: Pkg.instantiate() failed, trying to add Plots explicitly..."
-              julia -e 'using Pkg; Pkg.activate("."); Pkg.add("Plots")'
+              echo "ERROR: Pkg.instantiate() failed. Attempting recovery..."
+              # Try to resolve and update
+              julia -e 'using Pkg; Pkg.activate("."); Pkg.resolve(); Pkg.update()'
             }
+
+            # Explicitly add critical packages if missing
+            echo "Verifying critical packages (Tables, Plots, DataFrames)..."
+            julia -e '
+              using Pkg
+              Pkg.activate(".")
+              critical_pkgs = ["Tables", "Plots", "DataFrames"]
+              for pkg in critical_pkgs
+                  try
+                      @eval using $(Symbol(pkg))
+                      println("✓ $pkg is available")
+                  catch e
+                      println("✗ $pkg missing, installing...")
+                      Pkg.add(pkg)
+                  end
+              end
+            '
+
+            # Verify AGNI can be loaded
+            echo "Testing AGNI module load..."
+            julia -e 'using Pkg; Pkg.activate("."); include("src/AGNI.jl"); println("✓ AGNI loaded successfully")' || {
+              echo "WARNING: AGNI module failed to load. AGNI tests may fail."
+            }
+
             cd /opt/proteus
+          else
+            echo "WARNING: AGNI directory not found at /opt/proteus/AGNI"
           fi
 
       - name: Coverage erase and run unit tests (first for combined coverage)
@@ -328,11 +367,11 @@ jobs:
           cd /opt/proteus
           # Run slow integration tests (standard config with all real modules)
           # These require ARAGOG lookup data and may take 10-15 minutes.
-          # Add per-test timeout to prevent workflow timeout
+          # Note: --timeout flag requires pytest-timeout plugin (not installed in container)
+          # Relying on workflow-level timeout (90 minutes) instead
           pytest tests/integration/test_integration_std_config.py \
             -m "slow" \
             -v --tb=long \
-            --timeout=900 \
             --junitxml=/tmp/junit-slow.xml \
             --cov=proteus \
             --cov-append \
