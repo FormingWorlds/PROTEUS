@@ -55,27 +55,34 @@ This document captures the living context of PROTEUS—the "why" behind architec
 **Primary Objective**: Harden CI/CD infrastructure and achieve comprehensive test coverage
 
 **Major Activities**:
-1. **CI Workflow Stabilization** (commits: 65bb595a, 9986961d, 1eec4bad, 10ad0bfa)
+1. **CI Workflow Stabilization** (commits: c0c1f4bd, 65bb595a, 9986961d, 1eec4bad, 10ad0bfa)
    - Fixed disk space calculation in nightly workflow (replaced `bc` with Python)
+   - Enhanced AGNI Julia setup with explicit package verification
    - Improved data validation and Julia environment persistence
    - Enabled smoke tests in nightly workflow with `PROTEUS_CI_NIGHTLY=1` gating
    - Enhanced error handling and coverage reporting
 
-2. **Test Infrastructure Improvements** (commits: c9c95c5a, 6f33d72d, dfce88ea)
+2. **Security Improvements** (commit: 9986961d)
+   - Added input sanitization for Zenodo IDs (prevent command injection)
+   - Symbolic link handling in validate_zenodo_folder
+   - Enhanced error diagnostics (200 → 500 char limit)
+   - Fixed timeout message accuracy
+
+3. **Test Infrastructure Improvements** (commits: c9c95c5a, 6f33d72d, dfce88ea)
    - Fixed negative flux validation in JANUS integration tests
    - Updated test building strategy and categorization documentation
    - Enhanced unit tests for configuration and data utilities
 
-3. **Coverage Ratcheting** (commits: 23df9141, 80768fb5)
+4. **Coverage Ratcheting** (commits: 23df9141, 80768fb5)
    - Auto-updated fast coverage threshold (automated via CI)
    - Threshold now at 44.45% for fast gate (unit + smoke)
 
-4. **Integration Test Enhancements** (commits: 21c87d88, c15245aa, 980b441b)
+5. **Integration Test Enhancements** (commits: 21c87d88, c15245aa, 980b441b)
    - Root-cause fixes for ARAGOG+AGNI integration test (removed skips)
    - Enhanced AGNI atmosphere allocation
    - Improved integration testing for ARAGOG and AGNI coupling
 
-5. **Workflow Robustness** (commits: 1990f6c4, 76ce2506, 7ed06597)
+6. **Workflow Robustness** (commits: 1990f6c4, 76ce2506, 7ed06597)
    - PR checks now continue on error with comprehensive reporting
    - Fixed timeout and coverage summary when jobs fail
    - Enhanced failure guidance for developers
@@ -196,6 +203,38 @@ This document captures the living context of PROTEUS—the "why" behind architec
 ---
 
 ## 4. Known Debt & "Watch Outs"
+
+### **CRITICAL BLOCKING ISSUE: Julia Version Incompatibility** ⚠️
+**Status**: Active blocker as of 2026-01-30 (workflow run 21532123452)
+
+**Problem**: AGNI requires Julia ~1.11 but Docker container has Julia 1.12.4
+
+**Error**:
+```
+julia version requirement for package at /opt/proteus/AGNI not satisfied:
+compat entry "julia = ~1.11" does not include Julia version 1.12.4
+```
+
+**Impact**:
+- AGNI cannot load in nightly CI
+- All AGNI-dependent tests fail (smoke, integration)
+- Workflow aborts at Julia setup step
+- No coverage data collected
+
+**Solutions** (choose one):
+1. **Update Dockerfile to use Julia 1.11.x** (recommended, immediate fix)
+   - Change Julia installation to use 1.11.x instead of latest
+   - Verify AGNI loads successfully
+   - Test in nightly workflow
+
+2. **Update AGNI Project.toml to support Julia 1.12** (requires AGNI maintainer)
+   - Contact Harrison Nicholls (AGNI maintainer)
+   - Update compat entry: `julia = "~1.11, ~1.12"`
+   - Test compatibility thoroughly
+
+**Action Required**: Fix before next nightly run to unblock CI pipeline
+
+---
 
 ### Documentation Drift
 - **Issue**: Some test documentation references old workflow names
@@ -359,12 +398,57 @@ All modules follow same standards:
 
 ---
 
+### Lesson 4: Julia Version Compatibility (2026-01-30)
+**Problem**: Nightly workflow run 21532123452 failed with Julia version incompatibility.
+
+**Root Cause**: Docker container has Julia 1.12.4, but AGNI requires Julia ~1.11 (1.11.x only).
+
+**Error**: `julia version requirement for package at /opt/proteus/AGNI not satisfied: compat entry "julia = ~1.11" does not include Julia version 1.12.4`
+
+**Impact**: AGNI cannot load, causing all AGNI-dependent tests to fail and workflow to abort.
+
+**Solution Required**: Either:
+- Update Docker image to use Julia 1.11.x (recommended)
+- Update AGNI's Project.toml to support Julia 1.12 (requires AGNI maintainer)
+
+**Takeaway**: Pin Julia version in Docker to match AGNI requirements; version mismatches are blocking.
+
+---
+
+### Lesson 5: Security in Data Downloads (2026-01-30)
+**Problem**: Potential command injection vulnerability in Zenodo download functions.
+
+**Root Cause**: Zenodo IDs passed directly to subprocess without sanitization.
+
+**Solution**: Added regex validation (`^[0-9]+$`) for Zenodo IDs in `download_zenodo_folder()` and `validate_zenodo_folder()`.
+
+**Takeaway**: Always sanitize external inputs before passing to subprocess, even if they seem safe.
+
+---
+
+### Lesson 6: CI Dependency Management (2026-01-30)
+**Problem**: Disk space monitoring failed because `bc` utility not available in container.
+
+**Root Cause**: Assumed system utilities without verifying container contents.
+
+**Solution**: Replaced `bc` with Python for disk space calculations; made checks non-blocking.
+
+**Takeaway**: Don't assume system utilities; use Python or verify dependencies in Docker image.
+
+---
+
 ## 8. Future Roadmap (Known Priorities)
+
+### Immediate (Next 1-2 Days) - CRITICAL
+- **Fix Julia version incompatibility**: Update Dockerfile to use Julia 1.11.x
+- **Verify AGNI loads**: Test Julia setup in nightly workflow
+- **Validate smoke tests**: Ensure all 11 smoke tests run (not skipped)
 
 ### Short-Term (Next 2-4 Weeks)
 - Continue expanding integration test coverage (ARAGOG+AGNI, CALLIOPE+ZEPHYRUS)
 - Remove remaining test skips as stability improves
 - Maintain coverage ratcheting momentum
+- Add pytest-timeout plugin to Docker image for better test timeout control
 
 ### Medium-Term (Next 2-3 Months)
 - Multi-architecture Docker support (ARM64 for Apple Silicon)
