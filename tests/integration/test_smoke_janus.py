@@ -181,10 +181,9 @@ version = "2.0"
     # 3. Initialize Proteus
     runner = Proteus(config_path=str(cfg_file))
 
-    # Override output directory to use tmp_path to avoid cluttering real output/
-    runner.directories['output'] = str(tmp_path / 'output')
-    runner.directories['output/data'] = str(tmp_path / 'output/data')
-    runner.directories['output/plots'] = str(tmp_path / 'output/plots')
+    # Override output path via config (proper way - triggers init_directories)
+    runner.config.params.out.path = str(tmp_path / 'output')
+    runner.init_directories()
 
     # 4. Run (offline mode)
     runner.start(offline=True)

@@ -800,10 +800,12 @@ def test_get_Seager_EOS_exists(mock_download, tmp_path):
     mock_download.assert_not_called()
 
     # Check structure of returned dictionaries
+    # iron_silicate has 'mantle' and 'core' keys
     assert 'mantle' in iron_silicate
     assert 'core' in iron_silicate
+    # water dict has 'core', 'mantle', and 'water_ice_layer' keys (Seager 2007 water planet structure)
     assert 'core' in water
-    assert 'bridgmanite_shell' in water
+    assert 'mantle' in water
     assert 'water_ice_layer' in water
 
     # Check file paths

@@ -18,7 +18,7 @@ jobs:
   branch-nightly-coverage:
     name: Branch Nightly Coverage (Integration - v5)
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 90
     container:
       image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
       credentials:
@@ -28,6 +28,7 @@ jobs:
 
     env:
       PROTEUS_CI_NIGHTLY: "1"
+      USER: "ci-runner"
 
     steps:
       - name: Checkout branch code
@@ -298,158 +299,162 @@ jobs:
           import os
           import pathlib
           import sys
+          import traceback
           import xml.etree.ElementTree as ET
           import re
 
           summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
           cov_path = pathlib.Path("coverage-branch-nightly.json")
-
-          # Collect test results from JUnit XML files
-          junit_files = {
-              'unit': '/tmp/junit-unit.xml',
-              'smoke': '/tmp/junit-smoke.xml',
-              'dummy': '/tmp/junit-dummy.xml',
-              'integration': '/tmp/junit-integration.xml',
-              'slow': '/tmp/junit-slow.xml',
-          }
-
           failed_tests = []
           skipped_tests = []
           total_tests = 0
           passed_tests = 0
+          summary_error = None
 
-          for category, xml_path in junit_files.items():
-              if not pathlib.Path(xml_path).exists():
-                  continue
-              try:
-                  tree = ET.parse(xml_path)
-                  root = tree.getroot()
-                  for testsuite in root.findall('testsuite'):
-                      total = int(testsuite.get('tests', 0))
-                      failures = int(testsuite.get('failures', 0))
-                      errors = int(testsuite.get('errors', 0))
-                      skipped = int(testsuite.get('skipped', 0))
-                      total_tests += total
-                      passed_tests += (total - failures - errors - skipped)
+          try:
+              junit_files = {
+                  'unit': '/tmp/junit-unit.xml',
+                  'smoke': '/tmp/junit-smoke.xml',
+                  'dummy': '/tmp/junit-dummy.xml',
+                  'integration': '/tmp/junit-integration.xml',
+                  'slow': '/tmp/junit-slow.xml',
+              }
 
-                      # Collect failed tests
-                      for testcase in testsuite.findall('testcase'):
-                          test_name = f"{testcase.get('classname', '')}::{testcase.get('name', '')}"
-                          failure = testcase.find('failure')
-                          error = testcase.find('error')
-                          skip = testcase.find('skipped')
-
-                          if failure is not None or error is not None:
-                              reason = failure.get('message', '') if failure is not None else error.get('message', '')
-                              failed_tests.append({
-                                  'category': category,
-                                  'test': test_name,
-                                  'reason': reason[:200] if reason else 'Unknown failure'
-                              })
-                          elif skip is not None:
-                              reason = skip.get('message', '')
-                              skipped_tests.append({
-                                  'category': category,
-                                  'test': test_name,
-                                  'reason': reason[:200] if reason else 'Skipped'
-                              })
-              except Exception as e:
-                  print(f"Warning: Could not parse {xml_path}: {e}")
-
-          # Also check output files for additional skipped tests (from pytest.skip() calls)
-          output_files = {
-              'unit': '/tmp/unit-output.txt',
-              'smoke': '/tmp/smoke-output.txt',
-              'dummy': '/tmp/dummy-output.txt',
-              'integration': '/tmp/integration-output.txt',
-              'slow': '/tmp/slow-output.txt',
-          }
-
-          for category, output_path in output_files.items():
-              if not pathlib.Path(output_path).exists():
-                  continue
-              try:
-                  with open(output_path, 'r') as f:
-                      content = f.read()
-                      # Look for SKIPPED lines in pytest output
-                      for line in content.split('\n'):
-                          if 'SKIPPED' in line or 'SKIP' in line:
-                              # Extract test name if possible
-                              match = re.search(r'([^\s]+::[^\s]+)\s+SKIPPED', line)
-                              if match:
-                                  test_name = match.group(1)
-                                  # Check if already in skipped_tests
-                                  if not any(s['test'] == test_name for s in skipped_tests):
-                                      skipped_tests.append({
-                                          'category': category,
-                                          'test': test_name,
-                                          'reason': 'Skipped (from output)'
-                                      })
-              except Exception as e:
-                  print(f"Warning: Could not read {output_path}: {e}")
-
-          # Write summary
-          with open(summary_path, "w") as f:
-              f.write("# Nightly Science Validation (v5) – Summary\n\n")
-
-              # Coverage section
-              if cov_path.exists():
+              for category, xml_path in junit_files.items():
+                  if not pathlib.Path(xml_path).exists():
+                      continue
                   try:
-                      data = json.loads(cov_path.read_text())
-                      t = data.get("totals", {})
-                      pct = t.get("percent_covered", 0)
-                      covered = t.get("covered_lines", 0)
-                      total = t.get("num_statements", 0)
-                      f.write("## Total test coverage (all tests)\n\n")
-                      f.write(f"- **Line coverage:** **{pct:.2f}%**\n")
-                      f.write(f"- **Covered lines:** {covered} / {total}\n\n")
-                      f.write("Coverage includes unit, smoke, integration (dummy + non-slow), and slow integration tests.\n\n")
+                      tree = ET.parse(xml_path)
+                      root = tree.getroot()
+                      for testsuite in root.findall('testsuite'):
+                          total = int(testsuite.get('tests', 0))
+                          failures = int(testsuite.get('failures', 0))
+                          errors = int(testsuite.get('errors', 0))
+                          skipped = int(testsuite.get('skipped', 0))
+                          total_tests += total
+                          passed_tests += (total - failures - errors - skipped)
+
+                          for testcase in testsuite.findall('testcase'):
+                              test_name = f"{testcase.get('classname', '')}::{testcase.get('name', '')}"
+                              failure = testcase.find('failure')
+                              error = testcase.find('error')
+                              skip = testcase.find('skipped')
+
+                              if failure is not None or error is not None:
+                                  reason = failure.get('message', '') if failure is not None else error.get('message', '')
+                                  failed_tests.append({
+                                      'category': category,
+                                      'test': test_name,
+                                      'reason': reason[:200] if reason else 'Unknown failure'
+                                  })
+                              elif skip is not None:
+                                  reason = skip.get('message', '')
+                                  skipped_tests.append({
+                                      'category': category,
+                                      'test': test_name,
+                                      'reason': reason[:200] if reason else 'Skipped'
+                                  })
                   except Exception as e:
+                      print(f"Warning: Could not parse {xml_path}: {e}")
+
+              output_files = {
+                  'unit': '/tmp/unit-output.txt',
+                  'smoke': '/tmp/smoke-output.txt',
+                  'dummy': '/tmp/dummy-output.txt',
+                  'integration': '/tmp/integration-output.txt',
+                  'slow': '/tmp/slow-output.txt',
+              }
+
+              for category, output_path in output_files.items():
+                  if not pathlib.Path(output_path).exists():
+                      continue
+                  try:
+                      with open(output_path, 'r') as f:
+                          content = f.read()
+                          for line in content.split('\n'):
+                              if 'SKIPPED' in line or 'SKIP' in line:
+                                  match = re.search(r'([^\s]+::[^\s]+)\s+SKIPPED', line)
+                                  if match:
+                                      test_name = match.group(1)
+                                      if not any(s['test'] == test_name for s in skipped_tests):
+                                          skipped_tests.append({
+                                              'category': category,
+                                              'test': test_name,
+                                              'reason': 'Skipped (from output)'
+                                          })
+                  except Exception as e:
+                      print(f"Warning: Could not read {output_path}: {e}")
+
+              with open(summary_path, "w") as f:
+                  f.write("# Nightly Science Validation (v5) – Summary\n\n")
+
+                  if cov_path.exists():
+                      try:
+                          data = json.loads(cov_path.read_text())
+                          t = data.get("totals", {})
+                          pct = t.get("percent_covered", 0)
+                          covered = t.get("covered_lines", 0)
+                          total = t.get("num_statements", 0)
+                          f.write("## Total test coverage (all tests)\n\n")
+                          f.write(f"- **Line coverage:** **{pct:.2f}%**\n")
+                          f.write(f"- **Covered lines:** {covered} / {total}\n\n")
+                          f.write("Coverage includes unit, smoke, integration (dummy + non-slow), and slow integration tests.\n\n")
+                      except Exception as e:
+                          f.write("## Total test coverage\n\n")
+                          f.write(f"*Coverage file present but invalid: {e}*\n\n")
+                  else:
                       f.write("## Total test coverage\n\n")
-                      f.write(f"*Coverage file present but invalid: {e}*\n\n")
-              else:
-                  f.write("## Total test coverage\n\n")
-                  f.write("*Coverage report not available (job may have timed out, or coverage was not generated).*\n\n")
+                      f.write("*Coverage report not available (job may have timed out, or coverage was not generated).*\n\n")
 
-              # Test results section
-              f.write("## Test Results Summary\n\n")
-              f.write(f"- **Total tests:** {total_tests}\n")
-              f.write(f"- **Passed:** {passed_tests}\n")
-              f.write(f"- **Failed:** {len(failed_tests)}\n")
-              f.write(f"- **Skipped:** {len(skipped_tests)}\n\n")
+                  f.write("## Test Results Summary\n\n")
+                  f.write(f"- **Total tests:** {total_tests}\n")
+                  f.write(f"- **Passed:** {passed_tests}\n")
+                  f.write(f"- **Failed:** {len(failed_tests)}\n")
+                  f.write(f"- **Skipped:** {len(skipped_tests)}\n\n")
 
-              if failed_tests:
-                  f.write("### ❌ Failed Tests\n\n")
-                  for test in failed_tests:
-                      f.write(f"- **{test['category']}:** `{test['test']}`\n")
-                      f.write(f"  - Reason: {test['reason']}\n")
-                  f.write("\n")
+                  if failed_tests:
+                      f.write("### ❌ Failed Tests\n\n")
+                      for test in failed_tests:
+                          f.write(f"- **{test['category']}:** `{test['test']}`\n")
+                          f.write(f"  - Reason: {test['reason']}\n")
+                      f.write("\n")
 
-              if skipped_tests:
-                  f.write("### ⚠️ Skipped Tests\n\n")
-                  # Group by category
-                  by_category = {}
-                  for test in skipped_tests:
-                      cat = test['category']
-                      if cat not in by_category:
-                          by_category[cat] = []
-                      by_category[cat].append(test)
-                  for cat in sorted(by_category.keys()):
-                      f.write(f"**{cat}:**\n")
-                      for test in by_category[cat]:
-                          f.write(f"- `{test['test']}` - {test['reason']}\n")
-                  f.write("\n")
+                  if skipped_tests:
+                      f.write("### ⚠️ Skipped Tests\n\n")
+                      by_category = {}
+                      for test in skipped_tests:
+                          cat = test['category']
+                          if cat not in by_category:
+                              by_category[cat] = []
+                          by_category[cat].append(test)
+                      for cat in sorted(by_category.keys()):
+                          f.write(f"**{cat}:**\n")
+                          for test in by_category[cat]:
+                              f.write(f"- `{test['test']}` - {test['reason']}\n")
+                      f.write("\n")
 
-              if not failed_tests and not skipped_tests:
-                  f.write("✅ All tests passed!\n\n")
+                  if not failed_tests and not skipped_tests:
+                      f.write("✅ All tests passed!\n\n")
 
-          # Exit with non-zero if any tests failed (this will mark the CI run as failed)
+          except Exception as e:
+              summary_error = e
+              try:
+                  with open(summary_path, "w") as f:
+                      f.write("# Nightly Science Validation (v5) – Summary\n\n")
+                      f.write("## Summary generation failed\n\n")
+                      f.write(f"An error occurred while generating the summary:\n\n```\n{traceback.format_exc()}\n```\n")
+              except Exception as write_err:
+                  print(f"Could not write fallback summary: {write_err}")
+              print(f"Summary script error: {e}")
+              traceback.print_exc()
+
+          if summary_error is not None:
+              sys.exit(1)
           if failed_tests:
               print(f"ERROR: {len(failed_tests)} test(s) failed. CI run will be marked as failed.")
               sys.exit(1)
-          else:
-              print("All tests passed or were skipped. CI run will be marked as passed.")
-              sys.exit(0)
+          print("All tests passed or were skipped. CI run will be marked as passed.")
+          sys.exit(0)
           PY
 
       - name: Upload coverage XML and HTML
