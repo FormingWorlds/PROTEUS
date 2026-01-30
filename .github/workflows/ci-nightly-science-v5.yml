@@ -45,6 +45,7 @@ jobs:
           git config --global --add safe.directory /opt/proteus
           # Set Julia depot to /opt where there's more disk space
           export JULIA_DEPOT_PATH=/opt/julia_depot
+          echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
           mkdir -p /opt/julia_depot
           pip install -e ".[develop]" --no-deps
 
@@ -135,8 +136,12 @@ jobs:
           print(f'\\nVerifying data downloads...')
           print(f'FWL_DATA: {fwl_data}')
 
+          aragog_ok = False
+          stellar_ok = False
+
           if aragog_path.exists():
               print(f'✓ ARAGOG data found at {aragog_path}')
+              aragog_ok = True
           else:
               print(f'✗ ARAGOG data NOT found at {aragog_path}')
               # List what's actually there
@@ -152,6 +157,7 @@ jobs:
               track_files = list(stellar_path.rglob('*.track1'))
               if track_files:
                   print(f'  Found {len(track_files)} track files')
+                  stellar_ok = True
               else:
                   print(f'  Warning: No .track1 files found in {stellar_path}')
           else:
@@ -162,11 +168,23 @@ jobs:
                   from mors.data import DownloadEvolutionTracks
                   DownloadEvolutionTracks('Spada')
                   if stellar_path.exists():
-                      print('✓ Stellar tracks downloaded successfully')
+                      track_files = list(stellar_path.rglob('*.track1'))
+                      if track_files:
+                          print('✓ Stellar tracks downloaded successfully')
+                          stellar_ok = True
+                      else:
+                          print('✗ Stellar tracks exist but no .track1 files found')
                   else:
                       print('✗ Stellar tracks still not found after download attempt')
               except Exception as e:
                   print(f'✗ Final stellar tracks download failed: {e}')
+
+          # Exit with error if critical data is missing
+          if not aragog_ok or not stellar_ok:
+              print('\\nFATAL: Critical data missing. Cannot run tests.')
+              print(f'  ARAGOG data: {\"OK\" if aragog_ok else \"MISSING\"}')
+              print(f'  Stellar tracks: {\"OK\" if stellar_ok else \"MISSING\"}')
+              sys.exit(1)
           "
 
       - name: Free up disk space and configure Julia

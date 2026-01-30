@@ -67,12 +67,13 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
         # try making request with timeout
         try:
             with open(out, 'w') as hdl:
-                # Add timeout to subprocess (MAX_DLTIME + buffer for overhead)
+                # Use Python's subprocess timeout for robust timeout handling
+                # (zenodo_get's -t flag is not always respected by all versions)
                 proc = sp.run(
-                    ['zenodo_get', '-o', str(folder_dir), '-t', f'{MAX_DLTIME:.1f}', zenodo_id],
+                    ['zenodo_get', '-o', str(folder_dir), zenodo_id],
                     stdout=hdl,
                     stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
-                    timeout=MAX_DLTIME + 30,  # Add buffer for subprocess overhead
+                    timeout=MAX_DLTIME,  # Python's timeout will kill the process if it hangs
                     check=False,  # Don't raise on non-zero exit
                 )
 

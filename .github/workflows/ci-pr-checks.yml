@@ -9,12 +9,12 @@ name: CI - Fast PR Checks
 #   5. Run @pytest.mark.smoke tests with real binaries (1 timestep, low res, ~2-5 min)
 #   6. Exclude placeholder tests (@pytest.mark.skip) - these are placeholders for future implementation
 #
-# Test Categories (see docs/test_infrastructure.md):
-#   @pytest.mark.unit    -> 94 fast tests implemented (as of 2026-01-10): 53 tests for helper.py + 41 tests for logs.py; target: 130+ (target: <100ms each)
-#   @pytest.mark.smoke   -> 1 smoke test implemented (as of 2026-01-06); planned target: 5–7 (target: <30s each)
-#   @pytest.mark.skip    -> 9 placeholder tests not yet implemented (excluded from CI)
+# Test Categories:
+#   @pytest.mark.unit    -> Fast tests with mocked physics (target: <100ms each)
+#   @pytest.mark.smoke   -> Quick validation with real binaries (target: <30s each)
+#   @pytest.mark.skip    -> Placeholder tests not yet implemented (excluded from CI)
 #
-# Source of truth for counts and targets: docs/test_infrastructure.md
+# For current test counts and detailed metrics, see: docs/test_infrastructure.md
 
 on:
   pull_request:
@@ -186,7 +186,7 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/proteus
-          coverage json --fail-under=${FAST_COV_FAIL_UNDER} -o coverage-unit.json
+          coverage json -o coverage-unit.json
 
       - name: Download last nightly coverage (for estimated total)
         if: always()
@@ -289,6 +289,9 @@ jobs:
                   est_total_union = len(union_executable)
                   est_pct_union = min(100.0, 100.0 * est_covered_union / est_total_union)
                   overlap_removed = True
+          elif u_total and i_total:
+              # Per-file data unavailable; union calculation cannot be performed
+              print("Warning: Per-file coverage data unavailable; union calculation skipped")
           if u_total and u_total > 0:
               est_covered_sum = u_covered + i_covered
               est_total_sum = u_total
@@ -349,7 +352,6 @@ jobs:
         run: |
           # Fetch base branch and generate diff file to avoid remote fetch issues in container
           cd /__w/PROTEUS/PROTEUS
-          git config --global --add safe.directory /__w/PROTEUS/PROTEUS
           git fetch --no-tags --prune --depth=100 origin "${BASE_REF}"
           git diff "origin/${BASE_REF}...HEAD" > /tmp/pr-changes.diff
 
@@ -380,7 +382,7 @@ jobs:
           python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast
 
       - name: Commit ratcheted threshold (if changed)
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/tl/test_ecosystem_v5')
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: |
           cd /__w/PROTEUS/PROTEUS
