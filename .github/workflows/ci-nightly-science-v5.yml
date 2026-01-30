@@ -67,13 +67,22 @@ jobs:
         run: |
           echo "=== Disk Space Before Data Download ==="
           df -h
-          # Check if we have at least 10GB free in /opt
-          available=$(df /opt | tail -1 | awk '{print $4}')
-          available_gb=$(echo "scale=2; $available / 1024 / 1024" | bc)
-          echo "Available space in /opt: ${available_gb}GB"
-          if (( $(echo "$available_gb < 10" | bc -l) )); then
-            echo "WARNING: Less than 10GB available. Tests may fail due to insufficient disk space."
-          fi
+          # Check if we have at least 10GB free in /opt (using Python instead of bc)
+          python3 << 'PYEOF'
+          import subprocess
+          import sys
+          result = subprocess.run(['df', '/opt'], capture_output=True, text=True)
+          lines = result.stdout.strip().split('\n')
+          if len(lines) > 1:
+              fields = lines[1].split()
+              available_kb = int(fields[3])
+              available_gb = available_kb / 1024 / 1024
+              print(f'Available space in /opt: {available_gb:.2f}GB')
+              if available_gb < 10:
+                  print('WARNING: Less than 10GB available. Tests may fail due to insufficient disk space.')
+          else:
+              print('Could not parse df output')
+          PYEOF
 
       - name: Download test data
         id: download_data
@@ -207,9 +216,19 @@ jobs:
         run: |
           echo "=== Disk Space After Data Download ==="
           df -h
-          available=$(df /opt | tail -1 | awk '{print $4}')
-          available_gb=$(echo "scale=2; $available / 1024 / 1024" | bc)
-          echo "Available space in /opt: ${available_gb}GB"
+          # Check disk space using Python instead of bc
+          python3 << 'PYEOF'
+          import subprocess
+          result = subprocess.run(['df', '/opt'], capture_output=True, text=True)
+          lines = result.stdout.strip().split('\n')
+          if len(lines) > 1:
+              fields = lines[1].split()
+              available_kb = int(fields[3])
+              available_gb = available_kb / 1024 / 1024
+              print(f'Available space in /opt: {available_gb:.2f}GB')
+          else:
+              print('Could not parse df output')
+          PYEOF
 
       - name: Free up disk space and configure Julia
         run: |
