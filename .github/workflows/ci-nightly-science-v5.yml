@@ -88,8 +88,167 @@ jobs:
               print(f'Error checking disk space: {e}')
           PYEOF
 
-      - name: Download test data
-        id: download_data
+      - name: Download minimal data for smoke tests
+        id: download_smoke_data
+        run: |
+          cd /opt/proteus
+          # OPTIMIZATION: Unit tests are fully mocked and need NO data
+          # Smoke tests only need minimal data for 1-timestep validation
+          echo "=== Downloading minimal data for smoke tests ==="
+          python -c "
+          import sys
+          from proteus.utils.data import download_spectral_file, download_stellar_spectra
+
+          # Download minimal spectral file for JANUS/AGNI smoke tests
+          # Dayspring/16 is smallest spectral file (~50MB)
+          print('Downloading minimal spectral file (Dayspring/16)...')
+          try:
+              download_spectral_file('Dayspring', '16')
+              print('✓ Spectral file downloaded')
+          except Exception as e:
+              print(f'Warning: Spectral file download failed: {e}')
+
+          # Download minimal stellar spectra (solar only, ~10MB)
+          print('Downloading minimal stellar spectra (solar)...')
+          try:
+              download_stellar_spectra(folders=('solar',))
+              print('✓ Stellar spectra downloaded')
+          except Exception as e:
+              print(f'Warning: Stellar spectra download failed: {e}')
+
+          print('Minimal data download completed (~60MB total)')
+          "
+
+      - name: Check disk space after data download
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "=== Disk Space After Data Download ==="
+          df -h
+          # Check disk space using Python instead of bc
+          python3 << 'PYEOF' || echo "Disk space check failed (non-critical)"
+          import subprocess
+          try:
+              result = subprocess.run(['df', '/opt'], capture_output=True, text=True, check=True)
+              lines = result.stdout.strip().split('\n')
+              if len(lines) > 1:
+                  fields = lines[1].split()
+                  available_kb = int(fields[3])
+                  available_gb = available_kb / 1024 / 1024
+                  print(f'Available space in /opt: {available_gb:.2f}GB')
+              else:
+                  print('Could not parse df output')
+          except Exception as e:
+              print(f'Error checking disk space: {e}')
+          PYEOF
+
+      - name: Configure Julia and setup AGNI environment
+        run: |
+          # Use /opt for Julia depot instead of /tmp (more space in container)
+          export JULIA_DEPOT_PATH=/opt/julia_depot
+          mkdir -p /opt/julia_depot
+          echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
+
+          # Verify Julia version (should be 1.11.x from Docker)
+          echo "=== Julia Version Check ==="
+          julia --version
+          which julia
+
+          # CRITICAL: Configure juliacall to use system Julia 1.11, not install Julia 1.12
+          # This prevents juliapkg from downloading Julia 1.12.4 which is incompatible with AGNI
+          export JULIA_BINDIR=$(dirname $(which julia))
+          export PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR
+          export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+          echo "JULIA_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
+
+          # Verify juliacall will use correct Julia
+          python3 -c "import os; print(f'PYTHON_JULIACALL_BINDIR={os.environ.get(\"PYTHON_JULIACALL_BINDIR\", \"not set\")}')"
+
+          # Check available space in /opt
+          df -h /opt
+
+          # Ensure AGNI Julia environment has all dependencies installed
+          if [ -d "/opt/proteus/AGNI" ]; then
+            echo "=== Setting up AGNI Julia environment ==="
+            cd /opt/proteus/AGNI
+
+            # Verify we're using Julia 1.11
+            julia -e 'println("Julia version: ", VERSION)'
+
+            # First, instantiate the project environment
+            echo "Running Pkg.instantiate()..."
+            julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()' || {
+              echo "ERROR: Pkg.instantiate() failed. Attempting recovery..."
+              # Try to resolve and update
+              julia -e 'using Pkg; Pkg.activate("."); Pkg.resolve(); Pkg.update()'
+            }
+
+            # Explicitly add critical packages if missing
+            echo "Verifying critical packages (Tables, Plots, DataFrames)..."
+            julia -e '
+              using Pkg
+              Pkg.activate(".")
+              critical_pkgs = ["Tables", "Plots", "DataFrames"]
+              for pkg in critical_pkgs
+                  try
+                      @eval using $(Symbol(pkg))
+                      println("✓ $pkg is available")
+                  catch e
+                      println("✗ $pkg missing, installing...")
+                      Pkg.add(pkg)
+                  end
+              end
+            '
+
+            # Verify AGNI can be loaded
+            echo "Testing AGNI module load..."
+            julia -e 'using Pkg; Pkg.activate("."); include("src/AGNI.jl"); println("✓ AGNI loaded successfully")' || {
+              echo "WARNING: AGNI module failed to load. AGNI tests may fail."
+            }
+
+            cd /opt/proteus
+          else
+            echo "WARNING: AGNI directory not found at /opt/proteus/AGNI"
+          fi
+
+      - name: Coverage erase and run unit tests (first for combined coverage)
+        # Only run if data download succeeded
+        if: steps.download_smoke_data.outcome == 'success'
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          coverage erase
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
+            -v --tb=short \
+            --junitxml=/tmp/junit-unit.xml \
+            --cov=proteus \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/unit-output.txt
+
+      - name: Run smoke tests with coverage (append for total = unit + smoke + integration + slow)
+        if: steps.download_smoke_data.outcome == 'success'
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          pytest -m smoke \
+            -v --tb=short \
+            --junitxml=/tmp/junit-smoke.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/smoke-output.txt
+
+      - name: Download full data for integration tests
+        id: download_full_data
         run: |
           cd /opt/proteus
           # Download all required data based on all_options.toml configuration
@@ -209,34 +368,11 @@ jobs:
 
           # Exit with error if critical data is missing
           if not aragog_ok or not stellar_ok:
-              print('\\nFATAL: Critical data missing. Cannot run tests.')
+              print('\nFATAL: Critical data missing. Cannot run tests.')
               print(f'  ARAGOG data: {"OK" if aragog_ok else "MISSING"}')
               print(f'  Stellar tracks: {"OK" if stellar_ok else "MISSING"}')
               sys.exit(1)
           "
-
-      - name: Check disk space after data download
-        if: always()
-        continue-on-error: true
-        run: |
-          echo "=== Disk Space After Data Download ==="
-          df -h
-          # Check disk space using Python instead of bc
-          python3 << 'PYEOF' || echo "Disk space check failed (non-critical)"
-          import subprocess
-          try:
-              result = subprocess.run(['df', '/opt'], capture_output=True, text=True, check=True)
-              lines = result.stdout.strip().split('\n')
-              if len(lines) > 1:
-                  fields = lines[1].split()
-                  available_kb = int(fields[3])
-                  available_gb = available_kb / 1024 / 1024
-                  print(f'Available space in /opt: {available_gb:.2f}GB')
-              else:
-                  print('Could not parse df output')
-          except Exception as e:
-              print(f'Error checking disk space: {e}')
-          PYEOF
 
       - name: Configure Julia and setup AGNI environment
         run: |
@@ -309,42 +445,9 @@ jobs:
             echo "WARNING: AGNI directory not found at /opt/proteus/AGNI"
           fi
 
-      - name: Coverage erase and run unit tests (first for combined coverage)
-        # Only run if data download succeeded
-        if: steps.download_data.outcome == 'success'
-        continue-on-error: true
-        run: |
-          cd /opt/proteus
-          coverage erase
-          pytest -m "unit and not skip" \
-            --ignore=tests/examples \
-            -v --tb=short \
-            --junitxml=/tmp/junit-unit.xml \
-            --cov=proteus \
-            --cov-fail-under=0 \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html \
-            --cov-config=pyproject.toml 2>&1 | tee /tmp/unit-output.txt
-
-      - name: Run smoke tests with coverage (append for total = unit + smoke + integration + slow)
-        if: steps.download_data.outcome == 'success'
-        continue-on-error: true
-        run: |
-          cd /opt/proteus
-          pytest -m smoke \
-            -v --tb=short \
-            --junitxml=/tmp/junit-smoke.xml \
-            --cov=proteus \
-            --cov-append \
-            --cov-fail-under=0 \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html \
-            --cov-config=pyproject.toml 2>&1 | tee /tmp/smoke-output.txt
 
       - name: Run integration coverage (dummy + integration and not slow)
-        if: steps.download_data.outcome == 'success'
+        if: steps.download_full_data.outcome == 'success'
         continue-on-error: true
         run: |
           cd /opt/proteus
@@ -382,7 +485,7 @@ jobs:
           coverage json -o coverage-integration-only.json || echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-integration-only.json
 
       - name: Run slow integration tests (standard config)
-        if: steps.download_data.outcome == 'success'
+        if: steps.download_full_data.outcome == 'success'
         continue-on-error: true
         run: |
           cd /opt/proteus
