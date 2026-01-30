@@ -394,6 +394,44 @@ pytest --pdb                        # Drop into debugger on failure
 - **Usage**: `docs/usage.md`, `docs/config.md`
 - **Copilot guidelines**: `.github/copilot-instructions.md` (applies to all ecosystem modules)
 
+## 🧠 Memory Maintenance
+
+### Prime Directive: Keep Project Memory Current
+
+**ALWAYS** update `MEMORY.md` after making significant architectural changes, adding new libraries, or finalizing a key design decision.
+
+**What to record**:
+- The change made and the *reasoning* (the "Why") behind it
+- New architectural decisions (ADRs) with context
+- Major refactorings or infrastructure changes
+- Lessons learned from debugging or CI/CD issues
+- Updates to active context (current sprint focus)
+- New dependencies or ecosystem module changes
+
+**When to record**:
+- Immediately after implementing architectural changes
+- After resolving complex bugs (capture the lesson)
+- When adding/removing major dependencies
+- After CI/CD workflow modifications
+- When establishing new coding patterns or standards
+
+**How to update**:
+1. Open `MEMORY.md`
+2. Update relevant section (Active Context, ADRs, Known Debt, etc.)
+3. Add date stamp to "Last Updated" at top
+4. Commit with message: `docs: update MEMORY.md - [brief description]`
+
+**Goal**: Ensure future sessions (and future developers) have context on *why* decisions were made, not just *what* was changed. This prevents re-litigating solved problems and preserves institutional knowledge.
+
+**Example scenarios requiring memory updates**:
+- Adding a new test marker or CI workflow
+- Changing coverage thresholds or ratcheting strategy
+- Discovering a fragile code area (add to "Code Hotspots")
+- Making a decision about library versions or dependencies
+- Learning why something was implemented a certain way
+
+---
+
 ## Quick Reference
 
 ```bash
