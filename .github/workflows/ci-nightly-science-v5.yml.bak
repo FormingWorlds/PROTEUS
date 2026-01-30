@@ -1,0 +1,735 @@
+name: CI - Nightly Science Validation (v5)
+
+on:
+  push:
+    branches:
+      - tl/test_ecosystem_v5
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: formingworlds/proteus
+
+jobs:
+  branch-nightly-coverage:
+    name: Branch Nightly Coverage (Integration - v5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # NOTE: Running as root is a security risk. This is acceptable for CI but should
+      # be changed to a non-root user in production deployments.
+      options: --user root
+
+    env:
+      PROTEUS_CI_NIGHTLY: "1"
+      USER: "ci-runner"
+
+    steps:
+      - name: Checkout branch code
+        uses: actions/checkout@v4
+        with:
+          ref: tl/test_ecosystem_v5
+          fetch-depth: 0
+
+      - name: Overlay code onto container
+        run: |
+          echo "Copying code over container base..."
+          rsync -av --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
+          cd /opt/proteus
+          git config --global --add safe.directory /opt/proteus
+          # Set Julia depot to /opt where there's more disk space
+          export JULIA_DEPOT_PATH=/opt/julia_depot
+          echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
+          mkdir -p /opt/julia_depot
+          pip install -e ".[develop]" --no-deps
+
+      - name: Read full coverage threshold
+        run: |
+          cd /opt/proteus
+          python - <<'PY' >> "$GITHUB_ENV"
+          import pathlib
+          import tomllib
+
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          val = float(data["tool"]["coverage"]["report"]["fail_under"])
+          print(f"FULL_COV_FAIL_UNDER={val}")
+          PY
+
+      - name: Check disk space before data download
+        continue-on-error: true
+        run: |
+          echo "=== Disk Space Before Data Download ==="
+          df -h
+          # Check if we have at least 10GB free in /opt (using Python instead of bc)
+          python3 << 'PYEOF' || echo "Disk space check failed (non-critical)"
+          import subprocess
+          import sys
+          try:
+              result = subprocess.run(['df', '/opt'], capture_output=True, text=True, check=True)
+              lines = result.stdout.strip().split('\n')
+              if len(lines) > 1:
+                  fields = lines[1].split()
+                  available_kb = int(fields[3])
+                  available_gb = available_kb / 1024 / 1024
+                  print(f'Available space in /opt: {available_gb:.2f}GB')
+                  if available_gb < 10:
+                      print('WARNING: Less than 10GB available. Tests may fail due to insufficient disk space.')
+              else:
+                  print('Could not parse df output')
+          except Exception as e:
+              print(f'Error checking disk space: {e}')
+          PYEOF
+
+      - name: Download minimal data for smoke tests
+        id: download_smoke_data
+        run: |
+          cd /opt/proteus
+          # OPTIMIZATION: Unit tests are fully mocked and need NO data
+          # Smoke tests only need minimal data for 1-timestep validation
+          echo "=== Downloading minimal data for smoke tests ==="
+          python -c "
+          import sys
+          from proteus.utils.data import download_spectral_file, download_stellar_spectra
+
+          # Download minimal spectral file for JANUS/AGNI smoke tests
+          # Dayspring/16 is smallest spectral file (~50MB)
+          print('Downloading minimal spectral file (Dayspring/16)...')
+          try:
+              download_spectral_file('Dayspring', '16')
+              print('✓ Spectral file downloaded')
+          except Exception as e:
+              print(f'Warning: Spectral file download failed: {e}')
+
+          # Download minimal stellar spectra (solar only, ~10MB)
+          print('Downloading minimal stellar spectra (solar)...')
+          try:
+              download_stellar_spectra(folders=('solar',))
+              print('✓ Stellar spectra downloaded')
+          except Exception as e:
+              print(f'Warning: Stellar spectra download failed: {e}')
+
+          print('Minimal data download completed (~60MB total)')
+          "
+
+      - name: Check disk space after data download
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "=== Disk Space After Data Download ==="
+          df -h
+          # Check disk space using Python instead of bc
+          python3 << 'PYEOF' || echo "Disk space check failed (non-critical)"
+          import subprocess
+          try:
+              result = subprocess.run(['df', '/opt'], capture_output=True, text=True, check=True)
+              lines = result.stdout.strip().split('\n')
+              if len(lines) > 1:
+                  fields = lines[1].split()
+                  available_kb = int(fields[3])
+                  available_gb = available_kb / 1024 / 1024
+                  print(f'Available space in /opt: {available_gb:.2f}GB')
+              else:
+                  print('Could not parse df output')
+          except Exception as e:
+              print(f'Error checking disk space: {e}')
+          PYEOF
+
+      - name: Configure Julia and setup AGNI environment
+        run: |
+          # Use /opt for Julia depot instead of /tmp (more space in container)
+          export JULIA_DEPOT_PATH=/opt/julia_depot
+          mkdir -p /opt/julia_depot
+          echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
+
+          # Verify Julia version (should be 1.11.x from Docker)
+          echo "=== Julia Version Check ==="
+          julia --version
+          which julia
+
+          # CRITICAL: Configure juliacall to use system Julia 1.11, not install Julia 1.12
+          # This prevents juliapkg from downloading Julia 1.12.4 which is incompatible with AGNI
+          export JULIA_BINDIR=$(dirname $(which julia))
+          export PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR
+          export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+          echo "JULIA_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
+
+          # Verify juliacall will use correct Julia
+          python3 -c "import os; print(f'PYTHON_JULIACALL_BINDIR={os.environ.get(\"PYTHON_JULIACALL_BINDIR\", \"not set\")}')"
+
+          # Check available space in /opt
+          df -h /opt
+
+          # Ensure AGNI Julia environment has all dependencies installed
+          if [ -d "/opt/proteus/AGNI" ]; then
+            echo "=== Setting up AGNI Julia environment ==="
+            cd /opt/proteus/AGNI
+
+            # Verify we're using Julia 1.11
+            julia -e 'println("Julia version: ", VERSION)'
+
+            # First, instantiate the project environment
+            echo "Running Pkg.instantiate()..."
+            julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()' || {
+              echo "ERROR: Pkg.instantiate() failed. Attempting recovery..."
+              # Try to resolve and update
+              julia -e 'using Pkg; Pkg.activate("."); Pkg.resolve(); Pkg.update()'
+            }
+
+            # Explicitly add critical packages if missing
+            echo "Verifying critical packages (Tables, Plots, DataFrames)..."
+            julia -e '
+              using Pkg
+              Pkg.activate(".")
+              critical_pkgs = ["Tables", "Plots", "DataFrames"]
+              for pkg in critical_pkgs
+                  try
+                      @eval using $(Symbol(pkg))
+                      println("✓ $pkg is available")
+                  catch e
+                      println("✗ $pkg missing, installing...")
+                      Pkg.add(pkg)
+                  end
+              end
+            '
+
+            # Verify AGNI can be loaded
+            echo "Testing AGNI module load..."
+            julia -e 'using Pkg; Pkg.activate("."); include("src/AGNI.jl"); println("✓ AGNI loaded successfully")' || {
+              echo "WARNING: AGNI module failed to load. AGNI tests may fail."
+            }
+
+            cd /opt/proteus
+          else
+            echo "WARNING: AGNI directory not found at /opt/proteus/AGNI"
+          fi
+
+      - name: Coverage erase and run unit tests (first for combined coverage)
+        # Only run if data download succeeded
+        if: steps.download_smoke_data.outcome == 'success'
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          coverage erase
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
+            -v --tb=short \
+            --junitxml=/tmp/junit-unit.xml \
+            --cov=proteus \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/unit-output.txt
+
+      - name: Run smoke tests with coverage (append for total = unit + smoke + integration + slow)
+        if: steps.download_smoke_data.outcome == 'success'
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          pytest -m smoke \
+            -v --tb=short \
+            --junitxml=/tmp/junit-smoke.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/smoke-output.txt
+
+      - name: Download full data for integration tests
+        id: download_full_data
+        run: |
+          cd /opt/proteus
+          # Download all required data based on all_options.toml configuration
+          # This ensures all modules (MORS, ARAGOG, AGNI, etc.) have their required data
+          python -c "
+          import sys
+          import os
+          from pathlib import Path
+          import traceback
+
+          # Ensure MORS is available for stellar track downloads
+          try:
+              import mors
+              print(f'MORS version: {mors.__version__ if hasattr(mors, \"__version__\") else \"unknown\"}')
+          except ImportError as e:
+              print(f'ERROR: MORS not available: {e}')
+              print('Installing MORS...')
+              import subprocess
+              subprocess.run([sys.executable, '-m', 'pip', 'install', 'fwl-mors'], check=True)
+              import mors
+              print('MORS installed successfully')
+
+          # Download data using download_sufficient_data
+          try:
+              from proteus.config import read_config_object
+              from proteus.utils.data import download_sufficient_data
+              config = read_config_object('input/all_options.toml')
+              print('Downloading required data for all_options.toml...')
+              download_sufficient_data(config, clean=False)
+              print('Data download completed.')
+
+              # Also ensure AGNI+ARAGOG integration-test data (aragog_janus with atmos_clim=agni)
+              try:
+                  config_agni = read_config_object('tests/integration/aragog_janus.toml')
+                  config_agni.atmos_clim.module = 'agni'
+                  print('Downloading data for ARAGOG+AGNI integration test...')
+                  download_sufficient_data(config_agni, clean=False)
+                  print('ARAGOG+AGNI data download completed.')
+              except Exception as e_agni:
+                  print(f'Warning: ARAGOG+AGNI data download failed: {e_agni}')
+          except Exception as e:
+              print(f'ERROR during data download: {e}')
+              traceback.print_exc()
+              # Try to download critical data explicitly
+              print('Attempting explicit data downloads...')
+
+              # Try ARAGOG data
+              try:
+                  from proteus.utils.data import download_interior_lookuptables, download_melting_curves
+                  print('Downloading ARAGOG lookup tables...')
+                  download_interior_lookuptables(clean=False)
+                  download_melting_curves(config, clean=False)
+                  print('ARAGOG data download completed.')
+              except Exception as e_aragog:
+                  print(f'Warning: ARAGOG data download failed: {e_aragog}')
+
+              # Try stellar tracks using MORS directly
+              try:
+                  print('Downloading stellar evolution tracks via MORS...')
+                  from mors.data import DownloadEvolutionTracks
+                  DownloadEvolutionTracks('Spada')
+                  print('Stellar tracks download completed.')
+              except Exception as e_stellar:
+                  print(f'Warning: Stellar tracks download failed: {e_stellar}')
+                  traceback.print_exc()
+
+          # Verify critical data exists
+          fwl_data = os.environ.get('FWL_DATA', '/opt/proteus/fwl_data')
+          aragog_path = Path(fwl_data) / 'interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
+          stellar_path = Path(fwl_data) / 'stellar_evolution_tracks/Spada'
+
+          print(f'\\nVerifying data downloads...')
+          print(f'FWL_DATA: {fwl_data}')
+
+          aragog_ok = False
+          stellar_ok = False
+
+          if aragog_path.exists():
+              print(f'✓ ARAGOG data found at {aragog_path}')
+              aragog_ok = True
+          else:
+              print(f'✗ ARAGOG data NOT found at {aragog_path}')
+              # List what's actually there
+              parent = aragog_path.parent
+              if parent.exists():
+                  print(f'  Contents of {parent}:')
+                  for item in list(parent.iterdir())[:5]:
+                      print(f'    - {item.name}')
+
+          if stellar_path.exists():
+              print(f'✓ Stellar tracks found at {stellar_path}')
+              # Check if specific track files exist
+              track_files = list(stellar_path.rglob('*.track1'))
+              if track_files:
+                  print(f'  Found {len(track_files)} track files')
+                  stellar_ok = True
+              else:
+                  print(f'  Warning: No .track1 files found in {stellar_path}')
+          else:
+              print(f'✗ Stellar tracks NOT found at {stellar_path}')
+              # Try one more time with MORS
+              try:
+                  print('Attempting final stellar tracks download...')
+                  from mors.data import DownloadEvolutionTracks
+                  DownloadEvolutionTracks('Spada')
+                  if stellar_path.exists():
+                      track_files = list(stellar_path.rglob('*.track1'))
+                      if track_files:
+                          print('✓ Stellar tracks downloaded successfully')
+                          stellar_ok = True
+                      else:
+                          print('✗ Stellar tracks exist but no .track1 files found')
+                  else:
+                      print('✗ Stellar tracks still not found after download attempt')
+              except Exception as e:
+                  print(f'✗ Final stellar tracks download failed: {e}')
+
+          # Exit with error if critical data is missing
+          if not aragog_ok or not stellar_ok:
+              print('\nFATAL: Critical data missing. Cannot run tests.')
+              print(f'  ARAGOG data: {"OK" if aragog_ok else "MISSING"}')
+              print(f'  Stellar tracks: {"OK" if stellar_ok else "MISSING"}')
+              sys.exit(1)
+          "
+
+      - name: Configure Julia and setup AGNI environment
+        run: |
+          # Use /opt for Julia depot instead of /tmp (more space in container)
+          export JULIA_DEPOT_PATH=/opt/julia_depot
+          mkdir -p /opt/julia_depot
+          echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
+
+          # Verify Julia version (should be 1.11.x from Docker)
+          echo "=== Julia Version Check ==="
+          julia --version
+          which julia
+
+          # CRITICAL: Configure juliacall to use system Julia 1.11, not install Julia 1.12
+          # This prevents juliapkg from downloading Julia 1.12.4 which is incompatible with AGNI
+          export JULIA_BINDIR=$(dirname $(which julia))
+          export PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR
+          export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+          echo "JULIA_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
+          echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
+
+          # Verify juliacall will use correct Julia
+          python3 -c "import os; print(f'PYTHON_JULIACALL_BINDIR={os.environ.get(\"PYTHON_JULIACALL_BINDIR\", \"not set\")}')"
+
+          # Check available space in /opt
+          df -h /opt
+
+          # Ensure AGNI Julia environment has all dependencies installed
+          if [ -d "/opt/proteus/AGNI" ]; then
+            echo "=== Setting up AGNI Julia environment ==="
+            cd /opt/proteus/AGNI
+
+            # Verify we're using Julia 1.11
+            julia -e 'println("Julia version: ", VERSION)'
+
+            # First, instantiate the project environment
+            echo "Running Pkg.instantiate()..."
+            julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()' || {
+              echo "ERROR: Pkg.instantiate() failed. Attempting recovery..."
+              # Try to resolve and update
+              julia -e 'using Pkg; Pkg.activate("."); Pkg.resolve(); Pkg.update()'
+            }
+
+            # Explicitly add critical packages if missing
+            echo "Verifying critical packages (Tables, Plots, DataFrames)..."
+            julia -e '
+              using Pkg
+              Pkg.activate(".")
+              critical_pkgs = ["Tables", "Plots", "DataFrames"]
+              for pkg in critical_pkgs
+                  try
+                      @eval using $(Symbol(pkg))
+                      println("✓ $pkg is available")
+                  catch e
+                      println("✗ $pkg missing, installing...")
+                      Pkg.add(pkg)
+                  end
+              end
+            '
+
+            # Verify AGNI can be loaded
+            echo "Testing AGNI module load..."
+            julia -e 'using Pkg; Pkg.activate("."); include("src/AGNI.jl"); println("✓ AGNI loaded successfully")' || {
+              echo "WARNING: AGNI module failed to load. AGNI tests may fail."
+            }
+
+            cd /opt/proteus
+          else
+            echo "WARNING: AGNI directory not found at /opt/proteus/AGNI"
+          fi
+
+      - name: Coverage erase and run unit tests (first for combined coverage)
+        # Only run if data download succeeded
+        if: steps.download_data.outcome == 'success'
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          coverage erase
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
+            -v --tb=short \
+            --junitxml=/tmp/junit-unit.xml \
+            --cov=proteus \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/unit-output.txt
+
+      - name: Run smoke tests with coverage (append for total = unit + smoke + integration + slow)
+        if: steps.download_smoke_data.outcome == 'success'
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          pytest -m smoke \
+            -v --tb=short \
+            --junitxml=/tmp/junit-smoke.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/smoke-output.txt
+
+      - name: Run integration coverage (dummy + integration and not slow)
+        if: steps.download_full_data.outcome == 'success'
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          # Run dummy first; capture output but continue even if it fails
+          pytest tests/integration/test_integration_dummy.py \
+            -v --tb=short \
+            --junitxml=/tmp/junit-dummy.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/dummy-output.txt || true
+          # Full integration (excluding slow, albedo); always run so coverage is combined
+          # test_integration_dummy_agni and test_albedo_lookup excluded (external-data heavy)
+          pytest tests/integration \
+            -m "integration and not slow" \
+            --ignore=tests/integration/test_integration_dummy_agni.py \
+            --ignore=tests/integration/test_albedo_lookup.py \
+            -v --tb=short \
+            --junitxml=/tmp/junit-integration.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/integration-output.txt || true
+
+      - name: Save coverage before slow (unit + smoke + integration, for Fast PR reference)
+        if: always()
+        run: |
+          cd /opt/proteus
+          coverage json -o coverage-integration-only.json || echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-integration-only.json
+
+      - name: Run slow integration tests (standard config)
+        if: steps.download_full_data.outcome == 'success'
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          # Run slow integration tests (standard config with all real modules)
+          # These require ARAGOG lookup data and may take 10-15 minutes.
+          # Note: --timeout flag requires pytest-timeout plugin (not installed in container)
+          # Relying on workflow-level timeout (90 minutes) instead
+          pytest tests/integration/test_integration_std_config.py \
+            -m "slow" \
+            -v --tb=long \
+            --junitxml=/tmp/junit-slow.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml 2>&1 | tee /tmp/slow-output.txt || true
+
+      - name: Generate coverage JSON
+        if: always()
+        run: |
+          cd /opt/proteus
+          # Diagnostic: show whether we have coverage data before generating JSON
+          echo "--- .coverage presence ---"
+          ls -la .coverage 2>/dev/null || true
+          echo "--- coverage report (first 30 lines) ---"
+          coverage report -m 2>/dev/null | head -30 || true
+          if coverage json -o coverage-branch-nightly.json; then
+            echo "Coverage JSON written."
+          else
+            echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-branch-nightly.json
+            echo "Wrote fallback coverage JSON (coverage data was missing or step failed)."
+          fi
+
+      - name: Write workflow summary and test results report
+        if: always()
+        run: |
+          cd /opt/proteus
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import sys
+          import traceback
+          import xml.etree.ElementTree as ET
+          import re
+
+          summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
+          cov_path = pathlib.Path("coverage-branch-nightly.json")
+          failed_tests = []
+          skipped_tests = []
+          total_tests = 0
+          passed_tests = 0
+          summary_error = None
+
+          try:
+              junit_files = {
+                  'unit': '/tmp/junit-unit.xml',
+                  'smoke': '/tmp/junit-smoke.xml',
+                  'dummy': '/tmp/junit-dummy.xml',
+                  'integration': '/tmp/junit-integration.xml',
+                  'slow': '/tmp/junit-slow.xml',
+              }
+
+              for category, xml_path in junit_files.items():
+                  if not pathlib.Path(xml_path).exists():
+                      continue
+                  try:
+                      tree = ET.parse(xml_path)
+                      root = tree.getroot()
+                      for testsuite in root.findall('testsuite'):
+                          total = int(testsuite.get('tests', 0))
+                          failures = int(testsuite.get('failures', 0))
+                          errors = int(testsuite.get('errors', 0))
+                          skipped = int(testsuite.get('skipped', 0))
+                          total_tests += total
+                          passed_tests += (total - failures - errors - skipped)
+
+                          for testcase in testsuite.findall('testcase'):
+                              test_name = f"{testcase.get('classname', '')}::{testcase.get('name', '')}"
+                              failure = testcase.find('failure')
+                              error = testcase.find('error')
+                              skip = testcase.find('skipped')
+
+                              if failure is not None or error is not None:
+                                  reason = failure.get('message', '') if failure is not None else error.get('message', '')
+                                  failed_tests.append({
+                                      'category': category,
+                                      'test': test_name,
+                                      'reason': reason[:200] if reason else 'Unknown failure'
+                                  })
+                              elif skip is not None:
+                                  reason = skip.get('message', '')
+                                  skipped_tests.append({
+                                      'category': category,
+                                      'test': test_name,
+                                      'reason': reason[:200] if reason else 'Skipped'
+                                  })
+                  except Exception as e:
+                      print(f"Warning: Could not parse {xml_path}: {e}")
+
+              output_files = {
+                  'unit': '/tmp/unit-output.txt',
+                  'smoke': '/tmp/smoke-output.txt',
+                  'dummy': '/tmp/dummy-output.txt',
+                  'integration': '/tmp/integration-output.txt',
+                  'slow': '/tmp/slow-output.txt',
+              }
+
+              for category, output_path in output_files.items():
+                  if not pathlib.Path(output_path).exists():
+                      continue
+                  try:
+                      with open(output_path, 'r') as f:
+                          content = f.read()
+                          for line in content.split('\n'):
+                              if 'SKIPPED' in line or 'SKIP' in line:
+                                  match = re.search(r'([^\s]+::[^\s]+)\s+SKIPPED', line)
+                                  if match:
+                                      test_name = match.group(1)
+                                      if not any(s['test'] == test_name for s in skipped_tests):
+                                          skipped_tests.append({
+                                              'category': category,
+                                              'test': test_name,
+                                              'reason': 'Skipped (from output)'
+                                          })
+                  except Exception as e:
+                      print(f"Warning: Could not read {output_path}: {e}")
+
+              with open(summary_path, "w") as f:
+                  f.write("# Nightly Science Validation (v5) – Summary\n\n")
+
+                  if cov_path.exists():
+                      try:
+                          data = json.loads(cov_path.read_text())
+                          t = data.get("totals", {})
+                          pct = t.get("percent_covered", 0)
+                          covered = t.get("covered_lines", 0)
+                          total = t.get("num_statements", 0)
+                          f.write("## Total test coverage (all tests)\n\n")
+                          f.write(f"- **Line coverage:** **{pct:.2f}%**\n")
+                          f.write(f"- **Covered lines:** {covered} / {total}\n\n")
+                          f.write("Coverage includes unit, smoke, integration (dummy + non-slow), and slow integration tests.\n\n")
+                      except Exception as e:
+                          f.write("## Total test coverage\n\n")
+                          f.write(f"*Coverage file present but invalid: {e}*\n\n")
+                  else:
+                      f.write("## Total test coverage\n\n")
+                      f.write("*Coverage report not available (job may have timed out, or coverage was not generated).*\n\n")
+
+                  f.write("## Test Results Summary\n\n")
+                  f.write(f"- **Total tests:** {total_tests}\n")
+                  f.write(f"- **Passed:** {passed_tests}\n")
+                  f.write(f"- **Failed:** {len(failed_tests)}\n")
+                  f.write(f"- **Skipped:** {len(skipped_tests)}\n\n")
+
+                  if failed_tests:
+                      f.write("### ❌ Failed Tests\n\n")
+                      for test in failed_tests:
+                          f.write(f"- **{test['category']}:** `{test['test']}`\n")
+                          f.write(f"  - Reason: {test['reason']}\n")
+                      f.write("\n")
+
+                  if skipped_tests:
+                      f.write("### ⚠️ Skipped Tests\n\n")
+                      by_category = {}
+                      for test in skipped_tests:
+                          cat = test['category']
+                          if cat not in by_category:
+                              by_category[cat] = []
+                          by_category[cat].append(test)
+                      for cat in sorted(by_category.keys()):
+                          f.write(f"**{cat}:**\n")
+                          for test in by_category[cat]:
+                              f.write(f"- `{test['test']}` - {test['reason']}\n")
+                      f.write("\n")
+
+                  if not failed_tests and not skipped_tests:
+                      f.write("✅ All tests passed!\n\n")
+
+          except Exception as e:
+              summary_error = e
+              try:
+                  with open(summary_path, "w") as f:
+                      f.write("# Nightly Science Validation (v5) – Summary\n\n")
+                      f.write("## Summary generation failed\n\n")
+                      f.write(f"An error occurred while generating the summary:\n\n```\n{traceback.format_exc()}\n```\n")
+              except Exception as write_err:
+                  print(f"Could not write fallback summary: {write_err}")
+              print(f"Summary script error: {e}")
+              traceback.print_exc()
+
+          if summary_error is not None:
+              sys.exit(1)
+          if failed_tests:
+              print(f"ERROR: {len(failed_tests)} test(s) failed. CI run will be marked as failed.")
+              sys.exit(1)
+          print("All tests passed or were skipped. CI run will be marked as passed.")
+          sys.exit(0)
+          PY
+
+      - name: Upload coverage XML and HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v5-branch-nightly-coverage
+          path: |
+            /opt/proteus/coverage.xml
+            /opt/proteus/htmlcov/
+            /opt/proteus/coverage-branch-nightly.json
+            /opt/proteus/coverage-integration-only.json
+          if-no-files-found: ignore
+          retention-days: 14
