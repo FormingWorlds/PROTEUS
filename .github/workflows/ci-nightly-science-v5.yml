@@ -138,7 +138,17 @@ jobs:
           except Exception as e:
               print(f'Warning: Melting curves download failed: {e}')
 
-          print('Minimal data download completed (~120MB total)')
+          # Download stellar evolution tracks for smoke tests
+          # Required by test_smoke_calliope_dummy_atmos_outgassing which uses MORS with Spada tracks
+          print('Downloading stellar evolution tracks (Spada) for smoke tests...')
+          try:
+              from mors.data import DownloadEvolutionTracks
+              DownloadEvolutionTracks('Spada')
+              print('✓ Stellar evolution tracks downloaded')
+          except Exception as e:
+              print(f'Warning: Stellar evolution tracks download failed: {e}')
+
+          print('Minimal data download completed (~200MB total)')
           "
 
       - name: Check disk space after data download
