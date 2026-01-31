@@ -49,13 +49,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Julia 1.11 (required by AGNI - must match Project.toml compat)
 # CRITICAL: AGNI requires Julia ~1.11 (not 1.12+) - version mismatch causes test failures
 # Using direct download instead of juliaup to avoid broken symlinks
+# Add to PATH instead of symlinking to preserve library paths
 RUN JULIA_VERSION=1.11.2 && \
     JULIA_MINOR=1.11 && \
     curl -fsSL "https://julialang-s3.julialang.org/bin/linux/x64/${JULIA_MINOR}/julia-${JULIA_VERSION}-linux-x86_64.tar.gz" -o julia.tar.gz && \
     tar -xzf julia.tar.gz -C /opt && \
     rm julia.tar.gz && \
-    ln -s /opt/julia-${JULIA_VERSION}/bin/julia /usr/local/bin/julia && \
-    julia --version
+    /opt/julia-${JULIA_VERSION}/bin/julia --version
+
+# Add Julia to PATH
+ENV PATH="/opt/julia-1.11.2/bin:${PATH}"
 
 # Create working directory
 WORKDIR /opt/proteus
