@@ -37,8 +37,26 @@ IMAGE_LIST = (
 
 @pytest.fixture(scope='module')
 def aragog_janus_run():
-    runner = Proteus(config_path=config_path)
-    runner.start()
+    try:
+        runner = Proteus(config_path=config_path)
+        runner.start()
+    except (
+        FileNotFoundError,
+        RuntimeError,
+        OSError,
+        ConnectionError,
+    ) as e:
+        # Skip if data download fails (transient network issues with Zenodo/OSF)
+        error_msg = str(e).lower()
+        if any(
+            keyword in error_msg
+            for keyword in ['zenodo', 'osf', 'download', 'network', 'connection', 'timeout']
+        ):
+            pytest.skip(
+                f'Data download failed (transient network issue): {e}. '
+                'This test requires ARAGOG lookup tables from Zenodo/OSF.'
+            )
+        raise
 
     return runner
 
