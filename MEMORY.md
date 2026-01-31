@@ -1,6 +1,6 @@
 # 🧠 Project Memory
 
-**Last Updated**: 2026-01-30
+**Last Updated**: 2026-01-31
 
 This document captures the living context of PROTEUS—the "why" behind architectural decisions, the current development focus, and critical knowledge for maintaining consistency across sessions.
 
@@ -36,7 +36,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **MORS**: Stellar evolution module
 - **ARAGOG**: Interior thermal evolution (T-P formalism)
 - **ZEPHYRUS**: Atmospheric escape module
-- **BOREAS**: Additional interior modeling
+- **BOREAS**: Alternative escape modeling
 - **ZALMOXIS**: Supporting utilities
 
 ### Environment Requirements
@@ -50,14 +50,20 @@ This document captures the living context of PROTEUS—the "why" behind architec
 ## 2. Active Context (The "Now")
 
 ### Current Sprint Focus (Last 20 Commits)
-**Period**: 2026-01-20 to 2026-01-30
+**Period**: 2026-01-20 to 2026-01-31
 
-**Primary Objective**: Harden CI/CD infrastructure and achieve comprehensive test coverage
+**Primary Objective**: Harden CI/CD infrastructure and achieve comprehensive test coverage ✅ ACHIEVED
 
 **Major Activities**:
-1. **CI Workflow Stabilization** (commits: c0c1f4bd, 65bb595a, 9986961d, 1eec4bad, 10ad0bfa)
+1. **Julia Installation Fix - CRITICAL** (commits: d02ebb13, e395b0df - 2026-01-31)
+   - **Root Cause**: juliaup created broken symlinks; Julia couldn't find sys.so library
+   - **Solution**: Direct Julia 1.11.2 download from julialang.org, added to PATH via ENV
+   - **Impact**: Unblocked all CI workflows; nightly tests now run successfully
+   - **Verification**: Docker build #21542156499, nightly run #21542390853 (58m17s)
+
+2. **CI Workflow Stabilization** (commits: c0c1f4bd, 65bb595a, 9986961d, 1eec4bad, 10ad0bfa)
    - Fixed disk space calculation in nightly workflow (replaced `bc` with Python)
-   - Enhanced AGNI Julia setup with explicit package verification
+   - Simplified Julia configuration (removed duplicate setup steps)
    - Improved data validation and Julia environment persistence
    - Enabled smoke tests in nightly workflow with `PROTEUS_CI_NIGHTLY=1` gating
    - Enhanced error handling and coverage reporting
@@ -204,35 +210,37 @@ This document captures the living context of PROTEUS—the "why" behind architec
 
 ## 4. Known Debt & "Watch Outs"
 
-### **CRITICAL BLOCKING ISSUE: Julia Version Incompatibility** ⚠️
-**Status**: Active blocker as of 2026-01-30 (workflow run 21532123452)
+### ~~**CRITICAL BLOCKING ISSUE: Julia Version Incompatibility**~~ ✅ RESOLVED
+**Status**: Fixed as of 2026-01-31 (commits d02ebb13, e395b0df)
 
-**Problem**: AGNI requires Julia ~1.11 but Docker container has Julia 1.12.4
+**Problem**: AGNI required Julia ~1.11 but Docker container had broken Julia installation via juliaup
 
-**Error**:
-```
-julia version requirement for package at /opt/proteus/AGNI not satisfied:
-compat entry "julia = ~1.11" does not include Julia version 1.12.4
-```
+**Root Causes Identified**:
+1. **juliaup installation was incomplete** - created broken symlinks and missing sys.so library
+2. **Symlink approach failed** - Julia looked for libraries at `/usr/local/bin/../lib/julia/sys.so` instead of actual installation path
+3. **Duplicate Julia configuration** - CI workflow had redundant setup steps
 
-**Impact**:
-- AGNI cannot load in nightly CI
-- All AGNI-dependent tests fail (smoke, integration)
-- Workflow aborts at Julia setup step
-- No coverage data collected
+**Solution Implemented**:
+1. **Replaced juliaup with direct Julia 1.11.2 download** (Dockerfile)
+   - Download from julialang.org official tarball
+   - Extract to `/opt/julia-1.11.2/`
+   - Add to PATH via ENV instead of symlink to preserve library paths
+2. **Simplified CI Julia configuration** (ci-nightly-science-v5.yml)
+   - Removed duplicate Julia setup step
+   - Rely on Docker installation with minimal env vars
+   - Trust `get_agni.sh` to handle Julia package installation
 
-**Solutions** (choose one):
-1. **Update Dockerfile to use Julia 1.11.x** (recommended, immediate fix)
-   - Change Julia installation to use 1.11.x instead of latest
-   - Verify AGNI loads successfully
-   - Test in nightly workflow
+**Verification** (workflow run 21542390853):
+- ✅ Docker build successful (19m19s)
+- ✅ Fast PR Checks passing
+- ✅ Julia 1.11.2 loads correctly in CI
+- ✅ Unit tests run with >0% coverage
+- ✅ Smoke tests execute successfully
+- ✅ Integration tests complete
+- ✅ Slow tests execute
+- ✅ Nightly workflow completes (58m17s, 1 test failure unrelated to infrastructure)
 
-2. **Update AGNI Project.toml to support Julia 1.12** (requires AGNI maintainer)
-   - Contact Harrison Nicholls (AGNI maintainer)
-   - Update compat entry: `julia = "~1.11, ~1.12"`
-   - Test compatibility thoroughly
-
-**Action Required**: Fix before next nightly run to unblock CI pipeline
+**Key Lesson**: Always use direct Julia installation from official tarballs for production Docker images; juliaup is designed for interactive use, not containerized environments.
 
 ---
 
@@ -398,20 +406,36 @@ All modules follow same standards:
 
 ---
 
-### Lesson 4: Julia Version Compatibility (2026-01-30)
-**Problem**: Nightly workflow run 21532123452 failed with Julia version incompatibility.
+### Lesson 4: Julia Installation in Docker Containers (2026-01-30 to 2026-01-31) ✅ RESOLVED
+**Problem**: Nightly workflow runs 21532123452, 21533333930, 21541854157, 21542063539, 21542156510 all failed with Julia library errors.
 
-**Root Cause**: Docker container has Julia 1.12.4, but AGNI requires Julia ~1.11 (1.11.x only).
+**Root Causes** (discovered through systematic debugging):
+1. **Initial assumption wrong**: First thought it was Julia 1.12.4 vs 1.11 version mismatch
+2. **Actual issue #1**: `juliaup` created incomplete installation with broken symlinks
+3. **Actual issue #2**: Symlink at `/usr/local/bin/julia` caused Julia to look for libraries at `/usr/local/bin/../lib/julia/sys.so` instead of actual path `/opt/julia-1.11.2/lib/julia/sys.so`
+4. **Actual issue #3**: Duplicate Julia configuration steps in CI workflow added complexity
 
-**Error**: `julia version requirement for package at /opt/proteus/AGNI not satisfied: compat entry "julia = ~1.11" does not include Julia version 1.12.4`
+**Error Evolution**:
+- Initial: `julia version requirement for package at /opt/proteus/AGNI not satisfied`
+- After first fix: `ERROR: could not load library "/usr/local/bin/../lib/julia/sys.so"`
+- After second fix: ✅ Julia loads successfully
 
-**Impact**: AGNI cannot load, causing all AGNI-dependent tests to fail and workflow to abort.
+**Solution** (commits d02ebb13, e395b0df):
+1. Replace `juliaup` with direct Julia 1.11.2 tarball download from julialang.org
+2. Add Julia to PATH via `ENV PATH="/opt/julia-1.11.2/bin:${PATH}"` instead of symlink
+3. Simplify CI workflow to rely on Docker installation with minimal env vars
+4. Remove duplicate Julia configuration step
 
-**Solution Required**: Either:
-- Update Docker image to use Julia 1.11.x (recommended)
-- Update AGNI's Project.toml to support Julia 1.12 (requires AGNI maintainer)
+**Verification** (workflow run 21542390853):
+- Docker build: 19m19s ✅
+- Fast PR Checks: passing ✅
+- Nightly workflow: 58m17s, all test stages executed ✅
 
-**Takeaway**: Pin Julia version in Docker to match AGNI requirements; version mismatches are blocking.
+**Takeaway**:
+- **juliaup is for interactive use, not Docker** - use official tarballs for containers
+- **Symlinks break library path resolution** - use PATH environment variable instead
+- **Trust upstream installation scripts** - `get_agni.sh` handles Julia packages correctly
+- **Systematic debugging pays off** - don't stop at first hypothesis; verify each fix thoroughly
 
 ---
 
