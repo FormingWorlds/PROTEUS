@@ -126,7 +126,19 @@ jobs:
           except Exception as e:
               print(f'Warning: ARAGOG lookup tables download failed: {e}')
 
-          print('Minimal data download completed (~110MB total)')
+          # Download melting curves for smoke tests (~10MB)
+          # Required by test_smoke_calliope_dummy_atmos_outgassing which uses all_options.toml
+          print('Downloading melting curves for smoke tests...')
+          try:
+              from proteus.config import read_config_object
+              from proteus.utils.data import download_melting_curves
+              config = read_config_object('input/all_options.toml')
+              download_melting_curves(config, clean=False)
+              print('✓ Melting curves downloaded')
+          except Exception as e:
+              print(f'Warning: Melting curves download failed: {e}')
+
+          print('Minimal data download completed (~120MB total)')
           "
 
       - name: Check disk space after data download
