@@ -519,14 +519,41 @@ Original smoke data download only included spectral files and stellar spectra.
 
 ---
 
+### Lesson 9: Slow Test Runtime Estimation (2026-01-31)
+**Problem**: CI run #21545877959 hit 4-hour timeout during `test_integration_std_config_extended_run`.
+
+**Timeline Analysis**:
+- Slow tests started at 15:28 UTC
+- `test_integration_std_config_multi_timestep`: SKIPPED (LovePy exception)
+- `test_integration_std_config_extended_run`: Ran for 3+ hours, cancelled at 18:25 UTC
+
+**Root Causes**:
+1. **Extended run config too aggressive**: `num_timesteps=10, max_time=1e7 years` caused physics simulation to run for 3+ hours
+2. **multi_timestep skipped**: LovePy (Julia tidal module) throwing exception, test catches and skips
+3. **No per-test timeout**: Individual tests could run indefinitely
+
+**Solution** (implemented):
+1. Reduced slow test parameters:
+   - `multi_timestep`: 5→3 timesteps, max_time: 1e6→1e4 years
+   - `extended_run`: 10→5 timesteps, max_time: 1e7→1e5 years
+2. Added explicit `@pytest.mark.timeout()` marks:
+   - `multi_timestep`: 30 minute timeout
+   - `extended_run`: 60 minute timeout
+
+**Takeaway**: Physics simulation runtime ≠ configuration estimates. Always add explicit per-test timeouts for slow tests. Document actual observed runtimes, not theoretical estimates.
+
+---
+
 ## 8. Future Roadmap (Known Priorities)
 
 ### Immediate (Next 1-2 Days) - IN PROGRESS
 - ✅ **Julia version fixed**: Dockerfile uses direct Julia 1.11.2 download
 - ✅ **AGNI loads successfully**: Verified in CI runs
 - ✅ **Smoke tests pass**: Data dependencies fixed (ARAGOG + melting curves)
-- 🔄 **Monitor CI run #21545877959**: Verify full nightly workflow completes
+- ✅ **4-hour timeout added**: Workflow timeout increased (commit a7687a57)
+- 🔄 **Slow test runtime fixed**: Reduced timesteps/time ranges, added per-test timeouts
 - 📋 **Plot test reference images**: 12 plot tests are xfail due to outdated references (separate task)
+- ⚠️ **LovePy investigation needed**: multi_timestep test skipping due to LovePy exception
 
 ### Short-Term (Next 2-4 Weeks)
 - Continue expanding integration test coverage (ARAGOG+AGNI, CALLIOPE+ZEPHYRUS)

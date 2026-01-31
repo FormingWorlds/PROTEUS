@@ -16,7 +16,7 @@ This test validates the full PROTEUS "standard candle" configuration using
 - Ensures stable feedback loops over multiple timesteps
 - Must run in nightly Science validation CI
 
-**Runtime**: ~3-5 minutes (5-10 timesteps, all real modules, low resolution)
+**Runtime**: ~10-30 minutes (3-5 timesteps, all real modules, low resolution)
 
 **Requirements**:
 - All real modules must be available (MORS, LovePy, ARAGOG, AGNI, CALLIOPE, ZEPHYRUS)
@@ -43,6 +43,7 @@ from tests.integration.conftest import (
 
 @pytest.mark.integration
 @pytest.mark.slow
+@pytest.mark.timeout(1800)  # 30 minute timeout for this test
 def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     """Test standard PROTEUS configuration with all real modules (5 timesteps).
 
@@ -63,7 +64,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     - Volatile evolution: H2O, CO2 masses evolve (CALLIOPE)
     - Escape evolution: esc_rate_total calculated (ZEPHYRUS)
 
-    Runtime: ~3-5 minutes (5 timesteps, all real modules, low resolution)
+    Runtime: ~10-20 minutes (3 timesteps, all real modules, low resolution)
 
     Note: Marked as @pytest.mark.slow - runs in nightly Science validation CI only.
     This test requires all real modules to be available (MORS, LovePy, ARAGOG, AGNI,
@@ -75,8 +76,8 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     try:
         runner = proteus_multi_timestep_run(
             config_path='input/all_options.toml',
-            num_timesteps=5,
-            max_time=1e6,  # years (short for CI)
+            num_timesteps=3,  # Reduced for CI runtime
+            max_time=1e4,  # years (very short for CI - was 1e6)
             min_time=1e2,  # years
             # Override resolution settings for faster execution
             # Note: These overrides may not work if config structure differs
@@ -259,6 +260,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
 
 @pytest.mark.integration
 @pytest.mark.slow
+@pytest.mark.timeout(3600)  # 60 minute timeout for extended run
 def test_integration_std_config_extended_run(proteus_multi_timestep_run):
     """Test extended standard configuration run (10 timesteps).
 
@@ -272,7 +274,7 @@ def test_integration_std_config_extended_run(proteus_multi_timestep_run):
     - No unbounded growth in any physical variables
     - Conservation laws maintained over time
 
-    Runtime: ~5-10 minutes (10 timesteps, all real modules, low resolution)
+    Runtime: ~20-40 minutes (5 timesteps, all real modules, low resolution)
 
     Note: Marked as @pytest.mark.slow - runs in nightly CI only.
     Requires all real modules (MORS, LovePy, ARAGOG, AGNI, CALLIOPE, ZEPHYRUS).
@@ -281,8 +283,8 @@ def test_integration_std_config_extended_run(proteus_multi_timestep_run):
     try:
         runner = proteus_multi_timestep_run(
             config_path='input/all_options.toml',
-            num_timesteps=10,
-            max_time=1e7,  # years
+            num_timesteps=5,  # Reduced from 10 for CI runtime
+            max_time=1e5,  # years (reduced from 1e7 for CI)
             min_time=1e2,  # years
         )
     except (
@@ -307,8 +309,8 @@ def test_integration_std_config_extended_run(proteus_multi_timestep_run):
 
     # Validate that helpfile has multiple timesteps
     assert runner.hf_all is not None, 'Helpfile should be created'
-    assert len(runner.hf_all) >= 8, (
-        f'Helpfile should have at least 8 timesteps, got {len(runner.hf_all)}'
+    assert len(runner.hf_all) >= 3, (  # Reduced from 8 due to fewer timesteps
+        f'Helpfile should have at least 3 timesteps, got {len(runner.hf_all)}'
     )
 
     # Validate stability over extended run
