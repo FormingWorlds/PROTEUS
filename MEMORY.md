@@ -52,9 +52,30 @@ This document captures the living context of PROTEUS—the "why" behind architec
 ### Current Sprint Focus (Last 20 Commits)
 **Period**: 2026-01-20 to 2026-01-31
 
-**Primary Objective**: Harden CI/CD infrastructure and achieve comprehensive test coverage ✅ ACHIEVED
+**Primary Objective**: Harden CI/CD infrastructure and achieve comprehensive test coverage ✅ IN PROGRESS
 
-**Major Activities**:
+**🔴 ACTIVE WORK - CI Nightly Workflow Fixes (2026-01-31)**
+
+**Current Status**: CI workflow running (run ID: 21545877959), monitoring required
+
+**Recent Fixes Applied**:
+1. **Smoke Test Data Fix** (commits: d51ac963, 7c5b0fd6)
+   - Added ARAGOG lookup tables download to smoke test data step
+   - Added melting curves download (required for `all_options.toml` config)
+   - Smoke test `test_smoke_calliope_dummy_atmos_outgassing` now passes locally (8m21s)
+   - Verified in CI run #21544709382 - smoke tests passed ✅
+
+2. **Workflow Timeout Fix** (commit: a7687a57)
+   - Increased job timeout from 90 minutes to **240 minutes (4 hours)**
+   - Previous run #21544709382 timed out during slow tests
+   - Slow test `test_integration_std_config_multi_timestep` passed (17 min)
+   - Slow test `test_integration_std_config_extended_run` was cancelled mid-run
+
+**To Monitor**:
+- CI run #21545877959 (Nightly Science Validation v5) - should complete within 4 hours
+- Fast PR Checks #21545877984 - should pass quickly
+
+**Previous Major Activities**:
 1. **Julia Installation Fix - CRITICAL** (commits: d02ebb13, e395b0df - 2026-01-31)
    - **Root Cause**: juliaup created broken symlinks; Julia couldn't find sys.so library
    - **Solution**: Direct Julia 1.11.2 download from julialang.org, added to PATH via ENV
@@ -97,7 +118,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Docker CI Architecture**: Fully operational with pre-built images (`ghcr.io/formingworlds/proteus:latest`)
 - **Test Categorization**: Four-tier system (unit, smoke, integration, slow) with clear CI gates
 - **Coverage Strategy**: Dual-threshold system (fast gate for PR, full gate for nightly)
-- **Nightly Workflow**: v5 architecture with 90-minute timeout, comprehensive coverage reporting
+- **Nightly Workflow**: v5 architecture with **240-minute timeout (4 hours)**, comprehensive coverage reporting
 
 ### Active Branches
 - **main**: Production branch with nightly validation
@@ -461,12 +482,51 @@ All modules follow same standards:
 
 ---
 
+### Lesson 7: Smoke Test Data Requirements (2026-01-31)
+**Problem**: Smoke test `test_smoke_calliope_dummy_atmos_outgassing` failed in CI with FileNotFoundError for ARAGOG data.
+
+**Root Cause**: Smoke tests use `all_options.toml` config which requires:
+1. ARAGOG lookup tables (`1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa`)
+2. Melting curves (`Monteux-600/solidus.dat`)
+3. Stellar spectra (solar)
+4. Spectral files (Dayspring/16)
+
+Original smoke data download only included spectral files and stellar spectra.
+
+**Solution** (commits d51ac963, 7c5b0fd6):
+1. Added `download_interior_lookuptables()` call to smoke data step
+2. Added `download_melting_curves(config)` call using `all_options.toml` config
+3. Updated data size estimate from ~60MB to ~120MB
+
+**Takeaway**: When a test uses a config file, trace ALL data dependencies through the config. Use `download_sufficient_data()` as reference for what data a config needs.
+
+---
+
+### Lesson 8: CI Timeout Estimation (2026-01-31)
+**Problem**: Nightly CI run #21544709382 timed out at 90 minutes during slow tests.
+
+**Timeline Analysis**:
+- Setup + unit tests + smoke tests: ~20 min
+- Integration tests: ~15 min
+- Slow test 1 (`multi_timestep`): ~17 min ✅ passed
+- Slow test 2 (`extended_run`): started but cancelled at timeout
+
+**Root Cause**: 90-minute timeout insufficient for full test suite including slow tests.
+
+**Solution** (commit a7687a57): Increased timeout to **240 minutes (4 hours)**.
+
+**Takeaway**: Budget generous time for slow tests; they can take 30-60 minutes each. Better to have unused time than cancelled tests.
+
+---
+
 ## 8. Future Roadmap (Known Priorities)
 
-### Immediate (Next 1-2 Days) - CRITICAL
-- **Fix Julia version incompatibility**: Update Dockerfile to use Julia 1.11.x
-- **Verify AGNI loads**: Test Julia setup in nightly workflow
-- **Validate smoke tests**: Ensure all 11 smoke tests run (not skipped)
+### Immediate (Next 1-2 Days) - IN PROGRESS
+- ✅ **Julia version fixed**: Dockerfile uses direct Julia 1.11.2 download
+- ✅ **AGNI loads successfully**: Verified in CI runs
+- ✅ **Smoke tests pass**: Data dependencies fixed (ARAGOG + melting curves)
+- 🔄 **Monitor CI run #21545877959**: Verify full nightly workflow completes
+- 📋 **Plot test reference images**: 12 plot tests are xfail due to outdated references (separate task)
 
 ### Short-Term (Next 2-4 Weeks)
 - Continue expanding integration test coverage (ARAGOG+AGNI, CALLIOPE+ZEPHYRUS)
