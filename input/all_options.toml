@@ -144,7 +144,7 @@ version = "2.0"
     s0_factor = 0.375           # instellation scale factor [dimensionless]
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "lovepy"          # module used to calculate tidal heating
+    module  = None              # module used to calculate tidal heating
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -158,6 +158,39 @@ version = "2.0"
 
     [orbit.lovepy]
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
+
+    [orbit.obliqua]
+        dim         = 1         # Dimensions used to evaluate solid tides [int] (0, 1)
+        min_frac    = 0.02      # Minimal segment radius fraction before smoothing [dimensionless]
+        visc_l      = 1e2       # Pure liquid viscosity [Pa s]
+        visc_l_lus  = 5e2       # Liquidus viscosity to use [Pa s]
+        visc_s      = 1e21      # Pure solid visosity [Pa s]
+        visc_s_sus  = 5e13      # Solidus viscosity to use [Pa s]
+        n           = 2         # Power of the radial factor (goes with (r/a)^{n}, since r<<a only n=2 contributes significantly)
+        m           = 2         # Harmonic of the true anomaly. m=2 corresponds to the semidiurnal tide, m=1 diurnal tide
+        N_sigma     = 10        # Number probe frequencies to evaluate k2 at
+        k_min       = -30       # Minimum tidal mode range (k is the Fourier index in mean anomaly)
+        k_max       = 40        # Maximum tidal mode range (k is the Fourier index in mean anomaly)
+        p_min       = -20       # Minimum period for orbital and axial frequencies [log(kyr)] i.e. forcing occurion over minimal 1e-17 yr interval
+        p_max       = 6         # Maximum period for orbital and axial frequencies [log(kyr)] i.e. forcing occurion over maximal 1e9   yr interval
+        material    = "andrade" # Material type for complex shear modulus ("andrade", "maxwell")
+        alpha       = 0.3       # Power-law exponent, only for Andrade rheology (free parameter)
+        strain      = true      # Strategy for obtaining heating profile
+
+        module_solid = "solid0d", "solid1d", "solid1d-mush"
+
+        [orbit.Obliqua.solid]
+            ncalc       = 1000      # Number of sublayers to use for dim=1 solid tides
+            bulk_l      = 1e9       # Liquid bulk modulus [Pa]
+            permea      = 1e-7      # Permeability [m^2]
+            porosity_thresh = 1e-5  # Porosity threshold, below this value no mush. [dimensionless]
+            mush        = false     # Model mush interface for solid
+
+        module_fluid = "fluid0d"
+
+        [orbit.Obliqua.fluid]
+            sigma_R     = 1e-3      # Rayleigh drag coefficient [dimensionless]
+
 
 # Planetary structure - physics table
 [struct]

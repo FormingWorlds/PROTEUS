@@ -27,7 +27,7 @@ version = "2.0"
     eccentricity    = 0.0       # [dimensionless]
     zenith_angle    = 48.19     # [degrees]
     s0_factor       = 0.375     # [dimensionless]
-    module          = "lovepy"
+    module          = None
 
 [struct]
     mass_tot    = 1.0           # [M_earth]
