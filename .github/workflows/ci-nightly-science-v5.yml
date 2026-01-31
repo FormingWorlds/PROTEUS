@@ -142,20 +142,15 @@ jobs:
               print(f'Error checking disk space: {e}')
           PYEOF
 
-      - name: Configure Julia and setup AGNI environment
+      - name: Configure Julia environment for Python integration
         run: |
-          # Use /opt for Julia depot instead of /tmp (more space in container)
-          export JULIA_DEPOT_PATH=/opt/julia_depot
-          mkdir -p /opt/julia_depot
-          echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
-
-          # Verify Julia version (should be 1.11.x from Docker)
+          # Verify Julia installation from Docker
           echo "=== Julia Version Check ==="
           julia --version
           which julia
 
-          # CRITICAL: Configure juliacall to use system Julia 1.11, not install Julia 1.12
-          # This prevents juliapkg from downloading Julia 1.12.4 which is incompatible with AGNI
+          # Configure juliacall to use Docker's Julia 1.11 installation
+          # This prevents juliapkg from downloading incompatible Julia 1.12
           export JULIA_BINDIR=$(dirname $(which julia))
           export PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR
           export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
@@ -163,54 +158,19 @@ jobs:
           echo "PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
           echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
 
-          # Verify juliacall will use correct Julia
-          python3 -c "import os; print(f'PYTHON_JULIACALL_BINDIR={os.environ.get(\"PYTHON_JULIACALL_BINDIR\", \"not set\")}')"
+          # Verify configuration
+          echo "Julia binary: $(which julia)"
+          echo "PYTHON_JULIACALL_BINDIR: $JULIA_BINDIR"
 
-          # Check available space in /opt
-          df -h /opt
-
-          # Ensure AGNI Julia environment has all dependencies installed
+          # AGNI was already installed by get_agni.sh during Docker build
+          # Verify AGNI is accessible
           if [ -d "/opt/proteus/AGNI" ]; then
-            echo "=== Setting up AGNI Julia environment ==="
+            echo "✓ AGNI directory found"
             cd /opt/proteus/AGNI
-
-            # Verify we're using Julia 1.11
             julia -e 'println("Julia version: ", VERSION)'
-
-            # First, instantiate the project environment
-            echo "Running Pkg.instantiate()..."
-            julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()' || {
-              echo "ERROR: Pkg.instantiate() failed. Attempting recovery..."
-              # Try to resolve and update
-              julia -e 'using Pkg; Pkg.activate("."); Pkg.resolve(); Pkg.update()'
-            }
-
-            # Explicitly add critical packages if missing
-            echo "Verifying critical packages (Tables, Plots, DataFrames)..."
-            julia -e '
-              using Pkg
-              Pkg.activate(".")
-              critical_pkgs = ["Tables", "Plots", "DataFrames"]
-              for pkg in critical_pkgs
-                  try
-                      @eval using $(Symbol(pkg))
-                      println("✓ $pkg is available")
-                  catch e
-                      println("✗ $pkg missing, installing...")
-                      Pkg.add(pkg)
-                  end
-              end
-            '
-
-            # Verify AGNI can be loaded
-            echo "Testing AGNI module load..."
-            julia -e 'using Pkg; Pkg.activate("."); include("src/AGNI.jl"); println("✓ AGNI loaded successfully")' || {
-              echo "WARNING: AGNI module failed to load. AGNI tests may fail."
-            }
-
             cd /opt/proteus
           else
-            echo "WARNING: AGNI directory not found at /opt/proteus/AGNI"
+            echo "✗ WARNING: AGNI directory not found at /opt/proteus/AGNI"
           fi
 
       - name: Coverage erase and run unit tests (first for combined coverage)
@@ -373,78 +333,6 @@ jobs:
               print(f'  Stellar tracks: {"OK" if stellar_ok else "MISSING"}')
               sys.exit(1)
           "
-
-      - name: Configure Julia and setup AGNI environment
-        run: |
-          # Use /opt for Julia depot instead of /tmp (more space in container)
-          export JULIA_DEPOT_PATH=/opt/julia_depot
-          mkdir -p /opt/julia_depot
-          echo "JULIA_DEPOT_PATH=/opt/julia_depot" >> $GITHUB_ENV
-
-          # Verify Julia version (should be 1.11.x from Docker)
-          echo "=== Julia Version Check ==="
-          julia --version
-          which julia
-
-          # CRITICAL: Configure juliacall to use system Julia 1.11, not install Julia 1.12
-          # This prevents juliapkg from downloading Julia 1.12.4 which is incompatible with AGNI
-          export JULIA_BINDIR=$(dirname $(which julia))
-          export PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR
-          export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
-          echo "JULIA_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
-          echo "PYTHON_JULIACALL_BINDIR=$JULIA_BINDIR" >> $GITHUB_ENV
-          echo "PYTHON_JULIACALL_HANDLE_SIGNALS=yes" >> $GITHUB_ENV
-
-          # Verify juliacall will use correct Julia
-          python3 -c "import os; print(f'PYTHON_JULIACALL_BINDIR={os.environ.get(\"PYTHON_JULIACALL_BINDIR\", \"not set\")}')"
-
-          # Check available space in /opt
-          df -h /opt
-
-          # Ensure AGNI Julia environment has all dependencies installed
-          if [ -d "/opt/proteus/AGNI" ]; then
-            echo "=== Setting up AGNI Julia environment ==="
-            cd /opt/proteus/AGNI
-
-            # Verify we're using Julia 1.11
-            julia -e 'println("Julia version: ", VERSION)'
-
-            # First, instantiate the project environment
-            echo "Running Pkg.instantiate()..."
-            julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()' || {
-              echo "ERROR: Pkg.instantiate() failed. Attempting recovery..."
-              # Try to resolve and update
-              julia -e 'using Pkg; Pkg.activate("."); Pkg.resolve(); Pkg.update()'
-            }
-
-            # Explicitly add critical packages if missing
-            echo "Verifying critical packages (Tables, Plots, DataFrames)..."
-            julia -e '
-              using Pkg
-              Pkg.activate(".")
-              critical_pkgs = ["Tables", "Plots", "DataFrames"]
-              for pkg in critical_pkgs
-                  try
-                      @eval using $(Symbol(pkg))
-                      println("✓ $pkg is available")
-                  catch e
-                      println("✗ $pkg missing, installing...")
-                      Pkg.add(pkg)
-                  end
-              end
-            '
-
-            # Verify AGNI can be loaded
-            echo "Testing AGNI module load..."
-            julia -e 'using Pkg; Pkg.activate("."); include("src/AGNI.jl"); println("✓ AGNI loaded successfully")' || {
-              echo "WARNING: AGNI module failed to load. AGNI tests may fail."
-            }
-
-            cd /opt/proteus
-          else
-            echo "WARNING: AGNI directory not found at /opt/proteus/AGNI"
-          fi
-
 
       - name: Run integration coverage (dummy + integration and not slow)
         if: steps.download_full_data.outcome == 'success'

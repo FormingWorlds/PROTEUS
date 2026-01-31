@@ -48,10 +48,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Julia 1.11 (required by AGNI - must match Project.toml compat)
 # CRITICAL: AGNI requires Julia ~1.11 (not 1.12+) - version mismatch causes test failures
-RUN curl -fsSL https://install.julialang.org | sh -s -- -y && \
-    /root/.juliaup/bin/juliaup add 1.11 && \
-    /root/.juliaup/bin/juliaup default 1.11 && \
-    ln -s /root/.juliaup/bin/julia /usr/local/bin/julia && \
+# Using direct download instead of juliaup to avoid broken symlinks
+RUN JULIA_VERSION=1.11.2 && \
+    JULIA_MINOR=1.11 && \
+    curl -fsSL "https://julialang-s3.julialang.org/bin/linux/x64/${JULIA_MINOR}/julia-${JULIA_VERSION}-linux-x86_64.tar.gz" -o julia.tar.gz && \
+    tar -xzf julia.tar.gz -C /opt && \
+    rm julia.tar.gz && \
+    ln -s /opt/julia-${JULIA_VERSION}/bin/julia /usr/local/bin/julia && \
     julia --version
 
 # Create working directory
