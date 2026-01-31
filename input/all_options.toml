@@ -177,7 +177,7 @@ version = "2.0"
         alpha       = 0.3       # Power-law exponent, only for Andrade rheology (free parameter)
         strain      = true      # Strategy for obtaining heating profile
 
-        module_solid = "solid0d", "solid1d", "solid1d-mush"
+        module_solid = "solid0d"
 
         [orbit.Obliqua.solid]
             ncalc       = 1000      # Number of sublayers to use for dim=1 solid tides
