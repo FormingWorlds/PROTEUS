@@ -116,7 +116,17 @@ jobs:
           except Exception as e:
               print(f'Warning: Stellar spectra download failed: {e}')
 
-          print('Minimal data download completed (~60MB total)')
+          # Download ARAGOG lookup tables for smoke tests (~50MB)
+          # Required by test_smoke_calliope_dummy_atmos_outgassing which uses all_options.toml
+          print('Downloading ARAGOG lookup tables for smoke tests...')
+          try:
+              from proteus.utils.data import download_interior_lookuptables
+              download_interior_lookuptables(clean=False)
+              print('✓ ARAGOG lookup tables downloaded')
+          except Exception as e:
+              print(f'Warning: ARAGOG lookup tables download failed: {e}')
+
+          print('Minimal data download completed (~110MB total)')
           "
 
       - name: Check disk space after data download
