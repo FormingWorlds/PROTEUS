@@ -30,6 +30,9 @@ def init_orbit(handler:Proteus):
     if module == "lovepy":
         from proteus.orbit.lovepy import import_lovepy
         import_lovepy()
+    elif module == "obliqua":
+        from proteus.orbit.obliqua import import_obliqua
+        import_obliqua()
 
 def update_separation(hf_row:dict):
     '''
@@ -238,6 +241,10 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
         hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o, config)
+
+    elif config.orbit.module == 'Obliqua':
+        from proteus.orbit.obliqua import run_obliqua
+        hf_row["σ_range"], hf_row["Imk2"] = run_obliqua(hf_row, dirs, interior_o, config)
 
     else:
         hf_row["Imk2"] = 0.0

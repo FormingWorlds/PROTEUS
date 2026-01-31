@@ -78,11 +78,11 @@ class Obliqua:
         Minimal segment radius fraction before smoothing.
     visc_l : float
         Pure liquid viscosity [Pa s].
-    visc_l_lus : float
+    visc_lus : float
         Liquidus viscosity [Pa s].
     visc_s : float
         Pure solid viscosity [Pa s].
-    visc_s_sus : float
+    visc_sus : float
         Solidus viscosity [Pa s].
     n : int
         Power of the radial factor (r/a)^n.
@@ -107,9 +107,9 @@ class Obliqua:
     min_frac: float = field(default=0.02, validator=gt(0))
 
     visc_l: float = field(default=1e2, validator=gt(0))
-    visc_l_lus: float = field(default=5e2, validator=gt(0))
+    visc_lus: float = field(default=5e2, validator=gt(0))
     visc_s: float = field(default=1e21, validator=gt(0))
-    visc_s_sus: float = field(default=5e13, validator=gt(0))
+    visc_sus: float = field(default=5e13, validator=gt(0))
 
     n: int = field(default=2, validator=gt(0))
     m: int = field(default=2, validator=gt(0))

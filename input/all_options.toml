@@ -163,9 +163,9 @@ version = "2.0"
         dim         = 1         # Dimensions used to evaluate solid tides [int] (0, 1)
         min_frac    = 0.02      # Minimal segment radius fraction before smoothing [dimensionless]
         visc_l      = 1e2       # Pure liquid viscosity [Pa s]
-        visc_l_lus  = 5e2       # Liquidus viscosity to use [Pa s]
+        visc_lus    = 5e2       # Liquidus viscosity to use [Pa s]
         visc_s      = 1e21      # Pure solid visosity [Pa s]
-        visc_s_sus  = 5e13      # Solidus viscosity to use [Pa s]
+        visc_sus    = 5e13      # Solidus viscosity to use [Pa s]
         n           = 2         # Power of the radial factor (goes with (r/a)^{n}, since r<<a only n=2 contributes significantly)
         m           = 2         # Harmonic of the true anomaly. m=2 corresponds to the semidiurnal tide, m=1 diurnal tide
         N_sigma     = 10        # Number probe frequencies to evaluate k2 at
