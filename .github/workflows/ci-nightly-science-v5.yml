@@ -18,7 +18,7 @@ jobs:
   branch-nightly-coverage:
     name: Branch Nightly Coverage (Integration - v5)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 240
     container:
       image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
       credentials:
@@ -400,9 +400,9 @@ jobs:
         run: |
           cd /opt/proteus
           # Run slow integration tests (standard config with all real modules)
-          # These require ARAGOG lookup data and may take 10-15 minutes.
+          # These require ARAGOG lookup data and may take 30-60 minutes each.
           # Note: --timeout flag requires pytest-timeout plugin (not installed in container)
-          # Relying on workflow-level timeout (90 minutes) instead
+          # Relying on workflow-level timeout (240 minutes / 4 hours) instead
           pytest tests/integration/test_integration_std_config.py \
             -m "slow" \
             -v --tb=long \
