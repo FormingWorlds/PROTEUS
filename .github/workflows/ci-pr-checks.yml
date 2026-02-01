@@ -46,7 +46,8 @@ jobs:
     name: Unit Tests (Mocked Physics)
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/formingworlds/proteus:latest
+      # TODO: Change back to :latest after merging to main
+      image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
