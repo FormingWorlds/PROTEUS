@@ -498,7 +498,7 @@ jobs:
             echo "No threshold changes to commit"
           else
             git add pyproject.toml
-            COVERAGE=$(grep -A2 '\[tool.proteus.coverage_fast\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
+            COVERAGE=$(grep -A5 '\[tool.proteus.coverage_fast\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
             git commit -m "ratchet: Auto-update fast coverage threshold to ${COVERAGE}% [skip ci]"
             git push
             echo "✓ Committed ratcheted threshold: ${COVERAGE}%"

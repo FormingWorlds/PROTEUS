@@ -687,7 +687,7 @@ jobs:
             echo "No threshold changes to commit"
           else
             git add pyproject.toml
-            COVERAGE=$(grep -A2 '\[tool.coverage.report\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
+            COVERAGE=$(grep -A6 '\[tool.coverage.report\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
             git commit -m "ratchet: Auto-update full coverage threshold to ${COVERAGE}% [skip ci]"
             # Rebase in case of concurrent updates
             if ! git pull --rebase origin main; then
