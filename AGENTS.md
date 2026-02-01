@@ -192,8 +192,8 @@ coverage html
 
 **Coverage thresholds** (in `pyproject.toml`):
 
-- Fast gate: `[tool.proteus.coverage_fast] fail_under = 31.45`
-- Full suite: `[tool.coverage.report] fail_under = 69`
+- Fast gate: `[tool.proteus.coverage_fast] fail_under = 44.45`
+- Full suite: `[tool.coverage.report] fail_under = 59`
 
 **Validate test structure**:
 
@@ -227,7 +227,7 @@ pre-commit install -f
 
 **CI runs on PRs** (`.github/workflows/ci-pr-checks.yml`):
 
-1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=31.45`
+1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=44.45`
 2. **Smoke tests**: `pytest -m "smoke and not skip"`
 3. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
 4. **Diff-cover**: 80% coverage on changed lines (enforced)

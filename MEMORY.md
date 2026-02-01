@@ -19,7 +19,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Languages**: Python 3.12 (primary), Julia, Fortran, C
 - **Python Framework**: setuptools-based package (`fwl-proteus`)
 - **Testing**: pytest with markers (unit, smoke, integration, slow)
-- **Coverage**: coverage.py with automatic ratcheting (current: 59% full, 31.45% fast)
+- **Coverage**: coverage.py with automatic ratcheting (current: 59% full, 44.45% fast)
 - **Linting**: ruff (line-length 96, quote-style single)
 - **CI/CD**: GitHub Actions with Docker-based workflows
 - **Documentation**: MkDocs with Material theme
@@ -70,7 +70,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 
 3. **Coverage Threshold Calibration** (commit: f6fbcd66)
    - Updated to realistic 59% based on latest CI runs
-   - Fast gate: 31.45% for PR checks
+   - Fast gate: 44.45% for PR checks
 
 4. **File Size Limit Enforcement** (commit: b3016fa1)
    - Added `tools/check_file_sizes.sh` validation script
@@ -85,7 +85,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 ### Recent Architectural Changes
 - **Docker CI Architecture**: Fully operational with pre-built images (`ghcr.io/formingworlds/proteus:latest`)
 - **Test Categorization**: Four-tier system (unit, smoke, integration, slow) with clear CI gates
-- **Coverage Strategy**: Dual-threshold system (fast gate 31.45% for PR, full gate 59% for nightly)
+- **Coverage Strategy**: Dual-threshold system (fast gate 44.45% for PR, full gate 59% for nightly)
 - **Nightly Workflow**: Consolidated to `ci-nightly.yml` with 240-minute timeout
 - **File Size Limits**: Pre-commit enforced limits on AGENTS.md (500) and MEMORY.md (1000)
 
@@ -139,7 +139,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - Script `tools/update_coverage_threshold.py` runs on main branch pushes
 
 **Current Thresholds**:
-- Fast gate: 31.45% (`[tool.proteus.coverage_fast]`)
+- Fast gate: 44.45% (`[tool.proteus.coverage_fast]`)
 - Full gate: 59% (`[tool.coverage.report]`)
 
 **Why This Matters**: Ensures test quality never degrades, even as codebase grows
@@ -283,7 +283,7 @@ Found 4 TODOs across codebase:
 **Strategy**: Gradually remove skips as stability improves; use `PROTEUS_CI_NIGHTLY=1` gating for expensive tests
 
 ### Coverage Gaps (As of 2026-02-01)
-- **Current**: 59% overall, 31.45% fast suite
+- **Current**: 59% overall, 44.45% fast suite
 - **Target**: Incremental improvement via ratcheting
 - **Focus Areas**: Use `bash tools/coverage_analysis.sh` to identify low-coverage modules
 

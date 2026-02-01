@@ -144,7 +144,7 @@ class Escape:
     Attributes
     ----------
     reservoir: str
-        Escaping composition when not doing fractionation. Choices: bulk, outgas.
+        Escaping composition when not doing fractionation. Choices: bulk, outgas, pxuv.
     module: str | None
         Escape module to use. Choices: None, "dummy", "zephyrus", "boreas".
     zephyrus: Zephyrus
