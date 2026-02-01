@@ -81,5 +81,6 @@ Use when adding or extending integration tests (e.g. ARAGOG+AGNI+CALLIOPE+ZEPHYR
 ## See Also
 
 - [Test Categorization](test_categorization.md) — Markers, CI pipeline, fixtures
-- [Test Infrastructure](test_infrastructure.md) — Layout, coverage, troubleshooting
+- [Test Infrastructure](test_infrastructure.md) — Layout, coverage, reusable quality gate
+- [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
 - [AGENTS.md](../AGENTS.md) — Test commands and coverage thresholds
