@@ -298,7 +298,7 @@ jobs:
               pyproject = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
               full_threshold = float(pyproject["tool"]["coverage"]["report"]["fail_under"])
           except Exception:
-              full_threshold = 69.0
+              full_threshold = 59.0  # Fallback (matches pyproject.toml)
 
           # Read coverage data
           u_pct, u_covered, u_total = read_totals(pathlib.Path("coverage-unit.json"))
