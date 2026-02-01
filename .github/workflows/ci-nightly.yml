@@ -1,9 +1,9 @@
-name: CI - Nightly Science Validation (v5)
+name: CI - Nightly Science Validation
 
 on:
-  push:
-    branches:
-      - tl/test_ecosystem_v5
+  schedule:
+    # Run at 3am UTC daily on main branch
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 permissions:
@@ -16,11 +16,11 @@ env:
 
 jobs:
   branch-nightly-coverage:
-    name: Branch Nightly Coverage (Integration - v5)
+    name: Nightly Coverage (Integration)
     runs-on: ubuntu-latest
     timeout-minutes: 240
     container:
-      image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
+      image: ghcr.io/formingworlds/proteus:main
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -33,10 +33,9 @@ jobs:
       USER: "ci-runner"
 
     steps:
-      - name: Checkout branch code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: tl/test_ecosystem_v5
           fetch-depth: 0
 
       - name: Overlay code onto container
