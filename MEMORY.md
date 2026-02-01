@@ -287,6 +287,22 @@ Found 4 TODOs across codebase:
 - **Target**: Incremental improvement via ratcheting
 - **Focus Areas**: Use `bash tools/coverage_analysis.sh` to identify low-coverage modules
 
+### TODO: Coverage Estimation Math Issue
+**Status**: Identified, needs investigation
+
+**Problem**: The file `coverage-integration-only.json` is misnamed - it actually contains COMBINED coverage (unit + smoke + integration) due to `--cov-append`. When the PR workflow estimates total coverage by combining fast (unit+smoke) results with this nightly artifact, stale lines from nightly could mask coverage regressions on PRs.
+
+**Affected files**:
+- `.github/workflows/ci-nightly.yml` lines 402-411 (creates the file)
+- `.github/workflows/ci-pr-checks.yml` lines 312-321 (uses the file)
+
+**Potential fix options**:
+1. Rename file to `coverage-unit-smoke-integration.json` (cosmetic only)
+2. Create truly separate coverage files per test type (requires `coverage erase` before integration)
+3. Validate current math works correctly before any changes
+
+**Priority**: Low - needs investigation to confirm if this is actually causing issues
+
 ---
 
 ## 5. Critical Workflows & Commands

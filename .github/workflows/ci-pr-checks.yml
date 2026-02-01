@@ -309,6 +309,9 @@ jobs:
           except (json.JSONDecodeError, OSError):
               pass
 
+          # NOTE: Despite the filename, coverage-integration-only.json actually contains
+          # COMBINED coverage (unit + smoke + integration) from nightly. See ci-nightly.yml.
+          # TODO: Potential coverage math issue - stale nightly lines could mask PR regressions.
           i_data = {}
           try:
               if pathlib.Path("coverage-integration-only.json").exists():

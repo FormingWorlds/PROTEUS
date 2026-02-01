@@ -263,6 +263,7 @@ jobs:
               print('MORS installed successfully')
 
           # Download data using download_sufficient_data
+          config = None  # Initialize to avoid NameError in fallback path
           try:
               from proteus.config import read_config_object
               from proteus.utils.data import download_sufficient_data
@@ -291,7 +292,8 @@ jobs:
                   from proteus.utils.data import download_interior_lookuptables, download_melting_curves
                   print('Downloading ARAGOG lookup tables...')
                   download_interior_lookuptables(clean=False)
-                  download_melting_curves(config, clean=False)
+                  if config is not None:
+                      download_melting_curves(config, clean=False)
                   print('ARAGOG data download completed.')
               except Exception as e_aragog:
                   print(f'Warning: ARAGOG data download failed: {e_aragog}')
@@ -398,6 +400,11 @@ jobs:
             --cov-config=pyproject.toml 2>&1 | tee /tmp/integration-output.txt || true
 
       - name: Save coverage before slow (unit + smoke + integration, for Fast PR reference)
+        # NOTE: Despite the filename "coverage-integration-only.json", this file actually contains
+        # COMBINED coverage from unit + smoke + integration tests (due to --cov-append above).
+        # The PR workflow (ci-pr-checks.yml) uses this to estimate total coverage.
+        # TODO: Potential coverage math issue - if unit/smoke coverage drops on a PR, stale lines
+        # from this nightly artifact could mask the regression. See MEMORY.md for tracking.
         if: always()
         run: |
           cd /opt/proteus
