@@ -633,11 +633,19 @@ jobs:
           # Get final coverage
           final = read_coverage("coverage-branch-nightly.json")
 
+          # Read threshold from pyproject.toml
+          import tomllib
+          try:
+              pyproject = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+              threshold = float(pyproject["tool"]["coverage"]["report"]["fail_under"])
+          except Exception:
+              threshold = 59.0  # Fallback
+
           # Create coverage-by-type summary
           summary = {
               "timestamp": datetime.now(timezone.utc).isoformat(),
               "total": final,
-              "threshold": 69.0,  # Will be read from pyproject.toml in validation
+              "threshold": threshold,
           }
 
           pathlib.Path("coverage-by-type.json").write_text(json.dumps(summary, indent=2))
