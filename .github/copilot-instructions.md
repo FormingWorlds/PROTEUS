@@ -62,7 +62,7 @@ When helping with installation or dependency issues, always reference these guid
   - **Floats:** Automatically generate assertions using `pytest.approx()` for any floating-point comparisons.
   - **Parametrization:** Prefer `@pytest.mark.parametrize` over writing multiple similar test functions.
   - **Physics Checks:** detailed comments explaining *why* a specific input range was chosen (e.g., "Temperature set to 300K to represent habitable zone conditions").
-  - **Instructions:** See `docs/test_building.md` for best practices on building robust tests and `test_building_strategy.md` for current test building strategy.
+  - **Instructions:** See `docs/test_building.md` for best practices on building robust tests.
   - **Documentation:** Add detailed docstrings to each test explaining the physical scenario being tested. In the header of the test file, include a brief overview of what is being tested and any important context, including a link to all docuementation about testing standards: `docs/test_infrastructure.md`, `docs/test_categorization.md` and `docs/test_building.md`.
   - **Formatting:** Ruff format all test files before committing.
 

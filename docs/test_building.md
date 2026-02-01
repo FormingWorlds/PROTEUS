@@ -1,15 +1,42 @@
 # Building Robust Tests
 
-This guide describes the developer workflow and standard prompts for generating unit and integration tests. For test structure, markers, and CI see [Test Categorization](test_categorization.md) and [Test Infrastructure](test_infrastructure.md).
+## What This Document Is For
+
+**New to testing?** This guide helps you write tests for PROTEUS code. Tests are small programs that check if your code works correctly. When you change code, tests catch bugs before they reach production.
+
+**Key concept:** For most code changes, you only need **unit tests** (fast, isolated tests). Integration tests are for advanced scenarios involving multiple physics modules working together.
+
+For test markers and CI pipelines, see [Test Categorization](test_categorization.md). For coverage analysis and troubleshooting, see [Test Infrastructure](test_infrastructure.md).
 
 ---
 
-## Developer Workflow ("Context Sandwich")
+## Quick Start: Writing Your First Test
 
-1. **Open source**: The file under test (e.g. `src/proteus/utils/helper.py`).
-2. **Open destination**: The test file (e.g. `tests/utils/test_helper.py`).
-3. **Open fixtures**: `tests/conftest.py` so available fixtures are in context.
-4. **Prompt**: Paste the **Master Prompt** (unit) or **Integration Prompt** below into the chat.
+1. **Create test file**: For `src/proteus/utils/helper.py`, create `tests/utils/test_helper.py`
+2. **Add a test function**: Start with `test_` prefix, add `@pytest.mark.unit` marker
+3. **Run it**: `pytest tests/utils/test_helper.py -v`
+4. **Check coverage**: `pytest --cov=src tests/utils/`
+
+```python
+import pytest
+from proteus.utils.helper import my_function
+
+@pytest.mark.unit
+def test_my_function_basic():
+    """Test that my_function returns expected value."""
+    result = my_function(input_value=10)
+    assert result == pytest.approx(expected_value, rel=1e-5)
+```
+
+---
+
+## Developer Workflow
+
+1. **Open source**: The file under test (e.g., `src/proteus/utils/helper.py`)
+2. **Open destination**: The test file (e.g., `tests/utils/test_helper.py`)
+3. **Open fixtures**: `tests/conftest.py` for available fixtures
+4. **Write tests**: Use the prompts below if using AI assistance
+5. **Run and verify**: `pytest -m unit` then `ruff format tests/`
 
 ---
 
@@ -55,5 +82,4 @@ Use when adding or extending integration tests (e.g. ARAGOG+AGNI+CALLIOPE+ZEPHYR
 
 - [Test Categorization](test_categorization.md) — Markers, CI pipeline, fixtures
 - [Test Infrastructure](test_infrastructure.md) — Layout, coverage, troubleshooting
-- [Test Building Strategy](test_building_strategy.md) — Status and principles
 - [AGENTS.md](../AGENTS.md) — Test commands and coverage thresholds

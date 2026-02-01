@@ -1,70 +1,74 @@
 # Testing Infrastructure
 
-This document describes the testing infrastructure for PROTEUS and the ecosystem. For markers and CI flow see [Test Categorization](test_categorization.md). For prompts and workflow see [Test Building](test_building.md). For status and strategy see [Test Building Strategy](test_building_strategy.md).
+## What This Document Is For
+
+**New to PROTEUS?** This document explains how our testing system works: how to run tests, check code coverage, and troubleshoot common issues.
+
+**Key concepts:**
+- **Coverage** measures what percentage of your code is tested. Higher is better.
+- **CI (Continuous Integration)** automatically runs tests when you push code.
+- **Thresholds** are minimum coverage percentages that must be met.
+
+For test markers and CI pipelines, see [Test Categorization](test_categorization.md). For writing tests, see [Test Building](test_building.md).
 
 ---
 
 ## Table of Contents
 
-1. [CI/CD Status](#cicd-status)
-2. [Quick Start](#quick-start)
+1. [Quick Start](#quick-start)
+2. [CI/CD Status](#cicd-status)
 3. [Developer Workflow](#developer-workflow)
 4. [Coverage Analysis](#coverage-analysis-workflow)
 5. [Pre-commit Checklist](#pre-commit-checklist)
 6. [Troubleshooting](#troubleshooting)
 7. [Best Practices](#best-practices)
-8. [Skipped Tests](#skipped-tests-placeholders-and-environment-limited)
-9. [Monitoring & Maintenance](#monitoring--maintenance)
-10. [References](#references)
-11. [Checklist: New Ecosystem Module](#checklist-new-ecosystem-module)
-
----
-
-## CI/CD Status
-
-**Last updated**: 2026-02-01
-
-### Coverage Coordination System
-
-PROTEUS uses a two-tier coverage system coordinated between nightly and PR workflows:
-
-| Workflow | Purpose | Tests Run | Schedule |
-|----------|---------|-----------|----------|
-| `ci-nightly.yml` | Establish baseline, ratchet threshold | All (unit + smoke + integration + slow) | 3am UTC daily |
-| `ci-pr-checks.yml` | Fast validation against baseline | Fast only (unit + smoke) | On every PR/push |
-
-**Key features:**
-- **Grace period (0.3%)**: PRs can merge if coverage drops by ≤0.3%; a warning comment is posted encouraging follow-up tests
-- **Staleness detection (48h)**: PR checks fail if nightly artifact is older than 48 hours
-- **Coverage-by-type reporting**: Both workflows show coverage breakdown by test type (unit, smoke, integration)
-- **Automatic ratcheting**: Nightly ratchets `[tool.coverage.report] fail_under`; PR checks ratchet `[tool.proteus.coverage_fast] fail_under`
-
-### Workflows
-
-- **PR workflow** (`ci-pr-checks.yml`): Pre-built Docker image; overlay PR code; validate test structure; `pytest -m "unit and not skip"` with coverage (fast gate); diff-cover 80% on changed lines; `pytest -m "smoke and not skip"`; lint in parallel. Runtime ~5–10 min.
-- **Coverage thresholds**: In `pyproject.toml` — fast gate `[tool.proteus.coverage_fast] fail_under`, full gate `[tool.coverage.report] fail_under`. Ratcheted automatically; do not decrease manually.
-- **Nightly** (`ci-nightly.yml`): Sets `PROTEUS_CI_NIGHTLY=1`; runs unit → smoke → integration → slow. Combined coverage; full gate enforced; threshold ratcheted on main.
-- **Docker**: Image `ghcr.io/formingworlds/proteus:main`. Built via `docker-build.yml`. PR overlays code onto `/opt/proteus/`. Smart rebuild (SOCRATES/AGNI) in smoke job when relevant sources change.
-- **Reusable workflow**: `proteus_test_quality_gate.yml` for ecosystem modules (supports grace-period input).
-
-See [Test Categorization](test_categorization.md) for pipeline details and [Docker CI Architecture](docker_ci_architecture.md) for image build.
+8. [References](#references)
 
 ---
 
 ## Quick Start
 
-**PR authors**: CI will validate structure, run unit tests with coverage (fast gate), diff-cover, smoke tests, and lint. Install: `pip install -e ".[develop]"`. Run locally: `pytest -m "unit and not skip"` and `pytest -m "smoke and not skip"`.
-
-**Test writers**: Use markers `@pytest.mark.unit`, `@pytest.mark.smoke`, `@pytest.mark.integration`, `@pytest.mark.slow` as appropriate. See [Test Categorization](test_categorization.md).
-
-**Running locally**:
+**First time?** Install with `pip install -e ".[develop]"`, then run tests:
 
 ```bash
-pytest -m "unit and not skip"           # Unit only (matches PR)
-pytest -m "(unit or smoke) and not skip"  # What PR runs
-pytest -m "not slow"                    # All except slow
-pytest --cov=src --cov-report=html      # With coverage
+pytest -m "unit and not skip"           # Fast unit tests (~2 min)
+pytest -m "smoke and not skip"          # Smoke tests with real binaries
+pytest --cov=src --cov-report=html      # Generate coverage report
+open htmlcov/index.html                 # View coverage in browser
 ```
+
+**Before committing:**
+1. Run `pytest -m "unit and not skip"` — must pass
+2. Run `ruff check src/ tests/ && ruff format src/ tests/` — must pass
+3. Run `bash tools/validate_test_structure.sh` — must pass
+
+---
+
+## CI/CD Status
+
+### How CI Works
+
+When you open a pull request, CI automatically:
+1. Validates test file structure
+2. Runs unit tests and checks coverage (must meet threshold)
+3. Runs smoke tests
+4. Checks code style with ruff
+
+**Current coverage thresholds** (from `pyproject.toml`):
+- **Fast gate**: 44.45% (unit + smoke, checked on PRs)
+- **Full gate**: 59% (all tests, checked nightly)
+
+### Workflows
+
+| Workflow | Runs When | What It Does |
+|----------|-----------|--------------|
+| `ci-pr-checks.yml` | Every PR | Unit + smoke tests, lint, ~5-10 min |
+| `ci-nightly.yml` | Daily 3am UTC | All tests including slow, updates thresholds |
+
+**Key features:**
+- **Grace period**: PRs can merge with ≤0.3% coverage drop (warning posted)
+- **Diff-cover**: 80% coverage required on changed lines
+- **Auto-ratcheting**: Thresholds only increase, never decrease
 
 ---
 
@@ -156,44 +160,13 @@ Coverage: focus on critical paths; use `bash tools/coverage_analysis.sh`; thresh
 
 ---
 
-## Skipped Tests (Placeholders and Environment-Limited)
-
-Some tests use `@pytest.mark.skip` (placeholders or require binaries/network). CI runs `pytest -m "unit and not skip"` and `pytest -m "smoke and not skip"`, so skipped tests are excluded from PR. Examples: JANUS/SOCRATES (instability), AGNI (Julia/binaries), CALLIOPE (slow, nightly), network-dependent data tests. Smoke tests gated by `PROTEUS_CI_NIGHTLY=1` run only in nightly. To enable a test: remove or narrow `skip`, add the right marker, ensure it passes. See [Test Categorization](test_categorization.md).
-
----
-
-## Monitoring & Maintenance
-
-- **CI**: PR &lt;10 min; nightly as per workflow. Monitor Actions for failures.
-- **Coverage**: Fast and full gates in `pyproject.toml`; review HTML artifacts and Codecov.
-- **Docs**: Update these docs when adding markers or changing CI; keep thresholds in `pyproject.toml` as source of truth.
-- **Quality**: Review new tests in PRs; refactor tests like production code.
-
----
-
 ## References
 
 - [Test Categorization](test_categorization.md) — Markers, CI pipeline, fixtures
 - [Test Building](test_building.md) — Prompts for unit/integration tests
-- [Test Building Strategy](test_building_strategy.md) — Status and principles
 - [Docker CI Architecture](docker_ci_architecture.md) — Image build and strategy
 - [tests/conftest.py](../tests/conftest.py) — Shared fixtures
 - [AGENTS.md](../AGENTS.md) — Commands and thresholds
 - pytest: <https://docs.pytest.org/>
 - coverage: <https://coverage.readthedocs.io/>
 - ruff: <https://docs.astral.sh/ruff/>
-
----
-
-## Checklist: Ready to Deploy Quality Gate
-
-**For a new ecosystem module**:
-
-- [ ] Copy PROTEUS `pyproject.toml` pytest/coverage sections; set initial `fail_under` (e.g. 20–30%)
-- [ ] Create/update `.github/workflows/ci_tests.yml`; add pytest-cov
-- [ ] Run `bash tools/validate_test_structure.sh`; ensure `tests/` mirrors `src/`
-- [ ] Local: `pytest` passes; coverage meets threshold; markers work
-- [ ] Push; CI runs; coverage reported
-- [ ] Document testing approach; link to this guide
-
-**Last updated**: 2026-01-28

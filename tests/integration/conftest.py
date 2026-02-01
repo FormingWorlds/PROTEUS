@@ -25,7 +25,6 @@ establishing integration test infrastructure.
         validate_mass_conservation(runner.hf_all)
 
 Documentation:
-- docs/test_building_strategy.md (Phase 2: Integration Test Foundation)
 - docs/test_infrastructure.md
 - docs/test_categorization.md
 """

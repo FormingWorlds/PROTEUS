@@ -14,7 +14,6 @@ infrastructure and validation helpers.
 for CI. Uses config derived from aragog_janus with atmos_clim switched to AGNI.
 
 **Documentation**:
-- docs/test_building_strategy.md (Plan: What Comes Next, §2)
 - docs/test_infrastructure.md
 - docs/test_categorization.md
 - docs/test_building.md (Integration Prompt)

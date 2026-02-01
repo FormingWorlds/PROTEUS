@@ -24,7 +24,6 @@ This test validates the full PROTEUS "standard candle" configuration using
 - Sufficient memory for AGNI/ARAGOG calculations
 
 **Documentation**:
-- docs/test_building_strategy.md (Phase 2, Priority 2.1)
 - docs/test_infrastructure.md
 - docs/test_categorization.md
 """

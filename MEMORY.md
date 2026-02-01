@@ -557,7 +557,7 @@ Original smoke data download only included spectral files and stellar spectra.
 - **Installation**: `docs/installation.md`
 - **Testing Infrastructure**: `docs/test_infrastructure.md`
 - **Test Categorization**: `docs/test_categorization.md`
-- **Test Building Strategy**: `docs/test_building_strategy.md`
+- **Test Building**: `docs/test_building.md`
 - **Docker CI Architecture**: `docs/docker_ci_architecture.md`
 - **Agent Guidelines**: `AGENTS.md`
 

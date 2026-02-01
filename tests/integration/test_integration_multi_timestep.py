@@ -15,7 +15,6 @@ for multiple timesteps with dummy modules and checking:
 **Runtime**: ~30-60s (5-10 timesteps, dummy modules)
 
 **Documentation**:
-- docs/test_building_strategy.md (Phase 2: Integration Test Foundation)
 - docs/test_infrastructure.md
 - docs/test_categorization.md
 """

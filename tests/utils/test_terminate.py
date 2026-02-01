@@ -2,8 +2,7 @@
 
 Exercises convergence/termination criteria for solidification, energy balance,
 volatile escape, disintegration, time/iteration limits, and keepalive guard.
-Follows PROTEUS testing standards (see docs/test_infrastructure.md and
-docs/test_building_strategy.md).
+Follows PROTEUS testing standards (see docs/test_infrastructure.md).
 """
 
 from __future__ import annotations

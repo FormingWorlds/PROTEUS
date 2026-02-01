@@ -14,7 +14,6 @@
 # Documentation: For testing standards, see:
 # - docs/test_infrastructure.md
 # - docs/test_categorization.md
-# - docs/test_building_strategy.md (Priority 2.5.1)
 #
 from __future__ import annotations
 
