@@ -582,8 +582,6 @@ Original smoke data download only included spectral files and stellar spectra.
 ### Core Maintainers
 - **Tim Lichtenberg** (tim.lichtenberg@rug.nl): Project lead
 - **Harrison Nicholls** (harrison.nicholls@physics.ox.ac.uk): AGNI, SOCRATES
-- **Laurent Soucasse** (l.soucasse@esciencecenter.nl): Infrastructure
-- **Dan J. Bower** (dbower@ethz.ch): SPIDER
 
 ### Contact Points
 - **Discussions**: https://github.com/orgs/FormingWorlds/discussions
@@ -610,3 +608,12 @@ Original smoke data download only included spectral files and stellar spectra.
 ---
 
 **Note**: This document should be updated whenever significant architectural decisions are made, major features are added, or critical lessons are learned. See `AGENTS.md` for the Memory Maintenance Prime Directive.
+
+> **⚠️ FILE SIZE LIMIT: This file must stay below 1000 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`).
+
+**When approaching the limit, refactor by asking:**
+1. **Is this still relevant?** Archive completed decisions, resolved issues, or obsolete context to a separate `docs/archive/` file if historically valuable, otherwise delete.
+2. **Is this decision or context?** Keep the *why* behind decisions; remove transient status updates that no longer matter.
+3. **Is this duplicated elsewhere?** Reference `AGENTS.md`, docs, or code comments instead of duplicating.
+4. **Can sections be condensed?** Merge related items, use bullet points over prose, compress verbose explanations.
+5. **What would a new contributor need?** Prioritize information that prevents mistakes over historical trivia.

@@ -456,3 +456,14 @@ proteus start -c input/minimal.toml -o output/test
 ```
 
 **Remember**: Trust these instructions. Only search if information is incomplete or found to be in error.
+
+---
+
+> **⚠️ FILE SIZE LIMIT: This file must stay below 500 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`).
+
+**When approaching the limit, refactor by asking:**
+1. **Is this still accurate?** Remove outdated commands, deprecated workflows, or superseded patterns.
+2. **Is this actionable?** Keep instructions that guide behavior; remove explanations that don't change actions.
+3. **Is this duplicated?** Consolidate repeated information; reference docs instead of duplicating them.
+4. **Is this essential?** Prefer terse examples over verbose explanations. One good example beats three paragraphs.
+5. **Can this be shortened?** Compress lists, remove filler words, use tables for dense reference data.
