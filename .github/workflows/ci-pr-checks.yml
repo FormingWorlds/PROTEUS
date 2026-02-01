@@ -350,10 +350,11 @@ jobs:
 
           # Write outputs for subsequent steps
           output_file = pathlib.Path(os.environ.get("GITHUB_OUTPUT", "/tmp/outputs.txt"))
+          est_total_str = f"{est_pct_union:.2f}" if est_pct_union is not None else "0"
           with open(output_file, "a") as f:
               f.write(f"coverage_status={coverage_status}\n")
               f.write(f"coverage_drop={coverage_drop:.2f}\n")
-              f.write(f"estimated_total={est_pct_union:.2f if est_pct_union else 0}\n")
+              f.write(f"estimated_total={est_total_str}\n")
               f.write(f"threshold={full_threshold}\n")
 
           # Write summary
