@@ -5,6 +5,11 @@ on:
     # Run at 3am UTC daily on main branch
     - cron: '0 3 * * *'
   workflow_dispatch:
+  push:
+    branches:
+      - tl/test_ecosystem_v5
+    paths:
+      - '.github/workflows/ci-nightly.yml'
 
 permissions:
   contents: write  # Required for ratcheting coverage threshold commits
