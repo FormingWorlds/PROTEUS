@@ -22,13 +22,30 @@ This document describes the testing infrastructure for PROTEUS and the ecosystem
 
 ## CI/CD Status
 
-**Last updated**: 2026-01-28
+**Last updated**: 2026-02-01
+
+### Coverage Coordination System
+
+PROTEUS uses a two-tier coverage system coordinated between nightly and PR workflows:
+
+| Workflow | Purpose | Tests Run | Schedule |
+|----------|---------|-----------|----------|
+| `ci-nightly.yml` | Establish baseline, ratchet threshold | All (unit + smoke + integration + slow) | 3am UTC daily |
+| `ci-pr-checks.yml` | Fast validation against baseline | Fast only (unit + smoke) | On every PR/push |
+
+**Key features:**
+- **Grace period (0.3%)**: PRs can merge if coverage drops by ≤0.3%; a warning comment is posted encouraging follow-up tests
+- **Staleness detection (48h)**: PR checks fail if nightly artifact is older than 48 hours
+- **Coverage-by-type reporting**: Both workflows show coverage breakdown by test type (unit, smoke, integration)
+- **Automatic ratcheting**: Nightly ratchets `[tool.coverage.report] fail_under`; PR checks ratchet `[tool.proteus.coverage_fast] fail_under`
+
+### Workflows
 
 - **PR workflow** (`ci-pr-checks.yml`): Pre-built Docker image; overlay PR code; validate test structure; `pytest -m "unit and not skip"` with coverage (fast gate); diff-cover 80% on changed lines; `pytest -m "smoke and not skip"`; lint in parallel. Runtime ~5–10 min.
-- **Coverage thresholds**: In `pyproject.toml` — fast gate `[tool.proteus.coverage_fast] fail_under`, full gate `[tool.coverage.report] fail_under`. Ratcheted on push to main / `tl/test_ecosystem_v5` via `tools/update_coverage_threshold.py`; do not decrease.
-- **Nightly** (`ci-nightly-science-v5.yml` on `tl/test_ecosystem_v5`): Sets `PROTEUS_CI_NIGHTLY=1`; runs unit → smoke (including gated smoke tests) → integration → slow. Combined coverage; full gate enforced.
-- **Docker**: Image `ghcr.io/formingworlds/proteus:latest` (and branch tag for `tl/test_ecosystem_v5`). Built via `docker-build.yml`. PR overlays code onto `/opt/proteus/`. Smart rebuild (SOCRATES/AGNI) in smoke job when relevant sources change.
-- **Reusable workflow**: `proteus_test_quality_gate.yml` for ecosystem modules.
+- **Coverage thresholds**: In `pyproject.toml` — fast gate `[tool.proteus.coverage_fast] fail_under`, full gate `[tool.coverage.report] fail_under`. Ratcheted automatically; do not decrease manually.
+- **Nightly** (`ci-nightly.yml`): Sets `PROTEUS_CI_NIGHTLY=1`; runs unit → smoke → integration → slow. Combined coverage; full gate enforced; threshold ratcheted on main.
+- **Docker**: Image `ghcr.io/formingworlds/proteus:main`. Built via `docker-build.yml`. PR overlays code onto `/opt/proteus/`. Smart rebuild (SOCRATES/AGNI) in smoke job when relevant sources change.
+- **Reusable workflow**: `proteus_test_quality_gate.yml` for ecosystem modules (supports grace-period input).
 
 See [Test Categorization](test_categorization.md) for pipeline details and [Docker CI Architecture](docker_ci_architecture.md) for image build.
 

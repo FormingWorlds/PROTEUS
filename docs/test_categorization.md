@@ -16,30 +16,38 @@ All tests use pytest markers. Current thresholds are in `pyproject.toml` (`[tool
 | `@pytest.mark.slow` | Full physics / long runs | Hours | Nightly |
 | `@pytest.mark.skip` | Placeholder or env-limited | — | Excluded from CI |
 
-**Unit** (480+ tests): config, utils, wrappers (atmos_clim, atmos_chem, escape, interior, observe, orbit, outgas, star), plot, CLI, init.  
-**Smoke**: `tests/integration/test_smoke_minimal.py`, `test_smoke_atmos_interior.py`, `test_smoke_modules.py`, `test_smoke_janus.py`, `test_smoke_outgassing.py`. Some smoke tests are skipped in PR and run in nightly (JANUS/AGNI/CALLIOPE when binaries available).  
-**Integration**: `tests/integration/test_integration_*.py`, `test_aragog_agni`, `test_aragog_janus`, `test_std_config`, `test_albedo_lookup`, plus grid/inference.  
+**Unit** (480+ tests): config, utils, wrappers (atmos_clim, atmos_chem, escape, interior, observe, orbit, outgas, star), plot, CLI, init.
+**Smoke**: `tests/integration/test_smoke_minimal.py`, `test_smoke_atmos_interior.py`, `test_smoke_modules.py`, `test_smoke_janus.py`, `test_smoke_outgassing.py`. Some smoke tests are skipped in PR and run in nightly (JANUS/AGNI/CALLIOPE when binaries available).
+**Integration**: `tests/integration/test_integration_*.py`, `test_aragog_agni`, `test_aragog_janus`, `test_std_config`, `test_albedo_lookup`, plus grid/inference.
 **Slow**: e.g. `test_integration_std_config.py` extended run; future scenarios (Earth magma ocean, Venus greenhouse) as needed.
 
 ---
 
 ## CI/CD Pipeline
 
+### Coverage Coordination
+
+PROTEUS uses a two-tier coverage system:
+
+| Feature | Value | Description |
+|---------|-------|-------------|
+| Grace period | 0.3% | PRs can merge with coverage drops ≤0.3%; warning posted |
+| Staleness threshold | 48 hours | PR checks fail if nightly artifact is stale |
+| Diff-cover | 80% | Required coverage on changed lines |
+
 ### Fast PR Checks (`ci-pr-checks.yml`)
 
-- **Trigger**: Pull requests and pushes to `main`, `dev`, `tl/test_ecosystem_v5`, `tl/test_ecosystem_v5_fast`; `workflow_dispatch`.
-- **Steps**: Validate test structure → `pytest -m "unit and not skip"` with coverage (fast gate) → diff-cover 80% on changed lines → `pytest -m "smoke and not skip"` → lint in parallel.
-- **Coverage**: Fast gate from `[tool.proteus.coverage_fast] fail_under`; ratcheted on push to main / `tl/test_ecosystem_v5`. Diff-cover 80% on changed lines.
+- **Trigger**: Pull requests and pushes to `main`, `dev`; `workflow_dispatch`.
+- **Steps**: Validate test structure → `pytest -m "unit and not skip"` with coverage (fast gate) → diff-cover 80% on changed lines → `pytest -m "smoke and not skip"` → validate against nightly baseline → lint in parallel.
+- **Coverage validation**: Downloads nightly artifact; computes estimated total (union of PR + nightly); fails if drop > 0.3% or nightly is stale (>48h).
+- **Ratcheting**: Fast gate from `[tool.proteus.coverage_fast] fail_under`; ratcheted on push to main.
 
-### Nightly Science Validation (`ci-nightly-science-v5.yml`)
+### Nightly Science Validation (`ci-nightly.yml`)
 
-- **Trigger**: Push to `tl/test_ecosystem_v5`; `workflow_dispatch`. Sets `PROTEUS_CI_NIGHTLY=1`.
-- **Steps**: Unit → smoke (including those gated by `PROTEUS_CI_NIGHTLY`) → integration (dummy + `integration and not slow`) → slow (e.g. std_config). Combined coverage; full gate from `[tool.coverage.report] fail_under`.
-
-### Nightly (`ci-nightly-science.yml`)
-
-- **Trigger**: Schedule (e.g. 03:00 UTC); `workflow_dispatch`. Uses main + latest image.
-- **Jobs**: Quick integration; science validation (`slow or integration`); integration-only. Full coverage ratcheting on main.
+- **Trigger**: Schedule (3am UTC daily); `workflow_dispatch`. Sets `PROTEUS_CI_NIGHTLY=1`.
+- **Steps**: Unit → smoke (including those gated by `PROTEUS_CI_NIGHTLY`) → integration (dummy + `integration and not slow`) → slow. Combined coverage; full gate from `[tool.coverage.report] fail_under`.
+- **Ratcheting**: Full threshold ratcheted on main after successful run.
+- **Artifacts**: Uploads `nightly-coverage` artifact with timestamp for PR staleness detection.
 
 ---
 

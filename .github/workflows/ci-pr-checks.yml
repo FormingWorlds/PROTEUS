@@ -189,34 +189,77 @@ jobs:
           coverage json -o coverage-unit.json
 
       - name: Download last nightly coverage (for estimated total)
+        id: download-nightly
         if: always()
         continue-on-error: true  # Do not fail job when no nightly artifact exists yet
         uses: dawidd6/action-download-artifact@v3
         with:
-          workflow: ci-nightly-science-v5.yml
-          name: v5-branch-nightly-coverage
+          workflow: ci-nightly.yml
+          name: nightly-coverage
           path: nightly-coverage
           workflow_conclusion: success
           if_no_artifact_found: warn
 
-      - name: Copy nightly integration coverage into container
+      - name: Copy nightly coverage into container and check staleness
+        id: check-nightly
         if: always()
         run: |
-          if [ -f nightly-coverage/coverage-integration-only.json ]; then
-            cp nightly-coverage/coverage-integration-only.json /opt/proteus/
+          cd /opt/proteus
+          STALE_HOURS=48
+          NIGHTLY_STALE=false
+          NIGHTLY_MISSING=false
+
+          if [ -f /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-integration-only.json ]; then
+            cp /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-integration-only.json /opt/proteus/
+            cp /__w/PROTEUS/PROTEUS/nightly-coverage/nightly-timestamp.txt /opt/proteus/ 2>/dev/null || true
+            cp /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-by-type.json /opt/proteus/ 2>/dev/null || true
+
+            # Check staleness
+            if [ -f /opt/proteus/nightly-timestamp.txt ]; then
+              NIGHTLY_TS=$(cat /opt/proteus/nightly-timestamp.txt)
+              python3 - <<PYEOF
+          from datetime import datetime, timezone, timedelta
+          import sys
+          ts = datetime.fromisoformat("$NIGHTLY_TS".replace('Z', '+00:00'))
+          age = datetime.now(timezone.utc) - ts
+          hours = age.total_seconds() / 3600
+          print(f"Nightly artifact age: {hours:.1f} hours")
+          if hours > $STALE_HOURS:
+              print(f"WARNING: Nightly artifact is stale ({hours:.1f}h > {$STALE_HOURS}h)")
+              sys.exit(1)
+          print("Nightly artifact is fresh.")
+          PYEOF
+              if [ $? -ne 0 ]; then
+                NIGHTLY_STALE=true
+              fi
+            else
+              echo "No timestamp file found - assuming fresh"
+            fi
+          else
+            echo "No nightly coverage artifact found"
+            NIGHTLY_MISSING=true
           fi
 
-      - name: Write workflow summary (visible on Actions run page)
+          echo "NIGHTLY_STALE=$NIGHTLY_STALE" >> $GITHUB_ENV
+          echo "NIGHTLY_MISSING=$NIGHTLY_MISSING" >> $GITHUB_ENV
+
+      - name: Write workflow summary and validate coverage
+        id: coverage-validation
         if: always()
         env:
           UNIT_OUTCOME: ${{ steps.unit-tests.outcome }}
           SMOKE_OUTCOME: ${{ steps.smoke-tests.outcome }}
+          NIGHTLY_STALE: ${{ env.NIGHTLY_STALE }}
+          NIGHTLY_MISSING: ${{ env.NIGHTLY_MISSING }}
         run: |
           cd /opt/proteus
           python - <<'PY'
           import json
           import os
           import pathlib
+          import tomllib
+
+          GRACE_PERIOD = 0.3  # Allow coverage drops up to this margin
 
           def read_totals(path):
               try:
@@ -236,7 +279,6 @@ jobs:
               return p
 
           def line_set_from_files(data):
-              """Set of (norm_path, line) for executed lines."""
               out = set()
               for path, fd in data.get("files", {}).items():
                   n = norm_path(path)
@@ -245,7 +287,6 @@ jobs:
               return out
 
           def executable_set_from_files(data):
-              """Set of (norm_path, line) for executed | missing (all executable lines)."""
               out = set()
               for path, fd in data.get("files", {}).items():
                   n = norm_path(path)
@@ -253,6 +294,14 @@ jobs:
                       out.add((n, line))
               return out
 
+          # Read thresholds from pyproject.toml
+          try:
+              pyproject = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+              full_threshold = float(pyproject["tool"]["coverage"]["report"]["fail_under"])
+          except Exception:
+              full_threshold = 69.0
+
+          # Read coverage data
           u_pct, u_covered, u_total = read_totals(pathlib.Path("coverage-unit.json"))
           u_data = {}
           try:
@@ -260,6 +309,7 @@ jobs:
                   u_data = json.loads(pathlib.Path("coverage-unit.json").read_text())
           except (json.JSONDecodeError, OSError):
               pass
+
           i_data = {}
           try:
               if pathlib.Path("coverage-integration-only.json").exists():
@@ -268,15 +318,10 @@ jobs:
               pass
           i_pct, i_covered, i_total = read_totals(pathlib.Path("coverage-integration-only.json"))
 
-          # Estimated total: (a) with overlap removed (union), (b) simple sum
-          has_est = False
+          # Compute estimated total (union)
           est_pct_union = None
           est_covered_union = 0
           est_total_union = 0
-          est_pct_sum = None
-          est_covered_sum = 0
-          est_total_sum = 0
-          overlap_removed = False
           if u_data.get("files") and i_data.get("files"):
               u_exec = line_set_from_files(u_data)
               i_exec = line_set_from_files(i_data)
@@ -288,61 +333,82 @@ jobs:
                   est_covered_union = len(union_covered)
                   est_total_union = len(union_executable)
                   est_pct_union = min(100.0, 100.0 * est_covered_union / est_total_union)
-                  overlap_removed = True
-          elif u_total and i_total:
-              # Per-file data unavailable; union calculation cannot be performed
-              print("Warning: Per-file coverage data unavailable; union calculation skipped")
-          if u_total and u_total > 0:
-              est_covered_sum = u_covered + i_covered
-              est_total_sum = u_total
-              est_pct_sum = min(100.0, 100.0 * est_covered_sum / u_total)
-              has_est = True
 
+          # Check staleness and coverage status
+          nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
+          nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
+
+          # Determine coverage status
+          coverage_status = "ok"
+          coverage_drop = 0
+          if est_pct_union is not None:
+              coverage_drop = full_threshold - est_pct_union
+              if coverage_drop > GRACE_PERIOD:
+                  coverage_status = "fail"
+              elif coverage_drop > 0:
+                  coverage_status = "warn"
+
+          # Write outputs for subsequent steps
+          output_file = pathlib.Path(os.environ.get("GITHUB_OUTPUT", "/tmp/outputs.txt"))
+          with open(output_file, "a") as f:
+              f.write(f"coverage_status={coverage_status}\n")
+              f.write(f"coverage_drop={coverage_drop:.2f}\n")
+              f.write(f"estimated_total={est_pct_union:.2f if est_pct_union else 0}\n")
+              f.write(f"threshold={full_threshold}\n")
+
+          # Write summary
           summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
           unit_outcome = os.environ.get("UNIT_OUTCOME", "unknown")
           smoke_outcome = os.environ.get("SMOKE_OUTCOME", "unknown")
+
           with open(summary_path, "w") as f:
               f.write("# Fast PR Checks – Summary\n\n")
-              f.write("## Which tests failed\n\n")
-              f.write(f"- **Unit tests:** {unit_outcome}\n")
-              f.write(f"- **Smoke tests:** {smoke_outcome}\n\n")
-              f.write("## Total test coverage (unit + smoke tests, this run)\n\n")
-              f.write(f"- **Line coverage:** **{u_pct:.2f}%**\n")
-              f.write(f"- **Covered lines:** {u_covered} / {u_total}\n\n")
-              f.write("## Integration coverage (last Nightly Science v5 run)\n\n")
+
+              # Staleness/missing warnings
+              if nightly_stale:
+                  f.write("## ❌ Stale Nightly Baseline\n\n")
+                  f.write("The last successful nightly CI run was **more than 48 hours ago**.\n")
+                  f.write("Cannot validate coverage against an outdated baseline.\n\n")
+                  f.write("**Action required:** Wait for nightly CI to run, or [trigger it manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
+              elif nightly_missing:
+                  f.write("## ⚠️ No Nightly Baseline\n\n")
+                  f.write("No nightly coverage artifact found. Coverage validation skipped.\n\n")
+
+              # Coverage warning
+              if coverage_status == "warn":
+                  f.write(f"## ⚠️ Coverage Warning\n\n")
+                  f.write(f"Coverage dropped **{coverage_drop:.2f}%** (within 0.3% grace margin).\n")
+                  f.write("Consider adding tests in a follow-up PR.\n\n")
+
+              # Test results
+              f.write("## Test Results\n\n")
+              f.write(f"| Test Type | Status |\n")
+              f.write(f"|-----------|--------|\n")
+              f.write(f"| Unit tests | {unit_outcome} |\n")
+              f.write(f"| Smoke tests | {smoke_outcome} |\n\n")
+
+              # Coverage by type
+              f.write("## Coverage by Test Type\n\n")
+              f.write("| Test Type | Coverage | Lines Covered |\n")
+              f.write("|-----------|----------|---------------|\n")
+              f.write(f"| Unit + Smoke (this PR) | {u_pct:.2f}% | {u_covered} / {u_total} |\n")
               if i_total:
-                  f.write(f"- **Line coverage:** **{i_pct:.2f}%**\n")
-                  f.write(f"- **Covered lines:** {i_covered} / {i_total}\n\n")
+                  f.write(f"| Integration (nightly) | {i_pct:.2f}% | {i_covered} / {i_total} |\n")
+              if est_pct_union is not None:
+                  status_icon = "✅" if coverage_status == "ok" else ("⚠️" if coverage_status == "warn" else "❌")
+                  f.write(f"| **Estimated TOTAL** | **{est_pct_union:.2f}%** | {est_covered_union} / {est_total_union} |\n\n")
+                  f.write(f"**Baseline (last nightly):** {full_threshold:.2f}% | **Status:** {status_icon}\n\n")
               else:
-                  f.write("- *No nightly artifact found; use **Nightly Science Validation (v5)** for integration numbers.*\n\n")
-              if has_est:
-                  f.write("## Estimated total (unit this PR + integration last nightly)\n\n")
-                  if overlap_removed:
-                      f.write(
-                          f"- **With overlap removed (union):** **{est_pct_union:.2f}%** — {est_covered_union} / {est_total_union} lines\n"
-                      )
-                      f.write(
-                          f"- **Without overlap removed (simple sum):** **{est_pct_sum:.2f}%** — {est_covered_sum} / {est_total_sum} lines\n\n"
-                      )
-                      f.write("- **Union formula:** covered (file, line) from unit ∪ integration, over union of executable lines.\n")
-                      f.write("- **Simple-sum formula:** `(unit_covered + integration_covered) / unit_total`; double-counts overlap.\n\n")
-                  else:
-                      f.write(
-                          f"- **Estimated line coverage:** **{est_pct_sum:.2f}%** — {est_covered_sum} / {est_total_sum} lines\n\n"
-                      )
-                      f.write("- **Formula:** `(unit_covered + integration_covered) / total_lines` (per-file data missing; overlap not removed).\n\n")
-                  if not i_total:
-                      f.write("- Integration from last nightly unavailable; estimated total uses unit coverage only.\n\n")
-              else:
-                  f.write("## Estimated total\n\n")
-                  f.write("- Not computed (unit coverage data missing).\n\n")
+                  f.write("\n*Estimated total unavailable (nightly data missing)*\n\n")
+
               f.write("### Notes\n")
-              f.write("- Coverage above is from **unit + smoke** tests (this run). Integration: last **Nightly Science Validation (v5)** run.\n")
-              f.write("- Placeholder tests (`@pytest.mark.skip`) are excluded.\n")
+              f.write("- Grace period: 0.3% (coverage can drop by this margin without failing)\n")
+              f.write("- Nightly staleness threshold: 48 hours\n")
               f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
 
-          disp_est = f"{est_pct_union:.2f}% (union) / {est_pct_sum:.2f}% (sum)" if overlap_removed and has_est else (f"{est_pct_sum:.2f}%" if has_est else "—")
-          print(f"Unit: {u_pct:.2f}% | Integration (last nightly): {i_pct:.2f}% | Estimated total: {disp_est}")
+          # Print summary
+          disp_est = f"{est_pct_union:.2f}%" if est_pct_union else "—"
+          print(f"Unit+Smoke: {u_pct:.2f}% | Nightly: {i_pct:.2f}% | Estimated total: {disp_est} | Status: {coverage_status}")
           PY
 
       - name: Diff coverage on changed lines (fast suite)
@@ -370,6 +436,37 @@ jobs:
             echo ""
             echo "See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post coverage warning comment on PR
+        if: github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## ⚠️ Coverage Warning
+
+            This PR reduces test coverage by **${{ steps.coverage-validation.outputs.coverage_drop }}%** (from ${{ steps.coverage-validation.outputs.threshold }}% to ${{ steps.coverage-validation.outputs.estimated_total }}%).
+
+            While this is within the **0.3% grace margin** and won't block merge, we encourage you to add tests in a follow-up PR to restore coverage above ${{ steps.coverage-validation.outputs.threshold }}%.
+
+            **How to fix:** Add unit tests for the new/changed code paths.
+            See [test_building.md](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md) for guidance.
+
+      - name: Fail job if nightly is stale
+        if: always() && steps.check-nightly.outcome == 'success'
+        run: |
+          if [ "$NIGHTLY_STALE" = "true" ]; then
+            echo "❌ Nightly baseline is stale (>48 hours old). Cannot validate coverage."
+            echo "Trigger nightly CI manually: https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml"
+            exit 1
+          fi
+
+      - name: Fail job if coverage dropped beyond grace period
+        if: always() && steps.coverage-validation.outputs.coverage_status == 'fail'
+        run: |
+          echo "❌ Coverage dropped by ${{ steps.coverage-validation.outputs.coverage_drop }}% (exceeds 0.3% grace margin)"
+          echo "Add tests to restore coverage above ${{ steps.coverage-validation.outputs.threshold }}%"
+          exit 1
 
       - name: Fail job if unit or smoke tests failed
         if: always() && (steps.unit-tests.outcome == 'failure' || steps.smoke-tests.outcome == 'failure')

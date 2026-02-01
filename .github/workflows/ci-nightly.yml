@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write  # Required for ratcheting coverage threshold commits
   packages: read
 
 env:
@@ -608,15 +608,96 @@ jobs:
           sys.exit(0)
           PY
 
-      - name: Upload coverage XML and HTML
+      - name: Save coverage by test type
+        if: always()
+        run: |
+          cd /opt/proteus
+          python - <<'PY'
+          import json
+          import pathlib
+          from datetime import datetime, timezone
+
+          # Read coverage JSON files from each test phase
+          def read_coverage(path):
+              try:
+                  data = json.loads(pathlib.Path(path).read_text())
+                  t = data.get("totals", {})
+                  return {
+                      "percent": t.get("percent_covered", 0),
+                      "covered": t.get("covered_lines", 0),
+                      "total": t.get("num_statements", 0)
+                  }
+              except Exception:
+                  return {"percent": 0, "covered": 0, "total": 0}
+
+          # Get final coverage
+          final = read_coverage("coverage-branch-nightly.json")
+
+          # Create coverage-by-type summary
+          summary = {
+              "timestamp": datetime.now(timezone.utc).isoformat(),
+              "total": final,
+              "threshold": 69.0,  # Will be read from pyproject.toml in validation
+          }
+
+          pathlib.Path("coverage-by-type.json").write_text(json.dumps(summary, indent=2))
+
+          # Create timestamp file for staleness detection
+          pathlib.Path("nightly-timestamp.txt").write_text(datetime.now(timezone.utc).isoformat())
+          print(f"Coverage summary saved. Total: {final['percent']:.2f}%")
+          PY
+
+      - name: Ratchet full coverage threshold
+        if: always()
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          python tools/update_coverage_threshold.py \
+            --coverage-file coverage-branch-nightly.json \
+            --target full
+
+      - name: Commit ratcheted threshold (if changed)
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          cd /__w/PROTEUS/PROTEUS
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Copy updated pyproject.toml from container to workspace
+          cp /opt/proteus/pyproject.toml /__w/PROTEUS/PROTEUS/pyproject.toml
+
+          # Check if there are changes
+          if git diff --quiet pyproject.toml; then
+            echo "No threshold changes to commit"
+          else
+            git add pyproject.toml
+            COVERAGE=$(grep -A2 '\[tool.coverage.report\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
+            git commit -m "ratchet: Auto-update full coverage threshold to ${COVERAGE}% [skip ci]"
+            # Rebase in case of concurrent updates
+            if ! git pull --rebase origin main; then
+              echo "Rebase failed (likely due to concurrent updates). Aborting."
+              git rebase --abort || true
+              exit 0
+            fi
+            git push origin HEAD:main || {
+              echo "Failed to push coverage threshold update."
+              exit 0
+            }
+            echo "✓ Committed ratcheted threshold: ${COVERAGE}%"
+          fi
+
+      - name: Upload coverage artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v5-branch-nightly-coverage
+          name: nightly-coverage
           path: |
             /opt/proteus/coverage.xml
             /opt/proteus/htmlcov/
             /opt/proteus/coverage-branch-nightly.json
             /opt/proteus/coverage-integration-only.json
+            /opt/proteus/coverage-by-type.json
+            /opt/proteus/nightly-timestamp.txt
           if-no-files-found: ignore
           retention-days: 14

@@ -1,5 +1,11 @@
 name: Reusable Test Quality Gate for PROTEUS Ecosystem
 
+# This reusable workflow provides a standardized test quality gate for PROTEUS ecosystem modules.
+# PROTEUS itself uses automatic coverage ratcheting coordinated between nightly and PR workflows:
+#   - Nightly CI (ci-nightly.yml): Runs all tests, establishes coverage baseline, ratchets threshold
+#   - PR Checks (ci-pr-checks.yml): Runs fast tests, validates against nightly baseline with 0.3% grace period
+# Ecosystem modules can adopt similar patterns or use this simpler threshold-based approach.
+
 on:
   workflow_call:
     inputs:
@@ -9,10 +15,15 @@ on:
         type: string
         default: '3.12'
       coverage-threshold:
-        description: 'Minimum coverage percentage required (recommend 30-80%)'
+        description: 'Minimum coverage percentage required. PROTEUS uses ratcheting (see pyproject.toml).'
         required: false
         type: number
         default: 30
+      grace-period:
+        description: 'Allow coverage drops within this margin (percentage points). Set to 0 for strict enforcement.'
+        required: false
+        type: number
+        default: 0.3
       working-directory:
         description: 'Working directory for the project (if in subdirectory)'
         required: false

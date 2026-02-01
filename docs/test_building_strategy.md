@@ -1,6 +1,6 @@
 # Test Building Strategy for PROTEUS
 
-**Last updated**: 2026-01-30
+**Last updated**: 2026-02-01
 
 This document summarizes the test implementation status and principles. For markers and CI flow see [Test Categorization](test_categorization.md). For infrastructure and layout see [Test Infrastructure](test_infrastructure.md). For prompts and workflow see [Test Building](test_building.md).
 
@@ -38,8 +38,9 @@ This document summarizes the test implementation status and principles. For mark
 
 ## Roadmap (Summary)
 
-- **PR CI**: Unit + smoke (excluding `skip`). Fast gate enforced; diff-cover 80% on changed lines.
-- **Nightly**: Unit, smoke (with `PROTEUS_CI_NIGHTLY=1`), integration, slow. Full coverage gate enforced.
+- **PR CI** (`ci-pr-checks.yml`): Unit + smoke (excluding `skip`). Fast gate enforced; diff-cover 80% on changed lines; validates against nightly baseline with 0.3% grace period.
+- **Nightly** (`ci-nightly.yml`): Unit, smoke (with `PROTEUS_CI_NIGHTLY=1`), integration, slow. Full coverage gate enforced; threshold auto-ratcheted on main.
+- **Coverage coordination**: Nightly establishes baseline; PRs validate against it. Staleness threshold: 48h. Grace period: 0.3%.
 - **Next focus**: Expand integration coverage (e.g. ARAGOG+AGNI, CALLIOPE+ZEPHYRUS); maintain coverage threshold; add slow scenarios as needed. See [Test Infrastructure](test_infrastructure.md) for priorities and [AGENTS.md](../AGENTS.md) for commands.
 
 ---
