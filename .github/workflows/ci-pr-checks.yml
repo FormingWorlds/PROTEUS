@@ -183,10 +183,10 @@ jobs:
             --durations-min=0 -v --tb=short | tee pytest-smoke.log
 
       - name: Generate coverage JSON
-        continue-on-error: true
         run: |
           cd /opt/proteus
-          coverage json -o coverage-unit.json
+          # Use --fail-under=0 to prevent failure when fast coverage < full threshold
+          coverage json -o coverage-unit.json --fail-under=0
 
       - name: Download last nightly coverage (for estimated total)
         id: download-nightly
@@ -474,10 +474,11 @@ jobs:
         run: exit 1
 
       - name: Ratchet fast coverage threshold
-        continue-on-error: true
         run: |
           cd /opt/proteus
-          python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast
+          # Exit codes: 0=updated, 1=no update needed, 2=error
+          # Treat both 0 and 1 as success
+          python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast || [ $? -eq 1 ]
 
       - name: Commit ratcheted threshold (if changed)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
