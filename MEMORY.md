@@ -60,16 +60,24 @@ This document captures the living context of PROTEUS—the "why" behind architec
    - Deleted obsolete workflows (`ci-nightly-science.yml`, `ci_tests.yml`, backup files)
    - Coordinated coverage thresholds between nightly and PR checks
 
-2. **Coverage Threshold Calibration** (commit: f6fbcd66)
+2. **PR Preparation for Main Branch**
+   - Removed all feature branch (`tl/test_ecosystem_v5`) references from CI workflows
+   - Fixed GitHub Actions versions: `actions/checkout@v6` → `v4`, `actions/setup-python@v6` → `v5`
+   - Updated Docker image references to use `:latest` tag
+   - Updated `docker-build.yml` to trigger `ci-nightly.yml` (not old workflow name)
+   - Verified ruff formatting passes on all src/ and tests/
+   - Updated docs references to use correct workflow names
+
+3. **Coverage Threshold Calibration** (commit: f6fbcd66)
    - Updated to realistic 59% based on latest CI runs
    - Fast gate: 31.45% for PR checks
 
-3. **File Size Limit Enforcement** (commit: b3016fa1)
+4. **File Size Limit Enforcement** (commit: b3016fa1)
    - Added `tools/check_file_sizes.sh` validation script
    - Pre-commit hook enforces: AGENTS.md ≤500 lines, MEMORY.md ≤1000 lines
    - Both files include refactoring guidelines when approaching limits
 
-4. **Smoke Test Robustness** (commits: 589558f7, a60d14d2, 474ae5d3)
+5. **Smoke Test Robustness** (commits: 589558f7, a60d14d2, 474ae5d3)
    - Graceful handling of AGNI allocation errors
    - Graceful handling of MORS stellar track parsing errors
    - Handle transient Zenodo/OSF download failures in ARAGOG+JANUS tests
@@ -83,7 +91,6 @@ This document captures the living context of PROTEUS—the "why" behind architec
 
 ### Active Branches
 - **main**: Production branch with nightly validation
-- **tl/test_ecosystem_v5**: Active development branch for CI/CD improvements
 
 ---
 
@@ -207,7 +214,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
    - Download from julialang.org official tarball
    - Extract to `/opt/julia-1.11.2/`
    - Add to PATH via ENV instead of symlink to preserve library paths
-2. **Simplified CI Julia configuration** (ci-nightly-science-v5.yml)
+2. **Simplified CI Julia configuration** (ci-nightly.yml)
    - Removed duplicate Julia setup step
    - Rely on Docker installation with minimal env vars
    - Trust `get_agni.sh` to handle Julia package installation
@@ -251,7 +258,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Watch Out**: Nested configuration validation, type coercion edge cases
 - **Test Coverage**: `tests/config/test_config.py`, `test_converters.py`, `test_options.py`
 
-#### 4. CI Workflow Summary Generation (`.github/workflows/ci-nightly-science-v5.yml`)
+#### 4. CI Workflow Summary Generation (`.github/workflows/ci-nightly.yml`)
 - **Why Fragile**: Parses JUnit XML, coverage JSON, handles failures
 - **Recent Changes**: Hardened with try/except, better error handling (commit 7ed06597)
 - **Watch Out**: Missing files, parse errors can crash summary step
@@ -312,7 +319,7 @@ bash tools/coverage_analysis.sh
 1. **PR Opened**: `ci-pr-checks.yml` runs (unit + smoke + lint, ~10-15 min)
 2. **PR Merged to main**: Coverage ratcheting updates thresholds
 3. **Nightly 02:00 UTC**: `docker-build.yml` rebuilds image
-4. **Nightly 03:00 UTC**: `ci-nightly-science-v5.yml` runs full suite (unit → smoke → integration → slow, ~90 min)
+4. **Nightly 03:00 UTC**: `ci-nightly.yml` runs full suite (unit → smoke → integration → slow, ~4h timeout)
 
 ### Installation Sequence (Developer)
 **Critical**: Follow exact order due to dependencies

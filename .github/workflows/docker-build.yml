@@ -12,7 +12,6 @@ on:
   push:
     branches:
       - main
-      - 'tl/test_ecosystem_v5'  # Temporary: allow testing on feature branch
     paths:
       - 'pyproject.toml'
       - 'environment.yml'
@@ -114,12 +113,12 @@ jobs:
     name: Trigger Nightly Science Tests
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.ref == 'refs/heads/tl/test_ecosystem_v5')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.ref == 'refs/heads/main')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: tl/test_ecosystem_v5
+          ref: main
 
       - name: Trigger nightly science workflow via API
         run: |
@@ -128,16 +127,16 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/FormingWorlds/PROTEUS/actions/workflows/ci-nightly-science.yml/dispatches \
-            -d '{"ref":"tl/test_ecosystem_v5"}'
+            https://api.github.com/repos/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml/dispatches \
+            -d '{"ref":"main"}'
 
   run-quick-integration:
     name: Quick Integration Test (Dummy)
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/tl/test_ecosystem_v5'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     container:
-      image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
+      image: ghcr.io/formingworlds/proteus:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -147,7 +146,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: tl/test_ecosystem_v5
+          ref: main
           fetch-depth: 0
 
       - name: Overlay code onto container

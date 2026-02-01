@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - tl/test_ecosystem_v5
+      - main
     paths:
       - '.github/workflows/ci-nightly.yml'
 
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     container:
-      image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
+      image: ghcr.io/formingworlds/proteus:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
