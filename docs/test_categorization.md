@@ -122,6 +122,7 @@ These thresholds auto-increase ("ratchet") and never decrease. Check coverage lo
 
 ## References
 
-- [Test Infrastructure](test_infrastructure.md)
+- [Test Infrastructure](test_infrastructure.md) — Coverage workflows, troubleshooting
 - [Test Building](test_building.md) — Prompts for unit/integration tests
+- [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
 - [AGENTS.md](../AGENTS.md) — Commands and thresholds

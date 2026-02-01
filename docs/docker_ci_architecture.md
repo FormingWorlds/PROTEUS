@@ -1,8 +1,18 @@
 # Docker-Based CI/CD Architecture for PROTEUS
 
+## What This Document Is For
+
+**New to PROTEUS CI?** This document explains how our Docker-based testing infrastructure works. Docker containers provide a consistent environment with pre-compiled physics modules, making CI runs fast and reproducible.
+
+**Key concept:** Instead of compiling SOCRATES, AGNI, PETSc, and SPIDER on every CI run (~60 min), we use a pre-built Docker image (~5 min startup).
+
+For test markers and categories, see [Test Categorization](test_categorization.md). For coverage workflows, see [Test Infrastructure](test_infrastructure.md). For writing tests, see [Test Building](test_building.md).
+
+---
+
 ## Overview
 
-This architecture solves slow compilation times by using a pre-built Docker image containing the full PROTEUS environment with compiled physics modules. The image is built nightly and used by all CI/CD workflows.
+This architecture solves slow compilation times by using a pre-built Docker image containing the full PROTEUS environment with compiled physics modules. The image is built on demand and used by all CI/CD workflows.
 
 ## Architecture Components
 
@@ -60,7 +70,7 @@ PROTEUS_DIR=/opt/proteus
 - Layer caching from previous builds
 - Multi-stage optimization potential
 
-### 3. ci-pr-checks.yml (The Consumer - Fast Feedback)
+### 3. ci-pr-checks.yml (Fast Feedback)
 
 **Location:** `.github/workflows/ci-pr-checks.yml`
 
@@ -68,33 +78,38 @@ PROTEUS_DIR=/opt/proteus
 
 **Triggers:**
 - Pull requests to `main` or `dev`
-- Push to `main` or `dev`
+- Push to `main`, `dev`, or feature branches
+- Manual dispatch
 
 **Strategy:**
-1. **Container:** Runs inside `ghcr.io/formingworlds/proteus:latest`
-2. **Code Overlay:** Checks out PR code and overlays it onto the container
-3. **Smart Rebuild:** Only recompiles changed files (make handles this automatically)
-4. **Two Job Pipeline:**
-   - **Unit Tests:** Fast tests with mocked physics modules
-   - **Smoke Tests:** Quick validation with real binaries (1 timestep, low res)
+1. **Container:** Runs inside `ghcr.io/formingworlds/proteus:latest` (or branch-specific tag)
+2. **Threshold check:** Prevents coverage decreases vs main
+3. **Code Overlay:** Overlays PR code onto container (excludes compiled modules)
+4. **Structure validation:** `tools/validate_test_structure.sh`
+5. **Sequential testing:** Unit → Smart rebuild → Smoke
+6. **Coverage coordination:** Downloads nightly artifact for estimated total
 
-**Jobs:**
+**Steps (in order):**
 
-#### Job 1: Unit Tests
-- Runs: `pytest -m unit`
-- Coverage: Reports to Codecov
-- Duration: ~2-5 minutes
-- Purpose: Validate Python logic without heavy physics
+1. **Prevent threshold decreases** — Fails if `fail_under` decreased vs main
+2. **Overlay PR code** — `rsync` excludes SPIDER, SOCRATES, PETSc, AGNI
+3. **Validate test structure** — Ensures `tests/` mirrors `src/proteus/`
+4. **Run unit tests** — `pytest -m "unit and not skip"` with coverage
+5. **Smart rebuild** — Recompile SOCRATES/AGNI only if sources changed
+6. **Run smoke tests** — `pytest -m "smoke and not skip"` (appends coverage)
+7. **Download nightly coverage** — For estimated total calculation
+8. **Check staleness** — Fails if nightly artifact >48h old
+9. **Validate coverage** — Grace period of 0.3% for drops
+10. **Diff-cover** — 80% coverage required on changed lines
+11. **Lint** — `ruff check` and `ruff format --check`
 
-#### Job 2: Smoke Tests
-- Runs: `pytest -m smoke`
-- Coverage: Not required
-- Duration: ~5-10 minutes
-- Purpose: Ensure binaries work with new Python code
+**Coverage coordination:**
+- Fast gate threshold from `[tool.proteus.coverage_fast] fail_under` (currently 44.45%)
+- Estimated total = union of PR lines + nightly integration lines
+- Grace period allows ≤0.3% drop with warning
+- Diff-cover enforces 80% on changed lines
 
-#### Job 3: Lint
-- Runs: `ruff check` and `ruff format --check`
-- Purpose: Code quality enforcement
+See [Test Categorization](test_categorization.md) for marker details and [Test Infrastructure](test_infrastructure.md) for coverage thresholds.
 
 **Key Innovation - Smart Rebuild:**
 ```yaml
@@ -110,35 +125,47 @@ Since the container already has compiled binaries:
 - If PR changes Fortran/C files: Only changed files recompile (~seconds to minutes)
 - Full compilation avoided (~30-60 minutes saved)
 
-### 4. ci-nightly-science.yml (Deep Validation)
+### 4. ci-nightly.yml (Deep Validation)
 
-**Location:** `.github/workflows/ci-nightly-science.yml`
+**Location:** `.github/workflows/ci-nightly.yml`
 
-**Purpose:** Comprehensive scientific validation on main branch.
+**Purpose:** Comprehensive scientific validation and coverage baseline.
 
 **Triggers:**
-- Schedule: Nightly at 03:00 UTC (1 hour after Docker build)
+- Schedule: Nightly at 03:00 UTC
 - Manual dispatch
+- Push to feature branches (workflow file changes only)
+
+**Environment:**
+- Sets `PROTEUS_CI_NIGHTLY=1` — enables additional smoke tests
+- Timeout: 240 minutes (4 hours)
+- Downloads ~200MB minimal data for smoke tests
 
 **Strategy:**
-1. Use latest Docker image
-2. Run full scientific test suite
-3. Generate comprehensive coverage reports
-4. Archive simulation outputs
+1. Use branch-specific Docker image
+2. Overlay code (excludes compiled modules)
+3. Download minimal data (spectral files, stellar spectra, lookup tables)
+4. Configure Julia environment for Python integration
+5. Run all test tiers sequentially
+6. Generate coverage artifacts for PR coordination
+7. Ratchet coverage threshold on success
 
-**Jobs:**
+**Test sequence:**
+1. **Unit tests** — `pytest -m "unit and not skip"` with coverage
+2. **Smoke tests** — `pytest -m "smoke and not skip"` (coverage appended)
+3. **Integration tests** — `pytest -m "integration and not slow"` (coverage appended)
+4. **Slow tests** — `pytest -m slow` (if time permits)
 
-#### Job 1: Science Validation
-- Runs: `pytest -m slow`
-- Duration: Up to 4 hours
-- Purpose: Full physics simulations for correctness
-- Coverage: Comprehensive validation
+**Artifacts uploaded:**
+- `nightly-coverage/coverage-integration-only.json` — For PR estimated total
+- `nightly-coverage/nightly-timestamp.txt` — For staleness detection
+- `nightly-coverage/coverage-by-type.json` — Breakdown by test type
 
-#### Job 2: Integration Tests
-- Runs: `pytest -m integration`
-- Duration: Up to 2 hours
-- Purpose: Multi-module interaction testing
-- Coverage: Module coupling validation
+**Coverage ratcheting:**
+- Full threshold from `[tool.coverage.report] fail_under` (currently 59%)
+- Auto-commits threshold increase on successful main runs
+
+See [Test Infrastructure](test_infrastructure.md) for coverage coordination details.
 
 ## Test Markers
 
@@ -176,21 +203,23 @@ def test_earth_evolution_1gyr():
 
 ### Nightly (Main Branch)
 ```
-02:00 UTC: docker-build.yml
+03:00 UTC: ci-nightly.yml
   ↓
-  Build new Docker image with latest main
+  Pull Docker image
   ↓
-  Push to ghcr.io/formingworlds/proteus:latest
+  Overlay code, download data (~200MB)
   ↓
-03:00 UTC: ci-nightly-science.yml
+  Run unit tests with coverage
   ↓
-  Pull latest image
+  Run smoke tests (PROTEUS_CI_NIGHTLY=1 enables extras)
   ↓
-  Run @pytest.mark.slow (4 hours)
+  Run integration tests
   ↓
-  Run @pytest.mark.integration (2 hours)
+  Run slow tests (if time permits)
   ↓
-  Upload comprehensive coverage and outputs
+  Upload nightly-coverage artifact
+  ↓
+  Ratchet threshold if coverage increased
 ```
 
 ### Pull Request
@@ -199,17 +228,29 @@ PR opened/updated
   ↓
 ci-pr-checks.yml
   ↓
-Pull ghcr.io/formingworlds/proteus:latest (instant)
+Pull Docker image (instant)
+  ↓
+Check threshold not decreased vs main
   ↓
 Overlay PR code onto container
   ↓
-Smart rebuild (only changed files)
+Validate test structure
   ↓
-Job 1: Unit tests (2-5 min)
-Job 2: Smoke tests (5-10 min)
-Job 3: Lint (1-2 min)
+Run unit tests with coverage (~2-5 min)
   ↓
-Fast feedback to developer (~10-15 min total)
+Smart rebuild (only if Fortran/Julia changed)
+  ↓
+Run smoke tests (~5-10 min)
+  ↓
+Download nightly artifact, check staleness
+  ↓
+Compute estimated total coverage
+  ↓
+Diff-cover (80% on changed lines)
+  ↓
+Lint with ruff
+  ↓
+Fast feedback (~10-15 min total)
 ```
 
 ## Benefits
@@ -253,22 +294,25 @@ Fast feedback to developer (~10-15 min total)
 - Layer caching from previous builds
 - Fast incremental builds
 
-## Migration Strategy
+## Coverage Coordination
 
-### Phase 1: Parallel Testing
-- Keep existing `ci_tests.yml` alongside new workflows
-- Run both systems in parallel
-- Compare results and performance
+The two-tier coverage system coordinates between nightly and PR workflows:
 
-### Phase 2: Gradual Transition
-- Route PRs to new system
-- Keep nightly on old system initially
-- Verify coverage equivalence
+| Feature | Value | Description |
+|---------|-------|-------------|
+| Fast gate | 44.45% | PR threshold (unit + smoke) |
+| Full gate | 59% | Nightly threshold (all tests) |
+| Grace period | 0.3% | PRs can merge with small drops |
+| Staleness | 48h | PR fails if nightly too old |
+| Diff-cover | 80% | Required on changed lines |
 
-### Phase 3: Full Migration
-- Deprecate `ci_tests.yml`
-- All CI/CD uses Docker-based system
-- Update documentation
+**How estimated total works:**
+1. PR runs unit + smoke → `coverage-unit.json`
+2. Download nightly's `coverage-integration-only.json`
+3. Compute union of covered lines
+4. Compare against full threshold
+
+See [Test Infrastructure](test_infrastructure.md) for threshold details.
 
 ## Troubleshooting
 
@@ -302,7 +346,14 @@ Fast feedback to developer (~10-15 min total)
 
 ## References
 
+### PROTEUS Documentation
+- [Test Infrastructure](test_infrastructure.md) — Coverage workflows, thresholds, troubleshooting
+- [Test Categorization](test_categorization.md) — Test markers, CI pipelines, fixtures
+- [Test Building](test_building.md) — Writing tests, prompts, best practices
+- [AI-Assisted Development](ai_usage.md) — Using AI for tests and code review
+
+### External Resources
 - [Docker Best Practices](https://docs.docker.com/develop/dev-best-practices/)
 - [GitHub Actions: Container Jobs](https://docs.github.com/en/actions/using-jobs/running-jobs-in-a-container)
 - [pytest Markers](https://docs.pytest.org/en/stable/example/markers.html)
-- PROTEUS Documentation: `docs/test_infrastructure.md`
+- [coverage.py Documentation](https://coverage.readthedocs.io/)
