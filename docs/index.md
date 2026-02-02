@@ -43,7 +43,7 @@ See the [model description](model.html) for an outline of the code and its struc
 | Name                    | Email address                               |
 | -                       | -                                           |
 | Tim Lichtenberg         | tim.lichtenberg@rug.nl                      |
-| Harrison Nicholls       | harrison.nicholls@physics.ox.ac.uk          |
+| Harrison Nicholls       | h-nicholls@pm.me          |
 | Laurent Soucasse        | l.soucasse@esciencecenter.nl                |
 | Mariana Sastre          | m.c.villamil.sastre@rug.nl                  |
 | Emma Postolec           | e.n.postolec@rug.nl                         |
@@ -54,8 +54,8 @@ See the [model description](model.html) for an outline of the code and its struc
 | Mark Hammond            | mark.hammond@physics.ox.ac.uk               |
 | Stef Smeets             | s.smeets@esciencecenter.nl                  |
 | Robb Calder             | rdc49@cam.ac.uk                             |
-| Raymond Pierrehumbert   | raymond.pierrehumbert@physics.ox.ac.uk      |
 | Karen Stuitje           | e.k.e.stuitje@student.rug.nl                |
+| Oliver Shorttle           | os258@cam.ac.uk                |
 
 ## Citation and credit
 
