@@ -43,7 +43,7 @@ See the [model description](model.html) for an outline of the code and its struc
 | Name                    | Email address                               |
 | -                       | -                                           |
 | Tim Lichtenberg         | tim.lichtenberg@rug.nl                      |
-| Harrison Nicholls       | h-nicholls@pm.me          |
+| Harrison Nicholls       | h-nicholls@pm.me                            |
 | Laurent Soucasse        | l.soucasse@esciencecenter.nl                |
 | Mariana Sastre          | m.c.villamil.sastre@rug.nl                  |
 | Emma Postolec           | e.n.postolec@rug.nl                         |
