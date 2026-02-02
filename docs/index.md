@@ -55,7 +55,7 @@ See the [model description](model.html) for an outline of the code and its struc
 | Stef Smeets             | s.smeets@esciencecenter.nl                  |
 | Robb Calder             | rdc49@cam.ac.uk                             |
 | Karen Stuitje           | e.k.e.stuitje@student.rug.nl                |
-| Oliver Shorttle           | os258@cam.ac.uk                |
+| Oliver Shorttle         | os258@cam.ac.uk                             |
 
 ## Citation and credit
 
