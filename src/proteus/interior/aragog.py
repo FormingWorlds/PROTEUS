@@ -162,15 +162,31 @@ class AragogRunner():
             tidal_array = interior_o.tides
             )
 
+        # Define initial conditions for prescribing temperature profile
+        if config.struct.module == "self":
+            initial_condition_temperature_profile = config.interior.aragog.initial_condition
+            init_file_temperature_profile = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
+        elif config.struct.module == "zalmoxis":
+            if config.struct.zalmoxis.EOSchoice == "Tabulated:iron/Tdep_silicate":
+                # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
+                initial_condition_temperature_profile = 2
+                init_file_temperature_profile = os.path.join(outdir, "data", "zalmoxis_output_temp.txt")
+            else:
+                # Otherwise, use the initial condition from aragog config
+                initial_condition_temperature_profile = config.interior.aragog.initial_condition
+                init_file_temperature_profile = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
+        else:
+            raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+
         initial_condition = _InitialConditionParameters(
             # 1 = linear profile
             # 2 = user-defined profile
             # 3 = adiabatic profile
-            initial_condition = config.interior.aragog.initial_condition,
+            initial_condition = initial_condition_temperature_profile,
             # initial top temperature (K)
             surface_temperature = config.interior.aragog.ini_tmagma,
             basal_temperature = config.interior.aragog.basal_temperature,
-            init_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
+            init_file = init_file_temperature_profile
             )
 
         # Get look up data directory, will be configurable in the future
