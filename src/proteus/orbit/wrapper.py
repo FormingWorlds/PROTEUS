@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
+from proteus.orbit.common import Tides_t
 from proteus.utils.constants import AU, L_sun, R_sun, const_G, secs_per_day, secs_per_hour
 
 if TYPE_CHECKING:
@@ -148,7 +149,7 @@ def update_breakup_period(hf_row:dict):
     hf_row["breakup_period"] = 2*np.pi/np.sqrt(const_G*Mpl/(Rpl**3))
 
 
-def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
+def run_orbit(hf_row:dict, config:Config, dirs:dict, tides_o:Tides_t, interior_o:Interior_t):
     """Update parameters relating to orbital evolution and tides.
 
     Parameters
@@ -159,6 +160,8 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
             Model configuration.
         dirs: dict
             Dictionary of directories.
+        tides_o: Tides_t
+            Tides data containing Imk2 spectra at current time.
         interior_o: Interior_t
             Struct containing interior arrays at current time.
     """
@@ -244,7 +247,12 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     elif config.orbit.module == 'Obliqua':
         from proteus.orbit.obliqua import run_obliqua
-        hf_row["σ_range"], hf_row["Imk2"] = run_obliqua(hf_row, dirs, interior_o, config)
+        sigma, Imk2 = run_obliqua(hf_row, dirs, interior_o, config)
+
+        tides_o.sigma = np.array(sigma)
+        tides_o.Imk2  = np.array(Imk2)
+
+        hf_row["Imk2"] = 0.0  # handled internally in Obliqua
 
     else:
         hf_row["Imk2"] = 0.0

@@ -152,15 +152,14 @@ version = "2.0"
     semimajoraxis_sat = 3e8     # initial SMA of satellite's orbit [m]
 
     [orbit.dummy]
-        H_tide  = 1e-7      # Fixed tidal power density [W kg-1]
-        Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
-        Imk2    = 0.0       # Fixed imaginary part of k2 love number, cannot be positive
+        H_tide  = 1e-7          # Fixed tidal power density [W kg-1]
+        Phi_tide = "<0.3"       # Tidal heating applied when inequality locally satisfied
+        Imk2    = 0.0           # Fixed imaginary part of k2 love number, cannot be positive
 
     [orbit.lovepy]
-        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
+        visc_thresh = 1e9       # Minimum viscosity required for heating [Pa s]
 
     [orbit.obliqua]
-        dim         = 1         # Dimensions used to evaluate solid tides [int] (0, 1)
         min_frac    = 0.02      # Minimal segment radius fraction before smoothing [dimensionless]
         visc_l      = 1e2       # Pure liquid viscosity [Pa s]
         visc_lus    = 5e2       # Liquidus viscosity to use [Pa s]
@@ -177,20 +176,21 @@ version = "2.0"
         alpha       = 0.3       # Power-law exponent, only for Andrade rheology (free parameter)
         strain      = true      # Strategy for obtaining heating profile
 
-        module_solid = "solid0d"
+        module_solid = "solid1d" # Options: ("none", "solid0d", "solid1d", "solid1d-mush")
 
-        [orbit.Obliqua.solid]
+        module_fluid = "fluid1d" # Options: ("none", "fluid0d", "fluid1d")
+
+        [orbit.obliqua.solid]
             ncalc       = 1000      # Number of sublayers to use for dim=1 solid tides
             bulk_l      = 1e9       # Liquid bulk modulus [Pa]
             permea      = 1e-7      # Permeability [m^2]
             porosity_thresh = 1e-5  # Porosity threshold, below this value no mush. [dimensionless]
-            mush        = false     # Model mush interface for solid
 
-        module_fluid = "fluid0d"
-
-        [orbit.Obliqua.fluid]
+        [orbit.obliqua.fluid]
             sigma_R     = 1e-3      # Rayleigh drag coefficient [dimensionless]
-
+            sigma_R_prf = "exp"     # Rayleigh drag profile ("uniform", "exp", "linear", "quadratic", "dynamic")
+            H_R         = 1e4       # Rayleigh drag scale height [m]
+            efficiency  = 0.3       # Mixing-length efficiency [dimensionless]
 
 # Planetary structure - physics table
 [struct]

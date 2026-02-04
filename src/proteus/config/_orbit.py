@@ -55,16 +55,19 @@ class Lovepy:
 @define
 class ObliquaSolid:
     """Solid-tide configuration for Obliqua tides."""
-    ncalc: int = field(default=1000, validator=gt(100))
-    bulk_l: float = field(default=1e9, validator=gt(0))            # [Pa]
-    permea: float = field(default=1e-7, validator=gt(0))           # [m^2]
-    porosity_thresh: float = field(default=1e-5, validator=gt(0))  # [-]
-    mush: bool = field(default=False)
+    ncalc: int              = field(default=1000, validator=gt(100))
+    bulk_l: float           = field(default=1e9, validator=gt(0))
+    permea: float           = field(default=1e-7, validator=gt(0))
+    porosity_thresh: float  = field(default=1e-5, validator=gt(0))
+    mush: bool              = field(default=False)
 
 @define
 class ObliquaFluid:
     """Fluid-tide configuration for Obliqua tides."""
-    sigma_R: float = field(default=1e-3, validator=gt(0))
+    sigma_R: float      = field(default=1e-3, validator=gt(0))
+    sigma_R_prf: str    = field(default="exp", validator=in_(("uniform", "exp", "linear", "quadratic", "dynamic")))
+    H_R: float          = field(default=1e4, validator=gt(0))
+    efficiency: float   = field(default=0.3, validator=gt(0))
 
 @define
 class Obliqua:
@@ -131,11 +134,13 @@ class Obliqua:
     # module selection
     module_solid: str = field(
         default="solid0d",
-        validator=in_(("solid0d", "solid1d", "solid1d-mush"))
+        validator=in_(("none", "solid0d", "solid1d", "solid1d-mush")),
+        converter=none_if_none
     )
     module_fluid: str = field(
         default="fluid0d",
-        validator=in_(("fluid0d"))
+        validator=in_(("none", "fluid0d", "fluid1d")),
+        converter=none_if_none
     )
 
     # submodules
