@@ -66,7 +66,10 @@ class Proteus:
         self.interior_o = None  # Interior object from interior/common.py
 
         # Atmosphere
-        self.atmos_o = None  # Atmosphere object from atmos_clim/common.py
+        self.atmos_o = None     # Atmosphere object from atmos_clim/common.py
+
+        # Orbit and tides
+        self.tides_o = None     # Orbit/tides object from orbit/common.py
 
         # Model has finished?
         self.finished_prev = False  # Satisfied termination in prev iteration
@@ -227,6 +230,7 @@ class Proteus:
         from proteus.observe.wrapper import run_observe
 
         #    orbit
+        from proteus.orbit.common import Tides_t
         from proteus.orbit.wrapper import init_orbit, run_orbit
 
         #    outgassing
@@ -349,6 +353,12 @@ class Proteus:
             if not self.atmos_o.albedo_o.ok:
                 UpdateStatusfile(self.directories, 22)
                 raise RuntimeError('Problem when loading albedo data file')
+
+        # Initialise tides object
+        self.tides_o  = Tides_t()
+
+        # Initialise tides object
+        self.tides_o  = Tides_t()
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
@@ -717,7 +727,7 @@ class Proteus:
             ############### ORBIT AND TIDES
             PrintHalfSeparator()
             _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-            run_orbit(self.hf_row, self.config, self.directories, self.interior_o)
+            run_orbit(self.hf_row, self.config, self.directories, self.tides_o, self.interior_o)
             if _IT_TIMING_ENABLED:
                 _t_mod['orbit'] = time.perf_counter() - _t0
 

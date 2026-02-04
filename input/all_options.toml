@@ -217,7 +217,6 @@ config_version = "3.0"
         ncalc                 = 1000         # grid points for tidal calculation
 
     [orbit.obliqua]
-        dim         = 1         # Dimensions used to evaluate solid tides [int] (0, 1)
         min_frac    = 0.02      # Minimal segment radius fraction before smoothing [dimensionless]
         visc_l      = 1e2       # Pure liquid viscosity [Pa s]
         visc_lus    = 5e2       # Liquidus viscosity to use [Pa s]
@@ -234,18 +233,17 @@ config_version = "3.0"
         alpha       = 0.3       # Power-law exponent, only for Andrade rheology (free parameter)
         strain      = true      # Strategy for obtaining heating profile
 
-        module_solid = "solid0d"
+        module_solid = "solid1d" # Options: ("none", "solid0d", "solid1d", "solid1d-mush")
 
-        [orbit.Obliqua.solid]
+        module_fluid = "fluid1d" # Options: ("none", "fluid0d", "fluid1d")
+
+        [orbit.obliqua.solid]
             ncalc       = 1000      # Number of sublayers to use for dim=1 solid tides
             bulk_l      = 1e9       # Liquid bulk modulus [Pa]
             permea      = 1e-7      # Permeability [m^2]
             porosity_thresh = 1e-5  # Porosity threshold, below this value no mush. [dimensionless]
-            mush        = false     # Model mush interface for solid
 
-        module_fluid = "fluid0d"
-
-        [orbit.Obliqua.fluid]
+        [orbit.obliqua.fluid]
             sigma_R     = 1e-3      # Rayleigh drag coefficient [dimensionless]
 
 

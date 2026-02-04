@@ -20,7 +20,7 @@ def import_obliqua():
     log.debug("Import Obliqua...")
     jl.seval("using Obliqua")
 
-def _jlarr(arr:np.array):
+def _jlarr(arr:np.ndarray):
     # Make copy of array, reverse order, and convert to Julia type
     cop = np.array(arr, copy=True, dtype=float).flatten()
     return juliacall.convert(jl.Array[jl.Obliqua.prec, 1], cop)
@@ -29,7 +29,7 @@ def _jlsca(sca:float):
     # Make a copy of a scalar, and convert to Julia type
     return juliacall.convert(jl.Obliqua.prec, sca)
 
-def run_obliqua(hf_row:dict, dirs:dict, interior_o:Interior_t, config:Config) -> Tuple[np.array, np.array]:
+def run_obliqua(hf_row:dict, dirs:dict, interior_o:Interior_t, config:Config) -> Tuple[np.ndarray, np.ndarray]:
     """Run the Obliqua tidal heating module.
 
     Sets the interior tidal heating and returns Im(k2) love number.
@@ -77,7 +77,7 @@ def run_obliqua(hf_row:dict, dirs:dict, interior_o:Interior_t, config:Config) ->
     i_top = 0  # index of topmost cell which has visc>visc_thresh
     if config.interior.module == "dummy":
         if lov["visc"][0] < config.orbit.obliqua.visc_sus:
-            return 0.0
+            return np.zeros(config.orbit.obliqua.N_sigma), np.zeros(config.orbit.obliqua.N_sigma)
 
         # Construct arrays for obliqua (we need two cells, three edges here)
         for k in arr_keys:
@@ -100,6 +100,54 @@ def run_obliqua(hf_row:dict, dirs:dict, interior_o:Interior_t, config:Config) ->
                 i = i_top
             lov[k] = _jlarr(lov[k][:i])
 
+    # Create configuration dictionary for Obliqua
+    cfg = {
+        "orbit": {
+            "obliqua": {
+                "min_frac": config.orbit.obliqua.min_frac,
+
+                "visc_l": config.orbit.obliqua.visc_l,
+                "visc_lus": config.orbit.obliqua.visc_lus,
+                "visc_s": config.orbit.obliqua.visc_s,
+                "visc_sus": config.orbit.obliqua.visc_sus,
+
+                "n": config.orbit.obliqua.n,
+                "m": config.orbit.obliqua.m,
+
+                "N_sigma": config.orbit.obliqua.N_sigma,
+                "k_min": config.orbit.obliqua.k_min,
+                "k_max": config.orbit.obliqua.k_max,
+                "p_min": config.orbit.obliqua.p_min,
+                "p_max": config.orbit.obliqua.p_max,
+
+                "material": config.orbit.obliqua.material,
+                "alpha": config.orbit.obliqua.alpha,
+                "strain": config.orbit.obliqua.strain,
+
+                "module_solid": config.orbit.obliqua.module_solid,
+                "module_fluid": config.orbit.obliqua.module_fluid,
+
+                "solid": {
+                    "ncalc": config.orbit.obliqua.solid.ncalc,
+                    "bulk_l": config.orbit.obliqua.solid.bulk_l,
+                    "permea": config.orbit.obliqua.solid.permea,
+                    "porosity_thresh": config.orbit.obliqua.solid.porosity_thresh,
+                },
+
+                "fluid": {
+                    "sigma_R": config.orbit.obliqua.fluid.sigma_R,
+                    "sigma_R_prf": config.orbit.obliqua.fluid.sigma_R_prf,
+                    "H_R": config.orbit.obliqua.fluid.H_R,
+                    "efficiency": config.orbit.obliqua.fluid.efficiency,
+                },
+            }
+        },
+
+        "struct": {
+            "mass_tot": config.struct.mass_tot,
+        },
+    }
+
     # Calculate heating using obliqua
     try:
         power_prf, power_blk, σ_range, Imk2 = \
@@ -115,14 +163,13 @@ def run_obliqua(hf_row:dict, dirs:dict, interior_o:Interior_t, config:Config) ->
                 lov["shear"],
                 lov["bulk"],
                 lov["phi"],
-                config
+                cfg
             )
     except juliacall.JuliaError as e:
         UpdateStatusfile(dirs, 26)
         log.error(e)
         raise RuntimeError("Encountered problem when running Obliqua module")
 
-    # Extract result and store
     if config.interior.module == "dummy":
         interior_o.tides[0] = power_prf[1]
 
