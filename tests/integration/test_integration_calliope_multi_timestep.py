@@ -92,7 +92,10 @@ def test_integration_calliope_multi_timestep(proteus_multi_timestep_run):
             assert not np.isinf(final_row[key]), f'{key} should not be Inf'
             assert final_row[key] >= 0, f'{key} should be non-negative'
 
-    # Validate fO2 is physically reasonable (if present)
+    # Forward-looking guard: validate fO2 if present. fO2 / fO2_IW values are
+    # in log10 units relative to the Iron-Wüstite (IW) buffer, not pressure.
+    # CALLIOPE stores fO2_shift_IW; the key used depends on the outgassing
+    # module. Safe to skip when fO2 evolution is not yet enabled. See #564.
     if 'fO2' in final_row or 'fO2_IW' in final_row:
         fO2_key = 'fO2_IW' if 'fO2_IW' in final_row else 'fO2'
         fO2 = final_row[fO2_key]
@@ -123,7 +126,7 @@ def test_integration_calliope_multi_timestep(proteus_multi_timestep_run):
     )
     assert stability_results['temps_stable'], 'Temperatures should be within bounds'
     assert stability_results['pressures_stable'], 'Pressures should be within bounds'
-    assert stability_results['no_runaway'], 'No runaway behavior detected'
+    assert stability_results['no_unbounded_growth'], 'No unbounded growth detected'
 
     # Validate that atmospheric pressure evolves (should change with outgassing)
     if 'P_surf' in final_row and 'P_surf' in initial_row:
@@ -186,7 +189,7 @@ def test_integration_calliope_extended_run(proteus_multi_timestep_run):
         max_temp=1e6,
         max_pressure=1e10,
     )
-    assert stability_results['no_runaway'], 'No runaway behavior over extended run'
+    assert stability_results['no_unbounded_growth'], 'No unbounded growth over extended run'
 
     # Check that volatile masses don't show unbounded growth
     volatile_keys = [

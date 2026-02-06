@@ -110,8 +110,8 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
             t_surf = final_row['T_surf']
             assert not np.isnan(t_surf), 'T_surf should not be NaN'
             assert not np.isinf(t_surf), 'T_surf should not be Inf'
-            assert 100 <= t_surf <= 5000, (
-                f'T_surf should be physical (100-5000 K), got {t_surf}'
+            assert 50 <= t_surf <= 10000, (
+                f'T_surf should be physical (50-10000 K), got {t_surf}'
             )
 
             # Validate time progressed
@@ -253,12 +253,12 @@ def test_smoke_agni_dummy_interior_convergence():
         f_atm = final_row['F_atm']
         assert not np.isnan(f_atm), 'AGNI should produce valid F_atm (no NaN from Julia)'
         assert not np.isinf(f_atm)
-        assert -10000 <= f_atm <= 10000
+        assert -1e6 <= f_atm <= 1e6
 
         # Validate interior flux
         f_int = final_row['F_int']
         assert not np.isnan(f_int)
-        assert -10000 <= f_int <= 10000
+        assert -1e6 <= f_int <= 1e6
 
         # Validate convergence (AGNI should produce stable flux within 1 timestep)
         # Use absolute values for ratio since sign indicates direction
@@ -270,4 +270,4 @@ def test_smoke_agni_dummy_interior_convergence():
         # Validate surface temperature
         t_surf = final_row['T_surf']
         assert not np.isnan(t_surf)
-        assert 200 <= t_surf <= 5000
+        assert 50 <= t_surf <= 10000

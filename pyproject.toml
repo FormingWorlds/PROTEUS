@@ -93,6 +93,7 @@ develop = [
     "pytest >= 8.1",
     "pytest-cov",
     "pytest-dependency",
+    "pytest-timeout",
 ]
 
 docs = [

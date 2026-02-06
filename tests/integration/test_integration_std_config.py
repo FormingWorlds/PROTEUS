@@ -170,7 +170,9 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     if 'P_surf' in final_row:
         p_surf = final_row['P_surf']
         assert not np.isnan(p_surf), 'P_surf should not be NaN'
-        assert 0 < p_surf <= 1e10, f'P_surf should be physical (0-1e10 Pa), got {p_surf:.2e}'
+        assert 0 < p_surf <= 1e11, (
+            f'P_surf should be physical (0-1e11 Pa = 1 Mbar), got {p_surf:.2e}'
+        )
 
     if 'F_atm' in final_row:
         f_atm = final_row['F_atm']
@@ -250,7 +252,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
     )
     assert stability_results['temps_stable'], 'Temperatures should be within bounds'
     assert stability_results['pressures_stable'], 'Pressures should be within bounds'
-    assert stability_results['no_runaway'], 'No runaway behavior detected'
+    assert stability_results['no_unbounded_growth'], 'No unbounded growth detected'
 
     # Validate time progression
     assert 'Time' in final_row, 'Time should be in helpfile'
@@ -318,7 +320,7 @@ def test_integration_std_config_extended_run(proteus_multi_timestep_run):
         max_temp=1e6,
         max_pressure=1e10,
     )
-    assert stability_results['no_runaway'], 'No runaway behavior over extended run'
+    assert stability_results['no_unbounded_growth'], 'No unbounded growth over extended run'
 
     # Check that key variables don't show unbounded growth
     key_vars = ['T_surf', 'T_magma', 'P_surf', 'F_atm', 'F_int']

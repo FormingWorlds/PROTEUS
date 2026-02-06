@@ -109,11 +109,13 @@ def test_read_transit_success(tmp_path):
     observe_dir.mkdir(parents=True)
 
     csv_file = observe_dir / 'transit_outgas_initial.csv'
-    csv_content = """wavelength transmission uncertainty
-    0.5 0.98 0.02
-    0.6 0.97 0.03
-    0.7 0.99 0.01
-    1.0 0.95 0.05"""
+    # Match real Platon output format: tab-delimited, columns are
+    # Wavelength/um, None/ppm, then per-gas contributions in ppm.
+    csv_content = 'Wavelength/um\tNone/ppm\tH2O/ppm\n'
+    csv_content += '5.00000000e-01\t1.20000000e+02\t1.10000000e+02\n'
+    csv_content += '1.00000000e+00\t1.50000000e+02\t1.40000000e+02\n'
+    csv_content += '2.00000000e+00\t1.80000000e+02\t1.70000000e+02\n'
+    csv_content += '5.00000000e+00\t2.00000000e+02\t1.90000000e+02\n'
     csv_file.write_text(csv_content)
 
     # Read transit spectrum
@@ -122,8 +124,10 @@ def test_read_transit_success(tmp_path):
     # Verify DataFrame structure
     assert isinstance(result, pd.DataFrame)
     assert len(result) == 4  # 4 wavelength points
-    assert list(result.columns) == ['wavelength', 'transmission', 'uncertainty']
-    assert pytest.approx(result['transmission'].iloc[0], rel=1e-5) == 0.98
+    assert 'Wavelength/um' in result.columns
+    assert 'None/ppm' in result.columns
+    assert 'H2O/ppm' in result.columns
+    assert pytest.approx(result['Wavelength/um'].iloc[0], rel=1e-5) == 0.5
 
 
 @pytest.mark.unit
@@ -141,11 +145,13 @@ def test_read_eclipse_success(tmp_path):
     observe_dir.mkdir(parents=True)
 
     csv_file = observe_dir / 'eclipse_profile_final.csv'
-    csv_content = """wavelength brightness std_error
-    1.0 0.15 0.01
-    2.0 0.25 0.02
-    5.0 0.35 0.03
-    10.0 0.30 0.05"""
+    # Match real Platon output format: tab-delimited, columns are
+    # Wavelength/um, None/ppm, then per-gas contributions in ppm.
+    csv_content = 'Wavelength/um\tNone/ppm\tCO2/ppm\n'
+    csv_content += '1.00000000e+00\t1.50000000e+01\t1.40000000e+01\n'
+    csv_content += '2.00000000e+00\t2.50000000e+01\t2.30000000e+01\n'
+    csv_content += '5.00000000e+00\t3.50000000e+01\t3.20000000e+01\n'
+    csv_content += '1.00000000e+01\t3.00000000e+01\t2.80000000e+01\n'
     csv_file.write_text(csv_content)
 
     # Read eclipse spectrum
@@ -154,8 +160,9 @@ def test_read_eclipse_success(tmp_path):
     # Verify DataFrame structure
     assert isinstance(result, pd.DataFrame)
     assert len(result) == 4
-    assert 'brightness' in result.columns
-    assert 'std_error' in result.columns
+    assert 'Wavelength/um' in result.columns
+    assert 'None/ppm' in result.columns
+    assert 'CO2/ppm' in result.columns
 
 
 @pytest.mark.unit

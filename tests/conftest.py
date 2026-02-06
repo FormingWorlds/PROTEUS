@@ -523,3 +523,11 @@ def pytest_configure(config):
         'markers',
         'skip: placeholder tests not yet implemented',
     )
+    config.addinivalue_line(
+        'markers',
+        'janus: tests requiring JANUS/SOCRATES binaries',
+    )
+    config.addinivalue_line(
+        'markers',
+        'timeout: test timeout in seconds (requires pytest-timeout)',
+    )

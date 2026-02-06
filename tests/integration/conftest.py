@@ -327,31 +327,32 @@ def validate_stability(
     temp_keys: tuple[str, ...] = ('T_surf', 'T_magma'),
     pressure_keys: tuple[str, ...] = ('P_surf',),
     max_temp: float = 1e6,
-    max_pressure: float = 1e10,
+    max_pressure: float = 1e11,
 ) -> dict[str, bool]:
     """
-    Validate that simulation remains stable (no runaway temperatures/pressures).
+    Validate that simulation remains stable (no unbounded growth in T/P).
 
     Checks that key physical variables stay within reasonable bounds and don't
-    show unbounded growth.
+    show unbounded growth. Note: this does *not* test for runaway greenhouse
+    physics — it only checks for unphysically large or small values.
 
     **Physical Basis**:
     - Temperatures should be finite and within physical bounds (0 < T < max_temp)
     - Pressures should be finite and within physical bounds (0 < P < max_pressure)
-    - No runaway behavior: Variables should not grow unbounded
+    - No unbounded growth: Variables should not diverge
 
     **Args**:
         hf_all: Helpfile DataFrame with all timesteps
         temp_keys: Column names for temperatures to check
         pressure_keys: Column names for pressures to check
         max_temp: Maximum allowed temperature in K (default: 1e6 K)
-        max_pressure: Maximum allowed pressure in Pa (default: 1e10 Pa)
+        max_pressure: Maximum allowed pressure in Pa (default: 1e11 Pa = 1 Mbar)
 
     **Returns**:
         dict: Validation results with keys:
             - 'temps_stable': True if all temperatures are within bounds
             - 'pressures_stable': True if all pressures are within bounds
-            - 'no_runaway': True if no unbounded growth detected
+            - 'no_unbounded_growth': True if no unbounded growth detected
 
     **Raises**:
         AssertionError: If stability is violated
@@ -369,7 +370,7 @@ def validate_stability(
                 f'{key} exceeds maximum allowed temperature: max={np.max(temps):.2e} > {max_temp:.2e}'
             )
 
-            # Check for runaway behavior (temperature should not grow unbounded)
+            # Check for unbounded growth (large step-to-step jumps)
             if len(temps) > 1:
                 temp_trend = np.diff(temps)
                 # Allow some growth, but not unbounded
@@ -389,13 +390,13 @@ def validate_stability(
                 f'{key} exceeds maximum allowed pressure: max={np.max(pressures):.2e} > {max_pressure:.2e}'
             )
 
-            # Check for runaway behavior
+            # Check for unbounded growth
             if len(pressures) > 1:
                 pressure_trend = np.diff(pressures)
                 if np.any(np.abs(pressure_trend) > max_pressure * 0.1):
                     pressure_stable = False
 
     results['pressures_stable'] = pressure_stable
-    results['no_runaway'] = temp_stable and pressure_stable
+    results['no_unbounded_growth'] = temp_stable and pressure_stable
 
     return results

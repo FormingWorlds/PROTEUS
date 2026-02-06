@@ -86,7 +86,7 @@ def test_integration_dummy_multi_timestep(proteus_multi_timestep_run):
     )
     assert stability_results['temps_stable'], 'Temperatures should be within bounds'
     assert stability_results['pressures_stable'], 'Pressures should be within bounds'
-    assert stability_results['no_runaway'], 'No runaway behavior detected'
+    assert stability_results['no_unbounded_growth'], 'No unbounded growth detected'
 
     # Validate that key variables are present and physical
     final_row = runner.hf_all.iloc[-1]
@@ -152,21 +152,21 @@ def test_integration_dummy_extended_run(proteus_multi_timestep_run):
         max_temp=1e6,
         max_pressure=1e10,
     )
-    assert stability_results['no_runaway'], 'No runaway behavior over extended run'
+    assert stability_results['no_unbounded_growth'], 'No unbounded growth over extended run'
 
-    # Check that temperatures don't show unbounded growth
+    # Tighter temperature bound than validate_stability (which uses 1e6 K).
+    # For the dummy-physics extended run, 1e5 K is a reasonable upper limit.
     if 'T_surf' in runner.hf_all.columns:
         t_surf_values = runner.hf_all['T_surf'].values
-        # Temperature should not grow unbounded
         assert np.max(t_surf_values) < 1e5, (
             f'T_surf should not exceed 1e5 K, got max={np.max(t_surf_values):.2e}'
         )
 
-    # Check that fluxes remain stable
+    # Check that flux *imbalance* magnitude stays bounded.
+    # Individual fluxes may be negative (e.g. net cooling); this checks divergence.
     if 'F_atm' in runner.hf_all.columns and 'F_int' in runner.hf_all.columns:
         f_atm = runner.hf_all['F_atm'].values
         f_int = runner.hf_all['F_int'].values
-        # Fluxes should not diverge unbounded
         assert np.max(np.abs(f_atm - f_int)) < 1e7, (
             'Flux imbalance should not exceed 1e7 W/m² over extended run'
         )

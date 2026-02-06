@@ -153,8 +153,9 @@ def test_smoke_calliope_dummy_atmos_outgassing():
                 assert not np.isnan(final_row[key]), f'{key} should not be NaN'
                 assert not np.isinf(final_row[key]), f'{key} should not be Inf'
 
-            # Validate fO2 (oxidation state) is physically reasonable
-            # Typical range: -4 to +3 log10(IW) units
+            # Validate fO2 (oxidation state) is physically reasonable.
+            # CALLIOPE stores fO2_IW (log10 relative to Iron-Wüstite buffer).
+            # Other modules may use a generic 'fO2' key. See #564.
             if 'fO2_IW' in final_row:
                 fO2 = final_row['fO2_IW']
                 assert -5 <= fO2 <= 4, f'fO2 should be in range [-5, 4], got {fO2}'

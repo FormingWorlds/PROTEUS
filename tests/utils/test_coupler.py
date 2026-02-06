@@ -543,12 +543,12 @@ def test_helpfile_with_realistic_earth_values():
     # Modern Earth parameters
     row['Time'] = 4.567e9  # age in years
     row['T_surf'] = 288.0  # K, current surface temp
-    row['T_magma'] = 4000.0  # K, internal temp
+    row['T_magma'] = 1600.0  # K, upper mantle potential temperature (see #466)
     row['P_surf'] = 1.01325  # bar, 1 atm
     row['R_int'] = 3.480e6  # m, dry core radius
     row['M_tot'] = 5.972e24  # kg
     row['F_int'] = 47.0  # W/m2, internal heat flow
-    row['F_atm'] = 170.0  # W/m2, absorbed solar
+    row['F_atm'] = 170.0  # W/m2, net atmospheric heat flux
 
     hf = CreateHelpfileFromDict(row)
 

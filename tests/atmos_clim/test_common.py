@@ -21,6 +21,7 @@ import pytest
 
 from proteus.atmos_clim.common import (
     Albedo_t,
+    get_oarr_from_parr,
     get_radius_from_pressure,
     get_spfile_name_and_bands,
     get_spfile_path,
@@ -131,12 +132,34 @@ def test_read_atmosphere_data(mock_read):
 
 
 @pytest.mark.unit
+def test_get_oarr_from_parr():
+    """
+    Test generic lookup of a value in one array at the nearest pressure level.
+
+    get_oarr_from_parr is the generalised replacement for the older
+    get_radius_from_pressure. It finds the entry in o_arr whose
+    corresponding pressure in p_arr is closest to p_tgt.
+    """
+    p_arr = np.array([100.0, 10.0, 1.0])
+    o_arr = np.array([10.0, 20.0, 30.0])
+
+    # Exact match
+    p_close, o_close = get_oarr_from_parr(p_arr, o_arr, 10.0)
+    assert p_close == 10.0
+    assert o_close == 20.0
+
+    # Nearest neighbor
+    p_close, o_close = get_oarr_from_parr(p_arr, o_arr, 50.0)
+    assert p_close == 10.0
+
+
+@pytest.mark.unit
 def test_get_radius_from_pressure():
     """
-    Test finding geometric radius corresponding to a pressure level.
+    Test backwards-compatible wrapper around get_oarr_from_parr.
 
-    This functionality is critical for coupling where we need to find
-    the planetary radius at a specific reference pressure (e.g. surface).
+    get_radius_from_pressure delegates to get_oarr_from_parr but is kept
+    so that older call-sites continue to work.
     """
     p_arr = np.array([100.0, 10.0, 1.0])
     r_arr = np.array([10.0, 20.0, 30.0])

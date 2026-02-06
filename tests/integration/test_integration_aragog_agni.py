@@ -88,7 +88,7 @@ def test_integration_aragog_agni_multi_timestep(proteus_multi_timestep_run):
     )
     assert stability_results['temps_stable'], 'Temperatures should be within bounds'
     assert stability_results['pressures_stable'], 'Pressures should be within bounds'
-    assert stability_results['no_runaway'], 'No runaway behavior detected'
+    assert stability_results['no_unbounded_growth'], 'No unbounded growth detected'
 
     # Energy and mass validation (skip internally if required columns missing)
     # During magma-ocean cooling F_int >> F_atm is expected; use loose balance tolerance.
@@ -107,9 +107,9 @@ def test_integration_aragog_agni_multi_timestep(proteus_multi_timestep_run):
             'Time should progress'
         )
 
-    # Fluxes should be finite and non-negative where present
+    # Fluxes should be finite where present (negative values are physically
+    # valid, e.g. net cooling or tidal heating scenarios)
     for col in ('F_atm', 'F_int', 'F_ins'):
         if col in runner.hf_all.columns:
             vals = runner.hf_all[col].values
             assert np.all(np.isfinite(vals)), f'{col} must be finite'
-            assert np.all(vals >= 0), f'{col} must be non-negative'

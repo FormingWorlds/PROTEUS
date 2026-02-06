@@ -101,6 +101,10 @@ def test_smoke_escape_dummy_atmos():
             assert 0 <= esc_rate <= 1e10, (
                 f'esc_rate_total should be physical (0-1e10 kg/s), got {esc_rate}'
             )
+            # Dummy escape uses a constant rate set in the config above
+            assert esc_rate == pytest.approx(1e6), (
+                f'esc_rate_total should match configured dummy rate (1e6 kg/s), got {esc_rate}'
+            )
 
             # Validate elemental inventories are present (for escape to work)
             # Check that at least one element inventory exists
@@ -398,7 +402,8 @@ def test_smoke_outgas_atmos_volatiles():
                 assert not np.isnan(val), 'Volatile masses should not be NaN'
                 assert not np.isinf(val), 'Volatile masses should not be Inf'
 
-            # Validate fO2 is present (if outgassing is enabled)
+            # Forward-looking guard: validate fO2 if present (log10 IW units).
+            # The `if` guard makes this safe when fO2 evolution is not yet enabled.
             if 'fO2' in final_row:
                 fO2 = final_row['fO2']
                 assert not np.isnan(fO2), 'fO2 should not be NaN'

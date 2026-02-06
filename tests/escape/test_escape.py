@@ -258,7 +258,9 @@ def test_run_zephyrus_with_tidal(mock_el_escape):
     config.escape.zephyrus.efficiency = 0.2
     config.star.mass = 1.5e30  # kg
 
-    # Hot Jupiter scenario
+    # Hot Jupiter scenario: close-in orbit (0.03 AU), inflated radius, and
+    # extreme XUV flux to exercise the tidal heating branch in ZEPHYRUS.
+    # These conditions maximise tidal dissipation and XUV-driven escape.
     hf_row = {
         'semimajorax': 0.03 * 1.496e11,  # 0.03 AU
         'eccentricity': 0.05,
