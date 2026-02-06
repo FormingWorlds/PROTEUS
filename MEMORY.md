@@ -1,6 +1,6 @@
 # 🧠 Project Memory
 
-**Last Updated**: 2026-02-01
+**Last Updated**: 2026-02-06
 
 This document captures the living context of PROTEUS—the "why" behind architectural decisions, the current development focus, and critical knowledge for maintaining consistency across sessions.
 
@@ -50,37 +50,38 @@ This document captures the living context of PROTEUS—the "why" behind architec
 ## 2. Active Context (The "Now")
 
 ### Current Sprint Focus
-**Period**: 2026-01-20 to 2026-02-01
+**Period**: 2026-02-01 to 2026-02-06
 
-**Status**: ✅ CI/CD infrastructure hardened and stable
+**Status**: ✅ PR #600 review comments addressed, all CI passing
 
-**Recent Completed Work (2026-02-01)**:
-1. **CI Workflow Consolidation** (commits: 8d8cb5cb, fbf4893e)
-   - Renamed `ci-nightly-science-v5.yml` → `ci-nightly.yml`
-   - Deleted obsolete workflows (`ci-nightly-science.yml`, `ci_tests.yml`, backup files)
-   - Coordinated coverage thresholds between nightly and PR checks
+**Recent Completed Work (2026-02-06)**:
+1. **PR #600 Review Comment Implementation** (commit: 32d73539)
+   - Addressed 28 review comments from nichollsh across 15 files
+   - All CI workflows verified: Code style ✅, Fast PR Checks ✅, Docker Build ✅, Nightly ✅
 
-2. **PR Preparation for Main Branch**
-   - Removed all feature branch (`tl/test_ecosystem_v5`) references from CI workflows
-   - Fixed GitHub Actions versions: `actions/checkout@v6` → `v4`, `actions/setup-python@v6` → `v5`
-   - Updated Docker image references to use `:latest` tag
-   - Updated `docker-build.yml` to trigger `ci-nightly.yml` (not old workflow name)
-   - Verified ruff formatting passes on all src/ and tests/
-   - Updated docs references to use correct workflow names
+2. **Test Physical Bounds Improvements**
+   - Widened pressure bounds: 100 kbar → 1 Mbar (1e10 → 1e11 Pa) for sub-Neptune interiors
+   - Widened temperature bounds: 100–5000 K → 50–10000 K for deep magma oceans
+   - Widened flux bounds: ±10 kW/m² → ±1 MW/m² for early magma ocean fluxes
+   - Removed non-negative flux assertion (negative F_atm/F_int physically valid)
 
-3. **Coverage Threshold Calibration** (commit: f6fbcd66)
-   - Updated to realistic 59% based on latest CI runs
-   - Fast gate: 44.45% for PR checks
+3. **Test Terminology & Clarity**
+   - Renamed `no_runaway` → `no_unbounded_growth` to avoid runaway greenhouse confusion
+   - Added clarifying comments on fO2 units (log10 IW) and keys (#564)
+   - Fixed observe test CSV format to match real Platon output (tab-delimited)
+   - Fixed `T_magma` from 4000 K → 1600 K for modern Earth test (#466)
 
-4. **File Size Limit Enforcement** (commit: b3016fa1)
-   - Added `tools/check_file_sizes.sh` validation script
-   - Pre-commit hook enforces: AGENTS.md ≤500 lines, MEMORY.md ≤1000 lines
-   - Both files include refactoring guidelines when approaching limits
+4. **Test Infrastructure**
+   - Added `pytest-timeout` to develop dependencies
+   - Registered `janus` and `timeout` markers in `conftest.py`
+   - Added `get_oarr_from_parr` test alongside backwards-compatible wrapper
+   - Added `esc_rate` assertion against configured dummy rate
 
-5. **Smoke Test Robustness** (commits: 589558f7, a60d14d2, 474ae5d3)
-   - Graceful handling of AGNI allocation errors
-   - Graceful handling of MORS stellar track parsing errors
-   - Handle transient Zenodo/OSF download failures in ARAGOG+JANUS tests
+**Previous Sprint (2026-01-20 to 2026-02-01)**:
+- CI workflow consolidation and hardening
+- Coverage threshold calibration (59% full, 44.45% fast)
+- File size limit enforcement (AGENTS.md ≤500, MEMORY.md ≤1000)
+- Smoke test robustness (AGNI/MORS/Zenodo error handling)
 
 ### Recent Architectural Changes
 - **Docker CI Architecture**: Fully operational with pre-built images (`ghcr.io/formingworlds/proteus:latest`)
@@ -91,6 +92,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 
 ### Active Branches
 - **main**: Production branch with nightly validation
+- **tl/test_ecosystem_v5**: PR #600 — test ecosystem improvements (pending merge)
 
 ---
 
@@ -547,7 +549,10 @@ Original smoke data download only included spectral files and stellar spectra.
 - Continue expanding integration test coverage (ARAGOG+AGNI, CALLIOPE+ZEPHYRUS)
 - Remove remaining test skips as stability improves
 - Maintain coverage ratcheting momentum
-- Add pytest-timeout plugin to Docker image for better test timeout control
+- ✅ ~~Add pytest-timeout plugin~~ (added to develop deps, commit 32d73539)
+- Centralise physical bounds (T_surf, P_surf limits) into conftest.py constants
+- Add dedicated ARAGOG/SPIDER unit tests (currently only tested via integration)
+- Python version matrix + macOS testing (#607)
 
 ### Medium-Term (Next 2-3 Months)
 - Multi-architecture Docker support (ARM64 for Apple Silicon)
