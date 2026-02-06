@@ -13,12 +13,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         plot_mod    = 50         # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"     # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 50         # Write CSV frequency, 0: wait until completion | n: every n iterations
-        archive_mod = 60       # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
+        archive_mod = 10       # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
         remove_sf   = true      # Remove SOCRATES spectral file when simulation ends.
 
     # time-stepping
     [params.dt]
-        minimum      = 3e2    # yr, minimum time-step
+        minimum      = 5e4    # yr, minimum time-step
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 5e8   # yr, maximum time-step # if higher like 1e9, will produce too few snapshots
         initial      = 1e3    # yr, inital step size
