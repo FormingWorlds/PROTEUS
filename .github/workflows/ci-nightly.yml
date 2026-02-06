@@ -5,6 +5,9 @@ on:
     # Run at 3am UTC daily on main branch (fallback; primary trigger is
     # docker-build.yml which calls this workflow via API after image rebuild)
     - cron: '0 3 * * *'
+  push:
+    branches:
+      - tl/test_ecosystem_v5  # TEMPORARY: testing CI on branch, revert before merge
   workflow_dispatch:
 
 permissions:
