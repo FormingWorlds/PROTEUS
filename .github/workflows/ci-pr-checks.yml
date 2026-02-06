@@ -1,0 +1,580 @@
+name: CI - Fast PR Checks
+
+# Purpose: Fast feedback for pull requests using pre-built Docker image
+# Strategy:
+#   1. Use pre-compiled Docker image (ghcr.io/formingworlds/proteus:latest)
+#   2. Overlay PR code changes onto the container
+#   3. Smart rebuild: Only recompile changed source files (make handles this)
+#   4. Run @pytest.mark.unit tests with mocked physics (fast, ~2-5 min total)
+#   5. Run @pytest.mark.smoke tests with real binaries (1 timestep, low res, ~2-5 min)
+#   6. Exclude placeholder tests (@pytest.mark.skip) - these are placeholders for future implementation
+#
+# Test Categories:
+#   @pytest.mark.unit    -> Fast tests with mocked physics (target: <100ms each)
+#   @pytest.mark.smoke   -> Quick validation with real binaries (target: <30s each)
+#   @pytest.mark.skip    -> Placeholder tests not yet implemented (excluded from CI)
+#
+# For current test counts and detailed metrics, see: docs/test_infrastructure.md
+
+on:
+  pull_request:
+    branches:
+      - main
+      - dev
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:  # Allow manual triggering for testing
+
+permissions:
+  contents: write  # Allow auto-commit of ratcheted coverage thresholds
+  packages: read
+  actions: read  # Required to download artifact from last nightly run
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: formingworlds/proteus
+
+jobs:
+  unit-tests:
+    name: Unit Tests (Mocked Physics)
+    runs-on: ubuntu-latest
+    container:
+      # TODO: Change back to :latest after merging to main
+      image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # NOTE: Running as root is required because the Docker image installs to
+      # system paths (/opt/proteus) and actions/checkout needs workspace write access.
+      options: --user root
+
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prevent threshold decreases vs main
+        run: |
+          git config --global --add safe.directory /__w/PROTEUS/PROTEUS
+          git fetch origin main
+          python - <<'PY'  # Heredoc: inline Python script (PY marks start/end)
+          import pathlib
+          import subprocess
+          import tomllib
+
+          base = "origin/main"
+          current = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          base_text = subprocess.check_output(["git", "show", f"{base}:pyproject.toml"], text=True)
+          base_data = tomllib.loads(base_text)
+
+          paths = {
+              "full": ["tool", "coverage", "report", "fail_under"],
+              "fast": ["tool", "proteus", "coverage_fast", "fail_under"],
+          }
+
+          def get_val(data, path):
+              try:
+                  for key in path:
+                      data = data[key]
+              except KeyError:
+                  return None
+              return float(data)
+
+          for label, path in paths.items():
+              cur = get_val(current, path)
+              base_val = get_val(base_data, path)
+
+              if base_val is None or cur is None:
+                  print(f"Skipping {label} check (missing in base or current)")
+                  continue
+
+              if cur < base_val:
+                  raise SystemExit(f"{label} fail_under decreased: {cur} < {base_val}")
+
+          print("Coverage thresholds have not decreased vs main.")
+          PY
+
+      - name: Overlay PR code onto container
+        run: |
+          echo "Copying PR code over container base..."
+          rsync -av --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
+          cd /opt/proteus
+          pip install -e ".[develop]" --no-deps
+
+      - name: Install CI helper tools
+        run: |
+          cd /opt/proteus
+          pip install diff-cover
+
+      - name: Read fast coverage threshold
+        run: |
+          cd /opt/proteus
+          python - <<'PY' >> "$GITHUB_ENV"
+          import pathlib
+          import tomllib
+
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          val = float(data["tool"]["proteus"]["coverage_fast"]["fail_under"])
+          print(f"FAST_COV_FAIL_UNDER={val}")
+          PY
+
+      - name: Validate test structure
+        run: |
+          cd /opt/proteus
+          bash tools/validate_test_structure.sh
+
+      - name: Run unit tests with coverage
+        id: unit-tests
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          # Run unit tests, excluding placeholder tests and examples
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
+            --cov=src --cov-report=term-missing --cov-report=xml --cov-report=html \
+            --cov-fail-under=${FAST_COV_FAIL_UNDER} \
+            --durations=0 \
+            --durations-min=0 | tee pytest-unit.log
+
+      - name: Smart rebuild of physics modules
+        run: |
+          cd /opt/proteus
+          echo "Checking if Fortran/C source files changed..."
+
+          # SOCRATES rebuild (only if sources changed)
+          if [ -d "socrates" ]; then
+            cd socrates
+            ./build_code 2>&1 | grep -q "Nothing to be done" || {
+              echo "SOCRATES needs rebuild..."
+              ./build_code
+            }
+            cd /opt/proteus
+          fi
+
+          # AGNI rebuild (only if Julia sources changed)
+          if [ -d "AGNI" ]; then
+            cd AGNI
+            if git diff --name-only HEAD origin/main | grep -q '\.jl$'; then
+              echo "AGNI Julia sources changed, re-instantiating packages..."
+              julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+            else
+              echo "No AGNI changes detected, skipping rebuild"
+            fi
+            cd /opt/proteus
+          fi
+
+      - name: Run smoke tests (append to coverage)
+        id: smoke-tests
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          pytest -m "smoke and not skip" \
+            --ignore=tests/examples \
+            --cov=src --cov-append \
+            --cov-report=term-missing --cov-report=xml --cov-report=html \
+            --durations=0 \
+            --durations-min=0 -v --tb=short | tee pytest-smoke.log
+
+      - name: Generate coverage JSON
+        run: |
+          cd /opt/proteus
+          # Use --fail-under=0 to prevent failure when fast coverage < full threshold
+          coverage json -o coverage-unit.json --fail-under=0
+
+      - name: Download last nightly coverage (for estimated total)
+        id: download-nightly
+        if: always()
+        continue-on-error: true  # Do not fail job when no nightly artifact exists yet
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: ci-nightly.yml
+          name: nightly-coverage
+          path: nightly-coverage
+          workflow_conclusion: success
+          if_no_artifact_found: warn
+
+      - name: Copy nightly coverage into container and check staleness
+        id: check-nightly
+        if: always()
+        run: |
+          cd /opt/proteus
+          STALE_HOURS=48
+          NIGHTLY_STALE=false
+          NIGHTLY_MISSING=false
+
+          if [ -f /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-integration-only.json ]; then
+            cp /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-integration-only.json /opt/proteus/
+            cp /__w/PROTEUS/PROTEUS/nightly-coverage/nightly-timestamp.txt /opt/proteus/ 2>/dev/null || true
+            cp /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-by-type.json /opt/proteus/ 2>/dev/null || true
+
+            # Check staleness
+            if [ -f /opt/proteus/nightly-timestamp.txt ]; then
+              NIGHTLY_TS=$(cat /opt/proteus/nightly-timestamp.txt)
+              python3 - <<PYEOF
+          from datetime import datetime, timezone, timedelta
+          import sys
+          ts = datetime.fromisoformat("$NIGHTLY_TS".replace('Z', '+00:00'))
+          age = datetime.now(timezone.utc) - ts
+          hours = age.total_seconds() / 3600
+          print(f"Nightly artifact age: {hours:.1f} hours")
+          if hours > $STALE_HOURS:
+              print(f"WARNING: Nightly artifact is stale ({hours:.1f}h > {$STALE_HOURS}h)")
+              sys.exit(1)
+          print("Nightly artifact is fresh.")
+          PYEOF
+              if [ $? -ne 0 ]; then
+                NIGHTLY_STALE=true
+              fi
+            else
+              echo "No timestamp file found - assuming fresh"
+            fi
+          else
+            echo "No nightly coverage artifact found"
+            NIGHTLY_MISSING=true
+          fi
+
+          echo "NIGHTLY_STALE=$NIGHTLY_STALE" >> $GITHUB_ENV
+          echo "NIGHTLY_MISSING=$NIGHTLY_MISSING" >> $GITHUB_ENV
+
+      - name: Write workflow summary and validate coverage
+        id: coverage-validation
+        if: always()
+        env:
+          UNIT_OUTCOME: ${{ steps.unit-tests.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke-tests.outcome }}
+          NIGHTLY_STALE: ${{ env.NIGHTLY_STALE }}
+          NIGHTLY_MISSING: ${{ env.NIGHTLY_MISSING }}
+        run: |
+          cd /opt/proteus
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import tomllib
+
+          GRACE_PERIOD = 0.3  # Allow coverage drops up to this margin
+
+          def read_totals(path):
+              try:
+                  with open(path) as f:
+                      data = json.load(f)
+                  t = data.get("totals", {})
+                  return t.get("percent_covered", 0), t.get("covered_lines", 0), t.get("num_statements", 0)
+              except Exception:
+                  return 0, 0, 0
+
+          def norm_path(p):
+              p = p.replace("\\", "/")
+              if "proteus/" in p:
+                  return "proteus/" + p.split("proteus/", 1)[-1]
+              if "src/" in p:
+                  return p.split("src/", 1)[-1]
+              return p
+
+          def line_set_from_files(data):
+              out = set()
+              for path, fd in data.get("files", {}).items():
+                  n = norm_path(path)
+                  for line in fd.get("executed_lines", []) or []:
+                      out.add((n, line))
+              return out
+
+          def executable_set_from_files(data):
+              out = set()
+              for path, fd in data.get("files", {}).items():
+                  n = norm_path(path)
+                  for line in (fd.get("executed_lines", []) or []) + (fd.get("missing_lines", []) or []):
+                      out.add((n, line))
+              return out
+
+          # Read thresholds from pyproject.toml
+          try:
+              pyproject = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+              full_threshold = float(pyproject["tool"]["coverage"]["report"]["fail_under"])
+          except Exception:
+              full_threshold = 59.0  # Fallback (matches pyproject.toml)
+
+          # Read coverage data
+          u_pct, u_covered, u_total = read_totals(pathlib.Path("coverage-unit.json"))
+          u_data = {}
+          try:
+              if pathlib.Path("coverage-unit.json").exists():
+                  u_data = json.loads(pathlib.Path("coverage-unit.json").read_text())
+          except (json.JSONDecodeError, OSError):
+              pass
+
+          # NOTE: Despite the filename, coverage-integration-only.json actually contains
+          # COMBINED coverage (unit + smoke + integration) from nightly. See ci-nightly.yml.
+          # TODO: Potential coverage math issue - stale nightly lines could mask PR regressions.
+          i_data = {}
+          try:
+              if pathlib.Path("coverage-integration-only.json").exists():
+                  i_data = json.loads(pathlib.Path("coverage-integration-only.json").read_text())
+          except (json.JSONDecodeError, OSError):
+              pass
+          i_pct, i_covered, i_total = read_totals(pathlib.Path("coverage-integration-only.json"))
+
+          # Compute estimated total (union)
+          est_pct_union = None
+          est_covered_union = 0
+          est_total_union = 0
+          if u_data.get("files") and i_data.get("files"):
+              u_exec = line_set_from_files(u_data)
+              i_exec = line_set_from_files(i_data)
+              u_all = executable_set_from_files(u_data)
+              i_all = executable_set_from_files(i_data)
+              union_covered = u_exec | i_exec
+              union_executable = u_all | i_all
+              if union_executable:
+                  est_covered_union = len(union_covered)
+                  est_total_union = len(union_executable)
+                  est_pct_union = min(100.0, 100.0 * est_covered_union / est_total_union)
+
+          # Check staleness and coverage status
+          nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
+          nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
+
+          # Determine coverage status
+          coverage_status = "ok"
+          coverage_drop = 0
+          if est_pct_union is not None:
+              coverage_drop = full_threshold - est_pct_union
+              if coverage_drop > GRACE_PERIOD:
+                  coverage_status = "fail"
+              elif coverage_drop > 0:
+                  coverage_status = "warn"
+
+          # Write outputs for subsequent steps
+          output_file = pathlib.Path(os.environ.get("GITHUB_OUTPUT", "/tmp/outputs.txt"))
+          est_total_str = f"{est_pct_union:.2f}" if est_pct_union is not None else "0"
+          with open(output_file, "a") as f:
+              f.write(f"coverage_status={coverage_status}\n")
+              f.write(f"coverage_drop={coverage_drop:.2f}\n")
+              f.write(f"estimated_total={est_total_str}\n")
+              f.write(f"threshold={full_threshold}\n")
+
+          # Write summary
+          summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
+          unit_outcome = os.environ.get("UNIT_OUTCOME", "unknown")
+          smoke_outcome = os.environ.get("SMOKE_OUTCOME", "unknown")
+
+          with open(summary_path, "w") as f:
+              f.write("# Fast PR Checks – Summary\n\n")
+
+              # Staleness/missing warnings
+              if nightly_stale:
+                  f.write("## ❌ Stale Nightly Baseline\n\n")
+                  f.write("The last successful nightly CI run was **more than 48 hours ago**.\n")
+                  f.write("Cannot validate coverage against an outdated baseline.\n\n")
+                  f.write("**Action required:** Wait for nightly CI to run, or [trigger it manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
+              elif nightly_missing:
+                  f.write("## ⚠️ No Nightly Baseline\n\n")
+                  f.write("No nightly coverage artifact found. Coverage validation skipped.\n\n")
+
+              # Coverage warning
+              if coverage_status == "warn":
+                  f.write(f"## ⚠️ Coverage Warning\n\n")
+                  f.write(f"Coverage dropped **{coverage_drop:.2f}%** (within 0.3% grace margin).\n")
+                  f.write("Consider adding tests in a follow-up PR.\n\n")
+
+              # Test results
+              f.write("## Test Results\n\n")
+              f.write(f"| Test Type | Status |\n")
+              f.write(f"|-----------|--------|\n")
+              f.write(f"| Unit tests | {unit_outcome} |\n")
+              f.write(f"| Smoke tests | {smoke_outcome} |\n\n")
+
+              # Coverage by type
+              f.write("## Coverage by Test Type\n\n")
+              f.write("| Test Type | Coverage | Lines Covered |\n")
+              f.write("|-----------|----------|---------------|\n")
+              f.write(f"| Unit + Smoke (this PR) | {u_pct:.2f}% | {u_covered} / {u_total} |\n")
+              if i_total:
+                  f.write(f"| Integration (nightly) | {i_pct:.2f}% | {i_covered} / {i_total} |\n")
+              if est_pct_union is not None:
+                  status_icon = "✅" if coverage_status == "ok" else ("⚠️" if coverage_status == "warn" else "❌")
+                  f.write(f"| **Estimated TOTAL** | **{est_pct_union:.2f}%** | {est_covered_union} / {est_total_union} |\n\n")
+                  f.write(f"**Baseline (last nightly):** {full_threshold:.2f}% | **Status:** {status_icon}\n\n")
+              else:
+                  f.write("\n*Estimated total unavailable (nightly data missing)*\n\n")
+
+              f.write("### Notes\n")
+              f.write("- Grace period: 0.3% (coverage can drop by this margin without failing)\n")
+              f.write("- Nightly staleness threshold: 48 hours\n")
+              f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
+
+          # Print summary
+          disp_est = f"{est_pct_union:.2f}%" if est_pct_union else "—"
+          print(f"Unit+Smoke: {u_pct:.2f}% | Nightly: {i_pct:.2f}% | Estimated total: {disp_est} | Status: {coverage_status}")
+          PY
+
+      - name: Diff coverage on changed lines (fast suite)
+        id: diff-cover
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
+        run: |
+          # Fetch base branch and generate diff file to avoid remote fetch issues in container
+          cd /__w/PROTEUS/PROTEUS
+          git fetch --no-tags --prune --depth=100 origin "${BASE_REF}"
+          git diff "origin/${BASE_REF}...HEAD" > /tmp/pr-changes.diff
+
+          # Run diff-cover using the prepared diff file
+          diff-cover /opt/proteus/coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
+
+      - name: Append failure guidance (needs more unit tests)
+        if: (failure() && !cancelled()) && (steps.unit-tests.outcome == 'failure' || steps.smoke-tests.outcome == 'failure' || steps.diff-cover.outcome == 'failure')
+        run: |
+          {
+            echo ""
+            echo "---"
+            echo "## PR did not pass checks"
+            echo ""
+            echo "This run failed because **unit tests**, **smoke tests**, or **diff-cover on changed lines** did not pass. See the \"Which tests failed\" section above."
+            echo ""
+            echo "See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post coverage warning comment on PR
+        if: github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## ⚠️ Coverage Warning
+
+            This PR reduces test coverage by **${{ steps.coverage-validation.outputs.coverage_drop }}%** (from ${{ steps.coverage-validation.outputs.threshold }}% to ${{ steps.coverage-validation.outputs.estimated_total }}%).
+
+            While this is within the **0.3% grace margin** and won't block merge, we encourage you to add tests in a follow-up PR to restore coverage above ${{ steps.coverage-validation.outputs.threshold }}%.
+
+            **How to fix:** Add unit tests for the new/changed code paths.
+            See [test_building.md](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md) for guidance.
+
+      - name: Fail job if nightly is stale
+        if: always() && steps.check-nightly.outcome == 'success'
+        run: |
+          if [ "$NIGHTLY_STALE" = "true" ]; then
+            echo "❌ Nightly baseline is stale (>48 hours old). Cannot validate coverage."
+            echo "Trigger nightly CI manually: https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml"
+            exit 1
+          fi
+
+      - name: Fail job if coverage dropped beyond grace period
+        if: always() && steps.coverage-validation.outputs.coverage_status == 'fail'
+        run: |
+          echo "❌ Coverage dropped by ${{ steps.coverage-validation.outputs.coverage_drop }}% (exceeds 0.3% grace margin)"
+          echo "Add tests to restore coverage above ${{ steps.coverage-validation.outputs.threshold }}%"
+          exit 1
+
+      - name: Fail job if unit or smoke tests failed
+        if: always() && (steps.unit-tests.outcome == 'failure' || steps.smoke-tests.outcome == 'failure')
+        run: exit 1
+
+      - name: Ratchet fast coverage threshold
+        run: |
+          cd /opt/proteus
+          # Exit codes: 0=updated, 1=no update needed, 2=error
+          # Treat both 0 and 1 as success
+          python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast || [ $? -eq 1 ]
+
+      - name: Commit ratcheted threshold (if changed)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          cd /__w/PROTEUS/PROTEUS
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Copy updated pyproject.toml from container to workspace
+          cp /opt/proteus/pyproject.toml /__w/PROTEUS/PROTEUS/pyproject.toml
+
+          # Check if there are changes
+          if git diff --quiet pyproject.toml; then
+            echo "No threshold changes to commit"
+          else
+            git add pyproject.toml
+            COVERAGE=$(grep -A5 '\[tool.proteus.coverage_fast\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
+            git commit -m "ratchet: Auto-update fast coverage threshold to ${COVERAGE}% [skip ci]"
+            git push
+            echo "✓ Committed ratcheted threshold: ${COVERAGE}%"
+          fi
+
+      - name: Install gpg for Codecov verification
+        if: always()
+        run: |
+          apt-get update
+          apt-get install -y gnupg
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: /opt/proteus/coverage.xml
+          flags: unit-tests
+          name: unit-tests-coverage
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload HTML coverage
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: unit-coverage-html
+          path: /opt/proteus/htmlcov/
+          retention-days: 7
+
+      - name: Upload unit pytest log
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: unit-pytest-log
+          path: /opt/proteus/pytest-unit.log
+          retention-days: 7
+
+      - name: Upload smoke pytest log
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: smoke-pytest-log
+          path: /opt/proteus/pytest-smoke.log
+          retention-days: 7
+
+      - name: Upload smoke test artifacts on failure
+        uses: actions/upload-artifact@v6
+        if: failure() && steps.smoke-tests.outcome == 'failure'
+        with:
+          name: smoke-test-failures
+          path: |
+            /opt/proteus/output/
+            /opt/proteus/tests/**/*.log
+          retention-days: 7
+
+  lint:
+    name: Code Quality (ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff check
+        run: ruff check src/ tests/
+
+      - name: Run ruff format check
+        run: ruff format --check src/ tests/

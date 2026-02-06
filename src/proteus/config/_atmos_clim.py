@@ -10,52 +10,61 @@ from ._converters import lowercase, none_if_none
 
 log = logging.getLogger('fwl.' + __name__)
 
+
 def tmp_max_bigger_than_tmp_min(instance, attribute, value):
     if value <= instance.tmp_minimum:
         raise ValueError("'tmp_maximum' has to be bigger than 'tmp_minimum'.")
+
 
 def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
         raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
 
+
 def check_overlap(instance, attribute, value):
-    _overlaps = ("ro", "ee", "rorr")
+    _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
-        raise ValueError("Overlap type must be one of " + str(_overlaps))
+        raise ValueError('Overlap type must be one of ' + str(_overlaps))
+
 
 def valid_agni(instance, attribute, value):
-    if instance.module != "agni":
+    if instance.module != 'agni':
         return
 
     # ensure psurf_thresh is greater than p_top, to avoid upside-down atmosphere in transparent mode
     if instance.agni.p_top > instance.agni.psurf_thresh:
-        raise ValueError("Must set `agni.p_top` to be less than `agni.psurf_thresh`")
+        raise ValueError('Must set `agni.p_top` to be less than `agni.psurf_thresh`')
 
     # ensure p_obs is greater than p_top
     if instance.agni.p_top > instance.agni.p_obs:
-        raise ValueError("Must set `agni.p_top` to be less than `agni.p_obs`")
+        raise ValueError('Must set `agni.p_top` to be less than `agni.p_obs`')
 
     # agni must solve_energy=true if surf_state=skin
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
         raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
 
     if instance.agni.latent_heat and not instance.agni.rainout:
-        raise ValueError("`atmos_clim.agni`: Must set `rainout=true` if setting `latent_heat=true`")
+        raise ValueError(
+            '`atmos_clim.agni`: Must set `rainout=true` if setting `latent_heat=true`'
+        )
 
     # set spectral files?
     if not instance.agni.spectral_group:
-        raise ValueError("Must set atmos_clim.agni.spectral_group")
+        raise ValueError('Must set atmos_clim.agni.spectral_group')
     if not instance.agni.spectral_bands:
-        raise ValueError("Must set atmos_clim.agni.spectral_bands")
+        raise ValueError('Must set atmos_clim.agni.spectral_bands')
 
     # fastchem installed?
-    if instance.agni.chemistry == "eq":
-        FC_DIR = os.environ.get("FC_DIR")
+    if instance.agni.chemistry == 'eq':
+        FC_DIR = os.environ.get('FC_DIR')
         if FC_DIR:
             if not os.path.isdir(FC_DIR):
-                raise FileNotFoundError(f"Fastchem not found at FC_DIR={FC_DIR}")
+                raise FileNotFoundError(f'Fastchem not found at FC_DIR={FC_DIR}')
         else:
-            raise EnvironmentError("Chemistry is enabled but environment variable `FC_DIR` is not set")
+            raise EnvironmentError(
+                'Chemistry is enabled but environment variable `FC_DIR` is not set'
+            )
+
 
 @define
 class Agni:
@@ -137,59 +146,86 @@ class Agni:
         Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
     """
 
-    verbosity: int          = field(default=1, validator=in_((0,1,2,)))
-    spectral_group: str     = field(default=None)
-    spectral_bands: str     = field(default=None)
-    p_top: float            = field(default=1e-5, validator=gt(0))
-    p_obs: float            = field(default=20e-3, validator=gt(0))
-    surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
-    num_levels: int         = field(default=40, validator=ge(25))
-    chemistry: str          = field(default="none",
-                                    validator=in_((None, "eq")),
-                                    converter=none_if_none)
-    solve_energy: bool      = field(default=True)
-    solution_atol: float    = field(default=0.5,  validator=gt(0))
-    solution_rtol: float    = field(default=0.15,  validator=gt(0))
-    surf_roughness: float   = field(default=1e-3, validator=gt(0))
-    surf_windspeed: float   = field(default=2.0,  validator=gt(0))
-    overlap_method: str     = field(default='ee', validator=check_overlap)
-    phs_timescale: float    = field(default=1e6, validator=gt(0))
-    evap_efficiency: float  = field(default=0.01, validator=(le(1), ge(0)))
-    rainout: bool           = field(default=True)
-    oceans: bool            = field(default=True)
-    latent_heat: bool       = field(default=False)
-    convection: bool        = field(default=True)
-    conduction: bool        = field(default=True)
-    sens_heat: bool         = field(default=True)
-    real_gas: bool          = field(default=False)
-    psurf_thresh: float     = field(default=0.1, validator=ge(0))
-    dx_max: float           = field(default=35.0,  validator=gt(1))
-    dx_max_ini: float       = field(default=300.0, validator=gt(1))
-    max_steps: int          = field(default=70, validator=gt(2))
-    perturb_all: bool       = field(default=True)
-    mlt_criterion: str      = field(default='s', validator=in_(('l','s',)))
-    fastchem_floor:float        = field(default=150.0, validator=gt(0.0))
-    fastchem_maxiter_chem:int   = field(default=60000, validator=gt(200))
-    fastchem_maxiter_solv:int   = field(default=20000, validator=gt(200))
-    fastchem_xtol_chem:float    = field(default=1e-4,  validator=gt(0.0))
-    fastchem_xtol_elem:float    = field(default=1e-4,  validator=gt(0.0))
-    ini_profile: str        = field(default='isothermal',
-                                    converter=lowercase,
-                                    validator=in_(('loglinear','isothermal',
-                                                   'dry_adiabat','analytic'))
-                                    )
-    ls_default: int         = field(default=2, validator=in_((0,1,2)))
-    fdo: int                = field(default=2, validator=in_((2,4)))
+    verbosity: int = field(
+        default=1,
+        validator=in_(
+            (
+                0,
+                1,
+                2,
+            )
+        ),
+    )
+    spectral_group: str = field(default=None)
+    spectral_bands: str = field(default=None)
+    p_top: float = field(default=1e-5, validator=gt(0))
+    p_obs: float = field(default=20e-3, validator=gt(0))
+    surf_material: str = field(default='surface_albedos/Hammond24/lunarmarebasalt.dat')
+    num_levels: int = field(default=40, validator=ge(25))
+    chemistry: str = field(default='none', validator=in_((None, 'eq')), converter=none_if_none)
+    solve_energy: bool = field(default=True)
+    solution_atol: float = field(default=0.5, validator=gt(0))
+    solution_rtol: float = field(default=0.15, validator=gt(0))
+    surf_roughness: float = field(default=1e-3, validator=gt(0))
+    surf_windspeed: float = field(default=2.0, validator=gt(0))
+    overlap_method: str = field(default='ee', validator=check_overlap)
+    phs_timescale: float = field(default=1e6, validator=gt(0))
+    evap_efficiency: float = field(default=0.01, validator=(le(1), ge(0)))
+    rainout: bool = field(default=True)
+    oceans: bool = field(default=True)
+    latent_heat: bool = field(default=False)
+    convection: bool = field(default=True)
+    conduction: bool = field(default=True)
+    sens_heat: bool = field(default=True)
+    real_gas: bool = field(default=False)
+    psurf_thresh: float = field(default=0.1, validator=ge(0))
+    dx_max: float = field(default=35.0, validator=gt(1))
+    dx_max_ini: float = field(default=300.0, validator=gt(1))
+    max_steps: int = field(default=70, validator=gt(2))
+    perturb_all: bool = field(default=True)
+    mlt_criterion: str = field(
+        default='s',
+        validator=in_(
+            (
+                'l',
+                's',
+            )
+        ),
+    )
+    fastchem_floor: float = field(default=150.0, validator=gt(0.0))
+    fastchem_maxiter_chem: int = field(default=60000, validator=gt(200))
+    fastchem_maxiter_solv: int = field(default=20000, validator=gt(200))
+    fastchem_xtol_chem: float = field(default=1e-4, validator=gt(0.0))
+    fastchem_xtol_elem: float = field(default=1e-4, validator=gt(0.0))
+    ini_profile: str = field(
+        default='isothermal',
+        converter=lowercase,
+        validator=in_(('loglinear', 'isothermal', 'dry_adiabat', 'analytic')),
+    )
+    ls_default: int = field(default=2, validator=in_((0, 1, 2)))
+    fdo: int = field(default=2, validator=in_((2, 4)))
+    check_safe_gas: bool = field(
+        default=True,
+        metadata={
+            'doc': (
+                'Require at least one "safe" gas (dry, has opacity, has thermo) when '
+                'allocating AGNI atmosphere. Set False to allow compositions that '
+                'AGNI would otherwise reject (e.g. for tests or exotic setups).'
+            ),
+        },
+    )
+
 
 def valid_janus(instance, attribute, value):
-    if instance.module != "janus":
+    if instance.module != 'janus':
         return
 
     # set spectral files?
     if not instance.janus.spectral_group:
-        raise ValueError("Must set atmos_clim.janus.spectral_group")
+        raise ValueError('Must set atmos_clim.janus.spectral_group')
     if not instance.janus.spectral_bands:
-        raise ValueError("Must set atmos_clim.janus.spectral_bands")
+        raise ValueError('Must set atmos_clim.janus.spectral_bands')
+
 
 @define
 class Janus:
@@ -215,16 +251,17 @@ class Janus:
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     """
 
-    spectral_group: str     = field(default=None)
-    spectral_bands: str     = field(default=None)
-    p_top: float            = field(default=1e-5, validator=gt(0))
-    p_obs: float            = field(default=2e-3, validator=gt(0))
-    F_atm_bc: int           = field(default=0, validator=in_((0, 1)))
-    num_levels: int         = field(default=90, validator=ge(15))
-    tropopause: str | None  = field(default="none",
-                                    validator=in_((None, 'skin', 'dynamic')),
-                                    converter=none_if_none)
-    overlap_method: str     = field(default='ee', validator=check_overlap)
+    spectral_group: str = field(default=None)
+    spectral_bands: str = field(default=None)
+    p_top: float = field(default=1e-5, validator=gt(0))
+    p_obs: float = field(default=2e-3, validator=gt(0))
+    F_atm_bc: int = field(default=0, validator=in_((0, 1)))
+    num_levels: int = field(default=90, validator=ge(15))
+    tropopause: str | None = field(
+        default='none', validator=in_((None, 'skin', 'dynamic')), converter=none_if_none
+    )
+    overlap_method: str = field(default='ee', validator=check_overlap)
+
 
 @define
 class Dummy:
@@ -243,23 +280,23 @@ class Dummy:
         A multiplying factor applied to the ideal-gas scale height.
     """
 
-    gamma: float         = field(default=0.7, validator=(ge(0),le(1)))
+    gamma: float = field(default=0.7, validator=(ge(0), le(1)))
     height_factor: float = field(default=3.0, validator=ge(0))
 
 
 def valid_albedo(instance, attribute, value):
-
     if isinstance(value, str):
         return
 
     elif isinstance(value, float):
         if not (0 <= value <= 1):
-            raise ValueError("The value of `albedo_pl` must be between 0 and 1")
+            raise ValueError('The value of `albedo_pl` must be between 0 and 1')
         else:
             return
 
     else:
-        raise ValueError("The value of `albedo_pl` must be a string or a float")
+        raise ValueError('The value of `albedo_pl` must be a string or a float')
+
 
 @define
 class AtmosClim:
@@ -301,25 +338,21 @@ class AtmosClim:
 
     module: str = field(validator=in_(('dummy', 'agni', 'janus')))
 
-    agni: Agni   = field(factory=Agni,  validator=valid_agni)
+    agni: Agni = field(factory=Agni, validator=valid_agni)
     janus: Janus = field(factory=Janus, validator=valid_janus)
     dummy: Dummy = field(factory=Dummy)
 
-    surf_state: str         = field(default='skin',
-                                    validator=(
-                                        in_(('mixed_layer', 'fixed', 'skin')),
-                                    ))
-    prevent_warming: bool   = field(default=False)
-    surface_d: float        = field(default=0.01, validator=gt(0))
-    surface_k: float        = field(default=2.0,  validator=gt(0))
-    cloud_enabled: bool     = field(default=False)
-    cloud_alpha: float      = field(default=0.0, validator=(ge(0), le(1)))
-    surf_greyalbedo:float   = field(default=0.2, validator=(ge(0),le(1)))
-    albedo_pl               = field(default=0.0, validator=valid_albedo)
-    rayleigh: bool          = field(default=True,validator=warn_if_dummy)
-    tmp_minimum: float      = field(default=0.5, validator=gt(0))
-    tmp_maximum: float      = field(default=5000.0,
-                                    validator=tmp_max_bigger_than_tmp_min)
+    surf_state: str = field(default='skin', validator=(in_(('mixed_layer', 'fixed', 'skin')),))
+    prevent_warming: bool = field(default=False)
+    surface_d: float = field(default=0.01, validator=gt(0))
+    surface_k: float = field(default=2.0, validator=gt(0))
+    cloud_enabled: bool = field(default=False)
+    cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
+    surf_greyalbedo: float = field(default=0.2, validator=(ge(0), le(1)))
+    albedo_pl = field(default=0.0, validator=valid_albedo)
+    rayleigh: bool = field(default=True, validator=warn_if_dummy)
+    tmp_minimum: float = field(default=0.5, validator=gt(0))
+    tmp_maximum: float = field(default=5000.0, validator=tmp_max_bigger_than_tmp_min)
 
     @property
     def surf_state_int(self) -> int:
@@ -340,4 +373,4 @@ class AtmosClim:
         elif isinstance(self.albedo_pl, float):
             return False
         else:
-            raise ValueError("Cannot determine configuration for setting `albedo_pl`")
+            raise ValueError('Cannot determine configuration for setting `albedo_pl`')

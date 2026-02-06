@@ -13,6 +13,7 @@ Functions:
     worker: Execute BO iterations in a subprocess, updating shared state.
     parallel_process: Set up shared resources, spawn workers, and collect results.
 """
+
 from __future__ import annotations
 
 import os
@@ -46,16 +47,17 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
         output_dir (str): Directory path where pickle files will be saved.
     """
     # Persist the data dictionary
-    with open(os.path.join(output_dir, "data.pkl"), "wb") as f_data:
+    with open(os.path.join(output_dir, 'data.pkl'), 'wb') as f_data:
         pickle.dump(dict(D), f_data)
 
     # Persist the log list
-    with open(os.path.join(output_dir, "logs.pkl"), "wb") as f_logs:
+    with open(os.path.join(output_dir, 'logs.pkl'), 'wb') as f_logs:
         pickle.dump(list(logs), f_logs)
 
     # Persist the timestamps
-    with open(os.path.join(output_dir, "Ts.pkl"), "wb") as f_ts:
+    with open(os.path.join(output_dir, 'Ts.pkl'), 'wb') as f_ts:
         pickle.dump(list(Ts), f_ts)
+
 
 def worker(
     process_fun,
@@ -65,12 +67,12 @@ def worker(
     T,
     T0: float,
     x_init: torch.Tensor,
-    n_init:int,
+    n_init: int,
     lock,
     max_len: int,
     worker_id: int,
     log_list,
-    output_dir: str
+    output_dir: str,
 ) -> None:
     """Worker subprocess that performs asynchronous BO steps.
 
@@ -100,9 +102,9 @@ def worker(
     while True:
         # Check if we've reached the maximum number of evaluations
 
-        current_X = D_shared["X"]
+        current_X = D_shared['X']
         if len(current_X) >= max_len:
-            print(f"Worker {worker_id:03d} exiting")
+            print(f'Worker {worker_id:03d} exiting')
             break
 
         # For the first iteration, use provided initial point
@@ -114,46 +116,42 @@ def worker(
         # Run BO step and measure wall-clock time
         t_start = time.perf_counter()
         x_new, y_new, t_bo, t_eval, t_lock, t_fit, t_ac, dist = process_fun(
-            f=f,
-            D=D_shared,
-            B=B,
-            x_in=x_in,
-            lock=lock,
-            worker_id=worker_id
+            f=f, D=D_shared, B=B, x_in=x_in, lock=lock, worker_id=worker_id
         )
 
         t_end = time.perf_counter()
 
         # Acquire lock to update shared structures and persist state
         with lock:
-
             # Append new data to shared X and Y
-            X = torch.cat((D_shared["X"], x_new), dim=0)
-            D_shared["X"] = X
-            Y = torch.cat((D_shared["Y"], y_new), dim=0)
-            D_shared["Y"] = Y
+            X = torch.cat((D_shared['X'], x_new), dim=0)
+            D_shared['X'] = X
+            Y = torch.cat((D_shared['Y'], y_new), dim=0)
+            D_shared['Y'] = Y
 
             # Record end timestamp
             T.append(t_end)
 
             # Log metrics for this task
-            log_list.append({
-                "worker": worker_id,
-                "task_id": task_id,
-                "start_time": t_start,
-                "end_time": t_end,
-                "duration": t_end - t_start,
-                "BO_time": t_bo,
-                "t_eval": t_eval,
-                "t_lock": t_lock,
-                "t_fit": t_fit,
-                "t_ac": t_ac,
-                "dist": dist,
-                "x_value": x_new.tolist()[0],
-                "y_value": float(y_new),
-            })
+            log_list.append(
+                {
+                    'worker': worker_id,
+                    'task_id': task_id,
+                    'start_time': t_start,
+                    'end_time': t_end,
+                    'duration': t_end - t_start,
+                    'BO_time': t_bo,
+                    't_eval': t_eval,
+                    't_lock': t_lock,
+                    't_fit': t_fit,
+                    't_ac': t_ac,
+                    'dist': dist,
+                    'x_value': x_new.tolist()[0],
+                    'y_value': float(y_new),
+                }
+            )
 
-        # Compute relative timestamps and checkpoint
+            # Compute relative timestamps and checkpoint
             D_snap = dict(D_shared)
             log_snap = list(log_list)
             Ts_snap = [t - T0 for t in list(T)]
@@ -162,9 +160,10 @@ def worker(
 
         step = len(X) - n_init
         current_best = Y.max().item()
-        print(f"Step {step:4d}, best objective = {current_best:.5f}")
+        print(f'Step {step:4d}, best objective = {current_best:.5f}')
 
         task_id += 1
+
 
 def parallel_process(
     objective_builder,
@@ -173,10 +172,10 @@ def parallel_process(
     n_workers: int,
     max_len: int,
     output: str,
-    seed:int,
+    seed: int,
     ref_config: str,
     observables: dict,
-    parameters: dict
+    parameters: dict,
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -214,29 +213,16 @@ def parallel_process(
 
     # Build kernel
     d = len(parameters)
-    if kernel == "RBF":
-        kernel = get_kernel_w_prior(ard_num_dims=d,
-                                    use_rbf_kernel=True)
-    elif kernel == "MAT1/2":
-
-        kernel = get_kernel_w_prior(ard_num_dims=d,
-                                    use_rbf_kernel=False,
-                                    nu=0.5
-                                    )
-    elif kernel == "MAT3/2":
-
-        kernel = get_kernel_w_prior(ard_num_dims=d,
-                                    use_rbf_kernel=False,
-                                    nu=1.5
-                                    )
-    elif kernel == "MAT5/2":
-
-        kernel = get_kernel_w_prior(ard_num_dims=d,
-                                    use_rbf_kernel=False,
-                                    nu=2.5
-                                    )
+    if kernel == 'RBF':
+        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=True)
+    elif kernel == 'MAT1/2':
+        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=0.5)
+    elif kernel == 'MAT3/2':
+        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=1.5)
+    elif kernel == 'MAT5/2':
+        kernel = get_kernel_w_prior(ard_num_dims=d, use_rbf_kernel=False, nu=2.5)
     else:
-        raise ValueError("Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}")
+        raise ValueError('Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}')
 
     process_fun = partial(
         BO_step,
@@ -245,26 +231,23 @@ def parallel_process(
     )
 
     # Absolute path to shared output dir
-    output_abspath = get_proteus_directories(output)["output"]
+    output_abspath = get_proteus_directories(output)['output']
 
     mgr = Manager()
 
     # Load initial dataset
-    D_init_path = os.path.join(output_abspath, "init.pkl")
+    D_init_path = os.path.join(output_abspath, 'init.pkl')
     if not os.path.isfile(D_init_path):
-        raise FileNotFoundError("Cannot find D_init file: " + D_init_path)
-    with open(D_init_path, "rb") as f_init:
+        raise FileNotFoundError('Cannot find D_init file: ' + D_init_path)
+    with open(D_init_path, 'rb') as f_init:
         D_init = pickle.load(f_init)
 
     # Initialize shared data structures
-    D_shared = mgr.dict({
-        "X": D_init["X"],
-        "Y": D_init["Y"]
-    })
-    n_init = len(D_shared["X"])
+    D_shared = mgr.dict({'X': D_init['X'], 'Y': D_init['Y']})
+    n_init = len(D_shared['X'])
 
     lock = mgr.Lock()
-    log_list = mgr.list([None] * n_init) # no logs from init data
+    log_list = mgr.list([None] * n_init)  # no logs from init data
 
     # Generate initial candidate locations and busy-map
     X_init = init_locs(n_workers, D_shared)
@@ -275,7 +258,7 @@ def parallel_process(
     T0 = time.perf_counter()
 
     # Set up step constraint
-    max_steps = max_len - (n_workers -1)
+    max_steps = max_len - (n_workers - 1)
 
     # Spawn worker processes
     procs = []
@@ -298,8 +281,8 @@ def parallel_process(
                 max_steps,
                 wid,
                 log_list,
-                output_abspath
-            )
+                output_abspath,
+            ),
         )
         p.start()
         procs.append(p)

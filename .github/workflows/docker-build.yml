@@ -1,0 +1,184 @@
+name: Docker Build and Push
+
+# Purpose: Build and push the PROTEUS Docker image with pre-compiled physics modules
+# This image is used by CI/CD workflows for fast testing without recompiling
+# Triggers:
+#   1. Nightly at 02:00 UTC (full rebuild to stay current)
+#   2. On changes to dependencies or build configuration on main branch
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # Nightly at 02:00 UTC
+  push:
+    branches:
+      - main
+    paths:
+      - 'pyproject.toml'
+      - 'environment.yml'
+      - 'Dockerfile'
+      - 'tools/get_*.sh'
+      - '.github/workflows/docker-build.yml'
+  workflow_dispatch:  # Allow manual triggering for testing
+
+permissions:
+  contents: read
+  packages: write
+  actions: write  # Required to trigger other workflows
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # Compilation can take time
+
+    steps:
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME=${IMAGE_NAME,,}" >> $GITHUB_ENV
+
+      - name: Free disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker system prune -af
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix={{branch}}-
+            type=ref,event=branch
+            type=schedule,pattern=nightly-{{date 'YYYYMMDD'}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/formingworlds/proteus:buildcache
+          cache-to: type=registry,ref=ghcr.io/formingworlds/proteus:buildcache,mode=max
+          provenance: false
+
+      - name: Image digest
+        run: echo "Image pushed with digest ${{ steps.meta.outputs.digest }}"
+
+      - name: Write workflow summary (visible on Actions run page)
+        if: always()
+        run: |
+          echo "# Docker Build – Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Build result" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Status:** ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Image:** ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Digest:** ${{ steps.meta.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Tags" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post-build cleanup
+        if: always()
+        run: docker system prune -af --volumes
+  trigger-nightly-science:
+    name: Trigger Nightly Science Tests
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.ref == 'refs/heads/main')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Trigger nightly science workflow via API
+        run: |
+          curl -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml/dispatches \
+            -d '{"ref":"main"}'
+
+  run-quick-integration:
+    name: Quick Integration Test (Dummy)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    container:
+      image: ghcr.io/formingworlds/proteus:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Overlay code onto container
+        run: |
+          echo "Copying code over container base..."
+          rsync -av --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
+          cd /opt/proteus
+          # Configure git to trust the copied repository
+          git config --global --add safe.directory /opt/proteus
+          pip install -e ".[develop]" --no-deps
+
+      - name: Debug git state
+        run: |
+          cd /opt/proteus
+          ls -la .git | head -50
+          git status -sb || true
+          git rev-parse HEAD || true
+
+      - name: Run dummy integration test
+        run: |
+          cd /opt/proteus
+          pytest tests/integration/test_integration_dummy.py -v --tb=short
+
+      - name: Upload integration outputs on failure
+        uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: quick-integration-failures
+          path: |
+            /opt/proteus/output/
+            /opt/proteus/tests/**/*.log
+          retention-days: 14

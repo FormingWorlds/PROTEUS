@@ -5,6 +5,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 from numpy import pi, unique
 
@@ -15,11 +16,20 @@ from proteus.atmos_clim.common import Atmos_t, get_spfile_path
 from proteus.utils.constants import const_R
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
-log = logging.getLogger("fwl."+__name__)
+log = logging.getLogger('fwl.' + __name__)
 
-def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
-                     wl: list, fl:list,
-                     update_stellar_spectrum:bool, hf_all:pd.DataFrame, hf_row:dict):
+
+def run_atmosphere(
+    atmos_o: Atmos_t,
+    config: Config,
+    dirs: dict,
+    loop_counter: dict,
+    wl: list,
+    fl: list,
+    update_stellar_spectrum: bool,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+):
     """Run Atmosphere submodule.
 
     Generic function to run an atmospheric simulation with either JANUS, AGNI or dummy.
@@ -48,37 +58,40 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
     """
 
-    log.info("Solving atmosphere...")
+    log.info('Solving atmosphere...')
 
     # Update bond albedo
     if config.atmos_clim.albedo_from_file or (config.atmos_clim.albedo_pl > 1.0e-9):
-
         # Warn if invalid
         if config.atmos_clim.rayleigh:
-            log.warning("Physically inconsistent options selected: "
-                        "`albedo_pl > 0` and `rayleigh = True`")
+            log.warning(
+                'Physically inconsistent options selected: '
+                '`albedo_pl > 0` and `rayleigh = True`'
+            )
         if config.atmos_clim.cloud_enabled:
-            log.warning("Physically inconsistent options selected: "
-                        "`albedo_pl > 0` and `cloud_enabled = True`")
+            log.warning(
+                'Physically inconsistent options selected: '
+                '`albedo_pl > 0` and `cloud_enabled = True`'
+            )
 
         # Update value of input albedo
         if config.atmos_clim.albedo_from_file:
-            hf_row["albedo_pl"] = float(atmos_o.albedo_o.evaluate(hf_row["T_surf"]))
-            log.info(f"Set albedo by interpolation: {hf_row['albedo_pl']*100:.3f}%")
+            hf_row['albedo_pl'] = float(atmos_o.albedo_o.evaluate(hf_row['T_surf']))
+            log.info(f'Set albedo by interpolation: {hf_row["albedo_pl"] * 100:.3f}%')
         else:
-            hf_row["albedo_pl"] = float(config.atmos_clim.albedo_pl)
-            log.debug(f"Set albedo by config: {hf_row['albedo_pl']*100:.3f}%")
+            hf_row['albedo_pl'] = float(config.atmos_clim.albedo_pl)
+            log.debug(f'Set albedo by config: {hf_row["albedo_pl"] * 100:.3f}%')
 
     else:
         # Held at zero
-        hf_row["albedo_pl"] = 0.0
+        hf_row['albedo_pl'] = 0.0
 
     # Handle new surface temperature
     if config.atmos_clim.surf_state == 'mixed_layer':
-        hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+        hf_row['T_surf'] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
     elif config.atmos_clim.surf_state == 'fixed':
-        hf_row["T_surf"] = hf_row["T_magma"]
+        hf_row['T_surf'] = hf_row['T_magma']
 
     # elif surf_state=='skin':
     #    Don't do anything here, because this will be handled by the atmosphere model.
@@ -89,18 +102,21 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
         # Run JANUS
         no_atm = bool(atmos_o._atm is None)
-        #Enforce surface temperature at first iteration
+        # Enforce surface temperature at first iteration
         if no_atm:
-            hf_row["T_surf"] = hf_row["T_magma"]
+            hf_row['T_surf'] = hf_row['T_magma']
 
-        #Init atm object if first iteration or change in stellar spectrum
+        # Init atm object if first iteration or change in stellar spectrum
         if no_atm or update_stellar_spectrum:
-            spectral_file_nostar = get_spfile_path(dirs["fwl"], config)
+            spectral_file_nostar = get_spfile_path(dirs['fwl'], config)
             if not os.path.exists(spectral_file_nostar):
                 UpdateStatusfile(dirs, 20)
                 raise FileNotFoundError(
-                            "Spectral file does not exist at '%s'" % spectral_file_nostar)
+                    "Spectral file does not exist at '%s'" % spectral_file_nostar
+                )
 
+            wl = np.array(wl)
+            fl = np.array(fl)
             idx = unique(wl, return_index=True)[1]
             wl_un = wl[idx]
             fl_un = fl[idx]
@@ -122,20 +138,20 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
         # Run AGNI
         # Initialise atmosphere struct
-        spfile_path = os.path.join(dirs["output"] , "runtime.sf")
+        spfile_path = os.path.join(dirs['output'], 'runtime.sf')
         no_atm = bool(atmos_o._atm is None)
         if no_atm or update_stellar_spectrum:
-            log.debug("Initialise new atmosphere struct")
+            log.debug('Initialise new atmosphere struct')
 
             # first run?
             if no_atm:
                 activate_julia(dirs, config.atmos_clim.agni.verbosity)
                 # surface temperature guess
-                hf_row["T_surf"] = hf_row["T_magma"]
+                hf_row['T_surf'] = hf_row['T_magma']
             else:
                 # Remove old spectral file if it exists
                 safe_rm(spfile_path)
-                safe_rm(spfile_path+"_k")
+                safe_rm(spfile_path + '_k')
 
                 # deallocate old atmosphere
                 deallocate_atmos(atmos_o._atm)
@@ -146,18 +162,20 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
             # Check allocation was ok
             if not bool(atmos_o._atm.is_alloc):
                 UpdateStatusfile(dirs, 22)
-                raise RuntimeError("Atmosphere struct not allocated")
+                raise RuntimeError('Atmosphere struct not allocated')
 
         # Update profile
         atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs, config)
 
         # Run solver
-        atmos_o._atm, atm_output = run_agni(atmos_o._atm,
-                                            loop_counter["total"], dirs, config, hf_row)
+        atmos_o._atm, atm_output = run_agni(
+            atmos_o._atm, loop_counter['total'], dirs, config, hf_row
+        )
 
     elif config.atmos_clim.module == 'dummy':
         # Import
         from proteus.atmos_clim.dummy import RunDummyAtm
+
         # Run dummy atmosphere model
         atm_output = RunDummyAtm(dirs, config, hf_row)
 
@@ -167,9 +185,9 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
             hf_row[key] = atm_output[key]
 
     # Copy special cases
-    hf_row["rho_obs"]     = 3 * hf_row["M_tot"] / (4*pi*hf_row["R_obs"]**3)
-    hf_row["F_net"]       = hf_row["F_int"] - hf_row["F_atm"]
-    hf_row["bond_albedo"] = atm_output["albedo"]
+    hf_row['rho_obs'] = 3 * hf_row['M_tot'] / (4 * pi * hf_row['R_obs'] ** 3)
+    hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
+    hf_row['bond_albedo'] = atm_output['albedo']
 
     # Calculate bolometric observables (measured at infinite distance)
     update_bolometry(hf_row)
@@ -178,63 +196,65 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
     update_wtg_surf(hf_row)
 
 
-def update_wtg_surf(hf_row:dict):
-    '''
+def update_wtg_surf(hf_row: dict):
+    """
     Update WTG parameter.
 
     https://royalsocietypublishing.org/doi/full/10.1098/rspa.2016.0107
-    '''
+    """
 
-    omega = 2 * pi / hf_row["axial_period"]     # Angular rotation rate
-    R_mix = const_R / hf_row["atm_kg_per_mol"]  # Specific gas constant
-    hf_row["wtg_surf"] = (R_mix * hf_row["T_surf"])**0.5 / (omega * hf_row["R_int"])
+    omega = 2 * pi / hf_row['axial_period']  # Angular rotation rate
+    R_mix = const_R / hf_row['atm_kg_per_mol']  # Specific gas constant
+    hf_row['wtg_surf'] = (R_mix * hf_row['T_surf']) ** 0.5 / (omega * hf_row['R_int'])
 
 
-def update_bolometry(hf_row:dict):
-    '''
+def update_bolometry(hf_row: dict):
+    """
     Update bolometric observables (transit depth, contrast ratio.)
 
     https://link.springer.com/content/pdf/10.1007/978-3-319-30648-3_40-1.pdf
-    '''
+    """
 
     # Transit depth
-    hf_row["transit_depth"] =  (hf_row["R_obs"]  / hf_row["R_star"])**2.0
+    hf_row['transit_depth'] = (hf_row['R_obs'] / hf_row['R_star']) ** 2.0
 
     # Eclipse depth
     #    Accounting for fact that F_ins is scaled to TOA, not to stellar surface.
-    hf_row["eclipse_depth"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
-                                 (hf_row["R_obs"] / hf_row["separation"])**2.0
+    hf_row['eclipse_depth'] = ((hf_row['F_olr'] + hf_row['F_sct']) / hf_row['F_ins']) * (
+        hf_row['R_obs'] / hf_row['separation']
+    ) ** 2.0
 
-def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
+
+def ShallowMixedOceanLayer(hf_cur: dict, hf_pre: dict):
     # This scheme is not typically used, but it maintained here from legacy code
     from scipy.integrate import solve_ivp
 
-    log.info(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
+    log.info('>>>>>>>>>> Flux convergence scheme <<<<<<<<<<<')
 
     # For SI conversion
-    yr          = 3.154e+7      # s
+    yr = 3.154e7  # s
 
     # Last T_surf and time from atmosphere, K
-    t_cur  = hf_cur["Time"]*yr
-    t_pre  = hf_pre["Time"]*yr
-    Ts_pre = hf_pre["T_surf"]
+    t_cur = hf_cur['Time'] * yr
+    t_pre = hf_pre['Time'] * yr
+    Ts_pre = hf_pre['T_surf']
 
     # Properties of the shallow mixed ocean layer
-    c_p_layer   = 1000          # J kg-1 K-1
-    rho_layer   = 3000          # kg m-3
-    depth_layer = 1000          # m
+    c_p_layer = 1000  # J kg-1 K-1
+    rho_layer = 3000  # kg m-3
+    depth_layer = 1000  # m
 
     def ocean_evolution(t, y):
         # Specific heat of mixed ocean layer
-        mu      = c_p_layer * rho_layer * depth_layer # J K-1 m-2
+        mu = c_p_layer * rho_layer * depth_layer  # J K-1 m-2
         # RHS of ODE
-        RHS     = - hf_cur["F_net"] / mu
+        RHS = -hf_cur['F_net'] / mu
         return RHS
 
     # Solve ODE
-    sol_curr  = solve_ivp(ocean_evolution, [t_pre, t_cur], [Ts_pre])
+    sol_curr = solve_ivp(ocean_evolution, [t_pre, t_cur], [Ts_pre])
 
     # New current surface temperature from shallow mixed layer
-    Ts_cur = sol_curr.y[0][-1] # K
+    Ts_cur = sol_curr.y[0][-1]  # K
 
     return Ts_cur

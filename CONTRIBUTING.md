@@ -114,7 +114,7 @@ pre-commit install
 
 PROTEUS uses [pytest](https://docs.pytest.org/en/latest/) to run the tests on the code. Tests are important for ensuring that the code behaves as expected, and for finding bugs/errors as soon as they arise. You can read more about software testing in general [here](https://www.geeksforgeeks.org/software-testing/software-testing-basics/).
 
-Our tests are run automatically via a Github Action: [tests](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/tests.yaml). You can also run the tests for yourself using the command:
+Our tests are run automatically via a Github Action: [CI - Fast PR Checks](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/ci-pr-checks.yml). You can also run the tests for yourself using the command:
 
 ```console
 pytest

@@ -1,0 +1,101 @@
+name: Reusable Test Quality Gate for PROTEUS Ecosystem
+
+# This reusable workflow provides a standardized test quality gate for PROTEUS ecosystem modules.
+# PROTEUS itself uses automatic coverage ratcheting coordinated between nightly and PR workflows:
+#   - Nightly CI (ci-nightly.yml): Runs all tests, establishes coverage baseline, ratchets threshold
+#   - PR Checks (ci-pr-checks.yml): Runs fast tests, validates against nightly baseline with 0.3% grace period
+# Ecosystem modules can adopt similar patterns or use this simpler threshold-based approach.
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version to use for testing'
+        required: false
+        type: string
+        default: '3.12'
+      coverage-threshold:
+        description: 'Minimum coverage percentage required. PROTEUS uses ratcheting (see pyproject.toml).'
+        required: false
+        type: number
+        default: 30
+      grace-period:
+        description: 'Allow coverage drops within this margin (percentage points). Set to 0 for strict enforcement.'
+        required: false
+        type: number
+        default: 0.3
+      working-directory:
+        description: 'Working directory for the project (if in subdirectory)'
+        required: false
+        type: string
+        default: '.'
+      pytest-args:
+        description: 'Additional pytest arguments'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  test:
+    name: Test (Python ${{ inputs.python-version }})
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better coverage analysis
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[develop]"
+
+      - name: Display installed packages
+        run: pip list
+
+      - name: Run pytest with coverage
+        run: |
+          pytest \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-fail-under=${{ inputs.coverage-threshold }} \
+            ${{ inputs.pytest-args }} \
+            tests/
+
+      - name: Install gpg for Codecov verification
+        if: always()
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnupg
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ${{ inputs.working-directory }}/coverage.xml
+          flags: unittests
+          name: codecov-${{ inputs.python-version }}
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: coverage-report-${{ inputs.python-version }}
+          path: htmlcov/
+          retention-days: 30
