@@ -97,7 +97,9 @@ RUN if [ ! -d "/opt/proteus/AGNI" ]; then \
     cd /opt/proteus/AGNI && \
     bash src/get_agni.sh 0
 
-# Install submodules as editable packages (developer workflow)
+# Install submodules as editable packages (developer workflow).
+# These editable installs override PyPI versions with local clones when the
+# directories exist, enabling in-container development without re-installing.
 RUN if [ -d "/opt/proteus/MORS" ]; then pip install -e MORS/.; fi && \
     if [ -d "/opt/proteus/aragog" ]; then pip install -e aragog/.; fi && \
     if [ -d "/opt/proteus/JANUS" ]; then pip install -e JANUS/.; fi && \

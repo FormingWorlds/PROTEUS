@@ -2,13 +2,18 @@ name: CI - Nightly Science Validation
 
 on:
   schedule:
-    # Run at 3am UTC daily on main branch
+    # Run at 3am UTC daily on main branch (fallback; primary trigger is
+    # docker-build.yml which calls this workflow via API after image rebuild)
     - cron: '0 3 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write  # Required for ratcheting coverage threshold commits
   packages: read
+
+concurrency:
+  group: nightly-science-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -704,7 +709,7 @@ jobs:
 
       - name: Upload coverage artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nightly-coverage
           path: |

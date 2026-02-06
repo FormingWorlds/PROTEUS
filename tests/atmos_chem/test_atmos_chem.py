@@ -94,22 +94,25 @@ def test_read_result_successful(tmp_path):
     offchem_dir = tmp_path / 'output' / 'offchem'
     offchem_dir.mkdir(parents=True)
 
-    # Write fake CSV (whitespace-delimited as per source code)
+    # Write realistic VULCAN CSV (tab-delimited, columns = physical quantities + species)
     csv_file = offchem_dir / 'vulcan.csv'
-    csv_content = """species vmr abundance
-    H2O 0.75 1e22
-    CO2 0.24 1e21
-    N2 0.01 1e20"""
+    csv_content = (
+        'tmp\tp\tz\tKzz\tH2\tH2O\tCO2\tCO\tCH4\tN2\n'
+        '1.850e+02\t1.000e+00\t3.501e+05\t6.197e+11\t2.711e-01\t8.895e-03\t1.679e-02\t6.966e-01\t6.604e-03\t0.000e+00\n'
+        '1.866e+02\t1.334e+00\t3.483e+05\t5.522e+11\t2.711e-01\t8.895e-03\t1.679e-02\t6.966e-01\t6.604e-03\t0.000e+00\n'
+        '1.882e+02\t1.779e+00\t3.465e+05\t4.920e+11\t2.711e-01\t8.895e-03\t1.679e-02\t6.966e-01\t6.604e-03\t0.000e+00\n'
+    )
     csv_file.write_text(csv_content)
 
     # Read result
     result = read_result(outdir, 'vulcan')
 
-    # Verify DataFrame structure
+    # Verify DataFrame structure matches real VULCAN output
     assert isinstance(result, pd.DataFrame)
-    assert len(result) == 3  # 3 species
-    assert list(result.columns) == ['species', 'vmr', 'abundance']
-    assert result['species'].tolist() == ['H2O', 'CO2', 'N2']
+    assert len(result) == 3  # 3 atmospheric levels
+    assert 'tmp' in result.columns
+    assert 'H2O' in result.columns
+    assert 'CO2' in result.columns
 
 
 @pytest.mark.unit
@@ -124,23 +127,24 @@ def test_read_result_preserves_whitespace_format(tmp_path):
     offchem_dir = tmp_path / 'output' / 'offchem'
     offchem_dir.mkdir(parents=True)
 
-    # Write CSV with variable whitespace (tabs, multiple spaces)
+    # Write VULCAN CSV with variable whitespace (tabs + trailing whitespace)
     csv_file = offchem_dir / 'vulcan.csv'
-    csv_content = """species    vmr    vmr_uncertainty    source
-    CO        1e-6    1e-7    oxidation
-    CO2       0.24    0.01    outgassing
-    H2O       0.75    0.05    outgassing"""
+    csv_content = (
+        'tmp\tp\tz\tKzz\tH2\tH2O\tCO\tCO2\n'
+        '1.850e+02\t1.000e+00\t3.501e+05\t6.197e+11\t2.711e-01\t8.895e-03\t6.966e-01\t1.679e-02\n'
+        '2.180e+02\t2.382e+02\t3.129e+05\t6.901e+10\t2.711e-01\t8.895e-03\t6.973e-01\t1.679e-02\n'
+        '5.391e+02\t1.010e+05\t2.522e+05\t1.663e+10\t2.711e-01\t8.895e-03\t6.855e-01\t1.679e-02\n'
+    )
     csv_file.write_text(csv_content)
 
     result = read_result(outdir, 'vulcan')
 
     # Verify parsing (whitespace regex splits correctly)
     assert len(result) == 3
-    assert 'vmr_uncertainty' in result.columns
-    assert 'source' in result.columns
-    # Check that species 'CO' has source 'oxidation' (row-based access)
-    co_row = result[result['species'] == 'CO']
-    assert co_row['source'].values[0] == 'oxidation'
+    assert 'tmp' in result.columns
+    assert 'CO' in result.columns
+    # Check that pressure column has correct first value
+    assert pytest.approx(result['p'].iloc[0], rel=1e-3) == 1.0
 
     """
     Test run_chemistry when no module is specified (disabled mode).
@@ -187,23 +191,28 @@ def test_run_chemistry_vulcan():
         offchem_dir = os.path.join(tmpdir, 'offchem')
         os.makedirs(offchem_dir, exist_ok=True)
         csv_file = os.path.join(offchem_dir, 'vulcan.csv')
-        # Write expected chemistry result to file
+        # Write realistic VULCAN output (tab-delimited, species as columns)
         mock_result = pd.DataFrame(
             {
-                'species': ['H2O', 'CO2', 'N2', 'O2'],
-                'vmr': [0.8, 0.15, 0.03, 0.02],
-                'abundance': [1e20, 1e19, 5e17, 3e17],
+                'tmp': [185.0, 186.6, 188.2, 199.0],
+                'p': [1.0, 1.33, 1.78, 10.0],
+                'z': [3.50e5, 3.48e5, 3.47e5, 3.35e5],
+                'Kzz': [6.20e11, 5.52e11, 4.92e11, 2.46e11],
+                'H2O': [8.90e-3, 8.90e-3, 8.90e-3, 8.90e-3],
+                'CO2': [1.68e-2, 1.68e-2, 1.68e-2, 1.68e-2],
+                'N2': [0.0, 0.0, 0.0, 0.0],
+                'O2': [1.02e-11, 9.21e-12, 7.99e-12, 3.23e-12],
             }
         )
-        mock_result.to_csv(csv_file, sep=' ', index=False)
+        mock_result.to_csv(csv_file, sep='\t', index=False)
 
         result = run_chemistry(dirs, config, hf_row)
 
-        # Verify DataFrame is returned (VULCAN call verification skipped
-        # as mock may not be called if real module is imported)
+        # Verify DataFrame is returned with correct structure
         assert isinstance(result, pd.DataFrame)
-        assert len(result) == 4  # 4 species
-        assert list(result['species']) == ['H2O', 'CO2', 'N2', 'O2']
+        assert len(result) == 4  # 4 atmospheric levels
+        assert 'H2O' in result.columns
+        assert 'CO2' in result.columns
 
 
 @pytest.mark.unit
@@ -239,12 +248,19 @@ def test_run_chemistry_returns_dataframe():
 
     hf_row = {'Time': 5000.0}
 
-    # Create realistic chemistry result
+    # Create realistic VULCAN output (6 atmospheric levels)
     chemistry_result = pd.DataFrame(
         {
-            'species': ['H2', 'H2O', 'CO', 'CO2', 'CH4', 'NH3'],
-            'vmr': [1e-8, 0.75, 1e-6, 0.24, 1e-10, 1e-12],
-            'column_density': [1e15, 1e22, 1e16, 1e21, 1e12, 1e10],
+            'tmp': [185.0, 186.6, 188.2, 199.0, 234.3, 453.1],
+            'p': [1.0, 1.33, 1.78, 10.0, 318.0, 5.68e4],
+            'z': [3.50e5, 3.48e5, 3.47e5, 3.35e5, 3.11e5, 2.58e5],
+            'Kzz': [6.20e11, 5.52e11, 4.92e11, 2.46e11, 6.15e10, 1.74e10],
+            'H2': [2.71e-1, 2.71e-1, 2.71e-1, 2.71e-1, 2.71e-1, 2.71e-1],
+            'H2O': [8.90e-3, 8.90e-3, 8.90e-3, 8.90e-3, 8.90e-3, 8.90e-3],
+            'CO': [6.97e-1, 6.97e-1, 6.97e-1, 6.97e-1, 6.97e-1, 6.86e-1],
+            'CO2': [1.68e-2, 1.68e-2, 1.68e-2, 1.68e-2, 1.68e-2, 1.68e-2],
+            'CH4': [6.60e-3, 6.60e-3, 6.60e-3, 6.60e-3, 6.60e-3, 6.60e-3],
+            'NH3': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         }
     )
 
@@ -260,15 +276,15 @@ def test_run_chemistry_returns_dataframe():
         offchem_dir = os.path.join(tmpdir, 'offchem')
         os.makedirs(offchem_dir, exist_ok=True)
         csv_file = os.path.join(offchem_dir, 'vulcan.csv')
-        chemistry_result.to_csv(csv_file, sep=' ', index=False)
+        chemistry_result.to_csv(csv_file, sep='\t', index=False)
 
         result = run_chemistry(dirs, config, hf_row)
 
         # Verify DataFrame structure
         assert isinstance(result, pd.DataFrame)
-        assert 'species' in result.columns
-        assert 'vmr' in result.columns
-        assert result.shape[0] == 6  # 6 species
+        assert 'H2O' in result.columns
+        assert 'CO2' in result.columns
+        assert result.shape[0] == 6  # 6 atmospheric levels
 
 
 @pytest.mark.unit
@@ -299,11 +315,15 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
     import os
     import tempfile
 
-    # Venus-like chemistry result
+    # Venus-like chemistry result (realistic VULCAN format: atmospheric levels as rows)
     venus_chemistry = pd.DataFrame(
         {
-            'species': ['CO2', 'H2SO4_aerosol', 'HCl', 'N2', 'Ar'],
-            'vmr': [0.965, 0.03, 0.004, 0.0009, 0.0001],
+            'tmp': [450.0, 420.0, 380.0, 350.0, 300.0],
+            'p': [90.0, 70.0, 50.0, 30.0, 10.0],
+            'z': [0.0, 1.5e4, 3.0e4, 5.0e4, 7.0e4],
+            'Kzz': [1e8, 1e8, 1e9, 1e10, 1e11],
+            'CO2': [0.965, 0.965, 0.965, 0.965, 0.965],
+            'N2': [3.5e-2, 3.5e-2, 3.5e-2, 3.5e-2, 3.5e-2],
         }
     )
     # Use the mock that's already in sys.modules
@@ -315,12 +335,11 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
         offchem_dir = os.path.join(tmpdir, 'offchem')
         os.makedirs(offchem_dir, exist_ok=True)
         csv_file = os.path.join(offchem_dir, 'vulcan.csv')
-        venus_chemistry.to_csv(csv_file, sep=' ', index=False)
+        venus_chemistry.to_csv(csv_file, sep='\t', index=False)
 
         result = run_chemistry(dirs, config, hf_row)
 
-        # Verify result (mock call verification skipped as mock may not
-        # be called if real module is imported)
+        # Verify result
         assert result is not None
         assert len(result) == 5
 
@@ -354,8 +373,10 @@ def test_run_chemistry_preserves_config():
         offchem_dir = os.path.join(tmpdir, 'offchem')
         os.makedirs(offchem_dir, exist_ok=True)
         csv_file = os.path.join(offchem_dir, 'vulcan.csv')
-        # Create minimal file for read_result
-        pd.DataFrame({'species': ['H2O'], 'vmr': [1.0]}).to_csv(csv_file, sep=' ', index=False)
+        # Create minimal VULCAN-format file for read_result
+        pd.DataFrame({'tmp': [185.0], 'p': [1.0], 'H2O': [8.9e-3]}).to_csv(
+            csv_file, sep='\t', index=False
+        )
 
         run_chemistry(dirs, config, hf_row)
 

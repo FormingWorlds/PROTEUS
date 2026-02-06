@@ -36,6 +36,9 @@ jobs:
     timeout-minutes: 120  # Compilation can take time
 
     steps:
+      - name: Lowercase image name
+        run: echo "IMAGE_NAME=${IMAGE_NAME,,}" >> $GITHUB_ENV
+
       - name: Free disk space
         run: |
           echo "Disk space before cleanup:"
@@ -171,7 +174,7 @@ jobs:
           pytest tests/integration/test_integration_dummy.py -v --tb=short
 
       - name: Upload integration outputs on failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: quick-integration-failures

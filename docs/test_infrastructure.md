@@ -175,6 +175,10 @@ pytest -v --showlocals -x tests/module/test_file.py::test_function
 pytest --pdb   # Debugger on failure
 ```
 
+### Stale Nightly Baseline
+
+PR checks compare coverage against the last successful nightly run. If the nightly workflow fails (e.g. data download timeout, CI infrastructure issues, or transient test failures), the baseline becomes stale (>48 hours old) and PRs will fail validation. To fix this, [trigger the nightly workflow manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml) and wait for it to complete.
+
 ### Docker CI
 
 - **Build fails**: `docker build -t proteus-test .` locally; check Dockerfile and deps.

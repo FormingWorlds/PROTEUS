@@ -51,6 +51,8 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # NOTE: Running as root is required because the Docker image installs to
+      # system paths (/opt/proteus) and actions/checkout needs workspace write access.
       options: --user root
 
     steps:
@@ -63,7 +65,7 @@ jobs:
         run: |
           git config --global --add safe.directory /__w/PROTEUS/PROTEUS
           git fetch origin main
-          python - <<'PY'
+          python - <<'PY'  # Heredoc: inline Python script (PY marks start/end)
           import pathlib
           import subprocess
           import tomllib
@@ -522,7 +524,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload HTML coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: unit-coverage-html
@@ -530,7 +532,7 @@ jobs:
           retention-days: 7
 
       - name: Upload unit pytest log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: unit-pytest-log
@@ -538,7 +540,7 @@ jobs:
           retention-days: 7
 
       - name: Upload smoke pytest log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: smoke-pytest-log
@@ -546,7 +548,7 @@ jobs:
           retention-days: 7
 
       - name: Upload smoke test artifacts on failure
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: failure() && steps.smoke-tests.outcome == 'failure'
         with:
           name: smoke-test-failures

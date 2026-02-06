@@ -24,7 +24,7 @@ Add one of these markers above each test function:
 
 **Which marker should I use?**
 - **Most tests → `unit`**: Testing a single function? Mock external dependencies, use `unit`.
-- **Testing real binaries → `smoke`**: Need SOCRATES/AGNI/SPIDER actually running? Use `smoke`.
+- **Testing real binaries → `smoke`**: Need SOCRATES/AGNI/SPIDER actually running? Use `smoke`. Module-level smoke tests (e.g. in `tests/atmos_clim/`) validate a single binary with 1 timestep. Integration-level smoke tests (in `tests/integration/`) validate the coupling framework end-to-end with dummy modules.
 - **Testing module coupling → `integration`**: ARAGOG + AGNI working together? Use `integration`.
 - **Full science runs → `slow`**: Multi-hour simulations? Use `slow`.
 
