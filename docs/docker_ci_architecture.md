@@ -203,7 +203,11 @@ def test_earth_evolution_1gyr():
 
 ### Nightly (Main Branch)
 ```
-03:00 UTC: ci-nightly.yml
+02:00 UTC: docker-build.yml (scheduled)
+  ↓
+  Build and push Docker image
+  ↓
+03:00 UTC: ci-nightly.yml (scheduled)
   ↓
   Pull Docker image
   ↓
@@ -220,6 +224,12 @@ def test_earth_evolution_1gyr():
   Upload nightly-coverage artifact
   ↓
   Ratchet threshold if coverage increased
+  ↓
+  If either nightly workflow FAILED:
+  ↓
+ci-self-heal.yml (automatic)
+  ↓
+  Triage failure → Create Issue → AI agent fix → Validate → Open PR
 ```
 
 ### Pull Request
@@ -343,6 +353,7 @@ See [Test Infrastructure](test_infrastructure.md) for threshold details.
 3. **Matrix Testing:** Multiple Python versions (3.11, 3.12, 3.13)
 4. **Performance Profiling:** Benchmark tests across versions
 5. **Artifact Caching:** Cache FWL_DATA between runs
+6. ~~**Self-Healing CI:**~~ ✅ Implemented — see [Self-Healing CI](self_healing_ci.md)
 
 ## References
 
@@ -350,6 +361,7 @@ See [Test Infrastructure](test_infrastructure.md) for threshold details.
 - [Test Infrastructure](test_infrastructure.md) — Coverage workflows, thresholds, troubleshooting
 - [Test Categorization](test_categorization.md) — Test markers, CI pipelines, fixtures
 - [Test Building](test_building.md) — Writing tests, prompts, best practices
+- [Self-Healing CI](self_healing_ci.md) — AI-powered automatic failure diagnosis and repair
 - [AI-Assisted Development](ai_usage.md) — Using AI for tests and code review
 
 ### External Resources

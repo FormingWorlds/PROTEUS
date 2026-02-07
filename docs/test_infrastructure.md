@@ -17,13 +17,14 @@ For test markers and CI pipelines, see [Test Categorization](test_categorization
 
 1. [Quick Start](#quick-start)
 2. [CI/CD Status](#cicd-status)
-3. [Developer Workflow](#developer-workflow)
-4. [Best Practices](#best-practices)
-5. [Coverage Analysis](#coverage-analysis-workflow)
-6. [Pre-commit Checklist](#pre-commit-checklist)
-7. [Troubleshooting](#troubleshooting)
-8. [Reusable Quality Gate](#reusable-quality-gate-for-ecosystem-modules)
-9. [References](#references)
+3. [Self-Healing CI](#self-healing-ci)
+4. [Developer Workflow](#developer-workflow)
+5. [Best Practices](#best-practices)
+6. [Coverage Analysis](#coverage-analysis-workflow)
+7. [Pre-commit Checklist](#pre-commit-checklist)
+8. [Troubleshooting](#troubleshooting)
+9. [Reusable Quality Gate](#reusable-quality-gate-for-ecosystem-modules)
+10. [References](#references)
 
 ---
 
@@ -66,11 +67,28 @@ When you open a pull request, CI automatically:
 |----------|-----------|--------------|
 | `ci-pr-checks.yml` | Every PR | Unit + smoke tests (Linux Docker), unit tests (macOS native), lint — all parallel, ~5-10 min |
 | `ci-nightly.yml` | Daily 3am UTC | All tests including slow (Linux Docker only), updates thresholds |
+| `ci-self-heal.yml` | After nightly failure | AI agent diagnoses failure, attempts fix, opens PR (see [Self-Healing CI](self_healing_ci.md)) |
 
 **Key features:**
 - **Grace period**: PRs can merge with ≤0.3% coverage drop (warning posted)
 - **Diff-cover**: 80% coverage required on changed lines
 - **Auto-ratcheting**: Thresholds only increase, never decrease
+- **Self-healing**: Nightly failures automatically trigger an AI agent that attempts a fix and opens a PR
+
+---
+
+## Self-Healing CI
+
+When the nightly Docker build or science validation fails during its scheduled run, the self-healing pipeline (`ci-self-heal.yml`) automatically:
+
+1. Creates a tracking Issue (labels: `Bug` + `Priority 1: critical`, added to [Project #7](https://github.com/orgs/FormingWorlds/projects/7))
+2. Runs an AI agent (Claude Code via OpenRouter) that reads `AGENTS.md` and `MEMORY.md`, diagnoses the failure, and attempts a minimal fix
+3. Validates the fix against unit tests and ruff
+4. Opens a PR for `@FormingWorlds/proteus-maintainer` review if validation passes
+
+**Scope:** Only triggers on scheduled (nightly) runs — not manual or push-triggered. Only for `docker-build.yml` and `ci-nightly.yml`.
+
+For full details, see [Self-Healing CI](self_healing_ci.md).
 
 ---
 
@@ -326,6 +344,7 @@ If your module has an existing test workflow:
 - [Test Categorization](test_categorization.md) — Markers, CI pipeline, fixtures
 - [Test Building](test_building.md) — Prompts for unit/integration tests
 - [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
+- [Self-Healing CI](self_healing_ci.md) — AI-powered automatic failure diagnosis and repair
 - [AI-Assisted Development](ai_usage.md) — Using AI for tests and code review
 - [tests/conftest.py](../tests/conftest.py) — Shared fixtures
 - [AGENTS.md](../AGENTS.md) — Commands and thresholds

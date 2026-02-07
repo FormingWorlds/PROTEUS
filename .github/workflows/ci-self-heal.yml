@@ -1,0 +1,565 @@
+name: CI - Self-Healing (Nightly Failures)
+
+# Purpose: Automatically diagnose and fix nightly CI failures using an AI agent.
+# Triggers only on SCHEDULED runs of the nightly Docker build and science validation
+# workflows — never on manual/user-triggered runs.
+#
+# Flow:
+#   1. Triage: Download artifacts, extract failure context
+#   2. Create Issue: Always creates a tracked issue on Project #7
+#   3. Auto-fix: Run Claude Code agent to diagnose and implement a fix
+#   4. If fix passes tests → open PR; otherwise update issue with diagnosis
+#
+# Required secrets:
+#   - OPENROUTER_API_KEY: OpenRouter API key for Claude Code agent
+#   - PROJECT_PAT: Personal Access Token with project, repo, issues scopes
+
+on:
+  workflow_run:
+    workflows:
+      - "CI - Nightly Science Validation"
+      - "Docker Build and Push"
+    types:
+      - completed
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: self-heal-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    name: Triage Failure
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'schedule'
+    outputs:
+      failure_type: ${{ steps.extract.outputs.failure_type }}
+      failure_summary: ${{ steps.extract.outputs.failure_summary }}
+      failure_json: ${{ steps.extract.outputs.failure_json }}
+      workflow_name: ${{ steps.meta.outputs.workflow_name }}
+      run_url: ${{ steps.meta.outputs.run_url }}
+      head_sha: ${{ steps.meta.outputs.head_sha }}
+      should_skip: ${{ steps.dedup.outputs.should_skip }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Collect workflow metadata
+        id: meta
+        run: |
+          echo "workflow_name=${{ github.event.workflow_run.name }}" >> "$GITHUB_OUTPUT"
+          echo "run_url=${{ github.event.workflow_run.html_url }}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          echo "Triggered by: ${{ github.event.workflow_run.name }}"
+          echo "Run URL: ${{ github.event.workflow_run.html_url }}"
+          echo "Original trigger: ${{ github.event.workflow_run.event }}"
+          echo "Conclusion: ${{ github.event.workflow_run.conclusion }}"
+
+      - name: Check for existing selfheal PR (dedup)
+        id: dedup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          EXISTING=$(gh pr list --state open --head "selfheal-${SHORT_SHA}" --json number --jq 'length')
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "should_skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping: open selfheal PR already exists for ${SHORT_SHA}"
+          else
+            echo "should_skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download artifacts from failed run
+        if: steps.dedup.outputs.should_skip != 'true'
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          run_id: ${{ github.event.workflow_run.id }}
+          path: /tmp/failed-artifacts
+          if_no_artifact_found: warn
+        continue-on-error: true
+
+      - name: Extract failure context
+        if: steps.dedup.outputs.should_skip != 'true'
+        id: extract
+        run: |
+          # Create artifacts dir if download failed
+          mkdir -p /tmp/failed-artifacts
+
+          # Also try to get workflow logs via API
+          echo "Fetching workflow run logs..."
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/logs" \
+            > /tmp/failed-artifacts/workflow-logs.zip 2>/dev/null || true
+          if [ -f /tmp/failed-artifacts/workflow-logs.zip ]; then
+            unzip -o /tmp/failed-artifacts/workflow-logs.zip -d /tmp/failed-artifacts/logs/ 2>/dev/null || true
+          fi
+
+          # Run extraction script
+          python selfheal/extract_failures.py \
+            /tmp/failed-artifacts \
+            "${{ github.event.workflow_run.name }}" \
+            > /tmp/failure_context.json 2>/tmp/extract_errors.txt || true
+
+          # Read results
+          if [ -f /tmp/failure_context.json ] && [ -s /tmp/failure_context.json ]; then
+            TYPE=$(jq -r '.type' /tmp/failure_context.json)
+            SUMMARY=$(jq -r '.summary' /tmp/failure_context.json)
+            # Store full JSON as output (escaped for GitHub Actions)
+            FAILURE_JSON=$(cat /tmp/failure_context.json)
+          else
+            TYPE="unknown"
+            SUMMARY="${{ github.event.workflow_run.name }} failed (could not extract details)"
+            FAILURE_JSON='{"type":"unknown","workflow_name":"${{ github.event.workflow_run.name }}","summary":"Could not extract failure details","failed_tests":[],"stack_traces":"","log_errors":""}'
+          fi
+
+          echo "failure_type=${TYPE}" >> "$GITHUB_OUTPUT"
+          echo "failure_summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
+
+          # Use delimiter for multiline output
+          {
+            echo "failure_json<<FAILURE_JSON_EOF"
+            echo "${FAILURE_JSON}"
+            echo "FAILURE_JSON_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Failure type: ${TYPE}"
+          echo "Summary: ${SUMMARY}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  create-issue:
+    name: Create Tracking Issue
+    runs-on: ubuntu-latest
+    needs: triage
+    if: needs.triage.outputs.should_skip != 'true'
+    outputs:
+      issue_number: ${{ steps.create.outputs.issue_number }}
+      issue_url: ${{ steps.create.outputs.issue_url }}
+      issue_node_id: ${{ steps.create.outputs.issue_node_id }}
+
+    steps:
+      - name: Create GitHub Issue
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          WORKFLOW_NAME="${{ needs.triage.outputs.workflow_name }}"
+          RUN_URL="${{ needs.triage.outputs.run_url }}"
+          FAILURE_TYPE="${{ needs.triage.outputs.failure_type }}"
+          FAILURE_SUMMARY="${{ needs.triage.outputs.failure_summary }}"
+          DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          TITLE="[Self-Heal] ${WORKFLOW_NAME} nightly failure (${DATE})"
+
+          BODY="## Nightly CI Failure Detected
+
+          **Workflow:** ${WORKFLOW_NAME}
+          **Run:** ${RUN_URL}
+          **Failure type:** \`${FAILURE_TYPE}\`
+          **Date:** ${DATE}
+
+          ### Summary
+          ${FAILURE_SUMMARY}
+
+          ### Status
+          - [ ] AI agent attempting automatic fix
+          - [ ] Fix validated against test suite
+          - [ ] PR created for review
+
+          ---
+          *This issue was automatically created by the self-healing CI pipeline.
+          See [Self-Healing CI docs](https://proteus-framework.org/PROTEUS/self_healing_ci.html) for details.*"
+
+          # Create issue with labels and assignees
+          ISSUE_URL=$(gh issue create \
+            --title "${TITLE}" \
+            --body "${BODY}" \
+            --label "Bug" \
+            --label "Priority 1: critical" \
+            --assignee "nichollsh,timlichtenberg,egbos" \
+            --repo "${{ github.repository }}" \
+            2>&1)
+
+          ISSUE_NUMBER=$(echo "${ISSUE_URL}" | grep -oP '\d+$')
+          echo "issue_number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
+          echo "Created issue #${ISSUE_NUMBER}: ${ISSUE_URL}"
+
+          # Get node ID for project board
+          NODE_ID=$(gh api graphql -f query='
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                issue(number: $number) { id }
+              }
+            }' -f owner="FormingWorlds" -f repo="PROTEUS" -F number="${ISSUE_NUMBER}" \
+            --jq '.data.repository.issue.id')
+          echo "issue_node_id=${NODE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Add issue to Project #7
+        if: steps.create.outputs.issue_node_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_PAT }}
+        run: |
+          ISSUE_NODE_ID="${{ steps.create.outputs.issue_node_id }}"
+
+          # Get project data
+          gh api graphql -f query='
+            query($org: String!, $number: Int!) {
+              organization(login: $org) {
+                projectV2(number: $number) {
+                  id
+                  fields(first: 20) {
+                    nodes {
+                      ... on ProjectV2Field { id name }
+                      ... on ProjectV2SingleSelectField {
+                        id name
+                        options { id name }
+                      }
+                    }
+                  }
+                }
+              }
+            }' -f org="FormingWorlds" -F number=7 > /tmp/project_data.json
+
+          PROJECT_ID=$(jq -r '.data.organization.projectV2.id' /tmp/project_data.json)
+          STATUS_FIELD_ID=$(jq -r '.data.organization.projectV2.fields.nodes[] | select(.name=="Status") | .id' /tmp/project_data.json)
+          IN_PROGRESS_ID=$(jq -r '.data.organization.projectV2.fields.nodes[] | select(.name=="Status") | .options[] | select(.name=="In Progress") | .id' /tmp/project_data.json)
+
+          echo "Project ID: ${PROJECT_ID}"
+          echo "Status field: ${STATUS_FIELD_ID}"
+          echo "In Progress option: ${IN_PROGRESS_ID}"
+
+          # Add issue to project
+          ITEM_ID=$(gh api graphql -f query='
+            mutation($project: ID!, $content: ID!) {
+              addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
+                item { id }
+              }
+            }' -f project="${PROJECT_ID}" -f content="${ISSUE_NODE_ID}" \
+            --jq '.data.addProjectV2ItemById.item.id')
+
+          echo "Added to project, item ID: ${ITEM_ID}"
+
+          # Set status to "In Progress"
+          if [ -n "${STATUS_FIELD_ID}" ] && [ -n "${IN_PROGRESS_ID}" ] && [ -n "${ITEM_ID}" ]; then
+            gh api graphql -f query='
+              mutation($project: ID!, $item: ID!, $field: ID!, $value: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $project
+                  itemId: $item
+                  fieldId: $field
+                  value: { singleSelectOptionId: $value }
+                }) {
+                  projectV2Item { id }
+                }
+              }' -f project="${PROJECT_ID}" -f item="${ITEM_ID}" \
+                 -f field="${STATUS_FIELD_ID}" -f value="${IN_PROGRESS_ID}" --silent
+            echo "Set status to 'In Progress'"
+          fi
+
+  auto-fix:
+    name: AI Agent Auto-Fix
+    runs-on: ubuntu-latest
+    needs: [triage, create-issue]
+    if: needs.triage.outputs.should_skip != 'true'
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ruff for validation
+        run: pip install ruff
+
+      - name: Prepare failure context for agent
+        id: context
+        run: |
+          # Parse the failure JSON from triage
+          cat << 'CONTEXT_EOF' > /tmp/failure_context.json
+          ${{ needs.triage.outputs.failure_json }}
+          CONTEXT_EOF
+
+          FAILURE_TYPE=$(jq -r '.type' /tmp/failure_context.json 2>/dev/null || echo "unknown")
+          FAILURE_SUMMARY=$(jq -r '.summary' /tmp/failure_context.json 2>/dev/null || echo "Unknown failure")
+          FAILED_TESTS=$(jq -r '.failed_tests[] | "- \(.classname)::\(.name): \(.message)"' /tmp/failure_context.json 2>/dev/null || echo "No test details available")
+          STACK_TRACES=$(jq -r '.stack_traces' /tmp/failure_context.json 2>/dev/null || echo "No stack traces available")
+          LOG_ERRORS=$(jq -r '.log_errors' /tmp/failure_context.json 2>/dev/null || echo "No log errors available")
+
+          # Read prompt template and substitute variables
+          PROMPT=$(cat selfheal/prompt-template.txt)
+          PROMPT="${PROMPT//\$\{WORKFLOW_NAME\}/${{ needs.triage.outputs.workflow_name }}}"
+          PROMPT="${PROMPT//\$\{RUN_URL\}/${{ needs.triage.outputs.run_url }}}"
+          PROMPT="${PROMPT//\$\{FAILURE_TYPE\}/${FAILURE_TYPE}}"
+          PROMPT="${PROMPT//\$\{FAILURE_SUMMARY\}/${FAILURE_SUMMARY}}"
+
+          # Write substituted values to files (avoids shell escaping issues)
+          echo "${FAILED_TESTS}" > /tmp/failed_tests.txt
+          echo "${STACK_TRACES}" > /tmp/stack_traces.txt
+          echo "${LOG_ERRORS}" > /tmp/log_errors.txt
+
+          PROMPT="${PROMPT//\$\{FAILED_TESTS\}/$(cat /tmp/failed_tests.txt)}"
+          PROMPT="${PROMPT//\$\{STACK_TRACES\}/$(cat /tmp/stack_traces.txt)}"
+          PROMPT="${PROMPT//\$\{LOG_ERRORS\}/$(cat /tmp/log_errors.txt)}"
+
+          # Write final prompt
+          echo "${PROMPT}" > /tmp/agent_prompt.txt
+          echo "Prompt prepared ($(wc -c < /tmp/agent_prompt.txt) bytes)"
+
+      - name: Run Claude Code agent
+        id: agent
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          prompt: |
+            FIRST: Read AGENTS.md and MEMORY.md in this repository root for project
+            conventions, architecture, ecosystem context, and known issues.
+
+            You are fixing a nightly CI failure in PROTEUS.
+
+            Workflow: ${{ needs.triage.outputs.workflow_name }}
+            Run URL: ${{ needs.triage.outputs.run_url }}
+            Failure type: ${{ needs.triage.outputs.failure_type }}
+
+            Summary: ${{ needs.triage.outputs.failure_summary }}
+
+            Rules:
+            - Make MINIMAL changes to fix the failing tests
+            - Do NOT refactor unrelated code
+            - Do NOT modify test assertions unless the test expectations are provably wrong
+            - Prefer fixing source code over weakening tests
+            - Never use == for float comparisons; use pytest.approx() or np.testing.assert_allclose
+            - Read tests/conftest.py before modifying tests
+            - Run: pytest -m "unit and not skip" --ignore=tests/examples -v --tb=short
+            - Run: ruff check src/ tests/ && ruff format --check src/ tests/
+            - If you cannot fix the issue, create DIAGNOSIS.md explaining the root cause
+          claude_args: >-
+            --max-turns 15
+            --allowedTools "Read,Write,Edit,Bash(pytest:*),Bash(ruff:*),Bash(python:*),Bash(git:*),Bash(cat:*),Bash(grep:*),Bash(find:*),Bash(pip:*)"
+        env:
+          ANTHROPIC_BASE_URL: https://openrouter.ai/api
+        continue-on-error: true
+
+      - name: Check if agent made changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No changes made by agent"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Agent made changes:"
+            git diff --stat
+          fi
+
+      - name: Validate fix (unit tests)
+        if: steps.changes.outputs.has_changes == 'true'
+        id: validate-tests
+        run: |
+          pip install -e ".[develop]" --no-deps 2>/dev/null || true
+          pytest -m "unit and not skip" --ignore=tests/examples -v --tb=short 2>&1 | tail -50
+        continue-on-error: true
+
+      - name: Validate fix (lint)
+        if: steps.changes.outputs.has_changes == 'true'
+        id: validate-lint
+        run: |
+          ruff check src/ tests/ 2>&1 | tail -20
+          ruff format --check src/ tests/ 2>&1 | tail -20
+        continue-on-error: true
+
+      - name: Create Pull Request
+        if: >-
+          steps.changes.outputs.has_changes == 'true' &&
+          steps.validate-tests.outcome == 'success' &&
+          steps.validate-lint.outcome == 'success'
+        id: create-pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ github.token }}
+          commit-message: "fix(ci): auto-fix nightly ${{ needs.triage.outputs.workflow_name }} failure"
+          branch: selfheal-${{ needs.triage.outputs.head_sha }}
+          base: main
+          title: "[Self-Heal] Fix nightly ${{ needs.triage.outputs.workflow_name }} failure"
+          body: |
+            ## Automated CI Fix
+
+            This PR was automatically generated by the self-healing CI pipeline.
+
+            **Failed workflow:** ${{ needs.triage.outputs.workflow_name }}
+            **Failed run:** ${{ needs.triage.outputs.run_url }}
+            **Failure type:** `${{ needs.triage.outputs.failure_type }}`
+            **Tracking issue:** #${{ needs.create-issue.outputs.issue_number }}
+
+            ### Summary
+            ${{ needs.triage.outputs.failure_summary }}
+
+            ### Validation
+            - [x] Unit tests pass (`pytest -m "unit and not skip"`)
+            - [x] Lint passes (`ruff check` + `ruff format --check`)
+
+            ### Review Checklist
+            - [ ] Changes are minimal and targeted
+            - [ ] No test assertions were weakened
+            - [ ] Source code fix is correct (not a workaround)
+            - [ ] Physical validity maintained
+
+            ---
+            *Generated by [Self-Healing CI](https://proteus-framework.org/PROTEUS/self_healing_ci.html).
+            Closes #${{ needs.create-issue.outputs.issue_number }}*
+          labels: |
+            Bug
+            Priority 1: critical
+          assignees: |
+            nichollsh
+            timlichtenberg
+            egbos
+          reviewers: |
+            FormingWorlds/proteus-maintainer
+          delete-branch: true
+
+      - name: Add PR to Project #7
+        if: steps.create-pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_PAT }}
+        run: |
+          PR_NUMBER="${{ steps.create-pr.outputs.pull-request-number }}"
+
+          # Get PR node ID
+          PR_NODE_ID=$(gh api graphql -f query='
+            query($owner: String!, $repo: String!, $number: Int!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) { id }
+              }
+            }' -f owner="FormingWorlds" -f repo="PROTEUS" -F number="${PR_NUMBER}" \
+            --jq '.data.repository.pullRequest.id')
+
+          # Get project data
+          gh api graphql -f query='
+            query($org: String!, $number: Int!) {
+              organization(login: $org) {
+                projectV2(number: $number) {
+                  id
+                  fields(first: 20) {
+                    nodes {
+                      ... on ProjectV2Field { id name }
+                      ... on ProjectV2SingleSelectField {
+                        id name
+                        options { id name }
+                      }
+                    }
+                  }
+                }
+              }
+            }' -f org="FormingWorlds" -F number=7 > /tmp/project_data.json
+
+          PROJECT_ID=$(jq -r '.data.organization.projectV2.id' /tmp/project_data.json)
+          STATUS_FIELD_ID=$(jq -r '.data.organization.projectV2.fields.nodes[] | select(.name=="Status") | .id' /tmp/project_data.json)
+          IN_PROGRESS_ID=$(jq -r '.data.organization.projectV2.fields.nodes[] | select(.name=="Status") | .options[] | select(.name=="In Progress") | .id' /tmp/project_data.json)
+
+          # Add PR to project
+          ITEM_ID=$(gh api graphql -f query='
+            mutation($project: ID!, $content: ID!) {
+              addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
+                item { id }
+              }
+            }' -f project="${PROJECT_ID}" -f content="${PR_NODE_ID}" \
+            --jq '.data.addProjectV2ItemById.item.id')
+
+          # Set status
+          if [ -n "${STATUS_FIELD_ID}" ] && [ -n "${IN_PROGRESS_ID}" ] && [ -n "${ITEM_ID}" ]; then
+            gh api graphql -f query='
+              mutation($project: ID!, $item: ID!, $field: ID!, $value: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $project
+                  itemId: $item
+                  fieldId: $field
+                  value: { singleSelectOptionId: $value }
+                }) {
+                  projectV2Item { id }
+                }
+              }' -f project="${PROJECT_ID}" -f item="${ITEM_ID}" \
+                 -f field="${STATUS_FIELD_ID}" -f value="${IN_PROGRESS_ID}" --silent
+            echo "PR #${PR_NUMBER} added to Project #7 with status 'In Progress'"
+          fi
+
+      - name: Update issue with result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE_NUMBER="${{ needs.create-issue.outputs.issue_number }}"
+          if [ -z "${ISSUE_NUMBER}" ]; then
+            echo "No issue number, skipping update"
+            exit 0
+          fi
+
+          HAS_CHANGES="${{ steps.changes.outputs.has_changes }}"
+          TEST_OUTCOME="${{ steps.validate-tests.outcome }}"
+          LINT_OUTCOME="${{ steps.validate-lint.outcome }}"
+          PR_NUMBER="${{ steps.create-pr.outputs.pull-request-number }}"
+
+          if [ -n "${PR_NUMBER}" ]; then
+            COMMENT="## ✅ Auto-fix PR Created
+
+          The AI agent successfully created a fix: #${PR_NUMBER}
+
+          **Validation results:**
+          - Unit tests: ${TEST_OUTCOME}
+          - Lint: ${LINT_OUTCOME}
+
+          Please review the PR and merge if the fix is correct."
+          elif [ "${HAS_CHANGES}" = "true" ]; then
+            COMMENT="## ⚠️ Auto-fix Attempted but Validation Failed
+
+          The AI agent made changes but they did not pass validation:
+          - Unit tests: ${TEST_OUTCOME}
+          - Lint: ${LINT_OUTCOME}
+
+          Manual investigation required."
+          else
+            # Check if DIAGNOSIS.md was created
+            if [ -f DIAGNOSIS.md ]; then
+              DIAGNOSIS=$(cat DIAGNOSIS.md)
+              COMMENT="## 🔍 Diagnosis (No Fix Possible)
+
+          The AI agent could not fix the issue automatically but provided a diagnosis:
+
+          ---
+          ${DIAGNOSIS}
+          ---
+
+          Manual investigation required."
+            else
+              COMMENT="## ❌ Auto-fix Failed
+
+          The AI agent could not diagnose or fix the issue.
+          Manual investigation required.
+
+          **Failed workflow:** ${{ needs.triage.outputs.workflow_name }}
+          **Run URL:** ${{ needs.triage.outputs.run_url }}"
+            fi
+          fi
+
+          gh issue comment "${ISSUE_NUMBER}" --body "${COMMENT}" --repo "${{ github.repository }}"

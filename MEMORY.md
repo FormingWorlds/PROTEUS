@@ -89,6 +89,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Coverage Strategy**: Dual-threshold system (fast gate 44.45% for PR, full gate 59% for nightly)
 - **Nightly Workflow**: Consolidated to `ci-nightly.yml` with 240-minute timeout
 - **File Size Limits**: Pre-commit enforced limits on AGENTS.md (500) and MEMORY.md (1000)
+- **Self-Healing CI** (2026-02-07): `ci-self-heal.yml` auto-diagnoses nightly failures via Claude Code/OpenRouter, opens Issue + PR (ADR-008)
 
 ### Active Branches
 - **main**: Production branch with nightly validation
@@ -196,6 +197,27 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - Reduces installation complexity
 
 **Implementation**: `tools/get_petsc.sh` downloads from OSF
+
+---
+
+### ADR-008: Self-Healing CI Pipeline (2026-02)
+**Decision**: Automatically diagnose and fix nightly CI failures using an AI coding agent (Claude Code via OpenRouter).
+
+**Reasoning**:
+- Nightly failures block the team until manually investigated in the morning
+- Many failures are simple Python fixes (imports, config, test adjustments)
+- AI agent can read `AGENTS.md` and `MEMORY.md` for full project context
+- Human review always required (PR to `@FormingWorlds/proteus-maintainer`)
+
+**Scope**:
+- Triggers only on scheduled (nightly) runs of `docker-build.yml` and `ci-nightly.yml`
+- Always creates tracking Issue on Project #7 with labels `Bug` + `Priority 1: critical`
+- Opens PR only if fix passes unit tests + ruff validation
+- $20/month budget cap via OpenRouter; 15 turns max per agent run
+
+**Implementation**: `.github/workflows/ci-self-heal.yml`, `selfheal/extract_failures.py`, `selfheal/prompt-template.txt`
+
+**Trade-offs**: Monthly API cost ($10–20); agent may misdiagnose (human review catches this); cannot fix Fortran/Julia/C issues
 
 ---
 
