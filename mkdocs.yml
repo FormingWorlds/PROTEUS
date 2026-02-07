@@ -14,6 +14,7 @@ nav:
   - Test building: test_building.md
   - AI-assisted development: ai_usage.md
   - Docker CI architecture: docker_ci_architecture.md
+  - Self-healing CI: self_healing_ci.md
   - Contributing: CONTRIBUTING.md
   - Bibliography: bibliography.md
   - Troubleshooting: troubleshooting.md

@@ -8,11 +8,17 @@ name: CI - Fast PR Checks
 #   4. Run @pytest.mark.unit tests with mocked physics (fast, ~2-5 min total)
 #   5. Run @pytest.mark.smoke tests with real binaries (1 timestep, low res, ~2-5 min)
 #   6. Exclude placeholder tests (@pytest.mark.skip) - these are placeholders for future implementation
+#   7. Run @pytest.mark.unit tests natively on macOS ARM64 (parallel, no Docker)
 #
 # Test Categories:
 #   @pytest.mark.unit    -> Fast tests with mocked physics (target: <100ms each)
 #   @pytest.mark.smoke   -> Quick validation with real binaries (target: <30s each)
 #   @pytest.mark.skip    -> Placeholder tests not yet implemented (excluded from CI)
+#
+# Jobs:
+#   unit-tests        -> Linux (Docker): unit + smoke tests, coverage, diff-cover
+#   unit-tests-macos  -> macOS 15 ARM64 (native): unit tests only, no coverage enforcement
+#   lint              -> Linux: ruff check + format
 #
 # For current test counts and detailed metrics, see: docs/test_infrastructure.md
 
@@ -578,3 +584,33 @@ jobs:
 
       - name: Run ruff format check
         run: ruff format --check src/ tests/
+
+  unit-tests-macos:
+    name: Unit Tests (macOS)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Set up Julia 1.11
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+
+      - name: Install dependencies
+        run: pip install -e ".[develop]"
+
+      - name: Run unit tests
+        run: |
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
+            -v --tb=short
