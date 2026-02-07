@@ -14,6 +14,11 @@
 
 Follow the same standards for testing, coverage, code quality, and infrastructure.
 
+## High level rules
+
+- Always briefly inform the user when you read in this AGENTS.md file by stating `(Read in AGENTS.md)`.
+- Always briefly inform the user whether and why you update or do not update the MEMORY.md file.
+
 ## Ecosystem Structure
 
 PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
@@ -31,7 +36,6 @@ PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
 - **[Obliqua](https://github.com/FormingWorlds/Obliqua)**: Tidal evolution module (Julia)
 
 **Important:** Each module is maintained in its own GitHub repository but is typically cloned/installed within the PROTEUS directory structure for integrated development. When working on any module in the ecosystem, apply these guidelines consistently.
-
 
 **Project Type**: Scientific simulation framework
 

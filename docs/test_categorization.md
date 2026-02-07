@@ -14,13 +14,13 @@ For writing tests, see [Test Building](test_building.md). For coverage analysis 
 
 Add one of these markers above each test function:
 
-| Marker | What It Tests | Speed | When It Runs |
-|--------|---------------|-------|--------------|
-| `@pytest.mark.unit` | Python logic with mocked physics | <100 ms | Every PR |
-| `@pytest.mark.smoke` | Real binaries, 1 timestep | <30 s | Every PR |
-| `@pytest.mark.integration` | Multiple modules working together | Minutes | Nightly only |
-| `@pytest.mark.slow` | Full physics simulations | Hours | Nightly only |
-| `@pytest.mark.skip` | Temporarily disabled | — | Never |
+| Marker | What It Tests | Speed | When It Runs | Platforms |
+|--------|---------------|-------|--------------|----------|
+| `@pytest.mark.unit` | Python logic with mocked physics | <100 ms | Every PR | Linux + macOS |
+| `@pytest.mark.smoke` | Real binaries, 1 timestep | <30 s | Every PR | Linux only |
+| `@pytest.mark.integration` | Multiple modules working together | Minutes | Nightly only | Linux only |
+| `@pytest.mark.slow` | Full physics simulations | Hours | Nightly only | Linux only |
+| `@pytest.mark.skip` | Temporarily disabled | — | Never | — |
 
 **Which marker should I use?**
 - **Most tests → `unit`**: Testing a single function? Mock external dependencies, use `unit`.
@@ -34,13 +34,23 @@ Add one of these markers above each test function:
 
 ### What Happens When You Open a PR
 
+Three jobs run **in parallel**:
+
+**Linux (Docker container):**
 1. **Structure check**: Validates `tests/` mirrors `src/proteus/`
 2. **Unit tests**: Runs `pytest -m "unit and not skip"` with coverage
 3. **Diff-cover**: Checks 80% coverage on your changed lines
 4. **Smoke tests**: Runs `pytest -m "smoke and not skip"`
-5. **Lint**: Checks code style with ruff
 
-**Runtime**: ~5-10 minutes
+**macOS 15 ARM64 (native install):**
+5. **Unit tests**: Runs `pytest -m "unit and not skip"` (no coverage enforcement)
+
+**Linux (no Docker):**
+6. **Lint**: Checks code style with ruff
+
+**Runtime**: ~5-10 minutes (all jobs run concurrently)
+
+> **Note**: Smoke and integration tests are Linux Docker-only because they require pre-compiled physics binaries (SOCRATES, AGNI, SPIDER). The macOS job validates that all Python code and mocked-physics unit tests work on macOS ARM64.
 
 ### What Happens Nightly
 

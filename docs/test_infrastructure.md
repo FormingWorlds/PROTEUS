@@ -51,9 +51,10 @@ open htmlcov/index.html                 # View coverage in browser
 
 When you open a pull request, CI automatically:
 1. Validates test file structure
-2. Runs unit tests and checks coverage (must meet threshold)
-3. Runs smoke tests
-4. Checks code style with ruff
+2. Runs unit tests and checks coverage (must meet threshold) — Linux Docker
+3. Runs smoke tests — Linux Docker
+4. Runs unit tests natively on macOS ARM64 (parallel, no coverage enforcement)
+5. Checks code style with ruff
 
 **Current coverage thresholds** (from `pyproject.toml`):
 - **Fast gate**: 44.45% (unit + smoke, checked on PRs)
@@ -63,8 +64,8 @@ When you open a pull request, CI automatically:
 
 | Workflow | Runs When | What It Does |
 |----------|-----------|--------------|
-| `ci-pr-checks.yml` | Every PR | Unit + smoke tests, lint, ~5-10 min |
-| `ci-nightly.yml` | Daily 3am UTC | All tests including slow, updates thresholds |
+| `ci-pr-checks.yml` | Every PR | Unit + smoke tests (Linux Docker), unit tests (macOS native), lint — all parallel, ~5-10 min |
+| `ci-nightly.yml` | Daily 3am UTC | All tests including slow (Linux Docker only), updates thresholds |
 
 **Key features:**
 - **Grace period**: PRs can merge with ≤0.3% coverage drop (warning posted)
