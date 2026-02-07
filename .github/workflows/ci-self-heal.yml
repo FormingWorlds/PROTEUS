@@ -190,7 +190,7 @@ jobs:
             --body "${BODY}" \
             --label "Bug" \
             --label "Priority 1: critical" \
-            --assignee "nichollsh,timlichtenberg,egbos" \
+            --assignee "nichollsh,timlichtenberg,egpbos" \
             --repo "${{ github.repository }}" \
             2>&1)
 
@@ -434,7 +434,7 @@ jobs:
           assignees: |
             nichollsh
             timlichtenberg
-            egbos
+            egpbos
           reviewers: |
             FormingWorlds/proteus-maintainer
           delete-branch: true

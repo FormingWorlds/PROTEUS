@@ -90,7 +90,7 @@ The self-healing pipeline **only** triggers when ALL of these conditions are met
 
 - Creates a GitHub Issue with:
     - **Labels:** `Bug`, `Priority 1: critical`
-    - **Assignees:** nichollsh, timlichtenberg, egbos
+    - **Assignees:** nichollsh, timlichtenberg, egpbos
     - **Project:** Added to [FormingWorlds Project #7](https://github.com/orgs/FormingWorlds/projects/7) with Status "In Progress"
 - This happens **regardless** of whether the agent can fix the issue
 
@@ -130,7 +130,7 @@ The prompt explicitly instructs the agent to read these files first. This means 
 Every nightly failure creates a tracked Issue:
 - Added to [Project #7](https://github.com/orgs/FormingWorlds/projects/7/views/1) with Status "In Progress"
 - Labels: `Bug` + `Priority 1: critical`
-- Assignees: nichollsh, timlichtenberg, egbos
+- Assignees: nichollsh, timlichtenberg, egpbos
 - Updated with agent results (fix PR link or diagnosis)
 
 ### Pull Request (if fix succeeds)
@@ -138,7 +138,7 @@ Every nightly failure creates a tracked Issue:
 - Branch: `selfheal-<commit-sha>`
 - Reviewers: `@FormingWorlds/proteus-maintainer`
 - Labels: `Bug` + `Priority 1: critical`
-- Assignees: nichollsh, timlichtenberg, egbos
+- Assignees: nichollsh, timlichtenberg, egpbos
 - Added to Project #7 with Status "In Progress"
 - Body links to failed run and tracking Issue
 - Auto-closes the tracking Issue when merged
