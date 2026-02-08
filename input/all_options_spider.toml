@@ -311,7 +311,7 @@ version = "2.0"
     lookup_dir      = "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa" # Name of folder with EOS tables, etc.
 
 
-    module = "aragog"       # Which interior module to use
+    module = "spider"       # Which interior module to use
 
     [interior.spider]
         num_levels               = 60       # Number of SPIDER grid levels

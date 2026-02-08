@@ -121,7 +121,7 @@ class AragogRunner:
         )
 
         # Define the inner_radius for the mesh
-        if config.struct.module == 'self':
+        if config.struct.module == 'selfstruct':
             inner_radius = config.struct.corefrac * hf_row['R_int']  # core radius [m]
         elif config.struct.module == 'zalmoxis':
             # Define the inner_radius based on the core radius from Zalmoxis
@@ -129,7 +129,7 @@ class AragogRunner:
 
             inner_radius = zalmoxis_solver(config, outdir, hf_row)  # core radius [m]
         else:
-            raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+            raise ValueError("Invalid module configuration. Expected 'selfstruct' or 'zalmoxis'.")
 
         mesh = _MeshParameters(
             # planet radius [m]
@@ -166,7 +166,7 @@ class AragogRunner:
         )
 
         # Define initial conditions for prescribing temperature profile
-        if config.struct.module == 'self':
+        if config.struct.module == 'selfstruct':
             initial_condition_temperature_profile = config.interior.aragog.initial_condition
             init_file_temperature_profile = os.path.join(
                 FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
@@ -185,7 +185,7 @@ class AragogRunner:
                     FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
                 )
         else:
-            raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+            raise ValueError("Invalid module configuration. Expected 'selfstruct' or 'zalmoxis'.")
 
         initial_condition = _InitialConditionParameters(
             # 1 = linear profile
@@ -317,7 +317,7 @@ class AragogRunner:
         (interior_o.ic == 1) as we sometimes run Aragog multiple times to solve
         the structure which affects the interior mesh.
         """
-        if config.struct.module == 'self':
+        if config.struct.module == 'selfstruct':
             interior_o.aragog_solver.parameters.mesh.outer_radius = (
                 hf_row['R_int'] / interior_o.aragog_solver.parameters.scalings.radius
             )

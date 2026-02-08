@@ -1310,7 +1310,7 @@ def test_struct_zalmoxis_module_skip():
     """Test valid_zalmoxis validator skips when module != 'zalmoxis'."""
     from proteus.config._struct import valid_zalmoxis
 
-    instance = SimpleNamespace(module='self', zalmoxis=SimpleNamespace())
+    instance = SimpleNamespace(module='selfstruct', zalmoxis=SimpleNamespace())
     valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
 
 

@@ -119,6 +119,73 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     run_interior(dirs, config, hf_all, hf_row, int_o)
     update_gravity(hf_row)
 
+    # Validate that converged mass is within tolerance of target
+    mass_rtol = config.struct.selfstruct.mass_rtol if config.struct.selfstruct else 0.03
+    rel_err = abs(hf_row['M_tot'] - M_target) / M_target
+    if rel_err > mass_rtol:
+        log.warning(
+            'Structure solve mass mismatch: M_tot=%.3e kg (%.1f%% off target). '
+            'Retrying with adjusted solver parameters...'
+            % (hf_row['M_tot'], rel_err * 100)
+        )
+
+        max_retries = 20
+        retry_rtol = rtol
+        retry_xtol = 1e3
+        for attempt in range(1, max_retries + 1):
+            # Adjust solver parameters
+            if attempt <= 10:
+                # First half: tighten tolerances
+                retry_rtol *= 0.5
+            else:
+                # Second half: loosen tolerances (tightening didn't help)
+                retry_rtol *= 2.0
+                retry_xtol *= 2.0
+
+            log.warning(
+                'Mass validation retry %d/%d (rtol=%.2e, xtol=%.2e)'
+                % (attempt, max_retries, retry_rtol, retry_xtol)
+            )
+
+            # Perturb initial guess from current best
+            x0 = hf_row['R_int']
+            x1 = x0 * (1.0 + 0.01 * (attempt + 1))
+
+            try:
+                r = optimise.root_scalar(
+                    _resid,
+                    method='secant',
+                    xtol=retry_xtol,
+                    rtol=retry_rtol,
+                    maxiter=20,
+                    x0=x0,
+                    x1=x1,
+                )
+                hf_row['R_int'] = float(r.root)
+                calculate_core_mass(hf_row, config)
+                run_interior(dirs, config, hf_all, hf_row, int_o)
+                update_gravity(hf_row)
+            except Exception as e:
+                log.warning('Retry %d failed with error: %s' % (attempt, str(e)))
+                continue
+
+            rel_err = abs(hf_row['M_tot'] - M_target) / M_target
+            log.info(
+                'Retry %d: M_tot=%.3e kg (%.2f%% off target)'
+                % (attempt, hf_row['M_tot'], rel_err * 100)
+            )
+
+            if rel_err <= mass_rtol:
+                log.info('Mass validation passed after %d retries' % attempt)
+                break
+        else:
+            raise RuntimeError(
+                'Structure solve failed: M_tot=%.3e kg is %.1f%% off target %.3e kg '
+                'after %d retries (tolerance: %.1f%%)'
+                % (hf_row['M_tot'], rel_err * 100, M_target, max_retries,
+                   mass_rtol * 100)
+            )
+
     # Result
     log.info('Found solution for interior structure')
     log.info('M_tot: %.1e kg = %.3f M_earth' % (hf_row['M_tot'], hf_row['M_tot'] / M_earth))
@@ -166,7 +233,7 @@ def solve_structure(
     elif config.struct.set_by == 'mass_tot':
         # Choose the method to determine the interior radius
         match config.struct.module:
-            case 'self':
+            case 'selfstruct':
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case 'zalmoxis':
                 config.orbit.module = (

@@ -63,6 +63,19 @@ def valid_zalmoxis(instance, attribute, value):
 
 
 @define
+class SelfStruct:
+    """Parameters for the 'selfstruct' structure module.
+
+    Attributes
+    ----------
+    mass_rtol: float
+        Relative tolerance for mass convergence check when set_by='mass_tot'.
+    """
+
+    mass_rtol: float = field(default=0.03, validator=(gt(0), lt(1)))
+
+
+@define
 class Zalmoxis:
     """Parameters for Zalmoxis module.
 
@@ -172,7 +185,9 @@ class Struct:
     corefrac: float
         Fraction of the planet's interior radius corresponding to the core.
     module: str
-        Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
+        Module for solving the planet's interior structure. Choices: 'selfstruct', 'zalmoxis'.
+    selfstruct: SelfStruct or None
+        Self structure solver parameters if module is 'selfstruct'.
     zalmoxis: Zalmoxis or None
         Zalmoxis parameters if module is 'zalmoxis'.
     mass_tot: float
@@ -183,16 +198,15 @@ class Struct:
         Density of the planet's core [kg m-3]
     core_heatcap: float
         Specific heat capacity of the planet's core [J kg-1 K-1]
-    module: str
-        Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
     """
 
     corefrac: float = field(validator=(gt(0), lt(1)))
 
     module: Optional[str] = field(
-        default='self',
-        validator=lambda inst, attr, val: val is None or val in ('self', 'zalmoxis'),
+        default='selfstruct',
+        validator=lambda inst, attr, val: val is None or val in ('selfstruct', 'zalmoxis'),
     )
+    selfstruct: Optional[SelfStruct] = field(default=None)
     zalmoxis: Optional[Zalmoxis] = field(
         default=None,
         validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),

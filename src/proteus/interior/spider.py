@@ -188,7 +188,7 @@ def interp_rho_melt(S, P, lookup):
     )
 
     rho = interp(np.column_stack((np.atleast_1d(P), np.atleast_1d(S))))
-    return rho
+    return float(rho.flat[0])
 
 
 # ====================================================================

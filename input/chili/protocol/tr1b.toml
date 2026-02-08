@@ -91,7 +91,7 @@ instellationflux = 1.0
 
 [struct]
 corefrac = 0.55
-module = "self"
+module = "selfstruct"
 zalmoxis = "none"
 core_density = 10738.33
 core_heatcap = 880.0
