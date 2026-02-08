@@ -6,6 +6,7 @@ repo_name: GitHub
 nav:
   - Home: index.md
   - Model description: model.md
+  - Code architecture: architecture.md
   - Installation: installation.md
   - Using PROTEUS: usage.md
   - Configuration: config.md

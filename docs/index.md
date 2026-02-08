@@ -39,7 +39,7 @@
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
-See the [model description](model.html) for an outline of the code and its structure. See the [installation guide](installation.html) and [usage guide](usage.html) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions. [Contributing](CONTRIBUTING.md) outlines how to change or contribute source code. [Contact](bibliography.md) the developers if you have questions or run into issues.
+See the [model description](model.html) for an outline of the code and its structure and the [code architecture](architecture.html) for a detailed overview of the coupling loop, module dispatch pattern, and an interactive flowchart. See the [installation guide](installation.html) and [usage guide](usage.html) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions. [Contributing](CONTRIBUTING.md) outlines how to change or contribute source code. [Contact](bibliography.md) the developers if you have questions or run into issues.
 
 ## Contributors
 
