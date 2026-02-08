@@ -20,7 +20,6 @@ on:
   pull_request:
     branches:
       - main
-      - dev
     types:
       - opened
       - reopened
@@ -29,7 +28,6 @@ on:
   push:
     branches:
       - main
-      - dev
   workflow_dispatch:  # Allow manual triggering for testing
 
 permissions:
@@ -46,8 +44,7 @@ jobs:
     name: Unit Tests (Mocked Physics)
     runs-on: ubuntu-latest
     container:
-      # TODO: Change back to :latest after merging to main
-      image: ghcr.io/formingworlds/proteus:tl-test_ecosystem_v5
+      image: ghcr.io/formingworlds/proteus:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
