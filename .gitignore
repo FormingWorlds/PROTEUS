@@ -260,4 +260,9 @@ cython_debug/
 # Created automatically during PR #351
 Manifest.toml
 Project.toml
+
+# Docker build artifacts
+docker-build.log
+
+# Extracted stellar spectra cache
 zenodo_stellar_spectra_extracted/

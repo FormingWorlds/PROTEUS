@@ -16,14 +16,19 @@ OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_grid'
 GRID_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'dummy.grid.toml'
 BASE_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml'
 
-@pytest.fixture(scope="module")
+
+@pytest.fixture(scope='module')
 def grid_run():
     grid_from_config(GRID_CONFIG, test_run=False, check_interval=1)
 
+
+@pytest.mark.integration
 def test_grid_run(grid_run):
     # Call fixture to ensure that it has run without error
     pass
 
+
+@pytest.mark.integration
 def test_grid_config(grid_run):
     # Copy of grid's config exists in output dir
     assert os.path.isfile(OUT_DIR / 'copy.grid.toml')
@@ -34,6 +39,8 @@ def test_grid_config(grid_run):
     # Check that case config files have been written
     assert os.path.isfile(OUT_DIR / 'cfgs' / f'case_{0:06d}.toml')
 
+
+@pytest.mark.integration
 def test_grid_log(grid_run):
     # Read logfile and check for expected statements
     with open(OUT_DIR / 'manager.log', 'r') as hdl:
@@ -42,12 +49,16 @@ def test_grid_log(grid_run):
     assert 'values   : [1000.0, 2000.0]' in lines
     assert 'All cases have exited' in lines
 
+
+@pytest.mark.integration
 def test_grid_summarise(grid_run):
     # Test running grid-summarise command
     assert gsummarise(OUT_DIR)
-    assert gsummarise(OUT_DIR, "completed")
-    assert gsummarise(OUT_DIR, "status=11")
+    assert gsummarise(OUT_DIR, 'completed')
+    assert gsummarise(OUT_DIR, 'status=11')
 
+
+@pytest.mark.integration
 def test_grid_pack(grid_run):
     # Test running grid-pack command
     assert gpack(OUT_DIR, plots=True, zip=True, rmdir_pack=False)

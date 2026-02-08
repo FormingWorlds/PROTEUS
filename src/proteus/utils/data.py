@@ -4,9 +4,8 @@ import functools
 import hashlib
 import logging
 import os
+import re
 import subprocess as sp
-import time
-import zipfile
 from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
@@ -20,7 +19,6 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 from proteus.utils.helper import safe_rm
-from proteus.utils.phoenix_helper import phoenix_param, phoenix_to_grid
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -28,7 +26,6 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 MAX_ATTEMPTS = 3
 MAX_DLTIME = 120.0  # seconds
 RETRY_WAIT = 5.0  # seconds
-ZENODO_COOLDOWN = 2.0  # seconds between Zenodo API requests to avoid overwhelming server
 
 ARAGOG_BASIC = (
     '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa',
@@ -37,375 +34,10 @@ ARAGOG_BASIC = (
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
-# Rate limiting for Zenodo API requests
-_last_zenodo_request_time = 0.0
-
-
-def _zenodo_cooldown():
-    """
-    Ensure cooldown between Zenodo API requests to avoid overwhelming the server.
-
-    This function enforces a minimum delay (ZENODO_COOLDOWN seconds) between
-    consecutive Zenodo API requests to prevent rate limiting and server overload.
-    """
-    global _last_zenodo_request_time
-    current_time = time.time()
-    time_since_last = current_time - _last_zenodo_request_time
-    if time_since_last < ZENODO_COOLDOWN:
-        wait_time = ZENODO_COOLDOWN - time_since_last
-        log.debug(f'Zenodo cooldown: waiting {wait_time:.2f}s before next request')
-        sleep(wait_time)
-    _last_zenodo_request_time = time.time()
-
-
-def _has_zenodo_token() -> bool:
-    """
-    Check if Zenodo API token is available.
-
-    Checks for Zenodo API token in environment variables or PyStow config file.
-    The zenodo_client library requires an API token for authentication.
-
-    Returns
-    -------
-    bool
-        True if token is configured, False otherwise.
-    """
-    # Check environment variable
-    if os.environ.get('ZENODO_API_TOKEN'):
-        return True
-
-    # Check PyStow config file
-    config_file = Path.home() / '.config' / 'zenodo.ini'
-    if config_file.exists():
-        try:
-            import configparser
-
-            config = configparser.ConfigParser()
-            config.read(config_file)
-            if 'zenodo' in config and config['zenodo'].get('api_token'):
-                return True
-        except Exception as exc:
-            log.debug(f'Error reading Zenodo config file {config_file}: {exc}')
-
-    return False
-
-
-def download_zenodo_folder_client(zenodo_id: str, folder_dir: Path) -> bool:
-    """
-    Download a Zenodo record using zenodo_client library (primary method).
-
-    Note: zenodo_client requires an API token. For public repositories without
-    a token, this function will return False and fallback methods will be used.
-
-    Inputs :
-        - zenodo_id : str
-            Zenodo record ID to download
-        - folder_dir : Path
-            Local directory where the Zenodo record will be downloaded
-
-    Returns :
-        - success : bool
-            Did the download complete successfully?
-    """
-    # Skip zenodo_client if no API token is available (required by library)
-    # This avoids wasting time on operations that will fail
-    if not _has_zenodo_token():
-        log.debug('zenodo_client requires API token - skipping (will use fallback methods)')
-        return False
-
-    try:
-        from zenodo_client import Zenodo
-    except ImportError:
-        log.debug('zenodo_client library not available - will use fallback methods')
-        return False
-    except Exception as e:
-        log.debug(f'Error importing zenodo_client: {e} - will use fallback methods')
-        return False
-
-    _zenodo_cooldown()
-
-    try:
-        # Try to create Zenodo client (now we know token should be available)
-        try:
-            zenodo = Zenodo()
-        except Exception as e:
-            # Token check may have been wrong, or token is invalid
-            log.debug(f'zenodo_client configuration issue: {e}')
-            log.debug('  Will use fallback download methods')
-            return False
-
-        # Get the record metadata
-        _zenodo_cooldown()
-        try:
-            # get_latest_record() returns a string (record ID), not a dict
-            record_id = zenodo.get_latest_record(zenodo_id)
-            # Get the actual record object
-            record = zenodo.get_record(record_id)
-            # Access the JSON data with files
-            record_data = record.json()
-        except Exception as e:
-            log.debug(f'Error getting record from zenodo_client: {e}')
-            log.debug('  Will use fallback download methods')
-            return False
-
-        if not record_data or 'files' not in record_data:
-            log.warning(f'No files found in Zenodo record {zenodo_id}')
-            return False
-
-        folder_dir.mkdir(parents=True, exist_ok=True)
-        downloaded_count = 0
-
-        # Download each file in the record
-        for file_info in record_data['files']:
-            file_key = file_info.get('key', '')
-            if not file_key:
-                continue
-
-            # Determine output path (preserve directory structure)
-            if '/' in file_key:
-                file_path = folder_dir / file_key
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-            else:
-                file_path = folder_dir / file_key
-
-            # Always download files when this function is called
-            # (check_needs_update() already determined update is needed)
-            # Remove any existing file to ensure fresh download
-            if file_path.exists():
-                safe_rm(file_path)
-
-            try:
-                # Download the file using zenodo_client
-                _zenodo_cooldown()
-                downloaded_path = zenodo.download_latest(zenodo_id, file_key)
-
-                # zenodo_client downloads to pystow-managed location
-                # Handle both string and Path return types, or None
-                actual_downloaded_path = None
-                if downloaded_path:
-                    if isinstance(downloaded_path, Path):
-                        actual_downloaded_path = downloaded_path
-                    else:
-                        actual_downloaded_path = Path(downloaded_path)
-
-                # If no path returned or file doesn't exist, try pystow's default location
-                if not actual_downloaded_path or not actual_downloaded_path.exists():
-                    try:
-                        import pystow
-
-                        module = pystow.module('zenodo', zenodo_id)
-                        # Try common pystow path patterns
-                        possible_paths = [
-                            module.join(zenodo_id, file_key),
-                            module.join(file_key),
-                            Path.home() / '.data' / 'zenodo' / zenodo_id / file_key,
-                        ]
-                        for pp in possible_paths:
-                            pp_path = Path(pp) if not isinstance(pp, Path) else pp
-                            if pp_path.exists():
-                                actual_downloaded_path = pp_path
-                                break
-                    except ImportError:
-                        pass  # pystow not available, skip
-
-                if actual_downloaded_path and actual_downloaded_path.exists():
-                    # Move to target location if needed
-                    if actual_downloaded_path.resolve() != file_path.resolve():
-                        import shutil
-
-                        # Ensure target directory exists
-                        file_path.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.move(str(actual_downloaded_path), str(file_path))
-
-                    # Verify file was moved/copied successfully
-                    if file_path.exists() and file_path.stat().st_size > 0:
-                        downloaded_count += 1
-                        file_size = file_path.stat().st_size
-                        log.debug(f'  Downloaded: {file_key} ({file_size} bytes)')
-                    else:
-                        log.warning(f'  File {file_key} moved but verification failed')
-                else:
-                    log.warning(
-                        f'  Failed to download: {file_key} (file not found after download)'
-                    )
-                    log.debug(f'    downloaded_path: {downloaded_path}')
-                    log.debug(f'    actual_downloaded_path: {actual_downloaded_path}')
-            except Exception as e:
-                log.warning(f'  Error downloading {file_key}: {e}')
-                import traceback
-
-                log.debug(f'  Traceback: {traceback.format_exc()}')
-                continue
-
-        # Verify download succeeded
-        if folder_dir.exists():
-            files = list(folder_dir.rglob('*'))
-            file_count = sum(1 for f in files if f.is_file())
-            if file_count > 0:
-                log.info(
-                    f'Successfully downloaded Zenodo record {zenodo_id} '
-                    f'using zenodo_client ({downloaded_count} files downloaded, '
-                    f'{file_count} total files)'
-                )
-                # If downloaded_count doesn't match file_count, some files may have been skipped or already existed
-                if downloaded_count < file_count:
-                    skipped = file_count - downloaded_count
-                    log.debug(f'  Note: {skipped} files were already present or skipped')
-                return True
-            else:
-                log.warning(f'Zenodo download completed but folder is empty (ID {zenodo_id})')
-                return False
-        else:
-            log.warning(f'Zenodo download completed but folder does not exist (ID {zenodo_id})')
-            return False
-
-    except Exception as e:
-        log.debug(f'zenodo_client download failed: {e}')
-        import traceback
-
-        log.debug(f'Traceback: {traceback.format_exc()}')
-        return False
-
-
-def download_zenodo_file_client(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
-    """
-    Download a single file from a Zenodo record using zenodo_client library (primary method).
-
-    Note: zenodo_client requires an API token. For public repositories without
-    a token, this function will return False and fallback methods will be used.
-
-    Inputs
-    ------
-    zenodo_id : str
-        Zenodo record ID to download from.
-    folder_dir : Path
-        Local directory where the file will be downloaded.
-    zenodo_path : str
-        Path/filename inside the Zenodo record, e.g. "subdir/file.txt" or "file.txt".
-
-    Returns
-    -------
-    bool
-        True if download succeeded, False otherwise.
-    """
-    # Skip zenodo_client if no API token is available (required by library)
-    # This avoids wasting time on operations that will fail
-    if not _has_zenodo_token():
-        log.debug('zenodo_client requires API token - skipping (will use fallback methods)')
-        return False
-
-    try:
-        from zenodo_client import Zenodo
-    except ImportError:
-        log.debug('zenodo_client library not available - will use fallback methods')
-        return False
-    except Exception as e:
-        log.debug(f'Error importing zenodo_client: {e} - will use fallback methods')
-        return False
-
-    _zenodo_cooldown()
-
-    try:
-        # Try to create Zenodo client (now we know token should be available)
-        try:
-            zenodo = Zenodo()
-        except Exception as e:
-            # Token check may have been wrong, or token is invalid
-            log.debug(f'zenodo_client configuration issue: {e}')
-            log.debug('  Will use fallback download methods')
-            return False
-
-        # Make sure local base directory exists
-        folder_dir.mkdir(parents=True, exist_ok=True)
-
-        # Local target path (preserves any subdirectory structure in zenodo_path)
-        target_path = folder_dir / zenodo_path
-
-        # Always download when this function is called
-        # (validation already determined update is needed)
-        # Remove any existing file to ensure fresh download
-        if target_path.exists():
-            safe_rm(target_path)
-
-        # Make sure parent directory exists
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Download the file
-        try:
-            _zenodo_cooldown()
-            downloaded_path = zenodo.download_latest(zenodo_id, zenodo_path)
-
-            # zenodo_client downloads to pystow-managed location
-            # Handle both string and Path return types, or None
-            actual_downloaded_path = None
-            if downloaded_path:
-                if isinstance(downloaded_path, Path):
-                    actual_downloaded_path = downloaded_path
-                else:
-                    actual_downloaded_path = Path(downloaded_path)
-
-            # If no path returned or file doesn't exist, try pystow's default location
-            if not actual_downloaded_path or not actual_downloaded_path.exists():
-                try:
-                    import pystow
-
-                    module = pystow.module('zenodo', zenodo_id)
-                    # Try common pystow path patterns
-                    possible_paths = [
-                        module.join(zenodo_id, zenodo_path),
-                        module.join(zenodo_path),
-                        Path.home() / '.data' / 'zenodo' / zenodo_id / zenodo_path,
-                    ]
-                    for pp in possible_paths:
-                        pp_path = Path(pp) if not isinstance(pp, Path) else pp
-                        if pp_path.exists():
-                            actual_downloaded_path = pp_path
-                            break
-                except ImportError:
-                    pass  # pystow not available, skip
-
-            if actual_downloaded_path and actual_downloaded_path.exists():
-                # Move to target location if needed
-                if actual_downloaded_path.resolve() != target_path.resolve():
-                    import shutil
-
-                    # Ensure target directory exists
-                    target_path.parent.mkdir(parents=True, exist_ok=True)
-                    try:
-                        shutil.move(str(actual_downloaded_path), str(target_path))
-                    except Exception as e:
-                        log.warning(f'Failed to move downloaded file to target location: {e}')
-                        return False
-
-                if target_path.exists() and target_path.stat().st_size > 0:
-                    log.debug(f'Successfully downloaded file {zenodo_path} using zenodo_client')
-                    return True
-                else:
-                    log.warning(f'Downloaded file is empty: {zenodo_path}')
-                    return False
-            else:
-                log.warning(
-                    f'Failed to download file: {zenodo_path} (file not found after download)'
-                )
-                return False
-        except Exception as e:
-            log.warning(f'Error downloading file {zenodo_path} using zenodo_client: {e}')
-            import traceback
-
-            log.debug(f'Traceback: {traceback.format_exc()}')
-            return False
-
-    except Exception as e:
-        log.debug(f'zenodo_client file download failed: {e}')
-        return False
-
 
 def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
     """
-    Download a specific Zenodo record into specified folder.
-
-    Uses zenodo_client library as primary method, with fallbacks to zenodo_get
-    command-line tool and web-based download.
+    Download a specific Zenodo record into specified folder
 
     Inputs :
         - zenodo_id : str
@@ -417,393 +49,91 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
         - zenodo_ok : bool
             Did the download/request complete successfully?
     """
-    # Primary method: Try zenodo_client library
-    log.debug(f'Attempting to download Zenodo record {zenodo_id} using zenodo_client...')
-    if download_zenodo_folder_client(zenodo_id, folder_dir):
-        return True
+    # Sanitize zenodo_id to prevent command injection
+    # Zenodo IDs should only contain digits
+    if not re.match(r'^[0-9]+$', zenodo_id):
+        log.error(f'Invalid Zenodo ID format: {zenodo_id}. Must contain only digits.')
+        return False
 
-    # Fallback 1: Try zenodo_get command-line tool
-    log.debug('zenodo_client failed, trying zenodo_get command-line tool...')
+    # Check if zenodo_get is available
     try:
         sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
     except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError) as e:
-        log.debug(f'zenodo_get command not available: {e}')
-    else:
-        out = os.path.join(GetFWLData(), 'zenodo_download.log')
-        log.debug(f'    zenodo_get, logging to {out}')
-
-        # Use exponential backoff for retries
-        for attempt in range(MAX_ATTEMPTS):
-            # remove folder
-            safe_rm(folder_dir)
-            folder_dir.mkdir(parents=True, exist_ok=True)
-
-            # try making request with timeout
-            try:
-                with open(out, 'w') as hdl:
-                    # Add timeout to subprocess (MAX_DLTIME + buffer for overhead)
-                    proc = sp.run(
-                        [
-                            'zenodo_get',
-                            '-o',
-                            str(folder_dir),
-                            '-t',
-                            f'{MAX_DLTIME:.1f}',
-                            zenodo_id,
-                        ],
-                        stdout=hdl,
-                        stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
-                        timeout=MAX_DLTIME + 30,  # Add buffer for subprocess overhead
-                        check=False,  # Don't raise on non-zero exit
-                    )
-
-                # Check if command succeeded and folder has content
-                if proc.returncode == 0:
-                    # Verify folder exists and has files
-                    if folder_dir.exists():
-                        # Check if folder has any files (not just empty directory)
-                        files = list(folder_dir.rglob('*'))
-                        if files and any(f.is_file() for f in files):
-                            log.info(
-                                f'Successfully downloaded Zenodo record '
-                                f'{zenodo_id} using zenodo_get'
-                            )
-                            return True
-                        else:
-                            log.warning(
-                                f'Zenodo download completed but folder is empty '
-                                f'(ID {zenodo_id})'
-                            )
-                    else:
-                        log.warning(
-                            f'Zenodo download completed but folder does not exist '
-                            f'(ID {zenodo_id})'
-                        )
-                else:
-                    # Read error from log file for better diagnostics
-                    error_msg = 'Unknown error'
-                    try:
-                        with open(out, 'r') as f:
-                            error_lines = f.readlines()[-10:]  # Last 10 lines
-                            error_msg = ''.join(error_lines).strip()
-                    except Exception:
-                        # Best-effort log enrichment failed; keep generic error message.
-                        # Log at debug level so this is visible when diagnosing issues.
-                        log.debug(
-                            f'Failed to read zenodo_get log file at {out} for error details.',
-                            exc_info=True,
-                        )
-                    attempt_num = attempt + 1
-                    log.warning(
-                        f'Failed to get data from Zenodo '
-                        f'(ID {zenodo_id}, attempt {attempt_num}/{MAX_ATTEMPTS}): '
-                        f'exit code {proc.returncode}. Error: {error_msg[:200]}'
-                    )
-
-            except sp.TimeoutExpired:
-                log.warning(
-                    f'zenodo_get timed out after {MAX_DLTIME + 30:.1f}s (ID {zenodo_id}, '
-                    f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
-                )
-            except Exception as e:
-                log.warning(f'Unexpected error during Zenodo download (ID {zenodo_id}): {e}')
-
-            # Exponential backoff: wait longer between retries
-            if attempt < MAX_ATTEMPTS - 1:
-                # Exponential backoff with an upper cap to avoid excessively long waits
-                wait_time = min(RETRY_WAIT * (2**attempt), 20)  # capped at 20s
-                log.debug(f'Waiting {wait_time:.1f}s before retry...')
-                sleep(wait_time)
-
-    # Fallback 2: Try web-based download
-    log.debug('zenodo_get failed, trying web-based download...')
-    if download_zenodo_folder_web(zenodo_id, folder_dir):
-        return True
-
-    # All methods failed
-    log.error(f'Could not obtain data for Zenodo record {zenodo_id} after trying all methods')
-    return False
-
-
-def download_zenodo_folder_web(zenodo_id: str, folder_dir: Path) -> bool:
-    """
-    Download a Zenodo record using web interface (fallback method).
-
-    Uses direct download URLs from Zenodo web interface via curl. This is a
-    fallback method when zenodo_client and zenodo_get are unavailable or fail.
-    Downloads all files from the Zenodo record and preserves directory structure.
-
-    Inputs :
-        - zenodo_id : str
-            Zenodo record ID to download
-        - folder_dir : Path
-            Local directory where the Zenodo record will be downloaded
-
-    Returns :
-        - success : bool
-            Did the download complete successfully?
-    """
-    log.debug(f'  Downloading Zenodo {zenodo_id} via web interface...')
-
-    # Get the actual file URLs from Zenodo API
-    import json
-    import urllib.request
-
-    _zenodo_cooldown()
-
-    try:
-        api_url = f'https://zenodo.org/api/records/{zenodo_id}'
-        with urllib.request.urlopen(api_url, timeout=30) as response:
-            data = json.loads(response.read())
-
-        files = data.get('files', [])
-        if not files:
-            log.warning('  ✗ No files found in Zenodo record')
-            return False
-
-    except Exception as e:
-        log.warning(f'  ⚠ Could not get metadata: {e}')
+        log.error(f'zenodo_get command not available or not working: {e}')
         return False
 
-    # Download all files from the record
-    folder_dir.mkdir(parents=True, exist_ok=True)
+    out = os.path.join(GetFWLData(), 'zenodo_download.log')
+    log.debug(f'    zenodo_get, logging to {out}')
 
-    try:
-        # Download all files
-        downloaded_files = 0
-        for f in files:
-            file_url = f['links']['self']
-            file_key = f.get('key', 'unknown')
-            file_size = f.get('size', 0) / 1024 / 1024  # MB
+    # Use exponential backoff for retries
+    for attempt in range(MAX_ATTEMPTS):
+        # remove folder
+        safe_rm(folder_dir)
+        folder_dir.mkdir(parents=True, exist_ok=True)
 
-            # Determine output path
-            if '/' in file_key:
-                # Preserve directory structure
-                file_path = folder_dir / file_key
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-            else:
-                file_path = folder_dir / file_key
-
-            # Always download files when this function is called
-            # (check_needs_update() already determined update is needed)
-            # Remove any existing file to ensure fresh download
-            if file_path.exists():
-                safe_rm(file_path)
-
-            log.debug(f'  Downloading: {file_key} ({file_size:.2f} MB)...')
-
-            # Apply cooldown before each download
-            _zenodo_cooldown()
-
-            result = sp.run(
-                ['curl', '--fail', '-L', '-o', str(file_path), file_url],
-                timeout=600,
-                capture_output=True,
-                text=True,
-            )
-
-            if result.returncode == 0 and file_path.exists() and file_path.stat().st_size > 0:
-                downloaded_files += 1
-                size_mb = file_path.stat().st_size / 1024 / 1024
-                log.debug(f'    ✓ Downloaded {size_mb:.2f} MB')
-            else:
-                log.warning(
-                    f'    ✗ Failed: {result.stderr[:100] if result.stderr else "Unknown error"}'
-                )
-
-        # Count total files
-        all_files = list(folder_dir.rglob('*'))
-        file_count = sum(1 for f in all_files if f.is_file())
-        if file_count > 0:
-            log.info(f'  ✓ Total: {file_count} files in directory (web download)')
-            return True
-        else:
-            log.warning('  ✗ No files downloaded')
-            return False
-
-    except Exception as e:
-        log.warning(f'  ✗ Error: {e}')
-        return False
-
-
-def get_zenodo_file(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
-    """
-    Download a single file from a Zenodo record into the specified local folder.
-
-    Uses zenodo_client library as primary method, with fallbacks to zenodo_get
-    command-line tool and web-based download.
-
-    Inputs
-    ------
-    zenodo_id : str
-        Zenodo record ID to download from.
-    folder_dir : Path
-        Local directory where the file will be downloaded.
-    zenodo_path : str
-        Path/filename inside the Zenodo record, e.g. "subdir/file.txt" or "file.txt".
-
-    Returns
-    -------
-    bool
-        True if download succeeded, False otherwise.
-    """
-    # Primary method: Try zenodo_client library
-    log.debug(
-        f"Attempting to download file '{zenodo_path}' from Zenodo {zenodo_id} using zenodo_client..."
-    )
-    if download_zenodo_file_client(zenodo_id, folder_dir, zenodo_path):
-        return True
-
-    # Fallback 1: Try zenodo_get command-line tool
-    log.debug('zenodo_client failed, trying zenodo_get command-line tool...')
-    # Where to log zenodo_get output
-    out = os.path.join(GetFWLData(), 'zenodo_get_file.log')
-    log.debug(f'    zenodo_get (file {zenodo_path}), logging to {out}')
-
-    # Make sure local base directory exists
-    folder_dir.mkdir(parents=True, exist_ok=True)
-
-    # Local target path (preserves any subdirectory structure in zenodo_path)
-    target_path = folder_dir / zenodo_path
-
-    for i in range(MAX_ATTEMPTS):
-        # Remove any existing copy of the file
-        safe_rm(target_path)
-
-        # Make sure parent directory exists (in case zenodo_path contains subdirs)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Try making request: use -g to select just this path/pattern
+        # try making request with timeout
         try:
             with open(out, 'w') as hdl:
+                # Use Python's subprocess timeout for robust timeout handling
+                # (zenodo_get's -t flag is not always respected by all versions)
                 proc = sp.run(
-                    ['zenodo_get', zenodo_id, '-o', str(folder_dir), '-g', zenodo_path],
+                    ['zenodo_get', '-o', str(folder_dir), zenodo_id],
                     stdout=hdl,
-                    stderr=hdl,
-                    timeout=MAX_DLTIME + 30,
+                    stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
+                    timeout=MAX_DLTIME,  # Python's timeout will kill the process if it hangs
+                    check=False,  # Don't raise on non-zero exit
                 )
 
-            # Worked ok?
-            if proc.returncode == 0 and target_path.exists() and target_path.stat().st_size > 0:
-                log.debug(f"Successfully downloaded file '{zenodo_path}' using zenodo_get")
-                return True
-        except FileNotFoundError as e:
-            log.debug(f'zenodo_get not available: {e}')
-            break  # Don't retry if command doesn't exist
+            # Check if command succeeded and folder has content
+            if proc.returncode == 0:
+                # Verify folder exists and has files
+                if folder_dir.exists():
+                    # Check if folder has any files (not just empty directory)
+                    files = list(folder_dir.rglob('*'))
+                    if files and any(f.is_file() for f in files):
+                        log.info(f'Successfully downloaded Zenodo record {zenodo_id}')
+                        return True
+                    else:
+                        log.warning(
+                            f'Zenodo download completed but folder is empty (ID {zenodo_id})'
+                        )
+                else:
+                    log.warning(
+                        f'Zenodo download completed but folder does not exist (ID {zenodo_id})'
+                    )
+            else:
+                # Read error from log file for better diagnostics
+                error_msg = 'Unknown error'
+                try:
+                    with open(out, 'r') as f:
+                        error_lines = f.readlines()[-10:]  # Last 10 lines
+                        error_msg = ''.join(error_lines).strip()
+                except Exception:
+                    pass
+                log.warning(
+                    f'Failed to get data from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS}): '
+                    f'exit code {proc.returncode}. Error: {error_msg[:500]}'
+                )
+
         except sp.TimeoutExpired:
             log.warning(
-                f'zenodo_get timed out after {MAX_DLTIME + 30:.1f}s (ID {zenodo_id}, '
-                f'attempt {i + 1}/{MAX_ATTEMPTS})'
+                f'zenodo_get timed out after {MAX_DLTIME:.1f}s (ID {zenodo_id}, '
+                f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
             )
-            # Continue to retry with exponential backoff
         except Exception as e:
-            log.debug(f'zenodo_get error: {e}')
+            log.warning(f'Unexpected error during Zenodo download (ID {zenodo_id}): {e}')
 
         # Exponential backoff: wait longer between retries
-        if i < MAX_ATTEMPTS - 1:
-            wait_time = RETRY_WAIT * (2**i)  # Exponential backoff
+        if attempt < MAX_ATTEMPTS - 1:
+            wait_time = RETRY_WAIT * (2**attempt)  # Exponential backoff
             log.debug(f'Waiting {wait_time:.1f}s before retry...')
             sleep(wait_time)
 
-    # Fallback 2: Try web-based download
-    log.debug('zenodo_get failed, trying web-based download...')
-    if get_zenodo_file_web(zenodo_id, folder_dir, zenodo_path):
-        return True
-
-    # All methods failed
+    # Return status indicating that file/folder is invalid, if failed
     log.error(
-        f"Could not obtain file '{zenodo_path}' from Zenodo record {zenodo_id} after trying all methods"
+        f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts'
     )
     return False
-
-
-def get_zenodo_file_web(zenodo_id: str, folder_dir: Path, zenodo_path: str) -> bool:
-    """
-    Download a single file from a Zenodo record using web interface (fallback method).
-
-    Uses direct download URL from Zenodo web interface via curl. This is a
-    fallback method when zenodo_client and zenodo_get are unavailable or fail.
-    Preserves any subdirectory structure in the zenodo_path.
-
-    Inputs
-    ------
-    zenodo_id : str
-        Zenodo record ID to download from.
-    folder_dir : Path
-        Local directory where the file will be downloaded.
-    zenodo_path : str
-        Path/filename inside the Zenodo record, e.g. "subdir/file.txt" or "file.txt".
-
-    Returns
-    -------
-    bool
-        True if download succeeded, False otherwise.
-    """
-    import json
-    import urllib.request
-
-    _zenodo_cooldown()
-
-    try:
-        # Get record metadata
-        api_url = f'https://zenodo.org/api/records/{zenodo_id}'
-        with urllib.request.urlopen(api_url, timeout=30) as response:
-            data = json.loads(response.read())
-
-        files = data.get('files', [])
-        if not files:
-            log.warning(f'  ✗ No files found in Zenodo record {zenodo_id}')
-            return False
-
-        # Find the specific file
-        target_file = None
-        for f in files:
-            if f.get('key', '') == zenodo_path:
-                target_file = f
-                break
-
-        if not target_file:
-            log.warning(f"  ✗ File '{zenodo_path}' not found in Zenodo record {zenodo_id}")
-            return False
-
-        # Make sure local base directory exists
-        folder_dir.mkdir(parents=True, exist_ok=True)
-        target_path = folder_dir / zenodo_path
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Always download file when this function is called
-        # (check_needs_update() already determined update is needed)
-        # Remove any existing file to ensure fresh download
-        if target_path.exists():
-            safe_rm(target_path)
-
-        # Download the file
-        file_url = target_file['links']['self']
-        file_size = target_file.get('size', 0) / 1024 / 1024  # MB
-        log.debug(f'  Downloading: {zenodo_path} ({file_size:.2f} MB)...')
-
-        _zenodo_cooldown()
-
-        result = sp.run(
-            ['curl', '--fail', '-L', '-o', str(target_path), file_url],
-            timeout=600,
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode == 0 and target_path.exists() and target_path.stat().st_size > 0:
-            size_mb = target_path.stat().st_size / 1024 / 1024
-            log.debug(f'  ✓ Downloaded {size_mb:.2f} MB (web download)')
-            return True
-        else:
-            log.warning(
-                f'  ✗ Failed: {result.stderr[:100] if result.stderr else "Unknown error"}'
-            )
-            return False
-
-    except Exception as e:
-        log.warning(f'  ✗ Error downloading file via web: {e}')
-        return False
 
 
 def md5(_fname):
@@ -833,6 +163,12 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
         - valid : bool
             Is folder valid?
     """
+    # Sanitize zenodo_id to prevent command injection
+    # Zenodo IDs should only contain digits
+    if not re.match(r'^[0-9]+$', zenodo_id):
+        log.error(f'Invalid Zenodo ID format: {zenodo_id}. Must contain only digits.')
+        return False
+
     # Check if zenodo_get is available
     try:
         sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
@@ -861,8 +197,8 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
                     ['zenodo_get', '-m', zenodo_id],
                     stdout=hdl,
                     stderr=sp.STDOUT,
-                    cwd=folder_dir,
-                    timeout=60,  # Reasonable timeout for checksum request
+                    cwd=str(folder_dir),
+                    timeout=60,  # Shorter timeout for validation
                     check=False,
                 )
 
@@ -874,105 +210,79 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
                 break
             else:
                 log.warning(
-                    f'Failed to get checksum from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS})'
+                    f'Failed to get checksum from Zenodo (ID {zenodo_id}, '
+                    f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
                 )
         except sp.TimeoutExpired:
-            log.warning(
-                f'zenodo_get validation timed out (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS})'
-            )
+            log.warning(f'zenodo_get validation timed out (ID {zenodo_id})')
         except Exception as e:
             log.warning(f'Unexpected error during Zenodo validation (ID {zenodo_id}): {e}')
 
-        # Exponential backoff
         if attempt < MAX_ATTEMPTS - 1:
-            wait_time = RETRY_WAIT * (2**attempt)
-            sleep(wait_time)
+            sleep(RETRY_WAIT * (2**attempt))  # Exponential backoff
 
     # Return status indicating that file/folder is invalid, if failed
     if not zenodo_ok:
-        # Try to get hashes using zenodo_client as fallback
-        if _has_zenodo_token():
-            try:
-                from zenodo_client import Zenodo
-
-                _zenodo_cooldown()
-                zenodo = Zenodo()
-                record_id = zenodo.get_latest_record(zenodo_id)
-                record = zenodo.get_record(record_id)
-                record_data = record.json()
-
-                if record_data and 'files' in record_data:
-                    # Extract md5 hashes from zenodo_client
-                    md5sums = []
-                    for f in record_data['files']:
-                        checksum = f.get('checksum', '')
-                        if checksum and ':' in checksum:
-                            # Checksum format: "md5:abc123..."
-                            md5_hash = checksum.split(':')[1]
-                            file_key = f.get('key', '')
-                            if md5_hash and file_key:
-                                md5sums.append(f'{md5_hash}  {file_key}\n')
-
-                    if md5sums:
-                        # Write md5sums file for compatibility with existing validation logic
-                        with open(md5sums_path, 'w') as hdl:
-                            hdl.writelines(md5sums)
-                        zenodo_ok = True
-                        log.info(
-                            f'Obtained checksums for Zenodo record {zenodo_id} using zenodo_client'
-                        )
-            except Exception as e:
-                log.debug(f'zenodo_client validation fallback failed: {e}')
-
-        if not zenodo_ok:
-            log.warning(
-                f'Could not obtain checksum for Zenodo record {zenodo_id} - skipping validation'
-            )
-            # Gracefully degrade: if folder exists and has files, assume valid
-            if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
-                return True
-            return False
+        log.warning(
+            f'Could not obtain checksum for Zenodo record {zenodo_id} - skipping validation'
+        )
+        # If we can't validate but folder exists with files, assume it's valid
+        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
+            log.info(f'Folder exists with files - assuming valid (ID {zenodo_id})')
+            return True
+        return False
 
     # Read hashes file
-    with open(md5sums_path, 'r') as hdl:
-        md5sums = hdl.readlines()
+    try:
+        with open(md5sums_path, 'r') as hdl:
+            md5sums = hdl.readlines()
+    except Exception as e:
+        log.warning(f'Could not read md5sums file: {e}')
+        # If folder has files, assume valid
+        if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
+            return True
+        return False
 
     # Check each item in the record...
     for line in md5sums:
+        if not line.strip():
+            continue
         try:
             parts = line.strip().split()
             if len(parts) < 2:
-                continue  # Skip malformed lines
+                continue
             sum_expect, name = parts[0], parts[1]
+            file = os.path.join(folder_dir, name)
+
+            # exit here if file does not exist
+            if not os.path.exists(file):
+                log.warning(f'Detected missing file {name} (Zenodo record {zenodo_id})')
+                return False
+
+            # skip symbolic links for security
+            if os.path.islink(file):
+                log.debug(f'Skipping symbolic link: {name}')
+                continue
+
+            # don't check the hashes of very large files, because it's slow
+            if os.path.getsize(file) > hash_maxfilesize:
+                continue  # Skip hash check but file exists
+
+            # check the actual hash of the file on disk, compare to expected
+            sum_actual = md5(file).strip()
+            if sum_actual != sum_expect:
+                log.warning(f'Detected invalid file {name} (Zenodo record {zenodo_id})')
+                log.warning(f'    expected hash {sum_expect}, got {sum_actual}')
+                return False
         except Exception as e:
-            log.warning(f'Error parsing md5sums line: {line.strip()}: {e}')
+            log.warning(f'Error validating file from md5sums line: {e}')
             continue
-
-        file = os.path.join(folder_dir, name)
-
-        # exit here if file does not exist
-        if not os.path.exists(file):
-            log.warning(f'Detected missing file {name} (Zenodo record {zenodo_id})')
-            return False
-
-        # don't check the hashes of very large files, because it's slow
-        if os.path.getsize(file) > hash_maxfilesize:
-            continue  # Skip hash check for large files, but continue validation
-
-        # check the actual hash of the file on disk, compare to expected
-        sum_actual = md5(file).strip()
-        if sum_actual != sum_expect:
-            log.warning(f'Detected invalid file {name} (Zenodo record {zenodo_id})')
-            log.warning(f'    expected hash {sum_expect}, got {sum_actual}')
-            return False
 
     return True
 
 
-# Unified mapping of data sources to Zenodo and OSF identifiers
-# Each entry maps a folder name to its Zenodo record ID, OSF storage ID,
-# and OSF project ID. This enables automatic fallback from Zenodo to OSF
-# when downloads fail.
+# Unified mapping of folder names to both Zenodo and OSF identifiers
+# Structure: folder_name -> {'zenodo_id': str, 'osf_id': str, 'osf_project': str}
 DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     # Spectral files (OSF project: vehxg)
     'Frostflow/16': {'zenodo_id': '15799743', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
@@ -1035,9 +345,7 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     # Mass-radius data (OSF project: xge8t)
     'Zeng2019': {'zenodo_id': '15727899', 'osf_id': 'xge8t', 'osf_project': 'xge8t'},
     # Population data (OSF project: dpkjb)
-    # NOTE: Population and EOS_Seager2007 currently share the same Zenodo ID '15727998'
-    # This appears to be intentional as they are in the same OSF project and may be
-    # part of the same Zenodo record. If this is incorrect, separate Zenodo IDs should be used.
+    # NOTE: Population and EOS_Seager2007 currently share Zenodo ID '15727998'.
     'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
     # EOS material properties (OSF project: dpkjb)
     'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
@@ -1111,7 +419,7 @@ def get_zenodo_from_osf(osf_id: str) -> list[str]:
     return [
         info['zenodo_id']
         for info in DATA_SOURCE_MAP.values()
-        if info.get('osf_project') == osf_id and info.get('zenodo_id')
+        if info.get('osf_project') == osf_id and 'zenodo_id' in info
     ]
 
 
@@ -1135,7 +443,7 @@ def get_osf_from_zenodo(zenodo_id: str) -> str | None:
     return None
 
 
-def download_OSF_folder(*, storage, folders: list[str], data_dir: Path, force: bool = False):
+def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
     """
     Download a specific folder in the OSF repository
 
@@ -1143,50 +451,59 @@ def download_OSF_folder(*, storage, folders: list[str], data_dir: Path, force: b
         - storage : OSF storage name
         - folders : folder names to download
         - data_dir : local repository where data are saved
-        - force : bool
-            If True, re-download files even if they already exist
     """
     downloaded_files = 0
     total_size = 0
 
-    for file in storage.files:
-        for folder in folders:
-            if not file.path[1:].startswith(folder):
-                continue
-            parts = file.path.split('/')[1:]
-            target = Path(data_dir, *parts)
-            target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # Iterate through all files in OSF storage
+        for file in storage.files:
+            for folder in folders:
+                # Check if file path matches folder (handle both with and without leading slash)
+                file_path = file.path.lstrip('/')
+                folder_path = folder.lstrip('/')
 
-            # Skip if file already exists and has content (unless force=True)
-            if not force and target.exists() and target.stat().st_size > 0:
-                log.debug(f'Skipping existing file: {file.path}')
-                continue
+                if not file_path.startswith(folder_path):
+                    continue
 
-            # If force=True, remove existing file to ensure fresh download
-            if force and target.exists():
-                safe_rm(target)
+                # Extract relative path parts
+                parts = file.path.lstrip('/').split('/')
+                target = Path(data_dir, *parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
 
-            try:
-                log.info(f'Downloading {file.path} ({file.size / 1024 / 1024:.1f} MB)...')
-                with open(target, 'wb') as f:
-                    file.write_to(f)
-                downloaded_files += 1
-                total_size += file.size
-            except Exception as e:
-                log.warning(f'Failed to download {file.path}: {e}')
-                # Clean up partial file
-                if target.exists():
-                    try:
-                        target.unlink()
-                    except Exception as cleanup_error:
-                        log.warning(f'Failed to remove partial file {target}: {cleanup_error}')
-                continue
-            break
+                # Skip if file already exists and is not empty
+                if target.exists() and target.stat().st_size > 0:
+                    log.debug(f'Skipping existing file: {file.path}')
+                    continue
 
-    if downloaded_files > 0:
-        log.info(
-            f'Downloaded {downloaded_files} files ({total_size / 1024 / 1024:.1f} MB) from OSF'
-        )
+                try:
+                    log.info(f'Downloading {file.path} ({file.size / 1024 / 1024:.1f} MB)...')
+                    with open(target, 'wb') as f:
+                        file.write_to(f)
+                    downloaded_files += 1
+                    total_size += target.stat().st_size
+                except Exception as e:
+                    log.warning(f'Failed to download {file.path}: {e}')
+                    # Remove partial file
+                    if target.exists():
+                        try:
+                            target.unlink()
+                        except Exception:
+                            pass
+                    continue
+                break
+
+        if downloaded_files > 0:
+            log.info(
+                f'Downloaded {downloaded_files} file(s) from OSF '
+                f'({total_size / 1024 / 1024:.1f} MB total)'
+            )
+        else:
+            log.warning(f'No files downloaded from OSF for folders: {folders}')
+
+    except Exception as e:
+        log.error(f'Error accessing OSF storage: {e}')
+        raise
 
 
 def GetFWLData() -> Path:
@@ -1239,49 +556,32 @@ def download(
     zenodo_id: str | None = None,
     desc: str,
     force: bool = False,
-    zenodo_path: str | None = None,
 ) -> bool:
     """
     Generic download function with automatic source mapping.
 
     This function can automatically look up OSF and Zenodo IDs from the unified
-    DATA_SOURCE_MAP if they are not provided. If both are provided, uses them
-    directly. Downloads are attempted from Zenodo first, with automatic
-    fallback to OSF if Zenodo fails.
+    DATA_SOURCE_MAP if they are not provided. If both are provided, uses them directly.
 
-    The download process:
-    1. Looks up source IDs from DATA_SOURCE_MAP if not provided
-    2. Checks if data already exists and is valid (unless force=True)
-    3. Attempts download from Zenodo (with multiple fallback methods)
-    4. Falls back to OSF if Zenodo fails
-    5. Validates downloaded files
-
-    Parameters
+    Attributes
     ----------
     folder: str
-        Folder name to download (must match key in DATA_SOURCE_MAP if IDs not
-        provided)
+        Filename to download
     target: str
-        Name of target directory within FWL_DATA
+        name of target directory
     osf_id: str | None
-        OSF project id (optional, will be looked up from mapping if not
-        provided)
+        OSF project id (optional, will be looked up from mapping if not provided)
     zenodo_id: str | None
-        Zenodo record id (optional, will be looked up from mapping if not
-        provided)
+        Zenodo record id (optional, will be looked up from mapping if not provided)
     desc: str
-        Description for logging purposes
+        Description for logging
     force: bool
-        Force a re-download even if valid data already exists
-    zenodo_path: str | None
-        Optional path to a specific file within the Zenodo record.
-        If provided, downloads only this file instead of the entire folder.
-        Example: "subdir/file.txt" or "file.txt"
+        Force a re-download even if valid
 
     Returns
     -------
     bool
-        True if the file/folder was downloaded successfully, False otherwise
+        True if the file was downloaded successfully, False otherwise
     """
     log.debug(f'Get {desc}?')
 
@@ -1306,184 +606,82 @@ def download(
     # Path to specific folder (download) within the data_dir folder
     folder_dir = data_dir / folder
 
-    # Handle single file download vs folder download
-    if zenodo_path is not None:
-        # Single file download mode
-        target_file_path = folder_dir / zenodo_path
+    # Check if the folder needs updating
+    folder_invalid = check_needs_update(folder_dir, zenodo_id) or force
 
-        # Check if file needs updating
-        file_invalid = force or not (
-            target_file_path.exists() and target_file_path.stat().st_size > 0
-        )
+    # Update the folder
+    if folder_invalid:
+        log.info(f'Downloading {desc} to {data_dir}')
+        success = False
 
-        if file_invalid:
-            log.info(f'Downloading {desc} ({zenodo_path}) to {data_dir}')
-            success = False
-
-            # Try Zenodo in the first instance
-            if zenodo_id is not None:
-                try:
-                    # Download the specific file
-                    if get_zenodo_file(
-                        zenodo_id=zenodo_id, folder_dir=folder_dir, zenodo_path=zenodo_path
-                    ):
-                        # Verify file exists and has content
-                        if target_file_path.exists() and target_file_path.stat().st_size > 0:
-                            success = True
-                        else:
-                            log.warning(
-                                f'File {zenodo_path} downloaded but verification failed'
-                            )
-                except RuntimeError as e:
-                    log.warning(f'    Zenodo download failed: {e}')
-            else:
-                log.debug('    No Zenodo ID provided, skipping Zenodo download')
-
-            if success:
-                return True
-
-            # If Zenodo fails or not available, try OSF
-            if osf_id:
-                try:
-                    log.info(
-                        f'Attempting OSF fallback download for file {zenodo_path} (project {osf_id})...'
-                    )
-                    storage = get_osf(osf_id)
-                    # For single file, we need to download from OSF
-                    # Find the file in OSF storage
-                    # Use exact path matching to avoid downloading wrong files with same filename
-                    osf_file_path = f'{folder}/{zenodo_path}'
-                    found = False
-                    for file in storage.files:
-                        # Prefer exact path match to prevent downloading wrong files with same filename
-                        # in different directories (e.g., folder1/sun.txt vs folder2/sun.txt)
-                        file_path_normalized = file.path[1:]  # Remove leading '/'
-                        if file_path_normalized == osf_file_path:
-                            # Exact match - this is the correct file
-                            target_file_path.parent.mkdir(parents=True, exist_ok=True)
-                            if force and target_file_path.exists():
-                                safe_rm(target_file_path)
-                            with open(target_file_path, 'wb') as f:
-                                file.write_to(f)
-                            # Verify file exists and has content
-                            if (
-                                target_file_path.exists()
-                                and target_file_path.stat().st_size > 0
-                            ):
-                                found = True
-                                log.info(
-                                    f'Successfully downloaded {desc} from OSF (project {osf_id})'
-                                )
-                                success = True
-                            else:
-                                log.warning(
-                                    f'File {zenodo_path} downloaded from OSF but verification failed'
-                                )
-                                success = False
-                            break
-                    if not found:
-                        log.warning(f'File {zenodo_path} not found in OSF project {osf_id}')
-                        success = False
-                except Exception as e:
-                    log.warning(f'    OSF download failed: {e}')
-                    import traceback
-
-                    log.debug(f'OSF download traceback: {traceback.format_exc()}')
-                    success = False
-            else:
-                log.warning(f'No OSF project ID available for {desc}')
-
-            if success:
-                return True
-
-            log.error(
-                f'    Failed to download {desc} ({zenodo_path}) from IDs: Zenodo {zenodo_id}, OSF {osf_id}'
-            )
-            return False
+        # Try Zenodo in the first instance
+        if zenodo_id is not None:
+            try:
+                # download the folder
+                if download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir):
+                    # files validated ok?
+                    success = validate_zenodo_folder(zenodo_id, folder_dir)
+            except RuntimeError as e:
+                log.warning(f'    Zenodo download failed: {e}')
+                if folder_dir.exists():
+                    try:
+                        folder_dir.rmdir()
+                    except Exception:
+                        pass  # Ignore cleanup errors
         else:
-            log.debug(f'    {desc} ({zenodo_path}) already exists')
+            log.debug('    No Zenodo ID provided, skipping Zenodo download')
+
+        if success:
             return True
-    else:
-        # Folder download mode (original behavior)
-        # Check if the folder needs updating
-        folder_invalid = check_needs_update(folder_dir, zenodo_id) or force
 
-        # Update the folder
-        if folder_invalid:
-            log.info(f'Downloading {desc} to {data_dir}')
-            success = False
+        # If Zenodo fails or not available, try OSF
+        if osf_id:
+            try:
+                log.info(f'Attempting OSF fallback download (project {osf_id})...')
+                storage = get_osf(osf_id)
+                download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
 
-            # Try Zenodo in the first instance
-            if zenodo_id is not None:
-                try:
-                    # download the folder
-                    if download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir):
-                        # files validated ok?
-                        success = validate_zenodo_folder(zenodo_id, folder_dir)
-                except RuntimeError as e:
-                    log.warning(f'    Zenodo download failed: {e}')
-                    if folder_dir.exists():
-                        try:
-                            folder_dir.rmdir()
-                        except Exception:
-                            pass  # Ignore cleanup errors
-            else:
-                log.debug('    No Zenodo ID provided, skipping Zenodo download')
-
-            if success:
-                return True
-
-            # If Zenodo fails or not available, try OSF
-            if osf_id:
-                try:
-                    log.info(f'Attempting OSF fallback download (project {osf_id})...')
-                    storage = get_osf(osf_id)
-                    download_OSF_folder(
-                        storage=storage,
-                        folders=[folder],
-                        data_dir=data_dir,
-                        force=folder_invalid,
-                    )
-
-                    # Verify OSF download succeeded
-                    if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
-                        log.info(f'Successfully downloaded {desc} from OSF (project {osf_id})')
-                        success = True
-                    else:
-                        log.warning(f'OSF download completed but folder is empty: {folder_dir}')
-                        success = False
-                except Exception as e:
-                    log.warning(f'    OSF download failed: {e}')
-                    import traceback
-
-                    log.debug(f'OSF download traceback: {traceback.format_exc()}')
+                # Verify OSF download succeeded
+                if folder_dir.exists() and any(f.is_file() for f in folder_dir.rglob('*')):
+                    log.info(f'Successfully downloaded {desc} from OSF (project {osf_id})')
+                    success = True
+                else:
+                    log.warning(f'OSF download completed but folder is empty: {folder_dir}')
                     success = False
-            else:
-                log.warning(f'No OSF project ID available for {desc}')
+            except Exception as e:
+                log.warning(f'    OSF download failed: {e}')
+                import traceback
 
-            if success:
-                return True
-
-            log.error(
-                f'    Failed to download {desc} from IDs: Zenodo {zenodo_id}, OSF {osf_id}'
-            )
-            return False
-
+                log.debug(f'OSF download traceback: {traceback.format_exc()}')
+                success = False
         else:
-            log.debug(f'    {desc} already exists')
-        return True
+            log.warning(f'No OSF project ID available for {desc}')
+
+        if success:
+            return True
+
+        log.error(f'    Failed to download {desc} from IDs: Zenodo {zenodo_id}, OSF {osf_id}')
+        return False
+
+    else:
+        log.debug(f'    {desc} already exists')
+    return True
 
 
 def download_surface_albedos():
     """
     Download reflectance data for various surface materials
     """
-    source_info = get_data_source_info('Hammond24')
-    return download(
-        folder='Hammond24',
+    folder = 'Hammond24'
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        raise ValueError(f'No data source mapping found for folder: {folder}')
+
+    download(
+        folder=folder,
         target='surface_albedos',
-        osf_id=(source_info or {}).get('osf_project', '2gcd9'),
-        zenodo_id=(source_info or {}).get('zenodo_id', '15880455'),
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
         desc='surface reflectance data',
     )
 
@@ -1504,15 +702,28 @@ def download_spectral_file(name: str, bands: str):
     if not isinstance(bands, str) or (len(bands) < 1):
         raise Exception('Must provide number of bands in spectral file')
 
-    folder_name = f'{name}/{bands}'
-    source_info = get_data_source_info(folder_name)
-    return download(
-        folder=folder_name,
+    folder = f'{name}/{bands}'
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        raise ValueError(f'No data source mapping found for folder: {folder}')
+
+    download(
+        folder=folder,
         target='spectral_files',
-        osf_id=(source_info or {}).get('osf_project', 'vehxg'),
-        zenodo_id=(source_info or {}).get('zenodo_id') or get_zenodo_record(folder_name),
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
         desc=f'{name}{bands} spectral file',
     )
+
+
+def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = False) -> bool:
+    """Download PHOENIX stellar spectra into `FWL_DATA`.
+
+    Used by `proteus.star.phoenix`. The current implementation downloads the
+    PHOENIX bundle via the unified `download()` mechanism.
+    """
+    desc = f'PHOENIX stellar spectra (alpha={alpha:+0.1f}, [Fe/H]={FeH:+0.1f})'
+    return download(folder='PHOENIX', target='stellar_spectra', desc=desc, force=force)
 
 
 def download_interior_lookuptables(clean=False):
@@ -1524,21 +735,22 @@ def download_interior_lookuptables(clean=False):
     data_dir = GetFWLData() / 'interior_lookup_tables'
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    success = True
     for dir in ARAGOG_BASIC:
         folder_dir = data_dir / dir
         if clean:
             safe_rm(folder_dir.as_posix())
         source_info = get_data_source_info(dir)
-        if not download(
+        if not source_info:
+            log.warning(f'No data source mapping found for {dir}, skipping')
+            continue
+
+        download(
             folder=dir,
-            target='interior_lookup_tables',
-            osf_id=(source_info or {}).get('osf_project', 'phsxf'),
-            zenodo_id=(source_info or {}).get('zenodo_id') or get_zenodo_record(dir),
+            target=data_dir,
+            osf_id=source_info['osf_project'],
+            zenodo_id=source_info['zenodo_id'],
             desc=f'Interior lookup tables: {dir}',
-        ):
-            success = False
-    return success
+        )
 
 
 def download_melting_curves(config: Config, clean=False):
@@ -1555,212 +767,70 @@ def download_melting_curves(config: Config, clean=False):
     if clean:
         safe_rm(folder_dir.as_posix())
     source_info = get_data_source_info(dir)
-    return download(
+    if not source_info:
+        raise ValueError(f'No data source mapping found for folder: {dir}')
+
+    download(
         folder=dir,
-        target='interior_lookup_tables',
-        osf_id=(source_info or {}).get('osf_project', 'phsxf'),
-        zenodo_id=(source_info or {}).get('zenodo_id') or get_zenodo_record(dir),
+        target=data_dir,
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
         desc=f'Melting curve data: {dir}',
     )
 
 
-def download_stellar_spectra():
+def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     """
-    Download stellar spectra
+    Download stellar spectra folders into ``FWL_DATA/stellar_spectra``.
+
+    Notes
+    -----
+    PROTEUS expects different stellar spectra collections in subfolders like:
+    - ``stellar_spectra/solar/``
+    - ``stellar_spectra/MUSCLES/``
+    - ``stellar_spectra/Named/``
+
+    Parameters
+    ----------
+    folders:
+        Specific folders to download. If None, downloads a minimal set that covers
+        common configurations.
     """
-    source_info = get_data_source_info('Named')
-    return download(
-        folder='Named',
-        target='stellar_spectra',
-        osf_id=(source_info or {}).get('osf_project', '8r2sw'),
-        zenodo_id=(source_info or {}).get('zenodo_id', '15721440'),
-        desc='stellar spectra',
-    )
+    if folders is None:
+        # Minimal set for most configurations:
+        # - Named: general named spectra
+        # - solar: solar spectra (e.g., sun.txt, Sun0.6Ga.txt, ...)
+        # - MUSCLES: observed stellar spectra catalogue
+        folders = ('Named', 'solar', 'MUSCLES')
 
+    for folder in folders:
+        source_info = get_data_source_info(folder)
+        if not source_info:
+            raise ValueError(f'No data source mapping found for folder: {folder}')
 
-def download_solar_spectrum():
-    """
-    Download NREL solar spectrum
-    """
-    source_info = get_data_source_info('Named')
-    filename = 'sun.txt'
-    log.info(f'Downloading solar spectrum {filename}')
-
-    # Use download() function for OSF fallback support
-    data_dir = GetFWLData() / 'stellar_spectra'
-    folder_dir = data_dir / 'solar'
-    source_file = data_dir / 'Named' / filename
-    target_file = folder_dir / filename
-
-    # Check if file already exists at target location
-    if target_file.exists() and target_file.stat().st_size > 0:
-        log.info(f'Solar spectrum {filename} already exists at {target_file}')
-        return True
-
-    # Download using download() function for OSF fallback
-    if not download(
-        folder='Named',
-        target='stellar_spectra',
-        osf_id=(source_info or {}).get('osf_project', '8r2sw'),
-        zenodo_id=(source_info or {}).get('zenodo_id', '15721440'),
-        desc='NREL solar spectrum',
-        zenodo_path=filename,
-    ):
-        return False
-
-    # Move file from Named/ to solar/ directory
-    if source_file.exists() and not target_file.exists():
-        import shutil
-
-        folder_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source_file), str(target_file))
-        log.info(f'Moved {filename} from Named/ to solar/ directory')
-
-    return target_file.exists() and target_file.stat().st_size > 0
-
-
-def download_all_solar_spectra():
-    """
-    Download all solar spectra (nrel, VPL past, VPL present, VPL future)
-    """
-    source_info = get_data_source_info('solar')
-    return download(
-        folder='solar',
-        target='stellar_spectra',
-        osf_id=(source_info or {}).get('osf_project', '8r2sw'),
-        zenodo_id=(source_info or {}).get('zenodo_id', '17981836'),
-        desc='all solar spectra',
-    )
-
-
-def download_phoenix(alpha: float | int | str, FeH: float | int | str) -> bool:
-    """
-    Download and unpack a PHOENIX spectra ZIP like
-    FeH+0.5_alpha+0.0_phoenixMedRes_R05000.zip
-    into <FWL_DATA>/stellar_spectra/PHOENIX.
-
-    NOTE: Assumes alpha and FeH are already mapped to nearest grid point.
-    """
-
-    feh_str = phoenix_param(FeH, kind='FeH')
-    alpha_str = phoenix_param(alpha, kind='alpha')
-    zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
-
-    data_dir = GetFWLData() / 'stellar_spectra'
-    folder_dir = data_dir / 'PHOENIX' / f'FeH{feh_str}_alpha{alpha_str}'
-
-    if folder_dir.exists() and any(folder_dir.iterdir()):
-        log.info(f'PHOENIX spectra already present in {folder_dir}')
-        return True
-
-    folder_dir.mkdir(parents=True, exist_ok=True)
-
-    log.info(f'Downloading PHOENIX spectra {zip_name}')
-    log.info('This may take a while.')
-
-    source_info = get_data_source_info('PHOENIX')
-    phoenix_zenodo_id = (source_info or {}).get('zenodo_id', '17674612')
-    phoenix_osf_id = (source_info or {}).get('osf_project', '8r2sw')
-
-    # first download readme using download() function for OSF fallback
-    download(
-        folder='PHOENIX',
-        target='stellar_spectra',
-        osf_id=phoenix_osf_id,
-        zenodo_id=phoenix_zenodo_id,
-        desc='PHOENIX readme',
-        zenodo_path='_readme.md',
-    )
-
-    # then download zip using download() function for OSF fallback
-    if not download(
-        folder='PHOENIX',
-        target='stellar_spectra',
-        osf_id=phoenix_osf_id,
-        zenodo_id=phoenix_zenodo_id,
-        desc='PHOENIX spectra',
-        zenodo_path=zip_name,
-    ):
-        log.error(
-            f'Failed to download PHOENIX ZIP {zip_name} '
-            f'from Zenodo {phoenix_zenodo_id} or OSF {phoenix_osf_id}'
+        download(
+            folder=folder,
+            target='stellar_spectra',
+            osf_id=source_info['osf_project'],
+            zenodo_id=source_info['zenodo_id'],
+            desc=f'stellar spectra ({folder})',
         )
-        return False
-
-    # The file should be in PHOENIX/zip_name, but we need it in the subfolder
-    zip_path_source = data_dir / 'PHOENIX' / zip_name
-    zip_path = folder_dir / zip_name
-    if zip_path_source.exists() and not zip_path.exists():
-        import shutil
-
-        zip_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(zip_path_source), str(zip_path))
-
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zf:
-            zf.extractall(folder_dir)
-    except (zipfile.BadZipFile, FileNotFoundError) as e:
-        log.error(f'Downloaded PHOENIX ZIP is corrupted: {zip_path}')
-        log.error(str(e))
-        safe_rm(str(zip_path))
-        # Clean up partially extracted files to prevent false positive on next call
-        if folder_dir.exists():
-            safe_rm(folder_dir.as_posix())
-        return False
-    except Exception as e:
-        # Catch all other extraction errors (disk full, permission denied, etc.)
-        log.error(f'Failed to extract PHOENIX ZIP {zip_path}: {e}')
-        log.error(str(e))
-        safe_rm(str(zip_path))
-        # Clean up partially extracted files to prevent false positive on next call
-        if folder_dir.exists():
-            safe_rm(folder_dir.as_posix())
-        return False
-    else:
-        safe_rm(str(zip_path))
-        log.info(f'PHOENIX spectra unpacked to {folder_dir}')
-        return True
-
-
-def download_muscles(star_name: str) -> bool:
-    star_filename = f'{star_name.strip().lower().replace(" ", "-").replace("gj-", "gj")}.txt'  # lowercase, and; "trappist 1" -> "trappist-1", but "gj 876" or "gj-876" -> "gj876"
-    log.info(f'Downloading MUSCLES file {star_filename}')
-
-    source_info = get_data_source_info('MUSCLES')
-    muscles_zenodo_id = (source_info or {}).get('zenodo_id', '17802209')
-    muscles_osf_id = (source_info or {}).get('osf_project', '8r2sw')
-
-    # first download readme using download() function for OSF fallback
-    download(
-        folder='MUSCLES',
-        target='stellar_spectra',
-        osf_id=muscles_osf_id,
-        zenodo_id=muscles_zenodo_id,
-        desc='MUSCLES readme',
-        zenodo_path='_readme.md',
-    )
-
-    # then download star file using download() function for OSF fallback
-    return download(
-        folder='MUSCLES',
-        target='stellar_spectra',
-        osf_id=muscles_osf_id,
-        zenodo_id=muscles_zenodo_id,
-        desc='MUSCLES spectrum',
-        zenodo_path=star_filename,
-    )
 
 
 def download_exoplanet_data():
     """
     Download exoplanet data
     """
-    source_info = get_data_source_info('Exoplanets')
-    return download(
-        folder='Exoplanets',
+    folder = 'Exoplanets'
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        raise ValueError(f'No data source mapping found for folder: {folder}')
+
+    download(
+        folder=folder,
         target='planet_reference',
-        osf_id=(source_info or {}).get('osf_project', 'fzwr4'),
-        zenodo_id=(source_info or {}).get('zenodo_id', '15727878'),
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
         desc='exoplanet data',
     )
 
@@ -1769,97 +839,118 @@ def download_massradius_data():
     """
     Download mass-radius data
     """
-    source_info = get_data_source_info('Zeng2019')
-    return download(
-        folder='Zeng2019',
+    folder = 'Zeng2019'
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        raise ValueError(f'No data source mapping found for folder: {folder}')
+
+    download(
+        folder=folder,
         target='mass_radius',
-        osf_id=(source_info or {}).get('osf_project', 'xge8t'),
-        zenodo_id=(source_info or {}).get('zenodo_id', '15727899'),
-        desc='mass-radius data',
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
+        desc='mass radius data',
     )
 
 
-def download_stellar_tracks(track: str):
+def download_stellar_tracks(track: str, use_osf_fallback: bool = True):
     """
     Download stellar evolution tracks
 
-    Uses the function built-into MORS.
+    Uses the function built-into MORS. Falls back to OSF if MORS download fails.
+
+    Parameters
+    ----------
+    track : str
+        Track name ('Spada' or 'Baraffe')
+    use_osf_fallback : bool
+        If True, attempt OSF download if MORS download fails
     """
     from mors.data import DownloadEvolutionTracks
 
-    log.debug('Get evolution tracks')
-    DownloadEvolutionTracks(track)
+    log.debug(f'Downloading stellar evolution tracks: {track}')
+
+    # Try MORS download first
+    try:
+        DownloadEvolutionTracks(track)
+        # Verify download succeeded by checking if tracks directory exists
+        fwl_data = GetFWLData()
+        tracks_path = fwl_data / 'stellar_evolution_tracks' / track
+        if tracks_path.exists() and any(tracks_path.iterdir()):
+            log.info(f'Successfully downloaded {track} tracks via MORS')
+            return
+        else:
+            log.warning(f'MORS download completed but tracks not found at {tracks_path}')
+            raise FileNotFoundError(f'Tracks directory empty or missing: {tracks_path}')
+    except Exception as e:
+        log.warning(f'MORS download failed for {track} tracks: {e}')
+
+        if not use_osf_fallback:
+            raise
+
+        # Fallback to OSF if available
+        # Note: OSF project ID for stellar tracks may need to be determined
+        # For now, log that we're attempting OSF fallback
+        log.info(f'Attempting OSF fallback for {track} tracks...')
+
+        # Try to find OSF project with stellar tracks
+        # Common OSF project IDs in PROTEUS: 'phsxf' (ARAGOG), '8r2sw' (stellar spectra)
+        # Stellar tracks might be in a different project - would need to check MORS docs
+        try:
+            # Try common OSF projects that might have stellar data
+            osf_projects = ['8r2sw']  # Stellar spectra project - might also have tracks
+
+            fwl_data = GetFWLData()
+            tracks_dir = fwl_data / 'stellar_evolution_tracks'
+            tracks_dir.mkdir(parents=True, exist_ok=True)
+            target_dir = tracks_dir / track
+
+            for osf_id in osf_projects:
+                try:
+                    storage = get_osf(osf_id)
+                    # Try to download from OSF
+                    # Note: Folder structure on OSF may differ - this is a best-effort attempt
+                    download_OSF_folder(
+                        storage=storage,
+                        folders=[f'stellar_evolution_tracks/{track}', track],
+                        data_dir=tracks_dir,
+                    )
+                    if target_dir.exists() and any(target_dir.iterdir()):
+                        log.info(
+                            f'Successfully downloaded {track} tracks via OSF (project {osf_id})'
+                        )
+                        return
+                except Exception as osf_e:
+                    log.debug(f'OSF project {osf_id} did not have {track} tracks: {osf_e}')
+                    continue
+
+            log.error(
+                f'Could not download {track} tracks via MORS or OSF fallback. '
+                f'You may need to download manually or check network connectivity.'
+            )
+            raise RuntimeError(
+                f'Failed to download {track} tracks: MORS failed, OSF fallback unavailable'
+            )
+
+        except Exception as osf_fallback_error:
+            log.error(f'OSF fallback also failed for {track} tracks: {osf_fallback_error}')
+            raise RuntimeError(
+                f'Failed to download {track} tracks: MORS error ({e}), OSF fallback error ({osf_fallback_error})'
+            )
 
 
 def _get_sufficient(config: Config, clean: bool = False):
     # Star stuff
     if config.star.module == 'mors':
-        if config.star.mors.star_path is None:
-            src = config.star.mors.spectrum_source
-
-            if src == 'solar':
-                log.info("Spectrum source set to 'solar'.")
-                solar_dir = GetFWLData() / 'stellar_spectra' / 'solar'
-                sun_now = solar_dir / 'sun.txt'
-                sun_06ga = solar_dir / 'Sun0.6Ga.txt'
-
-                if (not sun_now.exists()) or (not sun_06ga.exists()):
-                    download_all_solar_spectra()
-
-            elif src is None:
-                if config.star.mors.star_name.lower() != 'sun':
-                    muscles_ok = download_muscles(config.star.mors.star_name)
-                    if muscles_ok:
-                        log.info(
-                            'Spectrum source not set. MUSCLES spectrum found and downloaded.'
-                        )
-                        log.info(
-                            "To always use MUSCLES, set star.mors.spectrum_source = 'muscles'."
-                        )
-                    else:
-                        log.info(
-                            'Spectrum source not set. No MUSCLES spectrum found; downloading solar spectrum by default.'
-                        )
-                        log.info(
-                            "To use a MUSCLES spectrum, check the available MUSCLES spectra at https://proteus-framework.org/PROTEUS/data.html#stellar-spectra and set star.mors.spectrum_source = 'muscles'."
-                        )
-                        download_solar_spectrum()
-                else:
-                    download_solar_spectrum()
-
-            elif src == 'muscles':
-                log.info("Spectrum source set to 'muscles'. Downloading MUSCLES spectrum.")
-                muscles_ok = download_muscles(config.star.mors.star_name)
-                if not muscles_ok:
-                    log.error(
-                        f'Could not download MUSCLES spectrum for star {config.star.mors.star_name}.'
-                    )
-                    log.error(
-                        'Check the MUSCLES available MUSCLES spectra at https://proteus-framework.org/PROTEUS/data.html#stellar-spectra to verify the star name.'
-                    )
-                    log.error(
-                        "If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'."
-                    )
-
-            elif src == 'phoenix':
-                log.info("Spectrum source set to 'phoenix'.")
-                FeH = config.star.mors.phoenix_FeH
-                alpha = config.star.mors.phoenix_alpha
-
-                # make sure what is downloaded matches nearest grid point
-                Teff_override = getattr(
-                    config.star.mors, 'phoenix_Teff', None
-                )  # Optional Teff override in the config -> relevant for mapping alpha fraction to grid
-                grid = phoenix_to_grid(FeH=FeH, alpha=alpha, Teff=Teff_override)
-                FeH_g = grid['FeH']
-                alpha_g = grid['alpha']
-
-                log.info(
-                    f'Downloading PHOENIX spectra with [Fe/H]={FeH_g:.2f}, [alpha/M]={alpha_g:.2f}.'
-                )
-                log.info('Note that the requested values are mapped to the nearest grid point.')
-                download_phoenix(alpha=alpha_g, FeH=FeH_g)
-
+        # Download only the spectra collections that this config may require.
+        # (PHOENIX is handled separately via download_phoenix().)
+        spec_src = config.star.mors.spectrum_source
+        folders: list[str] = ['Named']
+        if spec_src in (None, 'solar'):
+            folders.append('solar')
+        if spec_src in (None, 'muscles'):
+            folders.append('MUSCLES')
+        download_stellar_spectra(folders=tuple(dict.fromkeys(folders)))
         if config.star.mors.tracks == 'spada':
             download_stellar_tracks('Spada')
         else:
@@ -1868,7 +959,7 @@ def _get_sufficient(config: Config, clean: bool = False):
     # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
         # High-res file often used for post-processing
-        # download_spectral_file('Honeyside', '4096')
+        download_spectral_file('Honeyside', '4096')
 
         # Get the spectral file we need for this simluation
         from proteus.atmos_clim.common import get_spfile_name_and_bands
@@ -1898,7 +989,6 @@ def download_sufficient_data(config: Config, clean: bool = False):
     """
 
     log.info('Getting physical and reference data')
-    log.info('')
 
     if config.params.offline:
         # Don't try to get data
@@ -2022,12 +1112,16 @@ def download_Seager_EOS():
     """
     Download EOS material properties from Seager et al. (2007)
     """
-    source_info = get_data_source_info('EOS_Seager2007')
-    return download(
-        folder='EOS_Seager2007',
+    folder = 'EOS_Seager2007'
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        raise ValueError(f'No data source mapping found for folder: {folder}')
+
+    download(
+        folder=folder,
         target='EOS_material_properties',
-        osf_id=(source_info or {}).get('osf_project', 'dpkjb'),
-        zenodo_id=(source_info or {}).get('zenodo_id', '15727998'),
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
         desc='EOS Seager2007 material files',
     )
 
@@ -2041,14 +1135,17 @@ def load_melting_curve(melt_file):
         interp_func: Interpolation function for T(P)
     """
     try:
-        data = np.loadtxt(melt_file, comments="#")
+        data = np.loadtxt(melt_file, comments='#')
         pressures = data[:, 0]  # in Pa
         temperatures = data[:, 1]  # in K
-        interp_func = interp1d(pressures, temperatures, kind="linear", bounds_error=False, fill_value=np.nan)
+        interp_func = interp1d(
+            pressures, temperatures, kind='linear', bounds_error=False, fill_value=np.nan
+        )
         return interp_func
     except Exception as e:
-        print(f"Error loading melting curve data: {e}")
+        print(f'Error loading melting curve data: {e}')
         return None
+
 
 def get_zalmoxis_melting_curves(config: Config):
     """
@@ -2058,13 +1155,18 @@ def get_zalmoxis_melting_curves(config: Config):
         config: Configuration object containing interior settings
     Returns: A tuple containing the solidus and liquidus data files.
     """
-    if config.interior.melting_dir != "Monteux-600":
-        raise ValueError(f"Zalmoxis currently only supports 'Monteux-600' for melting_dir. You have configured '{config.interior.melting_dir}'.")
-    melting_curves_folder = FWL_DATA_DIR / "interior_lookup_tables" / "Melting_curves" / config.interior.melting_dir
-    solidus_func = load_melting_curve(melting_curves_folder / "solidus.dat")
-    liquidus_func = load_melting_curve(melting_curves_folder / "liquidus.dat")
+    if config.interior.melting_dir != 'Monteux-600':
+        raise ValueError(
+            f"Zalmoxis currently only supports 'Monteux-600' for melting_dir. You have configured '{config.interior.melting_dir}'."
+        )
+    melting_curves_folder = (
+        FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / config.interior.melting_dir
+    )
+    solidus_func = load_melting_curve(melting_curves_folder / 'solidus.dat')
+    liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus.dat')
     melting_curves_functions = (solidus_func, liquidus_func)
     return melting_curves_functions
+
 
 def get_zalmoxis_EOS():
     """
@@ -2073,55 +1175,79 @@ def get_zalmoxis_EOS():
         tuple: A tuple containing three dictionaries for iron/silicate planets, iron/Tdep_silicate planets, and water planets.
     """
     # Define the EOS folder paths
-    Seager_eos_folder = FWL_DATA_DIR / "EOS_material_properties" / "EOS_Seager2007"
-    Wolf_Bower_eos_folder = FWL_DATA_DIR / "interior_lookup_tables" / "1TPa-dK09-elec-free" / "MgSiO3_Wolf_Bower_2018_1TPa"
+    Seager_eos_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
+    Wolf_Bower_eos_folder = (
+        FWL_DATA_DIR
+        / 'interior_lookup_tables'
+        / '1TPa-dK09-elec-free'
+        / 'MgSiO3_Wolf_Bower_2018_1TPa'
+    )
 
     # Download the EOS material properties if not already present
     if not Seager_eos_folder.exists():
-        log.debug("Get EOS material properties from Seager et al. (2007)")
+        log.debug('Get EOS material properties from Seager et al. (2007)')
         download_Seager_EOS()
 
     # Build the material_properties_iron_silicate_planets dictionary for iron/silicate planets according to Seager et al. (2007)
     material_properties_iron_silicate_planets = {
-        "core": {
+        'core': {
             # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
+            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
         },
-        "mantle": {
+        'mantle': {
             # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_silicate.txt"
-        }
+            'eos_file': Seager_eos_folder / 'eos_seager07_silicate.txt'
+        },
     }
 
     # Build the material_properties_iron_Tdep_silicate_planets dictionary for iron/silicate planets with temperature-dependent silicate mantle EOS from Wolf & Bower (2018)
     material_properties_iron_Tdep_silicate_planets = {
-        "core": {
+        'core': {
             # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
+            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
         },
-        "melted_mantle": {
+        'melted_mantle': {
             # MgSiO3 in melt state, modeled in Wolf & Bower (2018) using their developed high P–T RTpress EOS
-            "eos_file": Wolf_Bower_eos_folder / "density_melt.dat"
+            'eos_file': Wolf_Bower_eos_folder / 'density_melt.dat'
         },
-        "solid_mantle": {
+        'solid_mantle': {
             # MgSiO3 in solid state, modeled in Wolf & Bower (2018) using their developed high P–T RTpress EOS
-            "eos_file": Wolf_Bower_eos_folder / "density_solid.dat"
-        }
+            'eos_file': Wolf_Bower_eos_folder / 'density_solid.dat'
+        },
     }
 
     # Build the material_properties_water_planets dictionary for water planets according to Seager et al. (2007)
     material_properties_water_planets = {
-        "core": {
+        'core': {
             # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_iron.txt"
+            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
         },
-        "mantle": {
-                # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
-                "eos_file": Seager_eos_folder / "eos_seager07_silicate.txt"
+        'mantle': {
+            # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
+            'eos_file': Seager_eos_folder / 'eos_seager07_silicate.txt'
         },
-        "water_ice_layer": {
+        'water_ice_layer': {
             # Water ice, modeled in Seager et al. (2007) using experimental data, DFT predictions for water ice in phases VIII and X, and DFT calculations
-            "eos_file": Seager_eos_folder / "eos_seager07_water.txt"
-        }
+            'eos_file': Seager_eos_folder / 'eos_seager07_water.txt'
+        },
     }
-    return material_properties_iron_silicate_planets, material_properties_iron_Tdep_silicate_planets, material_properties_water_planets
+    return (
+        material_properties_iron_silicate_planets,
+        material_properties_iron_Tdep_silicate_planets,
+        material_properties_water_planets,
+    )
+
+
+def get_Seager_EOS():
+    """Backward-compatible Seager EOS helper.
+
+    Returns the Seager et al. (2007) EOS material property dictionaries for
+    iron/silicate and water planets. This mirrors the original
+    ``get_Seager_EOS`` API that older code and tests expect.
+
+    The implementation reuses :func:`get_zalmoxis_EOS` and returns only the
+    iron/silicate and water dictionaries.
+    """
+
+    iron_silicate, _iron_Tdep, water = get_zalmoxis_EOS()
+    return iron_silicate, water
