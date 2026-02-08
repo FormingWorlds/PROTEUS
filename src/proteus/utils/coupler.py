@@ -525,126 +525,130 @@ def GetHelpfileKeys():
     * Time is in units of [years].
     """
 
+    # fmt: off
     # Basic keys
     keys = [
         # Model tracking
         'Time',  # [yr]
-        # Orbit semi-major axis, time-averaged separation, perihelion, and perigee
-        'semimajorax',
-        'separation',
-        'perihelion',
-        'perigee',  # [m], [m], [m], [m],
-        # Orbital period and eccentricity
-        'orbital_period',
-        'eccentricity',  # [s], [1]
-        # Satellite orbit semi-major axis, mass, and planet-satellite system angular momentum
-        'semimajorax_sat',
-        'M_sat',
-        'plan_sat_am',  # [m], [kg], [kg m2 s-1],
+
+        # Orbital parameters of planet
+        'semimajorax',      # semi-major axis [m]
+        'separation',       # time-averaged separation [m]
+        'perihelion',       # lowest point in orbit [m]
+        'orbital_period',   # orbital duration [s]
+        'eccentricity',     # orbital eccentricity [1]
+        'Imk2',             # Imaginary part of k2 Love Number [1]
+
+        # Satellite system
+        'perigee',          # lowest point in orbit [m]
+        'semimajorax_sat',  # semi-major axis [m]
+        'M_sat',            # mass of satellite [kg]
+        'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
+
         # Day length
-        'axial_period',
-        'breakup_period',  # [s], [s]
-        # Dry interior radius (calculated) and mass (from config)
-        'R_int',
-        'M_int',  # [m], [kg]
-        # Total planet mass (mantle + core + volatiles)
-        'M_tot',  # [kg]
+        'axial_period',     # day length of planet around its axis [s]
+
+        # Planet structure
+        'R_int',            # interior radius [m]
+        'M_int',            # interior mass [kg]
+        'M_tot',            # total mass [kg]
+
         # Temperatures
-        'T_surf',
-        'T_magma',
-        'T_eqm',
-        'T_skin',  # all [K]
-        # Planet energy fluxes, all in units of [W m-2]
-        'F_int',
-        'F_atm',
-        'F_net',
-        'F_olr',
-        'F_sct',
-        'F_ins',
-        'F_xuv',
-        'F_tidal',
-        'F_radio',
-        # Interior properties
-        'gravity',
-        'Phi_global',
-        'RF_depth',  # [m s-2] , [1] , [1]
-        'M_core',
-        'M_mantle',
-        'M_planet',  # all [kg]
-        'M_mantle_solid',
-        'M_mantle_liquid',  # all [kg]
-        'Phi_global_vol',
-        'T_pot',  # [1], [K]
-        # Stellar
-        'M_star',
-        'R_star',
-        'age_star',  # [kg], [m], [yr]
-        'T_star',  # [K]
-        # Photospheric properties
-        'p_obs',  # observered radius [bar]
-        'R_obs',  # observed radius [m]
-        'T_obs',  # observed temperature [K]
-        'rho_obs',  # observed bulk density [kg m-3]
-        'transit_depth',
-        'eclipse_depth',  # [1], [1]
-        'albedo_pl',  # input bond albedo [1]
-        'bond_albedo',  # output bond albedo [1]
-        # Imaginary part of k2 Love Number
-        'Imk2',  # [1]
+        'T_surf',           # global surface temperature [K]
+        'T_magma',          # global outgassing temperature [K]
+        'T_eqm',            # grey radiative equilibrium temperature [K]
+        'T_skin',           # grey radiative skin temperature [K]
+
+        # Planet energy fluxes
+        'F_int',            # flux from top of interior [W m-2]
+        'F_atm',            # flux from top of atmosphere [W m-2]
+        'F_net',            # flux difference F_int-F_atm [W m-2]
+        'F_olr',            # outgoing longwave radiation [W m-2]
+        'F_sct',            # outgoing shortwave radiation [W m-2]
+        'F_ins',            # incoming instellation flux [W m-2]
+        'F_xuv',            # incoming XUV radiation flux [W m-2]
+        'F_tidal',          # tidal heat flux arising at surface [W m-2]
+        'F_radio',          # radiogenic heat flux arising at surface [W m-2]
+
+        # Planet interior properties
+        'gravity',          # surface gravity [m s-2]
+        'Phi_global',       # mantle melt mass-fraction [1]
+        'Phi_global_vol',   # mantle melt volume-fraction [1]
+        'RF_depth',         # depth of rheological front [1]
+        'M_core',           # dry mass of core [kg]
+        'M_mantle',         # dry mass of mantle [kg]
+        'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
+        'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
+        'T_pot',            # characteristic mantle potential temperature [K]
+
+        # Host star properties
+        'M_star',           # mass of star [kg]
+        'R_star',           # photospheric radius [m]
+        'age_star',         # age relative to deuterium fusion 'stellar birthline' [yr]
+        'T_star',           # photospheric temperature [K]
+
+        # Planet observational properties
+        'p_obs',            # transit pressure level [bar]
+        'R_obs',            # transit radius [m]
+        'T_obs',            # transit temperature [K]
+        'rho_obs',          # transit bulk density [kg m-3]
+        'transit_depth',    # primary transit light curve depth [1]
+        'eclipse_depth',    # secondary eclipse light curve depth [1]
+        'albedo_pl',        # INPUT bond albedo [1]
+        'bond_albedo',      # OUTPUT bond albedo from radtrans [1]
+
         # Atmospheric composition from outgassing
-        'M_atm',
-        'P_surf',
-        'atm_kg_per_mol',  # [kg], [bar], [kg mol-1]
+        'M_atm',            # total mass of atmosphere [kg]
+        'P_surf',           # total surface pressure [bar]
+        'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
     ]
 
-    # gases from outgassing
+    # quantities for each gas, from outgassing
     for s in gas_list:
-        keys.append(s + '_mol_atm')
-        keys.append(s + '_mol_solid')
-        keys.append(s + '_mol_liquid')
-        keys.append(s + '_mol_total')
-        keys.append(s + '_kg_atm')
-        keys.append(s + '_kg_solid')
-        keys.append(s + '_kg_liquid')
-        keys.append(s + '_kg_total')
-        keys.append(s + '_vmr')  # vmr at surface
-        keys.append(s + '_bar')  # partial pressure at surface
-        keys.append(s + '_vmr_xuv')  # vmr at XUV level
+        keys.append(s + '_mol_atm')     # number outgsassed to atmosphere [mol]
+        keys.append(s + '_mol_solid')   # number in solid mantle [mol]
+        keys.append(s + '_mol_liquid')  # number in liquid mantle [mol]
+        keys.append(s + '_mol_total')   # number in whole planet [mol]
+        keys.append(s + '_kg_atm')      # mass outgassed to atmosphere [kg]
+        keys.append(s + '_kg_solid')    # mass in solid mantle [kg]
+        keys.append(s + '_kg_liquid')   # mass in liquid mantle [kg]
+        keys.append(s + '_kg_total')    # mass in whole planet [kg]
+        keys.append(s + '_vmr')         # outgassed volume mixing ratio [1]
+        keys.append(s + '_bar')         # partial surface pressure [bar]
+        keys.append(s + '_vmr_xuv')     # volume mixing ratio at XUV level [1]
 
-    # element masses
+    # quantities for each element
     for e in element_list:
-        keys.append(e + '_kg_atm')
-        keys.append(e + '_kg_solid')
-        keys.append(e + '_kg_liquid')
-        keys.append(e + '_kg_total')
+        keys.append(e + '_kg_atm')      # mass outgassed to atmosphere [kg]
+        keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
+        keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
+        keys.append(e + '_kg_total')    # mass in whole planet [kg]
 
-    # Escape variables
-    keys.extend(['p_xuv', 'R_xuv', 'cs_xuv'])  # [bar], [m], [m/s]
-    keys.append('esc_rate_total')  # bulk escape rate [kg/s]
+    # Atmopsheric escape
+    keys.append('p_xuv')                # pressure of XUV absorption [bar]
+    keys.append('R_xuv')                # radius of XUV absorption [m]
+    keys.append('cs_xuv')               # sound speed, at R_xuv [m s-1]
+    keys.append('esc_rate_total')       # bulk escape rate [kg s-1]
     for e in element_list:
-        keys.append('esc_rate_' + e)  # escape rate of each element [kg s-1]
+        keys.append('esc_rate_' + e)    # escape rate of each element [kg s-1]
 
-    # from atmosphere climate calculation
-    keys.append('P_surf_clim')  # updated psurf after climate calc
-    keys.append('ocean_areacov')  # area fraction [1]
-    keys.append('ocean_maxdepth')  # max depth [m]
+    # Climate quantities
+    keys.append('P_surf_clim')          # total surface pressure, after rainout [bar]
+    keys.append('ocean_areacov')        # ocean surface-area fraction [1]
+    keys.append('ocean_maxdepth')       # maximum depth of oceans [m]
     for s in gas_list:
-        keys.append(s + '_ocean')  # surface reservoir [kg/m^2]
+        keys.append(s + '_ocean')       # ocean surface density [kg m-2]
 
-    # Diagnostic variables...
+    # Diagnostic variables
+    keys.append('wtg_surf')         # Weak temperature gradient parameter at the surface [1]
+    keys.append('roche_limit')      # Roche limit, orbital distance  [m]
+    keys.append('breakup_period')   # Critical day length [s]
+    keys.append('hill_radius')      # Hill radius, radial distance [m]
 
-    # Weak temperature gradient parameter at the surface
-    keys.append('wtg_surf')  # [1]
+    # Simulation's computational variables
+    keys.append('runtime')          # Simulation wall-clock runtime [s]
 
-    # Roche limit (orbital separation at which planet will disintegrate)
-    keys.append('roche_limit')  # [m]
-
-    # Hill radius (radius from planet at which the atmosphere becomes unbound)
-    keys.append('hill_radius')  # [m]
-
-    # Wall-clock runtime
-    keys.append('runtime')  # [s]
-
+    # fmt: on
     return keys
 
 

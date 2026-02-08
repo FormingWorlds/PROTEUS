@@ -28,7 +28,7 @@ def _make_minimal_hf_row() -> dict:
     hf_row['T_obs'] = 400.0  # K
     hf_row['F_xuv'] = 10.0  # W m^-2
     hf_row['R_obs'] = 1.0 * R_earth  # m
-    hf_row['M_planet'] = 1.0 * M_earth  # kg
+    hf_row['M_tot'] = 1.0 * M_earth  # kg
 
     # Supply VMRs at the XUV level for all BOREAS-supported gases
     for g in BOREAS_GASES:

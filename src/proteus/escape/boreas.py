@@ -76,7 +76,7 @@ def _set_boreas_params(config: Config, hf_row: dict) -> boreas.ModelParams:
     params.Teq = hf_row['T_obs']  # K
     params.FXUV = hf_row['F_xuv'] * 1e3  # XUV flux, converted to ergs cm-2 s-1
     params.rplanet = hf_row['R_obs'] * 1e2  # convert m to cm
-    params.mplanet = hf_row['M_planet'] * 1e3  # convert kg to g
+    params.mplanet = hf_row['M_tot'] * 1e3  # convert kg to g
     params.mmw_outflow_eff = None
 
     # Finalise parameters
