@@ -45,7 +45,7 @@ You should only obtain Julia using the official installer, **not** via your comp
 
 ```console
 curl -fsSL https://install.julialang.org | sh
-echo "export PYTHON_JULIAPKG_EXE=$(which julia) >> ~/.bashrc"
+echo "export PYTHON_JULIAPKG_EXE=$(which julia)" >> ~/.bashrc
 ```
 
 ## User install (default)
@@ -68,7 +68,7 @@ conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when us
 6. `proteus install-all --export-env`
 
 ### Before running PROTEUS
-If you want to start running PROTEUS right away (i.e. from the same shell that you used to install PROTEUS) you can set your environment variables using e.g. `source ~/.bashrc` (for Bash). This deactivates your current conda environment, so you need to enter `conda activate proteus` as well. If you chose `proteus install-all` without `--export-env`, you will need to set your PATH, FWL_DATA, Julia, and RAD_DIR enviroment variables manually.
+If you want to start running PROTEUS right away (i.e. from the same shell that you used to install PROTEUS) you can set your environment variables using e.g. `source ~/.bashrc` (for Bash). This deactivates your current conda environment, so you need to enter `conda activate proteus` as well. If you chose `proteus install-all` without `--export-env`, you will need to set your PATH, FWL_DATA, Julia, and RAD_DIR environment variables manually.
 
 When you log into the machine where you installed PROTEUS through `proteus install-all --export-env`,
 you will already have the environment variables FWL_DATA, RAD_DIR set appropriately, because your ~/.shellrc file (e.g. `~/.bashrc`) was updated during the install process. However, you still need to enter `conda activate proteus`.

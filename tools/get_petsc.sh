@@ -51,15 +51,15 @@ f2cblaslapack="--download-f2cblaslapack"
 #    Special cases
 if [[ "$(hostname -f)" == *"snellius"* ]]; then
     echo "    We are on Snellius"
-    mpich=" "
+    mpich=""
 fi
-if [[ -f "/etc/fedora-release" ]]; then
-    echo "    We are on Fedora"
+if [[ -f "/etc/fedora-release" || -f "/etc/redhat-release" ]]; then
+    echo "    We are on Fedora/RHEL-like"
     mpich=""
     f2cblaslapack=""
 fi
 
-if [ -z "$mpich" ] &&  ! [ type mpirun > /dev/null ]; then
+if [ -z "$mpich" ] && ! command -v mpirun >/dev/null 2>&1; then
     echo "    WARNING: MPI not found"
     exit 1
 fi
