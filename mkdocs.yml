@@ -9,6 +9,11 @@ nav:
   - Installation: installation.md
   - Using PROTEUS: usage.md
   - Configuration: config.md
+  - Testing infrastructure: test_infrastructure.md
+  - Test categorization: test_categorization.md
+  - Test building: test_building.md
+  - AI-assisted development: ai_usage.md
+  - Docker CI architecture: docker_ci_architecture.md
   - Contributing: CONTRIBUTING.md
   - Bibliography: bibliography.md
   - Troubleshooting: troubleshooting.md

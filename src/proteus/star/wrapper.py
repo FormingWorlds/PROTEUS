@@ -12,20 +12,18 @@ from proteus.star.phoenix import get_phoenix_modern_spectrum
 from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
 from proteus.utils.helper import UpdateStatusfile
 
-log = logging.getLogger("fwl."+__name__)
+log = logging.getLogger('fwl.' + __name__)
 
 if TYPE_CHECKING:
     from proteus import Proteus
     from proteus.config import Config
 
 # Mass limits on stellar tracks [Msun]
-MASS_LIM = {
-    "spada":   (0.10, 1.25),
-    "baraffe": (0.01, 1.40)
-}
+MASS_LIM = {'spada': (0.10, 1.25), 'baraffe': (0.01, 1.40)}
 
-def init_star(handler:Proteus):
-    '''
+
+def init_star(handler: Proteus):
+    """
     Star-related things to be done when the simulation begins.
 
     This includes:
@@ -36,47 +34,52 @@ def init_star(handler:Proteus):
     ----------
         handler : Proteus
             Proteus object instance
-    '''
+    """
 
-    log.info("Preparing stellar model")
-    log.info("")
+    log.info('Preparing stellar model')
+    log.info('')
 
     # Dummy star module does not require preparation
 
     # Prepare MORS
     if handler.config.star.module == 'mors':
         import mors
+
         mors_cfg = handler.config.star.mors
-        fwl_dir  = handler.directories["fwl"]
+        fwl_dir = handler.directories['fwl']
 
         if mors_cfg.star_path is not None:
             star_modern_path = mors_cfg.star_path
-            log.info("Using custom stellar spectrum path.")
+            log.info('Using custom stellar spectrum path.')
         else:
             starname_input = mors_cfg.star_name.strip()
-            star_file = starname_input.lower().replace(" ", "-").replace("gj-", "gj") + ".txt"
+            star_file = starname_input.lower().replace(' ', '-').replace('gj-', 'gj') + '.txt'
 
             # Solar special cases
-            solar_key = starname_input.lower().replace(" ", "")
+            solar_key = starname_input.lower().replace(' ', '')
 
             # Make sure lowercase keys match available solar files
-            solar_map = {"sun": "sun.txt",
-                "sun0.6ga": "Sun0.6Ga.txt",
-                "sun1.8ga": "Sun1.8Ga.txt",
-                "sun2.7ga": "Sun2.7Ga.txt",
-                "sun3.8ga": "Sun3.8Ga.txt",
-                "sun4.4ga": "Sun4.4Ga.txt",
-                "sun5.6gyr": "Sun5.6Gyr.txt",
-                "sunmodern": "SunModern.txt"}
+            solar_map = {
+                'sun': 'sun.txt',
+                'sun0.6ga': 'Sun0.6Ga.txt',
+                'sun1.8ga': 'Sun1.8Ga.txt',
+                'sun2.7ga': 'Sun2.7Ga.txt',
+                'sun3.8ga': 'Sun3.8Ga.txt',
+                'sun4.4ga': 'Sun4.4Ga.txt',
+                'sun5.6gyr': 'Sun5.6Gyr.txt',
+                'sunmodern': 'SunModern.txt',
+            }
 
             # Paths to MUSCLES spectra
-            muscles_path = os.path.join(fwl_dir, "stellar_spectra/MUSCLES", star_file)
+            muscles_path = os.path.join(fwl_dir, 'stellar_spectra/MUSCLES', star_file)
 
             # Pick the intended solar_path:
             if solar_key in solar_map:
-                solar_path = os.path.join(fwl_dir, "stellar_spectra/solar", solar_map[solar_key])
+                solar_path = os.path.join(
+                    fwl_dir, 'stellar_spectra/solar', solar_map[solar_key]
+                )
             else:
-                solar_path = os.path.join(fwl_dir, "stellar_spectra/solar", star_file)
+                solar_path = os.path.join(fwl_dir, 'stellar_spectra/solar', star_file)
 
             src = mors_cfg.spectrum_source
 
@@ -87,42 +90,71 @@ def init_star(handler:Proteus):
                 elif os.path.exists(solar_path):
                     star_modern_path = solar_path
                 else:
-                    log.error(f"No stellar spectrum found for '{mors_cfg.star_name}' in reference data.")
-                    log.error("Check the available spectra at https://proteus-framework.org/PROTEUS/data.html.")
+                    log.error(
+                        f"No stellar spectrum found for '{mors_cfg.star_name}' in reference data."
+                    )
+                    log.error(
+                        'Check the available spectra at https://proteus-framework.org/PROTEUS/data.html.'
+                    )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
-                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'.")
+                        f"No solar or MUSCLES spectrum found in reference data for '{mors_cfg.star_name}'."
+                    )
 
             # spectrum_source = 'solar'
             elif src == 'solar':
                 if os.path.exists(solar_path):
                     star_modern_path = solar_path
                 elif os.path.exists(muscles_path):
-                    log.warning(f"Requested solar spectrum for '{mors_cfg.star_name}', but file cannot be found in solar reference data. ")
-                    log.warning("Using available MUSCLES spectrum.")
-                    log.warning("To use MUSCLES by default, set star.mors.spectrum_source = 'muscles'.")
+                    log.warning(
+                        f"Requested solar spectrum for '{mors_cfg.star_name}', but file cannot be found in solar reference data. "
+                    )
+                    log.warning('Using available MUSCLES spectrum.')
+                    log.warning(
+                        "To use MUSCLES by default, set star.mors.spectrum_source = 'muscles'."
+                    )
                     star_modern_path = muscles_path
                 else:
-                    log.error(f"Requested solar spectrum for '{mors_cfg.star_name}', but the file cannot be found in reference data.")
-                    log.error("If you would like to use the NREL modern solar spectrum, please set star.mors.star_name = 'sun'.")
+                    log.error(
+                        f"Requested solar spectrum for '{mors_cfg.star_name}', but the file cannot be found in reference data."
+                    )
+                    log.error(
+                        "If you would like to use the NREL modern solar spectrum, please set star.mors.star_name = 'sun'."
+                    )
                     UpdateStatusfile(handler.directories, 23)
-                    raise FileNotFoundError(f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'.")
+                    raise FileNotFoundError(
+                        f"No solar or MUSCLES spectrum for '{mors_cfg.star_name}'."
+                    )
 
             # spectrum_source = 'muscles'
             elif src == 'muscles':
                 if os.path.exists(muscles_path):
                     star_modern_path = muscles_path
                 elif os.path.exists(solar_path):
-                    log.warning(f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data.")
-                    log.warning("The file is available in solar reference data. Using that instead.")
-                    log.warning("To use solar by default, set star.mors.spectrum_source = 'solar'.")
+                    log.warning(
+                        f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data."
+                    )
+                    log.warning(
+                        'The file is available in solar reference data. Using that instead.'
+                    )
+                    log.warning(
+                        "To use solar by default, set star.mors.spectrum_source = 'solar'."
+                    )
                     star_modern_path = solar_path
                 else:
-                    log.error(f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data.")
-                    log.error("Check the available MUSCLES spectra at https://proteus-framework.org/PROTEUS/data.html#stellar-spectra")
-                    log.error(f"If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {mors_cfg.star_name}")
-                    log.error("To download all MUSCLES spectra: proteus get muscles --all")
-                    log.error("If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'.")
+                    log.error(
+                        f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data."
+                    )
+                    log.error(
+                        'Check the available MUSCLES spectra at https://proteus-framework.org/PROTEUS/data.html#stellar-spectra'
+                    )
+                    log.error(
+                        f'If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {mors_cfg.star_name}'
+                    )
+                    log.error('To download all MUSCLES spectra: proteus get muscles --all')
+                    log.error(
+                        "If no observed spectrum is available, consider using a PHOENIX synthetic spectrum by setting star.mors.spectrum_source = 'phoenix'."
+                    )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(f"No MUSCLES spectrum for '{mors_cfg.star_name}'.")
 
@@ -145,10 +177,7 @@ def init_star(handler:Proteus):
                         age_rot_Myr = age_now_Myr
 
                     track_for_phoenix = mors.Star(
-                        Mstar=Mstar_tmp,
-                        Age=age_rot_Myr,
-                        percentile=pcntle,
-                        Prot=period
+                        Mstar=Mstar_tmp, Age=age_rot_Myr, percentile=pcntle, Prot=period
                     )
                 else:  # 'baraffe'
                     track_for_phoenix = mors.BaraffeTrack(Mstar_tmp)
@@ -158,15 +187,15 @@ def init_star(handler:Proteus):
                 )
 
             else:
-                log.error(f"Unknown star.mors.spectrum_source = {src}")
+                log.error(f'Unknown star.mors.spectrum_source = {src}')
                 UpdateStatusfile(handler.directories, 23)
-                raise ValueError(f"Unknown spectrum_source: {src}")
+                raise ValueError(f'Unknown spectrum_source: {src}')
 
-        log.info(f"Using stellar spectrum file: {star_modern_path}")
-        log.info("")
+        log.info(f'Using stellar spectrum file: {star_modern_path}')
+        log.info('')
 
         # Copy modern spectrum to output folder, for posterity.
-        star_backup_path = os.path.join(handler.directories["output/data"], "-1.sflux")
+        star_backup_path = os.path.join(handler.directories['output/data'], '-1.sflux')
         shutil.copyfile(star_modern_path, star_backup_path)
 
         # Clip mass if required
@@ -174,13 +203,11 @@ def init_star(handler:Proteus):
         Mstar = max(Mstar, MASS_LIM[handler.config.star.mors.tracks][0])
         Mstar = min(Mstar, MASS_LIM[handler.config.star.mors.tracks][1])
         if Mstar != handler.config.star.mass:
-            log.warning(f"Star mass out of range. Clipped to {Mstar} Msun")
+            log.warning(f'Star mass out of range. Clipped to {Mstar} Msun')
 
         match handler.config.star.mors.tracks:
-
             case 'spada':
-
-                age_now_Myr = handler.config.star.mors.age_now * 1000 # convert Gyr to Myr
+                age_now_Myr = handler.config.star.mors.age_now * 1000  # convert Gyr to Myr
 
                 # Get rotation period or percentile (one of these is None)
                 pcntle = handler.config.star.mors.rot_pcntle
@@ -201,9 +228,9 @@ def init_star(handler:Proteus):
                 # load and fit track data
                 try:
                     # clip mass
-                    handler.stellar_track = mors.Star(Mstar = Mstar,
-                                                        Age = age_rot_Myr,
-                                                        percentile = pcntle, Prot=period)
+                    handler.stellar_track = mors.Star(
+                        Mstar=Mstar, Age=age_rot_Myr, percentile=pcntle, Prot=period
+                    )
                 except Exception as e:
                     UpdateStatusfile(handler.directories, 23)
                     raise e
@@ -216,7 +243,8 @@ def init_star(handler:Proteus):
 
                 # calculate other properties from modern spectrum
                 handler.star_props = get_spada_synthesis_properties(
-                                                handler.stellar_track, age_now_Myr )
+                    handler.stellar_track, age_now_Myr
+                )
 
             case 'baraffe':
                 # creates track data
@@ -228,7 +256,10 @@ def init_star(handler:Proteus):
                 )
 
                 # calculate other properties from modern spectrum (here bolometric luminosity only)
-                handler.star_props = handler.stellar_track.BaraffeLuminosity(handler.config.star.mors.age_now * 1e9)
+                handler.star_props = handler.stellar_track.BaraffeLuminosity(
+                    handler.config.star.mors.age_now * 1e9
+                )
+
 
 def get_spada_synthesis_properties(spada_track, age: float):
     """Calculate properties of star for spectrum synthesis
@@ -251,71 +282,83 @@ def get_spada_synthesis_properties(spada_track, age: float):
     import mors.spectrum as spec
 
     out = {}
-    out["age"] = age
-    out["Rstar"] = spada_track.Value(age, "Rstar") * R_sun #[m]
-    out["Teff"] = spada_track.Value(age, "Teff") #[K]
+    out['age'] = age
+    out['Rstar'] = spada_track.Value(age, 'Rstar') * R_sun  # [m]
+    out['Teff'] = spada_track.Value(age, 'Teff')  # [K]
 
     # Luminosities (erg s-1)
-    out["L_bo"] = spada_track.Value(age, "Lbol")
-    out["L_xr"] = spada_track.Value(age, "Lx")
-    out["L_e1"] = spada_track.Value(age, "Leuv1")
-    out["L_e2"] = spada_track.Value(age, "Leuv2")
+    out['L_bo'] = spada_track.Value(age, 'Lbol')
+    out['L_xr'] = spada_track.Value(age, 'Lx')
+    out['L_e1'] = spada_track.Value(age, 'Leuv1')
+    out['L_e2'] = spada_track.Value(age, 'Leuv2')
 
     # Fluxes at 1 AU
-    area = (4.0 * np.pi * AU * AU)
-    for k in ["bo","xr","e1","e2"]:
-        out["F_"+k] = out["L_"+k]/area
+    area = 4.0 * np.pi * AU * AU
+    for k in ['bo', 'xr', 'e1', 'e2']:
+        out['F_' + k] = out['L_' + k] / area
 
     # Get flux from Planckian band
-    wl_pl = np.logspace(np.log10(spec.bands_limits["pl"][0]), np.log10(spec.bands_limits["pl"][1]), 1000)
-    fl_pl = spec.PlanckFunction_surf(wl_pl, out["Teff"])
-    fl_pl = spec.ScaleTo1AU(fl_pl, out["Rstar"])
-    out["F_pl"] = np.trapezoid(fl_pl, wl_pl)
-    out["L_pl"] = out["F_pl"] * area
+    wl_pl = np.logspace(
+        np.log10(spec.bands_limits['pl'][0]), np.log10(spec.bands_limits['pl'][1]), 1000
+    )
+    fl_pl = spec.PlanckFunction_surf(wl_pl, out['Teff'])
+    fl_pl = spec.ScaleTo1AU(fl_pl, out['Rstar'])
+    out['F_pl'] = np.trapezoid(fl_pl, wl_pl)
+    out['L_pl'] = out['F_pl'] * area
 
     # Get flux of UV band from remainder
-    out["F_uv"] = out["F_bo"] - out["F_xr"] - out["F_e1"] - out["F_e2"] - out["F_pl"]
-    out["L_uv"] = out["F_uv"] * area
+    out['F_uv'] = out['F_bo'] - out['F_xr'] - out['F_e1'] - out['F_e2'] - out['F_pl']
+    out['L_uv'] = out['F_uv'] * area
 
     return out
 
-def get_new_spectrum(t_star:float, config:Config,
-                     star_struct_modern=None, star_props_modern=None,
-                     stellar_track=None, modern_wl=None, modern_fl=None):
-    '''
-    Get new stellar spectrum at 1 AU.
-    '''
 
-    log.debug("Get new stellar spectrum (star age = %g Gyr)"%(t_star/1e9))
+def get_new_spectrum(
+    t_star: float,
+    config: Config,
+    star_struct_modern=None,
+    star_props_modern=None,
+    stellar_track=None,
+    modern_wl=None,
+    modern_fl=None,
+):
+    """
+    Get new stellar spectrum at 1 AU.
+    """
+
+    log.debug('Get new stellar spectrum (star age = %g Gyr)' % (t_star / 1e9))
 
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import generate_spectrum, get_star_radius
+
         wl, fl = generate_spectrum(config.star.dummy.Teff, get_star_radius(config))
 
     # Mors cases
     elif config.star.module == 'mors':
-
         import mors
 
         match config.star.mors.tracks:
             case 'spada':
-                star_props_hist = get_spada_synthesis_properties(stellar_track, t_star/1e6)
+                star_props_hist = get_spada_synthesis_properties(stellar_track, t_star / 1e6)
                 assert star_struct_modern
                 assert star_props_modern
                 synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
-                    modern_spec=star_struct_modern, modern_dict=star_props_modern, historical_dict=star_props_hist)
+                    modern_spec=star_struct_modern,
+                    modern_dict=star_props_modern,
+                    historical_dict=star_props_hist,
+                )
                 fl = synthetic.fl
                 wl = synthetic.wl
             case 'baraffe':
-                fl = stellar_track.BaraffeSpectrumCalc(
-                        t_star, star_props_modern, modern_fl)
+                fl = stellar_track.BaraffeSpectrumCalc(t_star, star_props_modern, modern_fl)
                 wl = modern_wl
 
     return wl, fl
 
-def scale_spectrum_to_toa(fl_arr, sep:float):
-    '''
+
+def scale_spectrum_to_toa(fl_arr, sep: float):
+    """
     Scale stellar fluxes from 1 AU to top of the planet's atmosphere.
 
     Parameters
@@ -328,11 +371,12 @@ def scale_spectrum_to_toa(fl_arr, sep:float):
     ----------
         fl_arr : np.ndarray
             Incoming stellar radiation scaled to the correct distance.
-    '''
-    return np.array(fl_arr) * ( (AU / sep)**2 )
+    """
+    return np.array(fl_arr) * ((AU / sep) ** 2)
 
-def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
-    '''
+
+def write_spectrum(wl_arr, fl_arr, hf_row: dict, output_dir: str):
+    """
     Write stellar spectrum to file.
 
     Parameters
@@ -345,27 +389,28 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
             Current helpfile row
         output_dir : str
             Proteus output directory
-    '''
+    """
 
-    log.debug("Writing stellar spectrum to file")
+    log.debug('Writing stellar spectrum to file')
 
     # Header information
     header = (
-        "# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr"
-        % hf_row["age_star"]
+        '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr'
+        % hf_row['age_star']
     )
 
     # Write to TSV file
     np.savetxt(
-        os.path.join(output_dir, "data", "%d.sflux" % hf_row["Time"]),
+        os.path.join(output_dir, 'data', '%d.sflux' % hf_row['Time']),
         np.array([wl_arr, fl_arr]).T,
         header=header,
-        comments="",
-        fmt="%.8e",
-        delimiter="\t",
+        comments='',
+        fmt='%.8e',
+        delimiter='\t',
     )
 
-def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
+
+def update_stellar_quantities(hf_row: dict, config: Config, stellar_track=None):
     """
     Wrapper function to update stellar quantities, such as luminosity and radius.
 
@@ -382,123 +427,132 @@ def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
     """
 
     # Update value for star's radius and mass
-    log.debug("Update stellar radius and mass")
+    log.debug('Update stellar radius and mass')
     update_stellar_radius(hf_row, config, stellar_track)
     update_stellar_mass(hf_row, config)
 
     # Update value for instellation flux
-    log.debug("Update stellar fluxes and temperature")
+    log.debug('Update stellar fluxes and temperature')
     update_instellation(hf_row, config, stellar_track)
     update_stellar_temperature(hf_row, config, stellar_track)
-    log.info("    F_ins      = %.3e   W m-2"%hf_row["F_ins"])
-    log.info("    F_xuv      = %.3e   W m-2"%hf_row["F_xuv"])
-    log.info("    T_star     = %.3f    K"%hf_row["T_star"])
+    log.info('    F_ins      = %.3e   W m-2' % hf_row['F_ins'])
+    log.info('    F_xuv      = %.3e   W m-2' % hf_row['F_xuv'])
+    log.info('    T_star     = %.3f    K' % hf_row['T_star'])
 
     # Calculate new eqm temperature
-    log.debug("Update equilibrium temperature")
+    log.debug('Update equilibrium temperature')
     update_equilibrium_temperature(hf_row, config)
 
     # Calculate new skin temperature
     # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
-    hf_row["T_skin"] = hf_row["T_eqm"] * (0.5**0.25)
+    hf_row['T_skin'] = hf_row['T_eqm'] * (0.5**0.25)
 
-def update_stellar_mass(hf_row:dict, config:Config):
-    '''
+
+def update_stellar_mass(hf_row: dict, config: Config):
+    """
     Update stellar mass in hf_row, stored in SI units.
-    '''
-    hf_row["M_star"] = config.star.mass * M_sun
+    """
+    hf_row['M_star'] = config.star.mass * M_sun
 
-def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
-    '''
+
+def update_stellar_radius(hf_row: dict, config: Config, stellar_track=None):
+    """
     Update stellar radius in hf_row, stored in SI units.
-    '''
+    """
 
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import get_star_radius
+
         R_star = get_star_radius(config)
 
     # Mors cases
     elif config.star.module == 'mors':
-
         # which track?
         match config.star.mors.tracks:
             case 'spada':
-                R_star = stellar_track.Value(hf_row["age_star"] / 1e6, "Rstar")
+                R_star = stellar_track.Value(hf_row['age_star'] / 1e6, 'Rstar')
             case 'baraffe':
-                R_star = stellar_track.BaraffeStellarRadius(hf_row["age_star"])
+                R_star = stellar_track.BaraffeStellarRadius(hf_row['age_star'])
 
     # Dimensionalise and store in dictionary
-    hf_row["R_star"] = R_star * R_sun
+    hf_row['R_star'] = R_star * R_sun
 
-def update_stellar_temperature(hf_row:dict, config:Config, stellar_track=None):
-    '''
+
+def update_stellar_temperature(hf_row: dict, config: Config, stellar_track=None):
+    """
     Update stellar temperature in hf_row, stored in SI units.
-    '''
+    """
 
     # Dummy case
     if config.star.module == 'dummy':
-        hf_row["T_star"] = config.star.dummy.Teff
+        hf_row['T_star'] = config.star.dummy.Teff
 
     # Mors cases
     elif config.star.module == 'mors':
-
         # which track?
         match config.star.mors.tracks:
             case 'spada':
-                hf_row["T_star"] = stellar_track.Value(hf_row["age_star"] / 1e6, "Teff")
+                hf_row['T_star'] = stellar_track.Value(hf_row['age_star'] / 1e6, 'Teff')
             case 'baraffe':
-                hf_row["T_star"] = stellar_track.BaraffeStellarTeff(hf_row["age_star"])
+                hf_row['T_star'] = stellar_track.BaraffeStellarTeff(hf_row['age_star'])
 
-def update_instellation(hf_row:dict, config:Config, stellar_track=None):
-    '''
+
+def update_instellation(hf_row: dict, config: Config, stellar_track=None):
+    """
     Update hf_row value of bolometric stellar flux impinging upon the planet.
-    '''
+    """
 
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
-        S_0 = calc_instellation(config.star.dummy.Teff, hf_row["R_star"], hf_row["separation"])
+
+        S_0 = calc_instellation(config.star.dummy.Teff, hf_row['R_star'], hf_row['separation'])
         Fxuv_SI = 0.0
 
     # Mors cases
     elif config.star.module == 'mors':
-
         # which track?
         match config.star.mors.tracks:
             case 'spada':
-
-                age_star = hf_row["age_star"] / 1e6
+                age_star = hf_row['age_star'] / 1e6
 
                 # Bolometric flux
-                S_0 = stellar_track.Value(age_star, "Lbol") * 1e-7 \
-                        / (4.0 * np.pi * hf_row["separation"]**2.0 )
+                S_0 = (
+                    stellar_track.Value(age_star, 'Lbol')
+                    * 1e-7
+                    / (4.0 * np.pi * hf_row['separation'] ** 2.0)
+                )
 
                 # Interpolating the XUV flux at the age of the star
-                Lxuv_cgs = stellar_track.Value(age_star, 'Lx') + \
-                                stellar_track.Value(age_star, 'Leuv')
-                Fxuv_SI = Lxuv_cgs/(4*np.pi * (hf_row["separation"]*1e2)**2) * ergcm2stoWm2
+                Lxuv_cgs = stellar_track.Value(age_star, 'Lx') + stellar_track.Value(
+                    age_star, 'Leuv'
+                )
+                Fxuv_SI = (
+                    Lxuv_cgs / (4 * np.pi * (hf_row['separation'] * 1e2) ** 2) * ergcm2stoWm2
+                )
 
             case 'baraffe':
-
                 # Bolometric flux
-                S_0 = stellar_track.BaraffeSolarConstant(hf_row["age_star"],
-                                                    hf_row["separation"]/AU)
+                S_0 = stellar_track.BaraffeSolarConstant(
+                    hf_row['age_star'], hf_row['separation'] / AU
+                )
 
                 # XUV flux not provided by Baraffe tracks
                 Fxuv_SI = 0.0
 
     # Update hf_row dictionary
-    hf_row["F_ins"] = S_0 * config.star.bol_scale
-    hf_row["F_xuv"] = Fxuv_SI * config.star.bol_scale
+    hf_row['F_ins'] = S_0 * config.star.bol_scale
+    hf_row['F_xuv'] = Fxuv_SI * config.star.bol_scale
 
-def update_equilibrium_temperature(hf_row:dict, config:Config):
-    '''
+
+def update_equilibrium_temperature(hf_row: dict, config: Config):
+    """
     Calculate planetary equilibrium temperature.
-    '''
+    """
 
     # Absorbed stellar flux
-    F_asf = hf_row["F_ins"] * config.orbit.s0_factor * (1-hf_row["albedo_pl"])
+    F_asf = hf_row['F_ins'] * config.orbit.s0_factor * (1 - hf_row['albedo_pl'])
 
     # Planetary equilibrium temperature
-    hf_row["T_eqm"] = (F_asf / const_sigma)**(1.0/4.0)
+    hf_row['T_eqm'] = (F_asf / const_sigma) ** (1.0 / 4.0)
