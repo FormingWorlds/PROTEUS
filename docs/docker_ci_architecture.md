@@ -77,8 +77,8 @@ PROTEUS_DIR=/opt/proteus
 **Purpose:** Fast PR validation using pre-built Docker image.
 
 **Triggers:**
-- Pull requests to `main` or `dev`
-- Push to `main`, `dev`, or feature branches
+- Pull requests to `main`
+- Push to `main`
 - Manual dispatch
 
 **Strategy:**

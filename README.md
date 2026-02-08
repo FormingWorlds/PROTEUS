@@ -7,7 +7,10 @@
 
 <p align="center">
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
-    <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml/badge.svg?branch=main">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?branch=main&label=Unit%20Tests">
+  </a>
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests">
   </a>
   <a href="https://proteus-framework.org/PROTEUS/">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main">
