@@ -77,7 +77,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     # Target mass
     M_target = config.struct.mass_tot * M_earth
 
-    # We need to solve for the state hf_row[M_tot] = config.struct.mass_tot
+    # We need to solve for the state hf_row[M_planet] = config.struct.mass_tot
     # This function takes R_int as the input value, and returns the mass residual
     def _resid(x):
         hf_row['R_int'] = x
@@ -90,8 +90,8 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         update_gravity(hf_row)
 
         # Calculate residual
-        res = hf_row['M_tot'] - M_target
-        log.debug('    yields M = %.5e kg , resid = %.3e kg' % (hf_row['M_tot'], res))
+        res = hf_row['M_planet'] - M_target
+        log.debug('    yields M = %.5e kg , resid = %.3e kg' % (hf_row['M_planet'], res))
 
         return res
 
@@ -121,7 +121,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
 
     # Result
     log.info('Found solution for interior structure')
-    log.info('M_tot: %.1e kg = %.3f M_earth' % (hf_row['M_tot'], hf_row['M_tot'] / M_earth))
+    log.info('M_planet: %.1e kg = %.3f M_earth' % (hf_row['M_planet'], hf_row['M_planet'] / M_earth))
     log.info('R_int: %.1e m  = %.3f R_earth' % (hf_row['R_int'], hf_row['R_int'] / R_earth))
     log.info(' ')
 
@@ -291,7 +291,7 @@ def run_interior(
             # do not include oxygen, because it varies over time in order to set fO2.
             continue
         M_volatiles += hf_row[e + '_kg_total']
-    hf_row['M_tot'] = hf_row['M_int'] + M_volatiles
+    hf_row['M_planet'] = hf_row['M_int'] + M_volatiles
 
     # Apply step limiters
     if hf_row['Time'] > 0:

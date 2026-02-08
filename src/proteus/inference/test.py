@@ -40,7 +40,7 @@ params = {
     'outgas.fO2_shift_IW': [-4.0, 4.0],
 }
 # Observabels to consider
-obs = ['R_int', 'M_tot', 'transit_depth', 'bond_albedo']
+obs = ['R_int', 'M_planet', 'transit_depth', 'bond_albedo']
 
 # List of parameter keys for ordering
 keys = list(params.keys())

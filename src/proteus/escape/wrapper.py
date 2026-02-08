@@ -143,7 +143,7 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
         config.escape.zephyrus.tidal,  # tidal contribution (True/False)
         hf_row['semimajorax'],  # planetary semi-major axis [m]
         hf_row['eccentricity'],  # eccentricity
-        hf_row['M_tot'],  # planetary mass [kg]
+        hf_row['M_planet'],  # planetary mass [kg]
         config.star.mass,  # stellar mass [kg]
         config.escape.zephyrus.efficiency,  # efficiency factor
         hf_row['R_int'],  # planetary radius [m]

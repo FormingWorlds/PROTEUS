@@ -531,13 +531,14 @@ def GetHelpfileKeys():
         # Model tracking
         'Time',  # [yr]
 
-        # Orbital parameters of planet
+        # Orbital and spin parameters of planet
         'semimajorax',      # semi-major axis [m]
         'separation',       # time-averaged separation [m]
         'perihelion',       # lowest point in orbit [m]
         'orbital_period',   # orbital duration [s]
         'eccentricity',     # orbital eccentricity [1]
         'Imk2',             # Imaginary part of k2 Love Number [1]
+        'axial_period',     # day length of planet around its axis [s]
 
         # Satellite system
         'perigee',          # lowest point in orbit [m]
@@ -545,13 +546,10 @@ def GetHelpfileKeys():
         'M_sat',            # mass of satellite [kg]
         'plan_sat_am',      # angular momentum of sat+pla [kg m2 s-1],
 
-        # Day length
-        'axial_period',     # day length of planet around its axis [s]
-
         # Planet structure
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
-        'M_tot',            # total mass [kg]
+        'M_planet',         # total planet wet+dry mass [kg]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]

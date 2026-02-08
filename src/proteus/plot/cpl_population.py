@@ -74,12 +74,12 @@ def plot_population_mass_radius(
         log.warning('Cannot make plot_population with less than 3 samples')
         return
 
-    m_max = max(m_max, np.amax(hf_crop['M_tot']) / M_earth + 1)
-    m_min = min(m_min, np.amin(hf_crop['M_tot']) / M_earth)
+    m_max = max(m_max, np.amax(hf_crop['M_planet']) / M_earth + 1)
+    m_min = min(m_min, np.amin(hf_crop['M_planet']) / M_earth)
 
     log.info('Plot population (mass-radius)')
     sim_rad = np.array(hf_crop['R_obs']) / R_earth
-    sim_mas = np.array(hf_crop['M_tot']) / M_earth
+    sim_mas = np.array(hf_crop['M_planet']) / M_earth
 
     # Get exoplanet values from database
     exo = _get_exo_data(fwl_dir)
@@ -184,7 +184,7 @@ def plot_population_time_density(
 
     log.info('Plot population (time-density)')
     sim_rad = np.array(hf_crop['R_obs'])
-    sim_mas = np.array(hf_crop['M_tot'])
+    sim_mas = np.array(hf_crop['M_planet'])
     sim_rho = 3 * sim_mas / (4 * np.pi * sim_rad**3) * 0.001
 
     # Get values from database

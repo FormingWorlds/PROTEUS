@@ -133,7 +133,7 @@ def test_run_escape_zephyrus(mock_el_escape):
     hf_row = {
         'semimajorax': 0.05 * 1.496e11,  # 0.05 AU in meters
         'eccentricity': 0.01,
-        'M_tot': 1.898e27,  # Jupiter mass in kg
+        'M_planet': 1.898e27,  # Jupiter mass in kg
         'R_int': 7.0e7,  # 70,000 km radius
         'R_xuv': 8.0e7,  # XUV radius slightly larger
         'F_xuv': 1e4,  # W/m^2 (high XUV flux)
@@ -220,7 +220,7 @@ def test_run_zephyrus_no_tidal(mock_el_escape):
     hf_row = {
         'semimajorax': 1.496e11,  # 1 AU
         'eccentricity': 0.0,
-        'M_tot': 5.972e24,  # Earth mass
+        'M_planet': 5.972e24,  # Earth mass
         'R_int': 6.371e6,  # Earth radius
         'R_xuv': 6.5e6,  # Slightly larger XUV radius
         'F_xuv': 100.0,  # W/m^2
@@ -264,7 +264,7 @@ def test_run_zephyrus_with_tidal(mock_el_escape):
     hf_row = {
         'semimajorax': 0.03 * 1.496e11,  # 0.03 AU
         'eccentricity': 0.05,
-        'M_tot': 1e27,  # Sub-Jupiter mass
+        'M_planet': 1e27,  # Sub-Jupiter mass
         'R_int': 1.0e8,  # 100,000 km (inflated radius)
         'R_xuv': 1.2e8,
         'F_xuv': 1e5,  # W/m^2 (extreme XUV)

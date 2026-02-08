@@ -185,7 +185,7 @@ def run_atmosphere(
             hf_row[key] = atm_output[key]
 
     # Copy special cases
-    hf_row['rho_obs'] = 3 * hf_row['M_tot'] / (4 * pi * hf_row['R_obs'] ** 3)
+    hf_row['rho_obs'] = 3 * hf_row['M_planet'] / (4 * pi * hf_row['R_obs'] ** 3)
     hf_row['F_net'] = hf_row['F_int'] - hf_row['F_atm']
     hf_row['bond_albedo'] = atm_output['albedo']
 

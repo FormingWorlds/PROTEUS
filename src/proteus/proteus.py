@@ -460,7 +460,7 @@ class Proteus:
                 run_outgassing(self.directories, self.config, self.hf_row)
 
             # Add atmosphere mass to interior mass, to get total planet mass
-            self.hf_row['M_tot'] = self.hf_row['M_int'] + self.hf_row['M_atm']
+            self.hf_row['M_planet'] = self.hf_row['M_int'] + self.hf_row['M_atm']
 
             ############### / OUTGASSING
 
