@@ -135,7 +135,7 @@ you will already have the environment variables FWL_DATA, RAD_DIR set appropriat
 
 5. Radiative-convective atmosphere model (**AGNI**)
 
-    Installation steps can be found at the [AGNI wiki](https://nichollsh.github.io/AGNI/dev/setup/).
+    Installation steps can be found at the [AGNI wiki](https://h-nicholls.space/AGNI/dev/setup/).
     They are also reproduced below.
 
     ```console
