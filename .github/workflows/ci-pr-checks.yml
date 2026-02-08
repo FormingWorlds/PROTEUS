@@ -190,7 +190,7 @@ jobs:
         id: download-nightly
         if: always()
         continue-on-error: true  # Do not fail job when no nightly artifact exists yet
-        uses: dawidd6/action-download-artifact@v3
+        uses: dawidd6/action-download-artifact@v6
         with:
           workflow: ci-nightly.yml
           name: nightly-coverage
