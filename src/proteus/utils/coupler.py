@@ -603,7 +603,7 @@ def GetHelpfileKeys():
 
     # quantities for each gas, from outgassing
     for s in gas_list:
-        keys.append(s + '_mol_atm')     # number outgsassed to atmosphere [mol]
+        keys.append(s + '_mol_atm')     # number outgassed to atmosphere [mol]
         keys.append(s + '_mol_solid')   # number in solid mantle [mol]
         keys.append(s + '_mol_liquid')  # number in liquid mantle [mol]
         keys.append(s + '_mol_total')   # number in whole planet [mol]
