@@ -93,10 +93,30 @@ Firstly, check that you are in the correct directory when running `make` or `./c
 be caused by the environment variable `PETSC_DIR` remaining set after a previous PETSc installation. Run `unset PETSC_DIR`
 and try again.
 
-## Linux: cannot compile PETSc.
+## Linux: cannot compile PETSc on compute cluster.
 
-This could be due to a mismatch between your MPICH version and SLURM. Generally this problem only occurs on HPC servers, such as for Snellius.
-You need to disable the ``--download-mpich`` flag in the `get_petsc` script.
+There are various reasons that PETSc might have problems compiling. On a cluster, this could be caused by a mismatch between your MPICH version and SLURM. This is a known problem on Snellius.
+
+Try loading the OpenMPI module: `module load mpi/openmpi-x86_64`.
+
+## Linux: cannot compile PETSc, error moving libraries.
+
+If you are using Fedora or RedHat Linux distributions, you might encounter an error that looks like:
+
+```
+Error moving
+  /home/$USER/PROTEUS/petsc/arch-linux-c-opt/externalpackages/f2cblaslapack-3.8.0.q2
+  libraries
+```
+
+To resolve, try following these steps:
+
+1. Install libraries, `sudo dnf install lapack lapack-devel lapack-static sundials-mpich openmpi openmpi-devel f2c f2c-libs`
+2. Enable module utility, `source /etc/profile.d/modules.sh`
+3. Load OpenMPI module, `module load mpi/openmpi-x86_64`
+4. Ideally, add the commands in steps (2) and (3) to your `~/.bashrc` file
+5. Now, try running the `get_petsc.sh` script again
+
 
 ## Linux: `netcdff.so` not found
 

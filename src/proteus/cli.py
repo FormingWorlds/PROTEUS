@@ -633,6 +633,7 @@ def install_all(export_env: bool, config_path: Path):
             fg='red',
         )
         raise SystemExit(1)
+    julia_exec = shutil.which('julia')
 
     # --- Step 4: Install AGNI ---
     agni_dir = root / 'AGNI'
@@ -653,7 +654,11 @@ def install_all(export_env: bool, config_path: Path):
 
     # --- Step 5: Export environment variables ---
     if export_env:
-        for var, value in {'FWL_DATA': fwl_data, 'RAD_DIR': rad_dir}.items():
+        for var, value in {
+            'FWL_DATA': fwl_data,
+            'RAD_DIR': rad_dir,
+            'PYTHON_JULIAPKG_EXE': julia_exec,
+        }.items():
             rc_file = append_to_shell_rc(var, str(value))
             if rc_file:
                 click.secho(f'[+] Exported {var} to {rc_file}', fg='green')
