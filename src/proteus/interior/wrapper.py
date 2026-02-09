@@ -9,9 +9,9 @@ import pandas as pd
 import scipy.optimize as optimise
 
 from proteus.interior.common import Interior_t
+from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
-from proteus.outgas.wrapper import calc_target_elemental_inventories
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -38,7 +38,8 @@ def calculate_core_mass(hf_row: dict, config: Config):
         * (hf_row['R_int'] * config.struct.corefrac) ** 3.0
     )
 
-def update_planet_mass(hf_row:dict):
+
+def update_planet_mass(hf_row: dict):
     """
     Calculate total planet mass, as sum of dry+wet parts.
     """
