@@ -164,7 +164,6 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
             'proteus.interior.wrapper.run_interior', side_effect=fake_run_interior
         ) as mock_run,
     ):
-
         # Call the function under test
         determine_interior_radius(dirs, config, hf_all, hf_row)
 
