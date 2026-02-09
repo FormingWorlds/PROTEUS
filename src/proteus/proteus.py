@@ -13,7 +13,7 @@ from juliacall import Main as jl  # noqa
 
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
-from proteus.utils.constants import M_earth, vap_list, vol_list
+from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -273,8 +273,6 @@ class Proteus:
                 self.directories['output'],
             )
 
-            print(self.hf_row['M_int'] / M_earth, self.hf_row['M_planet'] / M_earth)
-
             # Store partial pressures and list of included volatiles
             inc_gases = []
             for s in vol_list:
@@ -376,8 +374,6 @@ class Proteus:
                 self.directories, self.config, self.hf_all, self.hf_row, self.interior_o
             )
 
-            print('int', self.hf_row['M_int'] / M_earth, self.hf_row['M_planet'] / M_earth)
-
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
@@ -445,8 +441,6 @@ class Proteus:
                 PrintHalfSeparator()
                 run_escape(self.config, self.hf_row, self.directories, self.interior_o.dt)
 
-            print('esc', self.hf_row['M_int'] / M_earth, self.hf_row['M_planet'] / M_earth)
-
             ############### / ESCAPE
 
             ############### OUTGASSING
@@ -471,7 +465,6 @@ class Proteus:
 
             # Add atmosphere mass to interior mass, to get total planet mass
             update_planet_mass(self.hf_row)
-            print('out', self.hf_row['M_int'] / M_earth, self.hf_row['M_planet'] / M_earth)
 
             ############### / OUTGASSING
 
