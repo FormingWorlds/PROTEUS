@@ -31,18 +31,8 @@ fi
 rm -rf $workpath
 mkdir $workpath
 
-# Download zip file
-zip="$workpath/spider.zip"
-url="https://osf.io/download/s8gb9/"
-echo "Downloading archive file from OSF"
-echo "    $url -> $zip"
-sleep 1
-curl -LsS $url > $zip
-
-# Decompress zip file
-echo "Decompressing"
-unzip -qq $zip -d $workpath
-rm $zip
+# Download SPIDER
+git clone git@github.com:FormingWorlds/SPIDER.git
 
 # Change dir
 olddir=$(pwd)
