@@ -368,20 +368,22 @@ def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([111.0, 222.0]))
 
+
 def test_init_star_star_path_missing_raises(tmp_path, monkeypatch):
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
 
-    missing = tmp_path / "custom_spectra" / "does_not_exist.txt"
+    missing = tmp_path / 'custom_spectra' / 'does_not_exist.txt'
     handler = _make_handler_for_init_star(
         tmp_path,
         spectrum_source=None,
         star_path=str(missing),
     )
 
-    with pytest.raises(FileNotFoundError, match="Custom stellar spectrum path does not exist"):
+    with pytest.raises(FileNotFoundError, match='Custom stellar spectrum path does not exist'):
         init_star(handler)
+
 
 def test_init_star_phoenix_branch_uses_get_phoenix_modern_spectrum(tmp_path, monkeypatch):
     import proteus.star.wrapper as wrapper_mod

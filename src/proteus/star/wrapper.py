@@ -52,7 +52,9 @@ def init_star(handler: Proteus):
             star_modern_path = mors_cfg.star_path
             log.info('Using custom stellar spectrum path.')
             if not os.path.exists(star_modern_path):
-                raise FileNotFoundError(f"Custom stellar spectrum path does not exist: {star_modern_path}")
+                raise FileNotFoundError(
+                    f'Custom stellar spectrum path does not exist: {star_modern_path}'
+                )
 
         else:
             starname_input = mors_cfg.star_name.strip()
