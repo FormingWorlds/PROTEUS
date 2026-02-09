@@ -156,35 +156,27 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
         hf_row_arg['M_mantle'] = 2.0e24
         hf_row_arg['M_core'] = 1.0e24
         hf_row_arg['M_int'] = hf_row_arg['M_mantle'] + hf_row_arg['M_core']
+        hf_row_arg['M_planet'] = hf_row_arg['M_int']  # no elements added in this fake run
         return 0.0, {'M_mantle': hf_row_arg['M_mantle'], 'M_core': hf_row_arg['M_core']}
-
-    # Patch root_scalar to return an object with .root equal to initial guess
-    class FakeRoot:
-        def __init__(self, root):
-            self.root = root
 
     with (
         patch(
             'proteus.interior.wrapper.run_interior', side_effect=fake_run_interior
         ) as mock_run,
-        patch('proteus.interior.wrapper.calc_target_elemental_inventories') as mock_calc,
-        patch('proteus.interior.wrapper.optimise.root_scalar') as mock_root,
     ):
-        mock_root.return_value = FakeRoot(R_earth)
-
-        # Have the calc_target_elemental_inventories populate element totals when called
-        def set_elements(dirs_arg, config_arg, hf_row_arg):
-            for e in element_list:
-                hf_row_arg[e + '_kg_total'] = 1.0e18 if e != 'O' else 1.0e25
-
-        mock_calc.side_effect = set_elements
 
         # Call the function under test
         determine_interior_radius(dirs, config, hf_all, hf_row)
 
         # Ensure patched functions were called
         assert mock_run.called
-        assert mock_calc.called
+
+        # Check that element totals were set, confirming the call to calc_target_elemental_inventories
+        for e in element_list:
+            assert hf_row[e + '_kg_total'] == pytest.approx(0.0)
+
+        # Check that radius was calculated
+        assert hf_row['R_int']
 
 
 @pytest.mark.unit
