@@ -44,6 +44,8 @@ nav:
 theme:
   name: material
   custom_dir: docs/overrides
+  features:
+  - content.code.copy
 
   # Default assets (used unless overridden per palette below)
   favicon: assets/PROTEUS_black_on_white_logo_only.png
