@@ -18,7 +18,7 @@ Functions tested:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -26,9 +26,8 @@ import pytest
 
 from proteus.interior.common import Interior_t
 from proteus.interior.dummy import calculate_simple_mantle_mass, run_dummy_int
-from proteus.interior.wrapper import update_planet_mass, determine_interior_radius
-from proteus.utils.constants import element_list, M_earth, R_earth
-from unittest.mock import patch, MagicMock
+from proteus.interior.wrapper import determine_interior_radius, update_planet_mass
+from proteus.utils.constants import M_earth, R_earth, element_list
 
 # ============================================================================
 # Test calculate_simple_mantle_mass
@@ -164,9 +163,13 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
         def __init__(self, root):
             self.root = root
 
-    with patch('proteus.interior.wrapper.run_interior', side_effect=fake_run_interior) as mock_run, patch(
-        'proteus.interior.wrapper.calc_target_elemental_inventories'
-    ) as mock_calc, patch('proteus.interior.wrapper.optimise.root_scalar') as mock_root:
+    with (
+        patch(
+            'proteus.interior.wrapper.run_interior', side_effect=fake_run_interior
+        ) as mock_run,
+        patch('proteus.interior.wrapper.calc_target_elemental_inventories') as mock_calc,
+        patch('proteus.interior.wrapper.optimise.root_scalar') as mock_root,
+    ):
         mock_root.return_value = FakeRoot(R_earth)
 
         # Have the calc_target_elemental_inventories populate element totals when called
