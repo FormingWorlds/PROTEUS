@@ -21,6 +21,10 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     Calculate total amount of volatile elements in the planet
     """
 
+    # zero by default, in case not included
+    for e in element_list:
+        hf_row[e + '_kg_total'] = 0.0
+
     # Calculate target for calliope mass conservation
     if config.outgas.module == 'calliope':
         calc_target_masses(dirs, config, hf_row)

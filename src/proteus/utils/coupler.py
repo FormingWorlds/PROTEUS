@@ -623,7 +623,7 @@ def GetHelpfileKeys():
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
         keys.append(e + '_kg_total')    # mass in whole planet [kg]
 
-    # Atmopsheric escape
+    # Atmospheric escape
     keys.append('p_xuv')                # pressure of XUV absorption [bar]
     keys.append('R_xuv')                # radius of XUV absorption [m]
     keys.append('cs_xuv')               # sound speed, at R_xuv [m s-1]
