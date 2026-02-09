@@ -77,7 +77,7 @@ dependencies = [
 homepage = "https://proteus-framework.org"
 issues = "https://github.com/FormingWorlds/PROTEUS/issues"
 source = "https://github.com/FormingWorlds/PROTEUS/"
-documentation = "https://proteus-framework.org/PROTEUS/"
+documentation = "https://proteus-framework.org/proteus/"
 changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]

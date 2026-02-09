@@ -97,7 +97,7 @@ def init_star(handler: Proteus):
                         f"No stellar spectrum found for '{mors_cfg.star_name}' in reference data."
                     )
                     log.error(
-                        'Check the available spectra at https://proteus-framework.org/PROTEUS/data.html.'
+                        'Check the available spectra at https://proteus-framework.org/proteus/data.html.'
                     )
                     UpdateStatusfile(handler.directories, 23)
                     raise FileNotFoundError(
@@ -149,7 +149,7 @@ def init_star(handler: Proteus):
                         f"Requested MUSCLES spectrum for '{mors_cfg.star_name}', but the file cannot be found in MUSCLES reference data."
                     )
                     log.error(
-                        'Check the available MUSCLES spectra at https://proteus-framework.org/PROTEUS/data.html#stellar-spectra'
+                        'Check the available MUSCLES spectra at https://proteus-framework.org/proteus/data.html#stellar-spectra'
                     )
                     log.error(
                         f'If available, MUSCLES spectra can be downloaded via the command line: proteus get muscles --star {mors_cfg.star_name}'
