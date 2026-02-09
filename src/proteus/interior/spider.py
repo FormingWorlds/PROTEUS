@@ -167,7 +167,7 @@ def get_all_output_times(odir: str):
     return time_a
 
 
-def interp_rho_melt(S, P, lookup):
+def interp_rho_melt(S:float, P:float, lookup:str) -> float:
     """
     Return density of pure melt at given entropy and pressure.
 
@@ -188,7 +188,7 @@ def interp_rho_melt(S, P, lookup):
     )
 
     rho = interp(np.column_stack((np.atleast_1d(P), np.atleast_1d(S))))
-    return rho
+    return float(np.array(rho).item())
 
 
 # ====================================================================
