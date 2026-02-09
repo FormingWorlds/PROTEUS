@@ -21,8 +21,16 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     Calculate total amount of volatile elements in the planet
     """
 
+    # Calculate target for calliope mass conservation
     if config.outgas.module == 'calliope':
         calc_target_masses(dirs, config, hf_row)
+
+    # Update total mass of tracked elements
+    hf_row['M_ele'] = 0.0
+    for e in element_list:
+        if e == 'O':
+            continue
+        hf_row['M_ele'] += hf_row[e + '_kg_total']
 
 
 def check_desiccation(config: Config, hf_row: dict) -> bool:

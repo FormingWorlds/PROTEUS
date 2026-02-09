@@ -596,6 +596,7 @@ def GetHelpfileKeys():
         'bond_albedo',      # OUTPUT bond albedo from radtrans [1]
 
         # Atmospheric composition from outgassing
+        'M_ele',            # total mass of tracked elements (utils.constants.element_list)
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # total surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]

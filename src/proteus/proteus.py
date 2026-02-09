@@ -16,6 +16,7 @@ from proteus.config import read_config_object
 from proteus.utils.constants import (
     vap_list,
     vol_list,
+    M_earth
 )
 from proteus.utils.helper import (
     CleanDir,
@@ -117,7 +118,7 @@ class Proteus:
 
         #    interior
         from proteus.interior.common import Interior_t
-        from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
+        from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure, update_planet_mass
 
         #    synthetic observations
         from proteus.observe.wrapper import run_observe
@@ -271,6 +272,8 @@ class Proteus:
                 self.directories['output'],
             )
 
+            print(self.hf_row["M_int"] / M_earth, self.hf_row["M_planet"] / M_earth)
+
             # Store partial pressures and list of included volatiles
             inc_gases = []
             for s in vol_list:
@@ -366,9 +369,13 @@ class Proteus:
 
             ############### INTERIOR
             PrintHalfSeparator()
+
+            # Evolve interior
             run_interior(
                 self.directories, self.config, self.hf_all, self.hf_row, self.interior_o
             )
+
+            print("int", self.hf_row["M_int"] / M_earth, self.hf_row["M_planet"] / M_earth)
 
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
@@ -437,6 +444,8 @@ class Proteus:
                 PrintHalfSeparator()
                 run_escape(self.config, self.hf_row, self.directories, self.interior_o.dt)
 
+            print("esc", self.hf_row["M_int"] / M_earth, self.hf_row["M_planet"] / M_earth)
+
             ############### / ESCAPE
 
             ############### OUTGASSING
@@ -460,7 +469,8 @@ class Proteus:
                 run_outgassing(self.directories, self.config, self.hf_row)
 
             # Add atmosphere mass to interior mass, to get total planet mass
-            self.hf_row['M_planet'] = self.hf_row['M_int'] + self.hf_row['M_atm']
+            update_planet_mass(self.hf_row)
+            print("out", self.hf_row["M_int"] / M_earth, self.hf_row["M_planet"] / M_earth)
 
             ############### / OUTGASSING
 
