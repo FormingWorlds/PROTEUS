@@ -8,14 +8,17 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml">
-    <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg?branch=main">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?branch=main&label=Unit%20Tests">
   </a>
-  <a href="https://proteus-framework.org/PROTEUS/">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests">
+  </a>
+  <a href="https://proteus-framework.org/proteus/">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main">
   </a>
 
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
     <img src="https://gist.githubusercontent.com/stefsmeets/b4ee7dab92e20644bcb3a5ad09f71165/raw/covbadge.svg">
   </a>
   <a href="https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2024JE008576"><img src="https://img.shields.io/badge/DOI-10.1029%2F2024JE008576-blue"></a>

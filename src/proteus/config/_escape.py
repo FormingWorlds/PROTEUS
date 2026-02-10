@@ -7,16 +7,17 @@ from ._converters import none_if_none, zero_if_none
 
 
 def valid_zephyrus(instance, attribute, value):
-    if instance.module != "zephyrus":
+    if instance.module != 'zephyrus':
         return
 
     Pxuv = instance.zephyrus.Pxuv
     if (not Pxuv) or (Pxuv < 0) or (Pxuv > 10):
-        raise ValueError("`zephyrus.Pxuv` must be >0 and < 10 bar")
+        raise ValueError('`zephyrus.Pxuv` must be >0 and < 10 bar')
 
     efficiency = instance.zephyrus.efficiency
     if (not efficiency) or (efficiency < 0) or (efficiency > 1):
-        raise ValueError("`zephyrus.efficiency` must be >=0 and <=1")
+        raise ValueError('`zephyrus.efficiency` must be >=0 and <=1')
+
 
 @define
 class Zephyrus:
@@ -31,17 +32,20 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
-    Pxuv: float       = field(default=5e-5, validator=ge(0))
-    efficiency: float = field(default=0.1,  validator=(ge(0), le(1)))
-    tidal: bool       = field(default=False)
+
+    Pxuv: float = field(default=5e-5, validator=ge(0))
+    efficiency: float = field(default=0.1, validator=(ge(0), le(1)))
+    tidal: bool = field(default=False)
+
 
 def valid_escapedummy(instance, attribute, value):
-    if instance.module != "dummy":
+    if instance.module != 'dummy':
         return
 
     rate = instance.dummy.rate
-    if (not rate) or (rate < 0) :
-        raise ValueError("`escape.dummy.rate` must be >0")
+    if (not rate) or (rate < 0):
+        raise ValueError('`escape.dummy.rate` must be >0')
+
 
 @define
 class EscapeDummy:
@@ -52,11 +56,14 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
+
     rate: float = field(default=0.0, validator=ge(0), converter=zero_if_none)
 
+
 def valid_escapeboreas(instance, attribute, value):
-    if instance.module != "boreas":
+    if instance.module != 'boreas':
         return
+
 
 @define
 class EscapeBoreas:
@@ -101,32 +108,34 @@ class EscapeBoreas:
     kappa_S2: float
         Grey S2 opacity in IR [cm2 g-1]
     """
+
     fractionate: bool = field(default=True)
-    efficiency: float = field(default=0.1,      validator=(ge(0), le(1)))
+    efficiency: float = field(default=0.1, validator=(ge(0), le(1)))
 
-    sigma_H: float    = field(default=1.89e-18, validator=ge(0))
-    sigma_O: float    = field(default=2.00e-18, validator=ge(0))
-    sigma_C: float    = field(default=2.50e-18, validator=ge(0))
-    sigma_N: float    = field(default=3.00e-18, validator=ge(0))
-    sigma_S: float    = field(default=6.00e-18, validator=ge(0))
+    sigma_H: float = field(default=1.89e-18, validator=ge(0))
+    sigma_O: float = field(default=2.00e-18, validator=ge(0))
+    sigma_C: float = field(default=2.50e-18, validator=ge(0))
+    sigma_N: float = field(default=3.00e-18, validator=ge(0))
+    sigma_S: float = field(default=6.00e-18, validator=ge(0))
 
-    kappa_H2:  float  = field(default=1e-2,     validator=ge(0))
-    kappa_H2O: float  = field(default=1e-0,     validator=ge(0))
-    kappa_O2:  float  = field(default=1e-0,     validator=ge(0))
-    kappa_CO2: float  = field(default=1e-0,     validator=ge(0))
-    kappa_CO:  float  = field(default=1e-0,     validator=ge(0))
-    kappa_CH4: float  = field(default=1e-0,     validator=ge(0))
-    kappa_N2:  float  = field(default=1e-0,     validator=ge(0))
-    kappa_NH3: float  = field(default=1e-0,     validator=ge(0))
-    kappa_H2S: float  = field(default=1e-0,     validator=ge(0))
-    kappa_SO2: float  = field(default=1e-0,     validator=ge(0))
-    kappa_S2: float   = field(default=1e-0,     validator=ge(0))
+    kappa_H2: float = field(default=1e-2, validator=ge(0))
+    kappa_H2O: float = field(default=1e-0, validator=ge(0))
+    kappa_O2: float = field(default=1e-0, validator=ge(0))
+    kappa_CO2: float = field(default=1e-0, validator=ge(0))
+    kappa_CO: float = field(default=1e-0, validator=ge(0))
+    kappa_CH4: float = field(default=1e-0, validator=ge(0))
+    kappa_N2: float = field(default=1e-0, validator=ge(0))
+    kappa_NH3: float = field(default=1e-0, validator=ge(0))
+    kappa_H2S: float = field(default=1e-0, validator=ge(0))
+    kappa_SO2: float = field(default=1e-0, validator=ge(0))
+    kappa_S2: float = field(default=1e-0, validator=ge(0))
 
 
 def valid_reservoir(instance, attribute, value):
-    ress = ('bulk','outgas')
+    ress = ('bulk', 'outgas', 'pxuv')
     if instance.reservoir not in ress:
-        raise ValueError(f"Escape reservoir must be one of: {ress}")
+        raise ValueError(f'Escape reservoir must be one of: {ress}')
+
 
 @define
 class Escape:
@@ -135,7 +144,7 @@ class Escape:
     Attributes
     ----------
     reservoir: str
-        Escaping composition when not doing fractionation. Choices: bulk, outgas.
+        Escaping composition when not doing fractionation. Choices: bulk, outgas, pxuv.
     module: str | None
         Escape module to use. Choices: None, "dummy", "zephyrus", "boreas".
     zephyrus: Zephyrus
@@ -148,11 +157,11 @@ class Escape:
 
     module: str | None = field(
         validator=in_((None, 'dummy', 'zephyrus', 'boreas')), converter=none_if_none
-        )
+    )
 
-    zephyrus: Zephyrus   = field(factory=Zephyrus,      validator=valid_zephyrus)
-    dummy: EscapeDummy   = field(factory=EscapeDummy,   validator=valid_escapedummy)
-    boreas: EscapeBoreas = field(factory=EscapeBoreas,  validator=valid_escapeboreas)
+    zephyrus: Zephyrus = field(factory=Zephyrus, validator=valid_zephyrus)
+    dummy: EscapeDummy = field(factory=EscapeDummy, validator=valid_escapedummy)
+    boreas: EscapeBoreas = field(factory=EscapeBoreas, validator=valid_escapeboreas)
 
     reservoir: str = field(default='outgas', validator=valid_reservoir)
 
@@ -164,7 +173,4 @@ class Escape:
         on the escape module used. BOREAS calculates both Pxuv and Rxuv, while the default
         assumes that Pxuv is constant, which is used to find Rxuv from the r(p) profile.
         """
-        if self.module == 'boreas':
-            return True
-        else:
-            return False
+        return self.module == 'boreas'

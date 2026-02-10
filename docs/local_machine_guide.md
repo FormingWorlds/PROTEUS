@@ -27,11 +27,18 @@ Once you have followed these steps, go back to the main [installation](installat
 
 3. Pay attention to replace `.bashrc` throughout the instructions below with `.zshrc` if you are on Mac OS >10.15 (Catalina) and using the default shell.
 
-## Linux (Debian/Ubuntu)
+## Debian / Ubuntu Linux
 
 Install gfortran and the NetCDF libraries via your package manager
 ```console
 sudo apt install libnetcdff-dev gfortran
+```
+
+## Fedora / RedHat Linux
+
+Install similiar libraries via your package manager
+```
+sudo dnf install gcc gcc-gfortran gcc-c++ netcdf netcdf-fortran netcdf-fortran-devel lapack lapack-devel lapack-static sundials-mpich openmpi openmpi-devel f2c f2c-libs
 ```
 
 ## Microsoft Windows

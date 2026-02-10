@@ -1,11 +1,12 @@
-#PHOENIX spectra utilities
+# PHOENIX spectra utilities
 from __future__ import annotations
 
 import logging
 
 import numpy as np
 
-log = logging.getLogger("fwl."+__name__)
+log = logging.getLogger('fwl.' + __name__)
+
 
 def phoenix_param(x: float | int | str, kind: str) -> str:
     """
@@ -19,13 +20,14 @@ def phoenix_param(x: float | int | str, kind: str) -> str:
 
     # zero case
     if abs(x) < 1e-9:
-        if kind.lower() == "feh":
-            return "-0.0"
-        elif kind.lower() == "alpha":
-            return "+0.0"
+        if kind.lower() == 'feh':
+            return '-0.0'
+        elif kind.lower() == 'alpha':
+            return '+0.0'
 
     # Normal case, e.g. +0.5, -1.0
-    return f"{x:+0.1f}"
+    return f'{x:+0.1f}'
+
 
 def phoenix_to_grid(*, FeH, alpha, Teff=None, logg=None):
     """
@@ -64,11 +66,11 @@ def phoenix_to_grid(*, FeH, alpha, Teff=None, logg=None):
         Dictionary with keys: 'Teff', 'logg', 'FeH', 'alpha', where 'Teff' and
         'logg' may be None if not given.
     """
-    FeH  = float(FeH)
+    FeH = float(FeH)
     alpha = float(alpha)
 
     # Grids
-    FeH_grid   = np.concatenate([[-4., -3.], np.arange(-2., 1. + 1e-6, 0.5)])
+    FeH_grid = np.concatenate([[-4.0, -3.0], np.arange(-2.0, 1.0 + 1e-6, 0.5)])
     alpha_grid = np.arange(-0.2, 1.2 + 1e-6, 0.2)
 
     Teff_grid = None
@@ -81,22 +83,24 @@ def phoenix_to_grid(*, FeH, alpha, Teff=None, logg=None):
     Teff_g = None
     if Teff is not None:
         Teff = float(Teff)
-        Teff_grid = np.concatenate([
-            np.arange(2300., 7000. + 1e-6, 100.),
-            np.arange(7200., 12000. + 1e-6, 200.),
-        ])
+        Teff_grid = np.concatenate(
+            [
+                np.arange(2300.0, 7000.0 + 1e-6, 100.0),
+                np.arange(7200.0, 12000.0 + 1e-6, 200.0),
+            ]
+        )
         Teff_g = float(Teff_grid[np.abs(Teff_grid - Teff).argmin()])
 
     # Map logg if provided
     logg_g = None
     if logg is not None:
         logg = float(logg)
-        logg_grid = np.arange(0., 6. + 1e-6, 0.5)
+        logg_grid = np.arange(0.0, 6.0 + 1e-6, 0.5)
         logg_g = float(logg_grid[np.abs(logg_grid - logg).argmin()])
 
     # Decide whether alpha is allowed to be non-zero
     if Teff_g is not None:
-        alpha_allowed = (FeH_g <= 0.0) and (FeH_g > -4.0) and (3500. <= Teff_g <= 8000.)
+        alpha_allowed = (FeH_g <= 0.0) and (FeH_g > -4.0) and (3500.0 <= Teff_g <= 8000.0)
     else:
         # No Teff info -> only enforce FeH <= 0 and > -4.0
         alpha_allowed = (FeH_g <= 0.0) and (FeH_g > -4.0)
@@ -108,25 +112,35 @@ def phoenix_to_grid(*, FeH, alpha, Teff=None, logg=None):
 
         # warn user about alpha override
         if abs(alpha) > 1e-6 and Teff_g is not None:
-            log.warning("Requested [alpha/M]=%+.1f is not available for [Fe/H]=%+.1f, Teff=%.0f; using [alpha/M]=0.0 instead.", alpha, FeH_g, Teff_g)
+            log.warning(
+                'Requested [alpha/M]=%+.1f is not available for [Fe/H]=%+.1f, Teff=%.0f; using [alpha/M]=0.0 instead.',
+                alpha,
+                FeH_g,
+                Teff_g,
+            )
         elif abs(alpha) > 1e-6:
-            log.warning("Requested [alpha/M]=%+.1f is not available for [Fe/H]=%+.1f; using [alpha/M]=0.0 instead.", alpha, FeH_g)
+            log.warning(
+                'Requested [alpha/M]=%+.1f is not available for [Fe/H]=%+.1f; using [alpha/M]=0.0 instead.',
+                alpha,
+                FeH_g,
+            )
 
     return {
-        "Teff":  Teff_g,
-        "logg":  logg_g,
-        "FeH":   FeH_g,
-        "alpha": alpha_g,
+        'Teff': Teff_g,
+        'logg': logg_g,
+        'FeH': FeH_g,
+        'alpha': alpha_g,
     }
+
 
 def phoenix_filename(Teff: float, logg: float, FeH: float, alpha: float) -> str:
     """
     Build PHOENIX filename like:
     LTE_T02300_logg1.00_FeH+0.5_alpha+0.0_phoenixMedRes_R05000.txt
     """
-    Tstr    = f"{int(round(Teff)):05d}"      # e.g. 2300 -> "02300"
-    logg_s  = f"{logg:.2f}"                  # "1.00"
-    feh_s   = phoenix_param(FeH,   kind="FeH")
-    alpha_s = phoenix_param(alpha, kind="alpha")
+    Tstr = f'{int(round(Teff)):05d}'  # e.g. 2300 -> "02300"
+    logg_s = f'{logg:.2f}'  # "1.00"
+    feh_s = phoenix_param(FeH, kind='FeH')
+    alpha_s = phoenix_param(alpha, kind='alpha')
 
-    return (f"LTE_T{Tstr}_logg{logg_s}_FeH{feh_s}_alpha{alpha_s}_phoenixMedRes_R05000.txt")
+    return f'LTE_T{Tstr}_logg{logg_s}_FeH{feh_s}_alpha{alpha_s}_phoenixMedRes_R05000.txt'
