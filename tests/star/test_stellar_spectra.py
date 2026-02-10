@@ -1,4 +1,4 @@
-# tests/test_spectrum_pipeline.py
+# tests/test_stellar_spectra.py
 #
 # Tests for the PROTEUS stellar spectrum pipeline:
 # - phoenix_helper grid/filename/param stuff
@@ -14,9 +14,6 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
-# tests/test_stellar_spectra.py
-
 
 # Helpers
 
@@ -151,6 +148,7 @@ def _make_handler_for_init_star(
 # phoenix_helper.py tests
 
 
+@pytest.mark.unit
 def test_phoenix_param_zero_formatting():
     from proteus.utils.phoenix_helper import phoenix_param
 
@@ -158,6 +156,7 @@ def test_phoenix_param_zero_formatting():
     assert phoenix_param(0.0, kind='alpha') == '+0.0'
 
 
+@pytest.mark.unit
 def test_phoenix_to_grid_snaps_to_nearest():
     from proteus.utils.phoenix_helper import phoenix_to_grid
 
@@ -168,6 +167,7 @@ def test_phoenix_to_grid_snaps_to_nearest():
     assert grid['logg'] == 4.5
 
 
+@pytest.mark.unit
 def test_phoenix_to_grid_disallows_alpha_when_feh_positive(caplog):
     """
     Use FeH that snaps to +0.5 so alpha is not allowed.
@@ -183,6 +183,7 @@ def test_phoenix_to_grid_disallows_alpha_when_feh_positive(caplog):
     assert any('using [alpha/M]=0.0' in rec.message for rec in caplog.records)
 
 
+@pytest.mark.unit
 def test_phoenix_filename_format():
     from proteus.utils.phoenix_helper import phoenix_filename
 
@@ -193,6 +194,7 @@ def test_phoenix_filename_format():
 # star/phoenix.py tests
 
 
+@pytest.mark.unit
 def test_get_phoenix_modern_spectrum_scales_to_1au(tmp_path, monkeypatch):
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
@@ -222,6 +224,7 @@ def test_get_phoenix_modern_spectrum_scales_to_1au(tmp_path, monkeypatch):
     assert np.allclose(out[:, 1], fl_surface * scale)
 
 
+@pytest.mark.unit
 def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkeypatch):
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
@@ -233,6 +236,7 @@ def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkey
         get_phoenix_modern_spectrum(handler, stellar_track=None)
 
 
+@pytest.mark.unit
 def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch):
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
@@ -249,7 +253,8 @@ def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch
     def fake_download_phoenix(*, alpha, FeH):
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         np.savetxt(
-            raw_path, np.column_stack([np.array([100.0, 200.0]), np.array([10.0, 20.0])])
+            raw_path,
+            np.column_stack([np.array([100.0, 200.0]), np.array([10.0, 20.0])]),
         )
         return True
 
@@ -263,6 +268,7 @@ def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch
 # init_star() spectrum selection tests
 
 
+@pytest.mark.unit
 def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypatch):
     from proteus.star.wrapper import init_star
 
@@ -283,6 +289,7 @@ def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypa
     assert np.allclose(arr[:, 1], np.array([30.0, 40.0]))
 
 
+@pytest.mark.unit
 def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeypatch):
     from proteus.star.wrapper import init_star
 
@@ -300,6 +307,7 @@ def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeyp
     assert np.allclose(arr[:, 1], np.array([30.0, 40.0]))
 
 
+@pytest.mark.unit
 def test_init_star_source_solar_falls_back_to_muscles_with_warning(
     tmp_path, monkeypatch, caplog
 ):
@@ -321,6 +329,7 @@ def test_init_star_source_solar_falls_back_to_muscles_with_warning(
     assert np.allclose(arr[:, 1], np.array([30.0, 40.0]))
 
 
+@pytest.mark.unit
 def test_init_star_source_muscles_falls_back_to_solar_with_warning(
     tmp_path, monkeypatch, caplog
 ):
@@ -342,6 +351,7 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
     assert np.allclose(arr[:, 1], np.array([10.0, 20.0]))
 
 
+@pytest.mark.unit
 def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
     from proteus.star.wrapper import init_star
 
@@ -352,6 +362,7 @@ def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
         init_star(handler)
 
 
+@pytest.mark.unit
 def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
     from proteus.star.wrapper import init_star
 
@@ -369,6 +380,24 @@ def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
     assert np.allclose(arr[:, 1], np.array([111.0, 222.0]))
 
 
+@pytest.mark.unit
+def test_init_star_star_path_missing_raises(tmp_path, monkeypatch):
+    from proteus.star.wrapper import init_star
+
+    _install_fake_mors(monkeypatch)
+
+    missing = tmp_path / 'custom_spectra' / 'does_not_exist.txt'
+    handler = _make_handler_for_init_star(
+        tmp_path,
+        spectrum_source=None,
+        star_path=str(missing),
+    )
+
+    with pytest.raises(FileNotFoundError, match='Custom stellar spectrum path does not exist'):
+        init_star(handler)
+
+
+@pytest.mark.unit
 def test_init_star_phoenix_branch_uses_get_phoenix_modern_spectrum(tmp_path, monkeypatch):
     import proteus.star.wrapper as wrapper_mod
     from proteus.star.wrapper import init_star

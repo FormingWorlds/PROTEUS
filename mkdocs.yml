@@ -1,5 +1,5 @@
 site_name: PROTEUS
-site_url: https://proteus-framework.org/PROTEUS/
+site_url: https://proteus-framework.org/proteus/
 repo_url: https://github.com/FormingWorlds/PROTEUS
 repo_name: GitHub
 
@@ -27,16 +27,16 @@ nav:
   - Funding: funding.md
   - Source code: https://github.com/FormingWorlds/PROTEUS
   - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
-  - 🔗 MORS:  https://proteus-framework.org/MORS/
-  - 🔗 JANUS: https://proteus-framework.org/JANUS/
-  - 🔗 ZEPHYRUS: https://proteus-framework.org/ZEPHYRUS/
-  - 🔗 CALLIOPE: https://proteus-framework.org/CALLIOPE/
+  - 🔗 MORS:  https://proteus-framework.org/mors/
+  - 🔗 JANUS: https://proteus-framework.org/janus/
+  - 🔗 ZEPHYRUS: https://proteus-framework.org/zephyrus/
+  - 🔗 CALLIOPE: https://proteus-framework.org/calliope/
   - 🔗 AGNI: https://www.h-nicholls.space/AGNI/
   - 🔗 Obliqua: https://proteus-framework.org/Obliqua/
-  - 🔗 VULCAN: https://proteus-framework/VULCAN/
-  - 🔗 Zalmoxis: https://proteus-framework.org/Zalmoxis/
+  - 🔗 VULCAN: https://proteus-framework.org/vulcan/
+  - 🔗 Zalmoxis: https://proteus-framework.org/zalmoxis/
   - 🔗 Aragog: https://proteus-framework.org/aragog/
-  - 🔗 SPIDER: https://github.com/FormingWorlds/SPIDER
+  - 🔗 SPIDER: https://proteus-framework.org/spider/
   - 🔗 Atmodeller: https://atmodeller.readthedocs.io/en/latest/
   - 🔗 FastChem: https://newstrangeworlds.github.io/FastChem/
   - 🔗 PLATON: https://platon.readthedocs.io/en/latest/
@@ -44,6 +44,8 @@ nav:
 theme:
   name: material
   custom_dir: docs/overrides
+  features:
+  - content.code.copy
 
   # Default assets (used unless overridden per palette below)
   favicon: assets/PROTEUS_black_on_white_logo_only.png
