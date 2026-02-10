@@ -271,12 +271,12 @@ def run_lavatmos(config:Config,hf_row:dict):
     rho_old = kg_per_particle * hf_row['P_surf']/(kB*Tsurf)
 
     M_atmo_old = hf_row['M_atm']
-    M_total = hf_row['M_core'] + hf_row['M_atm'] + hf_row['M_mantle']
-    M_mantle_old = hf_row['M_mantle']
+    #M_total = hf_row['M_core'] + hf_row['M_atm'] + hf_row['M_mantle']
+   # M_mantle_old = hf_row['M_mantle']
 
-    log.info('Mass of the planet mantle before running lavatmos: %s'% M_mantle_old)
-    log.info('Mass of the planet atmosphere before running lavatmos: %s'% M_atmo_old)
-    log.info('Mass of the total planet before running lavatmos: %s'% M_total)
+    #log.info('Mass of the planet mantle before running lavatmos: %s'% M_mantle_old)
+    #log.info('Mass of the planet atmosphere before running lavatmos: %s'% M_atmo_old)
+    #log.info('Mass of the total planet before running lavatmos: %s'% M_total)
 
 
     lavatmos_instance = container_lavatmos(parameters)
@@ -314,7 +314,7 @@ def run_lavatmos(config:Config,hf_row:dict):
 
 
     #saving new oxygen fugacity for calliope
-    log10_fO2 = np.log10(new_atmos_abundances['O2'][0])
+    log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(new_atmos_abundances['Pbar'][0])  # is this really partical pressure ? Maybe this is actually abundances
 
     fO2_shift = FO2shift()
     hf_row['fO2_shift'] = fO2_shift(hf_row["T_magma"], log10_fO2)

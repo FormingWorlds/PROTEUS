@@ -153,14 +153,20 @@ def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
     '''
 
     hf_row['fO2_shift'] = config.outgas.fO2_shift_IW
+    log.info("initial fO2_shift : %.6f"%config.outgas.fO2_shift_IW)
     run_outgassing(dirs, config, hf_row)
     if config.outgas.silicates:
-        xerr=hf_row['H2O_vmr']*0.01
-        log.info("error threshold on water abundance: %.6f"%xerr)
+        xerr=1e-3
         err=1.0
-        while abs(err)>xerr:
-            old_row = hf_row
+        log.info("silicates are outgassed")
+        log.info("error threshold on fO2 shift :  %.6f"%xerr)
+        log.info("current error :  %.6f"%err)
+        while err > xerr:
+            old_fO2shift= hf_row['fO2_shift']
+            log.info("fO2 shift before runnning lavatmos: %.6f"%old_fO2shift)
             run_lavatmos(config, hf_row)
+            log.info("new fO2 shift : %.6f"%hf_row["fO2_shift"])
             run_outgassing(dirs, config, hf_row)
-            err=old_row['H2O_vmr']-hf_row['H2O_vmr']
-            log.info("change in water abundance between the last iterations: %.6f"%err)
+            err=abs(old_fO2shift - hf_row['fO2_shift'])
+            log.info("fO2 shift after runnning lavatmos: %.6f"%hf_row['fO2_shift'])
+            log.info("change in fO2 between the last iterations: %.6f"%err)
