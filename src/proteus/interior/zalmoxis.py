@@ -50,11 +50,10 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         f'Total target planet mass (dry mass + volatiles): {total_planet_mass} kg with EOS choice: {config.struct.zalmoxis.EOSchoice}'
     )
 
-    # Calculate the total mass of volatiles in the planet
+    # Calculate the total mass of 'wet' elements in the planet
     M_volatiles = 0.0
     for e in element_list:
-        if e == 'O':
-            # do not include oxygen, because it varies over time in order to set fO2.
+        if e == 'O': # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         M_volatiles += hf_row[e + '_kg_total']
 

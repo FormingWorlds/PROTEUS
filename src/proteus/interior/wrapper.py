@@ -47,7 +47,7 @@ def update_planet_mass(hf_row: dict):
     # Update total element mass
     hf_row['M_ele'] = 0.0
     for e in element_list:
-        if e == 'O':
+        if e == 'O': # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         hf_row['M_ele'] += hf_row[e + '_kg_total']
 
