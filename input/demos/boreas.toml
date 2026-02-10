@@ -58,7 +58,7 @@ version = "2.0"
         rot_period  = "none"        # rotation period [days]
         tracks      = "spada"       # evolution tracks: spada | baraffe
         age_now     = 4.567         # current age of star [Gyr]
-        spectrum_source = "muscles"   # Spectrum source: 'solar' for solar spectra; 'muscles' for MUSCLES spectra; 'phoenix' for synthetic PHOENIX spectrum; see https://proteus-framework.org/PROTEUS/data.html#stellar-spectra
+        spectrum_source = "muscles"   # Spectrum source: 'solar' for solar spectra; 'muscles' for MUSCLES spectra; 'phoenix' for synthetic PHOENIX spectrum; see https://proteus-framework.org/proteus/data.html#stellar-spectra
         star_name   = "trappist-1"         # star name, relevant for when spectrum_source = 'solar' (use e.g. 'sun' or 'Sun0.6Ga') or when spectrum_source = 'muscles' (use e.g. 'trappist-1' or 'gj1214'). Not relevent when spectrum_source = 'phoenix'.
         star_path   = "none"        # optional override star path to custom stellar spectrum
 

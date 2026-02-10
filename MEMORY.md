@@ -575,7 +575,7 @@ Original smoke data download only included spectral files and stellar spectra.
 ### Contact Points
 - **Discussions**: https://github.com/orgs/FormingWorlds/discussions
 - **Issues**: https://github.com/FormingWorlds/PROTEUS/issues
-- **Documentation**: https://proteus-framework.org/PROTEUS/
+- **Documentation**: https://proteus-framework.org/proteus/
 
 ---
 
