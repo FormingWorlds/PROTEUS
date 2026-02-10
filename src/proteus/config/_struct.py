@@ -210,4 +210,4 @@ class Struct:
             return 'mass_tot'
         if self.radius_int is not None:
             return 'radius_int'
-        return None
+        return 'none'

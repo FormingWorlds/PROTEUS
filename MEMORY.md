@@ -364,7 +364,7 @@ PROTEUS is the orchestrator; each module is a separate GitHub repository:
 - FormingWorlds/ZEPHYRUS
 - nichollsh/AGNI
 - nichollsh/SOCRATES
-- djbower/spider
+- FormingWorlds/SPIDER
 
 **Implication**: Changes may require coordinated updates across repositories
 
