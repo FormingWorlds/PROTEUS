@@ -9,6 +9,7 @@ import pandas as pd
 import scipy.optimize as optimise
 
 from proteus.interior.common import Interior_t
+from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -36,6 +37,22 @@ def calculate_core_mass(hf_row: dict, config: Config):
         * np.pi
         * (hf_row['R_int'] * config.struct.corefrac) ** 3.0
     )
+
+
+def update_planet_mass(hf_row: dict):
+    """
+    Calculate total planet mass, as sum of dry+wet parts.
+    """
+
+    # Update total element mass
+    hf_row['M_ele'] = 0.0
+    for e in element_list:
+        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
+            continue
+        hf_row['M_ele'] += hf_row[e + '_kg_total']
+
+    # Add to total planet mass
+    hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele']
 
 
 def get_nlevb(config: Config):
@@ -77,7 +94,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     # Target mass
     M_target = config.struct.mass_tot * M_earth
 
-    # We need to solve for the state hf_row[M_tot] = config.struct.mass_tot
+    # We need to solve for the state hf_row[M_planet] = config.struct.mass_tot
     # This function takes R_int as the input value, and returns the mass residual
     def _resid(x):
         hf_row['R_int'] = x
@@ -89,9 +106,15 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
         update_gravity(hf_row)
 
+        # Get wet mass
+        calc_target_elemental_inventories(dirs, config, hf_row)
+
+        # Get total planet mass
+        update_planet_mass(hf_row)
+
         # Calculate residual
-        res = hf_row['M_tot'] - M_target
-        log.debug('    yields M = %.5e kg , resid = %.3e kg' % (hf_row['M_tot'], res))
+        res = hf_row['M_planet'] - M_target
+        log.debug('    yields M = %.5e kg , resid = %.3e kg' % (hf_row['M_planet'], res))
 
         return res
 
@@ -121,7 +144,9 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
 
     # Result
     log.info('Found solution for interior structure')
-    log.info('M_tot: %.1e kg = %.3f M_earth' % (hf_row['M_tot'], hf_row['M_tot'] / M_earth))
+    log.info(
+        'M_planet: %.1e kg = %.3f M_earth' % (hf_row['M_planet'], hf_row['M_planet'] / M_earth)
+    )
     log.info('R_int: %.1e m  = %.3f R_earth' % (hf_row['R_int'], hf_row['R_int'] / R_earth))
     log.info(' ')
 
@@ -284,14 +309,8 @@ def run_interior(
     # Update dry interior mass
     hf_row['M_int'] = hf_row['M_mantle'] + hf_row['M_core']
 
-    # Update total planet mass
-    M_volatiles = 0.0
-    for e in element_list:
-        if e == 'O':
-            # do not include oxygen, because it varies over time in order to set fO2.
-            continue
-        M_volatiles += hf_row[e + '_kg_total']
-    hf_row['M_tot'] = hf_row['M_int'] + M_volatiles
+    # Update planet mass
+    update_planet_mass(hf_row)
 
     # Apply step limiters
     if hf_row['Time'] > 0:

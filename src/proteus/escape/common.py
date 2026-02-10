@@ -32,10 +32,10 @@ def calc_unfract_fluxes(hf_row: dict, reservoir: str, min_thresh: float):
         case _:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
-    # calculate mass of volatile elements in reservoir (except oxygen, which is set by fO2)
+    # calculate mass of elements in reservoir
     res = {}
     for e in element_list:
-        if e == 'O':
+        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         res[e] = hf_row[e + key]
     M_vols = sum(list(res.values()))

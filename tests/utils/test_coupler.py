@@ -546,7 +546,7 @@ def test_helpfile_with_realistic_earth_values():
     row['T_magma'] = 1600.0  # K, upper mantle potential temperature (see #466)
     row['P_surf'] = 1.01325  # bar, 1 atm
     row['R_int'] = 3.480e6  # m, dry core radius
-    row['M_tot'] = 5.972e24  # kg
+    row['M_planet'] = 5.972e24  # kg
     row['F_int'] = 47.0  # W/m2, internal heat flow
     row['F_atm'] = 170.0  # W/m2, net atmospheric heat flux
 
@@ -554,7 +554,7 @@ def test_helpfile_with_realistic_earth_values():
 
     assert hf['T_surf'].iloc[0] == pytest.approx(288.0)
     assert hf['P_surf'].iloc[0] == pytest.approx(1.01325, rel=1e-4)
-    assert hf['M_tot'].iloc[0] == pytest.approx(5.972e24)
+    assert hf['M_planet'].iloc[0] == pytest.approx(5.972e24)
 
 
 @pytest.mark.unit
@@ -568,7 +568,7 @@ def test_helpfile_with_extreme_values():
     row['T_magma'] = 6000.0  # K, hot interior
 
     # Low-mass planet
-    row['M_tot'] = 1.0e23  # kg, ~2 Earth masses
+    row['M_planet'] = 1.0e23  # kg, ~2 Earth masses
 
     hf = CreateHelpfileFromDict(row)
 
@@ -584,11 +584,11 @@ def test_helpfile_float_precision():
     # Use a value with many significant figures
     precise_value = 1.23456789e12
 
-    row['M_tot'] = precise_value
+    row['M_planet'] = precise_value
 
     hf = CreateHelpfileFromDict(row)
 
-    assert hf['M_tot'].iloc[0] == pytest.approx(precise_value, rel=1e-8)
+    assert hf['M_planet'].iloc[0] == pytest.approx(precise_value, rel=1e-8)
 
 
 @pytest.mark.unit
@@ -597,7 +597,7 @@ def test_helpfile_scientific_notation_consistency():
     with tempfile.TemporaryDirectory() as tmpdir:
         row = ZeroHelpfileRow()
         row['Time'] = 1.234e8  # yr
-        row['M_tot'] = 5.972e24  # kg
+        row['M_planet'] = 5.972e24  # kg
         hf = CreateHelpfileFromDict(row)
 
         # Write and read back
@@ -605,7 +605,7 @@ def test_helpfile_scientific_notation_consistency():
         hf_read = ReadHelpfileFromCSV(tmpdir)
 
         assert hf_read['Time'].iloc[0] == pytest.approx(1.234e8, rel=1e-5)
-        assert hf_read['M_tot'].iloc[0] == pytest.approx(5.972e24, rel=1e-5)
+        assert hf_read['M_planet'].iloc[0] == pytest.approx(5.972e24, rel=1e-5)
 
 
 # =============================================================================

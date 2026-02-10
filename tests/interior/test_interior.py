@@ -18,7 +18,7 @@ Functions tested:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -26,6 +26,8 @@ import pytest
 
 from proteus.interior.common import Interior_t
 from proteus.interior.dummy import calculate_simple_mantle_mass, run_dummy_int
+from proteus.interior.wrapper import determine_interior_radius, update_planet_mass
+from proteus.utils.constants import M_earth, R_earth, element_list
 
 # ============================================================================
 # Test calculate_simple_mantle_mass
@@ -86,6 +88,94 @@ def test_calculate_simple_mantle_mass_scales_with_radius_cubed():
 
     # Volume scaling: (2r)³ = 8r³
     assert mass2 / mass1 == pytest.approx(8.0, rel=1e-8)
+
+
+@pytest.mark.unit
+def test_update_planet_mass_sums_elements():
+    """
+    Test that `update_planet_mass` sums element inventories (excluding O)
+    and sets `M_planet = M_int + M_ele`.
+    """
+    # Create hf_row with a dry interior mass and element totals
+    hf_row = {}
+    hf_row['M_int'] = 4.0e24
+    # assign distinct values for each element total
+    expected_ele = 0.0
+    for i, e in enumerate(element_list):
+        key = e + '_kg_total'
+        # oxygen should be ignored
+        if e == 'O':
+            hf_row[key] = 9.99e30
+            continue
+        val = 1.0e20 * (i + 1)
+        hf_row[key] = val
+        expected_ele += val
+
+    # run function
+    update_planet_mass(hf_row)
+
+    assert 'M_ele' in hf_row
+    assert hf_row['M_ele'] == pytest.approx(expected_ele)
+    assert hf_row['M_planet'] == pytest.approx(hf_row['M_int'] + expected_ele)
+
+
+@pytest.mark.unit
+def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_path):
+    """
+    Ensure `determine_interior_radius` calls
+    `calc_target_elemental_inventories` while solving structure.
+
+    Patch `run_interior` and `optimise.root_scalar` to avoid heavy computation.
+    """
+    dirs = {'output': str(tmp_path), 'spider': str(tmp_path)}
+
+    # Minimal config mock
+    config = MagicMock()
+    config.interior = MagicMock()
+    config.interior.module = 'dummy'
+    config.struct = MagicMock()
+    config.struct.mass_tot = 1.0  # 1 Earth mass target
+    config.interior.spider = MagicMock()
+
+    # Historical dataframe with one previous row (used by run_interior patch)
+    import pandas as pd
+
+    hf_all = pd.DataFrame([{'T_magma': 3000.0, 'Phi_global': 0.0}])
+
+    # hf_row initial state
+    hf_row = {
+        'Time': 0.0,
+        'R_int': float(R_earth),
+        'M_int': 1.0 * M_earth,
+        'gravity': 9.81,
+    }
+
+    # Patch run_interior to simply set some interior-related keys
+    def fake_run_interior(dirs_arg, config_arg, hf_all_arg, hf_row_arg, int_o, verbose=True):
+        # set mantle/core masses so update_planet_mass can compute
+        hf_row_arg['M_mantle'] = 2.0e24
+        hf_row_arg['M_core'] = 1.0e24
+        hf_row_arg['M_int'] = hf_row_arg['M_mantle'] + hf_row_arg['M_core']
+        hf_row_arg['M_planet'] = hf_row_arg['M_int']  # no elements added in this fake run
+        return 0.0, {'M_mantle': hf_row_arg['M_mantle'], 'M_core': hf_row_arg['M_core']}
+
+    with (
+        patch(
+            'proteus.interior.wrapper.run_interior', side_effect=fake_run_interior
+        ) as mock_run,
+    ):
+        # Call the function under test
+        determine_interior_radius(dirs, config, hf_all, hf_row)
+
+        # Ensure patched functions were called
+        assert mock_run.called
+
+        # Check that element totals were set, confirming the call to calc_target_elemental_inventories
+        for e in element_list:
+            assert hf_row[e + '_kg_total'] == pytest.approx(0.0)
+
+        # Check that radius was calculated
+        assert hf_row['R_int']
 
 
 @pytest.mark.unit

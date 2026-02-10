@@ -13,10 +13,7 @@ from juliacall import Main as jl  # noqa
 
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
-from proteus.utils.constants import (
-    vap_list,
-    vol_list,
-)
+from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -117,7 +114,12 @@ class Proteus:
 
         #    interior
         from proteus.interior.common import Interior_t
-        from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
+        from proteus.interior.wrapper import (
+            get_nlevb,
+            run_interior,
+            solve_structure,
+            update_planet_mass,
+        )
 
         #    synthetic observations
         from proteus.observe.wrapper import run_observe
@@ -366,6 +368,8 @@ class Proteus:
 
             ############### INTERIOR
             PrintHalfSeparator()
+
+            # Evolve interior
             run_interior(
                 self.directories, self.config, self.hf_all, self.hf_row, self.interior_o
             )
@@ -459,8 +463,8 @@ class Proteus:
             else:
                 run_outgassing(self.directories, self.config, self.hf_row)
 
-            # Add atmosphere mass to interior mass, to get total planet mass
-            self.hf_row['M_planet'] = self.hf_row['M_int'] + self.hf_row['M_atm']
+            # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
+            update_planet_mass(self.hf_row)
 
             ############### / OUTGASSING
 

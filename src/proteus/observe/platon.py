@@ -229,7 +229,7 @@ def transit_depth(hf_row: dict, outdir: str, config: Config, source: str):
 
     # All planet quantities in SI
     Rs = hf_row['R_star']  # Radius of star [m]
-    Mp = hf_row['M_tot']  # Mass of planet [kg]
+    Mp = hf_row['M_planet']  # Mass of planet [kg]
     Rp = hf_row['R_int']  # Radius of planet [m]
 
     # Get profile from the required source
@@ -329,7 +329,7 @@ def eclipse_depth(hf_row: dict, outdir: str, config: Config, source: str):
 
     # All planet quantities in SI
     Rs = hf_row['R_star']  # Radius of star [m]
-    Mp = hf_row['M_tot']  # Mass of planet [kg]
+    Mp = hf_row['M_planet']  # Mass of planet [kg]
     Rp = hf_row['R_int']  # Radius of planet [m]
     Ts = hf_row['T_star']  # Stellar temperature
 

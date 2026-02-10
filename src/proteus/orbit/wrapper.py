@@ -77,7 +77,7 @@ def update_period(hf_row: dict):
     """
 
     # Total mass of system, kg
-    M_total = hf_row['M_star'] + hf_row['M_tot']
+    M_total = hf_row['M_star'] + hf_row['M_planet']
 
     # Sanity check
     if M_total < 1e3:

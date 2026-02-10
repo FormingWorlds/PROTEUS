@@ -21,8 +21,20 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     Calculate total amount of volatile elements in the planet
     """
 
+    # zero by default, in case not included
+    for e in element_list:
+        hf_row[e + '_kg_total'] = 0.0
+
+    # Calculate target for calliope mass conservation
     if config.outgas.module == 'calliope':
         calc_target_masses(dirs, config, hf_row)
+
+    # Update total mass of tracked elements
+    hf_row['M_ele'] = 0.0
+    for e in element_list:
+        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
+            continue
+        hf_row['M_ele'] += hf_row[e + '_kg_total']
 
 
 def check_desiccation(config: Config, hf_row: dict) -> bool:
@@ -45,7 +57,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
 
     # check if desiccation has occurred
     for e in element_list:
-        if e == 'O':
+        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         if hf_row[e + '_kg_total'] > config.outgas.mass_thresh:
             log.info('Not desiccated, %s = %.2e kg' % (e, hf_row[e + '_kg_total']))

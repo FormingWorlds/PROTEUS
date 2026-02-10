@@ -25,7 +25,7 @@ PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
 - **[JANUS](https://github.com/FormingWorlds/JANUS)**: 1D convective atmosphere module (Python)
 - **[MORS](https://github.com/FormingWorlds/MORS)**: Stellar evolution module (Python)
 - **[ARAGOG](https://github.com/FormingWorlds/aragog)**: Interior thermal evolution module based on T-P formalism (Python)
-- **[SPIDER](https://github.com/djbower/spider)**: Interior thermal evolution module based on T-S formalism (C)
+- **[SPIDER](https://github.com/FormingWorlds/SPIDER)**: Interior thermal evolution module based on T-S formalism (C)
 - **[VULCAN](https://github.com/FormingWorlds/VULCAN)**: Atmospheric chemistry module (Python)
 - **[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS)**: Atmospheric escape module (Python)
 - **[Obliqua](https://github.com/FormingWorlds/Obliqua)**: Tidal evolution module (Julia)
