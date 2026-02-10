@@ -32,7 +32,7 @@ rm -rf $workpath
 mkdir $workpath
 
 # Download SPIDER
-git clone git@github.com:FormingWorlds/SPIDER.git
+git clone https://github.com/FormingWorlds/SPIDER.git
 
 # Change dir
 olddir=$(pwd)
