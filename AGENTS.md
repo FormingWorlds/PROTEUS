@@ -287,7 +287,6 @@ pre-commit install -f
 
 **Rules**:
 
-- **Never** use `==` for floats. Use `pytest.approx(val, rel=1e-5)` or `np.testing.assert_allclose`
 - **Always** mock external calls (SOCRATES, AGNI, file I/O, network) in unit tests
 - **Always** use physically valid inputs (T > 0K, P > 0) unless testing error handling
 - **Always** read `tests/conftest.py` before writing tests to use existing fixtures
