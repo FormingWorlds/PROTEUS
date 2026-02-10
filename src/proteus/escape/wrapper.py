@@ -208,7 +208,7 @@ def calc_new_elements(
     # calculate mass of elements in the reservoir
     res: dict[str, float] = {}
     for e in element_list:
-        if e == 'O': # Oxygen is set by fO2, so we skip it here (const_fO2)
+        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
     M_vols = float(sum(res.values()))

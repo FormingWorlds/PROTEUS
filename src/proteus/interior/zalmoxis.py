@@ -53,7 +53,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
     # Calculate the total mass of 'wet' elements in the planet
     M_volatiles = 0.0
     for e in element_list:
-        if e == 'O': # Oxygen is set by fO2, so we skip it here (const_fO2)
+        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         M_volatiles += hf_row[e + '_kg_total']
 

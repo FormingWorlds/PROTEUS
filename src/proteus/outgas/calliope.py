@@ -225,7 +225,7 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
         # check if any of the elements are zero in the planet
         is_zero = False
         for e in element_list:
-            if e == 'O': # Oxygen is set by fO2, so we skip it here (const_fO2)
+            if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
                 continue
             if (e in s) and (target[e] < mass_thresh):  # kg
                 is_zero = True

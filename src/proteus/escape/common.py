@@ -35,7 +35,7 @@ def calc_unfract_fluxes(hf_row: dict, reservoir: str, min_thresh: float):
     # calculate mass of elements in reservoir
     res = {}
     for e in element_list:
-        if e == 'O': # Oxygen is set by fO2, so we skip it here (const_fO2)
+        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         res[e] = hf_row[e + key]
     M_vols = sum(list(res.values()))
