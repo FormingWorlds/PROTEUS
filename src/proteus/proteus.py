@@ -9,8 +9,8 @@ import numpy as np
 
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
+from proteus.outgas.wrapper import get_gaslist
 from proteus.utils.constants import (
-    vap_list,
     vol_list,
 )
 from proteus.utils.helper import (
@@ -263,6 +263,9 @@ class Proteus:
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
+
+            gas_list=get_gaslist(self.config)
+
             for s in vol_list:
                 if s != "O2":
                     pp_val = self.config.delivery.volatiles.get_pressure(s)
@@ -276,16 +279,17 @@ class Proteus:
                     self.hf_row[s + "_bar"] = max(1.0e-30, float(pp_val))
                 else:
                     self.hf_row[s + "_bar"] = 0.0
-            for s in vap_list:
-                inc_gases.append(s)
-                self.hf_row[s + "_bar"] = 0.0
+            for s in gas_list:
+                if s not in vol_list:
+                    inc_gases.append(s)
+                    self.hf_row[s + "_bar"] = 0.0
 
             # Inform user
             log.info("Initial inventory set by '%s'"%self.config.delivery.initial)
             log.info("Included gases:")
             for s in inc_gases:
                 write = "    "
-                write += "vapour  " if s in vap_list else "volatile"
+                write += "vapour  " if s in vol_list else "volatile"
                 write += "  %-8s" % s
                 if self.config.delivery.initial == "volatiles":
                     write += " : %6.2f bar"%self.hf_row[s + "_bar"]

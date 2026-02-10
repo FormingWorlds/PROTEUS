@@ -20,21 +20,31 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-GASES_STANDARD = ("C2H4", "CO", "H2O", "H2SO4", "N2", "O2", "O3", "OH", "H", "SO", "CH4",
-                  "CO2", "H2", "H2S", "HCN", "NH2", "NH3", "OCS", "S2", "S6", "S8", "SO2",
-                  "N2O", "NO", "NO2", "HNO3", "PH3", "C2H2", "NO3", "N2O5", "HONO",
-                  "HO2NO2", "H2O2", "C2H6", "CH3", "H2CO", "HO2", "C",
-                  "N", "O", "S", "SO", "CS2","SiO","SiO2","TiO","FeO","MgO","Na")
+#GASES_STANDARD = ("C2H4", "CO", "H2O", "H2SO4", "N2", "O2", "O3", "OH", "H", "SO", "CH4",
+#                 "CO2", "H2", "H2S", "HCN", "NH2", "NH3", "OCS", "S2", "S6", "S8", "SO2",
+#                  "N2O", "NO", "NO2", "HNO3", "PH3", "C2H2", "NO3", "N2O5", "HONO",
+ #                 "HO2NO2", "H2O2", "C2H6", "CH3", "H2CO", "HO2", "C",
+ #                 "N", "O", "S", "SO", "CS2","SiO","SiO2","TiO","FeO","MgO","Na")
 
-def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
+GASES_STANDARD = ("CO", "H2O", "N2", "O2", "O3", "OH", "H", "SO", "CH4",
+                  "CO2", "H2", "H2S", "HCN", "NH3", "SO2", "Al","HAlO2",
+                  "N2O", "NO", "NO2", "HNO3", "PH3",
+                  "N", "O", "S")
+
+REFRACTORY_GASES = ("Fe", "Si", "Ti", "K", "Mg", "SiO", "SiO2","TiO","FeO","MgO","Na","TiO2")
+
+
+
+def plot_chem_atmosphere(output_dir:str, chem_module:str, plot_format="pdf",
                             plot_gases:list=None, plot_offchem:bool=True, xmin:float=1e-14):
 
     log.info("Plot atmosphere chemical composition")
 
     # Default species.
     #     Ensure that members of gas_list are first
+
     if not plot_gases:
-        plot_gases = list(vol_list) + list(GASES_STANDARD)
+        plot_gases = list(vol_list) + list(GASES_STANDARD) + list(REFRACTORY_GASES)
 
     # Remove duplicates, preserving order
     plot_gases = list(dict.fromkeys(plot_gases))
@@ -71,23 +81,28 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
     al = 0.8
     vmr_surf = []
     for i,gas in enumerate(plot_gases):
+        print(gas)
 
         col = get_colour(gas)
         lbl = latexify(gas)
         vmr = 0.0
 
         _lw = lw
-        if gas in vol_list:
-            _lw *= 1.25
+        #if gas in vol_list:
+            #_lw *= 1.25
 
         # plot from netCDF (dashed lines)
+        print(atm_profile.keys())
         key = gas+"_vmr"
         if key in atm_profile.keys():
             xarr = list(atm_profile[key])
             xarr = [xarr[0]] + xarr
-            if np.amax(xarr) >= xmin:
+            if (np.amax(xarr) >= xmin or key in list(REFRACTORY_GASES) ):
+                print('min vmr > minimum')
                 vmr = float(xarr[-1])
                 ax.plot(xarr, parr, ls = 'dashed', color=col, lw=_lw, alpha=al)
+            else:
+                print(np.amax(xarr))
 
         # plot from offline chemistry, if available (solid lines)
         if has_offchem and (gas in atm_offchem.keys()):

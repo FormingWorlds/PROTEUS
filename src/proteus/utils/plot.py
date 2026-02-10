@@ -56,6 +56,7 @@ _preset_colours  = {
     "Mg": "#996633",
     "Na": "#ccff00",
     "Ti": "#0d2959",
+    "K": "#2e8b57",
 
 
     # GLobal energy fluxes

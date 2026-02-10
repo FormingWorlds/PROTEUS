@@ -84,7 +84,8 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
 
-    # calculate total atmosphere mass (from sum of volatile masses)
+
+    # calculate total atmosphere mass from sum of gas species
     hf_row["M_atm"] = 0.0
     for s in gas_list:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]
@@ -136,6 +137,7 @@ def run_desiccated(hf_row:dict,config:Config):
             hf_row[k] = 0.0
 
 
+
 def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
 
     '''function which runs lavatmos and calliope in a loop until they have converged.
@@ -150,14 +152,14 @@ def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
             Dictionary of helpfile variables, at this iteration only
     '''
 
+    hf_row['fO2_shift'] = config.outgas.fO2_shift_IW
     run_outgassing(dirs, config, hf_row)
-    print(config.outgas.silicates)
     if config.outgas.silicates:
         xerr=hf_row['H2O_vmr']*0.01
         log.info("error threshold on water abundance: %.6f"%xerr)
         err=1.0
         while abs(err)>xerr:
-            old_row=hf_row
+            old_row = hf_row
             run_lavatmos(config, hf_row)
             run_outgassing(dirs, config, hf_row)
             err=old_row['H2O_vmr']-hf_row['H2O_vmr']

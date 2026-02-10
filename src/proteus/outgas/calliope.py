@@ -45,7 +45,13 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 
     # Surface properties
     solvevol_inp["T_magma"]     =  hf_row["T_magma"]
-    solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
+
+    if hf_row['log10_fO2']:
+        solvevol_inp['fO2_shift_IW'] = hf_row['fO2_shift']
+        print('oxygen fugacity from lavatmos')
+    else:
+        solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
+        print('oxygen fugacity from input file')
 
     # Volatile inventory
     for s in vol_list:

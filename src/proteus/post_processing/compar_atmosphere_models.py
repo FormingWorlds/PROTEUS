@@ -17,19 +17,14 @@ from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.utils.constants import vol_list
 from proteus.utils.helper import find_nearest
-from proteus.utils.plot import get_colour, latexify, sample_times
+from proteus.utils.plot import sample_times
 
 if TYPE_CHECKING:
     pass
 
 log = logging.getLogger("fwl."+__name__)
 
-GASES_STANDARD = ("CO", "H2O", "N2", "O2", "O3", "OH", "H", "SO", "CH4",
-                  "CO2", "H2", "H2S", "HCN", "NH3", "SO2", "Al","HAlO2",
-                  "N2O", "NO", "NO2", "HNO3", "PH3", "Fe", "Si", "Ti", "K", "Mg",
-                  "N", "O", "S", "SiO", "SiO2","TiO","FeO","MgO","Na","TiO2",)
 
 def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     """Read data from atmosphere NetCDF output file.
@@ -344,6 +339,7 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
     t1=int(str(plottimes1[0]))
     t2=int(str(plottimes1[-1]))
 
+
     log.info("Plot atmosphere temperatures colourbar")
 
     norm = mpl.colors.LogNorm(vmin=max(t1,1), vmax=t2)
@@ -377,6 +373,7 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
     for i, t in enumerate( plottimes2 ):
         prof2 = profiles2[i]
 
+
         color = sm.to_rgba(t)
 
         tmp2 = prof2["t"]
@@ -406,89 +403,6 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
     fig.savefig(fname, bbox_inches='tight', dpi=300)
 
 
-def plot_chemistry_multipple_timesteps(plottimes,profiles,outputdir):
-
-    t1=int(str(plottimes[0]))
-    t2=int(str(plottimes[-1]))
-
-    plot_gases = list(vol_list) + list(GASES_STANDARD)
-    plot_gases = list(dict.fromkeys(plot_gases))
-    log.info("Plot atmosphere temperatures colourbar")
-
-    norm = mpl.colors.LogNorm(vmin=max(t1,1), vmax=t2)
-    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
-    sm.set_array([])
-
-    xmin=10**-14
-    # init plot
-    scale = 1.2
-    fig,ax = plt.subplots(1,1, figsize=(6*scale,5*scale))
-
-    # plot species profiles
-    lw = 0.9
-    al = 0.8
-    vmr_surf = []
-    for j, t in enumerate(plottimes):
-        atm_profile=profiles[j]
-        parr = atm_profile["pl"] * 1e-5  # convert to bar
-        # Get year
-        year = float(outputdir.split("/")[-1].split("_atm")[0])
-        for i,gas in enumerate(plot_gases):
-            print(gas)
-
-            col = get_colour(gas)
-            lbl = latexify(gas)
-            vmr = 0.0
-
-            _lw = lw
-            if gas in vol_list:
-             _lw *= 1.25
-
-            # plot from netCDF (dashed lines)
-            key = gas+"_vmr"
-            if key in atm_profile.keys():
-                print('gas output exists from agni:', key)
-                xarr = list(atm_profile[key])
-                xarr = [xarr[0]] + xarr
-                if np.amax(xarr) >= xmin:
-                    print('min vmr > minimum')
-                    ax.plot(xarr, parr, ls = 'dashed', color=col, lw=_lw, alpha=al,label=lbl)
-                else:
-                    print(np.amax(xarr))
-                    # create legend entry and store surface vmr
-            # create legend entry and store surface vmr
-            if vmr > 0.0:
-                ax.plot(1e30, 1e30, ls='solid', color=col, lw=_lw, alpha=al, label=lbl)
-                vmr_surf.append(vmr)
-
-        ax.set_xscale("log")
-        ax.set_xlim(left=xmin, right=1.1)
-        ax.set_xlabel("Volume mixing ratio, at t=%.2e yr"%year)
-        ax.xaxis.set_major_locator(LogLocator(numticks=1000))
-
-        ax.set_ylabel("Pressure [bar]")
-        ax.set_yscale("log")
-        ax.set_ylim(bottom=np.amax(parr), top=np.amin(parr))
-        ax.yaxis.set_major_locator(LogLocator(numticks=1000))
-
-        # Legend (handles sorted by surface vmr)
-        handles, labels = ax.get_legend_handles_labels()
-        order = np.argsort(vmr_surf)[::-1]
-        ax.legend([handles[idx] for idx in order],[labels[idx] for idx in order],
-              loc='lower center', bbox_to_anchor=(0.5, 1),
-              ncols=11, fontsize=9, borderpad=0.4,
-              labelspacing=0.3, columnspacing=1.0, handlelength=1.5, handletextpad=0.3)
-
-        # Save file
-        fpath = os.path.join(outputdir, "plots", "plot_chem_atmosphere_{}.png".format(t))
-        fig.savefig(fpath, dpi=200, bbox_inches='tight')
-
-def plot_two_chemistries(output_dir1,output_dir2, extension, tmin, nsamp):
-
-    plottimes1, plottimes2, profiles1, profiles2 = read_2model_data(output_dir1,output_dir2, extension, tmin, nsamp)
-
-    plot_chemistry_multipple_timesteps(plottimes1,profiles1,output_dir1)
-    plot_chemistry_multipple_timesteps(plottimes2,profiles2,output_dir2)
 
 
 
@@ -497,5 +411,4 @@ if __name__ == "__main__":
     output_dir1=sys.argv[1]
     output_dir2=sys.argv[2]
 
-    plot_atmosphere_comparison(output_dir1, output_dir2, tmin=1e4, extension="_atm.nc", nsamp=5, plot_format="png")
-    plot_two_chemistries(output_dir1,output_dir2, extension="_atm.nc",  tmin=1e4, nsamp=5)
+    plot_atmosphere_comparison(output_dir1, output_dir2, tmin=1e4, extension="_atm.nc", nsamp=5, plot_format="pdf")

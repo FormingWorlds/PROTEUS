@@ -66,8 +66,8 @@ def plot_atmosphere( output_dir:str, times:list, profiles:list, plot_format="pdf
     ax1.set_ylabel("Pressure [bar]")
     ax1.invert_yaxis()
     ax1.set_yscale("log")
-    #ax1.set_ylim(bottom=pmax, top=np.amin(parr))
-    ax1.set_ylim(bottom=100, top=10**-8)
+    ax1.set_ylim(bottom=pmax, top=np.amin(parr))
+    #ax1.set_ylim(bottom=100, top=10**-8)
 
     ax1.set_xlim([200,4000])
     ax1.yaxis.set_major_locator(LogLocator(numticks=1000))
