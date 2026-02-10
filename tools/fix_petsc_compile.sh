@@ -40,3 +40,6 @@ cd petsc
 # 3. Once that finishes successfully, build and test it
 make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt all
 make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt check
+
+# 4. Go back to previous directory
+cd ..
