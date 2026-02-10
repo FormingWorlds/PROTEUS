@@ -592,8 +592,8 @@ def GetHelpfileKeys():
         'rho_obs',          # transit bulk density [kg m-3]
         'transit_depth',    # primary transit light curve depth [1]
         'eclipse_depth',    # secondary eclipse light curve depth [1]
-        'albedo_pl',        # INPUT bond albedo [1]
-        'bond_albedo',      # OUTPUT bond albedo from radtrans [1]
+        'albedo_pl',        # INPUT bond albedo from config: constant value or interpolated from table [1]
+        'bond_albedo',      # OUTPUT calculated bond albedo from radtrans: SW_UP/SW_DN, zero if no scattering [1]
 
         # Atmospheric composition from outgassing
         'M_ele',            # total mass of tracked elements (utils.constants.element_list)
