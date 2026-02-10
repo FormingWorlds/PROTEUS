@@ -463,7 +463,7 @@ class Proteus:
             else:
                 run_outgassing(self.directories, self.config, self.hf_row)
 
-            # Add atmosphere mass to interior mass, to get total planet mass
+            # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
 
             ############### / OUTGASSING
