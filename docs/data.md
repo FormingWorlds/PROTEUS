@@ -3,7 +3,7 @@
 ## Contents
 
 - [Stellar spectra](#stellar-spectra)
-  - [Using solar spectrum](#using-solar-spectrum)
+  - [Using solar spectra](#using-solar-spectra)
   - [Using a (Mega-)MUSCLES observed spectrum](#using-a-mega-muscles-observed-spectrum)
   - [Using a PHOENIX synthetic spectrum](#using-a-phoenix-synthetic-spectrum)
   - [Using a custom stellar spectrum](#using-a-custom-stellar-spectrum)
@@ -19,7 +19,7 @@ PROTEUS automatically downloads large reference data files from [Zenodo](https:/
 - **Higher limits**: Optional API token provides higher rate limits if you download often.
 - **OSF Fallback**: If Zenodo is unavailable, data downloads automatically from [OSF](https://osf.io/8dumn/).
 
-To optionally configure your token, see the [Troubleshooting guide](troubleshooting.html#all-data-download-errors-or-slow-zenodo-downloads).
+To optionally configure your token, see the [Troubleshooting guide](troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
 
 ## Stellar spectra
 

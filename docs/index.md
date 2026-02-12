@@ -39,7 +39,7 @@
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
-See the [model description](model.html) for an outline of the code and its structure. See the [installation guide](installation.html) and [usage guide](usage.html) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions. [Contributing](CONTRIBUTING.md) outlines how to change or contribute source code. [Contact](bibliography.md) the developers if you have questions or run into issues.
+See the [model description](model.md) for an outline of the code and its structure. See the [installation guide](installation.md) and [usage guide](usage.md) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions. [Contributing](CONTRIBUTING.md) outlines how to change or contribute source code. [Contact](bibliography.md) the developers if you have questions or run into issues.
 
 ## Contributors
 
@@ -62,4 +62,4 @@ See the [model description](model.html) for an outline of the code and its struc
 
 ## Citation and credit
 
-If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](CONTRIBUTING.html#licensing-and-credit).
+If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](CONTRIBUTING.md#licensing-and-credit).

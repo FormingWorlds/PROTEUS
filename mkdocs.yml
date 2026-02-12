@@ -46,6 +46,7 @@ theme:
   custom_dir: docs/overrides
   features:
   - content.code.copy
+  - content.tabs.link
 
   # Default assets (used unless overridden per palette below)
   favicon: assets/PROTEUS_black_on_white_logo_only.png
@@ -84,6 +85,9 @@ markdown_extensions:
   - pymdownx.extra
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
 
 extra_javascript:
   - https://polyfill.io/v3/polyfill.min.js?features=es6

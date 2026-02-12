@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh issue view:*)",
+      "Bash(ls:*)",
+      "Bash(mkdocs build --strict)",
+      "Bash(python -m mkdocs build:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m mkdocs serve:*)"
+    ]
+  }
+}
