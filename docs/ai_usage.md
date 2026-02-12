@@ -73,6 +73,7 @@ PROTEUS uses two special files to provide AI assistants with project context:
 4. **Use `.github/copilot-instructions.md`**: This file automatically provides Copilot with PROTEUS guidelines
 
 **Tutorials:**
+
 - [Getting Started with GitHub Copilot](https://docs.github.com/en/copilot/using-github-copilot/getting-started-with-github-copilot)
 - [Using Copilot Chat in VS Code](https://docs.github.com/en/copilot/using-github-copilot/asking-github-copilot-questions-in-your-ide)
 - [Copilot Best Practices](https://docs.github.com/en/copilot/using-github-copilot/best-practices-for-using-github-copilot)
