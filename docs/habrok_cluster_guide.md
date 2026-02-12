@@ -35,7 +35,7 @@ Once you are connected to one of the interactive servers, use these steps to con
 
 2. Log out of Habrok, and then login again
 
-3. You can now follow the usual installation steps [here](installation.html).
+3. You can now follow the usual installation steps [here](installation.md).
 
 ## File system partitioning
 
@@ -74,7 +74,7 @@ There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.ru
     squeue -u $USER
     ```
 
-See the section on running grids in the PROTEUS [usage guide](./usage.html#running-grids-of-simulations). These instructions will detail how to submit grids to the nodes via SLURM.
+See the section on running grids in the PROTEUS [usage guide](./usage.md#running-grids-of-simulations-ensembles). These instructions will detail how to submit grids to the nodes via SLURM.
 
 You can also submit single PROTEUS runs to the nodes. For example:
 ```console

@@ -1,7 +1,7 @@
 # User Install (Deprecated)
 
 !!! warning "Deprecated"
-    This installation method is deprecated. We recommend following the main [Installation](installation.html) guide instead, which provides a full developer setup with editable submodule installations.
+    This installation method is deprecated. We recommend following the main [Installation](installation.md) guide instead, which provides a full developer setup with editable submodule installations.
 
 ---
 
@@ -9,7 +9,7 @@
 
 1. conda (miniconda or miniforge)
 2. git (install via conda if needed: `conda install git`)
-3. Julia installation (see [Installation guide](installation.html#3-install-julia))
+3. Julia installation (see [Installation guide](installation.md#3-install-julia))
 4. ~20 GB of disk space
 5. ~30 minutes of your time (mostly waiting)
 
@@ -32,7 +32,7 @@
     ./tools/fix_petsc_compile.sh
     ```
 
-    See the [Troubleshooting](troubleshooting.html#petsc-compilation-fails-on-apple-silicon) page for details.
+    See the [Troubleshooting](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) page for details.
 
 ## Before running PROTEUS
 

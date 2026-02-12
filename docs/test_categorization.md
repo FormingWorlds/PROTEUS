@@ -125,4 +125,4 @@ These thresholds auto-increase ("ratchet") and never decrease. Check coverage lo
 - [Test Infrastructure](test_infrastructure.md) — Coverage workflows, reusable quality gate, troubleshooting
 - [Test Building](test_building.md) — Prompts for unit/integration tests
 - [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
-- [AGENTS.md](../AGENTS.md) — Commands and thresholds
+- [AGENTS.md](https://github.com/FormingWorlds/PROTEUS/blob/main/AGENTS.md) — Commands and thresholds

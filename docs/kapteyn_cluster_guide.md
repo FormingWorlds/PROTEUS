@@ -61,7 +61,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-5. You can now follow the usual installation steps [here](installation.html), but, since your home folder is capped
+5. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
    at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
     ### Julia considerations
     If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
@@ -236,4 +236,4 @@ To resolve this issue:
 
 - If you encounter an error that is not listed here, please create a new issue on the [PROTEUS GitHub webpage](https://github.com/FormingWorlds/PROTEUS/issues) (green button 'New issue' on the top right, choose 'Bug').
 - Include details about what you were trying to do and how the error occurred. Providing a screenshot or copying/pasting the error message and log file can help others understand the issue better.
-- Once the issue has been resolved, ensure that this troubleshooting section is updated to include the solution for future reference. You can check [here](CONTRIBUTING.html) how to edit the documentation.
+- Once the issue has been resolved, ensure that this troubleshooting section is updated to include the solution for future reference. You can check [here](CONTRIBUTING.md) how to edit the documentation.

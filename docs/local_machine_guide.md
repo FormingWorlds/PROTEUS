@@ -3,7 +3,7 @@
 These steps should be performed before installing PROTEUS on your computer.
 They do not apply when running PROTEUS on a server or HPC cluster. For instructions on configuring PROTEUS on a remote machine, see the cluster guide pages.
 
-Once you have followed these steps, go back to the main [installation](installation.html) guide page.
+Once you have followed these steps, go back to the main [installation](installation.md) guide page.
 
 ## macOS
 
@@ -28,7 +28,7 @@ Once you have followed these steps, go back to the main [installation](installat
     ```
 
     !!! note "Apple Silicon (M1/M2/M3/Ultra)"
-        The `gcc` and `open-mpi` packages are required for compiling PETSc on Apple Silicon Macs. If you skip these, you may encounter compilation errors during the PETSc installation step. See the [Troubleshooting](troubleshooting.html#petsc-compilation-fails-on-apple-silicon) page for details.
+        The `gcc` and `open-mpi` packages are required for compiling PETSc on Apple Silicon Macs. If you skip these, you may encounter compilation errors during the PETSc installation step. See the [Troubleshooting](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) page for details.
 
 3. macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout the installation instructions if you are using the default shell.
 

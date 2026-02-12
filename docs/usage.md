@@ -1,6 +1,6 @@
 # Usage
 
-This page describes how to use PROTEUS. The framework can be run standalone, as a grid of simulations, or as a forward model within a retrieval framework. In all cases you will need to configure the model via a 'configuration file', which you can read about in a [dedicated page here](config.html). If you encounter any problems, please visit the [troubleshooting](troubleshooting.html) page.
+This page describes how to use PROTEUS. The framework can be run standalone, as a grid of simulations, or as a forward model within a retrieval framework. In all cases you will need to configure the model via a 'configuration file', which you can read about in a [dedicated page here](config.md). If you encounter any problems, please visit the [troubleshooting](troubleshooting.md) page.
 
 We start by describing how to run a single instance of PROTEUS...
 
@@ -25,7 +25,7 @@ proteus start -c input/all_options.toml
 This will run a simulation and write the results to the `output/` folder inside your PROTEUS
 directory.
 
-See the [config guide](config.html) for information
+See the [config guide](config.md) for information
 on how to edit the configurations files, and an explanation of their structure.
 
 PROTEUS will automatically check if any lookup-tables or data need to be downloaded for it to run.
@@ -150,7 +150,7 @@ proteus grid-pack -o output/grid_demo/
 
 Retrieval methods efficiently sample a given parameter space in order to find the point at which a forward model best matches some observations. These methods has seen success in recent years, and are often more efficient than naive grid-search methods. However, retrieval schemes usually require that a forward model is fast and inexpensive to run. Bayesian Optimisation is one approach to parameter retrievals; you can read more about it [in this article](https://arxiv.org/abs/1807.02811).
 
-We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.html).
+We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.md).
 
 ## Postprocessing of results with 'offline' chemistry
 

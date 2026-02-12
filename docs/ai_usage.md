@@ -301,8 +301,8 @@ bash tools/validate_test_structure.sh
 
 ## References
 
-- [AGENTS.md](../AGENTS.md) — AI coding guidelines for PROTEUS
-- [MEMORY.md](../MEMORY.md) — Project state and decisions
+- [AGENTS.md](https://github.com/FormingWorlds/PROTEUS/blob/main/AGENTS.md) — AI coding guidelines for PROTEUS
+- [MEMORY.md](https://github.com/FormingWorlds/PROTEUS/blob/main/MEMORY.md) — Project state and decisions
 - [Test Building](test_building.md) — Test generation prompts
 - [Test Categorization](test_categorization.md) — Test markers and CI
 - [Test Infrastructure](test_infrastructure.md) — Coverage and workflows

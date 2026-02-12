@@ -4,8 +4,8 @@ These instructions will guide you through the typical installation
 process. The setup is written for macOS and Linux. Depending on your
 system settings and installed libraries your procedure may differ. If
 one or more of the steps below do not work for you we encourage you to
-first check the [Troubleshooting](troubleshooting.html) page. If
-that does not help you further, please [contact the developers](contact.html).
+first check the [Troubleshooting](troubleshooting.md) page. If
+that does not help you further, please [contact the developers](contact.md).
 
 !!! tip "macOS users"
     macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout these instructions if you are using the default shell.
@@ -16,13 +16,13 @@ that does not help you further, please [contact the developers](contact.html).
 
 Setting up PROTEUS and its submodules requires extra steps to be performed before following the rest of this guide. Follow the instructions below depending on your system configuration.
 
-**Local machine** (laptop/desktop): follow the appropriate section in the [Local machine guide](local_machine_guide.html).
+**Local machine** (laptop/desktop): follow the appropriate section in the [Local machine guide](local_machine_guide.md).
 
 **Compute cluster**: use the dedicated guides:
 
-* [Kapteyn cluster](kapteyn_cluster_guide.html)
-* [Habrok cluster](habrok_cluster_guide.html)
-* [Snellius cluster](snellius_cluster_guide.html)
+* [Kapteyn cluster](kapteyn_cluster_guide.md)
+* [Habrok cluster](habrok_cluster_guide.md)
+* [Snellius cluster](snellius_cluster_guide.md)
 
 ---
 
@@ -218,7 +218,7 @@ VULCAN is not available as a standard Python package, so it is installed via a d
     ```
 
     !!! note "Fedora/RHEL users"
-        If you encounter errors moving libraries, see [Troubleshooting: PETSc on Fedora/RHEL](troubleshooting.html#cannot-compile-petsc-error-moving-libraries-fedorahel).
+        If you encounter errors moving libraries, see [Troubleshooting: PETSc on Fedora/RHEL](troubleshooting.md#cannot-compile-petsc-error-moving-libraries-fedorarhel).
 
 === "macOS"
 
@@ -234,7 +234,7 @@ VULCAN is not available as a standard Python package, so it is installed via a d
     ./tools/fix_petsc_compile.sh
     ```
 
-    See [Troubleshooting: PETSc on Apple Silicon](troubleshooting.html#petsc-compilation-fails-on-apple-silicon) for manual steps if needed.
+    See [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) for manual steps if needed.
 
 ## Step 8: Setup SPIDER (interior evolution model)
 
@@ -283,4 +283,4 @@ LovePy is written in Julia. You can use the same environment as AGNI if you wish
 
 ---
 
-*For the legacy user install method (deprecated), see the [User install](user_install.html) page.*
+*For the legacy user install method (deprecated), see the [User install](user_install.md) page.*

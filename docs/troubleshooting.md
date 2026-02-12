@@ -3,7 +3,7 @@
 This section includes troubleshooting advice for common errors, organized by
 platform. If you encounter errors that you cannot solve via the standard
 step-by-step guide or the advice below,
-[contact the developers](contact.html).
+[contact the developers](contact.md).
 
 ---
 

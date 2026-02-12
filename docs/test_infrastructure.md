@@ -326,8 +326,8 @@ If your module has an existing test workflow:
 - [Test Building](test_building.md) — Prompts for unit/integration tests
 - [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
 - [AI-Assisted Development](ai_usage.md) — Using AI for tests and code review
-- [tests/conftest.py](../tests/conftest.py) — Shared fixtures
-- [AGENTS.md](../AGENTS.md) — Commands and thresholds
+- [tests/conftest.py](https://github.com/FormingWorlds/PROTEUS/blob/main/tests/conftest.py) — Shared fixtures
+- [AGENTS.md](https://github.com/FormingWorlds/PROTEUS/blob/main/AGENTS.md) — Commands and thresholds
 
 ### External Resources
 
