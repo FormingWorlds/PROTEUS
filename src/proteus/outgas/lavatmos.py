@@ -15,6 +15,8 @@ from proteus.utils.constants import element_list, vol_list
 
 log = logging.getLogger("fwl."+__name__)
 
+
+#species db class comes from HELIOS code Kitzmann+2017
 class Species_db(object):
 
     def __init__(self, name, fc_name, weight):
@@ -153,38 +155,8 @@ species_lib["Cu"] = Species_db(name="Cu", fc_name="Cu", weight=63.546)
 species_lib["Fe"] = Species_db(name="Fe", fc_name="Fe", weight=55.845)
 species_lib["Zn"] = Species_db(name="Zn", fc_name="Zn", weight=65.38)
 
-# ions
-species_lib["H-_bf"] = Species_db(name="H-_bf", fc_name="H1-", weight=species_lib["H"].weight)
-species_lib["H-_ff"] = Species_db(name="H-_ff", fc_name="H&e-", weight=species_lib["H"].weight)
-species_lib["He-"] = Species_db(name="He-", fc_name="He&e-", weight=species_lib["He"].weight)
-species_lib["H3+"] = Species_db(name="H3+", fc_name="H3+ is not included in FastChem...sorry!", weight=3.02382)
-species_lib["HeH+"] = Species_db(name="HeH+", fc_name="HeH+ is not included in FastChem...sorry!", weight=5.01054)
-species_lib["Fe+"] = Species_db(name="Fe+", fc_name="Fe1+", weight=55.845)
-species_lib["Mg+"] = Species_db(name="Mg+", fc_name="Mg1+", weight=24.305)
-species_lib["Si+"] = Species_db(name="Si+", fc_name="Si1+", weight=28.086)
-species_lib["Ti+"] = Species_db(name="Ti+", fc_name="Ti1+", weight=47.867)
-species_lib["H2_p"] = Species_db(name="H2_p", fc_name="H2+", weight=2.016)
-species_lib["H2_m"] = Species_db(name="H2_m", fc_name="H2-", weight=2.016)
-species_lib["H3O_p"] = Species_db(name="H3O_p", fc_name="H3O1+", weight=19.023)
-species_lib["OH_p"] = Species_db(name="OH_p", fc_name="O1H1+", weight=17.008)
-
 # don't forget the electrons! (they may be tiny but they are important)
 species_lib["e-"] = Species_db(name="e-", fc_name="e-", weight=5.4858e-4)
-
-# CIA pairs (Note: those come pre-calculated in opacity units (cm2/g) dividing by the weight of the 2nd collision partner in writing order)
-species_lib["CIA_H2H2"] = Species_db(name="CIA_H2H2", fc_name="H2&H2", weight=species_lib["H2"].weight)
-species_lib["CIA_H2He"] = Species_db(name="CIA_H2He", fc_name="H2&He", weight=species_lib["He"].weight)
-species_lib["CIA_CO2CO2"] = Species_db(name="CIA_CO2CO2", fc_name="C1O2&C1O2", weight=species_lib["CO2"].weight)
-species_lib["CIA_O2CO2"] = Species_db(name="CIA_O2CO2", fc_name="O2&C1O2", weight=species_lib["CO2"].weight)
-species_lib["CIA_O2O2"] = Species_db(name="CIA_O2O2", fc_name="O2&O2", weight=species_lib["O2"].weight)
-species_lib["CIA_O2N2"] = Species_db(name="CIA_O2N2", fc_name="O2&N2", weight=species_lib["N2"].weight)
-species_lib["CIA_N2N2"] = Species_db(name="CIA_N2N2", fc_name="N2&N2", weight=species_lib["N2"].weight)
-species_lib["CIA_N2H2"] = Species_db(name="CIA_N2H2", fc_name="N2&H2", weight=species_lib["H2"].weight)
-species_lib["CIA_O2N2"] = Species_db(name="CIA_O2N2", fc_name="O2&N2", weight=species_lib["N2"].weight)
-species_lib["CIA_N2N2"] = Species_db(name="CIA_N2N2", fc_name="N2&N2", weight=species_lib["N2"].weight)
-species_lib["CIA_N2H2"] = Species_db(name="CIA_N2H2", fc_name="N2&H2", weight=species_lib["H2"].weight)
-species_lib["CIA_H2H"] = Species_db(name="CIA_H2H", fc_name="H2&H", weight=species_lib["H"].weight)
-species_lib["CIA_CO2H2"] = Species_db(name="CIA_H2H", fc_name="CO2&H2", weight=species_lib["H2"].weight)
 
 mp = 1.6726231e-21 #kg
 kB = 1.38064e-23 #JK-1
@@ -206,6 +178,8 @@ class FO2shift:
     def oneill(self, T):
         '''O'Neill and Eggins (2002) IW'''
         return 2*(-244118+115.559*T-8.474*T*np.log(T))/(np.log(10)*8.31441*T)
+
+
 
 
 
@@ -259,6 +233,7 @@ def run_lavatmos(config:Config,hf_row:dict):
     'P_volatile' : hf_row['P_surf'], # bar
     'oxygen_abundance' : 'degassed', # 'degassed', 'manual',
     'volatile_comp' :  lavatmos_dict,
+    'melt_fraction' : 1.0
     }
 
     #compute density for the previous run with calliope output from hf_row:

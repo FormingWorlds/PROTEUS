@@ -406,7 +406,7 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
     fig.savefig(fname, bbox_inches='tight', dpi=300)
 
 
-def plot_chemistry_multipple_timesteps(plottimes,profiles,outputdir):
+def plot_chemistry_multiple_timesteps(plottimes,profiles,outputdir):
 
     t1=int(str(plottimes[0]))
     t2=int(str(plottimes[-1]))
@@ -430,9 +430,10 @@ def plot_chemistry_multipple_timesteps(plottimes,profiles,outputdir):
     vmr_surf = []
     for j, t in enumerate(plottimes):
         atm_profile=profiles[j]
-        parr = atm_profile["pl"] * 1e-5  # convert to bar
+        parr = atm_profile["p"] * 1e-5  # convert to bar
         # Get year
-        year = float(outputdir.split("/")[-1].split("_atm")[0])
+        print(outputdir.split("/")[-1].split("_atm")[0])
+        year=t
         for i,gas in enumerate(plot_gases):
             print(gas)
 
@@ -487,8 +488,8 @@ def plot_two_chemistries(output_dir1,output_dir2, extension, tmin, nsamp):
 
     plottimes1, plottimes2, profiles1, profiles2 = read_2model_data(output_dir1,output_dir2, extension, tmin, nsamp)
 
-    plot_chemistry_multipple_timesteps(plottimes1,profiles1,output_dir1)
-    plot_chemistry_multipple_timesteps(plottimes2,profiles2,output_dir2)
+    plot_chemistry_multiple_timesteps(plottimes1,profiles1,output_dir1)
+    plot_chemistry_multiple_timesteps(plottimes2,profiles2,output_dir2)
 
 
 

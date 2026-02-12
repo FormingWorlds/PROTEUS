@@ -156,15 +156,14 @@ def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
     log.info("initial fO2_shift : %.6f"%config.outgas.fO2_shift_IW)
     run_outgassing(dirs, config, hf_row)
     if config.outgas.silicates:
-        xerr=1e-3
+        xerr=0.01 #0.1 #1e-3
         err=1.0
         log.info("silicates are outgassed")
         log.info("error threshold on fO2 shift :  %.6f"%xerr)
         log.info("current error :  %.6f"%err)
         while err > xerr:
-            old_fO2shift= hf_row['fO2_shift']
-            log.info("fO2 shift before runnning lavatmos: %.6f"%old_fO2shift)
-            run_lavatmos(config, hf_row)
+            old_fO2shift = hf_row['fO2_shift']
+            run_lavatmos(config, hf_row) #in run_lavatmos add a criterion for temperature and melt fraction ?
             log.info("new fO2 shift : %.6f"%hf_row["fO2_shift"])
             run_outgassing(dirs, config, hf_row)
             err=abs(old_fO2shift - hf_row['fO2_shift'])

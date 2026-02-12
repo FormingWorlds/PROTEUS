@@ -81,24 +81,19 @@ def plot_chem_atmosphere(output_dir:str, chem_module:str, plot_format="pdf",
     al = 0.8
     vmr_surf = []
     for i,gas in enumerate(plot_gases):
-        print(gas)
-
         col = get_colour(gas)
         lbl = latexify(gas)
         vmr = 0.0
-
         _lw = lw
         #if gas in vol_list:
             #_lw *= 1.25
 
         # plot from netCDF (dashed lines)
-        print(atm_profile.keys())
         key = gas+"_vmr"
         if key in atm_profile.keys():
             xarr = list(atm_profile[key])
             xarr = [xarr[0]] + xarr
             if (np.amax(xarr) >= xmin or key in list(REFRACTORY_GASES) ):
-                print('min vmr > minimum')
                 vmr = float(xarr[-1])
                 ax.plot(xarr, parr, ls = 'dashed', color=col, lw=_lw, alpha=al)
             else:

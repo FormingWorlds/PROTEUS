@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "test_1_iteration_Si_species"
+        path        = "calliope_lavatmos_coupling_xerr001"
         logging     = "INFO"
         plot_mod    = 3     # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -319,9 +319,9 @@ version = "2.0"
 [outgas]
     fO2_shift_IW    = 4         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
-    silicates = true
+    silicates = false
     fastchempath = '/data3/leoni/LavAtmos/FastChem/fastchem3/output/'
-    vaplist = ["SiO","SiO2","Si"]#, "Na", "K", "Ti", "TiO", "TiO2" , "Mg", "MgO", "Al", "HAlO2"]
+    vaplist = ["SiO","SiO2","Si"]# "Na", "K", "Ti", "TiO", "TiO2" , "Mg", "MgO", "Al", "HAlO2"]
 
     module = "calliope"         # Which outgassing module to use
 
