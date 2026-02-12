@@ -5,6 +5,20 @@ platform. If you encounter errors that you cannot solve via the standard
 step-by-step guide or the advice below,
 [contact the developers](contact.md).
 
+### Quick error index
+
+| Error / symptom | Section |
+|---|---|
+| `Permission denied (publickey)` | [SSH keys](#cannot-clone-module-or-permission-denied-publickey) |
+| `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
+| Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
+| `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
+| `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error-opensslhttps_jll) |
+| PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
+| `x86-pad-for-align` / SOCRATES | [SOCRATES compilation](#errors-during-the-socrates-compilation) |
+| `libcrypto.3.dylib` not found | [netCDF error](#python-netcdf-error) |
+| PETSc error moving libraries | [Fedora/RHEL PETSc](#cannot-compile-petsc-error-moving-libraries-fedorarhel) |
+
 ---
 
 ## General (all platforms)

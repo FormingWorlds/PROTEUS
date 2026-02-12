@@ -2,6 +2,12 @@
 
 This page describes how to use PROTEUS. The framework can be run standalone, as a grid of simulations, or as a forward model within a retrieval framework. In all cases you will need to configure the model via a 'configuration file', which you can read about in a [dedicated page here](config.md). If you encounter any problems, please visit the [troubleshooting](troubleshooting.md) page.
 
+!!! tip "Quick start"
+    ```console
+    proteus start -c input/all_options.toml
+    ```
+    Results appear in `output/all_options/`. See [Output and results](#output-and-results) for details.
+
 We start by describing how to run a single instance of PROTEUS...
 
 ## Running PROTEUS from the terminal
@@ -103,6 +109,13 @@ Configure a grid of your choosing by creating a TOML file which specifies the gr
 
 Grids can be dispatched with or without using a workload manager. In PROTEUS, we use the [Slurm](https://slurm.schedmd.com/overview.html) workload manager, which can allow running large ensembles of models on high-performance compute clusters. The subsections below detail cases with/without Slurm.
 
+| | Without Slurm | With Slurm |
+|---|---|---|
+| Config setting | `use_slurm = false` | `use_slurm = true` |
+| Process management | PROTEUS manages subprocesses | Slurm manages jobs |
+| PROTEUS must stay open? | Yes | No |
+| Where to run | Servers, multicore desktops | HPC clusters (Habrok, Snellius) |
+
 ### Without Slurm
 
 Firstly, set `use_slurm = false`. In this case, the GridPROTEUS routine will manage the
@@ -111,7 +124,7 @@ which should be utilised by the grid at any one time. This is limited by the num
 cores available on your machine. This method works without Slurm, and can be applied on servers or
 on multicore personal computers.
 
-In this case, you will need to make sure that PROTEUS stays open in order to mange its subprocesses.
+In this case, you will need to make sure that PROTEUS stays open in order to manage its subprocesses.
 
 ### With Slurm
 

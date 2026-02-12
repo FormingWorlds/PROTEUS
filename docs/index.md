@@ -39,7 +39,15 @@
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
-See the [model description](model.md) for an outline of the code and its structure. See the [installation guide](installation.md) and [usage guide](usage.md) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions. [Contributing](CONTRIBUTING.md) outlines how to change or contribute source code. [Contact](bibliography.md) the developers if you have questions or run into issues.
+**Quick links:**
+
+- [Model description](model.md) -- outline of the code and its structure
+- [Installation](installation.md) -- set up PROTEUS on your machine
+- [Usage](usage.md) -- run your first simulation
+- [Configuration](config.md) -- customise model parameters
+- [Troubleshooting](troubleshooting.md) -- common errors and fixes
+- [Contributing](CONTRIBUTING.md) -- how to change or contribute source code
+- [Contact](contact.md) -- get in touch with the developers
 
 ## Contributors
 

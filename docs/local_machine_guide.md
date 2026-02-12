@@ -51,4 +51,12 @@ sudo dnf install gcc gcc-gfortran gcc-c++ netcdf netcdf-fortran netcdf-fortran-d
 
 ## Microsoft Windows
 
-It is not recommended to install and use PROTEUS on Windows machines. The installation instructions are written with Linux and macOS in mind. If attempting on Windows, check out the section on Windows instructions in the [VS Code Instructions for Kapteyn Cluster](https://docs.google.com/document/d/1Hm1J8x9CQ10dnyDJo1iohZHU6go_hxiUR7gTD2csv-M/edit?usp=sharing).
+PROTEUS is not natively supported on Windows. To run PROTEUS on a Windows machine, use [WSL2 (Windows Subsystem for Linux)](https://learn.microsoft.com/en-us/windows/wsl/install) and follow the **Debian / Ubuntu Linux** instructions above.
+
+```console
+wsl --install -d Ubuntu
+```
+
+After installing WSL2 and launching an Ubuntu terminal, proceed with the main [installation](installation.md) guide as on Linux.
+
+For remote development on a cluster instead, see the [VS Code Instructions for Kapteyn Cluster](https://docs.google.com/document/d/1Hm1J8x9CQ10dnyDJo1iohZHU6go_hxiUR7gTD2csv-M/edit?usp=sharing).

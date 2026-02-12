@@ -65,7 +65,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
    at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
     ### Julia considerations
     If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
- 
+
     If you install Julia through Juliaup this involves:
     ```console
     export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
@@ -87,53 +87,53 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 
    ```
     export JULIA_DIR=/dataserver/users/formingworlds/<username>/julia-1.11.6
-    
+
     mkdir -p $JULIA_DIR
-    
+
     cd /dataserver/users/formingworlds/<username>
-    
+
     wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.6-linux-x86_64.tar.gz
-    
+
     tar -xvzf julia-1.11.6-linux-x86_64.tar.gz
-    
+
     echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.11.6/bin:$PATH' >> ~/.bashrc
-    
+
     echo 'export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia' >> ~/.bashrc
-    
+
     source ~/.bashrc
    ```
-  
+
     ### Miniconda and conda-forge considerations
     When installing miniconda or conda-forge, make sure you do not choose the default path, which is always your home folder. Adjust it to `/dataserver/users/formingworlds/<username>`.
     Alternatively, you can set default paths upfront for miniconda:
     ```console
     mkdir -p /dataserver/users/formingworlds/<username>/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O 
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O
         /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
-    bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p 
+    bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p
         /dataserver/users/formingworlds/<username>/miniconda3
     rm /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
     ```
     and similarly for conda-forge:
     ```console
-    mkdir -p /dataserver/users/formingworlds/${USER}/miniforge3
-    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O 
+    mkdir -p /dataserver/users/formingworlds/<username>/miniforge3
+    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O
         /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh
-    bash /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh -b -p 
+    bash /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh -b -p
         /dataserver/users/formingworlds/<username>/miniforge3
     rm /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh
-    ``` 
+    ```
     For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
 
     ### Pip cache consideration
-    The pip cache can easily take more than 3 GB when installing PROTEUS and this may exceed your 
+    The pip cache can easily take more than 3 GB when installing PROTEUS and this may exceed your
     disk quota on your home directory. Therefore, you need to setup your pip cache folder in a different
     place:
     ```console
-    mkdir /dataserver/users/formingworlds/${USER}/.pip-cache
-    export PIP_CACHE_DIR=/dataserver/users/formingworlds/${USER}/.pip-cache 
+    mkdir /dataserver/users/formingworlds/<username>/.pip-cache
+    export PIP_CACHE_DIR=/dataserver/users/formingworlds/<username>/.pip-cache
     ```
-    
+
 ## Queuing Manager: Condormaster
 
 - To use the queuing manager on the Kapteyn cluster, you first need to SSH into Norma1 or Norma2.
@@ -157,12 +157,12 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 ```console
     getenv = True
     universe = vanilla
-    executable = /dataserver/users/formingworlds/postolec/miniconda3/bin/conda
-    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/postolec/PROTEUS/input/demos/escape.toml
+    executable = /dataserver/users/formingworlds/<username>/miniconda3/bin/conda
+    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/<username>/PROTEUS/input/demos/escape.toml
     log = condor_outputs/log/logfile.$(PROCESS)
     output = condor_outputs/output/outfile.$(PROCESS)
     error = condor_outputs/output/errfile.$(PROCESS)
-    notify_user = youremail@astro.rug.nl
+    notify_user = <your-email>@astro.rug.nl
     Requirements = (Cluster == "normas")
     queue 1
 ```

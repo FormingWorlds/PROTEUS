@@ -1,5 +1,12 @@
 # Installation
 
+!!! info "Prerequisites"
+    - macOS (Intel or Apple Silicon) or Linux
+    - ~10 GB disk space for reference data files
+    - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
+    - Internet connection for data downloads
+    - Allow ~60 minutes for a full installation including all submodules
+
 These instructions will guide you through the typical installation
 process. The setup is written for macOS and Linux. Depending on your
 system settings and installed libraries your procedure may differ. If
@@ -88,7 +95,7 @@ Set the Julia environment variable:
 
 ---
 
-## Step 1: Create and set environment variables
+## 4. Create and set environment variables
 
 The environment variable `FWL_DATA` points to the folder where input data are stored. This variable must always be set, so add it to your shell config file.
 
@@ -108,21 +115,21 @@ The environment variable `FWL_DATA` points to the folder where input data are st
     source "$HOME/.zshrc"
     ```
 
-## Step 2: Download PROTEUS
+## 5. Download PROTEUS
 
 ```console
 git clone git@github.com:FormingWorlds/PROTEUS.git
 cd PROTEUS
 ```
 
-## Step 3: Create a virtual environment
+## 6. Create a virtual environment
 
 ```console
 conda create -n proteus python=3.12
 conda activate proteus
 ```
 
-## Step 4: Install SOCRATES (radiative transfer)
+## 7. Install SOCRATES (radiative transfer)
 
 ```console
 ./tools/get_socrates.sh
@@ -144,7 +151,7 @@ The environment variable `RAD_DIR` must always point to the SOCRATES installatio
     source "$HOME/.zshrc"
     ```
 
-## Step 5: Install AGNI (radiative-convective atmosphere model)
+## 8. Install AGNI (radiative-convective atmosphere model)
 
 Installation steps can be found at the [AGNI wiki](https://h-nicholls.space/AGNI/dev/setup/). They are also reproduced below.
 
@@ -159,7 +166,7 @@ Use this `get_agni.sh` script to keep AGNI and its data files up to date. AGNI m
 
 The argument provided to the script (integer from 0 to 20) indicates which tests AGNI should run. A value of `0` means the tests are skipped.
 
-## Step 6: Install submodules as editable
+## 9. Install submodules as editable
 
 Clone and install each submodule in editable mode.
 
@@ -206,7 +213,7 @@ VULCAN is not available as a standard Python package, so it is installed via a d
 ./tools/get_vulcan.sh
 ```
 
-## Step 7: Setup PETSc (numerical computing library)
+## 10. Setup PETSc (numerical computing library)
 
 !!! warning
     PETSc requires Python <= 3.12. Make sure your active environment uses a compatible version.
@@ -236,25 +243,25 @@ VULCAN is not available as a standard Python package, so it is installed via a d
 
     See [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) for manual steps if needed.
 
-## Step 8: Setup SPIDER (interior evolution model)
+## 11. Setup SPIDER (interior evolution model)
 
 ```console
 ./tools/get_spider.sh
 ```
 
-## Step 9: Install PROTEUS framework
+## 12. Install PROTEUS framework
 
 ```console
 python -m pip install -e .
 ```
 
-## Step 10: Enable pre-commit hooks
+## 13. Enable pre-commit hooks
 
 ```console
 pre-commit install -f
 ```
 
-## Step 11: Done!
+## 14. Done!
 
 Any remaining dependencies will be downloaded when the model is first run.
 
