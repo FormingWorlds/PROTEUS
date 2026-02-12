@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
+# This script is only for macOS
+if [[ "$(uname)" != "Darwin" ]]; then
+  echo "Error: This script is only for macOS. On Linux, use ./tools/get_petsc.sh directly."
+  exit 1
+fi
+
 # Resolve the PROTEUS root directory relative to this script
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROTEUS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -12,11 +18,23 @@ if [[ ! -d "$PETSC_DIR" ]]; then
   exit 1
 fi
 
-# Check that Homebrew is available
+# Check that required tools are available
 command -v brew >/dev/null 2>&1 || {
   echo "Error: Homebrew not found. Install it from https://brew.sh/"
   exit 1
 }
+
+command -v xcrun >/dev/null 2>&1 || {
+  echo "Error: xcrun not found. Install Xcode Command Line Tools: xcode-select --install"
+  exit 1
+}
+
+for tool in mpicc mpicxx mpifort; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "Error: $tool not found. Install MPI via Homebrew: brew install open-mpi"
+    exit 1
+  }
+done
 
 # Detect Homebrew prefix (Apple Silicon: /opt/homebrew, Intel: /usr/local)
 BREW_PREFIX=$(brew --prefix)
