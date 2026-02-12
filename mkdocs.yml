@@ -28,6 +28,7 @@ nav:
     - AI-assisted development: ai_usage.md
     - Docker CI architecture: docker_ci_architecture.md
   - Community:
+    - Developers: https://proteus-framework.org/people
     - Contact: contact.md
     - Code of Conduct: CODE_OF_CONDUCT.md
     - Funding: funding.md

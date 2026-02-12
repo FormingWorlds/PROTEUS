@@ -47,26 +47,8 @@
 - [Configuration](config.md) -- customise model parameters
 - [Troubleshooting](troubleshooting.md) -- common errors and fixes
 - [Contributing](CONTRIBUTING.md) -- how to change or contribute source code
+- [Team](https://proteus-framework.org/people) -- meet the developers
 - [Contact](contact.md) -- get in touch with the developers
-
-## Contributors
-
-| Name                    | Email address                               |
-| -                       | -                                           |
-| Tim Lichtenberg         | tim.lichtenberg@rug.nl                      |
-| Harrison Nicholls       | h-nicholls@pm.me                            |
-| Laurent Soucasse        | l.soucasse@esciencecenter.nl                |
-| Mariana Sastre          | m.c.villamil.sastre@rug.nl                  |
-| Emma Postolec           | e.n.postolec@rug.nl                         |
-| Flavia Pascal           | f.pascal@student.rug.nl                     |
-| Ben Riegler             | ben.riegler@tum.de                          |
-| Hanno Spreeuw           | h.spreeuw@esciencecenter.nl                 |
-| Dan J. Bower            | dbower@ethz.ch                              |
-| Mark Hammond            | mark.hammond@physics.ox.ac.uk               |
-| Stef Smeets             | s.smeets@esciencecenter.nl                  |
-| Robb Calder             | rdc49@cam.ac.uk                             |
-| Karen Stuitje           | e.k.e.stuitje@student.rug.nl                |
-| Oliver Shorttle         | os258@cam.ac.uk                             |
 
 ## Citation and credit
 
