@@ -2,7 +2,7 @@
 
 !!! info "Prerequisites"
     - macOS (Intel or Apple Silicon) or Linux
-    - ~10 GB disk space for reference data files
+    - ~20 GB disk space (conda, Julia, reference data, submodules)
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
     - Internet connection for data downloads
     - Allow ~60 minutes for a full installation including all submodules
@@ -205,14 +205,6 @@ git clone git@github.com:FormingWorlds/ZEPHYRUS
 python -m pip install -e ZEPHYRUS/.
 ```
 
-**VULCAN** (chemical kinetics atmosphere model):
-
-VULCAN is not available as a standard Python package, so it is installed via a dedicated script:
-
-```console
-./tools/get_vulcan.sh
-```
-
 ## 10. Setup PETSc (numerical computing library)
 
 !!! warning
@@ -252,7 +244,7 @@ VULCAN is not available as a standard Python package, so it is installed via a d
 ## 12. Install PROTEUS framework
 
 ```console
-python -m pip install -e .
+python -m pip install -e ".[develop]"
 ```
 
 ## 13. Enable pre-commit hooks
@@ -287,6 +279,14 @@ LovePy is written in Julia. You can use the same environment as AGNI if you wish
 
 !!! note
     This script will take some time to run; PLATON will need to download about 10 GB of data from the internet.
+
+### Chemical kinetics atmosphere model (VULCAN)
+
+VULCAN is not available as a standard Python package, so it is installed via a dedicated script:
+
+```console
+./tools/get_vulcan.sh
+```
 
 ---
 

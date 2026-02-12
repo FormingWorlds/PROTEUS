@@ -1,11 +1,11 @@
-# Go into the petsc directory
-cd petsc
+#!/usr/bin/env bash
+set -e
 
 # Detect your shell config file
 if [[ "$SHELL" == */zsh ]]; then
   MY_RC="$HOME/.zshrc"
 elif [[ "$SHELL" == */bash ]]; then
-  MY_RC="$HOME/.bash_profile"
+  MY_RC="$HOME/.bashrc"
 else
   echo "Could not detect Zsh or Bash. Please add lines manually."
 fi
@@ -24,6 +24,9 @@ if [[ -n "$MY_RC" ]]; then
   echo "Run this command now to activate them: source $MY_RC"
 fi
 
+# Detect Homebrew prefix (Apple Silicon: /opt/homebrew, Intel: /usr/local)
+BREW_PREFIX=$(brew --prefix)
+
 # Run the configure command
 cd petsc
 ./configure \
@@ -32,14 +35,14 @@ cd petsc
    CXX=mpicxx \
    FC=mpifort \
    F77=mpifort \
-   LDFLAGS="-L/opt/homebrew/lib -Wl,-w" \
+   LDFLAGS="-L${BREW_PREFIX}/lib -Wl,-w" \
    --with-debugging=0 \
    --with-cxx-dialect=14 \
    --download-sundials2=1
 
-# 3. Once that finishes successfully, build and test it
+# Once that finishes successfully, build and test it
 make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt all
 make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt check
 
-# 4. Go back to previous directory
+# Go back to previous directory
 cd ..

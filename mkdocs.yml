@@ -8,6 +8,7 @@ nav:
   - Getting Started:
     - Model description: model.md
     - Installation: installation.md
+    - User install (legacy): user_install.md
     - Using PROTEUS: usage.md
     - Configuration: config.md
     - Troubleshooting: troubleshooting.md
@@ -31,23 +32,23 @@ nav:
     - Contact: contact.md
     - Code of Conduct: CODE_OF_CONDUCT.md
     - Funding: funding.md
-  - Links:
+  - Source & Issues:
     - Source code: https://github.com/FormingWorlds/PROTEUS
     - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
   - Submodule Docs:
-    - MORS:  https://proteus-framework.org/mors/
-    - JANUS: https://proteus-framework.org/janus/
-    - ZEPHYRUS: https://proteus-framework.org/zephyrus/
-    - CALLIOPE: https://proteus-framework.org/calliope/
-    - AGNI: https://www.h-nicholls.space/AGNI/
-    - Obliqua: https://proteus-framework.org/Obliqua/
-    - VULCAN: https://proteus-framework.org/vulcan/
-    - Zalmoxis: https://proteus-framework.org/zalmoxis/
-    - Aragog: https://proteus-framework.org/aragog/
-    - SPIDER: https://proteus-framework.org/spider/
-    - Atmodeller: https://atmodeller.readthedocs.io/en/latest/
-    - FastChem: https://newstrangeworlds.github.io/FastChem/
-    - PLATON: https://platon.readthedocs.io/en/latest/
+    - 🔗 MORS:  https://proteus-framework.org/MORS/
+    - 🔗 JANUS: https://proteus-framework.org/JANUS/
+    - 🔗 ZEPHYRUS: https://proteus-framework.org/ZEPHYRUS/
+    - 🔗 CALLIOPE: https://proteus-framework.org/CALLIOPE/
+    - 🔗 AGNI: https://www.h-nicholls.space/AGNI/
+    - 🔗 Obliqua: https://proteus-framework.org/Obliqua/
+    - 🔗 VULCAN: https://proteus-framework.org/VULCAN/
+    - 🔗 Zalmoxis: https://proteus-framework.org/Zalmoxis/
+    - 🔗 Aragog: https://proteus-framework.org/aragog/
+    - 🔗 SPIDER: https://proteus-framework.org/SPIDER/
+    - 🔗 Atmodeller: https://atmodeller.readthedocs.io/en/latest/
+    - 🔗 FastChem: https://newstrangeworlds.github.io/FastChem/
+    - 🔗 PLATON: https://platon.readthedocs.io/en/latest/
 
 theme:
   name: material

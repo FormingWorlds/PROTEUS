@@ -13,10 +13,10 @@ step-by-step guide or the advice below,
 | `Out-of-date modules detected` | [Module updates](#out-of-date-modules-detected) |
 | Slow Zenodo downloads | [Data downloads](#data-download-errors-or-slow-zenodo-downloads) |
 | `libudev.so.1` not found | [libudev](#libudevso1-not-found) |
-| `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error-opensslhttps_jll) |
+| `OpenSSL_jll` / Julia error | [Julia compatibility](#julia-compatibility-error) |
 | PETSc fails on Apple Silicon | [PETSc Apple Silicon](#petsc-compilation-fails-on-apple-silicon) |
 | `x86-pad-for-align` / SOCRATES | [SOCRATES compilation](#errors-during-the-socrates-compilation) |
-| `libcrypto.3.dylib` not found | [netCDF error](#python-netcdf-error) |
+| `libcrypto.3.dylib` not found | [netCDF error](#python-netcdf-library-error) |
 | PETSc error moving libraries | [Fedora/RHEL PETSc](#cannot-compile-petsc-error-moving-libraries-fedorarhel) |
 
 ---
@@ -93,7 +93,7 @@ First, check that you are in the correct directory when running `make` or `./con
 
 This happens when compiling SPIDER within a Python environment that is incompatible with PETSc. Try compiling SPIDER (and/or PETSc) in your system's base Python environment, and ensure that you are not using Python >= 3.13, as SPIDER is only supported for Python versions <= 3.12 currently.
 
-### Julia compatibility error / OpenSSL_jll
+### Julia compatibility error
 
 There are incompatibilities between Python and some versions of Julia. Julia version 1.12+ is not yet supported because it requires a version of the OpenSSL library that is incompatible with Python.
 
@@ -133,7 +133,7 @@ Run the provided fix script from the PROTEUS root directory:
 This script sets the correct environment variables and reconfigures PETSc with Apple Silicon-compatible flags.
 
 ??? info "Manual fix (if the script does not work)"
-    1. Set environment variables in your shell config (`~/.zshrc` or `~/.bash_profile`):
+    1. Set environment variables in your shell config (`~/.zshrc` or `~/.bashrc`):
 
         ```console
         export SDKROOT=$(xcrun --show-sdk-path)
@@ -225,7 +225,7 @@ Make sure to use the GNU version of `g++`, not the Apple one. The Apple version 
 
 The Homebrew version located at `/opt/homebrew/bin/` works well. Find out which `gcc` version Homebrew installed (`ls /opt/homebrew/bin/gcc-*`), and edit the file `make.globaloptions` in the FastChem directory to use, e.g. `g++-12` or `g++-13` instead of `g++`.
 
-### Python / netCDF error
+### Python netCDF library error
 
 Error: `Library not loaded: '@rpath/libcrypto.3.dylib'`
 
