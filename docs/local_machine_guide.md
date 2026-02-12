@@ -24,7 +24,7 @@ Once you have followed these steps, go back to the main [installation](installat
     **[MacPorts](https://www.macports.org/)**
 
     ```console
-    sudo port install netcdf-fortran +gcc8 wget
+    sudo port install netcdf-fortran +gcc8 wget gcc13 openmpi
     ```
 
     !!! note "Apple Silicon (M1/M2/M3/Ultra)"

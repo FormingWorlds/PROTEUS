@@ -12,7 +12,7 @@
   <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests">
   </a>
-  <a href="https://proteus-framework.org/proteus/">
+  <a href="https://proteus-framework.org/PROTEUS/">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main">
   </a>
   <a href="https://opensource.org/licenses/Apache-2.0">

@@ -23,7 +23,7 @@ step-by-step guide or the advice below,
 
 ## General (all platforms)
 
-### Cannot clone module, or Permission denied (publickey)
+### Cannot clone module, or Permission denied (publickey) {#cannot-clone-module-or-permission-denied-publickey}
 
 Have you added your SSH key to GitHub? See these pages for guidance:
 
@@ -32,7 +32,7 @@ Have you added your SSH key to GitHub? See these pages for guidance:
 * [Adding a new SSH key to your Github account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
 * [Testing your SSH connection](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection)
 
-### Out-of-date modules detected
+### Out-of-date modules detected {#out-of-date-modules-detected}
 
 You will see an error that looks like this:
 
@@ -66,7 +66,7 @@ git pull
 python -m pip install -U -e .
 ```
 
-### Data download errors or slow Zenodo downloads
+### Data download errors or slow Zenodo downloads {#data-download-errors-or-slow-zenodo-downloads}
 
 PROTEUS automatically downloads input data files from Zenodo. The code works without an API token using public access, but you can optionally configure a token for enhanced rate limits.
 
@@ -89,11 +89,11 @@ PROTEUS automatically downloads input data files from Zenodo. The code works wit
 
 First, check that you are in the correct directory when running `make` or `./configure`. If you are, this could be caused by the environment variable `PETSC_DIR` remaining set after a previous PETSc installation. Run `unset PETSC_DIR` and try again.
 
-### `libudev.so.1` not found
+### `libudev.so.1` not found {#libudevso1-not-found}
 
 This happens when compiling SPIDER within a Python environment that is incompatible with PETSc. Try compiling SPIDER (and/or PETSc) in your system's base Python environment, and ensure that you are not using Python >= 3.13, as SPIDER is only supported for Python versions <= 3.12 currently.
 
-### Julia compatibility error
+### Julia compatibility error {#julia-compatibility-error}
 
 There are incompatibilities between Python and some versions of Julia. Julia version 1.12+ is not yet supported because it requires a version of the OpenSSL library that is incompatible with Python.
 
@@ -108,7 +108,7 @@ juliaup default 1.11
 
 ## macOS
 
-### PETSc compilation fails on Apple Silicon
+### PETSc compilation fails on Apple Silicon {#petsc-compilation-fails-on-apple-silicon}
 
 !!! warning "Applies to: macOS on Apple Silicon (M1, M2, M3, Ultra)"
 
@@ -203,7 +203,7 @@ This header is only meant to be used on x86 and x64 architecture
 
 Install Python via Homebrew and use pip to manage packages, rather than Conda.
 
-### Errors during the SOCRATES compilation
+### Errors during the SOCRATES compilation {#errors-during-the-socrates-compilation}
 
 One of the following errors happen during the SOCRATES compilation:
 
@@ -225,7 +225,7 @@ Make sure to use the GNU version of `g++`, not the Apple one. The Apple version 
 
 The Homebrew version located at `/opt/homebrew/bin/` works well. Find out which `gcc` version Homebrew installed (`ls /opt/homebrew/bin/gcc-*`), and edit the file `make.globaloptions` in the FastChem directory to use, e.g. `g++-12` or `g++-13` instead of `g++`.
 
-### Python netCDF library error
+### Python netCDF library error {#python-netcdf-library-error}
 
 Error: `Library not loaded: '@rpath/libcrypto.3.dylib'`
 
@@ -305,7 +305,7 @@ Try loading the OpenMPI module:
 module load mpi/openmpi-x86_64
 ```
 
-### Cannot compile PETSc, error moving libraries (Fedora/RHEL)
+### Cannot compile PETSc, error moving libraries (Fedora/RHEL) {#cannot-compile-petsc-error-moving-libraries-fedorarhel}
 
 If you are using Fedora or RedHat Linux distributions, you might encounter an error:
 

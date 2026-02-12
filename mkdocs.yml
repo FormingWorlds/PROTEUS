@@ -8,7 +8,6 @@ nav:
   - Getting Started:
     - Model description: model.md
     - Installation: installation.md
-    - User install (legacy): user_install.md
     - Using PROTEUS: usage.md
     - Configuration: config.md
     - Troubleshooting: troubleshooting.md
@@ -56,6 +55,7 @@ theme:
   features:
   - content.code.copy
   - content.tabs.link
+  - navigation.expand
 
   # Default assets (used unless overridden per palette below)
   favicon: assets/PROTEUS_black_on_white_logo_only.png
@@ -82,9 +82,6 @@ theme:
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
-
-extra_css:
-  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
