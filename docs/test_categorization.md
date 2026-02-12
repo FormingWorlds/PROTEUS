@@ -22,7 +22,8 @@ Add one of these markers above each test function:
 | `@pytest.mark.slow` | Full physics simulations | Hours | Nightly only |
 | `@pytest.mark.skip` | Temporarily disabled | — | Never |
 
-**Which marker should I use?**
+### Which marker should I use?
+
 - **Most tests → `unit`**: Testing a single function? Mock external dependencies, use `unit`.
 - **Testing real binaries → `smoke`**: Need SOCRATES/AGNI/SPIDER actually running? Use `smoke`. Module-level smoke tests (e.g. in `tests/atmos_clim/`) validate a single binary with 1 timestep. Integration-level smoke tests (in `tests/integration/`) validate the coupling framework end-to-end with dummy modules.
 - **Testing module coupling → `integration`**: ARAGOG + AGNI working together? Use `integration`.
@@ -44,7 +45,8 @@ Add one of these markers above each test function:
 
 ### What Happens Nightly
 
-The nightly workflow (`ci-nightly.yml`) runs at 3am UTC and:
+The nightly workflow (`ci-nightly.yml`) runs at 3am UTC and does the following:
+
 - Runs ALL tests (unit → smoke → integration → slow)
 - Updates coverage thresholds (ratcheting)
 - Sets `PROTEUS_CI_NIGHTLY=1` to enable additional smoke tests
@@ -112,8 +114,9 @@ For fast gate check: `pytest -m "unit and not skip" --cov=src --cov-fail-under=<
 ## Coverage Requirements
 
 **Current thresholds** (from `pyproject.toml`):
-- **Fast gate**: 44.45% — checked on every PR (unit + smoke)
-- **Full gate**: 59% — checked nightly (all tests)
+
+- **Fast gate**: checked on every PR (unit + smoke)
+- **Full gate**: checked nightly (all tests)
 - **Diff-cover**: 80% — required on changed lines
 
 These thresholds auto-increase ("ratchet") and never decrease. Check coverage locally with `pytest --cov=src --cov-report=html`.
