@@ -36,19 +36,22 @@ Add one of these markers above each test function:
 ### What Happens When You Open a PR
 
 1. **Structure check**: Validates `tests/` mirrors `src/proteus/`
-2. **Unit tests**: Runs `pytest -m "unit and not skip"` with coverage
+2. **Unit tests (Linux)**: Runs `pytest -m "unit and not skip"` with coverage
 3. **Diff-cover**: Checks 80% coverage on your changed lines
-4. **Smoke tests**: Runs `pytest -m "smoke and not skip"`
-5. **Lint**: Checks code style with ruff
+4. **Smoke tests (Linux)**: Runs `pytest -m "smoke and not skip"`
+5. **Unit tests (macOS)**: Runs unit tests on macOS (no compiled binaries)
+6. **Lint**: Checks code style with ruff
+7. **Summary**: Aggregates results from all platforms into a unified report
 
 **Runtime**: ~5-10 minutes
 
 ### What Happens Nightly
 
-The nightly workflow (`ci-nightly.yml`) runs at 3am UTC and does the following:
+The nightly workflow (`ci-nightly.yml`) is primarily triggered by `docker-build.yml` after the 2am UTC image rebuild. A 3am UTC cron acts as a fallback if the docker build didn't run. A deduplication check prevents running twice.
 
 - Runs ALL tests (unit → smoke → integration → slow)
 - Updates coverage thresholds (ratcheting)
+- Uploads aggregate coverage (unit + smoke + integration) to Codecov
 - Sets `PROTEUS_CI_NIGHTLY=1` to enable additional smoke tests
 
 ### Coverage Rules

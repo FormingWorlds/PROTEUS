@@ -66,8 +66,9 @@ When you open a pull request, CI automatically:
 
 | Workflow | Runs When | What It Does |
 |----------|-----------|--------------|
-| `ci-pr-checks.yml` | Every PR | Unit + smoke tests, lint, ~5-10 min |
-| `ci-nightly.yml` | Daily 3am UTC | All tests including slow, updates thresholds |
+| `ci-pr-checks.yml` | Every PR | Unit + smoke tests (Linux), unit tests (macOS), lint, ~5-10 min |
+| `docker-build.yml` | Daily 2am UTC / dependency changes | Rebuilds Docker image, then triggers nightly |
+| `ci-nightly.yml` | Triggered by docker-build (fallback: 3am cron) | All tests including slow, updates thresholds, uploads coverage to Codecov |
 
 **Key features:**
 
