@@ -549,7 +549,7 @@ jobs:
                       print(f"Warning: Could not read {output_path}: {e}")
 
               with open(summary_path, "w") as f:
-                  f.write("# Nightly Science Validation (v5) – Summary\n\n")
+                  f.write("# Nightly Science Validation – Summary\n\n")
 
                   if cov_path.exists():
                       try:
@@ -603,7 +603,7 @@ jobs:
               summary_error = e
               try:
                   with open(summary_path, "w") as f:
-                      f.write("# Nightly Science Validation (v5) – Summary\n\n")
+                      f.write("# Nightly Science Validation – Summary\n\n")
                       f.write("## Summary generation failed\n\n")
                       f.write(f"An error occurred while generating the summary:\n\n```\n{traceback.format_exc()}\n```\n")
               except Exception as write_err:
