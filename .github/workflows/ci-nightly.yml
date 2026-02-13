@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write  # Required for ratcheting coverage threshold commits
   packages: read
+  actions: read  # Required to query workflow runs
 
 concurrency:
   group: nightly-science-${{ github.ref }}
@@ -20,8 +21,51 @@ env:
   IMAGE_NAME: formingworlds/proteus
 
 jobs:
+  check-already-triggered:
+    name: Check if already triggered by Docker build
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check for recent workflow_dispatch run
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Always run if manually dispatched
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "Not a scheduled run — proceeding."
+            exit 0
+          fi
+
+          # For cron-triggered runs, check if docker-build already dispatched
+          # this workflow in the last 4 hours
+          echo "Checking for recent workflow_dispatch runs of ci-nightly.yml..."
+          SINCE=$(date -u -d '4 hours ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+              || date -u -v-4H '+%Y-%m-%dT%H:%M:%SZ')
+
+          RUNS=$(curl -s -L \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ci-nightly.yml/runs?event=workflow_dispatch&created=>=${SINCE}&per_page=5")
+
+          COUNT=$(echo "$RUNS" | jq '.total_count // 0')
+          echo "Found $COUNT workflow_dispatch run(s) in the last 4 hours."
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: already triggered by docker-build workflow."
+          else
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "No recent dispatch found — proceeding with scheduled run."
+          fi
+
   branch-nightly-coverage:
     name: Nightly Coverage (Integration)
+    needs: check-already-triggered
+    if: needs.check-already-triggered.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 240
     container:
@@ -452,6 +496,23 @@ jobs:
           # Verify the JSON was written with actual data
           echo "--- Coverage JSON contents ---"
           cat coverage-branch-nightly.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Line coverage: {d.get(\"totals\",{}).get(\"percent_covered\",0):.2f}%')"
+
+      - name: Install gpg for Codecov verification
+        if: always()
+        run: |
+          apt-get update
+          apt-get install -y gnupg
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: /opt/proteus/coverage.xml
+          flags: nightly
+          name: nightly-full-suite
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Write workflow summary and test results report
         if: always()
