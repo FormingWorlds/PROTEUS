@@ -242,7 +242,7 @@ echo 'export PATH="/usr/local/opt/openssl@3/bin:$PATH"' >> /Users/USERNAME/.bash
 echo 'export LDFLAGS="-L/usr/local/opt/openssl@3/lib"' >>/Users/USERNAME/.bash_profile
 echo 'export CPPFLAGS="-I/usr/local/opt/openssl@3/include"' >>/Users/USERNAME/.bash_profile
 ln -s /usr/local/opt/openssl/lib/libcrypto.3.dylib /Users/USERNAME/opt/anaconda3/envs/proteus/lib/python3.10/site-packages/netCDF4/../../../
-ln -s /usr/local/opt/openssl/lib/libssl.3.dylib /Users/USERNAME/opt/anaconda3/envs/proteus/lib/python3.10/site-packages/netCDF4/../../../
+ln -s /usr/local/opt/openssl/lib/libssl.3.dylib /Users/$USER/opt/anaconda3/envs/proteus/lib/python3.10/site-packages/netCDF4/../../../
 ```
 
 ### `ModuleNotFoundError: No module named 'yaml'`
