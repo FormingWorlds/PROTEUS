@@ -73,6 +73,7 @@ PROTEUS uses two special files to provide AI assistants with project context:
 4. **Use `.github/copilot-instructions.md`**: This file automatically provides Copilot with PROTEUS guidelines
 
 **Tutorials:**
+
 - [Getting Started with GitHub Copilot](https://docs.github.com/en/copilot/using-github-copilot/getting-started-with-github-copilot)
 - [Using Copilot Chat in VS Code](https://docs.github.com/en/copilot/using-github-copilot/asking-github-copilot-questions-in-your-ide)
 - [Copilot Best Practices](https://docs.github.com/en/copilot/using-github-copilot/best-practices-for-using-github-copilot)
@@ -301,8 +302,8 @@ bash tools/validate_test_structure.sh
 
 ## References
 
-- [AGENTS.md](../AGENTS.md) — AI coding guidelines for PROTEUS
-- [MEMORY.md](../MEMORY.md) — Project state and decisions
+- [AGENTS.md](https://github.com/FormingWorlds/PROTEUS/blob/main/AGENTS.md) — AI coding guidelines for PROTEUS
+- [MEMORY.md](https://github.com/FormingWorlds/PROTEUS/blob/main/MEMORY.md) — Project state and decisions
 - [Test Building](test_building.md) — Test generation prompts
 - [Test Categorization](test_categorization.md) — Test markers and CI
 - [Test Infrastructure](test_infrastructure.md) — Coverage and workflows

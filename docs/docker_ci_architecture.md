@@ -104,7 +104,7 @@ PROTEUS_DIR=/opt/proteus
 11. **Lint** — `ruff check` and `ruff format --check`
 
 **Coverage coordination:**
-- Fast gate threshold from `[tool.proteus.coverage_fast] fail_under` (currently 44.45%)
+- Fast gate threshold from `[tool.proteus.coverage_fast] fail_under` (see `pyproject.toml`)
 - Estimated total = union of PR lines + nightly integration lines
 - Grace period allows ≤0.3% drop with warning
 - Diff-cover enforces 80% on changed lines
@@ -162,7 +162,7 @@ Since the container already has compiled binaries:
 - `nightly-coverage/coverage-by-type.json` — Breakdown by test type
 
 **Coverage ratcheting:**
-- Full threshold from `[tool.coverage.report] fail_under` (currently 59%)
+- Full threshold from `[tool.coverage.report] fail_under` (see `pyproject.toml`)
 - Auto-commits threshold increase on successful main runs
 
 See [Test Infrastructure](test_infrastructure.md) for coverage coordination details.
@@ -300,8 +300,8 @@ The two-tier coverage system coordinates between nightly and PR workflows:
 
 | Feature | Value | Description |
 |---------|-------|-------------|
-| Fast gate | 44.45% | PR threshold (unit + smoke) |
-| Full gate | 59% | Nightly threshold (all tests) |
+| Fast gate | `pyproject.toml` | PR threshold (unit + smoke) |
+| Full gate | `pyproject.toml` | Nightly threshold (all tests) |
 | Grace period | 0.3% | PRs can merge with small drops |
 | Staleness | 48h | PR fails if nightly too old |
 | Diff-cover | 80% | Required on changed lines |

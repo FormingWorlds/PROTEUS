@@ -1,51 +1,62 @@
 site_name: PROTEUS
-site_url: https://proteus-framework.org/proteus/
+site_url: https://proteus-framework.org/PROTEUS/
 repo_url: https://github.com/FormingWorlds/PROTEUS
 repo_name: GitHub
 
 nav:
   - Home: index.md
-  - Model description: model.md
-  - Installation: installation.md
-  - Using PROTEUS: usage.md
-  - Configuration: config.md
-  - Testing infrastructure: test_infrastructure.md
-  - Test categorization: test_categorization.md
-  - Test building: test_building.md
-  - AI-assisted development: ai_usage.md
-  - Docker CI architecture: docker_ci_architecture.md
-  - Contributing: CONTRIBUTING.md
-  - Bibliography: bibliography.md
-  - Troubleshooting: troubleshooting.md
-  - Bayesian inference: inference.md
-  - Reference data: data.md
-  - Kapteyn cluster: kapteyn_cluster_guide.md
-  - Snellius cluster: snellius_cluster_guide.md
-  - Habrok cluster: habrok_cluster_guide.md
-  - Contact: contact.md
-  - Code of Conduct: CODE_OF_CONDUCT.md
-  - Funding: funding.md
-  - Source code: https://github.com/FormingWorlds/PROTEUS
-  - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
-  - 🔗 MORS:  https://proteus-framework.org/mors/
-  - 🔗 JANUS: https://proteus-framework.org/janus/
-  - 🔗 ZEPHYRUS: https://proteus-framework.org/zephyrus/
-  - 🔗 CALLIOPE: https://proteus-framework.org/calliope/
-  - 🔗 AGNI: https://www.h-nicholls.space/AGNI/
-  - 🔗 Obliqua: https://proteus-framework.org/Obliqua/
-  - 🔗 VULCAN: https://proteus-framework.org/vulcan/
-  - 🔗 Zalmoxis: https://proteus-framework.org/zalmoxis/
-  - 🔗 Aragog: https://proteus-framework.org/aragog/
-  - 🔗 SPIDER: https://proteus-framework.org/spider/
-  - 🔗 Atmodeller: https://atmodeller.readthedocs.io/en/latest/
-  - 🔗 FastChem: https://newstrangeworlds.github.io/FastChem/
-  - 🔗 PLATON: https://platon.readthedocs.io/en/latest/
+  - Getting Started:
+    - Model description: model.md
+    - Installation: installation.md
+    - Using PROTEUS: usage.md
+    - Configuration: config.md
+    - Troubleshooting: troubleshooting.md
+  - Platform Guides:
+    - Local machine: local_machine_guide.md
+    - Kapteyn cluster: kapteyn_cluster_guide.md
+    - Snellius cluster: snellius_cluster_guide.md
+    - Habrok cluster: habrok_cluster_guide.md
+  - Advanced:
+    - Bayesian inference: inference.md
+    - Reference data: data.md
+    - Bibliography: bibliography.md
+  - Developer Guide:
+    - Contributing: CONTRIBUTING.md
+    - Testing infrastructure: test_infrastructure.md
+    - Test categorization: test_categorization.md
+    - Test building: test_building.md
+    - AI-assisted development: ai_usage.md
+    - Docker CI architecture: docker_ci_architecture.md
+  - Community:
+    - Developers: https://proteus-framework.org/people
+    - Contact: contact.md
+    - Code of Conduct: CODE_OF_CONDUCT.md
+    - Funding: funding.md
+  - Source & Issues:
+    - Source code: https://github.com/FormingWorlds/PROTEUS
+    - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
+  - Submodule Docs:
+    - 🔗 MORS:  https://proteus-framework.org/MORS/
+    - 🔗 JANUS: https://proteus-framework.org/JANUS/
+    - 🔗 ZEPHYRUS: https://proteus-framework.org/ZEPHYRUS/
+    - 🔗 CALLIOPE: https://proteus-framework.org/CALLIOPE/
+    - 🔗 AGNI: https://www.h-nicholls.space/AGNI/
+    - 🔗 Obliqua: https://proteus-framework.org/Obliqua/
+    - 🔗 VULCAN: https://proteus-framework.org/VULCAN/
+    - 🔗 Zalmoxis: https://proteus-framework.org/Zalmoxis/
+    - 🔗 Aragog: https://proteus-framework.org/aragog/
+    - 🔗 SPIDER: https://proteus-framework.org/SPIDER/
+    - 🔗 Atmodeller: https://atmodeller.readthedocs.io/en/latest/
+    - 🔗 FastChem: https://newstrangeworlds.github.io/FastChem/
+    - 🔗 PLATON: https://platon.readthedocs.io/en/latest/
 
 theme:
   name: material
   custom_dir: docs/overrides
   features:
   - content.code.copy
+  - content.tabs.link
+  - navigation.expand
 
   # Default assets (used unless overridden per palette below)
   favicon: assets/PROTEUS_black_on_white_logo_only.png
@@ -73,9 +84,6 @@ theme:
         icon: material/weather-sunny
         name: Switch to light mode
 
-extra_css:
-  - stylesheets/extra.css
-
 markdown_extensions:
   - admonition
   - attr_list
@@ -84,9 +92,11 @@ markdown_extensions:
   - pymdownx.extra
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
 
 extra_javascript:
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 plugins:

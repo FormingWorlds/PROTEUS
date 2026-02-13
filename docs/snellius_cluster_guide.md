@@ -32,7 +32,7 @@
     10) libxml2/2.12.7-GCCcore-13.3.0  20) gompi/2024a
     ```
 
-4. You can now follow the usual installation steps [here](installation.html).
+4. You can now follow the usual installation steps [here](installation.md).
 
 Note that when logging into `snellius.surf.nl`, you will not always connect to the same computer. For example,
 sometimes your hostname might be `int5` while other times it could be `int6`. This means that `tmux` sessions

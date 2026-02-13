@@ -5,6 +5,7 @@
 **New to PROTEUS?** This document explains how our testing system works: how to run tests, check code coverage, and troubleshoot common issues.
 
 **Key concepts:**
+
 - **Coverage** measures what percentage of your code is tested. Higher is better.
 - **CI (Continuous Integration)** automatically runs tests when you push code.
 - **Thresholds** are minimum coverage percentages that must be met.
@@ -50,14 +51,16 @@ open htmlcov/index.html                 # View coverage in browser
 ### How CI Works
 
 When you open a pull request, CI automatically:
+
 1. Validates test file structure
 2. Runs unit tests and checks coverage (must meet threshold)
 3. Runs smoke tests
 4. Checks code style with ruff
 
 **Current coverage thresholds** (from `pyproject.toml`):
-- **Fast gate**: 44.45% (unit + smoke, checked on PRs)
-- **Full gate**: 59% (all tests, checked nightly)
+
+- **Fast gate**: unit + smoke, checked on PRs
+- **Full gate**: all tests, checked nightly
 
 ### Workflows
 
@@ -67,6 +70,7 @@ When you open a pull request, CI automatically:
 | `ci-nightly.yml` | Daily 3am UTC | All tests including slow, updates thresholds |
 
 **Key features:**
+
 - **Grace period**: PRs can merge with ≤0.3% coverage drop (warning posted)
 - **Diff-cover**: 80% coverage required on changed lines
 - **Auto-ratcheting**: Thresholds only increase, never decrease
@@ -149,6 +153,7 @@ bash tools/validate_test_structure.sh
 ```
 
 **For new code:**
+
 - [ ] Added tests with correct markers (see [Test Categorization](test_categorization.md))
 - [ ] Coverage meets fast gate threshold
 - [ ] Docstrings explain physical scenarios
@@ -206,6 +211,7 @@ PROTEUS provides a reusable workflow for ecosystem modules (CALLIOPE, JANUS, MOR
 | `pytest-args` | `''` | Additional pytest arguments |
 
 **Why use it:**
+
 - **Consistency**: Same testing standards across all ecosystem modules
 - **Maintenance**: Updates to quality gate propagate to all modules
 - **Best practices**: Includes coverage reporting, artifact upload, proper caching
@@ -326,8 +332,8 @@ If your module has an existing test workflow:
 - [Test Building](test_building.md) — Prompts for unit/integration tests
 - [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
 - [AI-Assisted Development](ai_usage.md) — Using AI for tests and code review
-- [tests/conftest.py](../tests/conftest.py) — Shared fixtures
-- [AGENTS.md](../AGENTS.md) — Commands and thresholds
+- [tests/conftest.py](https://github.com/FormingWorlds/PROTEUS/blob/main/tests/conftest.py) — Shared fixtures
+- [AGENTS.md](https://github.com/FormingWorlds/PROTEUS/blob/main/AGENTS.md) — Commands and thresholds
 
 ### External Resources
 
