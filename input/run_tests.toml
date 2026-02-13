@@ -319,7 +319,7 @@ version = "2.0"
 [outgas]
     fO2_shift_IW    = 4         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
-    silicates = false
+    silicates = true
     fastchempath = '/data3/leoni/LavAtmos/FastChem/fastchem3/output/'
     vaplist = ["SiO","SiO2","Si"]# "Na", "K", "Ti", "TiO", "TiO2" , "Mg", "MgO", "Al", "HAlO2"]
 

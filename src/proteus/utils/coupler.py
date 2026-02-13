@@ -571,6 +571,8 @@ def GetHelpfileKeys(config:Config):
     # Wall-clock runtime
     keys.append("runtime") # [s]
 
+    keys.append("fO2_shift") #relative to IW buffer
+
     return keys
 
 def CreateHelpfileFromDict(d:dict,config:Config):
