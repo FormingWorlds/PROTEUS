@@ -116,12 +116,12 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     ```
     and similarly for conda-forge:
     ```console
-    mkdir -p /dataserver/users/formingworlds/<username>/miniforge3
+    mkdir -p /dataserver/users/formingworlds/${USER}/miniforge3
     wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O
-        /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh
-    bash /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh -b -p
-        /dataserver/users/formingworlds/<username>/miniforge3
-    rm /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh
+        /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
+    bash /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh -b -p
+        /dataserver/users/formingworlds/${USER}/miniforge3
+    rm /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
     ```
     For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
 
@@ -130,8 +130,8 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     disk quota on your home directory. Therefore, you need to setup your pip cache folder in a different
     place:
     ```console
-    mkdir /dataserver/users/formingworlds/<username>/.pip-cache
-    export PIP_CACHE_DIR=/dataserver/users/formingworlds/<username>/.pip-cache
+    mkdir /dataserver/users/formingworlds/${USER}/.pip-cache
+    export PIP_CACHE_DIR=/dataserver/users/formingworlds/${USER}/.pip-cache
     ```
 
 ## Queuing Manager: Condormaster
@@ -157,8 +157,8 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 ```console
     getenv = True
     universe = vanilla
-    executable = /dataserver/users/formingworlds/<username>/miniconda3/bin/conda
-    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/<username>/PROTEUS/input/demos/escape.toml
+    executable = /dataserver/users/formingworlds/${USER}/miniconda3/bin/conda
+    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/demos/escape.toml
     log = condor_outputs/log/logfile.$(PROCESS)
     output = condor_outputs/output/outfile.$(PROCESS)
     error = condor_outputs/output/errfile.$(PROCESS)

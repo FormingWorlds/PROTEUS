@@ -74,7 +74,7 @@ There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.ru
     squeue -u $USER
     ```
 
-See the section on running grids in the PROTEUS [usage guide](./usage.md#running-grids-of-simulations-ensembles). These instructions will detail how to submit grids to the nodes via SLURM.
+See the section on running grids in the PROTEUS [usage guide](usage.md#running-grids-of-simulations-ensembles). These instructions will detail how to submit grids to the nodes via SLURM.
 
 You can also submit single PROTEUS runs to the nodes. For example:
 ```console
