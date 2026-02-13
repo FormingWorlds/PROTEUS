@@ -246,16 +246,18 @@ def run_lavatmos(config:Config,hf_row:dict):
     rho_old = kg_per_particle * hf_row['P_surf']/(kB*Tsurf)
 
     M_atmo_old = hf_row['M_atm']
-    #M_total = hf_row['M_core'] + hf_row['M_atm'] + hf_row['M_mantle']
-   # M_mantle_old = hf_row['M_mantle']
-
-    #log.info('Mass of the planet mantle before running lavatmos: %s'% M_mantle_old)
-    #log.info('Mass of the planet atmosphere before running lavatmos: %s'% M_atmo_old)
-    #log.info('Mass of the total planet before running lavatmos: %s'% M_total)
 
 
     lavatmos_instance = container_lavatmos(parameters)
-    lavatmos_instance.run_lavatmos(hf_row["T_magma"])
+
+    #make sure that surface temperature is at least 1500K, otherwise lavatmos crashes
+    if hf_row["T_magma"] > 1500 :
+        Toutgas = hf_row["T_magma"]
+    else:
+        Toutgas = 1500
+
+    lavatmos_instance.run_lavatmos(Toutgas)
+
 
     #read in boa chemistry from last iteration of fastchem and lavatmos
     fastchempath=config.outgas.fastchempath
@@ -285,6 +287,7 @@ def run_lavatmos(config:Config,hf_row:dict):
     for e in element_list:
         hf_row[e + "_kg_atm"]=new_atmos_abundances[e][0] * M_atmo_new * species_lib[e].weight/mu_outgassed
         hf_row[e + "_kg_atm"]=new_atmos_abundances[e][0]+ hf_row[e + "_kg_solid"] + hf_row[e + "_kg_liquid"]
+        hf_row[e + "_kg_tot"] = hf_row[e + "_kg_atm"] + hf_row[e + "_kg_solid"] + hf_row[e + "_kg_liquid"]
 
 
 
@@ -295,16 +298,3 @@ def run_lavatmos(config:Config,hf_row:dict):
     hf_row['fO2_shift'] = fO2_shift(hf_row["T_magma"], log10_fO2)
 
     print('shift compared to iron wustite buffer:', hf_row['fO2_shift'])
-
-
-
-
-    #in above, M_atmo should be updated. we can use this to uodate also the mantle mass of the planet
-   # M_mantle_new = M_total - hf_row['M_core'] - M_atmo_new
-
-    #M_mantle_liquid_new = M_mantle_new - M_solid_old
-    #hf_row['M_mantle_liquid'] =  M_mantle_liquid_new
-    #hf_row['M_mantle'] = M_mantle_new
-
-    #log.info('Mass of the planet mantle after running lavatmos: %s'% M_mantle_new)
-    #log.info('Mass of the planet atmosphere after running lavatmos: %s'% M_atmo_new)
