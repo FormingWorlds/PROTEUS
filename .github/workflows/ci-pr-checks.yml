@@ -585,7 +585,9 @@ jobs:
         env:
           LINUX_UNIT: ${{ needs.unit-tests.outputs.unit-outcome }}
           LINUX_SMOKE: ${{ needs.unit-tests.outputs.smoke-outcome }}
+          LINUX_JOB_RESULT: ${{ needs.unit-tests.result }}
           MACOS_UNIT: ${{ needs.macos-unit-tests.outputs.unit-outcome }}
+          MACOS_JOB_RESULT: ${{ needs.macos-unit-tests.result }}
           LINT: ${{ needs.lint.result }}
           COV_STATUS: ${{ needs.unit-tests.outputs.coverage-status }}
           COV_DROP: ${{ needs.unit-tests.outputs.coverage-drop }}
@@ -620,7 +622,9 @@ jobs:
 
           linux_unit = os.environ.get("LINUX_UNIT", "")
           linux_smoke = os.environ.get("LINUX_SMOKE", "")
+          linux_job_result = os.environ.get("LINUX_JOB_RESULT", "")
           macos_unit = os.environ.get("MACOS_UNIT", "")
+          macos_job_result = os.environ.get("MACOS_JOB_RESULT", "")
           lint = os.environ.get("LINT", "")
 
           with open(summary_path, "w") as f:
@@ -682,14 +686,38 @@ jobs:
               f.write("- Grace period: 0.3% | Nightly staleness threshold: 48 hours\n")
               f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
 
-              # Failure guidance
+              # Failure guidance - includes non-test failures (diff-cover, coverage, staleness)
               any_test_fail = linux_unit == "failure" or linux_smoke == "failure" or macos_unit == "failure"
-              if any_test_fail or lint == "failure":
+              # Detect non-test failures: job failed but specific test steps didn't fail
+              linux_non_test_fail = (linux_job_result == "failure" and
+                                     linux_unit != "failure" and linux_smoke != "failure")
+              macos_non_test_fail = macos_job_result == "failure" and macos_unit != "failure"
+              cov_fail = cov_status == "fail"
+
+              if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail or nightly_stale:
                   f.write("\n---\n")
                   f.write("## ❌ PR did not pass checks\n\n")
                   if any_test_fail:
                       f.write("**Unit tests or smoke tests failed.** See the logs above for details.\n\n")
                       f.write("See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance.\n\n")
                   if lint == "failure":
-                      f.write("**Lint (ruff) failed.** Run `ruff check --fix src/ tests/ && ruff format src/ tests/` locally.\n")
+                      f.write("**Lint (ruff) failed.** Run `ruff check --fix src/ tests/ && ruff format src/ tests/` locally.\n\n")
+                  if linux_non_test_fail:
+                      f.write("**Linux job failed on non-test step** (diff-cover, coverage validation, or other check).\n")
+                      f.write("Check the 'Unit Tests (Mocked Physics)' job logs for details.\n\n")
+                  if cov_fail:
+                      f.write(f"**Coverage dropped too much** ({cov_drop:.2f}% below threshold, exceeds 0.3% grace margin).\n")
+                      f.write("Add tests to restore coverage above the threshold.\n\n")
+                  if nightly_stale:
+                      f.write("**Nightly baseline is stale.** Coverage validation cannot proceed.\n")
+                      f.write("[Trigger nightly CI manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
           PY
+
+      - name: Fail if any checks failed
+        if: >-
+          needs.unit-tests.result == 'failure' ||
+          needs.macos-unit-tests.result == 'failure' ||
+          needs.lint.result == 'failure'
+        run: |
+          echo "❌ One or more required checks failed. See summary above for details."
+          exit 1
