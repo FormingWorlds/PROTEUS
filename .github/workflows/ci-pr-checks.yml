@@ -471,12 +471,11 @@ jobs:
         uses: codecov/codecov-action@v4
         if: always()
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: /opt/proteus/coverage.xml
           flags: unit-tests
           name: unit-tests-coverage
           fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload HTML coverage
         uses: actions/upload-artifact@v6

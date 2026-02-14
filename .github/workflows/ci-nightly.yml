@@ -515,12 +515,11 @@ jobs:
         if: always()
         uses: codecov/codecov-action@v4
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: /opt/proteus/coverage.xml
           flags: nightly
           name: nightly-full-suite
           fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Write workflow summary and test results report
         if: always()

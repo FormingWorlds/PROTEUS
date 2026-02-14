@@ -85,12 +85,11 @@ jobs:
         uses: codecov/codecov-action@v4
         if: always()
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ inputs.working-directory }}/coverage.xml
           flags: unittests
           name: codecov-${{ inputs.python-version }}
           fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage HTML report
         uses: actions/upload-artifact@v6
