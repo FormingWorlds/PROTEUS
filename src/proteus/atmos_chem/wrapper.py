@@ -44,7 +44,9 @@ def run_chemistry(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
         return None
 
     if module != "vulcan":
-        raise ValueError(f"Invalid atmos_chem module: {module}")
+        raise ValueError(
+            f"Invalid atmos_chem module: '{module}'. Currently only 'vulcan' is supported."
+        )
 
     from proteus.atmos_chem.vulcan import (
         run_vulcan_offline,
