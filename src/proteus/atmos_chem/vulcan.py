@@ -412,6 +412,9 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     year = hf_row["Time"]
     log.debug("Reading data for t=%.2e yr"%year)
 
+    # Note: in online mode we write per-snapshot outputs, so filenames include `year`
+    # (e.g. vulcan_{year}.pkl/.csv), whereas offline mode uses single files
+    # named `vulcan.pkl` and `vulcan.csv`.
     vulcan_pkl = f"vulcan_{year}.pkl"
     vulcan_csv = f"vulcan_{year}.csv"
 
