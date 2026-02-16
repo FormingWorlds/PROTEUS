@@ -1,7 +1,7 @@
 #!/bin/bash
-# Validate line limits for .github/copilot-instructions.md and MEMORY.md
+# Validate line limits for .github/copilot-instructions.md and .github/copilot-memory.md
 # .github/copilot-instructions.md: max 500 lines
-# MEMORY.md: max 1000 lines
+# .github/copilot-memory.md: max 1000 lines
 
 set -e
 
@@ -22,16 +22,16 @@ else
     echo "WARNING: .github/copilot-instructions.md not found"
 fi
 
-if [ -f "MEMORY.md" ]; then
-    MEMORY_LINES=$(wc -l < MEMORY.md | tr -d ' ')
+if [ -f ".github/copilot-memory.md" ]; then
+    MEMORY_LINES=$(wc -l < .github/copilot-memory.md | tr -d ' ')
     if [ "$MEMORY_LINES" -gt "$MEMORY_MAX" ]; then
-        echo "ERROR: MEMORY.md exceeds $MEMORY_MAX lines (current: $MEMORY_LINES)"
+        echo "ERROR: .github/copilot-memory.md exceeds $MEMORY_MAX lines (current: $MEMORY_LINES)"
         EXIT_CODE=1
     else
-        echo "OK: MEMORY.md has $MEMORY_LINES lines (max: $MEMORY_MAX)"
+        echo "OK: .github/copilot-memory.md has $MEMORY_LINES lines (max: $MEMORY_MAX)"
     fi
 else
-    echo "WARNING: MEMORY.md not found"
+    echo "WARNING: .github/copilot-memory.md not found"
 fi
 
 exit $EXIT_CODE

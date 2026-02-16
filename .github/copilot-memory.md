@@ -76,7 +76,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Nightly Workflow**: Triggered by docker-build (fallback: 3am cron), deduplication guard prevents double runs
 - **Codecov Integration**: Nightly uploads aggregate coverage (unit+smoke+integration); PR checks upload unit+smoke; `codecov.yml` with carryforward flags
 - **Cross-Platform CI**: PR checks run unit tests on both Linux (Docker) and macOS
-- **File Size Limits**: Pre-commit enforced limits on .github/copilot-instructions.md (500) and MEMORY.md (1000)
+- **File Size Limits**: Pre-commit enforced limits on .github/copilot-instructions.md (500) and .github/copilot-memory.md (1000)
 
 ### Active Branches
 - **main**: Production branch with nightly validation
@@ -587,7 +587,7 @@ Original smoke data download only included spectral files and stellar spectra.
 
 **Note**: This document should be updated whenever significant architectural decisions are made, major features are added, or critical lessons are learned. See `.github/copilot-instructions.md` for the Memory Maintenance Prime Directive.
 
-> **⚠️ FILE SIZE LIMIT: This file must stay below 1000 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`).
+> **⚠️ FILE SIZE LIMIT: This file must stay below 1000 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-memory.md`.
 
 **When approaching the limit, refactor by asking:**
 1. **Is this still relevant?** Archive completed decisions, resolved issues, or obsolete context to a separate `docs/archive/` file if historically valuable, otherwise delete.

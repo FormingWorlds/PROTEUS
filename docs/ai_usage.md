@@ -24,14 +24,14 @@ PROTEUS leverages AI assistants for **software engineering tasks**, not scientif
 ## Quick Start
 
 1. **Set up an AI assistant**: Install [GitHub Copilot](https://github.com/features/copilot), [Cursor](https://cursor.sh/), or [Windsurf](https://codeium.com/windsurf)
-2. **Provide context**: Point the assistant to `.github/copilot-instructions.md` (coding guidelines) and `MEMORY.md` (project state)
+2. **Provide context**: Point the assistant to `.github/copilot-instructions.md` (coding guidelines) and `.github/copilot-memory.md` (project state)
 3. **Generate code**: Use prompts from [Test Building](test_building.md) for tests
 4. **Review thoroughly**: Check all AI output before committing
 5. **Run tests**: `pytest -m "unit and not skip"` and `ruff check`
 
 ---
 
-## .github/copilot-instructions.md and MEMORY.md
+## .github/copilot-instructions.md and .github/copilot-memory.md
 
 PROTEUS uses two special files to provide AI assistants with project context:
 
@@ -48,7 +48,7 @@ PROTEUS uses two special files to provide AI assistants with project context:
 
 **How to use:** GitHub Copilot reads this file automatically. For other AI assistants, add it to the context window or reference it in prompts.
 
-### MEMORY.md — Project State
+### .github/copilot-memory.md — Project State
 
 **Purpose:** Living document capturing current project state and decisions.
 
@@ -86,7 +86,7 @@ PROTEUS uses two special files to provide AI assistants with project context:
 1. **Install**: Download from [cursor.sh](https://cursor.sh/)
 2. **Open PROTEUS**: `cursor /path/to/PROTEUS`
 3. **Add rules**: Cursor reads `.cursorrules` if present; alternatively, add `.github/copilot-instructions.md` content to Settings → Rules
-4. **Reference files**: Use `@.github/copilot-instructions.md` or `@MEMORY.md` in chat to include context
+4. **Reference files**: Use `@.github/copilot-instructions.md` or `@.github/copilot-memory.md` in chat to include context
 
 ### Windsurf (Cascade)
 
@@ -285,7 +285,7 @@ git diff --staged                         # Review changes yourself
 
 **Problem:** AI uses deprecated APIs or old coding patterns
 
-**Solution:** Reference `MEMORY.md` for current patterns; specify Python version (3.12)
+**Solution:** Reference `.github/copilot-memory.md` for current patterns; specify Python version (3.12)
 
 ### AI generates code that fails CI
 
@@ -303,7 +303,7 @@ bash tools/validate_test_structure.sh
 ## References
 
 - [.github/copilot-instructions.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-instructions.md) — AI coding guidelines for PROTEUS
-- [MEMORY.md](https://github.com/FormingWorlds/PROTEUS/blob/main/MEMORY.md) — Project state and decisions
+- [.github/copilot-memory.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-memory.md) — Project state and decisions
 - [Test Building](test_building.md) — Test generation prompts
 - [Test Categorization](test_categorization.md) — Test markers and CI
 - [Test Infrastructure](test_infrastructure.md) — Coverage and workflows
