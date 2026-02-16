@@ -19,6 +19,7 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 1. **Always** follow the testing standards outlined in this document and `docs/test_infrastructure.md` for all code changes.
 2. **Always** inform yourself of the current project memory in `MEMORY.md` before making changes.
 3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
+4. When creating a PR, **always** follow the PR template and ensure all sections are filled out with relevant information.
 
 ## Ecosystem Structure
 
