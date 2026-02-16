@@ -415,8 +415,9 @@ def run_vulcan_online(dirs:dict, config:Config, hf_row:dict) -> bool:
     # Note: in online mode we write per-snapshot outputs, so filenames include `year`
     # (e.g. vulcan_{year}.pkl/.csv), whereas offline mode uses single files
     # named `vulcan.pkl` and `vulcan.csv`.
-    vulcan_pkl = f"vulcan_{year}.pkl"
-    vulcan_csv = f"vulcan_{year}.csv"
+    year_int = int(year)
+    vulcan_pkl = f"vulcan_{year_int}.pkl"
+    vulcan_csv = f"vulcan_{year_int}.csv"
 
     # Read atmosphere data
     atmos = read_atmosphere_data(dirs["output"], [year],
