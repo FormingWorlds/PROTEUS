@@ -6,16 +6,19 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml">
-    <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?branch=main&label=Unit%20Tests">
   </a>
-  <a href="https://fwl-proteus.readthedocs.io/en/latest/">
-    <img src="https://readthedocs.org/projects/fwl-proteus/badge/?version=latest">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests">
+  </a>
+  <a href="https://proteus-framework.org/PROTEUS/">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main">
   </a>
   <a href="https://opensource.org/licenses/Apache-2.0">
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg">
   </a>
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
     <img src="https://gist.githubusercontent.com/stefsmeets/b4ee7dab92e20644bcb3a5ad09f71165/raw/covbadge.svg">
   </a>
   <a href="https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2024JE008576"><img src="https://img.shields.io/badge/DOI-10.1029%2F2024JE008576-blue"></a>
@@ -23,13 +26,13 @@
 
 <b>PROTEUS</b> (/ˈproʊtiəs, PROH-tee-əs) is a modular Python framework that simulates the coupled evolution of the atmospheres and interiors of rocky planets and exoplanets. Inspired by the Greek god of elusive sea change, who could change his form at will, PROTEUS is designed to be flexible and adaptable to a wide range of planetary environments. It can foretell the future, but answers only to those who are capable of asking the right questions.<br>
 
-More information can be found on the [documentation](https://fwl-proteus.readthedocs.io/en/latest/index.html) pages:
+More information can be found on the [documentation](https://proteus-framework.org/PROTEUS/) pages:
 
-* [model description](https://fwl-proteus.readthedocs.io/en/latest/model.html)
-* [installation guide](https://fwl-proteus.readthedocs.io/en/latest/installation.html)
-* [usage guide](https://fwl-proteus.readthedocs.io/en/latest/usage.html)
-* [contributing guide](https://fwl-proteus.readthedocs.io/en/latest/CONTRIBUTING.html)
+* [model description](https://proteus-framework.org/PROTEUS/model.html)
+* [installation guide](https://proteus-framework.org/PROTEUS/installation.html)
+* [usage guide](https://proteus-framework.org/PROTEUS/usage.html)
+* [contributing guide](https://proteus-framework.org/PROTEUS/CONTRIBUTING.html)
 
-You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or by [contacting the developers](https://fwl-proteus.readthedocs.io/en/latest/contact.html) directly.
+You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or by [contacting the developers](https://proteus-framework.org/PROTEUS/contact.html) directly.
 
-If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://fwl-proteus.readthedocs.io/en/latest/bibliography.html).
+If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://proteus-framework.org/PROTEUS/bibliography.html).

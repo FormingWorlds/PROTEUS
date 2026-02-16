@@ -12,18 +12,30 @@ Functions:
     flatten: Flatten a nested dict into a single-level dict with dot-separated keys.
     print_results: Select the best run and print its observables and parameters.
 """
+
 from __future__ import annotations
+
+from collections.abc import Sequence
+from functools import partial
+from math import log, sqrt
 
 import numpy as np
 import pandas as pd
 import toml
 import torch
 from botorch.utils.transforms import unnormalize
+from gpytorch.constraints.constraints import GreaterThan
+from gpytorch.kernels import MaternKernel, RBFKernel
+from gpytorch.priors.torch_priors import LogNormalPrior
+
+from proteus.inference.objective import eval_obj
+from proteus.utils.constants import gas_list
 
 # Use double precision for tensor computations
 dtype = torch.double
 
-def get_nested(config: dict, key: str, sep: str = "."):
+
+def get_nested(config: dict, key: str, sep: str = '.'):
     """Retrieve a value from a nested dictionary using a dot-separated key path.
 
     Args:
@@ -56,7 +68,7 @@ def flatten(d, parent_key: str = '', sep: str = '.'):
     """
     items = []
     for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        new_key = f'{parent_key}{sep}{k}' if parent_key else k
         if isinstance(v, dict):
             # Recurse into sub-dictionary
             items.extend(flatten(v, new_key, sep=sep).items())
@@ -82,8 +94,8 @@ def print_results(D, logs, config, output, n_init):
         n_init (int): Number of initial guess data points.
     """
     # Convert list of objective values to tensor
-    X = D["X"]
-    Y = D["Y"]
+    X = D['X']
+    Y = D['Y']
 
     # Find best index, ignoring the initial points
     i_opt: int = Y[n_init:].argmax() + n_init
@@ -91,56 +103,120 @@ def print_results(D, logs, config, output, n_init):
     J_opt: float = Y[i_opt].item()
 
     # Extract identifiers of the best run
-    w = log_opt["worker"]
-    id = log_opt["task_id"]  # iteration index
+    w = log_opt['worker']
+    id = log_opt['task_id']  # iteration index
 
     # Read simulator output for this run
-    out_path = f"{output}/workers/w_{w}/i_{id}/runtime_helpfile.csv"
-    df = pd.read_csv(out_path, delimiter=r"\s+")
+    out_path = f'{output}/workers/w_{w}/i_{id}/runtime_helpfile.csv'
+    df = pd.read_csv(out_path, delimiter=r'\s+')
 
     # True observables from config
-    true_y = pd.Series(config["observables"])
+    true_y = pd.Series(config['observables'])
     observables = list(true_y.keys())
 
     # Simulated observables: last row of the CSV
     sim_opt = list(df.iloc[-1][observables].T)
 
     # Load and flatten the input TOML for this run
-    in_path = f"{output}workers/w_{w}/i_{id}/init_coupler.toml"
-    with open(in_path, "r") as f:
+    in_path = f'{output}/workers/w_{w}/i_{id}/init_coupler.toml'
+    with open(in_path, 'r') as f:
         input = toml.load(f)
     input = flatten(input)  # flatten nested config
 
     # Extract inferred parameter values in original order
-    params = config["parameters"].keys()
+    params = config['parameters'].keys()
 
     # Print summary to console, account for python index vs step index and n_init
-    print(f"Best case sampled at step {i_opt+1-n_init} has J={J_opt:+.4f}")
-    print(f"With config at {in_path}")
-    print(f"{'Observables':18s} | True        | Simulated   | Diff %")
-    for i,k in enumerate(observables):
+    print(f'Best case sampled at step {i_opt + 1 - n_init} has J={J_opt:+.4f}')
+    print(f'With config at {in_path}')
+    print(f'{"Observables":18s} | True        | Simulated   | Diff %')
+    for i, k in enumerate(observables):
         tru = true_y[k]
         obs = sim_opt[i]
-        dif = 100*(obs-tru)/tru
-        print(f"{k:18s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}")
-    print("")
-    print(f"{'Parameters':28s} | Simulated val @ best J")
-    for i,k in enumerate(list(params)):
-        print(f"{k:28s}   {str(input[k]):20s}")
-    print("-----------------------------------")
-    print(" ")
+        dif = 100 * (obs - tru) / tru
+        print(f'{k:18s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}')
+    print('')
+    print(f'{"Parameters":28s} | Simulated val @ best J')
+    for i, k in enumerate(list(params)):
+        print(f'{k:28s}   {str(input[k]):20s}')
+    print('-----------------------------------')
+    print(' ')
 
     # Print parameter statistics
     d = len(params)
-    bounds = torch.tensor([[list(config["parameters"].values())[i][j] for i in range(d)]
-                            for j in range(2)])
+    bounds = torch.tensor(
+        [[list(config['parameters'].values())[i][j] for i in range(d)] for j in range(2)]
+    )
     # remove intial data
-    X_samp = np.array(unnormalize(X, bounds), copy=None, dtype=float)[n_init:,:]
-    print(f"Ensemble statistics (N={len(X_samp)})")
-    print(f"{'Parameters':28s} | Median ± stddev")
-    for i,k in enumerate(list(params)):
-        x_med = np.median(X_samp[:,i])
-        x_std = np.std(X_samp[:,i])
-        print(f"{k:28s}   {x_med:.4f} ± {x_std:.4f}")
-    print("-----------------------------------")
-    print(" ")
+    X_samp = np.array(unnormalize(X, bounds), copy=None, dtype=float)[n_init:, :]
+    print(f'Ensemble statistics (N={len(X_samp)})')
+    print(f'{"Parameters":28s} | Median ± stddev')
+    for i, k in enumerate(list(params)):
+        x_med = np.median(X_samp[:, i])
+        x_std = np.std(X_samp[:, i])
+        print(f'{k:28s}   {x_med:.4f} ± {x_std:.4f}')
+    print('-----------------------------------')
+    print(' ')
+
+
+def get_kernel_w_prior(
+    ard_num_dims: int,
+    batch_shape: torch.Size | None = None,
+    use_rbf_kernel: bool = True,
+    active_dims: Sequence[int] | None = None,
+    nu: float | None = None,
+) -> MaternKernel | RBFKernel:
+    """Returns an RBF or Matern kernel with priors
+    from  [Hvarfner2024vanilla]_.
+
+    Args:
+        ard_num_dims: Number of feature dimensions for ARD.
+        batch_shape: Batch shape for the covariance module.
+        use_rbf_kernel: Whether to use an RBF kernel. If False, uses a Matern kernel.
+        active_dims: The set of input dimensions to compute the covariances on.
+            By default, the covariance is computed using the full input tensor.
+            Set this if you'd like to ignore certain dimensions.
+
+    Returns:
+        A Kernel constructed according to the given arguments. The prior is constrained
+        to have lengthscales larger than 0.025 for numerical stability.
+    """
+    base_class = RBFKernel if use_rbf_kernel else partial(MaternKernel, nu=nu)
+    lengthscale_prior = LogNormalPrior(loc=sqrt(2) + log(ard_num_dims) * 0.5, scale=sqrt(3))
+    base_kernel = base_class(
+        ard_num_dims=ard_num_dims,
+        batch_shape=batch_shape,
+        lengthscale_prior=lengthscale_prior,
+        lengthscale_constraint=GreaterThan(
+            2.5e-2, transform=None, initial_value=lengthscale_prior.mode
+        ),
+        # pyre-ignore[6] GPyTorch type is unnecessarily restrictive.
+        active_dims=active_dims,
+    )
+    return base_kernel
+
+
+def get_obs(out_csv, observables: list[str]):
+    df_row = pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1]
+
+    # Handle case where atmosphere has escaped
+    #   Set VMRs and MMW to zero
+    if df_row['P_surf'] < 1e-30:
+        df_row['atm_kg_per_mol'] = 0.0
+        for g in gas_list:
+            df_row[g + '_vmr'] = 0.0
+
+    return df_row[observables].T
+
+
+def get_obj(true_obs: dict, n, path):
+    obs_names = true_obs.keys()
+    results = [
+        eval_obj(
+            get_obs(path + f'workers/w_-1/i_{i}/runtime_helpfile.csv', obs_names), true_obs
+        )
+        for i in range(n**2)
+    ]
+    Y = torch.vstack(results).reshape(n, n)
+
+    return Y

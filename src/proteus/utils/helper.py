@@ -10,52 +10,59 @@ import shutil
 
 import numpy as np
 
-log = logging.getLogger("fwl."+__name__)
+from proteus.utils.constants import element_list, element_mmw
+
+log = logging.getLogger('fwl.' + __name__)
+
 
 def get_proteus_dir():
-    '''
+    """
     Get absolute path to PROTEUS directory.
 
     This should be a directory containing `pyproject.toml`.
-    '''
+    """
 
     # Assuming that this file is in `PROTEUS/src/proteus/utils/`
     utils = os.path.dirname(os.path.abspath(__file__))
 
     # Work upwards from utils
-    root = os.path.abspath(os.path.join(utils,"..","..",".."))
+    root = os.path.abspath(os.path.join(utils, '..', '..', '..'))
 
     # Check that this path is reasonable
-    if "pyproject.toml" not in os.listdir(root):
+    if 'pyproject.toml' not in os.listdir(root):
         raise EnvironmentError(f"Cannot locate PROTEUS directory. Tried '{root}' ")
 
     return root
 
+
 def PrintSeparator():
-    log.info("===================================================")
+    log.info('===================================================')
     pass
+
 
 def PrintHalfSeparator():
-    log.info("---------------------------------------------------")
+    log.info('---------------------------------------------------')
     pass
 
-def multiple(a:int,b:int) -> bool:
-    '''
+
+def multiple(a: int, b: int) -> bool:
+    """
     Return true if a is an integer multiple of b. Otherwise, return false.
 
     This is a more robust version of the modulo operator, which can fail if a or b are None, or if b is 0.
-    '''
+    """
     if (a is None) or (b is None) or (b == 0):
         return False
     else:
-        return bool(a%b == 0)
+        return bool(a % b == 0)
 
-def mol_to_ele(mol:str):
-    '''
+
+def mol_to_ele(mol: str):
+    """
     Return the number of atoms of each element in a given molecule, as a dictionary
 
     https://codereview.stackexchange.com/a/232664
-    '''
+    """
 
     # Validate
     if not str(mol[0]).isupper:
@@ -77,37 +84,42 @@ def mol_to_ele(mol:str):
 
     return elems
 
+
 # String sorting inspired by natsorted
 def natural_sort(lst):
     def convert(text):
         return int(text) if text.isdigit() else text.lower()
+
     def alphanum_key(key):
-        return [convert(c) for c in re.split("([0-9]+)", key)]
-    return sorted(lst, key = alphanum_key)
+        return [convert(c) for c in re.split('([0-9]+)', key)]
+
+    return sorted(lst, key=alphanum_key)
+
 
 def create_tmp_folder():
-    '''Create a folder for temporary files'''
+    """Create a folder for temporary files"""
 
     # Try $TMPDIR environment variable used on e.g. Habrok
-    tmp_dir = os.environ.get("TMPDIR")
+    tmp_dir = os.environ.get('TMPDIR')
     if (not tmp_dir) or (not os.path.isdir(tmp_dir)):
-        tmp_dir = "/tmp"
+        tmp_dir = '/tmp'
 
     # Append random name to /tmp
-    tmp_dir = tmp_dir + "/proteus_%d/" % np.random.randint(int(1e12),int(1e13-1))
+    tmp_dir = tmp_dir + '/proteus_%d/' % np.random.randint(int(1e12), int(1e13 - 1))
 
     # Make empty
     safe_rm(tmp_dir)
     os.makedirs(tmp_dir)
     return tmp_dir
 
-def safe_rm(fpath:str):
-    '''
-    Safely remove a file or folder
-    '''
 
-    if fpath=="":
-        log.warning("Could not remove file at empty path")
+def safe_rm(fpath: str):
+    """
+    Safely remove a file or folder
+    """
+
+    if fpath == '':
+        log.warning('Could not remove file at empty path')
         return
 
     fpath = os.path.abspath(fpath)
@@ -116,72 +128,78 @@ def safe_rm(fpath:str):
             os.remove(fpath)
 
         elif os.path.isdir(fpath):
-            subfolders = [ f.path.split("/")[-1] for f in os.scandir(fpath) if f.is_dir() ]
-            if ".git" in subfolders:
-                log.warning("Not emptying directory '%s' as it contains a Git repository"%fpath)
+            subfolders = [f.path.split('/')[-1] for f in os.scandir(fpath) if f.is_dir()]
+            if '.git' in subfolders:
+                log.warning(
+                    "Not emptying directory '%s' as it contains a Git repository" % fpath
+                )
                 return
             shutil.rmtree(fpath)
 
         else:
-            log.warning("Cannot remove unhandled path '%s'"%fpath)
+            log.warning("Cannot remove unhandled path '%s'" % fpath)
 
-def CommentFromStatus(status:int):
-    '''
+
+def CommentFromStatus(status: int):
+    """
     Convert status number into comment string
-    '''
-    desc = ""
+    """
+    desc = ''
     match status:
         # Running cases
         case 0:
-            desc = "Started"
+            desc = 'Started'
         case 1:
-            desc = "Running"
+            desc = 'Running'
         # Successful cases
         case 10:
-            desc = "Completed (solidified)"
+            desc = 'Completed (solidified)'
         case 11:
-            desc = "UNUSED_STATUS_CODE (11)"
+            desc = 'UNUSED_STATUS_CODE (11)'
         case 12:
-            desc = "Completed (maximum iterations)"
+            desc = 'Completed (maximum iterations)'
         case 13:
-            desc = "Completed (target time)"
+            desc = 'Completed (target time)'
         case 14:
-            desc = "Completed (net flux is small)"
+            desc = 'Completed (net flux is small)'
         case 15:
-            desc = "Completed (volatiles escaped)"
+            desc = 'Completed (volatiles escaped)'
         case 16:
-            desc = "Completed (planet disintegrated)"
+            desc = 'Completed (planet disintegrated)'
         # Error cases
         case 20:
-            desc = "Error (generic case, or configuration issue)"
+            desc = 'Error (generic case, or configuration issue)'
         case 21:
-            desc = "Error (Interior model)"
+            desc = 'Error (Interior model)'
         case 22:
-            desc = "Error (Atmosphere model)"
+            desc = 'Error (Atmosphere model)'
         case 23:
-            desc = "Error (Stellar evolution model)"
+            desc = 'Error (Stellar evolution model)'
         case 24:
-            desc = "Error (Kinetics model)"
+            desc = 'Error (Kinetics model)'
         case 25:
-            desc = "Error (died, or exit requested by user)"
+            desc = 'Error (died, or exit requested by user)'
         case 26:
-            desc = "Error (Tides/orbit model)"
+            desc = 'Error (Tides/orbit model)'
         case 27:
-            desc = "Error (Outgassing model)"
+            desc = 'Error (Outgassing model)'
+        case 28:
+            desc = 'Error (Escape model)'
         # Default case
         case _:
-            desc = "UNHANDLED STATUS (%d)" % status
-            log.warning("Unhandled model status (%d) selected" % status)
+            desc = 'UNHANDLED STATUS (%d)' % status
+            log.warning('Unhandled model status (%d) selected' % status)
     return desc
 
-def UpdateStatusfile(dirs:dict, status:int):
-    '''
+
+def UpdateStatusfile(dirs: dict, status: int):
+    """
     Update the status file with the current state of the program
-    '''
+    """
 
     # Path to status file
-    stsfold = os.path.abspath(dirs["output"])
-    stsfile = os.path.join(stsfold,"status")
+    stsfold = os.path.abspath(dirs['output'])
+    stsfile = os.path.join(stsfold, 'status')
 
     # Does the folder exist?
     if not os.path.exists(stsfold):
@@ -191,10 +209,11 @@ def UpdateStatusfile(dirs:dict, status:int):
     safe_rm(stsfile)
 
     # Write status file
-    with open(stsfile,'x') as hdl:
-        hdl.write("%d\n" % status)
+    with open(stsfile, 'x') as hdl:
+        hdl.write('%d\n' % status)
         desc = CommentFromStatus(status)
-        hdl.write("%s\n"%desc)
+        hdl.write('%s\n' % desc)
+
 
 def CleanDir(directory, keep_stdlog=False):
     """Clean a directory.
@@ -209,9 +228,9 @@ def CleanDir(directory, keep_stdlog=False):
     """
 
     def _check_safe(d):
-        subfolders = [ f.path.split("/")[-1] for f in os.scandir(d) if f.is_dir() ]
-        if ".git" in subfolders:
-            raise Exception("Not emptying directory - it contains a Git repository!")
+        subfolders = [f.path.split('/')[-1] for f in os.scandir(d) if f.is_dir()]
+        if '.git' in subfolders:
+            raise Exception('Not emptying directory - it contains a Git repository!')
 
     # Simple case...
     if not keep_stdlog:
@@ -224,7 +243,7 @@ def CleanDir(directory, keep_stdlog=False):
     # Case where we want to keep log file...
     # If exists
     if os.path.exists(directory):
-        for p in glob.glob(directory+"/*"):
+        for p in glob.glob(directory + '/*'):
             p = str(p)
             if os.path.isdir(p):
                 # Remove folders
@@ -232,7 +251,7 @@ def CleanDir(directory, keep_stdlog=False):
                 shutil.rmtree(p)
             else:
                 # Remove all files EXCEPT logfiles in topmost dir
-                if ".log" not in p:
+                if '.log' not in p:
                     os.remove(p)
     else:
         os.makedirs(directory)
@@ -255,20 +274,22 @@ def find_nearest(array, target):
         idx : int
             Index of closest element of array
     """
-    array   = np.asarray(array)
-    idx     = (np.abs(array - target)).argmin()
-    close   = array[idx]
+    array = np.asarray(array)
+    idx = (np.abs(array - target)).argmin()
+    close = array[idx]
     return close, idx
 
+
 def recursive_get(d, keys):
-    '''
+    """
     Function to access nested dictionaries
-    '''
+    """
     if len(keys) == 1:
         return d[keys[0]]
     return recursive_get(d[keys[0]], keys[1:])
 
-def recursive_getattr(obj, attr:str):
+
+def recursive_getattr(obj, attr: str):
     """Get object's attribute. May use dot notation.
 
     https://gist.github.com/alixedi/4695abcd259d1493ac9c
@@ -288,7 +309,8 @@ def recursive_getattr(obj, attr:str):
         L = attr.split('.')
         return recursive_getattr(getattr(obj, L[0]), '.'.join(L[1:]))
 
-def recursive_setattr(obj, attr:str, value):
+
+def recursive_setattr(obj, attr: str, value):
     """Set object's attribute. May use dot notation.
 
     https://gist.github.com/alixedi/4695abcd259d1493ac9c
@@ -308,3 +330,86 @@ def recursive_setattr(obj, attr:str, value):
     else:
         L = attr.split('.')
         recursive_setattr(getattr(obj, L[0]), '.'.join(L[1:]), value)
+
+
+def gas_vmr_to_emr(gases: dict):
+    """Calculate elemental mass mixing ratios from gas volume mixing ratios.
+
+    Parameters
+    ----------
+    gases : dict
+        Dictionary mapping gas identifiers to their volume mixing ratios.
+        Keys are gas formula strings (for example ``"H2O"``, ``"CO2"``),
+        and values are the corresponding volume mixing ratios (floats) in
+        the gas mixture.
+
+    Returns
+    -------
+    dict
+        Dictionary mapping element symbols to elemental mass mixing ratios.
+        Keys are element symbols present in the input gases (for example
+        ``"H"``, ``"C"``, ``"O"``) and values are the associated mass
+        mixing ratios (floats), computed using :data:`element_mmw` and
+        normalized by the total mass of all elements. Only elements with
+        non-negligible contributions (mass > 1e-20 per unit mole of
+        mixture) are included.
+    """
+
+    # Numbers and masses of each element
+    M_e = {e: 0.0 for e in element_list}
+
+    # Loop over gases
+    for g in gases.keys():
+        # split into atoms
+        atoms = mol_to_ele(g)
+
+        # vmr of this gas
+        vmr = gases[g]
+
+        # add mass of atoms in this molecule to element counter
+        for e in atoms:
+            M_e[e] += atoms[e] * vmr * element_mmw[e]
+
+    # Get total mass of all atoms in these gases (per unit mole of mixture)
+    M_ele = sum(list(M_e.values()))
+
+    # Guard against zero or non-finite total mass to avoid division by zero
+    if (not np.isfinite(M_ele)) or abs(M_ele) < 1e-30:
+        log.warning(
+            'gas_vmr_to_emr: total elemental mass M_ele is zero or invalid '
+            'for provided gas VMRs; returning empty elemental mass ratios.'
+        )
+        return {}
+
+    # Get mass mixing ratios of elements
+    emr = {e: M_e[e] / M_ele for e in element_list if M_e[e] > 1e-20}
+
+    return emr
+
+
+def eval_gas_mmw(gas: str):
+    """Evaluate gas mmw [kg mol-1] from its atoms.
+
+    Parameters
+    ----------
+    gas : str
+        Chemical formula of the gas. This should be composed of element symbols
+        (as defined in ``element_mmw``) optionally followed by integer
+        stoichiometric coefficients, for example ``"H2O"``, ``"CO2"`` or
+        ``"CH4"``. If the string is exactly an element symbol present in
+        ``element_mmw``, that elemental molar mass is used directly.
+
+    Returns
+    -------
+    float
+        Molecular mass of the gas in kg mol-1.
+    """
+    # gas is just an element
+    if gas in element_mmw.keys():
+        return element_mmw[gas]
+
+    atoms = mol_to_ele(gas)
+    mmw = 0.0
+    for e in atoms:
+        mmw += atoms[e] * element_mmw[e]
+    return mmw

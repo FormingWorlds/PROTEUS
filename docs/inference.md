@@ -11,19 +11,19 @@ The system performs Bayesian optimization to infer planetary formation parameter
 3. Using Gaussian Process surrogates and acquisition functions to guide the search toward optimal parameters
 4. Employing multiple parallel workers asynchronously to accelerate the optimization process
 
-## Project Structure
+??? info "Project structure (developer reference)"
 
-These files are contained within the folder `src/proteus/inference/`.
+    These files are contained within the folder `src/proteus/inference/`.
 
-| File               | Description                               |
-|:-------------------|:------------------------------------------|
-| `inference.py`     | Main entry point                          |
-| `async_BO.py`      | Parallel BO implementation                |
-| `BO.py`            | Single BO step implementation             |
-| `objective.py`     | PROTEUS interface and objective function  |
-| `plot.py`          | Visualization utilities                   |
-| `utils.py`         | Helper functions for inference scheme     |
-| `gen_D_init.py`    | Generate initial data                     |
+    | File               | Description                               |
+    |:-------------------|:------------------------------------------|
+    | `inference.py`     | Main entry point                          |
+    | `async_BO.py`      | Parallel BO implementation                |
+    | `BO.py`            | Single BO step implementation             |
+    | `objective.py`     | PROTEUS interface and objective function  |
+    | `plot.py`          | Visualization utilities                   |
+    | `utils.py`         | Helper functions for inference scheme     |
+    | `gen_D_init.py`    | Generate initial data                     |
 
 ## Configuration
 
@@ -112,7 +112,7 @@ better fits, while smaller values (including negative ones) are worse fits.
 - Acquisition function guides exploration-exploitation trade-off on search space
 - Automatic hyperparameter tuning via marginal likelihood optimization
 
-The optimization will run until `max_len` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
+The optimization will run until `n_steps` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
 
 
 ## Output

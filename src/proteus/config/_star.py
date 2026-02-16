@@ -1,34 +1,41 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_
+from attrs.validators import ge, gt, in_, optional
 
 from ._converters import none_if_none
 
 
 def valid_mors(instance, attribute, value):
-    if instance.module != "mors":
+    if instance.module != 'mors':
         return
 
     if (instance.mors.age_now is None) or (instance.mors.age_now <= 0):
-        raise ValueError("mors.age_now must be > 0")
+        raise ValueError('mors.age_now must be > 0')
+    if instance.mors.star_name is None:
+        raise ValueError('Must provide mors.star_name')
 
-    if instance.mors.spec is None:
-        raise ValueError("Must provide mors.spec")
+    src = instance.mors.spectrum_source
+    if src == 'phoenix':
+        if instance.mors.phoenix_alpha is None or instance.mors.phoenix_FeH is None:
+            raise ValueError(
+                'mors.phoenix_alpha and mors.phoenix_FeH must be set when using PHOENIX spectra'
+            )
 
     set_pcntle = instance.mors.rot_pcntle is not None
     set_period = instance.mors.rot_period is not None
 
     if set_pcntle and set_period:
-        raise ValueError("Stellar rotation must be set by percentile or period, not both")
+        raise ValueError('Stellar rotation must be set by percentile or period, not both')
     if (not set_pcntle) and (not set_period):
-        raise ValueError("Stellar rotation must be set either by percentile or period")
+        raise ValueError('Stellar rotation must be set either by percentile or period')
 
     if set_pcntle and not (0 <= instance.mors.rot_pcntle <= 100):
-        raise ValueError("Rotation percentile must be >=0 and <=100")
+        raise ValueError('Rotation percentile must be >=0 and <=100')
 
     if set_period and (instance.mors.rot_period <= 0):
-        raise ValueError("Rotation period must be greater than zero")
+        raise ValueError('Rotation period must be greater than zero')
+
 
 @define
 class Mors:
@@ -44,17 +51,59 @@ class Mors:
         Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
     age_now: float
         Observed estimated age of the star [Gyr].
-    spec: str
-        Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
+    star_name: str
+        Name of the star, to find appropriate stellar spectrum. See [documentation](https://proteus-framework.org/proteus/data.html).
+    star_path: str
+        Path to custom stellar spectra. If 'none', star_name will be used to find spectra in default locations.
+    spectrum_source: str
+        Source of stellar spectra. Choices: 'solar', 'muscles', 'phoenix', 'none'.
+    phoenix_FeH: float
+        Stellar metallicity [Fe/H] to be used for PHOENIX synthetic spectra,
+        if spectrum_source is 'phoenix'.
+    phoenix_alpha: float
+        Alpha-element enhancement [alpha/Fe] to be used for PHOENIX synthetic spectra,
+        if spectrum_source is 'phoenix'.
+    phoenix_radius: float
+        Stellar radius [R_sun]. If 'none', radius will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
+    phoenix_log_g: float
+        Surface gravity [cgs]. If 'none', log g will be calculated will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
+    phoenix_Teff: float
+        Effective temperature [K]. If 'none', Teff will be calculated will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
     """
-    age_now         = field(default=None)
-    spec            = field(default=None)
-    rot_pcntle      = field(default=None, converter=none_if_none)
-    rot_period      = field(default=None, converter=none_if_none)
-    tracks: str     = field(default='spada', validator=in_(('spada', 'baraffe')))
+
+    age_now = field(default=None)
+    star_name = field(default=None, converter=none_if_none)
+    star_path = field(default=None, converter=none_if_none)
+    rot_pcntle = field(default=None, converter=none_if_none)
+    rot_period = field(default=None, converter=none_if_none)
+    tracks: str = field(default='spada', validator=in_(('spada', 'baraffe')))
+
+    spectrum_source: str = field(
+        default=None,
+        validator=in_(('solar', 'muscles', 'phoenix', None)),
+        converter=none_if_none,
+    )
+
+    ### PHOENIX parameters
+
+    # Solar by default
+    phoenix_FeH: float = field(default=0.0)  # [Fe/H]
+    phoenix_alpha: float = field(default=0.0)  # [alpha/Fe]
+
+    # calculated if none
+    phoenix_radius: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    phoenix_log_g: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+    phoenix_Teff: float | str = field(
+        default=None, validator=optional(gt(0)), converter=none_if_none
+    )
+
 
 def valid_stardummy(instance, attribute, value):
-    if instance.module != "dummy":
+    if instance.module != 'dummy':
         return
 
     if instance.dummy.calculate_radius:
@@ -63,10 +112,11 @@ def valid_stardummy(instance, attribute, value):
 
     else:
         if (instance.dummy.radius is None) or (instance.dummy.radius <= 0):
-            raise ValueError("Star radius MUST be set >0 when calculate_radius is False")
+            raise ValueError('Star radius MUST be set >0 when calculate_radius is False')
 
     if (instance.dummy.Teff is None) or (instance.dummy.Teff < 1):
-        raise ValueError("star.dummy.Teff must be >0 K")
+        raise ValueError('star.dummy.Teff must be >0 K')
+
 
 @define
 class StarDummy:
@@ -81,15 +131,17 @@ class StarDummy:
     Teff: float
         Observed effective temperature [K].
     """
-    Teff    = field(default=5780)
-    radius: float | str     = field(default=None,  converter=none_if_none)
-    calculate_radius: bool  = field(default=False)
+
+    Teff = field(default=5780)
+    radius: float | str = field(default=None, converter=none_if_none)
+    calculate_radius: bool = field(default=False)
+
 
 @define
 class Star:
     """Stellar parameters, model selection.
 
-    You can find useful reference data in the [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars).
+    You can find useful reference data in the [documentation](https://proteus-framework.org/proteus/data.html#stars).
 
     Attributes
     ----------
@@ -117,7 +169,7 @@ class Star:
     mass: float = field(validator=gt(0))
     age_ini: float = field(validator=gt(0))
 
-    mors: Mors       = field(factory=Mors,      validator=valid_mors)
+    mors: Mors = field(factory=Mors, validator=valid_mors)
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)
 
-    bol_scale: float= field(default=1.0, validator=ge(0.0))
+    bol_scale: float = field(default=1.0, validator=ge(0.0))

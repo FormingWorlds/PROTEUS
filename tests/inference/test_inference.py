@@ -1,7 +1,16 @@
 # This test runs the BO inference scheme with PROTEUS for a few evaluations
+# ruff: noqa: E402, I001
 from __future__ import annotations
 
 import filecmp
+
+# Pytest will hang on process completion when using multiprocessing, by default
+#    Add these lines to ensure that the processes do not block
+#    See issue: https://github.com/pytest-dev/pytest/issues/11174#issuecomment-1921876937
+import multiprocessing as mp
+
+mp.set_start_method('spawn', force=True)
+
 import os
 import pickle
 
@@ -15,14 +24,19 @@ OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_inference'
 INFER_CONFIG = PROTEUS_ROOT / 'tests' / 'inference' / 'dummy.infer.toml'
 BASE_CONFIG = PROTEUS_ROOT / 'tests' / 'inference' / 'base.toml'
 
-@pytest.fixture(scope="module")
+
+@pytest.fixture(scope='module')
 def inference_run():
     infer_from_config(INFER_CONFIG)
 
+
+@pytest.mark.integration
 def test_inference_run(inference_run):
     # Call fixture to ensure that it has run without error
     pass
 
+
+@pytest.mark.integration
 def test_inference_config(inference_run):
     # Copy of grid's config exists in output dir
     assert os.path.isfile(OUT_DIR / 'copy.infer.toml')
@@ -30,6 +44,8 @@ def test_inference_config(inference_run):
     # Copy of base config is identical to base config
     assert filecmp.cmp(OUT_DIR / 'ref_config.toml', BASE_CONFIG, shallow=False)
 
+
+@pytest.mark.integration
 def test_inference_init(inference_run):
     # Check that init data was written
     assert os.path.isfile(OUT_DIR / 'init.pkl')
@@ -37,9 +53,11 @@ def test_inference_init(inference_run):
     # Chec init data format
     with open(OUT_DIR / 'data.pkl', 'rb') as hdl:
         data = pickle.load(hdl)
-    assert "X" in data.keys()
-    assert "Y" in data.keys()
+    assert 'X' in data.keys()
+    assert 'Y' in data.keys()
 
+
+@pytest.mark.integration
 def test_inference_output(inference_run):
     # Check that output results exist
     assert os.path.isfile(OUT_DIR / 'data.pkl')
@@ -47,9 +65,9 @@ def test_inference_output(inference_run):
     # Check output result format
     with open(OUT_DIR / 'data.pkl', 'rb') as hdl:
         data = pickle.load(hdl)
-    assert "X" in data.keys()
-    assert "Y" in data.keys()
-    assert len(data["Y"]) > 2
+    assert 'X' in data.keys()
+    assert 'Y' in data.keys()
+    assert len(data['Y']) > 2
 
     # Check plots exist
     assert os.path.isfile(OUT_DIR / 'plots' / 'result_correlation.png')
