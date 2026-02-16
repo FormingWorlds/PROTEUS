@@ -165,7 +165,7 @@ proteus offchem -c [cfgfile]
 This will run VULCAN as a subprocess. This command should not be used in batch processing.
 
 PROTEUS will perform this step automatically when the configuration variable
-`atmos_chem.when` is set to `"offline"`.
+`atmos_chem.when` is set to `"offline"`. If `atmos_chem.when` is set to `"online"`, the postprocessing occurs for every snapshot.
 
 ## Postprocessing of results with synthetic observations
 
