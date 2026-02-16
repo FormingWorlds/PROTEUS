@@ -24,20 +24,20 @@ PROTEUS leverages AI assistants for **software engineering tasks**, not scientif
 ## Quick Start
 
 1. **Set up an AI assistant**: Install [GitHub Copilot](https://github.com/features/copilot), [Cursor](https://cursor.sh/), or [Windsurf](https://codeium.com/windsurf)
-2. **Provide context**: Point the assistant to `AGENTS.md` (coding guidelines) and `MEMORY.md` (project state)
+2. **Provide context**: Point the assistant to `.github/copilot-instructions.md` (coding guidelines) and `MEMORY.md` (project state)
 3. **Generate code**: Use prompts from [Test Building](test_building.md) for tests
 4. **Review thoroughly**: Check all AI output before committing
 5. **Run tests**: `pytest -m "unit and not skip"` and `ruff check`
 
 ---
 
-## AGENTS.md and MEMORY.md
+## .github/copilot-instructions.md and MEMORY.md
 
 PROTEUS uses two special files to provide AI assistants with project context:
 
-### AGENTS.md — Coding Guidelines
+### .github/copilot-instructions.md — Coding Guidelines
 
-**Purpose:** Instructions for AI agents on how to write PROTEUS-compliant code.
+**Purpose:** Instructions for AI agents on how to write PROTEUS-compliant code. GitHub Copilot automatically discovers this file; other tools access it via the `CLAUDE.md` symlink at the project root.
 
 **Contains:**
 - Project structure and architecture
@@ -46,7 +46,7 @@ PROTEUS uses two special files to provide AI assistants with project context:
 - Build commands and validation steps
 - Common patterns and anti-patterns
 
-**How to use:** Add `AGENTS.md` to your AI assistant's context window or reference it in prompts.
+**How to use:** GitHub Copilot reads this file automatically. For other AI assistants, add it to the context window or reference it in prompts.
 
 ### MEMORY.md — Project State
 
@@ -69,7 +69,7 @@ PROTEUS uses two special files to provide AI assistants with project context:
 
 1. **Install**: [VS Code Copilot Extension](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot)
 2. **Enable Copilot Chat**: Install [Copilot Chat Extension](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat)
-3. **Add context files**: In chat, use `@workspace` to reference project files, or drag `AGENTS.md` into the chat
+3. **Add context files**: In chat, use `@workspace` to reference project files, or drag `.github/copilot-instructions.md` into the chat
 4. **Use `.github/copilot-instructions.md`**: This file automatically provides Copilot with PROTEUS guidelines
 
 **Tutorials:**
@@ -85,13 +85,13 @@ PROTEUS uses two special files to provide AI assistants with project context:
 
 1. **Install**: Download from [cursor.sh](https://cursor.sh/)
 2. **Open PROTEUS**: `cursor /path/to/PROTEUS`
-3. **Add rules**: Cursor reads `.cursorrules` if present; alternatively, add `AGENTS.md` content to Settings → Rules
-4. **Reference files**: Use `@AGENTS.md` or `@MEMORY.md` in chat to include context
+3. **Add rules**: Cursor reads `.cursorrules` if present; alternatively, add `.github/copilot-instructions.md` content to Settings → Rules
+4. **Reference files**: Use `@.github/copilot-instructions.md` or `@MEMORY.md` in chat to include context
 
 ### Windsurf (Cascade)
 
 1. **Install**: Download from [codeium.com/windsurf](https://codeium.com/windsurf)
-2. **Open PROTEUS**: Windsurf automatically reads `AGENTS.md` from the workspace
+2. **Open PROTEUS**: Windsurf automatically reads `.github/copilot-instructions.md` from the workspace
 3. **Memory system**: Windsurf maintains persistent memory across sessions
 4. **Reference files**: Use `@file` mentions to include specific files in context
 
@@ -251,7 +251,7 @@ git diff --staged                         # Review changes yourself
 
 ### Do
 
-- **Provide context**: Include `AGENTS.md` and relevant source files
+- **Provide context**: Include `.github/copilot-instructions.md` and relevant source files
 - **Be specific**: "Write a unit test for `calculate_flux` that tests edge case when T=0"
 - **Iterate**: Ask AI to refine based on your feedback
 - **Learn from output**: Use AI suggestions to improve your understanding
@@ -273,7 +273,7 @@ git diff --staged                         # Review changes yourself
 
 **Problem:** AI uses `@pytest.mark.test` instead of `@pytest.mark.unit`
 
-**Solution:** Include `AGENTS.md` in context; it specifies valid markers
+**Solution:** Include `.github/copilot-instructions.md` in context; it specifies valid markers
 
 ### AI doesn't know about fixtures
 
@@ -302,7 +302,7 @@ bash tools/validate_test_structure.sh
 
 ## References
 
-- [AGENTS.md](https://github.com/FormingWorlds/PROTEUS/blob/main/AGENTS.md) — AI coding guidelines for PROTEUS
+- [.github/copilot-instructions.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-instructions.md) — AI coding guidelines for PROTEUS
 - [MEMORY.md](https://github.com/FormingWorlds/PROTEUS/blob/main/MEMORY.md) — Project state and decisions
 - [Test Building](test_building.md) — Test generation prompts
 - [Test Categorization](test_categorization.md) — Test markers and CI

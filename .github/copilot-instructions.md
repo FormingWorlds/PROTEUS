@@ -18,7 +18,7 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 
 1. **Always** follow the testing standards outlined in this document and `docs/test_infrastructure.md` for all code changes.
 2. **Always** inform yourself of the current project memory in `MEMORY.md` before making changes.
-3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in AGENTS.md...)"
+3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
 
 ## Ecosystem Structure
 
@@ -397,7 +397,7 @@ pytest --pdb                        # Drop into debugger on failure
 - **Testing**: `docs/test_infrastructure.md`, `docs/test_building.md`, `docs/test_categorization.md`
 - **Installation**: `docs/installation.md`, `docs/local_machine_guide.md`
 - **Usage**: `docs/usage.md`, `docs/config.md`
-- **Copilot guidelines**: `.github/copilot-instructions.md` (applies to all ecosystem modules)
+- **Copilot guidelines**: `.github/copilot-instructions.md` (this file; applies to all ecosystem modules)
 
 ## 🧠 Memory Maintenance
 
@@ -464,7 +464,7 @@ proteus start -c input/minimal.toml -o output/test
 
 ---
 
-> **⚠️ FILE SIZE LIMIT: This file must stay below 500 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`).
+> **⚠️ FILE SIZE LIMIT: This file must stay below 500 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-instructions.md`.
 
 **When approaching the limit, refactor by asking:**
 1. **Is this still accurate?** Remove outdated commands, deprecated workflows, or superseded patterns.
