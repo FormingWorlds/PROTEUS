@@ -89,7 +89,14 @@ PROTEUS_DIR=/opt/proteus
 5. **Sequential testing:** Unit → Smart rebuild → Smoke
 6. **Coverage coordination:** Downloads nightly artifact for estimated total
 
-**Steps (in order):**
+**Jobs:**
+
+- **unit-tests** (Linux, Docker): Unit + smoke tests with coverage, coverage validation
+- **macos-unit-tests** (macOS): Unit tests only (no compiled binaries available)
+- **lint**: Code style checks with ruff
+- **summary**: Aggregates results from all jobs into a unified report
+
+**Linux job steps (in order):**
 
 1. **Prevent threshold decreases** — Fails if `fail_under` decreased vs main
 2. **Overlay PR code** — `rsync` excludes SPIDER, SOCRATES, PETSc, AGNI
@@ -101,7 +108,6 @@ PROTEUS_DIR=/opt/proteus
 8. **Check staleness** — Fails if nightly artifact >48h old
 9. **Validate coverage** — Grace period of 0.3% for drops
 10. **Diff-cover** — 80% coverage required on changed lines
-11. **Lint** — `ruff check` and `ruff format --check`
 
 **Coverage coordination:**
 - Fast gate threshold from `[tool.proteus.coverage_fast] fail_under` (see `pyproject.toml`)
@@ -132,9 +138,11 @@ Since the container already has compiled binaries:
 **Purpose:** Comprehensive scientific validation and coverage baseline.
 
 **Triggers:**
-- Schedule: Nightly at 03:00 UTC
+- Primary: Dispatched by `docker-build.yml` after the 2am UTC image rebuild
+- Fallback: Cron at 03:00 UTC (skips if a dispatch run already happened in the last 4 hours)
 - Manual dispatch
-- Push to feature branches (workflow file changes only)
+
+**Deduplication:** A `check-already-triggered` guard job queries the GitHub API for recent `workflow_dispatch` runs. If the docker-build workflow already triggered the nightly, the 3am cron skips. On API failure, the cron proceeds as a safe default.
 
 **Environment:**
 - Sets `PROTEUS_CI_NIGHTLY=1` — enables additional smoke tests
@@ -142,19 +150,26 @@ Since the container already has compiled binaries:
 - Downloads ~200MB minimal data for smoke tests
 
 **Strategy:**
-1. Use branch-specific Docker image
-2. Overlay code (excludes compiled modules)
-3. Download minimal data (spectral files, stellar spectra, lookup tables)
-4. Configure Julia environment for Python integration
-5. Run all test tiers sequentially
-6. Generate coverage artifacts for PR coordination
-7. Ratchet coverage threshold on success
+1. Check if already triggered by docker-build (skip if so)
+2. Use branch-specific Docker image
+3. Overlay code (excludes compiled modules)
+4. Download minimal data (spectral files, stellar spectra, lookup tables)
+5. Configure Julia environment for Python integration
+6. Run all test tiers sequentially
+7. Upload aggregate coverage to Codecov
+8. Generate coverage artifacts for PR coordination
+9. Ratchet coverage threshold on success
 
 **Test sequence:**
 1. **Unit tests** — `pytest -m "unit and not skip"` with coverage
 2. **Smoke tests** — `pytest -m "smoke and not skip"` (coverage appended)
 3. **Integration tests** — `pytest -m "integration and not slow"` (coverage appended)
 4. **Slow tests** — `pytest -m slow` (if time permits)
+
+**Codecov upload:**
+- Uploads combined `coverage.xml` (unit + smoke + integration) under the `nightly` flag
+- Configured in `codecov.yml` with `carryforward: true` so data persists across PR evaluations
+- This is what the Codecov coverage badge in the README reflects
 
 **Artifacts uploaded:**
 - `nightly-coverage/coverage-integration-only.json` — For PR estimated total
@@ -203,8 +218,16 @@ def test_earth_evolution_1gyr():
 
 ### Nightly (Main Branch)
 ```
-03:00 UTC: ci-nightly.yml
+02:00 UTC: docker-build.yml
   ↓
+  Rebuild Docker image
+  ↓
+  Trigger ci-nightly.yml via workflow_dispatch
+  ↓
+03:00 UTC: ci-nightly.yml cron (fallback)
+  ↓
+  check-already-triggered job
+  ↓  (skips if dispatch run found in last 4h)
   Pull Docker image
   ↓
   Overlay code, download data (~200MB)
@@ -217,6 +240,8 @@ def test_earth_evolution_1gyr():
   ↓
   Run slow tests (if time permits)
   ↓
+  Upload aggregate coverage to Codecov (nightly flag)
+  ↓
   Upload nightly-coverage artifact
   ↓
   Ratchet threshold if coverage increased
@@ -226,31 +251,25 @@ def test_earth_evolution_1gyr():
 ```
 PR opened/updated
   ↓
-ci-pr-checks.yml
+ci-pr-checks.yml (3 parallel jobs + summary)
   ↓
-Pull Docker image (instant)
-  ↓
-Check threshold not decreased vs main
-  ↓
-Overlay PR code onto container
-  ↓
-Validate test structure
-  ↓
-Run unit tests with coverage (~2-5 min)
-  ↓
-Smart rebuild (only if Fortran/Julia changed)
-  ↓
-Run smoke tests (~5-10 min)
-  ↓
-Download nightly artifact, check staleness
-  ↓
-Compute estimated total coverage
-  ↓
-Diff-cover (80% on changed lines)
-  ↓
-Lint with ruff
-  ↓
-Fast feedback (~10-15 min total)
+┌──────────────────────┬──────────────────┬────────────┐
+│ unit-tests (Linux)   │ macos-unit-tests │ lint       │
+│ Pull Docker image    │ Setup Python     │ ruff check │
+│ Overlay PR code      │ pip install      │ ruff format│
+│ Validate structure   │ Run unit tests   │            │
+│ Unit tests + cov     │                  │            │
+│ Smart rebuild        │                  │            │
+│ Smoke tests          │                  │            │
+│ Coverage validation  │                  │            │
+│ Diff-cover (80%)     │                  │            │
+└──────────┬───────────┴────────┬─────────┴──────┬─────┘
+           └────────────────────┴────────────────┘
+                          ↓
+                    summary job
+                    (unified report)
+                          ↓
+                  Fast feedback (~10-15 min)
 ```
 
 ## Benefits

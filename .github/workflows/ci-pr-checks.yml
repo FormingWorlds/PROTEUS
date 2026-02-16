@@ -43,6 +43,21 @@ jobs:
   unit-tests:
     name: Unit Tests (Mocked Physics)
     runs-on: ubuntu-latest
+    outputs:
+      unit-outcome: ${{ steps.unit-tests.outcome }}
+      smoke-outcome: ${{ steps.smoke-tests.outcome }}
+      coverage-status: ${{ steps.coverage-validation.outputs.coverage_status }}
+      coverage-drop: ${{ steps.coverage-validation.outputs.coverage_drop }}
+      estimated-total: ${{ steps.coverage-validation.outputs.estimated_total }}
+      threshold: ${{ steps.coverage-validation.outputs.threshold }}
+      nightly-stale: ${{ steps.check-nightly.outputs.nightly_stale }}
+      nightly-missing: ${{ steps.check-nightly.outputs.nightly_missing }}
+      unit-pct: ${{ steps.coverage-validation.outputs.unit_pct }}
+      unit-covered: ${{ steps.coverage-validation.outputs.unit_covered }}
+      unit-total: ${{ steps.coverage-validation.outputs.unit_total }}
+      nightly-pct: ${{ steps.coverage-validation.outputs.nightly_pct }}
+      est-covered-union: ${{ steps.coverage-validation.outputs.est_covered_union }}
+      est-total-union: ${{ steps.coverage-validation.outputs.est_total_union }}
     container:
       image: ghcr.io/formingworlds/proteus:latest
       credentials:
@@ -240,13 +255,13 @@ jobs:
 
           echo "NIGHTLY_STALE=$NIGHTLY_STALE" >> $GITHUB_ENV
           echo "NIGHTLY_MISSING=$NIGHTLY_MISSING" >> $GITHUB_ENV
+          echo "nightly_stale=$NIGHTLY_STALE" >> $GITHUB_OUTPUT
+          echo "nightly_missing=$NIGHTLY_MISSING" >> $GITHUB_OUTPUT
 
-      - name: Write workflow summary and validate coverage
+      - name: Validate coverage and write outputs
         id: coverage-validation
         if: always()
         env:
-          UNIT_OUTCOME: ${{ steps.unit-tests.outcome }}
-          SMOKE_OUTCOME: ${{ steps.smoke-tests.outcome }}
           NIGHTLY_STALE: ${{ env.NIGHTLY_STALE }}
           NIGHTLY_MISSING: ${{ env.NIGHTLY_MISSING }}
         run: |
@@ -349,7 +364,7 @@ jobs:
               elif coverage_drop > 0:
                   coverage_status = "warn"
 
-          # Write outputs for subsequent steps
+          # Write outputs for subsequent steps and summary job
           output_file = pathlib.Path(os.environ.get("GITHUB_OUTPUT", "/tmp/outputs.txt"))
           est_total_str = f"{est_pct_union:.2f}" if est_pct_union is not None else "0"
           with open(output_file, "a") as f:
@@ -357,58 +372,14 @@ jobs:
               f.write(f"coverage_drop={coverage_drop:.2f}\n")
               f.write(f"estimated_total={est_total_str}\n")
               f.write(f"threshold={full_threshold}\n")
+              f.write(f"unit_pct={u_pct:.2f}\n")
+              f.write(f"unit_covered={u_covered}\n")
+              f.write(f"unit_total={u_total}\n")
+              f.write(f"nightly_pct={i_pct:.2f}\n")
+              f.write(f"est_covered_union={est_covered_union}\n")
+              f.write(f"est_total_union={est_total_union}\n")
 
-          # Write summary
-          summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
-          unit_outcome = os.environ.get("UNIT_OUTCOME", "unknown")
-          smoke_outcome = os.environ.get("SMOKE_OUTCOME", "unknown")
-
-          with open(summary_path, "w") as f:
-              f.write("# Fast PR Checks – Summary\n\n")
-
-              # Staleness/missing warnings
-              if nightly_stale:
-                  f.write("## ❌ Stale Nightly Baseline\n\n")
-                  f.write("The last successful nightly CI run was **more than 48 hours ago**.\n")
-                  f.write("Cannot validate coverage against an outdated baseline.\n\n")
-                  f.write("**Action required:** Wait for nightly CI to run, or [trigger it manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
-              elif nightly_missing:
-                  f.write("## ⚠️ No Nightly Baseline\n\n")
-                  f.write("No nightly coverage artifact found. Coverage validation skipped.\n\n")
-
-              # Coverage warning
-              if coverage_status == "warn":
-                  f.write(f"## ⚠️ Coverage Warning\n\n")
-                  f.write(f"Coverage dropped **{coverage_drop:.2f}%** (within 0.3% grace margin).\n")
-                  f.write("Consider adding tests in a follow-up PR.\n\n")
-
-              # Test results
-              f.write("## Test Results\n\n")
-              f.write(f"| Test Type | Status |\n")
-              f.write(f"|-----------|--------|\n")
-              f.write(f"| Unit tests | {unit_outcome} |\n")
-              f.write(f"| Smoke tests | {smoke_outcome} |\n\n")
-
-              # Coverage by type
-              f.write("## Coverage by Test Type\n\n")
-              f.write("| Test Type | Coverage | Lines Covered |\n")
-              f.write("|-----------|----------|---------------|\n")
-              f.write(f"| Unit + Smoke (this PR) | {u_pct:.2f}% | {u_covered} / {u_total} |\n")
-              if i_total:
-                  f.write(f"| Integration (nightly) | {i_pct:.2f}% | {i_covered} / {i_total} |\n")
-              if est_pct_union is not None:
-                  status_icon = "✅" if coverage_status == "ok" else ("⚠️" if coverage_status == "warn" else "❌")
-                  f.write(f"| **Estimated TOTAL** | **{est_pct_union:.2f}%** | {est_covered_union} / {est_total_union} |\n\n")
-                  f.write(f"**Baseline (last nightly):** {full_threshold:.2f}% | **Status:** {status_icon}\n\n")
-              else:
-                  f.write("\n*Estimated total unavailable (nightly data missing)*\n\n")
-
-              f.write("### Notes\n")
-              f.write("- Grace period: 0.3% (coverage can drop by this margin without failing)\n")
-              f.write("- Nightly staleness threshold: 48 hours\n")
-              f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
-
-          # Print summary
+          # Print summary to log
           disp_est = f"{est_pct_union:.2f}%" if est_pct_union else "—"
           print(f"Unit+Smoke: {u_pct:.2f}% | Nightly: {i_pct:.2f}% | Estimated total: {disp_est} | Status: {coverage_status}")
           PY
@@ -425,19 +396,6 @@ jobs:
 
           # Run diff-cover using the prepared diff file
           diff-cover /opt/proteus/coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
-
-      - name: Append failure guidance (needs more unit tests)
-        if: (failure() && !cancelled()) && (steps.unit-tests.outcome == 'failure' || steps.smoke-tests.outcome == 'failure' || steps.diff-cover.outcome == 'failure')
-        run: |
-          {
-            echo ""
-            echo "---"
-            echo "## PR did not pass checks"
-            echo ""
-            echo "This run failed because **unit tests**, **smoke tests**, or **diff-cover on changed lines** did not pass. See the \"Which tests failed\" section above."
-            echo ""
-            echo "See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance."
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Post coverage warning comment on PR
         if: github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'
@@ -513,12 +471,11 @@ jobs:
         uses: codecov/codecov-action@v4
         if: always()
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: /opt/proteus/coverage.xml
           flags: unit-tests
           name: unit-tests-coverage
           fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload HTML coverage
         uses: actions/upload-artifact@v6
@@ -554,6 +511,46 @@ jobs:
             /opt/proteus/tests/**/*.log
           retention-days: 7
 
+  macos-unit-tests:
+    name: Unit Tests macOS
+    runs-on: macos-latest
+    outputs:
+      unit-outcome: ${{ steps.unit-tests.outcome }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PROTEUS
+        run: |
+          pip install -e ".[develop]"
+
+      - name: Run unit tests
+        id: unit-tests
+        continue-on-error: true
+        run: |
+          pytest -m "unit and not skip" \
+            --ignore=tests/examples \
+            --durations=0 \
+            --durations-min=0 | tee pytest-unit-macos.log
+
+      - name: Upload macOS pytest log
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: unit-pytest-log-macos
+          path: pytest-unit-macos.log
+          retention-days: 7
+
+      - name: Fail job if unit tests failed
+        if: always() && steps.unit-tests.outcome == 'failure'
+        run: exit 1
+
   lint:
     name: Code Quality (ruff)
     runs-on: ubuntu-latest
@@ -575,3 +572,151 @@ jobs:
 
       - name: Run ruff format check
         run: ruff format --check src/ tests/
+
+  summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [unit-tests, macos-unit-tests, lint]
+
+    steps:
+      - name: Write combined summary
+        env:
+          LINUX_UNIT: ${{ needs.unit-tests.outputs.unit-outcome }}
+          LINUX_SMOKE: ${{ needs.unit-tests.outputs.smoke-outcome }}
+          LINUX_JOB_RESULT: ${{ needs.unit-tests.result }}
+          MACOS_UNIT: ${{ needs.macos-unit-tests.outputs.unit-outcome }}
+          MACOS_JOB_RESULT: ${{ needs.macos-unit-tests.result }}
+          LINT: ${{ needs.lint.result }}
+          COV_STATUS: ${{ needs.unit-tests.outputs.coverage-status }}
+          COV_DROP: ${{ needs.unit-tests.outputs.coverage-drop }}
+          EST_TOTAL: ${{ needs.unit-tests.outputs.estimated-total }}
+          THRESHOLD: ${{ needs.unit-tests.outputs.threshold }}
+          NIGHTLY_STALE: ${{ needs.unit-tests.outputs.nightly-stale }}
+          NIGHTLY_MISSING: ${{ needs.unit-tests.outputs.nightly-missing }}
+          UNIT_PCT: ${{ needs.unit-tests.outputs.unit-pct }}
+          UNIT_COVERED: ${{ needs.unit-tests.outputs.unit-covered }}
+          UNIT_TOTAL: ${{ needs.unit-tests.outputs.unit-total }}
+          NIGHTLY_PCT: ${{ needs.unit-tests.outputs.nightly-pct }}
+          EST_COVERED_UNION: ${{ needs.unit-tests.outputs.est-covered-union }}
+          EST_TOTAL_UNION: ${{ needs.unit-tests.outputs.est-total-union }}
+        run: |
+          python3 - <<'PY'
+          import os
+
+          def icon(outcome):
+              if outcome == "success":
+                  return "✅ pass"
+              elif outcome == "failure":
+                  return "❌ FAIL"
+              elif outcome == "skipped":
+                  return "⏭️ skipped"
+              return outcome or "—"
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md")
+          nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
+          nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
+          cov_status = os.environ.get("COV_STATUS", "")
+          cov_drop = float(os.environ.get("COV_DROP", "0") or "0")
+
+          linux_unit = os.environ.get("LINUX_UNIT", "")
+          linux_smoke = os.environ.get("LINUX_SMOKE", "")
+          linux_job_result = os.environ.get("LINUX_JOB_RESULT", "")
+          macos_unit = os.environ.get("MACOS_UNIT", "")
+          macos_job_result = os.environ.get("MACOS_JOB_RESULT", "")
+          lint = os.environ.get("LINT", "")
+
+          with open(summary_path, "w") as f:
+              f.write("# Fast PR Checks – Summary\n\n")
+
+              # Staleness/missing warnings
+              if nightly_stale:
+                  f.write("## ❌ Stale Nightly Baseline\n\n")
+                  f.write("The last successful nightly CI run was **more than 48 hours ago**.\n")
+                  f.write("Cannot validate coverage against an outdated baseline.\n\n")
+                  f.write("**Action required:** Wait for nightly CI to run, or ")
+                  f.write("[trigger it manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
+              elif nightly_missing:
+                  f.write("## ⚠️ No Nightly Baseline\n\n")
+                  f.write("No nightly coverage artifact found. Coverage validation skipped.\n\n")
+
+              # Coverage warning
+              if cov_status == "warn":
+                  f.write(f"## ⚠️ Coverage Warning\n\n")
+                  f.write(f"Coverage dropped **{cov_drop:.2f}%** (within 0.3% grace margin).\n")
+                  f.write("Consider adding tests in a follow-up PR.\n\n")
+
+              # Test results - with platform column
+              f.write("## Test Results\n\n")
+              f.write("| Platform | Test Type | Status |\n")
+              f.write("|----------|-----------|--------|\n")
+              f.write(f"| Linux | Unit tests | {icon(linux_unit)} |\n")
+              f.write(f"| Linux | Smoke tests | {icon(linux_smoke)} |\n")
+              f.write(f"| macOS | Unit tests | {icon(macos_unit)} |\n")
+              f.write(f"| — | Lint (ruff) | {icon(lint)} |\n\n")
+
+              # Coverage section (Linux data only)
+              unit_pct = float(os.environ.get("UNIT_PCT", "0") or "0")
+              unit_covered = os.environ.get("UNIT_COVERED", "0")
+              unit_total = os.environ.get("UNIT_TOTAL", "0")
+              nightly_pct = float(os.environ.get("NIGHTLY_PCT", "0") or "0")
+              est_total = os.environ.get("EST_TOTAL", "")
+              est_covered_union = os.environ.get("EST_COVERED_UNION", "0")
+              est_total_union = os.environ.get("EST_TOTAL_UNION", "0")
+              threshold = float(os.environ.get("THRESHOLD", "0") or "0")
+
+              f.write("## Coverage by Test Type (Linux)\n\n")
+              f.write("| Test Type | Coverage | Lines Covered |\n")
+              f.write("|-----------|----------|---------------|\n")
+              f.write(f"| Unit + Smoke (this PR) | {unit_pct:.2f}% | {unit_covered} / {unit_total} |\n")
+              if nightly_pct > 0:
+                  f.write(f"| Integration (nightly) | {nightly_pct:.2f}% | — |\n")
+              est = float(est_total or "0")
+              if est > 0:
+                  status_icon = "✅" if cov_status == "ok" else ("⚠️" if cov_status == "warn" else "❌")
+                  f.write(f"| **Estimated TOTAL** | **{est:.2f}%** | {est_covered_union} / {est_total_union} |\n\n")
+                  f.write(f"**Baseline (last nightly):** {threshold:.2f}% | **Status:** {status_icon}\n\n")
+              else:
+                  f.write("\n*Estimated total unavailable (nightly data missing)*\n\n")
+
+              f.write("### Notes\n")
+              f.write("- macOS runs unit tests only (no smoke tests — requires compiled binaries)\n")
+              f.write("- Coverage thresholds enforced on Linux only (source of truth)\n")
+              f.write("- Grace period: 0.3% | Nightly staleness threshold: 48 hours\n")
+              f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
+
+              # Failure guidance - includes non-test failures (diff-cover, coverage, staleness)
+              any_test_fail = linux_unit == "failure" or linux_smoke == "failure" or macos_unit == "failure"
+              # Detect non-test failures: job failed but specific test steps didn't fail
+              linux_non_test_fail = (linux_job_result == "failure" and
+                                     linux_unit != "failure" and linux_smoke != "failure")
+              macos_non_test_fail = macos_job_result == "failure" and macos_unit != "failure"
+              cov_fail = cov_status == "fail"
+
+              if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail or nightly_stale:
+                  f.write("\n---\n")
+                  f.write("## ❌ PR did not pass checks\n\n")
+                  if any_test_fail:
+                      f.write("**Unit tests or smoke tests failed.** See the logs above for details.\n\n")
+                      f.write("See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance.\n\n")
+                  if lint == "failure":
+                      f.write("**Lint (ruff) failed.** Run `ruff check --fix src/ tests/ && ruff format src/ tests/` locally.\n\n")
+                  if linux_non_test_fail:
+                      f.write("**Linux job failed on non-test step** (diff-cover, coverage validation, or other check).\n")
+                      f.write("Check the 'Unit Tests (Mocked Physics)' job logs for details.\n\n")
+                  if cov_fail:
+                      f.write(f"**Coverage dropped too much** ({cov_drop:.2f}% below threshold, exceeds 0.3% grace margin).\n")
+                      f.write("Add tests to restore coverage above the threshold.\n\n")
+                  if nightly_stale:
+                      f.write("**Nightly baseline is stale.** Coverage validation cannot proceed.\n")
+                      f.write("[Trigger nightly CI manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
+          PY
+
+      - name: Fail if any checks failed
+        if: >-
+          needs.unit-tests.result == 'failure' ||
+          needs.macos-unit-tests.result == 'failure' ||
+          needs.lint.result == 'failure'
+        run: |
+          echo "❌ One or more required checks failed. See summary above for details."
+          exit 1

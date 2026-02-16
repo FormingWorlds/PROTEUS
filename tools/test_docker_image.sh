@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test script for the PROTEUS Docker image
 #
-# Usage: ./test_docker_image.sh
+# Usage: ./tools/test_docker_image.sh
 
 set -e
 
