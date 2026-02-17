@@ -20,18 +20,55 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-#GASES_STANDARD = ("C2H4", "CO", "H2O", "H2SO4", "N2", "O2", "O3", "OH", "H", "SO", "CH4",
+# GASES_STANDARD = ("C2H4", "CO", "H2O", "H2SO4", "N2", "O2", "O3", "OH", "H", "SO", "CH4",
 #                 "CO2", "H2", "H2S", "HCN", "NH2", "NH3", "OCS", "S2", "S6", "S8", "SO2",
 #                  "N2O", "NO", "NO2", "HNO3", "PH3", "C2H2", "NO3", "N2O5", "HONO",
- #                 "HO2NO2", "H2O2", "C2H6", "CH3", "H2CO", "HO2", "C",
- #                 "N", "O", "S", "SO", "CS2","SiO","SiO2","TiO","FeO","MgO","Na")
+#                 "HO2NO2", "H2O2", "C2H6", "CH3", "H2CO", "HO2", "C",
+#                 "N", "O", "S", "SO", "CS2","SiO","SiO2","TiO","FeO","MgO","Na")
 
-GASES_STANDARD = ("CO", "H2O", "N2", "O2", "O3", "OH", "H", "SO", "CH4",
-                  "CO2", "H2", "H2S", "HCN", "NH3", "SO2", "Al","HAlO2",
-                  "N2O", "NO", "NO2", "HNO3", "PH3",
-                  "N", "O", "S")
+GASES_STANDARD = (
+    'CO',
+    'H2O',
+    'N2',
+    'O2',
+    'O3',
+    'OH',
+    'H',
+    'SO',
+    'CH4',
+    'CO2',
+    'H2',
+    'H2S',
+    'HCN',
+    'NH3',
+    'SO2',
+    'Al',
+    'HAlO2',
+    'N2O',
+    'NO',
+    'NO2',
+    'HNO3',
+    'PH3',
+    'N',
+    'O',
+    'S',
+)
 
-REFRACTORY_GASES = ("Fe", "Si", "Ti", "K", "Mg", "SiO", "SiO2","TiO","FeO","MgO","Na","TiO2")
+REFRACTORY_GASES = (
+    'Fe',
+    'Si',
+    'Ti',
+    'K',
+    'Mg',
+    'SiO',
+    'SiO2',
+    'TiO',
+    'FeO',
+    'MgO',
+    'Na',
+    'TiO2',
+)
+
 
 def plot_chem_atmosphere(
     output_dir: str,
@@ -82,22 +119,22 @@ def plot_chem_atmosphere(
     lw = 0.9
     al = 0.8
     vmr_surf = []
-    for i,gas in enumerate(plot_gases):
+    for i, gas in enumerate(plot_gases):
         col = get_colour(gas)
         lbl = latexify(gas)
         vmr = 0.0
         _lw = lw
-        #if gas in vol_list:
-            #_lw *= 1.25
+        # if gas in vol_list:
+        # _lw *= 1.25
 
         # plot from netCDF (dashed lines)
         key = gas + '_vmr'
         if key in atm_profile.keys():
             xarr = list(atm_profile[key])
             xarr = [xarr[0]] + xarr
-            if (np.amax(xarr) >= xmin or gas in list(REFRACTORY_GASES)):
+            if np.amax(xarr) >= xmin or gas in list(REFRACTORY_GASES):
                 vmr = float(xarr[-1])
-                ax.plot(xarr, parr, ls = 'dashed', color=col, lw=_lw, alpha=al)
+                ax.plot(xarr, parr, ls='dashed', color=col, lw=_lw, alpha=al)
             else:
                 print(np.amax(xarr))
 

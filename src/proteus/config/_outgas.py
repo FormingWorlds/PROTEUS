@@ -99,8 +99,8 @@ class Outgas:
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
 
-    calliope: Calliope      = field(factory=Calliope)
-    atmodeller: Atmodeller  = field(factory=Atmodeller)
+    calliope: Calliope = field(factory=Calliope)
+    atmodeller: Atmodeller = field(factory=Atmodeller)
 
     # LavAtmos / silicate coupling is opt-in: default to disabled.
     silicates: bool = field(default=False)
@@ -119,9 +119,9 @@ class Outgas:
         if self.silicates:
             if not self.fastchempath:
                 raise ValueError(
-                    "Outgas.fastchempath must be set when silicate (LavAtmos) coupling is enabled."
+                    'Outgas.fastchempath must be set when silicate (LavAtmos) coupling is enabled.'
                 )
             if not self.vaplist:
                 raise ValueError(
-                    "Outgas.vaplist must be set when silicate (LavAtmos) coupling is enabled."
+                    'Outgas.vaplist must be set when silicate (LavAtmos) coupling is enabled.'
                 )

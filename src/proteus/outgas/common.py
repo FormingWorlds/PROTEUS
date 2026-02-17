@@ -8,11 +8,11 @@ if TYPE_CHECKING:
 
 from proteus.utils.constants import element_list, vap_list, vol_list
 
-#from proteus.outgas.wrapper import get_gaslist
+# from proteus.outgas.wrapper import get_gaslist
 
 
-def expected_keys(config:Config):
-    copy_keys = ["P_surf", "M_atm", "atm_kg_per_mol"]
+def expected_keys(config: Config):
+    copy_keys = ['P_surf', 'M_atm', 'atm_kg_per_mol']
 
     # reservoirs
     res_list = ('atm', 'liquid', 'solid', 'total')

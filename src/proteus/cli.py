@@ -42,6 +42,7 @@ output_option = click.option(
     required=True,
 )
 
+
 @click.group()
 @click.version_option(version=proteus_version)
 def cli():

@@ -45,7 +45,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
         solvevol_inp['Phi_global'] = 0.0
 
     # Surface properties
-    solvevol_inp["T_magma"]     =  hf_row["T_magma"]
+    solvevol_inp['T_magma'] = hf_row['T_magma']
 
     if 'fO2_shift' in hf_row.keys():
         solvevol_inp['fO2_shift_IW'] = hf_row['fO2_shift']

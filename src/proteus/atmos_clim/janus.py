@@ -21,7 +21,6 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-
 def InitStellarSpectrum(dirs: dict, wl: list, fl: list, spectral_file_nostar):
     from janus.utils import InsertStellarSpectrum, PrepareStellarSpectrum
 
@@ -332,7 +331,7 @@ def RunJANUS(
     output['ocean_maxdepth'] = 0.0
 
     # set composition at Pxuv
-    gas_list=get_gaslist(config)
+    gas_list = get_gaslist(config)
 
     for g in gas_list:
         if g in atm.x_gas.keys():

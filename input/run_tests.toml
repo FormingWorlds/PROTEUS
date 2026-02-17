@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "xerr001_morerefracs_fO2saved"
+        path        = "updated_element_tracking"
         logging     = "INFO"
         plot_mod    = 3     # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -116,6 +116,7 @@ version = "2.0"
         rot_period  = "none"    # rotation period [days]
         tracks      = "spada"   # evolution tracks: spada | baraffe
         age_now     = 4.567     # current age of star [Gyr]
+        star_name   = "sun"
         spec        = "stellar_spectra/Named/sun.txt" # path to stellar spectrum file
 
     [star.dummy]

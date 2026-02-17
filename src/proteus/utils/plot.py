@@ -22,25 +22,22 @@ _preset_colours = {
     # Default colour
     '_fallback': '#ff00ff',
     # Volatile gases
-    "H2O": "#027FB1",
-    "CO2": "#D24901",
-    "H2" : "#008C01",
-    "CH4": "#C720DD",
-    "CO" : "#D1AC02",
-    "N2" : "#870036",
-    "S2" : "#FF8FA1",
-    "SO2": "#00008B",
-    "H2S": "#2eff90",
-    "NH3": "#675200",
-    'SiO':'#b2df8a',
+    'H2O': '#027FB1',
+    'CO2': '#D24901',
+    'H2': '#008C01',
+    'CH4': '#C720DD',
+    'CO': '#D1AC02',
+    'N2': '#870036',
+    'S2': '#FF8FA1',
+    'SO2': '#00008B',
+    'H2S': '#2eff90',
+    'NH3': '#675200',
+    'SiO': '#b2df8a',
     'MgO': '#a6cee3',
     'SiO2': '#1b9e77',
-    'FeO':'#7f0000',
-    'TiO':"#9C45BC",
-    'TiO2':"#421e39",
-
-
-
+    'FeO': '#7f0000',
+    'TiO': '#9C45BC',
+    'TiO2': '#421e39',
     # Volatile elements
     'H': '#0000cc',
     'C': '#ff0000',
@@ -49,14 +46,12 @@ _preset_colours = {
     'S': '#ff22ff',
     'P': '#33ccff',
     # refractory elements
-    "Fe": "#888888",
-    "Si": "#aa2277",
-    "Mg": "#996633",
-    "Na": "#ccff00",
-    "Ti": "#0d2959",
-    "K": "#2e8b57",
-
-
+    'Fe': '#888888',
+    'Si': '#aa2277',
+    'Mg': '#996633',
+    'Na': '#ccff00',
+    'Ti': '#0d2959',
+    'K': '#2e8b57',
     # GLobal energy fluxes
     'OLR': '#dc143c',
     'ASF': '#4169e1',

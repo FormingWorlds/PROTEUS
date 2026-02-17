@@ -279,7 +279,7 @@ class Proteus:
             # Store partial pressures and list of included volatiles
             inc_gases = []
 
-            gas_list=get_gaslist(self.config)
+            gas_list = get_gaslist(self.config)
 
             for s in vol_list:
                 if s != 'O2':
@@ -293,21 +293,21 @@ class Proteus:
                     inc_gases.append(s)
                     self.hf_row[s + '_bar'] = max(1.0e-30, float(pp_val))
                 else:
-                    self.hf_row[s + "_bar"] = 0.0
+                    self.hf_row[s + '_bar'] = 0.0
             for s in gas_list:
                 if s not in vol_list:
                     inc_gases.append(s)
-                    self.hf_row[s + "_bar"] = 0.0
+                    self.hf_row[s + '_bar'] = 0.0
 
             # Inform user
             log.info("Initial inventory set by '%s'" % self.config.delivery.initial)
             log.info('Included gases:')
             for s in inc_gases:
-                write = "    "
-                write += "volatile " if s in vol_list else "vapour"
-                write += "  %-8s" % s
-                if self.config.delivery.initial == "volatiles":
-                    write += " : %6.2f bar"%self.hf_row[s + "_bar"]
+                write = '    '
+                write += 'volatile ' if s in vol_list else 'vapour'
+                write += '  %-8s' % s
+                if self.config.delivery.initial == 'volatiles':
+                    write += ' : %6.2f bar' % self.hf_row[s + '_bar']
                 log.info(write)
 
         else:
@@ -315,7 +315,7 @@ class Proteus:
             log.info('Resuming the simulation from the disk')
 
             # Read helpfile from disk
-            self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
+            self.hf_all = ReadHelpfileFromCSV(self.directories['output'])
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:
@@ -408,10 +408,10 @@ class Proteus:
                     self.hf_row, self.config, stellar_track=self.stellar_track
                 )
 
-            if (abs(self.hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (
-                self.loops["total"] == 0):
-
-                self.sspec_prev = self.hf_row["Time"]
+            if (
+                abs(self.hf_row['Time'] - self.sspec_prev) > self.config.params.dt.starspec
+            ) or (self.loops['total'] == 0):
+                self.sspec_prev = self.hf_row['Time']
                 update_stellar_spectrum = True
 
                 # Get the new spectrum using the appropriate module
@@ -467,7 +467,7 @@ class Proteus:
 
             # solve for atmosphere composition
             else:
-                #run_outgassing(self.directories, self.config, self.hf_row)
+                # run_outgassing(self.directories, self.config, self.hf_row)
                 lavatmos_calliope_loop(self.directories, self.config, self.hf_row)
 
             # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
@@ -515,14 +515,14 @@ class Proteus:
             # Update full helpfile
             if self.loops['total'] > 1:
                 # append row
-                self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row,self.config)
+                self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row, self.config)
             else:
                 # first iter => generate new HF from dict
-                self.hf_all = CreateHelpfileFromDict(self.hf_row,self.config)
+                self.hf_all = CreateHelpfileFromDict(self.hf_row, self.config)
 
             # Write helpfile to disk
-            if multiple(self.loops["total"], self.config.params.out.write_mod):
-                WriteHelpfileToCSV(self.directories["output"], self.hf_all,self.config)
+            if multiple(self.loops['total'], self.config.params.out.write_mod):
+                WriteHelpfileToCSV(self.directories['output'], self.hf_all, self.config)
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
@@ -554,8 +554,8 @@ class Proteus:
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
         # Write conditions at the end of simulation
-        log.info("Writing data")
-        WriteHelpfileToCSV(self.directories["output"], self.hf_all,self.config)
+        log.info('Writing data')
+        WriteHelpfileToCSV(self.directories['output'], self.hf_all, self.config)
 
         # Run offline chemistry
         if self.config.atmos_chem.when == 'offline':
@@ -616,7 +616,8 @@ class Proteus:
 
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
-        hf_all = ReadHelpfileFromCSV(self.directories["output"],self.config)
+
+        hf_all = ReadHelpfileFromCSV(self.directories['output'], self.config)
 
         # Check length
         if len(hf_all) < 1:
@@ -636,7 +637,8 @@ class Proteus:
 
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
-        hf_all = ReadHelpfileFromCSV(self.directories["output"],self.config)
+
+        hf_all = ReadHelpfileFromCSV(self.directories['output'], self.config)
 
         # Check length
         if len(hf_all) < 1:

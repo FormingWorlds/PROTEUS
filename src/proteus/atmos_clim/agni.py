@@ -70,11 +70,10 @@ def activate_julia(dirs: dict, verbosity: int):
     log.debug("AGNI will log to '%s'" % logpath)
 
 
-def _construct_voldict(hf_row:dict, dirs:dict, config:Config):
+def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
+    gas_list = get_gaslist(config)
 
-    gas_list=get_gaslist(config)
-
-    log.debug("list of gases used by agni: %s", gas_list)
+    log.debug('list of gases used by agni: %s', gas_list)
 
     # get from hf_row
     vol_dict = {}
@@ -167,7 +166,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     log.info(f'Temporary-file working dir: {io_dir}')
 
     # composition
-    vol_dict = _construct_voldict(hf_row, dirs,config)
+    vol_dict = _construct_voldict(hf_row, dirs, config)
 
     # set condensation
     condensates = []
@@ -322,18 +321,18 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Update instellation flux
-    atmos.instellation = float(hf_row["F_ins"])
-    log.info("albedo of planet from tables:%.3f"%hf_row["albedo_pl"])
-    #value=jl.getfield(atmos, jl.Symbol("albedo_b"))
-    #log.info("albedo of planet computed before reattributing:%.3f"%value)
-    setfield = getattr(jl, "setfield!")
-    setfield(atmos, jl.Symbol("albedo_b"), float(hf_row["albedo_pl"]))
-    value=jl.getfield(atmos, jl.Symbol("albedo_b"))
-    log.info("albedo of planet computed after reattributing:%.3f"%value)
+    atmos.instellation = float(hf_row['F_ins'])
+    log.info('albedo of planet from tables:%.3f' % hf_row['albedo_pl'])
+    # value=jl.getfield(atmos, jl.Symbol("albedo_b"))
+    # log.info("albedo of planet computed before reattributing:%.3f"%value)
+    setfield = getattr(jl, 'setfield!')
+    setfield(atmos, jl.Symbol('albedo_b'), float(hf_row['albedo_pl']))
+    value = jl.getfield(atmos, jl.Symbol('albedo_b'))
+    log.info('albedo of planet computed after reattributing:%.3f' % value)
 
     # ---------------------
     # Update compositions
-    vol_dict = _construct_voldict(hf_row, dirs,config)
+    vol_dict = _construct_voldict(hf_row, dirs, config)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:] = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
@@ -537,13 +536,13 @@ def _solve_once(atmos, config: Config):
             Atmosphere struct
     """
 
-    #set included vapur species
-    gas_list=get_gaslist(config)
+    # set included vapur species
+    gas_list = get_gaslist(config)
     # set temperature profile
     #    rainout volatiles at surface
-    rained = jl.AGNI.chemistry.calc_composition_b(atmos,
-                                                    config.atmos_clim.agni.oceans,
-                                                    False, False)
+    rained = jl.AGNI.chemistry.calc_composition_b(
+        atmos, config.atmos_clim.agni.oceans, False, False
+    )
 
     rained = bool(rained)
     if rained:
@@ -736,7 +735,7 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     output['ocean_maxdepth'] = float(atmos.ocean_maxdepth)
     output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]
 
-    gas_list=get_gaslist(config)
+    gas_list = get_gaslist(config)
 
     for g in gas_list:
         if g in list(atmos.gas_names):

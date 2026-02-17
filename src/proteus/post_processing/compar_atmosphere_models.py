@@ -1,6 +1,6 @@
-#This routine needs to be called via python3 src/proteus/plot/compar_atmosphere_models.py.
-#then it needs the folders for outputdir1 and outputdir 2 in the terminal as
-#sys.argv[1] and sys.argv[2].
+# This routine needs to be called via python3 src/proteus/plot/compar_atmosphere_models.py.
+# then it needs the folders for outputdir1 and outputdir 2 in the terminal as
+# sys.argv[1] and sys.argv[2].
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ from proteus.utils.plot import sample_times
 if TYPE_CHECKING:
     pass
 
-log = logging.getLogger("fwl."+__name__)
+log = logging.getLogger('fwl.' + __name__)
 
 
-def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
+def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
     """Read data from atmosphere NetCDF output file.
 
     Automatically reads pressure (p), temperature (t), radius (z) arrays with
@@ -58,72 +58,70 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
         return None
     ds = nc.Dataset(nc_fpath)
 
-    p = np.array(ds.variables["p"][:])
-    pl = np.array(ds.variables["pl"][:])
+    p = np.array(ds.variables['p'][:])
+    pl = np.array(ds.variables['pl'][:])
 
-    t = np.array(ds.variables["tmp"][:])
-    tl = np.array(ds.variables["tmpl"][:])
+    t = np.array(ds.variables['tmp'][:])
+    tl = np.array(ds.variables['tmpl'][:])
 
-    rp = float(ds.variables["planet_radius"][0])
-    if "z" in ds.variables.keys():
+    rp = float(ds.variables['planet_radius'][0])
+    if 'z' in ds.variables.keys():
         # probably from JANUS, which stores heights
-        z  = np.array(ds.variables["z"][:])
-        zl = np.array(ds.variables["zl"][:])
-        r  = np.array(z) + rp
+        z = np.array(ds.variables['z'][:])
+        zl = np.array(ds.variables['zl'][:])
+        r = np.array(z) + rp
         rl = np.array(zl) + rp
     else:
         # probably from AGNI, which stores radii
-        r  = np.array(ds.variables["r"][:])
-        rl = np.array(ds.variables["rl"][:])
-        z  = np.array(r) - rp
+        r = np.array(ds.variables['r'][:])
+        rl = np.array(ds.variables['rl'][:])
+        z = np.array(r) - rp
         zl = np.array(rl) - rp
 
     nlev_c = len(p)
 
     # read pressure, temperature, height data into dictionary values
     out = {}
-    out["p"] = [pl[0]]
-    out["t"] = [tl[0]]
-    out["z"] = [zl[0]]
-    out["r"] = [rl[0]]
+    out['p'] = [pl[0]]
+    out['t'] = [tl[0]]
+    out['z'] = [zl[0]]
+    out['r'] = [rl[0]]
     for i in range(nlev_c):
-        out["p"].append(p[i])
-        out["p"].append(pl[i+1])
+        out['p'].append(p[i])
+        out['p'].append(pl[i + 1])
 
-        out["t"].append(t[i])
-        out["t"].append(tl[i+1])
+        out['t'].append(t[i])
+        out['t'].append(tl[i + 1])
 
-        out["z"].append(z[i])
-        out["z"].append(zl[i+1])
+        out['z'].append(z[i])
+        out['z'].append(zl[i + 1])
 
-        out["r"].append(r[i])
-        out["r"].append(rl[i+1])
+        out['r'].append(r[i])
+        out['r'].append(rl[i + 1])
 
     # flags
-    for fk in ("transparent", "solved", "converged"):
+    for fk in ('transparent', 'solved', 'converged'):
         if fk in ds.variables.keys():
             out[fk] = ncdf_flag_to_bool(ds.variables[fk])
         else:
-            out[fk] = False # if not available
+            out[fk] = False  # if not available
 
     # Read extra keys
     for key in extra_keys:
-
         # Check that key exists
         if key not in ds.variables.keys():
             log.error(f"Could not read '{key}' from NetCDF file")
             continue
 
         # Reading composition
-        if key == "x_gas":
-
-            gas_l = ds.variables["gases"][:] # names (bytes matrix)
-            gas_x = ds.variables["x_gas"][:] # vmrs (float matrix)
+        if key == 'x_gas':
+            gas_l = ds.variables['gases'][:]  # names (bytes matrix)
+            gas_x = ds.variables['x_gas'][:]  # vmrs (float matrix)
 
             # get data for each gas
-            for igas,gas in enumerate(gas_l):
-                gas_lbl = "".join(  [c.decode(encoding="utf-8") for c in gas] ).strip()
-                out[gas_lbl+"_vmr"] = np.array(gas_x[:,igas])
+            for igas, gas in enumerate(gas_l):
+                gas_lbl = ''.join([c.decode(encoding='utf-8') for c in gas]).strip()
+                out[gas_lbl + '_vmr'] = np.array(gas_x[:, igas])
 
         else:
             out[key] = np.array(ds.variables[key][:])
@@ -137,34 +135,35 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
 
     return out
 
-def compare_times(times,plottimes):
 
+def compare_times(times, plottimes):
     # get samples on log-time scale
     sample_t = []
     sample_i = []
-    for s in plottimes: # Sample on log-scale
+    for s in plottimes:  # Sample on log-scale
         if s in times:
             sample_t.append(int(s))
-            print('time in list',s)
+            print('time in list', s)
         else:
             print('time not in list')
             remaining = [int(t) for t in set(times) - set(plottimes)]
             if len(remaining) == 0:
                 break
             # Get next nearest time
-            val,_ = find_nearest(remaining,s)
-            print('nearest value found',val)
+            val, _ = find_nearest(remaining, s)
+            print('nearest value found', val)
             sample_t.append(int(val))
 
             # Get the index of this time in the original array
-            _,idx = find_nearest(times,val)
+            _, idx = find_nearest(times, val)
             sample_i.append(int(idx))
     print(sample_t, sample_i)
 
     return sample_t, sample_i
 
-def ncdf_flag_to_bool(var)->bool:
-    '''Convert NetCDF flag (y/n) to Python bool (true/false)'''
+
+def ncdf_flag_to_bool(var) -> bool:
+    """Convert NetCDF flag (y/n) to Python bool (true/false)"""
     v = str(var[0].tobytes().decode()).lower()
 
     # check against expected
@@ -173,9 +172,10 @@ def ncdf_flag_to_bool(var)->bool:
     elif v == 'n':
         return False
     else:
-        raise ValueError(f"Could not parse NetCDF atmos flag variable \n {var}")
+        raise ValueError(f'Could not parse NetCDF atmos flag variable \n {var}')
 
-def read_2model_data(output_dir1:str, output_dir2:str, extension, tmin, nsamp, extra_keys=[]):
+
+def read_2model_data(output_dir1: str, output_dir2: str, extension, tmin, nsamp, extra_keys=[]):
     """
     Read all p,t,z profiles from NetCDF files in a PROTEUS output folder.
     compare times at which to plot the output between the two folders and make sure that they agree
@@ -186,20 +186,22 @@ def read_2model_data(output_dir1:str, output_dir2:str, extension, tmin, nsamp, e
 
     print()
 
-    #set new array bound for the time arrays from two runs: same lower bound (higher minimum ) and same upper bound (lower maximum)
-    lower_bound = max(np.array(plot_times1).min(), np.array(plot_times2).min())   # higher minimum
-    upper_bound = min(np.array(plot_times1).max(), np.array(plot_times2).max())   # lower maximum
+    # set new array bound for the time arrays from two runs: same lower bound (higher minimum ) and same upper bound (lower maximum)
+    lower_bound = max(
+        np.array(plot_times1).min(), np.array(plot_times2).min()
+    )  # higher minimum
+    upper_bound = min(np.array(plot_times1).max(), np.array(plot_times2).max())  # lower maximum
 
-    #times1 = np.clip(times1, lower_bound, upper_bound)
-    #times2 = np.clip(times2, lower_bound, upper_bound)
+    # times1 = np.clip(times1, lower_bound, upper_bound)
+    # times2 = np.clip(times2, lower_bound, upper_bound)
 
-    #check that values in array are not out of bounds
-    for name, arr in {"a": plot_times1, "b": plot_times2}.items():
+    # check that values in array are not out of bounds
+    for name, arr in {'a': plot_times1, 'b': plot_times2}.items():
         mask_low = arr < lower_bound
         mask_high = arr > upper_bound
 
         if np.any(mask_low | mask_high):
-            if name == "a":
+            if name == 'a':
                 plot_times1[mask_low] = plot_times2[mask_low]
                 plot_times1[mask_high] = plot_times2[mask_high]
             else:
@@ -211,36 +213,40 @@ def read_2model_data(output_dir1:str, output_dir2:str, extension, tmin, nsamp, e
     # replace only the remaining (in-bounds) values
     plot_times2[~mask2] = plot_times1[~mask2]
 
-    #now find nearest value
+    # now find nearest value
 
-    final_times1,final_indices1=compare_times(times1,plot_times1)
-    final_times2,final_indices2=compare_times(times2,plot_times2)
+    final_times1, final_indices1 = compare_times(times1, plot_times1)
+    final_times2, final_indices2 = compare_times(times2, plot_times2)
 
+    profiles1 = [
+        read_ncdf_profile(
+            os.path.join(output_dir1, 'data', '%.0f_atm.nc' % t), extra_keys=extra_keys
+        )
+        for t in final_times1
+    ]
 
-    profiles1 = [read_ncdf_profile(os.path.join(output_dir1, "data", "%.0f_atm.nc"%t),
-                                    extra_keys=extra_keys) for t in final_times1]
-
-    profiles2 = [read_ncdf_profile(os.path.join(output_dir2, "data", "%.0f_atm.nc"%t),
-                                    extra_keys=extra_keys) for t in final_times2]
-
+    profiles2 = [
+        read_ncdf_profile(
+            os.path.join(output_dir2, 'data', '%.0f_atm.nc' % t), extra_keys=extra_keys
+        )
+        for t in final_times2
+    ]
 
     if None in profiles2:
-        log.warning("One or more NetCDF files could not be found")
-        if os.path.exists(os.path.join(output_dir2,"data","data.tar")):
-            log.warning("You may need to extract archived data files")
+        log.warning('One or more NetCDF files could not be found')
+        if os.path.exists(os.path.join(output_dir2, 'data', 'data.tar')):
+            log.warning('You may need to extract archived data files')
         return
     if None in profiles1:
-        log.warning("One or more NetCDF files could not be found")
-        if os.path.exists(os.path.join(output_dir1,"data","data.tar")):
-            log.warning("You may need to extract archived data files")
+        log.warning('One or more NetCDF files could not be found')
+        if os.path.exists(os.path.join(output_dir1, 'data', 'data.tar')):
+            log.warning('You may need to extract archived data files')
         return
 
-    return final_times1,final_times2,profiles1, profiles2
+    return final_times1, final_times2, profiles1, profiles2
 
 
-
-def sample_output(output_dir, extension:str = "_atm.nc", tmin:float = 1.0, nsamp:int=8):
-
+def sample_output(output_dir, extension: str = '_atm.nc', tmin: float = 1.0, nsamp: int = 8):
     """
     Sample output files from a model run based on their time stamps.
 
@@ -273,18 +279,18 @@ def sample_output(output_dir, extension:str = "_atm.nc", tmin:float = 1.0, nsamp
         List of file paths corresponding to the sampled times.
     """
 
-    files = glob.glob(os.path.join(output_dir+"/data", "*"+extension))
+    files = glob.glob(os.path.join(output_dir + '/data', '*' + extension))
 
     # No files found?
     if len(files) < 1:
-        log.error("No output files found, check if arxiv exists and Extract it.")
+        log.error('No output files found, check if arxiv exists and Extract it.')
 
         # Return empty
         return [], []
 
     # get times
-    times = [int(f.split("/")[-1].split(extension)[0]) for f in files]
-    #print(times)
+    times = [int(f.split('/')[-1].split(extension)[0]) for f in files]
+    # print(times)
 
     out_t, out_i = sample_times(times, nsamp, tmin=tmin)
     out_f = [files[i] for i in out_i]
@@ -294,9 +300,9 @@ def sample_output(output_dir, extension:str = "_atm.nc", tmin:float = 1.0, nsamp
     return np.array(times), np.array(out_t), np.array(out_f)
 
 
-
-def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tmin=1e4, nsamp=5, plot_format="pdf"):
-
+def plot_atmosphere_comparison(
+    output_dir1, output_dir2, extension='_atm.nc', tmin=1e4, nsamp=5, plot_format='pdf'
+):
     """
     Compare atmospheric temperature–pressure profiles from two model runs.
 
@@ -334,50 +340,48 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
         The function produces and saves a plot but does not return a value.
     """
 
+    plottimes1, plottimes2, profiles1, profiles2 = read_2model_data(
+        output_dir1, output_dir2, extension, tmin, nsamp
+    )
+    t1 = int(str(plottimes1[0]))
+    t2 = int(str(plottimes1[-1]))
 
-    plottimes1, plottimes2, profiles1, profiles2 = read_2model_data(output_dir1,output_dir2, extension, tmin, nsamp)
-    t1=int(str(plottimes1[0]))
-    t2=int(str(plottimes1[-1]))
+    log.info('Plot atmosphere temperatures colourbar')
 
-
-    log.info("Plot atmosphere temperatures colourbar")
-
-    norm = mpl.colors.LogNorm(vmin=max(t1,1), vmax=t2)
+    norm = mpl.colors.LogNorm(vmin=max(t1, 1), vmax=t2)
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
 
     # Initialise plot
     scale = 1.1
     alpha = 0.6
-    fig,ax = plt.subplots(1,1,figsize=(5*scale,4*scale))
-    ax.set_ylabel("Pressure [bar]")
-    ax.set_xlabel("Temperature [K]")
+    fig, ax = plt.subplots(1, 1, figsize=(5 * scale, 4 * scale))
+    ax.set_ylabel('Pressure [bar]')
+    ax.set_xlabel('Temperature [K]')
     ax.invert_yaxis()
-    ax.set_yscale("log")
+    ax.set_yscale('log')
 
     tmp_max = 1000.0
     prs_max = 1.0
-    for i, t in enumerate( plottimes1 ):
+    for i, t in enumerate(plottimes1):
         prof1 = profiles1[i]
 
-
         color = sm.to_rgba(t)
-        tmp1 = prof1["t"]
-        prs1 = prof1["p"]/1e5
+        tmp1 = prof1['t']
+        prs1 = prof1['p'] / 1e5
 
         tmp_max = max(tmp_max, np.amax(tmp1))
         prs_max = max(prs_max, np.amax(prs1))
 
         ax.plot(tmp1, prs1, color=color, linestyle='-', alpha=alpha, zorder=3)
 
-    for i, t in enumerate( plottimes2 ):
+    for i, t in enumerate(plottimes2):
         prof2 = profiles2[i]
-
 
         color = sm.to_rgba(t)
 
-        tmp2 = prof2["t"]
-        prs2 = prof2["p"]/1e5
+        tmp2 = prof2['t']
+        prs2 = prof2['p'] / 1e5
 
         tmp_max = max(tmp_max, np.amax(tmp2))
         prs_max = max(prs_max, np.amax(prs2))
@@ -386,7 +390,7 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
 
     # Grid
     ax.grid(alpha=0.2, zorder=2)
-    ax.set_xlim(0,tmp_max+100)
+    ax.set_xlim(0, tmp_max + 100)
     ax.xaxis.set_minor_locator(MultipleLocator(base=250))
 
     ax.set_ylim(bottom=prs_max, top=np.amin(prs1))
@@ -396,19 +400,17 @@ def plot_atmosphere_comparison(output_dir1, output_dir2, extension="_atm.nc", tm
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='5%', pad=0.05)
     cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
-    cbar.set_label("Time [yr]")
+    cbar.set_label('Time [yr]')
 
     # Save plot
-    fname = os.path.join(output_dir1,"plots","plot_atmosphere_comparison.%s"%plot_format)
+    fname = os.path.join(output_dir1, 'plots', 'plot_atmosphere_comparison.%s' % plot_format)
     fig.savefig(fname, bbox_inches='tight', dpi=300)
 
 
+if __name__ == '__main__':
+    output_dir1 = sys.argv[1]
+    output_dir2 = sys.argv[2]
 
-
-
-if __name__ == "__main__":
-
-    output_dir1=sys.argv[1]
-    output_dir2=sys.argv[2]
-
-    plot_atmosphere_comparison(output_dir1, output_dir2, tmin=1e4, extension="_atm.nc", nsamp=5, plot_format="pdf")
+    plot_atmosphere_comparison(
+        output_dir1, output_dir2, tmin=1e4, extension='_atm.nc', nsamp=5, plot_format='pdf'
+    )

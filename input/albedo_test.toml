@@ -116,6 +116,7 @@ version = "2.0"
         rot_period  = "none"    # rotation period [days]
         tracks      = "spada"   # evolution tracks: spada | baraffe
         age_now     = 4.567     # current age of star [Gyr]
+        star_name   = "sun"
         spec        = "stellar_spectra/Named/sun.txt" # path to stellar spectrum file
 
     [star.dummy]

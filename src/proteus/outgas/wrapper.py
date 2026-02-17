@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-def get_gaslist(config:Config):
 
+def get_gaslist(config: Config):
     if config.outgas.silicates:
         gas_list = vol_list + config.outgas.vaplist
     else:
@@ -25,7 +25,8 @@ def get_gaslist(config:Config):
 
     return gas_list
 
-def calc_target_elemental_inventories(dirs:dict, config:Config, hf_row:dict):
+
+def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     """
     Calculate total amount of volatile elements in the planet
     """
@@ -91,15 +92,14 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     log.info('Solving outgassing...')
 
-    gas_list=get_gaslist(config)
+    gas_list = get_gaslist(config)
 
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
 
-
     # calculate total atmosphere mass from sum of gas species
-    hf_row["M_atm"] = 0.0
+    hf_row['M_atm'] = 0.0
     for s in gas_list:
         hf_row['M_atm'] += hf_row[s + '_kg_atm']
 
@@ -135,8 +135,8 @@ def run_desiccated(config: Config, hf_row: dict):
     """
 
     # if desiccated, set all gas masses to zero
-    log.info("Desiccation has occurred - no volatiles remaining")
-    gas_list=get_gaslist(config)
+    log.info('Desiccation has occurred - no volatiles remaining')
+    gas_list = get_gaslist(config)
 
     # Do not set these to zero - avoid divide by zero elsewhere in the code
     excepted_keys = ['atm_kg_per_mol']
@@ -149,10 +149,8 @@ def run_desiccated(config: Config, hf_row: dict):
             hf_row[k] = 0.0
 
 
-
-def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
-
-    '''function which runs lavatmos and calliope in a loop until they have converged.
+def lavatmos_calliope_loop(dirs: dict, config: Config, hf_row: dict):
+    """function which runs lavatmos and calliope in a loop until they have converged.
     This allows for a consistentt computation of melt outgassing and dissolution
     Parameters
     ----------
@@ -162,42 +160,46 @@ def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
             Configuration object
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-    '''
+    """
 
     hf_row['fO2_shift'] = config.outgas.fO2_shift_IW
-    log.info("initial fO2_shift : %.6f"%config.outgas.fO2_shift_IW)
+    log.info('initial fO2_shift : %.6f' % config.outgas.fO2_shift_IW)
     run_outgassing(dirs, config, hf_row)
     if config.outgas.silicates:
-        xerr=0.01 #0.1 #1e-3
-        err=1.0
+        xerr = 0.01  # 0.1 #1e-3
+        err = 1.0
         # Maximum number of LavAtmos/Calliope iterations; allow configuration with a sensible default
-        max_iterations = getattr(getattr(config, "outgas", config), "max_lavatmos_iterations", 100)
+        max_iterations = getattr(
+            getattr(config, 'outgas', config), 'max_lavatmos_iterations', 100
+        )
         iteration = 0
-        log.info("silicates are outgassed")
-        log.info("error threshold on fO2 shift :  %.6f"%xerr)
-        log.info("initial error :  %.6f"%err)
-        log.info("maximum LavAtmos/Calliope iterations : %d"%max_iterations)
+        log.info('silicates are outgassed')
+        log.info('error threshold on fO2 shift :  %.6f' % xerr)
+        log.info('initial error :  %.6f' % err)
+        log.info('maximum LavAtmos/Calliope iterations : %d' % max_iterations)
         while err > xerr and iteration < max_iterations:
             iteration += 1
-            log.info("LavAtmos/Calliope iteration %d"%iteration)
+            log.info('LavAtmos/Calliope iteration %d' % iteration)
             old_fO2shift = hf_row['fO2_shift']
-            run_lavatmos(config, hf_row) #in run_lavatmos add a criterion for temperature and melt fraction ?
-            log.info("new fO2 shift : %.6f"%hf_row["fO2_shift"])
+            run_lavatmos(
+                config, hf_row
+            )  # in run_lavatmos add a criterion for temperature and melt fraction ?
+            log.info('new fO2 shift : %.6f' % hf_row['fO2_shift'])
             run_outgassing(dirs, config, hf_row)
-            err=abs(old_fO2shift - hf_row['fO2_shift'])
-            log.info("fO2 shift after running lavatmos: %.6f"%hf_row['fO2_shift'])
-            log.info("change in fO2 between the last iterations: %.6f"%err)
+            err = abs(old_fO2shift - hf_row['fO2_shift'])
+            log.info('fO2 shift after running lavatmos: %.6f' % hf_row['fO2_shift'])
+            log.info('change in fO2 between the last iterations: %.6f' % err)
         if err > xerr:
             log.error(
-                "LavAtmos/Calliope did not converge within %d iterations "
-                "(final |ΔfO2_shift| = %.6f, threshold = %.6f)",
+                'LavAtmos/Calliope did not converge within %d iterations '
+                '(final |ΔfO2_shift| = %.6f, threshold = %.6f)',
                 max_iterations,
                 err,
                 xerr,
             )
             raise RuntimeError(
-                "LavAtmos/Calliope convergence failed: "
-                "maximum number of iterations (%d) exceeded without reaching "
-                "the fO2_shift error threshold (final error = %.6f, threshold = %.6f)"
+                'LavAtmos/Calliope convergence failed: '
+                'maximum number of iterations (%d) exceeded without reaching '
+                'the fO2_shift error threshold (final error = %.6f, threshold = %.6f)'
                 % (max_iterations, err, xerr)
             )

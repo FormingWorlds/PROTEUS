@@ -1,19 +1,19 @@
 # Physical, numerical, etc constants
 from __future__ import annotations
 
-#import config file from proteus to set the vapour species list
+# import config file from proteus to set the vapour species list
 
-L_sun           = 3.828e+26             # W, IAU definition
-R_sun           = 6.957e8               # m
-R_sun_cm        = 100 * R_sun           # cm
-M_sun           = 1.988416e30           # kg
-AU              = 1.495978707e+11       # m
-AU_cm           = AU * 100.0            # cm
-M_earth         = 5.972E24              # kg
-R_earth         = 6.335439e6            # m
-R_core_earth    = 3485000.0             # m
-M_core_earth    = 1.94E24               # kg
-mol             = 6.02214076e+23        # mol definition
+L_sun = 3.828e26  # W, IAU definition
+R_sun = 6.957e8  # m
+R_sun_cm = 100 * R_sun  # cm
+M_sun = 1.988416e30  # kg
+AU = 1.495978707e11  # m
+AU_cm = AU * 100.0  # cm
+M_earth = 5.972e24  # kg
+R_earth = 6.335439e6  # m
+R_core_earth = 3485000.0  # m
+M_core_earth = 1.94e24  # kg
+mol = 6.02214076e23  # mol definition
 
 # Earth heat flux, globally averaged [W m-2]
 # https://se.copernicus.org/articles/1/5/2010/
@@ -44,14 +44,14 @@ const_Nav = 6.02214076e23  # Avogadro's constant [mol-1]
 B_ein = 2.5
 
 # Supported gases
-vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
-vol_list = ["H2O", "CO2", "O2", "H2", "CH4", "CO", "N2", "NH3", "S2", "SO2", "H2S"]
-#vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
-#vap_list = ["SiO", "SiO2", "MgO", "FeO", "Na"]
-#gas_list = vol_list + vap_list
+vap_list = ['SiO', 'SiO2', 'MgO', 'FeO2']
+vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
+# vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
+# vap_list = ["SiO", "SiO2", "MgO", "FeO", "Na"]
+# gas_list = vol_list + vap_list
 
 # Supported elements
-element_list = ["H", "O", "C", "N", "S", "Si", "Mg", "Fe", "Na", "Al", "Ti", "Ca", "K"]
+element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
 element_mmw = {
     'H': 1.008000000e-03,
     'He': 4.002000000e-03,
