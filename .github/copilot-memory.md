@@ -1,6 +1,6 @@
 # 🧠 Project Memory
 
-**Last Updated**: 2026-02-06
+**Last Updated**: 2026-02-13
 
 This document captures the living context of PROTEUS—the "why" behind architectural decisions, the current development focus, and critical knowledge for maintaining consistency across sessions.
 
@@ -50,49 +50,37 @@ This document captures the living context of PROTEUS—the "why" behind architec
 ## 2. Active Context (The "Now")
 
 ### Current Sprint Focus
-**Period**: 2026-02-01 to 2026-02-06
+**Period**: 2026-02-06 to 2026-02-13
 
-**Status**: ✅ PR #600 review comments addressed, all CI passing
+**Status**: PR #630 open — CI improvements (macOS tests, nightly deduplication, Codecov)
 
-**Recent Completed Work (2026-02-06)**:
-1. **PR #600 Review Comment Implementation** (commit: 32d73539)
-   - Addressed 28 review comments from nichollsh across 15 files
-   - All CI workflows verified: Code style ✅, Fast PR Checks ✅, Docker Build ✅, Nightly ✅
+**Recent Completed Work (2026-02-13)**:
+1. **PR #630: CI Improvements** (branch: `tl/macostests_fastpr`)
+   - Added parallel macOS unit tests to PR checks (`macos-unit-tests` job)
+   - Extracted summary generation into dedicated `summary` job aggregating all platforms
+   - Deduplicated nightly CI: guard job skips 3am cron if docker-build already dispatched
+   - Added Codecov upload to nightly workflow (unit + smoke + integration aggregate)
+   - Added `codecov.yml` with `carryforward: true` for flag persistence
+   - Switched README coverage badge from stale gist to Codecov
 
-2. **Test Physical Bounds Improvements**
-   - Widened pressure bounds: 100 kbar → 1 Mbar (1e10 → 1e11 Pa) for sub-Neptune interiors
-   - Widened temperature bounds: 100–5000 K → 50–10000 K for deep magma oceans
-   - Widened flux bounds: ±10 kW/m² → ±1 MW/m² for early magma ocean fluxes
-   - Removed non-negative flux assertion (negative F_atm/F_int physically valid)
+2. **Previous Sprint (2026-02-01 to 2026-02-06)**:
 
-3. **Test Terminology & Clarity**
-   - Renamed `no_runaway` → `no_unbounded_growth` to avoid runaway greenhouse confusion
-   - Added clarifying comments on fO2 units (log10 IW) and keys (#564)
-   - Fixed observe test CSV format to match real Platon output (tab-delimited)
-   - Fixed `T_magma` from 4000 K → 1600 K for modern Earth test (#466)
-
-4. **Test Infrastructure**
-   - Added `pytest-timeout` to develop dependencies
-   - Registered `janus` and `timeout` markers in `conftest.py`
-   - Added `get_oarr_from_parr` test alongside backwards-compatible wrapper
-   - Added `esc_rate` assertion against configured dummy rate
-
-**Previous Sprint (2026-01-20 to 2026-02-01)**:
-- CI workflow consolidation and hardening
-- Coverage threshold calibration (59% full, 44.45% fast)
-- File size limit enforcement (AGENTS.md ≤500, MEMORY.md ≤1000)
-- Smoke test robustness (AGNI/MORS/Zenodo error handling)
+   - PR #600 review comments addressed (28 comments, 15 files)
+   - Test physical bounds improvements, terminology clarity
+   - Coverage threshold calibration (59% full, 44.45% fast)
 
 ### Recent Architectural Changes
 - **Docker CI Architecture**: Fully operational with pre-built images (`ghcr.io/formingworlds/proteus:latest`)
 - **Test Categorization**: Four-tier system (unit, smoke, integration, slow) with clear CI gates
 - **Coverage Strategy**: Dual-threshold system (fast gate 44.45% for PR, full gate 59% for nightly)
-- **Nightly Workflow**: Consolidated to `ci-nightly.yml` with 240-minute timeout
-- **File Size Limits**: Pre-commit enforced limits on AGENTS.md (500) and MEMORY.md (1000)
+- **Nightly Workflow**: Triggered by docker-build (fallback: 3am cron), deduplication guard prevents double runs
+- **Codecov Integration**: Nightly uploads aggregate coverage (unit+smoke+integration); PR checks upload unit+smoke; `codecov.yml` with carryforward flags
+- **Cross-Platform CI**: PR checks run unit tests on both Linux (Docker) and macOS
+- **File Size Limits**: Pre-commit enforced limits on .github/copilot-instructions.md (500) and .github/copilot-memory.md (1000)
 
 ### Active Branches
 - **main**: Production branch with nightly validation
-- **tl/test_ecosystem_v5**: PR #600 — test ecosystem improvements (pending merge)
+- **tl/macostests_fastpr**: PR #630 — macOS tests, nightly deduplication, Codecov aggregate coverage
 
 ---
 
@@ -182,7 +170,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - Physics simulations accumulate numerical errors
 - Prevents flaky tests from rounding differences
 
-**Enforcement**: Documented in `AGENTS.md`, enforced in code review
+**Enforcement**: Documented in `.github/copilot-instructions.md`, enforced in code review
 
 ---
 
@@ -334,10 +322,11 @@ bash tools/coverage_analysis.sh
 ```
 
 ### CI/CD Pipeline Flow
-1. **PR Opened**: `ci-pr-checks.yml` runs (unit + smoke + lint, ~10-15 min)
+1. **PR Opened**: `ci-pr-checks.yml` runs (Linux: unit + smoke + coverage; macOS: unit; lint; summary, ~10-15 min)
 2. **PR Merged to main**: Coverage ratcheting updates thresholds
-3. **Nightly 02:00 UTC**: `docker-build.yml` rebuilds image
-4. **Nightly 03:00 UTC**: `ci-nightly.yml` runs full suite (unit → smoke → integration → slow, ~4h timeout)
+3. **Nightly 02:00 UTC**: `docker-build.yml` rebuilds image → dispatches `ci-nightly.yml`
+4. **Nightly (post-build)**: `ci-nightly.yml` runs full suite (unit → smoke → integration → slow), uploads aggregate coverage to Codecov, ratchets thresholds
+5. **Nightly 03:00 UTC**: `ci-nightly.yml` cron fallback (skips if already dispatched by docker-build)
 
 ### Installation Sequence (Developer)
 **Critical**: Follow exact order due to dependencies
@@ -552,7 +541,7 @@ Original smoke data download only included spectral files and stellar spectra.
 - ✅ ~~Add pytest-timeout plugin~~ (added to develop deps, commit 32d73539)
 - Centralise physical bounds (T_surf, P_surf limits) into conftest.py constants
 - Add dedicated ARAGOG/SPIDER unit tests (currently only tested via integration)
-- Python version matrix + macOS testing (#607)
+- ✅ ~~macOS unit testing in PR checks~~ (PR #630, branch `tl/macostests_fastpr`)
 
 ### Medium-Term (Next 2-3 Months)
 - Multi-architecture Docker support (ARM64 for Apple Silicon)
@@ -587,7 +576,7 @@ Original smoke data download only included spectral files and stellar spectra.
 - **Test Categorization**: `docs/test_categorization.md`
 - **Test Building**: `docs/test_building.md`
 - **Docker CI Architecture**: `docs/docker_ci_architecture.md`
-- **Agent Guidelines**: `AGENTS.md`
+- **Agent Guidelines**: `.github/copilot-instructions.md`
 
 ### External Resources
 - **Paper**: https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2024JE008576
@@ -596,13 +585,13 @@ Original smoke data download only included spectral files and stellar spectra.
 
 ---
 
-**Note**: This document should be updated whenever significant architectural decisions are made, major features are added, or critical lessons are learned. See `AGENTS.md` for the Memory Maintenance Prime Directive.
+**Note**: This document should be updated whenever significant architectural decisions are made, major features are added, or critical lessons are learned. See `.github/copilot-instructions.md` for the Memory Maintenance Prime Directive.
 
-> **⚠️ FILE SIZE LIMIT: This file must stay below 1000 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`).
+> **⚠️ FILE SIZE LIMIT: This file must stay below 1000 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-memory.md`.
 
 **When approaching the limit, refactor by asking:**
 1. **Is this still relevant?** Archive completed decisions, resolved issues, or obsolete context to a separate `docs/archive/` file if historically valuable, otherwise delete.
 2. **Is this decision or context?** Keep the *why* behind decisions; remove transient status updates that no longer matter.
-3. **Is this duplicated elsewhere?** Reference `AGENTS.md`, docs, or code comments instead of duplicating.
+3. **Is this duplicated elsewhere?** Reference `.github/copilot-instructions.md`, docs, or code comments instead of duplicating.
 4. **Can sections be condensed?** Merge related items, use bullet points over prose, compress verbose explanations.
 5. **What would a new contributor need?** Prioritize information that prevents mistakes over historical trivia.
