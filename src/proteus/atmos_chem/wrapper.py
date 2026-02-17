@@ -76,9 +76,11 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
         run_vulcan_online(dirs, config, hf_row)
         return read_result(dirs["output"], module)
 
-    else:
+    elif when not in valid_when_values:
         raise ValueError(f"Invalid atmos_chem.when: '{when}'")
+        
     else:
-        raise ValueError(f'Invalid atmos_chem module: {module}')
+        raise ValueError(f"Invalid atmos_chem module: {module}")
+
 
     return read_result(dirs['output'], module)
