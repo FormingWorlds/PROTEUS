@@ -8,14 +8,17 @@
 </h1>
 
 <p align="center">
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml">
-    <img src="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg?branch=main">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-pr-checks.yml?branch=main&label=Unit%20Tests">
+  </a>
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/ci-nightly.yml?branch=main&label=Integration%20Tests">
   </a>
   <a href="https://proteus-framework.org/PROTEUS/">
     <img src="https://img.shields.io/github/actions/workflow/status/FormingWorlds/PROTEUS/docs.yaml?branch=main">
   </a>
 
-  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml">
+  <a href="https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-pr-checks.yml">
     <img src="https://gist.githubusercontent.com/stefsmeets/b4ee7dab92e20644bcb3a5ad09f71165/raw/covbadge.svg">
   </a>
   <a href="https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2024JE008576"><img src="https://img.shields.io/badge/DOI-10.1029%2F2024JE008576-blue"></a>
@@ -36,27 +39,17 @@
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
-See the [model description](model.html) for an outline of the code and its structure. See the [installation guide](installation.html) and [usage guide](usage.html) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions. [Contributing](CONTRIBUTING.md) outlines how to change or contribute source code. [Contact](bibliography.md) the developers if you have questions or run into issues.
+**Quick links:**
 
-## Contributors
-
-| Name                    | Email address                               |
-| -                       | -                                           |
-| Tim Lichtenberg         | tim.lichtenberg@rug.nl                      |
-| Harrison Nicholls       | h-nicholls@pm.me                            |
-| Laurent Soucasse        | l.soucasse@esciencecenter.nl                |
-| Mariana Sastre          | m.c.villamil.sastre@rug.nl                  |
-| Emma Postolec           | e.n.postolec@rug.nl                         |
-| Flavia Pascal           | f.pascal@student.rug.nl                     |
-| Ben Riegler             | ben.riegler@tum.de                          |
-| Hanno Spreeuw           | h.spreeuw@esciencecenter.nl                 |
-| Dan J. Bower            | dbower@ethz.ch                              |
-| Mark Hammond            | mark.hammond@physics.ox.ac.uk               |
-| Stef Smeets             | s.smeets@esciencecenter.nl                  |
-| Robb Calder             | rdc49@cam.ac.uk                             |
-| Karen Stuitje           | e.k.e.stuitje@student.rug.nl                |
-| Oliver Shorttle         | os258@cam.ac.uk                             |
+- [Model description](model.md) -- outline of the code and its structure
+- [Installation](installation.md) -- set up PROTEUS on your machine
+- [Usage](usage.md) -- run your first simulation
+- [Configuration](config.md) -- customise model parameters
+- [Troubleshooting](troubleshooting.md) -- common errors and fixes
+- [Contributing](CONTRIBUTING.md) -- how to change or contribute source code
+- [Team](https://proteus-framework.org/people) -- meet the developers
+- [Contact](contact.md) -- get in touch with the developers
 
 ## Citation and credit
 
-If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](CONTRIBUTING.html#licensing-and-credit).
+If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](CONTRIBUTING.md#licensing-and-credit).

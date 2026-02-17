@@ -9,6 +9,7 @@ from ._converters import none_if_none
 
 log = logging.getLogger('fwl.' + __name__)
 
+
 @define
 class Vulcan:
     """VULCAN chemistry module.
@@ -35,17 +36,15 @@ class Vulcan:
         Steady state - max rate of change of mixing ratio over test period
     """
 
-    clip_fl: float      = field(default=1e-20)
-    clip_vmr:float      = field(default=1e-10)
-    make_funs:bool      = field(default=True)
-    ini_mix:str         = field(default="profile",
-                                validator=in_(("profile", "outgas")))
-    fix_surf:bool       = field(default=False)
-    network:str         = field(default="SNCHO",
-                                validator=in_(("CHO", "NCHO", "SNCHO")))
-    save_frames:bool    = field(default=False)
-    yconv_cri: float    = field(default=0.05)
-    slope_cri: float    = field(default=1e-4)
+    clip_fl: float = field(default=1e-20)
+    clip_vmr: float = field(default=1e-10)
+    make_funs: bool = field(default=True)
+    ini_mix: str = field(default='profile', validator=in_(('profile', 'outgas')))
+    fix_surf: bool = field(default=False)
+    network: str = field(default='SNCHO', validator=in_(('CHO', 'NCHO', 'SNCHO')))
+    save_frames: bool = field(default=False)
+    yconv_cri: float = field(default=0.05)
+    slope_cri: float = field(default=1e-4)
 
 
 @define
@@ -73,14 +72,13 @@ class AtmosChem:
 
     """
 
-    module: str | None  = field(validator=in_((None,'vulcan')), converter=none_if_none)
+    module: str | None = field(validator=in_((None, 'vulcan')), converter=none_if_none)
 
-    vulcan: Vulcan      = field(factory=Vulcan)
+    vulcan: Vulcan = field(factory=Vulcan)
 
-    when: str           = field(default="manually",
-                                validator=in_(("manually", "offline", "online")))
-    photo_on:bool       = field(default=True)
-    Kzz_on:bool         = field(default=True)
-    Kzz_const           = field(default=None, converter=none_if_none)
-    moldiff_on:bool     = field(default=True)
-    updraft_const:float = field(default=0.0)
+    when: str = field(default='manually', validator=in_(('manually', 'offline', 'online')))
+    photo_on: bool = field(default=True)
+    Kzz_on: bool = field(default=True)
+    Kzz_const = field(default=None, converter=none_if_none)
+    moldiff_on: bool = field(default=True)
+    updraft_const: float = field(default=0.0)

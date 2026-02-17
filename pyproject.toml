@@ -77,17 +77,23 @@ dependencies = [
 homepage = "https://proteus-framework.org"
 issues = "https://github.com/FormingWorlds/PROTEUS/issues"
 source = "https://github.com/FormingWorlds/PROTEUS/"
-documentation = "https://proteus-framework.org/PROTEUS/"
+documentation = "https://proteus-framework.org/proteus/"
 changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
 develop = [
     "bump-my-version",
+    # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
+    # pytest-cov provides pytest integration for "pytest --cov" convenience (slightly different from CI)
+    # Note: Both work independently; CI uses "coverage run -m pytest", developers can use either approach
     "coverage[toml]",
+    "tomlkit>=0.11.0",
     "pillow",
     "pip-tools",
     "pytest >= 8.1",
+    "pytest-cov",
     "pytest-dependency",
+    "pytest-timeout",
 ]
 
 docs = [
@@ -110,9 +116,66 @@ proteus = ["juliapkg.json"]
 [tool.coverage.run]
 branch = true
 source = ["proteus"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/conftest.py",
+]
 
 [tool.pytest.ini_options]
+minversion = "8.1"
+addopts = [
+    # Global coverage options removed from addopts.
+    # CI uses "coverage run -m pytest" with [tool.coverage.*] settings.
+    # For local development, use either:
+    #   1. "coverage run -m pytest" (matches CI behavior, compatible with coverage ratcheting)
+    #   2. "pytest --cov" (uses pytest-cov, convenient but slightly different from CI)
+    # Both approaches work; choose based on preference.
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--showlocals",
+]
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "smoke: marks tests as smoke tests (quick validation with real binaries, 1 timestep, low res)",
+]
+
+[tool.coverage.report]
+# Coverage threshold - automatically updated by CI when coverage increases.
+# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml.
+# The ratcheting (only ever increasing or staying the same) is enforced in CI;
+# do not manually decrease this value in pyproject.toml.
+fail_under = 59
+show_missing = true
+precision = 2
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.proteus.coverage_fast]
+# Fast CI (unit + smoke) coverage gate; ratcheted independently from full suite
+# This lower bar is intended for mocked/fast tests only and will auto-increase
+# when the fast suite gains coverage. Do not decrease manually.
+fail_under = 44.45
 
 [tool.ruff]
 line-length = 96
