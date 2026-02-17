@@ -23,7 +23,7 @@ for CI. Uses config derived from aragog_janus with atmos_clim switched to AGNI.
   integration fixture when interior.module is "aragog" (locally and in CI).
   FWL_DATA must be set; the download runs once per run and is a no-op if
   data already exists.
-- Julia and AGNI must be installed for the atmosphere step (see AGENTS.md).
+- Julia and AGNI must be installed for the atmosphere step (see .github/copilot-instructions.md).
   Run with: pytest tests/integration/test_integration_aragog_agni.py -v -p no:faulthandler
 """
 

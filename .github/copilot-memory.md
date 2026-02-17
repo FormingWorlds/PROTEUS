@@ -76,7 +76,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Nightly Workflow**: Triggered by docker-build (fallback: 3am cron), deduplication guard prevents double runs
 - **Codecov Integration**: Nightly uploads aggregate coverage (unit+smoke+integration); PR checks upload unit+smoke; `codecov.yml` with carryforward flags
 - **Cross-Platform CI**: PR checks run unit tests on both Linux (Docker) and macOS
-- **File Size Limits**: Pre-commit enforced limits on AGENTS.md (500) and MEMORY.md (1000)
+- **File Size Limits**: Pre-commit enforced limits on .github/copilot-instructions.md (500) and .github/copilot-memory.md (1000)
 
 ### Active Branches
 - **main**: Production branch with nightly validation
@@ -170,7 +170,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - Physics simulations accumulate numerical errors
 - Prevents flaky tests from rounding differences
 
-**Enforcement**: Documented in `AGENTS.md`, enforced in code review
+**Enforcement**: Documented in `.github/copilot-instructions.md`, enforced in code review
 
 ---
 
@@ -576,7 +576,7 @@ Original smoke data download only included spectral files and stellar spectra.
 - **Test Categorization**: `docs/test_categorization.md`
 - **Test Building**: `docs/test_building.md`
 - **Docker CI Architecture**: `docs/docker_ci_architecture.md`
-- **Agent Guidelines**: `AGENTS.md`
+- **Agent Guidelines**: `.github/copilot-instructions.md`
 
 ### External Resources
 - **Paper**: https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2024JE008576
@@ -585,13 +585,13 @@ Original smoke data download only included spectral files and stellar spectra.
 
 ---
 
-**Note**: This document should be updated whenever significant architectural decisions are made, major features are added, or critical lessons are learned. See `AGENTS.md` for the Memory Maintenance Prime Directive.
+**Note**: This document should be updated whenever significant architectural decisions are made, major features are added, or critical lessons are learned. See `.github/copilot-instructions.md` for the Memory Maintenance Prime Directive.
 
-> **⚠️ FILE SIZE LIMIT: This file must stay below 1000 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`).
+> **⚠️ FILE SIZE LIMIT: This file must stay below 1000 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-memory.md`.
 
 **When approaching the limit, refactor by asking:**
 1. **Is this still relevant?** Archive completed decisions, resolved issues, or obsolete context to a separate `docs/archive/` file if historically valuable, otherwise delete.
 2. **Is this decision or context?** Keep the *why* behind decisions; remove transient status updates that no longer matter.
-3. **Is this duplicated elsewhere?** Reference `AGENTS.md`, docs, or code comments instead of duplicating.
+3. **Is this duplicated elsewhere?** Reference `.github/copilot-instructions.md`, docs, or code comments instead of duplicating.
 4. **Can sections be condensed?** Merge related items, use bullet points over prose, compress verbose explanations.
 5. **What would a new contributor need?** Prioritize information that prevents mistakes over historical trivia.

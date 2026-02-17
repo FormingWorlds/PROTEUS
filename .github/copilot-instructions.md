@@ -17,8 +17,9 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 ## High-Level Instructions
 
 1. **Always** follow the testing standards outlined in this document and `docs/test_infrastructure.md` for all code changes.
-2. **Always** inform yourself of the current project memory in `MEMORY.md` before making changes.
-3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in AGENTS.md...)"
+2. **Always** inform yourself of the current project memory in `.github/copilot-memory.md` before making changes.
+3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
+4. When creating a PR, **always** follow the PR template and ensure all sections are filled out with relevant information.
 
 ## Ecosystem Structure
 
@@ -397,13 +398,13 @@ pytest --pdb                        # Drop into debugger on failure
 - **Testing**: `docs/test_infrastructure.md`, `docs/test_building.md`, `docs/test_categorization.md`
 - **Installation**: `docs/installation.md`, `docs/local_machine_guide.md`
 - **Usage**: `docs/usage.md`, `docs/config.md`
-- **Copilot guidelines**: `.github/copilot-instructions.md` (applies to all ecosystem modules)
+- **Copilot guidelines**: `.github/copilot-instructions.md` (this file; applies to all ecosystem modules)
 
 ## 🧠 Memory Maintenance
 
 ### Prime Directive: Keep Project Memory Current
 
-**ALWAYS** update `MEMORY.md` after making significant architectural changes, adding new libraries, or finalizing a key design decision.
+**ALWAYS** update `.github/copilot-memory.md` after making significant architectural changes, adding new libraries, or finalizing a key design decision.
 
 **What to record**:
 - The change made and the *reasoning* (the "Why") behind it
@@ -421,10 +422,10 @@ pytest --pdb                        # Drop into debugger on failure
 - When establishing new coding patterns or standards
 
 **How to update**:
-1. Open `MEMORY.md`
+1. Open `.github/copilot-memory.md`
 2. Update relevant section (Active Context, ADRs, Known Debt, etc.)
 3. Add date stamp to "Last Updated" at top
-4. Commit with message: `docs: update MEMORY.md - [brief description]`
+4. Commit with message: `docs: update copilot-memory.md - [brief description]`
 
 **Goal**: Ensure future sessions (and future developers) have context on *why* decisions were made, not just *what* was changed. This prevents re-litigating solved problems and preserves institutional knowledge.
 
@@ -464,7 +465,7 @@ proteus start -c input/minimal.toml -o output/test
 
 ---
 
-> **⚠️ FILE SIZE LIMIT: This file must stay below 500 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`).
+> **⚠️ FILE SIZE LIMIT: This file must stay below 500 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-instructions.md`.
 
 **When approaching the limit, refactor by asking:**
 1. **Is this still accurate?** Remove outdated commands, deprecated workflows, or superseded patterns.
