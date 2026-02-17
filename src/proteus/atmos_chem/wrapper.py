@@ -75,8 +75,6 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
         log.debug("Running atmospheric chemistry in ONLINE mode")
         run_vulcan_online(dirs, config, hf_row)
         return read_result(dirs["output"], module)
-        
     else:
         raise ValueError(f"Invalid atmos_chem module: {module}")
-
     return read_result(dirs['output'], module)
