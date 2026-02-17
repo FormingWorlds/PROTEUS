@@ -345,12 +345,12 @@ class Proteus:
         init_orbit(self)
 
         # Main loop
-        #Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
+        # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
         vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
             # Ensure that VULCAN's csv file aligns with nc output files: (multiples of write_mod)
-            is_snapshot = multiple(self.loops["total"],self.config.params.out.write_mod)
+            is_snapshot = multiple(self.loops['total'], self.config.params.out.write_mod)
             # New rows
             if self.loops['total'] > 0:
                 # Create new row to hold the updated variables. This will be
@@ -488,11 +488,17 @@ class Proteus:
             ############### / ATMOSPHERE CLIMATE
 
             ############### ONLINE ATMOSPHERIC CHEMISTRY
-            if self.config.atmos_chem.when == "online": # checking if the toml file says online at atmos_chem and then when
-                if is_snapshot and not self.desiccated: # checking if the loop is a snapshot and runs VULCAN
-                    if self.loops["total"] not in vulcan_completed_loops:
+            if (
+                self.config.atmos_chem.when == 'online'
+            ):  # checking if the toml file says online at atmos_chem and then when
+                if (
+                    is_snapshot and not self.desiccated
+                ):  # checking if the loop is a snapshot and runs VULCAN
+                    if self.loops['total'] not in vulcan_completed_loops:
                         run_chemistry(self.directories, self.config, self.hf_row)
-                        vulcan_completed_loops.add(self.loops["total"]) # adds it to the completed loops/snapshots
+                        vulcan_completed_loops.add(
+                            self.loops['total']
+                        )  # adds it to the completed loops/snapshots
             ############### / ONLINE ATMOSPHERIC CHEMISTRY
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
