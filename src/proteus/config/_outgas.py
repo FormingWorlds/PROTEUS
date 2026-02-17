@@ -102,6 +102,26 @@ class Outgas:
     calliope: Calliope      = field(factory=Calliope)
     atmodeller: Atmodeller  = field(factory=Atmodeller)
 
-    silicates: bool = field(default=True)
-    fastchempath: str = field(default="/data3/leoni/LavAtmos/FastChem/fastchem3/output/")
-    vaplist: list = field(default=['SiO','SiO2','MgO','FeO'])
+    # LavAtmos / silicate coupling is opt-in: default to disabled.
+    silicates: bool = field(default=False)
+    # Path to FastChem output directory used by LavAtmos; must be set when silicate coupling is enabled.
+    fastchempath: str = field(default='')
+    # List of vapour species for LavAtmos; must be set when silicate coupling is enabled.
+    vaplist: list = field(factory=list)
+
+    def __attrs_post_init__(self) -> None:
+        """
+        Perform cross-field validation after initialization.
+
+        When silicate (LavAtmos) coupling is enabled via `silicates=True`,
+        ensure that `fastchempath` and `vaplist` are explicitly configured.
+        """
+        if self.silicates:
+            if not self.fastchempath:
+                raise ValueError(
+                    "Outgas.fastchempath must be set when silicate (LavAtmos) coupling is enabled."
+                )
+            if not self.vaplist:
+                raise ValueError(
+                    "Outgas.vaplist must be set when silicate (LavAtmos) coupling is enabled."
+                )

@@ -19,12 +19,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from proteus.outgas.wrapper import get_gaslist
 from proteus.utils.constants import (
     element_list,
     secs_per_hour,
     secs_per_minute,
-    vap_list,
-    vol_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -613,31 +612,9 @@ def GetHelpfileKeys(config:Config):
         # Stellar
         "M_star", "R_star", "age_star", # [kg], [m], [yr]
         "T_star", # [K]
-
-
-        # Observational (from infinity)
-        "p_obs",    # observered radius [bar]
-        "R_obs",    # observed radius [m]
-        "rho_obs",  # observed bulk density [kg m-3]
-        "transit_depth", "eclipse_depth", # [1], [1]
-
-        "albedo_pl",   # input bond albedo [1]
-        "bond_albedo", # output bond albedo [1]
-
-        # Imaginary part of k2 Love Number
-        "Imk2", # [1]
-
-        # Escape
-        "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
-
-        # Atmospheric composition from outgassing
-        "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
         ]
 
-    if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
-        gas_list = vol_list + vap_list
+    gas_list=get_gaslist(config)
 
     # gases from outgassing
     for s in gas_list:

@@ -34,10 +34,11 @@ import pytest
 from proteus.outgas.wrapper import (
     calc_target_elemental_inventories,
     check_desiccation,
+    get_galist,
     run_desiccated,
     run_outgassing,
 )
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list
 
 
 @pytest.mark.unit
@@ -178,6 +179,8 @@ def test_run_outgassing_calliope_calculation():
 
     # Setup hf_row with gas masses and VMR (typical early Earth steam atmosphere)
     hf_row = {}
+    gas_list=get_galist(config)
+
     for s in gas_list:
         hf_row[s + '_kg_atm'] = 1e19 if s == 'H2O' else 1e16  # H2O-dominated
         hf_row[s + '_vmr'] = 0.95 if s == 'H2O' else 0.01  # Volume mixing ratios
@@ -229,6 +232,9 @@ def test_run_outgassing_atmosphere_mass_conservation():
         1e11,
         1e10,
     ]
+
+    gas_list=get_galist(config)
+
     for i, s in enumerate(gas_list):
         hf_row[s + '_kg_atm'] = gas_masses[i]
         hf_row[s + '_vmr'] = 0.1 / len(gas_list)  # Equal fractional mixing
@@ -259,6 +265,7 @@ def test_run_outgassing_disabled_module():
 
     # Setup with fixed gas masses
     hf_row = {}
+    gas_list=get_galist(config)
     for s in gas_list:
         hf_row[s + '_kg_atm'] = 1e18  # Fixed 1 exagram per species
         hf_row[s + '_vmr'] = 1.0 / len(gas_list)  # Equal mixing
@@ -290,6 +297,7 @@ def test_run_desiccated_zeros_outgassing_keys():
 
     # Setup hf_row with outgassing data
     hf_row = {}
+    gas_list=get_galist(config)
     for s in gas_list:
         hf_row[s + '_kg_atm'] = 1e18  # Non-zero before desiccation
         hf_row[s + '_vmr'] = 0.1  # VMR preserved to avoid divide-by-zero
@@ -332,6 +340,7 @@ def test_run_desiccated_preserves_critical_keys():
     }
 
     # Add VMR and mass for all gases in gas_list
+    gas_list=get_galist(config)
     for s in gas_list:
         if s == 'H2O':
             hf_row[s + '_vmr'] = 0.9
@@ -369,6 +378,7 @@ def test_run_outgassing_zero_atmosphere_mass():
 
     # All gases have zero mass
     hf_row = {}
+    gas_list=get_galist(config)
     for s in gas_list:
         hf_row[s + '_kg_atm'] = 0.0
         hf_row[s + '_vmr'] = 0.0
@@ -444,6 +454,7 @@ def test_run_outgassing_mixed_species_dominance():
         'FeO2_kg_atm': 0.0,
     }
 
+    gas_list=get_galist(config)
     for s in gas_list:
         if s in ['N2', 'O2']:
             hf_row[s + '_vmr'] = 0.5  # ~50% each for simplicity

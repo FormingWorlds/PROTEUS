@@ -95,7 +95,7 @@ def plot_chem_atmosphere(
         if key in atm_profile.keys():
             xarr = list(atm_profile[key])
             xarr = [xarr[0]] + xarr
-            if (np.amax(xarr) >= xmin or key in list(REFRACTORY_GASES) ):
+            if (np.amax(xarr) >= xmin or gas in list(REFRACTORY_GASES)):
                 vmr = float(xarr[-1])
                 ax.plot(xarr, parr, ls = 'dashed', color=col, lw=_lw, alpha=al)
             else:

@@ -52,7 +52,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     else:
         solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
-    print('fO2 shift used by calliope:', solvevol_inp['fO2_shift_IW'])
+    log.info('fO2 shift used by calliope:%s', solvevol_inp['fO2_shift_IW'])
 
     # Volatile inventory
     for s in vol_list:

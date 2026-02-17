@@ -48,10 +48,7 @@ def plot_escape(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
 
     # By element
     total = np.zeros(len(time))
-    log.info(element_list)
     for e in element_list:
-
-        log.info(e)
 
         _lw = lw
         if e == 'H':

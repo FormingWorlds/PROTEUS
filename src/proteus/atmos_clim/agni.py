@@ -74,7 +74,7 @@ def _construct_voldict(hf_row:dict, dirs:dict, config:Config):
 
     gas_list=get_gaslist(config)
 
-    print("list of gases used by agni: ",gas_list)
+    log.debug("list of gases used by agni: %s", gas_list)
 
     # get from hf_row
     vol_dict = {}

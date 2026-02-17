@@ -144,7 +144,7 @@ def run_desiccated(config: Config, hf_row: dict):
         excepted_keys.append(f'{g}_vmr')
 
     # Set most values to zero
-    for k in expected_keys():
+    for k in expected_keys(config):
         if k not in excepted_keys:
             hf_row[k] = 0.0
 
@@ -170,14 +170,34 @@ def lavatmos_calliope_loop(dirs:dict,config:Config, hf_row:dict):
     if config.outgas.silicates:
         xerr=0.01 #0.1 #1e-3
         err=1.0
+        # Maximum number of LavAtmos/Calliope iterations; allow configuration with a sensible default
+        max_iterations = getattr(getattr(config, "outgas", config), "max_lavatmos_iterations", 100)
+        iteration = 0
         log.info("silicates are outgassed")
         log.info("error threshold on fO2 shift :  %.6f"%xerr)
-        log.info("current error :  %.6f"%err)
-        while err > xerr:
+        log.info("initial error :  %.6f"%err)
+        log.info("maximum LavAtmos/Calliope iterations : %d"%max_iterations)
+        while err > xerr and iteration < max_iterations:
+            iteration += 1
+            log.info("LavAtmos/Calliope iteration %d"%iteration)
             old_fO2shift = hf_row['fO2_shift']
             run_lavatmos(config, hf_row) #in run_lavatmos add a criterion for temperature and melt fraction ?
             log.info("new fO2 shift : %.6f"%hf_row["fO2_shift"])
             run_outgassing(dirs, config, hf_row)
             err=abs(old_fO2shift - hf_row['fO2_shift'])
-            log.info("fO2 shift after runnning lavatmos: %.6f"%hf_row['fO2_shift'])
+            log.info("fO2 shift after running lavatmos: %.6f"%hf_row['fO2_shift'])
             log.info("change in fO2 between the last iterations: %.6f"%err)
+        if err > xerr:
+            log.error(
+                "LavAtmos/Calliope did not converge within %d iterations "
+                "(final |ΔfO2_shift| = %.6f, threshold = %.6f)",
+                max_iterations,
+                err,
+                xerr,
+            )
+            raise RuntimeError(
+                "LavAtmos/Calliope convergence failed: "
+                "maximum number of iterations (%d) exceeded without reaching "
+                "the fO2_shift error threshold (final error = %.6f, threshold = %.6f)"
+                % (max_iterations, err, xerr)
+            )

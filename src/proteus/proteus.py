@@ -304,7 +304,7 @@ class Proteus:
             log.info('Included gases:')
             for s in inc_gases:
                 write = "    "
-                write += "vapour  " if s in vol_list else "volatile"
+                write += "volatile " if s in vol_list else "vapour"
                 write += "  %-8s" % s
                 if self.config.delivery.initial == "volatiles":
                     write += " : %6.2f bar"%self.hf_row[s + "_bar"]
@@ -315,7 +315,7 @@ class Proteus:
             log.info('Resuming the simulation from the disk')
 
             # Read helpfile from disk
-            self.hf_all = ReadHelpfileFromCSV(self.directories["output"],self.config)
+            self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
 
             # Check length
             if len(self.hf_all) <= self.loops['init_loops'] + 1:

@@ -158,7 +158,7 @@ species_lib["Zn"] = Species_db(name="Zn", fc_name="Zn", weight=65.38)
 # don't forget the electrons! (they may be tiny but they are important)
 species_lib["e-"] = Species_db(name="e-", fc_name="e-", weight=5.4858e-4)
 
-mp = 1.6726231e-21 #kg
+mp = 1.6726231e-27 #kg
 kB = 1.38064e-23 #JK-1
 particles_per_mol = 6.02214076e+23
 
@@ -243,7 +243,9 @@ def run_lavatmos(config:Config,hf_row:dict):
         Tsurf=hf_row["T_magma"]
     else:
         Tsurf=hf_row['T_surf']
-    rho_old = kg_per_particle * hf_row['P_surf']/(kB*Tsurf)
+    # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
+    P_surf_Pa = hf_row['P_surf'] * 1.0e5
+    rho_old = kg_per_particle * P_surf_Pa/(kB*Tsurf)
 
     M_atmo_old = hf_row['M_atm']
 
@@ -281,13 +283,12 @@ def run_lavatmos(config:Config,hf_row:dict):
         #here need to update it in terms of pressure as well, since this is input for calliiope
         hf_row[vol + "_vmr"] = new_atmos_abundances[vol][0]
         hf_row[vol + "_kg_atm"] = new_atmos_abundances[vol][0] * M_atmo_new * species_lib[vol].weight/mu_outgassed #kg
-        hf_row[vol + "_kg_tot"] = hf_row[vol + "_kg_atm"] + hf_row[vol + "_kg_solid"] + hf_row[vol + "_kg_liquid"]
+        hf_row[vol + "_kg_total"] = hf_row[vol + "_kg_atm"] + hf_row[vol + "_kg_solid"] + hf_row[vol + "_kg_liquid"]
 
     #elements are not considered as atomic species but just as inventory
     for e in element_list:
         hf_row[e + "_kg_atm"]=new_atmos_abundances[e][0] * M_atmo_new * species_lib[e].weight/mu_outgassed
-        hf_row[e + "_kg_atm"]=new_atmos_abundances[e][0]+ hf_row[e + "_kg_solid"] + hf_row[e + "_kg_liquid"]
-        hf_row[e + "_kg_tot"] = hf_row[e + "_kg_atm"] + hf_row[e + "_kg_solid"] + hf_row[e + "_kg_liquid"]
+        hf_row[e + "_kg_total"] = hf_row[e + "_kg_atm"] + hf_row[e + "_kg_solid"] + hf_row[e + "_kg_liquid"]
 
 
 
