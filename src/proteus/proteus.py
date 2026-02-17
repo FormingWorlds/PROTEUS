@@ -347,19 +347,15 @@ class Proteus:
         # Main loop
         #Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
         vulcan_completed_loops = set()
-        
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
-            
-            #Ensure that VULCAN's csv file aligns with nc output files: (multiples of write_mod)    
+            # Ensure that VULCAN's csv file aligns with nc output files: (multiples of write_mod)
             is_snapshot = multiple(self.loops["total"],self.config.params.out.write_mod)
-            
             # New rows
             if self.loops['total'] > 0:
                 # Create new row to hold the updated variables. This will be
                 #    overwritten by the routines below.
                 self.hf_row = self.hf_all.iloc[-1].to_dict()
-
             log.info(' ')
             PrintSeparator()
             log.info('Loop counters')
