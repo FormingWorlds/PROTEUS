@@ -21,10 +21,11 @@ For test markers and CI pipelines, see [Test Categorization](test_categorization
 3. [Developer Workflow](#developer-workflow)
 4. [Best Practices](#best-practices)
 5. [Coverage Analysis](#coverage-analysis-workflow)
-6. [Pre-commit Checklist](#pre-commit-checklist)
-7. [Troubleshooting](#troubleshooting)
-8. [Reusable Quality Gate](#reusable-quality-gate-for-ecosystem-modules)
-9. [References](#references)
+6. [Coverage Collection & Reporting](#coverage-collection-reporting)
+7. [Pre-commit Checklist](#pre-commit-checklist)
+8. [Troubleshooting](#troubleshooting)
+9. [Reusable Quality Gate](#reusable-quality-gate-for-ecosystem-modules)
+10. [References](#references)
 
 ---
 
@@ -135,6 +136,92 @@ coverage report --show-missing --skip-covered  # Only uncovered files
 - `[tool.coverage.report] fail_under` — Full gate (nightly)
 
 Thresholds auto-ratchet upward; never decrease manually.
+
+---
+
+## Coverage Collection & Reporting
+
+### Two-Workflow Architecture
+
+Coverage data flows through two CI workflows that serve different purposes:
+
+| Workflow | Tests Run | Codecov Flag | Artifact Produced |
+|----------|-----------|--------------|-------------------|
+| `ci-pr-checks.yml` | unit + smoke | `unit-tests` | `coverage-unit.json` (this PR only) |
+| `ci-nightly.yml` | unit + smoke + integration (+ slow) | `nightly` | `coverage-integration-only.json` (combined) |
+
+The PR workflow runs fast tests on every pull request. The nightly workflow runs the full suite and saves its combined coverage as an artifact that subsequent PR runs download.
+
+### Estimated Total Coverage (Union-of-Lines)
+
+On each PR, the workflow estimates what total coverage *would be* if integration tests were also run, without actually running them. It does this by combining the PR's own coverage with the latest nightly artifact:
+
+```
+ ci-pr-checks.yml                        ci-nightly.yml (last successful)
+ ┌──────────────────┐                     ┌──────────────────┐
+ │  Run unit+smoke  │                     │  coverage-        │
+ │  on PR code      │                     │  integration-     │
+ │  ──────────────  │                     │  only.json        │
+ │  coverage-       │                     │  (unit+smoke+     │
+ │  unit.json       │                     │   integration)    │
+ └────────┬─────────┘                     └────────┬──────────┘
+          │                                        │
+          └──────────────┬─────────────────────────┘
+                         │
+                ┌────────▼────────┐
+                │  Union-of-Lines │
+                │  Algorithm      │
+                └────────┬────────┘
+                         │
+                ┌────────▼────────┐
+                │  Estimated      │
+                │  Total Coverage │
+                │  (compared to   │
+                │  full threshold)│
+                └─────────────────┘
+```
+
+**Algorithm (4 steps):**
+
+1. **Parse** both JSON files (`coverage-unit.json` from this PR, `coverage-integration-only.json` from nightly)
+2. **Normalize** file paths (strip container prefixes like `/opt/proteus/`) so lines match across environments
+3. **Compute union** of covered lines and union of executable lines across both datasets
+4. **Compare** `100 * len(covered_union) / len(executable_union)` against the full threshold from `pyproject.toml`
+
+!!! warning "Stale nightly lines"
+    The nightly artifact (`coverage-integration-only.json`) contains **combined** unit + smoke + integration coverage, not just integration. If unit/smoke coverage drops on a PR, stale lines from the nightly artifact can mask the regression until the next nightly run updates the baseline. A 48-hour staleness check mitigates this but does not eliminate it.
+
+### Codecov Integration
+
+Two upload flags partition coverage data on [codecov.io](https://codecov.io):
+
+| Flag | Uploaded By | Contains |
+|------|-------------|----------|
+| `unit-tests` | `ci-pr-checks.yml` | Unit + smoke coverage from this PR |
+| `nightly` | `ci-nightly.yml` | Unit + smoke + integration coverage from nightly |
+
+Configuration in `codecov.yml`:
+
+- **Project target**: `auto` — Codecov tracks the project coverage trend automatically
+- **Patch target**: `80%` — new/changed lines must have 80% coverage
+- **`carryforward: true`** on both flags — if a flag isn't uploaded in a commit (e.g., nightly doesn't run on PRs), Codecov carries forward the last known value instead of reporting a drop
+
+### README Coverage Badge
+
+The Codecov badge in `README.md` must include `/branch/main/` in its URL to display the correct coverage value. Without this path segment, Codecov returns "unknown".
+
+**Correct format:** `https://codecov.io/gh/FormingWorlds/PROTEUS/branch/main/graph/badge.svg`
+
+### Badge Validation Tests
+
+The file `tests/test_readme_badges.py` contains unit tests that guard against badge URL regressions:
+
+- All badge image URLs use HTTPS and point to allowed domains
+- All expected badges (Unit Tests, Integration Tests, docs, License, Codecov, DOI) are present
+- The Codecov badge URL includes `/branch/main/`
+- Workflow files referenced by badge URLs exist on disk
+
+These tests run on every PR as part of the unit test suite.
 
 ---
 

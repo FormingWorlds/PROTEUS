@@ -116,13 +116,25 @@ For fast gate check: `pytest -m "unit and not skip" --cov=src --cov-fail-under=<
 
 ## Coverage Requirements
 
-**Current thresholds** (from `pyproject.toml`):
+### Coverage Gates
 
-- **Fast gate**: checked on every PR (unit + smoke)
-- **Full gate**: checked nightly (all tests)
-- **Diff-cover**: 80% — required on changed lines
+| Gate | Tests Included | When Checked | Threshold Source |
+|------|---------------|--------------|------------------|
+| Fast gate | unit + smoke | Every PR | `[tool.proteus.coverage_fast] fail_under` |
+| Estimated total | union of PR (unit+smoke) + nightly | Every PR | `[tool.coverage.report] fail_under` |
+| Full gate | unit + smoke + integration + slow | Nightly | `[tool.coverage.report] fail_under` |
+| Diff-cover | changed lines only | Every PR | Hard-coded 80% |
 
-These thresholds auto-increase ("ratchet") and never decrease. Check coverage locally with `pytest --cov=src --cov-report=html`.
+### What Each Test Tier Contributes
+
+- **`unit`** — Bulk of Python logic coverage (functions, branches, error paths). Fastest feedback loop.
+- **`smoke`** — Covers binary wrapper code and real I/O paths that unit tests mock away.
+- **`integration`** — Covers cross-module coupling paths (e.g., ARAGOG + JANUS handoff).
+- **`slow`** — Full scientific validation. Contributes to coverage but primarily validates physics, not code paths.
+
+All thresholds auto-increase ("ratchet") and never decrease. Check coverage locally with `pytest --cov=src --cov-report=html`.
+
+For details on how coverage is collected across workflows and how the estimated total is computed, see [Coverage Collection & Reporting](test_infrastructure.md#coverage-collection-reporting).
 
 ---
 
