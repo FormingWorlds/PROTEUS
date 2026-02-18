@@ -11,6 +11,7 @@ docs/test_building.md
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 
 import pytest
 
@@ -27,7 +28,7 @@ EXPECTED_BADGES = [
     'Integration%20Tests',
     'docs.yaml',
     'License',
-    'codecov.io',
+    'graph/badge.svg',
     'DOI',
 ]
 
@@ -103,7 +104,7 @@ def test_codecov_badge_specifies_branch(readme_content):
     This was the root cause of the regression fixed in PR #638.
     """
     img_urls = re.findall(r'<img\s+src="([^"]+)"', readme_content)
-    codecov_urls = [url for url in img_urls if 'codecov.io' in url]
+    codecov_urls = [url for url in img_urls if urlparse(url).hostname == 'codecov.io']
     assert len(codecov_urls) == 1, (
         f'Expected exactly 1 Codecov badge, found {len(codecov_urls)}'
     )
