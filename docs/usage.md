@@ -153,7 +153,7 @@ proteus grid-summarise -o output/grid_demo/ -s completed
 
 ## Packaging grid results
 
-Use the CLI to package the results of a grid into a zip file; e.g. for sharing or backing-up. The command below will create `pack.zip` in the `grid_demo/` folder. This does not store all the data for each case - only the most important files.
+Use the CLI to package the results of a grid into a zip file; e.g. for sharing or backing-up. The command below will create `pack.zip` in the `grid_demo/` folder. This does not store all the data for each case - only the most important files. For example the 1D resolved interior and atmospheric data are lost. Files containing global parameters and auto-generated plots are preserved.
 
 ```console
 proteus grid-pack -o output/grid_demo/
