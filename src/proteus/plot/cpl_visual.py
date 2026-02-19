@@ -261,7 +261,6 @@ def plot_visual(
     axr = ax.inset_axes((0.07, 0.04, 0.39, 0.21))
     axr.set_alpha(0.0)
     axr.set_facecolor((0, 0, 0, 0))
-    axr.set_yscale('log')
     #    crop to wavelength region
     fl = lw[0, :] + sw[0, :]
     wl = wl[:]  # nm
@@ -280,6 +279,8 @@ def plot_visual(
     axr.xaxis.set_major_formatter(ticker.FormatStrFormatter('%g'))
     axr.xaxis.set_minor_locator(ticker.LogLocator(numticks=1000))
 
+    axr.set_yscale('log')
+    axr.set_ylim(bottom=max(1e-10, np.amin(fl)))
     axr.set_ylabel(r'W/m$^2$/nm', color='w', fontsize=8, rotation=0)
     axr.yaxis.set_label_coords(0.01, 1.02)
 
