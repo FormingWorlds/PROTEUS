@@ -164,9 +164,13 @@ def lavatmos_calliope_loop(dirs: dict, config: Config, hf_row: dict):
 
     hf_row['fO2_shift'] = config.outgas.fO2_shift_IW
     log.info('initial fO2_shift : %.6f' % config.outgas.fO2_shift_IW)
+
     run_outgassing(dirs, config, hf_row)
+
+    O_orig=hf_row['O_kg_total'] #track total oxygen inventory before running lavatmos
+
     if config.outgas.silicates:
-        xerr = 0.01  # 0.1 #1e-3
+        xerr =0.01 #1e-3  # 0.1
         err = 1.0
         # Maximum number of LavAtmos/Calliope iterations; allow configuration with a sensible default
         max_iterations = getattr(
@@ -174,21 +178,29 @@ def lavatmos_calliope_loop(dirs: dict, config: Config, hf_row: dict):
         )
         iteration = 0
         log.info('silicates are outgassed')
-        log.info('error threshold on fO2 shift :  %.6f' % xerr)
-        log.info('initial error :  %.6f' % err)
         log.info('maximum LavAtmos/Calliope iterations : %d' % max_iterations)
+
         while err > xerr and iteration < max_iterations:
+
+            O_atm=hf_row['O_kg_atm'] #oxygen in atmosphere before running lavatmos
+
             iteration += 1
-            log.info('LavAtmos/Calliope iteration %d' % iteration)
             old_fO2shift = hf_row['fO2_shift']
-            run_lavatmos(
-                config, hf_row
-            )  # in run_lavatmos add a criterion for temperature and melt fraction ?
-            log.info('new fO2 shift : %.6f' % hf_row['fO2_shift'])
+
+            run_lavatmos(config, hf_row)
+
+            delta_O = hf_row['O_kg_atm'] - O_atm  #added oxygen by lavatmos to atmosphere
+
+            #log.info('new fO2 shift : %.6f' % hf_row['fO2_shift'])
+
+            hf_row['O_kg_total'] = O_orig + delta_O #new total oxygen abundance to consider for the next calliope run
+
             run_outgassing(dirs, config, hf_row)
+
             err = abs(old_fO2shift - hf_row['fO2_shift'])
-            log.info('fO2 shift after running lavatmos: %.6f' % hf_row['fO2_shift'])
+
             log.info('change in fO2 between the last iterations: %.6f' % err)
+
         if err > xerr:
             log.error(
                 'LavAtmos/Calliope did not converge within %d iterations '

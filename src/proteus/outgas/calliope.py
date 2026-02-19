@@ -52,7 +52,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     else:
         solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
-    log.info('fO2 shift used by calliope:%s', solvevol_inp['fO2_shift_IW'])
+    log.info('fO2 shift used by calliope:%.6f', solvevol_inp['fO2_shift_IW'])
 
     # Volatile inventory
     for s in vol_list:
@@ -295,6 +295,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         if e != 'O':
             target[e] = hf_row[e + '_kg_total']
 
+    log.debug('amount of available elements for calliope computations: %s', target)
     # construct guess for CALLIOPE
     p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
 

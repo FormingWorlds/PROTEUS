@@ -52,6 +52,7 @@ vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2
 
 # Supported elements
 element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
+
 element_mmw = {
     'H': 1.008000000e-03,
     'He': 4.002000000e-03,

@@ -52,6 +52,8 @@ _preset_colours = {
     'Na': '#ccff00',
     'Ti': '#0d2959',
     'K': '#2e8b57',
+    'Al':"#5e2172",
+    'Ca':"#167A9B",
     # GLobal energy fluxes
     'OLR': '#dc143c',
     'ASF': '#4169e1',

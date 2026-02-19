@@ -179,6 +179,25 @@ class FO2shift:
         """O'Neill and Eggins (2002) IW"""
         return 2 * (-244118 + 115.559 * T - 8.474 * T * np.log(T)) / (np.log(10) * 8.31441 * T)
 
+def read_in_element_fracs(input_path):
+
+
+    # read file (skip comment line, split on whitespace)
+
+    df = pd.read_csv(
+        input_path + "element_abundances/element_abundances_output.dat",
+        comment="#",      # ignore lines starting with #
+        sep=r"\s+",       # split on any whitespace
+        header=None
+    )
+
+    # make first column the headers and second column the data row
+    df = pd.DataFrame([df[1].values], columns=df[0].values)
+
+    df_frac= np.power(10, df-12)
+    #dataframe has been multiplied by 1e20, so need to renormalise to get real fractions
+    return df_frac/1e20
+
 
 def run_lavatmos(config: Config, hf_row: dict):
     """
@@ -208,24 +227,23 @@ def run_lavatmos(config: Config, hf_row: dict):
     # set element fractions in atmosphere for lavatmos run
     input_eles = ['H', 'C', 'N', 'S', 'O']
 
-    total_weight = (
-        species_lib['H'].weight
-        + species_lib['C'].weight
-        + species_lib['N'].weight
-        + species_lib['O'].weight
-        + species_lib['S'].weight
-    )
-    print('total_weight: ', total_weight)
-    # lavatmos takes in the abundnace fractions of element not mass fractions so divide by atomic number
+    # lavatmos takes in the abudance fractions of element not mass fractions so divide by atomic number
+    Mtot=0
+    weighted_mass={}
     for e in input_eles:
-        lavatmos_dict[e] = (hf_row[e + '_kg_atm'] / hf_row['M_atm']) * (
-            total_weight / (5 * species_lib[e].weight)
-        )
-        print(e, lavatmos_dict[e])
+        Mtot+=hf_row[e + '_kg_atm']
+        weighted_mass[e]=hf_row[e + '_kg_atm']/species_lib[e].weight
+
+    for e in input_eles:
+        lavatmos_dict[e] = weighted_mass[e] / Mtot
+
+
+    log.info('volatile elements read in by lavatmos: %s',lavatmos_dict)
+
 
     parameters = {
         # General parameters
-        'run_name': config.params.out.path,
+        'run_name': 'proteus_run',
         # Melt parameters
         'lava_comp': 'BSE_palm',
         'silicate_abundances': 'lavatmos3',  # 'lavatmos1', 'lavatmos2', 'manual'
@@ -236,6 +254,32 @@ def run_lavatmos(config: Config, hf_row: dict):
         'melt_fraction': 1.0,
     }
 
+
+    # make sure that surface temperature is at least 1500K, otherwise lavatmos crashes
+    if hf_row['T_magma'] > 1500:
+        Toutgas = hf_row['T_magma']
+    else:
+        Toutgas = 1500
+
+    #print('melt fraction as given in parameters: ',parameters['melt_fraction'])
+    lavatmos_instance = container_lavatmos(parameters)
+    lavatmos_instance.run_lavatmos(Toutgas)
+
+    #convert the element abundances from lavatmos file to element fractions, normalized to unity
+    input_fc=config.outgas.fastchempath + 'input/'
+    element_fracs=read_in_element_fracs(input_fc)
+
+    # read in boa chemistry from last iteration of fastchem and lavatmos
+    output_fc = config.outgas.fastchempath + 'output/'
+    if os.path.exists(output_fc):
+        mmr_path = os.path.join(output_fc, 'boa_chem.dat')
+    else:
+        raise RuntimeError('cannot find fastchem output from lavatmos loop!')
+
+    # update abundances in output file for next calliope run
+    new_atmos_abundances = pd.read_csv(mmr_path, sep=r'\s+')
+    mu_outgassed = new_atmos_abundances['mu'][0]
+
     # compute density for the previous run with calliope output from hf_row:
     kg_per_particle = hf_row['atm_kg_per_mol'] / particles_per_mol
 
@@ -245,65 +289,51 @@ def run_lavatmos(config: Config, hf_row: dict):
         Tsurf = hf_row['T_magma']
     else:
         Tsurf = hf_row['T_surf']
+
     # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
     P_surf_Pa = hf_row['P_surf'] * 1.0e5
     rho_old = kg_per_particle * P_surf_Pa / (kB * Tsurf)
-
     M_atmo_old = hf_row['M_atm']
 
-    lavatmos_instance = container_lavatmos(parameters)
-
-    # make sure that surface temperature is at least 1500K, otherwise lavatmos crashes
-    if hf_row['T_magma'] > 1500:
-        Toutgas = hf_row['T_magma']
-    else:
-        Toutgas = 1500
-
-    lavatmos_instance.run_lavatmos(Toutgas)
-
-    # read in boa chemistry from last iteration of fastchem and lavatmos
-    fastchempath = config.outgas.fastchempath
-    if os.path.exists(fastchempath):
-        mmr_path = os.path.join(fastchempath, 'boa_chem.dat')
-    else:
-        raise RuntimeError('cannot find fastchem output from lavatmos loop!')
-
-    # update abundances in output file for next calliope run
-    new_atmos_abundances = pd.read_csv(mmr_path, sep=r'\s+')
-    mu_outgassed = new_atmos_abundances['mu'][0]
+    log.debug('old atmospheric mass:%.4f'%M_atmo_old)
 
     # rho of armosphere after lavatmos
     # n=rho/mu*mp
-    rho_new = kg_per_particle * new_atmos_abundances['Pbar'][0] / (kB * Tsurf)
-    M_atmo_new = M_atmo_old / rho_old * rho_new  # kg assuming volum edoes not change
+    P_new_pa = new_atmos_abundances['Pbar'][0] * 1.0e5 #convert pressure to Pascals
+    rho_new = kg_per_particle * P_new_pa / (kB * Tsurf)
+    M_atmo_new = M_atmo_old / rho_old * rho_new  # kg assuming volum does not change
+
+    log.debug('new atmospheric mass:%.4f'%M_atmo_new)
 
     for vol in gas_list:
         new_pp = new_atmos_abundances[vol][0] * new_atmos_abundances['Pbar'][0]
         hf_row[vol + '_bar'] = new_pp
         # here need to update it in terms of pressure as well, since this is input for calliiope
         hf_row[vol + '_vmr'] = new_atmos_abundances[vol][0]
-        hf_row[vol + '_kg_atm'] = (
-            new_atmos_abundances[vol][0] * M_atmo_new * species_lib[vol].weight / mu_outgassed
-        )  # kg
-        hf_row[vol + '_kg_total'] = (
-            hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid']
-        )
+        hf_row[vol + '_kg_atm'] = (new_atmos_abundances[vol][0] * M_atmo_new * species_lib[vol].weight / mu_outgassed )  # kg
+        hf_row[vol + '_kg_total'] = (hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid'])
+
 
     # elements are not considered as atomic species but just as inventory
-    for e in element_list:
-        hf_row[e + '_kg_atm'] = (
-            new_atmos_abundances[e][0] * M_atmo_new * species_lib[e].weight / mu_outgassed
-        )
-        hf_row[e + '_kg_total'] = (
-            hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid']
-        )
+    #print('element fractions predicted by fastchem:',element_fracs)
 
+    atmos_fracs={} #for debug
+    total_fracs={} #for debug
+    for e in element_list:
+
+        hf_row[e + '_kg_atm'] = element_fracs[e][0] * M_atmo_new * species_lib[e].weight / mu_outgassed
+
+        hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
+
+        atmos_fracs[e] = hf_row[e + '_kg_atm']
+        total_fracs[e] = hf_row[e + '_kg_total']
+
+    log.debug('atmospheric mass of elements from fastchem: %s',atmos_fracs)
+    log.info('total mass of elements after fastchem: %s',total_fracs)
     # saving new oxygen fugacity for calliope
-    log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(
-        new_atmos_abundances['Pbar'][0]
-    )  # is this really partical pressure ? Maybe this is actually abundances
+    log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10( new_atmos_abundances['Pbar'][0])  # is this really partical pressure ? Maybe this is actually abundances
 
     fO2_shift = FO2shift()
     hf_row['fO2_shift'] = fO2_shift(hf_row['T_magma'], log10_fO2)
 
-    print('shift compared to iron wustite buffer:', hf_row['fO2_shift'])
+    log.info('shift compared to iron wustite buffer: %.6f'%hf_row['fO2_shift'])
