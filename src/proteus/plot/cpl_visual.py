@@ -316,7 +316,7 @@ def plot_visual_entry(handler: Proteus):
 
 
 def anim_visual(
-    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 100
+    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 10
 ):
     """Create an MP4 animation from visual frames.
 
@@ -344,7 +344,7 @@ def anim_visual(
     # Animation options
     frame_fmt = 'frame.png'
     video_fmt = 'mp4'
-    codec = 'av1'
+    codec = 'h264'
 
     # check ffmpeg is installed
     ffmpeg = which('ffmpeg')
@@ -418,6 +418,7 @@ def anim_visual(
                 log.info(f'Wrote animation to {out_video}')
             else:
                 log.error('ffmpeg exited successfully but animation file not found')
+                return False
         else:
             log.error(f'ffmpeg returned non-zero exit code: {ret}')
             return False

@@ -85,7 +85,7 @@ def plot(plots, config_path: Path):
 
     handler = Proteus(config_path=config_path)
     setup_logger(
-        logpath=handler.directories['output'] + 'plot.log',
+        logpath=os.path.join(handler.directories['output'], 'plot.log'),
         logterm=True,
         level=handler.config.params.out.logging,
     )
