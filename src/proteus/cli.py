@@ -90,6 +90,10 @@ def plot(plots, config_path: Path):
         level=handler.config.params.out.logging,
     )
 
+    if plots[0] == 'list':
+        click.echo('Available plots: ' + ', '.join(plot_dispatch.keys()))
+        return
+
     if 'all' in plots:
         plots = list(plot_dispatch.keys())
 
