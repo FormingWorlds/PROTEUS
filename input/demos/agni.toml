@@ -4,22 +4,22 @@ version = "2.0"
 [params]
     [params.out]
         path        = "agni"
-        logging     = "DEBUG"
+        logging     = "INFO"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
-        write_mod   = 100      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 50      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'
 
     [params.dt]
         minimum      = 1e3    # yr, minimum time-step
         maximum      = 3e7    # yr, maximum time-step
-        initial      = 1e2    # yr, inital step size
+        initial      = 1e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
         [params.dt.adaptive]
-            atol         = 0.04   # Step size atol
-            rtol         = 0.11   # Step size rtol
+            atol         = 0.05   # Step size atol
+            rtol         = 0.13   # Step size rtol
 
     [params.stop]
         # required time constraints
@@ -40,7 +40,7 @@ version = "2.0"
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
-            enabled   = false
+            enabled   = true
             p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 
@@ -54,7 +54,7 @@ version = "2.0"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.5       # AU
+    semimajoraxis   = 1.0       # AU
     eccentricity    = 0.1       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
@@ -85,7 +85,7 @@ version = "2.0"
 # Atmosphere - physics table
 [atmos_clim]
     surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"
-    albedo_pl       = 0.1   	# Bond albedo (scattering)
+    albedo_pl       = 0.2   	# Bond albedo (scattering)
     module  = "agni"           # Which atmosphere module to use
     rayleigh = false
 
@@ -135,7 +135,7 @@ version = "2.0"
     reservoir = "outgas"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "dummy"     # Which escape module to use
     [escape.dummy]
-        rate        = 1e6           # Bulk unfractionated escape rate [kg s-1]
+        rate        = 1e7           # Bulk unfractionated escape rate [kg s-1]
 
 [interior]
     radiogenic_heat = false  # enable radiogenic heat production

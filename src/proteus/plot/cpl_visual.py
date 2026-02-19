@@ -4,7 +4,7 @@ import glob
 import logging
 import os
 from shutil import copyfile, rmtree, which
-from subprocess import call
+from subprocess import Popen, PIPE, STDOUT
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -12,12 +12,10 @@ import numpy as np
 import pandas as pd
 from matplotlib import patches, ticker
 
-from subprocess import call
-
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
-from proteus.utils.visual import cs_srgb as colsys
-from proteus.utils.visual import interp_spec
+from proteus.utils.visual import cs_srgb, interp_spec
+from proteus.utils.helper import safe_rm
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -31,9 +29,9 @@ def plot_visual(
     idx: int = -1,
     osamp: int = 3,
     view: float = 12.5,
-    plot_format: str = 'pdf',
+    plot_format: str = 'png',
 ):
-    """Render a visual snapshot of the planet–star system.
+    """Render a visual snapshot of the planet-star system.
 
     Generates a single frame visualising the planet surface color (from the
     band-integrated upwelling flux) and surrounding atmospheric shells, along
@@ -54,7 +52,7 @@ def plot_visual(
     view : float, optional
         Observer distance in units of planetary radii (`R_int * view`).
     plot_format : str, optional
-        Image format for the saved figure (e.g., 'pdf', 'png').
+        Raster format for the saved figure (e.g., 'jpg', 'png').
 
     Returns
     -------
@@ -62,6 +60,11 @@ def plot_visual(
         Path to the saved figure on success; False if required data are missing.
     """
     log.info('Plot visual')
+
+    # Check frame format
+    if not np.any([plot_format.endswith(ext) for ext in ("png","jpg","bmp",)]):
+        log.error(f"Visualisation must use raster format; got '{plot_format}'")
+        return False
 
     osamp = max(osamp, 2)
 
@@ -141,7 +144,7 @@ def plot_visual(
 
     # plot surface of planet
     fl_srf = lw[-1, :] + sw[-1, :]
-    col = colsys.spec_to_rgb(interp_spec(wl, fl_srf))
+    col = cs_srgb.spec_to_rgb(interp_spec(wl, fl_srf))
     srf = patches.Circle((0, 0), radius=r_min, fc=col, zorder=n_lev + 1, alpha=0.2)
     ax.add_patch(srf)
 
@@ -163,7 +166,7 @@ def plot_visual(
         rad_l = r_arr[i + 1]
 
         spec = interp_spec(wl, sw_lev + lw_lev)
-        col = colsys.spec_to_rgb(spec)
+        col = cs_srgb.spec_to_rgb(spec)
 
         for rad in np.linspace(rad_c, rad_l, osamp):
             cir = patches.Circle((0, 0), radius=rad, fc=col, alpha=a_arr[i], zorder=3 + i)
@@ -196,7 +199,7 @@ def plot_visual(
     )
 
     # plot star
-    col = colsys.spec_to_rgb(interp_spec(wl, st))
+    col = cs_srgb.spec_to_rgb(interp_spec(wl, st))
     r_star = hf_all['R_star'].iloc[idx] / (sep + obs)
     x_star = r_lim * 0.75
     cir = patches.Circle(
@@ -296,16 +299,15 @@ def plot_visual_entry(handler: Proteus):
         os.path.join(handler.directories['output'], 'runtime_helpfile.csv'), sep=r'\s+'
     )
 
-    anim_visual(
+    plot_visual(
         hf_all,
         handler.directories['output'],
-        plot_format=handler.config.params.out.plot_fmt,
         idx=-1,
     )
 
 
 def anim_visual(
-    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 80
+    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 10
 ):
     """Create an MP4 animation from visual frames.
 
@@ -319,7 +321,6 @@ def anim_visual(
         Runtime helpfile table used to select time steps and metadata.
     output_dir : str
         Path to the run's output directory.
-
     duration : float, optional
         Animation duration in seconds.
     nframes : int, optional
@@ -332,51 +333,54 @@ def anim_visual(
     """
 
     # Animation options
-    frame_fmt = 'jpg'
+    frame_fmt = 'frame.png'
     video_fmt = 'mp4'
-    codec = 'mpeg4'
+    codec = 'av1'
 
     # check ffmpeg is installed
-    if not which("ffmpeg"):
+    ffmpeg = which('ffmpeg')
+    if not ffmpeg:
         log.error("Program `ffmpeg` not found; cannot make animation")
         return False
 
     # make frames folder (safe if it already exists)
     framesdir = os.path.join(output_dir, 'plots', 'anim_frames')
-    if os.path.isdir(framesdir):
-        rmtree(framesdir)
+    safe_rm(framesdir)
     os.makedirs(framesdir)
 
     # Work out downsampling factor
     niters = len(hf_all)
     log.info(f'Found dataframe with {niters} iterations')
-    ds_factor = int(max(1, np.floor(niters / nframes)))
-    log.info(f'Downsampling iterations by a factor of {ds_factor}')
 
     # For each index...
-    idxs = range(0, niters, ds_factor)
-    nframes = len(idxs)
+    target_times = np.linspace(0,np.amax(hf_all["Time"]),nframes)
+    idxs = [np.argmin(np.abs(t-hf_all["Time"].values)) for t in target_times]
     fps = int(max(1, round(nframes / duration)))
+    log.info(f'Will make {nframes} frames')
     for i, idx in enumerate(idxs):
         idx = max(0, min(idx, niters - 1))
 
-        print(f'Plotting iteration {idx:5d} (frame {i + 1} / {nframes})')
+        log.info(f'Plotting iteration {idx:<5d} (frame {i + 1:3d} / {nframes:<3d})')
 
+        # plot the frame
         fpath = plot_visual(hf_all, output_dir, plot_format=frame_fmt, idx=idx)
-
         if not fpath:
             return False
 
+        # move frame to subfolder
         copyfile(fpath, os.path.join(framesdir, f'{idx:05d}.{frame_fmt}'))
+        safe_rm(fpath)
 
-    # Make animation
+    # Path to animation video
     out_video = os.path.join(output_dir, 'plots', f'anim_visual.{video_fmt}')
+    safe_rm(out_video)
 
     # ffmpeg input pattern: frames named 0.<ext>, 1.<ext>, ...
     input_pattern = os.path.join(framesdir, f'*.{frame_fmt}')
 
+    # Command for subprocess
     cmd = [
-        'ffmpeg',
+        ffmpeg,
         '-y',
         f'-framerate {fps:d}',
         '-pattern_type glob',
@@ -386,13 +390,25 @@ def anim_visual(
         '-pix_fmt yuv420p',
         f' {out_video}',
     ]
-
     cmd = ' '.join(cmd)
-    print(f'Running ffmpeg to assemble video: {cmd}')
+
+    # Wrapper for logging
+    def _log_subprocess_output(pipe):
+        for line in iter(pipe.readline, b''): # b'\n'-separated lines
+            log.debug(str(line.decode("utf-8")).replace('\n','').strip())
+
+    # Run ffmpeg to make animation
+    log.info(f'Running ffmpeg to assemble video: {cmd}')
     try:
-        ret = call([cmd], shell=True, stdout=None)
+        process = Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=True)
+        with process.stdout:
+            _log_subprocess_output(process.stdout)
+        ret = process.wait()
         if ret == 0:
-            log.info(f'Wrote animation to {out_video}')
+            if os.path.isfile(out_video):
+                log.info(f'Wrote animation to {out_video}')
+            else:
+                log.error("ffmpeg exited successfully but animation file not found")
         else:
             log.error(f'ffmpeg returned non-zero exit code: {ret}')
             return False
@@ -404,6 +420,9 @@ def anim_visual(
     except Exception as e:
         log.error(f'Error running ffmpeg: {e}')
         return False
+
+    # Remove frames directory
+    safe_rm(framesdir)
 
     return True
 
