@@ -1,5 +1,7 @@
 # Bibliography
 
+For a full list of papers that use PROTEUS, see the [PROTEUS bibliography on SciX](https://scixplorer.org/public-libraries/EVAJ1UgWTCy2Z7TRoSmjtQ).
+
 **Works describing and further developing PROTEUS**
 
 * Nicholls et al. (2025a, _Monthly Notices of the Royal Astronomical Society_) –– [doi:10.1093/mnras/stae2772](https://doi.org/10.1093/mnras/stae2772) –– [arXiv PDF](https://arxiv.org/pdf/2412.11987)

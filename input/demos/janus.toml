@@ -1,0 +1,133 @@
+# PROTEUS configuration file (version 2.0)
+# JANUS atmosphere demo config
+version = "2.0"
+
+[params]
+    [params.out]
+        path        = "janus"
+        logging     = "DEBUG"
+        plot_mod    = 0
+        write_mod   = 400
+        archive_mod = 'none'
+
+    [params.dt]
+        minimum      = 1e2
+        maximum      = 3e7
+        initial      = 1e2
+        starspec     = 1e9
+        starinst     = 1e1
+        method       = "adaptive"
+
+        [params.dt.adaptive]
+            atol         = 0.02
+            rtol         = 0.10
+
+    [params.stop]
+        [params.stop.time]
+            enabled = true
+            minimum = 1.0e3
+            maximum = 1e9
+
+        [params.stop.solid]
+            enabled  = false
+            phi_crit = 0.005
+
+        [params.stop.radeqm]
+            enabled = false
+            atol    = 0.2
+            rtol    = 1e-3
+
+        [params.stop.escape]
+            enabled   = false
+            p_stop    = 1.0
+
+[star]
+    mass    = 1.0
+    age_ini = 0.100
+    module  = "dummy"
+    [star.dummy]
+        radius  = 1.0
+        Teff    = 5772.0
+
+[orbit]
+    semimajoraxis   = 0.5
+    eccentricity    = 0.1
+    zenith_angle    = 48.19
+    s0_factor       = 0.375
+    axial_period    = 'none'
+
+    evolve  = false
+
+    satellite = false
+    semimajoraxis_sat = 300e6
+
+    module  = "dummy"
+
+    [orbit.dummy]
+        H_tide   = 1e-9
+        Phi_tide = "<0.3"
+        Imk2     = -1e5
+
+    [orbit.lovepy]
+        visc_thresh = 1e9
+
+[struct]
+    mass_tot     = 1.0
+    corefrac     = 0.55
+    core_density = 10738.33
+    core_heatcap = 880.0
+
+[atmos_clim]
+    surf_state      = "fixed"
+    albedo_pl       = 0.1
+    module          = "janus"
+    rayleigh        = false
+
+    [atmos_clim.janus]
+        p_top           = 1.0e-4
+        p_obs           = 1e-3
+        spectral_group  = "Frostflow"
+        spectral_bands  = 16
+        F_atm_bc        = 0
+        num_levels      = 30
+        tropopause      = "skin"
+        overlap_method  = "ro"
+
+    [atmos_clim.dummy]
+        gamma           = 0.7
+
+[escape]
+    reservoir = "outgas"
+    module = "dummy"
+    [escape.dummy]
+        rate        = 1e6
+
+[interior]
+    radiogenic_heat = false
+    tidal_heat      = false
+    module = "dummy"
+    [interior.dummy]
+        ini_tmagma      = 3500.0
+
+[outgas]
+    fO2_shift_IW    = 2
+    module = "calliope"
+
+    [outgas.calliope]
+        include_NH3 = false
+
+[delivery]
+    initial = 'elements'
+    module = "none"
+
+    [delivery.elements]
+        H_ppmw      = 3e3
+        CH_ratio    = 1.0
+        N_ppmw      = 0.0
+        SH_ratio    = 1.0
+
+[observe]
+    synthesis = "none"
+
+[atmos_chem]
+    module = "none"

@@ -1,46 +1,88 @@
 site_name: PROTEUS
-site_url: https://fwl-proteus.readthedocs.io
+site_url: https://proteus-framework.org/PROTEUS/
 repo_url: https://github.com/FormingWorlds/PROTEUS
 repo_name: GitHub
 
 nav:
   - Home: index.md
-  - Model description: model.md
-  - Installation: installation.md
-  - Using PROTEUS: usage.md
-  - Configuration: config.md
-  - Contributing: CONTRIBUTING.md
-  - Bibliography: bibliography.md
-  - Troubleshooting: troubleshooting.md
-  - Bayesian inference: inference.md
-  - Reference data: data.md
-  - Kapteyn cluster: kapteyn_cluster_guide.md
-  - Snellius cluster: snellius_cluster_guide.md
-  - Habrok cluster: habrok_cluster_guide.md
-  - Contact: contact.md
-  - Code of Conduct: CODE_OF_CONDUCT.md
-  - Funding: funding.md
-  - Source code: https://github.com/FormingWorlds/PROTEUS
-  - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
-  - 🔗 MORS:  https://fwl-mors.readthedocs.io/
-  - 🔗 JANUS: https://fwl-janus.readthedocs.io/
-  - 🔗 ZEPHYRUS: https://github.com/FormingWorlds/ZEPHYRUS/
-  - 🔗 CALLIOPE: https://fwl-calliope.readthedocs.io/
-  - 🔗 AGNI: https://h-nicholls.space/AGNI/
-  - 🔗 LovePy: https://github.com/nichollsh/lovepy
-  - 🔗 VULCAN: https://github.com/FormingWorlds/VULCAN
-  - 🔗 Zalmoxis: https://github.com/FormingWorlds/Zalmoxis
-  - 🔗 Aragog: https://github.com/FormingWorlds/aragog
-  - 🔗 SPIDER: https://github.com/djbower/spider
+  - Getting Started:
+    - Model description: model.md
+    - Installation: installation.md
+    - Using PROTEUS: usage.md
+    - Configuration: config.md
+    - Troubleshooting: troubleshooting.md
+  - Platform Guides:
+    - Local machine: local_machine_guide.md
+    - Kapteyn cluster: kapteyn_cluster_guide.md
+    - Snellius cluster: snellius_cluster_guide.md
+    - Habrok cluster: habrok_cluster_guide.md
+  - Advanced:
+    - Bayesian inference: inference.md
+    - Reference data: data.md
+    - Bibliography: bibliography.md
+  - Developer Guide:
+    - Contributing: CONTRIBUTING.md
+    - Testing infrastructure: test_infrastructure.md
+    - Test categorization: test_categorization.md
+    - Test building: test_building.md
+    - AI-assisted development: ai_usage.md
+    - Docker CI architecture: docker_ci_architecture.md
+  - Community:
+    - Developers: https://proteus-framework.org/people
+    - Contact: contact.md
+    - Code of Conduct: CODE_OF_CONDUCT.md
+    - Funding: funding.md
+  - Source & Issues:
+    - Source code: https://github.com/FormingWorlds/PROTEUS
+    - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
+  - Submodule Docs:
+    - 🔗 MORS:  https://proteus-framework.org/MORS/
+    - 🔗 JANUS: https://proteus-framework.org/JANUS/
+    - 🔗 ZEPHYRUS: https://proteus-framework.org/ZEPHYRUS/
+    - 🔗 CALLIOPE: https://proteus-framework.org/CALLIOPE/
+    - 🔗 AGNI: https://www.h-nicholls.space/AGNI/
+    - 🔗 Obliqua: https://proteus-framework.org/Obliqua/
+    - 🔗 VULCAN: https://proteus-framework.org/VULCAN/
+    - 🔗 Zalmoxis: https://proteus-framework.org/Zalmoxis/
+    - 🔗 Aragog: https://proteus-framework.org/aragog/
+    - 🔗 SPIDER: https://proteus-framework.org/SPIDER/
+    - 🔗 Atmodeller: https://atmodeller.readthedocs.io/en/latest/
+    - 🔗 FastChem: https://newstrangeworlds.github.io/FastChem/
+    - 🔗 PLATON: https://platon.readthedocs.io/en/latest/
 
 theme:
   name: material
-  palette:
-    primary: black
-    accent: deep orange
+  custom_dir: docs/overrides
+  features:
+  - content.code.copy
+  - content.tabs.link
+  - navigation.expand
 
-extra_css:
-  - stylesheets/extra.css
+  # Default assets (used unless overridden per palette below)
+  favicon: assets/PROTEUS_black_on_white_logo_only.png
+  logo: assets/PROTEUS_white_on_black.png
+
+  palette:
+    # Auto: follow system preference (and show a toggle)
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: deep orange
+      favicon: assets/PROTEUS_black_on_white_logo_only.png
+      logo: assets/PROTEUS_white_on_black.png
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      favicon: assets/PROTEUS_white_on_black_logo_only.png
+      logo: assets/PROTEUS_white_on_black.png
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
 
 markdown_extensions:
   - admonition
@@ -50,9 +92,11 @@ markdown_extensions:
   - pymdownx.extra
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
 
 extra_javascript:
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 plugins:
@@ -88,6 +132,7 @@ plugins:
 use_directory_urls: false
 
 watch:
+  - src/
   - docs/
   - README.md
   - CONTRIBUTING.md

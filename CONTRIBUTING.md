@@ -114,7 +114,7 @@ pre-commit install
 
 PROTEUS uses [pytest](https://docs.pytest.org/en/latest/) to run the tests on the code. Tests are important for ensuring that the code behaves as expected, and for finding bugs/errors as soon as they arise. You can read more about software testing in general [here](https://www.geeksforgeeks.org/software-testing/software-testing-basics/).
 
-Our tests are run automatically via a Github Action: [tests](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/tests.yaml). You can also run the tests for yourself using the command:
+Our tests are run automatically via a Github Action: [CI - Fast PR Checks](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/ci-pr-checks.yml). You can also run the tests for yourself using the command:
 
 ```console
 pytest
@@ -154,7 +154,7 @@ This will generate the markdown files and serve them on a local server. You can 
 You can find the documentation source in the [docs](https://github.com/FormingWorlds/PROTEUS/tree/main/docs) directory.
 If you are adding new pages, make sure to update the listing in the [`mkdocs.yml`](https://github.com/FormingWorlds/PROTEUS/blob/main/mkdocs.yml) under the `nav` entry.
 
-The documentation is hosted on [readthedocs](https://readthedocs.io/projects/fwl-proteus).
+The documentation is hosted on the [PROTEUS framework website](https://proteus-framework.org/proteus/).
 
 ### Making a release
 
