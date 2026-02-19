@@ -114,9 +114,9 @@ def plot_visual(
     fig, ax = plt.subplots(1, 1, figsize=(4 * scale, 4 * scale))
 
     # read fluxes
-    sw_arr = np.array(ds['ba_U_SW'][:, :])
-    lw_arr = np.array(ds['ba_U_LW'][:, :])
-    st_arr = np.array(ds['ba_D_SW'][0, :])
+    sw_arr = np.array(ds['ba_U_SW'][:, 1:])
+    lw_arr = np.array(ds['ba_U_LW'][:, 1:])
+    st_arr = np.array(ds['ba_D_SW'][0, 1:])
 
     # reversed?
     reversed = bool(ds['bandmin'][1] < ds['bandmin'][0])
@@ -129,13 +129,15 @@ def plot_visual(
     else:
         bandmin = np.array(ds['bandmin'][:])
         bandmax = np.array(ds['bandmax'][:])
+    bandmin = bandmin[:-1]
+    bandmax = bandmax[:-1]
 
     # get spectrum
-    wl = 0.5 * (bandmin + bandmax) * 1e9
-    wd = (bandmax - bandmin) * 1e9
-    st = st_arr
-    sw = sw_arr
-    lw = lw_arr
+    wl = 0.5 * (bandmin + bandmax) * 1e9  # nm
+    wd = (bandmax - bandmin) * 1e9  # nm
+    st = st_arr / wd
+    sw = sw_arr / wd
+    lw = lw_arr / wd
 
     # radii
     r_arr = ds['rl'] / obs
@@ -154,17 +156,17 @@ def plot_visual(
     # plot surface of planet
     fl_srf = lw[-1, :] + sw[-1, :]
     col = cs_srgb.spec_to_rgb(interp_spec(wl, fl_srf))
-    srf = patches.Circle((0, 0), radius=r_min, fc=col, zorder=n_lev + 1, alpha=0.2)
+    srf = patches.Circle((0, 0), radius=r_min, fc=col, zorder=n_lev + 1, alpha=0.9)
     ax.add_patch(srf)
 
     # level opacities
-    gamma = 0.12
+    gamma = 0.08
     a_arr = []
     for i, p in enumerate(p_arr):
         alp = p / p_max
         a_arr.append(alp**gamma)
     a_arr /= sum(a_arr)
-    a_arr *= 0.99
+    a_arr *= 0.90
 
     # plot outer levels
     for i in range(n_lev - 2, -1, -1):
@@ -259,38 +261,27 @@ def plot_visual(
     axr = ax.inset_axes((0.07, 0.04, 0.39, 0.21))
     axr.set_alpha(0.0)
     axr.set_facecolor((0, 0, 0, 0))
+    axr.set_yscale('log')
     #    crop to wavelength region
-    imax = np.argmin(np.abs(wl - 6e3))
-    fl = lw[0, :imax] + sw[0, :imax]
-    wl = wl[:imax]
-    wd = wd[:imax]
-    fl = fl / wd
-
-    #    flux units
-    if np.amax(fl) < 1:
-        fl *= 1e3
-        un = 'mW'
-    elif np.amax(fl) > 1e3:
-        fl /= 1e3
-        un = 'kw'
-    else:
-        un = 'W'
+    fl = lw[0, :] + sw[0, :]
+    wl = wl[:]  # nm
+    wd = wd[:]  # nm
 
     #   plot and decorate
-    axr.bar(wl, fl, width=wd, color='w', lw=1.3)
+    axr.step(wl / 1e3, fl, where='mid', color='w', lw=1.3)
     axr.spines[['bottom', 'left']].set_color('w')
     axr.spines[['right', 'top']].set_visible(False)
     axr.tick_params(axis='both', colors='w', labelsize=8)
-    axr.set_xlabel(r'$/$nm', color='w', fontsize=8)
-    axr.xaxis.set_label_coords(1.12, -0.08)
-    axr.set_ylabel(r'%s/m$^2$/nm' % un, color='w', fontsize=8, rotation=0)
-    axr.yaxis.set_label_coords(0.01, 1.02)
 
-    axr.set_xlim(left=0)
-    axr.xaxis.set_major_locator(ticker.MultipleLocator(1000))
-    axr.xaxis.set_minor_locator(ticker.MultipleLocator(200))
-    axr.set_ylim(bottom=0)
-    axr.yaxis.set_major_formatter(ticker.FormatStrFormatter('%g'))
+    axr.set_xlabel(r'$/\mu$m', color='w', fontsize=8)
+    axr.xaxis.set_label_coords(1.12, -0.08)
+    axr.set_xlim(left=0.3, right=40)
+    axr.set_xscale('log')
+    axr.xaxis.set_major_formatter(ticker.FormatStrFormatter('%g'))
+    axr.xaxis.set_minor_locator(ticker.LogLocator(numticks=1000))
+
+    axr.set_ylabel(r'W/m$^2$/nm', color='w', fontsize=8, rotation=0)
+    axr.yaxis.set_label_coords(0.01, 1.02)
 
     plt.close()
     plt.ioff()
@@ -316,7 +307,7 @@ def plot_visual_entry(handler: Proteus):
 
 
 def anim_visual(
-    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 10
+    hf_all: pd.DataFrame, output_dir: str, duration: float = 12.0, nframes: int = 80
 ):
     """Create an MP4 animation from visual frames.
 
@@ -364,7 +355,7 @@ def anim_visual(
     # For each index...
     target_times = np.linspace(0, np.amax(hf_all['Time']), nframes)
     idxs = [np.argmin(np.abs(t - hf_all['Time'].values)) for t in target_times]
-    fps = int(max(1, round(nframes / duration)))
+    fps = max(1, nframes / duration)
     log.info(f'Will make {nframes} frames')
     for i, idx in enumerate(idxs):
         idx = max(0, min(idx, niters - 1))
@@ -391,7 +382,7 @@ def anim_visual(
     cmd = [
         ffmpeg,
         '-y',
-        f'-framerate {fps:d}',
+        f'-framerate {fps:.2f}',
         '-pattern_type glob',
         f"-i '{input_pattern}'",
         f'-c:v {codec}',
