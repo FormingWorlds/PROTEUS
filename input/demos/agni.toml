@@ -6,11 +6,11 @@ version = "2.0"
         path        = "agni"
         logging     = "DEBUG"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
-        write_mod   = 400      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 100      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'
 
     [params.dt]
-        minimum      = 1e2    # yr, minimum time-step
+        minimum      = 1e3    # yr, minimum time-step
         maximum      = 3e7    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -18,8 +18,8 @@ version = "2.0"
         method       = "adaptive"  # proportional | adaptive | maximum
 
         [params.dt.adaptive]
-            atol         = 0.02   # Step size atol
-            rtol         = 0.10   # Step size rtol
+            atol         = 0.04   # Step size atol
+            rtol         = 0.11   # Step size rtol
 
     [params.stop]
         # required time constraints

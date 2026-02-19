@@ -3,7 +3,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
-from shutil import copyfile, rmtree
+from shutil import copyfile, rmtree, which
 from subprocess import call
 from typing import TYPE_CHECKING
 
@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import patches, ticker
-from shutil import copyfile, rmtree
 
 from subprocess import call
 
@@ -332,20 +331,27 @@ def anim_visual(
         Returns False on failure
     """
 
+    # Animation options
+    frame_fmt = 'jpg'
+    video_fmt = 'mp4'
+    codec = 'mpeg4'
+
+    # check ffmpeg is installed
+    if not which("ffmpeg"):
+        log.error("Program `ffmpeg` not found; cannot make animation")
+        return False
+
     # make frames folder (safe if it already exists)
     framesdir = os.path.join(output_dir, 'plots', 'anim_frames')
     if os.path.isdir(framesdir):
         rmtree(framesdir)
     os.makedirs(framesdir)
 
-    # Must be raster format
-    plot_fmt = 'png'
-
     # Work out downsampling factor
     niters = len(hf_all)
-    print(f'Found dataframe with {niters} iterations')
+    log.info(f'Found dataframe with {niters} iterations')
     ds_factor = int(max(1, np.floor(niters / nframes)))
-    print(f'Downsampling iterations by a factor of {ds_factor}')
+    log.info(f'Downsampling iterations by a factor of {ds_factor}')
 
     # For each index...
     idxs = range(0, niters, ds_factor)
@@ -356,18 +362,18 @@ def anim_visual(
 
         print(f'Plotting iteration {idx:5d} (frame {i + 1} / {nframes})')
 
-        fpath = plot_visual(hf_all, output_dir, plot_format=plot_fmt, idx=idx)
+        fpath = plot_visual(hf_all, output_dir, plot_format=frame_fmt, idx=idx)
 
         if not fpath:
             return False
 
-        copyfile(fpath, os.path.join(framesdir, f'{idx:05d}.{plot_fmt}'))
+        copyfile(fpath, os.path.join(framesdir, f'{idx:05d}.{frame_fmt}'))
 
     # Make animation
-    out_video = os.path.join(output_dir, 'plots', 'anim_visual.mp4')
+    out_video = os.path.join(output_dir, 'plots', f'anim_visual.{video_fmt}')
 
     # ffmpeg input pattern: frames named 0.<ext>, 1.<ext>, ...
-    input_pattern = os.path.join(framesdir, f'*.{plot_fmt}')
+    input_pattern = os.path.join(framesdir, f'*.{frame_fmt}')
 
     cmd = [
         'ffmpeg',
@@ -375,7 +381,7 @@ def anim_visual(
         f'-framerate {fps:d}',
         '-pattern_type glob',
         f"-i '{input_pattern}'",
-        '-c:v libx264',
+        f'-c:v {codec}',
         "-vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2'",
         '-pix_fmt yuv420p',
         f' {out_video}',
@@ -389,10 +395,15 @@ def anim_visual(
             log.info(f'Wrote animation to {out_video}')
         else:
             log.error(f'ffmpeg returned non-zero exit code: {ret}')
+            return False
+
     except FileNotFoundError:
-        log.error('ffmpeg not found on PATH; cannot assemble animation')
+        log.error('Program `ffmpeg` not found in PATH; cannot make animation')
+        return False
+
     except Exception as e:
         log.error(f'Error running ffmpeg: {e}')
+        return False
 
     return True
 
