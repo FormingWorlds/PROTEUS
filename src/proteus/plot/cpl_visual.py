@@ -3,8 +3,8 @@ from __future__ import annotations
 import glob
 import logging
 import os
-from shutil import copyfile, rmtree, which
-from subprocess import Popen, PIPE, STDOUT
+from shutil import copyfile, which
+from subprocess import PIPE, STDOUT, Popen
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -14,8 +14,8 @@ from matplotlib import patches, ticker
 
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
-from proteus.utils.visual import cs_srgb, interp_spec
 from proteus.utils.helper import safe_rm
+from proteus.utils.visual import cs_srgb, interp_spec
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -62,7 +62,16 @@ def plot_visual(
     log.info('Plot visual')
 
     # Check frame format
-    if not np.any([plot_format.endswith(ext) for ext in ("png","jpg","bmp",)]):
+    if not np.any(
+        [
+            plot_format.endswith(ext)
+            for ext in (
+                'png',
+                'jpg',
+                'bmp',
+            )
+        ]
+    ):
         log.error(f"Visualisation must use raster format; got '{plot_format}'")
         return False
 
@@ -307,7 +316,7 @@ def plot_visual_entry(handler: Proteus):
 
 
 def anim_visual(
-    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 10
+    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 100
 ):
     """Create an MP4 animation from visual frames.
 
@@ -340,7 +349,7 @@ def anim_visual(
     # check ffmpeg is installed
     ffmpeg = which('ffmpeg')
     if not ffmpeg:
-        log.error("Program `ffmpeg` not found; cannot make animation")
+        log.error('Program `ffmpeg` not found; cannot make animation')
         return False
 
     # make frames folder (safe if it already exists)
@@ -353,8 +362,8 @@ def anim_visual(
     log.info(f'Found dataframe with {niters} iterations')
 
     # For each index...
-    target_times = np.linspace(0,np.amax(hf_all["Time"]),nframes)
-    idxs = [np.argmin(np.abs(t-hf_all["Time"].values)) for t in target_times]
+    target_times = np.linspace(0, np.amax(hf_all['Time']), nframes)
+    idxs = [np.argmin(np.abs(t - hf_all['Time'].values)) for t in target_times]
     fps = int(max(1, round(nframes / duration)))
     log.info(f'Will make {nframes} frames')
     for i, idx in enumerate(idxs):
@@ -394,8 +403,8 @@ def anim_visual(
 
     # Wrapper for logging
     def _log_subprocess_output(pipe):
-        for line in iter(pipe.readline, b''): # b'\n'-separated lines
-            log.debug(str(line.decode("utf-8")).replace('\n','').strip())
+        for line in iter(pipe.readline, b''):  # b'\n'-separated lines
+            log.debug(str(line.decode('utf-8')).replace('\n', '').strip())
 
     # Run ffmpeg to make animation
     log.info(f'Running ffmpeg to assemble video: {cmd}')
@@ -408,7 +417,7 @@ def anim_visual(
             if os.path.isfile(out_video):
                 log.info(f'Wrote animation to {out_video}')
             else:
-                log.error("ffmpeg exited successfully but animation file not found")
+                log.error('ffmpeg exited successfully but animation file not found')
         else:
             log.error(f'ffmpeg returned non-zero exit code: {ret}')
             return False
