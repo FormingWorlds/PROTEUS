@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import subprocess as sp
+import zipfile
 from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 from proteus.utils.helper import safe_rm
+from proteus.utils.phoenix_helper import phoenix_param
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -996,9 +998,68 @@ def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = Fals
 
     Used by `proteus.star.phoenix`. The current implementation downloads the
     PHOENIX bundle via the unified `download()` mechanism.
+
+    Downloads the FeH/alpha-specific PHOENIX zip bundle as a single file, then unzips it.
     """
     desc = f'PHOENIX stellar spectra (alpha={alpha:+0.1f}, [Fe/H]={FeH:+0.1f})'
-    return download(folder='PHOENIX', target='stellar_spectra', desc=desc, force=force)
+
+    feh_str = phoenix_param(FeH, kind="FeH")
+    alpha_str = phoenix_param(alpha, kind="alpha")
+
+    # Published zip name
+    zip_name = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
+
+    base_dir = GetFWLData() / "stellar_spectra" / "PHOENIX"
+    zip_path = base_dir / zip_name
+
+    # Where unpacked files are stored
+    grid_dir = base_dir / f"FeH{feh_str}_alpha{alpha_str}"
+
+    ok = download(
+        folder="PHOENIX",
+        target="stellar_spectra",
+        desc=desc,
+        force=force,
+        file=zip_name,
+    )
+    if not ok:
+        return False
+
+    if not zip_path.is_file():
+        matches = [p for p in base_dir.rglob(zip_name) if p.is_file()]
+        if not matches:
+            log.error(f"Downloaded PHOENIX bundle but cannot find zip on disk: {zip_name}")
+            return False
+        zip_path = matches[0]
+
+    # Skip if already there and no force (zip still removed below only if we unzip)
+    if not force and grid_dir.exists() and any(grid_dir.glob("LTE_T*_phoenixMedRes_R05000.txt")):
+        # If zip exists from a previous run, remove it
+        if zip_path.exists():
+            zip_path.unlink()
+        return True
+
+    if force and grid_dir.exists():
+        safe_rm(grid_dir)
+    grid_dir.mkdir(parents=True, exist_ok=True)
+
+    log.info(f"Unpacking PHOENIX zip: {zip_path.name} -> {grid_dir}")
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(grid_dir)
+
+    if not any(grid_dir.glob("LTE_T*_phoenixMedRes_R05000.txt")):
+        log.error(f"Extraction completed but LTE files not found where expected: {grid_dir}")
+        return False
+
+    # Remove extraction marker
+    marker = base_dir / f".extracted_{zip_path.stem}"
+    if marker.exists():
+        marker.unlink()
+
+    # Remove the zip after successful unpack
+    zip_path.unlink()
+
+    return True
 
 
 def download_interior_lookuptables(clean=False):
