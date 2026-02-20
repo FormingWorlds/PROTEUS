@@ -26,13 +26,7 @@
 6. `proteus install-all --export-env`
 
 !!! note "macOS: PETSc compilation on Apple Silicon"
-    If `proteus install-all` fails during the PETSc step on Apple Silicon (M1/M2/M3/Ultra), run the automated fix script:
-
-    ```console
-    ./tools/fix_petsc_compile.sh
-    ```
-
-    See the [Troubleshooting](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) page for details.
+    If `proteus install-all` fails during the PETSc step on Apple Silicon (M1/M2/M3/Ultra), see the [Troubleshooting](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) page.
 
 ## Before running PROTEUS
 

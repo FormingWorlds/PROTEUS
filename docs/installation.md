@@ -221,19 +221,11 @@ python -m pip install -e ZEPHYRUS/.
 
 === "macOS"
 
-    First try the standard script:
-
     ```console
     ./tools/get_petsc.sh
     ```
 
-    If compilation fails on Apple Silicon (M1/M2/M3/Ultra), run the fix script:
-
-    ```console
-    ./tools/fix_petsc_compile.sh
-    ```
-
-    See [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) for manual steps if needed.
+    The script automatically detects Apple Silicon vs Intel, uses Homebrew's MPI, and applies the necessary compiler/linker workarounds. If you encounter issues, see [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon).
 
 ## 11. Setup SPIDER (interior evolution model)
 
