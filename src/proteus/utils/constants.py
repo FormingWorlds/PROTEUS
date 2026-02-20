@@ -1,7 +1,8 @@
 # Physical, numerical, etc constants
 from __future__ import annotations
 
-# Astronomical constants
+# import config file from proteus to set the vapour species list
+
 L_sun = 3.828e26  # W, IAU definition
 R_sun = 6.957e8  # m
 R_sun_cm = 100 * R_sun  # cm
@@ -43,14 +44,15 @@ const_Nav = 6.02214076e23  # Avogadro's constant [mol-1]
 B_ein = 2.5
 
 # Supported gases
-vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
 vap_list = ['SiO', 'SiO2', 'MgO', 'FeO2']
-gas_list = vol_list + vap_list
+vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
+# vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
+# vap_list = ["SiO", "SiO2", "MgO", "FeO", "Na"]
+# gas_list = vol_list + vap_list
 
 # Supported elements
-element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na']
+element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
 
-# Masses of elements [kg mol-1], from https://iupac.qmul.ac.uk/AtWt/
 element_mmw = {
     'H': 1.008000000e-03,
     'He': 4.002000000e-03,
@@ -137,7 +139,6 @@ element_mmw = {
     'Pa': 2.310350000e-01,
     'U': 2.380280000e-01,
 }  # noqa
-
 ## Constant from Zephyrus
 ergcm2stoWm2 = 1e-3  # convert [erg s-1 cm-2] to [W m-2]
 s2yr = 1 / (3600 * 24 * 365)  # convert [seconds]      to [years]

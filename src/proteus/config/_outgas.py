@@ -88,6 +88,9 @@ class Outgas:
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
+    fastchempath: path to where the fastchem directory in the lavatmos directory is located
+    vaplist: list of gases which are not purely from volatile species and are to be included: needs to be specified only when
+        lavatmos is called, otherwise the default vaplist in constants.py module is used
     """
 
     fO2_shift_IW: float
@@ -98,3 +101,30 @@ class Outgas:
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
+
+    # LavAtmos / silicate coupling is opt-in: default to disabled.
+    silicates: bool = field(default=False)
+    converge_fO2: bool = field(default=False)
+    # Path to FastChem output directory used by LavAtmos; must be set when silicate coupling is enabled.
+    fastchempath: str = field(default='')
+    # Path to FastChem input directory used by LavAtmos; must be set when silicate coupling is enabled.
+    elementfile: str = field(default='')
+    # List of vapour species for LavAtmos; must be set when silicate coupling is enabled.
+    vaplist: list = field(factory=list)
+
+    def __attrs_post_init__(self) -> None:
+        """
+        Perform cross-field validation after initialization.
+
+        When silicate (LavAtmos) coupling is enabled via `silicates=True`,
+        ensure that `fastchempath` and `vaplist` are explicitly configured.
+        """
+        if self.silicates:
+            if not self.fastchempath:
+                raise ValueError(
+                    'Outgas.fastchempath must be set when silicate (LavAtmos) coupling is enabled.'
+                )
+            if not self.vaplist:
+                raise ValueError(
+                    'Outgas.vaplist must be set when silicate (LavAtmos) coupling is enabled.'
+                )

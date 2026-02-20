@@ -1,14 +1,26 @@
 # Shared code for outgassing wrapper
 from __future__ import annotations
 
-from proteus.utils.constants import element_list, gas_list
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from proteus.config import Config
+
+from proteus.utils.constants import element_list, vap_list, vol_list
+
+# from proteus.outgas.wrapper import get_gaslist
 
 
-def expected_keys():
+def expected_keys(config: Config):
     copy_keys = ['P_surf', 'M_atm', 'atm_kg_per_mol']
 
     # reservoirs
     res_list = ('atm', 'liquid', 'solid', 'total')
+
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
 
     # gases
     for s in gas_list:

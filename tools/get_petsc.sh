@@ -10,6 +10,8 @@ workpath=$(mkdir -p petsc && realpath petsc) #creating the folder to store the p
 # Set environment
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     export PETSC_ARCH=arch-linux-c-opt
+elif [[ "$OSTYPE" == "linux"* ]]; then
+	export PETSC_ARCH=arch-linux-c-opt
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     export PETSC_ARCH=arch-darwin-c-opt
 else

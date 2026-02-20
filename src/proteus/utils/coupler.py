@@ -19,9 +19,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
+from proteus.outgas.wrapper import get_gaslist
+from proteus.utils.constants import (
+    element_list,
+    secs_per_hour,
+    secs_per_minute,
+)
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
+
+# from proteus.outgas.wrapper import get_gaslist
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -516,13 +523,14 @@ def CreateLockFile(output_dir: str):
     return keepalive_file
 
 
-def GetHelpfileKeys():
+def GetHelpfileKeys(config: Config):
     """
     Variables to be held in the helpfile.
 
     All dimensional quantites should be stored in SI units, except those noted below.
     * Pressure is in units of [bar].
     * Time is in units of [years].
+
     """
 
     # fmt: off
@@ -600,9 +608,15 @@ def GetHelpfileKeys():
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # total surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
-    ]
 
-    # quantities for each gas, from outgassing
+        # Stellar
+        "M_star", "R_star", "age_star", # [kg], [m], [yr]
+        "T_star", # [K]
+        ]
+
+    gas_list=get_gaslist(config)
+
+    # gases from outgassing
     for s in gas_list:
         keys.append(s + '_mol_atm')     # number outgassed to atmosphere [mol]
         keys.append(s + '_mol_solid')   # number in solid mantle [mol]
@@ -647,54 +661,56 @@ def GetHelpfileKeys():
     # Simulation's computational variables
     keys.append('runtime')          # Simulation wall-clock runtime [s]
 
-    # fmt: on
+    keys.append("fO2_shift") #relative to IW buffer
+
     return keys
 
 
-def CreateHelpfileFromDict(d: dict):
+def CreateHelpfileFromDict(d: dict, config: Config):
     """
     Create helpfile to hold output variables.
     """
     log.debug('Creating new helpfile from dict')
-    return pd.DataFrame([d], columns=GetHelpfileKeys(), dtype=float)
+    return pd.DataFrame([d], columns=GetHelpfileKeys(config), dtype=float)
 
 
-def ZeroHelpfileRow():
+def ZeroHelpfileRow(config: Config):
     """
     Get a dictionary with same keys as helpfile but with values of zero
     """
     out = {}
-    for k in GetHelpfileKeys():
+    for k in GetHelpfileKeys(config):
         out[k] = 0.0
     return out
 
 
-def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
+def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict, config: Config):
     """
     Extend helpfile with new row of variables
+
     """
     log.debug('Extending helpfile with new row')
 
     # validate keys
-    missing_keys = set(GetHelpfileKeys()) - set(new_row.keys())
+    missing_keys = set(GetHelpfileKeys(config)) - set(new_row.keys())
     if len(missing_keys) > 0:
         raise Exception('There are mismatched keys in helpfile: %s' % missing_keys)
 
     # convert row to df
-    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
+    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(config), dtype=float)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True)
 
 
-def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
+def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame, config: Config):
     """
     Write helpfile to a CSV file
     """
     log.debug('Writing helpfile to CSV file')
 
     # check for invalid or missing keys
-    difference = set(GetHelpfileKeys()) - set(current_hf.keys())
+    difference = set(GetHelpfileKeys(config)) - set(current_hf.keys())
     if len(difference) > 0:
         raise Exception('There are mismatched keys in helpfile: ' + str(difference))
 
@@ -762,7 +778,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     from proteus.plot.cpl_sflux_cross import plot_sflux_cross
     from proteus.plot.cpl_spectra import plot_spectra
     from proteus.plot.cpl_structure import plot_structure
-    from proteus.plot.cpl_visual import plot_visual
+    #from proteus.plot.cpl_visual import plot_visual
 
     # Directories
     output_dir = dirs['output']
@@ -771,7 +787,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior.module == 'dummy'
-    agni = config.atmos_clim.module == 'agni'
+    #agni = config.atmos_clim.module == 'agni'
     spider = config.interior.module == 'spider'
     aragog = config.interior.module == 'aragog'
     observed = bool(config.observe.synthesis is not None)
@@ -880,8 +896,8 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
             )
 
         # Visualise planet and star
-        if agni:
-            plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
+        #if agni:
+            #plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all['Time']) >= 3:
