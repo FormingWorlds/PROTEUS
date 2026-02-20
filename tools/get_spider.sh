@@ -108,14 +108,20 @@ fi
 # -----------------------------------------------------------------------------
 current_step="Validating PETSc installation"
 
-# PETSc is expected at ./petsc/ relative to the current directory (the
-# PROTEUS root). The get_petsc.sh script installs it there.
-if [[ ! -d "petsc" ]]; then
-    echo "ERROR: petsc/ directory not found in $(pwd)."
+# Derive the repo root from this script's location (tools/get_spider.sh).
+# This avoids dependence on the caller's CWD — important when invoked by
+# data.py:get_spider() which does not set cwd.
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+repo_root="$(dirname "$script_dir")"
+
+# PETSc is expected at <repo_root>/petsc/.
+petsc_path="$repo_root/petsc"
+if [[ ! -d "$petsc_path" ]]; then
+    echo "ERROR: petsc/ directory not found at $petsc_path."
     echo "Run ./tools/get_petsc.sh first to install PETSc."
     exit 1
 fi
-PETSC_DIR=$(portable_realpath petsc)
+PETSC_DIR=$(portable_realpath "$petsc_path")
 
 # Verify PETSc was actually built (not just downloaded/configured).
 # The library name varies by platform:
