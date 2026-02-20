@@ -25,7 +25,7 @@ Mocking strategy:
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -36,7 +36,9 @@ import pytest
 mock_vulcan_package = MagicMock()
 mock_vulcan_module = MagicMock()
 mock_run_vulcan_offline = MagicMock()
+mock_run_vulcan_online = MagicMock()
 mock_vulcan_module.run_vulcan_offline = mock_run_vulcan_offline
+mock_vulcan_module.run_vulcan_online = mock_run_vulcan_online
 
 # Put mocks in sys.modules before any imports (persist throughout test execution)
 sys.modules['vulcan'] = mock_vulcan_package
@@ -175,6 +177,7 @@ def test_run_chemistry_vulcan():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
 
     hf_row = {'Time': 1000.0, 'P_surf': 100.0}
 
@@ -245,6 +248,7 @@ def test_run_chemistry_returns_dataframe():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
 
     hf_row = {'Time': 5000.0}
 
@@ -298,6 +302,7 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
     dirs = {'output': '/tmp/test', 'input': '/tmp/input'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
 
     # Realistic helpfile row from atmosphere calculation
     hf_row = {
@@ -355,6 +360,7 @@ def test_run_chemistry_preserves_config():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
     config.atmos_chem.vulcan.dt = 1000.0  # Custom timestep
     config.atmos_chem.vulcan.num_iter = 100  # Custom iterations
 
@@ -382,3 +388,110 @@ def test_run_chemistry_preserves_config():
 
         # Verify function completed without error
         # (Config verification skipped as mock may not be called if real module is imported)
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.run_vulcan_online')
+@patch('proteus.atmos_chem.vulcan.run_vulcan_offline')
+def test_run_chemistry_manually_mode(patched_offline, patched_online):
+    """
+    Test run_chemistry returns None when when='manually'.
+
+    Physics: In 'manually' mode, chemistry is skipped entirely. This allows
+    users to disable runtime chemistry while keeping module='vulcan' configured.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'manually'
+
+    hf_row = {'Time': 0.0}
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    assert result is None
+    patched_offline.assert_not_called()
+    patched_online.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.run_vulcan_online')
+@patch('proteus.atmos_chem.vulcan.run_vulcan_offline')
+def test_run_chemistry_offline_mode(patched_offline, patched_online, tmp_path):
+    """
+    Test run_chemistry calls run_vulcan_offline when when='offline'.
+
+    Physics: Offline mode runs VULCAN as a post-processing step on the final
+    atmospheric state, computing equilibrium chemistry after the simulation.
+    """
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
+
+    hf_row = {'Time': 1000.0}
+
+    # Create expected output file for read_result
+    offchem_dir = tmp_path / 'offchem'
+    offchem_dir.mkdir(parents=True, exist_ok=True)
+    csv_file = offchem_dir / 'vulcan.csv'
+    pd.DataFrame({'tmp': [185.0], 'p': [1.0], 'H2O': [8.9e-3]}).to_csv(
+        csv_file, sep='\t', index=False
+    )
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    patched_offline.assert_called_once_with(dirs, config, hf_row)
+    patched_online.assert_not_called()
+    assert isinstance(result, pd.DataFrame)
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.run_vulcan_online')
+@patch('proteus.atmos_chem.vulcan.run_vulcan_offline')
+def test_run_chemistry_online_mode(patched_offline, patched_online, tmp_path):
+    """
+    Test run_chemistry calls run_vulcan_online when when='online'.
+
+    Physics: Online mode runs VULCAN at every snapshot during simulation,
+    coupling atmospheric chemistry to the evolving thermal state.
+    """
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'online'
+
+    hf_row = {'Time': 500.0}
+
+    # Create expected output file for read_result
+    offchem_dir = tmp_path / 'offchem'
+    offchem_dir.mkdir(parents=True, exist_ok=True)
+    csv_file = offchem_dir / 'vulcan.csv'
+    pd.DataFrame({'tmp': [200.0], 'p': [5.0], 'CO2': [0.96]}).to_csv(
+        csv_file, sep='\t', index=False
+    )
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    patched_online.assert_called_once_with(dirs, config, hf_row)
+    patched_offline.assert_not_called()
+    assert isinstance(result, pd.DataFrame)
+
+
+@pytest.mark.unit
+def test_run_chemistry_invalid_when():
+    """
+    Test run_chemistry raises ValueError for invalid 'when' value.
+
+    Physics: Only 'manually', 'offline', and 'online' are valid chemistry
+    scheduling modes; anything else is a configuration error.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'invalid_value'
+
+    hf_row = {'Time': 0.0}
+
+    with pytest.raises(ValueError, match='Invalid atmos_chem.when value'):
+        run_chemistry(dirs, config, hf_row)

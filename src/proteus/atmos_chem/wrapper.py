@@ -36,45 +36,47 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     """
 
     log.info('Running atmospheric chemistry...')
+
+    # Which chemistry solver to use (currently only 'vulcan' is supported)
     module = config.atmos_chem.module
+
+    # When to run chemistry: 'manually' (skip), 'offline' (post-processing),
+    # or 'online' (every snapshot during simulation). Defaults to 'manually'
+    # for backwards compatibility with configs that lack the 'when' field.
     when = getattr(config.atmos_chem, 'when', 'manually')
 
+    # Guard: no module configured — nothing to do
     if not module or module == 'none':
         log.warning('Cannot run atmospheric chemistry, no module specified')
         return None
 
+    # Guard: only VULCAN is implemented as a chemistry solver
     if module != 'vulcan':
         raise ValueError(
             f"Invalid atmos_chem module: '{module}'. Currently only 'vulcan' is supported."
         )
 
+    # Lazy import to avoid loading VULCAN (heavy dependency) unless needed
     from proteus.atmos_chem.vulcan import (
         run_vulcan_offline,
         run_vulcan_online,
     )
 
+    # Dispatch based on scheduling mode:
+    #   'manually'  — user will invoke chemistry separately (e.g. via CLI)
+    #   'offline'   — run once after simulation ends, on the final state
+    #   'online'    — run at every snapshot during the main simulation loop
     if when == 'manually':
         log.debug("Atmospheric chemistry set to 'manually'; skipping")
         return None
-
     elif when == 'offline':
         log.debug('Running atmospheric chemistry in OFFLINE mode')
-    if not module:
-        # no chemistry
-        log.warning('Cannot run atmospheric chemistry, no module specified')
-        return None
-
-    elif module == 'vulcan':
-        log.debug('Using VULCAN kinetics model')
-        from proteus.atmos_chem.vulcan import run_vulcan_offline
-
         run_vulcan_offline(dirs, config, hf_row)
-        return read_result(dirs['output'], module)
-
     elif when == 'online':
         log.debug('Running atmospheric chemistry in ONLINE mode')
         run_vulcan_online(dirs, config, hf_row)
-        return read_result(dirs['output'], module)
     else:
-        raise ValueError(f'Invalid atmos_chem module: {module}')
+        raise ValueError(f"Invalid atmos_chem.when value: '{when}'")
+
+    # Read the CSV output written by VULCAN and return as a DataFrame
     return read_result(dirs['output'], module)
