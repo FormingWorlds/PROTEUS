@@ -614,20 +614,69 @@ def test_download_no_mapping_no_ids(
 
 
 @pytest.mark.unit
-@patch('proteus.utils.data.download')
-def test_download_phoenix(mock_download):
-    """Test PHOENIX stellar spectra download wrapper."""
+@patch("proteus.utils.data.zipfile.ZipFile")
+@patch("proteus.utils.data.download")
+def test_download_phoenix(mock_download, mock_zipfile, tmp_path, monkeypatch):
+    """Test PHOENIX stellar spectra download wrapper (single-file + unzip + cleanup)."""
+
     from proteus.utils.data import download_phoenix
+    from proteus.utils.phoenix_helper import phoenix_param
 
-    result = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    # Arrange inputs
+    FeH = 0.0
+    alpha = 0.0
+    feh_str = phoenix_param(FeH, kind="FeH")
+    alpha_str = phoenix_param(alpha, kind="alpha")
+    zip_name = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
 
+    base_dir = tmp_path / "stellar_spectra" / "PHOENIX"
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Make GetFWLData() return tmp_path
+    monkeypatch.setattr("proteus.utils.data.GetFWLData", lambda: tmp_path)
+
+    # Our function expects the zip to exist at base_dir/zip_name after download.
+    # The production code will check zip_path.is_file(), so create it.
+    zip_path = base_dir / zip_name
+    zip_path.write_bytes(b"dummy zip bytes")
+
+    # Simulate extracted LTE file presence by patching Path.glob used in:
+    # any(grid_dir.glob("LTE_T*_phoenixMedRes_R05000.txt"))
+    grid_dir = base_dir / f"FeH{feh_str}_alpha{alpha_str}"
+    grid_dir.mkdir(parents=True, exist_ok=True)
+    lte_file = grid_dir / "LTE_T05800_logg4.50_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt"
+    lte_file.write_text("dummy spectrum")
+
+    # Mock ZipFile context manager so no real unzip is attempted
+    zf = MagicMock()
+    mock_zipfile.return_value.__enter__.return_value = zf
+
+    # Make download() report success
+    mock_download.return_value = True
+
+    # Also create a marker to verify it gets removed
+    marker = base_dir / f".extracted_{zip_path.stem}"
+    marker.write_text("marker")
+
+    # Act
+    ok = download_phoenix(alpha=alpha, FeH=FeH, force=False)
+
+    # Assert: download() called with new single-file mode
     mock_download.assert_called_once_with(
-        folder='PHOENIX',
-        target='stellar_spectra',
-        desc='PHOENIX stellar spectra (alpha=+0.0, [Fe/H]=+0.0)',
+        folder="PHOENIX",
+        target="stellar_spectra",
+        desc="PHOENIX stellar spectra (alpha=+0.0, [Fe/H]=+0.0)",
         force=False,
+        file=zip_name,
     )
-    assert result == mock_download.return_value
+
+    assert ok is True
+
+    # Assert: marker removed (if present)
+    assert not marker.exists()
+
+    # Assert: zip removed after successful extraction path
+    assert not zip_path.exists()
 
 
 @pytest.mark.unit
