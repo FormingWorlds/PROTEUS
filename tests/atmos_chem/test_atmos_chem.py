@@ -118,6 +118,36 @@ def test_read_result_successful(tmp_path):
 
 
 @pytest.mark.unit
+def test_read_result_custom_filename(tmp_path):
+    """
+    Test read_result with explicit filename override (online mode per-snapshot files).
+
+    Physics: Online chemistry writes per-snapshot output files like vulcan_5000.csv.
+    The filename parameter allows reading these instead of the default vulcan.csv.
+    """
+    outdir = str(tmp_path / 'output')
+    offchem_dir = tmp_path / 'output' / 'offchem'
+    offchem_dir.mkdir(parents=True)
+
+    # Write per-snapshot file (online mode naming convention)
+    csv_file = offchem_dir / 'vulcan_5000.csv'
+    csv_content = (
+        'tmp\tp\tz\tH2O\tCO2\n300.0\t1.0\t5e4\t1e-3\t0.96\n400.0\t10.0\t3e4\t1e-3\t0.96\n'
+    )
+    csv_file.write_text(csv_content)
+
+    # Default filename (vulcan.csv) should NOT find the per-snapshot file
+    result_default = read_result(outdir, 'vulcan')
+    assert result_default is None
+
+    # Explicit filename should find the per-snapshot file
+    result_custom = read_result(outdir, 'vulcan', filename='vulcan_5000.csv')
+    assert isinstance(result_custom, pd.DataFrame)
+    assert len(result_custom) == 2
+    assert 'CO2' in result_custom.columns
+
+
+@pytest.mark.unit
 def test_read_result_preserves_whitespace_format(tmp_path):
     """
     Test read_result correctly parses whitespace-delimited CSV.
@@ -464,9 +494,10 @@ def test_run_chemistry_online_mode(patched_offline, patched_online, tmp_path):
     hf_row = {'Time': 500.0}
 
     # Create expected output file for read_result
+    # Online mode writes per-snapshot files: vulcan_{year}.csv
     offchem_dir = tmp_path / 'offchem'
     offchem_dir.mkdir(parents=True, exist_ok=True)
-    csv_file = offchem_dir / 'vulcan.csv'
+    csv_file = offchem_dir / 'vulcan_500.csv'
     pd.DataFrame({'tmp': [200.0], 'p': [5.0], 'CO2': [0.96]}).to_csv(
         csv_file, sep='\t', index=False
     )

@@ -66,6 +66,7 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     #   'manually'  — user will invoke chemistry separately (e.g. via CLI)
     #   'offline'   — run once after simulation ends, on the final state
     #   'online'    — run at every snapshot during the main simulation loop
+    filename = None  # default: read_result uses '{module}.csv'
     if when == 'manually':
         log.debug("Atmospheric chemistry set to 'manually'; skipping")
         return None
@@ -75,8 +76,10 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     elif when == 'online':
         log.debug('Running atmospheric chemistry in ONLINE mode')
         run_vulcan_online(dirs, config, hf_row)
+        # Online mode writes per-snapshot files (e.g. vulcan_5000.csv)
+        filename = f'vulcan_{int(hf_row["Time"])}.csv'
     else:
         raise ValueError(f"Invalid atmos_chem.when value: '{when}'")
 
     # Read the CSV output written by VULCAN and return as a DataFrame
-    return read_result(dirs['output'], module)
+    return read_result(dirs['output'], module, filename=filename)

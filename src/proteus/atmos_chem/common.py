@@ -9,9 +9,9 @@ import pandas as pd
 log = logging.getLogger('fwl.' + __name__)
 
 
-def read_result(outdir: str, module: str) -> pd.DataFrame:
+def read_result(outdir: str, module: str, filename: str | None = None) -> pd.DataFrame:
     """
-    Read offline chemistry model output file and return as DataFrame.
+    Read chemistry model output file and return as DataFrame.
 
     Parameters
     ----------
@@ -19,11 +19,14 @@ def read_result(outdir: str, module: str) -> pd.DataFrame:
         Path to output directory of PROTEUS run.
     module : str
         Name of the atmospheric chemistry module used.
+    filename : str | None
+        Optional CSV filename override. If None, defaults to '{module}.csv'.
+        Used by online mode to read per-snapshot files (e.g. 'vulcan_5000.csv').
 
     Returns
     ----------
     result : pd.DataFrame
-        DataFrame containing the results of the offline chemistry model.
+        DataFrame containing the results of the chemistry model.
     """
 
     # Module valid?
@@ -32,9 +35,11 @@ def read_result(outdir: str, module: str) -> pd.DataFrame:
         return None
 
     # Path to CSV file
-    csv_file = os.path.join(outdir, 'offchem', module + '.csv')
+    if filename is None:
+        filename = module + '.csv'
+    csv_file = os.path.join(outdir, 'offchem', filename)
     if not os.path.exists(csv_file):
-        log.warning(f"Could not read offline chemistry output: '{csv_file}'")
+        log.warning(f"Could not read chemistry output: '{csv_file}'")
         return None
 
     # Read into DF and return
