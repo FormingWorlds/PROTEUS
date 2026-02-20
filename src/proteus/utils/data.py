@@ -135,6 +135,109 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
     )
     return False
 
+def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> bool:
+    """
+    Download a specific file from a Zenodo record into specified folder
+
+    Inputs :
+        - zenodo_id : str
+            Zenodo record ID to download
+        - folder_dir : Path
+            Local directory where the Zenodo file will be downloaded
+        - record_path : str
+            Record-internal path/name of the file to download (passed to zenodo_get -g)
+
+    Returns :
+        - zenodo_ok : bool
+            Did the download/request complete successfully?
+    """
+    # Sanitize zenodo_id to prevent command injection
+    # Zenodo IDs should only contain digits
+    if not re.match(r'^[0-9]+$', zenodo_id):
+        log.error(f'Invalid Zenodo ID format: {zenodo_id}. Must contain only digits.')
+        return False
+
+    # Check if zenodo_get is available
+    try:
+        sp.run(['zenodo_get', '--version'], capture_output=True, check=True, timeout=10)
+    except (FileNotFoundError, sp.TimeoutExpired, sp.CalledProcessError) as e:
+        log.error(f'zenodo_get command not available or not working: {e}')
+        return False
+
+    out = os.path.join(GetFWLData(), 'zenodo_download.log')
+    log.debug(f'    zenodo_get, logging to {out}')
+
+    # Use exponential backoff for retries
+    for attempt in range(MAX_ATTEMPTS):
+        # remove folder
+        safe_rm(folder_dir)
+        folder_dir.mkdir(parents=True, exist_ok=True)
+
+        # try making request with timeout
+        try:
+            with open(out, 'w') as hdl:
+                # Use Python's subprocess timeout for robust timeout handling
+                # (zenodo_get's -t flag is not always respected by all versions)
+                proc = sp.run(
+                    ['zenodo_get', '-o', str(folder_dir), '-g', record_path, zenodo_id],
+                    stdout=hdl,
+                    stderr=sp.STDOUT,  # Combine stderr into stdout for better logging
+                    timeout=MAX_DLTIME,  # Python's timeout will kill the process if it hangs
+                    check=False,  # Don't raise on non-zero exit
+                )
+
+            # Check if command succeeded and folder has content
+            if proc.returncode == 0:
+                # Verify folder exists and has files
+                if folder_dir.exists():
+                    # Check if folder has any files (not just empty directory)
+                    files = list(folder_dir.rglob('*'))
+                    if files and any(f.is_file() for f in files):
+                        log.info(
+                            f'Successfully downloaded Zenodo record {zenodo_id} (file: {record_path})'
+                        )
+                        return True
+                    else:
+                        log.warning(
+                            f'Zenodo download completed but folder is empty (ID {zenodo_id}, file {record_path})'
+                        )
+                else:
+                    log.warning(
+                        f'Zenodo download completed but folder does not exist (ID {zenodo_id}, file {record_path})'
+                    )
+            else:
+                # Read error from log file for better diagnostics
+                error_msg = 'Unknown error'
+                try:
+                    with open(out, 'r') as f:
+                        error_lines = f.readlines()[-10:]  # Last 10 lines
+                        error_msg = ''.join(error_lines).strip()
+                except Exception:
+                    pass
+                log.warning(
+                    f'Failed to get data from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS}): '
+                    f'exit code {proc.returncode}. Error: {error_msg[:500]}'
+                )
+
+        except sp.TimeoutExpired:
+            log.warning(
+                f'zenodo_get timed out after {MAX_DLTIME:.1f}s (ID {zenodo_id}, '
+                f'attempt {attempt + 1}/{MAX_ATTEMPTS})'
+            )
+        except Exception as e:
+            log.warning(f'Unexpected error during Zenodo download (ID {zenodo_id}): {e}')
+
+        # Exponential backoff: wait longer between retries
+        if attempt < MAX_ATTEMPTS - 1:
+            wait_time = RETRY_WAIT * (2**attempt)  # Exponential backoff
+            log.debug(f'Waiting {wait_time:.1f}s before retry...')
+            sleep(wait_time)
+
+    # Return status indicating that file/folder is invalid, if failed
+    log.error(
+        f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts'
+    )
+    return False
 
 def md5(_fname):
     """Return the md5 hash of a file."""
