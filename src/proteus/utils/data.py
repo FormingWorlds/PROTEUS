@@ -137,6 +137,7 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path) -> bool:
     )
     return False
 
+
 def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> bool:
     """
     Download a specific file from a Zenodo record into specified folder
@@ -240,6 +241,7 @@ def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> 
         f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts'
     )
     return False
+
 
 def md5(_fname):
     """Return the md5 hash of a file."""
@@ -610,6 +612,7 @@ def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
         log.error(f'Error accessing OSF storage: {e}')
         raise
 
+
 def download_OSF_file(*, storage, files: list[str], data_dir: Path):
     """
     Download specific file(s) from OSF storage into data_dir.
@@ -811,13 +814,19 @@ def download(
                 # Ensure parent directories exist for file-mode expectations
                 (folder_dir / Path(file).parent).mkdir(parents=True, exist_ok=True)
 
-                if download_zenodo_file(zenodo_id=zenodo_id, folder_dir=folder_dir, record_path=file):
+                if download_zenodo_file(
+                    zenodo_id=zenodo_id, folder_dir=folder_dir, record_path=file
+                ):
                     # Confirm file exists somewhere under folder_dir.
                     if dest_path.is_file() and dest_path.stat().st_size > 0:
                         success = True
                     else:
                         # fallback: look for basename anywhere under folder_dir
-                        matches = [p for p in folder_dir.rglob(Path(file).name) if p.is_file() and p.stat().st_size > 0]
+                        matches = [
+                            p
+                            for p in folder_dir.rglob(Path(file).name)
+                            if p.is_file() and p.stat().st_size > 0
+                        ]
                         success = bool(matches)
                         if success and not dest_path.exists():
                             # leave it; caller can locate via rglob if record layout differs
@@ -855,7 +864,11 @@ def download(
                     success = True
                 else:
                     # basename fallback
-                    matches = [p for p in folder_dir.rglob(Path(file).name) if p.is_file() and p.stat().st_size > 0]
+                    matches = [
+                        p
+                        for p in folder_dir.rglob(Path(file).name)
+                        if p.is_file() and p.stat().st_size > 0
+                    ]
                     if matches:
                         log.info(f'Successfully downloaded {desc} from OSF (project {osf_id})')
                         success = True
@@ -1003,21 +1016,21 @@ def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = Fals
     """
     desc = f'PHOENIX stellar spectra (alpha={alpha:+0.1f}, [Fe/H]={FeH:+0.1f})'
 
-    feh_str = phoenix_param(FeH, kind="FeH")
-    alpha_str = phoenix_param(alpha, kind="alpha")
+    feh_str = phoenix_param(FeH, kind='FeH')
+    alpha_str = phoenix_param(alpha, kind='alpha')
 
     # Published zip name
-    zip_name = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
+    zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
 
-    base_dir = GetFWLData() / "stellar_spectra" / "PHOENIX"
+    base_dir = GetFWLData() / 'stellar_spectra' / 'PHOENIX'
     zip_path = base_dir / zip_name
 
     # Where unpacked files are stored
-    grid_dir = base_dir / f"FeH{feh_str}_alpha{alpha_str}"
+    grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
 
     ok = download(
-        folder="PHOENIX",
-        target="stellar_spectra",
+        folder='PHOENIX',
+        target='stellar_spectra',
         desc=desc,
         force=force,
         file=zip_name,
@@ -1028,12 +1041,16 @@ def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = Fals
     if not zip_path.is_file():
         matches = [p for p in base_dir.rglob(zip_name) if p.is_file()]
         if not matches:
-            log.error(f"Downloaded PHOENIX bundle but cannot find zip on disk: {zip_name}")
+            log.error(f'Downloaded PHOENIX bundle but cannot find zip on disk: {zip_name}')
             return False
         zip_path = matches[0]
 
     # Skip if already there and no force (zip still removed below only if we unzip)
-    if not force and grid_dir.exists() and any(grid_dir.glob("LTE_T*_phoenixMedRes_R05000.txt")):
+    if (
+        not force
+        and grid_dir.exists()
+        and any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt'))
+    ):
         # If zip exists from a previous run, remove it
         if zip_path.exists():
             zip_path.unlink()
@@ -1043,16 +1060,16 @@ def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = Fals
         safe_rm(grid_dir)
     grid_dir.mkdir(parents=True, exist_ok=True)
 
-    log.info(f"Unpacking PHOENIX zip: {zip_path.name} -> {grid_dir}")
-    with zipfile.ZipFile(zip_path, "r") as zf:
+    log.info(f'Unpacking PHOENIX zip: {zip_path.name} -> {grid_dir}')
+    with zipfile.ZipFile(zip_path, 'r') as zf:
         zf.extractall(grid_dir)
 
-    if not any(grid_dir.glob("LTE_T*_phoenixMedRes_R05000.txt")):
-        log.error(f"Extraction completed but LTE files not found where expected: {grid_dir}")
+    if not any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt')):
+        log.error(f'Extraction completed but LTE files not found where expected: {grid_dir}')
         return False
 
     # Remove extraction marker
-    marker = base_dir / f".extracted_{zip_path.stem}"
+    marker = base_dir / f'.extracted_{zip_path.stem}'
     if marker.exists():
         marker.unlink()
 
@@ -1060,6 +1077,7 @@ def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = Fals
     zip_path.unlink()
 
     return True
+
 
 def download_muscles(stars: str | list[str] | None = None, *, force: bool = False) -> bool:
     """
@@ -1080,19 +1098,19 @@ def download_muscles(stars: str | list[str] | None = None, *, force: bool = Fals
     bool
         True if requested downloads succeeded (all of them, when list provided).
     """
-    folder = "MUSCLES"
+    folder = 'MUSCLES'
     source_info = get_data_source_info(folder)
     if not source_info:
-        raise ValueError(f"No data source mapping found for folder: {folder}")
+        raise ValueError(f'No data source mapping found for folder: {folder}')
 
     # Old behavior: download everything
     if stars is None:
         return download(
             folder=folder,
-            target="stellar_spectra",
-            osf_id=source_info["osf_project"],
-            zenodo_id=source_info["zenodo_id"],
-            desc="MUSCLES stellar spectra catalogue",
+            target='stellar_spectra',
+            osf_id=source_info['osf_project'],
+            zenodo_id=source_info['zenodo_id'],
+            desc='MUSCLES stellar spectra catalogue',
             force=force,
         )
 
@@ -1103,23 +1121,24 @@ def download_muscles(stars: str | list[str] | None = None, *, force: bool = Fals
         stars_list = list(stars)
 
     def muscles_filename(star: str) -> str:
-        return f"{star}.txt"
+        return f'{star}.txt'
 
     ok_all = True
     for star in stars_list:
         f = muscles_filename(star)
         ok = download(
             folder=folder,
-            target="stellar_spectra",
-            osf_id=source_info["osf_project"],
-            zenodo_id=source_info["zenodo_id"],
-            desc=f"MUSCLES stellar spectrum ({star})",
+            target='stellar_spectra',
+            osf_id=source_info['osf_project'],
+            zenodo_id=source_info['zenodo_id'],
+            desc=f'MUSCLES stellar spectrum ({star})',
             force=force,
             file=f,  # uses single-file mode
         )
         ok_all = ok_all and ok
 
     return ok_all
+
 
 def download_interior_lookuptables(clean=False):
     """
