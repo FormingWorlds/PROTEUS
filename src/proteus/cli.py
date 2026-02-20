@@ -233,29 +233,27 @@ def muscles(star_name: str | None, download_all: bool):
     from .utils.data import download_muscles
 
     if download_all:
-        targets = STARS_ONLINE['muscles']
+        targets = STARS_ONLINE["muscles"]
     else:
         if not star_name:
-            raise click.ClickException('Provide --star NAME or use --all.')
+            raise click.ClickException("Provide --star NAME or use --all.")
         targets = [star_name]
 
     ok, failed = 0, []
 
     for s in targets:
-        click.echo(f'Downloading MUSCLES: {s} ...')
+        click.echo(f"Downloading MUSCLES: {s} ...")
         if download_muscles(s):
             ok += 1
         else:
             failed.append(s)
 
-    click.secho(f'Done. OK: {ok}/{len(targets)}', fg='green' if ok else 'red')
+    click.secho(f"Done. OK: {ok}/{len(targets)}", fg="green" if ok else "red")
 
     if failed:
-        # Don’t hard-fail if some succeeded
-        click.secho(f'Failed ({len(failed)}): {", ".join(failed)}', fg='yellow')
+        click.secho(f'Failed ({len(failed)}): {", ".join(failed)}', fg="yellow")
         if ok == 0:
-            raise click.ClickException('All MUSCLES downloads failed.')
-
+            raise click.ClickException("All MUSCLES downloads failed.")
 
 @click.command()
 @click.option('--feh', 'FeH', required=True, type=float, help='Metallicity [Fe/H].')
