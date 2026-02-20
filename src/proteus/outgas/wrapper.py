@@ -8,7 +8,7 @@ import numpy as np
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
-from proteus.outgas.lavatmos import run_lavatmos
+from proteus.outgas.lavatmos import run_lavatmos, run_lavatmos_in_loop
 from proteus.utils.constants import element_list, vap_list, vol_list
 
 if TYPE_CHECKING:
@@ -187,7 +187,7 @@ def lavatmos_calliope_loop(dirs: dict, config: Config, hf_row: dict):
             iteration += 1
             old_fO2shift = hf_row['fO2_shift']
 
-            run_lavatmos(config, hf_row)
+            run_lavatmos_in_loop(config, hf_row)
 
             delta_O = hf_row['O_kg_atm'] - O_atm  #added oxygen by lavatmos to atmosphere
 
@@ -215,3 +215,20 @@ def lavatmos_calliope_loop(dirs: dict, config: Config, hf_row: dict):
                 'the fO2_shift error threshold (final error = %.6f, threshold = %.6f)'
                 % (max_iterations, err, xerr)
             )
+
+def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
+    """function which runs lavatmos and calliope in a loop until they have converged.
+    This allows for a consistentt computation of melt outgassing and dissolution
+    Parameters
+    ----------
+        dirs : dict
+            Dictionary of directory paths
+        config : Config
+            Configuration object
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+    """
+
+    run_outgassing(dirs, config, hf_row)
+    if config.outgas.silicates:
+        run_lavatmos(config, hf_row)

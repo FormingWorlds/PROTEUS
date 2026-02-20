@@ -135,6 +135,7 @@ class Proteus:
             calc_target_elemental_inventories,
             check_desiccation,
             lavatmos_calliope_loop,
+            lavatmos_calliope_run,
             run_desiccated,
         )
 
@@ -468,7 +469,10 @@ class Proteus:
             # solve for atmosphere composition
             else:
                 # run_outgassing(self.directories, self.config, self.hf_row)
-                lavatmos_calliope_loop(self.directories, self.config, self.hf_row)
+                if self.config.outgas.converge_fO2 :
+                    lavatmos_calliope_loop(self.directories, self.config, self.hf_row)
+                else:
+                    lavatmos_calliope_run(self.directories, self.config, self.hf_row)
 
             # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)

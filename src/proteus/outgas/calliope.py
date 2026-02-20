@@ -47,7 +47,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     # Surface properties
     solvevol_inp['T_magma'] = hf_row['T_magma']
 
-    if 'fO2_shift' in hf_row.keys():
+    if config.outgas.converge_fO2 and 'fO2_shift' in hf_row.keys():
         solvevol_inp['fO2_shift_IW'] = hf_row['fO2_shift']
     else:
         solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
@@ -291,9 +291,12 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
 
     # convert masses to dict for calliope
     target = {}
-    for e in element_list:
-        if e != 'O':
-            target[e] = hf_row[e + '_kg_total']
+    #for e in element_list:
+        #if e != 'O':
+            #target[e] = hf_row[e + '_kg_total']
+    vol_elements=['H','C','N','S']
+    for e in vol_elements:
+        target[e] = hf_row[e + '_kg_total']
 
     log.debug('amount of available elements for calliope computations: %s', target)
     # construct guess for CALLIOPE
