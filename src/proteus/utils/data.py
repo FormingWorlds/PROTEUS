@@ -1061,6 +1061,65 @@ def download_phoenix(*, alpha: float = 0.0, FeH: float = 0.0, force: bool = Fals
 
     return True
 
+def download_muscles(stars: str | list[str] | None = None, *, force: bool = False) -> bool:
+    """
+    Specifically download MUSCLES stellar spectrum(s). Uses the unified `download()` mechanism.
+    Currently not called in the main codebase, but available for users who want to download specific MUSCLES spectra manually through the CLI.
+
+    Parameters
+    ----------
+    stars:
+        - None: download the whole MUSCLES catalogue (previous behaviour)
+        - str: download one star (e.g. "trappist-1")
+        - list[str]: download multiple stars
+    force:
+        Force re-download even if present.
+
+    Returns
+    -------
+    bool
+        True if requested downloads succeeded (all of them, when list provided).
+    """
+    folder = "MUSCLES"
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        raise ValueError(f"No data source mapping found for folder: {folder}")
+
+    # Old behavior: download everything
+    if stars is None:
+        return download(
+            folder=folder,
+            target="stellar_spectra",
+            osf_id=source_info["osf_project"],
+            zenodo_id=source_info["zenodo_id"],
+            desc="MUSCLES stellar spectra catalogue",
+            force=force,
+        )
+
+    # Normalize to list
+    if isinstance(stars, str):
+        stars_list = [stars]
+    else:
+        stars_list = list(stars)
+
+    def muscles_filename(star: str) -> str:
+        return f"{star}.txt"
+
+    ok_all = True
+    for star in stars_list:
+        f = muscles_filename(star)
+        ok = download(
+            folder=folder,
+            target="stellar_spectra",
+            osf_id=source_info["osf_project"],
+            zenodo_id=source_info["zenodo_id"],
+            desc=f"MUSCLES stellar spectrum ({star})",
+            force=force,
+            file=f,  # uses single-file mode
+        )
+        ok_all = ok_all and ok
+
+    return ok_all
 
 def download_interior_lookuptables(clean=False):
     """
