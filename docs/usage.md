@@ -56,7 +56,8 @@ all_options/
  ├─observe/
  │ └─files ending in .csv       <---- synthetic/simulated observations of the planet
  ├─offchem/
- │ └─vulcan.csv                 <---- atmospheric mixing ratios calculated with VULCAN
+ │ ├─vulcan.csv                 <---- atmospheric mixing ratios (offline mode)
+ │ └─vulcan_{year}.csv          <---- per-snapshot mixing ratios (online mode)
  ├─plots
  │ ├─plot_chem_atmosphere.png   <---- plot of atmospheric mixing ratios
  │ ├─plot_escape.png            <---- plot of volatile inventories over time
@@ -165,20 +166,55 @@ Retrieval methods efficiently sample a given parameter space in order to find th
 
 We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.md).
 
-## Postprocessing of results with 'offline' chemistry
+## Atmospheric chemistry with VULCAN
 
-PROTEUS includes an "offline" chemistry functionality, which uses results of a simulation
-as an input to the VULCAN chemical kinetics model, capturing the additional physics.
+PROTEUS can couple to the [VULCAN](https://github.com/FormingWorlds/VULCAN) chemical kinetics model to compute atmospheric composition. The `atmos_chem.when` configuration variable controls **when** chemistry is calculated. There are three modes:
 
-Access the offline chemistry via the command line interface:
+| Mode | `atmos_chem.when` | Description |
+|------|-------------------|-------------|
+| Manually | `"manually"` | Chemistry is skipped during simulation. Run it yourself afterwards via the CLI. |
+| Offline | `"offline"` | Chemistry runs once automatically after the simulation finishes, on the final atmospheric state. |
+| Online | `"online"` | Chemistry runs at every output snapshot during the simulation, coupled to the evolving atmosphere. |
+
+All three modes require `atmos_chem.module = "vulcan"` and the AGNI atmosphere module (`atmos_clim.module = "agni"`).
+
+### Manually mode (default)
+
+When `atmos_chem.when = "manually"` (the default), no chemistry is calculated during or after the simulation. You can run it yourself at any time using the CLI:
 
 ```console
 proteus offchem -c [cfgfile]
 ```
-This will run VULCAN as a subprocess. This command should not be used in batch processing.
 
-PROTEUS will perform this step automatically when the configuration variable
-`atmos_chem.when` is set to `"offline"`. If `atmos_chem.when` is set to `"online"`, the postprocessing occurs for every snapshot.
+This is useful when you want to experiment with different chemistry settings (e.g. network, photochemistry) without re-running the full simulation.
+
+### Offline mode
+
+When `atmos_chem.when = "offline"`, PROTEUS automatically runs VULCAN once after the main simulation loop completes. It uses the final atmospheric temperature-pressure profile and composition as input. Results are written to `offchem/vulcan.csv` in the output directory.
+
+This is the recommended mode for most use cases: it adds chemistry as a post-processing step with minimal overhead.
+
+### Online mode
+
+When `atmos_chem.when = "online"`, PROTEUS runs VULCAN at every output snapshot (controlled by `params.out.write_mod`) during the main simulation loop. This couples the chemistry to the evolving thermal state of the atmosphere.
+
+Key differences from offline mode:
+
+- **Per-snapshot output**: Each snapshot produces its own output file (`vulcan_{year}.csv`) rather than a single `vulcan.csv`.
+- **One-time network compilation**: The chemical reaction network is compiled only once on the first snapshot, then reused for subsequent snapshots.
+- **Skipped when desiccated**: If the planet loses its entire volatile inventory, online chemistry is skipped for subsequent snapshots.
+
+Online mode is more expensive but captures the time evolution of atmospheric chemistry alongside the thermal evolution.
+
+### Chemistry configuration
+
+The chemistry behaviour is further controlled by settings under `[atmos_chem]` and `[atmos_chem.vulcan]` in the configuration file. Key options include:
+
+- `atmos_chem.vulcan.network`: Chemical network to use (`"CHO"`, `"NCHO"`, or `"SNCHO"`)
+- `atmos_chem.photo_on`: Enable photochemistry
+- `atmos_chem.Kzz_on`: Enable eddy diffusion mixing
+
+See the [configuration reference](config.md) for the full list of options.
 
 ## Postprocessing of results with synthetic observations
 
