@@ -351,10 +351,7 @@ def test_plot_visual_entry_calls_plot_visual(tmp_path):
         plot_visual_entry(handler)
 
     mock_pv.assert_called_once()
-    call_args = mock_pv.call_args
-    assert (
-        call_args.kwargs.get('idx', call_args.args[2] if len(call_args.args) > 2 else -1) == -1
-    )
+    assert mock_pv.call_args.kwargs['idx'] == -1
 
 
 @pytest.mark.unit
