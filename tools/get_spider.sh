@@ -32,8 +32,54 @@
 set -e
 
 # -----------------------------------------------------------------------------
+# Error handling: report which step failed on any non-zero exit
+# -----------------------------------------------------------------------------
+current_step="initialising"
+on_error() {
+    echo ""
+    echo "========================================"
+    echo " ERROR: SPIDER installation failed"
+    echo ""
+    echo " Step that failed: $current_step"
+    echo " Command:          $BASH_COMMAND"
+    echo " Exit code:        $?"
+    echo ""
+    echo " Troubleshooting:"
+    case "$current_step" in
+        *"Cloning"*)
+            echo "   - Check your internet connection"
+            echo "   - Verify you can reach GitHub: git ls-remote https://github.com/FormingWorlds/SPIDER.git"
+            echo "   - If using SSH, check your SSH key: ssh -T git@github.com"
+            ;;
+        *"Building"*)
+            echo "   - Check the compiler output above for errors"
+            echo "   - Verify mpicc is working: mpicc --version"
+            echo "   - Verify PETSc is intact: ls \$PETSC_DIR/\$PETSC_ARCH/lib/libpetsc.*"
+            echo "   - On macOS: ensure SDKROOT is set (xcrun --show-sdk-path)"
+            echo "   - See PROTEUS docs/troubleshooting.md for platform-specific fixes"
+            ;;
+        *"Verif"*)
+            echo "   - The build completed without make errors but no binary was produced"
+            echo "   - This usually indicates a linker failure that was suppressed"
+            echo "   - Try rebuilding with verbose output: cd $workpath && make V=1"
+            ;;
+        *)
+            echo "   - See docs/troubleshooting.md for platform-specific advice"
+            ;;
+    esac
+    echo ""
+    echo " PETSc environment used:"
+    echo "   PETSC_DIR  = ${PETSC_DIR:-<not set>}"
+    echo "   PETSC_ARCH = ${PETSC_ARCH:-<not set>}"
+    echo "========================================"
+}
+trap on_error ERR
+
+# -----------------------------------------------------------------------------
 # 1. Detect platform and set PETSC_ARCH
 # -----------------------------------------------------------------------------
+current_step="Detecting platform"
+
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     PETSC_ARCH=arch-linux-c-opt
 elif [[ "$OSTYPE" == "darwin"* ]]; then
@@ -46,6 +92,8 @@ fi
 # -----------------------------------------------------------------------------
 # 2. Locate and validate PETSc installation
 # -----------------------------------------------------------------------------
+current_step="Validating PETSc installation"
+
 # PETSc is expected at ./petsc/ relative to the current directory (the
 # PROTEUS root). The get_petsc.sh script installs it there.
 if [[ ! -d "petsc" ]]; then
@@ -97,6 +145,8 @@ fi
 # -----------------------------------------------------------------------------
 # 4. Verify build tools are available
 # -----------------------------------------------------------------------------
+current_step="Verifying build tools"
+
 if ! command -v mpicc >/dev/null 2>&1; then
     echo "ERROR: mpicc not found. A C compiler with MPI support is required."
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -120,6 +170,8 @@ fi
 # -----------------------------------------------------------------------------
 # 5. Clone SPIDER from GitHub
 # -----------------------------------------------------------------------------
+current_step="Cloning SPIDER from GitHub"
+
 # Default install directory: ./SPIDER/ ; override via first argument.
 workpath="SPIDER"
 if [[ -n "$1" ]]; then
@@ -139,6 +191,8 @@ git clone https://github.com/FormingWorlds/SPIDER.git "$workpath"
 # -----------------------------------------------------------------------------
 # 6. Build SPIDER
 # -----------------------------------------------------------------------------
+current_step="Building SPIDER (make)"
+
 # Determine number of parallel jobs.
 # Uses nproc (Linux) or sysctl (macOS) to detect available CPU cores.
 if command -v nproc >/dev/null 2>&1; then
@@ -159,6 +213,8 @@ make -j "$njobs"
 # -----------------------------------------------------------------------------
 # 7. Verify the build produced the SPIDER binary
 # -----------------------------------------------------------------------------
+current_step="Verifying SPIDER binary"
+
 if [[ ! -x "spider" ]]; then
     echo "ERROR: SPIDER binary not found after build."
     echo "Check the build output above for compilation errors."

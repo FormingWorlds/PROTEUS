@@ -30,8 +30,59 @@
 set -e
 
 # -----------------------------------------------------------------------------
+# Error handling: report which step failed on any non-zero exit
+# -----------------------------------------------------------------------------
+current_step="initialising"
+on_error() {
+    echo ""
+    echo "========================================"
+    echo " ERROR: PETSc installation failed"
+    echo ""
+    echo " Step that failed: $current_step"
+    echo " Command:          $BASH_COMMAND"
+    echo " Exit code:        $?"
+    echo ""
+    echo " Troubleshooting:"
+    case "$current_step" in
+        *"Download"*)
+            echo "   - Check your internet connection"
+            echo "   - Verify the OSF URL is accessible: $url"
+            echo "   - Try downloading manually: curl -LsS $url > petsc.zip"
+            ;;
+        *"Decompress"*)
+            echo "   - The downloaded archive may be corrupted"
+            echo "   - Delete petsc/ and re-run this script"
+            ;;
+        *"Configure"*)
+            echo "   - Check petsc/configure.log for details"
+            echo "   - On macOS: ensure Xcode CLI tools are installed (xcode-select --install)"
+            echo "   - Verify MPI is installed (mpicc --version)"
+            echo "   - See PROTEUS docs/troubleshooting.md for platform-specific fixes"
+            ;;
+        *"Build"*)
+            echo "   - Check petsc/make.log for compiler errors"
+            echo "   - Ensure your C compiler is working (mpicc --version)"
+            echo "   - On macOS: verify SDKROOT is set (xcrun --show-sdk-path)"
+            ;;
+        *"Test"*)
+            echo "   - PETSc built but tests failed"
+            echo "   - Check petsc/make.log for details"
+            echo "   - On macOS: check /etc/hosts for localhost entry"
+            echo "     (see docs/troubleshooting.md: PETSc tests error)"
+            ;;
+        *)
+            echo "   - See docs/troubleshooting.md for platform-specific advice"
+            ;;
+    esac
+    echo "========================================"
+}
+trap on_error ERR
+
+# -----------------------------------------------------------------------------
 # 1. Detect platform and set PETSC_ARCH
 # -----------------------------------------------------------------------------
+current_step="Detecting platform"
+
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     export PETSC_ARCH=arch-linux-c-opt
 elif [[ "$OSTYPE" == "darwin"* ]]; then
@@ -44,6 +95,8 @@ fi
 # -----------------------------------------------------------------------------
 # 2. Set up working directory
 # -----------------------------------------------------------------------------
+current_step="Setting up working directory"
+
 # Default: ./petsc/ relative to current directory; override via first argument
 workpath=$(mkdir -p petsc && realpath petsc)
 
@@ -58,6 +111,8 @@ mkdir "$workpath"
 # -----------------------------------------------------------------------------
 # 3. Download PETSc 3.19.0 from OSF
 # -----------------------------------------------------------------------------
+current_step="Downloading PETSc archive from OSF"
+
 zipfile="$workpath/petsc.zip"
 url="https://osf.io/download/p5vxq/"
 echo "Downloading PETSc archive from OSF..."
@@ -65,6 +120,7 @@ echo "    $url -> $zipfile"
 sleep 1
 curl -LsS "$url" > "$zipfile"
 
+current_step="Decompressing PETSc archive"
 echo "Decompressing..."
 unzip -qq "$zipfile" -d "$workpath"
 rm "$zipfile"
@@ -72,7 +128,9 @@ rm "$zipfile"
 # -----------------------------------------------------------------------------
 # 4. Determine platform-specific configure flags
 # -----------------------------------------------------------------------------
-# These arrays collect optional flags that vary by platform.
+current_step="Determining platform-specific flags"
+
+# These variables collect optional flags that vary by platform.
 # Defaults assume a generic Linux system without system MPI or BLAS/LAPACK.
 mpi_flag="--download-mpich"
 blas_flag="--download-f2cblaslapack"
@@ -155,6 +213,8 @@ fi
 #                    errors in PETSc 3.19's CUDA/CUPM template headers)
 #   --download-sundials2 : required by SPIDER for ODE integration
 #   --COPTFLAGS   : optimization flags for the C compiler
+current_step="Configuring PETSc (./configure)"
+
 echo ""
 echo "Configuring PETSc..."
 echo "    MPI:  ${mpi_flag:-system}"
@@ -177,6 +237,8 @@ cd "$workpath"
 # -----------------------------------------------------------------------------
 # 6. Build PETSc
 # -----------------------------------------------------------------------------
+current_step="Building PETSc (make all)"
+
 echo ""
 echo "Building PETSc..."
 make PETSC_DIR="$PETSC_DIR" PETSC_ARCH="$PETSC_ARCH" all
@@ -184,6 +246,8 @@ make PETSC_DIR="$PETSC_DIR" PETSC_ARCH="$PETSC_ARCH" all
 # -----------------------------------------------------------------------------
 # 7. Run PETSc self-tests
 # -----------------------------------------------------------------------------
+current_step="Testing PETSc (make check)"
+
 echo ""
 echo "Testing PETSc..."
 make PETSC_DIR="$PETSC_DIR" PETSC_ARCH="$PETSC_ARCH" check
