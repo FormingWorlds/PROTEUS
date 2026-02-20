@@ -251,7 +251,6 @@ def muscles(star_name: str | None, download_all: bool):
     click.secho(f'Done. OK: {ok}/{len(targets)}', fg='green' if ok else 'red')
 
     if failed:
-        # Don’t hard-fail if some succeeded
         click.secho(f'Failed ({len(failed)}): {", ".join(failed)}', fg='yellow')
         if ok == 0:
             raise click.ClickException('All MUSCLES downloads failed.')
