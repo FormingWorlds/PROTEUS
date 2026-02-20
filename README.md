@@ -19,7 +19,7 @@
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg">
   </a>
   <a href="https://codecov.io/gh/FormingWorlds/PROTEUS">
-    <img src="https://codecov.io/gh/FormingWorlds/PROTEUS/graph/badge.svg">
+    <img src="https://codecov.io/gh/FormingWorlds/PROTEUS/branch/main/graph/badge.svg">
   </a>
   <a href="https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2024JE008576"><img src="https://img.shields.io/badge/DOI-10.1029%2F2024JE008576-blue"></a>
 </p>
