@@ -35,10 +35,8 @@ import pytest
 # We need to keep the mock in sys.modules throughout the test execution
 mock_vulcan_package = MagicMock()
 mock_vulcan_module = MagicMock()
-mock_run_vulcan_offline = MagicMock()
-mock_run_vulcan_online = MagicMock()
-mock_vulcan_module.run_vulcan_offline = mock_run_vulcan_offline
-mock_vulcan_module.run_vulcan_online = mock_run_vulcan_online
+mock_run_vulcan = MagicMock()
+mock_vulcan_module.run_vulcan = mock_run_vulcan
 
 # Put mocks in sys.modules before any imports (persist throughout test execution)
 sys.modules['vulcan'] = mock_vulcan_package
@@ -216,7 +214,7 @@ def test_run_chemistry_vulcan():
     import tempfile
 
     # Use the mock that's already in sys.modules
-    mock_vulcan = mock_run_vulcan_offline
+    mock_vulcan = mock_run_vulcan
     mock_vulcan.reset_mock()  # Reset call history for this test
     # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -303,7 +301,7 @@ def test_run_chemistry_returns_dataframe():
     import tempfile
 
     # Use the mock that's already in sys.modules
-    mock_run_vulcan_offline.reset_mock()  # Reset call history for this test
+    mock_run_vulcan.reset_mock()  # Reset call history for this test
     # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
@@ -362,7 +360,7 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
         }
     )
     # Use the mock that's already in sys.modules
-    mock_v = mock_run_vulcan_offline
+    mock_v = mock_run_vulcan
     mock_v.reset_mock()  # Reset call history for this test
     # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -401,7 +399,7 @@ def test_run_chemistry_preserves_config():
     import tempfile
 
     # Use the mock that's already in sys.modules
-    mock_v = mock_run_vulcan_offline
+    mock_v = mock_run_vulcan
     mock_v.reset_mock()  # Reset call history for this test
     # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -421,9 +419,8 @@ def test_run_chemistry_preserves_config():
 
 
 @pytest.mark.unit
-@patch('proteus.atmos_chem.vulcan.run_vulcan_online')
-@patch('proteus.atmos_chem.vulcan.run_vulcan_offline')
-def test_run_chemistry_manually_mode(patched_offline, patched_online):
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_manually_mode(patched_run_vulcan):
     """
     Test run_chemistry returns None when when='manually'.
 
@@ -440,16 +437,14 @@ def test_run_chemistry_manually_mode(patched_offline, patched_online):
     result = run_chemistry(dirs, config, hf_row)
 
     assert result is None
-    patched_offline.assert_not_called()
-    patched_online.assert_not_called()
+    patched_run_vulcan.assert_not_called()
 
 
 @pytest.mark.unit
-@patch('proteus.atmos_chem.vulcan.run_vulcan_online')
-@patch('proteus.atmos_chem.vulcan.run_vulcan_offline')
-def test_run_chemistry_offline_mode(patched_offline, patched_online, tmp_path):
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_offline_mode(patched_run_vulcan, tmp_path):
     """
-    Test run_chemistry calls run_vulcan_offline when when='offline'.
+    Test run_chemistry calls run_vulcan (offline) when when='offline'.
 
     Physics: Offline mode runs VULCAN as a post-processing step on the final
     atmospheric state, computing equilibrium chemistry after the simulation.
@@ -471,17 +466,15 @@ def test_run_chemistry_offline_mode(patched_offline, patched_online, tmp_path):
 
     result = run_chemistry(dirs, config, hf_row)
 
-    patched_offline.assert_called_once_with(dirs, config, hf_row)
-    patched_online.assert_not_called()
+    patched_run_vulcan.assert_called_once_with(dirs, config, hf_row)
     assert isinstance(result, pd.DataFrame)
 
 
 @pytest.mark.unit
-@patch('proteus.atmos_chem.vulcan.run_vulcan_online')
-@patch('proteus.atmos_chem.vulcan.run_vulcan_offline')
-def test_run_chemistry_online_mode(patched_offline, patched_online, tmp_path):
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_online_mode(patched_run_vulcan, tmp_path):
     """
-    Test run_chemistry calls run_vulcan_online when when='online'.
+    Test run_chemistry calls run_vulcan (online) when when='online'.
 
     Physics: Online mode runs VULCAN at every snapshot during simulation,
     coupling atmospheric chemistry to the evolving thermal state.
@@ -504,8 +497,7 @@ def test_run_chemistry_online_mode(patched_offline, patched_online, tmp_path):
 
     result = run_chemistry(dirs, config, hf_row)
 
-    patched_online.assert_called_once_with(dirs, config, hf_row)
-    patched_offline.assert_not_called()
+    patched_run_vulcan.assert_called_once_with(dirs, config, hf_row, online=True)
     assert isinstance(result, pd.DataFrame)
 
 

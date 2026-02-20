@@ -1,8 +1,9 @@
 """
 Unit tests for proteus.atmos_chem.vulcan module
 
-Tests for run_vulcan_offline() and run_vulcan_online() functions which interface
-with the VULCAN atmospheric chemistry solver.
+Tests for the run_vulcan() function which interfaces with the VULCAN
+atmospheric chemistry solver. The function supports both offline mode
+(single post-processing run) and online mode (per-snapshot during simulation).
 
 Physics tested:
 - Module guard: VULCAN requires AGNI atmosphere module
@@ -10,6 +11,7 @@ Physics tested:
 - Per-snapshot file naming in online mode (vulcan_{year}.pkl/.csv)
 - One-time network compilation optimization in online mode (_made attribute)
 - Output file parsing and CSV writing
+- Directory handling differences between offline (wipe) and online (exist_ok)
 
 Related documentation:
 - docs/test_infrastructure.md: Testing standards and structure
@@ -46,10 +48,7 @@ import proteus.atmos_chem.vulcan as _vulcan_mod  # noqa: E402
 
 importlib.reload(_vulcan_mod)  # Force re-import with the real vulcan mock
 
-from proteus.atmos_chem.vulcan import (  # noqa: E402
-    run_vulcan_offline,
-    run_vulcan_online,
-)
+from proteus.atmos_chem.vulcan import run_vulcan  # noqa: E402
 
 
 def _make_mock_config(*, network='CHO', photo_on=True, atmos_module='agni'):
@@ -152,7 +151,7 @@ def _make_mock_vulcan_result():
 @pytest.mark.unit
 def test_run_vulcan_offline_non_agni():
     """
-    Test run_vulcan_offline returns False when atmosphere module is not AGNI.
+    Test run_vulcan returns False in offline mode when atmosphere module is not AGNI.
 
     Physics: VULCAN chemistry requires AGNI radiative-convective model for
     atmospheric TP profiles. Other atmosphere modules are incompatible.
@@ -161,7 +160,7 @@ def test_run_vulcan_offline_non_agni():
     dirs = {'output': '/tmp/test', 'output/offchem': '/tmp/test/offchem'}
     hf_row = _make_mock_hf_row()
 
-    result = run_vulcan_offline(dirs, config, hf_row)
+    result = run_vulcan(dirs, config, hf_row)
 
     assert result is False
 
@@ -169,7 +168,7 @@ def test_run_vulcan_offline_non_agni():
 @pytest.mark.unit
 def test_run_vulcan_online_non_agni():
     """
-    Test run_vulcan_online returns False when atmosphere module is not AGNI.
+    Test run_vulcan returns False in online mode when atmosphere module is not AGNI.
 
     Physics: Same constraint as offline — VULCAN needs AGNI TP profiles.
     """
@@ -177,7 +176,7 @@ def test_run_vulcan_online_non_agni():
     dirs = {'output': '/tmp/test', 'output/offchem': '/tmp/test/offchem'}
     hf_row = _make_mock_hf_row()
 
-    result = run_vulcan_online(dirs, config, hf_row)
+    result = run_vulcan(dirs, config, hf_row, online=True)
 
     assert result is False
 
@@ -238,10 +237,10 @@ def test_run_vulcan_online_per_snapshot_filenames(
         pickle.dump(vulcan_result, f)
 
     # Reset the _made attribute if set by previous tests
-    if hasattr(run_vulcan_online, '_made'):
-        del run_vulcan_online._made
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
 
-    result = run_vulcan_online(dirs, config, hf_row)
+    result = run_vulcan(dirs, config, hf_row, online=True)
 
     assert result is True
 
@@ -301,13 +300,13 @@ def test_run_vulcan_online_make_funs_once(
         pickle.dump(vulcan_result, f)
 
     # Reset _made to simulate first call
-    if hasattr(run_vulcan_online, '_made'):
-        del run_vulcan_online._made
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
 
     # First call — should compile network
-    run_vulcan_online(dirs, config, hf_row)
+    run_vulcan(dirs, config, hf_row, online=True)
     assert mock_vulcan_package.make_all.call_count == 1
-    assert hasattr(run_vulcan_online, '_made')
+    assert hasattr(run_vulcan, '_made')
 
     # Second call — should NOT recompile
     mock_vulcan_package.make_all.reset_mock()
@@ -317,12 +316,12 @@ def test_run_vulcan_online_make_funs_once(
     with open(result_file2, 'wb') as f:
         pickle.dump(vulcan_result, f)
 
-    run_vulcan_online(dirs, config, hf_row2)
+    run_vulcan(dirs, config, hf_row2, online=True)
     mock_vulcan_package.make_all.assert_not_called()
 
     # Cleanup _made for other tests
-    if hasattr(run_vulcan_online, '_made'):
-        del run_vulcan_online._made
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
 
 
 @pytest.mark.unit
@@ -365,11 +364,11 @@ def test_run_vulcan_online_missing_result_file(
     mock_vulcan_package.Config.return_value = MagicMock()
     mock_vulcan_package.main.return_value = None
 
-    if hasattr(run_vulcan_online, '_made'):
-        del run_vulcan_online._made
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
 
     # Do NOT create the result pickle — simulates VULCAN failure
-    result = run_vulcan_online(dirs, config, hf_row)
+    result = run_vulcan(dirs, config, hf_row, online=True)
 
     assert result is False
 
@@ -414,7 +413,7 @@ def test_run_vulcan_offline_unrecognised_network(
 
     mock_vulcan_package.Config.return_value = MagicMock()
 
-    result = run_vulcan_offline(dirs, config, hf_row)
+    result = run_vulcan(dirs, config, hf_row)
 
     assert result is False
 
@@ -477,10 +476,10 @@ def test_run_vulcan_online_network_selection(
     with open(result_file, 'wb') as f:
         pickle.dump(vulcan_result, f)
 
-    if hasattr(run_vulcan_online, '_made'):
-        del run_vulcan_online._made
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
 
-    result = run_vulcan_online(dirs, config, hf_row)
+    result = run_vulcan(dirs, config, hf_row, online=True)
 
     assert result is True
     # Verify the atom_list was set correctly for this network
@@ -532,10 +531,10 @@ def test_run_vulcan_online_uses_exist_ok(
     with open(result_file, 'wb') as f:
         pickle.dump(vulcan_result, f)
 
-    if hasattr(run_vulcan_online, '_made'):
-        del run_vulcan_online._made
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
 
-    run_vulcan_online(dirs, config, hf_row)
+    run_vulcan(dirs, config, hf_row, online=True)
 
     # Verify makedirs was called with exist_ok=True
     mock_makedirs.assert_called_with(str(offchem_dir), exist_ok=True)

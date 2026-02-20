@@ -57,10 +57,7 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
         )
 
     # Lazy import to avoid loading VULCAN (heavy dependency) unless needed
-    from proteus.atmos_chem.vulcan import (
-        run_vulcan_offline,
-        run_vulcan_online,
-    )
+    from proteus.atmos_chem.vulcan import run_vulcan
 
     # Dispatch based on scheduling mode:
     #   'manually'  — user will invoke chemistry separately (e.g. via CLI)
@@ -72,10 +69,10 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
         return None
     elif when == 'offline':
         log.debug('Running atmospheric chemistry in OFFLINE mode')
-        run_vulcan_offline(dirs, config, hf_row)
+        run_vulcan(dirs, config, hf_row)
     elif when == 'online':
         log.debug('Running atmospheric chemistry in ONLINE mode')
-        run_vulcan_online(dirs, config, hf_row)
+        run_vulcan(dirs, config, hf_row, online=True)
         # Online mode writes per-snapshot files (e.g. vulcan_5000.csv)
         filename = f'vulcan_{int(hf_row["Time"])}.csv'
     else:
