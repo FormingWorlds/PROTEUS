@@ -32,17 +32,31 @@
 set -e
 
 # -----------------------------------------------------------------------------
+# Portable realpath: macOS <13 (Catalina through Monterey) does not ship
+# GNU coreutils realpath. Fall back to python3, which is always available
+# in PROTEUS's conda environment.
+# -----------------------------------------------------------------------------
+portable_realpath() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath "$1"
+    else
+        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # Error handling: report which step failed on any non-zero exit
 # -----------------------------------------------------------------------------
 current_step="initialising"
 on_error() {
+    local rc=$?  # must be first line — captures the failing command's exit code
     echo ""
     echo "========================================"
     echo " ERROR: SPIDER installation failed"
     echo ""
     echo " Step that failed: $current_step"
     echo " Command:          $BASH_COMMAND"
-    echo " Exit code:        $?"
+    echo " Exit code:        $rc"
     echo ""
     echo " Troubleshooting:"
     case "$current_step" in
@@ -101,13 +115,21 @@ if [[ ! -d "petsc" ]]; then
     echo "Run ./tools/get_petsc.sh first to install PETSc."
     exit 1
 fi
-PETSC_DIR=$(realpath petsc)
+PETSC_DIR=$(portable_realpath petsc)
 
 # Verify PETSc was actually built (not just downloaded/configured).
-# The library name varies by platform: .dylib on macOS, .so on Linux.
+# The library name varies by platform:
+#   macOS:  libpetsc.dylib
+#   Linux:  libpetsc.so or libpetsc.so.X.Y (versioned, symlink may be absent)
 petsc_lib_dir="$PETSC_DIR/$PETSC_ARCH/lib"
-if [[ ! -f "$petsc_lib_dir/libpetsc.dylib" ]] && \
-   [[ ! -f "$petsc_lib_dir/libpetsc.so" ]]; then
+petsc_lib_found=false
+for f in "$petsc_lib_dir"/libpetsc.*; do
+    if [[ -f "$f" ]]; then
+        petsc_lib_found=true
+        break
+    fi
+done
+if [[ "$petsc_lib_found" != "true" ]]; then
     echo "ERROR: PETSc library not found in $petsc_lib_dir."
     echo "PETSc may have been downloaded but not compiled successfully."
     echo "Re-run ./tools/get_petsc.sh to rebuild."
@@ -235,7 +257,7 @@ echo ""
 echo "========================================"
 echo " SPIDER installation complete."
 echo ""
-echo " Binary: $(realpath "$workpath/spider")"
+echo " Binary: $(portable_realpath "$workpath/spider")"
 echo " PETSC_DIR  = $PETSC_DIR"
 echo " PETSC_ARCH = $PETSC_ARCH"
 echo "========================================"

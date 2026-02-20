@@ -30,17 +30,31 @@
 set -e
 
 # -----------------------------------------------------------------------------
+# Portable realpath: macOS <13 (Catalina through Monterey) does not ship
+# GNU coreutils realpath. Fall back to python3, which is always available
+# in PROTEUS's conda environment.
+# -----------------------------------------------------------------------------
+portable_realpath() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath "$1"
+    else
+        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # Error handling: report which step failed on any non-zero exit
 # -----------------------------------------------------------------------------
 current_step="initialising"
 on_error() {
+    local rc=$?  # must be first line — captures the failing command's exit code
     echo ""
     echo "========================================"
     echo " ERROR: PETSc installation failed"
     echo ""
     echo " Step that failed: $current_step"
     echo " Command:          $BASH_COMMAND"
-    echo " Exit code:        $?"
+    echo " Exit code:        $rc"
     echo ""
     echo " Troubleshooting:"
     case "$current_step" in
@@ -97,8 +111,15 @@ fi
 # -----------------------------------------------------------------------------
 current_step="Setting up working directory"
 
-# Default: ./petsc/ relative to current directory; override via first argument
-workpath=$(mkdir -p petsc && realpath petsc)
+# Default: ./petsc/ relative to current directory; override via first argument.
+# When called from data.py:get_petsc(), the full path is passed as $1.
+if [[ -n "$1" ]]; then
+    mkdir -p "$1"
+    workpath=$(portable_realpath "$1")
+else
+    mkdir -p petsc
+    workpath=$(portable_realpath petsc)
+fi
 
 export PETSC_DIR="$workpath"
 echo "PETSC_DIR  = $PETSC_DIR"
@@ -193,7 +214,15 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS 26+ / clang 17+ treats these warnings as errors in PETSc's
     # configure runtime tests (checkStdC). The -Wl,-w flag suppresses all
     # linker warnings, allowing configure to complete.
-    brew_prefix=$(brew --prefix 2>/dev/null || echo "/opt/homebrew")
+    # Homebrew prefix differs by architecture:
+    #   Apple Silicon (arm64): /opt/homebrew
+    #   Intel (x86_64):        /usr/local
+    if [[ "$(uname -m)" == "arm64" ]]; then
+        default_brew_prefix="/opt/homebrew"
+    else
+        default_brew_prefix="/usr/local"
+    fi
+    brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
     ldflags="-L${brew_prefix}/lib -Wl,-w"
 fi
 
