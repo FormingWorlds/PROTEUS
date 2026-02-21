@@ -106,23 +106,31 @@ def test_portable_realpath_resolves_symlink(tmp_path):
 def test_portable_realpath_python_fallback(tmp_path):
     """When ``realpath`` binary is hidden from PATH, falls back to python3.
 
-    We create a minimal PATH containing only the directory of the python3
-    binary (and common system dirs for bash itself), ensuring ``realpath``
-    is not found.
+    We create a temporary directory containing only a symlink to ``python3``
+    and set PATH to *only* that directory.  Because ``/bin`` and ``/usr/bin``
+    (which contain the real ``realpath`` on both Linux and macOS) are excluded,
+    ``command -v realpath`` fails and the function falls through to the
+    ``python3 -c …`` branch.  Bash builtins (``command``, ``if``, ``echo``)
+    work regardless of PATH, so no system directories are needed.
     """
     target = tmp_path / 'target'
     target.mkdir()
 
-    # Build a PATH that has python3 and bash but NOT coreutils realpath.
-    python_dir = os.path.dirname(sys.executable)
-    # /bin is needed for bash builtins (command, echo) to work
-    minimal_path = f'{python_dir}:/bin:/usr/bin'
+    # Build a PATH with *only* python3 — no realpath anywhere.
+    python_bin = sys.executable
+    safe_bin = tmp_path / 'safe_bin'
+    safe_bin.mkdir()
+    (safe_bin / 'python3').symlink_to(python_bin)
+
+    # Find the absolute path to bash so subprocess.run can invoke it
+    # even with the restricted PATH (which excludes /bin and /usr/bin).
+    bash_abs = subprocess.run(['which', 'bash'], capture_output=True, text=True).stdout.strip()
 
     snippet = _portable_realpath_fn() + f'\nportable_realpath "{target}"'
-    env = {**os.environ, 'PATH': minimal_path}
+    env = {**os.environ, 'PATH': str(safe_bin)}
 
     result = subprocess.run(
-        ['bash', '-c', snippet],
+        [bash_abs, '-c', snippet],
         capture_output=True,
         text=True,
         env=env,
@@ -237,12 +245,20 @@ def test_brew_prefix_fallback_arm64(tmp_path):
     # Create a fake uname that reports arm64
     fake_bin = tmp_path / 'bin'
     fake_bin.mkdir()
+    # Locate the real uname binary for the passthrough case.
+    real_uname = subprocess.run(
+        ['which', 'uname'], capture_output=True, text=True
+    ).stdout.strip()
+
     fake_uname = fake_bin / 'uname'
     fake_uname.write_text(
-        '#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo arm64; else /usr/bin/uname "$@"; fi\n'
+        f'#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo arm64; else {real_uname} "$@"; fi\n'
     )
     fake_uname.chmod(0o755)
 
+    # Test the brew-prefix fallback logic in isolation.  The restricted PATH
+    # excludes brew on all platforms (including Linux with Linuxbrew), so the
+    # snippet always exercises the fallback branch.
     snippet = f"""\
 export PATH="{fake_bin}:/usr/bin:/bin"
 if [[ "$(uname -m)" == "arm64" ]]; then
@@ -253,7 +269,6 @@ fi
 brew_prefix=$(brew --prefix 2>/dev/null || echo "$default_brew_prefix")
 echo "$brew_prefix"
 """
-    # Use a PATH without brew
     env = {**os.environ, 'PATH': f'{fake_bin}:/usr/bin:/bin'}
     result = subprocess.run(
         ['bash', '-c', snippet],
@@ -269,12 +284,20 @@ echo "$brew_prefix"
 def test_brew_prefix_fallback_x86_64(tmp_path):
     """With ``uname -m`` spoofed to x86_64 and no brew, fallback is
     ``/usr/local``.
+
+    Works on Linux too: ``brew`` is not on the restricted PATH, so the
+    fallback branch is always exercised regardless of platform.
     """
     fake_bin = tmp_path / 'bin'
     fake_bin.mkdir()
+
+    real_uname = subprocess.run(
+        ['which', 'uname'], capture_output=True, text=True
+    ).stdout.strip()
+
     fake_uname = fake_bin / 'uname'
     fake_uname.write_text(
-        '#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo x86_64; else /usr/bin/uname "$@"; fi\n'
+        f'#!/bin/bash\nif [[ "$1" == "-m" ]]; then echo x86_64; else {real_uname} "$@"; fi\n'
     )
     fake_uname.chmod(0o755)
 
