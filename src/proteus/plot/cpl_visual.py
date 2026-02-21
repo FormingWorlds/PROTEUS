@@ -3,8 +3,8 @@ from __future__ import annotations
 import glob
 import logging
 import os
-from shutil import copyfile, rmtree
-from subprocess import call
+from shutil import copyfile, which
+from subprocess import PIPE, STDOUT, Popen
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -14,8 +14,8 @@ from matplotlib import patches, ticker
 
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
-from proteus.utils.visual import cs_srgb as colsys
-from proteus.utils.visual import interp_spec
+from proteus.utils.helper import safe_rm
+from proteus.utils.visual import cs_srgb, interp_spec
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -29,9 +29,9 @@ def plot_visual(
     idx: int = -1,
     osamp: int = 3,
     view: float = 12.5,
-    plot_format: str = 'pdf',
+    plot_format: str = 'png',
 ):
-    """Render a visual snapshot of the planet–star system.
+    """Render a visual snapshot of the planet-star system.
 
     Generates a single frame visualising the planet surface color (from the
     band-integrated upwelling flux) and surrounding atmospheric shells, along
@@ -52,7 +52,7 @@ def plot_visual(
     view : float, optional
         Observer distance in units of planetary radii (`R_int * view`).
     plot_format : str, optional
-        Image format for the saved figure (e.g., 'pdf', 'png').
+        Raster format for the saved figure (e.g., 'jpg', 'png').
 
     Returns
     -------
@@ -60,6 +60,20 @@ def plot_visual(
         Path to the saved figure on success; False if required data are missing.
     """
     log.info('Plot visual')
+
+    # Check frame format
+    if not np.any(
+        [
+            plot_format.endswith(ext)
+            for ext in (
+                'png',
+                'jpg',
+                'bmp',
+            )
+        ]
+    ):
+        log.error(f"Visualisation must use raster format; got '{plot_format}'")
+        return False
 
     osamp = max(osamp, 2)
 
@@ -100,9 +114,9 @@ def plot_visual(
     fig, ax = plt.subplots(1, 1, figsize=(4 * scale, 4 * scale))
 
     # read fluxes
-    sw_arr = np.array(ds['ba_U_SW'][:, :])
-    lw_arr = np.array(ds['ba_U_LW'][:, :])
-    st_arr = np.array(ds['ba_D_SW'][0, :])
+    sw_arr = np.array(ds['ba_U_SW'][:, 1:])
+    lw_arr = np.array(ds['ba_U_LW'][:, 1:])
+    st_arr = np.array(ds['ba_D_SW'][0, 1:])
 
     # reversed?
     reversed = bool(ds['bandmin'][1] < ds['bandmin'][0])
@@ -115,13 +129,15 @@ def plot_visual(
     else:
         bandmin = np.array(ds['bandmin'][:])
         bandmax = np.array(ds['bandmax'][:])
+    bandmin = bandmin[:-1]
+    bandmax = bandmax[:-1]
 
     # get spectrum
-    wl = 0.5 * (bandmin + bandmax) * 1e9
-    wd = (bandmax - bandmin) * 1e9
-    st = st_arr
-    sw = sw_arr
-    lw = lw_arr
+    wl = 0.5 * (bandmin + bandmax) * 1e9  # nm
+    wd = (bandmax - bandmin) * 1e9  # nm
+    st = st_arr / wd
+    sw = sw_arr / wd
+    lw = lw_arr / wd
 
     # radii
     r_arr = ds['rl'] / obs
@@ -139,18 +155,18 @@ def plot_visual(
 
     # plot surface of planet
     fl_srf = lw[-1, :] + sw[-1, :]
-    col = colsys.spec_to_rgb(interp_spec(wl, fl_srf))
-    srf = patches.Circle((0, 0), radius=r_min, fc=col, zorder=n_lev + 1, alpha=0.2)
+    col = cs_srgb.spec_to_rgb(interp_spec(wl, fl_srf))
+    srf = patches.Circle((0, 0), radius=r_min, fc=col, zorder=n_lev + 1, alpha=0.9)
     ax.add_patch(srf)
 
     # level opacities
-    gamma = 0.12
+    gamma = 0.08
     a_arr = []
     for i, p in enumerate(p_arr):
         alp = p / p_max
         a_arr.append(alp**gamma)
     a_arr /= sum(a_arr)
-    a_arr *= 0.99
+    a_arr *= 0.90
 
     # plot outer levels
     for i in range(n_lev - 2, -1, -1):
@@ -161,7 +177,7 @@ def plot_visual(
         rad_l = r_arr[i + 1]
 
         spec = interp_spec(wl, sw_lev + lw_lev)
-        col = colsys.spec_to_rgb(spec)
+        col = cs_srgb.spec_to_rgb(spec)
 
         for rad in np.linspace(rad_c, rad_l, osamp):
             cir = patches.Circle((0, 0), radius=rad, fc=col, alpha=a_arr[i], zorder=3 + i)
@@ -194,7 +210,7 @@ def plot_visual(
     )
 
     # plot star
-    col = colsys.spec_to_rgb(interp_spec(wl, st))
+    col = cs_srgb.spec_to_rgb(interp_spec(wl, st))
     r_star = hf_all['R_star'].iloc[idx] / (sep + obs)
     x_star = r_lim * 0.75
     cir = patches.Circle(
@@ -246,37 +262,27 @@ def plot_visual(
     axr.set_alpha(0.0)
     axr.set_facecolor((0, 0, 0, 0))
     #    crop to wavelength region
-    imax = np.argmin(np.abs(wl - 6e3))
-    fl = lw[0, :imax] + sw[0, :imax]
-    wl = wl[:imax]
-    wd = wd[:imax]
-    fl = fl / wd
-
-    #    flux units
-    if np.amax(fl) < 1:
-        fl *= 1e3
-        un = 'mW'
-    elif np.amax(fl) > 1e3:
-        fl /= 1e3
-        un = 'kw'
-    else:
-        un = 'W'
+    fl = lw[0, :] + sw[0, :]
+    wl = wl[:]  # nm
+    wd = wd[:]  # nm
 
     #   plot and decorate
-    axr.bar(wl, fl, width=wd, color='w', lw=1.3)
+    axr.step(wl / 1e3, fl, where='mid', color='w', lw=1.3)
     axr.spines[['bottom', 'left']].set_color('w')
     axr.spines[['right', 'top']].set_visible(False)
     axr.tick_params(axis='both', colors='w', labelsize=8)
-    axr.set_xlabel(r'$/$nm', color='w', fontsize=8)
-    axr.xaxis.set_label_coords(1.12, -0.08)
-    axr.set_ylabel(r'%s/m$^2$/nm' % un, color='w', fontsize=8, rotation=0)
-    axr.yaxis.set_label_coords(0.01, 1.02)
 
-    axr.set_xlim(left=0)
-    axr.xaxis.set_major_locator(ticker.MultipleLocator(1000))
-    axr.xaxis.set_minor_locator(ticker.MultipleLocator(200))
-    axr.set_ylim(bottom=0)
-    axr.yaxis.set_major_formatter(ticker.FormatStrFormatter('%g'))
+    axr.set_xlabel(r'$/\mu$m', color='w', fontsize=8)
+    axr.xaxis.set_label_coords(1.12, -0.08)
+    axr.set_xlim(left=0.3, right=40)
+    axr.set_xscale('log')
+    axr.xaxis.set_major_formatter(ticker.FormatStrFormatter('%g'))
+    axr.xaxis.set_minor_locator(ticker.LogLocator(numticks=1000))
+
+    axr.set_yscale('log')
+    axr.set_ylim(bottom=max(1e-10, np.amin(fl)))
+    axr.set_ylabel(r'W/m$^2$/nm', color='w', fontsize=8, rotation=0)
+    axr.yaxis.set_label_coords(0.01, 1.02)
 
     plt.close()
     plt.ioff()
@@ -297,13 +303,12 @@ def plot_visual_entry(handler: Proteus):
     plot_visual(
         hf_all,
         handler.directories['output'],
-        plot_format=handler.config.params.out.plot_fmt,
         idx=-1,
     )
 
 
 def anim_visual(
-    hf_all: pd.DataFrame, output_dir: str, duration: float = 8.0, nframes: int = 80
+    hf_all: pd.DataFrame, output_dir: str, duration: float = 12.0, nframes: int = 80
 ):
     """Create an MP4 animation from visual frames.
 
@@ -317,7 +322,6 @@ def anim_visual(
         Runtime helpfile table used to select time steps and metadata.
     output_dir : str
         Path to the run's output directory.
-
     duration : float, optional
         Animation duration in seconds.
     nframes : int, optional
@@ -329,67 +333,98 @@ def anim_visual(
         Returns False on failure
     """
 
+    # Animation options
+    frame_fmt = 'frame.png'
+    video_fmt = 'mp4'
+    codec = 'h264'
+
+    # check ffmpeg is installed
+    ffmpeg = which('ffmpeg')
+    if not ffmpeg:
+        log.error('Program `ffmpeg` not found; cannot make animation')
+        return False
+
     # make frames folder (safe if it already exists)
     framesdir = os.path.join(output_dir, 'plots', 'anim_frames')
-    if os.path.isdir(framesdir):
-        rmtree(framesdir)
+    safe_rm(framesdir)
     os.makedirs(framesdir)
-
-    # Must be raster format
-    plot_fmt = 'png'
 
     # Work out downsampling factor
     niters = len(hf_all)
-    print(f'Found dataframe with {niters} iterations')
-    ds_factor = int(max(1, np.floor(niters / nframes)))
-    print(f'Downsampling iterations by a factor of {ds_factor}')
+    log.info(f'Found dataframe with {niters} iterations')
 
     # For each index...
-    idxs = range(0, niters, ds_factor)
-    nframes = len(idxs)
-    fps = int(max(1, round(nframes / duration)))
+    target_times = np.linspace(0, np.amax(hf_all['Time']), nframes)
+    idxs = [np.argmin(np.abs(t - hf_all['Time'].values)) for t in target_times]
+    fps = max(1, nframes / duration)
+    log.info(f'Will make {nframes} frames')
     for i, idx in enumerate(idxs):
         idx = max(0, min(idx, niters - 1))
 
-        print(f'Plotting iteration {idx:5d} (frame {i + 1} / {nframes})')
+        log.info(f'Plotting iteration {idx:<5d} (frame {i + 1:3d} / {nframes:<3d})')
 
-        fpath = plot_visual(hf_all, output_dir, plot_format=plot_fmt, idx=idx)
-
+        # plot the frame
+        fpath = plot_visual(hf_all, output_dir, plot_format=frame_fmt, idx=idx)
         if not fpath:
             return False
 
-        copyfile(fpath, os.path.join(framesdir, f'{idx:05d}.{plot_fmt}'))
+        # move frame to subfolder
+        copyfile(fpath, os.path.join(framesdir, f'{idx:05d}.{frame_fmt}'))
+        safe_rm(fpath)
 
-    # Make animation
-    out_video = os.path.join(output_dir, 'plots', 'anim_visual.mp4')
+    # Path to animation video
+    out_video = os.path.join(output_dir, 'plots', f'anim_visual.{video_fmt}')
+    safe_rm(out_video)
 
     # ffmpeg input pattern: frames named 0.<ext>, 1.<ext>, ...
-    input_pattern = os.path.join(framesdir, f'*.{plot_fmt}')
+    input_pattern = os.path.join(framesdir, f'*.{frame_fmt}')
 
+    # Command for subprocess
     cmd = [
-        'ffmpeg',
+        ffmpeg,
         '-y',
-        f'-framerate {fps:d}',
+        f'-framerate {fps:.2f}',
         '-pattern_type glob',
         f"-i '{input_pattern}'",
-        '-c:v libx264',
+        f'-c:v {codec}',
         "-vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2'",
         '-pix_fmt yuv420p',
         f' {out_video}',
     ]
-
     cmd = ' '.join(cmd)
-    print(f'Running ffmpeg to assemble video: {cmd}')
+
+    # Wrapper for logging
+    def _log_subprocess_output(pipe):
+        for line in iter(pipe.readline, b''):  # b'\n'-separated lines
+            log.debug(str(line.decode('utf-8')).replace('\n', '').strip())
+
+    # Run ffmpeg to make animation
+    log.info(f'Running ffmpeg to assemble video: {cmd}')
     try:
-        ret = call([cmd], shell=True, stdout=None)
+        process = Popen(cmd, stdout=PIPE, stderr=STDOUT, shell=True)
+        with process.stdout:
+            _log_subprocess_output(process.stdout)
+        ret = process.wait()
         if ret == 0:
-            log.info(f'Wrote animation to {out_video}')
+            if os.path.isfile(out_video):
+                log.info(f'Wrote animation to {out_video}')
+            else:
+                log.error('ffmpeg exited successfully but animation file not found')
+                return False
         else:
             log.error(f'ffmpeg returned non-zero exit code: {ret}')
+            return False
+
     except FileNotFoundError:
-        log.error('ffmpeg not found on PATH; cannot assemble animation')
+        log.error('Program `ffmpeg` not found in PATH; cannot make animation')
+        return False
+
     except Exception as e:
         log.error(f'Error running ffmpeg: {e}')
+        return False
+
+    # Remove frames directory
+    safe_rm(framesdir)
 
     return True
 

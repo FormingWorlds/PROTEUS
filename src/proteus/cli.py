@@ -84,6 +84,15 @@ def plot(plots, config_path: Path):
     click.echo(f'Config: {config_path}')
 
     handler = Proteus(config_path=config_path)
+    setup_logger(
+        logpath=os.path.join(handler.directories['output'], 'plot.log'),
+        logterm=True,
+        level=handler.config.params.out.logging,
+    )
+
+    if plots[0] == 'list':
+        click.echo('Available plots: ' + ', '.join(plot_dispatch.keys()))
+        return
 
     if 'all' in plots:
         plots = list(plot_dispatch.keys())

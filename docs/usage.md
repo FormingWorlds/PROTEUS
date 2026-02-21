@@ -64,6 +64,19 @@ all_options/
  │ └─other files                <---- any other plots
 ```
 
+To manually make plots, use the command `proteus plot`. For example, you can make a plot of
+atmosphere temperature profiles by running:
+
+```console
+proteus plot -c input/all_options.toml atmosphere
+```
+
+Or to make every possible plot, you would run:
+
+```console
+proteus plot -c input/all_options.toml all
+```
+
 ## Running PROTEUS on remote machines / servers
 
 Using PROTEUS on a remote machine (e.g. Habrok, the Kapteyn cluster, etc.) is best done through tmux.
@@ -198,7 +211,7 @@ PROTEUS will perform this step automatically if enabled in the configuration fil
 ## Postprocessing of results with AGNI for multiprofile analysis
 
 PROTEUS includes a functionality to postprocess the planet's atmosphere for a number of zenith angles.
-This allows the user to obtain localized thermal profiles based on the angle of irradation on the atmosphere, 
+This allows the user to obtain localized thermal profiles based on the angle of irradation on the atmosphere,
 this is particularly useful for first-hand results on tidally locked planets.
 
 Access the atmospheric postprocessing functionality via the command line interface, while in `PROTEUS`:
