@@ -1051,3 +1051,163 @@ def test_validate_zenodo_folder_hash_mismatch(mock_getfwl, mock_run, tmp_path):
     Hash validation is verified in integration tests with real Zenodo downloads.
     """
     pass
+
+
+# =============================================================================
+# get_petsc / get_spider wrapper tests
+# =============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.os.path.isdir')
+@patch('proteus.utils.data._none_dirs')
+def test_get_petsc_passes_workpath_as_first_arg(mock_dirs, mock_isdir, mock_run, tmp_path):
+    """``get_petsc()`` calls ``get_petsc.sh`` with ``workpath`` as ``$1``.
+
+    The shell script receives the full petsc path as its first positional
+    argument so it can install into the correct location.
+    """
+    from proteus.utils.data import get_petsc
+
+    mock_dirs.return_value = {
+        'proteus': str(tmp_path),
+        'tools': str(tmp_path / 'tools'),
+    }
+    mock_isdir.return_value = False  # petsc dir does not exist yet
+
+    # Create a dummy log target dir
+    (tmp_path / 'tools').mkdir(exist_ok=True)
+
+    get_petsc()
+
+    mock_run.assert_called_once()
+    cmd = mock_run.call_args[0][0]
+    assert cmd[0].endswith('get_petsc.sh')
+    # Second element is the workpath passed as $1
+    assert 'petsc' in cmd[1]
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.os.path.isdir')
+@patch('proteus.utils.data._none_dirs')
+def test_get_petsc_skips_when_dir_exists(mock_dirs, mock_isdir, mock_run, tmp_path):
+    """``get_petsc()`` returns early if the petsc directory already exists."""
+    from proteus.utils.data import get_petsc
+
+    mock_dirs.return_value = {
+        'proteus': str(tmp_path),
+        'tools': str(tmp_path / 'tools'),
+    }
+    mock_isdir.return_value = True  # petsc dir already exists
+
+    get_petsc()
+
+    mock_run.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.os.path.isdir')
+@patch('proteus.utils.data._none_dirs')
+def test_get_petsc_logs_output_to_file(mock_dirs, mock_isdir, mock_run, tmp_path):
+    """``get_petsc()`` redirects stdout/stderr to a log file.
+
+    Verifies that ``sp.run`` is called with file handles for stdout and
+    stderr (not None/PIPE), indicating output is captured to a log file.
+    """
+    from proteus.utils.data import get_petsc
+
+    mock_dirs.return_value = {
+        'proteus': str(tmp_path),
+        'tools': str(tmp_path / 'tools'),
+    }
+    mock_isdir.return_value = False
+    (tmp_path / 'tools').mkdir(exist_ok=True)
+
+    get_petsc()
+
+    mock_run.assert_called_once()
+    call_kwargs = mock_run.call_args[1]
+    # stdout and stderr should be file handles (not None)
+    assert call_kwargs.get('stdout') is not None
+    assert call_kwargs.get('stderr') is not None
+    assert call_kwargs.get('check') is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.os.path.isdir')
+@patch('proteus.utils.data._none_dirs')
+def test_get_spider_passes_workpath_as_first_arg(mock_dirs, mock_isdir, mock_run, tmp_path):
+    """``get_spider()`` calls ``get_spider.sh`` with ``workpath`` as ``$1``."""
+    from proteus.utils.data import get_spider
+
+    mock_dirs.return_value = {
+        'proteus': str(tmp_path),
+        'tools': str(tmp_path / 'tools'),
+    }
+    (tmp_path / 'tools').mkdir(exist_ok=True)
+
+    # isdir returns True for petsc (skip get_petsc), False for SPIDER
+    def isdir_side_effect(path):
+        return 'petsc' in path
+
+    mock_isdir.side_effect = isdir_side_effect
+
+    get_spider()
+
+    # sp.run should be called once (for get_spider.sh only; get_petsc skipped)
+    mock_run.assert_called_once()
+    cmd = mock_run.call_args[0][0]
+    assert cmd[0].endswith('get_spider.sh')
+    assert 'SPIDER' in cmd[1]
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.os.path.isdir')
+@patch('proteus.utils.data._none_dirs')
+def test_get_spider_skips_when_dir_exists(mock_dirs, mock_isdir, mock_run, tmp_path):
+    """``get_spider()`` returns early if the SPIDER directory already exists."""
+    from proteus.utils.data import get_spider
+
+    mock_dirs.return_value = {
+        'proteus': str(tmp_path),
+        'tools': str(tmp_path / 'tools'),
+    }
+
+    # Both petsc and SPIDER dirs exist
+    mock_isdir.return_value = True
+
+    get_spider()
+
+    # sp.run should never be called (both dirs exist)
+    mock_run.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.get_petsc')
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.os.path.isdir')
+@patch('proteus.utils.data._none_dirs')
+def test_get_spider_calls_get_petsc_first(
+    mock_dirs, mock_isdir, mock_run, mock_get_petsc, tmp_path
+):
+    """``get_spider()`` invokes ``get_petsc()`` before installing SPIDER.
+
+    PETSc is a build dependency of SPIDER, so it must be set up first.
+    """
+    from proteus.utils.data import get_spider
+
+    mock_dirs.return_value = {
+        'proteus': str(tmp_path),
+        'tools': str(tmp_path / 'tools'),
+    }
+    mock_isdir.return_value = False
+    (tmp_path / 'tools').mkdir(exist_ok=True)
+
+    get_spider()
+
+    mock_get_petsc.assert_called_once()
