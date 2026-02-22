@@ -160,21 +160,22 @@ ldflags=""
 # ---- Linux special cases ----------------------------------------------------
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
 
-    # Snellius HPC cluster: use the cluster's MPI (loaded via module)
-    if [[ "$(hostname -f 2>/dev/null)" == *"snellius"* ]]; then
-        echo "    Detected Snellius cluster — using system MPI"
+    host=$(hostname -f 2>/dev/null)
+
+    # HPC cluster: use the cluster's MPI (loaded via module)
+    if [[ "$host" == *"snellius"* || "$host" == *"hpc.rug.nl" ]]; then
+        echo "    Detected Snellius/Habrok cluster — using system MPI"
         mpi_flag=""
-    fi
 
     # Fedora / RHEL: system packages provide MPI and BLAS/LAPACK
-    if [[ -f "/etc/fedora-release" || -f "/etc/redhat-release" ]]; then
+    elif [[ -f "/etc/fedora-release" || -f "/etc/redhat-release" ]]; then
         echo "    Detected Fedora/RHEL — using system MPI and BLAS/LAPACK"
         mpi_flag=""
         blas_flag=""
-    fi
+
 
     # Generic Linux: if mpicc is available, prefer system MPI over download
-    if [[ -n "$mpi_flag" ]] && command -v mpicc >/dev/null 2>&1; then
+    elif [[ -n "$mpi_flag" ]] && command -v mpicc >/dev/null 2>&1; then
         echo "    Found system MPI ($(which mpicc)) — skipping mpich download"
         mpi_flag=""
     fi
