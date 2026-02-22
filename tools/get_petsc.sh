@@ -97,7 +97,7 @@ trap on_error ERR
 # -----------------------------------------------------------------------------
 current_step="Detecting platform"
 
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+if [[ "$OSTYPE" == "linux"* ]]; then
     export PETSC_ARCH=arch-linux-c-opt
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     export PETSC_ARCH=arch-darwin-c-opt
@@ -158,14 +158,17 @@ blas_flag="--download-f2cblaslapack"
 ldflags=""
 
 # ---- Linux special cases ----------------------------------------------------
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+if [[ "$OSTYPE" == "linux"* ]]; then
 
     host=$(hostname -f 2>/dev/null)
 
-    # HPC cluster: use the cluster's MPI (loaded via module)
-    if [[ "$host" == *"snellius"* || "$host" == *"hpc.rug.nl" ]]; then
-        echo "    Detected Snellius/Habrok cluster — using system MPI"
+    # Snellius HPC cluster: use the cluster's MPI (loaded via module)
+    if [[ "$host" == *"snellius"* ]]; then
+        echo "    Detected Snellius cluster — using system MPI"
         mpi_flag=""
+
+    elif [[ "$host" == *"hpc.rug.nl" ]]; then
+        echo "    Detected Habrok cluster - downloading BLAS and MPI"
 
     # Fedora / RHEL: system packages provide MPI and BLAS/LAPACK
     elif [[ -f "/etc/fedora-release" || -f "/etc/redhat-release" ]]; then
@@ -269,9 +272,12 @@ cd "$workpath"
 # -----------------------------------------------------------------------------
 current_step="Building PETSc (make all)"
 
+# Number of processes to use for `make all`; fixed at a reasonable number.
+ncpu=4
+
 echo ""
-echo "Building PETSc..."
-make PETSC_DIR="$PETSC_DIR" PETSC_ARCH="$PETSC_ARCH" all
+echo "Building PETSc with $ncpu CPUs..."
+make PETSC_DIR="$PETSC_DIR" PETSC_ARCH="$PETSC_ARCH" -j $ncpu all
 
 # -----------------------------------------------------------------------------
 # 7. Run PETSc self-tests
