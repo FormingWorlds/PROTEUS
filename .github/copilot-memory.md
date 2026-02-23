@@ -77,6 +77,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Codecov Integration**: Nightly uploads aggregate coverage (unit+smoke+integration); PR checks upload unit+smoke; `codecov.yml` with carryforward flags
 - **Cross-Platform CI**: PR checks run unit tests on both Linux (Docker) and macOS
 - **File Size Limits**: Pre-commit enforced limits on .github/copilot-instructions.md (500) and .github/copilot-memory.md (1000)
+- **Dual-Tool Agent Instructions**: When using Claude, `CLAUDE.md` should be added as a symlink to `.github/copilot-instructions.md`, serving the same instructions to both Claude Code and GitHub Copilot. The pre-commit 500-line limit on `copilot-instructions.md` constrains both. Most users interact via Copilot, so `copilot-instructions.md` is the canonical file and all self-references point there.
 
 ### Active Branches
 - **main**: Production branch with nightly validation

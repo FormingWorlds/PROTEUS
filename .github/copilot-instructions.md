@@ -20,6 +20,7 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 2. **Always** inform yourself of the current project memory in `.github/copilot-memory.md` before making changes.
 3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
 4. When creating a PR, **always** follow the PR template and ensure all sections are filled out with relevant information.
+5. **Claude-specific**: `CLAUDE.md` is a symlink to this file. Store all project memories and session learnings in `.github/copilot-memory.md` (not in `.claude/` subdirectories), following the structure and conventions already established there.
 
 ## Ecosystem Structure
 
@@ -44,7 +45,7 @@ PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
 
 **Languages**: Python 3.12 (primary), Julia, Fortran, C
 
-**Size**: ~98 Python files in `src/proteus/`, multiple submodules
+**Size**: ~100 Python files in `src/proteus/`, multiple submodules
 
 **Target Runtime**: Python 3.12 (Linux/macOS only; Windows not supported)
 
@@ -249,6 +250,7 @@ pre-commit install -f
 - `src/proteus/` - Main Python source code
   - `cli.py` - Command-line interface entry point
   - `proteus.py` - Core `Proteus` class
+  - `doctor.py` - Environment diagnostics (`proteus doctor`)
   - `config/` - Configuration system (TOML parsing, validation)
   - `atmos_clim/`, `atmos_chem/`, `escape/`, `interior/`, `outgas/`, `observe/`, `orbit/`, `star/` - Physics module wrappers
   - `utils/` - Utilities (data, logging, plotting, helpers)
@@ -276,8 +278,16 @@ pre-commit install -f
 
 ### Entry Points
 
-- **CLI**: `proteus start -c <config.toml> -o <output_dir>` (defined in `src/proteus/cli.py`)
-- **Python API**: `from proteus import Proteus; p = Proteus(config_path, output_path)`
+- **CLI** (defined in `src/proteus/cli.py`):
+  - `proteus start -c <config.toml>` - Run a simulation
+  - `proteus plot -c <config.toml> all` - Generate plots from output
+  - `proteus get` - Download data files
+  - `proteus doctor` - Diagnose environment issues
+  - `proteus grid` / `proteus infer` - Parameter grid and inference workflows
+  - `proteus observe` / `proteus offchem` - Observation and offline chemistry
+  - `proteus create-archives` / `proteus extract-archives` - Archive management
+  - `proteus install-all` - Install all submodules
+- **Python API**: `from proteus import Proteus; p = Proteus(config_path)`
 
 ## Testing Standards
 
@@ -294,27 +304,14 @@ pre-commit install -f
 
 **Rules**:
 
-- **Always** mock external calls (SOCRATES, AGNI, file I/O, network) in unit tests
-- **Always** use physically valid inputs (T > 0K, P > 0) unless testing error handling
-- **Always** read `tests/conftest.py` before writing tests to use existing fixtures
-- **Always** add docstrings explaining the physical scenario being tested
-
-- **Coverage Tool:** Two equivalent approaches are supported:
-  - Local: `pytest --cov` (uses pytest-cov plugin, convenient)
-  - CI/Local: `coverage run -m pytest` (matches CI exactly, compatible with ratcheting)
-  - Choose based on preference; both work correctly.
-- **Speed:** Unit tests must run in <100ms. Aggressively mock heavy simulations, I/O, and external APIs using `unittest.mock`.
-- **Integration:** Mark slow tests (full simulation loops) with `@pytest.mark.slow`.
-- **Markers:** Use pytest markers: `@pytest.mark.unit` for unit tests, `@pytest.mark.integration` for integration tests.
+- **Mocking:** Default to `unittest.mock` for ALL external calls (SOCRATES, AGNI, file I/O, network) in unit tests. Only use real calls if explicitly requested for integration tests.
+- **Speed:** Unit tests must run in <100ms. Aggressively mock heavy simulations, I/O, and external APIs.
 - **Floats:** NEVER use `==` for floats. Use `pytest.approx(val, rel=1e-5)` or `np.testing.assert_allclose`.
-- **Physics:** Ensure inputs are physically valid (e.g., T > 0K) unless testing error handling.
-- **Context:** Always read the `conftest.py` of the current module before generating tests to utilize existing fixtures.
-- **Mocking Strategy:** Default to `unittest.mock` for ALL external calls (e.g., network, disk I/O, heavy computation modules like `SOCRATES` or `AGNI`). Only use real calls if explicitly requested for integration tests.
-- **Floats:** Automatically generate assertions using `pytest.approx()` for any floating-point comparisons.
+- **Physics:** Use physically valid inputs (T > 0K, P > 0) unless testing error handling. Add comments explaining *why* a specific input range was chosen (e.g., "Temperature set to 300K to represent habitable zone conditions").
+- **Context:** Always read `tests/conftest.py` before writing tests to use existing fixtures.
 - **Parametrization:** Prefer `@pytest.mark.parametrize` over writing multiple similar test functions.
-- **Physics Checks:** detailed comments explaining *why* a specific input range was chosen (e.g., "Temperature set to 300K to represent habitable zone conditions").
-- **Instructions:** See `docs/test_building.md` for best practices on building robust tests.
-- **Documentation:** Add detailed docstrings to each test explaining the physical scenario being tested. In the header of the test file, include a brief overview of what is being tested and any important context, including a link to all docuementation about testing standards: `docs/test_infrastructure.md`, `docs/test_categorization.md` and `docs/test_building.md`.
+- **Documentation:** Add docstrings to each test explaining the physical scenario. In test file headers, include an overview and links to `docs/test_infrastructure.md`, `docs/test_categorization.md`, and `docs/test_building.md`.
+- **Coverage Tool:** `pytest --cov` (convenient) or `coverage run -m pytest` (matches CI). Both work correctly.
 - **Formatting:** Ruff format all test files before committing.
 
 ### Coverage Requirements
@@ -352,9 +349,9 @@ pre-commit install -f
 5. **Check coverage**: `pytest --cov=src --cov-report=html`
 6. **Lint**: `ruff check --fix src/ tests/ && ruff format src/ tests/`
 7. **Lint all new files**: `ruff check --fix` and `ruff format` on all newly changed files
-7. **Validate structure**: `bash tools/validate_test_structure.sh`
-8. **Commit**: `git commit -m "feat: description"`
-9. **Push**: CI runs automatically on PR
+8. **Validate structure**: `bash tools/validate_test_structure.sh`
+9. **Commit**: `git commit -m "feat: description"`
+10. **Push**: CI runs automatically on PR
 
 ### Adding a New Module
 

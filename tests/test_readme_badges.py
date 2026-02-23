@@ -1,8 +1,9 @@
-"""Unit tests for README badge validation.
+"""Unit tests for README and docs badge validation.
 
-Validates that badge URLs in README.md are well-formed, use HTTPS, and follow
-expected patterns. This prevents badge regressions like the Codecov "unknown"
-issue caused by a missing `/branch/main/` path segment.
+Validates that badge URLs in README.md and docs/index.md are well-formed, use
+HTTPS, follow expected patterns, and stay in sync. This prevents badge
+regressions like the Codecov "unknown" issue caused by a missing `/branch/main/`
+path segment, and ensures the README and docs landing page show identical badges.
 
 Testing standards: docs/test_infrastructure.md, docs/test_categorization.md,
 docs/test_building.md
@@ -18,6 +19,7 @@ import pytest
 from tests.helpers.helpers import PROTEUS_ROOT
 
 README_PATH = PROTEUS_ROOT / 'README.md'
+DOCS_INDEX_PATH = PROTEUS_ROOT / 'docs' / 'index.md'
 
 # Domains we expect badge images to come from
 ALLOWED_IMG_DOMAINS = {'img.shields.io', 'codecov.io', 'raw.githubusercontent.com'}
@@ -30,6 +32,7 @@ EXPECTED_BADGES = [
     'License',
     'graph/badge.svg',
     'DOI',
+    'Website',
 ]
 
 # Workflow files referenced by badge URLs
@@ -124,4 +127,36 @@ def test_workflow_badges_reference_existing_workflows(workflow_file):
     workflow_path = PROTEUS_ROOT / '.github' / 'workflows' / workflow_file
     assert workflow_path.is_file(), (
         f'Workflow file referenced by badge does not exist: {workflow_path}'
+    )
+
+
+def _extract_badge_block(text: str) -> str:
+    """Extract the first <p align="center">...</p> badge block from HTML text.
+
+    Returns the inner content (between the <p> tags) with leading/trailing
+    whitespace stripped from each line, so that differences in surrounding
+    context (e.g. the header markup) don't cause false mismatches.
+    """
+    match = re.search(
+        r'<p\s+align="center">\s*(.+?)\s*</p>',
+        text,
+        re.DOTALL,
+    )
+    assert match is not None, 'No <p align="center">...</p> block found'
+    return '\n'.join(line.strip() for line in match.group(1).splitlines())
+
+
+@pytest.mark.unit
+def test_readme_and_docs_badges_are_identical():
+    """Badge blocks in README.md and docs/index.md must be identical.
+
+    Both files should present the same set of badges in the same order so
+    that the GitHub landing page and the documentation site look consistent.
+    Any divergence indicates one file was updated without the other.
+    """
+    readme_badges = _extract_badge_block(README_PATH.read_text())
+    docs_badges = _extract_badge_block(DOCS_INDEX_PATH.read_text())
+    assert readme_badges == docs_badges, (
+        'Badge blocks differ between README.md and docs/index.md. '
+        'Update both files to keep them in sync.'
     )
