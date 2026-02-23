@@ -205,7 +205,7 @@ git clone git@github.com:FormingWorlds/ZEPHYRUS
 python -m pip install -e ZEPHYRUS/.
 ```
 
-**ZALMOXIS** (planetary interior structure):
+**Zalmoxis** (planetary interior structure):
 
 ```console
 git clone git@github.com:FormingWorlds/Zalmoxis
