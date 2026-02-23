@@ -13,7 +13,7 @@ See also:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -734,6 +734,121 @@ def test_download_phoenix(mock_download, mock_zipfile, tmp_path, monkeypatch):
     assert ok is True
 
     assert not zip_path.exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_muscles_default_download_all(mock_get_info, mock_download):
+    """If stars is None, download_muscles should download the whole MUSCLES catalogue (folder mode)."""
+    from proteus.utils.data import download_muscles
+
+    mock_get_info.return_value = {
+        'zenodo_id': 'ZEN',
+        'osf_project': 'OSFPROJ',
+        'osf_id': 'OSFPROJ',
+    }
+    mock_download.return_value = True
+
+    ok = download_muscles(stars=None, force=False)
+
+    assert ok is True
+    mock_get_info.assert_called_once_with('MUSCLES')
+    mock_download.assert_called_once_with(
+        folder='MUSCLES',
+        target='stellar_spectra',
+        osf_id='OSFPROJ',
+        zenodo_id='ZEN',
+        desc='MUSCLES stellar spectra catalogue',
+        force=False,
+    )
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_muscles_single_star(mock_get_info, mock_download):
+    """If stars is a string, download_muscles should call download() once in single-file mode."""
+    from proteus.utils.data import download_muscles
+
+    mock_get_info.return_value = {
+        'zenodo_id': 'ZEN',
+        'osf_project': 'OSFPROJ',
+        'osf_id': 'OSFPROJ',
+    }
+    mock_download.return_value = True
+
+    ok = download_muscles(stars='trappist-1', force=True)
+
+    assert ok is True
+    mock_get_info.assert_called_once_with('MUSCLES')
+    mock_download.assert_called_once_with(
+        folder='MUSCLES',
+        target='stellar_spectra',
+        osf_id='OSFPROJ',
+        zenodo_id='ZEN',
+        desc='MUSCLES stellar spectrum (trappist-1)',
+        force=True,
+        file='trappist-1.txt',
+    )
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_muscles_multiple_stars(mock_get_info, mock_download):
+    """If stars is a list, download_muscles should call download() once per star and return AND of results."""
+    from proteus.utils.data import download_muscles
+
+    mock_get_info.return_value = {
+        'zenodo_id': 'ZEN',
+        'osf_project': 'OSFPROJ',
+        'osf_id': 'OSFPROJ',
+    }
+
+    # First star succeeds, second fails -> overall False
+    mock_download.side_effect = [True, False]
+
+    ok = download_muscles(stars=['starA', 'starB'], force=False)
+
+    assert ok is False
+    mock_get_info.assert_called_once_with('MUSCLES')
+    assert mock_download.call_count == 2
+
+    # Check both calls precisely (order matters)
+    expected_calls = [
+        call(
+            folder='MUSCLES',
+            target='stellar_spectra',
+            osf_id='OSFPROJ',
+            zenodo_id='ZEN',
+            desc='MUSCLES stellar spectrum (starA)',
+            force=False,
+            file='starA.txt',
+        ),
+        call(
+            folder='MUSCLES',
+            target='stellar_spectra',
+            osf_id='OSFPROJ',
+            zenodo_id='ZEN',
+            desc='MUSCLES stellar spectrum (starB)',
+            force=False,
+            file='starB.txt',
+        ),
+    ]
+    assert mock_download.call_args_list == expected_calls
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_muscles_no_mapping_raises(mock_get_info):
+    """download_muscles should raise if MUSCLES is not in the mapping."""
+    from proteus.utils.data import download_muscles
+
+    mock_get_info.return_value = None
+
+    with pytest.raises(ValueError):
+        download_muscles(stars=None)
 
 
 @pytest.mark.unit
