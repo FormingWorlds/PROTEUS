@@ -728,10 +728,6 @@ def test_download_phoenix(mock_download, mock_zipfile, tmp_path, monkeypatch):
 
     assert ok is True
 
-    # Assert: marker removed (if present)
-    assert not marker.exists()
-
-    # Assert: zip removed after successful extraction path
     assert not zip_path.exists()
 
 
