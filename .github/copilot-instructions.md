@@ -285,7 +285,6 @@ pre-commit install -f
   - `proteus doctor` - Diagnose environment issues
   - `proteus grid` / `proteus infer` - Parameter grid and inference workflows
   - `proteus observe` / `proteus offchem` - Observation and offline chemistry
-  - `proteus animate` - Create animations from output
   - `proteus create-archives` / `proteus extract-archives` - Archive management
   - `proteus install-all` - Install all submodules
 - **Python API**: `from proteus import Proteus; p = Proteus(config_path, output_path)`
