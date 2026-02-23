@@ -174,6 +174,64 @@ def test_download_zenodo_folder_success(mock_getfwl, mock_run, tmp_path):
     success = download_zenodo_folder('12345', folder_dir)
     assert success is True
 
+@pytest.mark.unit
+@patch("proteus.utils.data.sp.run")
+@patch("proteus.utils.data.GetFWLData")
+def test_download_zenodo_file_success(mock_getfwl, mock_run, tmp_path):
+    """download_zenodo_file returns True when zenodo_get succeeds and file appears."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / "zenodo_folder"
+    record_path = "subdir/myfile.dat"
+
+    # availability check ok, then download ok
+    proc_avail = MagicMock()
+    proc_avail.returncode = 0
+    proc_dl = MagicMock()
+    proc_dl.returncode = 0
+
+    call_count = 0
+
+    def side_effect(cmd, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if "--version" in cmd:
+            return proc_avail
+
+        # download call: create expected file in folder_dir
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        (folder_dir / record_path).parent.mkdir(parents=True, exist_ok=True)
+        (folder_dir / record_path).write_text("payload")
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file("12345", folder_dir, record_path)
+    assert ok is True
+
+@pytest.mark.unit
+def test_download_zenodo_file_rejects_bad_id(tmp_path):
+    """download_zenodo_file rejects non-numeric zenodo IDs."""
+    from proteus.utils.data import download_zenodo_file
+
+    folder_dir = tmp_path / "zenodo_folder"
+    ok = download_zenodo_file("12ab", folder_dir, "file.txt")
+    assert ok is False
+
+
+@pytest.mark.unit
+@patch("proteus.utils.data.sp.run")
+def test_download_zenodo_file_zenodo_get_missing(mock_run, tmp_path):
+    """download_zenodo_file returns False when zenodo_get is not available."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_run.side_effect = FileNotFoundError("zenodo_get not found")
+
+    folder_dir = tmp_path / "zenodo_folder"
+    ok = download_zenodo_file("12345", folder_dir, "file.txt")
+    assert ok is False
 
 @pytest.mark.unit
 @patch('proteus.utils.data.validate_zenodo_folder')
@@ -334,7 +392,6 @@ def test_download_zenodo_folder_availability_check(mock_run):
             # Should check availability first
             assert mock_run.call_count >= 1
 
-
 @pytest.mark.unit
 @patch('proteus.utils.data.sp.run')
 @patch('proteus.utils.data.GetFWLData')
@@ -411,7 +468,6 @@ def test_download_zenodo_folder_exponential_backoff(mock_getfwl, mock_run, tmp_p
     assert len(sleep_times) == 2
     assert sleep_times[0] == pytest.approx(expected_waits[0], rel=0.1)
     assert sleep_times[1] == pytest.approx(expected_waits[1], rel=0.1)
-
 
 @pytest.mark.unit
 @patch('proteus.utils.data.download_zenodo_folder')
