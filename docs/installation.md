@@ -205,6 +205,13 @@ git clone git@github.com:FormingWorlds/ZEPHYRUS
 python -m pip install -e ZEPHYRUS/.
 ```
 
+**ZALMOXIS** (planetary interior structure):
+
+```console
+git clone git@github.com:FormingWorlds/Zalmoxis
+python -m pip install -e Zalmoxis/.
+```
+
 ## 10. Setup PETSc (numerical computing library)
 
 !!! warning
