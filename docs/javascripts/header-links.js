@@ -1,5 +1,3 @@
-console.log("header-links.js loaded");
-
 function wire() {
   const homepage = "https://proteus-framework.org/";
 
