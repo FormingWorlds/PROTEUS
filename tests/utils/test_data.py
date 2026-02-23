@@ -13,6 +13,7 @@ See also:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -321,6 +322,309 @@ def test_download_skip(mock_getfwl, mock_check, tmp_path):
 
     success = download(folder='test', target='targ', osf_id='abc', zenodo_id='123', desc='test')
     assert success is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_skips_existing_file(mock_zdl, mock_getfwl, tmp_path):
+    """If file exists and non-empty and force=False, download() returns True without calling Zenodo/OSF."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+
+    folder = 'SomeFolder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.txt'
+
+    dest = tmp_path / target / folder / file_rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text('already here')
+
+    ok = download(
+        folder=folder,
+        target=target,
+        desc='desc',
+        file=file_rel,
+        force=False,
+        zenodo_id='12345',
+    )
+    assert ok is True
+    mock_zdl.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.get_data_source_info')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_uses_mapping_and_zenodo_success_expected_path(
+    mock_zdl, mock_get_info, mock_getfwl, tmp_path
+):
+    """Single-file mode: uses mapping IDs when not provided; Zenodo writes expected file -> True."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_get_info.return_value = {
+        'zenodo_id': '123',
+        'osf_project': 'osfproj',
+        'osf_id': 'osfproj',
+    }
+
+    folder = 'MappedFolder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.dat'
+
+    # Simulate zenodo download creating the expected file
+    def zdl_side_effect(*, zenodo_id, folder_dir, record_path):
+        (folder_dir / record_path).parent.mkdir(parents=True, exist_ok=True)
+        (folder_dir / record_path).write_text('payload')
+        return True
+
+    mock_zdl.side_effect = zdl_side_effect
+
+    ok = download(folder=folder, target=target, desc='desc', file=file_rel)
+    assert ok is True
+
+    # mapping applied
+    call_kwargs = mock_zdl.call_args.kwargs
+    assert call_kwargs['zenodo_id'] == '123'
+    assert call_kwargs['record_path'] == file_rel
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.get_data_source_info')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_zenodo_success_basename_fallback(
+    mock_zdl, mock_get_info, mock_getfwl, tmp_path
+):
+    """
+    Zenodo returns success but file not at expected_path. download() should still succeed
+    if a file with the same basename exists somewhere under folder_dir (rglob fallback).
+    """
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_get_info.return_value = {
+        'zenodo_id': '123',
+        'osf_project': 'osfproj',
+        'osf_id': 'osfproj',
+    }
+
+    folder = 'MappedFolder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.dat'
+    basename = Path(file_rel).name
+
+    def zdl_side_effect(*, zenodo_id, folder_dir, record_path):
+        # Create file at a different path than expected
+        alt = folder_dir / 'weird_layout' / basename
+        alt.parent.mkdir(parents=True, exist_ok=True)
+        alt.write_text('payload')
+        return True
+
+    mock_zdl.side_effect = zdl_side_effect
+
+    ok = download(folder=folder, target=target, desc='desc', file=file_rel)
+    assert ok is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_OSF_file')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_osf_fallback_when_zenodo_fails(
+    mock_zdl, mock_osf_dl, mock_get_osf, mock_getfwl, tmp_path
+):
+    """If Zenodo single-file download fails, OSF fallback should be attempted and can succeed."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+
+    folder = 'Folder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.txt'
+
+    mock_zdl.return_value = False
+
+    # Make OSF fallback write expected file
+    def osf_side_effect(*, storage, files, data_dir):
+        dest = data_dir / folder / file_rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text('from osf')
+
+    mock_osf_dl.side_effect = osf_side_effect
+    mock_get_osf.return_value = MagicMock()
+
+    ok = download(
+        folder=folder,
+        target=target,
+        desc='desc',
+        file=file_rel,
+        zenodo_id='123',
+        osf_id='osfproj',
+    )
+    assert ok is True
+    mock_get_osf.assert_called_once_with('osfproj')
+    mock_osf_dl.assert_called_once()
+    mock_zdl.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_OSF_file')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_fails_if_both_sources_fail(
+    mock_zdl, mock_osf_dl, mock_get_osf, mock_getfwl, tmp_path
+):
+    """If Zenodo and OSF both fail to create the file, download() returns False."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+
+    folder = 'Folder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.txt'
+
+    mock_zdl.return_value = False
+    mock_get_osf.return_value = MagicMock()
+    # OSF doesn't create file and doesn't raise -> should fail
+    mock_osf_dl.return_value = None
+
+    ok = download(
+        folder=folder,
+        target=target,
+        desc='desc',
+        file=file_rel,
+        zenodo_id='123',
+        osf_id='osfproj',
+    )
+    assert ok is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.check_needs_update')
+@patch('proteus.utils.data.download_zenodo_folder')
+@patch('proteus.utils.data.validate_zenodo_folder')
+def test_download_folder_mode_force_triggers_download_even_if_valid(
+    mock_validate, mock_zdl, mock_check, mock_getfwl, tmp_path
+):
+    """force=True should trigger download even if check_needs_update says False."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_check.return_value = False  # would normally skip
+    mock_zdl.return_value = True
+    mock_validate.return_value = True
+
+    ok = download(
+        folder='folder',
+        target='targ',
+        desc='desc',
+        zenodo_id='123',
+        osf_id='osfproj',
+        force=True,
+    )
+    assert ok is True
+    mock_zdl.assert_called_once()
+    mock_validate.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.check_needs_update')
+@patch('proteus.utils.data.download_zenodo_folder')
+@patch('proteus.utils.data.validate_zenodo_folder')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_OSF_folder')
+def test_download_folder_mode_zenodo_download_ok_but_validation_fails_osf_fallback_succeeds(
+    mock_osf_dl,
+    mock_get_osf,
+    mock_validate,
+    mock_zdl,
+    mock_check,
+    mock_getfwl,
+    tmp_path,
+):
+    """
+    Folder mode: Zenodo folder download returns True but validation returns False,
+    so OSF fallback is attempted and can succeed.
+    """
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_check.return_value = True
+
+    mock_zdl.return_value = True
+    mock_validate.return_value = False  # force OSF fallback
+
+    mock_get_osf.return_value = MagicMock()
+
+    # OSF fallback creates a file under folder_dir
+    def osf_side_effect(*, storage, folders, data_dir):
+        folder_dir = data_dir / folders[0]
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        (folder_dir / 'x.txt').write_text('ok')
+
+    mock_osf_dl.side_effect = osf_side_effect
+
+    ok = download(
+        folder='folder',
+        target='targ',
+        desc='desc',
+        zenodo_id='123',
+        osf_id='osfproj',
+    )
+    assert ok is True
+    mock_osf_dl.assert_called_once()
+    mock_get_osf.assert_called_once_with('osfproj')
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.check_needs_update')
+@patch('proteus.utils.data.download_OSF_folder')
+@patch('proteus.utils.data.get_osf')
+def test_download_folder_mode_no_zenodo_id_uses_osf_only(
+    mock_get_osf, mock_osf_dl, mock_check, mock_getfwl, tmp_path
+):
+    """Folder mode: if zenodo_id is None but osf_id is provided, OSF should be used."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_check.return_value = True
+    mock_get_osf.return_value = MagicMock()
+
+    def osf_side_effect(*, storage, folders, data_dir):
+        folder_dir = data_dir / folders[0]
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        (folder_dir / 'ok.txt').write_text('ok')
+
+    mock_osf_dl.side_effect = osf_side_effect
+
+    ok = download(folder='folder', target='targ', desc='desc', zenodo_id=None, osf_id='osfproj')
+    assert ok is True
+    mock_get_osf.assert_called_once_with('osfproj')
+    mock_osf_dl.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.check_needs_update')
+def test_download_folder_mode_fails_if_no_sources_available(mock_check, mock_getfwl, tmp_path):
+    """Folder mode: if no mapping and both IDs None, download() returns False (already partially tested, but covers folder-mode call)."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_check.return_value = True
+
+    ok = download(
+        folder='UnknownFolder', target='targ', desc='desc', zenodo_id=None, osf_id=None
+    )
+    assert ok is False
 
 
 @pytest.mark.unit
