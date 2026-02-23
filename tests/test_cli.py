@@ -23,6 +23,18 @@ def test_doctor():
     assert 'AGNI' in response.output
     assert 'fwl-mors' in response.output
 
+    # environment variables section
+    assert 'Environment variables' in response.output
+    assert 'FWL_DATA' in response.output
+    assert 'FC_DIR' in response.output
+    assert 'ZALMOXIS_ROOT' in response.output
+    assert 'LA_DIR' in response.output
+
+    # runtime versions section
+    assert 'Runtime versions' in response.output
+    assert 'Python' in response.output
+    assert 'Julia' in response.output
+
 
 @pytest.mark.unit
 def test_version():
