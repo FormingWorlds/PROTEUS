@@ -1013,6 +1013,82 @@ def test_download_OSF_folder_skip_existing(mock_get_osf, tmp_path):
 
 
 @pytest.mark.unit
+def test_download_osf_file_downloads_requested_files(tmp_path):
+    """download_OSF_file writes matched files into data_dir and creates parent dirs."""
+    from proteus.utils.data import download_OSF_file
+
+    # Fake OSF storage listing
+    storage = MagicMock()
+
+    f1 = MagicMock()
+    f1.path = '/folder/a.txt'
+    f1.size = 10
+    f1.write_to = MagicMock(side_effect=lambda fp: fp.write(b'aaa'))
+
+    f2 = MagicMock()
+    f2.path = '/folder/sub/b.bin'
+    f2.size = 20
+    f2.write_to = MagicMock(side_effect=lambda fp: fp.write(b'bbb'))
+
+    storage.files = [f1, f2]
+
+    download_OSF_file(
+        storage=storage,
+        files=['folder/a.txt', 'folder/sub/b.bin'],
+        data_dir=tmp_path,
+    )
+
+    assert (tmp_path / 'folder' / 'a.txt').read_bytes() == b'aaa'
+    assert (tmp_path / 'folder' / 'sub' / 'b.bin').read_bytes() == b'bbb'
+    assert f1.write_to.called
+    assert f2.write_to.called
+
+
+@pytest.mark.unit
+def test_download_osf_file_skips_existing_nonempty(tmp_path):
+    """download_OSF_file does not overwrite existing non-empty files."""
+    from proteus.utils.data import download_OSF_file
+
+    # Create an existing file
+    existing = tmp_path / 'folder' / 'a.txt'
+    existing.parent.mkdir(parents=True, exist_ok=True)
+    existing.write_text('old')
+
+    storage = MagicMock()
+
+    f1 = MagicMock()
+    f1.path = '/folder/a.txt'
+    f1.size = 10
+    f1.write_to = MagicMock(side_effect=lambda fp: fp.write(b'new'))
+    storage.files = [f1]
+
+    download_OSF_file(storage=storage, files=['folder/a.txt'], data_dir=tmp_path)
+
+    # unchanged
+    assert existing.read_text() == 'old'
+    f1.write_to.assert_not_called()
+
+
+@pytest.mark.unit
+def test_download_osf_file_missing_requested_is_ok(tmp_path, caplog):
+    """download_OSF_file logs warning if requested file not found but does not crash."""
+    from proteus.utils.data import download_OSF_file
+
+    storage = MagicMock()
+
+    f1 = MagicMock()
+    f1.path = '/folder/other.txt'
+    f1.size = 10
+    f1.write_to = MagicMock(side_effect=lambda fp: fp.write(b'zzz'))
+    storage.files = [f1]
+
+    download_OSF_file(storage=storage, files=['folder/does_not_exist.txt'], data_dir=tmp_path)
+
+    # Nothing downloaded
+    assert not (tmp_path / 'folder' / 'does_not_exist.txt').exists()
+
+
+@pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
 def test_download_stellar_spectra_no_mapping(mock_get_info):
     """Test stellar spectra download raises error when no mapping found."""
