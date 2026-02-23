@@ -279,8 +279,8 @@ pre-commit install -f
 ### Entry Points
 
 - **CLI** (defined in `src/proteus/cli.py`):
-  - `proteus start -c <config.toml> -o <output_dir>` - Run a simulation
-  - `proteus plot -c <config.toml> -o <output_dir>` - Generate plots from output
+  - `proteus start -c <config.toml>` - Run a simulation
+  - `proteus plot -c <config.toml> all` - Generate plots from output
   - `proteus get` - Download data files
   - `proteus doctor` - Diagnose environment issues
   - `proteus grid` / `proteus infer` - Parameter grid and inference workflows
