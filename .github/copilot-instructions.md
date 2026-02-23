@@ -287,7 +287,7 @@ pre-commit install -f
   - `proteus observe` / `proteus offchem` - Observation and offline chemistry
   - `proteus create-archives` / `proteus extract-archives` - Archive management
   - `proteus install-all` - Install all submodules
-- **Python API**: `from proteus import Proteus; p = Proteus(config_path, output_path)`
+- **Python API**: `from proteus import Proteus; p = Proteus(config_path)`
 
 ## Testing Standards
 
