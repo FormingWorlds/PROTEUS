@@ -20,6 +20,7 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 2. **Always** inform yourself of the current project memory in `.github/copilot-memory.md` before making changes.
 3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
 4. When creating a PR, **always** follow the PR template and ensure all sections are filled out with relevant information.
+5. **Claude-specific**: `CLAUDE.md` is a symlink to this file. Store all project memories and session learnings in `.github/copilot-memory.md` (not in `.claude/` subdirectories), following the structure and conventions already established there.
 
 ## Ecosystem Structure
 
