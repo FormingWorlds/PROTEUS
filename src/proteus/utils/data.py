@@ -170,13 +170,27 @@ def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> 
     out = os.path.join(GetFWLData(), 'zenodo_download.log')
     log.debug(f'    zenodo_get, logging to {out}')
 
-    # Use exponential backoff for retries
-    for attempt in range(MAX_ATTEMPTS):
-        # remove folder
-        safe_rm(folder_dir)
-        folder_dir.mkdir(parents=True, exist_ok=True)
+    # Ensure destination base exists
+    folder_dir.mkdir(parents=True, exist_ok=True)
 
-        # try making request with timeout
+    # Expected destination path (if zenodo_get preserves record_path structure)
+    expected_path = folder_dir / record_path
+
+    for attempt in range(MAX_ATTEMPTS):
+        # Remove only the specific file we intend to download (if present)
+        try:
+            if expected_path.exists():
+                if expected_path.is_file() or expected_path.is_symlink():
+                    expected_path.unlink()
+                else:
+                    # If it's somehow a directory, remove it safely
+                    safe_rm(expected_path)
+        except Exception as e:
+            log.debug(f'Could not remove existing target {expected_path}: {e}')
+
+        # Make sure parent dirs exist for nested record_path
+        expected_path.parent.mkdir(parents=True, exist_ok=True)
+
         try:
             with open(out, 'w') as hdl:
                 # Use Python's subprocess timeout for robust timeout handling
@@ -189,25 +203,32 @@ def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> 
                     check=False,  # Don't raise on non-zero exit
                 )
 
-            # Check if command succeeded and folder has content
             if proc.returncode == 0:
-                # Verify folder exists and has files
-                if folder_dir.exists():
-                    # Check if folder has any files (not just empty directory)
-                    files = list(folder_dir.rglob('*'))
-                    if files and any(f.is_file() for f in files):
-                        log.info(
-                            f'Successfully downloaded Zenodo record {zenodo_id} (file: {record_path})'
-                        )
-                        return True
-                    else:
-                        log.warning(
-                            f'Zenodo download completed but folder is empty (ID {zenodo_id}, file {record_path})'
-                        )
-                else:
-                    log.warning(
-                        f'Zenodo download completed but folder does not exist (ID {zenodo_id}, file {record_path})'
+                # Prefer strict check: file exists where we expect it
+                if expected_path.is_file() and expected_path.stat().st_size > 0:
+                    log.info(
+                        f'Successfully downloaded Zenodo record {zenodo_id} (file: {record_path})'
                     )
+                    return True
+
+                # Fallback: sometimes zenodo_get layout differs; find the basename anywhere
+                matches = [
+                    p
+                    for p in folder_dir.rglob(Path(record_path).name)
+                    if p.is_file() and p.stat().st_size > 0
+                ]
+                if matches:
+                    log.info(
+                        f'Successfully downloaded Zenodo record {zenodo_id} '
+                        f'(file: {record_path}, found at {matches[0]})'
+                    )
+                    return True
+
+                log.warning(
+                    f'Zenodo download exited 0 but file not found/empty '
+                    f'(ID {zenodo_id}, file {record_path})'
+                )
+
             else:
                 # Read error from log file for better diagnostics
                 error_msg = 'Unknown error'
@@ -217,9 +238,11 @@ def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> 
                         error_msg = ''.join(error_lines).strip()
                 except Exception:
                     pass
+
                 log.warning(
-                    f'Failed to get data from Zenodo (ID {zenodo_id}, attempt {attempt + 1}/{MAX_ATTEMPTS}): '
-                    f'exit code {proc.returncode}. Error: {error_msg[:500]}'
+                    f'Failed to get file from Zenodo (ID {zenodo_id}, '
+                    f'attempt {attempt + 1}/{MAX_ATTEMPTS}): exit code {proc.returncode}. '
+                    f'Error: {error_msg[:500]}'
                 )
 
         except sp.TimeoutExpired:
@@ -238,7 +261,8 @@ def download_zenodo_file(zenodo_id: str, folder_dir: Path, record_path: str) -> 
 
     # Return status indicating that file/folder is invalid, if failed
     log.error(
-        f'Could not obtain data for Zenodo record {zenodo_id} after {MAX_ATTEMPTS} attempts'
+        f"Could not obtain file '{record_path}' for Zenodo record {zenodo_id} "
+        f'after {MAX_ATTEMPTS} attempts'
     )
     return False
 
