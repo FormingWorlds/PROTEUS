@@ -238,6 +238,104 @@ def test_download_zenodo_file_zenodo_get_missing(mock_run, tmp_path):
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_success_via_rglob_fallback(mock_getfwl, mock_run, tmp_path):
+    """If zenodo_get returns 0 but file isn't at expected_path, rglob basename fallback should succeed."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'subdir/myfile.dat'
+    basename = Path(record_path).name
+
+    proc_avail = MagicMock(returncode=0)
+    proc_dl = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+
+        # Simulate zenodo_get putting file in a different layout than record_path
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        alt = folder_dir / 'weird_layout' / basename
+        alt.parent.mkdir(parents=True, exist_ok=True)
+        alt.write_text('payload')
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_zero_exit_but_file_missing(mock_getfwl, mock_run, tmp_path):
+    """If zenodo_get exits 0 but file is missing/empty everywhere, function should return False."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'subdir/myfile.dat'
+
+    proc_avail = MagicMock(returncode=0)
+    proc_dl = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        # Do NOT create any file
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)  # speed up retries
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_nonzero_exit_reads_log_and_fails(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """Non-zero exit should trigger retries and read the log for diagnostics, then return False."""
+    from proteus.utils.data import MAX_ATTEMPTS, download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'file.txt'
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=2)
+
+    call_count = 0
+
+    def side_effect(cmd, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if '--version' in cmd:
+            return proc_avail
+
+        # Simulate zenodo_get writing something to stdout log (download_zenodo_file opens log itself)
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is False
+
+    # 1 availability call + MAX_ATTEMPTS download calls
+    assert mock_run.call_count >= 1 + MAX_ATTEMPTS
+
+
+@pytest.mark.unit
 @patch('proteus.utils.data.validate_zenodo_folder')
 @patch('proteus.utils.data.os.path.isdir')
 def test_check_needs_update(mock_isdir, mock_validate):
