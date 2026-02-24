@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -361,6 +362,94 @@ def run_interior(
 
     # Actual time step size
     interior_o.dt = float(sim_time) - hf_row['Time']
+
+
+def update_structure_from_interior(
+    dirs: dict,
+    config: Config,
+    hf_row: dict,
+    interior_o: Interior_t,
+    last_struct_time: float,
+) -> float:
+    """Re-run Zalmoxis with SPIDER's current T(r) to update structure.
+
+    Writes SPIDER's temperature profile to a file, runs Zalmoxis in
+    prescribed-temperature mode, and writes an updated mesh file for the
+    next SPIDER call.
+
+    Parameters
+    ----------
+    dirs : dict
+        Dictionary of directories.
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current runtime variables.
+    interior_o : Interior_t
+        Interior state with current T(r) on staggered nodes.
+    last_struct_time : float
+        Simulation time [yr] of the last structure update.
+
+    Returns
+    -------
+    float
+        Updated ``last_struct_time`` (set to current time if update occurred,
+        otherwise returned unchanged).
+    """
+    # Check trigger conditions
+    current_time = hf_row['Time']
+    if config.struct.update_interval <= 0:
+        return last_struct_time
+    if (current_time - last_struct_time) < config.struct.update_interval:
+        return last_struct_time
+
+    log.info('Updating structure from interior T(r) via Zalmoxis')
+
+    outdir = dirs['output']
+
+    # Write SPIDER's T(r) profile for Zalmoxis (ascending r: CMB to surface)
+    # interior_o.radius is basic nodes (surface to CMB), temp is staggered nodes
+    r_stag = 0.5 * (interior_o.radius[:-1] + interior_o.radius[1:])
+    # Reverse to ascending radius for Zalmoxis
+    r_ascending = r_stag[::-1]
+    T_ascending = interior_o.temp[::-1]
+
+    temp_profile_path = os.path.join(outdir, 'data', 'spider_temp_profile.dat')
+    np.savetxt(
+        temp_profile_path,
+        np.column_stack([r_ascending, T_ascending]),
+        header='radius[m] temperature[K]',
+    )
+
+    # Temporarily override Zalmoxis config for prescribed temperature mode
+    from proteus.interior.zalmoxis import zalmoxis_solver
+
+    orig_temp_mode = config.struct.zalmoxis.temperature_mode
+    orig_temp_file = config.struct.zalmoxis.temperature_profile_file
+
+    config.struct.zalmoxis.temperature_mode = 'prescribed'
+    config.struct.zalmoxis.temperature_profile_file = temp_profile_path
+
+    try:
+        nlev_b = get_nlevb(config)
+        num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
+        _cmb_radius, spider_mesh_file = zalmoxis_solver(
+            config, outdir, hf_row, num_spider_nodes=num_spider_nodes
+        )
+    finally:
+        # Restore original config
+        config.struct.zalmoxis.temperature_mode = orig_temp_mode
+        config.struct.zalmoxis.temperature_profile_file = orig_temp_file
+
+    if spider_mesh_file:
+        dirs['spider_mesh'] = spider_mesh_file
+
+    log.info(
+        'Structure updated: R_int=%.3e m, gravity=%.3f m/s^2',
+        hf_row['R_int'],
+        hf_row['gravity'],
+    )
+    return current_time
 
 
 def get_all_output_times(output_dir: str, model: str):

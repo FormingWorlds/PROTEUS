@@ -179,12 +179,13 @@ class Struct:
         Total mass of the planet [M_earth]
     radius_int: float
         Radius of the atmosphere-mantle boundary [R_earth]
+    update_interval: float
+        Interval between structure re-computations [yr]. Only used when
+        module is 'zalmoxis'. 0 means only compute structure at init.
     core_density: float
         Density of the planet's core [kg m-3]
     core_heatcap: float
         Specific heat capacity of the planet's core [J kg-1 K-1]
-    module: str
-        Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
     """
 
     corefrac: float = field(validator=(gt(0), lt(1)))
@@ -197,6 +198,8 @@ class Struct:
         default=None,
         validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),
     )
+
+    update_interval: float = field(default=0, validator=ge(0))
 
     core_density: float = field(default=10738.33, validator=gt(0))
     core_heatcap: float = field(default=880.0, validator=gt(0))

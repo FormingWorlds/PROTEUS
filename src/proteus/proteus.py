@@ -84,6 +84,9 @@ class Proteus:
         self.sspec_prev = -np.inf  # spectrum
         self.sinst_prev = -np.inf  # instellation and radius
 
+        # Time at which structure was last re-computed via Zalmoxis
+        self.last_struct_time = -np.inf
+
     def init_directories(self):
         """Initialize directories dictionary"""
         from proteus.utils.coupler import set_directories
@@ -377,6 +380,22 @@ class Proteus:
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
+
+            # Re-compute structure if Zalmoxis feedback is active
+            if (
+                not self.init_stage
+                and self.config.struct.module == 'zalmoxis'
+                and self.config.struct.update_interval > 0
+            ):
+                from proteus.interior.wrapper import update_structure_from_interior
+
+                self.last_struct_time = update_structure_from_interior(
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    self.interior_o,
+                    self.last_struct_time,
+                )
 
             ############### / INTERIOR AND STRUCTURE
 
