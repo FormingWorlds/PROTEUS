@@ -127,7 +127,7 @@ class AragogRunner:
             # Define the inner_radius based on the core radius from Zalmoxis
             from proteus.interior.zalmoxis import zalmoxis_solver
 
-            inner_radius = zalmoxis_solver(config, outdir, hf_row)  # core radius [m]
+            inner_radius, _mesh = zalmoxis_solver(config, outdir, hf_row)  # core radius [m]
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 

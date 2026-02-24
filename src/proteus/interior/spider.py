@@ -202,6 +202,7 @@ def _try_spider(
     atol_sf: float,
     dT_max: float,
     timeout: float = 60 * 15,
+    mesh_file: str | None = None,
 ):
     """
     Try to run spider with the current configuration.
@@ -389,10 +390,14 @@ def _try_spider(
     call_sequence.extend(['-solid_log10visc', '22.0'])
     call_sequence.extend(['-solid_cond', '4.0'])  # conductivity of solid
 
-    # static pressure profile derived from Adams-Williamson equation of state
-    # these parameters are from fitting PREM in the lower mantle (for Earth)
-    call_sequence.extend(['-adams_williamson_rhos', '4078.95095544'])  # surface density
-    call_sequence.extend(['-adams_williamson_beta', '1.1115348931000002e-07'])  # beta parameter
+    # Static pressure profile: external mesh from Zalmoxis, or Adams-Williamson
+    if mesh_file and os.path.isfile(mesh_file):
+        call_sequence.extend(['-MESH_SOURCE', '1'])
+        call_sequence.extend(['-mesh_external_filename', mesh_file])
+    else:
+        # Adams-Williamson EOS parameters from fitting PREM lower mantle (Earth)
+        call_sequence.extend(['-adams_williamson_rhos', '4078.95095544'])
+        call_sequence.extend(['-adams_williamson_beta', '1.1115348931000002e-07'])
 
     # eddy diffusivity
     # if negative, this value is adopted (units m^2/s)
@@ -502,7 +507,12 @@ def _try_spider(
 
 
 def RunSPIDER(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, interior_o: Interior_t
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    interior_o: Interior_t,
+    mesh_file: str | None = None,
 ):
     """
     Wrapper function for running SPIDER.
@@ -531,7 +541,15 @@ def RunSPIDER(
 
         # run SPIDER
         spider_success = _try_spider(
-            dirs, config, interior_o.ic, hf_all, hf_row, step_sf, atol_sf, dT_max
+            dirs,
+            config,
+            interior_o.ic,
+            hf_all,
+            hf_row,
+            step_sf,
+            atol_sf,
+            dT_max,
+            mesh_file=mesh_file,
         )
 
         if spider_success:

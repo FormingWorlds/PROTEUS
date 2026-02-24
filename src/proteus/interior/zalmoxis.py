@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 import platformdirs
 from scipy.interpolate import interp1d
-from zalmoxis.zalmoxis import main
 
 from proteus.config import Config
 from proteus.utils.constants import (
@@ -17,6 +16,7 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import get_zalmoxis_EOS, get_zalmoxis_melting_curves
+from zalmoxis.zalmoxis import main
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
@@ -145,14 +145,102 @@ def scale_temperature_profile_for_aragog(
     return scaled_temperature_profile
 
 
-def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
-    """Runs the Zalmoxis solver to compute the interior structure of a planet.
-    Args:
-        config (Config): The configuration object containing the configuration parameters.
-        outdir (str): The output directory where results will be saved.
-        hf_row (dict): A dictionary containing the mass of volatiles and other parameters.
-    Returns:
-        float: The core-mantle boundary radius.
+def write_spider_mesh_file(
+    outdir: str,
+    mantle_radii: np.ndarray,
+    mantle_pressure: np.ndarray,
+    mantle_density: np.ndarray,
+    mantle_gravity: np.ndarray,
+    num_basic: int,
+) -> str:
+    """Write an external mesh file for SPIDER from Zalmoxis mantle profiles.
+
+    Interpolates the Zalmoxis mantle arrays onto uniformly-spaced SPIDER
+    basic and staggered nodes, then writes the mesh file in the format
+    expected by SPIDER's ``SetMeshFromExternalFile()``.
+
+    Parameters
+    ----------
+    outdir : str
+        PROTEUS output directory (file is written to ``outdir/data/``).
+    mantle_radii : np.ndarray
+        Radial positions from CMB to surface, ascending [m].
+    mantle_pressure : np.ndarray
+        Pressure at each radius [Pa].
+    mantle_density : np.ndarray
+        Density at each radius [kg/m^3].
+    mantle_gravity : np.ndarray
+        Gravity magnitude at each radius [m/s^2] (positive).
+    num_basic : int
+        Number of SPIDER basic nodes (shell boundaries).
+
+    Returns
+    -------
+    str
+        Path to the written mesh file.
+    """
+    num_staggered = num_basic - 1
+    R_surf = float(mantle_radii[-1])
+    R_cmb = float(mantle_radii[0])
+
+    # Basic nodes: uniform spacing from surface to CMB (descending r)
+    r_b = np.linspace(R_surf, R_cmb, num_basic)
+    # Staggered nodes: midpoints between consecutive basic nodes
+    r_s = 0.5 * (r_b[:-1] + r_b[1:])
+
+    # Interpolate Zalmoxis profiles onto node positions
+    # mantle_radii is ascending, np.interp requires ascending xp
+    P_b = np.interp(r_b, mantle_radii, mantle_pressure)
+    rho_b = np.interp(r_b, mantle_radii, mantle_density)
+    g_b = np.interp(r_b, mantle_radii, mantle_gravity)
+
+    P_s = np.interp(r_s, mantle_radii, mantle_pressure)
+    rho_s = np.interp(r_s, mantle_radii, mantle_density)
+    g_s = np.interp(r_s, mantle_radii, mantle_gravity)
+
+    # Negate gravity for SPIDER convention (inward-pointing, negative)
+    g_b = -np.abs(g_b)
+    g_s = -np.abs(g_s)
+
+    # Write mesh file
+    mesh_path = os.path.join(outdir, 'data', 'spider_mesh.dat')
+    with open(mesh_path, 'w') as f:
+        f.write(f'# {num_basic} {num_staggered}\n')
+        for i in range(num_basic):
+            f.write(f'{r_b[i]:.15e} {P_b[i]:.15e} {rho_b[i]:.15e} {g_b[i]:.15e}\n')
+        for i in range(num_staggered):
+            f.write(f'{r_s[i]:.15e} {P_s[i]:.15e} {rho_s[i]:.15e} {g_s[i]:.15e}\n')
+
+    logger.info(
+        'Wrote SPIDER mesh file: %s (%d basic + %d staggered nodes)',
+        mesh_path,
+        num_basic,
+        num_staggered,
+    )
+    return mesh_path
+
+
+def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes: int = 0):
+    """Run the Zalmoxis solver to compute the interior structure of a planet.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object.
+    outdir : str
+        Output directory where results will be saved.
+    hf_row : dict
+        Dictionary containing volatile masses and other parameters.
+    num_spider_nodes : int
+        Number of SPIDER basic nodes. If > 0, writes a SPIDER mesh file
+        and returns its path as the second element of the return tuple.
+
+    Returns
+    -------
+    cmb_radius : float
+        Core-mantle boundary radius [m].
+    spider_mesh_file : str or None
+        Path to the SPIDER mesh file, or None if ``num_spider_nodes == 0``.
     """
 
     # Load the Zalmoxis configuration parameters
@@ -256,4 +344,16 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
                 f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
 
-    return cmb_radius
+    # Write SPIDER mesh file if requested
+    spider_mesh_file = None
+    if num_spider_nodes > 0:
+        spider_mesh_file = write_spider_mesh_file(
+            outdir,
+            mantle_radii,
+            mantle_pressure,
+            mantle_density,
+            mantle_gravity,
+            num_spider_nodes,
+        )
+
+    return cmb_radius, spider_mesh_file

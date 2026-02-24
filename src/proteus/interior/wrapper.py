@@ -155,14 +155,31 @@ def determine_interior_radius_with_zalmoxis(
     dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
 ):
     """
-    Determine the interior radius (R_int) of the planet using Zalmoxis."""
+    Determine the interior radius (R_int) of the planet using Zalmoxis.
+
+    When the interior module is SPIDER, also writes a SPIDER-format mesh
+    file from the Zalmoxis structure solution and stores the path in
+    ``dirs['spider_mesh']`` for subsequent calls.
+    """
 
     log.info('Using Zalmoxis to solve for interior structure')
     from proteus.interior.zalmoxis import zalmoxis_solver
 
-    int_o = Interior_t(get_nlevb(config))
+    nlev_b = get_nlevb(config)
+    spider_dir = dirs.get('spider') if config.interior.module == 'spider' else None
+    int_o = Interior_t(nlev_b, spider_dir=spider_dir)
     int_o.ic = 1
-    zalmoxis_solver(config, outdir, hf_row)
+
+    # Request SPIDER mesh file if interior module is SPIDER
+    num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
+    _cmb_radius, spider_mesh_file = zalmoxis_solver(
+        config, outdir, hf_row, num_spider_nodes=num_spider_nodes
+    )
+
+    # Store mesh file path for subsequent SPIDER calls
+    if spider_mesh_file:
+        dirs['spider_mesh'] = spider_mesh_file
+
     run_interior(dirs, config, hf_all, hf_row, int_o)
 
 
@@ -248,8 +265,9 @@ def run_interior(
         # Import
         from proteus.interior.spider import ReadSPIDER, RunSPIDER
 
-        # Run SPIDER
-        RunSPIDER(dirs, config, hf_all, hf_row, interior_o)
+        # Run SPIDER (pass external mesh file if available from Zalmoxis)
+        mesh_file = dirs.get('spider_mesh')
+        RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior.module == 'aragog':
