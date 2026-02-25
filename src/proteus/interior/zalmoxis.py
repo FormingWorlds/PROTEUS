@@ -16,7 +16,7 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import get_zalmoxis_EOS, get_zalmoxis_melting_curves
-from zalmoxis.zalmoxis import main
+from zalmoxis.zalmoxis import main, parse_eos_config
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
@@ -64,6 +64,9 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
 
     logger.info(f'Target planet mass (dry mass): {planet_mass} kg ')
 
+    # Convert PROTEUS EOSchoice string to Zalmoxis per-layer dict
+    layer_eos_config = parse_eos_config({'choice': config.struct.zalmoxis.EOSchoice})
+
     return {
         'planet_mass': planet_mass,
         'core_mass_fraction': config.struct.zalmoxis.coremassfrac,
@@ -74,6 +77,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'center_temperature': config.struct.zalmoxis.center_temperature,
         'temp_profile_file': config.struct.zalmoxis.temperature_profile_file,
         'EOS_CHOICE': config.struct.zalmoxis.EOSchoice,
+        'layer_eos_config': layer_eos_config,
         'num_layers': config.struct.zalmoxis.num_levels,
         'max_iterations_outer': config.struct.zalmoxis.max_iterations_outer,
         'tolerance_outer': config.struct.zalmoxis.tolerance_outer,

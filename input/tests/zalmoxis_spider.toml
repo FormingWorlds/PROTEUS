@@ -1,0 +1,151 @@
+# Smoke test: Zalmoxis structure + SPIDER interior coupling
+# Based on all_options.toml with dummy modules for atmos/star/escape
+# Tests that Zalmoxis computes structure, writes SPIDER mesh file,
+# and SPIDER evolves entropy on the external mesh without errors.
+
+version = "2.0"
+
+[params]
+    [params.out]
+        path     = "test_zalmoxis_spider"
+        logging  = "INFO"
+        plot_mod = 0
+        write_mod = 0
+        archive_mod = "none"
+
+    [params.dt]
+        minimum  = 1e2
+        maximum  = 3e7
+        initial  = 1e2
+        starspec = 1e9
+        starinst = 1e1
+        method   = "adaptive"
+
+        [params.dt.adaptive]
+            atol = 0.02
+            rtol = 0.10
+
+    [params.stop]
+        [params.stop.time]
+            enabled = true
+            minimum = 1.0e3
+            maximum = 1.0e4
+
+        [params.stop.iters]
+            enabled = true
+            minimum = 3
+            maximum = 20
+
+        [params.stop.solid]
+            enabled = false
+
+        [params.stop.radeqm]
+            enabled = false
+
+        [params.stop.escape]
+            enabled = false
+
+[star]
+    mass    = 1.0
+    age_ini = 0.100
+    module  = "dummy"
+    [star.dummy]
+        radius = 1.0
+        Teff   = 5772.0
+
+[orbit]
+    semimajoraxis = 1.0
+    eccentricity  = 0.0
+    zenith_angle  = 48.19
+    s0_factor     = 0.375
+    module        = "none"
+
+[struct]
+    mass_tot     = 1.0
+    corefrac     = 0.55
+    core_density = 10738.33
+    core_heatcap = 880.0
+    module       = "zalmoxis"
+
+    [struct.zalmoxis]
+        EOSchoice                  = "Tabulated:iron/Tdep_silicate"
+        coremassfrac               = 0.325
+        mantle_mass_fraction       = 0
+        weight_iron_frac           = 0.325
+        temperature_mode           = "linear"
+        surface_temperature        = 3500
+        center_temperature         = 6000
+        num_levels                 = 150
+        max_iterations_outer       = 100
+        tolerance_outer            = 3e-3
+        max_iterations_inner       = 100
+        tolerance_inner            = 1e-4
+        relative_tolerance         = 1e-5
+        absolute_tolerance         = 1e-6
+        maximum_step               = 250000
+        adaptive_radial_fraction   = 0.98
+        max_center_pressure_guess  = 0.99e12
+        target_surface_pressure    = 101325
+        pressure_tolerance         = 1e9
+        max_iterations_pressure    = 200
+        pressure_adjustment_factor = 1.1
+        verbose                    = false
+        iteration_profiles_enabled = false
+
+[atmos_clim]
+    surf_state = "fixed"
+    albedo_pl  = 0.1
+    module     = "dummy"
+    rayleigh   = false
+
+    [atmos_clim.dummy]
+        gamma = 0.7
+
+[escape]
+    module    = "dummy"
+    reservoir = "outgas"
+    [escape.dummy]
+        rate = 1.0
+
+[interior]
+    module          = "spider"
+    radiogenic_heat = false
+    tidal_heat      = false
+    grain_size      = 0.1
+    F_initial       = 1000.0
+    rheo_phi_loc    = 0.5
+    rheo_phi_wid    = 0.2
+
+    [interior.spider]
+        ini_entropy  = 3000.0
+        ini_dsdr     = -4.698e-6
+        num_levels   = 50
+        mixing_length = 2
+        tolerance     = 1e-8
+        tolerance_rel = 1e-8
+        solver_type   = "bdf"
+        tsurf_atol    = 20.0
+        tsurf_rtol    = 0.02
+
+[outgas]
+    fO2_shift_IW = 2
+    module       = "calliope"
+
+    [outgas.calliope]
+        include_NH3 = false
+
+[delivery]
+    initial = "elements"
+    module  = "none"
+
+    [delivery.elements]
+        H_ppmw   = 3e3
+        CH_ratio = 1.0
+        N_ppmw   = 0.0
+        SH_ratio = 1.0
+
+[observe]
+    synthesis = "none"
+
+[atmos_chem]
+    module = "none"
