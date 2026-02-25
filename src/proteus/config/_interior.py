@@ -248,7 +248,10 @@ class Interior:
     dummy: Dummy
         Parameters for running the dummy module.
     melting_dir: str
-        Set of melting curves to use in the model.
+        Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER).
+        Must correspond to a folder in FWL_DATA/interior_lookup_tables/Melting_curves/
+        containing solidus_P-T.dat and liquidus_P-T.dat (T(P) format). SPIDER additionally
+        requires pre-computed S(P) files in its lookup directory.
     lookup_dir: str
         Set of lookup data files to use in the model (e.g. equations of state).
     """

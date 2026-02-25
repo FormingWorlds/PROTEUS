@@ -1148,24 +1148,32 @@ def load_melting_curve(melt_file):
 
 
 def get_zalmoxis_melting_curves(config: Config):
+    """Load solidus and liquidus T(P) melting curves for Zalmoxis.
+
+    Reads the melting curve files from the directory specified by
+    ``config.interior.melting_dir`` under ``FWL_DATA/interior_lookup_tables/Melting_curves/``.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object containing interior settings.
+
+    Returns
+    -------
+    tuple
+        (solidus_func, liquidus_func) interpolation functions T(P) [K].
     """
-    Loads and returns the solidus and liquidus melting curves for temperature-dependent silicate mantle EOS. This is for use with Zalmoxis.
-    Zalmoxis currently only supports the 'Monteux-600' melting curves directory.
-    Parameters:
-        config: Configuration object containing interior settings
-    Returns: A tuple containing the solidus and liquidus data files.
-    """
-    if config.interior.melting_dir != 'Monteux-600':
-        raise ValueError(
-            f"Zalmoxis currently only supports 'Monteux-600' for melting_dir. You have configured '{config.interior.melting_dir}'."
-        )
     melting_curves_folder = (
         FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / config.interior.melting_dir
     )
-    solidus_func = load_melting_curve(melting_curves_folder / 'solidus.dat')
-    liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus.dat')
-    melting_curves_functions = (solidus_func, liquidus_func)
-    return melting_curves_functions
+    if not melting_curves_folder.is_dir():
+        raise FileNotFoundError(
+            f'Melting curves directory not found: {melting_curves_folder}. '
+            f"Check interior.melting_dir='{config.interior.melting_dir}'."
+        )
+    solidus_func = load_melting_curve(melting_curves_folder / 'solidus_P-T.dat')
+    liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus_P-T.dat')
+    return (solidus_func, liquidus_func)
 
 
 def get_zalmoxis_EOS():

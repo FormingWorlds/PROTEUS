@@ -23,6 +23,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+FWL_DATA_DIR = os.environ.get('FWL_DATA', '')
+MELTING_CURVES_DIR = os.path.join(FWL_DATA_DIR, 'interior_lookup_tables', 'Melting_curves')
+
 
 class MyJSON(object):
     """load and access json data"""
@@ -360,6 +363,19 @@ def _try_spider(
 
     # Properties lookup data (folder relative to SPIDER src)
     folder = 'lookup_data/1TPa-dK09-elec-free/'
+
+    # Resolve melting curve S(P) files from shared config (absolute paths in FWL_DATA)
+    mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior.melting_dir)
+    liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
+    solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
+    for fpath in (liquidus_ps, solidus_ps):
+        if not os.path.isfile(fpath):
+            raise FileNotFoundError(
+                f'SPIDER phase boundary file not found: {fpath}. '
+                f"Run 'python tools/generate_spider_phase_boundaries.py "
+                f"--melting-dir {config.interior.melting_dir}' to generate it."
+            )
+
     call_sequence.extend(['-phase_names', 'melt,solid'])
 
     call_sequence.extend(['-melt_TYPE', '1'])
@@ -370,9 +386,7 @@ def _try_spider(
     )
     call_sequence.extend(['-melt_rho_filename_rel_to_src', folder + 'density_melt.dat'])
     call_sequence.extend(['-melt_temp_filename_rel_to_src', folder + 'temperature_melt.dat'])
-    call_sequence.extend(
-        ['-melt_phase_boundary_filename_rel_to_src', folder + 'liquidus_A11_H13.dat']
-    )
+    call_sequence.extend(['-melt_phase_boundary_filename', liquidus_ps])
     call_sequence.extend(['-melt_log10visc', '2.0'])
     call_sequence.extend(['-melt_cond', '4.0'])  # conductivity of melt
 
@@ -384,9 +398,7 @@ def _try_spider(
     )
     call_sequence.extend(['-solid_rho_filename_rel_to_src', folder + 'density_solid.dat'])
     call_sequence.extend(['-solid_temp_filename_rel_to_src', folder + 'temperature_solid.dat'])
-    call_sequence.extend(
-        ['-solid_phase_boundary_filename_rel_to_src', folder + 'solidus_A11_H13.dat']
-    )
+    call_sequence.extend(['-solid_phase_boundary_filename', solidus_ps])
     call_sequence.extend(['-solid_log10visc', '22.0'])
     call_sequence.extend(['-solid_cond', '4.0'])  # conductivity of solid
 
