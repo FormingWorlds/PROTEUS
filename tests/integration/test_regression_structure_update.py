@@ -123,9 +123,9 @@ def test_structure_update_consistency():
         # --- At least one structure update occurred ---
         # R_int should not be constant if updates happened.
         R_range = R_int.max() - R_int.min()
-        assert R_range > 0, (
-            'R_int is constant across all timesteps — '
-            'no structure updates appear to have occurred'
+        assert R_range > 100, (
+            f'R_int range = {R_range:.1f} m, too small to confirm '
+            'structure updates occurred (threshold: 100 m)'
         )
 
         # --- Final values are physical ---
