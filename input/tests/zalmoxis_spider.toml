@@ -68,7 +68,9 @@ version = "2.0"
     module       = "zalmoxis"
 
     [struct.zalmoxis]
-        EOSchoice                  = "Tabulated:iron/Tdep_silicate"
+        core_eos                   = "Seager2007:iron"
+        mantle_eos                 = "WolfBower2018:MgSiO3"
+        ice_layer_eos              = ""
         coremassfrac               = 0.325
         mantle_mass_fraction       = 0
         weight_iron_frac           = 0.325
@@ -88,7 +90,6 @@ version = "2.0"
         target_surface_pressure    = 101325
         pressure_tolerance         = 1e9
         max_iterations_pressure    = 200
-        pressure_adjustment_factor = 1.1
         verbose                    = false
         iteration_profiles_enabled = false
 

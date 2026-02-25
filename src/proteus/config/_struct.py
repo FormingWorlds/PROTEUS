@@ -37,7 +37,9 @@ def valid_zalmoxis(instance, attribute, value):
     max_iterations_outer = instance.zalmoxis.max_iterations_outer
     max_iterations_inner = instance.zalmoxis.max_iterations_inner
     max_iterations_pressure = instance.zalmoxis.max_iterations_pressure
-    EOSchoice = instance.zalmoxis.EOSchoice
+    core_eos = instance.zalmoxis.core_eos
+    mantle_eos = instance.zalmoxis.mantle_eos
+    ice_layer_eos = instance.zalmoxis.ice_layer_eos
     core_mass_fraction = instance.zalmoxis.coremassfrac
     mantle_mass_fraction = instance.zalmoxis.mantle_mass_fraction
     mass_tot = instance.mass_tot
@@ -50,15 +52,34 @@ def valid_zalmoxis(instance, attribute, value):
         raise ValueError('`interior.zalmoxis.max_iterations_inner` must be > 12')
     if max_iterations_pressure < 13:
         raise ValueError('`interior.zalmoxis.max_iterations_pressure` must be > 12')
-    if EOSchoice == 'Tabulated:iron/silicate':
+
+    # EOS format validation: must be "<source>:<material>"
+    for name, eos_val in [('core_eos', core_eos), ('mantle_eos', mantle_eos)]:
+        if ':' not in eos_val:
+            raise ValueError(
+                f"`struct.zalmoxis.{name}` must be in '<source>:<material>' format, "
+                f"got '{eos_val}'"
+            )
+    if ice_layer_eos and ':' not in ice_layer_eos:
+        raise ValueError(
+            f"`struct.zalmoxis.ice_layer_eos` must be empty or '<source>:<material>' format, "
+            f"got '{ice_layer_eos}'"
+        )
+
+    # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
+    if not ice_layer_eos and not mantle_eos.startswith('WolfBower2018'):
         if mantle_mass_fraction != 0:
             raise ValueError(
-                "`interior.zalmoxis.mantle_mass_fraction` must be 0 when `EOSchoice` is 'Tabulated:iron/silicate' (only 2 layers are modeled)."
+                '`struct.zalmoxis.mantle_mass_fraction` must be 0 for a 2-layer model '
+                'without T-dependent mantle EOS (only core + mantle are modeled).'
             )
-    if EOSchoice == 'Tabulated:water':
+
+    # 3-layer model (with ice layer): mass fractions must not exceed 75%
+    if ice_layer_eos:
         if core_mass_fraction + mantle_mass_fraction > 0.75:
             raise ValueError(
-                "`interior.zalmoxis.coremassfrac` and `interior.zalmoxis.mantle_mass_fraction` must add up to <= 75% when `EOSchoice` is 'Tabulated:water' (see the definition of water planets according to Seager 2007)."
+                '`struct.zalmoxis.coremassfrac` and `struct.zalmoxis.mantle_mass_fraction` '
+                'must add up to <= 75% for a 3-layer model (Seager 2007).'
             )
 
 
@@ -68,22 +89,36 @@ class Zalmoxis:
 
     Attributes
     ----------
-    EOSchoice: str
-        EOS choice of Zalmoxis. Choices: "Tabulated:iron/silicate", "Tabulated:iron/Tdep_silicate", "Tabulated:water".
+    core_eos: str
+        EOS for the core layer. Format: "<source>:<material>".
+        Tabulated: "Seager2007:iron".
+        Analytic: "Analytic:iron", "Analytic:MgFeSiO3", etc.
+    mantle_eos: str
+        EOS for the mantle layer. Format: "<source>:<material>".
+        Tabulated: "Seager2007:MgSiO3", "WolfBower2018:MgSiO3".
+        Analytic: "Analytic:MgSiO3", "Analytic:MgFeSiO3", etc.
+    ice_layer_eos: str
+        EOS for the ice/water layer (3-layer model). Empty string for
+        2-layer model (core + mantle only).
+        Tabulated: "Seager2007:H2O". Analytic: "Analytic:H2O".
     coremassfrac: float
         Fraction of the planet's interior mass corresponding to the core.
     mantle_mass_fraction: float
-        Fraction of the planet's interior mass corresponding to the mantle (needed for modeling more than 2 layers).
+        Fraction of the planet's interior mass corresponding to the mantle
+        (needed for modeling more than 2 layers).
     weight_iron_frac: float
         Fraction of the planet's mass that is iron.
     temperature_mode: str
         Choice of input temperature profile: "isothermal", "linear", "prescribed".
     surface_temperature: float
-        Surface temperature (K), required for temperature_mode="isothermal" or "linear", ignored otherwise.
+        Surface temperature (K), required for temperature_mode="isothermal"
+        or "linear", ignored otherwise.
     center_temperature: float
-        Center temperature (K), required for temperature_mode="linear", ignored otherwise.
+        Center temperature (K), required for temperature_mode="linear",
+        ignored otherwise.
     temperature_profile_file: Optional[str]
-        Filename containing a prescribed temperature profile, required for temperature_mode="prescribed".
+        Filename containing a prescribed temperature profile, required for
+        temperature_mode="prescribed".
     num_levels: int
         Number of Zalmoxis radius layers.
     max_iterations_outer: int
@@ -101,29 +136,26 @@ class Zalmoxis:
     maximum_step: float
         Maximum integration step size for solve_ivp (m).
     adaptive_radial_fraction: float
-        Fraction (0–1) of the radial domain defining where solve_ivp transitions from adaptive integration to fixed-step integration when using the temperature-dependent `"Tabulated:iron/Tdep_silicate"` EOS.
+        Fraction (0-1) of the radial domain defining where solve_ivp
+        transitions from adaptive to fixed-step integration when using
+        the WolfBower2018 T-dependent mantle EOS.
     max_center_pressure_guess: float
-        Maximum pressure guess at the center of the planet based on the "Tabulated:iron/Tdep_silicate" EOS files (Pa).
+        Maximum pressure guess at the center of the planet (Pa).
     target_surface_pressure: float
         Target surface pressure for the pressure adjustment [Pa].
     pressure_tolerance: float
         Convergence tolerance for the pressure adjustment [Pa].
     max_iterations_pressure: int
         Maximum number of iterations for the pressure adjustment.
-    pressure_adjustment_factor: float
-        Reduction factor for adjusting the pressure in the pressure adjustment.
     verbose: bool
-        If true, logs detailed convergence info and warnings; if false, only essential messages are shown (true/false).
+        If true, logs detailed convergence info and warnings.
     iteration_profiles_enabled: bool
-        If true, writes pressure and density profiles for each iteration to files (true/false).
+        If true, writes pressure and density profiles for each iteration.
     """
 
-    EOSchoice: str = field(
-        default='Tabulated:iron/silicate',
-        validator=in_(
-            ('Tabulated:iron/silicate', 'Tabulated:iron/Tdep_silicate', 'Tabulated:water')
-        ),
-    )
+    core_eos: str = field(default='Seager2007:iron')
+    mantle_eos: str = field(default='Seager2007:MgSiO3')
+    ice_layer_eos: str = field(default='')
 
     coremassfrac: float = field(default=0.325, validator=(gt(0), lt(1)))
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
@@ -150,7 +182,6 @@ class Zalmoxis:
     target_surface_pressure: float = field(default=101325, validator=ge(0))
     pressure_tolerance: float = field(default=1e9, validator=ge(0))
     max_iterations_pressure: int = field(default=200, validator=ge(1))
-    pressure_adjustment_factor: float = field(default=1.1, validator=ge(0))
 
     verbose: bool = field(default=False)
     iteration_profiles_enabled: bool = field(default=False)
@@ -159,7 +190,8 @@ class Zalmoxis:
         if self.temperature_mode == 'prescribed':
             if not self.temperature_profile_file:
                 raise ValueError(
-                    "`temperature_profile_file` must be provided when `temperature_mode` is 'prescribed'."
+                    '`temperature_profile_file` must be provided when '
+                    "`temperature_mode` is 'prescribed'."
                 )
 
 

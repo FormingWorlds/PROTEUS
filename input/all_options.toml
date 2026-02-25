@@ -170,7 +170,12 @@ version = "2.0"
     module       = "self"       # self | zalmoxis
 
     [struct.zalmoxis]
-        EOSchoice                  = "Tabulated:iron/Tdep_silicate" # EOS choices: "Tabulated:iron/silicate", "Tabulated:iron/Tdep_silicate", "Tabulated:water"
+        # Per-layer EOS: "<source>:<material>". See Zalmoxis docs for valid options.
+        # Tabulated: Seager2007:iron, Seager2007:MgSiO3, WolfBower2018:MgSiO3, Seager2007:H2O
+        # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O, Analytic:graphite, Analytic:SiC
+        core_eos                   = "Seager2007:iron"              # core layer EOS
+        mantle_eos                 = "WolfBower2018:MgSiO3"         # mantle layer EOS
+        ice_layer_eos              = ""                             # ice/water layer EOS (empty = 2-layer model)
         coremassfrac               = 0.325                          # core mass fraction [non-dim.]
         mantle_mass_fraction       = 0                              # mantle mass fraction [non-dim.]
         weight_iron_frac           = 0.325                          # iron fraction in the planet [non-dim.]
@@ -186,12 +191,11 @@ version = "2.0"
         relative_tolerance         = 1e-5                           # relative tolerance for solve_ivp
         absolute_tolerance         = 1e-6                           # absolute tolerance for solve_ivp
         maximum_step               = 250000                         # maximum integration step size [m]
-        adaptive_radial_fraction   = 0.98                           # radial fraction for transition from adaptive integration to fixed-step integration when using "Tabulated:iron/Tdep_silicate" EOS
-        max_center_pressure_guess  = 0.99e12                        # maximum central pressure guess based on "Tabulated:iron/Tdep_silicate" EOS limit [Pa]
+        adaptive_radial_fraction   = 0.98                           # radial fraction for adaptive-to-fixed-step transition (WolfBower2018 EOS)
+        max_center_pressure_guess  = 0.99e12                        # maximum central pressure guess [Pa]
         target_surface_pressure    = 101325                         # target surface pressure [Pa]
         pressure_tolerance         = 1e9                            # tolerance surface pressure [Pa]
         max_iterations_pressure    = 200                            # max. iterations for the innermost loop
-        pressure_adjustment_factor = 1.1                            # factor for adjusting the pressure in the innermost loop
         verbose                    = false                          # detailed convergence info and warnings printing?
         iteration_profiles_enabled = false                          # pressure and density profiles for each iteration logging?
 

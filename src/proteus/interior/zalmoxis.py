@@ -16,7 +16,7 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import get_zalmoxis_EOS, get_zalmoxis_melting_curves
-from zalmoxis.zalmoxis import main, parse_eos_config
+from zalmoxis.zalmoxis import main
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
@@ -47,7 +47,12 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
     total_planet_mass = config.struct.mass_tot * M_earth
 
     logger.info(
-        f'Total target planet mass (dry mass + volatiles): {total_planet_mass} kg with EOS choice: {config.struct.zalmoxis.EOSchoice}'
+        'Total target planet mass (dry mass + volatiles): %s kg '
+        'with EOS: core=%s, mantle=%s, ice=%s',
+        total_planet_mass,
+        config.struct.zalmoxis.core_eos,
+        config.struct.zalmoxis.mantle_eos,
+        config.struct.zalmoxis.ice_layer_eos or '(none)',
     )
 
     # Calculate the total mass of 'wet' elements in the planet
@@ -64,8 +69,13 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
 
     logger.info(f'Target planet mass (dry mass): {planet_mass} kg ')
 
-    # Convert PROTEUS EOSchoice string to Zalmoxis per-layer dict
-    layer_eos_config = parse_eos_config({'choice': config.struct.zalmoxis.EOSchoice})
+    # Build per-layer EOS config dict from PROTEUS config fields
+    layer_eos_config = {
+        'core': config.struct.zalmoxis.core_eos,
+        'mantle': config.struct.zalmoxis.mantle_eos,
+    }
+    if config.struct.zalmoxis.ice_layer_eos:
+        layer_eos_config['ice_layer'] = config.struct.zalmoxis.ice_layer_eos
 
     return {
         'planet_mass': planet_mass,
@@ -76,7 +86,6 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'surface_temperature': config.struct.zalmoxis.surface_temperature,
         'center_temperature': config.struct.zalmoxis.center_temperature,
         'temp_profile_file': config.struct.zalmoxis.temperature_profile_file,
-        'EOS_CHOICE': config.struct.zalmoxis.EOSchoice,
         'layer_eos_config': layer_eos_config,
         'num_layers': config.struct.zalmoxis.num_levels,
         'max_iterations_outer': config.struct.zalmoxis.max_iterations_outer,
@@ -91,7 +100,6 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'target_surface_pressure': config.struct.zalmoxis.target_surface_pressure,
         'pressure_tolerance': config.struct.zalmoxis.pressure_tolerance,
         'max_iterations_pressure': config.struct.zalmoxis.max_iterations_pressure,
-        'pressure_adjustment_factor': config.struct.zalmoxis.pressure_adjustment_factor,
         'verbose': config.struct.zalmoxis.verbose,
         'iteration_profiles_enabled': config.struct.zalmoxis.iteration_profiles_enabled,
     }
@@ -106,15 +114,24 @@ def load_zalmoxis_material_dictionaries():
     return get_zalmoxis_EOS()
 
 
-def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE, config: Config):
-    """Loads the solidus and liquidus functions for Zalmoxis based on the EOS choice.
-    Args:
-        EOS_CHOICE (str): The EOS choice for Zalmoxis.
-    Returns:
-        tuple: A tuple containing the solidus and liquidus functions.
+def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
+    """Loads the solidus and liquidus functions for Zalmoxis based on the mantle EOS.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Mantle EOS string (e.g. "WolfBower2018:MgSiO3").
+    config : Config
+        PROTEUS configuration object.
+
+    Returns
+    -------
+    tuple or None
+        (solidus_func, liquidus_func) if T-dependent EOS, else None.
     """
-    if EOS_CHOICE == 'Tabulated:iron/Tdep_silicate':
+    if mantle_eos == 'WolfBower2018:MgSiO3':
         return get_zalmoxis_melting_curves(config)
+    return None
 
 
 def scale_temperature_profile_for_aragog(
@@ -259,7 +276,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
         config_params,
         material_dictionaries=load_zalmoxis_material_dictionaries(),
         melting_curves_functions=load_zalmoxis_solidus_liquidus_functions(
-            config_params['EOS_CHOICE'], config
+            config.struct.zalmoxis.mantle_eos, config
         ),
         input_dir=os.path.join(outdir, 'data'),
     )

@@ -172,7 +172,7 @@ class AragogRunner:
                 FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
             )
         elif config.struct.module == 'zalmoxis':
-            if config.struct.zalmoxis.EOSchoice == 'Tabulated:iron/Tdep_silicate':
+            if config.struct.zalmoxis.mantle_eos == 'WolfBower2018:MgSiO3':
                 # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
                 initial_condition_temperature_profile = 2
                 init_file_temperature_profile = os.path.join(
