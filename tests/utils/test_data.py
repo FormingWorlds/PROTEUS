@@ -392,9 +392,9 @@ def test_download_zenodo_file_cleanup_branches(mock_getfwl, mock_run, mock_safe_
         if '--version' in cmd:
             return proc_avail
 
-        # Phase 1: expected_path is FILE
+        # Phase 1: FILE but empty
         if call_state['phase'] == 0:
-            expected_path.write_text('stale')
+            expected_path.write_text("")  # ← KEY CHANGE
             call_state['phase'] += 1
             return proc_dl
 
@@ -1228,6 +1228,78 @@ def test_download_phoenix(mock_download, mock_zipfile, tmp_path, monkeypatch):
 
     assert not zip_path.exists()
 
+@pytest.mark.unit
+@patch("proteus.utils.data.download")
+@patch("proteus.utils.data.zipfile.ZipFile")
+def test_download_phoenix_unzips_and_cleans_up(mock_zipfile, mock_download, tmp_path, monkeypatch):
+    """Covers the unzip path: ZipFile/extractall called, LTE file appears, zip removed."""
+
+    from proteus.utils.data import download_phoenix
+    from proteus.utils.phoenix_helper import phoenix_param
+
+    # Arrange inputs
+    FeH = 0.0
+    alpha = 0.0
+    feh_str = phoenix_param(FeH, kind="FeH")
+    alpha_str = phoenix_param(alpha, kind="alpha")
+    zip_name = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
+
+    # Make GetFWLData() return tmp_path
+    monkeypatch.setattr("proteus.utils.data.GetFWLData", lambda: tmp_path)
+
+    base_dir = tmp_path / "stellar_spectra" / "PHOENIX"
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Production expects zip at base_dir/zip_name after download()
+    zip_path = base_dir / zip_name
+    zip_path.write_bytes(b"dummy zip bytes")
+
+    # grid_dir where extraction happens
+    grid_dir = base_dir / f"FeH{feh_str}_alpha{alpha_str}"
+
+    # IMPORTANT: do NOT pre-create LTE file here; we want the unzip path.
+
+    # Mock download() report success
+    mock_download.return_value = True
+
+    # Mock ZipFile so no real unzip occurs; simulate extraction by creating LTE file
+    zf = MagicMock()
+
+    def extractall_side_effect(dest):
+        dest = Path(dest)
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "LTE_T02300_logg0.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt"
+).write_text("dummy spectrum")
+
+    zf.extractall.side_effect = extractall_side_effect
+    mock_zipfile.return_value.__enter__.return_value = zf
+
+    # Act
+    ok = download_phoenix(alpha=alpha, FeH=FeH, force=True)
+
+    # Assert
+    assert ok is True
+
+    # unzip was actually attempted
+    mock_zipfile.assert_called_once_with(zip_path, "r")
+    zf.extractall.assert_called_once_with(grid_dir)
+
+    # LTE file now exists after "extraction"
+    assert any(grid_dir.glob("LTE_T*_phoenixMedRes_R05000.txt"))
+
+    # zip removed after successful unpack
+    assert not zip_path.exists()
+
+@pytest.mark.unit
+@patch("proteus.utils.data.download")
+def test_download_phoenix_returns_false_if_download_fails(mock_download, tmp_path, monkeypatch):
+    from proteus.utils.data import download_phoenix
+
+    monkeypatch.setattr("proteus.utils.data.GetFWLData", lambda: tmp_path)
+    mock_download.return_value = False
+
+    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    assert ok is False
 
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
