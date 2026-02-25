@@ -249,7 +249,13 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Watch Out**: Nested configuration validation, type coercion edge cases
 - **Test Coverage**: `tests/config/test_config.py`, `test_converters.py`, `test_options.py`
 
-#### 4. CI Workflow Summary Generation (`.github/workflows/ci-nightly.yml`)
+#### 4. Zalmoxis-SPIDER Coupling (`src/proteus/interior/wrapper.py`, `zalmoxis.py`)
+- **Why Complex**: Phase 2 feedback loop mutates config temporarily (prescribed T-mode override with try/finally restore). T-profile interpolation bridges SPIDER's 49 mantle nodes to Zalmoxis's 150 full-planet grid. WolfBower2018 T-dependent EOS causes ~5% M_int shift on first structure update.
+- **Recent Changes**: Per-layer EOS config (`core_eos`/`mantle_eos`/`ice_layer_eos`), `update_structure_from_interior()`, `write_spider_mesh_file()`
+- **Watch Out**: `zalmoxis_solver()` unconditionally writes Aragog files even when using SPIDER. `solve_structure()` permanently mutates `config.orbit.module='dummy'` for Zalmoxis. `validate_mesh_fields.py` in SPIDER is dead validation (needs rewrite).
+- **Test Coverage**: `tests/interior/test_zalmoxis.py`, `tests/integration/test_smoke_zalmoxis_spider.py`, `test_regression_aw_zalmoxis.py`, `test_regression_structure_update.py`
+
+#### 5. CI Workflow Summary Generation (`.github/workflows/ci-nightly.yml`)
 - **Why Fragile**: Parses JUnit XML, coverage JSON, handles failures
 - **Recent Changes**: Hardened with try/except, better error handling (commit 7ed06597)
 - **Watch Out**: Missing files, parse errors can crash summary step
