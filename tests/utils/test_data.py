@@ -336,6 +336,38 @@ def test_download_zenodo_file_nonzero_exit_reads_log_and_fails(
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_nonzero_exit_reads_log_content(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """Non-zero exit should read log content when available."""
+    from proteus.utils.data import MAX_ATTEMPTS, download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'file.txt'
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=1)
+
+    log_path = tmp_path / 'zenodo_download.log'
+    log_path.write_text('some error line 1\nsome error line 2\n')
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is False
+    assert mock_run.call_count >= 1 + MAX_ATTEMPTS
+
+
+@pytest.mark.unit
 @patch('proteus.utils.data.validate_zenodo_folder')
 @patch('proteus.utils.data.os.path.isdir')
 def test_check_needs_update(mock_isdir, mock_validate):
