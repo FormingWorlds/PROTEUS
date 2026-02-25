@@ -237,8 +237,13 @@ def main():
         print(f'ERROR: Melting curves folder not found: {mc_folder}', file=sys.stderr)
         sys.exit(1)
 
+    # Accept both naming conventions: solidus_P-T.dat (canonical) and solidus.dat (Zenodo legacy)
     solidus_tp = mc_folder / 'solidus_P-T.dat'
     liquidus_tp = mc_folder / 'liquidus_P-T.dat'
+    if not solidus_tp.is_file():
+        solidus_tp = mc_folder / 'solidus.dat'
+    if not liquidus_tp.is_file():
+        liquidus_tp = mc_folder / 'liquidus.dat'
     for f in (solidus_tp, liquidus_tp):
         if not f.is_file():
             print(f'ERROR: T(P) file not found: {f}', file=sys.stderr)

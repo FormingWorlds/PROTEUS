@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import re
+import shutil
 import subprocess as sp
 from pathlib import Path
 from time import sleep
@@ -774,6 +775,15 @@ def download_melting_curves(config: Config, clean=False):
         zenodo_id=source_info['zenodo_id'],
         desc=f'Melting curve data: {dir}',
     )
+
+    # Create canonical _P-T copies from Zenodo legacy names (solidus.dat -> solidus_P-T.dat).
+    # Keep originals so md5sum checks don't trigger unnecessary re-downloads.
+    for stem in ('solidus', 'liquidus'):
+        legacy = folder_dir / f'{stem}.dat'
+        canonical = folder_dir / f'{stem}_P-T.dat'
+        if legacy.is_file() and not canonical.is_file():
+            shutil.copy2(legacy, canonical)
+            log.debug('Copied %s -> %s', legacy.name, canonical.name)
 
 
 def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
