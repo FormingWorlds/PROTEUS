@@ -1268,8 +1268,7 @@ def test_download_phoenix_unzips_and_cleans_up(mock_zipfile, mock_download, tmp_
     def extractall_side_effect(dest):
         dest = Path(dest)
         dest.mkdir(parents=True, exist_ok=True)
-        (dest / "LTE_T02300_logg0.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt"
-).write_text("dummy spectrum")
+        (dest / "LTE_T02300_logg0.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt").write_text("dummy spectrum")
 
     zf.extractall.side_effect = extractall_side_effect
     mock_zipfile.return_value.__enter__.return_value = zf
@@ -1289,6 +1288,46 @@ def test_download_phoenix_unzips_and_cleans_up(mock_zipfile, mock_download, tmp_
 
     # zip removed after successful unpack
     assert not zip_path.exists()
+
+@pytest.mark.unit
+@patch("proteus.utils.data.safe_rm")
+@patch("proteus.utils.data.zipfile.ZipFile")
+@patch("proteus.utils.data.download")
+def test_download_phoenix_force_removes_existing_grid_dir(
+    mock_download, mock_zipfile, mock_safe_rm, tmp_path, monkeypatch
+):
+    from proteus.utils.data import download_phoenix
+    from proteus.utils.phoenix_helper import phoenix_param
+
+    monkeypatch.setattr("proteus.utils.data.GetFWLData", lambda: tmp_path)
+    mock_download.return_value = True
+
+    FeH = 0.0
+    alpha = 0.0
+    feh_str = phoenix_param(FeH, kind="FeH")
+    alpha_str = phoenix_param(alpha, kind="alpha")
+    zip_name = f"FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip"
+
+    base_dir = tmp_path / "stellar_spectra" / "PHOENIX"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    (base_dir / zip_name).write_bytes(b"zip")
+
+    grid_dir = base_dir / f"FeH{feh_str}_alpha{alpha_str}"
+    grid_dir.mkdir(parents=True, exist_ok=True)
+
+    # Make extraction succeed by pre-creating LTE file after "extractall"
+    def extractall_side_effect(_dest):
+        dest = Path(_dest)
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "LTE_T02300_logg0.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt").write_text("ok")
+
+    zf = MagicMock()
+    zf.extractall.side_effect = extractall_side_effect
+    mock_zipfile.return_value.__enter__.return_value = zf
+
+    ok = download_phoenix(alpha=alpha, FeH=FeH, force=True)
+    assert ok is True
+    mock_safe_rm.assert_called_once()
 
 @pytest.mark.unit
 @patch("proteus.utils.data.download")
