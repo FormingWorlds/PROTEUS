@@ -22,7 +22,8 @@ Usage
 Requirements
 ------------
     - FWL_DATA environment variable set
-    - SPIDER lookup tables in <PROTEUS>/SPIDER/lookup_data/1TPa-dK09-elec-free/
+    - SPIDER P-S lookup tables in FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/
+      (falls back to <PROTEUS>/SPIDER/lookup_data/<eos_dir>/)
     - T(P) melting curves (solidus_P-T.dat, liquidus_P-T.dat) in the melting_dir folder
 """
 
@@ -41,7 +42,7 @@ PROTEUS_ROOT = Path(__file__).resolve().parents[1]
 SPIDER_ROOT = PROTEUS_ROOT / 'SPIDER'
 FWL_DATA = Path(os.environ.get('FWL_DATA', ''))
 MELTING_CURVES_BASE = FWL_DATA / 'interior_lookup_tables' / 'Melting_curves'
-SPIDER_LOOKUP = SPIDER_ROOT / 'lookup_data' / '1TPa-dK09-elec-free'
+EOS_DYNAMIC_BASE = FWL_DATA / 'interior_lookup_tables' / 'EOS' / 'dynamic'
 
 
 # -- SPIDER lookup table loader ---------------------------------------------
@@ -223,6 +224,11 @@ def main():
         default='Monteux-600',
         help='Name of melting curves folder in FWL_DATA (default: Monteux-600)',
     )
+    parser.add_argument(
+        '--eos-dir',
+        default='WolfBower2018_MgSiO3',
+        help='Name of dynamic EOS folder (default: WolfBower2018_MgSiO3)',
+    )
     args = parser.parse_args()
 
     # Validate paths
@@ -238,14 +244,18 @@ def main():
             print(f'ERROR: T(P) file not found: {f}', file=sys.stderr)
             sys.exit(1)
 
-    if not SPIDER_LOOKUP.is_dir():
-        print(f'ERROR: SPIDER lookup directory not found: {SPIDER_LOOKUP}', file=sys.stderr)
+    # Find SPIDER P-S lookup tables: FWL_DATA first, then SPIDER local
+    spider_lookup = EOS_DYNAMIC_BASE / args.eos_dir / 'P-S'
+    if not spider_lookup.is_dir():
+        spider_lookup = SPIDER_ROOT / 'lookup_data' / '1TPa-dK09-elec-free'
+    if not spider_lookup.is_dir():
+        print(f'ERROR: SPIDER lookup directory not found: {spider_lookup}', file=sys.stderr)
         sys.exit(1)
 
     # Load SPIDER T(P,S) tables
-    print('Loading SPIDER temperature lookup tables...')
-    T_solid = load_spider_2d(SPIDER_LOOKUP / 'temperature_solid.dat')
-    T_melt = load_spider_2d(SPIDER_LOOKUP / 'temperature_melt.dat')
+    print(f'Loading SPIDER temperature lookup tables from {spider_lookup}/')
+    T_solid = load_spider_2d(spider_lookup / 'temperature_solid.dat')
+    T_melt = load_spider_2d(spider_lookup / 'temperature_melt.dat')
 
     print(f'  Solid table: {T_solid["nP"]} P x {T_solid["nS"]} S points')
     print(f'  Melt table:  {T_melt["nP"]} P x {T_melt["nS"]} S points')

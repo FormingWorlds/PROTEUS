@@ -86,7 +86,9 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         spider_dir = dirs['spider']
     else:
         spider_dir = None
-    int_o = Interior_t(get_nlevb(config), spider_dir=spider_dir)
+    int_o = Interior_t(
+        get_nlevb(config), spider_dir=spider_dir, eos_dir=config.interior.eos_dir
+    )
     int_o.ic = 1
     hf_row['R_int'] = R_earth
     calculate_core_mass(hf_row, config)
@@ -168,7 +170,7 @@ def determine_interior_radius_with_zalmoxis(
 
     nlev_b = get_nlevb(config)
     spider_dir = dirs.get('spider') if config.interior.module == 'spider' else None
-    int_o = Interior_t(nlev_b, spider_dir=spider_dir)
+    int_o = Interior_t(nlev_b, spider_dir=spider_dir, eos_dir=config.interior.eos_dir)
     int_o.ic = 1
 
     # Request SPIDER mesh file if interior module is SPIDER

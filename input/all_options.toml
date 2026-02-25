@@ -171,10 +171,10 @@ version = "2.0"
 
     [struct.zalmoxis]
         # Per-layer EOS: "<source>:<material>". See Zalmoxis docs for valid options.
-        # Tabulated: Seager2007:iron, Seager2007:MgSiO3, WolfBower2018:MgSiO3, Seager2007:H2O
+        # Tabulated: Seager2007:iron, Seager2007:MgSiO3, WolfBower2018_MgSiO3, Seager2007:H2O
         # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O, Analytic:graphite, Analytic:SiC
         core_eos                   = "Seager2007:iron"              # core layer EOS
-        mantle_eos                 = "WolfBower2018:MgSiO3"         # mantle layer EOS
+        mantle_eos                 = "WolfBower2018_MgSiO3"         # mantle layer EOS
         ice_layer_eos              = ""                             # ice/water layer EOS (empty = 2-layer model)
         coremassfrac               = 0.325                          # core mass fraction [non-dim.]
         mantle_mass_fraction       = 0                              # mantle mass fraction [non-dim.]
@@ -309,7 +309,7 @@ version = "2.0"
     rheo_phi_loc    = 0.6           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
     melting_dir     = "Monteux-600" # Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER)
-    lookup_dir      = "1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa" # Name of folder with EOS tables, etc.
+    eos_dir         = "WolfBower2018_MgSiO3" # Dynamic EOS for SPIDER + Aragog (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
 
 
     module = "aragog"       # Which interior module to use

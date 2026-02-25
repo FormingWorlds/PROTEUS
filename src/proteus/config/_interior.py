@@ -252,15 +252,17 @@ class Interior:
         Must correspond to a folder in FWL_DATA/interior_lookup_tables/Melting_curves/
         containing solidus_P-T.dat and liquidus_P-T.dat (T(P) format). SPIDER additionally
         requires pre-computed S(P) files in its lookup directory.
-    lookup_dir: str
-        Set of lookup data files to use in the model (e.g. equations of state).
+    eos_dir: str
+        Equation of state used by SPIDER and Aragog. Must correspond to a
+        folder under FWL_DATA/interior_lookup_tables/EOS/dynamic/ containing
+        P-T/ (pressure-temperature format, used by Aragog) and P-S/
+        (pressure-entropy format, used by SPIDER) subdirectories.
+        Zalmoxis derives its EOS paths from struct.zalmoxis config instead.
     """
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
     melting_dir: str = field(default='Monteux-600', validator=valid_path)
-    lookup_dir: str = field(
-        default='1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa', validator=valid_path
-    )
+    eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
     radiogenic_heat: bool = field(default=True)
     tidal_heat: bool = field(default=True)
 

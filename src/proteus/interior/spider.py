@@ -25,6 +25,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 FWL_DATA_DIR = os.environ.get('FWL_DATA', '')
 MELTING_CURVES_DIR = os.path.join(FWL_DATA_DIR, 'interior_lookup_tables', 'Melting_curves')
+EOS_DYNAMIC_DIR = os.path.join(FWL_DATA_DIR, 'interior_lookup_tables', 'EOS', 'dynamic')
 
 
 class MyJSON(object):
@@ -361,8 +362,16 @@ def _try_spider(
         call_sequence.extend(['-HTIDAL', '2'])
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
 
-    # Properties lookup data (folder relative to SPIDER src)
-    folder = 'lookup_data/1TPa-dK09-elec-free/'
+    # EOS lookup data: absolute paths from FWL_DATA, with SPIDER local as fallback
+    eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior.eos_dir, 'P-S')
+    if not os.path.isdir(eos_dir):
+        # Fall back to SPIDER's local lookup_data (uses legacy directory name)
+        eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
+    if not os.path.isdir(eos_dir):
+        raise FileNotFoundError(
+            f'SPIDER EOS directory not found: {eos_dir}. '
+            f"Check interior.eos_dir='{config.interior.eos_dir}'."
+        )
 
     # Resolve melting curve S(P) files from shared config (absolute paths in FWL_DATA)
     mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior.melting_dir)
@@ -379,25 +388,33 @@ def _try_spider(
     call_sequence.extend(['-phase_names', 'melt,solid'])
 
     call_sequence.extend(['-melt_TYPE', '1'])
-    call_sequence.extend(['-melt_alpha_filename_rel_to_src', folder + 'thermal_exp_melt.dat'])
-    call_sequence.extend(['-melt_cp_filename_rel_to_src', folder + 'heat_capacity_melt.dat'])
     call_sequence.extend(
-        ['-melt_dTdPs_filename_rel_to_src', folder + 'adiabat_temp_grad_melt.dat']
+        ['-melt_alpha_filename', os.path.join(eos_dir, 'thermal_exp_melt.dat')]
     )
-    call_sequence.extend(['-melt_rho_filename_rel_to_src', folder + 'density_melt.dat'])
-    call_sequence.extend(['-melt_temp_filename_rel_to_src', folder + 'temperature_melt.dat'])
+    call_sequence.extend(['-melt_cp_filename', os.path.join(eos_dir, 'heat_capacity_melt.dat')])
+    call_sequence.extend(
+        ['-melt_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_melt.dat')]
+    )
+    call_sequence.extend(['-melt_rho_filename', os.path.join(eos_dir, 'density_melt.dat')])
+    call_sequence.extend(['-melt_temp_filename', os.path.join(eos_dir, 'temperature_melt.dat')])
     call_sequence.extend(['-melt_phase_boundary_filename', liquidus_ps])
     call_sequence.extend(['-melt_log10visc', '2.0'])
     call_sequence.extend(['-melt_cond', '4.0'])  # conductivity of melt
 
     call_sequence.extend(['-solid_TYPE', '1'])
-    call_sequence.extend(['-solid_alpha_filename_rel_to_src', folder + 'thermal_exp_solid.dat'])
-    call_sequence.extend(['-solid_cp_filename_rel_to_src', folder + 'heat_capacity_solid.dat'])
     call_sequence.extend(
-        ['-solid_dTdPs_filename_rel_to_src', folder + 'adiabat_temp_grad_solid.dat']
+        ['-solid_alpha_filename', os.path.join(eos_dir, 'thermal_exp_solid.dat')]
     )
-    call_sequence.extend(['-solid_rho_filename_rel_to_src', folder + 'density_solid.dat'])
-    call_sequence.extend(['-solid_temp_filename_rel_to_src', folder + 'temperature_solid.dat'])
+    call_sequence.extend(
+        ['-solid_cp_filename', os.path.join(eos_dir, 'heat_capacity_solid.dat')]
+    )
+    call_sequence.extend(
+        ['-solid_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_solid.dat')]
+    )
+    call_sequence.extend(['-solid_rho_filename', os.path.join(eos_dir, 'density_solid.dat')])
+    call_sequence.extend(
+        ['-solid_temp_filename', os.path.join(eos_dir, 'temperature_solid.dat')]
+    )
     call_sequence.extend(['-solid_phase_boundary_filename', solidus_ps])
     call_sequence.extend(['-solid_log10visc', '22.0'])
     call_sequence.extend(['-solid_cond', '4.0'])  # conductivity of solid

@@ -106,10 +106,17 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
 
 
 def load_zalmoxis_material_dictionaries():
-    """
-    Loads the material dictionaries for Zalmoxis.
-    Returns:
-        tuple: A tuple containing three dictionaries for iron/silicate planets, iron/Tdep_silicate planets, and water planets.
+    """Load Zalmoxis material property dictionaries.
+
+    EOS file paths are derived from the Zalmoxis source names
+    (e.g. ``Seager2007`` → ``EOS/static/Seager2007/``,
+    ``WolfBower2018_MgSiO3`` → ``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``),
+    not from ``interior.eos_dir``.
+
+    Returns
+    -------
+    tuple
+        Three dictionaries: iron/silicate, iron/T-dep silicate, water planets.
     """
     return get_zalmoxis_EOS()
 
@@ -120,7 +127,7 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     Parameters
     ----------
     mantle_eos : str
-        Mantle EOS string (e.g. "WolfBower2018:MgSiO3").
+        Mantle EOS string (e.g. "WolfBower2018_MgSiO3").
     config : Config
         PROTEUS configuration object.
 
@@ -129,7 +136,7 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     tuple or None
         (solidus_func, liquidus_func) if T-dependent EOS, else None.
     """
-    if mantle_eos == 'WolfBower2018:MgSiO3':
+    if mantle_eos == 'WolfBower2018_MgSiO3':
         return get_zalmoxis_melting_curves(config)
     return None
 

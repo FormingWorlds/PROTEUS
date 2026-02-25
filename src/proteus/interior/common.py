@@ -72,21 +72,17 @@ def get_file_tides(outdir: str):
 
 # Structure for holding interior variables at the current time-step
 class Interior_t:
-    def __init__(self, nlev_b: int, spider_dir=None):
+    def __init__(self, nlev_b: int, spider_dir=None, eos_dir=None):
         # Initial condition flag  (-1: init, 1: start, 2: running)
         self.ic = -1
 
         # Current time step length [yr]
         self.dt = 1.0
 
-        # Lookup data for SPIDER
+        # Lookup data for SPIDER (density of pure melt)
         self.lookup_rho_melt = None
         if spider_dir:
-            folder = os.path.join(spider_dir, 'lookup_data', '1TPa-dK09-elec-free') + '/'
-            data = np.genfromtxt(folder + 'density_melt.dat')
-            sfact = np.array([1000000000.0, 4805046.659407042, 1000.0])
-            scaled = data * sfact
-            self.lookup_rho_melt = scaled.reshape(95, 2020, 3)
+            self._load_rho_melt(spider_dir, eos_dir or 'WolfBower2018_MgSiO3')
 
         self.aragog_solver = None
 
@@ -106,6 +102,59 @@ class Interior_t:
         self.bulk = np.zeros(self.nlev_s)  # Bulk modulus [Pa]
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
+
+    def _load_rho_melt(self, spider_dir: str, eos_dir: str):
+        """Load SPIDER's P-S density_melt lookup table.
+
+        Tries FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/spider/ first,
+        then falls back to SPIDER/lookup_data/<eos_dir>/.
+
+        Parameters
+        ----------
+        spider_dir : str
+            Path to SPIDER installation directory.
+        eos_dir : str
+            Name of the dynamic EOS folder (e.g. 'WolfBower2018_MgSiO3').
+        """
+        fwl_data = os.environ.get('FWL_DATA', '')
+        fwl_path = os.path.join(
+            fwl_data,
+            'interior_lookup_tables',
+            'EOS',
+            'dynamic',
+            eos_dir,
+            'P-S',
+            'density_melt.dat',
+        )
+        local_path = os.path.join(
+            spider_dir, 'lookup_data', '1TPa-dK09-elec-free', 'density_melt.dat'
+        )
+
+        if os.path.isfile(fwl_path):
+            filepath = fwl_path
+        elif os.path.isfile(local_path):
+            filepath = local_path
+        else:
+            log.warning('density_melt.dat not found for melt fraction interpolation')
+            return
+
+        data = np.genfromtxt(filepath)
+
+        # Read dimensions from header: "# 5 nP nS"
+        with open(filepath) as f:
+            header = f.readline().strip().lstrip('#').split()
+        nP = int(header[1])
+        nS = int(header[2])
+
+        # Read scale factors from line 5: "# P_scale S_scale value_scale"
+        with open(filepath) as f:
+            for _ in range(5):
+                line = f.readline()
+        scales = line.strip().lstrip('#').split()
+        sfact = np.array([float(scales[0]), float(scales[1]), float(scales[2])])
+
+        scaled = data * sfact
+        self.lookup_rho_melt = scaled.reshape(nS, nP, 3)
 
     def print(self):
         log.info('Printing interior arrays....')

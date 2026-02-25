@@ -234,7 +234,11 @@ class Proteus:
             spider_dir = self.directories['spider']
         else:
             spider_dir = None
-        self.interior_o = Interior_t(get_nlevb(self.config), spider_dir=spider_dir)
+        self.interior_o = Interior_t(
+            get_nlevb(self.config),
+            spider_dir=spider_dir,
+            eos_dir=self.config.interior.eos_dir,
+        )
 
         # Initialise atmosphere object
         self.atmos_o = Atmos_t()

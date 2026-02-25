@@ -198,8 +198,15 @@ class AragogRunner:
             init_file=init_file_temperature_profile,
         )
 
-        # Get look up data directory, will be configurable in the future
-        LOOK_UP_DIR = FWL_DATA_DIR / 'interior_lookup_tables/' / config.interior.lookup_dir
+        # EOS lookup directory: unified path under EOS/dynamic/<eos_dir>/P-T/
+        LOOK_UP_DIR = (
+            FWL_DATA_DIR
+            / 'interior_lookup_tables'
+            / 'EOS'
+            / 'dynamic'
+            / config.interior.eos_dir
+            / 'P-T'
+        )
         MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
 
         # check data exist
