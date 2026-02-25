@@ -406,20 +406,32 @@ def update_structure_from_interior(
     log.info('Updating structure from interior T(r) via Zalmoxis')
 
     outdir = dirs['output']
+    num_layers = config.struct.zalmoxis.num_levels
 
-    # Write SPIDER's T(r) profile for Zalmoxis (ascending r: CMB to surface)
+    # Build SPIDER's mantle T(r) in ascending radius (CMB to surface)
     # interior_o.radius is basic nodes (surface to CMB), temp is staggered nodes
     r_stag = 0.5 * (interior_o.radius[:-1] + interior_o.radius[1:])
-    # Reverse to ascending radius for Zalmoxis
     r_ascending = r_stag[::-1]
     T_ascending = interior_o.temp[::-1]
 
+    # Zalmoxis prescribed mode expects a 1D array of num_layers temperatures
+    # sampled from center (r=0) to surface (r=R_planet), matching its internal
+    # radii. SPIDER only covers the mantle (CMB to surface), so we hold T
+    # constant at the CMB value for the core region.
+    R_cmb = float(r_ascending[0])
+    R_surf = float(r_ascending[-1])
+    T_cmb = float(T_ascending[0])
+
+    r_full = np.linspace(0.0, R_surf, num_layers)
+    T_full = np.empty(num_layers)
+    for i, r in enumerate(r_full):
+        if r <= R_cmb:
+            T_full[i] = T_cmb
+        else:
+            T_full[i] = np.interp(r, r_ascending, T_ascending)
+
     temp_profile_path = os.path.join(outdir, 'data', 'spider_temp_profile.dat')
-    np.savetxt(
-        temp_profile_path,
-        np.column_stack([r_ascending, T_ascending]),
-        header='radius[m] temperature[K]',
-    )
+    np.savetxt(temp_profile_path, T_full)
 
     # Temporarily override Zalmoxis config for prescribed temperature mode
     from proteus.interior.zalmoxis import zalmoxis_solver
