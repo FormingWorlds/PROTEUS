@@ -368,6 +368,65 @@ def test_download_zenodo_file_nonzero_exit_reads_log_content(
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.safe_rm')
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_cleanup_branches(mock_getfwl, mock_run, mock_safe_rm, tmp_path):
+    """Covers file, directory, and exception branches in expected_path cleanup."""
+
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'subdir/myfile.dat'
+    expected_path = folder_dir / record_path
+    expected_path.parent.mkdir(parents=True, exist_ok=True)
+
+    proc_avail = MagicMock(returncode=0)
+    proc_dl = MagicMock(returncode=0)
+
+    call_state = {'phase': 0}
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+
+        # Phase 1: expected_path is FILE
+        if call_state['phase'] == 0:
+            expected_path.write_text('stale')
+            call_state['phase'] += 1
+            return proc_dl
+
+        # Phase 2: expected_path is DIRECTORY
+        if call_state['phase'] == 1:
+            if expected_path.exists():
+                expected_path.unlink()
+            expected_path.mkdir()
+            call_state['phase'] += 1
+            return proc_dl
+
+        # Phase 3: removal throws exception
+        if call_state['phase'] == 2:
+            if expected_path.exists():
+                expected_path.unlink()
+            expected_path.write_text('bad')
+            expected_path.unlink = MagicMock(side_effect=OSError('cannot unlink'))
+            call_state['phase'] += 1
+            return proc_dl
+
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+
+    # safe_rm should have been used for directory case
+    assert mock_safe_rm.called
+    assert ok is False
+
+
+@pytest.mark.unit
 @patch('proteus.utils.data.validate_zenodo_folder')
 @patch('proteus.utils.data.os.path.isdir')
 def test_check_needs_update(mock_isdir, mock_validate):
