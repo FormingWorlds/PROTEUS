@@ -633,13 +633,13 @@ def plot_two_chemistries(output_dir1,output_dir2, extension, tmin, nsamp):
 
 if __name__ == "__main__":
 
-    #output_dir1=sys.argv[1]
+    output_dir1=sys.argv[1]
     #output_dir2=sys.argv[2]
 
     #plot_atmosphere_comparison(output_dir1, output_dir2, tmin=1e4, extension="_atm.nc", nsamp=5, plot_format="png")
     #plot_two_chemistries(output_dir1,output_dir2, extension="_atm.nc",  tmin=1e4, nsamp=5)
 
-    output_dir='/data3/leoni/PROTEUS/output/calliope_lavatmos_coupling_xerr001'
+    #output_dir='/data3/leoni/PROTEUS/output/calliope_lavatmos_coupling_xerr001'
     plottimes=[124027,134027,142186,152186]
 
     plot_atmosphere_selected_times(output_dir, plottimes)

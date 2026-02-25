@@ -298,7 +298,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     for e in vol_elements:
         target[e] = hf_row[e + '_kg_total']
 
-    log.debug('amount of available elements for calliope computations: %s', target)
+    log.info('amount of available elements for calliope computations: %s', target)
     # construct guess for CALLIOPE
     p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
 

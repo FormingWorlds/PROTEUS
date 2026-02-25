@@ -104,7 +104,6 @@ class Outgas:
 
     # LavAtmos / silicate coupling is opt-in: default to disabled.
     silicates: bool = field(default=False)
-    converge_fO2: bool = field(default=False)
     # Path to FastChem output directory used by LavAtmos; must be set when silicate coupling is enabled.
     fastchempath: str = field(default='')
     # Path to FastChem input directory used by LavAtmos; must be set when silicate coupling is enabled.

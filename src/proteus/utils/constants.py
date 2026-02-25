@@ -46,9 +46,6 @@ B_ein = 2.5
 # Supported gases
 vap_list = ['SiO', 'SiO2', 'MgO', 'FeO2']
 vol_list = ['H2O', 'CO2', 'O2', 'H2', 'CH4', 'CO', 'N2', 'NH3', 'S2', 'SO2', 'H2S']
-# vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
-# vap_list = ["SiO", "SiO2", "MgO", "FeO", "Na"]
-# gas_list = vol_list + vap_list
 
 # Supported elements
 element_list = ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'Al', 'Ti', 'Ca', 'K']
