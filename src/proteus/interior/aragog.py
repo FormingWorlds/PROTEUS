@@ -198,7 +198,8 @@ class AragogRunner:
             init_file=init_file_temperature_profile,
         )
 
-        # EOS lookup directory: unified path under EOS/dynamic/<eos_dir>/P-T/
+        # EOS lookup directory: unified path under EOS/dynamic/<eos_dir>/P-T/,
+        # with fallback to legacy location for fresh installs
         LOOK_UP_DIR = (
             FWL_DATA_DIR
             / 'interior_lookup_tables'
@@ -207,11 +208,18 @@ class AragogRunner:
             / config.interior.eos_dir
             / 'P-T'
         )
+        if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+            LOOK_UP_DIR = (
+                FWL_DATA_DIR
+                / 'interior_lookup_tables'
+                / '1TPa-dK09-elec-free'
+                / 'MgSiO3_Wolf_Bower_2018_1TPa'
+            )
         MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
 
         # check data exist
         if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
-            raise FileNotFoundError(f'Aragog lookup data {LOOK_UP_DIR}')
+            raise FileNotFoundError(f'Aragog lookup data not found at {LOOK_UP_DIR}')
 
         phase_liquid = _PhaseParameters(
             density=LOOK_UP_DIR / 'density_melt.dat',

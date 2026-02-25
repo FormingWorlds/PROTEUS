@@ -1120,60 +1120,43 @@ def get_spider(dirs=None):
 
 
 def download_eos_static():
-    """Download static (Zalmoxis-only) EOS files to the unified EOS folder.
+    """Download static (Zalmoxis-only) EOS files.
 
-    Downloads Seager et al. (2007) EOS into
-    ``FWL_DATA/interior_lookup_tables/EOS/static/Seager2007/``.
+    Downloads Seager et al. (2007) EOS into the legacy location
+    ``FWL_DATA/EOS_material_properties/EOS_Seager2007/``.
+    Code in ``get_zalmoxis_EOS()`` falls back to this path when the
+    unified ``EOS/static/Seager2007/`` folder is not yet populated.
     """
-    folder = 'EOS_Seager2007'
-    source_info = get_data_source_info(folder)
-    if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {folder}')
-
-    data_dir = GetFWLData() / 'interior_lookup_tables' / 'EOS' / 'static'
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    download(
-        folder='Seager2007',
-        target=data_dir,
-        osf_id=source_info['osf_project'],
-        zenodo_id=source_info['zenodo_id'],
-        desc='Static EOS: Seager2007',
-    )
+    download_Seager_EOS()
 
 
 def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
-    """Download dynamic EOS files to the unified EOS folder.
+    """Download dynamic EOS files (P-T format).
 
-    Downloads the P-T format EOS tables into
-    ``FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-T/``.
-
-    The ``P-S/`` subdirectory (pressure-entropy format tables used by SPIDER)
-    must be populated separately, either from the SPIDER repository or a
-    future data release.
+    Downloads to the legacy location
+    ``FWL_DATA/interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/``.
+    Code in Aragog, SPIDER, and Zalmoxis falls back to this path when the
+    unified ``EOS/dynamic/<eos_dir>/P-T/`` and ``P-S/`` folders are not yet
+    populated.
 
     Parameters
     ----------
     eos_dir : str
-        Name of the dynamic EOS folder (e.g. 'WolfBower2018_MgSiO3').
+        Name of the dynamic EOS folder (unused for now; reserved for when
+        upstream data is reorganised to match the new folder structure).
     """
-    # The upstream data source still uses the old folder name
-    legacy_folder = '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
-    source_info = get_data_source_info(legacy_folder)
+    folder = '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
+    source_info = get_data_source_info(folder)
     if not source_info:
-        log.warning(f'No data source mapping for dynamic EOS: {legacy_folder}')
+        log.warning(f'No data source mapping for dynamic EOS: {folder}')
         return
 
-    data_dir = GetFWLData() / 'interior_lookup_tables' / 'EOS' / 'dynamic' / eos_dir
-    pt_dir = data_dir / 'P-T'
-    pt_dir.mkdir(parents=True, exist_ok=True)
-
     download(
-        folder=legacy_folder,
-        target=pt_dir,
+        folder=folder,
+        target='interior_lookup_tables',
         osf_id=source_info['osf_project'],
         zenodo_id=source_info['zenodo_id'],
-        desc=f'Dynamic EOS (P-T): {eos_dir}',
+        desc=f'Dynamic EOS (P-T): {folder}',
     )
 
 

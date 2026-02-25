@@ -106,8 +106,8 @@ class Interior_t:
     def _load_rho_melt(self, spider_dir: str, eos_dir: str):
         """Load SPIDER's P-S density_melt lookup table.
 
-        Tries FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/spider/ first,
-        then falls back to SPIDER/lookup_data/<eos_dir>/.
+        Tries FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/ first,
+        then falls back to SPIDER/lookup_data/1TPa-dK09-elec-free/.
 
         Parameters
         ----------
