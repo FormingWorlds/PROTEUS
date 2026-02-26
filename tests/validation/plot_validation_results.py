@@ -46,6 +46,26 @@ CMF_COLORS = {
 
 MASS_LABELS = {1.0: r'1 $M_\oplus$', 3.0: r'3 $M_\oplus$', 5.0: r'5 $M_\oplus$'}
 
+# Crystallization threshold: Phi_global below this counts as solidified
+PHI_CRYSTAL = 0.01
+
+# Column metadata: helpfile column -> (display label, unit, log scale?)
+EVOLUTION_COLS = [
+    ('T_magma', r'Magma temperature, $T_{\rm magma}$', 'K', 'linear'),
+    ('Phi_global', r'Global melt fraction, $\Phi_{\rm global}$', '', 'linear'),
+    ('F_int', r'Interior heat flux, $F_{\rm int}$', r'W m$^{-2}$', 'log'),
+]
+
+SUMMARY_QUANTITIES = [
+    (
+        't_crystal',
+        r'Crystallization time ($\Phi < 0.01$)',
+        'yr',
+    ),
+    ('T_magma_final', r'Final magma temperature, $T_{\rm magma}$', 'K'),
+    ('R_int_final', r'Final interior radius, $R_{\rm int}$', 'm'),
+]
+
 
 # ── Data loading ─────────────────────────────────────────────
 
@@ -56,7 +76,7 @@ def load_helpfile(case_dir: Path) -> pd.DataFrame | None:
     if not hf_path.exists():
         return None
     try:
-        return pd.read_csv(hf_path)
+        return pd.read_csv(hf_path, sep='\t')
     except Exception:
         return None
 
@@ -92,6 +112,11 @@ def load_all_results(outdir: Path) -> dict[str, pd.DataFrame]:
 # ── Comparison plots ─────────────────────────────────────────
 
 
+def _axis_label(name: str, unit: str) -> str:
+    """Build 'Name [unit]' or just 'Name' if unit is empty."""
+    return f'{name} [{unit}]' if unit else name
+
+
 def plot_pairwise_evolution(results: dict, outdir: Path):
     """Generate AW vs Zalmoxis time-evolution overlays.
 
@@ -102,7 +127,20 @@ def plot_pairwise_evolution(results: dict, outdir: Path):
     plot_dir.mkdir(parents=True, exist_ok=True)
 
     for mass in MASSES:
-        fig, axes = plt.subplots(len(CMFS), 3, figsize=(14, 3.2 * len(CMFS)), sharex='col')
+        # Skip masses with no completed cases
+        has_data = any(
+            case_name(mass, cmf, s) in results
+            for cmf in CMFS
+            for s in ('self', 'zalmoxis')
+        )
+        if not has_data:
+            continue
+
+        fig, axes = plt.subplots(
+            len(CMFS), len(EVOLUTION_COLS),
+            figsize=(14, 3.2 * len(CMFS)),
+            layout='constrained',
+        )
         if len(CMFS) == 1:
             axes = axes[np.newaxis, :]
 
@@ -113,85 +151,87 @@ def plot_pairwise_evolution(results: dict, outdir: Path):
             hf_aw = results.get(aw_name)
             hf_zal = results.get(zal_name)
 
-            for j, (col, label, yscale) in enumerate(
-                [
-                    ('T_magma', 'T$_{\\rm magma}$ [K]', 'linear'),
-                    ('Phi_global', '$\\Phi_{\\rm global}$', 'linear'),
-                    ('F_int', 'F$_{\\rm int}$ [W/m$^2$]', 'log'),
-                ]
-            ):
+            for j, (col, label, unit, yscale) in enumerate(EVOLUTION_COLS):
                 ax = axes[i, j]
+                plotted = False
 
                 if hf_aw is not None and col in hf_aw.columns:
                     t = hf_aw['Time'].values
                     mask = t > 0
-                    ax.plot(
-                        t[mask],
-                        hf_aw[col].values[mask],
-                        '--',
-                        color='0.4',
-                        lw=1.5,
-                        label='AW',
-                    )
+                    if mask.any():
+                        ax.plot(
+                            t[mask],
+                            hf_aw[col].values[mask],
+                            '--',
+                            color='0.4',
+                            lw=1.5,
+                            label='AW',
+                        )
+                        plotted = True
 
                 if hf_zal is not None and col in hf_zal.columns:
                     t = hf_zal['Time'].values
                     mask = t > 0
-                    ax.plot(
-                        t[mask],
-                        hf_zal[col].values[mask],
-                        '-',
-                        color=CMF_COLORS[cmf],
-                        lw=1.8,
-                        label='Zalmoxis',
-                    )
+                    if mask.any():
+                        ax.plot(
+                            t[mask],
+                            hf_zal[col].values[mask],
+                            '-',
+                            color=CMF_COLORS[cmf],
+                            lw=1.8,
+                            label='Zalmoxis',
+                        )
+                        plotted = True
 
+                if not plotted:
+                    # Plot invisible sentinel to give axes valid positive data
+                    ax.plot([1e2, 1e6], [1, 1e6], alpha=0)
                 ax.set_xscale('log')
                 ax.set_yscale(yscale)
 
+                # Column headers (top row only)
                 if i == 0:
-                    ax.set_title(label, fontsize=11)
+                    ax.set_title(_axis_label(label, unit), fontsize=10)
+
+                # X-axis label (bottom row only)
                 if i == len(CMFS) - 1:
                     ax.set_xlabel('Time [yr]')
+                else:
+                    ax.tick_params(labelbottom=False)
+
+                # Y-axis: CMF label on left column
                 if j == 0:
-                    ax.set_ylabel(f'CMF={cmf}')
+                    ax.set_ylabel(f'CMF = {cmf}', fontsize=10)
 
                 if i == 0 and j == 0:
                     ax.legend(fontsize=8, loc='best')
 
-        fig.suptitle(f'AW vs Zalmoxis: {MASS_LABELS[mass]}', fontsize=13, y=1.01)
-        fig.tight_layout()
-        fig.savefig(plot_dir / f'evolution_M{mass}.pdf', bbox_inches='tight', dpi=150)
+        fig.suptitle(
+            f'AW vs Zalmoxis time evolution — {MASS_LABELS[mass]}',
+            fontsize=13,
+        )
+        fig.savefig(plot_dir / f'evolution_M{mass}.pdf', dpi=150)
         plt.close(fig)
         print(f'  Saved evolution_M{mass}.pdf')
 
 
 def plot_summary_heatmaps(results: dict, outdir: Path):
-    """Summary heatmaps: crystallization time and final T_magma.
+    """Summary heatmaps: crystallization time, final T_magma, final R_int.
 
     2x3 grid per quantity: AW | Zalmoxis | relative difference.
     """
     plot_dir = outdir / 'plots'
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    for quantity, label, extract_fn in [
-        (
-            't_crystal',
-            'Crystallization time [yr]',
-            lambda hf: _crystallization_time(hf),
-        ),
-        (
-            'T_magma_final',
-            'Final T$_{\\rm magma}$ [K]',
-            lambda hf: float(hf['T_magma'].iloc[-1]),
-        ),
-        (
-            'R_int_final',
-            'Final R$_{\\rm int}$ [m]',
-            lambda hf: float(hf['R_int'].iloc[-1]),
-        ),
-    ]:
-        fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
+    extract_fns = {
+        't_crystal': lambda hf: _crystallization_time(hf),
+        'T_magma_final': lambda hf: float(hf['T_magma'].iloc[-1]),
+        'R_int_final': lambda hf: float(hf['R_int'].iloc[-1]),
+    }
+
+    for quantity, label, unit in SUMMARY_QUANTITIES:
+        extract_fn = extract_fns[quantity]
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4.5), layout='constrained')
 
         for k, (struct, title) in enumerate(
             [('self', 'Adams-Williamson'), ('zalmoxis', 'Zalmoxis')]
@@ -215,13 +255,14 @@ def plot_summary_heatmaps(results: dict, outdir: Path):
                 cmap='viridis',
             )
             ax.set_xticks(range(len(MASSES)))
-            ax.set_xticklabels([f'{m}' for m in MASSES])
+            ax.set_xticklabels([MASS_LABELS[m] for m in MASSES])
             ax.set_yticks(range(len(CMFS)))
             ax.set_yticklabels([f'{c}' for c in CMFS])
-            ax.set_xlabel('Mass [M$_\\oplus$]')
-            ax.set_ylabel('CMF')
+            ax.set_xlabel(r'Planet mass [$M_\oplus$]')
+            ax.set_ylabel('Core mass fraction (CMF)')
             ax.set_title(title)
-            fig.colorbar(im, ax=ax, shrink=0.8)
+            cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_label(_axis_label(label, unit), fontsize=9)
 
             # Annotate cells with values
             for i in range(len(CMFS)):
@@ -229,7 +270,10 @@ def plot_summary_heatmaps(results: dict, outdir: Path):
                     val = grid[i, j]
                     if np.isfinite(val):
                         txt = f'{val:.0f}' if val > 100 else f'{val:.2g}'
-                        ax.text(j, i, txt, ha='center', va='center', fontsize=7, color='w')
+                        ax.text(
+                            j, i, txt,
+                            ha='center', va='center', fontsize=7, color='w',
+                        )
 
         # Relative difference panel
         grid_aw = np.full((len(CMFS), len(MASSES)), np.nan)
@@ -268,31 +312,26 @@ def plot_summary_heatmaps(results: dict, outdir: Path):
             vmax=vmax,
         )
         ax.set_xticks(range(len(MASSES)))
-        ax.set_xticklabels([f'{m}' for m in MASSES])
+        ax.set_xticklabels([MASS_LABELS[m] for m in MASSES])
         ax.set_yticks(range(len(CMFS)))
         ax.set_yticklabels([f'{c}' for c in CMFS])
-        ax.set_xlabel('Mass [M$_\\oplus$]')
-        ax.set_ylabel('CMF')
-        ax.set_title('Relative diff [%]')
-        fig.colorbar(im, ax=ax, shrink=0.8)
+        ax.set_xlabel(r'Planet mass [$M_\oplus$]')
+        ax.set_ylabel('Core mass fraction (CMF)')
+        ax.set_title('Relative difference (Zalmoxis$-$AW)/AW')
+        cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+        cbar.set_label('Relative difference [%]', fontsize=9)
 
         for i in range(len(CMFS)):
             for j in range(len(MASSES)):
                 val = rel_diff[i, j]
                 if np.isfinite(val):
                     ax.text(
-                        j,
-                        i,
-                        f'{val:+.1f}%',
-                        ha='center',
-                        va='center',
-                        fontsize=7,
-                        color='k',
+                        j, i, f'{val:+.1f}%',
+                        ha='center', va='center', fontsize=7, color='k',
                     )
 
-        fig.suptitle(label, fontsize=13)
-        fig.tight_layout()
-        fig.savefig(plot_dir / f'summary_{quantity}.pdf', bbox_inches='tight', dpi=150)
+        fig.suptitle(_axis_label(label, unit), fontsize=13)
+        fig.savefig(plot_dir / f'summary_{quantity}.pdf', dpi=150)
         plt.close(fig)
         print(f'  Saved summary_{quantity}.pdf')
 
@@ -302,7 +341,12 @@ def plot_phase2_stability(results: dict, outdir: Path):
     plot_dir = outdir / 'plots'
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    fig, axes = plt.subplots(len(MASSES), 2, figsize=(12, 3.5 * len(MASSES)))
+    p2_cols = [
+        ('T_magma', r'Magma temperature, $T_{\rm magma}$', 'K'),
+        ('R_int', r'Interior radius, $R_{\rm int}$', 'm'),
+    ]
+
+    fig, axes = plt.subplots(len(MASSES), len(p2_cols), figsize=(12, 3.5 * len(MASSES)))
     if len(MASSES) == 1:
         axes = axes[np.newaxis, :]
 
@@ -313,45 +357,46 @@ def plot_phase2_stability(results: dict, outdir: Path):
         hf_zal = results.get(zal_name)
         hf_p2 = results.get(p2_name)
 
-        for j, (col, label) in enumerate(
-            [('T_magma', 'T$_{\\rm magma}$ [K]'), ('R_int', 'R$_{\\rm int}$ [m]')]
-        ):
+        for j, (col, label, unit) in enumerate(p2_cols):
             ax = axes[i, j]
 
             if hf_zal is not None and col in hf_zal.columns:
                 t = hf_zal['Time'].values
                 mask = t > 0
-                ax.plot(
-                    t[mask],
-                    hf_zal[col].values[mask],
-                    '-',
-                    color='#7570b3',
-                    lw=1.8,
-                    label='No updates',
-                )
+                if mask.any():
+                    ax.plot(
+                        t[mask],
+                        hf_zal[col].values[mask],
+                        '-',
+                        color='#7570b3',
+                        lw=1.8,
+                        label='Phase 1 (no updates)',
+                    )
 
             if hf_p2 is not None and col in hf_p2.columns:
                 t = hf_p2['Time'].values
                 mask = t > 0
-                ax.plot(
-                    t[mask],
-                    hf_p2[col].values[mask],
-                    '--',
-                    color='#e7298a',
-                    lw=1.5,
-                    label='Phase 2 (100 yr)',
-                )
+                if mask.any():
+                    ax.plot(
+                        t[mask],
+                        hf_p2[col].values[mask],
+                        '--',
+                        color='#e7298a',
+                        lw=1.5,
+                        label=r'Phase 2 ($\Delta t_{\rm update}$ = 100 yr)',
+                    )
 
             ax.set_xscale('log')
-            ax.set_ylabel(label)
+            ax.set_ylabel(_axis_label(label, unit), fontsize=10)
             if i == len(MASSES) - 1:
                 ax.set_xlabel('Time [yr]')
+            else:
+                ax.tick_params(labelbottom=False)
             if i == 0:
-                ax.set_title(label)
+                ax.set_title(_axis_label(label, unit), fontsize=11)
             if j == 0:
                 ax.text(
-                    -0.18,
-                    0.5,
+                    -0.18, 0.5,
                     MASS_LABELS[mass],
                     transform=ax.transAxes,
                     fontsize=11,
@@ -362,7 +407,10 @@ def plot_phase2_stability(results: dict, outdir: Path):
             if i == 0 and j == 0:
                 ax.legend(fontsize=8)
 
-    fig.suptitle('Phase 2 Feedback Stability (CMF=0.325)', fontsize=13, y=1.01)
+    fig.suptitle(
+        'Phase 2 feedback stability (CMF = 0.325)',
+        fontsize=13, y=1.01,
+    )
     fig.tight_layout()
     fig.savefig(plot_dir / 'phase2_stability.pdf', bbox_inches='tight', dpi=150)
     plt.close(fig)
@@ -394,16 +442,16 @@ def plot_mass_radius(results: dict, outdir: Path):
                 color=CMF_COLORS[cmf],
                 lw=1.5,
                 markersize=8,
-                label=f'CMF={cmf}',
+                label=f'CMF = {cmf}',
             )
 
     # Reference: R ~ M^0.27 (rocky planet scaling)
     m_ref = np.linspace(0.8, 5.5, 50)
     ax.plot(m_ref, m_ref**0.27, 'k:', lw=1, alpha=0.5, label=r'$R \propto M^{0.27}$')
 
-    ax.set_xlabel(r'Mass [$M_\oplus$]')
-    ax.set_ylabel(r'Radius [$R_\oplus$]')
-    ax.set_title('Mass-Radius: Zalmoxis Validation')
+    ax.set_xlabel(r'Planet mass [$M_\oplus$]')
+    ax.set_ylabel(r'Planet radius [$R_\oplus$]')
+    ax.set_title('Mass-radius relation — Zalmoxis validation')
     ax.legend(fontsize=8)
     ax.set_xlim(0.5, 5.5)
     fig.tight_layout()
@@ -416,12 +464,12 @@ def plot_mass_radius(results: dict, outdir: Path):
 
 
 def _crystallization_time(hf: pd.DataFrame) -> float:
-    """Extract crystallization time (when Phi_global first drops below 0.01)."""
+    """Extract crystallization time (when Phi_global first drops below PHI_CRYSTAL)."""
     if 'Phi_global' not in hf.columns:
         return np.nan
     phi = hf['Phi_global'].values
     t = hf['Time'].values
-    below = np.where(phi < 0.01)[0]
+    below = np.where(phi < PHI_CRYSTAL)[0]
     if len(below) > 0:
         return float(t[below[0]])
     return float(t[-1])  # didn't crystallize; return final time

@@ -47,7 +47,7 @@ version = "2.0"
 
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.005    # stop near full crystallization
+            phi_crit = 0.01     # stop when melt fraction < 1%
 
         [params.stop.radeqm]
             enabled = false     # don't exit at radiative equilibrium

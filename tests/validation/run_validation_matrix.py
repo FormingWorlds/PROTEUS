@@ -16,6 +16,7 @@ Usage
     python run_validation_matrix.py --phase2                # Phase 2 subset
     python run_validation_matrix.py --list                  # list without running
     python run_validation_matrix.py --resume                # skip completed cases
+    python run_validation_matrix.py --workers 4             # run 4 cases in parallel
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -211,6 +213,12 @@ def main():
         action='store_true',
         help='Skip cases that already have output',
     )
+    parser.add_argument(
+        '--workers',
+        type=int,
+        default=1,
+        help='Number of cases to run in parallel (default: 1)',
+    )
     args = parser.parse_args()
 
     # Build and filter the matrix
@@ -247,9 +255,28 @@ def main():
 
     results = {}
     t_start = time.time()
-    for i, c in enumerate(cases, 1):
-        print(f'[{i}/{len(cases)}]')
-        results[c.name] = run_case(c, args.outdir, resume=args.resume)
+    n_workers = max(1, args.workers)
+
+    if n_workers == 1:
+        # Sequential execution
+        for i, c in enumerate(cases, 1):
+            print(f'[{i}/{len(cases)}]')
+            results[c.name] = run_case(c, args.outdir, resume=args.resume)
+            print()
+    else:
+        # Parallel execution
+        print(f'Running with {n_workers} parallel workers\n')
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            futures = {
+                pool.submit(run_case, c, args.outdir, args.resume): c for c in cases
+            }
+            for future in as_completed(futures):
+                c = futures[future]
+                try:
+                    results[c.name] = future.result()
+                except Exception as e:
+                    print(f'  CRASH {c.name}: {e}')
+                    results[c.name] = False
         print()
 
     # Summary
@@ -259,7 +286,7 @@ def main():
     print(f'{"=" * 60}')
     print(f'Results: {n_pass}/{n_total} passed ({dt_total / 3600:.1f} hours)')
     print()
-    for name, ok in results.items():
+    for name, ok in sorted(results.items()):
         print(f'  {"PASS" if ok else "FAIL"}  {name}')
 
     # Write summary to file
@@ -267,7 +294,7 @@ def main():
     with open(summary_path, 'w') as f:
         f.write(f'Validation run: {n_pass}/{n_total} passed\n')
         f.write(f'Total time: {dt_total / 3600:.1f} hours\n\n')
-        for name, ok in results.items():
+        for name, ok in sorted(results.items()):
             f.write(f'{"PASS" if ok else "FAIL"}  {name}\n')
     print(f'\nSummary written to {summary_path}')
 
