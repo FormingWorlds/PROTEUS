@@ -880,7 +880,7 @@ def download(
                 # sometimes files live at project root
                 osf_candidates.append(file.lstrip('/'))
 
-                download_OSF_file(storage=storage, files=osf_candidates, data_dir=data_dir)
+                download_OSF_file(storage=storage, files=osf_candidates, data_dir=folder_dir)
 
                 # Verify OSF download succeeded
                 if dest_path.exists() and dest_path.is_file() and dest_path.stat().st_size > 0:
