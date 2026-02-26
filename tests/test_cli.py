@@ -47,3 +47,6 @@ def test_get():
 
     response = runner.invoke(cli.get, ['spectral', '-n', 'Frostflow', '-b', '16'])
     assert response.exit_code == 0
+
+    response = runner.invoke(cli.get, ["muscles", "--star", "trappist-1"])
+    assert response.exit_code == 0
