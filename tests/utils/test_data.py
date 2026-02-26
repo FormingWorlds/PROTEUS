@@ -1816,6 +1816,7 @@ def test_download_osf_file_missing_requested_is_ok(tmp_path, caplog):
     # Nothing downloaded
     assert not (tmp_path / 'folder' / 'does_not_exist.txt').exists()
 
+
 @pytest.mark.unit
 def test_download_osf_file_removes_partial_on_exception(tmp_path):
     """Covers exception branch + partial file cleanup in download_OSF_file."""
@@ -1824,13 +1825,13 @@ def test_download_osf_file_removes_partial_on_exception(tmp_path):
 
     # Create fake OSF file object
     mock_file = MagicMock()
-    mock_file.path = "/folder/test.txt"
+    mock_file.path = '/folder/test.txt'
     mock_file.size = 100  # required for normal logic
 
     # write_to writes partial content then fails
     def failing_write(fp):
-        fp.write(b"partial data")
-        raise OSError("network failure")
+        fp.write(b'partial data')
+        raise OSError('network failure')
 
     mock_file.write_to.side_effect = failing_write
 
@@ -1841,13 +1842,14 @@ def test_download_osf_file_removes_partial_on_exception(tmp_path):
     # Act
     download_OSF_file(
         storage=storage,
-        files=["folder/test.txt"],
+        files=['folder/test.txt'],
         data_dir=tmp_path,
     )
 
     # File should NOT exist after failure
-    target = tmp_path / "folder" / "test.txt"
+    target = tmp_path / 'folder' / 'test.txt'
     assert not target.exists()
+
 
 @pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
