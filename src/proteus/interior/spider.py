@@ -52,6 +52,90 @@ def _coresize_from_mesh(mesh_file: str) -> float:
     return r_cmb / r_surface
 
 
+def _check_eos_table_range(eos_dir: str, mesh_file: str | None, P_cmb: float):
+    """Warn if CMB pressure approaches EOS table limits.
+
+    Reads the header of the solid-phase density table to determine the
+    entropy range.  When the solid-phase table's entropy coverage is
+    narrow relative to the melt-phase table, partially-solid nodes near
+    the CMB can trigger out-of-range lookups that produce unphysical
+    material properties (e.g. negative thermal expansion).
+
+    Parameters
+    ----------
+    eos_dir : str
+        Path to the P-S EOS lookup directory.
+    mesh_file : str or None
+        Path to the external mesh file (used for context in the warning).
+    P_cmb : float
+        Pressure at the core-mantle boundary [Pa].
+    """
+    solid_file = os.path.join(eos_dir, 'density_solid.dat')
+    melt_file = os.path.join(eos_dir, 'density_melt.dat')
+    if not os.path.isfile(solid_file) or not os.path.isfile(melt_file):
+        return
+
+    def _read_entropy_range(filepath):
+        """Read the entropy axis scaling and bounds from a P-S table header."""
+        with open(filepath) as f:
+            header = f.readline()  # "# HEAD NX NY"
+            tokens = header.strip('# \n').split()
+            head = int(tokens[0])
+            nx = int(tokens[1])
+            ny = int(tokens[2])
+            # Skip to the scaling-factor line (last header line)
+            for _ in range(head - 2):
+                f.readline()
+            scales = f.readline().strip('# \n').split()
+            y_scale = float(scales[1])  # entropy scaling factor
+
+            # First data line gives y_min
+            first_data = f.readline().split()
+            y_min = float(first_data[1]) * y_scale
+
+            # Last unique y value is at the start of the last block:
+            # skip (ny-1)*nx - 1 lines to reach it
+            skip = (ny - 1) * nx - 1
+            for _ in range(skip):
+                f.readline()
+            last_data = f.readline().split()
+            y_max = float(last_data[1]) * y_scale
+        return y_min, y_max
+
+    try:
+        s_min_solid, s_max_solid = _read_entropy_range(solid_file)
+        s_min_melt, s_max_melt = _read_entropy_range(melt_file)
+    except (ValueError, IndexError, IOError):
+        return  # cannot parse, skip check
+
+    # The critical scenario: if the initial adiabat entropy exceeds the
+    # solid-phase table maximum, partially-solid nodes will get clamped
+    # lookups that may produce negative thermal expansion.
+    if s_max_solid < s_max_melt:
+        log.warning(
+            'Solid-phase EOS table entropy range (%.0f–%.0f J/kg/K) is narrower '
+            'than the melt-phase range (%.0f–%.0f J/kg/K). '
+            'If the initial adiabat entropy exceeds %.0f J/kg/K at partially-solid '
+            'nodes (high CMB pressure), the solid-phase lookup will be clamped, '
+            'potentially producing unphysical material properties.',
+            s_min_solid,
+            s_max_solid,
+            s_min_melt,
+            s_max_melt,
+            s_max_solid,
+        )
+
+    if P_cmb > 400e9:
+        log.warning(
+            'CMB pressure %.1f GPa exceeds 400 GPa. At these pressures the initial '
+            'adiabat may cross the liquidus, requiring solid-phase EOS evaluation at '
+            'entropy values beyond the table range (solid max: %.0f J/kg/K). '
+            'If SPIDER fails with CV_CONV_FAILURE at t=0, this is the likely cause.',
+            P_cmb / 1e9,
+            s_max_solid,
+        )
+
+
 class MyJSON(object):
     """load and access json data"""
 
@@ -457,6 +541,20 @@ def _try_spider(
     if mesh_file and os.path.isfile(mesh_file):
         call_sequence.extend(['-MESH_SOURCE', '1'])
         call_sequence.extend(['-mesh_external_filename', mesh_file])
+
+        # Check EOS table range against CMB pressure (first run only)
+        if IC_INTERIOR != 2:
+            try:
+                with open(mesh_file) as mf:
+                    header = mf.readline()
+                    nb = int(header.strip('# \n').split()[0])
+                    # Skip to last basic node (CMB)
+                    for _ in range(nb - 1):
+                        line = mf.readline()
+                    P_cmb = float(line.split()[1])
+                _check_eos_table_range(eos_dir, mesh_file, P_cmb)
+            except (ValueError, IndexError, IOError):
+                pass  # non-critical check
     else:
         # Adams-Williamson EOS parameters from fitting PREM lower mantle (Earth)
         call_sequence.extend(['-adams_williamson_rhos', '4078.95095544'])

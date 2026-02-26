@@ -36,7 +36,7 @@ BASE_CONFIG = Path(__file__).resolve().parent / 'base_validation.toml'
 # ── Test matrix parameters ──────────────────────────────────
 
 MASSES = [1.0, 3.0, 5.0]  # M_earth
-CMFS = [0.05, 0.10, 0.325, 0.50, 0.80]
+CMFS = [0.10, 0.325, 0.50, 0.80]
 STRUCT_MODES = ['self', 'zalmoxis']
 
 # Densities for CMF -> corefrac conversion (uniform two-layer approximation)

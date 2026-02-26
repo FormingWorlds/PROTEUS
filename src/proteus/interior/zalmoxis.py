@@ -245,6 +245,21 @@ def write_spider_mesh_file(
         num_basic,
         num_staggered,
     )
+
+    # Warn if CMB pressure is high enough that SPIDER's solid-phase EOS
+    # tables may be evaluated outside their valid entropy range
+    P_cmb = float(P_b[-1])  # last basic node = CMB
+    if P_cmb > 400e9:
+        logger.warning(
+            'CMB pressure from Zalmoxis mesh is %.1f GPa (> 400 GPa). '
+            'SPIDER solid-phase EOS tables (WolfBower2018) have limited entropy '
+            'coverage (~2400 J/kg/K). If the initial adiabat crosses the liquidus '
+            'at these pressures, the solid-phase lookup will be clamped to the table '
+            'edge, which can produce unphysical material properties (negative thermal '
+            'expansion) and cause CVode convergence failure.',
+            P_cmb / 1e9,
+        )
+
     return mesh_path
 
 
