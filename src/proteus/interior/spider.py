@@ -28,6 +28,30 @@ MELTING_CURVES_DIR = os.path.join(FWL_DATA_DIR, 'interior_lookup_tables', 'Melti
 EOS_DYNAMIC_DIR = os.path.join(FWL_DATA_DIR, 'interior_lookup_tables', 'EOS', 'dynamic')
 
 
+def _coresize_from_mesh(mesh_file: str) -> float:
+    """Extract fractional core radius from a SPIDER external mesh file.
+
+    Parameters
+    ----------
+    mesh_file : str
+        Path to the SPIDER mesh file (header + basic nodes + staggered nodes).
+
+    Returns
+    -------
+    float
+        Core-to-surface radius ratio (R_cmb / R_surface).
+    """
+    with open(mesh_file) as f:
+        header = f.readline()
+        nb = int(header.strip('# \n').split()[0])
+        # First basic node = surface, last basic node = CMB
+        r_surface = float(f.readline().split()[0])
+        for _ in range(nb - 2):
+            f.readline()
+        r_cmb = float(f.readline().split()[0])
+    return r_cmb / r_surface
+
+
 class MyJSON(object):
     """load and access json data"""
 
@@ -261,6 +285,16 @@ def _try_spider(
     empty_file = os.path.join(dirs['output/data'], '.spider_tmp')
     open(empty_file, 'w').close()
 
+    # Compute coresize: use external mesh radii when available, otherwise config
+    coresize = config.struct.corefrac
+    if mesh_file and os.path.isfile(mesh_file):
+        coresize = _coresize_from_mesh(mesh_file)
+        log.debug(
+            'coresize from external mesh: %.6f (config: %.6f)',
+            coresize,
+            config.struct.corefrac,
+        )
+
     ### SPIDER base call sequence
     call_sequence = [
         spider_exec,
@@ -287,7 +321,7 @@ def _try_spider(
         '-gravity',
         '%.6e' % (-1.0 * hf_row['gravity']),
         '-coresize',
-        '%.6e' % (config.struct.corefrac),
+        '%.6e' % (coresize),
         '-grain',
         '%.6e' % (config.interior.grain_size),
     ]
