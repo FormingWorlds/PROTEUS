@@ -217,6 +217,13 @@ def solve_structure(
                 config.orbit.module = (
                     'dummy'  # Switch to dummy orbit module when using Zalmoxis for now
                 )
+                if config.params.stop.solid.phi_crit < 0.01:
+                    log.warning(
+                        'phi_crit=%.4f is below 0.01. Zalmoxis cases may plateau '
+                        'at ~0.9%% melt fraction, so phi_crit < 0.01 can prevent '
+                        'the simulation from terminating. Consider phi_crit >= 0.01.',
+                        config.params.stop.solid.phi_crit,
+                    )
                 return determine_interior_radius_with_zalmoxis(
                     dirs, config, hf_all, hf_row, outdir
                 )
