@@ -458,6 +458,24 @@ def update_structure_from_interior(
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file
 
+        # Remap entropy in the latest SPIDER JSON to match the new mesh.
+        # Without this, the old dS/dxi applied on the new xi grid produces
+        # incorrect absolute entropy, causing CVode failures at high mass.
+        if config.interior.module == 'spider':
+            from proteus.interior.spider import (
+                get_all_output_times,
+                remap_entropy_for_new_mesh,
+            )
+
+            sim_times = get_all_output_times(dirs['output'])
+            if len(sim_times) > 0:
+                latest_json = os.path.join(dirs['output'], 'data', '%.0f.json' % sim_times[-1])
+                remap_entropy_for_new_mesh(
+                    json_path=latest_json,
+                    new_mesh_file=spider_mesh_file,
+                    radius_phys=hf_row['R_int'],
+                )
+
     log.info(
         'Structure updated: R_int=%.3e m, gravity=%.3f m/s^2',
         hf_row['R_int'],

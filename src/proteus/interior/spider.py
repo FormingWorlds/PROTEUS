@@ -136,6 +136,188 @@ def _check_eos_table_range(eos_dir: str, mesh_file: str | None, P_cmb: float):
         )
 
 
+# Nondimensional scaling reference (must match SPIDER call_sequence below)
+RADIUS0 = 63710000.0  # m
+
+
+def _read_mesh_file(mesh_path: str) -> tuple[np.ndarray, ...]:
+    """Parse a SPIDER external mesh file.
+
+    Parameters
+    ----------
+    mesh_path : str
+        Path to the mesh file.
+
+    Returns
+    -------
+    r_b : np.ndarray
+        Basic-node radii [m], surface to CMB.
+    r_s : np.ndarray
+        Staggered-node radii [m], surface to CMB.
+    """
+    with open(mesh_path) as f:
+        header = f.readline()
+        tokens = header.strip('# \n').split()
+        nb = int(tokens[0])
+        ns = int(tokens[1])
+
+        r_b = np.empty(nb)
+        for i in range(nb):
+            r_b[i] = float(f.readline().split()[0])
+
+        r_s = np.empty(ns)
+        for i in range(ns):
+            r_s[i] = float(f.readline().split()[0])
+
+    return r_b, r_s
+
+
+def _rewrite_json_solution(
+    json_path: str,
+    dSdxi_nondim: np.ndarray,
+    S0_nondim: float,
+) -> None:
+    """Overwrite the entropy solution vector in a SPIDER JSON file.
+
+    Modifies subdomains 0 (dS/dxi) and 1 (S0) in-place, leaving any
+    volatile or reaction subdomains untouched.
+
+    Parameters
+    ----------
+    json_path : str
+        Path to the SPIDER JSON file.
+    dSdxi_nondim : np.ndarray
+        New nondimensional dS/dxi values at basic nodes.
+    S0_nondim : float
+        New nondimensional S0 (entropy at first staggered node).
+    """
+    with open(json_path) as f:
+        data = json.load(f)
+
+    sd = data['solution']['subdomain data']
+    # Subdomain 0: dS/dxi at basic nodes
+    sd[0]['values'] = [f'{v:.17e}' for v in dSdxi_nondim]
+    # Subdomain 1: S0 (single value)
+    sd[1]['values'] = [f'{S0_nondim:.17e}']
+
+    with open(json_path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+def remap_entropy_for_new_mesh(
+    json_path: str,
+    new_mesh_file: str,
+    radius_phys: float,
+) -> bool:
+    """Interpolate entropy from the old mesh to a new mesh in a SPIDER JSON.
+
+    When Zalmoxis updates the mesh, physical node positions r[i] change.
+    The old JSON stores dS/dxi computed on the old mesh; applying it with
+    new xi spacing gives incorrect absolute entropy S(r).  This function
+    reads S(r) from the old mesh, interpolates onto the new mesh positions,
+    then rewrites the JSON solution vector with corrected dS/dxi and S0.
+
+    Parameters
+    ----------
+    json_path : str
+        Path to the SPIDER restart JSON file (modified in-place).
+    new_mesh_file : str
+        Path to the new external mesh file from Zalmoxis.
+    radius_phys : float
+        Physical planet surface radius [m] (for consistency check).
+
+    Returns
+    -------
+    bool
+        True if the JSON was modified, False if the mesh change was
+        negligible (max relative radius shift < 1e-10).
+    """
+    # --- Read old mesh data from JSON ---
+    with open(json_path) as f:
+        jdata = json.load(f)
+
+    data = jdata['data']
+    r_s_old = np.array([float(v) for v in data['radius_s']['values']]) * float(
+        data['radius_s']['scaling']
+    )
+    S_s_old = np.array([float(v) for v in data['S_s']['values']]) * float(
+        data['S_s']['scaling']
+    )
+    r_b_old = np.array([float(v) for v in data['radius_b']['values']]) * float(
+        data['radius_b']['scaling']
+    )
+
+    # --- Read new mesh ---
+    r_b_new, r_s_new = _read_mesh_file(new_mesh_file)
+    N_b = len(r_b_new)
+    N_s = N_b - 1
+
+    if len(r_b_old) != N_b:
+        log.warning(
+            'Cannot remap entropy: node count changed (%d -> %d)',
+            len(r_b_old),
+            N_b,
+        )
+        return False
+
+    # --- Check if mesh actually changed ---
+    max_rel_diff = np.max(np.abs(r_b_new - r_b_old) / r_b_old)
+    if max_rel_diff < 1e-10:
+        log.debug('Mesh change negligible (max rel diff %.2e), skipping remap', max_rel_diff)
+        return False
+
+    log.info(
+        'Remapping entropy for new mesh (max radius shift: %.2e relative)',
+        max_rel_diff,
+    )
+
+    # --- Interpolate S(r) from old to new staggered positions ---
+    # SPIDER ordering is surface-to-CMB (decreasing r), np.interp needs ascending
+    r_s_old_asc = r_s_old[::-1]
+    S_s_old_asc = S_s_old[::-1]
+    r_s_new_asc = r_s_new[::-1]
+    S_s_new_asc = np.interp(r_s_new_asc, r_s_old_asc, S_s_old_asc)
+    S_s_new = S_s_new_asc[::-1]  # back to surface-to-CMB
+
+    # --- Compute new xi coordinates (matches SetMeshRegular in mesh.c) ---
+    R_surf = r_b_new[0]
+    R_cmb = r_b_new[-1]
+    coresize_new = R_cmb / R_surf
+    radius_nondim = R_surf / RADIUS0
+
+    dx_b = -radius_nondim * (1.0 - coresize_new) / (N_b - 1)
+    xi_s_new = np.array(
+        [radius_nondim * coresize_new - 0.5 * dx_b - (N_s - 1 - i) * dx_b for i in range(N_s)]
+    )
+
+    # --- Compute dS/dxi (nondimensional) from interpolated entropy ---
+    # Get scalings from solution subdomains
+    sd = jdata['solution']['subdomain data']
+    S0_scaling = float(sd[1]['scaling'])
+
+    S_s_nondim = S_s_new / S0_scaling
+    S0_nondim = S_s_nondim[0]
+
+    dSdxi_nondim = np.zeros(N_b)
+    # Interior basic nodes: dS/dxi[i] = (S_s[i] - S_s[i-1]) / (xi_s[i] - xi_s[i-1])
+    for i in range(1, N_b - 1):
+        dSdxi_nondim[i] = (S_s_nondim[i] - S_s_nondim[i - 1]) / (xi_s_new[i] - xi_s_new[i - 1])
+    # Boundary extrapolation
+    dSdxi_nondim[0] = dSdxi_nondim[1]
+    dSdxi_nondim[N_b - 1] = dSdxi_nondim[N_b - 2]
+
+    # --- Write back to JSON ---
+    _rewrite_json_solution(json_path, dSdxi_nondim, S0_nondim)
+
+    log.info(
+        'Entropy remapped: S0=%.2f J/kg/K, S range=[%.2f, %.2f] J/kg/K',
+        S_s_new[0],
+        S_s_new.min(),
+        S_s_new.max(),
+    )
+    return True
+
+
 class MyJSON(object):
     """load and access json data"""
 
