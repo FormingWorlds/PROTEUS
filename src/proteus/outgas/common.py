@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.outgas.wrapper import get_gaslist
-from proteus.utils.constants import element_list
+from proteus.utils.constants import element_list, vap_list, vol_list
 
 # from proteus.outgas.wrapper import get_gaslist
+
 
 
 def expected_keys(config: Config):
@@ -18,7 +18,10 @@ def expected_keys(config: Config):
     # reservoirs
     res_list = ('atm', 'liquid', 'solid', 'total')
 
-    gas_list=get_gaslist(config)
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
     # gases
     for s in gas_list:
         copy_keys.append(f'{s}_bar')

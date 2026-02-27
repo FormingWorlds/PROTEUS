@@ -9,8 +9,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 
-# from proteus.utils.constants import gas_list
-from proteus.outgas.wrapper import get_gaslist
+from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
@@ -60,7 +59,11 @@ def plot_global(
     vol_mol_tot = {}  # Moles in total
     vol_intpart = {}  # Partitioning into int
 
-    gas_list = get_gaslist(config)
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
+
     for vol in gas_list:
         # Check vmr for presence
         this_vmr = np.array(hf[vol + '_vmr'])

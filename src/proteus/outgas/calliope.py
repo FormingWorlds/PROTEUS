@@ -47,12 +47,10 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     # Surface properties
     solvevol_inp['T_magma'] = hf_row['T_magma']
 
-    if config.outgas.converge_fO2 and 'fO2_shift' in hf_row.keys():
-        solvevol_inp['fO2_shift_IW'] = hf_row['fO2_shift']
-    else:
-        solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
-    log.info('fO2 shift used by calliope:%.6f', solvevol_inp['fO2_shift_IW'])
+    solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
+
+    log.debug('fO2 shift used by calliope:%.6f', solvevol_inp['fO2_shift_IW'])
 
     # Volatile inventory
     for s in vol_list:

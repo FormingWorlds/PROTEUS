@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import const_R, const_sigma, gas_list
+from proteus.utils.constants import const_R, const_sigma, vap_list, vol_list
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -127,6 +127,11 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
     output['P_surf_clim'] = hf_row['P_surf']
 
     # Gas composition for escape equal to surface composition
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
+
     for g in gas_list:
         hf_row[f'{g}_vmr_xuv'] = float(hf_row.get(f'{g}_vmr', 0.0))
 

@@ -12,7 +12,7 @@ from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
-from proteus.outgas.wrapper import get_gaslist
+from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
@@ -71,7 +71,10 @@ def activate_julia(dirs: dict, verbosity: int):
 
 
 def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
-    gas_list = get_gaslist(config)
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
 
     log.debug('list of gases used by agni: %s', gas_list)
 
@@ -537,7 +540,10 @@ def _solve_once(atmos, config: Config):
     """
 
     # set included vapur species
-    gas_list = get_gaslist(config)
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
     # set temperature profile
     #    rainout volatiles at surface
     rained = jl.AGNI.chemistry.calc_composition_b(
@@ -735,7 +741,10 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     output['ocean_maxdepth'] = float(atmos.ocean_maxdepth)
     output['P_surf_clim'] = float(atmos.p_boa) / 1e5  # Calculated Psurf [bar]
 
-    gas_list = get_gaslist(config)
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
 
     for g in gas_list:
         if g in list(atmos.gas_names):

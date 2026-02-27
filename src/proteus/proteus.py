@@ -13,7 +13,7 @@ from juliacall import Main as jl  # noqa
 
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
-from proteus.utils.constants import vol_list
+from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -131,7 +131,6 @@ class Proteus:
         from proteus.outgas.wrapper import (
             calc_target_elemental_inventories,
             check_desiccation,
-            get_gaslist,
             lavatmos_calliope_run,
             run_desiccated,
         )
@@ -277,7 +276,10 @@ class Proteus:
             # Store partial pressures and list of included volatiles
             inc_gases = []
 
-            gas_list = get_gaslist(self.config)
+            if self.config.outgas.silicates:
+                gas_list = vol_list + self.config.outgas.vaplist
+            else:
+                gas_list = vol_list + vap_list
 
             for s in vol_list:
                 if s != 'O2':

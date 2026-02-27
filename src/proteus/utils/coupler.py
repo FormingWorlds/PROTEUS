@@ -19,11 +19,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.outgas.wrapper import get_gaslist
 from proteus.utils.constants import (
     element_list,
     secs_per_hour,
     secs_per_minute,
+    vap_list,
+    vol_list,
 )
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -614,7 +615,10 @@ def GetHelpfileKeys(config: Config):
         "T_star", # [K]
         ]
 
-    gas_list=get_gaslist(config)
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
 
     # gases from outgassing
     for s in gas_list:

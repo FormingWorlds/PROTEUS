@@ -67,6 +67,8 @@ REFRACTORY_GASES = (
     'MgO',
     'Na',
     'TiO2',
+    'SiH',
+    'SiH4',
 )
 
 

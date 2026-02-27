@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -11,13 +12,111 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 
-from proteus.outgas.wrapper import get_gaslist
-from proteus.utils.constants import element_list
+from proteus.utils.constants import element_list, vol_list
 
 log = logging.getLogger('fwl.' + __name__)
 
 
 # species db class comes from HELIOS code Kitzmann+2017
+
+# Custom modules
+class paths_importer:
+
+    def __init__(self):
+
+        '''
+
+        Change the paths as needed. If you don't change the dir structure,
+        it should be enough to only change the wkdir.
+
+        '''
+
+        # General directory structure
+        self.wkdir = os.environ.get("LAVATMOS_DIR")
+        self.output_dir = self.wkdir+'output/'
+        self.input_dir = self.wkdir+'input/'
+
+        # Inputs
+        self.lava_comps = self.input_dir+'lava_compositions/'
+
+        # LavAtmos
+        self.lavatmos_run = self.wkdir+'ThermoEngine/LavAtmos/lavatmos_run.py'
+
+        # FastChem 3
+        self.fastchem3_dir = os.environ.get("FC_DIR")
+        #self.fastchem3_dir = self.wkdir+'FastChem/fastchem3/'
+        self.fastchem3_input = self.wkdir+'input/fastchem3/'
+        self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
+        self.element_abundances3 = self.fastchem3_input+'element_abundances/'
+
+        # Singularity
+        self.singularity_cache = self.wkdir+'singularity/'
+
+
+
+class container_lavatmos():
+
+    def __init__(self, parameters):
+
+        '''
+
+        Imports parameters and paths needed for the LavAtmos run.
+
+        - Parameters are passed in dictionary format.
+
+        '''
+
+        # Parameters
+        self.silicate_abundances = parameters['silicate_abundances']
+        self.P_volatile = parameters['P_volatile']
+        self.comp_melt_name = parameters['lava_comp']
+        self.volatile_comp = parameters['volatile_comp']
+        self.run_name = parameters['run_name']
+        self.melt_fraction = parameters['melt_fraction']
+
+        # Paths
+        self.paths = paths_importer()
+
+        # Saving volatile comp to csv for so that LavAtmos can read it later
+        if parameters['volatile_comp'] != 'None':
+            comp_vol = pd.Series(parameters['volatile_comp'])
+            comp_vol.to_csv(f'{self.paths.input_dir}volatile_comp.csv',\
+                             header=['mole_fraction'])
+
+    def run_lavatmos(self,T_boa):
+
+        '''
+
+        This function effectively runs a bash command which calls
+        singularity. Singularity opens the ThermoEngine docker and within
+        this runs lavatmos_run.py. When LavAtmos is done, it writes the results
+        to a csv file. This csv file is read by this function and returned.
+
+        - T_boa: T at the "bottom of atmosphere" for which to run LavAtmos [K].
+
+        '''
+
+        T_boa = int(T_boa)
+
+        os.system(f'export APPTAINER_CACHEDIR="{self.paths.singularity_cache}"')
+        os.system(f'singularity exec --bind {self.paths.wkdir} \
+                    {self.paths.wkdir}thermoengine_master.sif \
+                    python {self.paths.lavatmos_run} \
+                    {T_boa}\
+                    {self.P_volatile}\
+                    {self.comp_melt_name}\
+                    {self.paths.output_dir}\
+                    {self.silicate_abundances}\
+                    {self.run_name}\
+                    {self.melt_fraction}')
+
+        # Read LavAtmos output
+        # partial_pressures = pd.read_csv(self.run_output_dir+'lavatmos/degassed_partial_pressure.csv',\
+        #                                 index_col=0)
+
+        # return partial_pressures
+
+
 class Species_db(object):
     def __init__(self, name, fc_name, weight):
         self.name = name
@@ -161,10 +260,6 @@ mp = 1.6726231e-27  # kg
 kB = 1.38064e-23  # JK-1
 particles_per_mol = 6.02214076e23
 
-#def get_gaslist(config: Config):
-   # gas_list = vol_list + config.outgas.vaplist
-    #return gas_list
-
 
 class FO2shift:
     """models are taken from caliope. oxygen fugacity pO2 need to be in log10"""
@@ -204,7 +299,7 @@ def read_in_element_fracs(input_path):
     return df_frac/1e20
 
 
-def run_lavatmos(config: Config, hf_row: dict):
+def compute_silicate_outgassing(config: Config, hf_row: dict):
     """
 
     This function runs the Thermoengine module Lavatmos. Outgassing of refractory species
@@ -225,7 +320,6 @@ def run_lavatmos(config: Config, hf_row: dict):
 
     sys.path.insert(1, '/data3/leoni/LavAtmos')
     from lavatmos_goot_runner import container_lavatmos
-    gas_list = get_gaslist(config)
 
     # set element fractions in atmosphere for lavatmos run
     input_eles = ['H', 'C', 'N', 'S', 'O']
@@ -308,6 +402,9 @@ def run_lavatmos(config: Config, hf_row: dict):
 
     log.debug('new atmospheric mass:%.4f'%M_atmo_new)
 
+    gas_list = vol_list + config.outgas.vaplist
+
+
     for vol in gas_list:
         new_pp = new_atmos_abundances[vol][0] * new_atmos_abundances['Pbar'][0]
         hf_row[vol + '_bar'] = new_pp
@@ -356,4 +453,4 @@ def run_lavatmos(config: Config, hf_row: dict):
     fO2_shift = FO2shift()
     hf_row['fO2_shift_LavAtmos'] = fO2_shift(hf_row['T_magma'], log10_fO2)
 
-    log.debug('shift compared to iron wustite buffer: %.6f'%hf_row['fO2_shift'])
+    log.debug('shift compared to iron wustite buffer: %.6f'%hf_row['fO2_shift_LavAtmos'])

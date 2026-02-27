@@ -8,7 +8,7 @@ import numpy as np
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
-from proteus.outgas.lavatmos import run_lavatmos
+from proteus.outgas.lavatmos import compute_silicate_outgassing
 from proteus.utils.constants import element_list, vap_list, vol_list
 
 if TYPE_CHECKING:
@@ -16,14 +16,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-
-def get_gaslist(config: Config):
-    if config.outgas.silicates:
-        gas_list = vol_list + config.outgas.vaplist
-    else:
-        gas_list = vol_list + vap_list
-
-    return gas_list
 
 
 def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
@@ -92,7 +84,10 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     log.info('Solving outgassing...')
 
-    gas_list = get_gaslist(config)
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
 
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
@@ -136,7 +131,11 @@ def run_desiccated(config: Config, hf_row: dict):
 
     # if desiccated, set all gas masses to zero
     log.info('Desiccation has occurred - no volatiles remaining')
-    gas_list = get_gaslist(config)
+
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
 
     # Do not set these to zero - avoid divide by zero elsewhere in the code
     excepted_keys = ['atm_kg_per_mol']
@@ -162,7 +161,14 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
     """
-
     run_outgassing(dirs, config, hf_row)
     if config.outgas.silicates:
-        run_lavatmos(config, hf_row)
+
+        #this needs to be commented out for runninglavatmos with the installation from github
+        #lavadir = os.environ.get("LAVATMOS_DIR")
+        #if lavadir:
+            #log.info('Lavatmos directory found: %s' % lavadir)
+        #else:
+            #log.warning('Lavatmos directory not found, did you set the LAVATMOS_DIR environment variable?')
+
+        compute_silicate_outgassing(config, hf_row)
