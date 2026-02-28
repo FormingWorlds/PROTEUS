@@ -250,8 +250,9 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Test Coverage**: `tests/config/test_config.py`, `test_converters.py`, `test_options.py`
 
 #### 4. Zalmoxis-SPIDER Coupling (`src/proteus/interior/wrapper.py`, `zalmoxis.py`)
-- **Why Complex**: Phase 2 feedback loop mutates config temporarily (prescribed T-mode override with try/finally restore). T-profile interpolation bridges SPIDER's 49 mantle nodes to Zalmoxis's 150 full-planet grid. WolfBower2018 T-dependent EOS causes ~5% M_int shift on first structure update.
-- **Recent Changes**: Per-layer EOS config (`core_eos`/`mantle_eos`/`ice_layer_eos`), `update_structure_from_interior()`, `write_spider_mesh_file()`
+- **Why Complex**: Phase 2 feedback loop mutates config temporarily (prescribed T-mode override with try/finally restore). T-profile interpolation bridges SPIDER's mantle nodes to Zalmoxis's full-planet grid. WolfBower2018 T-dependent EOS causes ~5% M_int shift on first structure update.
+- **Recent Changes**: Hybrid physics-based structure update triggers (dT/T + dPhi + floor/ceiling), removed deprecated `weight_iron_frac`, per-layer EOS config, `update_structure_from_interior()` now returns `(time, Tmagma, Phi)` tuple.
+- **Defaults Changed**: SPIDER is default interior module, Zalmoxis is default structure module, `temperature_mode` default is `adiabatic`, `num_levels` default is 100, `mantle_eos` uses colon format (`WolfBower2018:MgSiO3`).
 - **Watch Out**: `zalmoxis_solver()` unconditionally writes Aragog files even when using SPIDER. `solve_structure()` permanently mutates `config.orbit.module='dummy'` for Zalmoxis. `validate_mesh_fields.py` in SPIDER is dead validation (needs rewrite).
 - **Test Coverage**: `tests/interior/test_zalmoxis.py`, `tests/integration/test_smoke_zalmoxis_spider.py`, `test_regression_aw_zalmoxis.py`, `test_regression_structure_update.py`
 
