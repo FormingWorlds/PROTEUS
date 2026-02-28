@@ -167,7 +167,7 @@ version = "2.0"
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
 
-    module           = "self"       # self | zalmoxis
+    module           = "zalmoxis"   # self | zalmoxis
     update_interval  = 0            # interval between structure re-computations [yr]; 0 = only at init
 
     [struct.zalmoxis]
@@ -178,13 +178,13 @@ version = "2.0"
         mantle_eos                 = "WolfBower2018:MgSiO3"         # mantle layer EOS
         ice_layer_eos              = ""                             # ice/water layer EOS (empty = 2-layer model)
         coremassfrac               = 0.325                          # core mass fraction [non-dim.]
-        mantle_mass_fraction       = 0                              # mantle mass fraction [non-dim.]
+        mantle_mass_fraction       = 0                              # mantle mass fraction; 0 = auto (1 - coremassfrac) for 2-layer models
         temperature_mode           = "adiabatic"                     # "isothermal", "linear", "prescribed", "adiabatic"
         adiabatic_cp               = 1200.0                         # isobaric heat capacity [J/(kg*K)] for adiabatic mode
         surface_temperature        = 3500                           # Surface temperature [K]
         center_temperature         = 6000                           # Center temperature [K], used for "linear" and "adiabatic" (initial guess)
         temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # prescribed temperature profile filename, required for temperature_mode="prescribed"
-        num_levels                 = 150                            # number of Zalmoxis radius layers
+        num_levels                 = 100                            # number of Zalmoxis radius layers
         max_iterations_outer       = 100                            # max. iterations for the outer loop
         tolerance_outer            = 3e-3                           # tolerance for the outer loop
         max_iterations_inner       = 100                            # max. iterations for the inner loop
