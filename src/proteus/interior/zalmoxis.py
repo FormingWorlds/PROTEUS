@@ -117,7 +117,8 @@ def load_zalmoxis_material_dictionaries():
     Returns
     -------
     tuple
-        Three dictionaries: iron/silicate, iron/T-dep silicate, water planets.
+        Four dictionaries: iron/silicate, iron/T-dep silicate (WolfBower2018),
+        water planets, iron/RTPress100TPa silicate.
     """
     return get_zalmoxis_EOS()
 

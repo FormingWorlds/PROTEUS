@@ -1252,7 +1252,9 @@ def get_zalmoxis_EOS():
     Returns
     -------
     tuple
-        Three dictionaries: iron/silicate, iron/T-dep silicate, and water planet EOS.
+        Four dictionaries: iron/silicate, iron/T-dep silicate (WolfBower2018),
+        water planet, and iron/RTPress100TPa silicate EOS. T-dep dicts include
+        ``cp_file`` entries for heat capacity tables when the files exist.
     """
     eos_base = FWL_DATA_DIR / 'interior_lookup_tables' / 'EOS'
 
@@ -1286,10 +1288,18 @@ def get_zalmoxis_EOS():
     }
 
     # Iron/T-dep silicate (Seager 2007 core + Wolf & Bower 2018 mantle)
+    wb_cp_melt = wb_folder / 'heat_capacity_melt.dat'
+    wb_cp_solid = wb_folder / 'heat_capacity_solid.dat'
     material_properties_iron_Tdep_silicate_planets = {
         'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
-        'melted_mantle': {'eos_file': wb_folder / 'density_melt.dat'},
-        'solid_mantle': {'eos_file': wb_folder / 'density_solid.dat'},
+        'melted_mantle': {
+            'eos_file': wb_folder / 'density_melt.dat',
+            **({'cp_file': wb_cp_melt} if wb_cp_melt.is_file() else {}),
+        },
+        'solid_mantle': {
+            'eos_file': wb_folder / 'density_solid.dat',
+            **({'cp_file': wb_cp_solid} if wb_cp_solid.is_file() else {}),
+        },
     }
 
     # Water planets (Seager 2007)
@@ -1298,10 +1308,29 @@ def get_zalmoxis_EOS():
         'mantle': {'eos_file': seager_folder / 'eos_seager07_silicate.txt'},
         'water_ice_layer': {'eos_file': seager_folder / 'eos_seager07_water.txt'},
     }
+
+    # RTPress100TPa melt EOS with WolfBower2018 solid
+    rt_folder = eos_base / 'RTPress_melt_100TPa'
+    if not rt_folder.exists():
+        rt_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
+    rt_cp_melt = rt_folder / 'heat_capacity_melt.dat'
+    material_properties_iron_RTPress100TPa_silicate_planets = {
+        'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
+        'melted_mantle': {
+            'eos_file': rt_folder / 'density_melt.dat',
+            **({'cp_file': rt_cp_melt} if rt_cp_melt.is_file() else {}),
+        },
+        'solid_mantle': {
+            'eos_file': wb_folder / 'density_solid.dat',
+            **({'cp_file': wb_cp_solid} if wb_cp_solid.is_file() else {}),
+        },
+    }
+
     return (
         material_properties_iron_silicate_planets,
         material_properties_iron_Tdep_silicate_planets,
         material_properties_water_planets,
+        material_properties_iron_RTPress100TPa_silicate_planets,
     )
 
 
@@ -1316,5 +1345,5 @@ def get_Seager_EOS():
     iron/silicate and water dictionaries.
     """
 
-    iron_silicate, _iron_Tdep, water = get_zalmoxis_EOS()
+    iron_silicate, _iron_Tdep, water, _iron_RTPress = get_zalmoxis_EOS()
     return iron_silicate, water
