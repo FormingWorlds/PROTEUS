@@ -183,7 +183,6 @@ version = "2.0"
         coremassfrac               = 0.325                          # core mass fraction [non-dim.]
         mantle_mass_fraction       = 0                              # mantle mass fraction; 0 = auto (1 - coremassfrac) for 2-layer models
         temperature_mode           = "adiabatic"                     # "isothermal", "linear", "prescribed", "adiabatic"
-        adiabatic_cp               = 1200.0                         # isobaric heat capacity [J/(kg*K)] for adiabatic mode
         surface_temperature        = 3500                           # Surface temperature [K]
         center_temperature         = 6000                           # Center temperature [K], used for "linear" and "adiabatic" (initial guess)
         temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # prescribed temperature profile filename, required for temperature_mode="prescribed"

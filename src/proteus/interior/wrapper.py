@@ -185,9 +185,7 @@ def determine_interior_radius_with_zalmoxis(
     ):
         log.info(
             'Switching Zalmoxis temperature_mode from isothermal to adiabatic '
-            'for SPIDER coupling with T-dependent mantle EOS '
-            '(adiabatic_cp=%.0f J/(kg*K))',
-            config.struct.zalmoxis.adiabatic_cp,
+            'for SPIDER coupling with T-dependent mantle EOS',
         )
         config.struct.zalmoxis.temperature_mode = 'adiabatic'
 

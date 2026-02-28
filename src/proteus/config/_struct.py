@@ -112,10 +112,6 @@ class Zalmoxis:
     temperature_mode: str
         Choice of input temperature profile: "isothermal", "linear",
         "prescribed", "adiabatic".
-    adiabatic_cp: float
-        Isobaric heat capacity [J/(kg*K)] used for computing the adiabatic
-        temperature gradient. Only used when temperature_mode="adiabatic".
-        Default: 1200.0 (typical MgSiO3 value).
     surface_temperature: float
         Surface temperature (K), required for temperature_mode="isothermal",
         "linear", or "adiabatic", ignored otherwise.
@@ -169,7 +165,6 @@ class Zalmoxis:
         default='isothermal',
         validator=in_(('isothermal', 'linear', 'prescribed', 'adiabatic')),
     )
-    adiabatic_cp: float = field(default=1200.0, validator=gt(0))
     surface_temperature: float = field(default=3500, validator=ge(0))
     center_temperature: float = field(default=6000, validator=ge(0))
     temperature_profile_file: Optional[str] = field(default=None)

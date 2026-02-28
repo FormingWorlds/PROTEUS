@@ -99,7 +99,6 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'target_surface_pressure': config.struct.zalmoxis.target_surface_pressure,
         'pressure_tolerance': config.struct.zalmoxis.pressure_tolerance,
         'max_iterations_pressure': config.struct.zalmoxis.max_iterations_pressure,
-        'adiabatic_cp': config.struct.zalmoxis.adiabatic_cp,
         'verbose': config.struct.zalmoxis.verbose,
         'iteration_profiles_enabled': config.struct.zalmoxis.iteration_profiles_enabled,
     }
