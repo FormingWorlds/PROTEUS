@@ -155,7 +155,6 @@ def run_case(case: Case, outdir: Path, resume: bool = False) -> bool:
 
         if case.struct == 'zalmoxis':
             runner.config.struct.zalmoxis.coremassfrac = case.cmf
-            runner.config.struct.zalmoxis.weight_iron_frac = case.cmf
 
             # Increase central pressure guess for massive/dense planets
             if case.mass >= 3.0:
@@ -267,9 +266,7 @@ def main():
         # Parallel execution
         print(f'Running with {n_workers} parallel workers\n')
         with ProcessPoolExecutor(max_workers=n_workers) as pool:
-            futures = {
-                pool.submit(run_case, c, args.outdir, args.resume): c for c in cases
-            }
+            futures = {pool.submit(run_case, c, args.outdir, args.resume): c for c in cases}
             for future in as_completed(futures):
                 c = futures[future]
                 try:

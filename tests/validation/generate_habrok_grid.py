@@ -250,7 +250,6 @@ def apply_overrides(config: dict, case: Case, case_outdir: str) -> dict:
 
     # Zalmoxis parameters (always set for consistency; ignored in AW mode)
     cfg['struct']['zalmoxis']['coremassfrac'] = case.cmf
-    cfg['struct']['zalmoxis']['weight_iron_frac'] = case.cmf
     cfg['struct']['zalmoxis']['max_center_pressure_guess'] = max_pressure_guess(case.mass)
 
     # Block H: force linear temperature mode (bypass wrapper auto-switch)

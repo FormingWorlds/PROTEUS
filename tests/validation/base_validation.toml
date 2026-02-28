@@ -95,7 +95,6 @@ version = "2.0"
         ice_layer_eos              = ""
         coremassfrac               = 0.325
         mantle_mass_fraction       = 0
-        weight_iron_frac           = 0.325
         temperature_mode           = "isothermal"
         surface_temperature        = 3500
         center_temperature         = 6000

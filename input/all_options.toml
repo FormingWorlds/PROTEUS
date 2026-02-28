@@ -178,7 +178,6 @@ version = "2.0"
         ice_layer_eos              = ""                             # ice/water layer EOS (empty = 2-layer model)
         coremassfrac               = 0.325                          # core mass fraction [non-dim.]
         mantle_mass_fraction       = 0                              # mantle mass fraction [non-dim.]
-        weight_iron_frac           = 0.325                          # iron fraction in the planet [non-dim.]
         temperature_mode           = "linear"                       # Input temperature profile choices: "isothermal", "linear", "prescribed"
         surface_temperature        = 3500                           # Surface temperature [K], required for temperature_mode="isothermal" or "linear"
         center_temperature         = 6000                           # Center temperature [K], required for temperature_mode="linear"

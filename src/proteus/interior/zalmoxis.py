@@ -81,7 +81,6 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'planet_mass': planet_mass,
         'core_mass_fraction': config.struct.zalmoxis.coremassfrac,
         'mantle_mass_fraction': config.struct.zalmoxis.mantle_mass_fraction,
-        'weight_iron_fraction': config.struct.zalmoxis.weight_iron_frac,
         'temperature_mode': config.struct.zalmoxis.temperature_mode,
         'surface_temperature': config.struct.zalmoxis.surface_temperature,
         'center_temperature': config.struct.zalmoxis.center_temperature,
