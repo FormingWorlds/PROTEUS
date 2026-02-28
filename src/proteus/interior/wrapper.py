@@ -177,22 +177,28 @@ def determine_interior_radius_with_zalmoxis(
     # This produces a self-consistent adiabat that matches SPIDER's initial
     # entropy profile, avoiding large mesh shifts on the first Phase 2 update.
     _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+    _orig_temp_mode = config.struct.zalmoxis.temperature_mode
     if (
         config.interior.module == 'spider'
-        and config.struct.zalmoxis.temperature_mode == 'isothermal'
+        and _orig_temp_mode == 'isothermal'
         and config.struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES)
     ):
         log.info(
             'Switching Zalmoxis temperature_mode from isothermal to adiabatic '
-            'for SPIDER coupling with T-dependent mantle EOS'
+            'for SPIDER coupling with T-dependent mantle EOS '
+            '(adiabatic_cp=%.0f J/(kg*K))',
+            config.struct.zalmoxis.adiabatic_cp,
         )
         config.struct.zalmoxis.temperature_mode = 'adiabatic'
 
     # Request SPIDER mesh file if interior module is SPIDER
     num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
-    _cmb_radius, spider_mesh_file = zalmoxis_solver(
-        config, outdir, hf_row, num_spider_nodes=num_spider_nodes
-    )
+    try:
+        _cmb_radius, spider_mesh_file = zalmoxis_solver(
+            config, outdir, hf_row, num_spider_nodes=num_spider_nodes
+        )
+    finally:
+        config.struct.zalmoxis.temperature_mode = _orig_temp_mode
 
     # Store mesh file path for subsequent SPIDER calls
     if spider_mesh_file:

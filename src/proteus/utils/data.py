@@ -1313,6 +1313,13 @@ def get_zalmoxis_EOS():
     rt_folder = eos_base / 'RTPress_melt_100TPa'
     if not rt_folder.exists():
         rt_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
+    if not rt_folder.exists():
+        log.warning(
+            'RTPress100TPa EOS folder not found at %s. '
+            'RTPress100TPa:MgSiO3 will fail if used. '
+            'Run `proteus get` to download EOS data.',
+            rt_folder,
+        )
     rt_cp_melt = rt_folder / 'heat_capacity_melt.dat'
     material_properties_iron_RTPress100TPa_silicate_planets = {
         'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},

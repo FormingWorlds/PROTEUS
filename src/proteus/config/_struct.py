@@ -67,7 +67,8 @@ def valid_zalmoxis(instance, attribute, value):
         )
 
     # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
-    if not ice_layer_eos and not mantle_eos.startswith('WolfBower2018'):
+    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+    if not ice_layer_eos and not mantle_eos.startswith(_TDEP_PREFIXES):
         if mantle_mass_fraction != 0:
             raise ValueError(
                 '`struct.zalmoxis.mantle_mass_fraction` must be 0 for a 2-layer model '
