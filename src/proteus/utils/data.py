@@ -1290,11 +1290,13 @@ def get_zalmoxis_EOS():
     # Iron/T-dep silicate (Seager 2007 core + Wolf & Bower 2018 mantle)
     wb_cp_melt = wb_folder / 'heat_capacity_melt.dat'
     wb_cp_solid = wb_folder / 'heat_capacity_solid.dat'
+    wb_adiabat_grad = wb_folder / 'adiabat_temp_grad_melt.dat'
     material_properties_iron_Tdep_silicate_planets = {
         'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
         'melted_mantle': {
             'eos_file': wb_folder / 'density_melt.dat',
             **({'cp_file': wb_cp_melt} if wb_cp_melt.is_file() else {}),
+            **({'adiabat_grad_file': wb_adiabat_grad} if wb_adiabat_grad.is_file() else {}),
         },
         'solid_mantle': {
             'eos_file': wb_folder / 'density_solid.dat',
@@ -1327,11 +1329,13 @@ def get_zalmoxis_EOS():
             'Adiabatic mode will fall back to constant Cp for this EOS.',
             rt_cp_melt,
         )
+    rt_adiabat_grad = rt_folder / 'adiabat_temp_grad_melt.dat'
     material_properties_iron_RTPress100TPa_silicate_planets = {
         'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
         'melted_mantle': {
             'eos_file': rt_folder / 'density_melt.dat',
             **({'cp_file': rt_cp_melt} if rt_cp_melt.is_file() else {}),
+            **({'adiabat_grad_file': rt_adiabat_grad} if rt_adiabat_grad.is_file() else {}),
         },
         'solid_mantle': {
             'eos_file': wb_folder / 'density_solid.dat',
