@@ -404,8 +404,16 @@ def update_structure_from_interior(
     hf_row: dict,
     interior_o: Interior_t,
     last_struct_time: float,
-) -> float:
+    last_Tmagma: float,
+    last_Phi: float,
+) -> tuple[float, float, float]:
     """Re-run Zalmoxis with SPIDER's current T(r) to update structure.
+
+    Uses a hybrid trigger: fires when either the relative change in
+    T_magma or the absolute change in Phi_global exceeds configured
+    thresholds, subject to a minimum interval (floor) and maximum
+    interval (ceiling).  When ``update_interval == 0``, no dynamic
+    updates are performed (structure is computed only at init).
 
     Writes SPIDER's temperature profile to a file, runs Zalmoxis in
     prescribed-temperature mode, and writes an updated mesh file for the
@@ -423,21 +431,57 @@ def update_structure_from_interior(
         Interior state with current T(r) on staggered nodes.
     last_struct_time : float
         Simulation time [yr] of the last structure update.
+    last_Tmagma : float
+        T_magma [K] at the last structure update.
+    last_Phi : float
+        Phi_global at the last structure update.
 
     Returns
     -------
-    float
-        Updated ``last_struct_time`` (set to current time if update occurred,
-        otherwise returned unchanged).
+    tuple[float, float, float]
+        (last_struct_time, last_Tmagma, last_Phi) — updated to current
+        values if an update occurred, otherwise returned unchanged.
     """
-    # Check trigger conditions
-    current_time = hf_row['Time']
-    if config.struct.update_interval <= 0:
-        return last_struct_time
-    if (current_time - last_struct_time) < config.struct.update_interval:
-        return last_struct_time
+    no_update = (last_struct_time, last_Tmagma, last_Phi)
 
-    log.info('Updating structure from interior T(r) via Zalmoxis')
+    # Dynamic updates disabled
+    if config.struct.update_interval <= 0:
+        return no_update
+
+    current_time = hf_row['Time']
+    elapsed = current_time - last_struct_time
+
+    # Floor: don't update too frequently
+    if elapsed < config.struct.update_min_interval:
+        return no_update
+
+    # Evaluate triggers
+    triggered = False
+    reason = ''
+
+    # Ceiling: guaranteed update after max interval
+    if elapsed >= config.struct.update_interval:
+        triggered = True
+        reason = f'ceiling ({elapsed:.1f} yr >= {config.struct.update_interval:.1f} yr)'
+
+    # T_magma relative change
+    if not triggered and last_Tmagma > 0:
+        dT_frac = abs(hf_row['T_magma'] - last_Tmagma) / last_Tmagma
+        if dT_frac >= config.struct.update_dtmagma_frac:
+            triggered = True
+            reason = f'dT/T={dT_frac:.3f} >= {config.struct.update_dtmagma_frac}'
+
+    # Phi_global absolute change
+    if not triggered:
+        dPhi = abs(hf_row['Phi_global'] - last_Phi)
+        if dPhi >= config.struct.update_dphi_abs:
+            triggered = True
+            reason = f'dPhi={dPhi:.3f} >= {config.struct.update_dphi_abs}'
+
+    if not triggered:
+        return no_update
+
+    log.info('Updating structure from interior T(r) via Zalmoxis (trigger: %s)', reason)
 
     outdir = dirs['output']
     num_layers = config.struct.zalmoxis.num_levels
@@ -513,7 +557,7 @@ def update_structure_from_interior(
         hf_row['R_int'],
         hf_row['gravity'],
     )
-    return current_time
+    return (current_time, float(hf_row['T_magma']), float(hf_row['Phi_global']))
 
 
 def get_all_output_times(output_dir: str, model: str):

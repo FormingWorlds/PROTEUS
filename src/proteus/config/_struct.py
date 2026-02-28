@@ -219,8 +219,19 @@ class Struct:
     radius_int: float
         Radius of the atmosphere-mantle boundary [R_earth]
     update_interval: float
-        Interval between structure re-computations [yr]. Only used when
-        module is 'zalmoxis'. 0 means only compute structure at init.
+        Maximum interval (ceiling) between structure re-computations [yr].
+        Only used when module is 'zalmoxis'. 0 means only compute structure
+        at init (no dynamic updates).
+    update_min_interval: float
+        Minimum interval (floor) between structure re-computations [yr].
+        Prevents thrashing during rapid cooling. Only used when
+        update_interval > 0.
+    update_dtmagma_frac: float
+        Fractional change in T_magma that triggers a structure update.
+        Update fires when |T_new - T_ref| / T_ref >= this value.
+    update_dphi_abs: float
+        Absolute change in Phi_global that triggers a structure update.
+        Update fires when |Phi_new - Phi_ref| >= this value.
     core_density: float
         Density of the planet's core [kg m-3]
     core_heatcap: float
@@ -239,6 +250,9 @@ class Struct:
     )
 
     update_interval: float = field(default=0, validator=ge(0))
+    update_min_interval: float = field(default=0, validator=ge(0))
+    update_dtmagma_frac: float = field(default=0.03, validator=(gt(0), lt(1)))
+    update_dphi_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
 
     core_density: float = field(default=10738.33, validator=gt(0))
     core_heatcap: float = field(default=880.0, validator=gt(0))

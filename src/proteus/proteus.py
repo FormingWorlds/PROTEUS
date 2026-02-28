@@ -84,8 +84,10 @@ class Proteus:
         self.sspec_prev = -np.inf  # spectrum
         self.sinst_prev = -np.inf  # instellation and radius
 
-        # Time at which structure was last re-computed via Zalmoxis
+        # State at which structure was last re-computed via Zalmoxis
         self.last_struct_time = -np.inf
+        self.last_struct_Tmagma = np.inf
+        self.last_struct_Phi = np.inf
 
     def init_directories(self):
         """Initialize directories dictionary"""
@@ -393,12 +395,18 @@ class Proteus:
             ):
                 from proteus.interior.wrapper import update_structure_from_interior
 
-                self.last_struct_time = update_structure_from_interior(
+                (
+                    self.last_struct_time,
+                    self.last_struct_Tmagma,
+                    self.last_struct_Phi,
+                ) = update_structure_from_interior(
                     self.directories,
                     self.config,
                     self.hf_row,
                     self.interior_o,
                     self.last_struct_time,
+                    self.last_struct_Tmagma,
+                    self.last_struct_Phi,
                 )
 
             ############### / INTERIOR AND STRUCTURE
