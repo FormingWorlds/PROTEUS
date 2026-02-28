@@ -259,6 +259,14 @@ class Struct:
     mass_tot = field(default='none', validator=mass_radius_valid, converter=none_if_none)
     radius_int = field(default='none', validator=mass_radius_valid, converter=none_if_none)
 
+    def __attrs_post_init__(self):
+        if self.update_interval > 0 and self.update_min_interval > self.update_interval:
+            raise ValueError(
+                f'`update_min_interval` ({self.update_min_interval}) must be '
+                f'<= `update_interval` ({self.update_interval}), otherwise '
+                f'the floor blocks all updates before the ceiling can fire.'
+            )
+
     @property
     def set_by(self) -> str:
         """How is the structure set?"""
