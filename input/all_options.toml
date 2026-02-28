@@ -167,21 +167,23 @@ version = "2.0"
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
 
-    module       = "self"       # self | zalmoxis
+    module           = "self"       # self | zalmoxis
+    update_interval  = 0            # interval between structure re-computations [yr]; 0 = only at init
 
     [struct.zalmoxis]
         # Per-layer EOS: "<source>:<material>". See Zalmoxis docs for valid options.
-        # Tabulated: Seager2007:iron, Seager2007:MgSiO3, WolfBower2018_MgSiO3, Seager2007:H2O
+        # Tabulated: Seager2007:iron, Seager2007:MgSiO3, WolfBower2018:MgSiO3, RTPress100TPa:MgSiO3, Seager2007:H2O
         # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O, Analytic:graphite, Analytic:SiC
         core_eos                   = "Seager2007:iron"              # core layer EOS
-        mantle_eos                 = "WolfBower2018_MgSiO3"         # mantle layer EOS
+        mantle_eos                 = "WolfBower2018:MgSiO3"         # mantle layer EOS
         ice_layer_eos              = ""                             # ice/water layer EOS (empty = 2-layer model)
         coremassfrac               = 0.325                          # core mass fraction [non-dim.]
         mantle_mass_fraction       = 0                              # mantle mass fraction [non-dim.]
-        temperature_mode           = "linear"                       # Input temperature profile choices: "isothermal", "linear", "prescribed"
-        surface_temperature        = 3500                           # Surface temperature [K], required for temperature_mode="isothermal" or "linear"
-        center_temperature         = 6000                           # Center temperature [K], required for temperature_mode="linear"
-        temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # filename with a prescribed temperature profile, required for temperature_mode="prescribed"
+        temperature_mode           = "adiabatic"                     # "isothermal", "linear", "prescribed", "adiabatic"
+        adiabatic_cp               = 1200.0                         # isobaric heat capacity [J/(kg*K)] for adiabatic mode
+        surface_temperature        = 3500                           # Surface temperature [K]
+        center_temperature         = 6000                           # Center temperature [K], used for "linear" and "adiabatic" (initial guess)
+        temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # prescribed temperature profile filename, required for temperature_mode="prescribed"
         num_levels                 = 150                            # number of Zalmoxis radius layers
         max_iterations_outer       = 100                            # max. iterations for the outer loop
         tolerance_outer            = 3e-3                           # tolerance for the outer loop
@@ -311,7 +313,7 @@ version = "2.0"
     eos_dir         = "WolfBower2018_MgSiO3" # Dynamic EOS for SPIDER + Aragog (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
 
 
-    module = "aragog"       # Which interior module to use
+    module = "spider"       # Which interior module to use
 
     [interior.spider]
         num_levels               = 60       # Number of SPIDER grid levels
@@ -356,7 +358,7 @@ version = "2.0"
         mantle_tsol = 1700.0    # Solidus temperature
         mantle_rho  = 4550.0    # Mantle density [kg m-3]
         mantle_cp   = 1792.0    # Mantle heat capacity [J K-1 kg-1]
-        H_ratio     = 0.0       # Radiogenic heating [W/kg]
+        H_radio     = 0.0       # Radiogenic heating rate [W/kg]
 
 # Outgassing - physics table
 [outgas]
