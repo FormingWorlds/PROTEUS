@@ -1,15 +1,17 @@
-# Base configuration for Zalmoxis-SPIDER extended validation
+# Base configuration for Zalmoxis-SPIDER validation grid v3
 #
 # Full-physics run: AGNI + SPIDER + MORS + CALLIOPE + ZEPHYRUS
-# Runtime target: 1 Myr or until crystallization (phi < 0.005)
+# Runtime target: 1 Myr or until crystallization (phi < 0.01)
 # Volatile inventory: 0.1 Earth oceans H (1/10 of default)
 #
-# The runner script (run_validation_matrix.py) overrides per-case:
+# generate_habrok_grid.py overrides per-case:
 #   struct.module, struct.mass_tot, struct.corefrac,
 #   struct.zalmoxis.coremassfrac, struct.update_interval,
+#   struct.zalmoxis.temperature_mode (Block C),
+#   interior.spider.num_levels (Block E),
 #   params.out.path
 
-version = "2.0"
+version = "3.0"
 
 # ── Parameters ──────────────────────────────────────────────
 [params]

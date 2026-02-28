@@ -8,7 +8,7 @@ runs validation checks, and writes:
 
 Usage
 -----
-    python generate_validation_report.py --outdir /scratch/$USER/habrok_validation_v2
+    python generate_validation_report.py --outdir /scratch/$USER/habrok_validation_v3
 
     # Skip plots (report from cached PNGs)
     python generate_validation_report.py --outdir ... --skip-plots
@@ -203,7 +203,7 @@ def plot_evolution(results: dict, plot_dir: Path):
 
         for i, cmf in enumerate(CMFS):
             aw_name = f'A_M{mass}_CMF{cmf}_AW'
-            zal_name = f'A_M{mass}_CMF{cmf}_ZAL'
+            zal_name = f'B_M{mass}_CMF{cmf}_ZAL'
 
             for j, (col, label, unit, yscale) in enumerate(cols):
                 ax = axes[i, j]
@@ -258,8 +258,8 @@ def plot_radial_profiles(outdir: Path, plot_dir: Path):
         cases_dir = outdir
 
     for mass in [1.0, 3.0]:
-        for struct_tag in ['AW', 'ZAL']:
-            name = f'A_M{mass}_CMF0.325_{struct_tag}'
+        for block, struct_tag in [('A', 'AW'), ('B', 'ZAL')]:
+            name = f'{block}_M{mass}_CMF0.325_{struct_tag}'
             case_dir = cases_dir / name
             snaps = load_case_snapshots(case_dir)
             if not snaps:
@@ -311,7 +311,7 @@ def plot_radial_comparison(outdir: Path, plot_dir: Path):
             cmf
             for cmf in CMFS
             if (cases_dir / f'A_M{mass}_CMF{cmf}_AW').exists()
-            and (cases_dir / f'A_M{mass}_CMF{cmf}_ZAL').exists()
+            and (cases_dir / f'B_M{mass}_CMF{cmf}_ZAL').exists()
         ]
         if not avail_cmfs:
             continue
@@ -326,8 +326,8 @@ def plot_radial_comparison(outdir: Path, plot_dir: Path):
             axes = axes[np.newaxis, :]
 
         for i, cmf in enumerate(avail_cmfs):
-            for j, tag in enumerate(['AW', 'ZAL']):
-                case_dir = cases_dir / f'A_M{mass}_CMF{cmf}_{tag}'
+            for j, (block, tag) in enumerate([('A', 'AW'), ('B', 'ZAL')]):
+                case_dir = cases_dir / f'{block}_M{mass}_CMF{cmf}_{tag}'
                 snaps = load_case_snapshots(case_dir)
                 if not snaps:
                     continue
@@ -398,8 +398,8 @@ def plot_adiabat_mesh_shift(results: dict, outdir: Path, plot_dir: Path):
 
     for mass in masses_plot:
         for mode, pattern in [
-            ('adiabatic', f'A_M{mass}_CMF0.325_ZAL'),
-            ('linear', f'H_M{mass}_CMF0.325_ZAL_Tlin'),
+            ('adiabatic', f'B_M{mass}_CMF0.325_ZAL'),
+            ('linear', f'C_M{mass}_CMF0.325_ZAL_Tlin'),
         ]:
             # Try to compute mesh shift from first two Zalmoxis mesh files
             # or from R_int change between steps 0 and 1
@@ -458,8 +458,8 @@ def plot_adiabat_vs_linear_evolution(results: dict, plot_dir: Path):
 
     for ax, mass in zip(axes, [1.0, 3.0]):
         for name, label, color, ls in [
-            (f'A_M{mass}_CMF0.325_ZAL', 'Adiabatic (auto)', '#4caf50', '-'),
-            (f'H_M{mass}_CMF0.325_ZAL_Tlin', 'Linear (forced)', '#d32f2f', '--'),
+            (f'B_M{mass}_CMF0.325_ZAL', 'Adiabatic (auto)', '#4caf50', '-'),
+            (f'C_M{mass}_CMF0.325_ZAL_Tlin', 'Linear (forced)', '#d32f2f', '--'),
         ]:
             hf = results.get(name)
             if hf is not None and 'T_magma' in hf.columns:
@@ -497,9 +497,8 @@ def plot_phase2_stability(results: dict, plot_dir: Path):
 
     for i, mass in enumerate(MASSES):
         configs = [
-            (f'A_M{mass}_CMF0.325_ZAL', 'Phase 1', '#7570b3', '-'),
+            (f'B_M{mass}_CMF0.325_ZAL', 'Phase 1', '#7570b3', '-'),
             (f'D_M{mass}_CMF0.325_ZAL_P2u100', r'P2 $\Delta t$=100 yr', '#e7298a', '--'),
-            (f'D_M{mass}_CMF0.325_ZAL_P2u1000', r'P2 $\Delta t$=1000 yr', '#1b9e77', '-.'),
         ]
         for j, (col, label, unit) in enumerate(p2_cols):
             ax = axes[i, j]
@@ -549,8 +548,8 @@ def plot_phase2_mesh_shift(results: dict, plot_dir: Path):
     fig, ax = plt.subplots(figsize=(10, 5))
 
     for mass, color in zip(MASSES, ['#d95f02', '#7570b3', '#e7298a']):
-        name = f'D_M{mass}_CMF0.325_ZAL_P2u100'
-        hf = results.get(name)
+        p2_name = f'D_M{mass}_CMF0.325_ZAL_P2u100'
+        hf = results.get(p2_name)
         if hf is None or 'R_int' not in hf.columns or len(hf) < 3:
             continue
 
@@ -599,7 +598,9 @@ def plot_summary_heatmaps(results: dict, plot_dir: Path):
             grid = np.full((len(CMFS), len(MASSES)), np.nan)
             for i, cmf in enumerate(CMFS):
                 for j, mass in enumerate(MASSES):
-                    hf = results.get(f'A_M{mass}_CMF{cmf}_{struct}')
+                    hf = results.get(
+                        f'{"A" if struct == "AW" else "B"}_M{mass}_CMF{cmf}_{struct}'
+                    )
                     if hf is not None:
                         try:
                             grid[i, j] = extract_fn(hf)
@@ -630,7 +631,9 @@ def plot_summary_heatmaps(results: dict, plot_dir: Path):
         for i, cmf in enumerate(CMFS):
             for j, mass in enumerate(MASSES):
                 for struct, grid_ in [('AW', grid_aw), ('ZAL', grid_zal)]:
-                    hf = results.get(f'A_M{mass}_CMF{cmf}_{struct}')
+                    hf = results.get(
+                        f'{"A" if struct == "AW" else "B"}_M{mass}_CMF{cmf}_{struct}'
+                    )
                     if hf is not None:
                         try:
                             grid_[i, j] = extract_fn(hf)
@@ -672,7 +675,7 @@ def plot_mass_radius(results: dict, plot_dir: Path):
     for cmf in CMFS:
         m_plot, r_plot = [], []
         for mass in MASSES:
-            hf = results.get(f'A_M{mass}_CMF{cmf}_ZAL')
+            hf = results.get(f'B_M{mass}_CMF{cmf}_ZAL')
             if hf is not None and 'R_int' in hf.columns:
                 m_plot.append(mass)
                 r_plot.append(float(hf['R_int'].iloc[0]) / 6.371e6)
@@ -700,12 +703,12 @@ def plot_mass_radius(results: dict, plot_dir: Path):
 
 def plot_resolution_convergence(results: dict, plot_dir: Path):
     """t_crystal and T_magma_final vs num_levels at 3 M_earth, CMF=0.325."""
-    nlevels = [30, 60, 90, 120]
+    nlevels = [40, 60, 90, 120]
     t_vals, tm_vals = [], []
 
     for nl in nlevels:
         if nl == 60:
-            name = 'A_M3.0_CMF0.325_ZAL'
+            name = 'B_M3.0_CMF0.325_ZAL'
         else:
             name = f'E_M3.0_CMF0.325_ZAL_n{nl}'
         hf = results.get(name)
@@ -819,7 +822,7 @@ def run_checks(results: dict, outdir: Path) -> list[dict]:
     for mass in MASSES:
         for cmf in CMFS:
             aw_hf = results.get(f'A_M{mass}_CMF{cmf}_AW')
-            zal_hf = results.get(f'A_M{mass}_CMF{cmf}_ZAL')
+            zal_hf = results.get(f'B_M{mass}_CMF{cmf}_ZAL')
             if aw_hf is None or zal_hf is None:
                 continue
 
@@ -851,7 +854,7 @@ def run_checks(results: dict, outdir: Path) -> list[dict]:
     for cmf in CMFS:
         radii = {}
         for mass in MASSES:
-            hf = results.get(f'A_M{mass}_CMF{cmf}_ZAL')
+            hf = results.get(f'B_M{mass}_CMF{cmf}_ZAL')
             if hf is not None and 'R_int' in hf.columns:
                 radii[mass] = float(hf['R_int'].iloc[0])
         ms = sorted(radii.keys())
@@ -862,7 +865,7 @@ def run_checks(results: dict, outdir: Path) -> list[dict]:
     for mass in MASSES:
         radii = {}
         for cmf in CMFS:
-            hf = results.get(f'A_M{mass}_CMF{cmf}_ZAL')
+            hf = results.get(f'B_M{mass}_CMF{cmf}_ZAL')
             if hf is not None and 'R_int' in hf.columns:
                 radii[cmf] = float(hf['R_int'].iloc[0])
         cs = sorted(radii.keys(), reverse=True)
@@ -871,8 +874,8 @@ def run_checks(results: dict, outdir: Path) -> list[dict]:
 
     # Adiabat mesh shift (Block H) — can only check if Phase 2 data exists
     for mass in [1.0, 3.0]:
-        hf_ad = results.get(f'A_M{mass}_CMF0.325_ZAL')
-        hf_lin = results.get(f'H_M{mass}_CMF0.325_ZAL_Tlin')
+        hf_ad = results.get(f'B_M{mass}_CMF0.325_ZAL')
+        hf_lin = results.get(f'C_M{mass}_CMF0.325_ZAL_Tlin')
         if hf_ad is not None and hf_lin is not None:
             if 'R_int' in hf_ad.columns and len(hf_ad) >= 2:
                 r0 = float(hf_ad['R_int'].iloc[0])
@@ -896,8 +899,8 @@ def run_checks(results: dict, outdir: Path) -> list[dict]:
 
     # Phase 2 stability (Block D)
     for mass in MASSES:
-        for interval in [100, 1000]:
-            name = f'D_M{mass}_CMF0.325_ZAL_P2u{interval}'
+        for cmf in CMFS:
+            name = f'D_M{mass}_CMF{cmf}_ZAL_P2u100'
             hf = results.get(name)
             if hf is None:
                 continue
@@ -918,7 +921,7 @@ def run_checks(results: dict, outdir: Path) -> list[dict]:
 
     # Phase 2 vs Phase 1 agreement
     for mass in MASSES:
-        ref_hf = results.get(f'A_M{mass}_CMF0.325_ZAL')
+        ref_hf = results.get(f'B_M{mass}_CMF0.325_ZAL')
         p2_hf = results.get(f'D_M{mass}_CMF0.325_ZAL_P2u100')
         if ref_hf is not None and p2_hf is not None:
             tc_ref = crystallization_time(ref_hf)
@@ -932,24 +935,8 @@ def run_checks(results: dict, outdir: Path) -> list[dict]:
                     f'rel={rel:.1%}, P1={tc_ref:.0f}, P2={tc_p2:.0f}',
                 )
 
-    # Entropy independence (Block F)
-    for cmf in [0.10, 0.325]:
-        tcs = []
-        for ini_s in [2600, 2800, 3200]:
-            hf = results.get(f'F_M3.0_CMF{cmf}_ZAL_S{ini_s}')
-            if hf is not None:
-                tcs.append(crystallization_time(hf))
-        if len(tcs) >= 2:
-            spread = (max(tcs) - min(tcs)) / min(tcs) if min(tcs) > 0 else np.nan
-            if np.isfinite(spread):
-                add(
-                    f'Entropy independence CMF={cmf}',
-                    spread <= 0.30,
-                    f'spread={spread:.0%}, range={min(tcs):.0f}-{max(tcs):.0f} yr',
-                )
-
     # Resolution convergence (Block E)
-    ref_hf = results.get('A_M3.0_CMF0.325_ZAL')
+    ref_hf = results.get('B_M3.0_CMF0.325_ZAL')
     hi_hf = results.get('E_M3.0_CMF0.325_ZAL_n120')
     if ref_hf is not None and hi_hf is not None:
         tc_ref = crystallization_time(ref_hf)
@@ -1058,8 +1045,8 @@ def generate_markdown(outdir: Path, results: dict, checks: list[dict], plot_dir:
         if fname.startswith('radial_A_'):
             sections.append(f'![{fname}](plots/{fname})\n\n')
 
-    # Adiabatic T mode (Block H)
-    sections.append('## Adiabatic T Mode Validation (Block H)\n\n')
+    # Adiabatic T mode (Block B vs C)
+    sections.append('## Adiabatic vs Linear T Mode (Blocks B, C)\n\n')
     for fname in ['adiabat_mesh_shift.png', 'adiabat_vs_linear_evolution.png']:
         if fname in pngs:
             sections.append(f'![{fname}](plots/{fname})\n\n')
@@ -1070,12 +1057,8 @@ def generate_markdown(outdir: Path, results: dict, checks: list[dict], plot_dir:
         if fname in pngs:
             sections.append(f'![{fname}](plots/{fname})\n\n')
 
-    # Sensitivity analysis
-    sections.append('## Sensitivity Analysis\n\n')
-    sections.append('### Initial Entropy (Block F)\n\n')
-    if 'entropy_sensitivity.png' in pngs:
-        sections.append('![entropy](plots/entropy_sensitivity.png)\n\n')
-    sections.append('### Resolution Convergence (Block E)\n\n')
+    # Resolution convergence
+    sections.append('## Resolution Convergence (Block E)\n\n')
     if 'resolution_convergence.png' in pngs:
         sections.append('![resolution](plots/resolution_convergence.png)\n\n')
 
@@ -1240,7 +1223,6 @@ def main():
         plot_summary_heatmaps(results, plot_dir)
         plot_mass_radius(results, plot_dir)
         plot_resolution_convergence(results, plot_dir)
-        plot_entropy_sensitivity(results, plot_dir)
         print()
 
     if args.plots_only:

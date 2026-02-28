@@ -250,9 +250,7 @@ def solve_structure(
                 return determine_interior_radius_with_zalmoxis(
                     dirs, config, hf_all, hf_row, outdir
                 )
-        raise ValueError(
-            f"Invalid structure interior module selected '{config.interior.module}'"
-        )
+        raise ValueError(f"Invalid structure interior module selected '{config.struct.module}'")
 
     # Otherwise, error
     else:
