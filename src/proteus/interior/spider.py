@@ -495,7 +495,7 @@ def _try_spider(
     step_sf: float,
     atol_sf: float,
     dT_max: float,
-    timeout: float = 60 * 15,
+    timeout: float = 60 * 30,
     mesh_file: str | None = None,
 ):
     """
