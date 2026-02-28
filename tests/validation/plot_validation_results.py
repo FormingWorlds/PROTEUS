@@ -32,19 +32,20 @@ PROTEUS_ROOT = Path(__file__).resolve().parents[2]
 
 # ── Styling ──────────────────────────────────────────────────
 
-MASSES = [1.0, 3.0, 5.0]
-CMFS = [0.05, 0.10, 0.325, 0.50, 0.80]
+MASSES = [1.0, 2.0, 3.0]
+CMFS = [0.10, 0.325, 0.50]
 
-# Colors for CMF values (dark to light)
 CMF_COLORS = {
-    0.05: '#1b9e77',
     0.10: '#d95f02',
     0.325: '#7570b3',
     0.50: '#e7298a',
-    0.80: '#66a61e',
 }
 
-MASS_LABELS = {1.0: r'1 $M_\oplus$', 3.0: r'3 $M_\oplus$', 5.0: r'5 $M_\oplus$'}
+MASS_LABELS = {
+    1.0: r'1 $M_\oplus$',
+    2.0: r'2 $M_\oplus$',
+    3.0: r'3 $M_\oplus$',
+}
 
 # Crystallization threshold: Phi_global below this counts as solidified
 PHI_CRYSTAL = 0.01
@@ -81,11 +82,15 @@ def load_helpfile(case_dir: Path) -> pd.DataFrame | None:
         return None
 
 
-def case_name(mass: float, cmf: float, struct: str, phase2: bool = False) -> str:
+def case_name(
+    mass: float, cmf: float, struct: str, block: str = 'A', phase2_interval: int = 0
+) -> str:
     """Construct the case directory name."""
     tag = 'AW' if struct == 'self' else 'ZAL'
-    suffix = '_P2' if phase2 else ''
-    return f'M{mass}_CMF{cmf}_{tag}{suffix}'
+    name = f'{block}_M{mass}_CMF{cmf}_{tag}'
+    if phase2_interval > 0:
+        name += f'_P2u{phase2_interval}'
+    return name
 
 
 def load_all_results(outdir: Path) -> dict[str, pd.DataFrame]:
@@ -97,10 +102,13 @@ def load_all_results(outdir: Path) -> dict[str, pd.DataFrame]:
         Mapping of case name -> helpfile DataFrame.
     """
     results = {}
-    if not outdir.exists():
+    # Try Habrok grid layout first (cases/ subdirectory)
+    cases_dir = outdir / 'cases'
+    search_dir = cases_dir if cases_dir.exists() else outdir
+    if not search_dir.exists():
         return results
 
-    for case_dir in sorted(outdir.iterdir()):
+    for case_dir in sorted(search_dir.iterdir()):
         if not case_dir.is_dir():
             continue
         hf = load_helpfile(case_dir)
@@ -129,7 +137,7 @@ def plot_pairwise_evolution(results: dict, outdir: Path):
     for mass in MASSES:
         # Skip masses with no completed cases
         has_data = any(
-            case_name(mass, cmf, s) in results
+            case_name(mass, cmf, s, block='A') in results
             for cmf in CMFS
             for s in ('self', 'zalmoxis')
         )
@@ -137,7 +145,8 @@ def plot_pairwise_evolution(results: dict, outdir: Path):
             continue
 
         fig, axes = plt.subplots(
-            len(CMFS), len(EVOLUTION_COLS),
+            len(CMFS),
+            len(EVOLUTION_COLS),
             figsize=(14, 3.2 * len(CMFS)),
             layout='constrained',
         )
@@ -145,8 +154,8 @@ def plot_pairwise_evolution(results: dict, outdir: Path):
             axes = axes[np.newaxis, :]
 
         for i, cmf in enumerate(CMFS):
-            aw_name = case_name(mass, cmf, 'self')
-            zal_name = case_name(mass, cmf, 'zalmoxis')
+            aw_name = case_name(mass, cmf, 'self', block='A')
+            zal_name = case_name(mass, cmf, 'zalmoxis', block='A')
 
             hf_aw = results.get(aw_name)
             hf_zal = results.get(zal_name)
@@ -239,7 +248,7 @@ def plot_summary_heatmaps(results: dict, outdir: Path):
             grid = np.full((len(CMFS), len(MASSES)), np.nan)
             for i, cmf in enumerate(CMFS):
                 for j, mass in enumerate(MASSES):
-                    name = case_name(mass, cmf, struct)
+                    name = case_name(mass, cmf, struct, block='A')
                     hf = results.get(name)
                     if hf is not None:
                         try:
@@ -271,8 +280,13 @@ def plot_summary_heatmaps(results: dict, outdir: Path):
                     if np.isfinite(val):
                         txt = f'{val:.0f}' if val > 100 else f'{val:.2g}'
                         ax.text(
-                            j, i, txt,
-                            ha='center', va='center', fontsize=7, color='w',
+                            j,
+                            i,
+                            txt,
+                            ha='center',
+                            va='center',
+                            fontsize=7,
+                            color='w',
                         )
 
         # Relative difference panel
@@ -280,8 +294,8 @@ def plot_summary_heatmaps(results: dict, outdir: Path):
         grid_zal = np.full((len(CMFS), len(MASSES)), np.nan)
         for i, cmf in enumerate(CMFS):
             for j, mass in enumerate(MASSES):
-                hf_aw = results.get(case_name(mass, cmf, 'self'))
-                hf_zal = results.get(case_name(mass, cmf, 'zalmoxis'))
+                hf_aw = results.get(case_name(mass, cmf, 'self', block='A'))
+                hf_zal = results.get(case_name(mass, cmf, 'zalmoxis', block='A'))
                 if hf_aw is not None:
                     try:
                         grid_aw[i, j] = extract_fn(hf_aw)
@@ -326,8 +340,13 @@ def plot_summary_heatmaps(results: dict, outdir: Path):
                 val = rel_diff[i, j]
                 if np.isfinite(val):
                     ax.text(
-                        j, i, f'{val:+.1f}%',
-                        ha='center', va='center', fontsize=7, color='k',
+                        j,
+                        i,
+                        f'{val:+.1f}%',
+                        ha='center',
+                        va='center',
+                        fontsize=7,
+                        color='k',
                     )
 
         fig.suptitle(_axis_label(label, unit), fontsize=13)
@@ -351,11 +370,13 @@ def plot_phase2_stability(results: dict, outdir: Path):
         axes = axes[np.newaxis, :]
 
     for i, mass in enumerate(MASSES):
-        zal_name = case_name(mass, 0.325, 'zalmoxis', phase2=False)
-        p2_name = case_name(mass, 0.325, 'zalmoxis', phase2=True)
+        zal_name = case_name(mass, 0.325, 'zalmoxis', block='A')
+        p2u100_name = case_name(mass, 0.325, 'zalmoxis', block='D', phase2_interval=100)
+        p2u1000_name = case_name(mass, 0.325, 'zalmoxis', block='D', phase2_interval=1000)
 
         hf_zal = results.get(zal_name)
-        hf_p2 = results.get(p2_name)
+        hf_p2u100 = results.get(p2u100_name)
+        hf_p2u1000 = results.get(p2u1000_name)
 
         for j, (col, label, unit) in enumerate(p2_cols):
             ax = axes[i, j]
@@ -373,17 +394,30 @@ def plot_phase2_stability(results: dict, outdir: Path):
                         label='Phase 1 (no updates)',
                     )
 
-            if hf_p2 is not None and col in hf_p2.columns:
-                t = hf_p2['Time'].values
+            if hf_p2u100 is not None and col in hf_p2u100.columns:
+                t = hf_p2u100['Time'].values
                 mask = t > 0
                 if mask.any():
                     ax.plot(
                         t[mask],
-                        hf_p2[col].values[mask],
+                        hf_p2u100[col].values[mask],
                         '--',
                         color='#e7298a',
                         lw=1.5,
                         label=r'Phase 2 ($\Delta t_{\rm update}$ = 100 yr)',
+                    )
+
+            if hf_p2u1000 is not None and col in hf_p2u1000.columns:
+                t = hf_p2u1000['Time'].values
+                mask = t > 0
+                if mask.any():
+                    ax.plot(
+                        t[mask],
+                        hf_p2u1000[col].values[mask],
+                        '-.',
+                        color='#1b9e77',
+                        lw=1.5,
+                        label=r'Phase 2 ($\Delta t_{\rm update}$ = 1000 yr)',
                     )
 
             ax.set_xscale('log')
@@ -396,7 +430,8 @@ def plot_phase2_stability(results: dict, outdir: Path):
                 ax.set_title(_axis_label(label, unit), fontsize=11)
             if j == 0:
                 ax.text(
-                    -0.18, 0.5,
+                    -0.18,
+                    0.5,
                     MASS_LABELS[mass],
                     transform=ax.transAxes,
                     fontsize=11,
@@ -409,7 +444,8 @@ def plot_phase2_stability(results: dict, outdir: Path):
 
     fig.suptitle(
         'Phase 2 feedback stability (CMF = 0.325)',
-        fontsize=13, y=1.01,
+        fontsize=13,
+        y=1.01,
     )
     fig.tight_layout()
     fig.savefig(plot_dir / 'phase2_stability.pdf', bbox_inches='tight', dpi=150)
@@ -427,7 +463,7 @@ def plot_mass_radius(results: dict, outdir: Path):
     for cmf in CMFS:
         masses_plot, radii_plot = [], []
         for mass in MASSES:
-            name = case_name(mass, cmf, 'zalmoxis')
+            name = case_name(mass, cmf, 'zalmoxis', block='A')
             hf = results.get(name)
             if hf is not None and 'R_int' in hf.columns:
                 R = float(hf['R_int'].iloc[0])
@@ -446,14 +482,14 @@ def plot_mass_radius(results: dict, outdir: Path):
             )
 
     # Reference: R ~ M^0.27 (rocky planet scaling)
-    m_ref = np.linspace(0.8, 5.5, 50)
+    m_ref = np.linspace(0.8, 3.5, 50)
     ax.plot(m_ref, m_ref**0.27, 'k:', lw=1, alpha=0.5, label=r'$R \propto M^{0.27}$')
 
     ax.set_xlabel(r'Planet mass [$M_\oplus$]')
     ax.set_ylabel(r'Planet radius [$R_\oplus$]')
     ax.set_title('Mass-radius relation — Zalmoxis validation')
     ax.legend(fontsize=8)
-    ax.set_xlim(0.5, 5.5)
+    ax.set_xlim(0.5, 3.5)
     fig.tight_layout()
     fig.savefig(plot_dir / 'mass_radius.pdf', bbox_inches='tight', dpi=150)
     plt.close(fig)
@@ -537,14 +573,17 @@ def validate_single(name: str, hf: pd.DataFrame) -> list[str]:
 def validate_comparison(results: dict, mass: float, cmf: float) -> list[str]:
     """Compare AW vs Zalmoxis for a specific (mass, CMF) pair.
 
+    For 1 M_earth: T_magma within 10%, t_crystal within factor 2 (all CMFs).
+    For 2-3 M_earth: relaxed — T_magma within 20%, t_crystal within factor 3.
+
     Returns
     -------
     list[str]
         Failure messages for the comparison. Empty if criteria met.
     """
     failures = []
-    aw_name = case_name(mass, cmf, 'self')
-    zal_name = case_name(mass, cmf, 'zalmoxis')
+    aw_name = case_name(mass, cmf, 'self', block='A')
+    zal_name = case_name(mass, cmf, 'zalmoxis', block='A')
 
     hf_aw = results.get(aw_name)
     hf_zal = results.get(zal_name)
@@ -552,26 +591,33 @@ def validate_comparison(results: dict, mass: float, cmf: float) -> list[str]:
     if hf_aw is None or hf_zal is None:
         return []  # Can't compare if one is missing
 
-    # Only strict comparison for 1 M_earth, Earth-like CMF
-    if not (np.isclose(mass, 1.0) and np.isclose(cmf, 0.325)):
-        return []
+    # Set tolerances based on planet mass
+    if np.isclose(mass, 1.0):
+        T_tol = 0.10
+        tc_factor = 2.0
+    else:
+        T_tol = 0.20
+        tc_factor = 3.0
 
-    # T_magma should agree within 10% at final timestep
+    # T_magma should agree within tolerance at final timestep
     T_aw = float(hf_aw['T_magma'].iloc[-1])
     T_zal = float(hf_zal['T_magma'].iloc[-1])
     if T_aw > 0:
         rel = abs(T_zal - T_aw) / T_aw
-        if rel > 0.10:
-            failures.append(f'T_magma disagrees by {rel:.0%}: AW={T_aw:.0f}, ZAL={T_zal:.0f}')
+        if rel > T_tol:
+            failures.append(
+                f'M={mass}, CMF={cmf}: T_magma disagrees by {rel:.0%}: '
+                f'AW={T_aw:.0f}, ZAL={T_zal:.0f}'
+            )
 
-    # Crystallization time should agree within factor 2
+    # Crystallization time should agree within factor
     tc_aw = _crystallization_time(hf_aw)
     tc_zal = _crystallization_time(hf_zal)
     if tc_aw > 0 and tc_zal > 0:
         ratio = max(tc_aw, tc_zal) / min(tc_aw, tc_zal)
-        if ratio > 2.0:
+        if ratio > tc_factor:
             failures.append(
-                f'Crystallization time ratio {ratio:.1f}x: '
+                f'M={mass}, CMF={cmf}: crystallization time ratio {ratio:.1f}x: '
                 f'AW={tc_aw:.0f} yr, ZAL={tc_zal:.0f} yr'
             )
 
@@ -594,7 +640,7 @@ def validate_consistency(results: dict) -> list[str]:
     for cmf in CMFS:
         radii = {}
         for mass in MASSES:
-            name = case_name(mass, cmf, 'zalmoxis')
+            name = case_name(mass, cmf, 'zalmoxis', block='A')
             hf = results.get(name)
             if hf is not None and 'R_int' in hf.columns:
                 radii[mass] = float(hf['R_int'].iloc[0])
@@ -613,7 +659,7 @@ def validate_consistency(results: dict) -> list[str]:
     for mass in MASSES:
         radii = {}
         for cmf in CMFS:
-            name = case_name(mass, cmf, 'zalmoxis')
+            name = case_name(mass, cmf, 'zalmoxis', block='A')
             hf = results.get(name)
             if hf is not None and 'R_int' in hf.columns:
                 radii[cmf] = float(hf['R_int'].iloc[0])
@@ -636,30 +682,95 @@ def validate_phase2(results: dict) -> list[str]:
     failures = []
 
     for mass in MASSES:
-        p2_name = case_name(mass, 0.325, 'zalmoxis', phase2=True)
-        hf = results.get(p2_name)
-        if hf is None:
-            continue
+        for interval in [100, 1000]:
+            p2_name = case_name(mass, 0.325, 'zalmoxis', block='D', phase2_interval=interval)
+            hf = results.get(p2_name)
+            if hf is None:
+                continue
 
-        # T_magma continuous (no jumps > 200 K)
-        if 'T_magma' in hf.columns:
-            T = hf['T_magma'].values
-            for k in range(1, len(T)):
-                dT = abs(T[k] - T[k - 1])
-                if dT > 200:
-                    failures.append(f'Phase 2 M={mass}: T_magma jump {dT:.0f} K at step {k}')
-                    break
-
-        # R_int changes smoothly (no jumps > 5%)
-        if 'R_int' in hf.columns:
-            R = hf['R_int'].values
-            for k in range(1, len(R)):
-                if R[k - 1] > 0:
-                    rel = abs(R[k] - R[k - 1]) / R[k - 1]
-                    if rel > 0.05:
-                        failures.append(f'Phase 2 M={mass}: R_int jump {rel:.1%} at step {k}')
+            # T_magma continuous (no jumps > 200 K)
+            if 'T_magma' in hf.columns:
+                T = hf['T_magma'].values
+                for k in range(1, len(T)):
+                    dT = abs(T[k] - T[k - 1])
+                    if dT > 200:
+                        failures.append(
+                            f'Phase 2 M={mass} u{interval}: T_magma jump {dT:.0f} K at step {k}'
+                        )
                         break
 
+            # R_int changes smoothly (no jumps > 5%)
+            if 'R_int' in hf.columns:
+                R = hf['R_int'].values
+                for k in range(1, len(R)):
+                    if R[k - 1] > 0:
+                        rel = abs(R[k] - R[k - 1]) / R[k - 1]
+                        if rel > 0.05:
+                            failures.append(
+                                f'Phase 2 M={mass} u{interval}: '
+                                f'R_int jump {rel:.1%} at step {k}'
+                            )
+                            break
+
+    return failures
+
+
+def validate_entropy_independence(results: dict) -> list[str]:
+    """Check that final state is insensitive to initial entropy (Block F).
+
+    Returns
+    -------
+    list[str]
+        Failure messages if crystallization time spread exceeds 30%.
+    """
+    failures = []
+    for cmf in [0.10, 0.325]:
+        t_crystals = []
+        for ini_s in [2600, 2800, 3200]:
+            name = f'F_M3.0_CMF{cmf}_ZAL_S{ini_s}'
+            hf = results.get(name)
+            if hf is not None:
+                tc = _crystallization_time(hf)
+                t_crystals.append(tc)
+
+        if len(t_crystals) >= 2:
+            t_min = min(t_crystals)
+            t_max = max(t_crystals)
+            if t_min > 0:
+                spread = (t_max - t_min) / t_min
+                if spread > 0.30:
+                    failures.append(
+                        f'CMF={cmf}: t_crystal spread {spread:.0%} '
+                        f'(range {t_min:.0f}-{t_max:.0f} yr) exceeds 30%'
+                    )
+    return failures
+
+
+def validate_resolution_convergence(results: dict) -> list[str]:
+    """Check that resolution n=60 and n=120 give consistent results (Block E).
+
+    Returns
+    -------
+    list[str]
+        Failure messages if crystallization time differs by more than 10%.
+    """
+    failures = []
+    ref_name = case_name(3.0, 0.325, 'zalmoxis', block='A')  # n=60 default
+    hi_name = 'E_M3.0_CMF0.325_ZAL_n120'
+
+    hf_ref = results.get(ref_name)
+    hf_hi = results.get(hi_name)
+
+    if hf_ref is not None and hf_hi is not None:
+        tc_ref = _crystallization_time(hf_ref)
+        tc_hi = _crystallization_time(hf_hi)
+        if tc_ref > 0 and tc_hi > 0:
+            rel = abs(tc_hi - tc_ref) / tc_ref
+            if rel > 0.10:
+                failures.append(
+                    f't_crystal differs by {rel:.0%} between n=60 ({tc_ref:.0f} yr) '
+                    f'and n=120 ({tc_hi:.0f} yr)'
+                )
     return failures
 
 
@@ -692,24 +803,29 @@ def run_validation(results: dict, outdir: Path):
             n_pass += 1
             log(f'  PASS  {name}')
 
-    # Check for expected but missing cases
+    # Check for expected but missing cases (Block A baseline grid)
+    # Resolve search directory for ERROR.txt lookup
+    cases_dir = outdir / 'cases'
+    err_search_dir = cases_dir if cases_dir.exists() else outdir
     for mass in MASSES:
         for cmf in CMFS:
             for struct in ['self', 'zalmoxis']:
-                name = case_name(mass, cmf, struct)
+                name = case_name(mass, cmf, struct, block='A')
                 if name not in results:
                     n_skip += 1
-                    # Check if there's an ERROR.txt
-                    err_file = outdir / name / 'ERROR.txt'
+                    err_file = err_search_dir / name / 'ERROR.txt'
                     if err_file.exists():
                         err = err_file.read_text().strip()
                         log(f'  ERROR {name}: {err}')
                     else:
                         log(f'  MISS  {name}')
 
-    # AW vs Zalmoxis comparison (strict for Earth-like only)
-    log('\n--- AW vs Zalmoxis comparison (1 M_earth, CMF=0.325) ---')
-    comp_failures = validate_comparison(results, 1.0, 0.325)
+    # AW vs Zalmoxis comparison
+    log('\n--- AW vs Zalmoxis comparison ---')
+    comp_failures = []
+    for mass in MASSES:
+        for cmf in CMFS:
+            comp_failures.extend(validate_comparison(results, mass, cmf))
     if comp_failures:
         for f in comp_failures:
             log(f'  FAIL  {f}')
@@ -738,6 +854,28 @@ def run_validation(results: dict, outdir: Path):
             n_fail += 1
     else:
         log('  PASS  Phase 2 feedback stable')
+        n_pass += 1
+
+    # Entropy independence (Block F)
+    log('\n--- Initial entropy sensitivity (Block F) ---')
+    ent_failures = validate_entropy_independence(results)
+    if ent_failures:
+        for f in ent_failures:
+            log(f'  FAIL  {f}')
+            n_fail += 1
+    else:
+        log('  PASS  Final state insensitive to initial entropy')
+        n_pass += 1
+
+    # Resolution convergence (Block E)
+    log('\n--- Resolution convergence (Block E) ---')
+    res_failures = validate_resolution_convergence(results)
+    if res_failures:
+        for f in res_failures:
+            log(f'  FAIL  {f}')
+            n_fail += 1
+    else:
+        log('  PASS  Resolution converged (n=60 vs n=120)')
         n_pass += 1
 
     # Summary

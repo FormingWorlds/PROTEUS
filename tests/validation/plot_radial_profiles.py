@@ -7,14 +7,14 @@ with depth, overlaid on the solidus and liquidus curves.
 
 Usage
 -----
-    python plot_radial_profiles.py                          # all 1 M_earth cases
-    python plot_radial_profiles.py --cases M1.0_CMF0.325_AW M1.0_CMF0.325_ZAL
+    python plot_radial_profiles.py                          # all cases
+    python plot_radial_profiles.py --cases A_M1.0_CMF0.325_AW A_M1.0_CMF0.325_ZAL
     python plot_radial_profiles.py --outdir path/to/runs
 
 Output
 ------
-    {outdir}/plots/radial_{case}.pdf         per-case T(r) + phi(r)
-    {outdir}/plots/radial_comparison.pdf     AW vs ZAL side-by-side
+    {outdir}/plots/radial_{case}.pdf            per-case T(r) + phi(r)
+    {outdir}/plots/radial_comparison_M{mass}.pdf  AW vs ZAL side-by-side per mass
 """
 
 from __future__ import annotations
@@ -32,14 +32,15 @@ PROTEUS_ROOT = Path(__file__).resolve().parents[2]
 
 # ── Styling ──────────────────────────────────────────────────
 
-CMFS = [0.05, 0.10, 0.325, 0.50, 0.80]
+CMFS = [0.10, 0.325, 0.50]
 CMF_COLORS = {
-    0.05: '#1b9e77',
     0.10: '#d95f02',
     0.325: '#7570b3',
     0.50: '#e7298a',
-    0.80: '#66a61e',
 }
+
+MASSES = [1.0, 2.0, 3.0]
+MASS_LABELS = {1.0: r'1 $M_\oplus$', 2.0: r'2 $M_\oplus$', 3.0: r'3 $M_\oplus$'}
 
 # Timestep selection: pick ~6 evenly spaced snapshots in log-time
 N_SNAPSHOTS = 6
@@ -216,113 +217,117 @@ def plot_case_profiles(case_dir: Path, outdir: Path):
 
 
 def plot_comparison(outdir: Path):
-    """Side-by-side AW vs Zalmoxis radial profiles for each CMF.
+    """Side-by-side AW vs Zalmoxis radial profiles for each CMF and mass.
 
-    5 rows (CMFs) x 4 columns: T(r) AW, T(r) ZAL, phi(r) AW, phi(r) ZAL.
+    For each mass, generates a figure with rows (CMFs) x 4 columns:
+    T(r) AW, T(r) ZAL, phi(r) AW, phi(r) ZAL.
     """
     plot_dir = outdir / 'plots'
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check which CMFs have both AW and ZAL data
-    available_cmfs = []
-    for cmf in CMFS:
-        aw_dir = outdir / f'M1.0_CMF{cmf}_AW'
-        zal_dir = outdir / f'M1.0_CMF{cmf}_ZAL'
-        if aw_dir.exists() and zal_dir.exists():
-            available_cmfs.append(cmf)
+    for mass in MASSES:
+        # Check which CMFs have both AW and ZAL data
+        available_cmfs = []
+        for cmf in CMFS:
+            aw_dir = outdir / f'A_M{mass}_CMF{cmf}_AW'
+            zal_dir = outdir / f'A_M{mass}_CMF{cmf}_ZAL'
+            if aw_dir.exists() and zal_dir.exists():
+                available_cmfs.append(cmf)
 
-    if not available_cmfs:
-        print('  SKIP comparison: no complete AW+ZAL pairs')
-        return
+        if not available_cmfs:
+            print(f'  SKIP comparison M{mass}: no complete AW+ZAL pairs')
+            continue
 
-    fig, axes = plt.subplots(
-        len(available_cmfs),
-        4,
-        figsize=(20, 3.5 * len(available_cmfs)),
-        layout='constrained',
-    )
-    if len(available_cmfs) == 1:
-        axes = axes[np.newaxis, :]
+        fig, axes = plt.subplots(
+            len(available_cmfs),
+            4,
+            figsize=(20, 3.5 * len(available_cmfs)),
+            layout='constrained',
+        )
+        if len(available_cmfs) == 1:
+            axes = axes[np.newaxis, :]
 
-    for i, cmf in enumerate(available_cmfs):
-        for j, (struct, tag) in enumerate([('AW', 'AW'), ('ZAL', 'Zalmoxis')]):
-            case_dir = outdir / f'M1.0_CMF{cmf}_{struct}'
-            snapshots = load_case_snapshots(case_dir)
-            selected = select_snapshots(snapshots)
+        for i, cmf in enumerate(available_cmfs):
+            for j, (struct, tag) in enumerate([('AW', 'AW'), ('ZAL', 'Zalmoxis')]):
+                case_dir = outdir / f'A_M{mass}_CMF{cmf}_{struct}'
+                snapshots = load_case_snapshots(case_dir)
+                selected = select_snapshots(snapshots)
 
-            if not selected:
-                continue
+                if not selected:
+                    continue
 
-            ax_t = axes[i, j * 2]
-            ax_phi = axes[i, j * 2 + 1]
+                ax_t = axes[i, j * 2]
+                ax_phi = axes[i, j * 2 + 1]
 
-            times = [s['time_yr'] for s in selected]
-            t_min, t_max = max(times[0], 1), max(times[-1], 10)
-            if t_max / t_min > 10:
-                norm = LogNorm(vmin=t_min, vmax=t_max)
-            else:
-                norm = Normalize(vmin=t_min, vmax=t_max)
-            cmap = plt.cm.viridis
-
-            for snap in selected:
-                t = snap['time_yr']
-                r = snap['radius_km']
-                color = cmap(norm(max(t, t_min)))
-                if t < 1e3:
-                    lbl = f'{t:.0f} yr'
-                elif t < 1e6:
-                    lbl = f'{t / 1e3:.1f} kyr'
+                times = [s['time_yr'] for s in selected]
+                t_min, t_max = max(times[0], 1), max(times[-1], 10)
+                if t_max / t_min > 10:
+                    norm = LogNorm(vmin=t_min, vmax=t_max)
                 else:
-                    lbl = f'{t / 1e6:.2f} Myr'
+                    norm = Normalize(vmin=t_min, vmax=t_max)
+                cmap = plt.cm.viridis
 
-                ax_t.plot(snap['temp_K'], r, '-', color=color, lw=1.2, label=lbl)
-                ax_phi.plot(snap['phi'], r, '-', color=color, lw=1.2)
+                for snap in selected:
+                    t = snap['time_yr']
+                    r = snap['radius_km']
+                    color = cmap(norm(max(t, t_min)))
+                    if t < 1e3:
+                        lbl = f'{t:.0f} yr'
+                    elif t < 1e6:
+                        lbl = f'{t / 1e3:.1f} kyr'
+                    else:
+                        lbl = f'{t / 1e6:.2f} Myr'
 
-            # Solidus/liquidus from last snapshot
-            last = selected[-1]
-            ax_t.plot(
-                last['solidus_K'],
-                last['radius_km'],
-                'k--',
-                lw=1,
-                alpha=0.6,
-                label='Solidus',
-            )
-            ax_t.plot(
-                last['liquidus_K'],
-                last['radius_km'],
-                'k:',
-                lw=1,
-                alpha=0.6,
-                label='Liquidus',
-            )
+                    ax_t.plot(snap['temp_K'], r, '-', color=color, lw=1.2, label=lbl)
+                    ax_phi.plot(snap['phi'], r, '-', color=color, lw=1.2)
 
-            # Time legend on T panel
-            ax_t.legend(fontsize=6, loc='lower left', ncol=2)
+                # Solidus/liquidus from last snapshot
+                last = selected[-1]
+                ax_t.plot(
+                    last['solidus_K'],
+                    last['radius_km'],
+                    'k--',
+                    lw=1,
+                    alpha=0.6,
+                    label='Solidus',
+                )
+                ax_t.plot(
+                    last['liquidus_K'],
+                    last['radius_km'],
+                    'k:',
+                    lw=1,
+                    alpha=0.6,
+                    label='Liquidus',
+                )
 
-            # Labels
-            if i == 0:
-                ax_t.set_title(f'{tag} — Temperature [K]', fontsize=10)
-                ax_phi.set_title(f'{tag} — Melt fraction', fontsize=10)
-            if i == len(available_cmfs) - 1:
-                ax_t.set_xlabel('Temperature [K]')
-                ax_phi.set_xlabel(r'Melt fraction, $\phi$')
+                # Time legend on T panel
+                ax_t.legend(fontsize=6, loc='lower left', ncol=2)
 
-            ax_phi.set_xlim(-0.02, 1.02)
+                # Labels
+                if i == 0:
+                    ax_t.set_title(f'{tag} — Temperature [K]', fontsize=10)
+                    ax_phi.set_title(f'{tag} — Melt fraction', fontsize=10)
+                if i == len(available_cmfs) - 1:
+                    ax_t.set_xlabel('Temperature [K]')
+                    ax_phi.set_xlabel(r'Melt fraction, $\phi$')
 
-            if j == 0:
-                ax_t.set_ylabel(f'CMF = {cmf}\nRadius [km]', fontsize=10)
-            else:
-                ax_t.set_ylabel('')
-                ax_phi.set_ylabel('')
+                ax_phi.set_xlim(-0.02, 1.02)
 
-    fig.suptitle(
-        r'Radial profiles: AW vs Zalmoxis — 1 $M_\oplus$',
-        fontsize=14,
-    )
-    fig.savefig(plot_dir / 'radial_comparison.pdf', dpi=150)
-    plt.close(fig)
-    print('  Saved radial_comparison.pdf')
+                if j == 0:
+                    ax_t.set_ylabel(f'CMF = {cmf}\nRadius [km]', fontsize=10)
+                else:
+                    ax_t.set_ylabel('')
+                    ax_phi.set_ylabel('')
+
+        mass_label = MASS_LABELS[mass]
+        fig.suptitle(
+            f'Radial profiles: AW vs Zalmoxis — {mass_label}',
+            fontsize=14,
+        )
+        fname = f'radial_comparison_M{mass}.pdf'
+        fig.savefig(plot_dir / fname, dpi=150)
+        plt.close(fig)
+        print(f'  Saved {fname}')
 
 
 # ── Final-state comparison ────────────────────────────────────
@@ -331,62 +336,75 @@ def plot_comparison(outdir: Path):
 def plot_final_state(outdir: Path):
     """Compare final T(r) and phi(r) between AW and Zalmoxis for all CMFs.
 
-    2 panels: T(r) and phi(r), with AW dashed and ZAL solid, colored by CMF.
+    For each mass, generates a figure with 2 panels: T(r) and phi(r),
+    with AW dashed and ZAL solid, colored by CMF.
     """
     plot_dir = outdir / 'plots'
     plot_dir.mkdir(parents=True, exist_ok=True)
 
-    fig, (ax_t, ax_phi) = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
+    for mass in MASSES:
+        fig, (ax_t, ax_phi) = plt.subplots(1, 2, figsize=(14, 7), sharey=True)
 
-    for cmf in CMFS:
-        color = CMF_COLORS[cmf]
+        has_data = False
+        for cmf in CMFS:
+            color = CMF_COLORS[cmf]
 
-        for struct, ls, lw in [('AW', '--', 1.2), ('ZAL', '-', 1.8)]:
-            case_dir = outdir / f'M1.0_CMF{cmf}_{struct}'
-            snapshots = load_case_snapshots(case_dir)
-            if not snapshots:
-                continue
+            for struct, ls, lw in [('AW', '--', 1.2), ('ZAL', '-', 1.8)]:
+                case_dir = outdir / f'A_M{mass}_CMF{cmf}_{struct}'
+                snapshots = load_case_snapshots(case_dir)
+                if not snapshots:
+                    continue
 
-            last = snapshots[-1]
-            label = f'CMF={cmf} {struct}'
+                has_data = True
+                last = snapshots[-1]
+                label = f'CMF={cmf} {struct}'
 
-            ax_t.plot(last['temp_K'], last['radius_km'], ls, color=color, lw=lw, label=label)
-            ax_phi.plot(last['phi'], last['radius_km'], ls, color=color, lw=lw, label=label)
+                ax_t.plot(
+                    last['temp_K'], last['radius_km'], ls, color=color, lw=lw, label=label
+                )
+                ax_phi.plot(last['phi'], last['radius_km'], ls, color=color, lw=lw, label=label)
 
-        # Solidus from last AW snapshot (representative)
-        aw_dir = outdir / f'M1.0_CMF{cmf}_AW'
-        aw_snaps = load_case_snapshots(aw_dir)
-        if aw_snaps and cmf == 0.325:
-            ax_t.plot(
-                aw_snaps[-1]['solidus_K'],
-                aw_snaps[-1]['radius_km'],
-                'k--',
-                lw=0.8,
-                alpha=0.5,
-                label='Solidus (CMF=0.325)',
-            )
-            ax_t.plot(
-                aw_snaps[-1]['liquidus_K'],
-                aw_snaps[-1]['radius_km'],
-                'k:',
-                lw=0.8,
-                alpha=0.5,
-                label='Liquidus (CMF=0.325)',
-            )
+            # Solidus from last AW snapshot (representative)
+            aw_dir = outdir / f'A_M{mass}_CMF{cmf}_AW'
+            aw_snaps = load_case_snapshots(aw_dir)
+            if aw_snaps and cmf == 0.325:
+                ax_t.plot(
+                    aw_snaps[-1]['solidus_K'],
+                    aw_snaps[-1]['radius_km'],
+                    'k--',
+                    lw=0.8,
+                    alpha=0.5,
+                    label='Solidus (CMF=0.325)',
+                )
+                ax_t.plot(
+                    aw_snaps[-1]['liquidus_K'],
+                    aw_snaps[-1]['radius_km'],
+                    'k:',
+                    lw=0.8,
+                    alpha=0.5,
+                    label='Liquidus (CMF=0.325)',
+                )
 
-    ax_t.set_xlabel('Temperature [K]', fontsize=11)
-    ax_t.set_ylabel('Radius [km]', fontsize=11)
-    ax_t.set_title(r'Final temperature profile — 1 $M_\oplus$', fontsize=12)
-    ax_t.legend(fontsize=7, loc='lower left', ncol=2)
+        if not has_data:
+            plt.close(fig)
+            print(f'  SKIP final state M{mass}: no data')
+            continue
 
-    ax_phi.set_xlabel(r'Melt fraction, $\phi$', fontsize=11)
-    ax_phi.set_title(r'Final melt fraction — 1 $M_\oplus$', fontsize=12)
-    ax_phi.set_xlim(-0.02, 1.02)
+        mass_label = MASS_LABELS[mass]
+        ax_t.set_xlabel('Temperature [K]', fontsize=11)
+        ax_t.set_ylabel('Radius [km]', fontsize=11)
+        ax_t.set_title(f'Final temperature profile — {mass_label}', fontsize=12)
+        ax_t.legend(fontsize=7, loc='lower left', ncol=2)
 
-    fig.tight_layout()
-    fig.savefig(plot_dir / 'radial_final_state.pdf', dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print('  Saved radial_final_state.pdf')
+        ax_phi.set_xlabel(r'Melt fraction, $\phi$', fontsize=11)
+        ax_phi.set_title(f'Final melt fraction — {mass_label}', fontsize=12)
+        ax_phi.set_xlim(-0.02, 1.02)
+
+        fig.tight_layout()
+        fname = f'radial_final_state_M{mass}.pdf'
+        fig.savefig(plot_dir / fname, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f'  Saved {fname}')
 
 
 # ── Main ─────────────────────────────────────────────────────
@@ -404,7 +422,7 @@ def main():
     parser.add_argument(
         '--cases',
         nargs='+',
-        help='Specific case names to plot (default: all M1.0 cases)',
+        help='Specific case names to plot (default: all A_ cases)',
     )
     args = parser.parse_args()
 
@@ -413,7 +431,7 @@ def main():
         case_dirs = [args.outdir / c for c in args.cases]
     else:
         case_dirs = sorted(
-            [d for d in args.outdir.iterdir() if d.is_dir() and d.name.startswith('M1.0')]
+            [d for d in args.outdir.iterdir() if d.is_dir() and d.name.startswith('A_')]
         )
 
     print(f'Plotting radial profiles for {len(case_dirs)} cases\n')

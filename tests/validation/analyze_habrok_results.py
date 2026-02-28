@@ -28,9 +28,10 @@ import pandas as pd
 
 # ── Case name parser ─────────────────────────────────────────────
 
-# Pattern: {block}_M{mass}_CMF{cmf}_{tag}[_P2u{interval}][_n{levels}][_S{entropy}]
+# Pattern: {block}_M{mass}_CMF{cmf}_{tag}[_Tlin][_P2u{interval}][_n{levels}][_S{entropy}]
 CASE_PATTERN = re.compile(
-    r'^(?P<block>[A-G])_M(?P<mass>[\d.]+)_CMF(?P<cmf>[\d.]+)_(?P<tag>AW|ZAL)'
+    r'^(?P<block>[A-HJ-Z])_M(?P<mass>[\d.]+)_CMF(?P<cmf>[\d.]+)_(?P<tag>AW|ZAL)'
+    r'(?:_(?P<tmode>Tlin))?'
     r'(?:_P2u(?P<update>\d+))?'
     r'(?:_n(?P<nlevels>\d+))?'
     r'(?:_S(?P<entropy>\d+))?$'
@@ -58,6 +59,7 @@ def parse_case_name(name: str) -> dict:
         'mass': float(m.group('mass')),
         'cmf': float(m.group('cmf')),
         'mode': m.group('tag'),
+        'temperature_mode': m.group('tmode') or 'auto',
         'update_interval': int(m.group('update')) if m.group('update') else 0,
         'num_levels': int(m.group('nlevels')) if m.group('nlevels') else 60,
         'ini_entropy': int(m.group('entropy')) if m.group('entropy') else 3000,
@@ -231,13 +233,11 @@ def collect_results(outdir: Path) -> pd.DataFrame:
 def print_block_summary(df: pd.DataFrame) -> None:
     """Print completion summary grouped by block."""
     block_labels = {
-        'A': 'AW vs ZAL comparison',
-        'B': 'AW stability frontier',
-        'C': 'ZAL high-mass frontier',
+        'A': 'AW vs ZAL baseline',
+        'H': 'Adiabatic vs linear T control',
         'D': 'Phase 2 feedback',
         'E': 'Resolution convergence',
         'F': 'Initial entropy sensitivity',
-        'G': 'EOS edge probing',
     }
 
     print('\n' + '=' * 70)
@@ -385,6 +385,54 @@ def print_phase2_comparison(df: pd.DataFrame) -> None:
             f'  {p2["mass"]:5.1f}  '
             f'{p1_t:>12s}  {p2_t:>12s}  {diff:>7s}  '
             f'{p1_tm:>10s}  {p2_tm:>10s}'
+        )
+
+
+def print_adiabat_comparison(df: pd.DataFrame) -> None:
+    """Compare adiabatic vs linear T mode results (Block H vs Block A)."""
+    block_h = df[df['block'] == 'H']
+    if block_h.empty:
+        return
+
+    # Find matching adiabatic cases from Block A
+    block_a_zal = df[(df['block'] == 'A') & (df['mode'] == 'ZAL')]
+
+    print('\n' + '=' * 70)
+    print('ADIABATIC vs LINEAR T MODE (Block H vs Block A ZAL)')
+    print('=' * 70)
+    print(
+        f'  {"Mass":>5s}  '
+        f'{"Adiab t_sol":>12s}  {"Linear t_sol":>13s}  {"Diff%":>7s}  '
+        f'{"Adiab T_mag":>12s}  {"Linear T_mag":>13s}'
+    )
+    print('  ' + '-' * 70)
+
+    for _, h_row in block_h.iterrows():
+        a_match = block_a_zal[
+            (np.isclose(block_a_zal['mass'], h_row['mass']))
+            & (np.isclose(block_a_zal['cmf'], h_row['cmf']))
+        ]
+        if a_match.empty:
+            continue
+        a_row = a_match.iloc[0]
+
+        a_t = f'{a_row.get("t_final_yr", float("nan")):.0f}' if a_row['completed'] else '---'
+        h_t = f'{h_row.get("t_final_yr", float("nan")):.0f}' if h_row['completed'] else '---'
+
+        if a_row['completed'] and h_row['completed']:
+            t_a = a_row.get('t_final_yr', float('nan'))
+            t_h = h_row.get('t_final_yr', float('nan'))
+            diff = f'{100 * (t_h - t_a) / t_a:+.1f}%' if t_a > 0 else '---'
+        else:
+            diff = '---'
+
+        a_tm = f'{a_row.get("T_magma_K", float("nan")):.0f}' if a_row['completed'] else '---'
+        h_tm = f'{h_row.get("T_magma_K", float("nan")):.0f}' if h_row['completed'] else '---'
+
+        print(
+            f'  {h_row["mass"]:5.1f}  '
+            f'{a_t:>12s}  {h_t:>13s}  {diff:>7s}  '
+            f'{a_tm:>12s}  {h_tm:>13s}'
         )
 
 
@@ -599,6 +647,7 @@ def main():
     print_aw_vs_zal_comparison(df)
     print_stability_frontier(df)
     print_phase2_comparison(df)
+    print_adiabat_comparison(df)
     print_resolution_convergence(df)
 
     # Plots
