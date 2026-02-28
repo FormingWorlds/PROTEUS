@@ -204,6 +204,10 @@ def determine_interior_radius_with_zalmoxis(
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file
 
+    # NOTE: run_interior runs with the *original* temperature_mode (restored
+    # by the finally block above), not the overridden 'adiabatic'.  This is
+    # correct: the Zalmoxis solver already used the adiabatic mode to compute
+    # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
     run_interior(dirs, config, hf_all, hf_row, int_o)
 
 

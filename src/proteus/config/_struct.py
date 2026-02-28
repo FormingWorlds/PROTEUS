@@ -105,8 +105,10 @@ class Zalmoxis:
     coremassfrac: float
         Fraction of the planet's interior mass corresponding to the core.
     mantle_mass_fraction: float
-        Fraction of the planet's interior mass corresponding to the mantle
-        (needed for modeling more than 2 layers).
+        Fraction of the planet's interior mass corresponding to the mantle.
+        Required for 3-layer models (with ice layer) and for T-dependent
+        2-layer models (WolfBower2018, RTPress100TPa) where it partitions
+        mass between core and mantle layers.
     weight_iron_frac: float
         Fraction of the planet's mass that is iron.
     temperature_mode: str

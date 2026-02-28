@@ -1306,7 +1306,7 @@ def get_zalmoxis_EOS():
     material_properties_water_planets = {
         'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
         'mantle': {'eos_file': seager_folder / 'eos_seager07_silicate.txt'},
-        'water_ice_layer': {'eos_file': seager_folder / 'eos_seager07_water.txt'},
+        'ice_layer': {'eos_file': seager_folder / 'eos_seager07_water.txt'},
     }
 
     # RTPress100TPa melt EOS with WolfBower2018 solid
@@ -1321,6 +1321,12 @@ def get_zalmoxis_EOS():
             rt_folder,
         )
     rt_cp_melt = rt_folder / 'heat_capacity_melt.dat'
+    if not rt_cp_melt.is_file():
+        log.warning(
+            'RTPress100TPa melt Cp table not found at %s. '
+            'Adiabatic mode will fall back to constant Cp for this EOS.',
+            rt_cp_melt,
+        )
     material_properties_iron_RTPress100TPa_silicate_planets = {
         'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
         'melted_mantle': {
@@ -1333,11 +1339,19 @@ def get_zalmoxis_EOS():
         },
     }
 
+    # Convert Path objects to str for compatibility with Zalmoxis internals
+    # (which use os.path.join and str-based cache keys throughout).
+    def _paths_to_str(d):
+        return {
+            layer: {k: str(v) if isinstance(v, Path) else v for k, v in props.items()}
+            for layer, props in d.items()
+        }
+
     return (
-        material_properties_iron_silicate_planets,
-        material_properties_iron_Tdep_silicate_planets,
-        material_properties_water_planets,
-        material_properties_iron_RTPress100TPa_silicate_planets,
+        _paths_to_str(material_properties_iron_silicate_planets),
+        _paths_to_str(material_properties_iron_Tdep_silicate_planets),
+        _paths_to_str(material_properties_water_planets),
+        _paths_to_str(material_properties_iron_RTPress100TPa_silicate_planets),
     )
 
 

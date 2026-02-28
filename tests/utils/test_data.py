@@ -806,15 +806,15 @@ def test_get_Seager_EOS_exists(mock_download, tmp_path):
     # iron_silicate has 'mantle' and 'core' keys
     assert 'mantle' in iron_silicate
     assert 'core' in iron_silicate
-    # water dict has 'core', 'mantle', and 'water_ice_layer' keys (Seager 2007 water planet structure)
+    # water dict has 'core', 'mantle', and 'ice_layer' keys (Seager 2007 water planet structure)
     assert 'core' in water
     assert 'mantle' in water
-    assert 'water_ice_layer' in water
+    assert 'ice_layer' in water
 
-    # Check file paths
-    assert iron_silicate['mantle']['eos_file'] == eos_folder / 'eos_seager07_silicate.txt'
-    assert iron_silicate['core']['eos_file'] == eos_folder / 'eos_seager07_iron.txt'
-    assert water['water_ice_layer']['eos_file'] == eos_folder / 'eos_seager07_water.txt'
+    # Check file paths (returned as str, not Path, for Zalmoxis compatibility)
+    assert iron_silicate['mantle']['eos_file'] == str(eos_folder / 'eos_seager07_silicate.txt')
+    assert iron_silicate['core']['eos_file'] == str(eos_folder / 'eos_seager07_iron.txt')
+    assert water['ice_layer']['eos_file'] == str(eos_folder / 'eos_seager07_water.txt')
 
 
 @pytest.mark.unit
