@@ -196,6 +196,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party=["proteus"]
+known-third-party=["zalmoxis"]
 required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.format]

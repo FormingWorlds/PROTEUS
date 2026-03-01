@@ -116,9 +116,9 @@ def load_spider_2d(filepath: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, 
     return P_1d, S_1d, T_grid, P_scale, S_scale
 
 
-def get_spider_melting_curves() -> (
-    tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
-):
+def get_spider_melting_curves() -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
+]:
     """Extract SPIDER's solidus and liquidus as T(P) curves.
 
     Returns
@@ -151,12 +151,8 @@ def get_spider_melting_curves() -> (
     S_liq_SI = S_liq_nd * S_liq_scale
 
     # Load T(P, S) tables for solid and melt phases
-    P_s_nd, S_s_nd, T_s, Ps_scale, Ss_scale = load_spider_2d(
-        folder / 'temperature_solid.dat'
-    )
-    P_m_nd, S_m_nd, T_m, Pm_scale, Sm_scale = load_spider_2d(
-        folder / 'temperature_melt.dat'
-    )
+    P_s_nd, S_s_nd, T_s, Ps_scale, Ss_scale = load_spider_2d(folder / 'temperature_solid.dat')
+    P_m_nd, S_m_nd, T_m, Pm_scale, Sm_scale = load_spider_2d(folder / 'temperature_melt.dat')
 
     # Build interpolators in SI units
     # Grid layout: T_grid[S_index, P_index], so axes are (S, P)
@@ -257,12 +253,8 @@ def get_spider_monteux_as_T(folder: Path) -> tuple[np.ndarray, np.ndarray, np.nd
     P_liq, S_liq = load_spider_1d_phase_boundary(folder / 'liquidus_Monteux2016.dat')
 
     # Load T(P,S) tables — load_spider_2d returns (P_nd, S_nd, T_grid, P_scale, S_scale)
-    P_s_nd, S_s_nd, T_s, Ps_scale, Ss_scale = load_spider_2d(
-        folder / 'temperature_solid.dat'
-    )
-    P_m_nd, S_m_nd, T_m, Pm_scale, Sm_scale = load_spider_2d(
-        folder / 'temperature_melt.dat'
-    )
+    P_s_nd, S_s_nd, T_s, Ps_scale, Ss_scale = load_spider_2d(folder / 'temperature_solid.dat')
+    P_m_nd, S_m_nd, T_m, Pm_scale, Sm_scale = load_spider_2d(folder / 'temperature_melt.dat')
 
     P_s_SI = P_s_nd * Ps_scale
     S_s_SI = S_s_nd * Ss_scale
@@ -270,12 +262,16 @@ def get_spider_monteux_as_T(folder: Path) -> tuple[np.ndarray, np.ndarray, np.nd
     S_m_SI = S_m_nd * Sm_scale
 
     interp_solid = RegularGridInterpolator(
-        (S_s_SI, P_s_SI), T_s,
-        bounds_error=False, fill_value=np.nan,
+        (S_s_SI, P_s_SI),
+        T_s,
+        bounds_error=False,
+        fill_value=np.nan,
     )
     interp_melt = RegularGridInterpolator(
-        (S_m_SI, P_m_SI), T_m,
-        bounds_error=False, fill_value=np.nan,
+        (S_m_SI, P_m_SI),
+        T_m,
+        bounds_error=False,
+        fill_value=np.nan,
     )
 
     T_solidus = interp_solid(np.column_stack([S_sol, P_sol]))
@@ -311,18 +307,38 @@ def plot_comparison():
 
     # ── Panel 1: All curves in T-P space ──────────────────────
     ax = axes[0, 0]
-    ax.plot(P_sp_GPa[valid_sp], T_sol_sp[valid_sp],
-            'b-', lw=1.5, alpha=0.5, label='SPIDER solidus (A11+H13, old)')
-    ax.plot(P_sp_GPa[valid_sp], T_liq_sp[valid_sp],
-            'r-', lw=1.5, alpha=0.5, label='SPIDER liquidus (A11+H13, old)')
-    ax.plot(P_sol_zal_GPa, T_sol_zal,
-            'b--', lw=2, label='Zalmoxis solidus (Monteux+16)')
-    ax.plot(P_liq_zal_GPa, T_liq_zal,
-            'r--', lw=2, label='Zalmoxis liquidus (Monteux+16)')
-    ax.plot(P_sol_new_GPa[valid_new_sol], T_sol_new[valid_new_sol],
-            'b:', lw=3, label='SPIDER solidus (Monteux, new)')
-    ax.plot(P_liq_new_GPa[valid_new_liq], T_liq_new[valid_new_liq],
-            'r:', lw=3, label='SPIDER liquidus (Monteux, new)')
+    ax.plot(
+        P_sp_GPa[valid_sp],
+        T_sol_sp[valid_sp],
+        'b-',
+        lw=1.5,
+        alpha=0.5,
+        label='SPIDER solidus (A11+H13, old)',
+    )
+    ax.plot(
+        P_sp_GPa[valid_sp],
+        T_liq_sp[valid_sp],
+        'r-',
+        lw=1.5,
+        alpha=0.5,
+        label='SPIDER liquidus (A11+H13, old)',
+    )
+    ax.plot(P_sol_zal_GPa, T_sol_zal, 'b--', lw=2, label='Zalmoxis solidus (Monteux+16)')
+    ax.plot(P_liq_zal_GPa, T_liq_zal, 'r--', lw=2, label='Zalmoxis liquidus (Monteux+16)')
+    ax.plot(
+        P_sol_new_GPa[valid_new_sol],
+        T_sol_new[valid_new_sol],
+        'b:',
+        lw=3,
+        label='SPIDER solidus (Monteux, new)',
+    )
+    ax.plot(
+        P_liq_new_GPa[valid_new_liq],
+        T_liq_new[valid_new_liq],
+        'r:',
+        lw=3,
+        label='SPIDER liquidus (Monteux, new)',
+    )
 
     ax.axvline(135, color='gray', ls=':', alpha=0.5, label='Earth CMB (~135 GPa)')
     ax.axvline(800, color='gray', ls='--', alpha=0.5, label='~5 M_earth CMB (~800 GPa)')
@@ -347,10 +363,12 @@ def plot_comparison():
     dT_sol_rt = T_sol_new[valid_new_sol] - T_sol_target
     dT_liq_rt = T_liq_new[valid_new_liq] - T_liq_target
 
-    ax.plot(P_sol_new_GPa[valid_new_sol], dT_sol_rt,
-            'b-', lw=2, label='Solidus round-trip error')
-    ax.plot(P_liq_new_GPa[valid_new_liq], dT_liq_rt,
-            'r-', lw=2, label='Liquidus round-trip error')
+    ax.plot(
+        P_sol_new_GPa[valid_new_sol], dT_sol_rt, 'b-', lw=2, label='Solidus round-trip error'
+    )
+    ax.plot(
+        P_liq_new_GPa[valid_new_liq], dT_liq_rt, 'r-', lw=2, label='Liquidus round-trip error'
+    )
     ax.axhline(0, color='k', ls='-', lw=0.5)
 
     ax.set_xlabel('Pressure [GPa]')
@@ -374,10 +392,20 @@ def plot_comparison():
     dT_sol_change = T_sol_new[valid_new_sol] - T_sol_old_interp
     dT_liq_change = T_liq_new[valid_new_liq] - T_liq_old_interp
 
-    ax.plot(P_sol_new_GPa[valid_new_sol], dT_sol_change,
-            'b-', lw=2, label='Solidus (Monteux $-$ A11+H13)')
-    ax.plot(P_liq_new_GPa[valid_new_liq], dT_liq_change,
-            'r-', lw=2, label='Liquidus (Monteux $-$ A11+H13)')
+    ax.plot(
+        P_sol_new_GPa[valid_new_sol],
+        dT_sol_change,
+        'b-',
+        lw=2,
+        label='Solidus (Monteux $-$ A11+H13)',
+    )
+    ax.plot(
+        P_liq_new_GPa[valid_new_liq],
+        dT_liq_change,
+        'r-',
+        lw=2,
+        label='Liquidus (Monteux $-$ A11+H13)',
+    )
     ax.axhline(0, color='k', ls='-', lw=0.5)
 
     ax.set_xlabel('Pressure [GPa]')
@@ -398,10 +426,14 @@ def plot_comparison():
 
     gap_sp = T_liq_sp[valid_sp] - T_sol_sp[valid_sp]
 
-    ax.plot(P_sp_GPa[valid_sp], gap_sp, 'k-', lw=2,
-            alpha=0.5, label='SPIDER old (A11+H13)')
-    ax.plot(P_common, gap_monteux, 'k--', lw=2,
-            label='SPIDER new = Zalmoxis (Monteux+16, const 600 K)')
+    ax.plot(P_sp_GPa[valid_sp], gap_sp, 'k-', lw=2, alpha=0.5, label='SPIDER old (A11+H13)')
+    ax.plot(
+        P_common,
+        gap_monteux,
+        'k--',
+        lw=2,
+        label='SPIDER new = Zalmoxis (Monteux+16, const 600 K)',
+    )
 
     ax.set_xlabel('Pressure [GPa]')
     ax.set_ylabel('Liquidus $-$ Solidus [K]')
@@ -418,19 +450,29 @@ def plot_comparison():
 
     # Print summary statistics
     print('\nRound-trip verification:')
-    print(f'  Solidus |dT|: mean={np.nanmean(np.abs(dT_sol_rt)):.4f} K, '
-          f'max={np.nanmax(np.abs(dT_sol_rt)):.4f} K')
-    print(f'  Liquidus |dT|: mean={np.nanmean(np.abs(dT_liq_rt)):.4f} K, '
-          f'max={np.nanmax(np.abs(dT_liq_rt)):.4f} K')
+    print(
+        f'  Solidus |dT|: mean={np.nanmean(np.abs(dT_sol_rt)):.4f} K, '
+        f'max={np.nanmax(np.abs(dT_sol_rt)):.4f} K'
+    )
+    print(
+        f'  Liquidus |dT|: mean={np.nanmean(np.abs(dT_liq_rt)):.4f} K, '
+        f'max={np.nanmax(np.abs(dT_liq_rt)):.4f} K'
+    )
     print('\nImpact on SPIDER:')
-    print(f'  Solidus change: mean={np.nanmean(dT_sol_change):.0f} K, '
-          f'min={np.nanmin(dT_sol_change):.0f} K, max={np.nanmax(dT_sol_change):.0f} K')
-    print(f'  Liquidus change: mean={np.nanmean(dT_liq_change):.0f} K, '
-          f'min={np.nanmin(dT_liq_change):.0f} K, max={np.nanmax(dT_liq_change):.0f} K')
+    print(
+        f'  Solidus change: mean={np.nanmean(dT_sol_change):.0f} K, '
+        f'min={np.nanmin(dT_sol_change):.0f} K, max={np.nanmax(dT_sol_change):.0f} K'
+    )
+    print(
+        f'  Liquidus change: mean={np.nanmean(dT_liq_change):.0f} K, '
+        f'min={np.nanmin(dT_liq_change):.0f} K, max={np.nanmax(dT_liq_change):.0f} K'
+    )
     print('\nCoverage:')
     print(f'  Solidus: {np.sum(valid_new_sol)}/{len(T_sol_new)} points valid')
-    print(f'  Liquidus: {np.sum(valid_new_liq)}/{len(T_liq_new)} points valid '
-          f'(limited by melt T table range)')
+    print(
+        f'  Liquidus: {np.sum(valid_new_liq)}/{len(T_liq_new)} points valid '
+        f'(limited by melt T table range)'
+    )
 
 
 if __name__ == '__main__':

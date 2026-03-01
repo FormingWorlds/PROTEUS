@@ -25,6 +25,7 @@ Parameters
 --mem-csv : str
     Output CSV path (default: <output_dir>/memory_profile.csv).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,7 @@ def get_self_rss_mb():
     """Get current process RSS in MB via resource module (no psutil needed)."""
     # ru_maxrss is in bytes on Linux, kilobytes on macOS
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
-    if sys.platform == "darwin":
+    if sys.platform == 'darwin':
         return usage.ru_maxrss / (1024 * 1024)  # bytes → MB on macOS
     return usage.ru_maxrss / 1024  # KB → MB on Linux
 
@@ -88,19 +89,19 @@ def monitor_memory(pid, csv_path, interval, stop_event):
     t0 = time.monotonic()
     peak_rss = 0.0
 
-    with open(csv_path, "w", newline="") as f:
+    with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["wall_time_s", "rss_mb", "peak_rss_mb"])
+        writer.writerow(['wall_time_s', 'rss_mb', 'peak_rss_mb'])
 
         while not stop_event.is_set():
             elapsed = time.monotonic() - t0
             rss = get_process_tree_rss_mb(pid)
             peak_rss = max(peak_rss, rss)
-            writer.writerow([f"{elapsed:.1f}", f"{rss:.1f}", f"{peak_rss:.1f}"])
+            writer.writerow([f'{elapsed:.1f}', f'{rss:.1f}', f'{peak_rss:.1f}'])
             f.flush()
             stop_event.wait(timeout=interval)
 
-    print(f"Peak RSS: {peak_rss:.1f} MB")
+    print(f'Peak RSS: {peak_rss:.1f} MB')
     return peak_rss
 
 
@@ -117,79 +118,71 @@ def make_plot(csv_path, plot_path):
     try:
         import matplotlib
 
-        matplotlib.use("Agg")
+        matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         import numpy as np
     except ImportError:
-        print("matplotlib/numpy not available, skipping plot")
+        print('matplotlib/numpy not available, skipping plot')
         return
 
-    data = np.genfromtxt(csv_path, delimiter=",", names=True)
+    data = np.genfromtxt(csv_path, delimiter=',', names=True)
     if len(data) == 0:
-        print("No data to plot")
+        print('No data to plot')
         return
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    t_min = data["wall_time_s"] / 60.0
+    t_min = data['wall_time_s'] / 60.0
 
-    ax.plot(t_min, data["rss_mb"], "b-", linewidth=0.8, label="RSS")
-    ax.plot(t_min, data["peak_rss_mb"], "r--", linewidth=0.8, label="Peak RSS")
+    ax.plot(t_min, data['rss_mb'], 'b-', linewidth=0.8, label='RSS')
+    ax.plot(t_min, data['peak_rss_mb'], 'r--', linewidth=0.8, label='Peak RSS')
 
-    ax.set_xlabel("Wall time [min]")
-    ax.set_ylabel("Memory [MB]")
-    ax.set_title("PROTEUS memory profile")
+    ax.set_xlabel('Wall time [min]')
+    ax.set_ylabel('Memory [MB]')
+    ax.set_title('PROTEUS memory profile')
     ax.legend()
     ax.grid(True, alpha=0.3)
 
     # Add 5 GB reference line
-    ax.axhline(y=5120, color="gray", linestyle=":", alpha=0.5, label="5 GB limit")
+    ax.axhline(y=5120, color='gray', linestyle=':', alpha=0.5, label='5 GB limit')
 
     fig.tight_layout()
     fig.savefig(plot_path, dpi=150)
     plt.close(fig)
-    print(f"Plot saved: {plot_path}")
+    print(f'Plot saved: {plot_path}')
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Memory profiling wrapper for PROTEUS simulations"
+        description='Memory profiling wrapper for PROTEUS simulations'
     )
-    parser.add_argument("-c", "--config", required=True, help="PROTEUS config TOML")
-    parser.add_argument("-o", "--output", required=True, help="Output directory")
-    parser.add_argument(
-        "--interval", type=float, default=5.0, help="Sampling interval [s]"
-    )
-    parser.add_argument("--plot", action="store_true", help="Generate RSS(t) plot")
-    parser.add_argument("--mem-csv", default=None, help="Memory CSV output path")
-    parser.add_argument(
-        "--offline", action="store_true", help="Pass --offline to PROTEUS"
-    )
-    parser.add_argument(
-        "--resume", action="store_true", help="Pass --resume to PROTEUS"
-    )
+    parser.add_argument('-c', '--config', required=True, help='PROTEUS config TOML')
+    parser.add_argument('-o', '--output', required=True, help='Output directory')
+    parser.add_argument('--interval', type=float, default=5.0, help='Sampling interval [s]')
+    parser.add_argument('--plot', action='store_true', help='Generate RSS(t) plot')
+    parser.add_argument('--mem-csv', default=None, help='Memory CSV output path')
+    parser.add_argument('--offline', action='store_true', help='Pass --offline to PROTEUS')
+    parser.add_argument('--resume', action='store_true', help='Pass --resume to PROTEUS')
     args = parser.parse_args()
 
-    csv_path = args.mem_csv or os.path.join(args.output, "memory_profile.csv")
-    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+    csv_path = args.mem_csv or os.path.join(args.output, 'memory_profile.csv')
+    os.makedirs(os.path.dirname(csv_path) or '.', exist_ok=True)
 
     # Build PROTEUS command
-    cmd = ["proteus", "start", "-c", args.config, "-o", args.output]
+    cmd = ['proteus', 'start', '-c', args.config, '-o', args.output]
     if args.offline:
-        cmd.append("--offline")
+        cmd.append('--offline')
     if args.resume:
-        cmd.append("--resume")
+        cmd.append('--resume')
 
-    print(f"Running: {' '.join(cmd)}")
-    print(f"Memory CSV: {csv_path}")
-    print(f"Sampling interval: {args.interval}s")
+    print(f'Running: {" ".join(cmd)}')
+    print(f'Memory CSV: {csv_path}')
+    print(f'Sampling interval: {args.interval}s')
     if not HAS_PSUTIL:
-        print("Warning: psutil not installed, using resource.getrusage (less accurate)")
+        print('Warning: psutil not installed, using resource.getrusage (less accurate)')
     print()
 
     # Start PROTEUS subprocess
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-    )
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
     # Start memory monitor thread
     stop_event = threading.Event()
@@ -212,14 +205,14 @@ def main():
     stop_event.set()
     monitor_thread.join(timeout=10)
 
-    print(f"\nPROTEUS exit code: {proc.returncode}")
+    print(f'\nPROTEUS exit code: {proc.returncode}')
 
     if args.plot:
-        plot_path = csv_path.replace(".csv", ".png")
+        plot_path = csv_path.replace('.csv', '.png')
         make_plot(csv_path, plot_path)
 
     sys.exit(proc.returncode)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

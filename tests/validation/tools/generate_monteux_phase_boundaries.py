@@ -122,8 +122,10 @@ def invert_T_to_S(
 
     # Build 2D interpolator: T(S, P) in SI units
     interp = RegularGridInterpolator(
-        (S_SI, P_SI), T_table['values'],
-        bounds_error=False, fill_value=np.nan,
+        (S_SI, P_SI),
+        T_table['values'],
+        bounds_error=False,
+        fill_value=np.nan,
     )
 
     S_min, S_max = S_SI[0], S_SI[-1]
@@ -234,10 +236,10 @@ def main():
     P_melt_SI = T_melt['P_nd'] * T_melt['P_scale']
     S_melt_SI = T_melt['S_nd'] * T_melt['S_scale']
 
-    print(f'  Solid P range: {P_solid_SI[0]/1e9:.1f} - {P_solid_SI[-1]/1e9:.1f} GPa')
+    print(f'  Solid P range: {P_solid_SI[0] / 1e9:.1f} - {P_solid_SI[-1] / 1e9:.1f} GPa')
     print(f'  Solid S range: {S_solid_SI.min():.1f} - {S_solid_SI.max():.1f} J/kg/K')
     print(f'  Solid T range: {T_solid["values"].min():.1f} - {T_solid["values"].max():.1f} K')
-    print(f'  Melt P range:  {P_melt_SI[0]/1e9:.1f} - {P_melt_SI[-1]/1e9:.1f} GPa')
+    print(f'  Melt P range:  {P_melt_SI[0] / 1e9:.1f} - {P_melt_SI[-1] / 1e9:.1f} GPa')
     print(f'  Melt S range:  {S_melt_SI.min():.1f} - {S_melt_SI.max():.1f} J/kg/K')
     print(f'  Melt T range:  {T_melt["values"].min():.1f} - {T_melt["values"].max():.1f} K')
 
@@ -247,12 +249,16 @@ def main():
     P_sol_Pa, T_sol_K = load_monteux_curve(zal_folder / 'solidus.dat')
     P_liq_Pa, T_liq_K = load_monteux_curve(zal_folder / 'liquidus.dat')
 
-    print(f'  Solidus: {len(P_sol_Pa)} points, '
-          f'P = {P_sol_Pa[0]/1e9:.1f} - {P_sol_Pa[-1]/1e9:.1f} GPa, '
-          f'T = {T_sol_K[0]:.0f} - {T_sol_K[-1]:.0f} K')
-    print(f'  Liquidus: {len(P_liq_Pa)} points, '
-          f'P = {P_liq_Pa[0]/1e9:.1f} - {P_liq_Pa[-1]/1e9:.1f} GPa, '
-          f'T = {T_liq_K[0]:.0f} - {T_liq_K[-1]:.0f} K')
+    print(
+        f'  Solidus: {len(P_sol_Pa)} points, '
+        f'P = {P_sol_Pa[0] / 1e9:.1f} - {P_sol_Pa[-1] / 1e9:.1f} GPa, '
+        f'T = {T_sol_K[0]:.0f} - {T_sol_K[-1]:.0f} K'
+    )
+    print(
+        f'  Liquidus: {len(P_liq_Pa)} points, '
+        f'P = {P_liq_Pa[0] / 1e9:.1f} - {P_liq_Pa[-1] / 1e9:.1f} GPa, '
+        f'T = {T_liq_K[0]:.0f} - {T_liq_K[-1]:.0f} K'
+    )
 
     # Create interpolation functions
     f_sol = interp1d(P_sol_Pa, T_sol_K, bounds_error=False, fill_value=np.nan)
@@ -279,37 +285,49 @@ def main():
 
     write_spider_phase_boundary(
         outdir / 'solidus_Monteux2016.dat',
-        P_grid_GPa, S_solidus,
+        P_grid_GPa,
+        S_solidus,
     )
     write_spider_phase_boundary(
         outdir / 'liquidus_Monteux2016.dat',
-        P_grid_GPa, S_liquidus,
+        P_grid_GPa,
+        S_liquidus,
     )
 
     # Verification: convert back to T and compare
     print('\nVerification: round-trip T(P) comparison...')
     interp_solid = RegularGridInterpolator(
-        (S_solid_SI, P_solid_SI), T_solid['values'],
-        bounds_error=False, fill_value=np.nan,
+        (S_solid_SI, P_solid_SI),
+        T_solid['values'],
+        bounds_error=False,
+        fill_value=np.nan,
     )
     interp_melt = RegularGridInterpolator(
-        (S_melt_SI, P_melt_SI), T_melt['values'],
-        bounds_error=False, fill_value=np.nan,
+        (S_melt_SI, P_melt_SI),
+        T_melt['values'],
+        bounds_error=False,
+        fill_value=np.nan,
     )
 
     valid_sol = ~np.isnan(S_solidus)
     valid_liq = ~np.isnan(S_liquidus)
 
-    T_rt_sol = np.array([
-        interp_solid((S_solidus[i], P_grid_GPa[i] * 1e9))
-        for i in range(len(P_grid_GPa)) if valid_sol[i]
-    ])
+    T_rt_sol = np.array(
+        [
+            interp_solid((S_solidus[i], P_grid_GPa[i] * 1e9))
+            for i in range(len(P_grid_GPa))
+            if valid_sol[i]
+        ]
+    )
     T_target_sol = f_sol(P_grid_GPa[valid_sol] * 1e9)
 
-    T_rt_liq = np.array([
-        interp_melt((S_liquidus[i], P_grid_GPa[i] * 1e9))
-        for i in range(len(P_grid_GPa)) if valid_liq[i]
-    ])
+    T_rt_liq = np.array(
+        [
+            interp_melt((S_liquidus[i], P_grid_GPa[i] * 1e9))
+            for i in range(len(P_grid_GPa))
+            if valid_liq[i]
+        ]
+    )
     T_target_liq = f_liq(P_grid_GPa[valid_liq] * 1e9)
 
     dT_sol = np.abs(T_rt_sol - T_target_sol)

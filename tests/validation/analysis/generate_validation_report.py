@@ -1041,45 +1041,76 @@ def build_initial_conditions(outdir: Path) -> str:
     lines.append('|-----------|-------|')
 
     fixed = [
-        ('Star', f'{_get_nested(ref, "star", "module")} '
-         f'({_get_nested(ref, "star", "mass")} M_sun, '
-         f'age_ini={_get_nested(ref, "star", "age_ini")} Myr)'),
-        ('Orbit', f'{_get_nested(ref, "orbit", "semimajoraxis")} AU, '
-         f'zenith_angle={_get_nested(ref, "orbit", "zenith_angle")} deg, '
-         f's0_factor={_get_nested(ref, "orbit", "s0_factor")}'),
-        ('Atmosphere', f'{_get_nested(ref, "atmos_clim", "module")} — '
-         f'{_get_nested(ref, "atmos_clim", "agni", "spectral_group")} '
-         f'{_get_nested(ref, "atmos_clim", "agni", "spectral_bands")} bands, '
-         f'{_get_nested(ref, "atmos_clim", "agni", "num_levels")} levels'),
-        ('Interior solver', f'{_get_nested(ref, "interior", "module")} — '
-         f'{_get_nested(ref, "interior", "spider", "solver_type")} solver, '
-         f'tol={_get_nested(ref, "interior", "spider", "tolerance")}'),
+        (
+            'Star',
+            f'{_get_nested(ref, "star", "module")} '
+            f'({_get_nested(ref, "star", "mass")} M_sun, '
+            f'age_ini={_get_nested(ref, "star", "age_ini")} Myr)',
+        ),
+        (
+            'Orbit',
+            f'{_get_nested(ref, "orbit", "semimajoraxis")} AU, '
+            f'zenith_angle={_get_nested(ref, "orbit", "zenith_angle")} deg, '
+            f's0_factor={_get_nested(ref, "orbit", "s0_factor")}',
+        ),
+        (
+            'Atmosphere',
+            f'{_get_nested(ref, "atmos_clim", "module")} — '
+            f'{_get_nested(ref, "atmos_clim", "agni", "spectral_group")} '
+            f'{_get_nested(ref, "atmos_clim", "agni", "spectral_bands")} bands, '
+            f'{_get_nested(ref, "atmos_clim", "agni", "num_levels")} levels',
+        ),
+        (
+            'Interior solver',
+            f'{_get_nested(ref, "interior", "module")} — '
+            f'{_get_nested(ref, "interior", "spider", "solver_type")} solver, '
+            f'tol={_get_nested(ref, "interior", "spider", "tolerance")}',
+        ),
         ('Interior EOS', f'{_get_nested(ref, "interior", "eos_dir")}'),
         ('Melting curves', f'{_get_nested(ref, "interior", "melting_dir")}'),
-        ('Initial entropy', f'{_get_nested(ref, "interior", "spider", "ini_entropy")} '
-         f'J/(kg K)'),
-        ('Initial dS/dr', f'{_get_nested(ref, "interior", "spider", "ini_dsdr")} '
-         f'J/(kg K m)'),
-        ('SPIDER mixing length', str(_get_nested(ref, "interior", "spider", "mixing_length"))),
-        ('Rheology', f'phi_loc={_get_nested(ref, "interior", "rheo_phi_loc")}, '
-         f'phi_wid={_get_nested(ref, "interior", "rheo_phi_wid")}'),
+        (
+            'Initial entropy',
+            f'{_get_nested(ref, "interior", "spider", "ini_entropy")} J/(kg K)',
+        ),
+        ('Initial dS/dr', f'{_get_nested(ref, "interior", "spider", "ini_dsdr")} J/(kg K m)'),
+        ('SPIDER mixing length', str(_get_nested(ref, 'interior', 'spider', 'mixing_length'))),
+        (
+            'Rheology',
+            f'phi_loc={_get_nested(ref, "interior", "rheo_phi_loc")}, '
+            f'phi_wid={_get_nested(ref, "interior", "rheo_phi_wid")}',
+        ),
         ('Grain size', f'{_get_nested(ref, "interior", "grain_size")} m'),
-        ('Outgassing', f'{_get_nested(ref, "outgas", "module")} — '
-         f'fO2_shift_IW={_get_nested(ref, "outgas", "fO2_shift_IW")}'),
-        ('Volatiles', f'H_oceans={_get_nested(ref, "delivery", "elements", "H_oceans")}, '
-         f'CH_ratio={_get_nested(ref, "delivery", "elements", "CH_ratio")}, '
-         f'NH_ratio={_get_nested(ref, "delivery", "elements", "NH_ratio")}, '
-         f'SH_ratio={_get_nested(ref, "delivery", "elements", "SH_ratio")}'),
-        ('Escape', f'{_get_nested(ref, "escape", "module")} — '
-         f'efficiency={_get_nested(ref, "escape", "zephyrus", "efficiency")}'),
-        ('Timestep', f'{_get_nested(ref, "params", "dt", "method")} — '
-         f'dt_ini={_get_nested(ref, "params", "dt", "initial")} yr, '
-         f'dt_max={_get_nested(ref, "params", "dt", "maximum")} yr'),
-        ('Stop criteria', f'phi_crit={_get_nested(ref, "params", "stop", "solid", "phi_crit")}, '
-         f't_max={_get_nested(ref, "params", "stop", "time", "maximum"):.0f} yr'),
-        ('Zalmoxis levels', str(_get_nested(ref, "struct", "zalmoxis", "num_levels"))),
-        ('Zalmoxis core EOS', str(_get_nested(ref, "struct", "zalmoxis", "core_eos"))),
-        ('Zalmoxis mantle EOS', str(_get_nested(ref, "struct", "zalmoxis", "mantle_eos"))),
+        (
+            'Outgassing',
+            f'{_get_nested(ref, "outgas", "module")} — '
+            f'fO2_shift_IW={_get_nested(ref, "outgas", "fO2_shift_IW")}',
+        ),
+        (
+            'Volatiles',
+            f'H_oceans={_get_nested(ref, "delivery", "elements", "H_oceans")}, '
+            f'CH_ratio={_get_nested(ref, "delivery", "elements", "CH_ratio")}, '
+            f'NH_ratio={_get_nested(ref, "delivery", "elements", "NH_ratio")}, '
+            f'SH_ratio={_get_nested(ref, "delivery", "elements", "SH_ratio")}',
+        ),
+        (
+            'Escape',
+            f'{_get_nested(ref, "escape", "module")} — '
+            f'efficiency={_get_nested(ref, "escape", "zephyrus", "efficiency")}',
+        ),
+        (
+            'Timestep',
+            f'{_get_nested(ref, "params", "dt", "method")} — '
+            f'dt_ini={_get_nested(ref, "params", "dt", "initial")} yr, '
+            f'dt_max={_get_nested(ref, "params", "dt", "maximum")} yr',
+        ),
+        (
+            'Stop criteria',
+            f'phi_crit={_get_nested(ref, "params", "stop", "solid", "phi_crit")}, '
+            f't_max={_get_nested(ref, "params", "stop", "time", "maximum"):.0f} yr',
+        ),
+        ('Zalmoxis levels', str(_get_nested(ref, 'struct', 'zalmoxis', 'num_levels'))),
+        ('Zalmoxis core EOS', str(_get_nested(ref, 'struct', 'zalmoxis', 'core_eos'))),
+        ('Zalmoxis mantle EOS', str(_get_nested(ref, 'struct', 'zalmoxis', 'mantle_eos'))),
     ]
     for name, val in fixed:
         lines.append(f'| {name} | {val} |')
@@ -1105,7 +1136,9 @@ def build_initial_conditions(outdir: Path) -> str:
         cmf = m.group('cmf')
 
         struct_mod = _get_nested(cfg, 'struct', 'module', default='?')
-        t_mode = _get_nested(cfg, 'struct', 'zalmoxis', 'temperature_mode', default='isothermal')
+        t_mode = _get_nested(
+            cfg, 'struct', 'zalmoxis', 'temperature_mode', default='isothermal'
+        )
         # Note: isothermal auto-switches to adiabatic at runtime for ZAL+WolfBower2018
         if struct_mod == 'zalmoxis' and t_mode == 'isothermal':
             t_mode = 'adiabatic (auto)'
@@ -1181,9 +1214,9 @@ def build_analysis(outdir: Path, results: dict, checks: list[dict]) -> str:
     n_timeout = 0
     n_error = 0
     aw_zal_t_ratios = []  # ZAL/AW solidification time ratios
-    aw_zal_T_diffs = []   # |ZAL-AW|/AW final T_magma
-    p2_p1_t_ratios = []   # P2/P1 solidification time ratios (completed only)
-    res_t_vals = {}       # n_levels -> t_crystal for resolution block
+    aw_zal_T_diffs = []  # |ZAL-AW|/AW final T_magma
+    p2_p1_t_ratios = []  # P2/P1 solidification time ratios (completed only)
+    res_t_vals = {}  # n_levels -> t_crystal for resolution block
 
     for name, hf in results.items():
         n_total += 1
@@ -1356,7 +1389,7 @@ def build_analysis(outdir: Path, results: dict, checks: list[dict]) -> str:
     )
     lines.append(
         '**Phase 2 crash at 3 M_earth CMF = 0.325.** The first Zalmoxis re-computation '
-        'produces a 38.7% radius change because SPIDER\'s evolved T(r) gives very different '
+        "produces a 38.7% radius change because SPIDER's evolved T(r) gives very different "
         'densities from the initial profile via the T-dependent WolfBower2018 EOS. The '
         'entropy remap handles the mesh change correctly, but CVode cannot converge on the '
         'dramatically different mesh. This limits Phase 2 feedback to cases where the radius '
