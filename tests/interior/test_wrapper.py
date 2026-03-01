@@ -579,3 +579,125 @@ def test_phi_crit_warning(caplog):
             solve_structure({}, config, None, {}, '/tmp')
 
     assert any('phi_crit' in r.message for r in caplog.records)
+
+
+# ============================================================================
+# test determine_interior_radius_with_zalmoxis
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_determine_zalmoxis_spider_mesh(tmp_path):
+    """determine_interior_radius_with_zalmoxis stores mesh path and .prev copy."""
+    from proteus.interior.wrapper import determine_interior_radius_with_zalmoxis
+
+    mesh_file = str(tmp_path / 'data' / 'spider_mesh.dat')
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data' / 'spider_mesh.dat').write_text('# 50 49\n1.0 2.0 3.0 -4.0\n')
+
+    config = MagicMock()
+    config.interior.module = 'spider'
+    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior.spider.num_levels = 50
+    config.struct.zalmoxis.temperature_mode = 'isothermal'
+    config.struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+
+    dirs = {'spider': '/nonexistent/spider'}
+    hf_row = {'R_int': 6.371e6, 'gravity': 9.81, 'T_magma': 3000.0}
+
+    with (
+        patch('proteus.interior.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior.wrapper.Interior_t'),
+        patch(
+            'proteus.interior.zalmoxis.zalmoxis_solver',
+            return_value=(3.48e6, mesh_file),
+        ),
+        patch('proteus.interior.wrapper.run_interior'),
+    ):
+        determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, str(tmp_path))
+
+    assert dirs['spider_mesh'] == mesh_file
+    assert dirs['spider_mesh_prev'] == mesh_file + '.prev'
+    assert dirs['mesh_shift_active'] is False
+    assert dirs['mesh_convergence_steps'] == 0
+    # Verify .prev file was created
+    assert (tmp_path / 'data' / 'spider_mesh.dat.prev').exists()
+
+
+@pytest.mark.unit
+def test_determine_zalmoxis_adiabatic_switch(caplog):
+    """SPIDER + isothermal + T-dep EOS switches to adiabatic, then restores."""
+    from proteus.interior.wrapper import determine_interior_radius_with_zalmoxis
+
+    config = MagicMock()
+    config.interior.module = 'spider'
+    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior.spider.num_levels = 50
+    config.struct.zalmoxis.temperature_mode = 'isothermal'
+    config.struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+
+    dirs = {'spider': '/nonexistent/spider'}
+    hf_row = {'R_int': 6.371e6}
+
+    with (
+        patch('proteus.interior.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior.wrapper.Interior_t'),
+        patch(
+            'proteus.interior.zalmoxis.zalmoxis_solver',
+            return_value=(3.48e6, None),
+        ),
+        patch('proteus.interior.wrapper.run_interior'),
+        caplog.at_level('INFO'),
+    ):
+        determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
+
+    # Mode should be restored after the call
+    assert config.struct.zalmoxis.temperature_mode == 'isothermal'
+    assert any('adiabatic' in r.message for r in caplog.records)
+    # No mesh file → no spider_mesh key
+    assert 'spider_mesh' not in dirs
+    assert dirs['mesh_shift_active'] is False
+
+
+@pytest.mark.unit
+def test_determine_zalmoxis_no_adiabatic_switch_non_tdep():
+    """Non-T-dep EOS does not trigger adiabatic switch."""
+    from proteus.interior.wrapper import determine_interior_radius_with_zalmoxis
+
+    config = MagicMock()
+    config.interior.module = 'spider'
+    config.interior.eos_dir = 'Seager2007'
+    config.interior.spider.num_levels = 50
+    config.struct.zalmoxis.temperature_mode = 'isothermal'
+    config.struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
+
+    dirs = {'spider': '/nonexistent/spider'}
+    hf_row = {'R_int': 6.371e6}
+
+    with (
+        patch('proteus.interior.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior.wrapper.Interior_t'),
+        patch(
+            'proteus.interior.zalmoxis.zalmoxis_solver',
+            return_value=(3.48e6, None),
+        ),
+        patch('proteus.interior.wrapper.run_interior'),
+    ):
+        determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
+
+    # Should not have been changed
+    assert config.struct.zalmoxis.temperature_mode == 'isothermal'
+
+
+@pytest.mark.unit
+def test_solve_structure_invalid_module():
+    """solve_structure raises ValueError for unknown struct.module."""
+    from proteus.interior.wrapper import solve_structure
+
+    config = MagicMock()
+    config.struct.set_by = 'mass_tot'
+    config.struct.module = 'nonexistent_module'
+    config.params.stop.solid.phi_crit = 0.5
+
+    with pytest.raises(ValueError, match='Invalid structure interior module'):
+        solve_structure({}, config, None, {}, '/tmp')
