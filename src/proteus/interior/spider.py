@@ -150,10 +150,12 @@ def _read_mesh_file(mesh_path: str) -> tuple[np.ndarray, ...]:
 
     Returns
     -------
-    r_b : np.ndarray
-        Basic-node radii [m], surface to CMB.
-    r_s : np.ndarray
-        Staggered-node radii [m], surface to CMB.
+    r_b, P_b, rho_b, g_b : np.ndarray
+        Basic-node radius [m], pressure [Pa], density [kg/m3],
+        gravity [m/s2] (surface to CMB).
+    r_s, P_s, rho_s, g_s : np.ndarray
+        Staggered-node radius [m], pressure [Pa], density [kg/m3],
+        gravity [m/s2] (surface to CMB).
     """
     with open(mesh_path) as f:
         header = f.readline()
@@ -162,14 +164,140 @@ def _read_mesh_file(mesh_path: str) -> tuple[np.ndarray, ...]:
         ns = int(tokens[1])
 
         r_b = np.empty(nb)
+        P_b = np.empty(nb)
+        rho_b = np.empty(nb)
+        g_b = np.empty(nb)
         for i in range(nb):
-            r_b[i] = float(f.readline().split()[0])
+            cols = f.readline().split()
+            r_b[i] = float(cols[0])
+            P_b[i] = float(cols[1])
+            rho_b[i] = float(cols[2])
+            g_b[i] = float(cols[3])
 
         r_s = np.empty(ns)
+        P_s = np.empty(ns)
+        rho_s = np.empty(ns)
+        g_s = np.empty(ns)
         for i in range(ns):
-            r_s[i] = float(f.readline().split()[0])
+            cols = f.readline().split()
+            r_s[i] = float(cols[0])
+            P_s[i] = float(cols[1])
+            rho_s[i] = float(cols[2])
+            g_s[i] = float(cols[3])
 
-    return r_b, r_s
+    return r_b, P_b, rho_b, g_b, r_s, P_s, rho_s, g_s
+
+
+def _write_mesh_file(
+    mesh_path: str,
+    r_b: np.ndarray,
+    P_b: np.ndarray,
+    rho_b: np.ndarray,
+    g_b: np.ndarray,
+    r_s: np.ndarray,
+    P_s: np.ndarray,
+    rho_s: np.ndarray,
+    g_s: np.ndarray,
+) -> None:
+    """Write a SPIDER external mesh file.
+
+    Parameters
+    ----------
+    mesh_path : str
+        Output file path.
+    r_b, P_b, rho_b, g_b : np.ndarray
+        Basic-node arrays (surface to CMB).
+    r_s, P_s, rho_s, g_s : np.ndarray
+        Staggered-node arrays (surface to CMB).
+    """
+    with open(mesh_path, 'w') as f:
+        f.write(f'# {len(r_b)} {len(r_s)}\n')
+        for i in range(len(r_b)):
+            f.write(f'{r_b[i]:.6f} {P_b[i]:.6e} {rho_b[i]:.6f} {g_b[i]:.6f}\n')
+        for i in range(len(r_s)):
+            f.write(f'{r_s[i]:.6f} {P_s[i]:.6e} {rho_s[i]:.6f} {g_s[i]:.6f}\n')
+
+
+def blend_mesh_files(old_path: str, new_path: str, max_shift: float = 0.05) -> float:
+    """Clamp the maximum per-update mesh shift by blending old and new meshes.
+
+    Compares radii in old and new mesh files. If the maximum fractional
+    radius change exceeds ``max_shift``, linearly blends all columns
+    (r, P, rho, g) so that the effective shift equals ``max_shift``, and
+    overwrites ``new_path`` with the blended mesh.
+
+    Parameters
+    ----------
+    old_path : str
+        Path to the previous mesh file.
+    new_path : str
+        Path to the new mesh file (overwritten in-place if blending occurs).
+    max_shift : float
+        Maximum allowed fractional radius change per update.
+
+    Returns
+    -------
+    float
+        Actual maximum fractional radius shift before blending (0.0 if
+        old file is missing or node counts differ).
+    """
+    if not os.path.isfile(old_path):
+        return 0.0
+
+    try:
+        r_b_old, P_b_old, rho_b_old, g_b_old, r_s_old, P_s_old, rho_s_old, g_s_old = (
+            _read_mesh_file(old_path)
+        )
+        r_b_new, P_b_new, rho_b_new, g_b_new, r_s_new, P_s_new, rho_s_new, g_s_new = (
+            _read_mesh_file(new_path)
+        )
+    except Exception:
+        log.warning('Could not read mesh files for blending')
+        return 0.0
+
+    if len(r_b_old) != len(r_b_new) or len(r_s_old) != len(r_s_new):
+        log.warning(
+            'Mesh node count changed (%d/%d -> %d/%d), skipping blend',
+            len(r_b_old),
+            len(r_s_old),
+            len(r_b_new),
+            len(r_s_new),
+        )
+        return 0.0
+
+    actual_shift = float(np.max(np.abs(r_b_new - r_b_old) / np.abs(r_b_old)))
+
+    if actual_shift <= max_shift:
+        log.info(
+            'Mesh shift %.3f%% within limit (%.1f%%), no blending needed',
+            actual_shift * 100,
+            max_shift * 100,
+        )
+        return actual_shift
+
+    alpha = max_shift / actual_shift
+    log.info(
+        'Mesh shift %.1f%% exceeds limit %.1f%%, blending with alpha=%.4f',
+        actual_shift * 100,
+        max_shift * 100,
+        alpha,
+    )
+
+    def _blend(old, new):
+        return old + alpha * (new - old)
+
+    _write_mesh_file(
+        new_path,
+        _blend(r_b_old, r_b_new),
+        _blend(P_b_old, P_b_new),
+        _blend(rho_b_old, rho_b_new),
+        _blend(g_b_old, g_b_new),
+        _blend(r_s_old, r_s_new),
+        _blend(P_s_old, P_s_new),
+        _blend(rho_s_old, rho_s_new),
+        _blend(g_s_old, g_s_new),
+    )
+    return actual_shift
 
 
 def _rewrite_json_solution(
@@ -248,7 +376,7 @@ def remap_entropy_for_new_mesh(
     )
 
     # --- Read new mesh ---
-    r_b_new, r_s_new = _read_mesh_file(new_mesh_file)
+    r_b_new, _, _, _, r_s_new, _, _, _ = _read_mesh_file(new_mesh_file)
     N_b = len(r_b_new)
     N_s = N_b - 1
 

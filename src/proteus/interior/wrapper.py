@@ -1,8 +1,10 @@
 # Generic interior wrapper
 from __future__ import annotations
 
+import gc
 import logging
 import os
+import shutil
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -201,6 +203,13 @@ def determine_interior_radius_with_zalmoxis(
     # Store mesh file path for subsequent SPIDER calls
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file
+        # Save initial mesh as baseline for blending comparisons
+        prev_path = spider_mesh_file + '.prev'
+        shutil.copy2(spider_mesh_file, prev_path)
+        dirs['spider_mesh_prev'] = prev_path
+
+    # Mesh convergence starts inactive (no blending needed at init)
+    dirs['mesh_shift_active'] = False
 
     # NOTE: run_interior runs with the *original* temperature_mode (restored
     # by the finally block above), not the overridden 'adiabatic'.  This is
@@ -447,16 +456,26 @@ def update_structure_from_interior(
     current_time = hf_row['Time']
     elapsed = current_time - last_struct_time
 
-    # Floor: don't update too frequently
-    if elapsed < config.struct.update_min_interval:
-        return no_update
-
     # Evaluate triggers
     triggered = False
     reason = ''
 
+    # Mesh convergence trigger: bypasses normal floor when mesh is still
+    # converging toward the true Zalmoxis solution after blending
+    mesh_converging = dirs.get('mesh_shift_active', False)
+    if mesh_converging and elapsed >= config.struct.mesh_convergence_interval:
+        triggered = True
+        reason = (
+            f'mesh convergence (elapsed {elapsed:.1f} yr '
+            f'>= {config.struct.mesh_convergence_interval:.1f} yr)'
+        )
+
+    # Floor: don't update too frequently (only for non-convergence triggers)
+    if not triggered and elapsed < config.struct.update_min_interval:
+        return no_update
+
     # Ceiling: guaranteed update after max interval
-    if elapsed >= config.struct.update_interval:
+    if not triggered and elapsed >= config.struct.update_interval:
         triggered = True
         reason = f'ceiling ({elapsed:.1f} yr >= {config.struct.update_interval:.1f} yr)'
 
@@ -516,6 +535,12 @@ def update_structure_from_interior(
     config.struct.zalmoxis.temperature_mode = 'prescribed'
     config.struct.zalmoxis.temperature_profile_file = temp_profile_path
 
+    # Save current mesh as baseline for blending
+    prev_path = dirs.get('spider_mesh_prev')
+    current_mesh = dirs.get('spider_mesh')
+    if current_mesh and os.path.isfile(current_mesh) and prev_path:
+        shutil.copy2(current_mesh, prev_path)
+
     try:
         nlev_b = get_nlevb(config)
         num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
@@ -529,6 +554,28 @@ def update_structure_from_interior(
 
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file
+
+        # Blend mesh to limit per-update radius shift
+        from proteus.interior.spider import blend_mesh_files
+
+        actual_shift = blend_mesh_files(
+            prev_path or '',
+            spider_mesh_file,
+            max_shift=config.struct.mesh_max_shift,
+        )
+        dirs['mesh_shift_active'] = actual_shift > config.struct.mesh_max_shift
+        if dirs['mesh_shift_active']:
+            log.info(
+                'Mesh convergence active: shift %.1f%% clamped to %.1f%%',
+                actual_shift * 100,
+                config.struct.mesh_max_shift * 100,
+            )
+
+        # Update .prev for next iteration
+        if not prev_path:
+            prev_path = spider_mesh_file + '.prev'
+            dirs['spider_mesh_prev'] = prev_path
+        shutil.copy2(spider_mesh_file, prev_path)
 
         # Remap entropy in the latest SPIDER JSON to match the new mesh.
         # Without this, the old dS/dxi applied on the new xi grid produces
@@ -547,6 +594,10 @@ def update_structure_from_interior(
                     new_mesh_file=spider_mesh_file,
                     radius_phys=hf_row['R_int'],
                 )
+
+    # Clean up temporary arrays
+    del r_stag, r_ascending, T_ascending, r_full, T_full
+    gc.collect()
 
     log.info(
         'Structure updated: R_int=%.3e m, gravity=%.3f m/s^2',

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import logging
 import os
 from datetime import datetime
@@ -408,6 +409,7 @@ class Proteus:
                     self.last_struct_Tmagma,
                     self.last_struct_Phi,
                 )
+                gc.collect()
 
             ############### / INTERIOR AND STRUCTURE
 

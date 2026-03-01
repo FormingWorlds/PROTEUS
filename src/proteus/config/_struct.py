@@ -249,6 +249,9 @@ class Struct:
     update_dtmagma_frac: float = field(default=0.03, validator=(gt(0), lt(1)))
     update_dphi_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
 
+    mesh_max_shift: float = field(default=0.05, validator=(gt(0), lt(1)))
+    mesh_convergence_interval: float = field(default=10.0, validator=gt(0))
+
     core_density: float = field(default=10738.33, validator=gt(0))
     core_heatcap: float = field(default=880.0, validator=gt(0))
     mass_tot = field(default='none', validator=mass_radius_valid, converter=none_if_none)
