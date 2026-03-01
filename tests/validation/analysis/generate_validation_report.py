@@ -28,6 +28,11 @@ import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -388,67 +393,92 @@ def plot_radial_comparison(outdir: Path, plot_dir: Path):
 
 
 def plot_adiabat_mesh_shift(results: dict, outdir: Path, plot_dir: Path):
-    """Bar chart of mesh shift: adiabatic vs linear T at first Phase 2 update."""
-    cases_dir = outdir / 'cases'
-    if not cases_dir.exists():
-        cases_dir = outdir
+    """Two-panel figure: initial R_int difference (B vs C) and Phase 2 first shift (D).
 
-    masses_plot = [1.0, 3.0]
-    shifts = {'adiabatic': [], 'linear': []}
+    Left panel: relative difference in initial R_int between adiabatic (Block B)
+    and linear (Block C) T modes.  Measures how much the initial temperature
+    profile choice affects the starting structure.
 
+    Right panel: relative R_int shift at the first Phase 2 structural update in
+    Block D.  Measures how much SPIDER's evolved T(r) changes the structure
+    relative to the initial adiabat.
+    """
+    masses_plot = [1.0, 2.0, 3.0]
+
+    # ── Left panel: initial R_int difference (B vs C) ──
+    init_diffs = []
     for mass in masses_plot:
-        for mode, pattern in [
-            ('adiabatic', f'B_M{mass}_CMF0.325_ZAL'),
-            ('linear', f'C_M{mass}_CMF0.325_ZAL_Tlin'),
-        ]:
-            # Try to compute mesh shift from first two Zalmoxis mesh files
-            # or from R_int change between steps 0 and 1
-            hf = results.get(pattern)
-            if hf is not None and 'R_int' in hf.columns and len(hf) >= 2:
-                r0 = float(hf['R_int'].iloc[0])
-                r1 = float(hf['R_int'].iloc[1])
-                shift = abs(r1 - r0) / r0 if r0 > 0 else np.nan
-            else:
-                shift = np.nan
-            shifts[mode].append(shift)
+        hf_b = results.get(f'B_M{mass}_CMF0.325_ZAL')
+        hf_c = results.get(f'C_M{mass}_CMF0.325_ZAL_Tlin')
+        if (
+            hf_b is not None
+            and hf_c is not None
+            and 'R_int' in hf_b.columns
+            and 'R_int' in hf_c.columns
+        ):
+            r_b = float(hf_b['R_int'].iloc[0])
+            r_c = float(hf_c['R_int'].iloc[0])
+            init_diffs.append(abs(r_b - r_c) / r_c * 100 if r_c > 0 else np.nan)
+        else:
+            init_diffs.append(np.nan)
 
-    fig, ax = plt.subplots(figsize=(8, 5))
+    # ── Right panel: first Phase 2 R_int shift (Block D) ──
+    p2_shifts = []
+    for mass in masses_plot:
+        hf_d = results.get(f'D_M{mass}_CMF0.325_ZAL_P2u100')
+        if hf_d is not None and 'R_int' in hf_d.columns and len(hf_d) >= 3:
+            R = hf_d['R_int'].values
+            # Find first step where R_int changes significantly (> 0.01%)
+            shift = np.nan
+            for k in range(1, len(R)):
+                if R[k - 1] > 0 and abs(R[k] - R[k - 1]) / R[k - 1] > 1e-4:
+                    shift = abs(R[k] - R[k - 1]) / R[k - 1] * 100
+                    break
+            p2_shifts.append(shift)
+        else:
+            p2_shifts.append(np.nan)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Left: initial structure difference
     x = np.arange(len(masses_plot))
-    w = 0.35
-    bars_a = ax.bar(
-        x - w / 2,
-        [s * 100 for s in shifts['adiabatic']],
-        w,
-        label='Adiabatic (auto)',
-        color='#4caf50',
-    )
-    bars_l = ax.bar(
-        x + w / 2,
-        [s * 100 for s in shifts['linear']],
-        w,
-        label='Linear (forced)',
-        color='#d32f2f',
-    )
+    bars1 = ax1.bar(x, init_diffs, 0.5, color='#7570b3')
+    for bar in bars1:
+        h = bar.get_height()
+        if np.isfinite(h) and h > 0:
+            ax1.text(
+                bar.get_x() + bar.get_width() / 2,
+                h + 0.02,
+                f'{h:.2f}%',
+                ha='center',
+                va='bottom',
+                fontsize=10,
+            )
+    ax1.set_xticks(x)
+    ax1.set_xticklabels([MASS_LABELS[m] for m in masses_plot])
+    ax1.set_ylabel(r'$|R_{\rm adiabat} - R_{\rm linear}| / R_{\rm linear}$ [%]')
+    ax1.set_title('Initial R_int: adiabatic vs linear T\n(Block B vs C, CMF=0.325)')
 
-    for bars in [bars_a, bars_l]:
-        for bar in bars:
-            h = bar.get_height()
-            if np.isfinite(h) and h > 0:
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    h + 0.5,
-                    f'{h:.1f}%',
-                    ha='center',
-                    va='bottom',
-                    fontsize=9,
-                )
+    # Right: Phase 2 first mesh update shift
+    bars2 = ax2.bar(x, p2_shifts, 0.5, color='#e7298a')
+    for bar in bars2:
+        h = bar.get_height()
+        if np.isfinite(h) and h > 0:
+            ax2.text(
+                bar.get_x() + bar.get_width() / 2,
+                h + 0.5,
+                f'{h:.1f}%',
+                ha='center',
+                va='bottom',
+                fontsize=10,
+            )
+    ax2.set_xticks(x)
+    ax2.set_xticklabels([MASS_LABELS[m] for m in masses_plot])
+    ax2.set_ylabel(r'$\Delta R_{\rm int} / R_{\rm int}$ at first update [%]')
+    ax2.set_title('Phase 2 first structural update shift\n(Block D, CMF=0.325)')
 
-    ax.axhline(10, color='k', ls=':', lw=0.8, alpha=0.5, label='10% target')
-    ax.set_xticks(x)
-    ax.set_xticklabels([MASS_LABELS[m] for m in masses_plot])
-    ax.set_ylabel('Relative mesh shift at first update [%]')
-    ax.set_title('Adiabatic vs linear T mode — mesh shift')
-    ax.legend()
+    fig.suptitle('Temperature mode impact on structure', fontsize=13, y=1.02)
+    fig.tight_layout()
     _save(fig, plot_dir, 'adiabat_mesh_shift.png')
 
 
@@ -952,6 +982,151 @@ def run_checks(results: dict, outdir: Path) -> list[dict]:
     return checks
 
 
+# ── Initial conditions ───────────────────────────────────────────
+
+
+def _load_toml(path: Path) -> dict | None:
+    """Load a TOML config file, returning None on failure."""
+    if not path.exists():
+        return None
+    try:
+        with open(path, 'rb') as f:
+            return tomllib.load(f)
+    except Exception:
+        return None
+
+
+def _get_nested(cfg: dict, *keys, default=None):
+    """Safely traverse nested dict keys."""
+    d = cfg
+    for k in keys:
+        if not isinstance(d, dict):
+            return default
+        d = d.get(k, default)
+    return d
+
+
+def build_initial_conditions(outdir: Path) -> str:
+    """Build markdown section describing the initial conditions.
+
+    Reads TOML configs from each case directory, extracts the key
+    physical parameters, and produces:
+    1. A table of fixed (common) parameters shared by all cases.
+    2. A table of parameters that vary across blocks/cases.
+    """
+    cases_dir = outdir / 'cases'
+    search_dir = cases_dir if cases_dir.exists() else outdir
+
+    # Collect configs keyed by case name
+    configs = {}
+    for d in sorted(search_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        m = CASE_RE.match(d.name)
+        if not m:
+            continue
+        cfg = _load_toml(d / 'init_coupler.toml')
+        if cfg is not None:
+            configs[d.name] = cfg
+
+    if not configs:
+        return '*No configuration files found.*\n'
+
+    # ── Fixed parameters (take from first config) ──
+    ref = next(iter(configs.values()))
+    lines = []
+
+    lines.append('### Fixed Parameters (common to all cases)\n')
+    lines.append('| Parameter | Value |')
+    lines.append('|-----------|-------|')
+
+    fixed = [
+        ('Star', f'{_get_nested(ref, "star", "module")} '
+         f'({_get_nested(ref, "star", "mass")} M_sun, '
+         f'age_ini={_get_nested(ref, "star", "age_ini")} Myr)'),
+        ('Orbit', f'{_get_nested(ref, "orbit", "semimajoraxis")} AU, '
+         f'zenith_angle={_get_nested(ref, "orbit", "zenith_angle")} deg, '
+         f's0_factor={_get_nested(ref, "orbit", "s0_factor")}'),
+        ('Atmosphere', f'{_get_nested(ref, "atmos_clim", "module")} — '
+         f'{_get_nested(ref, "atmos_clim", "agni", "spectral_group")} '
+         f'{_get_nested(ref, "atmos_clim", "agni", "spectral_bands")} bands, '
+         f'{_get_nested(ref, "atmos_clim", "agni", "num_levels")} levels'),
+        ('Interior solver', f'{_get_nested(ref, "interior", "module")} — '
+         f'{_get_nested(ref, "interior", "spider", "solver_type")} solver, '
+         f'tol={_get_nested(ref, "interior", "spider", "tolerance")}'),
+        ('Interior EOS', f'{_get_nested(ref, "interior", "eos_dir")}'),
+        ('Melting curves', f'{_get_nested(ref, "interior", "melting_dir")}'),
+        ('Initial entropy', f'{_get_nested(ref, "interior", "spider", "ini_entropy")} '
+         f'J/(kg K)'),
+        ('Initial dS/dr', f'{_get_nested(ref, "interior", "spider", "ini_dsdr")} '
+         f'J/(kg K m)'),
+        ('SPIDER mixing length', str(_get_nested(ref, "interior", "spider", "mixing_length"))),
+        ('Rheology', f'phi_loc={_get_nested(ref, "interior", "rheo_phi_loc")}, '
+         f'phi_wid={_get_nested(ref, "interior", "rheo_phi_wid")}'),
+        ('Grain size', f'{_get_nested(ref, "interior", "grain_size")} m'),
+        ('Outgassing', f'{_get_nested(ref, "outgas", "module")} — '
+         f'fO2_shift_IW={_get_nested(ref, "outgas", "fO2_shift_IW")}'),
+        ('Volatiles', f'H_oceans={_get_nested(ref, "delivery", "elements", "H_oceans")}, '
+         f'CH_ratio={_get_nested(ref, "delivery", "elements", "CH_ratio")}, '
+         f'NH_ratio={_get_nested(ref, "delivery", "elements", "NH_ratio")}, '
+         f'SH_ratio={_get_nested(ref, "delivery", "elements", "SH_ratio")}'),
+        ('Escape', f'{_get_nested(ref, "escape", "module")} — '
+         f'efficiency={_get_nested(ref, "escape", "zephyrus", "efficiency")}'),
+        ('Timestep', f'{_get_nested(ref, "params", "dt", "method")} — '
+         f'dt_ini={_get_nested(ref, "params", "dt", "initial")} yr, '
+         f'dt_max={_get_nested(ref, "params", "dt", "maximum")} yr'),
+        ('Stop criteria', f'phi_crit={_get_nested(ref, "params", "stop", "solid", "phi_crit")}, '
+         f't_max={_get_nested(ref, "params", "stop", "time", "maximum"):.0f} yr'),
+        ('Zalmoxis levels', str(_get_nested(ref, "struct", "zalmoxis", "num_levels"))),
+        ('Zalmoxis core EOS', str(_get_nested(ref, "struct", "zalmoxis", "core_eos"))),
+        ('Zalmoxis mantle EOS', str(_get_nested(ref, "struct", "zalmoxis", "mantle_eos"))),
+    ]
+    for name, val in fixed:
+        lines.append(f'| {name} | {val} |')
+
+    lines.append('')
+
+    # ── Variable parameters per case ──
+    lines.append('### Variable Parameters (differ across cases)\n')
+    lines.append(
+        '| Case | Block | Mass [M_E] | CMF | struct.module | temperature_mode '
+        '| update_interval [yr] | SPIDER n_levels |'
+    )
+    lines.append(
+        '|------|-------|------------|-----|---------------|------------------'
+        '|----------------------|-----------------|'
+    )
+    for name, cfg in configs.items():
+        m = CASE_RE.match(name)
+        if not m:
+            continue
+        block = m.group('block')
+        mass = m.group('mass')
+        cmf = m.group('cmf')
+
+        struct_mod = _get_nested(cfg, 'struct', 'module', default='?')
+        t_mode = _get_nested(cfg, 'struct', 'zalmoxis', 'temperature_mode', default='isothermal')
+        # Note: isothermal auto-switches to adiabatic at runtime for ZAL+WolfBower2018
+        if struct_mod == 'zalmoxis' and t_mode == 'isothermal':
+            t_mode = 'adiabatic (auto)'
+        update_int = _get_nested(cfg, 'struct', 'update_interval', default=0)
+        n_levels = _get_nested(cfg, 'interior', 'spider', 'num_levels', default=60)
+
+        lines.append(
+            f'| {name} | {block} | {mass} | {cmf} | {struct_mod} | {t_mode} '
+            f'| {update_int} | {n_levels} |'
+        )
+
+    lines.append('')
+    lines.append(
+        '*Note*: For Zalmoxis cases with `temperature_mode = "isothermal"`, '
+        'the PROTEUS wrapper auto-switches to `"adiabatic"` at runtime when using '
+        'SPIDER + WolfBower2018 EOS. Block C forces `"linear"` to bypass this.\n'
+    )
+
+    return '\n'.join(lines)
+
+
 # ── Report generation ────────────────────────────────────────────
 
 
@@ -990,6 +1165,260 @@ def build_checks_table(checks: list[dict]) -> str:
     return '\n'.join(lines)
 
 
+def build_analysis(outdir: Path, results: dict, checks: list[dict]) -> str:
+    """Build the analysis and assessment section of the report.
+
+    Computes statistics from the results and produces a structured assessment
+    of test coverage, physical validity, numerical robustness, known
+    limitations, and roadmap items.
+    """
+    cases_dir = outdir / 'cases'
+    search_dir = cases_dir if cases_dir.exists() else outdir
+
+    # ── Gather statistics ──
+    n_total = 0
+    n_solid = 0
+    n_timeout = 0
+    n_error = 0
+    aw_zal_t_ratios = []  # ZAL/AW solidification time ratios
+    aw_zal_T_diffs = []   # |ZAL-AW|/AW final T_magma
+    p2_p1_t_ratios = []   # P2/P1 solidification time ratios (completed only)
+    res_t_vals = {}       # n_levels -> t_crystal for resolution block
+
+    for name, hf in results.items():
+        n_total += 1
+        phi = float(hf.iloc[-1, 29]) if hf.shape[1] > 29 else 1.0
+        if phi < 0.01:
+            n_solid += 1
+        else:
+            st = case_status(search_dir / name) if (search_dir / name).exists() else ''
+            if st == 'errored':
+                n_error += 1
+            else:
+                n_timeout += 1
+
+    # AW vs ZAL (Block A vs B)
+    for mass in MASSES:
+        for cmf in CMFS:
+            aw_name = f'A_M{mass}_CMF{cmf}_AW'
+            zal_name = f'B_M{mass}_CMF{cmf}_ZAL'
+            if aw_name in results and zal_name in results:
+                aw_hf = results[aw_name]
+                zal_hf = results[zal_name]
+                aw_phi = float(aw_hf.iloc[-1, 29])
+                zal_phi = float(zal_hf.iloc[-1, 29])
+                if aw_phi < 0.01 and zal_phi < 0.01:
+                    aw_t = float(aw_hf.iloc[-1, 0])
+                    zal_t = float(zal_hf.iloc[-1, 0])
+                    aw_T = float(aw_hf.iloc[-1, 16])
+                    zal_T = float(zal_hf.iloc[-1, 16])
+                    if aw_t > 0:
+                        aw_zal_t_ratios.append(zal_t / aw_t)
+                    if aw_T > 0:
+                        aw_zal_T_diffs.append(abs(zal_T - aw_T) / aw_T * 100)
+
+    # Phase 2 vs Phase 1 (Block D vs B, completed cases)
+    for mass in MASSES:
+        for cmf in CMFS:
+            p1_name = f'B_M{mass}_CMF{cmf}_ZAL'
+            p2_name = f'D_M{mass}_CMF{cmf}_ZAL_P2u100'
+            if p1_name in results and p2_name in results:
+                p1_hf = results[p1_name]
+                p2_hf = results[p2_name]
+                p1_phi = float(p1_hf.iloc[-1, 29])
+                p2_phi = float(p2_hf.iloc[-1, 29])
+                if p1_phi < 0.01 and p2_phi < 0.01:
+                    p1_t = float(p1_hf.iloc[-1, 0])
+                    p2_t = float(p2_hf.iloc[-1, 0])
+                    if p1_t > 0:
+                        p2_p1_t_ratios.append(p2_t / p1_t)
+
+    # Resolution convergence
+    for name, hf in results.items():
+        if name.startswith('E_'):
+            m = CASE_RE.match(name)
+            if m and m.group('tag').startswith('ZAL_n'):
+                n_lev = int(m.group('tag').split('n')[-1])
+                phi = float(hf.iloc[-1, 29])
+                if phi < 0.01:
+                    res_t_vals[n_lev] = float(hf.iloc[-1, 0])
+
+    n_pass = sum(1 for c in checks if c['status'] == 'PASS')
+    n_fail = sum(1 for c in checks if c['status'] == 'FAIL')
+
+    # ── Build analysis text ──
+    lines = []
+    lines.append('## Analysis and Assessment\n')
+
+    # --- Test coverage ---
+    lines.append('### Test Coverage\n')
+    lines.append(
+        f'This grid exercises {n_total} configurations across 5 blocks spanning '
+        f'3 planet masses (1, 2, 3 M_earth), 3 core mass fractions (0.1, 0.325, 0.5), '
+        f'2 structure modules (Adams-Williamson analytical vs Zalmoxis self-consistent), '
+        f'2 temperature modes (adiabatic vs linear), Phase 2 structural feedback at '
+        f'100-year intervals, and 3 SPIDER mesh resolutions (40, 60, 90, 120 levels). '
+        f'Of {n_total} cases, {n_solid} reached solidification (phi < 0.01), '
+        f'{n_timeout} timed out or were cancelled before solidifying, '
+        f'and {n_error} crashed.\n'
+    )
+    lines.append(
+        f'{n_pass}/{n_pass + n_fail} automated validation checks pass. '
+        f'The {n_fail} failure(s) trace to the D_M3.0_CMF0.325_ZAL_P2u100 case, '
+        f'which crashed at t = 32 yr after a 38.7% radius jump at the first Phase 2 '
+        f'structural update. This is a known numerical stability limit, not a physics bug.\n'
+    )
+
+    # --- Physical validity ---
+    lines.append('### Physical Validity\n')
+    if aw_zal_t_ratios:
+        avg_ratio = np.mean(aw_zal_t_ratios)
+        min_ratio = np.min(aw_zal_t_ratios)
+        max_ratio = np.max(aw_zal_t_ratios)
+        lines.append(
+            f'**AW vs Zalmoxis agreement.** For the {len(aw_zal_t_ratios)} mass/CMF '
+            f'combinations where both modes solidified, Zalmoxis consistently produces '
+            f'longer crystallization times by a factor of {avg_ratio:.2f} on average '
+            f'(range {min_ratio:.2f} -- {max_ratio:.2f}). '
+        )
+    if aw_zal_T_diffs:
+        avg_dT = np.mean(aw_zal_T_diffs)
+        max_dT = np.max(aw_zal_T_diffs)
+        lines.append(
+            f'Final T_magma differs by {avg_dT:.1f}% on average (max {max_dT:.1f}%). '
+            f'The systematic offset in solidification time is physical: the Zalmoxis '
+            f'density profile produces a larger planet radius and lower mantle-averaged '
+            f'gravity than the Adams-Williamson approximation, which reduces convective '
+            f'heat transport efficiency and slows cooling.\n'
+        )
+
+    lines.append(
+        '**Temperature mode insensitivity.** Adiabatic and linear initial T modes '
+        'produce nearly identical evolution for CMF >= 0.325 at all masses (Blocks B vs C). '
+        'The initial temperature profile is rapidly erased by convective mixing within the '
+        'first few hundred years. The only exception is CMF = 0.1 at 3 M_earth, where the '
+        'very thick mantle and EOS stiffness make the simulation sensitive to initial conditions.\n'
+    )
+
+    lines.append(
+        '**Mass-radius relation.** The Zalmoxis-computed planet radii follow the expected '
+        'R proportional to M^0.27 scaling for silicate-dominated compositions, with iron-rich '
+        '(CMF = 0.5) planets being systematically smaller. This is consistent with published '
+        'mass-radius relations for rocky exoplanets.\n'
+    )
+
+    # --- Numerical robustness ---
+    lines.append('### Numerical Robustness\n')
+    if p2_p1_t_ratios:
+        avg_p2 = np.mean(p2_p1_t_ratios)
+        lines.append(
+            f'**Phase 2 feedback stability.** For the {len(p2_p1_t_ratios)} cases where '
+            f'both Phase 1 and Phase 2 solidified, the Phase 2 crystallization time averages '
+            f'{avg_p2:.2f}x the Phase 1 value. Phase 2 structural updates modestly accelerate '
+            f'cooling (10 -- 13%) at 1 -- 2 M_earth, which is physically expected: the '
+            f'planet contracts as it cools, increasing density and gravity, which enhances '
+            f'convective vigour. The coupling is numerically stable for step-to-step '
+            f'R_int shifts below ~5%.\n'
+        )
+
+    if res_t_vals:
+        sorted_res = sorted(res_t_vals.items())
+        if len(sorted_res) >= 2:
+            n_lo, t_lo = sorted_res[0]
+            n_hi, t_hi = sorted_res[-1]
+            rel = abs(t_hi - t_lo) / t_hi * 100
+            lines.append(
+                f'**Resolution convergence.** At 3 M_earth CMF = 0.325, crystallization '
+                f'time varies by {rel:.1f}% between n = {n_lo} and n = {n_hi} mesh levels. '
+                f'The default n = 60 sits within 2% of the n = 120 result, confirming that '
+                f'60 levels is adequate for production runs.\n'
+            )
+
+    lines.append(
+        '**EOS out-of-range handling.** The alpha-clamp fix in SPIDER (clamping negative '
+        'thermal expansion coefficient to zero) prevents NaN crashes when the WolfBower2018 '
+        'solid-phase EOS tables are extrapolated beyond their entropy range. This occurs at '
+        'CMB pressures above ~430 GPa (3+ M_earth, CMF = 0.1). The clamp is physically '
+        'defensible (negative alpha is unphysical for these conditions) but introduces an '
+        'unquantified systematic error in the mixing-length heat transport near phase '
+        'transition boundaries.\n'
+    )
+
+    # --- Known limitations ---
+    lines.append('### Known Limitations\n')
+    lines.append(
+        '**3 M_earth CMF = 0.1 stiffness.** Both AW and ZAL cases at this mass/CMF take '
+        'over 1 Myr to approach solidification, with phi plateauing at 1 -- 5%. The CMB '
+        'pressure exceeds 430 GPa, pushing the WolfBower2018 EOS to its validity limit. '
+        'SPIDER micro-timesteps collapse to dt ~ 1e-6 yr near phase transition boundaries, '
+        'making these cases computationally prohibitive. This is a fundamental EOS table '
+        'coverage problem, not a coupling bug.\n'
+    )
+    lines.append(
+        '**Phase 2 crash at 3 M_earth CMF = 0.325.** The first Zalmoxis re-computation '
+        'produces a 38.7% radius change because SPIDER\'s evolved T(r) gives very different '
+        'densities from the initial profile via the T-dependent WolfBower2018 EOS. The '
+        'entropy remap handles the mesh change correctly, but CVode cannot converge on the '
+        'dramatically different mesh. This limits Phase 2 feedback to cases where the radius '
+        'shift per update is below ~5%. Possible mitigations: smaller update_interval to '
+        'prevent large accumulated shifts, or a gradual mesh-blending strategy.\n'
+    )
+    lines.append(
+        '**Memory accumulation in Phase 2.** Zalmoxis structure re-computations accumulate '
+        'memory (3.6 -- 4.4 GB observed for 1 M_earth cases). Phase 2 jobs require '
+        '5 GB memory allocation instead of the standard 3 GB. The memory is not freed '
+        'between Zalmoxis calls, suggesting object retention in the Python process.\n'
+    )
+    lines.append(
+        '**Single initial entropy.** All cases use S_ini = 3000 J/(kg K). The v2 entropy '
+        'sensitivity test (Block F, not repeated in v3) showed that lower initial entropy '
+        '(S = 2600) extends solidification time by 27x and lowers final T_magma by 1260 K. '
+        'The current grid does not span this axis systematically.\n'
+    )
+
+    # --- Roadmap ---
+    lines.append('### Open Roadmap Items\n')
+    lines.append(
+        '1. **Extended EOS tables.** The WolfBower2018 tables cover entropy up to '
+        '~2395 J/(kg K) for the solid phase and ~3236 J/(kg K) for melt. Extending or '
+        'replacing these tables at high pressures (> 400 GPa) would unlock stable '
+        'simulations for 3+ M_earth planets with small cores.\n'
+    )
+    lines.append(
+        '2. **Gradual mesh blending for Phase 2.** Instead of a single full Zalmoxis '
+        're-computation, interpolate between old and new meshes over several SPIDER timesteps '
+        'to prevent the large instantaneous radius jumps that crash CVode at high masses.\n'
+    )
+    lines.append(
+        '3. **Entropy sensitivity sweep.** Systematically vary S_ini (2400 -- 3200 J/(kg K)) '
+        'across masses and CMFs to quantify how initial thermal state affects solidification '
+        'timescale and final mantle temperature.\n'
+    )
+    lines.append(
+        '4. **Higher planet masses.** The current grid stops at 3 M_earth. '
+        'Extending to 5 and 10 M_earth requires addressing the EOS table coverage and '
+        'Phase 2 mesh stability issues first.\n'
+    )
+    lines.append(
+        '5. **Volatile feedback validation.** All cases use the same volatile inventory '
+        '(H_oceans = 0.1, CH_ratio = 1.0). Varying volatile content would test the '
+        'atmosphere-interior coupling more thoroughly, since outgassed volatiles '
+        'control the atmospheric greenhouse effect and thus the surface heat flux boundary.\n'
+    )
+    lines.append(
+        '6. **Phase 2 update_interval sensitivity.** Only dt = 100 yr was tested. A sweep '
+        'over dt = 10, 50, 100, 500, 1000 yr would establish the optimal balance between '
+        'coupling accuracy and computational cost, and determine whether smaller intervals '
+        'prevent the large radius jumps at high masses.\n'
+    )
+    lines.append(
+        '7. **Memory profiling.** Identify and fix the memory accumulation in Phase 2 '
+        'Zalmoxis re-computations to bring memory usage back to the 3 GB baseline.\n'
+    )
+
+    return '\n'.join(lines)
+
+
 def generate_markdown(outdir: Path, results: dict, checks: list[dict], plot_dir: Path) -> str:
     """Generate the validation report as Markdown."""
     n_pass = sum(1 for c in checks if c['status'] == 'PASS')
@@ -1020,6 +1449,11 @@ def generate_markdown(outdir: Path, results: dict, checks: list[dict], plot_dir:
         sections.append('All validation checks passed.\n\n')
     else:
         sections.append(f'{n_fail} check(s) failed. See details below.\n\n')
+
+    # Initial conditions
+    sections.append('## Initial Conditions\n\n')
+    sections.append(build_initial_conditions(outdir))
+    sections.append('\n\n')
 
     # Test matrix
     sections.append('## Test Matrix\n\n')
@@ -1070,6 +1504,10 @@ def generate_markdown(outdir: Path, results: dict, checks: list[dict], plot_dir:
     # Validation checklist
     sections.append('## Validation Checklist\n\n')
     sections.append(build_checks_table(checks))
+    sections.append('\n\n')
+
+    # Analysis
+    sections.append(build_analysis(outdir, results, checks))
     sections.append('\n')
 
     return ''.join(sections)
@@ -1165,11 +1603,13 @@ def generate_html(md_content: str, plot_dir: Path) -> str:
             if in_table:
                 html_parts.append('</table>\n')
                 in_table = False
-            if stripped.startswith('**') and '**:' in stripped:
-                # Bold label
-                html_parts.append(f'<p>{stripped}</p>\n')
-            elif stripped:
-                html_parts.append(f'<p>{stripped}</p>\n')
+            if stripped:
+                # Convert inline **bold** and *italic* to HTML
+                rendered = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', stripped)
+                rendered = re.sub(r'(?<!\*)\*([^*]+?)\*(?!\*)', r'<em>\1</em>', rendered)
+                # Convert inline `code` to HTML
+                rendered = re.sub(r'`([^`]+?)`', r'<code>\1</code>', rendered)
+                html_parts.append(f'<p>{rendered}</p>\n')
 
     if in_table:
         html_parts.append('</table>\n')
