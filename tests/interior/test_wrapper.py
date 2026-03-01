@@ -3,7 +3,8 @@ Unit tests for proteus.interior.wrapper module — structure update triggers.
 
 Tests the dynamic trigger logic in update_structure_from_interior() that
 decides when to re-run Zalmoxis with SPIDER's evolved temperature profile.
-Also tests solve_structure() dispatch and phi_crit warning.
+Also tests solve_structure() dispatch, phi_crit warning, full update path
+with mesh blending, convergence tracking, and entropy remap.
 
 Testing standards and documentation:
 - docs/test_infrastructure.md: Test infrastructure overview
@@ -11,7 +12,8 @@ Testing standards and documentation:
 - docs/test_building.md: Best practices for test construction
 
 Functions tested:
-- update_structure_from_interior(): Trigger logic (ceiling, dT, dPhi, early exit)
+- update_structure_from_interior(): Trigger logic, T(r) profile building,
+  mesh blending, convergence tracking, entropy remap
 - solve_structure(): phi_crit warning, dispatch to Zalmoxis
 """
 
@@ -292,3 +294,288 @@ def test_no_mesh_resets_convergence():
     # No mesh file returned → convergence state reset
     assert dirs['mesh_shift_active'] is False
     assert dirs['mesh_convergence_steps'] == 0
+
+
+# ============================================================================
+# test full update path with mesh blending and convergence
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_full_update_with_mesh_blending(tmp_path):
+    """Full update path: Zalmoxis returns mesh, blending fires, convergence tracked."""
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    mesh_file = str(tmp_path / 'spider_mesh.dat')
+    prev_file = str(tmp_path / 'spider_mesh.dat.prev')
+
+    dirs = {
+        'output': str(tmp_path),
+        'spider': '/tmp/spider',
+        'spider_mesh': mesh_file,
+        'spider_mesh_prev': prev_file,
+        'mesh_shift_active': False,
+        'mesh_convergence_steps': 0,
+    }
+    # Create data subdir for temp profile
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, mesh_file),
+        ),
+        patch('proteus.interior.wrapper.np.savetxt'),
+        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior.spider.blend_mesh_files',
+            return_value=0.15,
+        ),
+        patch('proteus.interior.wrapper.gc.collect'),
+    ):
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+
+    # Should have triggered (ceiling) and updated
+    assert result[0] == 1100.0
+    # Mesh blending returned 15% shift > 5% max → convergence active
+    assert dirs['mesh_shift_active'] is True
+    assert dirs['mesh_convergence_steps'] == 1
+
+
+@pytest.mark.unit
+def test_convergence_max_exceeded(tmp_path):
+    """After 20 convergence steps, mesh_shift_active should reset."""
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    mesh_file = str(tmp_path / 'spider_mesh.dat')
+    prev_file = str(tmp_path / 'spider_mesh.dat.prev')
+
+    dirs = {
+        'output': str(tmp_path),
+        'spider': '/tmp/spider',
+        'spider_mesh': mesh_file,
+        'spider_mesh_prev': prev_file,
+        'mesh_shift_active': True,
+        'mesh_convergence_steps': 20,
+    }
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, mesh_file),
+        ),
+        patch('proteus.interior.wrapper.np.savetxt'),
+        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior.spider.blend_mesh_files',
+            return_value=0.15,
+        ),
+        patch('proteus.interior.wrapper.gc.collect'),
+    ):
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+
+    assert result[0] == 1100.0
+    # Exceeded max convergence steps → reset
+    assert dirs['mesh_shift_active'] is False
+    assert dirs['mesh_convergence_steps'] == 0
+
+
+@pytest.mark.unit
+def test_update_with_entropy_remap(tmp_path):
+    """When SPIDER module is active and sim_times exist, entropy remap fires."""
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    mesh_file = str(tmp_path / 'spider_mesh.dat')
+    prev_file = str(tmp_path / 'spider_mesh.dat.prev')
+
+    dirs = {
+        'output': str(tmp_path),
+        'spider': '/tmp/spider',
+        'spider_mesh': mesh_file,
+        'spider_mesh_prev': prev_file,
+        'mesh_shift_active': False,
+        'mesh_convergence_steps': 0,
+    }
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, mesh_file),
+        ),
+        patch('proteus.interior.wrapper.np.savetxt'),
+        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior.spider.blend_mesh_files',
+            return_value=0.02,
+        ),
+        patch(
+            'proteus.interior.spider.get_all_output_times',
+            return_value=[0.0, 500.0],
+        ),
+        patch('proteus.interior.spider.remap_entropy_for_new_mesh') as mock_remap,
+        patch('proteus.interior.wrapper.gc.collect'),
+    ):
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+
+    assert result[0] == 1100.0
+    # Remap should have been called with latest JSON
+    mock_remap.assert_called_once()
+    call_args = mock_remap.call_args
+    assert '500.json' in call_args.kwargs['json_path']
+
+
+@pytest.mark.unit
+def test_entropy_remap_exception(tmp_path):
+    """Exception in get_all_output_times should not crash update."""
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    mesh_file = str(tmp_path / 'spider_mesh.dat')
+    prev_file = str(tmp_path / 'spider_mesh.dat.prev')
+
+    dirs = {
+        'output': str(tmp_path),
+        'spider': '/tmp/spider',
+        'spider_mesh': mesh_file,
+        'spider_mesh_prev': prev_file,
+        'mesh_shift_active': False,
+        'mesh_convergence_steps': 0,
+    }
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, mesh_file),
+        ),
+        patch('proteus.interior.wrapper.np.savetxt'),
+        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior.spider.blend_mesh_files',
+            return_value=0.02,
+        ),
+        patch(
+            'proteus.interior.spider.get_all_output_times',
+            side_effect=RuntimeError('no JSON files'),
+        ),
+        patch('proteus.interior.wrapper.gc.collect'),
+    ):
+        # Should not raise
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+
+    assert result[0] == 1100.0
+
+
+@pytest.mark.unit
+def test_update_creates_prev_file(tmp_path):
+    """When no prev_path exists, update should create it."""
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    mesh_file = str(tmp_path / 'spider_mesh.dat')
+
+    dirs = {
+        'output': str(tmp_path),
+        'spider': '/tmp/spider',
+        'spider_mesh': mesh_file,
+        'mesh_shift_active': False,
+        'mesh_convergence_steps': 0,
+        # No spider_mesh_prev set
+    }
+    (tmp_path / 'data').mkdir(exist_ok=True)
+
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+    }
+    interior_o = _mock_interior_o()
+
+    with (
+        patch(
+            'proteus.interior.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, mesh_file),
+        ),
+        patch('proteus.interior.wrapper.np.savetxt'),
+        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior.spider.blend_mesh_files',
+            return_value=0.02,
+        ),
+        patch(
+            'proteus.interior.spider.get_all_output_times',
+            return_value=[],
+        ),
+        patch('proteus.interior.wrapper.gc.collect'),
+    ):
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+
+    assert result[0] == 1100.0
+    # spider_mesh_prev should now be set
+    assert 'spider_mesh_prev' in dirs
+    assert dirs['spider_mesh_prev'].endswith('.prev')
+
+
+# ============================================================================
+# test phi_crit warning in solve_structure
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_phi_crit_warning(caplog):
+    """phi_crit < 0.01 in solve_structure should emit a warning."""
+    from proteus.interior.wrapper import solve_structure
+
+    config = MagicMock()
+    config.struct.set_by = 'mass_tot'
+    config.struct.module = 'zalmoxis'
+    config.params.stop.solid.phi_crit = 0.005
+
+    with caplog.at_level('WARNING'):
+        with patch('proteus.interior.wrapper.determine_interior_radius_with_zalmoxis'):
+            solve_structure({}, config, None, {}, '/tmp')
+
+    assert any('phi_crit' in r.message for r in caplog.records)

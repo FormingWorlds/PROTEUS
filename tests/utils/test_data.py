@@ -936,6 +936,60 @@ def test_download_melting_curves_no_mapping(mock_get_info):
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.safe_rm')
+def test_download_melting_curves_canonical_copy(mock_rm, mock_getfwl, mock_download, tmp_path):
+    """Test canonical P-T copy from legacy Zenodo names (solidus.dat → solidus_P-T.dat)."""
+    from proteus.utils.data import download_melting_curves
+
+    mock_getfwl.return_value = tmp_path
+
+    # Create legacy files that Zenodo would download
+    mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    mc_dir.mkdir(parents=True)
+    (mc_dir / 'solidus.dat').write_text('solidus data')
+    (mc_dir / 'liquidus.dat').write_text('liquidus data')
+
+    mock_config = MagicMock()
+    mock_config.interior.melting_dir = 'Wolf_Bower+2018'
+
+    download_melting_curves(mock_config, clean=False)
+
+    # Canonical copies should be created
+    assert (mc_dir / 'solidus_P-T.dat').exists()
+    assert (mc_dir / 'liquidus_P-T.dat').exists()
+    assert (mc_dir / 'solidus_P-T.dat').read_text() == 'solidus data'
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.safe_rm')
+def test_download_melting_curves_canonical_skip_existing(
+    mock_rm, mock_getfwl, mock_download, tmp_path
+):
+    """Canonical copy is skipped when P-T file already exists."""
+    from proteus.utils.data import download_melting_curves
+
+    mock_getfwl.return_value = tmp_path
+
+    mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    mc_dir.mkdir(parents=True)
+    (mc_dir / 'solidus.dat').write_text('old solidus')
+    (mc_dir / 'solidus_P-T.dat').write_text('existing canonical')
+    (mc_dir / 'liquidus.dat').write_text('old liquidus')
+
+    mock_config = MagicMock()
+    mock_config.interior.melting_dir = 'Wolf_Bower+2018'
+
+    download_melting_curves(mock_config, clean=False)
+
+    # Should NOT overwrite existing canonical file
+    assert (mc_dir / 'solidus_P-T.dat').read_text() == 'existing canonical'
+
+
+@pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
 def test_download_exoplanet_data_no_mapping(mock_get_info):
     """Test exoplanet data download raises error when no mapping found."""
@@ -1211,3 +1265,131 @@ def test_get_spider_calls_get_petsc_first(
     get_spider()
 
     mock_get_petsc.assert_called_once()
+
+
+# ============================================================================
+# test _get_sufficient — Zalmoxis EOS branches
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_eos_dynamic')
+@patch('proteus.utils.data.download_eos_static')
+@patch('proteus.utils.data.download_melting_curves')
+@patch('proteus.utils.data.download_interior_lookuptables')
+@patch('proteus.utils.data.download_massradius_data')
+@patch('proteus.utils.data.download_surface_albedos')
+@patch('proteus.utils.data.download_exoplanet_data')
+@patch('proteus.utils.data.download_stellar_spectra')
+@patch('proteus.utils.data.download_spectral_file')
+@patch('proteus.utils.data.download_phoenix')
+def test_get_sufficient_zalmoxis_wolf_bower(
+    _m_ph,
+    _m_sp,
+    _m_st,
+    _m_ex,
+    _m_sa,
+    _m_mr,
+    _m_il,
+    _m_mc,
+    mock_static,
+    mock_dyn,
+):
+    """_get_sufficient downloads Zalmoxis static + WolfBower2018 dynamic EOS."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.data import _get_sufficient
+
+    config = MagicMock()
+    config.interior.module = 'spider'
+    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
+    config.struct.module = 'zalmoxis'
+    config.struct.zalmoxis.mantle_eos = 'WolfBower2018_MgSiO3'
+
+    _get_sufficient(config, clean=False)
+
+    mock_static.assert_called_once()
+    # Dynamic called twice: once for interior.eos_dir, once for Zalmoxis
+    assert mock_dyn.call_count == 2
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_eos_dynamic')
+@patch('proteus.utils.data.download_eos_static')
+@patch('proteus.utils.data.download_melting_curves')
+@patch('proteus.utils.data.download_interior_lookuptables')
+@patch('proteus.utils.data.download_massradius_data')
+@patch('proteus.utils.data.download_surface_albedos')
+@patch('proteus.utils.data.download_exoplanet_data')
+@patch('proteus.utils.data.download_stellar_spectra')
+@patch('proteus.utils.data.download_spectral_file')
+@patch('proteus.utils.data.download_phoenix')
+def test_get_sufficient_zalmoxis_seager_only(
+    _m_ph,
+    _m_sp,
+    _m_st,
+    _m_ex,
+    _m_sa,
+    _m_mr,
+    _m_il,
+    _m_mc,
+    mock_static,
+    mock_dyn,
+):
+    """_get_sufficient skips dynamic EOS for Seager-only Zalmoxis config."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.data import _get_sufficient
+
+    config = MagicMock()
+    config.interior.module = 'dummy'  # no spider/aragog → skip first dynamic
+    config.struct.module = 'zalmoxis'
+    config.struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
+
+    _get_sufficient(config, clean=False)
+
+    mock_static.assert_called_once()
+    mock_dyn.assert_not_called()
+
+
+# ============================================================================
+# test download_eos_dynamic / download_eos_static
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_eos_dynamic_calls_download(mock_info, mock_dl):
+    """download_eos_dynamic calls download with the legacy folder path."""
+    from proteus.utils.data import download_eos_dynamic
+
+    mock_info.return_value = {'osf_project': 'abc123', 'zenodo_id': '999'}
+    download_eos_dynamic('WolfBower2018_MgSiO3')
+
+    mock_dl.assert_called_once()
+    call_kwargs = mock_dl.call_args
+    assert 'interior_lookup_tables' in str(call_kwargs)
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_eos_dynamic_no_mapping(mock_info, mock_dl):
+    """download_eos_dynamic returns early when no source mapping found."""
+    from proteus.utils.data import download_eos_dynamic
+
+    mock_info.return_value = None
+    download_eos_dynamic('UnknownEOS')
+
+    mock_dl.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_Seager_EOS')
+def test_download_eos_static_delegates(mock_seager):
+    """download_eos_static delegates to download_Seager_EOS."""
+    from proteus.utils.data import download_eos_static
+
+    download_eos_static()
+    mock_seager.assert_called_once()

@@ -2,7 +2,8 @@
 Unit tests for proteus.interior.spider module.
 
 Tests entropy remapping, mesh blending, mesh file I/O, core-size
-extraction, EOS range checking, and JSON solution rewriting.
+extraction, EOS range checking, JSON solution rewriting, and the
+_try_spider() call-sequence builder (EOS path resolution, mesh handling).
 
 Testing standards and documentation:
 - docs/test_infrastructure.md: Test infrastructure overview
@@ -17,6 +18,7 @@ Functions tested:
 - _rewrite_json_solution(): Overwrite solution vector in SPIDER JSON
 - blend_mesh_files(): Clamp mesh shift by linear blending
 - remap_entropy_for_new_mesh(): Core remapping logic
+- _try_spider(): SPIDER call-sequence building (EOS paths, mesh mode)
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import json
 import os
 import shutil
 import tempfile
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -830,3 +833,343 @@ def test_check_eos_range_no_warnings(spider_json_dir, caplog):
         _check_eos_table_range(eos_dir, None, 100e9)
     spider_warnings = [r for r in caplog.records if 'spider' in r.name]
     assert len(spider_warnings) == 0
+
+
+@pytest.mark.unit
+def test_check_eos_range_parse_failure(spider_json_dir):
+    """Malformed EOS tables should return silently (parse failure path)."""
+    eos_dir = spider_json_dir
+    # Write garbage that will fail to parse
+    with open(os.path.join(eos_dir, 'density_solid.dat'), 'w') as f:
+        f.write('not a valid header\n')
+    with open(os.path.join(eos_dir, 'density_melt.dat'), 'w') as f:
+        f.write('also garbage\n')
+    # Should not crash — hits the except (ValueError, IndexError, IOError) path
+    _check_eos_table_range(eos_dir, None, 500e9)
+
+
+# ============================================================================
+# test _try_spider call-sequence building
+# ============================================================================
+
+
+_EOS_FILE_NAMES = [
+    'density_melt.dat',
+    'density_solid.dat',
+    'thermal_exp_melt.dat',
+    'thermal_exp_solid.dat',
+    'heat_capacity_melt.dat',
+    'heat_capacity_solid.dat',
+    'adiabat_temp_grad_melt.dat',
+    'adiabat_temp_grad_solid.dat',
+    'temperature_melt.dat',
+    'temperature_solid.dat',
+]
+
+
+def _setup_spider_env(tmp_path, *, with_mesh=False):
+    """Create directories, fake files, and config for _try_spider tests.
+
+    Returns (dirs, config, hf_row, eos_base, mc_base, mesh_path_or_None).
+    eos_base and mc_base are the parents to patch EOS_DYNAMIC_DIR and
+    MELTING_CURVES_DIR module-level constants.
+    """
+    spider_dir = tmp_path / 'spider'
+    spider_dir.mkdir()
+    # Fake spider executable
+    spider_exec = spider_dir / 'spider'
+    spider_exec.write_text('#!/bin/sh\nexit 0')
+    spider_exec.chmod(0o755)
+
+    output_dir = tmp_path / 'output'
+    output_dir.mkdir()
+    data_dir = output_dir / 'data'
+    data_dir.mkdir()
+
+    # EOS directory matching config.interior.eos_dir
+    eos_base = tmp_path / 'eos_dynamic'
+    eos_dir = eos_base / 'WolfBower2018_MgSiO3' / 'P-S'
+    eos_dir.mkdir(parents=True)
+    for name in _EOS_FILE_NAMES:
+        _make_eos_table(str(eos_dir / name))
+
+    # Melting curves directory matching config.interior.melting_dir
+    mc_base = tmp_path / 'melting_curves'
+    mc_dir = mc_base / 'Wolf_Bower+2018'
+    mc_dir.mkdir(parents=True)
+    (mc_dir / 'liquidus_P-S.dat').write_text('dummy')
+    (mc_dir / 'solidus_P-S.dat').write_text('dummy')
+
+    config = MagicMock()
+    config.interior.spider.num_levels = 50
+    config.interior.spider.tolerance = 1e-4
+    config.interior.spider.tolerance_rel = 1e-4
+    config.interior.spider.tsurf_rtol = 0.02
+    config.interior.spider.tsurf_atol = 100.0
+    config.interior.spider.ini_entropy = 2993.0
+    config.interior.spider.ini_dsdr = 0.0
+    config.interior.spider.mixing_length = 1
+    config.interior.spider.solver_type = 'cv_bdf'
+    config.interior.spider.conduction = True
+    config.interior.spider.convection = True
+    config.interior.spider.mixing = True
+    config.interior.spider.gravitational_separation = False
+    config.interior.spider.matprop_smooth_width = 0.1
+    config.interior.tidal_heat = False
+    config.interior.radiogenic_heat = False
+    config.interior.grain_size = 1e-3
+    config.interior.rheo_phi_loc = 0.4
+    config.interior.rheo_phi_wid = 0.15
+    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior.melting_dir = 'Wolf_Bower+2018'
+    config.outgas.fO2_shift_IW = 0.0
+    config.struct.corefrac = 0.55
+    config.struct.core_density = 12500.0
+    config.struct.core_heatcap = 880.0
+
+    dirs = {
+        'spider': str(spider_dir),
+        'output': str(output_dir) + '/',
+        'output/data': str(data_dir),
+        'proteus': str(tmp_path),
+    }
+
+    hf_row = {
+        'Time': 0.0,
+        'F_atm': 100.0,
+        'T_eqm': 255.0,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'T_magma': 3000.0,
+    }
+
+    mesh_path = None
+    if with_mesh:
+        N_b = 50
+        r_b = np.linspace(6.371e6, 6.371e6 * 0.55, N_b)
+        r_s = 0.5 * (r_b[:-1] + r_b[1:])
+        mesh_path = str(tmp_path / 'mesh.dat')
+        _make_mesh_file(mesh_path, r_b, r_s)
+
+    return dirs, config, hf_row, str(eos_base), str(mc_base), mesh_path
+
+
+@pytest.mark.unit
+def test_try_spider_init_with_mesh(tmp_path):
+    """_try_spider with IC_INTERIOR=1 and external mesh file.
+
+    Verifies that the EOS path resolution, melting curve validation,
+    and -MESH_SOURCE 1 arguments are correctly added to the call sequence.
+    """
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
+        tmp_path, with_mesh=True
+    )
+
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior.spider.sp.run') as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            dT_max=1000.0,
+            mesh_file=mesh_path,
+        )
+
+    assert result is True
+    call_args = mock_run.call_args[0][0]
+
+    # Verify mesh mode
+    assert '-MESH_SOURCE' in call_args
+    idx = call_args.index('-MESH_SOURCE')
+    assert call_args[idx + 1] == '1'
+    assert '-mesh_external_filename' in call_args
+
+    # Verify EOS files
+    assert '-melt_rho_filename' in call_args
+    assert '-solid_rho_filename' in call_args
+    assert '-melt_phase_boundary_filename' in call_args
+    assert '-solid_phase_boundary_filename' in call_args
+
+    # Verify coresize extracted from mesh (0.55)
+    idx = call_args.index('-coresize')
+    coresize_val = float(call_args[idx + 1])
+    assert pytest.approx(coresize_val, rel=1e-3) == 0.55
+
+
+@pytest.mark.unit
+def test_try_spider_init_aw(tmp_path):
+    """_try_spider with IC_INTERIOR=1, no mesh file (Adams-Williamson mode).
+
+    Verifies AW parameters are added instead of -MESH_SOURCE.
+    """
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
+
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior.spider.sp.run') as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            dT_max=1000.0,
+        )
+
+    assert result is True
+    call_args = mock_run.call_args[0][0]
+
+    # No MESH_SOURCE in AW mode
+    assert '-MESH_SOURCE' not in call_args
+    assert '-adams_williamson_rhos' in call_args
+    assert '-adams_williamson_beta' in call_args
+
+
+@pytest.mark.unit
+def test_try_spider_missing_eos_dir(tmp_path):
+    """Missing EOS directory raises FileNotFoundError."""
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, _, mc_base, _ = _setup_spider_env(tmp_path)
+
+    # Both FWL_DATA EOS path and SPIDER-local fallback (lookup_data/) are absent
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+    ):
+        with pytest.raises(FileNotFoundError, match='SPIDER EOS directory not found'):
+            _try_spider(
+                dirs,
+                config,
+                IC_INTERIOR=1,
+                hf_all=None,
+                hf_row=hf_row,
+                step_sf=1.0,
+                atol_sf=1.0,
+                dT_max=1000.0,
+            )
+
+
+@pytest.mark.unit
+def test_try_spider_missing_melting_curves(tmp_path):
+    """Missing melting curve files raise FileNotFoundError."""
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, _, _ = _setup_spider_env(tmp_path)
+
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', '/nonexistent/mc'),
+    ):
+        with pytest.raises(FileNotFoundError, match='SPIDER phase boundary file'):
+            _try_spider(
+                dirs,
+                config,
+                IC_INTERIOR=1,
+                hf_all=None,
+                hf_row=hf_row,
+                step_sf=1.0,
+                atol_sf=1.0,
+                dT_max=1000.0,
+            )
+
+
+@pytest.mark.unit
+def test_try_spider_eos_fallback_to_local(tmp_path):
+    """EOS dir resolves to SPIDER local fallback when FWL_DATA path missing."""
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, _, mc_base, _ = _setup_spider_env(tmp_path)
+
+    # Create fallback EOS in SPIDER local dir
+    local_eos = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
+    os.makedirs(local_eos)
+    for name in _EOS_FILE_NAMES:
+        _make_eos_table(os.path.join(local_eos, name))
+
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior.spider.sp.run') as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            dT_max=1000.0,
+        )
+
+    assert result is True
+    call_args = mock_run.call_args[0][0]
+    # EOS paths should reference the local fallback
+    idx = call_args.index('-melt_rho_filename')
+    assert '1TPa-dK09-elec-free' in call_args[idx + 1]
+
+
+@pytest.mark.unit
+def test_try_spider_subprocess_timeout(tmp_path):
+    """SPIDER subprocess timeout returns False."""
+    import subprocess as sub
+
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
+
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch(
+            'proteus.interior.spider.sp.run',
+            side_effect=sub.TimeoutExpired(cmd='spider', timeout=60),
+        ),
+    ):
+        result = _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            dT_max=1000.0,
+        )
+
+    assert result is False
+
+
+@pytest.mark.unit
+def test_blend_mesh_malformed_file(spider_json_dir):
+    """Malformed mesh file in blend_mesh_files should return 0.0."""
+    old_path = os.path.join(spider_json_dir, 'old.dat')
+    new_path = os.path.join(spider_json_dir, 'new.dat')
+
+    # Write malformed files
+    with open(old_path, 'w') as f:
+        f.write('garbage content\n')
+    with open(new_path, 'w') as f:
+        f.write('also garbage\n')
+
+    result = blend_mesh_files(old_path, new_path, max_shift=0.05)
+    assert result == 0.0

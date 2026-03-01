@@ -1,10 +1,8 @@
 """
-Unit tests for proteus.interior.zalmoxis.write_spider_mesh_file.
+Unit tests for proteus.interior.zalmoxis module.
 
-Validates SPIDER mesh file generation from Zalmoxis mantle profiles.
-The mesh file maps Zalmoxis radial structure (CMB to surface, ascending r)
-onto SPIDER's staggered finite-difference grid (surface to CMB, descending r)
-with negative gravity (SPIDER convention: inward-pointing).
+Validates SPIDER mesh file generation from Zalmoxis mantle profiles,
+Zalmoxis configuration building, and solidus/liquidus loading.
 
 Testing standards and documentation:
 - docs/test_infrastructure.md: Test infrastructure overview
@@ -13,9 +11,13 @@ Testing standards and documentation:
 
 Functions tested:
 - write_spider_mesh_file(): Interpolate Zalmoxis profiles onto SPIDER mesh
+- load_zalmoxis_configuration(): Build config dict from PROTEUS config
+- load_zalmoxis_solidus_liquidus_functions(): Load melting curves by EOS type
 """
 
 from __future__ import annotations
+
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -179,3 +181,121 @@ def test_write_spider_mesh_file(tmp_path):
     r_cmb = radii[0]
     assert r_basic[0] == pytest.approx(r_surf, rel=1e-10)
     assert r_basic[-1] == pytest.approx(r_cmb, rel=1e-10)
+
+
+# ============================================================================
+# test load_zalmoxis_configuration
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_zalmoxis_config_with_ice_layer():
+    """Config dict includes ice_layer when ice_layer_eos is set."""
+    from proteus.interior.zalmoxis import load_zalmoxis_configuration
+
+    config = MagicMock()
+    config.struct.mass_tot = 1.0
+    config.struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
+    config.struct.zalmoxis.ice_layer_eos = 'Seager2007:water'
+    config.struct.zalmoxis.coremassfrac = 0.325
+    config.struct.zalmoxis.mantle_mass_fraction = 0.0
+    config.struct.zalmoxis.temperature_mode = 'isothermal'
+    config.struct.zalmoxis.surface_temperature = 300
+    config.struct.zalmoxis.center_temperature = 5000
+    config.struct.zalmoxis.temperature_profile_file = None
+    config.struct.zalmoxis.num_levels = 200
+    config.struct.zalmoxis.max_iterations_outer = 50
+    config.struct.zalmoxis.tolerance_outer = 1e-3
+    config.struct.zalmoxis.max_iterations_inner = 100
+    config.struct.zalmoxis.tolerance_inner = 1e-6
+    config.struct.zalmoxis.relative_tolerance = 1e-8
+    config.struct.zalmoxis.absolute_tolerance = 1e-12
+    config.struct.zalmoxis.maximum_step = 100.0
+    config.struct.zalmoxis.adaptive_radial_fraction = 0.01
+    config.struct.zalmoxis.max_center_pressure_guess = 1e14
+    config.struct.zalmoxis.target_surface_pressure = 1e5
+    config.struct.zalmoxis.pressure_tolerance = 0.01
+    config.struct.zalmoxis.max_iterations_pressure = 20
+    config.struct.zalmoxis.verbose = False
+    config.struct.zalmoxis.iteration_profiles_enabled = False
+
+    hf_row = {
+        f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')
+    }
+
+    result = load_zalmoxis_configuration(config, hf_row)
+    assert 'ice_layer' in result['layer_eos_config']
+    assert result['layer_eos_config']['ice_layer'] == 'Seager2007:water'
+
+
+@pytest.mark.unit
+def test_zalmoxis_config_no_ice_layer():
+    """Config dict omits ice_layer when ice_layer_eos is empty."""
+    from proteus.interior.zalmoxis import load_zalmoxis_configuration
+
+    config = MagicMock()
+    config.struct.mass_tot = 1.0
+    config.struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
+    config.struct.zalmoxis.ice_layer_eos = ''
+    config.struct.zalmoxis.coremassfrac = 0.325
+    config.struct.zalmoxis.mantle_mass_fraction = 0.0
+    config.struct.zalmoxis.temperature_mode = 'isothermal'
+    config.struct.zalmoxis.surface_temperature = 300
+    config.struct.zalmoxis.center_temperature = 5000
+    config.struct.zalmoxis.temperature_profile_file = None
+    config.struct.zalmoxis.num_levels = 200
+    config.struct.zalmoxis.max_iterations_outer = 50
+    config.struct.zalmoxis.tolerance_outer = 1e-3
+    config.struct.zalmoxis.max_iterations_inner = 100
+    config.struct.zalmoxis.tolerance_inner = 1e-6
+    config.struct.zalmoxis.relative_tolerance = 1e-8
+    config.struct.zalmoxis.absolute_tolerance = 1e-12
+    config.struct.zalmoxis.maximum_step = 100.0
+    config.struct.zalmoxis.adaptive_radial_fraction = 0.01
+    config.struct.zalmoxis.max_center_pressure_guess = 1e14
+    config.struct.zalmoxis.target_surface_pressure = 1e5
+    config.struct.zalmoxis.pressure_tolerance = 0.01
+    config.struct.zalmoxis.max_iterations_pressure = 20
+    config.struct.zalmoxis.verbose = False
+    config.struct.zalmoxis.iteration_profiles_enabled = False
+
+    hf_row = {
+        f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')
+    }
+
+    result = load_zalmoxis_configuration(config, hf_row)
+    assert 'ice_layer' not in result['layer_eos_config']
+
+
+# ============================================================================
+# test load_zalmoxis_solidus_liquidus_functions
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_solidus_liquidus_non_tdep():
+    """Non-T-dependent EOS (Seager2007) returns None."""
+
+    from proteus.interior.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+
+    result = load_zalmoxis_solidus_liquidus_functions('Seager2007:silicate', MagicMock())
+    assert result is None
+
+
+@pytest.mark.unit
+def test_solidus_liquidus_rtpress():
+    """RTPress100TPa prefix triggers melting curve loading."""
+    from unittest.mock import patch
+
+    from proteus.interior.zalmoxis import load_zalmoxis_solidus_liquidus_functions
+
+    with patch(
+        'proteus.interior.zalmoxis.get_zalmoxis_melting_curves',
+        return_value=('solidus_fn', 'liquidus_fn'),
+    ) as mock_mc:
+        result = load_zalmoxis_solidus_liquidus_functions('RTPress100TPa_MgSiO3', MagicMock())
+
+    assert result == ('solidus_fn', 'liquidus_fn')
+    mock_mc.assert_called_once()
