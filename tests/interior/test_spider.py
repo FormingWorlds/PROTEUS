@@ -1,10 +1,8 @@
 """
-Unit tests for proteus.interior.spider module — entropy remapping and mesh blending.
+Unit tests for proteus.interior.spider module.
 
-Tests the Phase 2 entropy remap logic that corrects SPIDER's solution
-vector when the external mesh changes between timesteps (e.g. when
-Zalmoxis updates the density profile from the evolved temperature),
-and the mesh blending logic that clamps per-update radius shifts.
+Tests entropy remapping, mesh blending, mesh file I/O, core-size
+extraction, EOS range checking, and JSON solution rewriting.
 
 Testing standards and documentation:
 - docs/test_infrastructure.md: Test infrastructure overview
@@ -12,7 +10,10 @@ Testing standards and documentation:
 - docs/test_building.md: Best practices for test construction
 
 Functions tested:
+- _coresize_from_mesh(): Extract R_cmb/R_surf ratio from mesh file
+- _check_eos_table_range(): Warn on EOS table limits
 - _read_mesh_file(): Parse SPIDER external mesh file (all 8 columns)
+- _write_mesh_file(): Write SPIDER mesh file with full precision
 - _rewrite_json_solution(): Overwrite solution vector in SPIDER JSON
 - blend_mesh_files(): Clamp mesh shift by linear blending
 - remap_entropy_for_new_mesh(): Core remapping logic
@@ -30,7 +31,11 @@ import pytest
 
 from proteus.interior.spider import (
     RADIUS0,
+    _check_eos_table_range,
+    _coresize_from_mesh,
     _read_mesh_file,
+    _rewrite_json_solution,
+    _write_mesh_file,
     blend_mesh_files,
     remap_entropy_for_new_mesh,
 )
@@ -611,3 +616,217 @@ def test_remap_entropy_on_blended_mesh(spider_json_dir):
     S_expected = np.interp(r_s_blended[::-1], r_s_old[::-1], S_s_old[::-1])[::-1]
 
     np.testing.assert_allclose(S_recon_phys, S_expected, rtol=1e-12)
+
+
+# ============================================================================
+# test _coresize_from_mesh
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_coresize_from_mesh_earth_like(spider_json_dir):
+    """Earth-like mesh (coresize=0.55) should return correct ratio."""
+    N_b = 50
+    r_b = np.linspace(6.371e6, 6.371e6 * 0.55, N_b)
+    r_s = 0.5 * (r_b[:-1] + r_b[1:])
+    mesh_path = os.path.join(spider_json_dir, 'mesh.dat')
+    _make_mesh_file(mesh_path, r_b, r_s)
+
+    coresize = _coresize_from_mesh(mesh_path)
+    assert pytest.approx(coresize, rel=1e-6) == 0.55
+
+
+@pytest.mark.unit
+def test_coresize_from_mesh_small_core(spider_json_dir):
+    """CMF=0.1 (coresize~0.46) returns plausible ratio < 0.5."""
+    N_b = 20
+    r_b = np.linspace(8.0e6, 8.0e6 * 0.46, N_b)
+    r_s = 0.5 * (r_b[:-1] + r_b[1:])
+    mesh_path = os.path.join(spider_json_dir, 'mesh.dat')
+    _make_mesh_file(mesh_path, r_b, r_s)
+
+    coresize = _coresize_from_mesh(mesh_path)
+    assert pytest.approx(coresize, rel=1e-6) == 0.46
+
+
+@pytest.mark.unit
+def test_coresize_from_mesh_minimal(spider_json_dir):
+    """Minimal 3-node mesh still returns correct ratio."""
+    r_b = np.array([1e7, 7e6, 5e6])
+    r_s = np.array([8.5e6, 6e6])
+    mesh_path = os.path.join(spider_json_dir, 'mesh.dat')
+    _make_mesh_file(mesh_path, r_b, r_s)
+
+    coresize = _coresize_from_mesh(mesh_path)
+    assert pytest.approx(coresize, rel=1e-6) == 0.5
+
+
+# ============================================================================
+# test _write_mesh_file and round-trip with _read_mesh_file
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_write_mesh_file_roundtrip(spider_json_dir):
+    """Write and read back a mesh file, verifying full-precision round-trip."""
+    N_b = 50
+    r_b = np.linspace(6.371e6, 3.504e6, N_b)
+    r_s = 0.5 * (r_b[:-1] + r_b[1:])
+    P_b = np.linspace(1e5, 130e9, N_b)
+    rho_b = np.linspace(3500, 5500, N_b)
+    g_b = np.linspace(-9.81, -10.5, N_b)
+    P_s = 0.5 * (P_b[:-1] + P_b[1:])
+    rho_s = 0.5 * (rho_b[:-1] + rho_b[1:])
+    g_s = 0.5 * (g_b[:-1] + g_b[1:])
+
+    mesh_path = os.path.join(spider_json_dir, 'mesh.dat')
+    _write_mesh_file(mesh_path, r_b, P_b, rho_b, g_b, r_s, P_s, rho_s, g_s)
+
+    result = _read_mesh_file(mesh_path)
+    np.testing.assert_allclose(result[0], r_b, rtol=1e-14)
+    np.testing.assert_allclose(result[1], P_b, rtol=1e-14)
+    np.testing.assert_allclose(result[2], rho_b, rtol=1e-14)
+    np.testing.assert_allclose(result[3], g_b, rtol=1e-14)
+    np.testing.assert_allclose(result[4], r_s, rtol=1e-14)
+    np.testing.assert_allclose(result[5], P_s, rtol=1e-14)
+    np.testing.assert_allclose(result[6], rho_s, rtol=1e-14)
+    np.testing.assert_allclose(result[7], g_s, rtol=1e-14)
+
+
+@pytest.mark.unit
+def test_write_mesh_file_format(spider_json_dir):
+    """Verify the output file uses .15e format and correct header."""
+    r_b = np.array([6.371e6, 3.504e6])
+    r_s = np.array([4.937e6])
+    P_b = np.array([0.0, 1.377e11])
+    rho_b = np.array([3500.0, 5500.0])
+    g_b = np.array([-9.81, -10.5])
+    P_s = np.array([6.885e10])
+    rho_s = np.array([4500.0])
+    g_s = np.array([-10.15])
+
+    mesh_path = os.path.join(spider_json_dir, 'mesh.dat')
+    _write_mesh_file(mesh_path, r_b, P_b, rho_b, g_b, r_s, P_s, rho_s, g_s)
+
+    with open(mesh_path) as f:
+        header = f.readline()
+        first_line = f.readline()
+
+    assert header.strip() == '# 2 1'
+    # .15e format produces strings like "6.371000000000000e+06"
+    assert 'e+' in first_line or 'e-' in first_line
+
+
+# ============================================================================
+# test _rewrite_json_solution
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(not os.path.isfile(SPIDER_JSON), reason='SPIDER output not available')
+def test_rewrite_json_solution_updates_values(spider_json_dir):
+    """Verify that subdomain 0 and 1 values are correctly overwritten."""
+    test_json = _copy_json(spider_json_dir)
+
+    with open(test_json) as f:
+        orig = json.load(f)
+    n_basic = int(orig['solution']['subdomain data'][0]['size'])
+
+    new_dSdxi = np.linspace(-1.0, -0.5, n_basic)
+    new_S0 = 0.42
+
+    _rewrite_json_solution(test_json, new_dSdxi, new_S0)
+
+    with open(test_json) as f:
+        modified = json.load(f)
+    sd = modified['solution']['subdomain data']
+
+    # Check subdomain 0 updated
+    for i, v in enumerate(sd[0]['values']):
+        assert pytest.approx(float(v), rel=1e-15) == new_dSdxi[i]
+
+    # Check subdomain 1 updated
+    assert pytest.approx(float(sd[1]['values'][0]), rel=1e-15) == new_S0
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(not os.path.isfile(SPIDER_JSON), reason='SPIDER output not available')
+def test_rewrite_json_solution_preserves_structure(spider_json_dir):
+    """JSON structure and non-solution fields remain intact after rewrite."""
+    test_json = _copy_json(spider_json_dir)
+
+    with open(test_json) as f:
+        orig = json.load(f)
+
+    n_basic = int(orig['solution']['subdomain data'][0]['size'])
+    _rewrite_json_solution(test_json, np.zeros(n_basic), 1.0)
+
+    with open(test_json) as f:
+        modified = json.load(f)
+
+    # Non-solution fields preserved
+    assert modified['data']['radius_b']['scaling'] == orig['data']['radius_b']['scaling']
+    assert modified['step'] == orig['step']
+
+
+# ============================================================================
+# test _check_eos_table_range
+# ============================================================================
+
+
+def _make_eos_table(path, head=5, nx=10, ny=10, x_scale=1e9, y_scale=1.0, y_max=3000.0):
+    """Write a minimal fake P-S EOS table for testing."""
+    with open(path, 'w') as f:
+        f.write(f'# {head} {nx} {ny}\n')
+        for _ in range(head - 2):
+            f.write('# filler\n')
+        f.write(f'# {x_scale} {y_scale} 1.0\n')
+        y_min = 1000.0
+        dy = (y_max - y_min) / max(ny - 1, 1)
+        for j in range(ny):
+            y_val = y_min + j * dy
+            for i in range(nx):
+                f.write(f'{float(i) / nx} {y_val / y_scale} 5000.0\n')
+
+
+@pytest.mark.unit
+def test_check_eos_range_entropy_mismatch(spider_json_dir, caplog):
+    """Warn when solid entropy range is narrower than melt."""
+    eos_dir = spider_json_dir
+    _make_eos_table(os.path.join(eos_dir, 'density_solid.dat'), y_max=2400.0)
+    _make_eos_table(os.path.join(eos_dir, 'density_melt.dat'), y_max=3200.0)
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior.spider'):
+        _check_eos_table_range(eos_dir, None, 100e9)
+    assert any('narrower' in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_check_eos_range_high_pressure(spider_json_dir, caplog):
+    """Warn when CMB pressure exceeds 400 GPa."""
+    eos_dir = spider_json_dir
+    _make_eos_table(os.path.join(eos_dir, 'density_solid.dat'), y_max=2400.0)
+    _make_eos_table(os.path.join(eos_dir, 'density_melt.dat'), y_max=3200.0)
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior.spider'):
+        _check_eos_table_range(eos_dir, None, 500e9)
+    assert any('400 GPa' in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_check_eos_range_missing_files(spider_json_dir):
+    """Missing EOS files should return silently (non-critical check)."""
+    _check_eos_table_range(spider_json_dir, None, 500e9)  # No crash
+
+
+@pytest.mark.unit
+def test_check_eos_range_no_warnings(spider_json_dir, caplog):
+    """Safe conditions (equal ranges, P < 400 GPa) produce no warnings."""
+    eos_dir = spider_json_dir
+    _make_eos_table(os.path.join(eos_dir, 'density_solid.dat'), y_max=3200.0)
+    _make_eos_table(os.path.join(eos_dir, 'density_melt.dat'), y_max=3200.0)
+
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior.spider'):
+        _check_eos_table_range(eos_dir, None, 100e9)
+    spider_warnings = [r for r in caplog.records if 'spider' in r.name]
+    assert len(spider_warnings) == 0
