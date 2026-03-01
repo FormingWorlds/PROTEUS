@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gc
 import logging
 import os
 from datetime import datetime
@@ -346,6 +345,21 @@ class Proteus:
             self.loops['total'] = len(self.hf_all)
             self.init_stage = False
 
+            # Restore Zalmoxis mesh path for resumed SPIDER runs
+            if (
+                self.config.struct.module == 'zalmoxis'
+                and self.config.interior.module == 'spider'
+            ):
+                mesh_path = os.path.join(self.directories['output'], 'data', 'spider_mesh.dat')
+                if os.path.isfile(mesh_path):
+                    self.directories['spider_mesh'] = mesh_path
+                    prev_path = mesh_path + '.prev'
+                    if os.path.isfile(prev_path):
+                        self.directories['spider_mesh_prev'] = prev_path
+                    self.directories['mesh_shift_active'] = False
+                    self.directories['mesh_convergence_steps'] = 0
+                    log.info('Restored Zalmoxis mesh file: %s', mesh_path)
+
         log.info(' ')
 
         # Prepare star stuff
@@ -409,7 +423,7 @@ class Proteus:
                     self.last_struct_Tmagma,
                     self.last_struct_Phi,
                 )
-                gc.collect()
+                # gc.collect() already called inside update_structure_from_interior()
 
             ############### / INTERIOR AND STRUCTURE
 

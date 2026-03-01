@@ -278,7 +278,7 @@ cd "$workpath"
     --COPTFLAGS="-g -O3" \
     $mpi_flag \
     $blas_flag \
-    ${cflags:+"--CFLAGS=$cflags"} \
+    ${cflags:+"CFLAGS=$cflags"} \
     ${ldflags:+"LDFLAGS=$ldflags"}
 
 # -----------------------------------------------------------------------------

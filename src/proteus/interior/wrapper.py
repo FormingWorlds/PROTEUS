@@ -611,7 +611,16 @@ def update_structure_from_interior(
                 remap_entropy_for_new_mesh,
             )
 
-            sim_times = get_all_output_times(dirs['output'])
+            try:
+                sim_times = get_all_output_times(dirs['output'])
+            except Exception as exc:
+                log.warning(
+                    'Could not retrieve SPIDER output times from %s; '
+                    'skipping entropy remap: %s',
+                    dirs['output'],
+                    exc,
+                )
+                sim_times = []
             if len(sim_times) > 0:
                 latest_json = os.path.join(dirs['output'], 'data', '%.0f.json' % sim_times[-1])
                 remap_entropy_for_new_mesh(

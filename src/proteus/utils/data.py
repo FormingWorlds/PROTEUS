@@ -997,11 +997,16 @@ def _get_sufficient(config: Config, clean: bool = False):
     if hasattr(config, 'struct') and getattr(config.struct, 'module', None) == 'zalmoxis':
         # Static EOS (Seager2007) — always needed for Zalmoxis core
         download_eos_static()
-        download_Seager_EOS()
-        # Dynamic EOS — needed if mantle uses WolfBower2018
+        # Dynamic EOS — needed if mantle uses a T-dependent EOS
         mantle_eos = getattr(config.struct.zalmoxis, 'mantle_eos', '')
-        if mantle_eos.startswith('WolfBower2018'):
-            download_eos_dynamic('WolfBower2018_MgSiO3')
+        _dynamic_eos_map = {
+            'WolfBower2018': 'WolfBower2018_MgSiO3',
+            'RTPress100TPa': 'RTPress100TPa_MgSiO3',
+        }
+        for prefix, eos_dir in _dynamic_eos_map.items():
+            if mantle_eos.startswith(prefix):
+                download_eos_dynamic(eos_dir)
+                break
 
 
 def download_sufficient_data(config: Config, clean: bool = False):

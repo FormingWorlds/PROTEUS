@@ -136,7 +136,8 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     tuple or None
         (solidus_func, liquidus_func) if T-dependent EOS, else None.
     """
-    if mantle_eos == 'WolfBower2018:MgSiO3':
+    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+    if mantle_eos.startswith(_TDEP_PREFIXES):
         return get_zalmoxis_melting_curves(config)
     return None
 

@@ -30,7 +30,7 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 
 
-@pytest.mark.smoke
+@pytest.mark.integration
 def test_smoke_zalmoxis_spider_coupling():
     """Test Zalmoxis structure + SPIDER interior end-to-end (few timesteps).
 
