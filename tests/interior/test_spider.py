@@ -1173,3 +1173,339 @@ def test_blend_mesh_malformed_file(spider_json_dir):
 
     result = blend_mesh_files(old_path, new_path, max_shift=0.05)
     assert result == 0.0
+
+
+# ============================================================================
+# test MyJSON, get_all_output_times, read_jsons, interp_rho_melt
+# ============================================================================
+
+
+def _make_spider_json(filepath, step=0, sim_time=0.0, num_stag=10, num_basic=11):
+    """Write a minimal SPIDER-compatible JSON file for testing."""
+    import json as json_mod
+
+    n_s = num_stag
+    n_b = num_basic
+
+    data = {
+        'step': {'scaling': 1, 'units': 'None', 'values': [step]},
+        'atmosphere': {
+            'mass_liquid': {'scaling': 1, 'units': 'kg', 'values': [1e23]},
+            'mass_solid': {'scaling': 1, 'units': 'kg', 'values': [3e24]},
+            'mass_mantle': {'scaling': 1, 'units': 'kg', 'values': [4e24]},
+            'mass_core': {'scaling': 1, 'units': 'kg', 'values': [2e24]},
+            'temperature_surface': {'scaling': 1, 'units': 'K', 'values': [2500.0]},
+            'Fatm': {'scaling': 1, 'units': 'W/m2', 'values': [1e5]},
+        },
+        'rheological_front_phi': {
+            'phi_global': {'scaling': 1, 'units': 'None', 'values': [0.3]},
+        },
+        'rheological_front_dynamic': {
+            'depth': {'scaling': 1, 'units': 'm', 'values': [3e6]},
+        },
+        'data': {
+            'area_b': {'scaling': 1, 'units': 'm2', 'values': [5.1e14] * n_b},
+            'Hradio_s': {'scaling': 1, 'units': 'W/kg', 'values': [1e-12] * n_s},
+            'Htidal_s': {'scaling': 1, 'units': 'W/kg', 'values': [0.0] * n_s},
+            'mass_s': {'scaling': 1, 'units': 'kg', 'values': [4e23] * n_s},
+            'phi_s': {'scaling': 1, 'units': 'None', 'values': [0.5] * n_s},
+            'phi_b': {'scaling': 1, 'units': 'None', 'values': [0.5] * n_b},
+            'rho_s': {'scaling': 1, 'units': 'kg/m3', 'values': [4000.0] * n_s},
+            'radius_b': {
+                'scaling': 1,
+                'units': 'm',
+                'values': list(np.linspace(6.371e6, 3.48e6, n_b)),
+            },
+            'visc_b': {'scaling': 1, 'units': 'Pa.s', 'values': [1e21] * n_b},
+            'temp_s': {'scaling': 1, 'units': 'K', 'values': [2500.0] * n_s},
+            'pressure_s': {
+                'scaling': 1,
+                'units': 'Pa',
+                'values': list(np.linspace(0, 135e9, n_s)),
+            },
+            'volume_s': {'scaling': 1, 'units': 'm3', 'values': [1e18] * n_s},
+            'S_s': {'scaling': 1, 'units': 'J/(kg.K)', 'values': [2800.0] * n_s},
+            'Jconv_b': {'scaling': 1, 'units': 'W/m2', 'values': [1e4] * n_b},
+            'Jcond_b': {'scaling': 1, 'units': 'W/m2', 'values': [1e2] * n_b},
+        },
+    }
+
+    with open(filepath, 'w') as f:
+        json_mod.dump(data, f)
+
+
+@pytest.mark.unit
+def test_myjson_load_and_get(tmp_path):
+    """MyJSON loads a JSON file and provides dict access."""
+    from proteus.interior.spider import MyJSON
+
+    fpath = str(tmp_path / '0.json')
+    _make_spider_json(fpath, step=5)
+
+    jobj = MyJSON(fpath)
+    assert jobj.data_d is not None
+    assert jobj.get_dict(['step']) == {'scaling': 1, 'units': 'None', 'values': [5]}
+
+
+@pytest.mark.unit
+def test_myjson_missing_file(tmp_path):
+    """MyJSON sets data_d to None when file doesn't exist."""
+    from proteus.interior.spider import MyJSON
+
+    jobj = MyJSON(str(tmp_path / 'missing.json'))
+    assert jobj.data_d is None
+
+
+@pytest.mark.unit
+def test_myjson_get_dict_values(tmp_path):
+    """MyJSON.get_dict_values returns correctly scaled values."""
+    from proteus.interior.spider import MyJSON
+
+    fpath = str(tmp_path / '0.json')
+    _make_spider_json(fpath)
+
+    jobj = MyJSON(fpath)
+    # Scalar: temperature_surface (scaling=1, values=[2500.0])
+    t_surf = jobj.get_dict_values(('atmosphere', 'temperature_surface'))
+    assert t_surf == pytest.approx(2500.0)
+
+    # Array: pressure_s
+    p_s = jobj.get_dict_values(['data', 'pressure_s'])
+    assert len(p_s) == 10
+    assert p_s[0] == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_myjson_phase_boolean_arrays(tmp_path):
+    """MyJSON phase boolean arrays work for staggered and basic nodes."""
+    from proteus.interior.spider import MyJSON
+
+    fpath = str(tmp_path / '0.json')
+    _make_spider_json(fpath)
+
+    jobj = MyJSON(fpath)
+    # phi=0.5 everywhere → all mixed, no pure melt, no pure solid
+    mix = jobj.get_mixed_phase_boolean_array(nodes='staggered')
+    assert np.all(mix)
+    melt = jobj.get_melt_phase_boolean_array(nodes='basic')
+    assert not np.any(melt)
+    solid = jobj.get_solid_phase_boolean_array(nodes='basic_internal')
+    assert not np.any(solid)
+
+
+@pytest.mark.unit
+def test_get_all_output_times(tmp_path):
+    """get_all_output_times returns sorted times from JSON filenames."""
+    from proteus.interior.spider import get_all_output_times
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    # Create fake JSON files
+    for t in [100, 0, 500]:
+        (data_dir / f'{t}.json').write_text('{}')
+
+    times = get_all_output_times(str(tmp_path))
+    np.testing.assert_array_equal(times, [0, 100, 500])
+
+
+@pytest.mark.unit
+def test_get_all_output_times_empty(tmp_path):
+    """get_all_output_times raises on empty data directory."""
+    from proteus.interior.spider import get_all_output_times
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+
+    with pytest.raises(Exception, match='no files'):
+        get_all_output_times(str(tmp_path))
+
+
+@pytest.mark.unit
+def test_read_jsons(tmp_path):
+    """read_jsons loads MyJSON objects for given times."""
+    from proteus.interior.spider import read_jsons
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _make_spider_json(str(data_dir / '0.json'), step=0)
+    _make_spider_json(str(data_dir / '100.json'), step=1)
+
+    jsons = read_jsons(str(tmp_path), [0, 100, 999])
+    # 999 doesn't exist → skipped
+    assert len(jsons) == 2
+    assert jsons[0].data_d is not None
+
+
+@pytest.mark.unit
+def test_interp_rho_melt():
+    """interp_rho_melt returns a density value from a synthetic lookup table."""
+    from proteus.interior.spider import interp_rho_melt
+
+    # Create a 4x3x3 lookup: [nS, nP, 3] with columns (P, S, rho)
+    nP, nS = 3, 4
+    P_vals = np.linspace(0, 135e9, nP)
+    S_vals = np.linspace(2000, 3000, nS)
+    lookup = np.zeros((nS, nP, 3))
+    for j in range(nS):
+        for i in range(nP):
+            lookup[j, i, 0] = P_vals[i]
+            lookup[j, i, 1] = S_vals[j]
+            lookup[j, i, 2] = 3000.0 + 1e-9 * P_vals[i]
+
+    rho = interp_rho_melt(S=2500.0, P=50e9, lookup=lookup)
+    assert 3000 < rho < 3200
+    assert isinstance(rho, float)
+
+
+# ============================================================================
+# test RunSPIDER (wrapper with retry logic)
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_run_spider_success_first_attempt():
+    """RunSPIDER returns True when _try_spider succeeds on first attempt."""
+    from proteus.interior.spider import RunSPIDER
+
+    interior_o = MagicMock()
+    interior_o.ic = 1
+    interior_o.tides = np.zeros(10)
+
+    config = MagicMock()
+    config.interior.tidal_heat = False
+
+    with patch('proteus.interior.spider._try_spider', return_value=True):
+        result = RunSPIDER(
+            dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
+            config=config,
+            hf_all=None,
+            hf_row={'F_atm': 100.0, 'T_eqm': 255.0},
+            interior_o=interior_o,
+        )
+
+    assert result is True
+
+
+@pytest.mark.unit
+def test_run_spider_retry_then_success():
+    """RunSPIDER retries with relaxed tolerances after first failure."""
+    from proteus.interior.spider import RunSPIDER
+
+    interior_o = MagicMock()
+    interior_o.ic = 2
+    interior_o.tides = np.zeros(10)
+
+    config = MagicMock()
+    config.interior.tidal_heat = False
+
+    # Fail first attempt, succeed second
+    with patch('proteus.interior.spider._try_spider', side_effect=[False, True]) as mock_try:
+        result = RunSPIDER(
+            dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
+            config=config,
+            hf_all=None,
+            hf_row={'F_atm': 100.0, 'T_eqm': 255.0},
+            interior_o=interior_o,
+        )
+
+    assert result is True
+    assert mock_try.call_count == 2
+
+
+@pytest.mark.unit
+def test_run_spider_all_attempts_fail():
+    """RunSPIDER raises RuntimeError after max_attempts failures."""
+    from proteus.interior.spider import RunSPIDER
+
+    interior_o = MagicMock()
+    interior_o.ic = 1
+    interior_o.tides = np.zeros(10)
+
+    config = MagicMock()
+    config.interior.tidal_heat = False
+
+    with (
+        patch('proteus.interior.spider._try_spider', return_value=False),
+        patch('proteus.interior.spider.UpdateStatusfile'),
+        pytest.raises(RuntimeError, match='error occurred when executing SPIDER'),
+    ):
+        RunSPIDER(
+            dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
+            config=config,
+            hf_all=None,
+            hf_row={'F_atm': 100.0, 'T_eqm': 255.0},
+            interior_o=interior_o,
+        )
+
+
+@pytest.mark.unit
+def test_run_spider_tidal_heat_active():
+    """RunSPIDER limits dT_max when tidal heating is active."""
+    from proteus.interior.spider import RunSPIDER
+
+    interior_o = MagicMock()
+    interior_o.ic = 1
+    interior_o.tides = np.array([1e-5] * 10)  # > 1e-10
+
+    config = MagicMock()
+    config.interior.tidal_heat = True
+
+    with patch('proteus.interior.spider._try_spider', return_value=True) as mock_try:
+        RunSPIDER(
+            dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
+            config=config,
+            hf_all=None,
+            hf_row={'F_atm': 100.0, 'T_eqm': 255.0},
+            interior_o=interior_o,
+        )
+
+    # dT_max should be 4.0 (tidal heating limit)
+    call_kwargs = mock_try.call_args
+    assert call_kwargs[1].get('dT_max', call_kwargs[0][7]) == pytest.approx(4.0)
+
+
+# ============================================================================
+# test ReadSPIDER
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_read_spider_basic(tmp_path):
+    """ReadSPIDER extracts scalars and arrays from a SPIDER JSON file."""
+    from proteus.interior.common import Interior_t
+    from proteus.interior.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _make_spider_json(str(data_dir / '0.json'), step=0, num_stag=10, num_basic=11)
+
+    # Create a minimal lookup_rho_melt table
+    nP, nS = 3, 4
+    P_vals = np.linspace(0, 135e9, nP)
+    S_vals = np.linspace(2000, 3200, nS)
+    lookup = np.zeros((nS, nP, 3))
+    for j in range(nS):
+        for i in range(nP):
+            lookup[j, i, 0] = P_vals[i]
+            lookup[j, i, 1] = S_vals[j]
+            lookup[j, i, 2] = 4000.0
+
+    interior_o = Interior_t(11)
+    interior_o.lookup_rho_melt = lookup
+
+    config = MagicMock()
+    config.atmos_clim.prevent_warming = False
+
+    dirs = {
+        'output': str(tmp_path),
+        'output/data': str(data_dir),
+    }
+
+    sim_time, output = ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+
+    assert sim_time == 0
+    assert output['T_magma'] == pytest.approx(2500.0)
+    assert output['Phi_global'] == pytest.approx(0.3)
+    assert 0 <= output['Phi_global_vol'] <= 1.0
+    assert len(interior_o.phi) == 10
+    assert len(interior_o.radius) == 11
