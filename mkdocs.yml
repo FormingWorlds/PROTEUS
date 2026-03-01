@@ -25,7 +25,6 @@ nav:
     - Testing infrastructure: test_infrastructure.md
     - Test categorization: test_categorization.md
     - Test building: test_building.md
-    - Validation suite: validation.md
     - AI-assisted development: ai_usage.md
     - Docker CI architecture: docker_ci_architecture.md
   - Community:
