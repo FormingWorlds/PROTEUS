@@ -1188,7 +1188,7 @@ def _make_spider_json(filepath, step=0, sim_time=0.0, num_stag=10, num_basic=11)
     n_b = num_basic
 
     data = {
-        'step': {'scaling': 1, 'units': 'None', 'values': [step]},
+        'step': step,
         'atmosphere': {
             'mass_liquid': {'scaling': 1, 'units': 'kg', 'values': [1e23]},
             'mass_solid': {'scaling': 1, 'units': 'kg', 'values': [3e24]},
@@ -1244,7 +1244,7 @@ def test_myjson_load_and_get(tmp_path):
 
     jobj = MyJSON(fpath)
     assert jobj.data_d is not None
-    assert jobj.get_dict(['step']) == {'scaling': 1, 'units': 'None', 'values': [5]}
+    assert jobj.get_dict(['step']) == 5
 
 
 @pytest.mark.unit
@@ -1509,3 +1509,282 @@ def test_read_spider_basic(tmp_path):
     assert 0 <= output['Phi_global_vol'] <= 1.0
     assert len(interior_o.phi) == 10
     assert len(interior_o.radius) == 11
+
+
+@pytest.mark.unit
+def test_read_spider_prevent_warming(tmp_path):
+    """ReadSPIDER clamps F_int to 1e-8 when prevent_warming is True."""
+    from proteus.interior.common import Interior_t
+    from proteus.interior.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+    _make_spider_json(str(data_dir / '0.json'), step=0, num_stag=10, num_basic=11)
+
+    nP, nS = 3, 4
+    P_vals = np.linspace(0, 135e9, nP)
+    S_vals = np.linspace(2000, 3200, nS)
+    lookup = np.zeros((nS, nP, 3))
+    for j in range(nS):
+        for i in range(nP):
+            lookup[j, i, 0] = P_vals[i]
+            lookup[j, i, 1] = S_vals[j]
+            lookup[j, i, 2] = 4000.0
+
+    interior_o = Interior_t(11)
+    interior_o.lookup_rho_melt = lookup
+
+    config = MagicMock()
+    config.atmos_clim.prevent_warming = True
+
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    sim_time, output = ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+
+    # F_int clamped to at least 1e-8
+    assert output['F_int'] >= 1e-8
+
+
+@pytest.mark.unit
+def test_read_spider_nan_temperature(tmp_path):
+    """ReadSPIDER raises when T_magma is NaN."""
+    from proteus.interior.common import Interior_t
+    from proteus.interior.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+
+    # Create a JSON with NaN temperature_surface
+    fpath = str(data_dir / '0.json')
+    _make_spider_json(fpath, step=0, num_stag=10, num_basic=11)
+
+    # Patch the temperature to NaN
+    with open(fpath) as f:
+        jdata = json.load(f)
+    jdata['atmosphere']['temperature_surface']['values'] = [float('nan')]
+    with open(fpath, 'w') as f:
+        json.dump(jdata, f)
+
+    nP, nS = 3, 4
+    lookup = np.zeros((nS, nP, 3))
+    for j in range(nS):
+        for i in range(nP):
+            lookup[j, i, 0] = i * 45e9
+            lookup[j, i, 1] = 2000 + j * 400
+            lookup[j, i, 2] = 4000.0
+
+    interior_o = Interior_t(11)
+    interior_o.lookup_rho_melt = lookup
+
+    config = MagicMock()
+    config.atmos_clim.prevent_warming = False
+
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    with pytest.raises(Exception, match='NaN'):
+        ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+
+
+# ============================================================================
+# Additional MyJSON method coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_myjson_get_dict_units(tmp_path):
+    """MyJSON.get_dict_units returns units string or None for 'None'."""
+    from proteus.interior.spider import MyJSON
+
+    fpath = str(tmp_path / '0.json')
+    _make_spider_json(fpath)
+
+    jobj = MyJSON(fpath)
+    # temperature_surface has units='K'
+    units = jobj.get_dict_units(('atmosphere', 'temperature_surface'))
+    assert units == 'K'
+
+    # Fatm has units='W/m2'
+    units = jobj.get_dict_units(('atmosphere', 'Fatm'))
+    assert units == 'W/m2'
+
+    # phi_global has units='None' → should return None
+    units = jobj.get_dict_units(('rheological_front_phi', 'phi_global'))
+    assert units is None
+
+
+@pytest.mark.unit
+def test_myjson_get_dict_values_internal(tmp_path):
+    """MyJSON.get_dict_values_internal strips top and bottom nodes."""
+    from proteus.interior.spider import MyJSON
+
+    fpath = str(tmp_path / '0.json')
+    _make_spider_json(fpath, num_basic=11)
+
+    jobj = MyJSON(fpath)
+    # radius_b has 11 values; internal should strip first and last → 9
+    internal = jobj.get_dict_values_internal(['data', 'radius_b'])
+    assert len(internal) == 9
+
+
+@pytest.mark.unit
+def test_myjson_phase_boolean_all_branches(tmp_path):
+    """Phase boolean arrays work for basic, basic_internal, and staggered."""
+    from proteus.interior.spider import MyJSON
+
+    fpath = str(tmp_path / '0.json')
+    _make_spider_json(fpath, num_stag=10, num_basic=11)
+
+    jobj = MyJSON(fpath)
+
+    # Test all node types for each phase method
+    for method_name in (
+        'get_mixed_phase_boolean_array',
+        'get_melt_phase_boolean_array',
+        'get_solid_phase_boolean_array',
+    ):
+        method = getattr(jobj, method_name)
+        for nodes in ('basic', 'basic_internal', 'staggered'):
+            result = method(nodes=nodes)
+            assert isinstance(result, np.ndarray), f'{method_name}({nodes}) failed'
+            if nodes == 'basic':
+                assert len(result) == 11
+            elif nodes == 'basic_internal':
+                assert len(result) == 9
+            elif nodes == 'staggered':
+                assert len(result) == 10
+
+
+# ============================================================================
+# blend_mesh_files: node count mismatch branch
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_blend_mesh_node_count_mismatch(spider_json_dir, caplog):
+    """blend_mesh_files returns 0.0 when old and new meshes have different node counts."""
+    import logging
+
+    # Create two mesh files with different node counts
+    N_b_old = 50
+    r_b_old = np.linspace(6.371e6, 3.48e6, N_b_old)
+    r_s_old = 0.5 * (r_b_old[:-1] + r_b_old[1:])
+    old_path = os.path.join(spider_json_dir, 'old_50.dat')
+    _make_mesh_file(old_path, r_b_old, r_s_old)
+
+    N_b_new = 30  # Different count
+    r_b_new = np.linspace(6.371e6, 3.48e6, N_b_new)
+    r_s_new = 0.5 * (r_b_new[:-1] + r_b_new[1:])
+    new_path = os.path.join(spider_json_dir, 'new_30.dat')
+    _make_mesh_file(new_path, r_b_new, r_s_new)
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior.spider'):
+        result = blend_mesh_files(old_path, new_path, max_shift=0.05)
+
+    assert result == 0.0
+    assert 'node count changed' in caplog.text.lower()
+
+
+# ============================================================================
+# _try_spider with IC_INTERIOR=2 (resume path)
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_try_spider_resume_ic2(tmp_path):
+    """_try_spider with IC_INTERIOR=2 reads JSON to get step number."""
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
+
+    # IC_INTERIOR=2 needs a JSON file at the current time
+    hf_row['Time'] = 100.0
+    _make_spider_json(str(tmp_path / 'output' / 'data' / '100.json'), step=5)
+
+    import pandas as pd
+
+    hf_all = pd.DataFrame(
+        {
+            'Time': [0.0, 50.0, 100.0],
+            'T_magma': [3000.0, 2800.0, 2600.0],
+        }
+    )
+
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior.spider.next_step', return_value=50.0),
+        patch('proteus.interior.spider.sp.run') as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=2,
+            hf_all=hf_all,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            dT_max=1000.0,
+        )
+
+    assert result is True
+    call_args = mock_run.call_args[0][0]
+    # IC=2 sets nstepsmacro from step + nsteps (step=5, nsteps=1)
+    idx = call_args.index('-nstepsmacro')
+    assert call_args[idx + 1] == '6'
+
+
+# ============================================================================
+# _try_spider with radiogenic_heat=True
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_try_spider_radiogenic_heat(tmp_path):
+    """_try_spider adds radionuclide flags when radiogenic_heat is True."""
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
+
+    # Enable radiogenic heat
+    config.interior.radiogenic_heat = True
+    config.delivery.radio_tref = 4.5  # Gyr
+    config.star.age_ini = 0.1  # Gyr
+    config.delivery.radio_K = 240e-9  # ppm
+    config.delivery.radio_Th = 80e-9
+    config.delivery.radio_U = 20e-9
+
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior.spider.radnuc_data',
+            {
+                'k40': {'abundance': 1.17e-4, 'heatprod': 2.92e-5, 'halflife': 1.25e9},
+                'th232': {'abundance': 1.0, 'heatprod': 2.64e-5, 'halflife': 1.40e10},
+                'u235': {'abundance': 7.2e-3, 'heatprod': 5.69e-4, 'halflife': 7.04e8},
+                'u238': {'abundance': 0.9928, 'heatprod': 9.46e-5, 'halflife': 4.47e9},
+            },
+        ),
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            dT_max=1000.0,
+        )
+
+    assert result is True
+    call_args = mock_run.call_args[0][0]
+
+    # Radionuclide flags should be present
+    assert '-radionuclide_names' in call_args
+    assert '-k40_t0' in call_args
+    assert '-th232_t0' in call_args
+    assert '-u235_t0' in call_args
