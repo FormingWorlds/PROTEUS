@@ -365,6 +365,9 @@ PROTEUS is the orchestrator; each module is a separate GitHub repository:
 
 **Implication**: Changes may require coordinated updates across repositories
 
+### Fork Policy
+All ecosystem repos live under the **FormingWorlds** GitHub organisation (or contributor forks like `nichollsh/`). When creating PRs, **always target the FormingWorlds fork** (or the contributor fork we cloned from). Never open PRs against upstream/original repositories (e.g. `djbower/spider`). Check `git remote -v` to confirm `origin` points to the correct fork before pushing or creating PRs.
+
 ### Testing Standards Apply Ecosystem-Wide
 All modules follow same standards:
 - Test structure mirrors source
