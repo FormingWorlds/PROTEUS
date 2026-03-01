@@ -213,9 +213,9 @@ def _write_mesh_file(
     with open(mesh_path, 'w') as f:
         f.write(f'# {len(r_b)} {len(r_s)}\n')
         for i in range(len(r_b)):
-            f.write(f'{r_b[i]:.6f} {P_b[i]:.6e} {rho_b[i]:.6f} {g_b[i]:.6f}\n')
+            f.write(f'{r_b[i]:.15e} {P_b[i]:.15e} {rho_b[i]:.15e} {g_b[i]:.15e}\n')
         for i in range(len(r_s)):
-            f.write(f'{r_s[i]:.6f} {P_s[i]:.6e} {rho_s[i]:.6f} {g_s[i]:.6f}\n')
+            f.write(f'{r_s[i]:.15e} {P_s[i]:.15e} {rho_s[i]:.15e} {g_s[i]:.15e}\n')
 
 
 def blend_mesh_files(old_path: str, new_path: str, max_shift: float = 0.05) -> float:

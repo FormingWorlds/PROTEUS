@@ -210,6 +210,7 @@ def determine_interior_radius_with_zalmoxis(
 
     # Mesh convergence starts inactive (no blending needed at init)
     dirs['mesh_shift_active'] = False
+    dirs['mesh_convergence_steps'] = 0
 
     # NOTE: run_interior runs with the *original* temperature_mode (restored
     # by the finally block above), not the overridden 'adiabatic'.  This is
@@ -563,13 +564,37 @@ def update_structure_from_interior(
             spider_mesh_file,
             max_shift=config.struct.mesh_max_shift,
         )
-        dirs['mesh_shift_active'] = actual_shift > config.struct.mesh_max_shift
-        if dirs['mesh_shift_active']:
-            log.info(
-                'Mesh convergence active: shift %.1f%% clamped to %.1f%%',
-                actual_shift * 100,
-                config.struct.mesh_max_shift * 100,
-            )
+        still_converging = actual_shift > config.struct.mesh_max_shift
+
+        # Track convergence steps; give up after 20 consecutive blends
+        # to avoid infinite rapid-update loops when Zalmoxis and SPIDER
+        # persistently disagree (e.g. extreme mass / low CMF)
+        max_convergence_steps = 20
+        n_conv = dirs.get('mesh_convergence_steps', 0)
+        if still_converging:
+            n_conv += 1
+            if n_conv > max_convergence_steps:
+                log.warning(
+                    'Mesh convergence did not complete after %d steps '
+                    '(shift still %.1f%%), reverting to normal triggers',
+                    max_convergence_steps,
+                    actual_shift * 100,
+                )
+                still_converging = False
+                n_conv = 0
+            else:
+                log.info(
+                    'Mesh convergence step %d/%d: shift %.1f%% clamped to %.1f%%',
+                    n_conv,
+                    max_convergence_steps,
+                    actual_shift * 100,
+                    config.struct.mesh_max_shift * 100,
+                )
+        else:
+            n_conv = 0
+
+        dirs['mesh_shift_active'] = still_converging
+        dirs['mesh_convergence_steps'] = n_conv
 
         # Update .prev for next iteration
         if not prev_path:
@@ -594,6 +619,10 @@ def update_structure_from_interior(
                     new_mesh_file=spider_mesh_file,
                     radius_phys=hf_row['R_int'],
                 )
+    else:
+        # No mesh file produced — reset convergence state
+        dirs['mesh_shift_active'] = False
+        dirs['mesh_convergence_steps'] = 0
 
     # Clean up temporary arrays
     del r_stag, r_ascending, T_ascending, r_full, T_full
