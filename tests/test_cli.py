@@ -50,3 +50,9 @@ def test_get():
 
     response = runner.invoke(cli.get, ['muscles', '--star', 'trappist-1'])
     assert response.exit_code == 0
+
+    response = runner.invoke(cli.get, ['phoenix', '--feh', '0.0', '--alpha', '0.0'])
+    assert response.exit_code == 0
+
+    response = runner.invoke(cli.get, ['solar'])
+    assert response.exit_code == 0

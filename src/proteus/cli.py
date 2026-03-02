@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from difflib import get_close_matches
+from pathlib import Path
 
 # Prevent workers from using each other's CPUs to avoid
 #     oversubscription and improve performance
@@ -15,7 +16,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 
 import click
 
@@ -357,11 +357,37 @@ def phoenix(FeH: float, alpha: float, teff: float | None):
 @click.command()
 def solar():
     """Download the available solar spectra."""
-    from .utils.data import download_stellar_spectra
+    from .utils.data import GetFWLData, download_stellar_spectra
 
-    ok = download_stellar_spectra(folders='solar')
-    if not ok:
-        raise click.ClickException('Failed to download solar spectra.')
+    # Where the data should end up
+    solar_dir = GetFWLData() / 'stellar_spectra' / 'solar'
+
+    try:
+        download_stellar_spectra(folders=('solar',))
+    except Exception as e:
+        raise click.ClickException(f'Failed to download solar spectra: {e}') from e
+
+    # Did we actually get files?
+    if solar_dir.exists():
+        files = sorted(p for p in solar_dir.rglob('*') if p.is_file())
+        if files:
+            click.secho('Solar spectra downloaded successfully.', fg='green')
+            click.echo(f'Location: {solar_dir}')
+            return
+
+    # If we get here, the downloader didn't raise but we can't find files.
+    log_dir = GetFWLData()
+    zenodo_log = log_dir / 'zenodo_download.log'
+    validate_log = log_dir / 'zenodo_validate.log'
+
+    msg = (
+        'Solar download finished without an exception, but no files were found where expected.\n'
+        f'Expected: {solar_dir}\n'
+        f'Check logs:\n'
+        f'  - {zenodo_log}\n'
+        f'  - {validate_log}'
+    )
+    raise click.ClickException(msg)
 
 
 @click.command()
