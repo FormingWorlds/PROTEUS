@@ -175,9 +175,13 @@ def determine_interior_radius_with_zalmoxis(
     int_o = Interior_t(nlev_b, spider_dir=spider_dir, eos_dir=config.interior.eos_dir)
     int_o.ic = 1
 
-    # Default to adiabatic temperature mode for SPIDER + T-dependent mantle EOS.
-    # This produces a self-consistent adiabat that matches SPIDER's initial
-    # entropy profile, avoiding large mesh shifts on the first Phase 2 update.
+    # Set Zalmoxis to 'adiabatic' mode for T-dependent mantle EOS.
+    # NOTE: In practice, Zalmoxis converges the structure using a linear T
+    # guess and breaks on mass convergence BEFORE the adiabat gate activates.
+    # The adiabat flag is still set so that (a) the correct EOS code paths
+    # are selected inside Zalmoxis, and (b) standalone Zalmoxis can use the
+    # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
+    # through entropy evolution, so the linear T initial guess is fine.
     _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
     _orig_temp_mode = config.struct.zalmoxis.temperature_mode
     if (
