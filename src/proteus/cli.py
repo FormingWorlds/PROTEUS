@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from difflib import get_close_matches
 
 # Prevent workers from using each other's CPUs to avoid
 #     oversubscription and improve performance
@@ -177,8 +178,8 @@ def stellar():
     download_stellar_spectra()
 
 
-# muscles and solar star names available online (on zenodo)
-STARS_ONLINE = {
+# MUSCLES and solar star names available online (on Zenodo)
+STARS_ONLINE: dict[str, list[str]] = {
     'muscles': [
         'gj1132',
         'gj1214',
@@ -217,8 +218,51 @@ STARS_ONLINE = {
         'wasp-43',
         'wasp-77a',
     ],
-    'nrel': ['sun'],
+    'solar': [
+        'sun',
+        'sun0.6ga',
+        'sun1.8ga',
+        'sun2.4ga',
+        'sun2.7ga',
+        'sun3.8ga',
+        'sun4.4ga',
+        'sun5.6gyr',
+        'sunmodern',
+    ],
 }
+
+
+def normalize_star_name(star_name: str | None) -> str | None:
+    """Normalize user input to match our canonical star IDs."""
+    if not star_name:
+        return None
+    # Keep it conservative: lowercase + strip. (Add more rules later if desired.)
+    return star_name.lower().strip()
+
+
+def validate_star_name(star_name: str | None, *, catalog: str = 'muscles') -> str | None:
+    """Validate and return a normalized star name.
+
+    Raises a ClickException with "did you mean" suggestions if the star is unknown.
+    """
+    norm = normalize_star_name(star_name)
+    if not norm:
+        return None
+
+    if catalog not in STARS_ONLINE:
+        raise click.ClickException(
+            f"Unknown catalog '{catalog}'. Available: {', '.join(sorted(STARS_ONLINE))}."
+        )
+
+    choices = sorted(set(STARS_ONLINE[catalog]))
+    if norm not in choices:
+        suggestions = get_close_matches(norm, choices, n=8, cutoff=0.6)
+        hint = f' Did you mean: {", ".join(suggestions)}?' if suggestions else ''
+        raise click.ClickException(
+            f"Unknown {catalog.upper()} star '{star_name}'.{hint} "
+            f'Use --list to see all available names.'
+        )
+    return norm
 
 
 @click.command()
@@ -237,16 +281,31 @@ STARS_ONLINE = {
     default=False,
     help='Download all available MUSCLES spectra.',
 )
-def muscles(star_name: str | None, download_all: bool):
+@click.option(
+    '--list',
+    'list_stars',
+    is_flag=True,
+    default=False,
+    help='List available MUSCLES star names and exit.',
+)
+def muscles(star_name: str | None, download_all: bool, list_stars: bool):
     """Download MUSCLES stellar spectrum(s)."""
     from .utils.data import download_muscles
 
+    if list_stars:
+        for s in STARS_ONLINE['muscles']:
+            click.echo(s)
+        return
+
     if download_all:
+        if star_name:
+            raise click.ClickException('Use either --all or --star NAME (not both).')
         targets = STARS_ONLINE['muscles']
     else:
         if not star_name:
             raise click.ClickException('Provide --star NAME or use --all.')
-        targets = [star_name]
+        star = validate_star_name(star_name, catalog='muscles')
+        targets = [star]
 
     ok, failed = 0, []
 
@@ -297,12 +356,12 @@ def phoenix(FeH: float, alpha: float, teff: float | None):
 
 @click.command()
 def solar():
-    """Download the NREL modern solar spectrum."""
-    from .utils.data import download_solar_spectrum
+    """Download the available solar spectra."""
+    from .utils.data import download_stellar_spectra
 
-    ok = download_solar_spectrum()
+    ok = download_stellar_spectra(folders='solar')
     if not ok:
-        raise click.ClickException('Failed to download solar spectrum.')
+        raise click.ClickException('Failed to download solar spectra.')
 
 
 @click.command()
