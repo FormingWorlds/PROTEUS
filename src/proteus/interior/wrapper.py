@@ -539,7 +539,10 @@ def update_structure_from_interior(
     # Save current mesh as baseline for blending
     prev_path = dirs.get('spider_mesh_prev')
     current_mesh = dirs.get('spider_mesh')
-    if current_mesh and os.path.isfile(current_mesh) and prev_path:
+    if current_mesh and os.path.isfile(current_mesh):
+        if not prev_path:
+            prev_path = current_mesh + '.prev'
+            dirs['spider_mesh_prev'] = prev_path
         shutil.copy2(current_mesh, prev_path)
 
     try:

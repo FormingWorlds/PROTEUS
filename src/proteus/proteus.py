@@ -282,6 +282,12 @@ class Proteus:
                 self.directories['output'],
             )
 
+            # Initialize structure-update sentinels so the first dynamic
+            # update uses the post-init state as its baseline
+            self.last_struct_time = 0.0
+            self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
+            self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+
             # Store partial pressures and list of included volatiles
             inc_gases = []
             for s in vol_list:
@@ -359,6 +365,11 @@ class Proteus:
                     self.directories['mesh_shift_active'] = False
                     self.directories['mesh_convergence_steps'] = 0
                     log.info('Restored Zalmoxis mesh file: %s', mesh_path)
+
+            # Initialize structure-update sentinels from last helpfile row
+            self.last_struct_time = self.hf_row.get('Time', 0.0)
+            self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
+            self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
 
         log.info(' ')
 
