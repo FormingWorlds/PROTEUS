@@ -66,9 +66,11 @@ REFRACTORY_GASES = (
 
 def make_vmr_dataframe(file,relevant_gases):
 
-    atm_profile = read_ncdf_profile(file, extra_keys=['pl','x_gas'])
+    atm_profile = read_ncdf_profile(file, extra_keys=['x_gas'])
 
-    parr = atm_profile['pl'][:-1]* 1e-5  # convert to bar
+    parr = atm_profile['p'] [1::2]* 1e-5  # convert to bar and select only pressures at center of layers
+    print(parr)
+    print(len(parr))
     df = pd.DataFrame(parr, columns=["Pbar"])
 
     for i, gas in enumerate(relevant_gases):
@@ -116,11 +118,11 @@ def get_chem_atmosphere(runname: str, nsamp: int, relevant_gases: list = None):
 
 def create_tp_df(file):
 
-    atm_profile = read_ncdf_profile(file, extra_keys=['pl','tmpl'])
-    parr = atm_profile['pl'][:-1] * 1e-5
+    atm_profile = read_ncdf_profile(file, extra_keys=[])
+    parr = atm_profile['p'][1::2]* 1e-5  # convert to bar and select only pressures at center of layers
     print(len(parr))
     df = pd.DataFrame(parr, columns=["Pbar"])
-    df['temperature[K]']=atm_profile['tmpl'][:-1]
+    df['temperature[K]']=atm_profile['t'][1::2] # again, select only temperatures at center of layers
 
     return df
 
