@@ -7,6 +7,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import sys
 from typing import TYPE_CHECKING
 
 import matplotlib as mpl
@@ -633,8 +634,8 @@ def plot_two_chemistries(output_dir1,output_dir2, extension, tmin, nsamp):
 
 if __name__ == "__main__":
 
-    output_dir1=sys.argv[1]
-    #output_dir2=sys.argv[2]
+    output_dir=sys.argv[1]
+
 
     #plot_atmosphere_comparison(output_dir1, output_dir2, tmin=1e4, extension="_atm.nc", nsamp=5, plot_format="png")
     #plot_two_chemistries(output_dir1,output_dir2, extension="_atm.nc",  tmin=1e4, nsamp=5)

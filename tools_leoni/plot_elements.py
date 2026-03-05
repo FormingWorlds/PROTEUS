@@ -4,34 +4,23 @@
 # Import utils-specific modules
 from __future__ import annotations
 
-import glob
 import logging
 import os
 import sys
-import subprocess
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import numpy as np
-from cmcrameri import cm
-from matplotlib.ticker import LogLocator, MultipleLocator
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 mpl.use('Agg')  # noqa
-from string import ascii_letters
 
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import vol_list, element_list
-from proteus.utils.helper import find_nearest
-from proteus.utils.plot import get_colour, latexify, sample_times
+from proteus.utils.constants import element_list
+from proteus.utils.plot import get_colour
 
 if TYPE_CHECKING:
-    from proteus.config import Config
+    pass
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -52,7 +41,7 @@ def plot_atmosphere(output_dir):
     ax.set_xlabel("time")
     ax.set_yscale("log")
     ax.set_xscale("log")
-    
+
 
     for e in element_list:
         color = get_colour(e)
@@ -79,7 +68,7 @@ def plot_fO2_shift(output_dir):
     ax.set_ylabel("fO2 shift wrt IW buffer")
     ax.set_xlabel("time")
     ax.set_xscale("log")
- 
+
     color = 'black'
     ax.plot(df['Time'], df['fO2_shift'], color=color, linestyle='-',label='fO2_shift dIW', alpha=alpha, zorder=3)
 

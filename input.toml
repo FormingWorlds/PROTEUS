@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "gridrun_-5IW_0.1AU_2Hocean_1CH_true"
+        path        = "gridrun_-5IW_0.01AU_1Hocean_1CH_false"
         logging     = "INFO"
         plot_mod    = 3     # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -128,7 +128,7 @@ version = "2.0"
 [orbit]
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
     instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
-    semimajoraxis = 0.1         # initial semi-major axis of planet's orbit [AU]
+    semimajoraxis = "0.01"         # initial semi-major axis of planet's orbit [AU]
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
     zenith_angle = 48.19        # characteristic zenith angle [degrees]
     s0_factor = 0.375           # instellation scale factor [dimensionless]
@@ -318,12 +318,12 @@ version = "2.0"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = -5.0         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
+    fO2_shift_IW    = "-5"         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
 
-    silicates = true
+    silicates = "false"
     fastchempath = '/data3/leoni/LavAtmos/FastChem/fastchem3/'
     elementfile = '/data3/leoni/LavAtmos/input/fastchem3/'
-    vaplist = ["SiO", "SiO2", "Si", "Na", "K", "Ti", "TiO", "TiO2", "Mg", "MgO", "Al", "HAlO2", "SiH", "SiH4", "Fe", "FeO"]
+    vaplist = ["SiO", "SiO2","Si", "Na", "K", "Ti", "TiO", "TiO2" , "Mg", "MgO", "Al", "HAlO2", "SiH","SiH4"]
 
     module = "calliope"         # Which outgassing module to use
 
@@ -367,11 +367,11 @@ version = "2.0"
         use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
         metallicity = 1000	 # metallicity relative to solar metallicity
 
-        H_oceans    = 2.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_oceans    = "1"       # Hydrogen inventory in units of equivalent Earth oceans
         # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
         # H_kg       = 1e20       # Hydrogen inventory in kg
 
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        CH_ratio    = "1"       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw     = 0.0        # Carbon inventory in ppmw relative to mantle mass
         # C_kg       = 1e20       # Carbon inventory in kg
 
