@@ -325,8 +325,8 @@ def muscles(star_name: str | None, download_all: bool, list_stars: bool):
 
 
 @click.command()
-@click.option('--feh', 'FeH', required=True, type=float, help='Metallicity [Fe/H].')
-@click.option('--alpha', required=True, type=float, help='Alpha enhancement [alpha/M].')
+@click.option('--feh', 'FeH', required=True, type=float, help='Stellar metallicity [Fe/H]. Solar is 0.0, subsolar is negative, supersolar is positive. Input will automatically be rounded to the nearest allowed grid value.')
+@click.option('--alpha', required=True, type=float, help='Stellar alpha enhancement [alpha/M]. Solar is 0.0, subsolar is negative, supersolar is positive. Input will automatically be rounded to the nearest allowed grid value for the given [Fe/H].')
 @click.option(
     '--teff',
     required=False,
