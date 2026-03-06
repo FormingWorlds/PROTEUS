@@ -63,6 +63,18 @@ REFRACTORY_GASES = (
     'SiH4',
 )
 
+GASES_ARCiS=('CO',
+    'H2O',
+    'N2',
+    'O2',
+    'H',
+    'SO',
+    'CH4',
+    'CO2',
+    'H2',
+    'H2S',
+    'SO2')
+
 
 def make_vmr_dataframe(file,relevant_gases):
 
@@ -109,11 +121,15 @@ def get_chem_atmosphere(runname: str, nsamp: int, relevant_gases: list = None):
         log.warning('No atmosphere NetCDF files found in output folder')
         return
 
+    paths=[]
     for i,file in enumerate(files):
         time = sample_times[i]
         vmrs = make_vmr_dataframe(file,relevant_gases)
         fpath = os.path.join(output_dir,'vmrs_time_%s'%time+'.dat')
         vmrs.to_csv(fpath,sep='\t',index=False)
+        paths.append(fpath)
+
+    return paths
 
 
 def create_tp_df(file):
@@ -123,7 +139,6 @@ def create_tp_df(file):
     print(len(parr))
     df = pd.DataFrame(parr, columns=["Pbar"])
     df['temperature[K]']=atm_profile['t'][1::2] # again, select only temperatures at center of layers
-
     return df
 
 
@@ -140,16 +155,76 @@ def get_tps(runname: str, nsamp: int):
         allfiles = glob.glob(os.path.join(input_dir, 'data', '*_atm.nc'))
         files=[natural_sort(allfiles)[-1]]
 
+    paths=[]
     for i,file in enumerate(files):
         df= create_tp_df(file)
         time=sample_times[i]
         fpath = os.path.join(output_dir, 'tp_time_%s'%time+'.dat')
         df.to_csv(fpath,sep='\t',index=False)
+        paths.append(fpath)
+
+    return paths
 
 
+
+def config_ARCiS(input_file, tp_file_path, vmr_file_path, species):
+
+    '''function which modifies the ARCiS input file by updating the elementfile from which the abundances are read
+    Input Tsurf is not mandatory since then ARCiS will converge to s surface temperature itself'''
+
+
+    vmrs=pd.read_csv(vmr_file_path,sep='\t').iloc[0]
+
+    tp=pd.read_csv(tp_file_path,sep='\t')
+    Psurf=tp['Pbar'][0]
+    Tsurface=tp['temperature[K]'][0]
+
+    output_lines = []
+
+    with open(input_file, "r") as f:
+        for line in f:
+            stripped_line = line.strip()
+            key = stripped_line.split("=")[0]
+            replaced = False
+
+            if key in species:
+                output_lines.append(f"{key}={vmrs[key]}\n")
+                print(f"{key}={vmrs[key]}")
+                replaced=True
+
+            if replaced:
+                continue
+
+            if key=="TPfile":
+                output_lines.append(f"TPfile={tp_file_path}\n")
+
+            elif key=="pmax":
+                output_lines.append("pmax="+str(Psurf)+"d0\n")
+
+            elif key=="Pp":
+                output_lines.append("Pp="+str(Psurf)+"d0\n")
+
+            elif key=="Tsurface":
+                output_lines.append("Tsurface="+str(Tsurface)+"d0\n")
+
+            else:
+                output_lines.append(line)
+
+    print(output_lines)
+    # Write the updated lines back to the file
+    with open(input_file, "w") as f:
+        f.writelines(output_lines)
 
 if __name__ == "__main__":
     runname=sys.argv[1]
     nsamp = 5
-    get_chem_atmosphere(runname,nsamp)
-    get_tps(runname,nsamp)
+    vmrpaths=get_chem_atmosphere(runname,nsamp)
+    tppaths=get_tps(runname,nsamp)
+
+    tp_file_path=tppaths[0]
+    vmr_file_path=vmrpaths[0]
+
+    species=list(GASES_ARCiS)
+
+    input_file='/data3/leoni/ARCiS/input_PROTEUS.dat'
+    config_ARCiS(input_file, tp_file_path, vmr_file_path, species)
