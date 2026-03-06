@@ -205,6 +205,37 @@ git clone git@github.com:FormingWorlds/ZEPHYRUS
 python -m pip install -e ZEPHYRUS/.
 ```
 
+**Zalmoxis** (planetary interior structure):
+
+```console
+git clone git@github.com:FormingWorlds/Zalmoxis
+python -m pip install -e Zalmoxis/.
+```
+
+The environment variable `ZALMOXIS_ROOT` must point to the Zalmoxis installation directory. Add it to your shell config file:
+
+=== "bash"
+
+    ```console
+    echo "export ZALMOXIS_ROOT=$PWD/Zalmoxis/" >> "$HOME/.bashrc"
+    source "$HOME/.bashrc"
+    ```
+
+=== "zsh"
+
+    ```console
+    echo "export ZALMOXIS_ROOT=$PWD/Zalmoxis/" >> "$HOME/.zshrc"
+    source "$HOME/.zshrc"
+    ```
+
+Download the required data files:
+
+```console
+cd Zalmoxis
+bash src/get_zalmoxis.sh
+cd ../
+```
+
 ## 10. Setup PETSc (numerical computing library)
 
 !!! warning
@@ -221,19 +252,11 @@ python -m pip install -e ZEPHYRUS/.
 
 === "macOS"
 
-    First try the standard script:
-
     ```console
     ./tools/get_petsc.sh
     ```
 
-    If compilation fails on Apple Silicon (M1/M2/M3/Ultra), run the fix script:
-
-    ```console
-    ./tools/fix_petsc_compile.sh
-    ```
-
-    See [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) for manual steps if needed.
+    The script automatically detects Apple Silicon vs Intel, uses Homebrew's MPI, and applies the necessary compiler/linker workarounds. If you encounter issues, see [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon).
 
 ## 11. Setup SPIDER (interior evolution model)
 

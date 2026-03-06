@@ -112,7 +112,7 @@ juliaup default 1.11
 
 !!! warning "Applies to: macOS on Apple Silicon (M1, M2, M3, Ultra)"
 
-If `get_petsc.sh` fails during configuration or compilation on Apple Silicon Macs, this is because the default PETSc configuration can conflict with the Apple Silicon toolchain.
+The `get_petsc.sh` script automatically detects Apple Silicon and applies the necessary workarounds. If it still fails, check the following.
 
 **Prerequisites**
 
@@ -122,25 +122,25 @@ Make sure you have installed GCC and OpenMPI via Homebrew:
 brew install gcc open-mpi
 ```
 
-**Automated fix**
-
-Run the provided fix script from the PROTEUS root directory:
+Also ensure Xcode Command Line Tools are installed:
 
 ```console
-./tools/fix_petsc_compile.sh
+xcode-select --install
 ```
 
-This script sets the correct environment variables and reconfigures PETSc with Apple Silicon-compatible flags.
+**Common issues**
+
+1. **Deprecated linker warnings** (macOS 13+/clang 15+): PETSc's configure uses `-bind_at_load` and `-multiply_defined` flags that are deprecated on modern macOS. The script suppresses these with `-Wl,-w`.
+
+2. **C++ template errors** (macOS 26+/clang 17+): PETSc 3.19's CUDA/CUPM headers trigger `-Wmissing-template-arg-list-after-template-kw`. The script avoids this by disabling C++ (`--with-cxx=0`), which is safe because SPIDER is pure C.
+
+3. **SDKROOT not set**: On macOS Catalina and later, system headers are inside the SDK, not `/usr/include`. The script sets `SDKROOT` automatically via `xcrun --show-sdk-path`.
 
 ??? info "Manual fix (if the script does not work)"
-    1. Set environment variables in your shell config (`~/.zshrc` or `~/.bashrc`):
+    1. Set environment variables:
 
         ```console
         export SDKROOT=$(xcrun --show-sdk-path)
-        export CC=mpicc
-        export CXX=mpicxx
-        export FC=mpifort
-        export F77=mpifort
         ```
 
     2. Navigate to `petsc/` and run the configure command manually:
@@ -149,14 +149,12 @@ This script sets the correct environment variables and reconfigures PETSc with A
         cd petsc
         ./configure \
            PETSC_ARCH=arch-darwin-c-opt \
-           CC=mpicc \
-           CXX=mpicxx \
-           FC=mpifort \
-           F77=mpifort \
-           LDFLAGS="-L/opt/homebrew/lib -Wl,-w" \
+           LDFLAGS="-L$(brew --prefix)/lib -Wl,-w" \
            --with-debugging=0 \
-           --with-cxx-dialect=14 \
-           --download-sundials2=1
+           --with-fc=0 \
+           --with-cxx=0 \
+           --download-sundials2 \
+           --COPTFLAGS="-g -O3"
         ```
 
     3. Build and test:
@@ -166,7 +164,7 @@ This script sets the correct environment variables and reconfigures PETSc with A
         make PETSC_DIR=$(pwd) PETSC_ARCH=arch-darwin-c-opt check
         ```
 
-    This has been tested on M1 Ultra (macOS Sequoia 15.6.1) and M2 (macOS 26.2).
+    Tested on M1 Ultra (macOS 15.6.1), M2 (macOS 26.2), and M4 Max (macOS 26.3).
 
 ### PETSc tests error (network configuration)
 
