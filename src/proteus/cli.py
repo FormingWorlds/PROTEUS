@@ -289,7 +289,7 @@ def validate_star_name(star_name: str | None, *, catalog: str = 'muscles') -> st
     help='List available MUSCLES star names and exit.',
 )
 def muscles(star_name: str | None, download_all: bool, list_stars: bool):
-    """Download MUSCLES stellar spectrum(s)."""
+    """Download MUSCLES stellar spectrum(s). See https://proteus-framework.org/PROTEUS/data.html#using-a-mega-muscles-observed-spectrum for more information."""
     from .utils.data import download_muscles
 
     if list_stars:
@@ -343,10 +343,10 @@ def muscles(star_name: str | None, download_all: bool, list_stars: bool):
     required=False,
     type=float,
     default=None,
-    help='Optional Teff [K] to choose the correct PHOENIX alpha availability.',
+    help='Optional Teff [K] to choose the correct PHOENIX alpha availability. ',
 )
 def phoenix(FeH: float, alpha: float, teff: float | None):
-    """Download PHOENIX grid ZIP for the nearest allowed (FeH, alpha) point."""
+    """Download PHOENIX grid ZIP for the nearest allowed (FeH, alpha) point. See https://proteus-framework.org/PROTEUS/data.html#using-a-phoenix-synthetic-spectrum for more information."""
     from .utils.data import download_phoenix
     from .utils.phoenix_helper import phoenix_to_grid
 
