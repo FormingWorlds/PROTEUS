@@ -1005,6 +1005,64 @@ def test_try_spider_init_with_mesh(tmp_path):
     coresize_val = float(call_args[idx + 1])
     assert pytest.approx(coresize_val, rel=1e-3) == 0.55
 
+    # Without M_core in hf_row, rho_core should fall back to config value
+    idx = call_args.index('-rho_core')
+    rho_val = float(call_args[idx + 1])
+    assert pytest.approx(rho_val, rel=1e-3) == config.struct.core_density
+
+
+@pytest.mark.unit
+def test_try_spider_rho_core_from_zalmoxis(tmp_path):
+    """When hf_row contains M_core (set by Zalmoxis), SPIDER receives
+    the effective average core density derived from M_core and R_cmb,
+    not the static config.struct.core_density value.
+
+    This ensures the core thermal inertia in SPIDER's CMB boundary
+    condition is consistent with Zalmoxis's self-consistent structure.
+    """
+    from proteus.interior.spider import _try_spider
+
+    dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
+        tmp_path, with_mesh=True
+    )
+
+    # Set M_core as Zalmoxis would (different from config.struct.core_density
+    # * 4/3 pi R_cmb^3 to demonstrate the fix)
+    R_int = hf_row['R_int']  # 6.371e6 m
+    coresize = 0.55  # matches mesh
+    R_cmb = coresize * R_int
+    M_core_zalmoxis = 1.94e24  # kg, realistic core mass from EOS
+    hf_row['M_core'] = M_core_zalmoxis
+
+    expected_rho = M_core_zalmoxis / (4.0 / 3.0 * np.pi * R_cmb**3)
+
+    with (
+        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior.spider.sp.run') as mock_run,
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        result = _try_spider(
+            dirs,
+            config,
+            IC_INTERIOR=1,
+            hf_all=None,
+            hf_row=hf_row,
+            step_sf=1.0,
+            atol_sf=1.0,
+            dT_max=1000.0,
+            mesh_file=mesh_path,
+        )
+
+    assert result is True
+    call_args = mock_run.call_args[0][0]
+
+    idx = call_args.index('-rho_core')
+    rho_val = float(call_args[idx + 1])
+    assert pytest.approx(rho_val, rel=1e-3) == expected_rho
+    # Confirm it differs from the static config value
+    assert rho_val != pytest.approx(config.struct.core_density, rel=1e-2)
+
 
 @pytest.mark.unit
 def test_try_spider_init_aw(tmp_path):

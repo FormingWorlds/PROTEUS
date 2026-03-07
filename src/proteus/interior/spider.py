@@ -681,6 +681,7 @@ def _try_spider(
 
     # Compute coresize: use external mesh radii when available, otherwise config
     coresize = config.struct.corefrac
+    rho_core = config.struct.core_density
     if mesh_file and os.path.isfile(mesh_file):
         coresize = _coresize_from_mesh(mesh_file)
         log.debug(
@@ -688,6 +689,17 @@ def _try_spider(
             coresize,
             config.struct.corefrac,
         )
+        # Derive average core density from the self-consistent core mass
+        # (set by Zalmoxis) and the CMB radius from the mesh file
+        R_cmb = coresize * hf_row['R_int']
+        M_core = hf_row.get('M_core', 0)
+        if R_cmb > 0 and M_core > 0:
+            rho_core = M_core / (4.0 / 3.0 * np.pi * R_cmb**3)
+            log.debug(
+                'rho_core from Zalmoxis structure: %.2f kg/m^3 (config: %.2f)',
+                rho_core,
+                config.struct.core_density,
+            )
 
     ### SPIDER base call sequence
     call_sequence = [
@@ -888,7 +900,7 @@ def _try_spider(
 
     # Relating to the planet's metallic core
     call_sequence.extend(['-CORE_BC', '1'])  # CMB boundary condition
-    call_sequence.extend(['-rho_core', '%.6e' % (config.struct.core_density)])  # density
+    call_sequence.extend(['-rho_core', '%.6e' % rho_core])  # density
     call_sequence.extend(['-cp_core', '%.6e' % (config.struct.core_heatcap)])  # heat capacity
 
     # surface boundary condition
