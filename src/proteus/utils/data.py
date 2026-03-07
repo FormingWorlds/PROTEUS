@@ -1292,7 +1292,7 @@ def get_zalmoxis_EOS():
         'mantle': {'eos_file': seager_folder / 'eos_seager07_silicate.txt'},
     }
 
-    # Iron/T-dep silicate (Seager 2007 core + Wolf & Bower 2018 mantle)
+    # Iron core (Seager 2007) + T-dependent silicate mantle (Wolf & Bower 2018)
     wb_cp_melt = wb_folder / 'heat_capacity_melt.dat'
     wb_cp_solid = wb_folder / 'heat_capacity_solid.dat'
     wb_adiabat_grad = wb_folder / 'adiabat_temp_grad_melt.dat'
