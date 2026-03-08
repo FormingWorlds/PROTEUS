@@ -50,6 +50,10 @@ def init_star(handler: Proteus):
 
         if mors_cfg.star_path is not None:
             star_modern_path = mors_cfg.star_path
+
+            # if e.g. $HOME or $FWL_DATA is included in the path, expand it
+            star_modern_path = os.path.expandvars(os.path.expanduser(star_modern_path))
+
             log.info('Using custom stellar spectrum path.')
             if not os.path.exists(star_modern_path):
                 raise FileNotFoundError(

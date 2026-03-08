@@ -1,16 +1,5 @@
 # Reference data
 
-## Contents
-
-- [Stellar spectra](#stellar-spectra)
-  - [Using solar spectra](#using-solar-spectra)
-  - [Using a (Mega-)MUSCLES observed spectrum](#using-a-mega-muscles-observed-spectrum)
-  - [Using a PHOENIX synthetic spectrum](#using-a-phoenix-synthetic-spectrum)
-  - [Using a custom stellar spectrum](#using-a-custom-stellar-spectrum)
-- [Surfaces](#surfaces)
-- [Exoplanet population data](#exoplanet-population-data)
-- [Mass-radius relations](#mass-radius-relations)
-
 ## Automatic data download
 
 PROTEUS automatically downloads large reference data files from [Zenodo](https://zenodo.org/communities/proteus_framework/) on first run. This includes stellar spectra, opacities, equations of state, and other tabulated data.
@@ -85,7 +74,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
 ??? info "Full star catalog"
 
-    #### Epsilon Eridani
+    **Epsilon Eridani**
 
     - **Star name:** `v-eps-eri`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/eps%20Eri
@@ -99,7 +88,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 1132
+    **GJ 1132**
 
     - **Star name:** `gj1132`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201132
@@ -113,7 +102,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 1214
+    **GJ 1214**
 
     - **Star name:** `gj1214`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%201214
@@ -127,7 +116,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### HD 85512
+    **HD 85512**
 
     - **Star name:** `hd85512`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%2085512
@@ -141,7 +130,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### HD 97658
+    **HD 97658**
 
     - **Star name:** `hd97658`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%2097658%20b#planet_HD-97658-b_collapsible
@@ -155,7 +144,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### L 98-59
+    **L 98-59**
 
     - **Star name:** `l-98-59`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/L%2098-59
@@ -169,7 +158,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### TRAPPIST-1
+    **TRAPPIST-1**
 
     - **Star name:** `trappist-1`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/TRAPPIST-1
@@ -183,7 +172,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 849
+    **GJ 849**
 
     - **Star name:** `gj849`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20849
@@ -197,7 +186,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### WASP-43
+    **WASP-43**
 
     - **Star name:** `wasp-43`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-43
@@ -211,7 +200,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### WASP-77 A
+    **WASP-77 A**
 
     - **Star name:** `wasp-77a`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-77%20A
@@ -225,7 +214,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 15 A
+    **GJ 15 A**
 
     - **Star name:** `gj15a`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%2015
@@ -239,7 +228,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 163
+    **GJ 163**
 
     - **Star name:** `gj163`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/gj%20163%20b
@@ -253,7 +242,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 176 (HD 285968)
+    **GJ 176 (HD 285968)**
 
     - **Star name:** `gj176`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%20285968
@@ -267,7 +256,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 436
+    **GJ 436**
 
     - **Star name:** `gj436`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20436
@@ -281,7 +270,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 551 (Proxima Centauri)
+    **GJ 551 (Proxima Centauri)**
 
     - **Star name:** `gj551`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/alpha%20Cen
@@ -295,7 +284,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 581
+    **GJ 581**
 
     - **Star name:** `gj581`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20581
@@ -309,7 +298,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 649
+    **GJ 649**
 
     - **Star name:** `gj649`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20649
@@ -323,7 +312,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 667 C
+    **GJ 667 C**
 
     - **Star name:** `gj667c`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20667C
@@ -337,7 +326,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 674
+    **GJ 674**
 
     - **Star name:** `gj674`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20674
@@ -351,7 +340,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 676 A
+    **GJ 676 A**
 
     - **Star name:** `gj676a`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20676A
@@ -365,7 +354,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 699 (Barnard’s Star)
+    **GJ 699 (Barnard’s Star)**
 
     - **Star name:** `gj699`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/barnard's%20star
@@ -379,7 +368,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 729 (Ross 154)
+    **GJ 729 (Ross 154)**
 
     - **Star name:** `gj729`
     - **URL:** https://simbad.cds.unistra.fr/simbad/sim-id?Ident=GJ+729
@@ -393,7 +382,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 832
+    **GJ 832**
 
     - **Star name:** `gj832`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HIP%20106440
@@ -407,7 +396,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### GJ 876
+    **GJ 876**
 
     - **Star name:** `gj876`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20876
@@ -421,7 +410,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### HAT-P-12
+    **HAT-P-12**
 
     - **Star name:** `hat-p-12`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-12
@@ -435,7 +424,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### HAT-P-26
+    **HAT-P-26**
 
     - **Star name:** `hat-p-26`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HAT-P-26
@@ -449,7 +438,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### HD 149026
+    **HD 149026**
 
     - **Star name:** `hd-149026`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%20149026%20b#planet_HD-149026
@@ -463,7 +452,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### HD 40307
+    **HD 40307**
 
     - **Star name:** `hd40307`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/HD%2040307
@@ -477,7 +466,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### L 678-39 (GJ 357)
+    **L 678-39 (GJ 357)**
 
     - **Star name:** `l-678-39`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/GJ%20357
@@ -491,7 +480,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### L 980-5
+    **L 980-5**
 
     - **Star name:** `l-980-5`
     - **URL:** https://simbad.u-strasbg.fr/simbad/sim-id?Ident=l+980-5
@@ -505,7 +494,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### LHS 2686
+    **LHS 2686**
 
     - **Star name:** `lhs-2686`
     - **URL:** https://simbad.cds.unistra.fr/simbad/sim-id?Ident=LHS+2686
@@ -519,7 +508,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### LP 791-18
+    **LP 791-18**
 
     - **Star name:** `lp-791-18`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/LP%20791-18
@@ -533,7 +522,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### TOI-193 (LTT 9779)
+    **TOI-193 (LTT 9779)**
 
     - **Star name:** `toi-193`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/LTT%209779
@@ -547,7 +536,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### WASP-127
+    **WASP-127**
 
     - **Star name:** `wasp-127`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-127
@@ -561,7 +550,7 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
 
     ---
 
-    #### WASP-17
+    **WASP-17**
 
     - **Star name:** `wasp-17`
     - **URL:** https://exoplanetarchive.ipac.caltech.edu/overview/WASP-17
@@ -573,6 +562,18 @@ Files are saved as `<star_name>.txt`, e.g. `trappist-1.txt`.
     - **Radius:** 1.57 R☉
     - **Source:** MUSCLES extension
 
+#### Downloading MUSCLES spectra
+
+MUSCLES spectra are automatically downloaded when you run PROTEUS and set `spectrum_source` to 'muscles'. You can also use the CLI:
+
+```bash
+proteus get muscles --star trappist-1
+```
+or
+```bash
+proteus get muscles --all
+```
+for all available MUSCLES spectra.
 
 ### Using a PHOENIX synthetic spectrum
 
@@ -592,8 +593,13 @@ PHOENIX models are defined on a grid in:
 
 - `Teff` (K) — effective temperature
 - `log_g` (dex) — surface gravity
-- `FeH` (dex) — metallicity
-- `alpha` (dex) — alpha enhancement
+- `FeH` (dex) — metallicity (0.0 for solar)
+- `alpha` (dex) — alpha enhancement (0.0 for solar)
+
+You can set these under `star.mors` in your config file.
+
+!!! info "Defaults"
+    If the metallicity `FeH` and/or alpha fraction `alpha` are not set, they **default to solar values (0.0).**  If `Teff`, `log_g`, and/or `radius` are not set, they are estimated by the stellar evolution module MORS from the stellar mass.
 
 In addition, PROTEUS needs the stellar radius:
 
@@ -601,17 +607,22 @@ In addition, PROTEUS needs the stellar radius:
 
 This is used to scale the model spectrum (surface flux) to the flux at 1 AU.
 
-You can set these under `star.mors` in your config file.
+#### Downloading PHOENIX spectra
 
-**Defaults / fallbacks**
+PHOENIX spectra are automatically downloaded when you run PROTEUS and set `spectrum_source` to 'phoenix'. You can also use the CLI:
 
-- If `FeH` and/or `alpha` are not set, they default to solar (0.0).
-- If `Teff`, `log_g`, and/or `radius` are not set, they are estimated by the stellar evolution module (`mors`) from the stellar mass (if provided).
+```bash
+proteus get phoenix --feh 0.0 --alpha 0.0 --teff 3500
+```
 
+Here `teff` is optional, but helps to find the right alpha fraction (for some effective temperatures, only a solar alpha fraction is available).
 
 ### Using a custom stellar spectrum
 
-If you prefer to use your own stellar spectrum, you can input its filepath under the parameter `star_path`. Make sure you input its absolute path, even if it is in the $FWL_DATA directory. **NOTE**: this parameter will override all other stellar spectrum config parameters!
+If you prefer to use your own stellar spectrum, you can input its filepath under the parameter `star_path`. Make sure you input its absolute path, or use `$FWL_DATA` if it is in the $FWL_DATA directory.
+
+!!! warning "Note"
+    This parameter will override all other stellar spectrum config parameters!
 
 There are a few things to take into account when using a custom stellar spectrum:
 

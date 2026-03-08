@@ -13,7 +13,8 @@ See also:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -176,6 +177,256 @@ def test_download_zenodo_folder_success(mock_getfwl, mock_run, tmp_path):
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_success(mock_getfwl, mock_run, tmp_path):
+    """download_zenodo_file returns True when zenodo_get succeeds and file appears."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'subdir/myfile.dat'
+
+    # availability check ok, then download ok
+    proc_avail = MagicMock()
+    proc_avail.returncode = 0
+    proc_dl = MagicMock()
+    proc_dl.returncode = 0
+
+    call_count = 0
+
+    def side_effect(cmd, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if '--version' in cmd:
+            return proc_avail
+
+        # download call: create expected file in folder_dir
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        (folder_dir / record_path).parent.mkdir(parents=True, exist_ok=True)
+        (folder_dir / record_path).write_text('payload')
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is True
+
+
+@pytest.mark.unit
+def test_download_zenodo_file_rejects_bad_id(tmp_path):
+    """download_zenodo_file rejects non-numeric zenodo IDs."""
+    from proteus.utils.data import download_zenodo_file
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    ok = download_zenodo_file('12ab', folder_dir, 'file.txt')
+    assert ok is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+def test_download_zenodo_file_zenodo_get_missing(mock_run, tmp_path):
+    """download_zenodo_file returns False when zenodo_get is not available."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_run.side_effect = FileNotFoundError('zenodo_get not found')
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    ok = download_zenodo_file('12345', folder_dir, 'file.txt')
+    assert ok is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_success_via_rglob_fallback(mock_getfwl, mock_run, tmp_path):
+    """If zenodo_get returns 0 but file isn't at expected_path, rglob basename fallback should succeed."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'subdir/myfile.dat'
+    basename = Path(record_path).name
+
+    proc_avail = MagicMock(returncode=0)
+    proc_dl = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+
+        # Simulate zenodo_get putting file in a different layout than record_path
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        alt = folder_dir / 'weird_layout' / basename
+        alt.parent.mkdir(parents=True, exist_ok=True)
+        alt.write_text('payload')
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_zero_exit_but_file_missing(mock_getfwl, mock_run, tmp_path):
+    """If zenodo_get exits 0 but file is missing/empty everywhere, function should return False."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'subdir/myfile.dat'
+
+    proc_avail = MagicMock(returncode=0)
+    proc_dl = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        # Do NOT create any file
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)  # speed up retries
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_nonzero_exit_reads_log_and_fails(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """Non-zero exit should trigger retries and read the log for diagnostics, then return False."""
+    from proteus.utils.data import MAX_ATTEMPTS, download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'file.txt'
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=2)
+
+    call_count = 0
+
+    def side_effect(cmd, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if '--version' in cmd:
+            return proc_avail
+
+        # Simulate zenodo_get writing something to stdout log (download_zenodo_file opens log itself)
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is False
+
+    # 1 availability call + MAX_ATTEMPTS download calls
+    assert mock_run.call_count >= 1 + MAX_ATTEMPTS
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_nonzero_exit_reads_log_content(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """Non-zero exit should read log content when available."""
+    from proteus.utils.data import MAX_ATTEMPTS, download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'file.txt'
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=1)
+
+    log_path = tmp_path / 'zenodo_download.log'
+    log_path.write_text('some error line 1\nsome error line 2\n')
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+    assert ok is False
+    assert mock_run.call_count >= 1 + MAX_ATTEMPTS
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.safe_rm')
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_cleanup_branches(mock_getfwl, mock_run, mock_safe_rm, tmp_path):
+    """Covers file, directory, and exception branches in expected_path cleanup."""
+
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'zenodo_folder'
+    record_path = 'subdir/myfile.dat'
+    expected_path = folder_dir / record_path
+    expected_path.parent.mkdir(parents=True, exist_ok=True)
+
+    proc_avail = MagicMock(returncode=0)
+    proc_dl = MagicMock(returncode=0)
+
+    call_state = {'phase': 0}
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+
+        # Phase 1: FILE but empty
+        if call_state['phase'] == 0:
+            expected_path.write_text('')  # ← KEY CHANGE
+            call_state['phase'] += 1
+            return proc_dl
+
+        # Phase 2: expected_path is DIRECTORY
+        if call_state['phase'] == 1:
+            if expected_path.exists():
+                expected_path.unlink()
+            expected_path.mkdir()
+            call_state['phase'] += 1
+            return proc_dl
+
+        # Phase 3: removal throws exception
+        if call_state['phase'] == 2:
+            if expected_path.exists():
+                expected_path.unlink()
+            expected_path.write_text('bad')
+            expected_path.unlink = MagicMock(side_effect=OSError('cannot unlink'))
+            call_state['phase'] += 1
+            return proc_dl
+
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, record_path)
+
+    # safe_rm should have been used for directory case
+    assert mock_safe_rm.called
+    assert ok is False
+
+
+@pytest.mark.unit
 @patch('proteus.utils.data.validate_zenodo_folder')
 @patch('proteus.utils.data.os.path.isdir')
 def test_check_needs_update(mock_isdir, mock_validate):
@@ -260,6 +511,309 @@ def test_download_skip(mock_getfwl, mock_check, tmp_path):
 
     success = download(folder='test', target='targ', osf_id='abc', zenodo_id='123', desc='test')
     assert success is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_skips_existing_file(mock_zdl, mock_getfwl, tmp_path):
+    """If file exists and non-empty and force=False, download() returns True without calling Zenodo/OSF."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+
+    folder = 'SomeFolder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.txt'
+
+    dest = tmp_path / target / folder / file_rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text('already here')
+
+    ok = download(
+        folder=folder,
+        target=target,
+        desc='desc',
+        file=file_rel,
+        force=False,
+        zenodo_id='12345',
+    )
+    assert ok is True
+    mock_zdl.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.get_data_source_info')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_uses_mapping_and_zenodo_success_expected_path(
+    mock_zdl, mock_get_info, mock_getfwl, tmp_path
+):
+    """Single-file mode: uses mapping IDs when not provided; Zenodo writes expected file -> True."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_get_info.return_value = {
+        'zenodo_id': '123',
+        'osf_project': 'osfproj',
+        'osf_id': 'osfproj',
+    }
+
+    folder = 'MappedFolder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.dat'
+
+    # Simulate zenodo download creating the expected file
+    def zdl_side_effect(*, zenodo_id, folder_dir, record_path):
+        (folder_dir / record_path).parent.mkdir(parents=True, exist_ok=True)
+        (folder_dir / record_path).write_text('payload')
+        return True
+
+    mock_zdl.side_effect = zdl_side_effect
+
+    ok = download(folder=folder, target=target, desc='desc', file=file_rel)
+    assert ok is True
+
+    # mapping applied
+    call_kwargs = mock_zdl.call_args.kwargs
+    assert call_kwargs['zenodo_id'] == '123'
+    assert call_kwargs['record_path'] == file_rel
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.get_data_source_info')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_zenodo_success_basename_fallback(
+    mock_zdl, mock_get_info, mock_getfwl, tmp_path
+):
+    """
+    Zenodo returns success but file not at expected_path. download() should still succeed
+    if a file with the same basename exists somewhere under folder_dir (rglob fallback).
+    """
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_get_info.return_value = {
+        'zenodo_id': '123',
+        'osf_project': 'osfproj',
+        'osf_id': 'osfproj',
+    }
+
+    folder = 'MappedFolder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.dat'
+    basename = Path(file_rel).name
+
+    def zdl_side_effect(*, zenodo_id, folder_dir, record_path):
+        # Create file at a different path than expected
+        alt = folder_dir / 'weird_layout' / basename
+        alt.parent.mkdir(parents=True, exist_ok=True)
+        alt.write_text('payload')
+        return True
+
+    mock_zdl.side_effect = zdl_side_effect
+
+    ok = download(folder=folder, target=target, desc='desc', file=file_rel)
+    assert ok is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_OSF_file')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_osf_fallback_when_zenodo_fails(
+    mock_zdl, mock_osf_dl, mock_get_osf, mock_getfwl, tmp_path
+):
+    """If Zenodo single-file download fails, OSF fallback should be attempted and can succeed."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+
+    folder = 'Folder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.txt'
+
+    mock_zdl.return_value = False
+
+    # Make OSF fallback write expected file
+    def osf_side_effect(*, storage, files, data_dir):
+        dest = data_dir / folder / file_rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text('from osf')
+
+    mock_osf_dl.side_effect = osf_side_effect
+    mock_get_osf.return_value = MagicMock()
+
+    ok = download(
+        folder=folder,
+        target=target,
+        desc='desc',
+        file=file_rel,
+        zenodo_id='123',
+        osf_id='osfproj',
+    )
+    assert ok is True
+    mock_get_osf.assert_called_once_with('osfproj')
+    mock_osf_dl.assert_called_once()
+    mock_zdl.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_OSF_file')
+@patch('proteus.utils.data.download_zenodo_file')
+def test_download_file_mode_fails_if_both_sources_fail(
+    mock_zdl, mock_osf_dl, mock_get_osf, mock_getfwl, tmp_path
+):
+    """If Zenodo and OSF both fail to create the file, download() returns False."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+
+    folder = 'Folder'
+    target = 'targetdir'
+    file_rel = 'subdir/file.txt'
+
+    mock_zdl.return_value = False
+    mock_get_osf.return_value = MagicMock()
+    # OSF doesn't create file and doesn't raise -> should fail
+    mock_osf_dl.return_value = None
+
+    ok = download(
+        folder=folder,
+        target=target,
+        desc='desc',
+        file=file_rel,
+        zenodo_id='123',
+        osf_id='osfproj',
+    )
+    assert ok is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.check_needs_update')
+@patch('proteus.utils.data.download_zenodo_folder')
+@patch('proteus.utils.data.validate_zenodo_folder')
+def test_download_folder_mode_force_triggers_download_even_if_valid(
+    mock_validate, mock_zdl, mock_check, mock_getfwl, tmp_path
+):
+    """force=True should trigger download even if check_needs_update says False."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_check.return_value = False  # would normally skip
+    mock_zdl.return_value = True
+    mock_validate.return_value = True
+
+    ok = download(
+        folder='folder',
+        target='targ',
+        desc='desc',
+        zenodo_id='123',
+        osf_id='osfproj',
+        force=True,
+    )
+    assert ok is True
+    mock_zdl.assert_called_once()
+    mock_validate.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.check_needs_update')
+@patch('proteus.utils.data.download_zenodo_folder')
+@patch('proteus.utils.data.validate_zenodo_folder')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_OSF_folder')
+def test_download_folder_mode_zenodo_download_ok_but_validation_fails_osf_fallback_succeeds(
+    mock_osf_dl,
+    mock_get_osf,
+    mock_validate,
+    mock_zdl,
+    mock_check,
+    mock_getfwl,
+    tmp_path,
+):
+    """
+    Folder mode: Zenodo folder download returns True but validation returns False,
+    so OSF fallback is attempted and can succeed.
+    """
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_check.return_value = True
+
+    mock_zdl.return_value = True
+    mock_validate.return_value = False  # force OSF fallback
+
+    mock_get_osf.return_value = MagicMock()
+
+    # OSF fallback creates a file under folder_dir
+    def osf_side_effect(*, storage, folders, data_dir):
+        folder_dir = data_dir / folders[0]
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        (folder_dir / 'x.txt').write_text('ok')
+
+    mock_osf_dl.side_effect = osf_side_effect
+
+    ok = download(
+        folder='folder',
+        target='targ',
+        desc='desc',
+        zenodo_id='123',
+        osf_id='osfproj',
+    )
+    assert ok is True
+    mock_osf_dl.assert_called_once()
+    mock_get_osf.assert_called_once_with('osfproj')
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.check_needs_update')
+@patch('proteus.utils.data.download_OSF_folder')
+@patch('proteus.utils.data.get_osf')
+def test_download_folder_mode_no_zenodo_id_uses_osf_only(
+    mock_get_osf, mock_osf_dl, mock_check, mock_getfwl, tmp_path
+):
+    """Folder mode: if zenodo_id is None but osf_id is provided, OSF should be used."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_check.return_value = True
+    mock_get_osf.return_value = MagicMock()
+
+    def osf_side_effect(*, storage, folders, data_dir):
+        folder_dir = data_dir / folders[0]
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        (folder_dir / 'ok.txt').write_text('ok')
+
+    mock_osf_dl.side_effect = osf_side_effect
+
+    ok = download(folder='folder', target='targ', desc='desc', zenodo_id=None, osf_id='osfproj')
+    assert ok is True
+    mock_get_osf.assert_called_once_with('osfproj')
+    mock_osf_dl.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.GetFWLData')
+@patch('proteus.utils.data.check_needs_update')
+def test_download_folder_mode_fails_if_no_sources_available(mock_check, mock_getfwl, tmp_path):
+    """Folder mode: if no mapping and both IDs None, download() returns False (already partially tested, but covers folder-mode call)."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_check.return_value = True
+
+    ok = download(
+        folder='UnknownFolder', target='targ', desc='desc', zenodo_id=None, osf_id=None
+    )
+    assert ok is False
 
 
 @pytest.mark.unit
@@ -614,20 +1168,301 @@ def test_download_no_mapping_no_ids(
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.zipfile.ZipFile')
 @patch('proteus.utils.data.download')
-def test_download_phoenix(mock_download):
-    """Test PHOENIX stellar spectra download wrapper."""
+def test_download_phoenix(mock_download, mock_zipfile, tmp_path, monkeypatch):
+    """Test PHOENIX stellar spectra download wrapper (single-file + unzip + cleanup)."""
+
     from proteus.utils.data import download_phoenix
+    from proteus.utils.phoenix_helper import phoenix_param
 
-    result = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    # Arrange inputs
+    FeH = 0.0
+    alpha = 0.0
+    feh_str = phoenix_param(FeH, kind='FeH')
+    alpha_str = phoenix_param(alpha, kind='alpha')
+    zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
 
+    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Make GetFWLData() return tmp_path
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+
+    # Our function expects the zip to exist at base_dir/zip_name after download.
+    # The production code will check zip_path.is_file(), so create it.
+    zip_path = base_dir / zip_name
+    zip_path.write_bytes(b'dummy zip bytes')
+
+    # Simulate extracted LTE file presence by patching Path.glob used in:
+    # any(grid_dir.glob("LTE_T*_phoenixMedRes_R05000.txt"))
+    grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
+    grid_dir.mkdir(parents=True, exist_ok=True)
+    lte_file = grid_dir / 'LTE_T05800_logg4.50_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt'
+    lte_file.write_text('dummy spectrum')
+
+    # Mock ZipFile context manager so no real unzip is attempted
+    zf = MagicMock()
+    mock_zipfile.return_value.__enter__.return_value = zf
+
+    # Make download() report success
+    mock_download.return_value = True
+
+    # Also create a marker to verify it gets removed
+    marker = base_dir / f'.extracted_{zip_path.stem}'
+    marker.write_text('marker')
+
+    # Act
+    ok = download_phoenix(alpha=alpha, FeH=FeH, force=False)
+
+    # Assert: download() called with new single-file mode
     mock_download.assert_called_once_with(
         folder='PHOENIX',
         target='stellar_spectra',
         desc='PHOENIX stellar spectra (alpha=+0.0, [Fe/H]=+0.0)',
         force=False,
+        file=zip_name,
     )
-    assert result == mock_download.return_value
+
+    assert ok is True
+
+    assert not zip_path.exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.zipfile.ZipFile')
+def test_download_phoenix_unzips_and_cleans_up(
+    mock_zipfile, mock_download, tmp_path, monkeypatch
+):
+    """Covers the unzip path: ZipFile/extractall called, LTE file appears, zip removed."""
+
+    from proteus.utils.data import download_phoenix
+    from proteus.utils.phoenix_helper import phoenix_param
+
+    # Arrange inputs
+    FeH = 0.0
+    alpha = 0.0
+    feh_str = phoenix_param(FeH, kind='FeH')
+    alpha_str = phoenix_param(alpha, kind='alpha')
+    zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
+
+    # Make GetFWLData() return tmp_path
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+
+    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Production expects zip at base_dir/zip_name after download()
+    zip_path = base_dir / zip_name
+    zip_path.write_bytes(b'dummy zip bytes')
+
+    # grid_dir where extraction happens
+    grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
+
+    # IMPORTANT: do NOT pre-create LTE file here; we want the unzip path.
+
+    # Mock download() report success
+    mock_download.return_value = True
+
+    # Mock ZipFile so no real unzip occurs; simulate extraction by creating LTE file
+    zf = MagicMock()
+
+    def extractall_side_effect(dest):
+        dest = Path(dest)
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / 'LTE_T02300_logg0.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt').write_text(
+            'dummy spectrum'
+        )
+
+    zf.extractall.side_effect = extractall_side_effect
+    mock_zipfile.return_value.__enter__.return_value = zf
+
+    # Act
+    ok = download_phoenix(alpha=alpha, FeH=FeH, force=True)
+
+    # Assert
+    assert ok is True
+
+    # unzip was actually attempted
+    mock_zipfile.assert_called_once_with(zip_path, 'r')
+    zf.extractall.assert_called_once_with(grid_dir)
+
+    # LTE file now exists after "extraction"
+    assert any(grid_dir.glob('LTE_T*_phoenixMedRes_R05000.txt'))
+
+    # zip removed after successful unpack
+    assert not zip_path.exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.safe_rm')
+@patch('proteus.utils.data.zipfile.ZipFile')
+@patch('proteus.utils.data.download')
+def test_download_phoenix_force_removes_existing_grid_dir(
+    mock_download, mock_zipfile, mock_safe_rm, tmp_path, monkeypatch
+):
+    from proteus.utils.data import download_phoenix
+    from proteus.utils.phoenix_helper import phoenix_param
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    mock_download.return_value = True
+
+    FeH = 0.0
+    alpha = 0.0
+    feh_str = phoenix_param(FeH, kind='FeH')
+    alpha_str = phoenix_param(alpha, kind='alpha')
+    zip_name = f'FeH{feh_str}_alpha{alpha_str}_phoenixMedRes_R05000.zip'
+
+    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
+    base_dir.mkdir(parents=True, exist_ok=True)
+    (base_dir / zip_name).write_bytes(b'zip')
+
+    grid_dir = base_dir / f'FeH{feh_str}_alpha{alpha_str}'
+    grid_dir.mkdir(parents=True, exist_ok=True)
+
+    # Make extraction succeed by pre-creating LTE file after "extractall"
+    def extractall_side_effect(_dest):
+        dest = Path(_dest)
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / 'LTE_T02300_logg0.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt').write_text(
+            'ok'
+        )
+
+    zf = MagicMock()
+    zf.extractall.side_effect = extractall_side_effect
+    mock_zipfile.return_value.__enter__.return_value = zf
+
+    ok = download_phoenix(alpha=alpha, FeH=FeH, force=True)
+    assert ok is True
+    mock_safe_rm.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+def test_download_phoenix_returns_false_if_download_fails(mock_download, tmp_path, monkeypatch):
+    from proteus.utils.data import download_phoenix
+
+    monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)
+    mock_download.return_value = False
+
+    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    assert ok is False
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_muscles_default_download_all(mock_get_info, mock_download):
+    """If stars is None, download_muscles should download the whole MUSCLES catalogue (folder mode)."""
+    from proteus.utils.data import download_muscles
+
+    mock_get_info.return_value = {
+        'zenodo_id': 'ZEN',
+        'osf_project': 'OSFPROJ',
+        'osf_id': 'OSFPROJ',
+    }
+    mock_download.return_value = True
+
+    ok = download_muscles(stars=None, force=False)
+
+    assert ok is True
+    mock_get_info.assert_called_once_with('MUSCLES')
+    mock_download.assert_called_once_with(
+        folder='MUSCLES',
+        target='stellar_spectra',
+        osf_id='OSFPROJ',
+        zenodo_id='ZEN',
+        desc='MUSCLES stellar spectra catalogue',
+        force=False,
+    )
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_muscles_single_star(mock_get_info, mock_download):
+    """If stars is a string, download_muscles should call download() once in single-file mode."""
+    from proteus.utils.data import download_muscles
+
+    mock_get_info.return_value = {
+        'zenodo_id': 'ZEN',
+        'osf_project': 'OSFPROJ',
+        'osf_id': 'OSFPROJ',
+    }
+    mock_download.return_value = True
+
+    ok = download_muscles(stars='trappist-1', force=True)
+
+    assert ok is True
+    mock_get_info.assert_called_once_with('MUSCLES')
+    mock_download.assert_called_once_with(
+        folder='MUSCLES',
+        target='stellar_spectra',
+        osf_id='OSFPROJ',
+        zenodo_id='ZEN',
+        desc='MUSCLES stellar spectrum (trappist-1)',
+        force=True,
+        file='trappist-1.txt',
+    )
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_muscles_multiple_stars(mock_get_info, mock_download):
+    """If stars is a list, download_muscles should call download() once per star and return AND of results."""
+    from proteus.utils.data import download_muscles
+
+    mock_get_info.return_value = {
+        'zenodo_id': 'ZEN',
+        'osf_project': 'OSFPROJ',
+        'osf_id': 'OSFPROJ',
+    }
+
+    # First star succeeds, second fails -> overall False
+    mock_download.side_effect = [True, False]
+
+    ok = download_muscles(stars=['starA', 'starB'], force=False)
+
+    assert ok is False
+    mock_get_info.assert_called_once_with('MUSCLES')
+    assert mock_download.call_count == 2
+
+    # Check both calls precisely (order matters)
+    expected_calls = [
+        call(
+            folder='MUSCLES',
+            target='stellar_spectra',
+            osf_id='OSFPROJ',
+            zenodo_id='ZEN',
+            desc='MUSCLES stellar spectrum (starA)',
+            force=False,
+            file='starA.txt',
+        ),
+        call(
+            folder='MUSCLES',
+            target='stellar_spectra',
+            osf_id='OSFPROJ',
+            zenodo_id='ZEN',
+            desc='MUSCLES stellar spectrum (starB)',
+            force=False,
+            file='starB.txt',
+        ),
+    ]
+    assert mock_download.call_args_list == expected_calls
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.get_data_source_info')
+def test_download_muscles_no_mapping_raises(mock_get_info):
+    """download_muscles should raise if MUSCLES is not in the mapping."""
+    from proteus.utils.data import download_muscles
+
+    mock_get_info.return_value = None
+
+    with pytest.raises(ValueError):
+        download_muscles(stars=None)
 
 
 @pytest.mark.unit
@@ -904,6 +1739,116 @@ def test_download_OSF_folder_skip_existing(mock_get_osf, tmp_path):
 
     # Should not have written to existing file (skipped)
     mock_file.write_to.assert_not_called()
+
+
+@pytest.mark.unit
+def test_download_osf_file_downloads_requested_files(tmp_path):
+    """download_OSF_file writes matched files into data_dir and creates parent dirs."""
+    from proteus.utils.data import download_OSF_file
+
+    # Fake OSF storage listing
+    storage = MagicMock()
+
+    f1 = MagicMock()
+    f1.path = '/folder/a.txt'
+    f1.size = 10
+    f1.write_to = MagicMock(side_effect=lambda fp: fp.write(b'aaa'))
+
+    f2 = MagicMock()
+    f2.path = '/folder/sub/b.bin'
+    f2.size = 20
+    f2.write_to = MagicMock(side_effect=lambda fp: fp.write(b'bbb'))
+
+    storage.files = [f1, f2]
+
+    download_OSF_file(
+        storage=storage,
+        files=['folder/a.txt', 'folder/sub/b.bin'],
+        data_dir=tmp_path,
+    )
+
+    assert (tmp_path / 'folder' / 'a.txt').read_bytes() == b'aaa'
+    assert (tmp_path / 'folder' / 'sub' / 'b.bin').read_bytes() == b'bbb'
+    assert f1.write_to.called
+    assert f2.write_to.called
+
+
+@pytest.mark.unit
+def test_download_osf_file_skips_existing_nonempty(tmp_path):
+    """download_OSF_file does not overwrite existing non-empty files."""
+    from proteus.utils.data import download_OSF_file
+
+    # Create an existing file
+    existing = tmp_path / 'folder' / 'a.txt'
+    existing.parent.mkdir(parents=True, exist_ok=True)
+    existing.write_text('old')
+
+    storage = MagicMock()
+
+    f1 = MagicMock()
+    f1.path = '/folder/a.txt'
+    f1.size = 10
+    f1.write_to = MagicMock(side_effect=lambda fp: fp.write(b'new'))
+    storage.files = [f1]
+
+    download_OSF_file(storage=storage, files=['folder/a.txt'], data_dir=tmp_path)
+
+    # unchanged
+    assert existing.read_text() == 'old'
+    f1.write_to.assert_not_called()
+
+
+@pytest.mark.unit
+def test_download_osf_file_missing_requested_is_ok(tmp_path, caplog):
+    """download_OSF_file logs warning if requested file not found but does not crash."""
+    from proteus.utils.data import download_OSF_file
+
+    storage = MagicMock()
+
+    f1 = MagicMock()
+    f1.path = '/folder/other.txt'
+    f1.size = 10
+    f1.write_to = MagicMock(side_effect=lambda fp: fp.write(b'zzz'))
+    storage.files = [f1]
+
+    download_OSF_file(storage=storage, files=['folder/does_not_exist.txt'], data_dir=tmp_path)
+
+    # Nothing downloaded
+    assert not (tmp_path / 'folder' / 'does_not_exist.txt').exists()
+
+
+@pytest.mark.unit
+def test_download_osf_file_removes_partial_on_exception(tmp_path):
+    """Covers exception branch + partial file cleanup in download_OSF_file."""
+
+    from proteus.utils.data import download_OSF_file
+
+    # Create fake OSF file object
+    mock_file = MagicMock()
+    mock_file.path = '/folder/test.txt'
+    mock_file.size = 100  # required for normal logic
+
+    # write_to writes partial content then fails
+    def failing_write(fp):
+        fp.write(b'partial data')
+        raise OSError('network failure')
+
+    mock_file.write_to.side_effect = failing_write
+
+    # Fake storage object
+    storage = MagicMock()
+    storage.files = [mock_file]
+
+    # Act
+    download_OSF_file(
+        storage=storage,
+        files=['folder/test.txt'],
+        data_dir=tmp_path,
+    )
+
+    # File should NOT exist after failure
+    target = tmp_path / 'folder' / 'test.txt'
+    assert not target.exists()
 
 
 @pytest.mark.unit
