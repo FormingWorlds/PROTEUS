@@ -51,11 +51,11 @@ The PROTEUS documentation is divided into **How-to guides**, **Tutorials**, **Ex
 
 -   :material-database: **Browse reference data**
 
-    [Go to reference data](data.md)
+    [Go to reference data](Reference/data.md)
 
 -   :material-code-braces: **Contribute or develop**
 
-    [Go to contributing guide](CONTRIBUTING.md)
+    [Go to contributing guide](Community/CONTRIBUTING.md)
 
 -   :material-bug: **Raise an issue**
 
@@ -67,6 +67,6 @@ The PROTEUS documentation is divided into **How-to guides**, **Tutorials**, **Ex
 
 -   :material-email: **Get in touch**
 
-    [Go to contact](contact.md)
+    [Go to contact](Community/contact.md)
 
 </div>
