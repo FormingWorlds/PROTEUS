@@ -3,6 +3,8 @@ site_url: https://proteus-framework.org/PROTEUS/
 repo_url: https://github.com/FormingWorlds/PROTEUS
 repo_name: GitHub
 
+copyright: '© 2023–2026 <a href="https://formingworlds.space">Forming Worlds Lab</a>'
+
 nav:
   - Home:
       - About: index.md
@@ -69,11 +71,11 @@ theme:
   name: material
   custom_dir: docs/overrides
   features:
-  - navigation.tabs
-  - navigation.tabs.sticky
-  - navigation.expand
-  - content.code.copy
-  - content.tabs.link
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.expand
+    - content.code.copy
+    - content.tabs.link
 
 
   # Default assets (used unless overridden per palette below)
@@ -81,25 +83,24 @@ theme:
   logo: assets/PROTEUS_white_on_black.png
 
   palette:
-    # Auto: follow system preference (and show a toggle)
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: black
-      accent: deep orange
+      primary: custom
+      accent: custom
       favicon: assets/PROTEUS_black_on_white_logo_only.png
       logo: assets/PROTEUS_white_on_black.png
       toggle:
-        icon: material/weather-night
+        icon: lucide/moon
         name: Switch to dark mode
 
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: black
-      accent: deep orange
+      primary: custom
+      accent: custom
       favicon: assets/PROTEUS_white_on_black_logo_only.png
       logo: assets/PROTEUS_white_on_black.png
       toggle:
-        icon: material/weather-sunny
+        icon: lucide/sun
         name: Switch to light mode
 
 markdown_extensions:
@@ -118,6 +119,23 @@ markdown_extensions:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
+# footer:
+extra:
+  generator: false
+  social:
+    - icon: material/web
+      link: https://proteus-framework.org/
+      name: PROTEUS website
+    - icon: material/email
+      link: mailto:proteus_dev@formingworlds.space
+      name: Mail PROTEUS developers
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/fwl-proteus/
+      name: PROTEUS on PyPI
+    - icon: fontawesome/brands/github
+      link: https://github.com/FormingWorlds/PROTEUS
+      name: PROTEUS on GitHub
+
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - javascripts/header-links.js
@@ -126,34 +144,33 @@ extra_css:
   - stylesheets/extra.css
 
 plugins:
-- search
-- mkdocstrings:
-    # https://mkdocstrings.github.io/usage/
-    handlers:
-      python:
-        paths: [src]
-        inventories:
-        - https://installer.readthedocs.io/en/stable/objects.inv
-        - https://docs.python.org/3/objects.inv
-        - https://numpy.org/doc/stable/objects.inv
-        - https://docs.scipy.org/doc/scipy/objects.inv
-        - https://pandas.pydata.org/docs/objects.inv
-        - https://matplotlib.org/stable/objects.inv
-        options:
-          docstring_style: numpy
-          docstring_options:
-            ignore_init_summary: yes
-          show_submodules: no
-          show_source: true
-          show_symbol_type_heading: True
-          show_root_heading: true
-          show_root_toc_entry: true
-          show_docstring_attributes: true
-          show_root_full_path: false
-          docstring_section_style: list
-          members_order: alphabetical
-          merge_init_into_class: yes
-          filters: ["!^_"]
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          inventories:
+            - https://installer.readthedocs.io/en/stable/objects.inv
+            - https://docs.python.org/3/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://docs.scipy.org/doc/scipy/objects.inv
+            - https://pandas.pydata.org/docs/objects.inv
+            - https://matplotlib.org/stable/objects.inv
+          options:
+            docstring_style: numpy
+            docstring_options:
+              ignore_init_summary: yes
+            show_submodules: no
+            show_source: true
+            show_symbol_type_heading: true
+            show_root_heading: true
+            show_root_toc_entry: true
+            show_docstring_attributes: true
+            show_root_full_path: false
+            docstring_section_style: list
+            members_order: alphabetical
+            merge_init_into_class: yes
+            filters: ["!^_"]
 
 use_directory_urls: false
 
