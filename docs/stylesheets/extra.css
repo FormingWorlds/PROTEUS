@@ -226,8 +226,25 @@
   padding-right: 1rem;
 }
 
+/* =========================================================
+   Footer
+   ========================================================= */
+
 /* Remove underline from footer copyright link */
 .md-footer-copyright a,
 .md-footer-meta a {
   text-decoration: none !important;
+}
+
+/* =========================================================
+   Make header title look clickable and add hover effect
+   ========================================================= */
+
+.md-header__title[data-md-component="header-title"] {
+  cursor: pointer;
+  transition: opacity 0.15s ease !important;
+}
+
+.md-header__title[data-md-component="header-title"]:hover {
+  opacity: 0.7 !important;
 }
