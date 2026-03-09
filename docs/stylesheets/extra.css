@@ -1,0 +1,233 @@
+/* =========================================================
+   PROTEUS theme variables
+   ========================================================= */
+
+/* Be careful when changing these, as they affect multiple elements across the site. */
+
+[data-md-color-scheme="default"],
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #1c2b4b;
+  --md-primary-fg-color--light: #2a3d69;
+  --md-primary-fg-color--dark: #14203a;
+
+  --proteus-highlight-color: #ff6e40;
+  --proteus-highlight-bg-soft: rgba(255, 109, 64, 0.093);
+
+  --md-accent-fg-color: var(--proteus-highlight-color);
+
+  --md-typeset-a-color: #3b6193;
+}
+
+/* Softer slate background + more muted link color */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0f172ad2;
+  --md-default-bg-color--light: #1e293b;
+  --md-default-bg-color--lighter: #334155;
+  --md-default-bg-color--lightest: #475569;
+
+  --md-typeset-a-color: #8fa8c9;
+}
+
+/* =========================================================
+   Header + tabs
+   ========================================================= */
+
+[data-md-color-scheme="default"] .md-header,
+[data-md-color-scheme="default"] .md-tabs,
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: var(--md-primary-fg-color);
+}
+
+[data-md-color-scheme="default"] .md-header *,
+[data-md-color-scheme="default"] .md-tabs *,
+[data-md-color-scheme="slate"] .md-header *,
+[data-md-color-scheme="slate"] .md-tabs * {
+  color: #fff !important;
+  fill: #fff !important;
+}
+
+/* =========================================================
+   Expanded search
+   ========================================================= */
+
+[data-md-color-scheme="default"] .md-search__form,
+[data-md-color-scheme="slate"] .md-search__form {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 0.2rem !important;
+  box-shadow: none !important;
+}
+
+[data-md-color-scheme="default"] .md-search__form:hover,
+[data-md-color-scheme="default"] .md-search__form:focus-within,
+[data-md-color-scheme="slate"] .md-search__form:hover,
+[data-md-color-scheme="slate"] .md-search__form:focus-within {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+[data-md-color-scheme="default"] .md-search__input,
+[data-md-color-scheme="slate"] .md-search__input {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff !important;
+  background: transparent !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+[data-md-color-scheme="default"] .md-search__input::placeholder,
+[data-md-color-scheme="slate"] .md-search__input::placeholder {
+  color: rgba(255, 255, 255, 0.75) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.75) !important;
+  opacity: 1 !important;
+}
+
+/* Hide browser-native search decorations */
+.md-search__input::-webkit-search-decoration,
+.md-search__input::-webkit-search-cancel-button,
+.md-search__input::-webkit-search-results-button,
+.md-search__input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+/* Expanded search icons */
+[data-md-color-scheme="default"] .md-search__icon,
+[data-md-color-scheme="default"] .md-search__icon svg,
+[data-md-color-scheme="default"] .md-search__icon svg *,
+[data-md-color-scheme="default"] .md-search__label,
+[data-md-color-scheme="default"] .md-search__label svg,
+[data-md-color-scheme="default"] .md-search__label svg *,
+[data-md-color-scheme="slate"] .md-search__icon,
+[data-md-color-scheme="slate"] .md-search__icon svg,
+[data-md-color-scheme="slate"] .md-search__icon svg *,
+[data-md-color-scheme="slate"] .md-search__label,
+[data-md-color-scheme="slate"] .md-search__label svg,
+[data-md-color-scheme="slate"] .md-search__label svg * {
+  color: #fff !important;
+  fill: #fff !important;
+  stroke: #fff !important;
+  opacity: 1 !important;
+}
+
+/* =========================================================
+   Collapsed search trigger in header
+   ========================================================= */
+
+[data-md-color-scheme="default"] .md-search__button,
+[data-md-color-scheme="slate"] .md-search__button {
+  color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 0.6rem !important;
+}
+
+[data-md-color-scheme="default"] .md-search__button:hover,
+[data-md-color-scheme="default"] .md-search__button:focus,
+[data-md-color-scheme="slate"] .md-search__button:hover,
+[data-md-color-scheme="slate"] .md-search__button:focus {
+  background-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Collapsed magnifier */
+[data-md-color-scheme="default"] .md-search__button::before,
+[data-md-color-scheme="slate"] .md-search__button::before {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  filter: brightness(0) invert(1) !important;
+  opacity: 1 !important;
+}
+
+/* If an inner SVG is used in some states */
+[data-md-color-scheme="default"] .md-search__button svg,
+[data-md-color-scheme="default"] .md-search__button svg *,
+[data-md-color-scheme="slate"] .md-search__button svg,
+[data-md-color-scheme="slate"] .md-search__button svg * {
+  fill: #fff !important;
+  stroke: #fff !important;
+  color: #fff !important;
+}
+
+/* Shortcut badge */
+[data-md-color-scheme="default"] .md-search__button kbd,
+[data-md-color-scheme="default"] .md-search__button .md-search__kbd,
+[data-md-color-scheme="slate"] .md-search__button kbd,
+[data-md-color-scheme="slate"] .md-search__button .md-search__kbd {
+  color: rgba(255, 255, 255, 0.9) !important;
+  background-color: rgba(255, 255, 255, 0.18) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Badge drawn as pseudo-element in some versions */
+[data-md-color-scheme="default"] .md-search__button::after,
+[data-md-color-scheme="slate"] .md-search__button::after {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* =========================================================
+   Top tabs
+   ========================================================= */
+
+/* All tab labels white by default */
+[data-md-color-scheme="default"] .md-tabs__link,
+[data-md-color-scheme="slate"] .md-tabs__link {
+  color: #fff !important;
+  opacity: 0. !important;
+  transition: color 0.15s ease, opacity 0.15s ease !important;
+}
+
+/* Hover state */
+[data-md-color-scheme="default"] .md-tabs__link:hover,
+[data-md-color-scheme="slate"] .md-tabs__link:hover {
+  color: var(--proteus-highlight-color) !important;
+  opacity: 0.8 !important;
+}
+
+/* Active tab text only, no underline */
+[data-md-color-scheme="default"] .md-tabs__item--active,
+[data-md-color-scheme="default"] .md-tabs__link--active,
+[data-md-color-scheme="default"] .md-tabs__item--active .md-tabs__link,
+[data-md-color-scheme="slate"] .md-tabs__item--active,
+[data-md-color-scheme="slate"] .md-tabs__link--active,
+[data-md-color-scheme="slate"] .md-tabs__item--active .md-tabs__link {
+  color: var(--proteus-highlight-color) !important;
+  box-shadow: none !important;
+  border-bottom: none !important;
+  text-decoration: none !important;
+}
+
+/* Remove any underline/pseudo-element indicator */
+[data-md-color-scheme="default"] .md-tabs__item--active::after,
+[data-md-color-scheme="default"] .md-tabs__link--active::after,
+[data-md-color-scheme="default"] .md-tabs__item--active .md-tabs__link::after,
+[data-md-color-scheme="slate"] .md-tabs__item--active::after,
+[data-md-color-scheme="slate"] .md-tabs__link--active::after,
+[data-md-color-scheme="slate"] .md-tabs__item--active .md-tabs__link::after {
+  content: none !important;
+  display: none !important;
+  background: none !important;
+}
+
+/* =========================================================
+   Sidebar navigation
+   ========================================================= */
+
+/* Style only active leaf page links */
+[data-md-color-scheme="default"] .md-nav__item .md-nav__link--active:not(.md-nav__link--passed),
+[data-md-color-scheme="slate"] .md-nav__item .md-nav__link--active:not(.md-nav__link--passed) {
+  background-color: var(--proteus-highlight-bg-soft) !important;
+  border-radius: 1rem !important;
+  color: var(--proteus-highlight-color) !important;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+/* Remove underline from footer copyright link */
+.md-footer-copyright a,
+.md-footer-meta a {
+  text-decoration: none !important;
+}
