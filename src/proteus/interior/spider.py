@@ -23,6 +23,428 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+FWL_DATA_DIR = os.environ.get('FWL_DATA', '')
+MELTING_CURVES_DIR = os.path.join(FWL_DATA_DIR, 'interior_lookup_tables', 'Melting_curves')
+EOS_DYNAMIC_DIR = os.path.join(FWL_DATA_DIR, 'interior_lookup_tables', 'EOS', 'dynamic')
+
+
+def _coresize_from_mesh(mesh_file: str) -> float:
+    """Extract fractional core radius from a SPIDER external mesh file.
+
+    Parameters
+    ----------
+    mesh_file : str
+        Path to the SPIDER mesh file (header + basic nodes + staggered nodes).
+
+    Returns
+    -------
+    float
+        Core-to-surface radius ratio (R_cmb / R_surface).
+    """
+    with open(mesh_file) as f:
+        header = f.readline()
+        nb = int(header.strip('# \n').split()[0])
+        # First basic node = surface, last basic node = CMB
+        r_surface = float(f.readline().split()[0])
+        for _ in range(nb - 2):
+            f.readline()
+        r_cmb = float(f.readline().split()[0])
+    return r_cmb / r_surface
+
+
+def _check_eos_table_range(eos_dir: str, mesh_file: str | None, P_cmb: float):
+    """Warn if CMB pressure approaches EOS table limits.
+
+    Reads the header of the solid-phase density table to determine the
+    entropy range.  When the solid-phase table's entropy coverage is
+    narrow relative to the melt-phase table, partially-solid nodes near
+    the CMB can trigger out-of-range lookups that produce unphysical
+    material properties (e.g. negative thermal expansion).
+
+    Parameters
+    ----------
+    eos_dir : str
+        Path to the P-S EOS lookup directory.
+    mesh_file : str or None
+        Path to the external mesh file (used for context in the warning).
+    P_cmb : float
+        Pressure at the core-mantle boundary [Pa].
+    """
+    solid_file = os.path.join(eos_dir, 'density_solid.dat')
+    melt_file = os.path.join(eos_dir, 'density_melt.dat')
+    if not os.path.isfile(solid_file) or not os.path.isfile(melt_file):
+        return
+
+    def _read_entropy_range(filepath):
+        """Read the entropy axis scaling and bounds from a P-S table header."""
+        with open(filepath) as f:
+            header = f.readline()  # "# HEAD NX NY"
+            tokens = header.strip('# \n').split()
+            head = int(tokens[0])
+            nx = int(tokens[1])
+            ny = int(tokens[2])
+            # Skip to the scaling-factor line (last header line)
+            for _ in range(head - 2):
+                f.readline()
+            scales = f.readline().strip('# \n').split()
+            y_scale = float(scales[1])  # entropy scaling factor
+
+            # First data line gives y_min
+            first_data = f.readline().split()
+            y_min = float(first_data[1]) * y_scale
+
+            # Last unique y value is at the start of the last block:
+            # skip (ny-1)*nx - 1 lines to reach it
+            skip = (ny - 1) * nx - 1
+            for _ in range(skip):
+                f.readline()
+            last_data = f.readline().split()
+            y_max = float(last_data[1]) * y_scale
+        return y_min, y_max
+
+    try:
+        s_min_solid, s_max_solid = _read_entropy_range(solid_file)
+        s_min_melt, s_max_melt = _read_entropy_range(melt_file)
+    except (ValueError, IndexError, IOError):
+        return  # cannot parse, skip check
+
+    # The critical scenario: if the initial adiabat entropy exceeds the
+    # solid-phase table maximum, partially-solid nodes will get clamped
+    # lookups that may produce negative thermal expansion.
+    if s_max_solid < s_max_melt:
+        log.warning(
+            'Solid-phase EOS table entropy range (%.0f–%.0f J/kg/K) is narrower '
+            'than the melt-phase range (%.0f–%.0f J/kg/K). '
+            'If the initial adiabat entropy exceeds %.0f J/kg/K at partially-solid '
+            'nodes (high CMB pressure), the solid-phase lookup will be clamped, '
+            'potentially producing unphysical material properties.',
+            s_min_solid,
+            s_max_solid,
+            s_min_melt,
+            s_max_melt,
+            s_max_solid,
+        )
+
+    if P_cmb > 400e9:
+        log.warning(
+            'CMB pressure %.1f GPa exceeds 400 GPa. At these pressures the initial '
+            'adiabat may cross the liquidus, requiring solid-phase EOS evaluation at '
+            'entropy values beyond the table range (solid max: %.0f J/kg/K). '
+            'If SPIDER fails with CV_CONV_FAILURE at t=0, this is the likely cause.',
+            P_cmb / 1e9,
+            s_max_solid,
+        )
+
+
+# Nondimensional scaling reference (must match SPIDER call_sequence below)
+RADIUS0 = 63710000.0  # m
+
+
+def _read_mesh_file(mesh_path: str) -> tuple[np.ndarray, ...]:
+    """Parse a SPIDER external mesh file.
+
+    Parameters
+    ----------
+    mesh_path : str
+        Path to the mesh file.
+
+    Returns
+    -------
+    r_b, P_b, rho_b, g_b : np.ndarray
+        Basic-node radius [m], pressure [Pa], density [kg/m3],
+        gravity [m/s2] (surface to CMB).
+    r_s, P_s, rho_s, g_s : np.ndarray
+        Staggered-node radius [m], pressure [Pa], density [kg/m3],
+        gravity [m/s2] (surface to CMB).
+    """
+    with open(mesh_path) as f:
+        header = f.readline()
+        tokens = header.strip('# \n').split()
+        nb = int(tokens[0])
+        ns = int(tokens[1])
+
+        r_b = np.empty(nb)
+        P_b = np.empty(nb)
+        rho_b = np.empty(nb)
+        g_b = np.empty(nb)
+        for i in range(nb):
+            cols = f.readline().split()
+            r_b[i] = float(cols[0])
+            P_b[i] = float(cols[1])
+            rho_b[i] = float(cols[2])
+            g_b[i] = float(cols[3])
+
+        r_s = np.empty(ns)
+        P_s = np.empty(ns)
+        rho_s = np.empty(ns)
+        g_s = np.empty(ns)
+        for i in range(ns):
+            cols = f.readline().split()
+            r_s[i] = float(cols[0])
+            P_s[i] = float(cols[1])
+            rho_s[i] = float(cols[2])
+            g_s[i] = float(cols[3])
+
+    return r_b, P_b, rho_b, g_b, r_s, P_s, rho_s, g_s
+
+
+def _write_mesh_file(
+    mesh_path: str,
+    r_b: np.ndarray,
+    P_b: np.ndarray,
+    rho_b: np.ndarray,
+    g_b: np.ndarray,
+    r_s: np.ndarray,
+    P_s: np.ndarray,
+    rho_s: np.ndarray,
+    g_s: np.ndarray,
+) -> None:
+    """Write a SPIDER external mesh file.
+
+    Parameters
+    ----------
+    mesh_path : str
+        Output file path.
+    r_b, P_b, rho_b, g_b : np.ndarray
+        Basic-node arrays (surface to CMB).
+    r_s, P_s, rho_s, g_s : np.ndarray
+        Staggered-node arrays (surface to CMB).
+    """
+    with open(mesh_path, 'w') as f:
+        f.write(f'# {len(r_b)} {len(r_s)}\n')
+        for i in range(len(r_b)):
+            f.write(f'{r_b[i]:.15e} {P_b[i]:.15e} {rho_b[i]:.15e} {g_b[i]:.15e}\n')
+        for i in range(len(r_s)):
+            f.write(f'{r_s[i]:.15e} {P_s[i]:.15e} {rho_s[i]:.15e} {g_s[i]:.15e}\n')
+
+
+def blend_mesh_files(old_path: str, new_path: str, max_shift: float = 0.05) -> float:
+    """Clamp the maximum per-update mesh shift by blending old and new meshes.
+
+    Compares radii in old and new mesh files. If the maximum fractional
+    radius change exceeds ``max_shift``, linearly blends all columns
+    (r, P, rho, g) so that the effective shift equals ``max_shift``, and
+    overwrites ``new_path`` with the blended mesh.
+
+    Parameters
+    ----------
+    old_path : str
+        Path to the previous mesh file.
+    new_path : str
+        Path to the new mesh file (overwritten in-place if blending occurs).
+    max_shift : float
+        Maximum allowed fractional radius change per update.
+
+    Returns
+    -------
+    float
+        Actual maximum fractional radius shift before blending (0.0 if
+        old file is missing or node counts differ).
+    """
+    if not os.path.isfile(old_path):
+        return 0.0
+
+    try:
+        r_b_old, P_b_old, rho_b_old, g_b_old, r_s_old, P_s_old, rho_s_old, g_s_old = (
+            _read_mesh_file(old_path)
+        )
+        r_b_new, P_b_new, rho_b_new, g_b_new, r_s_new, P_s_new, rho_s_new, g_s_new = (
+            _read_mesh_file(new_path)
+        )
+    except Exception:
+        log.warning('Could not read mesh files for blending')
+        return 0.0
+
+    if len(r_b_old) != len(r_b_new) or len(r_s_old) != len(r_s_new):
+        log.warning(
+            'Mesh node count changed (%d/%d -> %d/%d), skipping blend',
+            len(r_b_old),
+            len(r_s_old),
+            len(r_b_new),
+            len(r_s_new),
+        )
+        return 0.0
+
+    actual_shift = float(np.max(np.abs(r_b_new - r_b_old) / np.abs(r_b_old)))
+
+    if actual_shift <= max_shift:
+        log.info(
+            'Mesh shift %.3f%% within limit (%.1f%%), no blending needed',
+            actual_shift * 100,
+            max_shift * 100,
+        )
+        return actual_shift
+
+    alpha = max_shift / actual_shift
+    log.info(
+        'Mesh shift %.1f%% exceeds limit %.1f%%, blending with alpha=%.4f',
+        actual_shift * 100,
+        max_shift * 100,
+        alpha,
+    )
+
+    def _blend(old, new):
+        return old + alpha * (new - old)
+
+    _write_mesh_file(
+        new_path,
+        _blend(r_b_old, r_b_new),
+        _blend(P_b_old, P_b_new),
+        _blend(rho_b_old, rho_b_new),
+        _blend(g_b_old, g_b_new),
+        _blend(r_s_old, r_s_new),
+        _blend(P_s_old, P_s_new),
+        _blend(rho_s_old, rho_s_new),
+        _blend(g_s_old, g_s_new),
+    )
+    return actual_shift
+
+
+def _rewrite_json_solution(
+    json_path: str,
+    dSdxi_nondim: np.ndarray,
+    S0_nondim: float,
+) -> None:
+    """Overwrite the entropy solution vector in a SPIDER JSON file.
+
+    Modifies subdomains 0 (dS/dxi) and 1 (S0) in-place, leaving any
+    volatile or reaction subdomains untouched.
+
+    Parameters
+    ----------
+    json_path : str
+        Path to the SPIDER JSON file.
+    dSdxi_nondim : np.ndarray
+        New nondimensional dS/dxi values at basic nodes.
+    S0_nondim : float
+        New nondimensional S0 (entropy at first staggered node).
+    """
+    with open(json_path) as f:
+        data = json.load(f)
+
+    sd = data['solution']['subdomain data']
+    # Subdomain 0: dS/dxi at basic nodes
+    sd[0]['values'] = [f'{v:.17e}' for v in dSdxi_nondim]
+    # Subdomain 1: S0 (single value)
+    sd[1]['values'] = [f'{S0_nondim:.17e}']
+
+    with open(json_path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+def remap_entropy_for_new_mesh(
+    json_path: str,
+    new_mesh_file: str,
+    radius_phys: float,
+) -> bool:
+    """Interpolate entropy from the old mesh to a new mesh in a SPIDER JSON.
+
+    When Zalmoxis updates the mesh, physical node positions r[i] change.
+    The old JSON stores dS/dxi computed on the old mesh; applying it with
+    new xi spacing gives incorrect absolute entropy S(r).  This function
+    reads S(r) from the old mesh, interpolates onto the new mesh positions,
+    then rewrites the JSON solution vector with corrected dS/dxi and S0.
+
+    Parameters
+    ----------
+    json_path : str
+        Path to the SPIDER restart JSON file (modified in-place).
+    new_mesh_file : str
+        Path to the new external mesh file from Zalmoxis.
+    radius_phys : float
+        Physical planet surface radius [m] (for consistency check).
+
+    Returns
+    -------
+    bool
+        True if the JSON was modified, False if the mesh change was
+        negligible (max relative radius shift < 1e-10).
+    """
+    # --- Read old mesh data from JSON ---
+    with open(json_path) as f:
+        jdata = json.load(f)
+
+    data = jdata['data']
+    r_s_old = np.array([float(v) for v in data['radius_s']['values']]) * float(
+        data['radius_s']['scaling']
+    )
+    S_s_old = np.array([float(v) for v in data['S_s']['values']]) * float(
+        data['S_s']['scaling']
+    )
+    r_b_old = np.array([float(v) for v in data['radius_b']['values']]) * float(
+        data['radius_b']['scaling']
+    )
+
+    # --- Read new mesh ---
+    r_b_new, _, _, _, r_s_new, _, _, _ = _read_mesh_file(new_mesh_file)
+    N_b = len(r_b_new)
+    N_s = N_b - 1
+
+    if len(r_b_old) != N_b:
+        log.warning(
+            'Cannot remap entropy: node count changed (%d -> %d)',
+            len(r_b_old),
+            N_b,
+        )
+        return False
+
+    # --- Check if mesh actually changed ---
+    max_rel_diff = np.max(np.abs(r_b_new - r_b_old) / r_b_old)
+    if max_rel_diff < 1e-10:
+        log.debug('Mesh change negligible (max rel diff %.2e), skipping remap', max_rel_diff)
+        return False
+
+    log.info(
+        'Remapping entropy for new mesh (max radius shift: %.2e relative)',
+        max_rel_diff,
+    )
+
+    # --- Interpolate S(r) from old to new staggered positions ---
+    # SPIDER ordering is surface-to-CMB (decreasing r), np.interp needs ascending
+    r_s_old_asc = r_s_old[::-1]
+    S_s_old_asc = S_s_old[::-1]
+    r_s_new_asc = r_s_new[::-1]
+    S_s_new_asc = np.interp(r_s_new_asc, r_s_old_asc, S_s_old_asc)
+    S_s_new = S_s_new_asc[::-1]  # back to surface-to-CMB
+
+    # --- Compute new xi coordinates (matches SetMeshRegular in mesh.c) ---
+    R_surf = r_b_new[0]
+    R_cmb = r_b_new[-1]
+    coresize_new = R_cmb / R_surf
+    radius_nondim = R_surf / RADIUS0
+
+    dx_b = -radius_nondim * (1.0 - coresize_new) / (N_b - 1)
+    xi_s_new = np.array(
+        [radius_nondim * coresize_new - 0.5 * dx_b - (N_s - 1 - i) * dx_b for i in range(N_s)]
+    )
+
+    # --- Compute dS/dxi (nondimensional) from interpolated entropy ---
+    # Get scalings from solution subdomains
+    sd = jdata['solution']['subdomain data']
+    S0_scaling = float(sd[1]['scaling'])
+
+    S_s_nondim = S_s_new / S0_scaling
+    S0_nondim = S_s_nondim[0]
+
+    dSdxi_nondim = np.zeros(N_b)
+    # Interior basic nodes: dS/dxi[i] = (S_s[i] - S_s[i-1]) / (xi_s[i] - xi_s[i-1])
+    for i in range(1, N_b - 1):
+        dSdxi_nondim[i] = (S_s_nondim[i] - S_s_nondim[i - 1]) / (xi_s_new[i] - xi_s_new[i - 1])
+    # Boundary extrapolation
+    dSdxi_nondim[0] = dSdxi_nondim[1]
+    dSdxi_nondim[N_b - 1] = dSdxi_nondim[N_b - 2]
+
+    # --- Write back to JSON ---
+    _rewrite_json_solution(json_path, dSdxi_nondim, S0_nondim)
+
+    log.info(
+        'Entropy remapped: S0=%.2f J/kg/K, S range=[%.2f, %.2f] J/kg/K',
+        S_s_new[0],
+        S_s_new.min(),
+        S_s_new.max(),
+    )
+    return True
+
 
 class MyJSON(object):
     """load and access json data"""
@@ -201,7 +623,8 @@ def _try_spider(
     step_sf: float,
     atol_sf: float,
     dT_max: float,
-    timeout: float = 60 * 15,
+    timeout: float = 60 * 30,
+    mesh_file: str | None = None,
 ):
     """
     Try to run spider with the current configuration.
@@ -256,6 +679,28 @@ def _try_spider(
     empty_file = os.path.join(dirs['output/data'], '.spider_tmp')
     open(empty_file, 'w').close()
 
+    # Compute coresize: use external mesh radii when available, otherwise config
+    coresize = config.struct.corefrac
+    rho_core = config.struct.core_density
+    if mesh_file and os.path.isfile(mesh_file):
+        coresize = _coresize_from_mesh(mesh_file)
+        log.debug(
+            'coresize from external mesh: %.6f (config: %.6f)',
+            coresize,
+            config.struct.corefrac,
+        )
+        # Derive average core density from the self-consistent core mass
+        # (set by Zalmoxis) and the CMB radius from the mesh file
+        R_cmb = coresize * hf_row['R_int']
+        M_core = hf_row.get('M_core', 0)
+        if R_cmb > 0 and M_core > 0:
+            rho_core = M_core / (4.0 / 3.0 * np.pi * R_cmb**3)
+            log.debug(
+                'rho_core from Zalmoxis structure: %.2f kg/m^3 (config: %.2f)',
+                rho_core,
+                config.struct.core_density,
+            )
+
     ### SPIDER base call sequence
     call_sequence = [
         spider_exec,
@@ -282,7 +727,7 @@ def _try_spider(
         '-gravity',
         '%.6e' % (-1.0 * hf_row['gravity']),
         '-coresize',
-        '%.6e' % (config.struct.corefrac),
+        '%.6e' % (coresize),
         '-grain',
         '%.6e' % (config.interior.grain_size),
     ]
@@ -357,42 +802,85 @@ def _try_spider(
         call_sequence.extend(['-HTIDAL', '2'])
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
 
-    # Properties lookup data (folder relative to SPIDER src)
-    folder = 'lookup_data/1TPa-dK09-elec-free/'
+    # EOS lookup data: absolute paths from FWL_DATA, with SPIDER local as fallback
+    eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior.eos_dir, 'P-S')
+    if not os.path.isdir(eos_dir):
+        # Fall back to SPIDER's local lookup_data (uses legacy directory name)
+        eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
+    if not os.path.isdir(eos_dir):
+        raise FileNotFoundError(
+            f'SPIDER EOS directory not found: {eos_dir}. '
+            f"Check interior.eos_dir='{config.interior.eos_dir}'."
+        )
+
+    # Resolve melting curve S(P) files from shared config (absolute paths in FWL_DATA)
+    mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior.melting_dir)
+    liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
+    solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
+    for fpath in (liquidus_ps, solidus_ps):
+        if not os.path.isfile(fpath):
+            raise FileNotFoundError(
+                f'SPIDER phase boundary file not found: {fpath}. '
+                f"Run 'python tools/generate_spider_phase_boundaries.py "
+                f"--melting-dir {config.interior.melting_dir}' to generate it."
+            )
+
     call_sequence.extend(['-phase_names', 'melt,solid'])
 
     call_sequence.extend(['-melt_TYPE', '1'])
-    call_sequence.extend(['-melt_alpha_filename_rel_to_src', folder + 'thermal_exp_melt.dat'])
-    call_sequence.extend(['-melt_cp_filename_rel_to_src', folder + 'heat_capacity_melt.dat'])
     call_sequence.extend(
-        ['-melt_dTdPs_filename_rel_to_src', folder + 'adiabat_temp_grad_melt.dat']
+        ['-melt_alpha_filename', os.path.join(eos_dir, 'thermal_exp_melt.dat')]
     )
-    call_sequence.extend(['-melt_rho_filename_rel_to_src', folder + 'density_melt.dat'])
-    call_sequence.extend(['-melt_temp_filename_rel_to_src', folder + 'temperature_melt.dat'])
+    call_sequence.extend(['-melt_cp_filename', os.path.join(eos_dir, 'heat_capacity_melt.dat')])
     call_sequence.extend(
-        ['-melt_phase_boundary_filename_rel_to_src', folder + 'liquidus_A11_H13.dat']
+        ['-melt_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_melt.dat')]
     )
+    call_sequence.extend(['-melt_rho_filename', os.path.join(eos_dir, 'density_melt.dat')])
+    call_sequence.extend(['-melt_temp_filename', os.path.join(eos_dir, 'temperature_melt.dat')])
+    call_sequence.extend(['-melt_phase_boundary_filename', liquidus_ps])
     call_sequence.extend(['-melt_log10visc', '2.0'])
     call_sequence.extend(['-melt_cond', '4.0'])  # conductivity of melt
 
     call_sequence.extend(['-solid_TYPE', '1'])
-    call_sequence.extend(['-solid_alpha_filename_rel_to_src', folder + 'thermal_exp_solid.dat'])
-    call_sequence.extend(['-solid_cp_filename_rel_to_src', folder + 'heat_capacity_solid.dat'])
     call_sequence.extend(
-        ['-solid_dTdPs_filename_rel_to_src', folder + 'adiabat_temp_grad_solid.dat']
+        ['-solid_alpha_filename', os.path.join(eos_dir, 'thermal_exp_solid.dat')]
     )
-    call_sequence.extend(['-solid_rho_filename_rel_to_src', folder + 'density_solid.dat'])
-    call_sequence.extend(['-solid_temp_filename_rel_to_src', folder + 'temperature_solid.dat'])
     call_sequence.extend(
-        ['-solid_phase_boundary_filename_rel_to_src', folder + 'solidus_A11_H13.dat']
+        ['-solid_cp_filename', os.path.join(eos_dir, 'heat_capacity_solid.dat')]
     )
+    call_sequence.extend(
+        ['-solid_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_solid.dat')]
+    )
+    call_sequence.extend(['-solid_rho_filename', os.path.join(eos_dir, 'density_solid.dat')])
+    call_sequence.extend(
+        ['-solid_temp_filename', os.path.join(eos_dir, 'temperature_solid.dat')]
+    )
+    call_sequence.extend(['-solid_phase_boundary_filename', solidus_ps])
     call_sequence.extend(['-solid_log10visc', '22.0'])
     call_sequence.extend(['-solid_cond', '4.0'])  # conductivity of solid
 
-    # static pressure profile derived from Adams-Williamson equation of state
-    # these parameters are from fitting PREM in the lower mantle (for Earth)
-    call_sequence.extend(['-adams_williamson_rhos', '4078.95095544'])  # surface density
-    call_sequence.extend(['-adams_williamson_beta', '1.1115348931000002e-07'])  # beta parameter
+    # Static pressure profile: external mesh from Zalmoxis, or Adams-Williamson
+    if mesh_file and os.path.isfile(mesh_file):
+        call_sequence.extend(['-MESH_SOURCE', '1'])
+        call_sequence.extend(['-mesh_external_filename', mesh_file])
+
+        # Check EOS table range against CMB pressure (first run only)
+        if IC_INTERIOR != 2:
+            try:
+                with open(mesh_file) as mf:
+                    header = mf.readline()
+                    nb = int(header.strip('# \n').split()[0])
+                    # Skip to last basic node (CMB)
+                    for _ in range(nb - 1):
+                        line = mf.readline()
+                    P_cmb = float(line.split()[1])
+                _check_eos_table_range(eos_dir, mesh_file, P_cmb)
+            except (ValueError, IndexError, IOError):
+                pass  # non-critical check
+    else:
+        # Adams-Williamson EOS parameters from fitting PREM lower mantle (Earth)
+        call_sequence.extend(['-adams_williamson_rhos', '4078.95095544'])
+        call_sequence.extend(['-adams_williamson_beta', '1.1115348931000002e-07'])
 
     # eddy diffusivity
     # if negative, this value is adopted (units m^2/s)
@@ -412,7 +900,7 @@ def _try_spider(
 
     # Relating to the planet's metallic core
     call_sequence.extend(['-CORE_BC', '1'])  # CMB boundary condition
-    call_sequence.extend(['-rho_core', '%.6e' % (config.struct.core_density)])  # density
+    call_sequence.extend(['-rho_core', '%.6e' % rho_core])  # density
     call_sequence.extend(['-cp_core', '%.6e' % (config.struct.core_heatcap)])  # heat capacity
 
     # surface boundary condition
@@ -502,7 +990,12 @@ def _try_spider(
 
 
 def RunSPIDER(
-    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, interior_o: Interior_t
+    dirs: dict,
+    config: Config,
+    hf_all: pd.DataFrame,
+    hf_row: dict,
+    interior_o: Interior_t,
+    mesh_file: str | None = None,
 ):
     """
     Wrapper function for running SPIDER.
@@ -531,7 +1024,15 @@ def RunSPIDER(
 
         # run SPIDER
         spider_success = _try_spider(
-            dirs, config, interior_o.ic, hf_all, hf_row, step_sf, atol_sf, dT_max
+            dirs,
+            config,
+            interior_o.ic,
+            hf_all,
+            hf_row,
+            step_sf,
+            atol_sf,
+            dT_max,
+            mesh_file=mesh_file,
         )
 
         if spider_success:

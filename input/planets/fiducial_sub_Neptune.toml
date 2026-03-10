@@ -192,7 +192,7 @@ version = "2.0"
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
 
-    module = "aragog"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 110       # Number of SPIDER grid levels

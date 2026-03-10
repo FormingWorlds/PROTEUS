@@ -47,7 +47,12 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
     total_planet_mass = config.struct.mass_tot * M_earth
 
     logger.info(
-        f'Total target planet mass (dry mass + volatiles): {total_planet_mass} kg with EOS choice: {config.struct.zalmoxis.EOSchoice}'
+        'Total target planet mass (dry mass + volatiles): %s kg '
+        'with EOS: core=%s, mantle=%s, ice=%s',
+        total_planet_mass,
+        config.struct.zalmoxis.core_eos,
+        config.struct.zalmoxis.mantle_eos,
+        config.struct.zalmoxis.ice_layer_eos or '(none)',
     )
 
     # Calculate the total mass of 'wet' elements in the planet
@@ -64,16 +69,23 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
 
     logger.info(f'Target planet mass (dry mass): {planet_mass} kg ')
 
+    # Build per-layer EOS config dict from PROTEUS config fields
+    layer_eos_config = {
+        'core': config.struct.zalmoxis.core_eos,
+        'mantle': config.struct.zalmoxis.mantle_eos,
+    }
+    if config.struct.zalmoxis.ice_layer_eos:
+        layer_eos_config['ice_layer'] = config.struct.zalmoxis.ice_layer_eos
+
     return {
         'planet_mass': planet_mass,
         'core_mass_fraction': config.struct.zalmoxis.coremassfrac,
         'mantle_mass_fraction': config.struct.zalmoxis.mantle_mass_fraction,
-        'weight_iron_fraction': config.struct.zalmoxis.weight_iron_frac,
         'temperature_mode': config.struct.zalmoxis.temperature_mode,
         'surface_temperature': config.struct.zalmoxis.surface_temperature,
         'center_temperature': config.struct.zalmoxis.center_temperature,
         'temp_profile_file': config.struct.zalmoxis.temperature_profile_file,
-        'EOS_CHOICE': config.struct.zalmoxis.EOSchoice,
+        'layer_eos_config': layer_eos_config,
         'num_layers': config.struct.zalmoxis.num_levels,
         'max_iterations_outer': config.struct.zalmoxis.max_iterations_outer,
         'tolerance_outer': config.struct.zalmoxis.tolerance_outer,
@@ -87,30 +99,47 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'target_surface_pressure': config.struct.zalmoxis.target_surface_pressure,
         'pressure_tolerance': config.struct.zalmoxis.pressure_tolerance,
         'max_iterations_pressure': config.struct.zalmoxis.max_iterations_pressure,
-        'pressure_adjustment_factor': config.struct.zalmoxis.pressure_adjustment_factor,
         'verbose': config.struct.zalmoxis.verbose,
         'iteration_profiles_enabled': config.struct.zalmoxis.iteration_profiles_enabled,
     }
 
 
 def load_zalmoxis_material_dictionaries():
-    """
-    Loads the material dictionaries for Zalmoxis.
-    Returns:
-        tuple: A tuple containing three dictionaries for iron/silicate planets, iron/Tdep_silicate planets, and water planets.
+    """Load Zalmoxis material property dictionaries.
+
+    EOS file paths are derived from the Zalmoxis source names
+    (e.g. ``Seager2007`` → ``EOS/static/Seager2007/``,
+    ``WolfBower2018_MgSiO3`` → ``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``),
+    not from ``interior.eos_dir``.
+
+    Returns
+    -------
+    tuple
+        Four dictionaries: iron/silicate, iron/T-dep silicate (WolfBower2018),
+        water planets, iron/RTPress100TPa silicate.
     """
     return get_zalmoxis_EOS()
 
 
-def load_zalmoxis_solidus_liquidus_functions(EOS_CHOICE, config: Config):
-    """Loads the solidus and liquidus functions for Zalmoxis based on the EOS choice.
-    Args:
-        EOS_CHOICE (str): The EOS choice for Zalmoxis.
-    Returns:
-        tuple: A tuple containing the solidus and liquidus functions.
+def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
+    """Loads the solidus and liquidus functions for Zalmoxis based on the mantle EOS.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Mantle EOS string (e.g. "WolfBower2018_MgSiO3").
+    config : Config
+        PROTEUS configuration object.
+
+    Returns
+    -------
+    tuple or None
+        (solidus_func, liquidus_func) if T-dependent EOS, else None.
     """
-    if EOS_CHOICE == 'Tabulated:iron/Tdep_silicate':
+    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+    if mantle_eos.startswith(_TDEP_PREFIXES):
         return get_zalmoxis_melting_curves(config)
+    return None
 
 
 def scale_temperature_profile_for_aragog(
@@ -145,14 +174,117 @@ def scale_temperature_profile_for_aragog(
     return scaled_temperature_profile
 
 
-def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
-    """Runs the Zalmoxis solver to compute the interior structure of a planet.
-    Args:
-        config (Config): The configuration object containing the configuration parameters.
-        outdir (str): The output directory where results will be saved.
-        hf_row (dict): A dictionary containing the mass of volatiles and other parameters.
-    Returns:
-        float: The core-mantle boundary radius.
+def write_spider_mesh_file(
+    outdir: str,
+    mantle_radii: np.ndarray,
+    mantle_pressure: np.ndarray,
+    mantle_density: np.ndarray,
+    mantle_gravity: np.ndarray,
+    num_basic: int,
+) -> str:
+    """Write an external mesh file for SPIDER from Zalmoxis mantle profiles.
+
+    Interpolates the Zalmoxis mantle arrays onto uniformly-spaced SPIDER
+    basic and staggered nodes, then writes the mesh file in the format
+    expected by SPIDER's ``SetMeshFromExternalFile()``.
+
+    Parameters
+    ----------
+    outdir : str
+        PROTEUS output directory (file is written to ``outdir/data/``).
+    mantle_radii : np.ndarray
+        Radial positions from CMB to surface, ascending [m].
+    mantle_pressure : np.ndarray
+        Pressure at each radius [Pa].
+    mantle_density : np.ndarray
+        Density at each radius [kg/m^3].
+    mantle_gravity : np.ndarray
+        Gravity magnitude at each radius [m/s^2] (positive).
+    num_basic : int
+        Number of SPIDER basic nodes (shell boundaries).
+
+    Returns
+    -------
+    str
+        Path to the written mesh file.
+    """
+    num_staggered = num_basic - 1
+    R_surf = float(mantle_radii[-1])
+    R_cmb = float(mantle_radii[0])
+
+    # Basic nodes: uniform spacing from surface to CMB (descending r)
+    r_b = np.linspace(R_surf, R_cmb, num_basic)
+    # Staggered nodes: midpoints between consecutive basic nodes
+    r_s = 0.5 * (r_b[:-1] + r_b[1:])
+
+    # Interpolate Zalmoxis profiles onto node positions
+    # mantle_radii is ascending, np.interp requires ascending xp
+    P_b = np.interp(r_b, mantle_radii, mantle_pressure)
+    rho_b = np.interp(r_b, mantle_radii, mantle_density)
+    g_b = np.interp(r_b, mantle_radii, mantle_gravity)
+
+    P_s = np.interp(r_s, mantle_radii, mantle_pressure)
+    rho_s = np.interp(r_s, mantle_radii, mantle_density)
+    g_s = np.interp(r_s, mantle_radii, mantle_gravity)
+
+    # Negate gravity for SPIDER convention (inward-pointing, negative)
+    g_b = -np.abs(g_b)
+    g_s = -np.abs(g_s)
+
+    # Write mesh file
+    mesh_path = os.path.join(outdir, 'data', 'spider_mesh.dat')
+    with open(mesh_path, 'w') as f:
+        f.write(f'# {num_basic} {num_staggered}\n')
+        for i in range(num_basic):
+            f.write(f'{r_b[i]:.15e} {P_b[i]:.15e} {rho_b[i]:.15e} {g_b[i]:.15e}\n')
+        for i in range(num_staggered):
+            f.write(f'{r_s[i]:.15e} {P_s[i]:.15e} {rho_s[i]:.15e} {g_s[i]:.15e}\n')
+
+    logger.info(
+        'Wrote SPIDER mesh file: %s (%d basic + %d staggered nodes)',
+        mesh_path,
+        num_basic,
+        num_staggered,
+    )
+
+    # Warn if CMB pressure is high enough that SPIDER's solid-phase EOS
+    # tables may be evaluated outside their valid entropy range
+    P_cmb = float(P_b[-1])  # last basic node = CMB
+    if P_cmb > 400e9:
+        logger.warning(
+            'CMB pressure from Zalmoxis mesh is %.1f GPa (> 400 GPa). '
+            'SPIDER solid-phase EOS tables (WolfBower2018) have limited entropy '
+            'coverage (~2400 J/kg/K). If the initial adiabat crosses the liquidus '
+            'at these pressures, the solid-phase lookup will be clamped to the table '
+            'edge, which can produce unphysical material properties (negative thermal '
+            'expansion) and cause CVode convergence failure.',
+            P_cmb / 1e9,
+        )
+
+    return mesh_path
+
+
+def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes: int = 0):
+    """Run the Zalmoxis solver to compute the interior structure of a planet.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object.
+    outdir : str
+        Output directory where results will be saved.
+    hf_row : dict
+        Dictionary containing volatile masses and other parameters.
+    num_spider_nodes : int
+        Number of SPIDER basic nodes. If > 0, writes a SPIDER mesh file
+        and returns its path as the second element of the return tuple.
+
+    Returns
+    -------
+    cmb_radius : float
+        Core-mantle boundary radius [m].
+    spider_mesh_file : str or None
+        Path to the SPIDER mesh file, or None if ``num_spider_nodes == 0``.
     """
 
     # Load the Zalmoxis configuration parameters
@@ -167,7 +299,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
         config_params,
         material_dictionaries=load_zalmoxis_material_dictionaries(),
         melting_curves_functions=load_zalmoxis_solidus_liquidus_functions(
-            config_params['EOS_CHOICE'], config
+            config.struct.zalmoxis.mantle_eos, config
         ),
         input_dir=os.path.join(outdir, 'data'),
     )
@@ -256,4 +388,16 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict):
                 f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
 
-    return cmb_radius
+    # Write SPIDER mesh file if requested
+    spider_mesh_file = None
+    if num_spider_nodes > 0:
+        spider_mesh_file = write_spider_mesh_file(
+            outdir,
+            mantle_radii,
+            mantle_pressure,
+            mantle_density,
+            mantle_gravity,
+            num_spider_nodes,
+        )
+
+    return cmb_radius, spider_mesh_file
