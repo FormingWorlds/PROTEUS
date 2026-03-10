@@ -18,8 +18,9 @@ class Platon:
         Minimum VMR for a species to be included in the radiative transfer.
     """
 
-    downsample: int   = field(default=8, validator=ge(1))
-    clip_vmr: float   = field(default=1e-8, validator=(gt(0), lt(1)))
+    downsample: int = field(default=8, validator=ge(1))
+    clip_vmr: float = field(default=1e-8, validator=(gt(0), lt(1)))
+
 
 @define
 class Observe:
@@ -29,7 +30,6 @@ class Observe:
         Module to use for calculating synthetic spectra.
     """
 
-    synthesis: str  = field(validator=in_((None,'platon')),
-                            converter=none_if_none)
+    synthesis: str = field(validator=in_((None, 'platon')), converter=none_if_none)
 
-    platon: Platon  = field(factory=Platon)
+    platon: Platon = field(factory=Platon)

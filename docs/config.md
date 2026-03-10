@@ -13,46 +13,12 @@ stellar evolution module (i.e. `star.module == 'mors'`), then you are required t
 the variable `star.mors.age_now`. However, if you instead decided to use the `dummy`
 stellar evolution module then the `age_now` parameter is not required.
 
-See the `default.toml` configuration for a comprehensive example of all possible parameters.
+See the [`default.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/default.toml) configuration for a comprehensive example of all possible parameters.
 
 ### Examples
 
 Have a look at the [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input)
 for ideas of how to set up your config in practice.
-
-## Developers: adding a new parameter
-
-So, you are developing a new model and want to add some parameters?
-Follow these steps:
-
-1. Decide on a good parameter name (*e.g.* `my_star_var`), and under which section to place it (*e.g.* `star`).
-   Add the new variable to the [config submodule](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/config/_star.py).
-2. Add the type for your variable, *e.g.* [float][], [int][], [str][].
-   You can also add complex types, please check the [code](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/config) for inspiration.
-3. Add a [validator](https://www.attrs.org/en/stable/api.html#module-attrs.validators)!
-   If your variable has a maximum value (*e.g.* 10), you can add a validator to make sure
-   that any values above 10 are rejected: `my_star_var: float = field(validator=attrs.validators.le(10))`
-4. Add a description for your new variable under `Attributes` in the docstring.
-   The documentation uses the description to generate this documentation.
-5. Update the example [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input).
-   Proteus checks tests all input configs in this directory are valid.
-6. Use your parameter in your code, *i.e.*: `config.star.my_star_var`
-
-```python title="src/proteus/config/_star.py"
-class Star:
-    """Stellar parameters.
-
-    Attributes
-    ----------
-    my_star_var: float
-        Star variable, must be 10 or lower!
-    """
-    my_star_var: float = field(validator=attrs.validators.le(10))
-```
-
-Proteus uses [attrs](https://www.attrs.org) for its
-parameter handling. Please see the [examples](https://www.attrs.org/en/stable/examples.html)
-for more information how to work with attrs.
 
 ## Root parameters
 
@@ -161,3 +127,39 @@ for more information how to work with attrs.
       show_root_heading: False
       show_root_toc_entry: False
       members_order: source
+
+---
+
+??? info "For developers: adding a new parameter"
+
+    So, you are developing a new model and want to add some parameters?
+    Follow these steps:
+
+    1. Decide on a good parameter name (*e.g.* `my_star_var`), and under which section to place it (*e.g.* `star`).
+       Add the new variable to the [config submodule](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/config/_star.py).
+    2. Add the type for your variable, *e.g.* [float][], [int][], [str][].
+       You can also add complex types, please check the [code](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/config) for inspiration.
+    3. Add a [validator](https://www.attrs.org/en/stable/api.html#module-attrs.validators)!
+       If your variable has a maximum value (*e.g.* 10), you can add a validator to make sure
+       that any values above 10 are rejected: `my_star_var: float = field(validator=attrs.validators.le(10))`
+    4. Add a description for your new variable under `Attributes` in the docstring.
+       The documentation uses the description to generate this documentation.
+    5. Update the example [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input).
+       Proteus checks tests all input configs in this directory are valid.
+    6. Use your parameter in your code, *i.e.*: `config.star.my_star_var`
+
+    ```python title="src/proteus/config/_star.py"
+    class Star:
+        """Stellar parameters.
+
+        Attributes
+        ----------
+        my_star_var: float
+            Star variable, must be 10 or lower!
+        """
+        my_star_var: float = field(validator=attrs.validators.le(10))
+    ```
+
+    Proteus uses [attrs](https://www.attrs.org) for its
+    parameter handling. Please see the [examples](https://www.attrs.org/en/stable/examples.html)
+    for more information how to work with attrs.

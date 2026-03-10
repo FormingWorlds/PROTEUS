@@ -26,4 +26,4 @@ cd $olddir
 # Import platon and run example - trigger data download
 python "$workpath/examples/transit_depth_example.py"
 
-echo "Done!"
+echo "Done!!"

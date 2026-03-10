@@ -1,6 +1,12 @@
 # Usage
 
-This page describes how to use PROTEUS. The framework can be run standalone, as a grid of simulations, or as a forward model within a retrieval framework. In all cases you will need to configure the model via a 'configuration file', which you can read about in a [dedicated page here](config.html). If you encounter any problems, please visit the [troubleshooting](troubleshooting.html) page.
+This page describes how to use PROTEUS. The framework can be run standalone, as a grid of simulations, or as a forward model within a retrieval framework. In all cases you will need to configure the model via a 'configuration file', which you can read about in a [dedicated page here](config.md). If you encounter any problems, please visit the [troubleshooting](troubleshooting.md) page.
+
+!!! tip "Quick start"
+    ```console
+    proteus start -c input/all_options.toml
+    ```
+    Results appear in `output/all_options/`. See [Output and results](#output-and-results) for details.
 
 We start by describing how to run a single instance of PROTEUS...
 
@@ -25,7 +31,7 @@ proteus start -c input/all_options.toml
 This will run a simulation and write the results to the `output/` folder inside your PROTEUS
 directory.
 
-See the [config guide](config.html) for information
+See the [config guide](config.md) for information
 on how to edit the configurations files, and an explanation of their structure.
 
 PROTEUS will automatically check if any lookup-tables or data need to be downloaded for it to run.
@@ -56,6 +62,19 @@ all_options/
  │ ├─plot_escape.png            <---- plot of volatile inventories over time
  │ ├─plot_global_log.png        <---- plot containing an overview of the simulation
  │ └─other files                <---- any other plots
+```
+
+To manually make plots, use the command `proteus plot`. For example, you can make a plot of
+atmosphere temperature profiles by running:
+
+```console
+proteus plot -c input/all_options.toml atmosphere
+```
+
+Or to make every possible plot, you would run:
+
+```console
+proteus plot -c input/all_options.toml all
 ```
 
 ## Running PROTEUS on remote machines / servers
@@ -103,6 +122,13 @@ Configure a grid of your choosing by creating a TOML file which specifies the gr
 
 Grids can be dispatched with or without using a workload manager. In PROTEUS, we use the [Slurm](https://slurm.schedmd.com/overview.html) workload manager, which can allow running large ensembles of models on high-performance compute clusters. The subsections below detail cases with/without Slurm.
 
+| | Without Slurm | With Slurm |
+|---|---|---|
+| Config setting | `use_slurm = false` | `use_slurm = true` |
+| Process management | PROTEUS manages subprocesses | Slurm manages jobs |
+| PROTEUS must stay open? | Yes | No |
+| Where to run | Servers, multicore desktops | HPC clusters (Habrok, Snellius) |
+
 ### Without Slurm
 
 Firstly, set `use_slurm = false`. In this case, the GridPROTEUS routine will manage the
@@ -111,7 +137,7 @@ which should be utilised by the grid at any one time. This is limited by the num
 cores available on your machine. This method works without Slurm, and can be applied on servers or
 on multicore personal computers.
 
-In this case, you will need to make sure that PROTEUS stays open in order to mange its subprocesses.
+In this case, you will need to make sure that PROTEUS stays open in order to manage its subprocesses.
 
 ### With Slurm
 
@@ -140,7 +166,7 @@ proteus grid-summarise -o output/grid_demo/ -s completed
 
 ## Packaging grid results
 
-Use the CLI to package the results of a grid into a zip file; e.g. for sharing or backing-up. The command below will create `pack.zip` in the `grid_demo/` folder. This does not store all the data for each case - only the most important files.
+Use the CLI to package the results of a grid into a zip file; e.g. for sharing or backing-up. The command below will create `pack.zip` in the `grid_demo/` folder. This does not store all the data for each case - only the most important files. For example the 1D resolved interior and atmospheric data are lost. Files containing global parameters and auto-generated plots are preserved.
 
 ```console
 proteus grid-pack -o output/grid_demo/
@@ -167,7 +193,7 @@ Executing the command creates a `post_processing` folder inside your grid direct
 
 Retrieval methods efficiently sample a given parameter space in order to find the point at which a forward model best matches some observations. These methods has seen success in recent years, and are often more efficient than naive grid-search methods. However, retrieval schemes usually require that a forward model is fast and inexpensive to run. Bayesian Optimisation is one approach to parameter retrievals; you can read more about it [in this article](https://arxiv.org/abs/1807.02811).
 
-We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.html).
+We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.md).
 
 ## Postprocessing of results with 'offline' chemistry
 
@@ -202,7 +228,7 @@ PROTEUS will perform this step automatically if enabled in the configuration fil
 ## Postprocessing of results with AGNI for multiprofile analysis
 
 PROTEUS includes a functionality to postprocess the planet's atmosphere for a number of zenith angles.
-This allows the user to obtain localized thermal profiles based on the angle of irradation on the atmosphere, 
+This allows the user to obtain localized thermal profiles based on the angle of irradation on the atmosphere,
 this is particularly useful for first-hand results on tidally locked planets.
 
 Access the atmospheric postprocessing functionality via the command line interface, while in `PROTEUS`:
