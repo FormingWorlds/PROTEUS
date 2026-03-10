@@ -52,8 +52,8 @@ version = "2.0"
         rot_period = 80.9       # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 4.94     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
-
+        star_name   = "l-98-59"
+        spectrum_source = "muscles"
 
 [orbit]
     semimajoraxis   = 0.0304    # AU

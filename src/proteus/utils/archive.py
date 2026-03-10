@@ -179,7 +179,7 @@ def extract(dir:str, remove_tar:bool=False, ignore_warnings:bool=False) -> str:
 
     # Extract tar file
     with tarfile.open(tar, "r") as tar_file:
-        tar_file.extractall(dir)
+        tar_file.extractall(dir, filter="data")
 
     # Remove tar file
     if remove_tar:

@@ -83,6 +83,25 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
     export JULIA_DEPOT_PATH="/dataserver/users/formingworlds/<username>/.julia"
     ```
+    If you install Julia using `tar`, use the following steps:
+
+   ```
+    export JULIA_DIR=/dataserver/users/formingworlds/<username>/julia-1.11.6
+    
+    mkdir -p $JULIA_DIR
+    
+    cd /dataserver/users/formingworlds/<username>
+    
+    wget https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11.6-linux-x86_64.tar.gz
+    
+    tar -xvzf julia-1.11.6-linux-x86_64.tar.gz
+    
+    echo 'export PATH=/dataserver/users/formingworlds/<username>/julia-1.11.6/bin:$PATH' >> ~/.bashrc
+    
+    echo 'export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia' >> ~/.bashrc
+    
+    source ~/.bashrc
+   ```
   
     ### Miniconda and conda-forge considerations
     When installing miniconda or conda-forge, make sure you do not choose the default path, which is always your home folder. Adjust it to `/dataserver/users/formingworlds/<username>`.

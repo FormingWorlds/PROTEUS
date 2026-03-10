@@ -1,5 +1,6 @@
 Configuration files for the CHILI model intercomparison project.
 Website: https://nexss.info/cuisines/chili-mip/
+GitHub for CHILI: https://github.com/projectcuisines/chili
 
 The `protocol/` subfolder contains the two configurations used in the protocol paper.
 

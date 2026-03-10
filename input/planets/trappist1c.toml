@@ -23,7 +23,8 @@ version = "2.0"
         rot_pcntle = 50.0       # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 7.6     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/trappist-1.txt" # stellar spectrum
+        star_name   = "trappist-1"
+        spectrum_source = "muscles"
 
 # Orbital system
 [orbit]

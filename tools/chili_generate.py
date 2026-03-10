@@ -12,7 +12,7 @@ from glob import glob
 import toml
 
 # Options
-use_scratch = True      # Store output in scratch folder
+use_scratch = False      # Store output in scratch folder
 
 # -----------------------------------------------
 

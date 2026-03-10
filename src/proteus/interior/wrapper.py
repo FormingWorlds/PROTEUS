@@ -146,6 +146,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, 
             case "self":
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case "zalmoxis":
+                config.orbit.module = "dummy" # Switch to dummy orbit module when using Zalmoxis for now
                 return determine_interior_radius_with_zalmoxis(dirs, config, hf_all, hf_row, outdir)
         raise ValueError(f"Invalid structure interior module selected '{config.interior.module}'")
 

@@ -13,3 +13,7 @@ dependencies:
   - gfortran
   - netcdf-fortran
   - git  # required for AGNI cloning if Git is not present
+  # Python packages via pip
+  - pip:
+    - zenodo_client>=0.4.1
+    - osfclient

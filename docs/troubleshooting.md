@@ -44,6 +44,26 @@ git pull
 python -m pip install -U -e .
 ```
 
+## All: Data download errors or slow Zenodo downloads
+
+PROTEUS automatically downloads input data files from Zenodo. The code works without an API token using public access, but you can optionally configure a token for enhanced rate limits.
+
+### Optional: Configure a Zenodo API token
+
+If you encounter rate limiting errors or slow downloads, you can optionally set up a Zenodo API token:
+
+1. Get a personal access token from [Zenodo](https://zenodo.org/account/settings/applications/tokens/new/)
+2. Configure it using:
+   ```console
+   pystow set zenodo api_token <your-token>
+   ```
+3. Verify it's configured:
+    ```console
+    pystow get zenodo api_token
+    ```
+
+> **Note:** The token is optional. PROTEUS uses public access by default and falls back gracefully if the token is unavailable.
+
 
 ## MacOS: PETSc tests error
 

@@ -12,8 +12,8 @@ version = "2.0"
     [params.dt]
         starspec     = 1e8
         starinst     = 1e2
-        minimum      = 1e6
-        initial      = 2e6
+        minimum      = 1e5
+        initial      = 1e5
 
         [params.dt.adaptive]
             atol         = 0.03
@@ -46,7 +46,8 @@ version = "2.0"
     [star.mors]
         rot_pcntle = 50.0
         age_now = 4.57 # Gyr
-        spec    = "stellar_spectra/Named/sun.txt"
+        star_name = "sun"
+        spectrum_source = "solar"
 
 [orbit]
     semimajoraxis   = 1.0
@@ -60,20 +61,31 @@ version = "2.0"
     corefrac    = 0.55
 
 [atmos_clim]
-    surf_state      = "fixed"
+    surf_state      = "skin"
     rayleigh        = true
     module          = "agni"
-    albedo_pl       = 0.2      # test guess, contribution from clouds
+    albedo_pl       = 0.0      # test guess, contribution from clouds
 
     [atmos_clim.agni]
         p_top          = 1e-4
+        num_levels     = 40
+        dx_max         = 100.0
+        sens_heat      = false
+        cloud_enabled  = false
         rainout        = false
         oceans         = true
         spectral_group = "Dayspring"
         spectral_bands = "48"
+        solution_atol  = 2.0
+        ls_default     = 2
 
 [escape]
     module = "zephyrus"
+
+    [escape.zephyrus]
+        Pxuv        = 1e-4          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+        efficiency  = 0.15           # Escape efficiency factor
+        tidal       = true         # Tidal contribution enabled
 
 [interior]
     radiogenic_heat = false
@@ -82,11 +94,13 @@ version = "2.0"
     module = "dummy"
 
     [interior.dummy]
-        ini_tmagma = 2000.0
-
-
-    [interior.aragog]
         ini_tmagma = 3000.0
+        H_radio    = 8e-12
+        mantle_cp  = 2000.0
+
+    [interior.spider]
+        ini_entropy = 2900.0
+        num_levels  = 60
 
 [outgas]
     fO2_shift_IW    = 4
@@ -98,7 +112,7 @@ version = "2.0"
     module = "none"
 
     [delivery.elements]
-        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_oceans    = 2.0       # Hydrogen inventory in units of equivalent Earth oceans
         # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system

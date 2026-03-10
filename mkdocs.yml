@@ -1,5 +1,5 @@
 site_name: PROTEUS
-site_url: https://fwl-proteus.readthedocs.io
+site_url: https://proteus-framework.org/PROTEUS/
 repo_url: https://github.com/FormingWorlds/PROTEUS
 repo_name: GitHub
 
@@ -22,22 +22,49 @@ nav:
   - Funding: funding.md
   - Source code: https://github.com/FormingWorlds/PROTEUS
   - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
-  - 🔗 MORS:  https://fwl-mors.readthedocs.io/
-  - 🔗 JANUS: https://fwl-janus.readthedocs.io/
-  - 🔗 ZEPHYRUS: https://github.com/FormingWorlds/ZEPHYRUS/
-  - 🔗 CALLIOPE: https://fwl-calliope.readthedocs.io/
-  - 🔗 AGNI: https://h-nicholls.space/AGNI/
-  - 🔗 LovePy: https://github.com/nichollsh/lovepy
-  - 🔗 VULCAN: https://github.com/FormingWorlds/VULCAN
-  - 🔗 Zalmoxis: https://github.com/FormingWorlds/Zalmoxis
-  - 🔗 Aragog: https://github.com/FormingWorlds/aragog
+  - 🔗 MORS:  https://proteus-framework.org/MORS/
+  - 🔗 JANUS: https://proteus-framework.org/JANUS/
+  - 🔗 ZEPHYRUS: https://proteus-framework.org/ZEPHYRUS/
+  - 🔗 CALLIOPE: https://proteus-framework.org/CALLIOPE/
+  - 🔗 AGNI: https://www.h-nicholls.space/AGNI/
+  - 🔗 Obliqua: https://proteus-framework.org/Obliqua/
+  - 🔗 VULCAN: https://proteus-framework/VULCAN/
+  - 🔗 Zalmoxis: https://proteus-framework.org/Zalmoxis/
+  - 🔗 Aragog: https://proteus-framework.org/aragog/
   - 🔗 SPIDER: https://github.com/djbower/spider
+  - 🔗 Atmodeller: https://atmodeller.readthedocs.io/en/latest/
+  - 🔗 FastChem: https://newstrangeworlds.github.io/FastChem/
+  - 🔗 PLATON: https://platon.readthedocs.io/en/latest/
 
 theme:
   name: material
+  custom_dir: docs/overrides
+
+  # Default assets (used unless overridden per palette below)
+  favicon: assets/PROTEUS_black_on_white_logo_only.png
+  logo: assets/PROTEUS_white_on_black.png
+
   palette:
-    primary: black
-    accent: deep orange
+    # Auto: follow system preference (and show a toggle)
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: deep orange
+      favicon: assets/PROTEUS_black_on_white_logo_only.png
+      logo: assets/PROTEUS_white_on_black.png
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      favicon: assets/PROTEUS_white_on_black_logo_only.png
+      logo: assets/PROTEUS_white_on_black.png
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
 
 extra_css:
   - stylesheets/extra.css
@@ -88,6 +115,7 @@ plugins:
 use_directory_urls: false
 
 watch:
+  - src/
   - docs/
   - README.md
   - CONTRIBUTING.md

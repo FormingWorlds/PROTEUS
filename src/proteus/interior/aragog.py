@@ -162,15 +162,31 @@ class AragogRunner():
             tidal_array = interior_o.tides
             )
 
+        # Define initial conditions for prescribing temperature profile
+        if config.struct.module == "self":
+            initial_condition_temperature_profile = config.interior.aragog.initial_condition
+            init_file_temperature_profile = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
+        elif config.struct.module == "zalmoxis":
+            if config.struct.zalmoxis.EOSchoice == "Tabulated:iron/Tdep_silicate":
+                # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
+                initial_condition_temperature_profile = 2
+                init_file_temperature_profile = os.path.join(outdir, "data", "zalmoxis_output_temp.txt")
+            else:
+                # Otherwise, use the initial condition from aragog config
+                initial_condition_temperature_profile = config.interior.aragog.initial_condition
+                init_file_temperature_profile = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
+        else:
+            raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+
         initial_condition = _InitialConditionParameters(
             # 1 = linear profile
             # 2 = user-defined profile
             # 3 = adiabatic profile
-            initial_condition = config.interior.aragog.initial_condition,
+            initial_condition = initial_condition_temperature_profile,
             # initial top temperature (K)
             surface_temperature = config.interior.aragog.ini_tmagma,
             basal_temperature = config.interior.aragog.basal_temperature,
-            init_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
+            init_file = init_file_temperature_profile
             )
 
         # Get look up data directory, will be configurable in the future
@@ -362,18 +378,18 @@ class AragogRunner():
 
         # Calculate surface area
         radii = aragog_output.radii_km_basic * 1e3 # [m]
-        area  = 4 * np.pi * radii[-1]**2 # [m^2]
+        area  = 4 * np.pi * float(radii[-1].item())**2 # [m^2]
 
         # Mass at each mesh layer
         mass_s = aragog_output.mass_staggered[:,-1] # [kg]
 
         # Radiogenic heating
         Hradio_s = aragog_output.heating_radio[:,-1]  # [W kg-1]
-        output["F_radio"] = np.dot(Hradio_s, mass_s) / area  # [W m-2]
+        output["F_radio"] = float(np.dot(Hradio_s, mass_s)) / area  # [W m-2]
 
         # Tidal heating flux
         Htidal_s = aragog_output.heating_tidal[:,-1]  # [W kg-1]
-        output["F_tidal"] = np.dot(Htidal_s, mass_s)/area
+        output["F_tidal"] = float(np.dot(Htidal_s, mass_s)) /area
 
         # Store arrays
         # FIX ME - Should extract values from staggered nodes rather than cropping

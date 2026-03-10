@@ -64,13 +64,21 @@ class Zalmoxis:
     Attributes
     ----------
     EOSchoice: str
-        EOS choice of Zalmoxis. Choices: "Tabulated:iron/silicate", "Tabulated:water".
+        EOS choice of Zalmoxis. Choices: "Tabulated:iron/silicate", "Tabulated:iron/Tdep_silicate", "Tabulated:water".
     coremassfrac: float
         Fraction of the planet's interior mass corresponding to the core.
     mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the mantle (needed for modeling more than 2 layers).
     weight_iron_frac: float
         Fraction of the planet's mass that is iron.
+    temperature_mode: str
+        Choice of input temperature profile: "isothermal", "linear", "prescribed".
+    surface_temperature: float
+        Surface temperature (K), required for temperature_mode="isothermal" or "linear", ignored otherwise.
+    center_temperature: float
+        Center temperature (K), required for temperature_mode="linear", ignored otherwise.
+    temperature_profile_file: Optional[str]
+        Filename containing a prescribed temperature profile, required for temperature_mode="prescribed".
     num_levels: int
         Number of Zalmoxis radius layers.
     max_iterations_outer: int
@@ -85,6 +93,12 @@ class Zalmoxis:
         Relative tolerance for solve_ivp.
     absolute_tolerance: float
         Absolute tolerance for solve_ivp.
+    maximum_step: float
+        Maximum integration step size for solve_ivp (m).
+    adaptive_radial_fraction: float
+        Fraction (0–1) of the radial domain defining where solve_ivp transitions from adaptive integration to fixed-step integration when using the temperature-dependent `"Tabulated:iron/Tdep_silicate"` EOS.
+    max_center_pressure_guess: float
+        Maximum pressure guess at the center of the planet based on the "Tabulated:iron/Tdep_silicate" EOS files (Pa).
     target_surface_pressure: float
         Target surface pressure for the pressure adjustment [Pa].
     pressure_tolerance: float
@@ -93,29 +107,46 @@ class Zalmoxis:
         Maximum number of iterations for the pressure adjustment.
     pressure_adjustment_factor: float
         Reduction factor for adjusting the pressure in the pressure adjustment.
+    verbose: bool
+        If true, logs detailed convergence info and warnings; if false, only essential messages are shown (true/false).
+    iteration_profiles_enabled: bool
+        If true, writes pressure and density profiles for each iteration to files (true/false).
     """
 
-    EOSchoice: str                    = field(default="Tabulated:iron/silicate", validator=in_(("Tabulated:iron/silicate", "Tabulated:water")))
+    EOSchoice: str                          = field(default="Tabulated:iron/silicate", validator=in_(("Tabulated:iron/silicate", "Tabulated:iron/Tdep_silicate", "Tabulated:water")))
 
-    coremassfrac: float               = field(default=0.325, validator=(gt(0), lt(1)))
-    mantle_mass_fraction: float  = field(default=0, validator=(ge(0), lt(1)))
-    weight_iron_frac: float           = field(default=0.325, validator=(gt(0), lt(1)))
+    coremassfrac: float                     = field(default=0.325, validator=(gt(0), lt(1)))
+    mantle_mass_fraction: float             = field(default=0, validator=(ge(0), lt(1)))
+    weight_iron_frac: float                 = field(default=0.325, validator=(gt(0), lt(1)))
+    temperature_mode: str                   = field(default="isothermal", validator=in_(("isothermal", "linear", "prescribed")))
+    surface_temperature: float              = field(default=3500, validator=ge(0))
+    center_temperature: float               = field(default=6000, validator=ge(0))
+    temperature_profile_file: Optional[str] = field(default=None)
 
-    num_levels: int                   = field(default=150)
+    num_levels: int                         = field(default=150)
 
-    max_iterations_outer: int         = field(default=100, validator=ge(1))
-    tolerance_outer: float            = field(default=3e-3, validator=ge(0))
-    max_iterations_inner: int         = field(default=100, validator=ge(1))
-    tolerance_inner: float            = field(default=1e-4, validator=ge(0))
-    relative_tolerance: float         = field(default=1e-5, validator=ge(0))
-    absolute_tolerance: float         = field(default=1e-6, validator=ge(0))
+    max_iterations_outer: int               = field(default=100, validator=ge(1))
+    tolerance_outer: float                  = field(default=3e-3, validator=ge(0))
+    max_iterations_inner: int               = field(default=100, validator=ge(1))
+    tolerance_inner: float                  = field(default=1e-4, validator=ge(0))
+    relative_tolerance: float               = field(default=1e-5, validator=ge(0))
+    absolute_tolerance: float               = field(default=1e-6, validator=ge(0))
+    maximum_step: float                     = field(default=250000, validator=ge(0))
+    adaptive_radial_fraction: float         = field(default=0.98, validator=ge(0))
+    max_center_pressure_guess: float        = field(default=0.99e12, validator=ge(0))
 
-    target_surface_pressure: float    = field(default=101325, validator=ge(0))
-    pressure_tolerance: float         = field(default=1e9, validator=ge(0))
-    max_iterations_pressure: int      = field(default=200, validator=ge(1))
-    pressure_adjustment_factor: float = field(default=1.1, validator=ge(0))
+    target_surface_pressure: float          = field(default=101325, validator=ge(0))
+    pressure_tolerance: float               = field(default=1e9, validator=ge(0))
+    max_iterations_pressure: int            = field(default=200, validator=ge(1))
+    pressure_adjustment_factor: float       = field(default=1.1, validator=ge(0))
 
-    verbose: bool                   = field(default=False)
+    verbose: bool                           = field(default=False)
+    iteration_profiles_enabled: bool        = field(default=False)
+
+    def __attrs_post_init__(self):
+        if self.temperature_mode == "prescribed":
+            if not self.temperature_profile_file:
+                raise ValueError("`temperature_profile_file` must be provided when `temperature_mode` is 'prescribed'.")
 
 @define
 class Struct:
