@@ -1,7 +1,10 @@
 # Generic interior wrapper
 from __future__ import annotations
 
+import gc
 import logging
+import os
+import shutil
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -85,7 +88,9 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         spider_dir = dirs['spider']
     else:
         spider_dir = None
-    int_o = Interior_t(get_nlevb(config), spider_dir=spider_dir)
+    int_o = Interior_t(
+        get_nlevb(config), spider_dir=spider_dir, eos_dir=config.interior.eos_dir
+    )
     int_o.ic = 1
     hf_row['R_int'] = R_earth
     calculate_core_mass(hf_row, config)
@@ -155,14 +160,66 @@ def determine_interior_radius_with_zalmoxis(
     dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
 ):
     """
-    Determine the interior radius (R_int) of the planet using Zalmoxis."""
+    Determine the interior radius (R_int) of the planet using Zalmoxis.
+
+    When the interior module is SPIDER, also writes a SPIDER-format mesh
+    file from the Zalmoxis structure solution and stores the path in
+    ``dirs['spider_mesh']`` for subsequent calls.
+    """
 
     log.info('Using Zalmoxis to solve for interior structure')
     from proteus.interior.zalmoxis import zalmoxis_solver
 
-    int_o = Interior_t(get_nlevb(config))
+    nlev_b = get_nlevb(config)
+    spider_dir = dirs.get('spider') if config.interior.module == 'spider' else None
+    int_o = Interior_t(nlev_b, spider_dir=spider_dir, eos_dir=config.interior.eos_dir)
     int_o.ic = 1
-    zalmoxis_solver(config, outdir, hf_row)
+
+    # Set Zalmoxis to 'adiabatic' mode for T-dependent mantle EOS.
+    # NOTE: In practice, Zalmoxis converges the structure using a linear T
+    # guess and breaks on mass convergence BEFORE the adiabat gate activates.
+    # The adiabat flag is still set so that (a) the correct EOS code paths
+    # are selected inside Zalmoxis, and (b) standalone Zalmoxis can use the
+    # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
+    # through entropy evolution, so the linear T initial guess is fine.
+    _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+    _orig_temp_mode = config.struct.zalmoxis.temperature_mode
+    if (
+        config.interior.module == 'spider'
+        and _orig_temp_mode == 'isothermal'
+        and config.struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES)
+    ):
+        log.info(
+            'Switching Zalmoxis temperature_mode from isothermal to adiabatic '
+            'for SPIDER coupling with T-dependent mantle EOS',
+        )
+        config.struct.zalmoxis.temperature_mode = 'adiabatic'
+
+    # Request SPIDER mesh file if interior module is SPIDER
+    num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
+    try:
+        _cmb_radius, spider_mesh_file = zalmoxis_solver(
+            config, outdir, hf_row, num_spider_nodes=num_spider_nodes
+        )
+    finally:
+        config.struct.zalmoxis.temperature_mode = _orig_temp_mode
+
+    # Store mesh file path for subsequent SPIDER calls
+    if spider_mesh_file:
+        dirs['spider_mesh'] = spider_mesh_file
+        # Save initial mesh as baseline for blending comparisons
+        prev_path = spider_mesh_file + '.prev'
+        shutil.copy2(spider_mesh_file, prev_path)
+        dirs['spider_mesh_prev'] = prev_path
+
+    # Mesh convergence starts inactive (no blending needed at init)
+    dirs['mesh_shift_active'] = False
+    dirs['mesh_convergence_steps'] = 0
+
+    # NOTE: run_interior runs with the *original* temperature_mode (restored
+    # by the finally block above), not the overridden 'adiabatic'.  This is
+    # correct: the Zalmoxis solver already used the adiabatic mode to compute
+    # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
     run_interior(dirs, config, hf_all, hf_row, int_o)
 
 
@@ -197,12 +254,17 @@ def solve_structure(
                 config.orbit.module = (
                     'dummy'  # Switch to dummy orbit module when using Zalmoxis for now
                 )
+                if config.params.stop.solid.phi_crit < 0.01:
+                    log.warning(
+                        'phi_crit=%.4f is below 0.01. Zalmoxis cases may plateau '
+                        'at ~0.9%% melt fraction, so phi_crit < 0.01 can prevent '
+                        'the simulation from terminating. Consider phi_crit >= 0.01.',
+                        config.params.stop.solid.phi_crit,
+                    )
                 return determine_interior_radius_with_zalmoxis(
                     dirs, config, hf_all, hf_row, outdir
                 )
-        raise ValueError(
-            f"Invalid structure interior module selected '{config.interior.module}'"
-        )
+        raise ValueError(f"Invalid structure interior module selected '{config.struct.module}'")
 
     # Otherwise, error
     else:
@@ -248,8 +310,9 @@ def run_interior(
         # Import
         from proteus.interior.spider import ReadSPIDER, RunSPIDER
 
-        # Run SPIDER
-        RunSPIDER(dirs, config, hf_all, hf_row, interior_o)
+        # Run SPIDER (pass external mesh file if available from Zalmoxis)
+        mesh_file = dirs.get('spider_mesh')
+        RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior.module == 'aragog':
@@ -322,8 +385,15 @@ def run_interior(
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
 
         # Do not allow massive increases to T_surf, always
-        dT_delta = config.interior.spider.tsurf_atol
-        dT_delta += config.interior.spider.tsurf_rtol * T_magma_prev
+        # Use module-appropriate tolerances for the T_magma limiter
+        if config.interior.module == 'spider':
+            dT_delta = config.interior.spider.tsurf_atol
+            dT_delta += config.interior.spider.tsurf_rtol * T_magma_prev
+        elif config.interior.module == 'aragog':
+            dT_delta = float(config.interior.aragog.tsurf_poststep_change)
+        else:
+            dT_delta = config.interior.dummy.tmagma_atol
+            dT_delta += config.interior.dummy.tmagma_rtol * T_magma_prev
         if hf_row['T_magma'] > T_magma_prev + dT_delta:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
@@ -343,6 +413,250 @@ def run_interior(
 
     # Actual time step size
     interior_o.dt = float(sim_time) - hf_row['Time']
+
+
+def update_structure_from_interior(
+    dirs: dict,
+    config: Config,
+    hf_row: dict,
+    interior_o: Interior_t,
+    last_struct_time: float,
+    last_Tmagma: float,
+    last_Phi: float,
+) -> tuple[float, float, float]:
+    """Re-run Zalmoxis with SPIDER's current T(r) to update structure.
+
+    Uses a hybrid trigger: fires when either the relative change in
+    T_magma or the absolute change in Phi_global exceeds configured
+    thresholds, subject to a minimum interval (floor) and maximum
+    interval (ceiling).  When ``update_interval == 0``, no dynamic
+    updates are performed (structure is computed only at init).
+
+    Writes SPIDER's temperature profile to a file, runs Zalmoxis in
+    prescribed-temperature mode, and writes an updated mesh file for the
+    next SPIDER call.
+
+    Parameters
+    ----------
+    dirs : dict
+        Dictionary of directories.
+    config : Config
+        Model configuration.
+    hf_row : dict
+        Current runtime variables.
+    interior_o : Interior_t
+        Interior state with current T(r) on staggered nodes.
+    last_struct_time : float
+        Simulation time [yr] of the last structure update.
+    last_Tmagma : float
+        T_magma [K] at the last structure update.
+    last_Phi : float
+        Phi_global at the last structure update.
+
+    Returns
+    -------
+    tuple[float, float, float]
+        (last_struct_time, last_Tmagma, last_Phi) — updated to current
+        values if an update occurred, otherwise returned unchanged.
+    """
+    no_update = (last_struct_time, last_Tmagma, last_Phi)
+
+    # Dynamic updates disabled
+    if config.struct.update_interval <= 0:
+        return no_update
+
+    current_time = hf_row['Time']
+    elapsed = current_time - last_struct_time
+
+    # Evaluate triggers
+    triggered = False
+    reason = ''
+
+    # Mesh convergence trigger: bypasses normal floor when mesh is still
+    # converging toward the true Zalmoxis solution after blending
+    mesh_converging = dirs.get('mesh_shift_active', False)
+    if mesh_converging and elapsed >= config.struct.mesh_convergence_interval:
+        triggered = True
+        reason = (
+            f'mesh convergence (elapsed {elapsed:.1f} yr '
+            f'>= {config.struct.mesh_convergence_interval:.1f} yr)'
+        )
+
+    # Floor: don't update too frequently (only for non-convergence triggers)
+    if not triggered and elapsed < config.struct.update_min_interval:
+        return no_update
+
+    # Ceiling: guaranteed update after max interval
+    if not triggered and elapsed >= config.struct.update_interval:
+        triggered = True
+        reason = f'ceiling ({elapsed:.1f} yr >= {config.struct.update_interval:.1f} yr)'
+
+    # T_magma relative change
+    if not triggered and last_Tmagma > 0:
+        dT_frac = abs(hf_row['T_magma'] - last_Tmagma) / last_Tmagma
+        if dT_frac >= config.struct.update_dtmagma_frac:
+            triggered = True
+            reason = f'dT/T={dT_frac:.3f} >= {config.struct.update_dtmagma_frac}'
+
+    # Phi_global absolute change
+    if not triggered:
+        dPhi = abs(hf_row['Phi_global'] - last_Phi)
+        if dPhi >= config.struct.update_dphi_abs:
+            triggered = True
+            reason = f'dPhi={dPhi:.3f} >= {config.struct.update_dphi_abs}'
+
+    if not triggered:
+        return no_update
+
+    log.info('Updating structure from interior T(r) via Zalmoxis (trigger: %s)', reason)
+
+    outdir = dirs['output']
+    num_layers = config.struct.zalmoxis.num_levels
+
+    # Build SPIDER's mantle T(r) in ascending radius (CMB to surface)
+    # interior_o.radius is basic nodes (surface to CMB), temp is staggered nodes
+    r_stag = 0.5 * (interior_o.radius[:-1] + interior_o.radius[1:])
+    r_ascending = r_stag[::-1]
+    T_ascending = interior_o.temp[::-1]
+
+    # Zalmoxis prescribed mode expects a 1D array of num_layers temperatures
+    # sampled from center (r=0) to surface (r=R_planet), matching its internal
+    # radii. SPIDER only covers the mantle (CMB to surface), so we hold T
+    # constant at the CMB value for the core region.
+    R_cmb = float(r_ascending[0])
+    R_surf = float(r_ascending[-1])
+    T_cmb = float(T_ascending[0])
+
+    r_full = np.linspace(0.0, R_surf, num_layers)
+    T_full = np.empty(num_layers)
+    for i, r in enumerate(r_full):
+        if r <= R_cmb:
+            T_full[i] = T_cmb
+        else:
+            T_full[i] = np.interp(r, r_ascending, T_ascending)
+
+    temp_profile_path = os.path.join(outdir, 'data', 'spider_temp_profile.dat')
+    np.savetxt(temp_profile_path, T_full)
+
+    # Temporarily override Zalmoxis config for prescribed temperature mode
+    from proteus.interior.zalmoxis import zalmoxis_solver
+
+    orig_temp_mode = config.struct.zalmoxis.temperature_mode
+    orig_temp_file = config.struct.zalmoxis.temperature_profile_file
+
+    config.struct.zalmoxis.temperature_mode = 'prescribed'
+    config.struct.zalmoxis.temperature_profile_file = temp_profile_path
+
+    # Save current mesh as baseline for blending
+    prev_path = dirs.get('spider_mesh_prev')
+    current_mesh = dirs.get('spider_mesh')
+    if current_mesh and os.path.isfile(current_mesh):
+        if not prev_path:
+            prev_path = current_mesh + '.prev'
+            dirs['spider_mesh_prev'] = prev_path
+        shutil.copy2(current_mesh, prev_path)
+
+    try:
+        nlev_b = get_nlevb(config)
+        num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
+        _cmb_radius, spider_mesh_file = zalmoxis_solver(
+            config, outdir, hf_row, num_spider_nodes=num_spider_nodes
+        )
+    finally:
+        # Restore original config
+        config.struct.zalmoxis.temperature_mode = orig_temp_mode
+        config.struct.zalmoxis.temperature_profile_file = orig_temp_file
+
+    if spider_mesh_file:
+        dirs['spider_mesh'] = spider_mesh_file
+
+        # Blend mesh to limit per-update radius shift
+        from proteus.interior.spider import blend_mesh_files
+
+        actual_shift = blend_mesh_files(
+            prev_path or '',
+            spider_mesh_file,
+            max_shift=config.struct.mesh_max_shift,
+        )
+        still_converging = actual_shift > config.struct.mesh_max_shift
+
+        # Track convergence steps; give up after 20 consecutive blends
+        # to avoid infinite rapid-update loops when Zalmoxis and SPIDER
+        # persistently disagree (e.g. extreme mass / low CMF)
+        max_convergence_steps = 20
+        n_conv = dirs.get('mesh_convergence_steps', 0)
+        if still_converging:
+            n_conv += 1
+            if n_conv > max_convergence_steps:
+                log.warning(
+                    'Mesh convergence did not complete after %d steps '
+                    '(shift still %.1f%%), reverting to normal triggers',
+                    max_convergence_steps,
+                    actual_shift * 100,
+                )
+                still_converging = False
+                n_conv = 0
+            else:
+                log.info(
+                    'Mesh convergence step %d/%d: shift %.1f%% clamped to %.1f%%',
+                    n_conv,
+                    max_convergence_steps,
+                    actual_shift * 100,
+                    config.struct.mesh_max_shift * 100,
+                )
+        else:
+            n_conv = 0
+
+        dirs['mesh_shift_active'] = still_converging
+        dirs['mesh_convergence_steps'] = n_conv
+
+        # Update .prev for next iteration
+        if not prev_path:
+            prev_path = spider_mesh_file + '.prev'
+            dirs['spider_mesh_prev'] = prev_path
+        shutil.copy2(spider_mesh_file, prev_path)
+
+        # Remap entropy in the latest SPIDER JSON to match the new mesh.
+        # Without this, the old dS/dxi applied on the new xi grid produces
+        # incorrect absolute entropy, causing CVode failures at high mass.
+        if config.interior.module == 'spider':
+            from proteus.interior.spider import (
+                get_all_output_times,
+                remap_entropy_for_new_mesh,
+            )
+
+            try:
+                sim_times = get_all_output_times(dirs['output'])
+            except Exception as exc:
+                log.warning(
+                    'Could not retrieve SPIDER output times from %s; '
+                    'skipping entropy remap: %s',
+                    dirs['output'],
+                    exc,
+                )
+                sim_times = []
+            if len(sim_times) > 0:
+                latest_json = os.path.join(dirs['output'], 'data', '%.0f.json' % sim_times[-1])
+                remap_entropy_for_new_mesh(
+                    json_path=latest_json,
+                    new_mesh_file=spider_mesh_file,
+                    radius_phys=hf_row['R_int'],
+                )
+    else:
+        # No mesh file produced — reset convergence state
+        dirs['mesh_shift_active'] = False
+        dirs['mesh_convergence_steps'] = 0
+
+    # Clean up temporary arrays
+    del r_stag, r_ascending, T_ascending, r_full, T_full
+    gc.collect()
+
+    log.info(
+        'Structure updated: R_int=%.3e m, gravity=%.3f m/s^2',
+        hf_row['R_int'],
+        hf_row['gravity'],
+    )
+    return (current_time, float(hf_row['T_magma']), float(hf_row['Phi_global']))
 
 
 def get_all_output_times(output_dir: str, model: str):

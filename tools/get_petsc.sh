@@ -156,6 +156,7 @@ current_step="Determining platform-specific flags"
 mpi_flag="--download-mpich"
 blas_flag="--download-f2cblaslapack"
 ldflags=""
+cflags=""
 
 # ---- Linux special cases ----------------------------------------------------
 if [[ "$OSTYPE" == "linux"* ]]; then
@@ -170,11 +171,22 @@ if [[ "$OSTYPE" == "linux"* ]]; then
     elif [[ "$host" == *"hpc.rug.nl" ]]; then
         echo "    Detected Habrok cluster - downloading BLAS and MPI"
 
-    # Fedora / RHEL: system packages provide MPI and BLAS/LAPACK
+    # Fedora / RHEL / Rocky: system packages may provide MPI and BLAS/LAPACK.
+    # Only skip downloads if the tools are actually on PATH (some RHEL systems
+    # install MPI via RPM but require "module load" to make mpicc visible).
     elif [[ -f "/etc/fedora-release" || -f "/etc/redhat-release" ]]; then
-        echo "    Detected Fedora/RHEL — using system MPI and BLAS/LAPACK"
-        mpi_flag=""
+        echo "    Detected Fedora/RHEL"
+        if command -v mpicc >/dev/null 2>&1; then
+            echo "    Found system MPI ($(which mpicc)) — skipping mpich download"
+            mpi_flag=""
+        else
+            echo "    mpicc not in PATH — will download MPICH"
+        fi
         blas_flag=""
+        # RHEL 9+ / Rocky 9+ GCC enables -Werror=format-security by default,
+        # which breaks sundials 2.5. LTO type-mismatch warnings also cause
+        # PETSc's library probe to fail. Suppress both.
+        cflags="-fPIC -Wno-error=format-security -Wno-lto-type-mismatch -Wno-stringop-overflow"
 
 
     # Generic Linux: if mpicc is available, prefer system MPI over download
@@ -250,8 +262,9 @@ current_step="Configuring PETSc (./configure)"
 
 echo ""
 echo "Configuring PETSc..."
-echo "    MPI:  ${mpi_flag:-system}"
-echo "    BLAS: ${blas_flag:-system}"
+echo "    MPI:    ${mpi_flag:-system}"
+echo "    BLAS:   ${blas_flag:-system}"
+echo "    CFLAGS: ${cflags:-<none>}"
 echo "    LDFLAGS: ${ldflags:-<none>}"
 
 olddir=$(pwd)
@@ -265,6 +278,7 @@ cd "$workpath"
     --COPTFLAGS="-g -O3" \
     $mpi_flag \
     $blas_flag \
+    ${cflags:+"CFLAGS=$cflags"} \
     ${ldflags:+"LDFLAGS=$ldflags"}
 
 # -----------------------------------------------------------------------------

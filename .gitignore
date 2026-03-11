@@ -267,6 +267,9 @@ docker-build.log
 # Extracted stellar spectra cache
 zenodo_stellar_spectra_extracted/
 
+# Validation suite (extended physics validation, not part of CI)
+tests/validation/
+
 # Claude AI files
 CLAUDE.md
 .claude/

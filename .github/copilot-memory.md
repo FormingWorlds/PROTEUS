@@ -249,7 +249,14 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Watch Out**: Nested configuration validation, type coercion edge cases
 - **Test Coverage**: `tests/config/test_config.py`, `test_converters.py`, `test_options.py`
 
-#### 4. CI Workflow Summary Generation (`.github/workflows/ci-nightly.yml`)
+#### 4. Zalmoxis-SPIDER Coupling (`src/proteus/interior/wrapper.py`, `zalmoxis.py`)
+- **Why Complex**: Phase 2 feedback loop mutates config temporarily (prescribed T-mode override with try/finally restore). T-profile interpolation bridges SPIDER's mantle nodes to Zalmoxis's full-planet grid. WolfBower2018 T-dependent EOS causes ~5% M_int shift on first structure update.
+- **Recent Changes**: Hybrid physics-based structure update triggers (dT/T + dPhi + floor/ceiling), removed deprecated `weight_iron_frac`, per-layer EOS config, `update_structure_from_interior()` now returns `(time, Tmagma, Phi)` tuple.
+- **Defaults Changed**: SPIDER is default interior module, Zalmoxis is default structure module, `temperature_mode` default is `adiabatic`, `num_levels` default is 100, `mantle_eos` uses colon format (`WolfBower2018:MgSiO3`).
+- **Watch Out**: `zalmoxis_solver()` unconditionally writes Aragog files even when using SPIDER. `solve_structure()` permanently mutates `config.orbit.module='dummy'` for Zalmoxis. `validate_mesh_fields.py` in SPIDER is dead validation (needs rewrite).
+- **Test Coverage**: `tests/interior/test_zalmoxis.py`, `tests/integration/test_smoke_zalmoxis_spider.py`, `test_regression_aw_zalmoxis.py`, `test_regression_structure_update.py`
+
+#### 5. CI Workflow Summary Generation (`.github/workflows/ci-nightly.yml`)
 - **Why Fragile**: Parses JUnit XML, coverage JSON, handles failures
 - **Recent Changes**: Hardened with try/except, better error handling (commit 7ed06597)
 - **Watch Out**: Missing files, parse errors can crash summary step
@@ -357,6 +364,9 @@ PROTEUS is the orchestrator; each module is a separate GitHub repository:
 - FormingWorlds/SPIDER
 
 **Implication**: Changes may require coordinated updates across repositories
+
+### Fork Policy
+All ecosystem repos live under the **FormingWorlds** GitHub organisation (or contributor forks like `nichollsh/`). When creating PRs, **always target the FormingWorlds fork** (or the contributor fork we cloned from). Never open PRs against upstream/original repositories (e.g. `djbower/spider`). Check `git remote -v` to confirm `origin` points to the correct fork before pushing or creating PRs.
 
 ### Testing Standards Apply Ecosystem-Wide
 All modules follow same standards:

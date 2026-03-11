@@ -1326,7 +1326,9 @@ def test_struct_zalmoxis_mass_tot_required():
             max_iterations_outer=100,
             max_iterations_inner=100,
             max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='',
             coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
@@ -1347,7 +1349,9 @@ def test_struct_zalmoxis_max_iterations_outer_minimum():
             max_iterations_outer=2,  # INVALID (must be > 2)
             max_iterations_inner=100,
             max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='',
             coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
@@ -1368,7 +1372,9 @@ def test_struct_zalmoxis_max_iterations_inner_minimum():
             max_iterations_outer=100,
             max_iterations_inner=12,  # INVALID (must be > 12)
             max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='',
             coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
@@ -1389,7 +1395,9 @@ def test_struct_zalmoxis_max_iterations_pressure_minimum():
             max_iterations_outer=100,
             max_iterations_inner=100,
             max_iterations_pressure=12,  # INVALID (must be > 12)
-            EOSchoice='Tabulated:iron/silicate',
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='',
             coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
@@ -1399,8 +1407,8 @@ def test_struct_zalmoxis_max_iterations_pressure_minimum():
 
 
 @pytest.mark.unit
-def test_struct_zalmoxis_iron_silicate_eos_requires_no_mantle():
-    """Test valid_zalmoxis requires mantle_mass_fraction=0 for Tabulated:iron/silicate."""
+def test_struct_zalmoxis_two_layer_requires_no_mantle_fraction():
+    """Test valid_zalmoxis requires mantle_mass_fraction=0 for 2-layer non-Tdep model."""
     from proteus.config._struct import valid_zalmoxis
 
     instance = SimpleNamespace(
@@ -1410,7 +1418,9 @@ def test_struct_zalmoxis_iron_silicate_eos_requires_no_mantle():
             max_iterations_outer=100,
             max_iterations_inner=100,
             max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='',
             coremassfrac=0.325,
             mantle_mass_fraction=0.2,  # INVALID (must be 0)
         ),
@@ -1420,8 +1430,8 @@ def test_struct_zalmoxis_iron_silicate_eos_requires_no_mantle():
 
 
 @pytest.mark.unit
-def test_struct_zalmoxis_water_eos_mass_constraint():
-    """Test valid_zalmoxis enforces core+mantle mass < 75% for Tabulated:water EOS."""
+def test_struct_zalmoxis_three_layer_mass_constraint():
+    """Test valid_zalmoxis enforces core+mantle mass <= 75% for 3-layer model."""
     from proteus.config._struct import valid_zalmoxis
 
     instance = SimpleNamespace(
@@ -1431,7 +1441,9 @@ def test_struct_zalmoxis_water_eos_mass_constraint():
             max_iterations_outer=100,
             max_iterations_inner=100,
             max_iterations_pressure=200,
-            EOSchoice='Tabulated:water',
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='Seager2007:H2O',
             coremassfrac=0.5,  # 50%
             mantle_mass_fraction=0.3,  # 30%, sum=80% > 75% INVALID
         ),
@@ -1452,9 +1464,79 @@ def test_struct_zalmoxis_valid_configuration():
             max_iterations_outer=100,
             max_iterations_inner=100,
             max_iterations_pressure=200,
-            EOSchoice='Tabulated:iron/silicate',
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='',
             coremassfrac=0.325,
             mantle_mass_fraction=0,
+        ),
+    )
+    valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
+
+
+@pytest.mark.unit
+def test_struct_zalmoxis_eos_format_missing_colon():
+    """Test valid_zalmoxis rejects core_eos without ':' separator."""
+    from proteus.config._struct import valid_zalmoxis
+
+    instance = SimpleNamespace(
+        module='zalmoxis',
+        mass_tot=1.0,
+        zalmoxis=SimpleNamespace(
+            max_iterations_outer=100,
+            max_iterations_inner=100,
+            max_iterations_pressure=200,
+            core_eos='iron_no_source',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='',
+            coremassfrac=0.325,
+            mantle_mass_fraction=0,
+        ),
+    )
+    with pytest.raises(ValueError, match='<source>:<material>'):
+        valid_zalmoxis(instance, SimpleNamespace(), None)
+
+
+@pytest.mark.unit
+def test_struct_zalmoxis_ice_eos_format_missing_colon():
+    """Test valid_zalmoxis rejects ice_layer_eos with non-empty invalid format."""
+    from proteus.config._struct import valid_zalmoxis
+
+    instance = SimpleNamespace(
+        module='zalmoxis',
+        mass_tot=1.0,
+        zalmoxis=SimpleNamespace(
+            max_iterations_outer=100,
+            max_iterations_inner=100,
+            max_iterations_pressure=200,
+            core_eos='Seager2007:iron',
+            mantle_eos='Seager2007:MgSiO3',
+            ice_layer_eos='H2O_bad_format',
+            coremassfrac=0.25,
+            mantle_mass_fraction=0,
+        ),
+    )
+    with pytest.raises(ValueError, match='ice_layer_eos'):
+        valid_zalmoxis(instance, SimpleNamespace(), None)
+
+
+@pytest.mark.unit
+def test_struct_zalmoxis_tdep_allows_mantle_fraction():
+    """WolfBower2018 T-dep EOS should allow mantle_mass_fraction > 0."""
+    from proteus.config._struct import valid_zalmoxis
+
+    instance = SimpleNamespace(
+        module='zalmoxis',
+        mass_tot=1.0,
+        zalmoxis=SimpleNamespace(
+            max_iterations_outer=100,
+            max_iterations_inner=100,
+            max_iterations_pressure=200,
+            core_eos='Seager2007:iron',
+            mantle_eos='WolfBower2018:MgSiO3',
+            ice_layer_eos='',
+            coremassfrac=0.325,
+            mantle_mass_fraction=0.675,
         ),
     )
     valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
