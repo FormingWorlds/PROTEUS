@@ -3,6 +3,7 @@
 !!! info "Prerequisites"
     - macOS (Intel or Apple Silicon) or Linux
     - ~20 GB disk space (conda, Julia, reference data, submodules)
+    - Standard command-line download tools: `curl`, `wget`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
     - Internet connection for data downloads
     - Allow ~60 minutes for a full installation including all submodules
@@ -131,6 +132,22 @@ conda activate proteus
 
 ## 7. Install SOCRATES (radiative transfer)
 
+SOCRATES requires a Fortran compiler and the NetCDF Fortran development tools. In particular, the `nf-config` executable must be available on your shell `PATH`. Install the necessary dependencies using `conda-forge` in your active Conda environment:
+
+```console
+conda install -c conda-forge libnetcdf netcdf-fortran
+conda install -c conda-forge gfortran
+```
+
+Verify that the required tools are available:
+
+```console
+which gfortran
+which nf-config
+nf-config --version
+```
+Then install SOCRATES:
+
 ```console
 ./tools/get_socrates.sh
 ```
@@ -154,6 +171,14 @@ The environment variable `RAD_DIR` must always point to the SOCRATES installatio
 ## 8. Install AGNI (radiative-convective atmosphere model)
 
 Installation steps can be found at the [AGNI wiki](https://h-nicholls.space/AGNI/dev/setup/). They are also reproduced below.
+
+!!! note
+    This step requires `make` and `unzip` to be available on your system. Check with:
+
+    ```console
+    which make
+    which unzip
+    ```
 
 ```console
 git clone git@github.com:nichollsh/AGNI.git
