@@ -3,7 +3,7 @@ site_url: https://proteus-framework.org/PROTEUS/
 repo_url: https://github.com/FormingWorlds/PROTEUS
 repo_name: GitHub
 
-copyright: '© 2023–2026 <a href="https://formingworlds.space">Forming Worlds Lab</a>'
+copyright: '© 2023-2026 <a href="https://formingworlds.space">Forming Worlds Lab</a>'
 
 nav:
   - Home:
