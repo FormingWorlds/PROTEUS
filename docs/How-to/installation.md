@@ -64,11 +64,16 @@ We recommend Python version **3.12** for running PROTEUS. Python is most easily 
 
 ## 3. Install Julia
 
-Some PROTEUS modules are written in Julia. You should only obtain Julia using the official installer, **not** via your computer's package manager.
+Some PROTEUS modules are written in Julia. Install via the official installer:
 
 ```console
 curl -fsSL https://install.julialang.org | sh
 ```
+
+!!! warning "Do **not** use your package manager"
+    You should **only obtain Julia using the official installer**: package managers often do not install the correct version of Julia. If you previously installed Julia by another method, uninstall the old version first and remove any old Julia entries from your `PATH` to avoid version conflicts.
+
+
 
 !!! warning "Pin Julia to version 1.11"
     Julia 1.12+ is **not yet supported** due to OpenSSL library incompatibilities with Python. After installing Julia, pin it to version 1.11:
