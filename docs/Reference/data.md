@@ -8,7 +8,7 @@ PROTEUS automatically downloads large reference data files from [Zenodo](https:/
 - **Higher limits**: Optional API token provides higher rate limits if you download often.
 - **OSF Fallback**: If Zenodo is unavailable, data downloads automatically from [OSF](https://osf.io/8dumn/).
 
-To optionally configure your token, see the [Troubleshooting guide](troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
+To optionally configure your token, see the [Troubleshooting guide](../How-to/troubleshooting.md#data-download-errors-or-slow-zenodo-downloads).
 
 ## Stellar spectra
 
