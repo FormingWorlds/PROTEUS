@@ -5,22 +5,22 @@ The PROTEUS documentation is divided into **How-to guides**, **Tutorials**, **Ex
 ## Quick path
 
 1. **Prepare your local machine**
-    Set up your local environment.
+    Set up your local environment. <br>
     → [Local machine guide](How-to/local_machine_guide.md)
 
     !!! warning "HPC clusters"
         These steps do not apply on an HPC cluster; please follow the [Kapteyn](How-to/kapteyn_cluster_guide.md), [Habrok](How-to/habrok_cluster_guide.md) or [Snellius](How-to/snellius_cluster_guide.md) cluster guide.
 
 1. **Install PROTEUS**
-   Set up the code and required dependencies.
+   Set up the code and required dependencies. <br>
    → [Installation guide](How-to/installation.md)
 
 2. **Configure your setup**
-   Choose and customise the model parameters for your problem.
+   Choose and customise the model parameters for your problem. <br>
    → [Configuration](How-to/config.md)
 
 3. **First PROTEUS run**
-   Execute your first simulation.
+   Execute your first simulation. <br>
    → [Using PROTEUS](How-to/usage.md)
 
 ---
