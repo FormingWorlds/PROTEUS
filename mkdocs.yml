@@ -66,6 +66,7 @@ nav:
       - Atmodeller: https://atmodeller.readthedocs.io/en/latest/
       - FastChem: https://newstrangeworlds.github.io/FastChem/
       - PLATON: https://platon.readthedocs.io/en/latest/
+      - SOCRATES: https://github.com/FormingWorlds/SOCRATES/
 
 theme:
   name: material
