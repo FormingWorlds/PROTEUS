@@ -71,6 +71,7 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
         log.error(f"Could not find NetCDF file '{nc_fpath}'")
         return None
     ds = nc.Dataset(nc_fpath)
+    #print(ds.variables.keys())
 
     p = np.array(ds.variables['p'][:])
     pl = np.array(ds.variables['pl'][:])

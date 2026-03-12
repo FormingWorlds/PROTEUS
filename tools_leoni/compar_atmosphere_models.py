@@ -189,7 +189,6 @@ def read_2model_data(output_dir1:str, output_dir2:str, extension, tmin, nsamp, e
     times1, plot_times1, _1 = sample_output(output_dir1, extension, tmin, nsamp)
     times2, plot_times2, _2 = sample_output(output_dir2, extension, tmin, nsamp)
 
-    print()
 
     #set new array bound for the time arrays from two runs: same lower bound (higher minimum ) and same upper bound (lower maximum)
     lower_bound = max(np.array(plot_times1).min(), np.array(plot_times2).min())   # higher minimum
@@ -295,7 +294,6 @@ def sample_output(output_dir, extension:str = "_atm.nc", tmin:float = 1.0, nsamp
     out_f = [files[i] for i in out_i]
 
     # return times and file paths
-    print(np.array(times), np.array(out_t), np.array(out_f))
     return np.array(times), np.array(out_t), np.array(out_f)
 
 

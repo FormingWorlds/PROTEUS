@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -279,7 +280,7 @@ class FO2shift:
         """O'Neill and Eggins (2002) IW"""
         return 2 * (-244118 + 115.559 * T - 8.474 * T * np.log(T)) / (np.log(10) * 8.31441 * T)
 
-def read_in_element_fracs(input_path):
+def read_in_element_fracs(input_path,time):
 
 
     # read file (skip comment line, split on whitespace)
@@ -290,7 +291,7 @@ def read_in_element_fracs(input_path):
         sep=r"\s+",       # split on any whitespace
         header=None
     )
-
+    shutil.copy(input_path + "element_abundances/element_abundances_output.dat", "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
     # make first column the headers and second column the data row
     df = pd.DataFrame([df[1].values], columns=df[0].values)
 
@@ -364,15 +365,16 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     lavatmos_instance.run_lavatmos(Toutgas)
 
     #convert the element abundances from lavatmos file to element fractions, normalized to unity
-    element_fracs=read_in_element_fracs(config.outgas.elementfile)
+    element_fracs=read_in_element_fracs(config.outgas.elementfile,hf_row['Time'])
 
-    log.debug('elements passed to fastchem runs from lavatmos output: %s',element_fracs)
+
+    log.info('elements passed to fastchem runs from lavatmos output: %s',element_fracs)
+
 
     # read in boa chemistry from last iteration of fastchem and lavatmos
     output_fc = config.outgas.fastchempath + 'output/'
     if os.path.exists(output_fc):
         mmr_path = os.path.join(output_fc, 'boa_chem.dat')
-        print(mmr_path)
     else:
         raise RuntimeError('cannot find fastchem output from lavatmos loop!')
 
@@ -390,17 +392,16 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     rho_old = kg_per_particle * P_surf_Pa / (kB * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
-    log.debug('old atmospheric mass:%.4f'%M_atmo_old)
+    log.info('old atmospheric mass:%.4f'%M_atmo_old)
 
     # rho of armosphere after lavatmos
     # n=rho/mu*mp
     kg_pp_new =  mu_outgassed * mp
-    print('kg per particle after lavatmos:',kg_pp_new)
     P_new_pa = new_atmos_abundances['Pbar'][0] * 1.0e5 #convert pressure to Pascals
     rho_new = kg_pp_new * P_new_pa / (kB * hf_row['T_magma'])
     M_atmo_new = M_atmo_old / rho_old * rho_new  # kg assuming volum does not change
 
-    log.debug('new atmospheric mass:%.4f'%M_atmo_new)
+    log.info('new atmospheric mass:%.4f'%M_atmo_new)
 
     gas_list = vol_list + config.outgas.vaplist
 
@@ -417,9 +418,6 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     # elements are not considered as atomic species but just as inventory
     #print('element fractions predicted by fastchem:',element_fracs)
 
-    atmos_fracs={} #for debug
-    total_fracs={} #for debug
-
     mmw_elements=0
     #log.info('elements in element list: %s'%element_list)
     #log.info('elements in lavatmos:%s'%element_fracs.columns.tolist())
@@ -427,26 +425,17 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         mmw_elements += element_fracs[e][0] * species_lib[e].weight
 
     for e in element_list:
+        log.info('element: %s,  %s',e, element_fracs[e][0])
+        log.info('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
+        if e in input_eles and e!='O':
+            hf_row[e + '_kg_atm'] = hf_row[e + '_kg_atm']
+        else:
+            hf_row[e + '_kg_atm'] = element_fracs[e][0] * M_atmo_new * species_lib[e].weight / mmw_elements
 
-        #if e in input_eles and e !='O': #only update atmospheric masses of non volatile species - safest is to keep volatiles non updated (except for O ?)
-            #continue
-        #else:
-        log.debug('element: %s,  %s',e, element_fracs[e][0])
-        log.debug('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
-
-            #hf_row[e + '_kg_atm'] = element_fracs[e][0] * M_atmo_new * species_lib[e].weight / mu_outgassed
-        hf_row[e + '_kg_atm'] = element_fracs[e][0] * M_atmo_new * species_lib[e].weight / mmw_elements
-
-            #hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
-        log.debug('total mass of element after updating with lavatmos: %s',hf_row[e + '_kg_atm'])
-        #option2 = element_fracs[e][0] * M_atmo_old * species_lib[e].weight / mmw_elements
-        #log.info('total mass of element after updating with lavatmos using old atmospheric mass : %s'%option2)
-    atmos_fracs[e] = hf_row[e + '_kg_atm']
-    total_fracs[e] = hf_row[e + '_kg_total']
+        hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
+        log.info('total mass of element after updating with lavatmos: %s',hf_row[e + '_kg_atm'])
 
 
-    log.debug('atmospheric mass of elements from fastchem: %s',atmos_fracs)
-    log.debug('total mass of elements after fastchem: %s',total_fracs)
     # saving new oxygen fugacity for calliope
     log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(new_atmos_abundances['Pbar'][0])  # is this really partical pressure ? Maybe this is actually abundances
 

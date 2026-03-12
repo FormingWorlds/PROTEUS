@@ -1,9 +1,9 @@
 #bash script to run multiple proteus runs one after other
 MIXFILE=vertical_mix
-orb_dist=("0.01" "0.1" "1")
-fO2=("-5" "-3" "-1" "1" "3" "5")
-Hoceans=("1" "2" "4")
-silicates=("true" "false")
+orb_dist=("0.01")
+fO2=("-3")
+Hoceans=("1")
+silicates=("true")
 CHratio=("1")
 input_file=input/run_silicates.toml
 
@@ -17,7 +17,6 @@ for ofug in "${fO2[@]}"; do
 				for CH in "${CHratio[@]}"; do
 					python3 tools_leoni/edit_input_file.py $input_file $ofug $orbit $Hocean $CH $sil
 					proteus start -c $input_file
-
 				done
 			done
 		done
