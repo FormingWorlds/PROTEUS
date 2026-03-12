@@ -137,21 +137,16 @@ conda activate proteus
 
 ## 7. Install SOCRATES (radiative transfer)
 
-SOCRATES requires a Fortran compiler and the NetCDF Fortran development tools. In particular, the `nf-config` executable must be available on your shell `PATH`. Install the necessary dependencies using `conda-forge` in your active Conda environment:
+!!! note "Fortran compiler and NetCDF tools"
 
-```console
-conda install -c conda-forge libnetcdf netcdf-fortran
-conda install -c conda-forge gfortran
-```
+    SOCRATES requires a Fortran compiler and the NetCDF Fortran development tools. Verify:
+    ```console
+    which gfortran
+    which nf-config
+    nf-config --version
+    ```
 
-Verify that the required tools are available:
-
-```console
-which gfortran
-which nf-config
-nf-config --version
-```
-Then install SOCRATES:
+Install SOCRATES:
 
 ```console
 ./tools/get_socrates.sh
