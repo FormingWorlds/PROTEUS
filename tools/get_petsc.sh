@@ -99,6 +99,8 @@ current_step="Detecting platform"
 
 if [[ "$OSTYPE" == "linux"* ]]; then
     export PETSC_ARCH=arch-linux-c-opt
+elif [[ "$OSTYPE" == "linux"* ]]; then
+	export PETSC_ARCH=arch-linux-c-opt
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     export PETSC_ARCH=arch-darwin-c-opt
 else

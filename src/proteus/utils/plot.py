@@ -32,6 +32,12 @@ _preset_colours = {
     'SO2': '#00008B',
     'H2S': '#2eff90',
     'NH3': '#675200',
+    'SiO': '#b2df8a',
+    'MgO': '#a6cee3',
+    'SiO2': '#1b9e77',
+    'FeO': '#7f0000',
+    'TiO': '#9C45BC',
+    'TiO2': '#421e39',
     # Volatile elements
     'H': '#0000cc',
     'C': '#ff0000',
@@ -44,6 +50,10 @@ _preset_colours = {
     'Si': '#aa2277',
     'Mg': '#996633',
     'Na': '#ccff00',
+    'Ti': '#0d2959',
+    'K': '#2e8b57',
+    'Al':"#5e2172",
+    'Ca':"#167A9B",
     # GLobal energy fluxes
     'OLR': '#dc143c',
     'ASF': '#4169e1',

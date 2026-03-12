@@ -8,12 +8,14 @@ import numpy as np
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import element_list, gas_list
+from proteus.outgas.lavatmos import compute_silicate_outgassing
+from proteus.utils.constants import element_list, vap_list, vol_list
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
+
 
 
 def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
@@ -82,11 +84,16 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     log.info('Solving outgassing...')
 
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
+
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
 
-    # calculate total atmosphere mass (from sum of volatile masses)
+    # calculate total atmosphere mass from sum of gas species
     hf_row['M_atm'] = 0.0
     for s in gas_list:
         hf_row['M_atm'] += hf_row[s + '_kg_atm']
@@ -125,12 +132,43 @@ def run_desiccated(config: Config, hf_row: dict):
     # if desiccated, set all gas masses to zero
     log.info('Desiccation has occurred - no volatiles remaining')
 
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
+
     # Do not set these to zero - avoid divide by zero elsewhere in the code
     excepted_keys = ['atm_kg_per_mol']
     for g in gas_list:
         excepted_keys.append(f'{g}_vmr')
 
     # Set most values to zero
-    for k in expected_keys():
+    for k in expected_keys(config):
         if k not in excepted_keys:
             hf_row[k] = 0.0
+
+
+
+def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
+    """function which runs lavatmos and calliope in a loop until they have converged.
+    This allows for a consistentt computation of melt outgassing and dissolution
+    Parameters
+    ----------
+        dirs : dict
+            Dictionary of directory paths
+        config : Config
+            Configuration object
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+    """
+    run_outgassing(dirs, config, hf_row)
+    if config.outgas.silicates:
+
+        #this needs to be commented out for runninglavatmos with the installation from github
+        #lavadir = os.environ.get("LAVATMOS_DIR")
+        #if lavadir:
+            #log.info('Lavatmos directory found: %s' % lavadir)
+        #else:
+            #log.warning('Lavatmos directory not found, did you set the LAVATMOS_DIR environment variable?')
+
+        compute_silicate_outgassing(config, hf_row)

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import get_oarr_from_parr
-from proteus.utils.constants import gas_list, vap_list, vol_list
+from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
 if TYPE_CHECKING:
@@ -330,6 +330,11 @@ def RunJANUS(
     output['ocean_maxdepth'] = 0.0
 
     # set composition at Pxuv
+    if config.outgas.silicates:
+        gas_list = vol_list + config.outgas.vaplist
+    else:
+        gas_list = vol_list + vap_list
+
     for g in gas_list:
         if g in atm.x_gas.keys():
             _, x_xuv = get_oarr_from_parr(atm.p, atm.x_gas[g], p_xuv * 1e5)
