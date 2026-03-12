@@ -140,13 +140,13 @@ The test files are located in the `tests/` folder. The pytest library will autom
 
 ### Building the documentation
 
-The documentation is written in [markdown](https://www.markdownguide.org/basic-syntax/), and uses [mkdocs](https://www.mkdocs.org/) to generate the pages.
+The documentation is written in [Markdown](https://www.markdownguide.org/basic-syntax/) and generated using [Zensical](https://zensical.org/docs/get-started/). Zensical is fully compatible with a `mkdocs.yml` configuration file, which we use for the build process.
 
 To build the documentation for yourself:
 
 ```console
 pip install -e '.[docs]'
-mkdocs serve
+zensical serve
 ```
 
 This will generate the markdown files and serve them on a local server. You can view documentation while you edit by copy-pasting the displayed URL into your browser (e.g., `http://127.0.0.1:8000`).

@@ -97,10 +97,11 @@ develop = [
 ]
 
 docs = [
+    "zensical",
     "markdown-include",
     "mkdocs",
-    "mkdocs-material",
     "mkdocstrings[python]",
+    "pymdown-extensions"
 ]
 
 [project.scripts]
