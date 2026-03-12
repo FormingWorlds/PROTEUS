@@ -295,7 +295,7 @@ def read_in_element_fracs(input_path,time):
     # make first column the headers and second column the data row
     df = pd.DataFrame([df[1].values], columns=df[0].values)
 
-    df_frac= np.power(10, df-12)
+    df_frac = (10**(df - 12)).where(df != 0, 0)
     #dataframe has been multiplied by 1e20, so need to renormalise to get real fractions
     return df_frac/1e20
 
@@ -427,10 +427,10 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     for e in element_list:
         log.info('element: %s,  %s',e, element_fracs[e][0])
         log.info('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
-        if e in input_eles and e!='O':
-            hf_row[e + '_kg_atm'] = hf_row[e + '_kg_atm']
-        else:
-            hf_row[e + '_kg_atm'] = element_fracs[e][0] * M_atmo_new * species_lib[e].weight / mmw_elements
+        #if e in input_eles and e!='O':
+        hf_row[e + '_kg_atm'] = hf_row[e + '_kg_atm']
+        #else:
+        hf_row[e + '_kg_atm'] = element_fracs[e][0] * M_atmo_new * species_lib[e].weight / mmw_elements
 
         hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
         log.info('total mass of element after updating with lavatmos: %s',hf_row[e + '_kg_atm'])
