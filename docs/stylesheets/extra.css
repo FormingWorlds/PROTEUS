@@ -176,7 +176,7 @@
 [data-md-color-scheme="default"] .md-tabs__link,
 [data-md-color-scheme="slate"] .md-tabs__link {
   color: #fff !important;
-  opacity: 0. !important;
+  opacity: 0.9 !important;
   transition: color 0.15s ease, opacity 0.15s ease !important;
 }
 
