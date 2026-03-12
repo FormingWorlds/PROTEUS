@@ -13,7 +13,7 @@ process. The setup is written for macOS and Linux. Depending on your
 system settings and installed libraries your procedure may differ. If
 one or more of the steps below do not work for you we encourage you to
 first check the [Troubleshooting](troubleshooting.md) page. If
-that does not help you further, please [contact the developers](contact.md).
+that does not help you further, please [contact the developers](../Community/contact.md).
 
 !!! tip "macOS users"
     macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout these instructions if you are using the default shell.
