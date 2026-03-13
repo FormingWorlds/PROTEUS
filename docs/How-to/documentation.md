@@ -26,7 +26,7 @@ Once the server is running, open the URL shown in your terminal in a browser. In
 ```console
 http://127.0.0.1:8000
 ```
-!!! note "Use a different port"
+!!! note "Using a different port"
     If port 8000 is already busy, you can build the documentation on a different port:
     ```console
     zensical serve -a localhost:8001
