@@ -45,8 +45,6 @@ http://127.0.0.1:8000
 
 Documentation source files are located in the [`docs`](https://github.com/FormingWorlds/PROTEUS/tree/main/docs) directory, and mostly follow the [Diátaxis](https://diataxis.fr/) approach of documentation. This means they are categorised into:
 
-Diátaxis separates documentation into four complementary categories:
-
 - **Tutorials**: learning-oriented guides for new users, such as a first workflow tutorial.
 - **How-to guides**: task-oriented instructions, such as installation, configuration, or test development.
 - **Explanations**: conceptual material, such as model overviews or code architecture.
@@ -91,7 +89,7 @@ The main directories and files are used as follows:
 - `javascripts/`: contains JavaScript files used for additional frontend behaviour.
 - `overrides/`: contains theme or template overrides used by the site.
 - `paper/`: contains material related to the PROTEUS JOSS paper.
-- `index.md`: the *landing page** of the documentation (Home).
+- `index.md`: the **landing page** of the documentation (Home).
 - `getting_started.md`: a page to get the user started, just below Home.
 - `funding.md`: contains our sponsors.
 - `submodules.md`: introduces the documentation of all PROTEUS' submodules.
