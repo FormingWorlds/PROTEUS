@@ -189,8 +189,6 @@ cd ../
 
 Use this `get_agni.sh` script to keep AGNI and its data files up to date. AGNI must be available at `./AGNI/` inside your PROTEUS folder (either a symbolic link or the true location).
 
-The argument provided to the script (integer from 0 to 20) indicates which tests AGNI should run. A value of `0` means the tests are skipped.
-
 ## 9. Install submodules as editable
 
 Clone and install each submodule in editable mode.
