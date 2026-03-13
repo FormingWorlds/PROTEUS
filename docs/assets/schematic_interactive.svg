@@ -1,0 +1,295 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 980 620" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+
+  <defs>
+    <filter id="hover-shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+    <marker id="arr-or" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 1L10 5L0 9z" fill="#e69138"/>
+    </marker>
+    <marker id="arr-bl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 1L10 5L0 9z" fill="#6a9fcf"/>
+    </marker>
+    <marker id="arr-gy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#999"/>
+    </marker>
+    <marker id="arr-tl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 1L10 5L0 9z" fill="#009f9d"/>
+    </marker>
+    <marker id="arr-rd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 1L10 5L0 9z" fill="#cc6666"/>
+    </marker>
+
+    <style>
+      .mod { cursor: pointer; }
+      .mod rect { transition: stroke-width 0.15s, filter 0.15s; }
+      .mod:hover rect { stroke-width: 2.5; }
+      .mod:hover { filter: url(#hover-shadow); }
+      .m-at rect       { fill: #cfe2f3; stroke: #6d9eeb; stroke-width: 1.5; }
+      .m-at:hover rect { fill: #ddeaf7; stroke: #4a86d9; }
+      .m-in rect       { fill: #f4cccc; stroke: #cc6666; stroke-width: 1.5; }
+      .m-in:hover rect { fill: #f8d8d8; stroke: #b04040; }
+      .m-if rect       { fill: #d9ead3; stroke: #82b378; stroke-width: 1.5; }
+      .m-if:hover rect { fill: #e2f0dd; stroke: #5a9e50; }
+      .m-ev rect       { fill: #fce5cd; stroke: #e69138; stroke-width: 1.5; }
+      .m-ev:hover rect { fill: #fdecda; stroke: #c67a20; }
+      .m-ip rect       { fill: #d9d2e9; stroke: #9a85c4; stroke-width: 1.5; }
+      .m-ip:hover rect { fill: #e2dcf0; stroke: #7b66b0; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="980" height="620" fill="#fff"/>
+
+  <!-- ============================================================
+       PLANETARY CROSS-SECTION (fan/sector wedge)
+       Apex at (420,610). Layers stacked large-to-small.
+       Left edge: (70,200) → (420,610)
+       Right edge: (710,200) → (420,610)
+       ============================================================ -->
+
+  <!-- Atmosphere (light blue) -->
+  <path d="M 420,610 L 70,200 Q 390,100 710,200 Z" fill="#cfe2f3"/>
+
+  <!-- Mantle (salmon/pink) -->
+  <path d="M 420,610 L 236,395 Q 404,265 572,395 Z" fill="#ea9999"/>
+
+  <!-- Core outer (medium gray) -->
+  <path d="M 420,610 L 330,505 Q 412,451 494,505 Z" fill="#999"/>
+  <!-- Core inner (darker gray) -->
+  <path d="M 420,610 L 360,540 Q 415,500 470,540 Z" fill="#777"/>
+  <path d="M 420,610 L 380,560 Q 418,530 455,560 Z" fill="#666"/>
+
+  <!-- Boundary arcs (dashed) -->
+  <!-- Atmosphere outer boundary (dotted) -->
+  <path d="M 70,200 Q 390,100 710,200" fill="none" stroke="#7799bb" stroke-width="1.8" stroke-dasharray="3,5" opacity="0.7"/>
+  <!-- Mantle-atmosphere boundary -->
+  <path d="M 236,395 Q 404,265 572,395" fill="none" stroke="#aa7777" stroke-width="1.2" stroke-dasharray="5,4" opacity="0.5"/>
+  <!-- Core-mantle boundary -->
+  <path d="M 330,505 Q 412,451 494,505" fill="none" stroke="#777" stroke-width="1.2" stroke-dasharray="5,4" opacity="0.5"/>
+
+  <!-- ============================================================
+       LAYER LABELS
+       ============================================================ -->
+
+  <!-- Atmosphere (dark text on light blue) -->
+  <text x="420" y="218" text-anchor="middle" font-weight="700" font-size="18" fill="#1a1a1a">Atmosphere</text>
+  <text x="420" y="238" text-anchor="middle" font-size="11" fill="#444">Radiation</text>
+  <text x="420" y="253" text-anchor="middle" font-size="11" fill="#444">Convection</text>
+  <text x="420" y="268" text-anchor="middle" font-size="11" fill="#444">Condensation</text>
+  <text x="420" y="283" text-anchor="middle" font-size="11" fill="#444">Chemistry</text>
+
+  <!-- Mantle (white/light text on pink) -->
+  <text x="410" y="395" text-anchor="middle" font-weight="700" font-size="17" fill="#fff">Mantle</text>
+  <text x="410" y="414" text-anchor="middle" font-size="11" fill="rgba(255,255,255,0.9)">Melting</text>
+  <text x="410" y="428" text-anchor="middle" font-size="11" fill="rgba(255,255,255,0.9)">Crystallization</text>
+  <text x="410" y="442" text-anchor="middle" font-size="11" fill="rgba(255,255,255,0.9)">Convection</text>
+  <text x="410" y="456" text-anchor="middle" font-size="11" fill="rgba(255,255,255,0.9)">Conduction</text>
+
+  <!-- Core -->
+  <text x="418" y="535" text-anchor="middle" font-weight="700" font-size="15" fill="#fff">Metal</text>
+  <text x="418" y="553" text-anchor="middle" font-weight="700" font-size="15" fill="#fff">Core</text>
+  <text x="418" y="572" text-anchor="middle" font-size="11" fill="rgba(255,255,255,0.8)">Cooling</text>
+
+  <!-- ============================================================
+       CHNOS VOLATILE CIRCLES
+       ============================================================ -->
+  <g fill="#d9ead3" stroke="#82b378" stroke-width="1.2">
+    <!-- Along atmosphere outer boundary -->
+    <circle cx="200" cy="185" r="5"/>
+    <circle cx="260" cy="170" r="5"/>
+    <circle cx="320" cy="158" r="5"/>
+    <circle cx="390" cy="150" r="5"/>
+    <circle cx="470" cy="153" r="5"/>
+    <circle cx="540" cy="163" r="5"/>
+    <circle cx="610" cy="178" r="5"/>
+    <circle cx="670" cy="192" r="5"/>
+    <!-- In atmosphere body -->
+    <circle cx="235" cy="250" r="5"/>
+    <circle cx="300" cy="230" r="5"/>
+    <circle cx="505" cy="218" r="5"/>
+    <circle cx="570" cy="240" r="5"/>
+    <circle cx="620" cy="260" r="5"/>
+    <!-- Near mantle boundary -->
+    <circle cx="290" cy="340" r="5"/>
+    <circle cx="350" cy="315" r="5"/>
+    <circle cx="470" cy="305" r="5"/>
+    <circle cx="525" cy="320" r="5"/>
+    <circle cx="370" cy="360" r="5"/>
+    <circle cx="445" cy="355" r="5"/>
+    <circle cx="505" cy="365" r="5"/>
+    <!-- Near core -->
+    <circle cx="410" cy="475" r="5"/>
+  </g>
+
+  <!-- ============================================================
+       CONVECTION SYMBOL (teal circular arrow in mantle)
+       ============================================================ -->
+  <g transform="translate(355, 400)" opacity="0.6">
+    <path d="M -12,-8 A 14,14 0 1,1 -4,12" fill="none" stroke="#009f9d" stroke-width="2.2"
+          marker-end="url(#arr-tl)"/>
+  </g>
+
+  <!-- ============================================================
+       ENERGY FLUX ARROWS
+       ============================================================ -->
+
+  <!-- F_XUV (from star, upper-left) -->
+  <line x1="345" y1="95" x2="370" y2="158" stroke="#e69138" stroke-width="2.5" marker-end="url(#arr-or)"/>
+  <text x="320" y="88" font-size="12" fill="#e69138" font-style="italic">F<tspan font-size="8" dy="3">XUV</tspan></text>
+
+  <!-- F_bol (from star, upper-right) -->
+  <line x1="578" y1="95" x2="555" y2="158" stroke="#e69138" stroke-width="2.5" marker-end="url(#arr-or)"/>
+  <text x="580" y="88" font-size="12" fill="#e69138" font-style="italic">F<tspan font-size="8" dy="3">bol</tspan></text>
+
+  <!-- F_atm (outgoing from atmosphere, upper-left) -->
+  <line x1="198" y1="195" x2="175" y2="155" stroke="#6a9fcf" stroke-width="2.5" marker-end="url(#arr-bl)"/>
+  <text x="150" y="145" font-size="12" fill="#6a9fcf" font-style="italic">F<tspan font-size="8" dy="3">atm</tspan></text>
+
+  <!-- F_CMB (core-mantle boundary) -->
+  <line x1="418" y1="585" x2="418" y2="508" stroke="#999" stroke-width="3" marker-end="url(#arr-gy)"/>
+  <text x="418" y="602" text-anchor="middle" font-size="12" fill="#777" font-style="italic">F<tspan font-size="8" dy="3">CMB</tspan></text>
+
+  <!-- F_MO (mantle-atmosphere flux, right side, dashed) -->
+  <path d="M 545,320 L 530,290" stroke="#cc6666" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#arr-rd)"/>
+  <text x="555" y="305" font-size="11" fill="#cc6666" font-style="italic">F<tspan font-size="8" dy="3">MO</tspan></text>
+
+  <!-- Dashed layer interaction arrows (mantle ↔ atmosphere) -->
+  <path d="M 330,380 Q 310,350 300,320" fill="none" stroke="#cc9999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>
+  <path d="M 470,370 Q 490,345 495,310" fill="none" stroke="#cc9999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>
+
+  <!-- "In- & outgassing" label -->
+  <text x="275" y="340" font-size="12" fill="#009f9d" font-style="italic"
+        transform="rotate(-45, 275, 340)">In- &amp; outgassing</text>
+
+  <!-- "Escape" with wavy lines (upper-right) -->
+  <text x="655" y="190" font-size="12" fill="#009f9d" font-style="italic"
+        transform="rotate(-25, 655, 190)">Escape</text>
+  <path d="M 680,196 Q 690,206 680,216 Q 670,226 680,236" fill="none" stroke="#009f9d" stroke-width="1.5"/>
+  <path d="M 694,196 Q 704,206 694,216 Q 684,226 694,236" fill="none" stroke="#009f9d" stroke-width="1.5"/>
+  <path d="M 708,196 Q 718,206 708,216 Q 698,226 708,236" fill="none" stroke="#009f9d" stroke-width="1.5"/>
+
+  <!-- ============================================================
+       MODULE BOXES — Interactive
+       ============================================================ -->
+
+  <!-- ── ATMOSPHERE (blue, left) ── -->
+  <text x="88" y="298" text-anchor="middle" font-size="11" fill="#0b5394" letter-spacing="0.02em">Atmosphere modules</text>
+
+  <a xlink:href="https://proteus-framework.org/VULCAN/" target="_blank">
+    <g class="mod m-at"><rect x="5" y="130" width="145" height="52" rx="7"/>
+      <text x="78" y="152" text-anchor="middle" font-weight="700" font-size="14" fill="#0b5394">VULCAN</text>
+      <text x="78" y="170" text-anchor="middle" font-size="10" fill="#3d6fa0">Disequilibrium chemistry</text>
+    </g>
+  </a>
+
+  <a xlink:href="https://newstrangeworlds.github.io/FastChem/" target="_blank">
+    <g class="mod m-at"><rect x="5" y="196" width="145" height="52" rx="7"/>
+      <text x="78" y="218" text-anchor="middle" font-weight="700" font-size="14" fill="#0b5394">FastChem</text>
+      <text x="78" y="236" text-anchor="middle" font-size="10" fill="#3d6fa0">Equilibrium chemistry</text>
+    </g>
+  </a>
+
+  <a xlink:href="https://www.h-nicholls.space/AGNI/" target="_blank">
+    <g class="mod m-at"><rect x="5" y="318" width="185" height="52" rx="7"/>
+      <text x="98" y="340" text-anchor="middle" font-weight="700" font-size="14" fill="#0b5394">AGNI</text>
+      <text x="98" y="358" text-anchor="middle" font-size="10" fill="#3d6fa0">Radiative-convective atmosphere</text>
+    </g>
+  </a>
+
+  <a xlink:href="https://proteus-framework.org/JANUS/" target="_blank">
+    <g class="mod m-at"><rect x="25" y="386" width="195" height="55" rx="7"/>
+      <text x="123" y="408" text-anchor="middle" font-weight="700" font-size="14" fill="#0b5394">JANUS</text>
+      <text x="123" y="427" text-anchor="middle" font-size="10" fill="#3d6fa0">Prescribed-convective atmosphere</text>
+    </g>
+  </a>
+
+  <!-- ── ENVIRONMENT (orange, top center) ── -->
+  <text x="459" y="48" text-anchor="middle" font-size="11" fill="#e69138" letter-spacing="0.02em">Environment modules</text>
+
+  <a xlink:href="https://proteus-framework.org/MORS/" target="_blank">
+    <g class="mod m-ev"><rect x="372" y="57" width="174" height="48" rx="7"/>
+      <text x="459" y="78" text-anchor="middle" font-weight="700" font-size="14" fill="#b45f06">MORS</text>
+      <text x="459" y="94" text-anchor="middle" font-size="10" fill="#c47a20">Stellar evolution</text>
+    </g>
+  </a>
+
+  <!-- ── INTERPRETATION (purple, top right) ── -->
+  <text x="840" y="48" text-anchor="middle" font-size="11" fill="#674ea7" letter-spacing="0.02em">Interpretation modules</text>
+
+  <a xlink:href="https://platon.readthedocs.io/en/latest/" target="_blank">
+    <g class="mod m-ip"><rect x="730" y="57" width="218" height="52" rx="7"/>
+      <text x="839" y="79" text-anchor="middle" font-weight="700" font-size="14" fill="#351c75">PLATON</text>
+      <text x="839" y="96" text-anchor="middle" font-size="10" fill="#5a3d8a">Synthetic observations</text>
+    </g>
+  </a>
+
+  <!-- ── INTERFACE (green, right) ── -->
+  <text x="845" y="315" text-anchor="middle" font-size="11" fill="#38761d" letter-spacing="0.02em">Interface modules</text>
+
+  <a xlink:href="https://proteus-framework.org/ZEPHYRUS/" target="_blank">
+    <g class="mod m-if"><rect x="755" y="228" width="185" height="55" rx="7"/>
+      <text x="848" y="251" text-anchor="middle" font-weight="700" font-size="14" fill="#38761d">ZEPHYRUS</text>
+      <text x="848" y="269" text-anchor="middle" font-size="10" fill="#4a8a3a">Atmospheric escape</text>
+    </g>
+  </a>
+
+  <a xlink:href="https://proteus-framework.org/CALLIOPE/" target="_blank">
+    <g class="mod m-if"><rect x="720" y="335" width="210" height="55" rx="7"/>
+      <text x="825" y="358" text-anchor="middle" font-weight="700" font-size="14" fill="#38761d">CALLIOPE</text>
+      <text x="825" y="376" text-anchor="middle" font-size="10" fill="#4a8a3a">Surface in-/outgassing</text>
+    </g>
+  </a>
+
+  <!-- ── INTERIOR (pink/red, bottom right) ── -->
+  <text x="795" y="555" text-anchor="middle" font-size="11" fill="#990000" letter-spacing="0.02em">Interior modules</text>
+
+  <a xlink:href="https://proteus-framework.org/SPIDER/" target="_blank">
+    <g class="mod m-in"><rect x="640" y="420" width="155" height="52" rx="7"/>
+      <text x="718" y="442" text-anchor="middle" font-weight="700" font-size="14" fill="#990000">SPIDER</text>
+      <text x="718" y="460" text-anchor="middle" font-size="10" fill="#aa4444">Interior dynamics</text>
+    </g>
+  </a>
+
+  <a xlink:href="https://proteus-framework.org/aragog/" target="_blank">
+    <g class="mod m-in"><rect x="805" y="420" width="155" height="52" rx="7"/>
+      <text x="883" y="442" text-anchor="middle" font-weight="700" font-size="14" fill="#990000">Aragog</text>
+      <text x="883" y="460" text-anchor="middle" font-size="10" fill="#aa4444">Interior dynamics</text>
+    </g>
+  </a>
+
+  <a xlink:href="https://proteus-framework.org/Zalmoxis/" target="_blank">
+    <g class="mod m-in"><rect x="600" y="486" width="172" height="48" rx="7"/>
+      <text x="686" y="507" text-anchor="middle" font-weight="700" font-size="14" fill="#990000">Zalmoxis</text>
+      <text x="686" y="523" text-anchor="middle" font-size="10" fill="#aa4444">Interior structure</text>
+    </g>
+  </a>
+
+  <a xlink:href="https://proteus-framework.org/LovePy/" target="_blank">
+    <g class="mod m-in"><rect x="782" y="486" width="182" height="48" rx="7"/>
+      <text x="873" y="507" text-anchor="middle" font-weight="700" font-size="14" fill="#990000">LovePy</text>
+      <text x="873" y="523" text-anchor="middle" font-size="10" fill="#aa4444">Interior tidal heating</text>
+    </g>
+  </a>
+
+  <!-- ============================================================
+       LEGEND (bottom-left)
+       ============================================================ -->
+  <g transform="translate(18, 468)">
+    <rect x="0" y="0" width="180" height="115" rx="6" fill="#fff" fill-opacity="0.9" stroke="#ddd" stroke-width="0.5"/>
+
+    <circle cx="22" cy="22" r="5.5" fill="#d9ead3" stroke="#82b378" stroke-width="1.2"/>
+    <text x="36" y="26" font-size="10.5" fill="#555">CHNOS volatiles</text>
+
+    <rect x="14" y="43" width="18" height="12" rx="3" fill="#cfe2f3" stroke="#6d9eeb" stroke-width="1"/>
+    <text x="36" y="53" font-size="10.5" fill="#555">PROTEUS module</text>
+
+    <line x1="14" y1="74" x2="32" y2="74" stroke="#aa7777" stroke-width="1.8" stroke-dasharray="4,3"/>
+    <text x="36" y="78" font-size="10.5" fill="#555">Layer interaction</text>
+
+    <line x1="14" y1="100" x2="32" y2="100" stroke="#999" stroke-width="2.5" marker-end="url(#arr-gy)"/>
+    <text x="36" y="104" font-size="10.5" fill="#555">Energy fluxes</text>
+  </g>
+
+</svg>
