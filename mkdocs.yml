@@ -27,6 +27,7 @@ nav:
           - Testing infrastructure: How-to/test_infrastructure.md
           - Test categorization: How-to/test_categorization.md
           - Test building: How-to/test_building.md
+          - Developing documentation: How-to/documentation.md
           - AI-assisted development: How-to/ai_usage.md
 
   - Tutorials:
