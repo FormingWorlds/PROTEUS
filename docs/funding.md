@@ -15,6 +15,12 @@
   margin-top: 2rem;
 ">
 
+  <a href="https://www.rug.nl/research/kapteyn/" target="_blank">
+    <img src="assets/logos/RUG.png"
+         alt="University of Groningen logo"
+         style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
+  </a>
+
   <a href="https://research-software-directory.org/projects/proteus" target="_blank">
     <img src="assets/logos/eScienceCenter.jpg"
          alt="Netherlands eScience Center logo"
@@ -39,15 +45,15 @@
          style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
   </a>
 
-  <a href="https://www.rug.nl/research/kapteyn/" target="_blank">
-    <img src="assets/logos/RUG.png"
-         alt="University of Groningen logo"
-         style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
-  </a>
-
   <a href="https://www.physics.ox.ac.uk/research/subdepartment/atmospheric-oceanic-and-planetary-physics" target="_blank">
     <img src="assets/logos/Oxford_white.jpg"
          alt="University of Oxford logo"
+         style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
+  </a>
+
+  <a href="https://erc.europa.eu/" target="_blank">
+    <img src="assets/logos/ERC.png"
+         alt="European Research Council logo"
          style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
   </a>
 
