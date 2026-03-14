@@ -6,7 +6,7 @@
 
 **Key concept:** Instead of compiling SOCRATES, AGNI, PETSc, and SPIDER on every CI run (~60 min), we use a pre-built Docker image (~5 min startup).
 
-For test markers and categories, see [Test Categorization](test_categorization.md). For coverage workflows, see [Test Infrastructure](test_infrastructure.md). For writing tests, see [Test Building](test_building.md).
+For test markers and categories, see [Test Categorization](../How-to/test_categorization.md). For coverage workflows, see [Test Infrastructure](../How-to/test_infrastructure.md). For writing tests, see [Test Building](../How-to/test_building.md).
 
 ---
 
@@ -115,7 +115,7 @@ PROTEUS_DIR=/opt/proteus
 - Grace period allows ≤0.3% drop with warning
 - Diff-cover enforces 80% on changed lines
 
-See [Test Categorization](test_categorization.md) for marker details and [Test Infrastructure](test_infrastructure.md) for coverage thresholds.
+See [Test Categorization](../How-to/test_categorization.md) for marker details and [Test Infrastructure](../How-to/test_infrastructure.md) for coverage thresholds.
 
 **Key Innovation - Smart Rebuild:**
 ```yaml
@@ -180,7 +180,7 @@ Since the container already has compiled binaries:
 - Full threshold from `[tool.coverage.report] fail_under` (see `pyproject.toml`)
 - Auto-commits threshold increase on successful main runs
 
-See [Test Infrastructure](test_infrastructure.md) for coverage coordination details.
+See [Test Infrastructure](../How-to/test_infrastructure.md) for coverage coordination details.
 
 ## Test Markers
 
@@ -331,7 +331,7 @@ The two-tier coverage system coordinates between nightly and PR workflows:
 3. Compute union of covered lines
 4. Compare against full threshold
 
-See [Test Infrastructure](test_infrastructure.md) for threshold details.
+See [Test Infrastructure](../How-to/test_infrastructure.md) for threshold details.
 
 ## Troubleshooting
 
@@ -366,10 +366,10 @@ See [Test Infrastructure](test_infrastructure.md) for threshold details.
 ## References
 
 ### PROTEUS Documentation
-- [Test Infrastructure](test_infrastructure.md) — Coverage workflows, thresholds, troubleshooting
-- [Test Categorization](test_categorization.md) — Test markers, CI pipelines, fixtures
-- [Test Building](test_building.md) — Writing tests, prompts, best practices
-- [AI-Assisted Development](ai_usage.md) — Using AI for tests and code review
+- [Test Infrastructure](../How-to/test_infrastructure.md) — Coverage workflows, thresholds, troubleshooting
+- [Test Categorization](../How-to/test_categorization.md) — Test markers, CI pipelines, fixtures
+- [Test Building](../How-to/test_building.md) — Writing tests, prompts, best practices
+- [AI-Assisted Development](../How-to/ai_usage.md) — Using AI for tests and code review
 
 ### External Resources
 - [Docker Best Practices](https://docs.docker.com/develop/dev-best-practices/)

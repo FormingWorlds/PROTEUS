@@ -13,7 +13,7 @@ George Box famously put that "all models are wrong, but some are useful". PROTEU
 Although PROTEUS aims to treat the problem of *planetary* evolution, it must necessarily also handle external processes which act upon the planet (e.g. tidal heating). The framework therefore models the combined system of a planet, its orbital mechanics, and the evolution of its host star. The planet itself is conceptually sub-divided into a vaporised *atmosphere* component above an *interior* component containing a silicate mantle and metallic core. PROTEUS facilitates communication between individual software *modules* which each implement a model for a specific part of the overall system. Conceptually, PROTEUS modules (e.g. the interior) are 'slots' which are filled by specific implementations: the 'models' (e.g. Aragog).
 
 <p align="center">
-      <img src="assets/schematic.png" style="max-width: 90%; height: auto;"></br>
+      <img src="../assets/schematic.png" style="max-width: 90%; height: auto;"></br>
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
@@ -49,4 +49,4 @@ Setting `update_interval = 0` disables dynamic updates entirely; the structure i
 
 Only the interior and star modules have an explicit notion of time-evolution. All other modules are applied at equilibrium, such that the quantities calculated by these modules are effectively updated instantaneously at each time-step. This assumes that the physical processes handled by these equilibrium modules reach steady-state on time-scales shorter than the physics considered by interior and stellar evolution modules.
 
-For further information on the model, see the [Bibliography](bibliography.md).
+For further information on the model, see the [Bibliography](../Reference/bibliography.md).
