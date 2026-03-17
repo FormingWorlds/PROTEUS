@@ -1,10 +1,10 @@
 #bash script to run multiple proteus runs one after other
 MIXFILE=vertical_mix
-orb_dist=("0.01")
-fO2=("-3")
-Hoceans=("1")
+orb_dist=("0.01" "0.1" "1")
+fO2=("5" "-5" "1" "-1")
+Hoceans=("4")
 silicates=("true")
-CHratio=("1")
+CHratio=("0.1")
 input_file=input/run_silicates.toml
 
 # make directories for each composition and make fastchem grids for all compositions that don't have grids yet

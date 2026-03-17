@@ -84,6 +84,7 @@ GASES_ARCiS=('CO',
 def get_element_abun(model,time):
 
     df=pd.read_csv('/data3/leoni/PROTEUS/output/%s/runtime_helpfile.csv'%model,sep='\t')
+    print(df)
     hf_row = df.loc[(df["Time"] - time).abs().idxmin()]
     molfracs={}
 
@@ -101,6 +102,7 @@ def get_element_abun(model,time):
 
     element_folder='/data3/leoni/evolution_project/elements_ARCiS/{}/{}/'.format(model,time)
 
+    print(element_folder)
     os.makedirs(element_folder, exist_ok=True)
     with open(element_folder+'elements.dat', "w") as f:
         for key in nfrac:
@@ -208,6 +210,7 @@ def get_tps(runname: str, nsamp: int):
     #check if output directory exists
     os.makedirs(output_dir, exist_ok=True)
 
+    print(input_dir)
     if nsamp>1:
         plot_times, sample_times, files = sample_output(input_dir, nsamp=nsamp)
     else:
@@ -222,20 +225,23 @@ def get_tps(runname: str, nsamp: int):
         df[::-1].to_csv(fpath,sep='\t',index=False)
         paths.append(fpath)
 
-    return sample_times,paths
+    return sample_times, paths
 
 
 
-def config_ARCiS(input_file, tp_file_path, vmr_file_path, elementfile, species,mixratfile=False, mixrat_file_path='mixingratios.dat'):
+def config_ARCiS(input_file, tp_file_path, vmr_file_path, elementfile, species, mixratfile=False, mixrat_file_path='mixingratios.dat'):
 
     '''function which modifies the ARCiS input file by updating the elementfile from which the abundances are read
     Input Tsurf is not mandatory since then ARCiS will converge to s surface temperature itself'''
 
 
+    print(input_file)
     vmrs=pd.read_csv(vmr_file_path,sep='\t').iloc[0]
 
     tp=pd.read_csv(tp_file_path,sep='\t')
     Psurf=tp['Pbar'][0]
+    print(tp_file_path)
+    print('surface temperature output by PROTEUS:',tp['temperature[K]'][0])
     Tsurface=tp['temperature[K]'][0]
 
     output_lines = []
@@ -282,29 +288,7 @@ def config_ARCiS(input_file, tp_file_path, vmr_file_path, elementfile, species,m
 if __name__ == "__main__":
     runname=sys.argv[1]
     nsamp=int(sys.argv[2])
-    time=int(sys.argv[3])
-    mixratfile=bool(sys.argv[4])
+
 
     vmrpaths,mixratpaths=get_chem_atmosphere(runname,nsamp)
     sample_times,tppaths=get_tps(runname,nsamp)
-
-    tp_file_path = next(t for t in tppaths if t.endswith("_{}.dat".format(time)))
-    vmr_file_path = next(vmr for vmr in vmrpaths if vmr.endswith("_{}.dat".format(time)))
-
-    if mixratfile:
-        mixrat_file_path = next(vmr for vmr in mixratpaths if vmr.endswith("_{}.dat".format(time)))
-    else:
-        mixrat_file_path='mixingratios.dat'
-    #time=sample_times[sample-1]
-    #vmr_file_path=vmrpaths[sample-1]
-
-    species=list(GASES_ARCiS)
-
-    if mixratfile:
-        input_file='/data3/leoni/ARCiS/input_PROTEUS_mixratfile.dat'
-    else:
-        input_file='/data3/leoni/ARCiS/input_PROTEUS.dat'
-
-    elementpath='/data3/leoni/evolution_project/elements_ARCiS/{}/{}/elements.dat'.format(runname,time)
-    get_element_abun(runname,time)
-    config_ARCiS(input_file, tp_file_path, vmr_file_path, elementpath,species,mixratfile=mixratfile,mixrat_file_path=mixrat_file_path)
