@@ -196,10 +196,9 @@ def load_phi_crit(grid_dir: str | Path):
     if not ref_file.exists():
         raise FileNotFoundError(f"ref_config.toml not found in {grid_dir}")
 
-    with ref_file.open("rb") as f:
+    with ref_file.open("r", encoding="utf-8") as f:
         ref = toml.load(f)
 
-    # Find phi_crit value
     try:
         phi_crit = ref["params"]["stop"]["solid"]["phi_crit"]
     except KeyError:
@@ -672,6 +671,7 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
     tested_params = {}
     for key, value in raw_params.items():
         if isinstance(value, dict) and "values" in value:
+            print(key, value["values"])
             # Only store the 'values' list
             tested_params[key] = value["values"]
     grid_params = tested_params
@@ -743,11 +743,12 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
                 sns.ecdfplot(
                     data=raw,
                     log_scale=out_settings.get("log_scale", False),
+                    stat="percent",
                     color=color_func(val),
                     linewidth=4,
                     linestyle='-',
                     ax=ax
-                )
+                                    )
 
             # Configure x-axis labels, ticks, grids
             if i == n_rows - 1:
@@ -760,13 +761,15 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
             # Configure y-axis (shared label added later)
             if j == 0:
                 ax.set_ylabel("")
-                ticks = [0.0, 0.5, 1.0]
+                ticks = [0.0, 50, 100]
                 ax.set_yticks(ticks)
                 ax.tick_params(axis='y', labelsize=22)
             else:
                 ax.set_ylabel("")
                 ax.set_yticks(ticks)
                 ax.tick_params(axis='y', labelleft=False)
+            ax.tick_params(axis='x', which='minor', direction='in', top=True, bottom=True, length=2)
+            ax.tick_params(axis='x', which='major', direction='inout', top=True, bottom=True, length=6)
 
             ax.grid(alpha=0.4)
 
@@ -785,7 +788,7 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
             ax.legend(handles=handles, fontsize=24,bbox_to_anchor=(1.01, 1), loc='upper left')
 
     # Add a single, shared y-axis label
-    fig.text(0.07, 0.5, 'Empirical cumulative fraction of grid simulations', va='center', rotation='vertical', fontsize=40)
+    fig.text(0.07, 0.5, 'Empirical cumulative distribution of grid simulations [%]', va='center', rotation='vertical', fontsize=40)
 
     # Save figure
     output_dir = grid_dir / "post_processing" / "grid_plots"
