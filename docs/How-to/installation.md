@@ -3,6 +3,7 @@
 !!! info "Prerequisites"
     - macOS (Intel or Apple Silicon) or Linux
     - ~20 GB disk space (conda, Julia, reference data, submodules)
+    - Standard command-line download tools: `curl`, `wget`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
     - Internet connection for data downloads
     - Allow ~60 minutes for a full installation including all submodules
@@ -12,7 +13,7 @@ process. The setup is written for macOS and Linux. Depending on your
 system settings and installed libraries your procedure may differ. If
 one or more of the steps below do not work for you we encourage you to
 first check the [Troubleshooting](troubleshooting.md) page. If
-that does not help you further, please [contact the developers](contact.md).
+that does not help you further, please [contact the developers](../Community/contact.md).
 
 !!! tip "macOS users"
     macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout these instructions if you are using the default shell.
@@ -63,11 +64,16 @@ We recommend Python version **3.12** for running PROTEUS. Python is most easily 
 
 ## 3. Install Julia
 
-Some PROTEUS modules are written in Julia. You should only obtain Julia using the official installer, **not** via your computer's package manager.
+Some PROTEUS modules are written in Julia. Install via the official installer:
 
 ```console
 curl -fsSL https://install.julialang.org | sh
 ```
+
+!!! warning "Do **not** use your package manager"
+    You should **only obtain Julia using the official installer**: package managers often do not install the correct version of Julia. If you previously installed Julia by another method, uninstall the old version first and remove any old Julia entries from your `PATH` to avoid version conflicts.
+
+
 
 !!! warning "Pin Julia to version 1.11"
     Julia 1.12+ is **not yet supported** due to OpenSSL library incompatibilities with Python. After installing Julia, pin it to version 1.11:
@@ -131,6 +137,17 @@ conda activate proteus
 
 ## 7. Install SOCRATES (radiative transfer)
 
+!!! note "Fortran compiler and NetCDF tools"
+
+    SOCRATES requires a Fortran compiler and the NetCDF Fortran development tools. Verify:
+    ```console
+    which gfortran
+    which nf-config
+    nf-config --version
+    ```
+
+Install SOCRATES:
+
 ```console
 ./tools/get_socrates.sh
 ```
@@ -155,6 +172,14 @@ The environment variable `RAD_DIR` must always point to the SOCRATES installatio
 
 Installation steps can be found at the [AGNI wiki](https://h-nicholls.space/AGNI/dev/setup/). They are also reproduced below.
 
+!!! note
+    This step requires `make` and `unzip` to be available on your system. Check with:
+
+    ```console
+    which make
+    which unzip
+    ```
+
 ```console
 git clone git@github.com:nichollsh/AGNI.git
 cd AGNI
@@ -163,8 +188,6 @@ cd ../
 ```
 
 Use this `get_agni.sh` script to keep AGNI and its data files up to date. AGNI must be available at `./AGNI/` inside your PROTEUS folder (either a symbolic link or the true location).
-
-The argument provided to the script (integer from 0 to 20) indicates which tests AGNI should run. A value of `0` means the tests are skipped.
 
 ## 9. Install submodules as editable
 

@@ -1,6 +1,6 @@
 # 🧠 Project Memory
 
-**Last Updated**: 2026-02-13
+**Last Updated**: 2026-03-14
 
 This document captures the living context of PROTEUS—the "why" behind architectural decisions, the current development focus, and critical knowledge for maintaining consistency across sessions.
 
@@ -22,7 +22,7 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Coverage**: coverage.py with automatic ratcheting (current: 59% full, 44.45% fast)
 - **Linting**: ruff (line-length 96, quote-style single)
 - **CI/CD**: GitHub Actions with Docker-based workflows
-- **Documentation**: MkDocs with Material theme
+- **Documentation**: Zensical (wraps MkDocs Material; serve with `zensical serve`, NOT `mkdocs serve`)
 
 ### Key External Dependencies
 - **SOCRATES** (Fortran): Spectral radiative transfer code
@@ -36,8 +36,8 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **MORS**: Stellar evolution module
 - **ARAGOG**: Interior thermal evolution (T-P formalism)
 - **ZEPHYRUS**: Atmospheric escape module
-- **BOREAS**: Alternative escape modeling
-- **ZALMOXIS**: Supporting utilities
+- **BOREAS**: Hydrodynamic atmospheric escape module
+- **ZALMOXIS**: Interior structure solver (hydrostatic equilibrium, EOS)
 
 ### Environment Requirements
 - **Python**: 3.12 (strict requirement for PETSc/SPIDER compatibility)
@@ -49,39 +49,27 @@ This document captures the living context of PROTEUS—the "why" behind architec
 
 ## 2. Active Context (The "Now")
 
-### Current Sprint Focus
-**Period**: 2026-02-06 to 2026-02-13
+### Current Focus (as of 2026-03-14)
 
-**Status**: PR #630 open — CI improvements (macOS tests, nightly deduplication, Codecov)
+**Recently Merged (since 2026-02-13)**:
+1. **PR #648: Zalmoxis-SPIDER coupling** (merged 2026-03-10) - External mesh from Zalmoxis structure solver passed to SPIDER thermal evolution. Physics-based structure update triggers. ~1,900 lines coupling code, ~3,300 lines tests.
+2. **PR #596: VULCAN online chemistry** (merged) - In-loop chemical kinetics via `src/proteus/atmos_chem/`. VULCAN now runs at every snapshot, not just post-processing.
+3. **PR #642: Download bug fixes** (merged 2026-03-08) - New `download_zenodo_file()` for single-file downloads, PHOENIX spectrum unzipping, custom stellar spectrum path expansion.
+4. **PR #643: PETSc/SPIDER macOS 26+ fix** (merged 2026-02-23) - CFLAGS quoting fix for RHEL 9 / Rocky Linux.
+5. **PR #630: CI improvements** (merged 2026-02-16) - macOS unit tests in PR checks, nightly deduplication, Codecov aggregate coverage.
 
-**Recent Completed Work (2026-02-13)**:
-1. **PR #630: CI Improvements** (branch: `tl/macostests_fastpr`)
-   - Added parallel macOS unit tests to PR checks (`macos-unit-tests` job)
-   - Extracted summary generation into dedicated `summary` job aggregating all platforms
-   - Deduplicated nightly CI: guard job skips 3am cron if docker-build already dispatched
-   - Added Codecov upload to nightly workflow (unit + smoke + integration aggregate)
-   - Added `codecov.yml` with `carryforward: true` for flag persistence
-   - Switched README coverage badge from stale gist to Codecov
-
-2. **Previous Sprint (2026-02-01 to 2026-02-06)**:
-
-   - PR #600 review comments addressed (28 comments, 15 files)
-   - Test physical bounds improvements, terminology clarity
-   - Coverage threshold calibration (59% full, 44.45% fast)
+**Open PRs**:
+- **PR #654**: Zensical documentation style update (branch: `ks/docs`) - Diataxis restructuring, new landing page, custom CSS
+- **PR #634**: Albedo feature (branch: `lj/albedo`)
 
 ### Recent Architectural Changes
-- **Docker CI Architecture**: Fully operational with pre-built images (`ghcr.io/formingworlds/proteus:latest`)
-- **Test Categorization**: Four-tier system (unit, smoke, integration, slow) with clear CI gates
-- **Coverage Strategy**: Dual-threshold system (fast gate 44.45% for PR, full gate 59% for nightly)
-- **Nightly Workflow**: Triggered by docker-build (fallback: 3am cron), deduplication guard prevents double runs
-- **Codecov Integration**: Nightly uploads aggregate coverage (unit+smoke+integration); PR checks upload unit+smoke; `codecov.yml` with carryforward flags
-- **Cross-Platform CI**: PR checks run unit tests on both Linux (Docker) and macOS
+- **Zalmoxis-SPIDER coupling**: External mesh mode lets Zalmoxis compute density structure, SPIDER evolves thermal state on that grid. Physics-based update triggers (dT/T, dPhi, floor/ceiling). Config: `struct.module = "zalmoxis"`.
+- **VULCAN online chemistry**: `atmos_chem/` module runs VULCAN in-loop at every snapshot. Produces `vulcan_<time>.csv` per atmosphere snapshot.
+- **BOREAS escape module**: Alternative hydrodynamic escape model (`escape.module = "boreas"`), added in PR #589.
+- **Documentation**: Migrated to Zensical (wraps MkDocs Material). Diataxis structure: `docs/How-to/`, `docs/Explanations/`, `docs/Reference/`, `docs/Community/`. Build with `zensical serve`, NOT `mkdocs serve`.
+- **Docker CI Architecture**: Pre-built images (`ghcr.io/formingworlds/proteus:latest`), cross-platform (Linux + macOS), Codecov integration
+- **Dual-Tool Agent Instructions**: `CLAUDE.md` is a symlink to `.github/copilot-instructions.md`. Pre-commit 500-line limit on `copilot-instructions.md` constrains both.
 - **File Size Limits**: Pre-commit enforced limits on .github/copilot-instructions.md (500) and .github/copilot-memory.md (1000)
-- **Dual-Tool Agent Instructions**: When using Claude, `CLAUDE.md` should be added as a symlink to `.github/copilot-instructions.md`, serving the same instructions to both Claude Code and GitHub Copilot. The pre-commit 500-line limit on `copilot-instructions.md` constrains both. Most users interact via Copilot, so `copilot-instructions.md` is the canonical file and all self-references point there.
-
-### Active Branches
-- **main**: Production branch with nightly validation
-- **tl/macostests_fastpr**: PR #630 — macOS tests, nightly deduplication, Codecov aggregate coverage
 
 ---
 
@@ -190,40 +178,6 @@ This document captures the living context of PROTEUS—the "why" behind architec
 
 ## 4. Known Debt & "Watch Outs"
 
-### ~~**CRITICAL BLOCKING ISSUE: Julia Version Incompatibility**~~ ✅ RESOLVED
-**Status**: Fixed as of 2026-01-31 (commits d02ebb13, e395b0df)
-
-**Problem**: AGNI required Julia ~1.11 but Docker container had broken Julia installation via juliaup
-
-**Root Causes Identified**:
-1. **juliaup installation was incomplete** - created broken symlinks and missing sys.so library
-2. **Symlink approach failed** - Julia looked for libraries at `/usr/local/bin/../lib/julia/sys.so` instead of actual installation path
-3. **Duplicate Julia configuration** - CI workflow had redundant setup steps
-
-**Solution Implemented**:
-1. **Replaced juliaup with direct Julia 1.11.2 download** (Dockerfile)
-   - Download from julialang.org official tarball
-   - Extract to `/opt/julia-1.11.2/`
-   - Add to PATH via ENV instead of symlink to preserve library paths
-2. **Simplified CI Julia configuration** (ci-nightly.yml)
-   - Removed duplicate Julia setup step
-   - Rely on Docker installation with minimal env vars
-   - Trust `get_agni.sh` to handle Julia package installation
-
-**Verification** (workflow run 21542390853):
-- ✅ Docker build successful (19m19s)
-- ✅ Fast PR Checks passing
-- ✅ Julia 1.11.2 loads correctly in CI
-- ✅ Unit tests run with >0% coverage
-- ✅ Smoke tests execute successfully
-- ✅ Integration tests complete
-- ✅ Slow tests execute
-- ✅ Nightly workflow completes (58m17s, 1 test failure unrelated to infrastructure)
-
-**Key Lesson**: Always use direct Julia installation from official tarballs for production Docker images; juliaup is designed for interactive use, not containerized environments.
-
----
-
 ### Documentation Drift
 - **Issue**: Some test documentation references old workflow names
 - **Impact**: Low (workflows themselves are correct)
@@ -249,7 +203,14 @@ This document captures the living context of PROTEUS—the "why" behind architec
 - **Watch Out**: Nested configuration validation, type coercion edge cases
 - **Test Coverage**: `tests/config/test_config.py`, `test_converters.py`, `test_options.py`
 
-#### 4. CI Workflow Summary Generation (`.github/workflows/ci-nightly.yml`)
+#### 4. Zalmoxis-SPIDER Coupling (`src/proteus/interior/wrapper.py`, `zalmoxis.py`)
+- **Why Complex**: Phase 2 feedback loop mutates config temporarily (prescribed T-mode override with try/finally restore). T-profile interpolation bridges SPIDER's mantle nodes to Zalmoxis's full-planet grid. WolfBower2018 T-dependent EOS causes ~5% M_int shift on first structure update.
+- **Recent Changes**: Hybrid physics-based structure update triggers (dT/T + dPhi + floor/ceiling), removed deprecated `weight_iron_frac`, per-layer EOS config, `update_structure_from_interior()` now returns `(time, Tmagma, Phi)` tuple.
+- **Defaults Changed**: SPIDER is default interior module, Zalmoxis is default structure module, `temperature_mode` default is `adiabatic`, `num_levels` default is 100, `mantle_eos` uses colon format (`WolfBower2018:MgSiO3`).
+- **Watch Out**: `zalmoxis_solver()` unconditionally writes Aragog files even when using SPIDER. `solve_structure()` permanently mutates `config.orbit.module='dummy'` for Zalmoxis. `validate_mesh_fields.py` in SPIDER is dead validation (needs rewrite).
+- **Test Coverage**: `tests/interior/test_zalmoxis.py`, `tests/integration/test_smoke_zalmoxis_spider.py`, `test_regression_aw_zalmoxis.py`, `test_regression_structure_update.py`
+
+#### 5. CI Workflow Summary Generation (`.github/workflows/ci-nightly.yml`)
 - **Why Fragile**: Parses JUnit XML, coverage JSON, handles failures
 - **Recent Changes**: Hardened with try/except, better error handling (commit 7ed06597)
 - **Watch Out**: Missing files, parse errors can crash summary step
@@ -352,11 +313,17 @@ PROTEUS is the orchestrator; each module is a separate GitHub repository:
 - FormingWorlds/MORS
 - FormingWorlds/aragog
 - FormingWorlds/ZEPHYRUS
+- FormingWorlds/BOREAS
+- FormingWorlds/VULCAN
+- FormingWorlds/Zalmoxis
 - nichollsh/AGNI
 - nichollsh/SOCRATES
 - FormingWorlds/SPIDER
 
 **Implication**: Changes may require coordinated updates across repositories
+
+### Fork Policy
+All ecosystem repos live under the **FormingWorlds** GitHub organisation (or contributor forks like `nichollsh/`). When creating PRs, **always target the FormingWorlds fork** (or the contributor fork we cloned from). Never open PRs against upstream/original repositories (e.g. `djbower/spider`). Check `git remote -v` to confirm `origin` points to the correct fork before pushing or creating PRs.
 
 ### Testing Standards Apply Ecosystem-Wide
 All modules follow same standards:
@@ -403,156 +370,32 @@ All modules follow same standards:
 
 ---
 
-### Lesson 4: Julia Installation in Docker Containers (2026-01-30 to 2026-01-31) ✅ RESOLVED
-**Problem**: Nightly workflow runs 21532123452, 21533333930, 21541854157, 21542063539, 21542156510 all failed with Julia library errors.
-
-**Root Causes** (discovered through systematic debugging):
-1. **Initial assumption wrong**: First thought it was Julia 1.12.4 vs 1.11 version mismatch
-2. **Actual issue #1**: `juliaup` created incomplete installation with broken symlinks
-3. **Actual issue #2**: Symlink at `/usr/local/bin/julia` caused Julia to look for libraries at `/usr/local/bin/../lib/julia/sys.so` instead of actual path `/opt/julia-1.11.2/lib/julia/sys.so`
-4. **Actual issue #3**: Duplicate Julia configuration steps in CI workflow added complexity
-
-**Error Evolution**:
-- Initial: `julia version requirement for package at /opt/proteus/AGNI not satisfied`
-- After first fix: `ERROR: could not load library "/usr/local/bin/../lib/julia/sys.so"`
-- After second fix: ✅ Julia loads successfully
-
-**Solution** (commits d02ebb13, e395b0df):
-1. Replace `juliaup` with direct Julia 1.11.2 tarball download from julialang.org
-2. Add Julia to PATH via `ENV PATH="/opt/julia-1.11.2/bin:${PATH}"` instead of symlink
-3. Simplify CI workflow to rely on Docker installation with minimal env vars
-4. Remove duplicate Julia configuration step
-
-**Verification** (workflow run 21542390853):
-- Docker build: 19m19s ✅
-- Fast PR Checks: passing ✅
-- Nightly workflow: 58m17s, all test stages executed ✅
-
-**Takeaway**:
-- **juliaup is for interactive use, not Docker** - use official tarballs for containers
-- **Symlinks break library path resolution** - use PATH environment variable instead
-- **Trust upstream installation scripts** - `get_agni.sh` handles Julia packages correctly
-- **Systematic debugging pays off** - don't stop at first hypothesis; verify each fix thoroughly
-
----
-
-### Lesson 5: Security in Data Downloads (2026-01-30)
-**Problem**: Potential command injection vulnerability in Zenodo download functions.
-
-**Root Cause**: Zenodo IDs passed directly to subprocess without sanitization.
-
-**Solution**: Added regex validation (`^[0-9]+$`) for Zenodo IDs in `download_zenodo_folder()` and `validate_zenodo_folder()`.
-
-**Takeaway**: Always sanitize external inputs before passing to subprocess, even if they seem safe.
-
----
-
-### Lesson 6: CI Dependency Management (2026-01-30)
-**Problem**: Disk space monitoring failed because `bc` utility not available in container.
-
-**Root Cause**: Assumed system utilities without verifying container contents.
-
-**Solution**: Replaced `bc` with Python for disk space calculations; made checks non-blocking.
-
-**Takeaway**: Don't assume system utilities; use Python or verify dependencies in Docker image.
-
----
-
-### Lesson 7: Smoke Test Data Requirements (2026-01-31)
-**Problem**: Smoke test `test_smoke_calliope_dummy_atmos_outgassing` failed in CI with FileNotFoundError for ARAGOG data.
-
-**Root Cause**: Smoke tests use `all_options.toml` config which requires:
-1. ARAGOG lookup tables (`1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa`)
-2. Melting curves (`Monteux-600/solidus.dat`)
-3. Stellar spectra (solar)
-4. Spectral files (Dayspring/16)
-
-Original smoke data download only included spectral files and stellar spectra.
-
-**Solution** (commits d51ac963, 7c5b0fd6):
-1. Added `download_interior_lookuptables()` call to smoke data step
-2. Added `download_melting_curves(config)` call using `all_options.toml` config
-3. Updated data size estimate from ~60MB to ~120MB
-
-**Takeaway**: When a test uses a config file, trace ALL data dependencies through the config. Use `download_sufficient_data()` as reference for what data a config needs.
-
----
-
-### Lesson 8: CI Timeout Estimation (2026-01-31)
-**Problem**: Nightly CI run #21544709382 timed out at 90 minutes during slow tests.
-
-**Timeline Analysis**:
-- Setup + unit tests + smoke tests: ~20 min
-- Integration tests: ~15 min
-- Slow test 1 (`multi_timestep`): ~17 min ✅ passed
-- Slow test 2 (`extended_run`): started but cancelled at timeout
-
-**Root Cause**: 90-minute timeout insufficient for full test suite including slow tests.
-
-**Solution** (commit a7687a57): Increased timeout to **240 minutes (4 hours)**.
-
-**Takeaway**: Budget generous time for slow tests; they can take 30-60 minutes each. Better to have unused time than cancelled tests.
-
----
-
-### Lesson 9: Slow Test Runtime Estimation (2026-01-31)
-**Problem**: CI run #21545877959 hit 4-hour timeout during `test_integration_std_config_extended_run`.
-
-**Timeline Analysis**:
-- Slow tests started at 15:28 UTC
-- `test_integration_std_config_multi_timestep`: SKIPPED (LovePy exception)
-- `test_integration_std_config_extended_run`: Ran for 3+ hours, cancelled at 18:25 UTC
-
-**Root Causes**:
-1. **Extended run config too aggressive**: `num_timesteps=10, max_time=1e7 years` caused physics simulation to run for 3+ hours
-2. **multi_timestep skipped**: LovePy (Julia tidal module) throwing exception, test catches and skips
-3. **No per-test timeout**: Individual tests could run indefinitely
-
-**Solution** (implemented):
-1. Reduced slow test parameters:
-   - `multi_timestep`: 5→3 timesteps, max_time: 1e6→1e4 years
-   - `extended_run`: 10→5 timesteps, max_time: 1e7→1e5 years
-2. Added explicit `@pytest.mark.timeout()` marks:
-   - `multi_timestep`: 30 minute timeout
-   - `extended_run`: 60 minute timeout
-
-**Takeaway**: Physics simulation runtime ≠ configuration estimates. Always add explicit per-test timeouts for slow tests. Document actual observed runtimes, not theoretical estimates.
+### Lesson 4: Docker/CI Infrastructure (2026-01, consolidated) ✅ RESOLVED
+Key takeaways from Julia, CI, and test infrastructure debugging:
+- **Julia in Docker**: Use official tarballs, not `juliaup`. Set PATH via ENV, not symlinks (symlinks break library resolution).
+- **Data downloads**: Sanitize Zenodo IDs with regex (`^[0-9]+$`) before passing to subprocess.
+- **CI utilities**: Don't assume system tools like `bc` exist in containers; use Python instead.
+- **Smoke test data**: Trace ALL data dependencies through config files. Use `download_sufficient_data()` as reference.
+- **CI timeouts**: Nightly workflow uses 240-minute timeout. Slow tests have per-test `@pytest.mark.timeout()` marks (30/60 min). Physics simulation runtime is unpredictable from config alone.
 
 ---
 
 ## 8. Future Roadmap (Known Priorities)
 
-### Immediate (Next 1-2 Days) - COMPLETED ✅
-- ✅ **Julia version fixed**: Dockerfile uses direct Julia 1.11.2 download
-- ✅ **AGNI loads successfully**: Verified in CI runs
-- ✅ **Smoke tests pass**: Data dependencies fixed (ARAGOG + melting curves + stellar tracks)
-- ✅ **4-hour timeout added**: Workflow timeout increased (commit a7687a57)
-- ✅ **Slow test runtime fixed**: Reduced timesteps/time ranges, added per-test timeouts
-- ✅ **Stellar tracks download**: Added to minimal data step for smoke tests
-- ✅ **Transient error handling**: MORS/AGNI errors gracefully skip tests instead of failing CI
-- 📋 **Plot test reference images**: 12 plot tests are xfail due to outdated references (separate task)
-- ⚠️ **LovePy investigation needed**: multi_timestep test skipping due to LovePy exception
-
-**CI Nightly Status**: ✅ PASSING (Run #21552340245 completed in 41m54s on 2026-01-31)
-
-### Short-Term (Next 2-4 Weeks)
-- Continue expanding integration test coverage (ARAGOG+AGNI, CALLIOPE+ZEPHYRUS)
-- Remove remaining test skips as stability improves
-- Maintain coverage ratcheting momentum
-- ✅ ~~Add pytest-timeout plugin~~ (added to develop deps, commit 32d73539)
+### Open Items
+- 📋 **Plot test reference images**: 12 plot tests are xfail due to outdated references
+- ⚠️ **LovePy investigation**: multi_timestep test skipping due to LovePy exception
 - Centralise physical bounds (T_surf, P_surf limits) into conftest.py constants
-- Add dedicated ARAGOG/SPIDER unit tests (currently only tested via integration)
-- ✅ ~~macOS unit testing in PR checks~~ (PR #630, branch `tl/macostests_fastpr`)
+- Expand integration test coverage (ARAGOG+AGNI, CALLIOPE+ZEPHYRUS)
 
-### Medium-Term (Next 2-3 Months)
+### Medium-Term
 - Multi-architecture Docker support (ARM64 for Apple Silicon)
 - Matrix testing across Python 3.11, 3.12, 3.13
 - Performance profiling and benchmarking
 
-### Long-Term (6+ Months)
+### Long-Term
 - Semantic versioning for stable releases
 - Artifact caching for FWL_DATA between CI runs
-- Enhanced documentation with interactive examples
 
 ---
 
@@ -572,11 +415,12 @@ Original smoke data download only included spectral files and stellar spectra.
 ## 10. References & Resources
 
 ### Essential Documentation
-- **Installation**: `docs/installation.md`
-- **Testing Infrastructure**: `docs/test_infrastructure.md`
-- **Test Categorization**: `docs/test_categorization.md`
-- **Test Building**: `docs/test_building.md`
-- **Docker CI Architecture**: `docs/docker_ci_architecture.md`
+- **Installation**: `docs/How-to/installation.md`
+- **Testing Infrastructure**: `docs/How-to/test_infrastructure.md`
+- **Test Categorization**: `docs/How-to/test_categorization.md`
+- **Test Building**: `docs/How-to/test_building.md`
+- **Docker CI Architecture**: `docs/Explanations/docker_ci_architecture.md`
+- **Docs Development**: `docs/How-to/documentation.md` (build with `zensical serve`)
 - **Agent Guidelines**: `.github/copilot-instructions.md`
 
 ### External Resources

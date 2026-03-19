@@ -84,6 +84,11 @@ class Proteus:
         self.sspec_prev = -np.inf  # spectrum
         self.sinst_prev = -np.inf  # instellation and radius
 
+        # State at which structure was last re-computed via Zalmoxis
+        self.last_struct_time = -np.inf
+        self.last_struct_Tmagma = np.inf
+        self.last_struct_Phi = np.inf
+
     def init_directories(self):
         """Initialize directories dictionary"""
         from proteus.utils.coupler import set_directories
@@ -231,7 +236,11 @@ class Proteus:
             spider_dir = self.directories['spider']
         else:
             spider_dir = None
-        self.interior_o = Interior_t(get_nlevb(self.config), spider_dir=spider_dir)
+        self.interior_o = Interior_t(
+            get_nlevb(self.config),
+            spider_dir=spider_dir,
+            eos_dir=self.config.interior.eos_dir,
+        )
 
         # Initialise atmosphere object
         self.atmos_o = Atmos_t()
@@ -272,6 +281,12 @@ class Proteus:
                 self.hf_row,
                 self.directories['output'],
             )
+
+            # Initialize structure-update sentinels so the first dynamic
+            # update uses the post-init state as its baseline
+            self.last_struct_time = 0.0
+            self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
+            self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
@@ -336,6 +351,26 @@ class Proteus:
             self.loops['total'] = len(self.hf_all)
             self.init_stage = False
 
+            # Restore Zalmoxis mesh path for resumed SPIDER runs
+            if (
+                self.config.struct.module == 'zalmoxis'
+                and self.config.interior.module == 'spider'
+            ):
+                mesh_path = os.path.join(self.directories['output'], 'data', 'spider_mesh.dat')
+                if os.path.isfile(mesh_path):
+                    self.directories['spider_mesh'] = mesh_path
+                    prev_path = mesh_path + '.prev'
+                    if os.path.isfile(prev_path):
+                        self.directories['spider_mesh_prev'] = prev_path
+                    self.directories['mesh_shift_active'] = False
+                    self.directories['mesh_convergence_steps'] = 0
+                    log.info('Restored Zalmoxis mesh file: %s', mesh_path)
+
+            # Initialize structure-update sentinels from last helpfile row
+            self.last_struct_time = self.hf_row.get('Time', 0.0)
+            self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
+            self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+
         log.info(' ')
 
         # Prepare star stuff
@@ -345,14 +380,17 @@ class Proteus:
         init_orbit(self)
 
         # Main loop
+        # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
+        vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
+            # Ensure that VULCAN's csv file aligns with nc output files: (multiples of write_mod)
+            is_snapshot = multiple(self.loops['total'], self.config.params.out.write_mod)
             # New rows
             if self.loops['total'] > 0:
                 # Create new row to hold the updated variables. This will be
                 #    overwritten by the routines below.
                 self.hf_row = self.hf_all.iloc[-1].to_dict()
-
             log.info(' ')
             PrintSeparator()
             log.info('Loop counters')
@@ -377,6 +415,29 @@ class Proteus:
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
             self.hf_row['age_star'] += self.interior_o.dt  # in years
+
+            # Re-compute structure if Zalmoxis feedback is active
+            if (
+                not self.init_stage
+                and self.config.struct.module == 'zalmoxis'
+                and self.config.struct.update_interval > 0
+            ):
+                from proteus.interior.wrapper import update_structure_from_interior
+
+                (
+                    self.last_struct_time,
+                    self.last_struct_Tmagma,
+                    self.last_struct_Phi,
+                ) = update_structure_from_interior(
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    self.interior_o,
+                    self.last_struct_time,
+                    self.last_struct_Tmagma,
+                    self.last_struct_Phi,
+                )
+                # gc.collect() already called inside update_structure_from_interior()
 
             ############### / INTERIOR AND STRUCTURE
 
@@ -483,6 +544,20 @@ class Proteus:
             )
 
             ############### / ATMOSPHERE CLIMATE
+
+            ############### ONLINE ATMOSPHERIC CHEMISTRY
+            if (
+                self.config.atmos_chem.when == 'online'
+            ):  # checking if the toml file says online at atmos_chem and then when
+                if (
+                    is_snapshot and not self.desiccated
+                ):  # checking if the loop is a snapshot and runs VULCAN
+                    if self.loops['total'] not in vulcan_completed_loops:
+                        run_chemistry(self.directories, self.config, self.hf_row)
+                        vulcan_completed_loops.add(
+                            self.loops['total']
+                        )  # adds it to the completed loops/snapshots
+            ############### / ONLINE ATMOSPHERIC CHEMISTRY
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 

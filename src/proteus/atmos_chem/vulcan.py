@@ -33,9 +33,18 @@ VULCAN_NAME = 'vulcan.pkl'
 OUTPUT_NAME = 'vulcan.csv'
 
 
-def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
+def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False) -> bool:
     """
-    Run VULCAN as a subprocess, postprocessing the final PROTEUS output state.
+    Run VULCAN chemical kinetics on the current atmospheric state.
+
+    In offline mode (default), runs once on the final atmospheric state as a
+    post-processing step. The offchem directory is wiped and recreated, and
+    output is written to fixed filenames (vulcan.pkl, vulcan.csv).
+
+    In online mode, runs at every snapshot during the main simulation loop.
+    The offchem directory is created once and reused. Output uses per-snapshot
+    filenames (vulcan_{year}.pkl, vulcan_{year}.csv), and the chemical network
+    is compiled only once across all snapshots.
 
     Parameters
     ----------
@@ -45,6 +54,9 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
         Configuration object.
     hf_row : dict
         Dictionary of current helpfile row.
+    online : bool
+        If True, use online mode with per-snapshot output and one-time
+        network compilation. If False (default), use offline mode.
 
     Returns
     ----------
@@ -62,12 +74,17 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
     # ------------------------------------------------------------
 
     if config.atmos_clim.module != 'agni':
-        log.warning('VULCAN offline chemistry only supported with AGNI')
+        log.warning('VULCAN chemistry only supported with AGNI')
         return False
 
-    # make folder
-    shutil.rmtree(dirs['output/offchem'], ignore_errors=True)
-    os.makedirs(dirs['output/offchem'])
+    # Prepare output directory
+    if online:
+        # Online: create once, reuse across snapshots
+        os.makedirs(dirs['output/offchem'], exist_ok=True)
+    else:
+        # Offline: wipe and recreate for a clean post-processing run
+        shutil.rmtree(dirs['output/offchem'], ignore_errors=True)
+        os.makedirs(dirs['output/offchem'])
 
     # ------------------------------------------------------------
     # READ DATA FROM PROTEUS RUN
@@ -76,6 +93,17 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
     # Get all times for which we have data
     year = hf_row['Time']
     log.debug('Reading data for t=%.2e yr' % year)
+
+    # Determine output filenames
+    if online:
+        # Per-snapshot files so each timestep's result is preserved
+        year_int = int(year)
+        vulcan_pkl = f'vulcan_{year_int}.pkl'
+        vulcan_csv = f'vulcan_{year_int}.csv'
+    else:
+        # Single fixed files, overwritten each run
+        vulcan_pkl = VULCAN_NAME
+        vulcan_csv = OUTPUT_NAME
 
     # Read atmosphere data
     atmos = read_atmosphere_data(
@@ -106,7 +134,7 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
     star_fl = star_fl[star_fl > config.atmos_chem.vulcan.clip_fl]
 
     # Write spectrum
-    star_write = dirs['output/offchem'] + 'star.dat'
+    star_write = os.path.join(dirs['output/offchem'], 'star.dat')
     np.savetxt(
         star_write,
         np.array([star_wl, star_fl]).T,
@@ -124,7 +152,7 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
     # Write TPK profile
     header = '#(dyne/cm2)\t(K)\t(cm2/s)\n'
     header += 'Pressure\tTemp\tKzz'
-    prof_write = dirs['output/offchem'] + 'profile.dat'
+    prof_write = os.path.join(dirs['output/offchem'], 'profile.dat')
     np.savetxt(
         prof_write,
         np.array([p_arr[::-1], t_arr[::-1], k_arr[::-1]]).T,
@@ -135,7 +163,7 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
     )
 
     # Write mixing ratios
-    vmr_write = dirs['output/offchem'] + 'vmrs.dat'
+    vmr_write = os.path.join(dirs['output/offchem'], 'vmrs.dat')
     x_gas = [list(p_arr)]
     header = '#Input composition arrays \nPressure\t'
     for key in atmos.keys():
@@ -323,7 +351,7 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
     vcfg.output_dir = vulcan_out
     vcfg.plot_dir = vulcan_plt
     vcfg.movie_dir = vulcan_plt + '/frames/'
-    vcfg.out_name = VULCAN_NAME
+    vcfg.out_name = vulcan_pkl
 
     # Plotting
     vcfg.plot_TP = config.atmos_chem.vulcan.save_frames
@@ -335,18 +363,21 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
     vcfg.save_evolution = False
     vcfg.output_humanread = False
 
-    # for k in vars(vcfg).keys():
-    #     print(f"{k}: ", vars(vcfg)[])
-
     # ------------------------------------------------------------
     # RUN VULCAN
     # ------------------------------------------------------------
 
     # Make chemical network
     if config.atmos_chem.vulcan.make_funs:
-        log.debug('Performing `make_chem_funs` step...')
-        vulcan.make_all(vcfg)
-        log.debug('    done')
+        if online and hasattr(run_vulcan, '_made'):
+            # Online: already compiled on a previous snapshot, skip
+            pass
+        else:
+            log.debug('Performing `make_chem_funs` step...')
+            vulcan.make_all(vcfg)
+            if online:
+                run_vulcan._made = True
+            log.debug('    done')
 
     # Call the solver
     vulcan.main(vcfg)
@@ -355,7 +386,7 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
     # READ AND PARSE OUTPUT FILES
     # ------------------------------------------------------------
 
-    result_file = vulcan_out + VULCAN_NAME
+    result_file = os.path.join(vulcan_out, vulcan_pkl)
     if not os.path.exists(result_file):
         log.warning(f'Could not find output file {result_file}')
         return False
@@ -379,7 +410,7 @@ def run_vulcan_offline(dirs: dict, config: Config, hf_row: dict) -> bool:
             result_dict[gas] = np.array(result['variable']['ymix'][:, i])
 
     # write csv file, in a human-readable format
-    csv_file = vulcan_out + OUTPUT_NAME
+    csv_file = os.path.join(vulcan_out, vulcan_csv)
     log.debug(f'Writing to {csv_file}')
     header = ''
     Xarr = []

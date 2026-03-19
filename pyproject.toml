@@ -98,10 +98,12 @@ develop = [
 ]
 
 docs = [
+    "zensical",
+    "mkdocs-material",
     "markdown-include",
     "mkdocs",
-    "mkdocs-material",
     "mkdocstrings[python]",
+    "pymdown-extensions"
 ]
 
 [project.scripts]
@@ -197,6 +199,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party=["proteus"]
+known-third-party=["zalmoxis"]
 required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.format]

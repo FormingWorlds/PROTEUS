@@ -37,17 +37,6 @@
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
-**Quick links:**
-
-- [Model description](model.md) -- outline of the code and its structure
-- [Installation](installation.md) -- set up PROTEUS on your machine
-- [Usage](usage.md) -- run your first simulation
-- [Configuration](config.md) -- customise model parameters
-- [Troubleshooting](troubleshooting.md) -- common errors and fixes
-- [Contributing](CONTRIBUTING.md) -- how to change or contribute source code
-- [Team](https://proteus-framework.org/people) -- meet the developers
-- [Contact](contact.md) -- get in touch with the developers
-
 ## Citation and credit
 
-If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](CONTRIBUTING.md#licensing-and-credit).
+If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](Reference/bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](Community/CONTRIBUTING.md#licensing-and-credit).

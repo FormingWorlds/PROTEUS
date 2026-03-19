@@ -1,13 +1,9 @@
 # AI-Assisted Development
 
-## How PROTEUS Uses AI
+## Philosophy
 
-PROTEUS leverages AI assistants for **software engineering tasks**, not scientific content:
-
-- **Test implementation** — Generating unit tests, expanding coverage, writing fixtures
-- **Code security** — Identifying vulnerabilities, reviewing for unsafe patterns
-- **Code refactoring** — Improving consistency, streamlining framework structure
-- **Automated code reviews** — PR reviews via GitHub Copilot and Cursor Bugbot
+PROTEUS is a scientific simulation framework where correctness matters more than convenience.
+AI coding assistants can accelerate development, but every contribution — human or AI-generated — must meet the same standards for physical validity, numerical robustness, and test coverage.
 
 **AI is not used for:** Scientific algorithms, physics implementations, or research decisions. These require domain expertise and human judgment.
 
@@ -15,7 +11,7 @@ PROTEUS leverages AI assistants for **software engineering tasks**, not scientif
 
 ## What This Document Is For
 
-**New to AI coding assistants?** This guide explains how to use AI tools (GitHub Copilot, Cursor, Windsurf) safely and effectively with PROTEUS. AI assistants can significantly accelerate development, but require careful use to maintain code quality and security.
+This guide explains how to use AI coding assistants safely and effectively with PROTEUS. AI assistants can significantly accelerate development, but require careful use to maintain code quality and security.
 
 **Key principle:** AI is a powerful tool, not a replacement for understanding. Always review AI-generated code before committing.
 
@@ -23,7 +19,7 @@ PROTEUS leverages AI assistants for **software engineering tasks**, not scientif
 
 ## Quick Start
 
-1. **Set up an AI assistant**: Install [GitHub Copilot](https://github.com/features/copilot), [Cursor](https://cursor.sh/), or [Windsurf](https://codeium.com/windsurf)
+1. **Set up an AI assistant**: Install [GitHub Copilot for VS Code](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot), or use a CLI-based tool such as [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 2. **Provide context**: Point the assistant to `.github/copilot-instructions.md` (coding guidelines) and `.github/copilot-memory.md` (project state)
 3. **Generate code**: Use prompts from [Test Building](test_building.md) for tests
 4. **Review thoroughly**: Check all AI output before committing
@@ -31,7 +27,7 @@ PROTEUS leverages AI assistants for **software engineering tasks**, not scientif
 
 ---
 
-## .github/copilot-instructions.md and .github/copilot-memory.md
+## Project Context Files
 
 PROTEUS uses two special files to provide AI assistants with project context:
 
@@ -40,6 +36,7 @@ PROTEUS uses two special files to provide AI assistants with project context:
 **Purpose:** Instructions for AI agents on how to write PROTEUS-compliant code. GitHub Copilot automatically discovers this file; other tools access it via the `CLAUDE.md` symlink at the project root.
 
 **Contains:**
+
 - Project structure and architecture
 - Coding standards and style rules
 - Testing requirements and markers
@@ -53,6 +50,7 @@ PROTEUS uses two special files to provide AI assistants with project context:
 **Purpose:** Living document capturing current project state and decisions.
 
 **Contains:**
+
 - Recent architectural decisions
 - Current sprint focus and priorities
 - Known issues and workarounds
@@ -80,20 +78,6 @@ PROTEUS uses two special files to provide AI assistants with project context:
 
 **Academic License:** Students and educators can apply for free GitHub Copilot access:
 [GitHub Education](https://education.github.com/benefits)
-
-### Cursor
-
-1. **Install**: Download from [cursor.sh](https://cursor.sh/)
-2. **Open PROTEUS**: `cursor /path/to/PROTEUS`
-3. **Add rules**: Cursor reads `.cursorrules` if present; alternatively, add `.github/copilot-instructions.md` content to Settings → Rules
-4. **Reference files**: Use `@.github/copilot-instructions.md` or `@.github/copilot-memory.md` in chat to include context
-
-### Windsurf (Cascade)
-
-1. **Install**: Download from [codeium.com/windsurf](https://codeium.com/windsurf)
-2. **Open PROTEUS**: Windsurf automatically reads `.github/copilot-instructions.md` from the workspace
-3. **Memory system**: Windsurf maintains persistent memory across sessions
-4. **Reference files**: Use `@file` mentions to include specific files in context
 
 ---
 
@@ -157,45 +141,6 @@ Use AI to review your changes *before* pushing a PR. This catches issues early a
 
 4. **Address feedback** before committing
 
-### Automated PR Reviews (GitHub)
-
-PROTEUS uses automated AI reviewers on pull requests:
-
-- **GitHub Copilot** — Reviews code for bugs, security issues, and style
-- **Cursor Bugbot** — Analyzes code for potential bugs and improvements
-
-**When you open a PR**, these bots automatically comment with suggestions. Here's how to handle them:
-
-#### Reviewing Bot Comments
-
-1. **Read each comment carefully** — Bots highlight specific lines with potential issues
-2. **Evaluate relevance** — Not all suggestions apply; use your judgment
-3. **Check for false positives** — AI may flag valid code as problematic (especially physics-specific patterns)
-
-#### Responding to Suggestions
-
-| Action | When to Use |
-|--------|-------------|
-| **Accept & implement** | Suggestion is valid and improves code |
-| **Dismiss with reason** | False positive; explain why in a reply |
-| **Ask for clarification** | Unclear suggestion; reply to the bot comment |
-| **Defer to reviewer** | Uncertain; tag a human reviewer for input |
-
-#### Common Bot Suggestions
-
-- **"Consider adding error handling"** — Valid if function can fail; dismiss if errors are handled upstream
-- **"Magic number detected"** — Consider using a named constant; dismiss if value is obvious (e.g., `0`, `1`)
-- **"Function too complex"** — Consider refactoring; may be acceptable for physics calculations
-- **"Missing docstring"** — Add docstring for public functions; internal helpers may not need one
-- **"Potential security issue"** — Always investigate; err on the side of caution
-
-#### Best Practices
-
-- **Don't ignore all suggestions** — Bots catch real issues
-- **Don't accept all suggestions** — Bots make mistakes, especially with scientific code
-- **Document dismissals** — Reply explaining why you're not implementing a suggestion
-- **Batch responses** — Address all bot comments before requesting human review
-
 ### What AI Can Catch
 
 - **Style issues**: Inconsistent formatting, missing docstrings
@@ -206,7 +151,7 @@ PROTEUS uses automated AI reviewers on pull requests:
 
 ### What AI Cannot Replace
 
-- **Domain expertise**: AI doesn't understand planetary physics
+- **Domain expertise**: AI does not understand planetary physics
 - **Architectural decisions**: Humans decide system design
 - **Security audits**: Critical security requires human review
 - **Final approval**: A human must approve all PRs
@@ -215,11 +160,11 @@ PROTEUS uses automated AI reviewers on pull requests:
 
 ## Safety and Security
 
-### ⚠️ Critical Rules
+### Critical Rules
 
-1. **Never share secrets**: Don't paste API keys, passwords, or credentials into AI prompts
+1. **Never share secrets**: Do not paste API keys, passwords, or credentials into AI prompts
 2. **Review all output**: AI can generate plausible-looking but incorrect code
-3. **Verify physics**: AI doesn't understand scientific validity—check equations manually
+3. **Verify physics**: AI does not understand scientific validity — check equations, units, and boundary conditions manually
 4. **Check file operations**: AI may suggest destructive file operations (rm, overwrite)
 5. **Validate external calls**: AI may add network requests or subprocess calls
 
@@ -255,7 +200,6 @@ git diff --staged                         # Review changes yourself
 - **Be specific**: "Write a unit test for `calculate_flux` that tests edge case when T=0"
 - **Iterate**: Ask AI to refine based on your feedback
 - **Learn from output**: Use AI suggestions to improve your understanding
-- **Attribute appropriately**: Note significant AI contributions in commit messages if relevant
 
 ### Don't
 

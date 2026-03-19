@@ -16,7 +16,7 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 
 ## High-Level Instructions
 
-1. **Always** follow the testing standards outlined in this document and `docs/test_infrastructure.md` for all code changes.
+1. **Always** follow the testing standards outlined in this document and `docs/How-to/test_infrastructure.md` for all code changes.
 2. **Always** inform yourself of the current project memory in `.github/copilot-memory.md` before making changes.
 3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
 4. When creating a PR, **always** follow the PR template and ensure all sections are filled out with relevant information.
@@ -36,6 +36,7 @@ PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
 - **[SPIDER](https://github.com/FormingWorlds/SPIDER)**: Interior thermal evolution module based on T-S formalism (C)
 - **[VULCAN](https://github.com/FormingWorlds/VULCAN)**: Atmospheric chemistry module (Python)
 - **[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS)**: Atmospheric escape module (Python)
+- **[BOREAS](https://github.com/FormingWorlds/BOREAS)**: Hydrodynamic atmospheric escape module (Python)
 - **[Obliqua](https://github.com/FormingWorlds/Obliqua)**: Tidal evolution module (Julia)
 
 **Important:** Each module is maintained in its own GitHub repository but is typically cloned/installed within the PROTEUS directory structure for integrated development. When working on any module in the ecosystem, apply these guidelines consistently.
@@ -53,9 +54,9 @@ PROTEUS is a coupled atmosphere-interior framework with a modular architecture:
 
 For installation instructions and dependency management across the ecosystem:
 
-- **Main installation guide:** `docs/installation.md` - Standard user and developer installation procedures
-- **Local machine setup:** `docs/local_machine_guide.md` - Platform-specific setup (macOS, Linux, Windows)
-- **Cluster setup:** `docs/kapteyn_cluster_guide.md` - HPC cluster configuration (see also `docs/habrok_cluster_guide.md`, `docs/snellius_cluster_guide.md`)
+- **Main installation guide:** `docs/How-to/installation.md` - Standard user and developer installation procedures
+- **Local machine setup:** `docs/How-to/local_machine_guide.md` - Platform-specific setup (macOS, Linux, Windows)
+- **Cluster setup:** `docs/How-to/kapteyn_cluster_guide.md` - HPC cluster configuration (see also `docs/How-to/habrok_cluster_guide.md`, `docs/How-to/snellius_cluster_guide.md`)
 
 When helping with installation or dependency issues, always reference these guides first. The `proteus install-all` command handles most submodule installations automatically. However, whenever possible, prefer the developer installation steps outlined in the installation guide for editable installs.
 
@@ -264,13 +265,13 @@ pre-commit install -f
 - `input/` - TOML configuration files
 - `output/` - Simulation results (gitignored)
 - `tools/` - Build/utility scripts
-- `docs/` - Documentation (MkDocs)
+- `docs/` - Documentation (Zensical, built from `mkdocs.yml`)
 
 ### Configuration Files
 
 - `pyproject.toml` - Package metadata, pytest config, coverage thresholds, ruff rules
 - `environment.yml` - Conda environment (user install)
-- `mkdocs.yml` - Documentation configuration
+- `mkdocs.yml` - Documentation configuration (used by Zensical)
 - `.github/workflows/` - CI/CD pipelines
   - `ci-pr-checks.yml` - Fast PR validation (unit + smoke + lint)
   - `code-style.yaml` - Pre-commit hooks
@@ -310,7 +311,7 @@ pre-commit install -f
 - **Physics:** Use physically valid inputs (T > 0K, P > 0) unless testing error handling. Add comments explaining *why* a specific input range was chosen (e.g., "Temperature set to 300K to represent habitable zone conditions").
 - **Context:** Always read `tests/conftest.py` before writing tests to use existing fixtures.
 - **Parametrization:** Prefer `@pytest.mark.parametrize` over writing multiple similar test functions.
-- **Documentation:** Add docstrings to each test explaining the physical scenario. In test file headers, include an overview and links to `docs/test_infrastructure.md`, `docs/test_categorization.md`, and `docs/test_building.md`.
+- **Documentation:** Add docstrings to each test explaining the physical scenario. In test file headers, include an overview and links to `docs/How-to/test_infrastructure.md`, `docs/How-to/test_categorization.md`, and `docs/How-to/test_building.md`.
 - **Coverage Tool:** `pytest --cov` (convenient) or `coverage run -m pytest` (matches CI). Both work correctly.
 - **Formatting:** Ruff format all test files before committing.
 
@@ -392,9 +393,10 @@ pytest --pdb                        # Drop into debugger on failure
 
 ## Documentation References
 
-- **Testing**: `docs/test_infrastructure.md`, `docs/test_building.md`, `docs/test_categorization.md`
-- **Installation**: `docs/installation.md`, `docs/local_machine_guide.md`
-- **Usage**: `docs/usage.md`, `docs/config.md`
+- **Testing**: `docs/How-to/test_infrastructure.md`, `docs/How-to/test_building.md`, `docs/How-to/test_categorization.md`
+- **Installation**: `docs/How-to/installation.md`, `docs/How-to/local_machine_guide.md`
+- **Usage**: `docs/How-to/usage.md`, `docs/How-to/config.md`
+- **Docs development**: `docs/How-to/documentation.md` (build/serve with `zensical serve`)
 - **Copilot guidelines**: `.github/copilot-instructions.md` (this file; applies to all ecosystem modules)
 
 ## 🧠 Memory Maintenance
@@ -453,6 +455,10 @@ ruff format src/ tests/
 # Validate
 bash tools/validate_test_structure.sh
 bash tools/coverage_analysis.sh
+
+# Serve docs locally
+pip install -e '.[docs]'
+zensical serve
 
 # Run simulation
 proteus start -c input/minimal.toml -o output/test

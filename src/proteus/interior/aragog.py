@@ -127,7 +127,7 @@ class AragogRunner:
             # Define the inner_radius based on the core radius from Zalmoxis
             from proteus.interior.zalmoxis import zalmoxis_solver
 
-            inner_radius = zalmoxis_solver(config, outdir, hf_row)  # core radius [m]
+            inner_radius, _mesh = zalmoxis_solver(config, outdir, hf_row)  # core radius [m]
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 
@@ -172,7 +172,8 @@ class AragogRunner:
                 FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
             )
         elif config.struct.module == 'zalmoxis':
-            if config.struct.zalmoxis.EOSchoice == 'Tabulated:iron/Tdep_silicate':
+            _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
+            if config.struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES):
                 # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
                 initial_condition_temperature_profile = 2
                 init_file_temperature_profile = os.path.join(
@@ -198,13 +199,28 @@ class AragogRunner:
             init_file=init_file_temperature_profile,
         )
 
-        # Get look up data directory, will be configurable in the future
-        LOOK_UP_DIR = FWL_DATA_DIR / 'interior_lookup_tables/' / config.interior.lookup_dir
+        # EOS lookup directory: unified path under EOS/dynamic/<eos_dir>/P-T/,
+        # with fallback to legacy location for fresh installs
+        LOOK_UP_DIR = (
+            FWL_DATA_DIR
+            / 'interior_lookup_tables'
+            / 'EOS'
+            / 'dynamic'
+            / config.interior.eos_dir
+            / 'P-T'
+        )
+        if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+            LOOK_UP_DIR = (
+                FWL_DATA_DIR
+                / 'interior_lookup_tables'
+                / '1TPa-dK09-elec-free'
+                / 'MgSiO3_Wolf_Bower_2018_1TPa'
+            )
         MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
 
         # check data exist
         if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
-            raise FileNotFoundError(f'Aragog lookup data {LOOK_UP_DIR}')
+            raise FileNotFoundError(f'Aragog lookup data not found at {LOOK_UP_DIR}')
 
         phase_liquid = _PhaseParameters(
             density=LOOK_UP_DIR / 'density_melt.dat',
@@ -230,8 +246,8 @@ class AragogRunner:
             latent_heat_of_fusion=4e6,
             rheological_transition_melt_fraction=config.interior.rheo_phi_loc,
             rheological_transition_width=config.interior.rheo_phi_wid,
-            solidus=MELTING_DIR / config.interior.melting_dir / 'solidus.dat',
-            liquidus=(MELTING_DIR / config.interior.melting_dir / 'liquidus.dat'),
+            solidus=MELTING_DIR / config.interior.melting_dir / 'solidus_P-T.dat',
+            liquidus=(MELTING_DIR / config.interior.melting_dir / 'liquidus_P-T.dat'),
             phase='mixed',
             phase_transition_width=0.1,
             grain_size=config.interior.grain_size,

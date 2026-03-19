@@ -5,6 +5,7 @@ import hashlib
 import logging
 import os
 import re
+import shutil
 import subprocess as sp
 import zipfile
 from pathlib import Path
@@ -29,10 +30,7 @@ MAX_ATTEMPTS = 3
 MAX_DLTIME = 120.0  # seconds
 RETRY_WAIT = 5.0  # seconds
 
-ARAGOG_BASIC = (
-    '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa',
-    'Melting_curves/Wolf_Bower+2018',
-)
+ARAGOG_BASIC = ('Melting_curves/Wolf_Bower+2018',)
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
@@ -1217,6 +1215,15 @@ def download_melting_curves(config: Config, clean=False):
         desc=f'Melting curve data: {dir}',
     )
 
+    # Create canonical _P-T copies from Zenodo legacy names (solidus.dat -> solidus_P-T.dat).
+    # Keep originals so md5sum checks don't trigger unnecessary re-downloads.
+    for stem in ('solidus', 'liquidus'):
+        legacy = folder_dir / f'{stem}.dat'
+        canonical = folder_dir / f'{stem}_P-T.dat'
+        if legacy.is_file() and not canonical.is_file():
+            shutil.copy2(legacy, canonical)
+            log.debug('Copied %s -> %s', legacy.name, canonical.name)
+
 
 def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     """
@@ -1416,10 +1423,29 @@ def _get_sufficient(config: Config, clean: bool = False):
     # Mass-radius reference data
     download_massradius_data()
 
-    # Interior look up tables
-    if config.interior.module == 'aragog':
+    # Interior lookup tables (melting curves)
+    if config.interior.module in ('aragog', 'spider'):
         download_interior_lookuptables(clean=clean)
         download_melting_curves(config, clean=clean)
+
+    # Dynamic EOS for SPIDER and Aragog (uses interior.eos_dir)
+    if config.interior.module in ('spider', 'aragog'):
+        download_eos_dynamic(config.interior.eos_dir)
+
+    # EOS for Zalmoxis (derived from struct.zalmoxis config, not interior.eos_dir)
+    if hasattr(config, 'struct') and getattr(config.struct, 'module', None) == 'zalmoxis':
+        # Static EOS (Seager2007) — always needed for Zalmoxis core
+        download_eos_static()
+        # Dynamic EOS — needed if mantle uses a T-dependent EOS
+        mantle_eos = getattr(config.struct.zalmoxis, 'mantle_eos', '')
+        _dynamic_eos_map = {
+            'WolfBower2018': 'WolfBower2018_MgSiO3',
+            'RTPress100TPa': 'RTPress100TPa_MgSiO3',
+        }
+        for prefix, eos_dir in _dynamic_eos_map.items():
+            if mantle_eos.startswith(prefix):
+                download_eos_dynamic(eos_dir)
+                break
 
 
 def download_sufficient_data(config: Config, clean: bool = False):
@@ -1547,10 +1573,49 @@ def get_spider(dirs=None):
     log.debug('    done')
 
 
+def download_eos_static():
+    """Download static (Zalmoxis-only) EOS files.
+
+    Downloads Seager et al. (2007) EOS into the legacy location
+    ``FWL_DATA/EOS_material_properties/EOS_Seager2007/``.
+    Code in ``get_zalmoxis_EOS()`` falls back to this path when the
+    unified ``EOS/static/Seager2007/`` folder is not yet populated.
+    """
+    download_Seager_EOS()
+
+
+def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
+    """Download dynamic EOS files (P-T format).
+
+    Downloads to the legacy location
+    ``FWL_DATA/interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/``.
+    Code in Aragog, SPIDER, and Zalmoxis falls back to this path when the
+    unified ``EOS/dynamic/<eos_dir>/P-T/`` and ``P-S/`` folders are not yet
+    populated.
+
+    Parameters
+    ----------
+    eos_dir : str
+        Name of the dynamic EOS folder (unused for now; reserved for when
+        upstream data is reorganised to match the new folder structure).
+    """
+    folder = '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        log.warning(f'No data source mapping for dynamic EOS: {folder}')
+        return
+
+    download(
+        folder=folder,
+        target='interior_lookup_tables',
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
+        desc=f'Dynamic EOS (P-T): {folder}',
+    )
+
+
 def download_Seager_EOS():
-    """
-    Download EOS material properties from Seager et al. (2007)
-    """
+    """Download Seager EOS to the legacy EOS_material_properties location."""
     folder = 'EOS_Seager2007'
     source_info = get_data_source_info(folder)
     if not source_info:
@@ -1587,93 +1652,154 @@ def load_melting_curve(melt_file):
 
 
 def get_zalmoxis_melting_curves(config: Config):
+    """Load solidus and liquidus T(P) melting curves for Zalmoxis.
+
+    Reads the melting curve files from the directory specified by
+    ``config.interior.melting_dir`` under ``FWL_DATA/interior_lookup_tables/Melting_curves/``.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object containing interior settings.
+
+    Returns
+    -------
+    tuple
+        (solidus_func, liquidus_func) interpolation functions T(P) [K].
     """
-    Loads and returns the solidus and liquidus melting curves for temperature-dependent silicate mantle EOS. This is for use with Zalmoxis.
-    Zalmoxis currently only supports the 'Monteux-600' melting curves directory.
-    Parameters:
-        config: Configuration object containing interior settings
-    Returns: A tuple containing the solidus and liquidus data files.
-    """
-    if config.interior.melting_dir != 'Monteux-600':
-        raise ValueError(
-            f"Zalmoxis currently only supports 'Monteux-600' for melting_dir. You have configured '{config.interior.melting_dir}'."
-        )
     melting_curves_folder = (
         FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / config.interior.melting_dir
     )
-    solidus_func = load_melting_curve(melting_curves_folder / 'solidus.dat')
-    liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus.dat')
-    melting_curves_functions = (solidus_func, liquidus_func)
-    return melting_curves_functions
+    if not melting_curves_folder.is_dir():
+        raise FileNotFoundError(
+            f'Melting curves directory not found: {melting_curves_folder}. '
+            f"Check interior.melting_dir='{config.interior.melting_dir}'."
+        )
+    solidus_func = load_melting_curve(melting_curves_folder / 'solidus_P-T.dat')
+    liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus_P-T.dat')
+    return (solidus_func, liquidus_func)
 
 
 def get_zalmoxis_EOS():
-    """
-    Build and return material properties dictionaries for Seager et al. (2007) EOS data. This is for use with Zalmoxis.
-    Returns:
-        tuple: A tuple containing three dictionaries for iron/silicate planets, iron/Tdep_silicate planets, and water planets.
-    """
-    # Define the EOS folder paths
-    Seager_eos_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
-    Wolf_Bower_eos_folder = (
-        FWL_DATA_DIR
-        / 'interior_lookup_tables'
-        / '1TPa-dK09-elec-free'
-        / 'MgSiO3_Wolf_Bower_2018_1TPa'
-    )
+    """Build and return material properties dictionaries for Zalmoxis.
 
-    # Download the EOS material properties if not already present
-    if not Seager_eos_folder.exists():
+    Reads EOS files from the unified folder structure under
+    ``FWL_DATA/interior_lookup_tables/EOS/``. Static (Zalmoxis-only) EOS
+    like Seager2007 live in ``EOS/static/``, while dynamic EOS like
+    Wolf & Bower 2018 live in ``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``.
+
+    Falls back to legacy paths if the new structure is not yet populated.
+
+    The folder name matches the Zalmoxis ``mantle_eos`` source string
+    (``WolfBower2018_MgSiO3``), not ``interior.eos_dir``.
+
+    Returns
+    -------
+    tuple
+        Four dictionaries: iron/silicate, iron/T-dep silicate (WolfBower2018),
+        water planet, and iron/RTPress100TPa silicate EOS. T-dep dicts include
+        ``cp_file`` entries for heat capacity tables when the files exist.
+    """
+    eos_base = FWL_DATA_DIR / 'interior_lookup_tables' / 'EOS'
+
+    # Seager2007: try new location, fall back to legacy
+    seager_folder = eos_base / 'static' / 'Seager2007'
+    if not seager_folder.exists():
+        seager_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
+    if not seager_folder.exists():
         log.debug('Get EOS material properties from Seager et al. (2007)')
-        download_Seager_EOS()
+        download_eos_static()
+        seager_folder = eos_base / 'static' / 'Seager2007'
+        if not seager_folder.exists():
+            seager_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
 
-    # Build the material_properties_iron_silicate_planets dictionary for iron/silicate planets according to Seager et al. (2007)
+    # Wolf-Bower: fixed mapping from source name to data folder
+    wb_folder = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
+    if not wb_folder.exists():
+        wb_folder = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3'
+    if not wb_folder.exists():
+        wb_folder = (
+            FWL_DATA_DIR
+            / 'interior_lookup_tables'
+            / '1TPa-dK09-elec-free'
+            / 'MgSiO3_Wolf_Bower_2018_1TPa'
+        )
+
+    # Iron/silicate (Seager 2007)
     material_properties_iron_silicate_planets = {
-        'core': {
-            # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
-        },
-        'mantle': {
-            # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
-            'eos_file': Seager_eos_folder / 'eos_seager07_silicate.txt'
-        },
+        'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
+        'mantle': {'eos_file': seager_folder / 'eos_seager07_silicate.txt'},
     }
 
-    # Build the material_properties_iron_Tdep_silicate_planets dictionary for iron/silicate planets with temperature-dependent silicate mantle EOS from Wolf & Bower (2018)
+    # Iron core (Seager 2007) + T-dependent silicate mantle (Wolf & Bower 2018)
+    wb_cp_melt = wb_folder / 'heat_capacity_melt.dat'
+    wb_cp_solid = wb_folder / 'heat_capacity_solid.dat'
+    wb_adiabat_grad = wb_folder / 'adiabat_temp_grad_melt.dat'
     material_properties_iron_Tdep_silicate_planets = {
-        'core': {
-            # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
-        },
+        'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
         'melted_mantle': {
-            # MgSiO3 in melt state, modeled in Wolf & Bower (2018) using their developed high P–T RTpress EOS
-            'eos_file': Wolf_Bower_eos_folder / 'density_melt.dat'
+            'eos_file': wb_folder / 'density_melt.dat',
+            **({'cp_file': wb_cp_melt} if wb_cp_melt.is_file() else {}),
+            **({'adiabat_grad_file': wb_adiabat_grad} if wb_adiabat_grad.is_file() else {}),
         },
         'solid_mantle': {
-            # MgSiO3 in solid state, modeled in Wolf & Bower (2018) using their developed high P–T RTpress EOS
-            'eos_file': Wolf_Bower_eos_folder / 'density_solid.dat'
+            'eos_file': wb_folder / 'density_solid.dat',
+            **({'cp_file': wb_cp_solid} if wb_cp_solid.is_file() else {}),
         },
     }
 
-    # Build the material_properties_water_planets dictionary for water planets according to Seager et al. (2007)
+    # Water planets (Seager 2007)
     material_properties_water_planets = {
-        'core': {
-            # Iron, modeled in Seager et al. (2007) using the Vinet EOS fit to the epsilon phase of Fe and DFT calculations
-            'eos_file': Seager_eos_folder / 'eos_seager07_iron.txt'
+        'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
+        'mantle': {'eos_file': seager_folder / 'eos_seager07_silicate.txt'},
+        'ice_layer': {'eos_file': seager_folder / 'eos_seager07_water.txt'},
+    }
+
+    # RTPress100TPa melt EOS with WolfBower2018 solid
+    rt_folder = eos_base / 'RTPress_melt_100TPa'
+    if not rt_folder.exists():
+        rt_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
+    if not rt_folder.exists():
+        log.warning(
+            'RTPress100TPa EOS folder not found at %s. '
+            'RTPress100TPa:MgSiO3 will fail if used. '
+            'Run `proteus get` to download EOS data.',
+            rt_folder,
+        )
+    rt_cp_melt = rt_folder / 'heat_capacity_melt.dat'
+    if not rt_cp_melt.is_file():
+        log.warning(
+            'RTPress100TPa melt Cp table not found at %s. '
+            'Adiabatic mode will fall back to constant Cp for this EOS.',
+            rt_cp_melt,
+        )
+    rt_adiabat_grad = rt_folder / 'adiabat_temp_grad_melt.dat'
+    material_properties_iron_RTPress100TPa_silicate_planets = {
+        'core': {'eos_file': seager_folder / 'eos_seager07_iron.txt'},
+        'melted_mantle': {
+            'eos_file': rt_folder / 'density_melt.dat',
+            **({'cp_file': rt_cp_melt} if rt_cp_melt.is_file() else {}),
+            **({'adiabat_grad_file': rt_adiabat_grad} if rt_adiabat_grad.is_file() else {}),
         },
-        'mantle': {
-            # Silicate, modeled in Seager et al. (2007) using the fourth-order Birch-Murnaghan EOS fit to MgSiO3 perovskite and DFT calculations
-            'eos_file': Seager_eos_folder / 'eos_seager07_silicate.txt'
-        },
-        'water_ice_layer': {
-            # Water ice, modeled in Seager et al. (2007) using experimental data, DFT predictions for water ice in phases VIII and X, and DFT calculations
-            'eos_file': Seager_eos_folder / 'eos_seager07_water.txt'
+        'solid_mantle': {
+            'eos_file': wb_folder / 'density_solid.dat',
+            **({'cp_file': wb_cp_solid} if wb_cp_solid.is_file() else {}),
         },
     }
+
+    # Convert Path objects to str for compatibility with Zalmoxis internals
+    # (which use os.path.join and str-based cache keys throughout).
+    def _paths_to_str(d):
+        return {
+            layer: {k: str(v) if isinstance(v, Path) else v for k, v in props.items()}
+            for layer, props in d.items()
+        }
+
     return (
-        material_properties_iron_silicate_planets,
-        material_properties_iron_Tdep_silicate_planets,
-        material_properties_water_planets,
+        _paths_to_str(material_properties_iron_silicate_planets),
+        _paths_to_str(material_properties_iron_Tdep_silicate_planets),
+        _paths_to_str(material_properties_water_planets),
+        _paths_to_str(material_properties_iron_RTPress100TPa_silicate_planets),
     )
 
 
@@ -1688,5 +1814,5 @@ def get_Seager_EOS():
     iron/silicate and water dictionaries.
     """
 
-    iron_silicate, _iron_Tdep, water = get_zalmoxis_EOS()
+    iron_silicate, _iron_Tdep, water, _iron_RTPress = get_zalmoxis_EOS()
     return iron_silicate, water
