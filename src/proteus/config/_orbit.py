@@ -77,15 +77,15 @@ class Parameterized:
         Final semi-major axis [AU].
     time_migration: float
         Time at which migration occurs [yr].
-    speed_migration: float
-        Speed of migration (for sigmoid migration) [yr-1].
+    tau_migration: float
+        Timescale of migration (for sigmoid migration) [yr].
     """
 
     migration: str = field(default=None, validator=in_((None, 'instant', 'sigmoid')))
     sma_init: float = field(validator=gt(0))
     sma_final: float = field(validator=gt(0))
     time_migration: float = field(default=1e6, validator=gt(0))
-    speed_migration: float = field(default=1e-6, validator=gt(0))
+    tau_migration: float = field(default=1e9, validator=gt(0))
 
 @define
 class Orbit:
