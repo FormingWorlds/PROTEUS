@@ -33,7 +33,6 @@ def init_orbit(handler: Proteus):
 
         import_lovepy()
 
-
 def update_separation(hf_row: dict):
     """
     Calculate time-averaged orbital separation on an elliptical path.
