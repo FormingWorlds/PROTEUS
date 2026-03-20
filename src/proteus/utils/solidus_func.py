@@ -525,7 +525,7 @@ SCALE_P_OUT = 1_000_000_000.0
 SCALE_S_OUT = 4_824_266.84604467
 
 COMMON_HEADER = "\n".join([
-    "# 5 400",
+    "# 5 2000",
     "# Pressure, Entropy, Quantity",
     "# column * scaling factor should be SI units",
     "# scaling factors (constant) for each column given on line below",

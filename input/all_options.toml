@@ -167,7 +167,7 @@ version = "2.0"
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
 
-    module           = "zalmoxis"   # self | zalmoxis
+    module           = "self"   # self | zalmoxis
     update_interval      = 0        # max interval (ceiling) between structure updates [yr]; 0 = only at init
     update_min_interval  = 0        # min interval (floor) between updates [yr]; prevents thrashing
     update_dtmagma_frac  = 0.03     # trigger on relative T_magma change (3%)
@@ -311,7 +311,7 @@ version = "2.0"
     tidal_heat      = false         # enable tidal heat production
     rheo_phi_loc    = 0.6           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
-    melting_dir     = "Monteux-600" # Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER)
+    melting_dir     = "andrault_2011" # Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER)
     eos_dir         = "WolfBower2018_MgSiO3" # Dynamic EOS for SPIDER + Aragog (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
 
 
