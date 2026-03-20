@@ -31,9 +31,9 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "scratch/toi561b"
-        logging     = "INFO"
-        plot_mod    = 50         # Plotting frequency, 0: wait until completion | n: every n iterations
+        path        = "scratch/toi561b_test_orbital_migration"
+        logging     = "DEBUG"
+        plot_mod    = 1         # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"     # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 50         # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 100       # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
@@ -144,7 +144,7 @@ version = "2.0"
     s0_factor       = 0.375     # dimensionless
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "lovepy"          # module used to calculate tidal heating
+    module  = "parameterized"          # module used to calculate tidal heating or orbital migration
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -163,7 +163,7 @@ version = "2.0"
         migration = "sigmoid"       # None, "instant" or "sigmoid" migration
         sma_init = 0.029            # Initial semi-major axis [AU]
         sma_final = 0.0106          # Final semi-major axis [AU]
-        time_migration = 10e9       # Time of migration [yr]
+        time_migration = 10e4       # Time of migration [yr]
         tau_migration = 1e9         # Migration timescale for sigmoid migration [yr]
 
 # Planetary structure - physics table

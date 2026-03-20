@@ -70,7 +70,7 @@ class Parameterized:
     Attributes
     ----------
     migration: str
-        Type of orbital migration to apply. Options: None,'instant', 'sigmoid'.
+        Type of orbital migration to apply. Options: "none",'instant', 'sigmoid'.
     sma_init: float
         Initial semi-major axis [AU].
     sma_final: float
@@ -80,10 +80,10 @@ class Parameterized:
     tau_migration: float
         Timescale of migration (for sigmoid migration) [yr].
     """
-
-    migration: str = field(default=None, validator=in_((None, 'instant', 'sigmoid')))
     sma_init: float = field(validator=gt(0))
     sma_final: float = field(validator=gt(0))
+
+    migration: str = field(default="none", validator=in_(("none", 'instant', 'sigmoid')))
     time_migration: float = field(default=1e6, validator=gt(0))
     tau_migration: float = field(default=1e9, validator=gt(0))
 
@@ -124,7 +124,7 @@ class Orbit:
     """
 
     # Tidal heating modules
-    module: str | None = field(validator=in_((None, 'dummy', 'lovepy')), converter=none_if_none)
+    module: str | None = field(validator=in_((None, 'dummy', 'lovepy', 'parameterized')), converter=none_if_none)
 
     # Planet initial orbital parameter
     semimajoraxis: float = field(validator=gt(0))

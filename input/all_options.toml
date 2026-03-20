@@ -144,7 +144,7 @@ version = "2.0"
     s0_factor = 0.375           # instellation scale factor [dimensionless]
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "none"          # module used to calculate tidal heating
+    module  = "none"            # module used to calculate tidal heating or orbital migration
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -160,7 +160,7 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
     [orbit.parameterized]
-        migration = None        # None, "instant" or "sigmoid" migration
+        migration = "none"        # None, "instant" or "sigmoid" migration
         sma_init = 2.0          # Initial semi-major axis [AU]
         sma_final = 1.0         # Final semi-major axis [AU]
         time_migration = 1e6    # Time of migration [yr]

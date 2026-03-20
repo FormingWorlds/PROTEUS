@@ -795,7 +795,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Planet and satellite orbit parameters
-    if config.orbit.evolve or config.orbit.satellite:
+    if config.orbit.evolve or config.orbit.satellite or config.module == 'parameterized':
         plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
