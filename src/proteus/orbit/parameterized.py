@@ -41,7 +41,7 @@ def instant_migration(t: float, sma_init: float, sma_final: float, time_migratio
         return sma_final
 
 
-def sigmoid_migration(t: float, sma_init: float, sma_final: float, time_migration: float, v_mig: float) -> float:
+def sigmoid_migration(t: float, sma_init: float, sma_final: float, time_migration: float, tau_mig: float) -> float:
     """
     Sigmoid function for orbital migration with a time transition.
 
@@ -55,7 +55,7 @@ def sigmoid_migration(t: float, sma_init: float, sma_final: float, time_migratio
         Final semi-major axis [m].
     time_migration : float
         Midpoint time of migration.
-    v_mig : float
+    tau_mig : float
         Migration speed parameter (must be positive) [yr-1].
 
     Returns
@@ -64,13 +64,13 @@ def sigmoid_migration(t: float, sma_init: float, sma_final: float, time_migratio
         Semi-major axis [m].
     """
 
-    if v_mig <= 0:
-        raise ValueError(f'Migration speed v_mig must be > 0, got {v_mig}')
+    if tau_mig <= 0:
+        raise ValueError(f'Migration speed tau_mig must be > 0, got {tau_mig}')
 
     if t < time_migration:
         return sma_init
     else:
-        sma = ((sma_init - sma_final) / (1.0 + np.exp((t - time_migration) * v_mig))) + sma_final
+        sma = ((sma_init - sma_final) / (1.0 + np.exp((t - time_migration) / tau_mig))) + sma_final
         return sma
 
 def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float):
@@ -97,7 +97,7 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
     sma_i = config.orbit.parameterized.sma_init * AU
     sma_f = config.orbit.parameterized.sma_final * AU
     t_mig = config.orbit.parameterized.time_migration
-    v_mig = config.orbit.parameterized.speed_migration
+    tau_mig = config.orbit.parameterized.tau_migration
 
     # Time step
     current_time = float(hf_row['Time'])
@@ -110,14 +110,14 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
     elif migration == "instant": # instant migration
         hf_row['semimajorax'] = instant_migration(t=current_time, sma_init=sma_i, sma_final=sma_f, time_migration=t_mig)
     elif migration == "sigmoid": # continuous migration
-        if v_mig is None:
-            raise ValueError('Sigmoid migration requires speed v_mig')
+        if tau_mig is None:
+            raise ValueError('Sigmoid migration requires timescale tau_mig')
         else:
             hf_row['semimajorax'] = sigmoid_migration(t=current_time,
                                                 sma_init=sma_i,
                                                 sma_final=sma_f,
                                                 time_migration=t_mig,
-                                                v_mig=v_mig,
+                                                tau_mig=tau_mig,
                                             )
     elif migration is None:
         raise ValueError(f'Unknown migration option: {migration}. Expected None, "instant", or "sigmoid"')
