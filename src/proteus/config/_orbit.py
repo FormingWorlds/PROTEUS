@@ -78,7 +78,7 @@ class Parameterized:
     time_migration: float
         Time at which migration occurs [yr].
     speed_migration: float
-        Speed of migration (for sigmoid option) [yr-1].
+        Speed of migration (for sigmoid migration) [yr-1].
     """
 
     migration: str = field(default=None, validator=in_((None, 'instant', 'sigmoid')))

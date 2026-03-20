@@ -159,6 +159,13 @@ version = "2.0"
     [orbit.lovepy]
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
+    [orbit.parameterized]
+        migration = None   # None, "instant" or "sigmoid" migration
+        sma_init = 2.0        # Initial semi-major axis [AU]
+        sma_final = 1.0      # Final semi-major axis [AU]
+        time_migration = 1e6   # Time of migration [yr]
+        speed_migration = 1e-6  # Migration speed for sigmoid migration [yr-1]
+
 # Planetary structure - physics table
 [struct]
     mass_tot     = 1.0          # M_earth
