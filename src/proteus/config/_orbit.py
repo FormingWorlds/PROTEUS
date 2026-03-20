@@ -63,6 +63,29 @@ def ax_valid(instance, attribute, value):
     if float(value) <= 0:
         raise ValueError(f'Initial axial period must be >0 hours, got {value}')
 
+@define
+class Parameterized:
+    """Parameterized orbital migration module.
+
+    Attributes
+    ----------
+    migration: str
+        Type of orbital migration to apply. Options: None,'instant', 'sigmoid'.
+    sma_init: float
+        Initial semi-major axis [AU].
+    sma_final: float
+        Final semi-major axis [AU].
+    time_migration: float
+        Time at which migration occurs [yr].
+    speed_migration: float
+        Speed of migration (for sigmoid option) [yr-1].
+    """
+
+    migration: str = field(default=None, validator=in_((None, 'instant', 'sigmoid')))
+    sma_init: float = field(validator=gt(0))
+    sma_final: float = field(validator=gt(0))
+    time_migration: float = field(default=1e6, validator=gt(0))
+    speed_migration: float = field(default=1e-6, validator=gt(0))
 
 @define
 class Orbit:
