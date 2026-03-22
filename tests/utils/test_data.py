@@ -2218,8 +2218,8 @@ def test_get_spider_calls_get_petsc_first(
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.download_zalmoxis_eos')
 @patch('proteus.utils.data.download_eos_dynamic')
-@patch('proteus.utils.data.download_eos_static')
 @patch('proteus.utils.data.download_melting_curves')
 @patch('proteus.utils.data.download_interior_lookuptables')
 @patch('proteus.utils.data.download_massradius_data')
@@ -2237,10 +2237,10 @@ def test_get_sufficient_zalmoxis_wolf_bower(
     _m_mr,
     _m_il,
     _m_mc,
-    mock_static,
     mock_dyn,
+    mock_zalmoxis_eos,
 ):
-    """_get_sufficient downloads Zalmoxis static + WolfBower2018 dynamic EOS."""
+    """_get_sufficient calls download_zalmoxis_eos for Zalmoxis WolfBower2018."""
     from unittest.mock import MagicMock
 
     from proteus.utils.data import _get_sufficient
@@ -2249,18 +2249,25 @@ def test_get_sufficient_zalmoxis_wolf_bower(
     config.interior.module = 'spider'
     config.interior.eos_dir = 'WolfBower2018_MgSiO3'
     config.struct.module = 'zalmoxis'
-    config.struct.zalmoxis.mantle_eos = 'WolfBower2018_MgSiO3'
+    config.struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+    config.struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.struct.zalmoxis.ice_layer_eos = ''
 
     _get_sufficient(config, clean=False)
 
-    mock_static.assert_called_once()
-    # Dynamic called twice: once for interior.eos_dir, once for Zalmoxis
-    assert mock_dyn.call_count == 2
+    # Zalmoxis EOS download called with the full EOS identifiers
+    mock_zalmoxis_eos.assert_called_once_with(
+        mantle_eos='WolfBower2018:MgSiO3',
+        core_eos='Seager2007:iron',
+        ice_layer_eos='',
+    )
+    # SPIDER dynamic EOS still downloaded separately
+    mock_dyn.assert_called_once()
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.download_zalmoxis_eos')
 @patch('proteus.utils.data.download_eos_dynamic')
-@patch('proteus.utils.data.download_eos_static')
 @patch('proteus.utils.data.download_melting_curves')
 @patch('proteus.utils.data.download_interior_lookuptables')
 @patch('proteus.utils.data.download_massradius_data')
@@ -2278,23 +2285,153 @@ def test_get_sufficient_zalmoxis_seager_only(
     _m_mr,
     _m_il,
     _m_mc,
-    mock_static,
     mock_dyn,
+    mock_zalmoxis_eos,
 ):
-    """_get_sufficient skips dynamic EOS for Seager-only Zalmoxis config."""
+    """_get_sufficient calls download_zalmoxis_eos for Seager-only config."""
     from unittest.mock import MagicMock
 
     from proteus.utils.data import _get_sufficient
 
     config = MagicMock()
-    config.interior.module = 'dummy'  # no spider/aragog → skip first dynamic
+    config.interior.module = 'dummy'  # no spider/aragog
     config.struct.module = 'zalmoxis'
-    config.struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
+    config.struct.zalmoxis.mantle_eos = 'Seager2007:MgSiO3'
+    config.struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.struct.zalmoxis.ice_layer_eos = ''
 
     _get_sufficient(config, clean=False)
 
-    mock_static.assert_called_once()
+    mock_zalmoxis_eos.assert_called_once_with(
+        mantle_eos='Seager2007:MgSiO3',
+        core_eos='Seager2007:iron',
+        ice_layer_eos='',
+    )
     mock_dyn.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_zalmoxis_eos')
+@patch('proteus.utils.data.download_eos_dynamic')
+@patch('proteus.utils.data.download_melting_curves')
+@patch('proteus.utils.data.download_interior_lookuptables')
+@patch('proteus.utils.data.download_massradius_data')
+@patch('proteus.utils.data.download_surface_albedos')
+@patch('proteus.utils.data.download_exoplanet_data')
+@patch('proteus.utils.data.download_stellar_spectra')
+@patch('proteus.utils.data.download_spectral_file')
+@patch('proteus.utils.data.download_phoenix')
+def test_get_sufficient_zalmoxis_paleos(
+    _m_ph,
+    _m_sp,
+    _m_st,
+    _m_ex,
+    _m_sa,
+    _m_mr,
+    _m_il,
+    _m_mc,
+    mock_dyn,
+    mock_zalmoxis_eos,
+):
+    """_get_sufficient calls download_zalmoxis_eos for PALEOS config."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.data import _get_sufficient
+
+    config = MagicMock()
+    config.interior.module = 'dummy'
+    config.struct.module = 'zalmoxis'
+    config.struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.struct.zalmoxis.core_eos = 'PALEOS:iron'
+    config.struct.zalmoxis.ice_layer_eos = 'PALEOS:H2O'
+
+    _get_sufficient(config, clean=False)
+
+    mock_zalmoxis_eos.assert_called_once_with(
+        mantle_eos='PALEOS:MgSiO3',
+        core_eos='PALEOS:iron',
+        ice_layer_eos='PALEOS:H2O',
+    )
+    mock_dyn.assert_not_called()
+
+
+# ============================================================================
+# test download_zalmoxis_eos dispatch
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_seager(mock_static, mock_folder, mock_chabrier):
+    """download_zalmoxis_eos for Seager2007 calls download_eos_static only."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('Seager2007:MgSiO3', core_eos='Seager2007:iron')
+
+    mock_static.assert_called_once()
+    mock_folder.assert_not_called()
+    mock_chabrier.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_wolfbower(mock_static, mock_folder, mock_chabrier):
+    """download_zalmoxis_eos for WolfBower2018 downloads Seager + WB files."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('WolfBower2018:MgSiO3', core_eos='Seager2007:iron')
+
+    mock_static.assert_called_once()
+    # 3 calls for WB2018 files: density_melt, density_solid, adiabat_temp_grad_melt
+    wb_calls = [c for c in mock_folder.call_args_list if 'WolfBower2018' in str(c)]
+    assert len(wb_calls) == 3
+    mock_chabrier.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_unified(mock_static, mock_folder, mock_chabrier):
+    """download_zalmoxis_eos for PALEOS unified downloads the right tables."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS:MgSiO3', core_eos='PALEOS:iron', ice_layer_eos='PALEOS:H2O')
+
+    # Seager not needed (no Seager component, core_eos is set)
+    mock_static.assert_not_called()
+    # 3 PALEOS unified files: iron, MgSiO3, H2O
+    assert mock_folder.call_count == 3
+    folders = [str(c) for c in mock_folder.call_args_list]
+    assert any('PALEOS_iron' in f for f in folders)
+    assert any('PALEOS_MgSiO3_unified' in f for f in folders)
+    assert any('PALEOS_H2O' in f for f in folders)
+    mock_chabrier.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_multi_component(mock_static, mock_folder, mock_chabrier):
+    """download_zalmoxis_eos handles multi-component EOS strings."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    # Composite mantle with PALEOS + Chabrier
+    download_zalmoxis_eos(
+        'PALEOS:MgSiO3:0.98+Chabrier:H:0.01+PALEOS:H2O:0.01',
+        core_eos='Seager2007:iron',
+    )
+
+    mock_static.assert_called_once()
+    mock_chabrier.assert_called_once()
+    folders = [str(c) for c in mock_folder.call_args_list]
+    assert any('PALEOS_MgSiO3_unified' in f for f in folders)
+    assert any('PALEOS_H2O' in f for f in folders)
 
 
 # ============================================================================

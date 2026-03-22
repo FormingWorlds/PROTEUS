@@ -478,6 +478,18 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
     # EOS material properties (OSF project: dpkjb)
     'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
+    # Zalmoxis EOS: Wolf & Bower 2018 T-dependent MgSiO3 (1 TPa)
+    'EOS_WolfBower2018_1TPa': {'zenodo_id': '17417017'},
+    # Zalmoxis EOS: RTPress 100 TPa extended melt
+    'EOS_RTPress_melt_100TPa': {'zenodo_id': '18819027'},
+    # Zalmoxis EOS: PALEOS 2-phase MgSiO3 (separate solid/liquid)
+    'EOS_PALEOS_MgSiO3': {'zenodo_id': '18924171'},
+    # Zalmoxis EOS: PALEOS unified tables (iron, MgSiO3, H2O share Zenodo 19000316)
+    'EOS_PALEOS_iron': {'zenodo_id': '19000316'},
+    'EOS_PALEOS_MgSiO3_unified': {'zenodo_id': '19000316'},
+    'EOS_PALEOS_H2O': {'zenodo_id': '19000316'},
+    # Zalmoxis EOS: Chabrier+2019/2021 H/He
+    'EOS_Chabrier2021_HHe': {'zenodo_id': '19135021'},
 }
 
 
@@ -1434,18 +1446,12 @@ def _get_sufficient(config: Config, clean: bool = False):
 
     # EOS for Zalmoxis (derived from struct.zalmoxis config, not interior.eos_dir)
     if hasattr(config, 'struct') and getattr(config.struct, 'module', None) == 'zalmoxis':
-        # Static EOS (Seager2007) — always needed for Zalmoxis core
-        download_eos_static()
-        # Dynamic EOS — needed if mantle uses a T-dependent EOS
-        mantle_eos = getattr(config.struct.zalmoxis, 'mantle_eos', '')
-        _dynamic_eos_map = {
-            'WolfBower2018': 'WolfBower2018_MgSiO3',
-            'RTPress100TPa': 'RTPress100TPa_MgSiO3',
-        }
-        for prefix, eos_dir in _dynamic_eos_map.items():
-            if mantle_eos.startswith(prefix):
-                download_eos_dynamic(eos_dir)
-                break
+        zconf = config.struct.zalmoxis
+        download_zalmoxis_eos(
+            mantle_eos=getattr(zconf, 'mantle_eos', ''),
+            core_eos=getattr(zconf, 'core_eos', ''),
+            ice_layer_eos=getattr(zconf, 'ice_layer_eos', ''),
+        )
 
 
 def download_sufficient_data(config: Config, clean: bool = False):
@@ -1628,6 +1634,211 @@ def download_Seager_EOS():
         zenodo_id=source_info['zenodo_id'],
         desc='EOS Seager2007 material files',
     )
+
+
+# ── Zalmoxis EOS download helpers ────────────────────────────────────
+#
+# Each function downloads a specific Zalmoxis EOS dataset into
+# ``FWL_DATA/zalmoxis_eos/<folder>/``.  The folder names and Zenodo
+# record IDs mirror the Zalmoxis-internal ``setup_utils.download_data()``
+# so that every file ends up at a predictable path.
+#
+# ``download_zalmoxis_eos()`` is the top-level dispatcher called from
+# ``_get_sufficient()`` — it inspects the mantle/core EOS config and
+# downloads only the datasets required for the current run.
+# ─────────────────────────────────────────────────────────────────────
+
+_ZALMOXIS_EOS_TARGET = 'zalmoxis_eos'
+
+
+def _download_zalmoxis_folder(folder: str, file: str | None = None):
+    """Download a single Zalmoxis EOS folder/file from its DATA_SOURCE_MAP entry.
+
+    Parameters
+    ----------
+    folder : str
+        Folder key in DATA_SOURCE_MAP (e.g. ``'EOS_PALEOS_iron'``).
+    file : str or None
+        If given, download only this file from the Zenodo record.
+    """
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        log.warning(f'No data source mapping for Zalmoxis EOS folder: {folder}')
+        return
+    download(
+        folder=folder,
+        target=_ZALMOXIS_EOS_TARGET,
+        zenodo_id=source_info['zenodo_id'],
+        osf_id=source_info.get('osf_project'),
+        desc=f'Zalmoxis EOS: {folder}',
+        file=file,
+    )
+
+
+def _download_zalmoxis_chabrier():
+    """Download and extract Chabrier H/He EOS tarball into FWL_DATA.
+
+    The Zenodo record contains a ``.tar.gz`` with multiple H/He tables.
+    We download the full record and extract it, mirroring the Zalmoxis
+    setup script behavior.
+    """
+    folder = 'EOS_Chabrier2021_HHe'
+    folder_dir = GetFWLData() / _ZALMOXIS_EOS_TARGET / folder
+    if folder_dir.exists() and any(folder_dir.iterdir()):
+        log.debug(f'Zalmoxis Chabrier EOS already present at {folder_dir}')
+        return
+
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        log.warning(f'No data source mapping for {folder}')
+        return
+
+    log.info(f'Downloading Chabrier H/He EOS from Zenodo {source_info["zenodo_id"]}')
+    folder_dir.mkdir(parents=True, exist_ok=True)
+
+    # Download the full Zenodo record, then keep only relevant .dat files
+    ok = download_zenodo_folder(source_info['zenodo_id'], folder_dir)
+    if not ok:
+        log.warning('Failed to download Chabrier H/He EOS from Zenodo')
+        return
+
+    # If the record contains a tarball, extract it
+    import tarfile
+
+    for tb in folder_dir.glob('*.tar.gz'):
+        with tarfile.open(tb, 'r:gz') as tar:
+            tar.extractall(path=folder_dir, filter='data')
+        tb.unlink()
+
+    # Move files out of any nested subdirectory to the top level
+    for subdir in [d for d in folder_dir.iterdir() if d.is_dir()]:
+        if subdir.name == '__MACOSX':
+            shutil.rmtree(subdir)
+            continue
+        for item in subdir.iterdir():
+            if item.name.startswith('._') or item.name == '.DS_Store':
+                continue
+            dest = folder_dir / item.name
+            if not dest.exists():
+                shutil.move(str(item), folder_dir)
+        if subdir.exists():
+            shutil.rmtree(subdir)
+
+    # Clean up md5sums.txt if present
+    md5file = folder_dir / 'md5sums.txt'
+    if md5file.exists():
+        md5file.unlink()
+
+    # Validate that the expected EOS file was extracted
+    expected_file = folder_dir / 'chabrier2021_H.dat'
+    if not expected_file.exists():
+        log.warning(
+            'Post-extraction validation failed: %s not found in %s. '
+            'Available files: %s',
+            expected_file.name,
+            folder_dir,
+            [f.name for f in folder_dir.iterdir()],
+        )
+
+
+def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: str = ''):
+    """Download Zalmoxis EOS data required for the given EOS configuration.
+
+    Inspects the mantle, core, and ice layer EOS identifiers and downloads
+    only the datasets needed.  All files land in ``FWL_DATA/zalmoxis_eos/``.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Mantle EOS identifier (e.g. ``'PALEOS:MgSiO3'``, ``'WolfBower2018:MgSiO3'``).
+    core_eos : str
+        Core EOS identifier (e.g. ``'Seager2007:iron'``, ``'PALEOS:iron'``).
+    ice_layer_eos : str
+        Ice layer EOS identifier (e.g. ``'Seager2007:H2O'``, ``'PALEOS:H2O'``, or empty).
+    """
+    all_eos = [e for e in (mantle_eos, core_eos, ice_layer_eos) if e]
+
+    # Multi-component EOS strings: "PALEOS:MgSiO3:0.98+Chabrier:H:0.01"
+    components = set()
+    for eos_str in all_eos:
+        for part in eos_str.split('+'):
+            # Strip fraction suffix: "PALEOS:MgSiO3:0.98" -> "PALEOS:MgSiO3"
+            tokens = part.split(':')
+            if len(tokens) >= 2:
+                components.add(f'{tokens[0]}:{tokens[1]}')
+
+    # Seager2007 static EOS (always needed for core fallback)
+    if any(c.startswith('Seager2007') for c in components) or not core_eos:
+        download_eos_static()
+
+    # WolfBower2018 T-dependent MgSiO3
+    if any(c.startswith('WolfBower2018') for c in components):
+        _download_zalmoxis_folder(
+            'EOS_WolfBower2018_1TPa',
+            file='density_melt.dat',
+        )
+        _download_zalmoxis_folder(
+            'EOS_WolfBower2018_1TPa',
+            file='density_solid.dat',
+        )
+        _download_zalmoxis_folder(
+            'EOS_WolfBower2018_1TPa',
+            file='adiabat_temp_grad_melt.dat',
+        )
+
+    # RTPress 100 TPa extended melt
+    if any(c.startswith('RTPress100TPa') for c in components):
+        _download_zalmoxis_folder(
+            'EOS_RTPress_melt_100TPa',
+            file='density_melt.dat',
+        )
+        _download_zalmoxis_folder(
+            'EOS_RTPress_melt_100TPa',
+            file='adiabat_temp_grad_melt.dat',
+        )
+
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid)
+    if 'PALEOS-2phase:MgSiO3' in components:
+        _download_zalmoxis_folder(
+            'EOS_PALEOS_MgSiO3',
+            file='paleos_mgsio3_tables_pt_proteus_liquid.dat',
+        )
+        _download_zalmoxis_folder(
+            'EOS_PALEOS_MgSiO3',
+            file='paleos_mgsio3_tables_pt_proteus_solid.dat',
+        )
+
+    # PALEOS unified tables
+    if 'PALEOS:iron' in components:
+        _download_zalmoxis_folder(
+            'EOS_PALEOS_iron',
+            file='paleos_iron_eos_table_pt.dat',
+        )
+    if 'PALEOS:MgSiO3' in components:
+        _download_zalmoxis_folder(
+            'EOS_PALEOS_MgSiO3_unified',
+            file='paleos_mgsio3_eos_table_pt.dat',
+        )
+    if 'PALEOS:H2O' in components:
+        _download_zalmoxis_folder(
+            'EOS_PALEOS_H2O',
+            file='paleos_water_eos_table_pt.dat',
+        )
+
+    # Chabrier H/He
+    if any(c.startswith('Chabrier') for c in components):
+        _download_zalmoxis_chabrier()
+
+
+def get_zalmoxis_eos_dir() -> Path:
+    """Return the base directory for Zalmoxis EOS data in FWL_DATA.
+
+    Returns
+    -------
+    Path
+        ``FWL_DATA/zalmoxis_eos/``
+    """
+    return GetFWLData() / _ZALMOXIS_EOS_TARGET
 
 
 def load_melting_curve(melt_file):

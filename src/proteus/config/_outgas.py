@@ -84,6 +84,11 @@ class Outgas:
         Outgassing module to be used. Choices: 'calliope' only.
     mass_thresh: float
         Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+    h2_binodal: bool
+        Enable binodal-controlled H2 partitioning between atmosphere and
+        magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
+        When enabled, H2 dissolves into the melt above the binodal
+        temperature and remains in the atmosphere below it.
     calliope: Calliope
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
@@ -95,6 +100,8 @@ class Outgas:
     module: str = field(validator=validators.in_(('calliope',)))
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
+
+    h2_binodal: bool = False
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)
