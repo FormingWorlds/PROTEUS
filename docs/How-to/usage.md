@@ -322,7 +322,7 @@ Before running PROTEUS, generate the lookup tables:
 python src/proteus/utils/solidus_func.py --all
 ```
 
-Alternatively, you can generate a single parametrization using a specific flag (e.g. --katz2003, --lin2024).
+Alternatively, you can generate a single parametrization using a specific flag (e.g.--katz2003, --lin2024).
 
 This will compute all parametrizations, convert them to P–T and P–S space, and store them in:
 
