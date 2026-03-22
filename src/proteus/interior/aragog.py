@@ -29,6 +29,8 @@ from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 
+logger = logging.getLogger('fwl.' + __name__)
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -203,23 +205,86 @@ class AragogRunner:
             init_file=init_file_temperature_profile,
         )
 
-        # EOS lookup directory: unified path under EOS/dynamic/<eos_dir>/P-T/,
-        # with fallback to legacy location for fresh installs
-        LOOK_UP_DIR = (
-            FWL_DATA_DIR
-            / 'interior_lookup_tables'
-            / 'EOS'
-            / 'dynamic'
-            / config.interior.eos_dir
-            / 'P-T'
-        )
-        if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+        # EOS lookup directory for phase properties (Cp, alpha, density).
+        # For PALEOS EOS: generate P-T tables from the unified PALEOS table
+        # to ensure consistency with Zalmoxis structure.
+        # For WolfBower2018/legacy: use pre-existing tables from FWL_DATA.
+        if (
+            config.struct.module == 'zalmoxis'
+            and config.struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+        ):
+            from zalmoxis.eos_export import generate_aragog_pt_tables
+
+            from proteus.interior.zalmoxis import load_zalmoxis_material_dictionaries
+
+            mat_dicts = load_zalmoxis_material_dictionaries()
+            eos_entry = mat_dicts.get(config.struct.zalmoxis.mantle_eos, {})
+            paleos_eos_file = eos_entry.get('eos_file', '')
+
+            if paleos_eos_file and os.path.isfile(paleos_eos_file):
+                from proteus.interior.zalmoxis import (
+                    load_zalmoxis_solidus_liquidus_functions,
+                )
+
+                melt_funcs = load_zalmoxis_solidus_liquidus_functions(
+                    config.struct.zalmoxis.mantle_eos, config
+                )
+                if melt_funcs is not None:
+                    sol_func, liq_func = melt_funcs
+                else:
+                    from zalmoxis.melting_curves import get_solidus_liquidus_functions
+
+                    sol_func, liq_func = get_solidus_liquidus_functions(
+                        'Stixrude14-solidus', 'PALEOS-liquidus'
+                    )
+
+                mass_tot = config.struct.mass_tot or 1.0
+                P_max = min(200e9, 50e9 * mass_tot + 100e9)
+
+                LOOK_UP_DIR = Path(outdir) / 'data' / 'aragog_pt'
+                # Only generate if not already cached from a previous call
+                if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
+                    logger.info(
+                        'Generating Aragog P-T tables from PALEOS: %s -> %s',
+                        paleos_eos_file,
+                        LOOK_UP_DIR,
+                    )
+                    generate_aragog_pt_tables(
+                        eos_file=paleos_eos_file,
+                        solidus_func=sol_func,
+                        liquidus_func=liq_func,
+                        P_range=(1e5, P_max),
+                        n_P=200,
+                        n_T=200,
+                        output_dir=LOOK_UP_DIR,
+                    )
+            else:
+                logger.warning(
+                    'PALEOS EOS file not found (%s), falling back to legacy tables',
+                    paleos_eos_file,
+                )
+                LOOK_UP_DIR = (
+                    FWL_DATA_DIR
+                    / 'interior_lookup_tables'
+                    / '1TPa-dK09-elec-free'
+                    / 'MgSiO3_Wolf_Bower_2018_1TPa'
+                )
+        else:
             LOOK_UP_DIR = (
                 FWL_DATA_DIR
                 / 'interior_lookup_tables'
-                / '1TPa-dK09-elec-free'
-                / 'MgSiO3_Wolf_Bower_2018_1TPa'
+                / 'EOS'
+                / 'dynamic'
+                / config.interior.eos_dir
+                / 'P-T'
             )
+            if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+                LOOK_UP_DIR = (
+                    FWL_DATA_DIR
+                    / 'interior_lookup_tables'
+                    / '1TPa-dK09-elec-free'
+                    / 'MgSiO3_Wolf_Bower_2018_1TPa'
+                )
         MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
 
         # check data exist
