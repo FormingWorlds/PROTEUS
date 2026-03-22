@@ -631,8 +631,8 @@ def generate_spider_tables(config: Config, outdir: str):
         solidus_func=solidus_func,
         liquidus_func=liquidus_func,
         P_range=(1e8, P_max),
-        n_P=150,
-        n_S=150,
+        n_P=500,
+        n_S=200,
         output_dir=spider_eos_dir,
     )
 

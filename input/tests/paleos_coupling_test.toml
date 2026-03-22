@@ -83,11 +83,10 @@ version = "2.0"
     mesh_convergence_interval = 10.0
 
     [struct.zalmoxis]
-        core_eos                   = "Seager2007:iron"
-        mantle_eos                 = "WolfBower2018:MgSiO3"
+        core_eos                   = "PALEOS:iron"
+        mantle_eos                 = "PALEOS:MgSiO3"
         ice_layer_eos              = ""
-        # mushy_zone_factor only applies to PALEOS
-        mushy_zone_factor          = 1.0
+        mushy_zone_factor          = 0.8
         coremassfrac               = 0.325
         mantle_mass_fraction       = 0
         temperature_mode           = "adiabatic"
@@ -102,7 +101,7 @@ version = "2.0"
         absolute_tolerance         = 1e-6
         maximum_step               = 200000
         adaptive_radial_fraction   = 0.98
-        max_center_pressure_guess  = 2e12
+        max_center_pressure_guess  = 1e13
         target_surface_pressure    = 101325
         pressure_tolerance         = 1e9
         max_iterations_pressure    = 200
@@ -152,9 +151,9 @@ version = "2.0"
     rheo_phi_wid    = 0.15
 
     [interior.spider]
-        ini_entropy   = 3000.0
-        ini_dsdr      = -4.698e-6
-        num_levels    = 60
+        ini_entropy   = 2200.0
+        ini_dsdr      = -3.0e-6
+        num_levels    = 50
         mixing_length = 2
         tolerance     = 1e-7
         tsurf_atol    = 30.0
@@ -169,8 +168,8 @@ version = "2.0"
         include_H2O = true
         include_CO2 = true
         include_N2  = true
-        include_S2  = false
-        include_SO2 = false
+        include_S2  = true
+        include_SO2 = true
         include_H2  = true
         include_CH4 = true
         include_CO  = true
