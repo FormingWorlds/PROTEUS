@@ -148,6 +148,7 @@ class AragogRunner:
             gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
             adiabatic_bulk_modulus=config.interior.aragog.bulk_modulus,  # AW-EOS parameter [Pa]
             mass_coordinates=config.interior.aragog.mass_coordinates,
+            surface_pressure=0.0,  # TODO: wire to atmospheric overburden when available
         )
 
         # Update the mesh if the module is 'zalmoxis'
