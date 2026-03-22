@@ -68,16 +68,15 @@ from scipy.interpolate import RegularGridInterpolator, interp1d
 # DEFAULT OUTPUT LOCATION
 # =============================================================================
 
-FWL_DATA_DIR = Path(
-    os.environ.get("FWL_DATA", platformdirs.user_data_dir("fwl_data"))
-)
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
-MELTING_DIR = FWL_DATA_DIR / "interior_lookup_tables" / "Melting_curves"
+MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves'
 
 
 # =============================================================================
 # GENERAL HELPERS
 # =============================================================================
+
 
 def make_pressure_grid(Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500) -> np.ndarray:
     r"""
@@ -114,7 +113,7 @@ def liquidus_from_solidus_stixrude(T_sol: np.ndarray) -> np.ndarray:
     return T_sol * (1.0 - np.log(0.79))
 
 
-def _fmt_range(arr: np.ndarray, fmt: str = ".3f") -> str:
+def _fmt_range(arr: np.ndarray, fmt: str = '.3f') -> str:
     """
     Format the finite minimum and maximum of an array as a string.
     """
@@ -122,24 +121,24 @@ def _fmt_range(arr: np.ndarray, fmt: str = ".3f") -> str:
     mask = np.isfinite(arr)
 
     if not np.any(mask):
-        return "[nan, nan]"
+        return '[nan, nan]'
 
     amin = np.min(arr[mask])
     amax = np.max(arr[mask])
-    return f"[{amin:{fmt}}, {amax:{fmt}}]"
+    return f'[{amin:{fmt}}, {amax:{fmt}}]'
 
 
 DISPLAY_NAMES = {
-    "andrault_2011": "Andrault et al. (2011)",
-    "monteux_2016": "Monteux et al. (2016)",
-    "wolf_bower_2018": "Wolf & Bower (2018)",
-    "katz_2003": "Katz et al. (2003)",
-    "fei_2021": "Fei et al. (2021)",
-    "belonoshko_2005": "Belonoshko et al. (2005)",
-    "fiquet_2010": "Fiquet et al. (2010)",
-    "hirschmann_2000": "Hirschmann (2000)",
-    "stixrude_2014": "Stixrude (2014)",
-    "lin_2024": "Lin et al. (2024)",
+    'andrault_2011': 'Andrault et al. (2011)',
+    'monteux_2016': 'Monteux et al. (2016)',
+    'wolf_bower_2018': 'Wolf & Bower (2018)',
+    'katz_2003': 'Katz et al. (2003)',
+    'fei_2021': 'Fei et al. (2021)',
+    'belonoshko_2005': 'Belonoshko et al. (2005)',
+    'fiquet_2010': 'Fiquet et al. (2010)',
+    'hirschmann_2000': 'Hirschmann (2000)',
+    'stixrude_2014': 'Stixrude (2014)',
+    'lin_2024': 'Lin et al. (2024)',
 }
 
 
@@ -157,11 +156,19 @@ def print_model_summary(
     Print a compact summary of the exported P-T and P-S ranges for one model.
     """
     label = DISPLAY_NAMES.get(model_name, model_name)
-    print(f"{label}:")
-    print(f"  P-T solidus   : P_range = {_fmt_range(P_sol)} GPa, T_range = {_fmt_range(T_sol)} K")
-    print(f"  P-T liquidus  : P_range = {_fmt_range(P_liq)} GPa, T_range = {_fmt_range(T_liq)} K")
-    print(f"  P-S solidus   : P_range = {_fmt_range(P_common)} GPa, S_range = {_fmt_range(S_sol_common)} J kg^-1 K^-1")
-    print(f"  P-S liquidus  : P_range = {_fmt_range(P_common)} GPa, S_range = {_fmt_range(S_liq_common)} J kg^-1 K^-1")
+    print(f'{label}:')
+    print(
+        f'  P-T solidus   : P_range = {_fmt_range(P_sol)} GPa, T_range = {_fmt_range(T_sol)} K'
+    )
+    print(
+        f'  P-T liquidus  : P_range = {_fmt_range(P_liq)} GPa, T_range = {_fmt_range(T_liq)} K'
+    )
+    print(
+        f'  P-S solidus   : P_range = {_fmt_range(P_common)} GPa, S_range = {_fmt_range(S_sol_common)} J kg^-1 K^-1'
+    )
+    print(
+        f'  P-S liquidus  : P_range = {_fmt_range(P_common)} GPa, S_range = {_fmt_range(S_liq_common)} J kg^-1 K^-1'
+    )
     print()
 
 
@@ -169,16 +176,17 @@ def print_model_summary(
 # LITERATURE MELTING CURVES
 # =============================================================================
 
-def andrault_2011(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
+
+def andrault_2011(kind: str = 'solidus', Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
     r"""
     Melting curve from Andrault et al. (2011).
     """
     P = make_pressure_grid(Pmin, Pmax, n)
     P_pa = P * 1e9
 
-    if kind == "solidus":
+    if kind == 'solidus':
         T0, a, c = 2045, 92e9, 1.3
-    elif kind == "liquidus":
+    elif kind == 'liquidus':
         T0, a, c = 1940, 29e9, 1.9
     else:
         raise ValueError("kind must be 'solidus' or 'liquidus'")
@@ -187,16 +195,16 @@ def andrault_2011(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 1000.0
     return P, T
 
 
-def fei_2021(kind: str = "liquidus", Pmin: float = 1.0, Pmax: float = 1000.0, n: int = 500):
+def fei_2021(kind: str = 'liquidus', Pmin: float = 1.0, Pmax: float = 1000.0, n: int = 500):
     r"""
     Melting curve based on Fei et al. (2021).
     """
     P = make_pressure_grid(Pmin, Pmax, n)
     T_liq = 6000.0 * (P / 140.0) ** 0.26
 
-    if kind == "liquidus":
+    if kind == 'liquidus':
         T = T_liq
-    elif kind == "solidus":
+    elif kind == 'solidus':
         T = solidus_from_liquidus_stixrude(T_liq)
     else:
         raise ValueError("kind must be 'solidus' or 'liquidus'")
@@ -204,16 +212,18 @@ def fei_2021(kind: str = "liquidus", Pmin: float = 1.0, Pmax: float = 1000.0, n:
     return P, T
 
 
-def belonoshko_2005(kind: str = "liquidus", Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
+def belonoshko_2005(
+    kind: str = 'liquidus', Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500
+):
     r"""
     Melting curve based on Belonoshko et al. (2005).
     """
     P = make_pressure_grid(Pmin, Pmax, n)
     T_liq = 1831.0 * (1.0 + P / 4.6) ** 0.33
 
-    if kind == "liquidus":
+    if kind == 'liquidus':
         T = T_liq
-    elif kind == "solidus":
+    elif kind == 'solidus':
         T = solidus_from_liquidus_stixrude(T_liq)
     else:
         raise ValueError("kind must be 'solidus' or 'liquidus'")
@@ -221,7 +231,7 @@ def belonoshko_2005(kind: str = "liquidus", Pmin: float = 0.0, Pmax: float = 100
     return P, T
 
 
-def fiquet_2010(kind: str = "liquidus", Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
+def fiquet_2010(kind: str = 'liquidus', Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
     r"""
     Melting curve based on Fiquet et al. (2010).
     """
@@ -236,9 +246,9 @@ def fiquet_2010(kind: str = "liquidus", Pmin: float = 0.0, Pmax: float = 1000.0,
     T_liq[low] = 1982.1 * ((P[low] / 6.594) + 1.0) ** (1.0 / 5.374)
     T_liq[high] = 78.74 * ((P[high] / 0.004056) + 1.0) ** (1.0 / 2.44)
 
-    if kind == "liquidus":
+    if kind == 'liquidus':
         T = T_liq
-    elif kind == "solidus":
+    elif kind == 'solidus':
         T = solidus_from_liquidus_stixrude(T_liq)
     else:
         raise ValueError("kind must be 'solidus' or 'liquidus'")
@@ -246,7 +256,7 @@ def fiquet_2010(kind: str = "liquidus", Pmin: float = 0.0, Pmax: float = 1000.0,
     return P, T
 
 
-def monteux_2016(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
+def monteux_2016(kind: str = 'solidus', Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
     r"""
     Melting curve from Monteux et al. (2016).
     """
@@ -254,14 +264,14 @@ def monteux_2016(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 1000.0,
     P_pa = P * 1e9
 
     params = {
-        "solidus": {
-            "low":  {"T0": 1661.2, "a": 1.336e9,  "c": 7.437},
-            "high": {"T0": 2081.8, "a": 101.69e9, "c": 1.226},
+        'solidus': {
+            'low': {'T0': 1661.2, 'a': 1.336e9, 'c': 7.437},
+            'high': {'T0': 2081.8, 'a': 101.69e9, 'c': 1.226},
         },
-        "liquidus": {
-            "low":  {"T0": 1982.1, "a": 6.594e9,  "c": 5.374},
-            "high": {"T0": 2006.8, "a": 34.65e9,  "c": 1.844},
-        }
+        'liquidus': {
+            'low': {'T0': 1982.1, 'a': 6.594e9, 'c': 5.374},
+            'high': {'T0': 2006.8, 'a': 34.65e9, 'c': 1.844},
+        },
     }
 
     if kind not in params:
@@ -273,21 +283,25 @@ def monteux_2016(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 1000.0,
     mask_low = P_pa <= 20e9
     mask_high = P_pa > 20e9
 
-    T[mask_low] = p["low"]["T0"] * ((P_pa[mask_low] / p["low"]["a"]) + 1.0) ** (1.0 / p["low"]["c"])
-    T[mask_high] = p["high"]["T0"] * ((P_pa[mask_high] / p["high"]["a"]) + 1.0) ** (1.0 / p["high"]["c"])
+    T[mask_low] = p['low']['T0'] * ((P_pa[mask_low] / p['low']['a']) + 1.0) ** (
+        1.0 / p['low']['c']
+    )
+    T[mask_high] = p['high']['T0'] * ((P_pa[mask_high] / p['high']['a']) + 1.0) ** (
+        1.0 / p['high']['c']
+    )
 
     return P, T
 
 
-def hirschmann_2000(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 10.0, n: int = 500):
+def hirschmann_2000(kind: str = 'solidus', Pmin: float = 0.0, Pmax: float = 10.0, n: int = 500):
     r"""
     Melting curve from Hirschmann (2000).
     """
     P = make_pressure_grid(Pmin, Pmax, n)
 
     coeffs = {
-        "solidus":  (1085.7, 132.9, -5.1),
-        "liquidus": (1475.0, 80.0, -3.2),
+        'solidus': (1085.7, 132.9, -5.1),
+        'liquidus': (1475.0, 80.0, -3.2),
     }
 
     if kind not in coeffs:
@@ -300,16 +314,18 @@ def hirschmann_2000(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 10.0
     return P, T
 
 
-def stixrude_2014(kind: str = "liquidus", Pmin: float = 1.0, Pmax: float = 1000.0, n: int = 500):
+def stixrude_2014(
+    kind: str = 'liquidus', Pmin: float = 1.0, Pmax: float = 1000.0, n: int = 500
+):
     r"""
     Melting curve based on Stixrude (2014).
     """
     P = make_pressure_grid(Pmin, Pmax, n)
     T_liq = 5400.0 * (P / 140.0) ** 0.480
 
-    if kind == "liquidus":
+    if kind == 'liquidus':
         T = T_liq
-    elif kind == "solidus":
+    elif kind == 'solidus':
         T = solidus_from_liquidus_stixrude(T_liq)
     else:
         raise ValueError("kind must be 'solidus' or 'liquidus'")
@@ -317,29 +333,31 @@ def stixrude_2014(kind: str = "liquidus", Pmin: float = 1.0, Pmax: float = 1000.
     return P, T
 
 
-def wolf_bower_2018(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
+def wolf_bower_2018(
+    kind: str = 'solidus', Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500
+):
     r"""
     Piecewise melting curve based on Wolf & Bower (2018) style fits.
     """
     P = make_pressure_grid(Pmin, Pmax, n)
 
     params = {
-        "solidus": (
+        'solidus': (
             7.696777581585296,
             870.4767697319186,
             101.52655163737373,
             15.959022187236807,
             3.090844734784906,
-            1417.4258954709148
+            1417.4258954709148,
         ),
-        "liquidus": (
+        'liquidus': (
             8.864665249317456,
             408.58442302949794,
             46.288444869816615,
             17.549174419770257,
             3.679647802112376,
-            2019.967799687511
-        )
+            2019.967799687511,
+        ),
     }
 
     if kind not in params:
@@ -364,35 +382,47 @@ def wolf_bower_2018(kind: str = "solidus", Pmin: float = 0.0, Pmax: float = 1000
     return P, T
 
 
-def katz_2003(kind: str = "solidus", X_h2o: float = 30.0, Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
+def katz_2003(
+    kind: str = 'solidus',
+    X_h2o: float = 30.0,
+    Pmin: float = 0.0,
+    Pmax: float = 1000.0,
+    n: int = 500,
+):
     r"""
     Hydrous melting-curve correction following Katz et al. (2003).
     """
     gamma = 0.75
     K = 43.0
 
-    if kind not in {"solidus", "liquidus"}:
+    if kind not in {'solidus', 'liquidus'}:
         raise ValueError("kind must be 'solidus' or 'liquidus'")
 
     P, T_anhydrous = wolf_bower_2018(kind=kind, Pmin=Pmin, Pmax=Pmax, n=n)
-    delta_T = K * X_h2o ** gamma
+    delta_T = K * X_h2o**gamma
     T = T_anhydrous - delta_T
 
     return P, T
 
 
-def lin_2024(kind: str = "solidus", fO2: float = -4.0, Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 500):
+def lin_2024(
+    kind: str = 'solidus',
+    fO2: float = -4.0,
+    Pmin: float = 0.0,
+    Pmax: float = 1000.0,
+    n: int = 500,
+):
     r"""
     Oxygen-fugacity-dependent solidus following Lin et al. (2024).
     """
-    P, T_anhydrous = wolf_bower_2018(kind="solidus", Pmin=Pmin, Pmax=Pmax, n=n)
+    P, T_anhydrous = wolf_bower_2018(kind='solidus', Pmin=Pmin, Pmax=Pmax, n=n)
 
     delta_T = (340.0 / 3.2) * (2.0 - fO2)
     T_sol = T_anhydrous + delta_T
 
-    if kind == "solidus":
+    if kind == 'solidus':
         T = T_sol
-    elif kind == "liquidus":
+    elif kind == 'liquidus':
         T = liquidus_from_solidus_stixrude(T_sol)
     else:
         raise ValueError("kind must be 'solidus' or 'liquidus'")
@@ -404,28 +434,30 @@ def lin_2024(kind: str = "solidus", fO2: float = -4.0, Pmin: float = 0.0, Pmax: 
 # PHYSICAL-INTERVAL FILTER
 # =============================================================================
 
+
 def truncate_to_physical_interval(func):
     r"""
     Wrap a melting-curve function so only the main interval with
     T_sol < T_liq is retained.
     """
-    def wrapped(kind="solidus", Pmin=0.0, Pmax=1000.0, n=2000, **kwargs):
-        P_sol, T_sol = func(kind="solidus", Pmin=Pmin, Pmax=Pmax, n=n, **kwargs)
-        P_liq, T_liq = func(kind="liquidus", Pmin=Pmin, Pmax=Pmax, n=n, **kwargs)
+
+    def wrapped(kind='solidus', Pmin=0.0, Pmax=1000.0, n=2000, **kwargs):
+        P_sol, T_sol = func(kind='solidus', Pmin=Pmin, Pmax=Pmax, n=n, **kwargs)
+        P_liq, T_liq = func(kind='liquidus', Pmin=Pmin, Pmax=Pmax, n=n, **kwargs)
 
         good = T_sol < T_liq
         idx = np.where(good)[0]
 
         if len(idx) == 0:
-            raise ValueError(f"{func.__name__}: no physical interval where solidus < liquidus")
+            raise ValueError(f'{func.__name__}: no physical interval where solidus < liquidus')
 
         splits = np.where(np.diff(idx) > 1)[0] + 1
         blocks = np.split(idx, splits)
         main_block = max(blocks, key=len)
 
-        if kind == "solidus":
+        if kind == 'solidus':
             return P_sol[main_block], T_sol[main_block]
-        if kind == "liquidus":
+        if kind == 'liquidus':
             return P_liq[main_block], T_liq[main_block]
         raise ValueError("kind must be 'solidus' or 'liquidus'")
 
@@ -443,42 +475,44 @@ katz_2003_cut = truncate_to_physical_interval(katz_2003)
 # =============================================================================
 
 SUPPORTED_MODELS = [
-    "andrault_2011",
-    "monteux_2016",
-    "wolf_bower_2018",
-    "katz_2003",
-    "fei_2021",
-    "belonoshko_2005",
-    "fiquet_2010",
-    "hirschmann_2000",
-    "stixrude_2014",
-    "lin_2024",
+    'andrault_2011',
+    'monteux_2016',
+    'wolf_bower_2018',
+    'katz_2003',
+    'fei_2021',
+    'belonoshko_2005',
+    'fiquet_2010',
+    'hirschmann_2000',
+    'stixrude_2014',
+    'lin_2024',
 ]
 
 
-def get_melting_curves(model_name: str, Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 2000, **kwargs):
+def get_melting_curves(
+    model_name: str, Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 2000, **kwargs
+):
     r"""
     Return solidus and liquidus curves for a given model.
     """
     models = {
-        "andrault_2011": andrault_2011_cut,
-        "monteux_2016": monteux_2016_cut,
-        "wolf_bower_2018": wolf_bower_2018_cut,
-        "katz_2003": katz_2003_cut,
-        "fei_2021": fei_2021,
-        "belonoshko_2005": belonoshko_2005,
-        "fiquet_2010": fiquet_2010,
-        "hirschmann_2000": hirschmann_2000,
-        "stixrude_2014": stixrude_2014,
-        "lin_2024": lin_2024,
+        'andrault_2011': andrault_2011_cut,
+        'monteux_2016': monteux_2016_cut,
+        'wolf_bower_2018': wolf_bower_2018_cut,
+        'katz_2003': katz_2003_cut,
+        'fei_2021': fei_2021,
+        'belonoshko_2005': belonoshko_2005,
+        'fiquet_2010': fiquet_2010,
+        'hirschmann_2000': hirschmann_2000,
+        'stixrude_2014': stixrude_2014,
+        'lin_2024': lin_2024,
     }
 
     if model_name not in models:
-        raise ValueError(f"Unknown model: {model_name}")
+        raise ValueError(f'Unknown model: {model_name}')
 
     func = models[model_name]
-    P_sol, T_sol = func(kind="solidus", Pmin=Pmin, Pmax=Pmax, n=n, **kwargs)
-    P_liq, T_liq = func(kind="liquidus", Pmin=Pmin, Pmax=Pmax, n=n, **kwargs)
+    P_sol, T_sol = func(kind='solidus', Pmin=Pmin, Pmax=Pmax, n=n, **kwargs)
+    P_liq, T_liq = func(kind='liquidus', Pmin=Pmin, Pmax=Pmax, n=n, **kwargs)
 
     return P_sol, T_sol, P_liq, T_liq
 
@@ -487,12 +521,13 @@ def get_melting_curves(model_name: str, Pmin: float = 0.0, Pmax: float = 1000.0,
 # OUTPUT HELPERS
 # =============================================================================
 
+
 def save_PT_table(path: Path, P_gpa: np.ndarray, T_k: np.ndarray):
     r"""
     Save a pressure-temperature table to disk.
     """
     data = np.column_stack([P_gpa, T_k])
-    np.savetxt(path, data, fmt="%.18e %.18e", header="pressure temperature", comments="#")
+    np.savetxt(path, data, fmt='%.18e %.18e', header='pressure temperature', comments='#')
 
 
 # =============================================================================
@@ -500,16 +535,16 @@ def save_PT_table(path: Path, P_gpa: np.ndarray, T_k: np.ndarray):
 # =============================================================================
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-spider_dir = (SCRIPT_DIR / "../../../SPIDER").resolve()
+spider_dir = (SCRIPT_DIR / '../../../SPIDER').resolve()
 
-eos_solid_path = spider_dir / "lookup_data" / "1TPa-dK09-elec-free" / "temperature_solid.dat"
-eos_liquid_path = spider_dir / "lookup_data" / "1TPa-dK09-elec-free" / "temperature_melt.dat"
+eos_solid_path = spider_dir / 'lookup_data' / '1TPa-dK09-elec-free' / 'temperature_solid.dat'
+eos_liquid_path = spider_dir / 'lookup_data' / '1TPa-dK09-elec-free' / 'temperature_melt.dat'
 
 if not eos_solid_path.exists():
-    raise FileNotFoundError(f"Missing EOS file: {eos_solid_path}")
+    raise FileNotFoundError(f'Missing EOS file: {eos_solid_path}')
 
 if not eos_liquid_path.exists():
-    raise FileNotFoundError(f"Missing EOS file: {eos_liquid_path}")
+    raise FileNotFoundError(f'Missing EOS file: {eos_liquid_path}')
 
 nP = 2020
 nS_solid = 125
@@ -524,13 +559,15 @@ SCALE_S_LIQUID_EOS = 4.805046659407042e6
 SCALE_P_OUT = 1_000_000_000.0
 SCALE_S_OUT = 4_824_266.84604467
 
-COMMON_HEADER = "\n".join([
-    "# 5 2000",
-    "# Pressure, Entropy, Quantity",
-    "# column * scaling factor should be SI units",
-    "# scaling factors (constant) for each column given on line below",
-    "# 1000000000.0 4824266.84604467",
-])
+COMMON_HEADER = '\n'.join(
+    [
+        '# 5 2000',
+        '# Pressure, Entropy, Quantity',
+        '# column * scaling factor should be SI units',
+        '# scaling factors (constant) for each column given on line below',
+        '# 1000000000.0 4824266.84604467',
+    ]
+)
 
 
 def load_eos_T_of_SP(eos_path: Path, nS: int, scale_S_axis: float):
@@ -553,7 +590,9 @@ def load_eos_T_of_SP(eos_path: Path, nS: int, scale_S_axis: float):
     return S_axis, P_axis_GPa, T_interp
 
 
-def invert_to_entropy_along_profile(P_gpa: np.ndarray, T_k: np.ndarray, S_axis: np.ndarray, T_of_SP):
+def invert_to_entropy_along_profile(
+    P_gpa: np.ndarray, T_k: np.ndarray, S_axis: np.ndarray, T_of_SP
+):
     r"""
     Convert a P-T curve into a P-S curve by inverting T(S, P).
     """
@@ -584,11 +623,11 @@ def invert_to_entropy_along_profile(P_gpa: np.ndarray, T_k: np.ndarray, S_axis: 
             continue
 
         try:
-            f = interp1d(T_unique, S_unique, kind="linear", assume_sorted=True)
+            f = interp1d(T_unique, S_unique, kind='linear', assume_sorted=True)
             S_out[i] = float(f(T_i))
         except Exception:
             try:
-                f = interp1d(T_unique, S_unique, kind="nearest", assume_sorted=True)
+                f = interp1d(T_unique, S_unique, kind='nearest', assume_sorted=True)
                 S_out[i] = float(f(T_i))
             except Exception:
                 continue
@@ -620,7 +659,11 @@ def build_common_entropy_grid(
     Pmin_common = max(np.min(P_sol_v), np.min(P_liq_v))
     Pmax_common = min(np.max(P_sol_v), np.max(P_liq_v))
 
-    if not np.isfinite(Pmin_common) or not np.isfinite(Pmax_common) or Pmax_common <= Pmin_common:
+    if (
+        not np.isfinite(Pmin_common)
+        or not np.isfinite(Pmax_common)
+        or Pmax_common <= Pmin_common
+    ):
         return np.array([]), np.array([]), np.array([])
 
     if n_common is None:
@@ -645,8 +688,22 @@ def build_common_entropy_grid(
 
     P_common = np.linspace(Pmin_common, Pmax_common, n_common)
 
-    f_sol = interp1d(P_sol_u, S_sol_u, kind="linear", bounds_error=False, fill_value=np.nan, assume_sorted=True)
-    f_liq = interp1d(P_liq_u, S_liq_u, kind="linear", bounds_error=False, fill_value=np.nan, assume_sorted=True)
+    f_sol = interp1d(
+        P_sol_u,
+        S_sol_u,
+        kind='linear',
+        bounds_error=False,
+        fill_value=np.nan,
+        assume_sorted=True,
+    )
+    f_liq = interp1d(
+        P_liq_u,
+        S_liq_u,
+        kind='linear',
+        bounds_error=False,
+        fill_value=np.nan,
+        assume_sorted=True,
+    )
 
     S_sol_common = f_sol(P_common)
     S_liq_common = f_liq(P_common)
@@ -661,7 +718,7 @@ def save_entropy_table_with_header(path: Path, P_gpa: np.ndarray, S_jpk: np.ndar
     """
     P_pa = P_gpa * 1e9
     data = np.column_stack([P_pa / SCALE_P_OUT, S_jpk / SCALE_S_OUT])
-    np.savetxt(path, data, fmt="%.18e %.18e", header=COMMON_HEADER, comments="")
+    np.savetxt(path, data, fmt='%.18e %.18e', header=COMMON_HEADER, comments='')
 
 
 S_axis_solid, P_axis_solid, T_of_SP_solid = load_eos_T_of_SP(
@@ -675,6 +732,7 @@ S_axis_liquid, P_axis_liquid, T_of_SP_liquid = load_eos_T_of_SP(
 # =============================================================================
 # MAIN EXPORTER
 # =============================================================================
+
 
 def export_model_curves(
     model_name: str,
@@ -694,52 +752,52 @@ def export_model_curves(
         model_name, Pmin=Pmin, Pmax=Pmax, n=n, **kwargs
     )
 
-    save_PT_table(out_dir / "solidus_P-T.dat", P_sol, T_sol)
-    save_PT_table(out_dir / "liquidus_P-T.dat", P_liq, T_liq)
+    save_PT_table(out_dir / 'solidus_P-T.dat', P_sol, T_sol)
+    save_PT_table(out_dir / 'liquidus_P-T.dat', P_liq, T_liq)
 
-    S_sol = invert_to_entropy_along_profile(
-        P_sol, T_sol, S_axis_solid, T_of_SP_solid
-    )
-    S_liq = invert_to_entropy_along_profile(
-        P_liq, T_liq, S_axis_liquid, T_of_SP_liquid
-    )
+    S_sol = invert_to_entropy_along_profile(P_sol, T_sol, S_axis_solid, T_of_SP_solid)
+    S_liq = invert_to_entropy_along_profile(P_liq, T_liq, S_axis_liquid, T_of_SP_liquid)
 
     P_common, S_sol_common, S_liq_common = build_common_entropy_grid(
         P_sol, S_sol, P_liq, S_liq, n_common=n
     )
 
     save_entropy_table_with_header(
-        out_dir / "solidus_P-S.dat",
+        out_dir / 'solidus_P-S.dat',
         P_common,
         S_sol_common,
     )
 
     save_entropy_table_with_header(
-        out_dir / "liquidus_P-S.dat",
+        out_dir / 'liquidus_P-S.dat',
         P_common,
         S_liq_common,
     )
 
     print_model_summary(
         model_name,
-        P_sol, T_sol,
-        P_liq, T_liq,
-        P_common, S_sol_common, S_liq_common,
+        P_sol,
+        T_sol,
+        P_liq,
+        T_liq,
+        P_common,
+        S_sol_common,
+        S_liq_common,
     )
 
-    print(f"  Saved to      : {out_dir.resolve()}")
+    print(f'  Saved to      : {out_dir.resolve()}')
     print()
 
     return {
-        "P_sol": P_sol,
-        "T_sol": T_sol,
-        "P_liq": P_liq,
-        "T_liq": T_liq,
-        "S_sol": S_sol,
-        "S_liq": S_liq,
-        "P_entropy_common": P_common,
-        "S_sol_common": S_sol_common,
-        "S_liq_common": S_liq_common,
+        'P_sol': P_sol,
+        'T_sol': T_sol,
+        'P_liq': P_liq,
+        'T_liq': T_liq,
+        'S_sol': S_sol,
+        'S_liq': S_liq,
+        'P_entropy_common': P_common,
+        'S_sol_common': S_sol_common,
+        'S_liq_common': S_liq_common,
     }
 
 
@@ -747,20 +805,21 @@ def export_model_curves(
 # BATCH EXPORTER
 # =============================================================================
 
+
 def export_all_models(out_root: Path | str = MELTING_DIR, n: int = 2000):
     r"""
     Export all supported melting parametrizations.
     """
     for model in SUPPORTED_MODELS:
-        if model == "katz_2003":
+        if model == 'katz_2003':
             _ = export_model_curves(model, out_root=out_root, n=n, X_h2o=30.0)
-        elif model == "lin_2024":
+        elif model == 'lin_2024':
             _ = export_model_curves(model, out_root=out_root, n=n, fO2=-4.0)
-        elif model == "hirschmann_2000":
+        elif model == 'hirschmann_2000':
             _ = export_model_curves(model, out_root=out_root, n=n, Pmax=10.0)
-        elif model == "fei_2021":
+        elif model == 'fei_2021':
             _ = export_model_curves(model, out_root=out_root, n=n, Pmin=1.0)
-        elif model == "stixrude_2014":
+        elif model == 'stixrude_2014':
             _ = export_model_curves(model, out_root=out_root, n=n, Pmin=1.0)
         else:
             _ = export_model_curves(model, out_root=out_root, n=n)
@@ -770,125 +829,126 @@ def export_all_models(out_root: Path | str = MELTING_DIR, n: int = 2000):
 # COMMAND-LINE INTERFACE
 # =============================================================================
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Export solidus and liquidus melting curves in P-T and P-S space "
-            "for one or more literature parametrizations."
+            'Export solidus and liquidus melting curves in P-T and P-S space '
+            'for one or more literature parametrizations.'
         ),
         epilog=(
-            "Examples:\n"
-            "  python solidus_func.py --all\n"
-            "  python solidus_func.py --katz2003 --X-h2o 30\n"
-            "  python solidus_func.py --lin2024 --fO2 -4\n"
-            "  python solidus_func.py --model wolf_bower_2018\n"
+            'Examples:\n'
+            '  python solidus_func.py --all\n'
+            '  python solidus_func.py --katz2003 --X-h2o 30\n'
+            '  python solidus_func.py --lin2024 --fO2 -4\n'
+            '  python solidus_func.py --model wolf_bower_2018\n'
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
     parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Export all supported models.",
+        '--all',
+        action='store_true',
+        help='Export all supported models.',
     )
 
     parser.add_argument(
-        "--model",
+        '--model',
         type=str,
         default=None,
         choices=SUPPORTED_MODELS,
-        help="Export a single model by internal name.",
+        help='Export a single model by internal name.',
     )
 
     parser.add_argument(
-        "--katz2003",
-        action="store_true",
-        help="Export Katz et al. (2003). Requires --X-h2o.",
+        '--katz2003',
+        action='store_true',
+        help='Export Katz et al. (2003). Requires --X-h2o.',
     )
     parser.add_argument(
-        "--lin2024",
-        action="store_true",
-        help="Export Lin et al. (2024). Requires --fO2.",
+        '--lin2024',
+        action='store_true',
+        help='Export Lin et al. (2024). Requires --fO2.',
     )
     parser.add_argument(
-        "--wolfbower2018",
-        action="store_true",
-        help="Export Wolf & Bower (2018).",
+        '--wolfbower2018',
+        action='store_true',
+        help='Export Wolf & Bower (2018).',
     )
     parser.add_argument(
-        "--andrault2011",
-        action="store_true",
-        help="Export Andrault et al. (2011).",
+        '--andrault2011',
+        action='store_true',
+        help='Export Andrault et al. (2011).',
     )
     parser.add_argument(
-        "--monteux2016",
-        action="store_true",
-        help="Export Monteux et al. (2016).",
+        '--monteux2016',
+        action='store_true',
+        help='Export Monteux et al. (2016).',
     )
     parser.add_argument(
-        "--fei2021",
-        action="store_true",
-        help="Export Fei et al. (2021).",
+        '--fei2021',
+        action='store_true',
+        help='Export Fei et al. (2021).',
     )
     parser.add_argument(
-        "--belonoshko2005",
-        action="store_true",
-        help="Export Belonoshko et al. (2005).",
+        '--belonoshko2005',
+        action='store_true',
+        help='Export Belonoshko et al. (2005).',
     )
     parser.add_argument(
-        "--fiquet2010",
-        action="store_true",
-        help="Export Fiquet et al. (2010).",
+        '--fiquet2010',
+        action='store_true',
+        help='Export Fiquet et al. (2010).',
     )
     parser.add_argument(
-        "--hirschmann2000",
-        action="store_true",
-        help="Export Hirschmann (2000).",
+        '--hirschmann2000',
+        action='store_true',
+        help='Export Hirschmann (2000).',
     )
     parser.add_argument(
-        "--stixrude2014",
-        action="store_true",
-        help="Export Stixrude (2014).",
+        '--stixrude2014',
+        action='store_true',
+        help='Export Stixrude (2014).',
     )
 
     parser.add_argument(
-        "--out-root",
+        '--out-root',
         type=str,
         default=str(MELTING_DIR),
-        help="Root directory where output folders will be created.",
+        help='Root directory where output folders will be created.',
     )
 
     parser.add_argument(
-        "--Pmin",
+        '--Pmin',
         type=float,
         default=0.0,
-        help="Minimum pressure in GPa.",
+        help='Minimum pressure in GPa.',
     )
     parser.add_argument(
-        "--Pmax",
+        '--Pmax',
         type=float,
         default=1000.0,
-        help="Maximum pressure in GPa.",
+        help='Maximum pressure in GPa.',
     )
     parser.add_argument(
-        "-n",
+        '-n',
         type=int,
         default=2000,
-        help="Number of pressure samples.",
+        help='Number of pressure samples.',
     )
 
     parser.add_argument(
-        "--X-h2o",
-        dest="X_h2o",
+        '--X-h2o',
+        dest='X_h2o',
         type=float,
         default=None,
-        help="Water content parameter for Katz (2003). Required for --katz2003.",
+        help='Water content parameter for Katz (2003). Required for --katz2003.',
     )
     parser.add_argument(
-        "--fO2",
+        '--fO2',
         type=float,
         default=None,
-        help="Oxygen fugacity offset for Lin (2024). Required for --lin2024.",
+        help='Oxygen fugacity offset for Lin (2024). Required for --lin2024.',
     )
 
     return parser.parse_args()
@@ -899,22 +959,22 @@ def resolve_requested_model(args) -> str | None:
     Resolve which single-model shortcut flag was requested.
     """
     shortcut_map = {
-        "katz2003": "katz_2003",
-        "lin2024": "lin_2024",
-        "wolfbower2018": "wolf_bower_2018",
-        "andrault2011": "andrault_2011",
-        "monteux2016": "monteux_2016",
-        "fei2021": "fei_2021",
-        "belonoshko2005": "belonoshko_2005",
-        "fiquet2010": "fiquet_2010",
-        "hirschmann2000": "hirschmann_2000",
-        "stixrude2014": "stixrude_2014",
+        'katz2003': 'katz_2003',
+        'lin2024': 'lin_2024',
+        'wolfbower2018': 'wolf_bower_2018',
+        'andrault2011': 'andrault_2011',
+        'monteux2016': 'monteux_2016',
+        'fei2021': 'fei_2021',
+        'belonoshko2005': 'belonoshko_2005',
+        'fiquet2010': 'fiquet_2010',
+        'hirschmann2000': 'hirschmann_2000',
+        'stixrude2014': 'stixrude_2014',
     }
 
     chosen = [model for flag, model in shortcut_map.items() if getattr(args, flag)]
 
     if len(chosen) > 1:
-        raise SystemExit("Error: please select only one model shortcut flag at a time.")
+        raise SystemExit('Error: please select only one model shortcut flag at a time.')
 
     if len(chosen) == 1:
         return chosen[0]
@@ -932,31 +992,31 @@ def export_one_model_from_cli(model_name: str, args):
     Pmax = args.Pmax
     n = args.n
 
-    if model_name == "katz_2003":
+    if model_name == 'katz_2003':
         if args.X_h2o is None:
             raise SystemExit(
-                "Error: --X-h2o is required when using Katz (2003).\n"
-                "Example: python solidus_func.py --katz2003 --X-h2o 30"
+                'Error: --X-h2o is required when using Katz (2003).\n'
+                'Example: python solidus_func.py --katz2003 --X-h2o 30'
             )
-        kwargs["X_h2o"] = args.X_h2o
+        kwargs['X_h2o'] = args.X_h2o
 
-    elif model_name == "lin_2024":
+    elif model_name == 'lin_2024':
         if args.fO2 is None:
             raise SystemExit(
-                "Error: --fO2 is required when using Lin (2024).\n"
-                "Example: python solidus_func.py --lin2024 --fO2 -4"
+                'Error: --fO2 is required when using Lin (2024).\n'
+                'Example: python solidus_func.py --lin2024 --fO2 -4'
             )
-        kwargs["fO2"] = args.fO2
+        kwargs['fO2'] = args.fO2
 
-    elif model_name == "hirschmann_2000":
+    elif model_name == 'hirschmann_2000':
         if args.Pmax == 1000.0:
             Pmax = 10.0
 
-    elif model_name == "fei_2021":
+    elif model_name == 'fei_2021':
         if args.Pmin == 0.0:
             Pmin = 1.0
 
-    elif model_name == "stixrude_2014":
+    elif model_name == 'stixrude_2014':
         if args.Pmin == 0.0:
             Pmin = 1.0
 
@@ -979,7 +1039,7 @@ def main():
     if args.all:
         if explicit_model is not None or shortcut_model is not None:
             raise SystemExit(
-                "Error: please use either --all or a single model selection, not both."
+                'Error: please use either --all or a single model selection, not both.'
             )
         export_all_models(out_root=args.out_root, n=args.n)
         return
@@ -988,17 +1048,15 @@ def main():
 
     if len(selected_models) == 0:
         raise SystemExit(
-            "Error: no model selected. Use --all or choose one model with "
-            "--model or a shortcut like --katz2003."
+            'Error: no model selected. Use --all or choose one model with '
+            '--model or a shortcut like --katz2003.'
         )
 
     if len(selected_models) > 1:
-        raise SystemExit(
-            "Error: please choose only one of --model or one shortcut flag."
-        )
+        raise SystemExit('Error: please choose only one of --model or one shortcut flag.')
 
     export_one_model_from_cli(selected_models[0], args)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -1189,6 +1189,7 @@ def download_interior_lookuptables(clean=False):
             desc=f'Interior lookup tables: {dir}',
         )
 
+
 def download_melting_curves(config: Config, clean: bool = False):
     """
     Ensure melting curve data are available locally.
@@ -1202,10 +1203,10 @@ def download_melting_curves(config: Config, clean: bool = False):
                     solidus_P-S.dat
                     liquidus_P-S.dat
     """
-    log.debug("Download melting curve data")
-    rel_dir = Path("Melting_curves") / config.interior.melting_dir
+    log.debug('Download melting curve data')
+    rel_dir = Path('Melting_curves') / config.interior.melting_dir
 
-    data_dir = GetFWLData() / "interior_lookup_tables"
+    data_dir = GetFWLData() / 'interior_lookup_tables'
     data_dir.mkdir(parents=True, exist_ok=True)
 
     folder_dir = data_dir / rel_dir
@@ -1216,13 +1217,13 @@ def download_melting_curves(config: Config, clean: bool = False):
     # ------------------------------------------------------------------
     # Canonical flat layout: if files already exist locally, do not download.
     # ------------------------------------------------------------------
-    solidus_pt = folder_dir / "solidus_P-T.dat"
-    liquidus_pt = folder_dir / "liquidus_P-T.dat"
-    solidus_ps = folder_dir / "solidus_P-S.dat"
-    liquidus_ps = folder_dir / "liquidus_P-S.dat"
+    solidus_pt = folder_dir / 'solidus_P-T.dat'
+    liquidus_pt = folder_dir / 'liquidus_P-T.dat'
+    solidus_ps = folder_dir / 'solidus_P-S.dat'
+    liquidus_ps = folder_dir / 'liquidus_P-S.dat'
 
     if all(p.is_file() for p in (solidus_pt, liquidus_pt, solidus_ps, liquidus_ps)):
-        log.debug("Melting curve data already present locally: %s", folder_dir)
+        log.debug('Melting curve data already present locally: %s', folder_dir)
         return
 
     # ------------------------------------------------------------------
@@ -1231,16 +1232,16 @@ def download_melting_curves(config: Config, clean: bool = False):
     source_info = get_data_source_info(rel_dir.as_posix())
     if not source_info:
         raise ValueError(
-            f"No data source mapping found for folder: {rel_dir}. "
-            f"Also did not find local melting curve data in: {folder_dir}"
+            f'No data source mapping found for folder: {rel_dir}. '
+            f'Also did not find local melting curve data in: {folder_dir}'
         )
 
     download(
         folder=rel_dir.as_posix(),
         target=data_dir,
-        osf_id=source_info["osf_project"],
-        zenodo_id=source_info["zenodo_id"],
-        desc=f"Melting curve data: {rel_dir}",
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
+        desc=f'Melting curve data: {rel_dir}',
     )
 
     # ------------------------------------------------------------------
@@ -1248,12 +1249,13 @@ def download_melting_curves(config: Config, clean: bool = False):
     # - if download contains solidus.dat / liquidus.dat, treat them as P-T
     #   and create canonical *_P-T.dat copies
     # ------------------------------------------------------------------
-    for stem in ("solidus", "liquidus"):
-        legacy = folder_dir / f"{stem}.dat"
-        canonical = folder_dir / f"{stem}_P-T.dat"
+    for stem in ('solidus', 'liquidus'):
+        legacy = folder_dir / f'{stem}.dat'
+        canonical = folder_dir / f'{stem}_P-T.dat'
         if legacy.is_file() and not canonical.is_file():
             shutil.copy2(legacy, canonical)
-            log.debug("Copied %s -> %s", legacy.name, canonical.name)
+            log.debug('Copied %s -> %s', legacy.name, canonical.name)
+
 
 def download_stellar_spectra(*, folders: tuple[str, ...] | None = None):
     """
