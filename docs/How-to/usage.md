@@ -296,3 +296,36 @@ Environment variables
 FWL_DATA: ok
 RAD_DIR: ok
 ```
+
+## Melting Curves
+
+PROTEUS uses precomputed solidus and liquidus curves from laboratory experiments and theoretical parametrizations of silicate melting. These define the temperatures at which materials begin to melt and become fully molten as a function of pressure.
+
+### Available parametrizations
+
+- Andrault et al. (2011)
+- Monteux et al. (2016)
+- Wolf & Bower (2018)
+- Katz et al. (2003)
+- Lin et al. (2024)
+- Hirschmann (2000)
+- Stixrude (2014)
+- Fei et al. (2021)
+- Belonoshko et al. (2005)
+- Fiquet et al. (2010)
+
+### Generate melting curves
+
+Before running PROTEUS, generate the lookup tables:
+
+```console
+python src/proteus/utils/solidus_func.py --all
+```
+
+Alternatively, you can generate a single parametrization using a specific flag (e.g. --katz2003, --lin2024).
+
+This will compute all parametrizations, convert them to P–T and P–S space, and store them in:
+
+```console
+$FWL_DATA/interior_lookup_tables/Melting_curves/
+```
