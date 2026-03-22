@@ -380,18 +380,22 @@ class AragogRunner:
             'F_int': aragog_output.total_heat_flux_basic[-3, -1],
         }  # node near top
 
-        if output['Phi_global'] > (1.0 - 1.0e-8):
-            output['M_mantle_liquid'] = output['M_mantle']
-            output['M_mantle_solid'] = 0.0
-        elif output['Phi_global'] < 1.0e-8:
-            output['M_mantle_liquid'] = 0.0
-            output['M_mantle_solid'] = output['M_mantle']
-        else:
-            output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
-            output['M_mantle_solid'] = output['M_mantle'] * (1.0 - output['Phi_global'])
+        # Per-layer melt fraction and mass for proper liquid/solid mass (fixes #273)
+        phi_s = np.array(aragog_output.melt_fraction_staggered[:, -1])  # per layer
+        mass_s_arr = aragog_output.mass_staggered[:, -1]  # per layer [kg]
 
-        # TODO: CHANGE THESE TO USE REALISTIC CALCULATION FOR ARAGOG
-        output['Phi_global_vol'] = float(output['Phi_global'])
+        output['M_mantle_liquid'] = float(np.sum(phi_s * mass_s_arr))
+        output['M_mantle_solid'] = float(output['M_mantle'] - output['M_mantle_liquid'])
+
+        # Volumetric melt fraction: volume-weighted average (fixes #537)
+        # Use mesh cell volumes (physical units)
+        r_scale = self.aragog_solver.parameters.scalings.radius
+        volumes_phys = (
+            aragog_output.evaluator.mesh.basic.volume.flatten() * r_scale**3
+        )
+        output['Phi_global_vol'] = float(
+            np.sum(phi_s.flatten() * volumes_phys) / np.sum(volumes_phys)
+        )
         output['T_pot'] = float(output['T_magma'])
 
         # Calculate surface area
