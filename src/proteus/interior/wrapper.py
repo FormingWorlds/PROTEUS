@@ -216,11 +216,128 @@ def determine_interior_radius_with_zalmoxis(
     dirs['mesh_shift_active'] = False
     dirs['mesh_convergence_steps'] = 0
 
+    # Generate SPIDER P-S EOS tables from PALEOS if applicable.
+    # This converts Zalmoxis's P-T EOS data into the P-S format SPIDER needs.
+    if config.interior.module == 'spider':
+        from proteus.interior.zalmoxis import generate_spider_tables
+
+        spider_tables = generate_spider_tables(config, outdir)
+        if spider_tables is not None:
+            dirs['spider_eos_dir'] = spider_tables['eos_dir']
+            dirs['spider_solidus_ps'] = spider_tables['solidus_path']
+            dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
+
     # NOTE: run_interior runs with the *original* temperature_mode (restored
     # by the finally block above), not the overridden 'adiabatic'.  This is
     # correct: the Zalmoxis solver already used the adiabatic mode to compute
     # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
     run_interior(dirs, config, hf_all, hf_row, int_o)
+
+
+def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: str):
+    """Iterate CALLIOPE + Zalmoxis until structure and composition converge.
+
+    Runs volatile partitioning (CALLIOPE with optional binodal H2) followed
+    by structure re-computation (Zalmoxis) in a loop. No SPIDER call.
+    Convergence is checked on relative changes in R_int and P_surf.
+
+    Called from proteus.py after the initial structure solve and volatile
+    inventory setup. The converged state provides a self-consistent starting
+    point for SPIDER's first time step.
+
+    Parameters
+    ----------
+    dirs : dict
+        Directory paths (including spider_mesh, spider_eos_dir).
+    config : Config
+        PROTEUS configuration.
+    hf_row : dict
+        Current helpfile row with volatile masses, R_int, P_surf, T_magma, etc.
+    outdir : str
+        Output directory for Zalmoxis files.
+    """
+    from proteus.interior.zalmoxis import generate_spider_tables, zalmoxis_solver
+    from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
+
+    max_iter = config.struct.equilibrate_max_iter
+    tol = config.struct.equilibrate_tol
+    nlev_b = get_nlevb(config)
+    num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
+
+    log.info(
+        'Starting init equilibration loop (max %d iter, tol %.1f%%)',
+        max_iter,
+        tol * 100,
+    )
+
+    # Initialize convergence metrics (used in the warning if max_iter reached)
+    delta_R = 1.0
+    delta_P = 1.0
+
+    for i in range(max_iter):
+        R_old = float(hf_row.get('R_int', 0.0))
+        P_old = float(hf_row.get('P_surf', 0.0))
+
+        # 1. Volatile partitioning: recompute elemental targets and
+        #    run CALLIOPE to get atmosphere/melt distribution
+        calc_target_elemental_inventories(dirs, config, hf_row)
+        run_outgassing(dirs, config, hf_row)
+
+        # 2. Re-compute structure with updated composition
+        #    (volatile_profile is built inside zalmoxis_solver from hf_row)
+        _cmb_radius, spider_mesh_file = zalmoxis_solver(
+            config, outdir, hf_row, num_spider_nodes=num_spider_nodes
+        )
+
+        # Update M_mantle from Zalmoxis results (M_int and M_core are set
+        # by zalmoxis_solver, but M_mantle is not). run_outgassing needs
+        # an up-to-date M_mantle for dissolved fraction calculations.
+        hf_row['M_mantle'] = float(hf_row.get('M_int', 0.0)) - float(
+            hf_row.get('M_core', 0.0)
+        )
+
+        # Update mesh path if written
+        if spider_mesh_file:
+            dirs['spider_mesh'] = spider_mesh_file
+            prev_path = spider_mesh_file + '.prev'
+            shutil.copy2(spider_mesh_file, prev_path)
+            dirs['spider_mesh_prev'] = prev_path
+
+        # 3. Check convergence
+        R_new = float(hf_row.get('R_int', 0.0))
+        P_new = float(hf_row.get('P_surf', 0.0))
+
+        delta_R = abs(R_new - R_old) / R_old if R_old > 0 else 1.0
+        delta_P = abs(P_new - P_old) / P_old if P_old > 0 else 1.0
+
+        log.info(
+            'Equilibration iter %d/%d: dR/R=%.4f, dP/P=%.4f (R=%.3e m, P=%.2f bar)',
+            i + 1,
+            max_iter,
+            delta_R,
+            delta_P,
+            R_new,
+            P_new,
+        )
+
+        if delta_R < tol and delta_P < tol:
+            log.info('Equilibration converged after %d iterations', i + 1)
+            break
+    else:
+        log.warning(
+            'Equilibration did not converge after %d iterations (dR/R=%.4f, dP/P=%.4f)',
+            max_iter,
+            delta_R,
+            delta_P,
+        )
+
+    # 4. Regenerate SPIDER EOS tables with final composition
+    if config.interior.module == 'spider':
+        spider_tables = generate_spider_tables(config, outdir)
+        if spider_tables is not None:
+            dirs['spider_eos_dir'] = spider_tables['eos_dir']
+            dirs['spider_solidus_ps'] = spider_tables['solidus_path']
+            dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
 
 
 def solve_structure(
@@ -505,6 +622,24 @@ def update_structure_from_interior(
             triggered = True
             reason = f'dPhi={dPhi:.3f} >= {config.struct.update_dphi_abs}'
 
+    # Composition change: check dissolved volatile fractions.
+    # When the binodal or CALLIOPE changes how much H2/H2O is dissolved,
+    # the mantle density profile shifts, requiring a structure update.
+    comp_changed = False
+    if not triggered:
+        M_mantle = float(hf_row.get('M_mantle', 0.0))
+        if M_mantle > 0:
+            for species in ('H2O', 'H2'):
+                w_new = float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
+                w_old = dirs.get(f'_last_w_{species}_liquid', w_new)
+                if w_old > 1e-6:
+                    dw = abs(w_new - w_old) / w_old
+                    if dw >= 0.05:
+                        triggered = True
+                        comp_changed = True
+                        reason = f'd_w_{species}={dw:.3f} >= 0.05'
+                        break
+
     if not triggered:
         return no_update
 
@@ -637,10 +772,17 @@ def update_structure_from_interior(
                 sim_times = []
             if len(sim_times) > 0:
                 latest_json = os.path.join(dirs['output'], 'data', '%.0f.json' % sim_times[-1])
+                # When global_miscibility is enabled, SPIDER's domain
+                # extends to R_solvus, not R_int. Use the appropriate
+                # radius for entropy remapping.
+                if config.struct.global_miscibility and 'R_solvus' in hf_row:
+                    remap_radius = hf_row['R_solvus']
+                else:
+                    remap_radius = hf_row['R_int']
                 remap_entropy_for_new_mesh(
                     json_path=latest_json,
                     new_mesh_file=spider_mesh_file,
-                    radius_phys=hf_row['R_int'],
+                    radius_phys=remap_radius,
                 )
     else:
         # No mesh file produced — reset convergence state
@@ -650,6 +792,27 @@ def update_structure_from_interior(
     # Clean up temporary arrays
     del r_stag, r_ascending, T_ascending, r_full, T_full
     gc.collect()
+
+    # Regenerate SPIDER EOS tables when composition changed substantially.
+    # This ensures SPIDER's lookup tables reflect the updated volatile
+    # fractions in the mantle (e.g. after binodal H2 redistribution).
+    if comp_changed and config.interior.module == 'spider':
+        from proteus.interior.zalmoxis import generate_spider_tables
+
+        spider_tables = generate_spider_tables(config, outdir)
+        if spider_tables is not None:
+            dirs['spider_eos_dir'] = spider_tables['eos_dir']
+            dirs['spider_solidus_ps'] = spider_tables['solidus_path']
+            dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
+            log.info('Regenerated SPIDER EOS tables (composition change)')
+
+    # Update composition sentinels for next trigger check
+    M_mantle = float(hf_row.get('M_mantle', 0.0))
+    if M_mantle > 0:
+        for species in ('H2O', 'H2'):
+            dirs[f'_last_w_{species}_liquid'] = (
+                float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
+            )
 
     log.info(
         'Structure updated: R_int=%.3e m, gravity=%.3f m/s^2',

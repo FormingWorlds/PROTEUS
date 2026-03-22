@@ -16,12 +16,41 @@ from proteus.utils.constants import (
     R_earth,
     element_list,
 )
-from proteus.utils.data import get_zalmoxis_EOS, get_zalmoxis_melting_curves
+from proteus.utils.data import get_zalmoxis_eos_dir, get_zalmoxis_melting_curves
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Set up logging
 logger = logging.getLogger('fwl.' + __name__)
+
+# Mapping from PROTEUS volatile species to Zalmoxis EOS component names.
+# Only species with Zalmoxis EOS tables are included.
+_VOLATILE_EOS_MAP = {
+    'H2O': 'PALEOS:H2O',
+    'H2': 'Chabrier:H',
+}
+
+
+def _make_derived_solidus(liquidus_func, mushy_zone_factor: float):
+    """Create a solidus function as T_sol(P) = T_liq(P) * mushy_zone_factor.
+
+    Parameters
+    ----------
+    liquidus_func : callable
+        P [Pa] -> T_liquidus [K].
+    mushy_zone_factor : float
+        Cryoscopic depression factor in [0.7, 1.0].
+
+    Returns
+    -------
+    callable
+        P [Pa] -> T_solidus [K].
+    """
+
+    def solidus_func(P):
+        return liquidus_func(P) * mushy_zone_factor
+
+    return solidus_func
 
 
 def get_zalmoxis_output_filepath(outdir: str):
@@ -32,6 +61,125 @@ def get_zalmoxis_output_filepath(outdir: str):
         str: Path to the output file.
     """
     return os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+
+
+def build_volatile_profile(hf_row: dict, mantle_eos: str):
+    """Build a VolatileProfile from helpfile volatile masses.
+
+    Computes per-phase (liquid/solid) mass fractions for dissolved volatiles
+    that have Zalmoxis EOS tables. Returns None if no volatiles are dissolved
+    or if the mantle liquid/solid masses are unavailable.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row with volatile mass keys (e.g. ``H2O_kg_liquid``,
+        ``H2O_kg_solid``) and mantle mass keys (``M_mantle_liquid``,
+        ``M_mantle_solid``).
+    mantle_eos : str
+        Primary mantle EOS identifier (e.g. ``'PALEOS:MgSiO3'``).
+
+    Returns
+    -------
+    VolatileProfile or None
+        Profile with per-phase fractions, or None if not applicable.
+    """
+    from zalmoxis.mixing import VolatileProfile
+
+    M_liq = float(hf_row.get('M_mantle_liquid', 0.0))
+    M_sol = float(hf_row.get('M_mantle_solid', 0.0))
+
+    # Need mantle mass data to compute fractions
+    if M_liq + M_sol <= 0:
+        return None
+
+    w_liquid = {}
+    w_solid = {}
+    has_nonzero = False
+
+    for species, eos_name in _VOLATILE_EOS_MAP.items():
+        kg_liq = float(hf_row.get(f'{species}_kg_liquid', 0.0))
+        kg_sol = float(hf_row.get(f'{species}_kg_solid', 0.0))
+
+        # Only include species with meaningful dissolved mass
+        if kg_liq + kg_sol <= 0:
+            continue
+
+        # Mass fraction in liquid phase
+        w_l = kg_liq / M_liq if M_liq > 0 else 0.0
+        # Mass fraction in solid phase
+        w_s = kg_sol / M_sol if M_sol > 0 else 0.0
+
+        # Clamp to physical range: volatile mass fraction in silicate melt
+        # should not exceed ~50% (would imply more volatile than silicate).
+        w_liquid[eos_name] = min(w_l, 0.5)
+        w_solid[eos_name] = min(w_s, 0.5)
+        has_nonzero = True
+
+    if not has_nonzero:
+        return None
+
+    logger.info(
+        'Built VolatileProfile: liquid=%s, solid=%s',
+        {k: f'{v:.4f}' for k, v in w_liquid.items()},
+        {k: f'{v:.4f}' for k, v in w_solid.items()},
+    )
+
+    return VolatileProfile(
+        w_liquid=w_liquid,
+        w_solid=w_solid,
+        primary_component=mantle_eos,
+    )
+
+
+def extend_mantle_eos_with_volatiles(mantle_eos: str, volatile_profile) -> str:
+    """Extend a single-component mantle EOS string with volatile components.
+
+    If a VolatileProfile is provided and the mantle EOS is a single component,
+    this adds the volatile EOS components with small placeholder fractions.
+    The actual fractions are overridden at each ODE step by the VolatileProfile.
+
+    Parameters
+    ----------
+    mantle_eos : str
+        Base mantle EOS string (e.g. ``'PALEOS:MgSiO3'``).
+    volatile_profile : VolatileProfile or None
+        Profile containing volatile EOS component names.
+
+    Returns
+    -------
+    str
+        Extended EOS string (e.g.
+        ``'PALEOS:MgSiO3:0.98+PALEOS:H2O:0.01+Chabrier:H:0.01'``),
+        or the original string if no extension needed.
+    """
+    if volatile_profile is None:
+        return mantle_eos
+
+    # Don't modify if already multi-component
+    if '+' in mantle_eos:
+        return mantle_eos
+
+    # Collect all volatile EOS components from the profile
+    all_vol_components = set()
+    for d in (volatile_profile.w_liquid, volatile_profile.w_solid):
+        all_vol_components.update(d.keys())
+
+    if not all_vol_components:
+        return mantle_eos
+
+    # Build extended string with small placeholder fractions
+    # (actual fractions set by VolatileProfile at each radius)
+    n_vol = len(all_vol_components)
+    placeholder = 0.01  # 1% each
+    primary_frac = max(0.5, 1.0 - n_vol * placeholder)
+    parts = [f'{mantle_eos}:{primary_frac:.4f}']
+    for comp in sorted(all_vol_components):
+        parts.append(f'{comp}:{placeholder:.4f}')
+
+    extended = '+'.join(parts)
+    logger.info('Extended mantle EOS: %s -> %s', mantle_eos, extended)
+    return extended
 
 
 def load_zalmoxis_configuration(config: Config, hf_row: dict):
@@ -77,6 +225,15 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
     if config.struct.zalmoxis.ice_layer_eos:
         layer_eos_config['ice_layer'] = config.struct.zalmoxis.ice_layer_eos
 
+    # Mushy zone factor: controls width of partially molten region in PALEOS
+    # unified EOS. Applied as T_solidus = T_liquidus * mushy_zone_factor.
+    mzf = config.struct.zalmoxis.mushy_zone_factor
+    mushy_zone_factors = {
+        'PALEOS:iron': mzf,
+        'PALEOS:MgSiO3': mzf,
+        'PALEOS:H2O': mzf,
+    }
+
     return {
         'planet_mass': planet_mass,
         'core_mass_fraction': config.struct.zalmoxis.coremassfrac,
@@ -86,6 +243,8 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'center_temperature': config.struct.zalmoxis.center_temperature,
         'temp_profile_file': config.struct.zalmoxis.temperature_profile_file,
         'layer_eos_config': layer_eos_config,
+        'mushy_zone_factor': mzf,
+        'mushy_zone_factors': mushy_zone_factors,
         'num_layers': config.struct.zalmoxis.num_levels,
         'max_iterations_outer': config.struct.zalmoxis.max_iterations_outer,
         'tolerance_outer': config.struct.zalmoxis.tolerance_outer,
@@ -105,40 +264,164 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
 
 
 def load_zalmoxis_material_dictionaries():
-    """Load Zalmoxis material property dictionaries.
+    """Build an EOS registry dict with file paths pointing to FWL_DATA.
 
-    EOS file paths are derived from the Zalmoxis source names
-    (e.g. ``Seager2007`` → ``EOS/static/Seager2007/``,
-    ``WolfBower2018_MgSiO3`` → ``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``),
-    not from ``interior.eos_dir``.
+    Returns the same dict format as Zalmoxis ``EOS_REGISTRY``, but with
+    every ``eos_file`` path resolved under ``FWL_DATA/zalmoxis_eos/``
+    instead of ``ZALMOXIS_ROOT/data/``.  This ensures that Zalmoxis,
+    when called from PROTEUS, reads EOS data from the central FWL_DATA
+    location managed by ``download_zalmoxis_eos()``.
 
     Returns
     -------
-    tuple
-        Four dictionaries: iron/silicate, iron/T-dep silicate (WolfBower2018),
-        water planets, iron/RTPress100TPa silicate.
+    dict
+        Flat dict keyed by EOS identifier string (e.g.
+        ``"Seager2007:iron"``, ``"PALEOS:MgSiO3"``, ``"Chabrier:H"``).
     """
-    return get_zalmoxis_EOS()
+    eos_base = get_zalmoxis_eos_dir()
+
+    # Seager2007 paths (also in legacy EOS_material_properties location)
+    seager_dir = eos_base / 'EOS_Seager2007'
+    if not seager_dir.exists():
+        seager_dir = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
+
+    _seager_iron = {'eos_file': str(seager_dir / 'eos_seager07_iron.txt')}
+    _seager_silicate = {'eos_file': str(seager_dir / 'eos_seager07_silicate.txt')}
+    _seager_water = {'eos_file': str(seager_dir / 'eos_seager07_water.txt')}
+
+    # Wolf & Bower 2018
+    wb_dir = eos_base / 'EOS_WolfBower2018_1TPa'
+    _wb_melted = {
+        'eos_file': str(wb_dir / 'density_melt.dat'),
+        'adiabat_grad_file': str(wb_dir / 'adiabat_temp_grad_melt.dat'),
+    }
+    _wb_solid = {'eos_file': str(wb_dir / 'density_solid.dat')}
+
+    # RTPress 100 TPa
+    rt_dir = eos_base / 'EOS_RTPress_melt_100TPa'
+    _rt_melted = {
+        'eos_file': str(rt_dir / 'density_melt.dat'),
+        'adiabat_grad_file': str(rt_dir / 'adiabat_temp_grad_melt.dat'),
+    }
+
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid)
+    paleos2ph_dir = eos_base / 'EOS_PALEOS_MgSiO3'
+    _paleos2ph_melted = {
+        'eos_file': str(paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
+        'format': 'paleos',
+    }
+    _paleos2ph_solid = {
+        'eos_file': str(paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
+        'format': 'paleos',
+    }
+
+    # PALEOS unified tables
+    _paleos_iron = {
+        'eos_file': str(eos_base / 'EOS_PALEOS_iron' / 'paleos_iron_eos_table_pt.dat'),
+        'format': 'paleos_unified',
+    }
+    _paleos_mgsio3 = {
+        'eos_file': str(
+            eos_base / 'EOS_PALEOS_MgSiO3_unified' / 'paleos_mgsio3_eos_table_pt.dat'
+        ),
+        'format': 'paleos_unified',
+    }
+    _paleos_h2o = {
+        'eos_file': str(eos_base / 'EOS_PALEOS_H2O' / 'paleos_water_eos_table_pt.dat'),
+        'format': 'paleos_unified',
+    }
+
+    # Chabrier H/He
+    _chabrier_h = {
+        'eos_file': str(eos_base / 'EOS_Chabrier2021_HHe' / 'chabrier2021_H.dat'),
+        'format': 'paleos_unified',
+    }
+
+    return {
+        # Seager2007 static
+        'Seager2007:iron': {'core': _seager_iron},
+        'Seager2007:MgSiO3': {'mantle': _seager_silicate},
+        'Seager2007:H2O': {'ice_layer': _seager_water},
+        # Wolf & Bower 2018 T-dependent
+        'WolfBower2018:MgSiO3': {
+            'core': _seager_iron,
+            'melted_mantle': _wb_melted,
+            'solid_mantle': _wb_solid,
+        },
+        # RTPress 100 TPa extended melt + WB2018 solid
+        'RTPress100TPa:MgSiO3': {
+            'core': _seager_iron,
+            'melted_mantle': _rt_melted,
+            'solid_mantle': _wb_solid,
+        },
+        # PALEOS 2-phase MgSiO3
+        'PALEOS-2phase:MgSiO3': {
+            'core': _seager_iron,
+            'melted_mantle': _paleos2ph_melted,
+            'solid_mantle': _paleos2ph_solid,
+        },
+        # PALEOS unified
+        'PALEOS:iron': _paleos_iron,
+        'PALEOS:MgSiO3': _paleos_mgsio3,
+        'PALEOS:H2O': _paleos_h2o,
+        # Chabrier H/He
+        'Chabrier:H': _chabrier_h,
+    }
 
 
 def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     """Loads the solidus and liquidus functions for Zalmoxis based on the mantle EOS.
 
+    Melting curves are needed for two purposes:
+    1. Temperature-dependent density in the mushy zone (WolfBower2018, RTPress).
+    2. phi(r) blending in VolatileProfile (any EOS with dissolved volatiles).
+
+    For WolfBower2018/RTPress100TPa, loads SPIDER-format P-T files from FWL_DATA.
+    For PALEOS unified, the liquidus comes from Zalmoxis internal curves
+    (PALEOS-liquidus) and the solidus is derived as T_sol = T_liq * mushy_zone_factor.
+    This ensures the melting curves used for phi-blending are consistent with the
+    mushy zone used in Zalmoxis density interpolation and SPIDER phase boundaries.
+
     Parameters
     ----------
     mantle_eos : str
-        Mantle EOS string (e.g. "WolfBower2018_MgSiO3").
+        Mantle EOS string (e.g. ``"WolfBower2018:MgSiO3"``, ``"PALEOS:MgSiO3"``).
     config : Config
         PROTEUS configuration object.
 
     Returns
     -------
     tuple or None
-        (solidus_func, liquidus_func) if T-dependent EOS, else None.
+        (solidus_func, liquidus_func) callable P [Pa] -> T [K], or None.
     """
     _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
     if mantle_eos.startswith(_TDEP_PREFIXES):
         return get_zalmoxis_melting_curves(config)
+
+    # For PALEOS unified EOS, derive solidus from liquidus * mushy_zone_factor.
+    # This is the same definition Zalmoxis uses internally for density
+    # interpolation in get_paleos_unified_density(). Without these curves,
+    # VolatileProfile phi-blending falls back to phi=0.5 everywhere.
+    if mantle_eos.startswith('PALEOS:'):
+        try:
+            from zalmoxis.melting_curves import get_solidus_liquidus_functions
+
+            _, liquidus_func = get_solidus_liquidus_functions(
+                solidus_id='Stixrude14-solidus',  # unused, but API requires it
+                liquidus_id='PALEOS-liquidus',
+            )
+            mzf = config.struct.zalmoxis.mushy_zone_factor
+            solidus_func = _make_derived_solidus(liquidus_func, mzf)
+            logger.info(
+                'PALEOS melting curves: liquidus from PALEOS, '
+                'solidus = liquidus * %.2f (mushy_zone_factor)',
+                mzf,
+            )
+            return solidus_func, liquidus_func
+        except Exception as e:
+            logger.warning('Could not load PALEOS melting curves: %s', e)
+            return None
+
     return None
 
 
@@ -264,6 +547,102 @@ def write_spider_mesh_file(
     return mesh_path
 
 
+def generate_spider_tables(config: Config, outdir: str):
+    """Generate SPIDER P-S EOS tables and phase boundaries from PALEOS data.
+
+    Uses the PALEOS unified EOS table (P-T format) to produce SPIDER-format
+    P-S tables for density, temperature, heat capacity, thermal expansion,
+    and adiabatic gradient, plus solidus/liquidus phase boundaries in S(P)
+    format.
+
+    Only activated when the mantle EOS is a PALEOS unified type (e.g.
+    ``PALEOS:MgSiO3``). For other EOS types (WolfBower2018, RTPress100TPa),
+    SPIDER uses its pre-existing tables in FWL_DATA.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object with struct.zalmoxis settings.
+    outdir : str
+        Output directory. Tables are written to ``outdir/data/spider_eos/``.
+
+    Returns
+    -------
+    dict or None
+        Keys ``'eos_dir'``, ``'solidus_path'``, ``'liquidus_path'`` with
+        absolute paths. Returns None if the mantle EOS is not PALEOS unified.
+    """
+    from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
+    from zalmoxis.melting_curves import get_solidus_liquidus_functions
+
+    mantle_eos = config.struct.zalmoxis.mantle_eos
+
+    # Use FWL_DATA paths (not ZALMOXIS_ROOT) for EOS file lookup
+    mat_dicts = load_zalmoxis_material_dictionaries()
+    eos_entry = mat_dicts.get(mantle_eos)
+
+    # Only generate for PALEOS unified format
+    if eos_entry is None or eos_entry.get('format') != 'paleos_unified':
+        logger.info(
+            'Mantle EOS %s is not PALEOS unified; using pre-existing SPIDER tables.',
+            mantle_eos,
+        )
+        return None
+
+    eos_file = eos_entry['eos_file']
+    if not os.path.isfile(eos_file):
+        logger.warning('PALEOS EOS file not found: %s', eos_file)
+        return None
+
+    # Derive solidus from liquidus * mushy_zone_factor for consistency
+    # with Zalmoxis density interpolation and phi-blending.
+    _, liquidus_func = get_solidus_liquidus_functions(
+        solidus_id='Stixrude14-solidus',  # unused, but API requires it
+        liquidus_id='PALEOS-liquidus',
+    )
+    mzf = config.struct.zalmoxis.mushy_zone_factor
+    solidus_func = _make_derived_solidus(liquidus_func, mzf)
+    logger.info(
+        'SPIDER phase boundaries: solidus = liquidus * %.2f (mushy_zone_factor)',
+        mzf,
+    )
+
+    spider_eos_dir = os.path.join(outdir, 'data', 'spider_eos')
+
+    # Determine pressure range from planet mass (higher mass needs wider range)
+    mass_tot = config.struct.mass_tot or 1.0
+    P_max = min(200e9, 50e9 * mass_tot + 100e9)
+
+    # Generate phase boundaries
+    logger.info('Generating SPIDER P-S phase boundaries from PALEOS...')
+    pb_result = generate_spider_phase_boundaries(
+        solidus_func=solidus_func,
+        liquidus_func=liquidus_func,
+        eos_file=eos_file,
+        P_range=(1e8, P_max),
+        n_P=500,
+        output_dir=spider_eos_dir,
+    )
+
+    # Generate full EOS tables
+    logger.info('Generating SPIDER P-S EOS tables from PALEOS...')
+    generate_spider_eos_tables(
+        eos_file=eos_file,
+        solidus_func=solidus_func,
+        liquidus_func=liquidus_func,
+        P_range=(1e8, P_max),
+        n_P=150,
+        n_S=150,
+        output_dir=spider_eos_dir,
+    )
+
+    return {
+        'eos_dir': spider_eos_dir,
+        'solidus_path': pb_result['solidus_path'],
+        'liquidus_path': pb_result['liquidus_path'],
+    }
+
+
 def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes: int = 0):
     """Run the Zalmoxis solver to compute the interior structure of a planet.
 
@@ -290,19 +669,97 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     # Load the Zalmoxis configuration parameters
     config_params = load_zalmoxis_configuration(config, hf_row)
 
+    # Build volatile profile from dissolved volatile masses (if available).
+    # This enables phi(r)-weighted volatile blending inside the Zalmoxis ODE.
+    mantle_eos = config.struct.zalmoxis.mantle_eos
+    volatile_profile = build_volatile_profile(hf_row, mantle_eos)
+
+    # Configure global miscibility if enabled
+    if config.struct.global_miscibility and volatile_profile is not None:
+        volatile_profile.global_miscibility = True
+        # Initialize x_interior from current dissolved masses
+        M_mantle = float(hf_row.get('M_mantle', 0.0))
+        if M_mantle > 0:
+            H2_kg_liquid = float(hf_row.get('H2_kg_liquid', 0.0))
+            if H2_kg_liquid > 0:
+                volatile_profile.x_interior['Chabrier:H'] = H2_kg_liquid / (
+                    M_mantle + H2_kg_liquid
+                )
+            H2O_kg_liquid = float(hf_row.get('H2O_kg_liquid', 0.0))
+            if H2O_kg_liquid > 0:
+                volatile_profile.x_interior['PALEOS:H2O'] = H2O_kg_liquid / (
+                    M_mantle + H2O_kg_liquid
+                )
+
+    # Extend mantle EOS string with volatile components so the LayerMixture
+    # includes them (VolatileProfile overrides fractions at each radius).
+    if volatile_profile is not None:
+        config_params['layer_eos_config']['mantle'] = extend_mantle_eos_with_volatiles(
+            config_params['layer_eos_config']['mantle'], volatile_profile
+        )
+
     # Get the output location for Zalmoxis output and create the file if it does not exist
     output_zalmoxis = get_zalmoxis_output_filepath(outdir)
     open(output_zalmoxis, 'a').close()
 
-    # Run the Zalmoxis main function to compute the interior structure
-    model_results = main(
-        config_params,
-        material_dictionaries=load_zalmoxis_material_dictionaries(),
-        melting_curves_functions=load_zalmoxis_solidus_liquidus_functions(
-            config.struct.zalmoxis.mantle_eos, config
-        ),
-        input_dir=os.path.join(outdir, 'data'),
-    )
+    # Run structure solve: use miscibility wrapper when enabled
+    mat_dicts = load_zalmoxis_material_dictionaries()
+    melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
+    input_data_dir = os.path.join(outdir, 'data')
+
+    if config.struct.global_miscibility:
+        from zalmoxis.zalmoxis import solve_miscible_interior
+
+        # Build H2 mass targets from current volatile inventories
+        h2_mass_targets = {}
+        H2_kg_total = float(hf_row.get('H2_kg_total', 0.0))
+        H2_kg_atm = float(hf_row.get('H2_kg_atm', 0.0))
+        H2_kg_dissolved = H2_kg_total - H2_kg_atm
+        if H2_kg_dissolved > 0:
+            h2_mass_targets['Chabrier:H'] = H2_kg_dissolved
+
+        H2O_kg_liquid = float(hf_row.get('H2O_kg_liquid', 0.0))
+        if H2O_kg_liquid > 0:
+            h2_mass_targets['PALEOS:H2O'] = H2O_kg_liquid
+
+        model_results = solve_miscible_interior(
+            config_params,
+            material_dictionaries=mat_dicts,
+            melting_curves_functions=melt_funcs,
+            input_dir=input_data_dir,
+            volatile_profile=volatile_profile,
+            h2_mass_targets=h2_mass_targets,
+            max_iterations=config.struct.miscibility_max_iter,
+            mass_tolerance=config.struct.miscibility_tol,
+        )
+
+        # Write solvus info to hf_row
+        if model_results.get('solvus_radius') is not None:
+            hf_row['R_solvus'] = model_results['solvus_radius']
+            hf_row['T_solvus'] = model_results['solvus_temperature']
+            hf_row['P_solvus'] = model_results['solvus_pressure']
+        hf_row['X_H2_int'] = model_results.get('x_interior_converged', {}).get(
+            'Chabrier:H', 0.0
+        )
+
+        logger.info(
+            'Global miscibility: solvus R=%.2e m, T=%.0f K, P=%.2e Pa, '
+            'X_H2_int=%.4f, converged=%s (%d iters)',
+            hf_row.get('R_solvus', 0.0),
+            hf_row.get('T_solvus', 0.0),
+            hf_row.get('P_solvus', 0.0),
+            hf_row.get('X_H2_int', 0.0),
+            model_results.get('miscibility_converged', False),
+            model_results.get('miscibility_iterations', 0),
+        )
+    else:
+        model_results = main(
+            config_params,
+            material_dictionaries=mat_dicts,
+            melting_curves_functions=melt_funcs,
+            input_dir=input_data_dir,
+            volatile_profile=volatile_profile,
+        )
 
     # Extract results from the model
     radii = model_results['radii']
@@ -317,6 +774,21 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     converged_pressure = model_results['converged_pressure']
     converged_density = model_results['converged_density']
     converged_mass = model_results['converged_mass']
+
+    # Check convergence before proceeding. Non-converged solutions
+    # (e.g. when EOS table range is exceeded) produce garbage values
+    # that would corrupt the simulation state.
+    if not converged:
+        diag = (
+            f'Zalmoxis did not converge: '
+            f'pressure={converged_pressure}, density={converged_density}, '
+            f'mass={converged_mass}. '
+            f'Final M={mass_enclosed[-1]:.2e} kg, R={radii[-1]:.2e} m. '
+            f'EOS: core={config.struct.zalmoxis.core_eos}, '
+            f'mantle={config.struct.zalmoxis.mantle_eos}.'
+        )
+        logger.error(diag)
+        raise RuntimeError(diag)
 
     # Extract the index of the core-mantle boundary mass in the mass array
     cmb_index = np.argmax(mass_enclosed >= cmb_mass)
@@ -388,15 +860,42 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
                 f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
 
+    # Determine SPIDER domain: [R_cmb, R_solvus] when global_miscibility is
+    # enabled, otherwise [R_cmb, R_surface] (standard).
+    spider_radii = mantle_radii
+    spider_pressure = mantle_pressure
+    spider_density = mantle_density
+    spider_gravity = mantle_gravity
+
+    if config.struct.global_miscibility:
+        R_solvus = hf_row.get('R_solvus')
+        if R_solvus is not None and R_solvus < planet_radius:
+            # Truncate arrays at the solvus: SPIDER only evolves the
+            # miscible interior below the binodal surface
+            solvus_mask = mantle_radii <= R_solvus * 1.001  # small tolerance
+            if np.any(solvus_mask):
+                spider_radii = mantle_radii[solvus_mask]
+                spider_pressure = mantle_pressure[solvus_mask]
+                spider_density = mantle_density[solvus_mask]
+                spider_gravity = mantle_gravity[solvus_mask]
+                logger.info(
+                    'SPIDER domain truncated at solvus: R_solvus=%.3e m '
+                    '(%.2f R_earth), %d of %d shells',
+                    R_solvus,
+                    R_solvus / R_earth,
+                    len(spider_radii),
+                    len(mantle_radii),
+                )
+
     # Write SPIDER mesh file if requested
     spider_mesh_file = None
     if num_spider_nodes > 0:
         spider_mesh_file = write_spider_mesh_file(
             outdir,
-            mantle_radii,
-            mantle_pressure,
-            mantle_density,
-            mantle_gravity,
+            spider_radii,
+            spider_pressure,
+            spider_density,
+            spider_gravity,
             num_spider_nodes,
         )
 

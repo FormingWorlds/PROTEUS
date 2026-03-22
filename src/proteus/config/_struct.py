@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, le, lt
 
 from ._converters import none_if_none
 
@@ -66,6 +66,31 @@ def valid_zalmoxis(instance, attribute, value):
             f"got '{ice_layer_eos}'"
         )
 
+    # WolfBower2018 EOS is limited to 1 TPa. For planets > 2 M_earth,
+    # CMB pressure exceeds this and Zalmoxis will fail to converge.
+    import logging as _logging
+
+    _log = _logging.getLogger('fwl.' + __name__)
+    if mass_tot is not None and mass_tot > 2.0 and mantle_eos.startswith('WolfBower2018'):
+        _log.warning(
+            'WolfBower2018 EOS is limited to 1 TPa and may not converge '
+            'for planets > 2 M_earth (mass_tot=%.1f). '
+            'Consider RTPress100TPa or PALEOS for high-mass planets.',
+            mass_tot,
+        )
+
+    # mushy_zone_factor only applies to PALEOS unified tables
+    mzf = getattr(instance.zalmoxis, 'mushy_zone_factor', 0.8)
+    if mzf < 1.0 and not mantle_eos.startswith('PALEOS:'):
+        _log.warning(
+            'mushy_zone_factor=%.2f has no effect with mantle EOS %s. '
+            'The mushy zone factor only applies to PALEOS unified tables. '
+            'For WolfBower2018/RTPress100TPa, the mushy zone is defined by '
+            'the solidus/liquidus melting curve files.',
+            mzf,
+            mantle_eos,
+        )
+
     # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
     _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
     if not ice_layer_eos and not mantle_eos.startswith(_TDEP_PREFIXES):
@@ -102,6 +127,18 @@ class Zalmoxis:
         EOS for the ice/water layer (3-layer model). Empty string for
         2-layer model (core + mantle only).
         Tabulated: "Seager2007:H2O". Analytic: "Analytic:H2O".
+    mushy_zone_factor: float
+        Cryoscopic depression factor controlling the width of the mushy
+        zone (partially molten region) in the PALEOS unified EOS.
+        Defines the solidus as T_sol = T_liq * mushy_zone_factor.
+        1.0 = sharp phase boundary (no mushy zone).
+        0.8 = solidus at 80% of the liquidus temperature, roughly
+        matching the Stixrude+2014 cryoscopic depression for MgSiO3.
+        Must be in [0.7, 1.0]. Only applies to PALEOS unified EOS;
+        ignored for WolfBower2018 and RTPress100TPa (which use explicit
+        melting curve files). This factor is applied consistently across
+        Zalmoxis (density interpolation), SPIDER (phase boundaries),
+        and the VolatileProfile phi-blending.
     coremassfrac: float
         Fraction of the planet's interior mass corresponding to the core.
     mantle_mass_fraction: float
@@ -158,6 +195,8 @@ class Zalmoxis:
     core_eos: str = field(default='Seager2007:iron')
     mantle_eos: str = field(default='Seager2007:MgSiO3')
     ice_layer_eos: str = field(default='')
+
+    mushy_zone_factor: float = field(default=0.8, validator=(ge(0.7), le(1.0)))
 
     coremassfrac: float = field(default=0.325, validator=(gt(0), lt(1)))
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
@@ -252,6 +291,34 @@ class Struct:
     mesh_max_shift: float = field(default=0.05, validator=(gt(0), lt(1)))
     mesh_convergence_interval: float = field(default=10.0, validator=gt(0))
 
+    equilibrate_init: bool = False
+    equilibrate_max_iter: int = field(default=15, validator=ge(1))
+    equilibrate_tol: float = field(default=0.01, validator=gt(0))
+
+    global_miscibility: bool = False
+    """Enable binodal-controlled interior structure for sub-Neptune modeling.
+
+    When True, the interior-envelope boundary is determined by the
+    H2-MgSiO3 binodal (solvus) rather than a fixed magma ocean surface.
+    H2 (and optionally H2O) mass fractions in the interior are set by
+    mass conservation iteration using the binodal phase diagram. The
+    SPIDER domain is dynamically resized to [R_cmb, R_solvus], and the
+    atmosphere module (AGNI) receives boundary conditions at the solvus.
+
+    When False (default), the traditional differentiated structure is used
+    with sharp core-mantle-atmosphere interfaces. All existing behavior
+    is unchanged.
+
+    Requires ``module = 'zalmoxis'`` and the ``outgas.h2_binodal`` flag
+    is superseded (binodal handled radially by Zalmoxis).
+    """
+
+    miscibility_max_iter: int = field(default=10, validator=ge(1))
+    """Maximum iterations for the X_{H2,int} mass conservation solver."""
+
+    miscibility_tol: float = field(default=0.01, validator=gt(0))
+    """Relative mass tolerance for miscibility convergence (default 1%)."""
+
     core_density: float = field(default=10738.33, validator=gt(0))
     core_heatcap: float = field(default=880.0, validator=gt(0))
     mass_tot = field(default='none', validator=mass_radius_valid, converter=none_if_none)
@@ -263,6 +330,11 @@ class Struct:
                 f'`update_min_interval` ({self.update_min_interval}) must be '
                 f'<= `update_interval` ({self.update_interval}), otherwise '
                 f'the floor blocks all updates before the ceiling can fire.'
+            )
+        if self.global_miscibility and self.module != 'zalmoxis':
+            raise ValueError(
+                '`global_miscibility` requires `module = "zalmoxis"`. '
+                'The binodal-aware structure solver is only available in Zalmoxis.'
             )
 
     @property
