@@ -318,6 +318,22 @@ class Proteus:
                     write += ' : %6.2f bar' % self.hf_row[s + '_bar']
                 log.info(write)
 
+            # Equilibrate structure + composition before main loop.
+            # Iterates CALLIOPE + Zalmoxis (no SPIDER) until R_int and
+            # P_surf converge. Only active when config flag is set.
+            if self.config.struct.equilibrate_init and self.config.struct.module == 'zalmoxis':
+                from proteus.interior.wrapper import equilibrate_initial_state
+
+                equilibrate_initial_state(
+                    self.directories,
+                    self.config,
+                    self.hf_row,
+                    self.directories['output'],
+                )
+                # Update sentinels with post-equilibration state
+                self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
+                self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
+
         else:
             # Resuming from disk
             log.info('Resuming the simulation from the disk')
@@ -531,6 +547,27 @@ class Proteus:
 
             ############### ATMOSPHERE CLIMATE
             PrintHalfSeparator()
+
+            # When global_miscibility is enabled, the atmosphere lower
+            # boundary is the solvus (binodal surface), not the magma
+            # ocean surface. Override the hf_row values that AGNI reads
+            # so the atmosphere is computed from the solvus outward.
+            # Save originals to restore after the atmosphere step.
+            _saved_atm_bc = {}
+            if self.config.struct.global_miscibility and 'R_solvus' in self.hf_row:
+                R_sol = self.hf_row.get('R_solvus')
+                if R_sol is not None and R_sol < self.hf_row['R_int']:
+                    _saved_atm_bc = {
+                        'T_surf': self.hf_row['T_surf'],
+                        'P_surf': self.hf_row['P_surf'],
+                        'R_int': self.hf_row['R_int'],
+                        'T_magma': self.hf_row['T_magma'],
+                    }
+                    self.hf_row['T_surf'] = self.hf_row['T_solvus']
+                    self.hf_row['T_magma'] = self.hf_row['T_solvus']
+                    self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
+                    self.hf_row['R_int'] = R_sol
+
             run_atmosphere(
                 self.atmos_o,
                 self.config,
@@ -542,6 +579,11 @@ class Proteus:
                 self.hf_all,
                 self.hf_row,
             )
+
+            # Restore original boundary values if they were overridden
+            if _saved_atm_bc:
+                for key, val in _saved_atm_bc.items():
+                    self.hf_row[key] = val
 
             ############### / ATMOSPHERE CLIMATE
 

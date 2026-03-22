@@ -86,6 +86,19 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
 
+    # Apply binodal-controlled H2 partitioning.
+    # When global_miscibility is enabled, the binodal is handled radially
+    # by Zalmoxis (solve_miscible_interior), and the H2 partition was
+    # already set during the structure update. Skip the bulk binodal here.
+    # When global_miscibility is disabled but h2_binodal is on, use the
+    # original bulk binodal override from Rogers+2025.
+    if config.struct.global_miscibility:
+        log.debug('Skipping apply_binodal_h2: handled by Zalmoxis (global_miscibility)')
+    elif config.outgas.h2_binodal:
+        from proteus.outgas.binodal import apply_binodal_h2
+
+        apply_binodal_h2(hf_row, config)
+
     # calculate total atmosphere mass (from sum of volatile masses)
     hf_row['M_atm'] = 0.0
     for s in gas_list:

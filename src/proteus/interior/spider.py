@@ -701,6 +701,31 @@ def _try_spider(
                 config.struct.core_density,
             )
 
+    # Determine SPIDER domain boundaries.
+    # When global_miscibility is enabled, SPIDER evolves the miscible
+    # interior (center to solvus), not the full mantle (CMB to surface).
+    spider_radius = hf_row['R_int']
+    spider_gravity = hf_row['gravity']
+    spider_coresize = coresize
+    if config.struct.global_miscibility and 'R_solvus' in hf_row:
+        R_solvus = hf_row['R_solvus']
+        if R_solvus is not None and R_solvus < hf_row['R_int']:
+            spider_radius = R_solvus
+            # Gravity at solvus: interpolate from structure if available,
+            # otherwise scale by (R_solvus/R_int)^2 * M_solvus/M_int
+            spider_gravity = hf_row['gravity'] * (R_solvus / hf_row['R_int']) ** 2
+            # Coresize relative to solvus, not surface
+            R_cmb_actual = coresize * hf_row['R_int']
+            spider_coresize = R_cmb_actual / R_solvus if R_solvus > 0 else coresize
+            log.info(
+                'SPIDER domain: [%.2e, %.2e] m (solvus), '
+                'coresize=%.4f, gravity=%.2f m/s^2',
+                R_cmb_actual,
+                R_solvus,
+                spider_coresize,
+                spider_gravity,
+            )
+
     ### SPIDER base call sequence
     call_sequence = [
         spider_exec,
@@ -723,11 +748,11 @@ def _try_spider(
         '-dtmacro',
         '%.6e' % (dtmacro),
         '-radius',
-        '%.6e' % (hf_row['R_int']),
+        '%.6e' % spider_radius,
         '-gravity',
-        '%.6e' % (-1.0 * hf_row['gravity']),
+        '%.6e' % (-1.0 * spider_gravity),
         '-coresize',
-        '%.6e' % (coresize),
+        '%.6e' % spider_coresize,
         '-grain',
         '%.6e' % (config.interior.grain_size),
     ]
@@ -802,28 +827,38 @@ def _try_spider(
         call_sequence.extend(['-HTIDAL', '2'])
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
 
-    # EOS lookup data: absolute paths from FWL_DATA, with SPIDER local as fallback
-    eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior.eos_dir, 'P-S')
-    if not os.path.isdir(eos_dir):
-        # Fall back to SPIDER's local lookup_data (uses legacy directory name)
-        eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
-    if not os.path.isdir(eos_dir):
-        raise FileNotFoundError(
-            f'SPIDER EOS directory not found: {eos_dir}. '
-            f"Check interior.eos_dir='{config.interior.eos_dir}'."
-        )
-
-    # Resolve melting curve S(P) files from shared config (absolute paths in FWL_DATA)
-    mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior.melting_dir)
-    liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
-    solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
-    for fpath in (liquidus_ps, solidus_ps):
-        if not os.path.isfile(fpath):
+    # EOS lookup data: prefer per-run generated tables (from Zalmoxis/PALEOS),
+    # then FWL_DATA, then SPIDER local as final fallback.
+    if dirs.get('spider_eos_dir') and os.path.isdir(dirs['spider_eos_dir']):
+        eos_dir = dirs['spider_eos_dir']
+        log.info('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
+    else:
+        eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior.eos_dir, 'P-S')
+        if not os.path.isdir(eos_dir):
+            # Fall back to SPIDER's local lookup_data (uses legacy directory name)
+            eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
+        if not os.path.isdir(eos_dir):
             raise FileNotFoundError(
-                f'SPIDER phase boundary file not found: {fpath}. '
-                f"Run 'python tools/generate_spider_phase_boundaries.py "
-                f"--melting-dir {config.interior.melting_dir}' to generate it."
+                f'SPIDER EOS directory not found: {eos_dir}. '
+                f"Check interior.eos_dir='{config.interior.eos_dir}'."
             )
+
+    # Resolve melting curve S(P) files: prefer generated paths, then FWL_DATA
+    if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
+        liquidus_ps = dirs['spider_liquidus_ps']
+        solidus_ps = dirs['spider_solidus_ps']
+        log.info('Using Zalmoxis-generated phase boundaries')
+    else:
+        mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior.melting_dir)
+        liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
+        solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
+        for fpath in (liquidus_ps, solidus_ps):
+            if not os.path.isfile(fpath):
+                raise FileNotFoundError(
+                    f'SPIDER phase boundary file not found: {fpath}. '
+                    f"Run 'python tools/generate_spider_phase_boundaries.py "
+                    f"--melting-dir {config.interior.melting_dir}' to generate it."
+                )
 
     call_sequence.extend(['-phase_names', 'melt,solid'])
 
