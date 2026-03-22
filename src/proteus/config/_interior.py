@@ -110,7 +110,8 @@ class Aragog:
     num_levels: int
         Number of Aragog grid levels (basic mesh).
     initial_condition: int
-        How to define the intial temperature profile (1: linear, 2: user defined, 3: adiabat)
+        How to define the intial temperature profile (1: linear, 2: user defined, 3: adiabat).
+        Default is 3 (adiabat), which integrates dT/dP|_S from the surface downward.
     tolerance: float
         Solver tolerance.
     ini_tmagma: float
@@ -134,7 +135,9 @@ class Aragog:
     dilatation: bool
         Whether to include dilatation source term in the model. Default is False.
     mass_coordinates: bool
-        Whether to use mass coordinates in the model. Default is False.
+        Whether to use mass coordinates in the model. Default is True.
+        Uses uniform spacing in mass coordinate space, giving larger cells
+        at the surface where density is lower, matching SPIDER's mesh.
     tsurf_poststep_change: float
         Maximum change in surface temperature allowed during a single interior iteration [K].
     event_triggering: bool
@@ -155,7 +158,7 @@ class Aragog:
     init_file: str = field(default=None)
     num_levels: int = field(default=100, validator=ge(40))
     initial_condition: int = field(
-        default=1,
+        default=3,
         validator=in_(
             (
                 1,
@@ -172,7 +175,7 @@ class Aragog:
     gravitational_separation: bool = field(default=False)
     mixing: bool = field(default=False)
     dilatation: bool = field(default=False)
-    mass_coordinates: bool = field(default=False)
+    mass_coordinates: bool = field(default=True)
     tsurf_poststep_change: float = field(default=30, validator=ge(0))
     event_triggering: bool = field(default=True)
     bulk_modulus: float = field(default=260e9, validator=gt(0))
