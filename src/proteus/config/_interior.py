@@ -141,6 +141,12 @@ class Aragog:
         Whether to include event triggering in the solver. Default is True.
     bulk_modulus: float
         Adiabatic bulk modulus AW-EOS parameter [Pa].
+    param_utbl: bool
+        Whether to parameterize the ultra-thin thermal boundary layer at the surface.
+        Reduces the effective radiating temperature to account for the unresolved
+        boundary layer (Bower et al. 2018, Eq. 18). Default is True (matches SPIDER).
+    param_utbl_const: float
+        UTBL scaling constant [K^-2]. Default is 1e-7 (matches SPIDER).
     """
 
     logging: str = field(default='ERROR', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
@@ -170,6 +176,8 @@ class Aragog:
     tsurf_poststep_change: float = field(default=30, validator=ge(0))
     event_triggering: bool = field(default=True)
     bulk_modulus: float = field(default=260e9, validator=gt(0))
+    param_utbl: bool = field(default=True)
+    param_utbl_const: float = field(default=1e-7, validator=gt(0))
 
 
 def valid_interiordummy(instance, attribute, value):
