@@ -10,11 +10,11 @@ symlink = ""
 ref_config = "input/demos/dummy.toml"
 
 # Use SLURM?
-use_slurm = true
+use_slurm = false
 
 # Execution limits
-max_jobs = 500       # maximum number of concurrent tasks (e.g. 500 on Habrok)
-max_days = 3        # maximum number of days to run (e.g. 1)
+max_jobs = 10       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
 max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 
 # Now define grid axes...
