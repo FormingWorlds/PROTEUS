@@ -15,9 +15,9 @@ version = "2.0"
         write_mod = 1
 
     [params.dt]
-        minimum  = 1e2
-        maximum  = 1e7
-        initial  = 1e3
+        minimum  = 1e1
+        maximum  = 1e6
+        initial  = 1e1
         starspec = 1e9
         starinst = 1e2
         method   = "adaptive"
@@ -151,13 +151,15 @@ version = "2.0"
     rheo_phi_wid    = 0.15
 
     [interior.spider]
-        ini_entropy   = 2200.0
-        ini_dsdr      = -3.0e-6
+        ini_entropy   = 3200.0
+        ini_dsdr      = -1.0e-6
         num_levels    = 50
         mixing_length = 2
-        tolerance     = 1e-7
-        tsurf_atol    = 30.0
-        tsurf_rtol    = 0.02
+        mixing        = false    # Disabled: PALEOS EOS causes CVode failure with MIXING=1
+        tolerance     = 1e-4
+        tolerance_rel = 1e-4
+        tsurf_atol    = 50.0
+        tsurf_rtol    = 0.05
 
 [outgas]
     fO2_shift_IW = 0
