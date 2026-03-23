@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
+from proteus.orbit.parameterized import run_parameterized_orbital_migration
 from proteus.utils.constants import AU, L_sun, R_sun, const_G, secs_per_day, secs_per_hour
 
 if TYPE_CHECKING:
@@ -174,6 +175,10 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, interior_o: Interior_t):
         from proteus.orbit.orbit import evolve_orbital
 
         evolve_orbital(hf_row, config, interior_o.dt)
+
+    elif config.orbit.module == 'parameterized':
+        # set by orbital migration, based on user-defined parameters
+        hf_row['semimajorax'] = run_parameterized_orbital_migration(hf_row, config, interior_o.dt)
 
     else:
         # orbital parameters are held constant over time

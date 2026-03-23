@@ -161,8 +161,8 @@ version = "2.0"
 
     [orbit.parameterized]
         migration = "sigmoid"       # "none", "instant" or "sigmoid" migration
-        sma_init = 0.029            # Initial semi-major axis [AU]
-        sma_final = 0.0106          # Final semi-major axis [AU]
+        sma_init = 0.029            # Initial semi-major axis before migration [AU]
+        sma_final = 0.0106          # Final semi-major axis after migration s[AU]
         time_migration = 10e9       # Time of migration [yr]
         tau_migration = 1e9         # Migration timescale for sigmoid migration [yr]
 
