@@ -16,16 +16,21 @@ mpl.use('Agg')  # noqa
 import tomllib
 
 import matplotlib.pyplot as plt
-import netCDF4 as nc
 import numpy as np
 import pandas as pd
 
+from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.config import read_config_object
+from proteus.interior.spider import read_jsons
 from proteus.utils.constants import R_earth, vol_list
 from proteus.utils.plot import get_colour, latexify
 
 # Target times for sampling profile [log years]
 tau_target = [3, 4, 5, 7, 9]
+
+# Gas lists
+chili_gases = ['H2O', 'CO2', 'CO', 'H2', 'CH4', 'O2']
+extra_gases = list(set(vol_list) - set(chili_gases))
 
 # Potential planet names
 pl_names = {
@@ -68,33 +73,54 @@ def postproc_once(simdir: str, plot: bool = True):
     config = read_config_object(config_path)
 
     # Write to expected format
+    # https://github.com/projectcuisines/chili/blob/main/intercomparison/README.md#evolution-models
     out = {}
-    out['t(yr)'] = np.array(hf_all['Time'].iloc[:])
-    out['T_surf(K)'] = np.array(hf_all['T_surf'].iloc[:])
-    out['T_pot(K)'] = np.array(hf_all['T_pot'].iloc[:])
-    out['phi(vol_frac)'] = np.array(hf_all['Phi_global_vol'].iloc[:])
-    out['massC_solid(kg)'] = np.array(hf_all['C_kg_solid'].iloc[:])
-    out['massC_melt(kg)'] = np.array(hf_all['C_kg_liquid'].iloc[:])
-    out['massC_atm(kg)'] = np.array(hf_all['C_kg_atm'].iloc[:])
-    out['massH_solid(kg)'] = np.array(hf_all['H_kg_solid'].iloc[:])
-    out['massH_melt(kg)'] = np.array(hf_all['H_kg_liquid'].iloc[:])
-    out['massH_atm(kg)'] = np.array(hf_all['H_kg_atm'].iloc[:])
-    out['massO_atm(kg)'] = np.array(hf_all['O_kg_atm'].iloc[:])
-    out['mmw(kg/mol)'] = np.array(hf_all['atm_kg_per_mol'].iloc[:])
-    out['p_surf(bar)'] = np.array(hf_all['P_surf'].iloc[:])
-    for gas in vol_list:
-        out[f'p_{gas}(bar)'] = np.array(hf_all[f'{gas}_bar'].iloc[:])
-    out['fO2_liquid(bar)'] = out['p_O2(bar)']
-    out['fO2_solid(bar)'] = np.zeros_like(out['t(yr)'])
-    out['R_trans(m)'] = np.array(hf_all['R_obs'].iloc[:])
-    out['flux_surf(W/m2)'] = np.array(hf_all['F_int'].iloc[:])
-    out['flux_OLR(W/m2)'] = np.array(hf_all['F_olr'].iloc[:])
+    #     required columns
+    out['t(yr)'] = np.array(hf_all['Time'])
+    out['T_surf(K)'] = np.array(hf_all['T_surf'])
+    out['T_pot(K)'] = np.array(hf_all['T_pot'])
+
+    out['flux_surf(W/m2)'] = np.array(hf_all['F_int'])
+    out['flux_OLR(W/m2)'] = np.array(hf_all['F_olr'])
     out['flux_ASR(W/m2)'] = (
-        np.array(hf_all['F_ins'].iloc[:])
-        * config.orbit.s0_factor
-        * (1 - config.atmos_clim.albedo_pl)
+        np.array(hf_all['F_ins']) * config.orbit.s0_factor * (1 - config.atmos_clim.albedo_pl)
     )
+
+    out['phi(vol_frac)'] = np.array(hf_all['Phi_global_vol'])
+    out['fO2_melt(bar)'] = np.array(hf_all['O2_bar'])
+    out['fO2_solid(bar)'] = out['fO2_melt(bar)']  # assumes homogeneous fO2
     out['thick_surf_bl(m)'] = np.ones_like(out['t(yr)']) * config.atmos_clim.surface_d
+
+    out['massC_solid(kg)'] = np.array(hf_all['C_kg_solid'])
+    out['massC_melt(kg)'] = np.array(hf_all['C_kg_liquid'])
+    out['massC_atm(kg)'] = np.array(hf_all['C_kg_atm'])
+    out['massH_solid(kg)'] = np.array(hf_all['H_kg_solid'])
+    out['massH_melt(kg)'] = np.array(hf_all['H_kg_liquid'])
+    out['massH_atm(kg)'] = np.array(hf_all['H_kg_atm'])
+    out['massO_atm(kg)'] = np.array(hf_all['O_kg_atm'])
+
+    out['p_surf(bar)'] = np.array(hf_all['P_surf'])
+    for gas in chili_gases:
+        out[f'p_{gas}(bar)'] = np.array(hf_all[f'{gas}_bar'])
+    out['mmw(kg/mol)'] = np.array(hf_all['atm_kg_per_mol'])
+
+    out['R_trans(m)'] = np.array(hf_all['R_obs'])
+    out['R_solid(m)'] = np.array(hf_all['R_int']) * (1 - hf_all['RF_depth'])
+
+    visc_arr = []
+    for idx_t, t in enumerate(out['t(yr)']):
+        int_data = read_jsons(simdir, [t])[0]
+        int_tmp = int_data.get_dict_values(['data', 'temp_b'])
+        int_eta = int_data.get_dict_values(['data', 'visc_b'])
+        # get viscosity of mantle layer equal to potential temperature
+        idx_z = np.argmin(np.abs(int_tmp - hf_all['T_pot'].iloc[idx_t]))
+        visc_arr.append(int_eta[idx_z])
+    out['viscosity(Pa.s)'] = np.array(visc_arr)
+
+    # Additional columns
+    out['phi(mass_frac)'] = hf_all['Phi_global']
+    for gas in extra_gases:
+        out[f'p_{gas}(bar)'] = np.array(hf_all[f'{gas}_bar'])
 
     # Write to scalar CSV
     print('    write CSV file for scalars')
@@ -114,15 +140,20 @@ def postproc_once(simdir: str, plot: bool = True):
             print(f'      tau{tau} -> {tclose:.2e} yr')
 
         ncfile = os.path.join(simdir, 'data', f'{tclose:.0f}_atm.nc')
-        with nc.Dataset(ncfile) as ds:
-            tarr = np.array(ds.variables['tmp'][:])
-            parr = np.array(ds.variables['p'][:]) * 1e-5
-            zarr = np.array(ds.variables['r'][:]) - np.amin(ds.variables['r'])
-        X = np.array([tarr, parr, zarr]).T
-        H = 'T(K),p(bar),z(m)'
+        atm = read_ncdf_profile(ncfile, extra_keys=['x_gas'], combine_edges=False)
+
+        # climate profile
+        X = [atm['z'], atm['p'] / 1e5, atm['t']]
+        H = 'z(m),p_tot(bar),T(K)'
+
+        # chemistry profile
+        for gas in vol_list:
+            X.append(atm[f'{gas}_vmr'] * atm['p'] / 1e5)  # partial pressure profiles
+            H += f',p_{gas}(bar)'
+
         csvname = f'evolution-proteus-{name}-tau{tau}-data.csv'
         f = os.path.join(chilidir, csvname)
-        np.savetxt(f, X, fmt='%.10e', delimiter=',', header=H)
+        np.savetxt(f, np.array(X).T, fmt='%.10e', delimiter=',', header=H, comments='')
 
     # Make plot...
     if plot:
@@ -318,8 +349,8 @@ def postproc_grid(griddir: str):
         if 'tau' in fpath:
             continue
         hf_all = pd.read_csv(fpath, delimiter=',')
-        x = np.array(hf_all['t(yr)'].iloc[:])
-        y = np.array(hf_all['T_surf(K)'].iloc[:])
+        x = np.array(hf_all['t(yr)'])
+        y = np.array(hf_all['T_surf(K)'])
         l = os.path.basename(fpath).split('.')[0]
         l = ' '.join(l.split('-')[4:6])
         ax.plot(x, y, label=l, lw=1.5, alpha=0.8, zorder=4)
