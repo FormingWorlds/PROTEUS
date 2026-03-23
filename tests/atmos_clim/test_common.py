@@ -114,6 +114,48 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
 
 
 @pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
+    """Read centre and edge arrays separately when ``combine_edges`` is false.
+
+    This covers the branch added for callers that need native NetCDF layering
+    (N centre levels and N+1 edge levels as separate arrays).
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    # Use JANUS-style height variables to ensure this branch also works with z/zl input.
+    ds_instance.variables = {
+        'p': np.array([100.0, 80.0]),
+        'pl': np.array([110.0, 90.0, 70.0]),
+        'tmp': np.array([500.0, 450.0]),
+        'tmpl': np.array([520.0, 470.0, 430.0]),
+        'z': np.array([1.0e4, 2.0e4]),
+        'zl': np.array([0.0, 1.5e4, 2.5e4]),
+        'planet_radius': [6.0e6],
+        'solved': np.array([b'n'], dtype='S1'),
+    }
+
+    result = read_ncdf_profile('dummy.nc', combine_edges=False)
+
+    np.testing.assert_allclose(result['p'], np.array([100.0, 80.0]))
+    np.testing.assert_allclose(result['pl'], np.array([110.0, 90.0, 70.0]))
+    np.testing.assert_allclose(result['t'], np.array([500.0, 450.0]))
+    np.testing.assert_allclose(result['tmpl'], np.array([520.0, 470.0, 430.0]))
+
+    # JANUS path: r = z + planet_radius and rl = zl + planet_radius.
+    np.testing.assert_allclose(result['r'], np.array([6.01e6, 6.02e6]))
+    np.testing.assert_allclose(result['rl'], np.array([6.0e6, 6.015e6, 6.025e6]))
+
+    assert result['solved'] == 0.0
+    assert result['transparent'] == 0.0
+    assert result['converged'] == 0.0
+
+
+@pytest.mark.unit
 @patch('proteus.atmos_clim.common.read_ncdf_profile')
 def test_read_atmosphere_data(mock_read):
     """

@@ -70,6 +70,7 @@ def postproc_once(simdir: str, plot: bool = True):
     copyfile(config_path, os.path.join(chilidir, f'evolution-proteus-{name}-config.in'))
 
     # Read config
+    print('    write CSV file for scalars')
     config = read_config_object(config_path)
 
     # Write to expected format
@@ -123,7 +124,6 @@ def postproc_once(simdir: str, plot: bool = True):
         out[f'p_{gas}(bar)'] = np.array(hf_all[f'{gas}_bar'])
 
     # Write to scalar CSV
-    print('    write CSV file for scalars')
     outpath = os.path.join(chilidir, f'evolution-proteus-{name}-data.csv')
     pd.DataFrame(out).to_csv(outpath, sep=',', index=False, float_format='%.10e')
 
