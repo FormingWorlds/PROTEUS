@@ -295,29 +295,9 @@ class Struct:
     equilibrate_max_iter: int = field(default=15, validator=ge(1))
     equilibrate_tol: float = field(default=0.01, validator=gt(0))
 
-    global_miscibility: bool = False
-    """Enable binodal-controlled interior structure for sub-Neptune modeling.
-
-    When True, the interior-envelope boundary is determined by the
-    H2-MgSiO3 binodal (solvus) rather than a fixed magma ocean surface.
-    H2 (and optionally H2O) mass fractions in the interior are set by
-    mass conservation iteration using the binodal phase diagram. The
-    SPIDER domain is dynamically resized to [R_cmb, R_solvus], and the
-    atmosphere module (AGNI) receives boundary conditions at the solvus.
-
-    When False (default), the traditional differentiated structure is used
-    with sharp core-mantle-atmosphere interfaces. All existing behavior
-    is unchanged.
-
-    Requires ``module = 'zalmoxis'`` and the ``outgas.h2_binodal`` flag
-    is superseded (binodal handled radially by Zalmoxis).
-    """
-
+    global_miscibility: bool = field(default=False)
     miscibility_max_iter: int = field(default=10, validator=ge(1))
-    """Maximum iterations for the X_{H2,int} mass conservation solver."""
-
     miscibility_tol: float = field(default=0.01, validator=gt(0))
-    """Relative mass tolerance for miscibility convergence (default 1%)."""
 
     core_density: float = field(default=10738.33, validator=gt(0))
     core_heatcap: float = field(default=880.0, validator=gt(0))
