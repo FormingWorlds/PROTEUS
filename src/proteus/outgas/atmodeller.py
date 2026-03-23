@@ -65,7 +65,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'S2': atm_config.solubility_S2,
     }
 
-    # Species that atmodeller handles as gases
+    # Species that atmodeller handles as gases.
+    # O2 is always included for the fugacity constraint.
     _atm_gas_species = {
         'H2O': 'H2O',
         'H2': 'H2',
@@ -75,6 +76,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'N2': 'N2',
         'S2': 'S2',
         'SO2': 'SO2',
+        'O2': 'O2',
     }
 
     for proteus_name, atm_name in _atm_gas_species.items():
