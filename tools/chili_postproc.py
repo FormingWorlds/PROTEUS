@@ -31,7 +31,7 @@ tau_target = [3, 4, 5, 7, 9]
 
 # Gas lists
 chili_gases = ['H2O', 'CO2', 'CO', 'H2', 'CH4', 'O2']
-extra_gases = list(set(vol_list) - set(chili_gases))
+extra_gases = [gas for gas in vol_list if gas not in chili_gases]
 
 # Potential planet names
 pl_names = {
