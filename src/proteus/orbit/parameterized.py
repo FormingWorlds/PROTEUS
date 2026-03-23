@@ -105,11 +105,15 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
     # Use config parameters as initial guess
     if current_time <= 1:
         hf_row['semimajorax'] = sma_i
+
+    # Evaluate migration regime
+    if migration is None:
+        raise ValueError(f'Unknown migration option: {migration}. Expected None, "instant", or "sigmoid"')
     elif migration == "none": # no migration
         hf_row['semimajorax'] = sma_i
     elif migration == "instant": # instant migration
         hf_row['semimajorax'] = instant_migration(t=current_time, sma_init=sma_i, sma_final=sma_f, time_migration=t_mig)
-    elif migration == "sigmoid": # continuous migration
+    elif migration == "sigmoid": # sigmoid migration
         if tau_mig is None:
             raise ValueError('Sigmoid migration requires timescale tau_mig')
         else:
@@ -119,7 +123,5 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
                                                 time_migration=t_mig,
                                                 tau_mig=tau_mig,
                                             )
-    elif migration is None:
-        raise ValueError(f'Unknown migration option: {migration}. Expected None, "instant", or "sigmoid"')
 
     return hf_row['semimajorax']
