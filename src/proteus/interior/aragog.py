@@ -285,7 +285,53 @@ class AragogRunner:
                     / '1TPa-dK09-elec-free'
                     / 'MgSiO3_Wolf_Bower_2018_1TPa'
                 )
-        MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
+        # Determine melting curves. When using PALEOS EOS via Zalmoxis,
+        # generate PALEOS-derived melting curves so Aragog uses the SAME
+        # solidus/liquidus as SPIDER (PALEOS-liquidus * mushy_zone_factor).
+        # Without this, Aragog uses Monteux-600 which differs by ~600 K,
+        # making melt fractions incomparable.
+        if (
+            config.struct.module == 'zalmoxis'
+            and config.struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+        ):
+            paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
+            paleos_melt_dir.mkdir(parents=True, exist_ok=True)
+            sol_file = paleos_melt_dir / 'solidus_P-T.dat'
+            liq_file = paleos_melt_dir / 'liquidus_P-T.dat'
+            if not sol_file.is_file():
+                from proteus.interior.zalmoxis import (
+                    _make_derived_solidus,
+                    load_zalmoxis_solidus_liquidus_functions,
+                )
+
+                melt_fns = load_zalmoxis_solidus_liquidus_functions(
+                    config.struct.zalmoxis.mantle_eos, config
+                )
+                if melt_fns is not None:
+                    s_fn, l_fn = melt_fns
+                else:
+                    from zalmoxis.melting_curves import (
+                        get_solidus_liquidus_functions as _gslf,
+                    )
+
+                    _, l_fn = _gslf('Stixrude14-solidus', 'PALEOS-liquidus')
+                    s_fn = _make_derived_solidus(
+                        l_fn, config.struct.zalmoxis.mushy_zone_factor
+                    )
+
+                P_arr = np.logspace(8, 12, 500)
+                sol_data = np.column_stack([P_arr, [s_fn(P) for P in P_arr]])
+                liq_data = np.column_stack([P_arr, [l_fn(P) for P in P_arr]])
+                np.savetxt(str(sol_file), sol_data, header='pressure temperature', comments='#')
+                np.savetxt(str(liq_file), liq_data, header='pressure temperature', comments='#')
+                logger.info('Generated PALEOS melting curves for Aragog: %s', paleos_melt_dir)
+
+            solidus_path = sol_file
+            liquidus_path = liq_file
+        else:
+            MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
+            solidus_path = MELTING_DIR / config.interior.melting_dir / 'solidus_P-T.dat'
+            liquidus_path = MELTING_DIR / config.interior.melting_dir / 'liquidus_P-T.dat'
 
         # check data exist
         if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
@@ -315,8 +361,8 @@ class AragogRunner:
             latent_heat_of_fusion=4e6,
             rheological_transition_melt_fraction=config.interior.rheo_phi_loc,
             rheological_transition_width=config.interior.rheo_phi_wid,
-            solidus=MELTING_DIR / config.interior.melting_dir / 'solidus_P-T.dat',
-            liquidus=(MELTING_DIR / config.interior.melting_dir / 'liquidus_P-T.dat'),
+            solidus=solidus_path,
+            liquidus=liquidus_path,
             phase='mixed',
             phase_transition_width=0.1,
             grain_size=config.interior.grain_size,
