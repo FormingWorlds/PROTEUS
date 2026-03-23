@@ -13,8 +13,8 @@ ssh-copy-id -i ~/.ssh/id_rsa.pub YOUR_USERNAME@login1.hb.hpc.rug.nl
 
 Once you have added your SSH key to Habrok, modify the entry below and insert it into your `~/.ssh/config` file
 ```
-Host habrok1
-    HostName interactive1.hb.hpc.rug.nl
+Host habrok
+    HostName login1.hb.hpc.rug.nl
     User YOUR_USERNAME
     IdentityFile ~/.ssh/id_rsa
     ServerAliveInterval 120
@@ -148,6 +148,14 @@ rm -rf /tmp/habrok_transfer/my_run
 ### Alternative: direct pipe (no staging on your laptop)
 
 Instead of storing data on your laptop in between, you can pipe the data straight through in a single command using SSH and `tar`:
+
+First, make sure the target directory exists on Kapteyn:
+
+```console
+ssh norma2 'mkdir -p /dataserver/users/formingworlds/<kapteyn_user>/proteus_output'
+```
+
+Then pipe the data through:
 
 ```console
 ssh habrok 'tar -cf - -C /scratch/<habrok_user>/proteus_output my_run' \
