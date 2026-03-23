@@ -83,7 +83,7 @@ class Parameterized:
     sma_init: float = field(validator=gt(0))
     sma_final: float = field(validator=gt(0))
 
-    migration: str = field(default="none", validator=in_(("none", 'instant', 'sigmoid')))
+    migration: str = field(default="none", validator=in_(("none", 'instant', 'sigmoid', 'high_ecc')))
     time_migration: float = field(default=1e6, validator=gt(0))
     tau_migration: float = field(default=1e9, validator=gt(0))
 

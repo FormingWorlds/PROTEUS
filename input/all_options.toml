@@ -160,7 +160,7 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
     [orbit.parameterized]
-        migration = "sigmoid"   # None, "instant" or "sigmoid" migration
+        migration = "sigmoid"   # None, "instant", "sigmoid" or "high_ecc" migration
         sma_init = 2.0          # Initial semi-major axis before migration [AU]
         sma_final = 1.0         # Final semi-major axis after migration [AU]
         time_migration = 1e5    # Time of migration [yr]

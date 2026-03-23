@@ -172,8 +172,8 @@ def run_orbit(hf_row: dict, config: Config, dirs: dict, interior_o: Interior_t):
     # Set semimajor axis and eccentricity, through the desired method...
     if config.orbit.module == 'parameterized':
         # set by orbital migration, based on user-defined parameters
-        hf_row['semimajorax'] = run_parameterized_orbital_migration(hf_row, config, interior_o.dt)
-        print(hf_row['semimajorax'])
+        hf_row['semimajorax'], hf_row['eccentricity'] = run_parameterized_orbital_migration(hf_row, config, interior_o.dt)
+
     elif config.orbit.evolve:
         # set by orbital evolution, based on tidal love number
         from proteus.orbit.orbit import evolve_orbital
