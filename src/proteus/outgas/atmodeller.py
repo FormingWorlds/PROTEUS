@@ -65,21 +65,44 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'S2': atm_config.solubility_S2,
     }
 
-    # Species that atmodeller handles as gases.
-    # O2 is always included for the fugacity constraint.
+    # Only include species whose constituent elements ALL have non-zero budgets.
+    # Atmodeller's solver fails when the species network introduces elements
+    # with no mass constraint (under-determined system -> no convergence).
+    # E.g., CH4 has both H and C; if only H has a budget, including CH4
+    # leaves C unconstrained.
+    _species_elements = {
+        'H2O': {'H'},
+        'H2': {'H'},
+        'CO2': {'C'},
+        'CO': {'C'},
+        'CH4': {'H', 'C'},
+        'N2': {'N'},
+        'S2': {'S'},
+        'SO2': {'S'},
+        'O2': set(),  # always included for fO2
+    }
+
+    # Determine which elements have budgets above threshold
+    active_elements = set()
+    for element in ('H', 'C', 'N', 'S'):
+        key = f'{element}_kg_total'
+        if float(hf_row.get(key, 0.0)) > config.outgas.mass_thresh:
+            active_elements.add(element)
+
+    # A species is included only if ALL its required elements have budgets
+    active_species = set()
+    for sp, required_elements in _species_elements.items():
+        if required_elements.issubset(active_elements):
+            active_species.add(sp)
+
     _atm_gas_species = {
-        'H2O': 'H2O',
-        'H2': 'H2',
-        'CO2': 'CO2',
-        'CO': 'CO',
-        'CH4': 'CH4',
-        'N2': 'N2',
-        'S2': 'S2',
-        'SO2': 'SO2',
-        'O2': 'O2',
+        'H2O': 'H2O', 'H2': 'H2', 'CO2': 'CO2', 'CO': 'CO',
+        'CH4': 'CH4', 'N2': 'N2', 'S2': 'S2', 'SO2': 'SO2', 'O2': 'O2',
     }
 
     for proteus_name, atm_name in _atm_gas_species.items():
+        if proteus_name not in active_species:
+            continue
         sol_key = _sol_map.get(proteus_name)
         if sol_key and sol_key in solubility_models:
             species_list.append(
@@ -90,8 +113,14 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         else:
             species_list.append(ChemicalSpecies.create_gas(atm_name))
 
-    # Add condensates if enabled
-    if atm_config.include_condensates:
+    log.info(
+        'Atmodeller species: %s (active elements: %s)',
+        [s.name for s in species_list],
+        active_elements,
+    )
+
+    # Add condensates only if their elements have budgets
+    if atm_config.include_condensates and 'C' in active_elements:
         try:
             species_list.append(ChemicalSpecies.create_condensed('C'))
         except Exception:
