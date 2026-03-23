@@ -190,10 +190,11 @@ class AragogRunner:
                 config.struct.zalmoxis.mantle_eos.startswith('PALEOS:')
                 and config.interior.aragog.initial_condition == 3
             ):
-                # For PALEOS EOS with adiabatic IC: let Aragog use its own
-                # entropy-conserving adiabat (IC=3 with entropy tables).
-                # The PROTEUS wrapper will verify this against an independent
-                # entropy inversion after initialization.
+                # For PALEOS EOS with adiabatic IC: Aragog uses IC=3 with
+                # entropy tables for its entropy-conserving adiabat. After
+                # initialization, _verify_entropy_ic compares against an
+                # independent PALEOS entropy inversion and corrects the IC
+                # if the discrepancy exceeds 1% (table resolution effect).
                 initial_condition_temperature_profile = 3
                 init_file_temperature_profile = ''
             else:
@@ -525,10 +526,15 @@ class AragogRunner:
 
             if max_rel > 1.0:
                 logger.warning(
-                    'Entropy IC mismatch > 1%%: Aragog and PROTEUS entropy '
-                    'inversions disagree. max_diff=%.1f K (%.2f%%). '
-                    'This may indicate inconsistent melting curves or EOS data.',
+                    'Entropy IC mismatch > 1%%: Aragog entropy tables too '
+                    'coarse. max_diff=%.1f K (%.2f%%). Overriding Aragog IC '
+                    'with high-resolution PALEOS entropy inversion.',
                     max_diff, max_rel,
+                )
+                # Override Aragog's IC with the PROTEUS-computed profile.
+                # Scale to Aragog's internal units before assignment.
+                solver.evaluator.initial_condition._temperature = (
+                    T_proteus_interp / T_scale
                 )
 
             # Save diagnostic data
