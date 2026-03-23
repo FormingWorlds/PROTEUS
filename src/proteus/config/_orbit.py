@@ -120,7 +120,7 @@ class Orbit:
         Satellit initial semi-major axis  [m]
 
     module: str | None
-        Select orbit module to use. Choices: 'none', 'dummy', 'lovepy'.
+        Select orbit module to use. Choices: 'none', 'dummy', 'lovepy', 'parameterized'.
     """
 
     # Tidal heating modules
@@ -158,6 +158,6 @@ class Orbit:
 
     dummy: OrbitDummy = field(factory=OrbitDummy)
     lovepy: Lovepy = field(factory=Lovepy)
-
+    parameterized: Parameterized = field(factory=Parameterized)
     instellation_method: str = field(default='sma', validator=in_(('sma', 'inst')))
     instellationflux: float = field(default=1.0, validator=gt(0))

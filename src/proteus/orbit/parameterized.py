@@ -121,3 +121,5 @@ def run_parameterized_orbital_migration(hf_row: dict, config: Config, dt: float)
                                             )
     elif migration is None:
         raise ValueError(f'Unknown migration option: {migration}. Expected None, "instant", or "sigmoid"')
+
+    return hf_row['semimajorax']
