@@ -95,7 +95,7 @@ class Atmodeller:
     solubility_CO2: str = 'CO2_basalt_dixon95'
     solubility_H2: str = 'H2_basalt_hirschmann12'
     solubility_N2: str = 'N2_basalt_dasgupta22'
-    solubility_S2: str = 'S2_basalt_boulliung23_sulfide'
+    solubility_S2: str = 'S2_sulfide_basalt_boulliung23'
 
 
 @define
