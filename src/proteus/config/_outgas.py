@@ -61,15 +61,41 @@ class Calliope:
 
 @define
 class Atmodeller:
-    """Module parameters for Atmodeller.
+    """Module parameters for Atmodeller (Bower+2025, ApJ 995:59).
+
+    JAX-based volatile partitioning with real gas EOS, non-ideal
+    solubility laws, and condensation. Replaces CALLIOPE for
+    thermodynamically consistent magma-atmosphere equilibrium.
 
     Attributes
     ----------
-    some_parameter: str
-        Not used currently.
+    solver_mode : str
+        Root-finding mode: 'robust' (slower compile, better convergence)
+        or 'basic' (faster compile, less robust).
+    include_condensates : bool
+        Enable condensate phases (graphite, etc.) in the equilibrium.
+    solubility_H2O : str
+        Solubility law for H2O. See atmodeller.solubility.library.
+    solubility_CO2 : str
+        Solubility law for CO2.
+    solubility_H2 : str
+        Solubility law for H2.
+    solubility_N2 : str
+        Solubility law for N2.
+    solubility_S2 : str
+        Solubility law for S2.
     """
 
-    some_parameter: str = field(default='some_value')
+    solver_mode: str = field(
+        default='robust',
+        validator=validators.in_(('robust', 'basic')),
+    )
+    include_condensates: bool = True
+    solubility_H2O: str = 'H2O_peridotite_sossi23'
+    solubility_CO2: str = 'CO2_basalt_dixon95'
+    solubility_H2: str = 'H2_basalt_hirschmann12'
+    solubility_N2: str = 'N2_basalt_dasgupta22'
+    solubility_S2: str = 'S2_basalt_boulliung23_sulfide'
 
 
 @define
@@ -97,7 +123,7 @@ class Outgas:
 
     fO2_shift_IW: float
 
-    module: str = field(validator=validators.in_(('calliope',)))
+    module: str = field(validator=validators.in_(('calliope', 'atmodeller')))
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
 

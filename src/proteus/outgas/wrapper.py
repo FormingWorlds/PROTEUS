@@ -85,6 +85,10 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
+    elif config.outgas.module == 'atmodeller':
+        from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
 
     # Apply binodal-controlled H2 partitioning.
     # When global_miscibility is enabled, the binodal is handled radially
