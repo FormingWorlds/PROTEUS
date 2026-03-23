@@ -25,9 +25,11 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     for e in element_list:
         hf_row[e + '_kg_total'] = 0.0
 
-    # Calculate target for calliope mass conservation
-    if config.outgas.module == 'calliope':
-        calc_target_masses(dirs, config, hf_row)
+    # Calculate target elemental inventories from delivery config.
+    # CALLIOPE's calc_target_masses computes element budgets (H, C, N, S)
+    # from the delivery parameters. This is needed by ALL outgas modules,
+    # not just CALLIOPE, because the element budgets drive the mass balance.
+    calc_target_masses(dirs, config, hf_row)
 
     # Update total mass of tracked elements
     hf_row['M_ele'] = 0.0
