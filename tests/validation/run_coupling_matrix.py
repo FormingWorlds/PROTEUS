@@ -36,7 +36,8 @@ CMFS = [0.2, 0.325, 0.5]
 INTERIOR_MODULES = ['spider', 'aragog']
 OUTGAS_MODULES = ['calliope', 'atmodeller']
 VOLATILE_CONFIGS = {
-    'dry': {'H_ppmw': 0.0, 'CH_ratio': 0.0, 'NH_ratio': 0.0, 'SH_ratio': 0.0},
+    # "dry" uses minimal volatiles (1 ppmw H) to avoid division by zero in CALLIOPE
+    'dry': {'H_ppmw': 1.0, 'CH_ratio': 0.0, 'NH_ratio': 0.0, 'SH_ratio': 0.0},
     '1EO_H2O': {'H_ppmw': 709.0, 'CH_ratio': 0.0, 'NH_ratio': 0.0, 'SH_ratio': 0.0},
     '500ppmw_H': {'H_ppmw': 500.0, 'CH_ratio': 0.5, 'NH_ratio': 0.1, 'SH_ratio': 0.5},
 }
@@ -54,13 +55,13 @@ def generate_config(base_toml, output_dir, mass, cmf, interior, outgas, volatile
     import tomllib
 
     name = case_name(mass, cmf, interior, outgas, volatiles)
-    output_path = Path(output_dir) / name
 
     with open(base_toml, 'rb') as f:
         cfg = tomllib.load(f)
 
     # Override parameters
-    cfg['params']['out']['path'] = str(output_path)
+    # PROTEUS prepends 'output/' to the path, so use relative path without it
+    cfg['params']['out']['path'] = f'validation/{name}'
     cfg['struct']['mass_tot'] = mass
     cfg['struct']['zalmoxis']['coremassfrac'] = cmf
     cfg['interior']['module'] = interior
@@ -123,8 +124,8 @@ def run_case_local(case, resume=False):
     config = case['config']
     name = case['name']
 
-    # Check if already completed
-    output_dir = Path('output') / name
+    # Check if already completed (PROTEUS writes to output/validation/<name>/)
+    output_dir = Path('output') / 'validation' / name
     helpfile = output_dir / 'runtime_helpfile.csv'
     if resume and helpfile.is_file():
         lines = sum(1 for _ in open(helpfile))
