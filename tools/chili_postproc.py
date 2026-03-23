@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from proteus import Proteus
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.config import read_config_object
 from proteus.interior.spider import read_jsons
@@ -70,10 +71,17 @@ def postproc_once(simdir: str, plot: bool = True):
     copyfile(config_path, os.path.join(chilidir, f'evolution-proteus-{name}-config.in'))
 
     # Read config
-    print('    write CSV file for scalars')
     config = read_config_object(config_path)
 
+    # Extract data from simulation
+    print('    extract data from simulation')
+    handler = Proteus(config_path=config_path)
+    if handler is None:
+        raise RuntimeError(f'Cannot create Proteus handler for {simdir}')
+    handler.extract_archives()
+
     # Write to expected format
+    print('    write CSV file for scalars')
     # https://github.com/projectcuisines/chili/blob/main/intercomparison/README.md#evolution-models
     out = {}
     #     required columns
@@ -268,6 +276,10 @@ def postproc_once(simdir: str, plot: bool = True):
         fig.suptitle(f'CHILI-MIP, PROTEUS simulation of {name}', fontsize=16)
         fig.tight_layout()
         fig.savefig(os.path.join(chilidir, 'chili.pdf'), dpi=300, bbox_inches='tight')
+
+    # Create archive
+    print('    create archive of output data')
+    handler.create_archives()
 
     return name
 
