@@ -2340,7 +2340,6 @@ def test_download_eos_static_delegates(mock_seager):
     mock_seager.assert_called_once()
 
 
-
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
 @patch('proteus.utils.data.GetFWLData')
