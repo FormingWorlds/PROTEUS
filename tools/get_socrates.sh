@@ -35,7 +35,7 @@ else
 fi
 
 # Disable SSH (uncomment to allow SSH clone of SOCRATES)
-use_ssh=false
+# use_ssh=false
 
 # Download
 root=$(dirname $(realpath $0))
