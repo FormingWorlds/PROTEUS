@@ -303,16 +303,20 @@ PROTEUS uses precomputed solidus and liquidus curves from laboratory experiments
 
 ### Available parametrizations
 
-- Andrault et al. (2011)
-- Monteux et al. (2016)
-- Wolf & Bower (2018)
-- Katz et al. (2003)
-- Lin et al. (2024)
-- Hirschmann (2000)
-- Stixrude (2014)
-- Fei et al. (2021)
-- Belonoshko et al. (2005)
-- Fiquet et al. (2010)
+Available melting_dir options
+-----------------------------
+The following directory names are supported and should be used exactly as written in the TOML configuration in the 'melting_dir' parameter:
+
+- andrault_2011
+- monteux_2016
+- wolf_bower_2018
+- katz_2003
+- fei_2021
+- belonoshko_2005
+- fiquet_2010
+- hirschmann_2000
+- stixrude_2014
+- lin_2024
 
 ### Generate melting curves
 
