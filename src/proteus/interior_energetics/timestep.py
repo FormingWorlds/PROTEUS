@@ -270,7 +270,7 @@ def next_step(
         # branches set dt from explicit config values and should not be
         # floored to dt.minimum before the retry scaling is applied).
         dtminimum = config.params.dt.minimum  # absolute
-        dtminimum += config.params.dt.minimum_rel * hf_row['Time'] * 0.01  # allow small steps
+        dtminimum += config.params.dt.minimum_rel * hf_row['Time']  # allow small steps
         dtswitch = max(dtswitch, dtminimum)
 
     # Apply the SPIDER-retry step scale factor uniformly to all branches.
