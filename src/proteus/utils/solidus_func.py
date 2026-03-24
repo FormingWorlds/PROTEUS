@@ -544,6 +544,7 @@ SCALE_S_LIQUID_EOS = 4.805046659407042e6
 SCALE_P_OUT = 1_000_000_000.0
 SCALE_S_OUT = 4_824_266.84604467
 
+
 def make_entropy_header(n_rows: int) -> str:
     """
     Build the SPIDER-style header for a pressure-entropy table.
@@ -568,12 +569,14 @@ def make_entropy_header(n_rows: int) -> str:
         ]
     )
 
+
 def get_default_spider_dir() -> Path:
     """
     Return the default SPIDER directory relative to this module.
     """
     script_dir = Path(__file__).resolve().parent
     return (script_dir / '../../../SPIDER').resolve()
+
 
 def validate_entropy_export_arrays(
     P_common: np.ndarray,
@@ -620,9 +623,8 @@ def validate_entropy_export_arrays(
         and np.all(np.isfinite(S_sol_common))
         and np.all(np.isfinite(S_liq_common))
     ):
-        raise ValueError(
-            f'{model_name}: non-finite values found in common P-S export arrays.'
-        )
+        raise ValueError(f'{model_name}: non-finite values found in common P-S export arrays.')
+
 
 def resolve_eos_paths(spider_dir: Path | str | None = None) -> tuple[Path, Path]:
     """
@@ -849,6 +851,7 @@ def save_entropy_table_with_header(path: Path, P_gpa: np.ndarray, S_jpk: np.ndar
     header = make_entropy_header(len(P_gpa))
     np.savetxt(path, data, fmt='%.18e %.18e', header=header, comments='')
 
+
 # =============================================================================
 # MAIN EXPORTER
 # =============================================================================
@@ -876,8 +879,8 @@ def export_model_curves(
     save_PT_table(out_dir / 'solidus_P-T.dat', P_sol, T_sol)
     save_PT_table(out_dir / 'liquidus_P-T.dat', P_liq, T_liq)
 
-    S_axis_solid, T_of_SP_solid, S_axis_liquid, T_of_SP_liquid = (
-        load_default_eos_interpolators(spider_dir=spider_dir)
+    S_axis_solid, T_of_SP_solid, S_axis_liquid, T_of_SP_liquid = load_default_eos_interpolators(
+        spider_dir=spider_dir
     )
 
     S_sol = invert_to_entropy_along_profile(P_sol, T_sol, S_axis_solid, T_of_SP_solid)
