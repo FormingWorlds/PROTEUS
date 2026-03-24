@@ -682,19 +682,40 @@ class AragogRunner:
 
         # Per-layer melt fraction and mass for proper liquid/solid mass (fixes #273)
         phi_s = np.array(aragog_output.melt_fraction_staggered[:, -1])  # per layer
-        mass_s_arr = aragog_output.mass_staggered[:, -1]  # per layer [kg]
+        r_scale = self.aragog_solver.parameters.scalings.radius
+        rho_scale = self.aragog_solver.parameters.scalings.density
+        mass_scale = rho_scale * r_scale**3  # kg
+        mass_s_arr = aragog_output.mass_staggered[:, -1] * mass_scale  # [kg]
 
         output['M_mantle_liquid'] = float(np.sum(phi_s * mass_s_arr))
         output['M_mantle_solid'] = float(output['M_mantle'] - output['M_mantle_liquid'])
 
-        # Volumetric melt fraction: volume-weighted average (fixes #537)
-        # Use mesh cell volumes (physical units)
-        r_scale = self.aragog_solver.parameters.scalings.radius
-        volumes_phys = (
-            aragog_output.evaluator.mesh.basic.volume.flatten() * r_scale**3
+        # Volumetric melt fraction: approximate from mass-weighted Phi
+        # and average density ratio. For a proper per-layer calculation,
+        # need consistent physical-unit extraction from Aragog's scaled
+        # mesh, which is error-prone. Use the simple scaling:
+        #   Phi_vol ≈ Phi_mass * (rho_bulk / rho_liquid)
+        # This is exact for a uniform composition and a good approximation
+        # for the radially varying case.
+        P_stag = aragog_output.evaluator.mesh.staggered_pressure[:, -1]
+        mixed_eval = aragog_output.evaluator.phases.mixed
+        mixed_eval.set_pressure(P_stag)
+        # Liquid and solid densities at the liquidus/solidus (scaled)
+        rho_liq_scaled = np.array(mixed_eval._liquid.density()).flatten()
+        rho_sol_scaled = np.array(mixed_eval._solid.density()).flatten()
+        # Bulk density from volume additivity: 1/rho = phi/rho_l + (1-phi)/rho_s
+        rho_bulk_scaled = 1.0 / (
+            phi_s.flatten() / np.where(rho_liq_scaled > 0, rho_liq_scaled, 1.0)
+            + (1 - phi_s.flatten()) / np.where(rho_sol_scaled > 0, rho_sol_scaled, 1.0)
         )
+        # Volume fraction of melt per node: porosity = (rho_s - rho_bulk) / (rho_s - rho_l)
+        drho = rho_sol_scaled - rho_liq_scaled
+        safe_drho = np.where(np.abs(drho) > 1e-10, drho, 1.0)
+        porosity = np.clip((rho_sol_scaled - rho_bulk_scaled) / safe_drho, 0, 1)
+        # Volume-weighted average porosity (= true melt volume fraction)
+        vol_scaled = aragog_output.evaluator.mesh.basic.volume.flatten()
         output['Phi_global_vol'] = float(
-            np.sum(phi_s.flatten() * volumes_phys) / np.sum(volumes_phys)
+            np.sum(porosity * vol_scaled) / np.sum(vol_scaled)
         )
         output['T_pot'] = float(output['T_magma'])
 
