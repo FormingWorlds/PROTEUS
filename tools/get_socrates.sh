@@ -26,6 +26,15 @@ if [ -n "$RAD_DIR" ]; then
     sleep 5
 fi
 
+portable_realpath() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath "$1"
+    else
+        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
+    fi
+}
+
+
 # Check SSH access to GitHub
 ssh -T git@github.com
 if [ $? -eq 1 ]; then
@@ -38,10 +47,19 @@ fi
 # use_ssh=false
 
 # Download
-root=$(dirname $(realpath $0))
-root=$(realpath "$root/..")
-socpath="$root/socrates"
+root=$(dirname $(portable_realpath $0))
+root=$(portable_realpath "$root/..")
+
+if [ -n "$1" ]; then
+    socpath="$(portable_realpath "$1")"
+else
+    socpath="$root/socrates"
+fi
 rm -rf "$socpath"
+
+set -euo pipefail
+
+
 if [ "$use_ssh" = true ]; then
     git clone git@github.com:FormingWorlds/SOCRATES.git "$socpath"
 else
