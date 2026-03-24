@@ -189,7 +189,41 @@ cd ../
 
 Use this `get_agni.sh` script to keep AGNI and its data files up to date. AGNI must be available at `./AGNI/` inside your PROTEUS folder (either a symbolic link or the true location).
 
-## 9. Install submodules as editable
+## 9. Install FastChem (equilibrium chemistry solver)
+
+FastChem is used by AGNI for equilibrium chemistry calculations. It must be compiled from source inside the AGNI directory:
+
+!!! note
+    This step requires `cmake` and `make`. Check with:
+
+    ```console
+    which cmake
+    which make
+    ```
+
+```console
+cd AGNI
+bash src/get_fastchem.sh
+cd ../
+```
+
+The environment variable `FC_DIR` must always point to the FastChem installation path. Add it to your shell config file:
+
+=== "bash"
+
+    ```console
+    echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.bashrc"
+    source "$HOME/.bashrc"
+    ```
+
+=== "zsh"
+
+    ```console
+    echo "export FC_DIR=$PWD/AGNI/fastchem/" >> "$HOME/.zshrc"
+    source "$HOME/.zshrc"
+    ```
+
+## 10. Install submodules as editable
 
 Clone and install each submodule in editable mode.
 
@@ -259,7 +293,7 @@ bash src/get_zalmoxis.sh
 cd ../
 ```
 
-## 10. Setup PETSc (numerical computing library)
+## 11. Setup PETSc (numerical computing library)
 
 !!! warning
     PETSc requires Python <= 3.12. Make sure your active environment uses a compatible version.
@@ -281,25 +315,25 @@ cd ../
 
     The script automatically detects Apple Silicon vs Intel, uses Homebrew's MPI, and applies the necessary compiler/linker workarounds. If you encounter issues, see [Troubleshooting: PETSc on Apple Silicon](troubleshooting.md#petsc-compilation-fails-on-apple-silicon).
 
-## 11. Setup SPIDER (interior evolution model)
+## 12. Setup SPIDER (interior evolution model)
 
 ```console
 ./tools/get_spider.sh
 ```
 
-## 12. Install PROTEUS framework
+## 13. Install PROTEUS framework
 
 ```console
 python -m pip install -e ".[develop]"
 ```
 
-## 13. Enable pre-commit hooks
+## 14. Enable pre-commit hooks
 
 ```console
 pre-commit install -f
 ```
 
-## 14. Done!
+## 15. Done!
 
 Any remaining dependencies will be downloaded when the model is first run.
 
