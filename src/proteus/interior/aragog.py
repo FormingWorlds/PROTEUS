@@ -82,6 +82,13 @@ class AragogRunner:
         else:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
+                # Preserve the evolved T field across equilibration resets.
+                # Without this, reset() re-runs get_adiabat() from the config
+                # IC, losing the entropy-table correction from iteration 0.
+                Tfield = interior_o.aragog_solver.temperature_staggered[:, -1]
+                Tfield = Tfield / interior_o.aragog_solver.parameters.scalings.temperature
+                interior_o.aragog_solver.parameters.initial_condition.initial_condition = 2
+                interior_o.aragog_solver.parameters.initial_condition.init_temperature = Tfield
             else:
                 AragogRunner.update_solver(dt, hf_row, interior_o)
             interior_o.aragog_solver.reset()

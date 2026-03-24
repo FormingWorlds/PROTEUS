@@ -658,9 +658,9 @@ def update_structure_from_interior(
     # sampled from center (r=0) to surface (r=R_planet), matching its internal
     # radii. SPIDER only covers the mantle (CMB to surface), so we hold T
     # constant at the CMB value for the core region.
-    R_cmb = float(r_ascending[0])
-    R_surf = float(r_ascending[-1])
-    T_cmb = float(T_ascending[0])
+    R_cmb = float(np.squeeze(r_ascending[0]))
+    R_surf = float(np.squeeze(r_ascending[-1]))
+    T_cmb = float(np.squeeze(T_ascending[0]))
 
     r_full = np.linspace(0.0, R_surf, num_layers)
     T_full = np.empty(num_layers)
