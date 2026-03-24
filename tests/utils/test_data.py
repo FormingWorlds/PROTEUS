@@ -2338,3 +2338,31 @@ def test_download_eos_static_delegates(mock_seager):
 
     download_eos_static()
     mock_seager.assert_called_once()
+
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_melting_curves_skips_when_canonical_files_exist(
+    mock_getfwl, mock_download, tmp_path
+):
+    """download_melting_curves should return early when all canonical files already exist."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.data import download_melting_curves
+
+    mock_getfwl.return_value = tmp_path
+
+    mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    mc_dir.mkdir(parents=True, exist_ok=True)
+
+    for name in ['solidus_P-T.dat', 'liquidus_P-T.dat', 'solidus_P-S.dat', 'liquidus_P-S.dat']:
+        (mc_dir / name).write_text('dummy\n')
+
+    mock_config = MagicMock()
+    mock_config.interior.melting_dir = 'Wolf_Bower+2018'
+
+    download_melting_curves(mock_config, clean=False)
+
+    mock_download.assert_not_called()
