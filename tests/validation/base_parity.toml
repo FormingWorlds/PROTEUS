@@ -189,7 +189,15 @@ version = "2.0"
     module       = "calliope"
     h2_binodal   = false
 
+[atmos_chem]
+    module = "none"
+
+[observe]
+    synthesis = "none"
+
 [delivery]
+    initial  = "elements"
+    module   = "none"
     [delivery.elements]
         H_ppmw   = 500.0
         CH_ratio = 0.5
