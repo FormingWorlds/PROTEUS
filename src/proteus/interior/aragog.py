@@ -127,7 +127,9 @@ class AragogRunner:
             # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature=hf_row['T_eqm'],
             # used if inner_boundary_condition = 1
-            core_heat_capacity=880,
+            core_heat_capacity=config.struct.core_heatcap,
+            # core T_avg/T_cmb ratio from adiabatic gradient (Bower+2018 Table 2)
+            tfac_core_avg=1.147,
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
             param_utbl=config.interior.aragog.param_utbl,
             param_utbl_const=config.interior.aragog.param_utbl_const,
