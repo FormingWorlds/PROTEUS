@@ -40,12 +40,14 @@ def ncdf_flag_to_bool(var) -> bool:
         raise ValueError(f'Could not parse NetCDF atmos flag variable \n {var}')
 
 
-def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
+def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool = True) -> dict:
     """Read data from atmosphere NetCDF output file.
 
-    Automatically reads pressure (p), temperature (t), radius (z) arrays with
-    cell-centre (N) and cell-edge (N+1) values interleaved into a single combined array of
-    length (2*N+1).
+    All variables in SI units, same as NetCDF file content.
+
+    Automatically reads pressure (p), temperature (t), radius (z) arrays.
+    If `combine_edges` is True, cell-centre (N) and cell-edge (N+1) values
+    are interleaved into a single combined array of length (2*N+1).
 
     Extra keys can be read-in using the extra_keys parameter. These will be stored with
     the same dimensions as in the NetCDF file.
@@ -54,9 +56,10 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
     ----------
         nc_fpath : str
             Path to NetCDF file.
-
         extra_keys : list
             List of extra keys (strings) to read from the file.
+        combine_edges : bool
+            Whether to combine cell-centre and cell-edge values into a single array.
 
     Returns
     ----------
@@ -96,22 +99,32 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
 
     # read pressure, temperature, height data into dictionary values
     out = {}
-    out['p'] = [pl[0]]
-    out['t'] = [tl[0]]
-    out['z'] = [zl[0]]
-    out['r'] = [rl[0]]
-    for i in range(nlev_c):
-        out['p'].append(p[i])
-        out['p'].append(pl[i + 1])
+    if combine_edges:
+        out['p'] = [pl[0]]
+        out['t'] = [tl[0]]
+        out['z'] = [zl[0]]
+        out['r'] = [rl[0]]
+        for i in range(nlev_c):
+            out['p'].append(p[i])
+            out['p'].append(pl[i + 1])
 
-        out['t'].append(t[i])
-        out['t'].append(tl[i + 1])
+            out['t'].append(t[i])
+            out['t'].append(tl[i + 1])
 
-        out['z'].append(z[i])
-        out['z'].append(zl[i + 1])
+            out['z'].append(z[i])
+            out['z'].append(zl[i + 1])
 
-        out['r'].append(r[i])
-        out['r'].append(rl[i + 1])
+            out['r'].append(r[i])
+            out['r'].append(rl[i + 1])
+    else:
+        out['p'] = p
+        out['t'] = t
+        out['z'] = z
+        out['r'] = r
+        out['pl'] = pl
+        out['tmpl'] = tl
+        out['zl'] = zl
+        out['rl'] = rl
 
     # flags
     for fk in ('transparent', 'solved', 'converged'):

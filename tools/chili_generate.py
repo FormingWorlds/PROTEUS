@@ -12,7 +12,7 @@ from glob import glob
 import toml
 
 # Options
-use_scratch = False  # Store output in scratch folder
+use_scratch = True  # Store output in scratch folder
 
 # -----------------------------------------------
 
@@ -46,7 +46,8 @@ for p in ('earth', 'venus'):
     cfg[p] = deepcopy(cfg['base'])
 
     # output
-    cfg[p]['params']['out']['path'] = f'chili_{p}'
+    cfg[p]['params']['out']['path'] = 'scratch/' if use_scratch else ''
+    cfg[p]['params']['out']['path'] += f'chili_{p}/'
 
     # star
     cfg[p]['star']['mass'] = 1.0  # Msun
