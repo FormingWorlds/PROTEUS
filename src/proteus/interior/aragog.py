@@ -528,8 +528,10 @@ class AragogRunner:
             P_basic = solver.evaluator.mesh.basic_pressure[:, -1] * P_scale
             T_stag_aragog = solver.evaluator.initial_condition.temperature * T_scale
 
-            P_surf = float(P_basic[-1])  # surface = last in CMB->surface ordering
-            P_cmb = float(P_basic[0])    # CMB = first
+            # Use 1 bar for surface pressure (Aragog mesh surface_pressure=0
+            # causes log10(0)=NaN in entropy inversion)
+            P_surf = max(float(P_basic[-1]), 1e5)
+            P_cmb = float(P_basic[0])
 
             result = compute_entropy_adiabat(
                 eos_file=paleos_eos_file,
