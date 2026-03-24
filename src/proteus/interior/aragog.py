@@ -232,6 +232,10 @@ class AragogRunner:
 
             mat_dicts = load_zalmoxis_material_dictionaries()
 
+            # Get unified table path (needed for melting curves and fallback)
+            eos_entry = mat_dicts.get(config.struct.zalmoxis.mantle_eos, {})
+            paleos_eos_file = eos_entry.get('eos_file', '')
+
             mass_tot = config.struct.mass_tot or 1.0
             P_max = min(200e9, 50e9 * mass_tot + 100e9)
             LOOK_UP_DIR = Path(outdir) / 'data' / 'aragog_pt'
@@ -262,9 +266,6 @@ class AragogRunner:
             elif not has_2phase:
                 # Fall back to unified table (identical solid/melt files)
                 from zalmoxis.eos_export import generate_aragog_pt_tables
-
-                eos_entry = mat_dicts.get(config.struct.zalmoxis.mantle_eos, {})
-                paleos_eos_file = eos_entry.get('eos_file', '')
 
                 if paleos_eos_file and os.path.isfile(paleos_eos_file):
                     from proteus.interior.zalmoxis import (
