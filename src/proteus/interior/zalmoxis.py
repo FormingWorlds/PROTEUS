@@ -613,6 +613,17 @@ def generate_spider_tables(config: Config, outdir: str):
     mass_tot = config.struct.mass_tot or 1.0
     P_max = min(200e9, 50e9 * mass_tot + 100e9)
 
+    # Check for 2-phase PALEOS tables (separate solid/liquid).
+    # When available, both SPIDER and Aragog use the same phase-specific
+    # entropy values, ensuring identical initial conditions.
+    twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
+    solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
+    liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
+    solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
+    liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+    if solid_eos and liquid_eos:
+        logger.info('Using PALEOS-2phase tables for SPIDER EOS generation')
+
     # Generate phase boundaries
     logger.info('Generating SPIDER P-S phase boundaries from PALEOS...')
     pb_result = generate_spider_phase_boundaries(
@@ -622,6 +633,8 @@ def generate_spider_tables(config: Config, outdir: str):
         P_range=(1e8, P_max),
         n_P=500,
         output_dir=spider_eos_dir,
+        solid_eos_file=solid_eos,
+        liquid_eos_file=liquid_eos,
     )
 
     # Generate full EOS tables
@@ -634,6 +647,8 @@ def generate_spider_tables(config: Config, outdir: str):
         n_P=500,
         n_S=200,
         output_dir=spider_eos_dir,
+        solid_eos_file=solid_eos,
+        liquid_eos_file=liquid_eos,
     )
 
     return {
