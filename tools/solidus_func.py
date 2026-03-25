@@ -55,6 +55,7 @@ References included here
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from pathlib import Path
 
@@ -62,6 +63,7 @@ import numpy as np
 import platformdirs
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
+log = logging.getLogger(__name__)
 # =============================================================================
 # DEFAULT OUTPUT LOCATION
 # =============================================================================
@@ -150,23 +152,28 @@ def print_model_summary(
     S_liq_common: np.ndarray,
 ):
     """
-    Print a compact summary of the exported P-T and P-S ranges for one model.
+    Log a compact summary of the exported P-T and P-S ranges for one model.
     """
     label = DISPLAY_NAMES.get(model_name, model_name)
-    print(f'{label}:')
-    print(
-        f'  P-T solidus   : P_range = {_fmt_range(P_sol)} GPa, T_range = {_fmt_range(T_sol)} K'
+
+    log.info(f"{label}:")
+    log.info(
+        f"  P-T solidus   : P_range = {_fmt_range(P_sol)} GPa, "
+        f"T_range = {_fmt_range(T_sol)} K"
     )
-    print(
-        f'  P-T liquidus  : P_range = {_fmt_range(P_liq)} GPa, T_range = {_fmt_range(T_liq)} K'
+    log.info(
+        f"  P-T liquidus  : P_range = {_fmt_range(P_liq)} GPa, "
+        f"T_range = {_fmt_range(T_liq)} K"
     )
-    print(
-        f'  P-S solidus   : P_range = {_fmt_range(P_common)} GPa, S_range = {_fmt_range(S_sol_common)} J kg^-1 K^-1'
+    log.info(
+        f"  P-S solidus   : P_range = {_fmt_range(P_common)} GPa, "
+        f"S_range = {_fmt_range(S_sol_common)} J kg^-1 K^-1"
     )
-    print(
-        f'  P-S liquidus  : P_range = {_fmt_range(P_common)} GPa, S_range = {_fmt_range(S_liq_common)} J kg^-1 K^-1'
+    log.info(
+        f"  P-S liquidus  : P_range = {_fmt_range(P_common)} GPa, "
+        f"S_range = {_fmt_range(S_liq_common)} J kg^-1 K^-1"
     )
-    print()
+    log.info("")  # blank line for spacing
 
 
 # =============================================================================
@@ -461,10 +468,6 @@ def truncate_to_physical_interval(func):
     return wrapped
 
 
-andrault_2011_cut = truncate_to_physical_interval(andrault_2011)
-monteux_2016_cut = truncate_to_physical_interval(monteux_2016)
-wolf_bower_2018_cut = truncate_to_physical_interval(wolf_bower_2018)
-katz_2003_cut = truncate_to_physical_interval(katz_2003)
 
 
 # =============================================================================
@@ -492,10 +495,10 @@ def get_melting_curves(
     Return solidus and liquidus curves for a given model.
     """
     models = {
-        'andrault_2011': andrault_2011_cut,
-        'monteux_2016': monteux_2016_cut,
-        'wolf_bower_2018': wolf_bower_2018_cut,
-        'katz_2003': katz_2003_cut,
+        'andrault_2011': truncate_to_physical_interval(andrault_2011),
+        'monteux_2016': truncate_to_physical_interval(monteux_2016),
+        'wolf_bower_2018': truncate_to_physical_interval(wolf_bower_2018),
+        'katz_2003': truncate_to_physical_interval(katz_2003),
         'fei_2021': fei_2021,
         'belonoshko_2005': belonoshko_2005,
         'fiquet_2010': fiquet_2010,
@@ -527,25 +530,12 @@ def save_PT_table(path: Path, P_gpa: np.ndarray, T_k: np.ndarray):
     np.savetxt(path, data, fmt='%.18e %.18e', header='pressure temperature', comments='#')
 
 
-# =============================================================================
-# EOS LOOKUP TABLE SETTINGS
-# =============================================================================
 
-nP = 2020
-nS_solid = 125
-nS_liquid = 95
-skip_header = 5
-
-SCALE_P_EOS = 1e9
-SCALE_T_EOS = 1.0
-SCALE_S_SOLID_EOS = 4.82426684604467e6
-SCALE_S_LIQUID_EOS = 4.805046659407042e6
-
-SCALE_P_OUT = 1_000_000_000.0
-SCALE_S_OUT = 4_824_266.84604467
-
-
-def make_entropy_header(n_rows: int) -> str:
+def make_entropy_header(
+    n_rows: int,
+    scale_p_out: float = 1_000_000_000.0,
+    scale_s_out: float = 4_824_266.84604467,
+) -> str:
     """
     Build the SPIDER-style header for a pressure-entropy table.
 
@@ -553,6 +543,10 @@ def make_entropy_header(n_rows: int) -> str:
     ----------
     n_rows : int
         Number of data rows in the file.
+    scale_p_out : float, optional
+        Output pressure scaling factor written to the header.
+    scale_s_out : float, optional
+        Output entropy scaling factor written to the header.
 
     Returns
     -------
@@ -565,17 +559,16 @@ def make_entropy_header(n_rows: int) -> str:
             '# Pressure, Entropy',
             '# column * scaling factor should be SI units',
             '# scaling factors (constant) for each column given on line below',
-            '# 1000000000.0 4824266.84604467',
+            f'# {scale_p_out} {scale_s_out}',
         ]
     )
-
 
 def get_default_spider_dir() -> Path:
     """
     Return the default SPIDER directory relative to this module.
     """
     script_dir = Path(__file__).resolve().parent
-    return (script_dir / '../../../SPIDER').resolve()
+    return (script_dir / '../SPIDER').resolve()
 
 
 def validate_entropy_export_arrays(
@@ -667,16 +660,42 @@ def resolve_eos_paths(spider_dir: Path | str | None = None) -> tuple[Path, Path]
     return eos_solid_path, eos_liquid_path
 
 
-def load_eos_T_of_SP(eos_path: Path, nS: int, scale_S_axis: float):
+def load_eos_T_of_SP(
+    eos_path: Path,
+    nS: int,
+    scale_S_axis: float,
+    *,
+    nP: int = 2020,
+    skip_header: int = 5,
+    scale_p_eos: float = 1e9,
+    scale_t_eos: float = 1.0,
+):
     r"""
     Load an EOS lookup table and build an interpolator for T(S, P).
+
+    Parameters
+    ----------
+    eos_path : Path
+        Path to the EOS lookup table.
+    nS : int
+        Number of entropy points in the EOS table.
+    scale_S_axis : float
+        Entropy scaling factor applied to the EOS entropy axis.
+    nP : int, optional
+        Number of pressure points in the EOS table.
+    skip_header : int, optional
+        Number of header lines to skip when reading the table.
+    scale_p_eos : float, optional
+        Pressure scaling factor used in the EOS table.
+    scale_t_eos : float, optional
+        Temperature scaling factor used in the EOS table.
     """
     raw = np.genfromtxt(eos_path, skip_header=skip_header)
     resh = raw.reshape((nS, nP, 3))
 
-    P_axis_GPa = resh[0, :, 0] * SCALE_P_EOS / 1e9
+    P_axis_GPa = resh[0, :, 0] * scale_p_eos / 1e9
     S_axis = resh[:, 0, 1] * scale_S_axis
-    T_grid = resh[:, :, 2] * SCALE_T_EOS
+    T_grid = resh[:, :, 2] * scale_t_eos
 
     T_interp = RegularGridInterpolator(
         (S_axis, P_axis_GPa),
@@ -686,9 +705,17 @@ def load_eos_T_of_SP(eos_path: Path, nS: int, scale_S_axis: float):
     )
     return S_axis, P_axis_GPa, T_interp
 
-
 def load_default_eos_interpolators(
     spider_dir: Path | str | None = None,
+    *,
+    nP: int = 2020,
+    nS_solid: int = 125,
+    nS_liquid: int = 95,
+    skip_header: int = 5,
+    scale_p_eos: float = 1e9,
+    scale_t_eos: float = 1.0,
+    scale_s_solid_eos: float = 4.82426684604467e6,
+    scale_s_liquid_eos: float = 4.805046659407042e6,
 ) -> tuple[np.ndarray, RegularGridInterpolator, np.ndarray, RegularGridInterpolator]:
     """
     Load the default solid and liquid EOS interpolators.
@@ -698,6 +725,22 @@ def load_default_eos_interpolators(
     spider_dir : Path | str | None, optional
         Root directory of the SPIDER repository. If None, a path relative to
         this module is used.
+    nP : int, optional
+        Number of pressure points in each EOS table.
+    nS_solid : int, optional
+        Number of entropy points in the solid EOS table.
+    nS_liquid : int, optional
+        Number of entropy points in the liquid EOS table.
+    skip_header : int, optional
+        Number of header lines to skip in the EOS tables.
+    scale_p_eos : float, optional
+        Pressure scaling factor used in the EOS tables.
+    scale_t_eos : float, optional
+        Temperature scaling factor used in the EOS tables.
+    scale_s_solid_eos : float, optional
+        Entropy scaling factor for the solid EOS table.
+    scale_s_liquid_eos : float, optional
+        Entropy scaling factor for the liquid EOS table.
 
     Returns
     -------
@@ -711,14 +754,25 @@ def load_default_eos_interpolators(
     eos_solid_path, eos_liquid_path = resolve_eos_paths(spider_dir=spider_dir)
 
     S_axis_solid, _, T_of_SP_solid = load_eos_T_of_SP(
-        eos_solid_path, nS_solid, SCALE_S_SOLID_EOS
+        eos_solid_path,
+        nS_solid,
+        scale_s_solid_eos,
+        nP=nP,
+        skip_header=skip_header,
+        scale_p_eos=scale_p_eos,
+        scale_t_eos=scale_t_eos,
     )
     S_axis_liquid, _, T_of_SP_liquid = load_eos_T_of_SP(
-        eos_liquid_path, nS_liquid, SCALE_S_LIQUID_EOS
+        eos_liquid_path,
+        nS_liquid,
+        scale_s_liquid_eos,
+        nP=nP,
+        skip_header=skip_header,
+        scale_p_eos=scale_p_eos,
+        scale_t_eos=scale_t_eos,
     )
 
     return S_axis_solid, T_of_SP_solid, S_axis_liquid, T_of_SP_liquid
-
 
 def invert_to_entropy_along_profile(
     P_gpa: np.ndarray, T_k: np.ndarray, S_axis: np.ndarray, T_of_SP
@@ -842,15 +896,38 @@ def build_common_entropy_grid(
     return P_common[mask], S_sol_common[mask], S_liq_common[mask]
 
 
-def save_entropy_table_with_header(path: Path, P_gpa: np.ndarray, S_jpk: np.ndarray):
+def save_entropy_table_with_header(
+    path: Path,
+    P_gpa: np.ndarray,
+    S_jpk: np.ndarray,
+    *,
+    scale_p_out: float = 1_000_000_000.0,
+    scale_s_out: float = 4_824_266.84604467,
+):
     r"""
     Save a pressure-entropy table in SPIDER-style scaled format.
+
+    Parameters
+    ----------
+    path : Path
+        Output file path.
+    P_gpa : np.ndarray
+        Pressure array in GPa.
+    S_jpk : np.ndarray
+        Entropy array in J kg^-1 K^-1.
+    scale_p_out : float, optional
+        Pressure scaling factor used in the written file.
+    scale_s_out : float, optional
+        Entropy scaling factor used in the written file.
     """
     P_pa = P_gpa * 1e9
-    data = np.column_stack([P_pa / SCALE_P_OUT, S_jpk / SCALE_S_OUT])
-    header = make_entropy_header(len(P_gpa))
+    data = np.column_stack([P_pa / scale_p_out, S_jpk / scale_s_out])
+    header = make_entropy_header(
+        len(P_gpa),
+        scale_p_out=scale_p_out,
+        scale_s_out=scale_s_out,
+    )
     np.savetxt(path, data, fmt='%.18e %.18e', header=header, comments='')
-
 
 # =============================================================================
 # MAIN EXPORTER
@@ -919,9 +996,7 @@ def export_model_curves(
         S_sol_common,
         S_liq_common,
     )
-
-    print(f'  Saved to      : {out_dir.resolve()}')
-    print()
+    log.info(f"Saved to: {out_dir.resolve()}")
 
     return {
         'P_sol': P_sol,
@@ -1188,6 +1263,12 @@ def export_one_model_from_cli(model_name: str, args):
 
 
 def main():
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(message)s",
+    )
+
     args = parse_args()
 
     shortcut_model = resolve_requested_model(args)
@@ -1207,9 +1288,16 @@ def main():
     selected_models = [m for m in [explicit_model, shortcut_model] if m is not None]
 
     if len(selected_models) == 0:
+        models_list = "\n".join(
+            f"  - --{key:<20} ({name})"
+            for key, name in sorted(DISPLAY_NAMES.items())
+        )
+
         raise SystemExit(
-            'Error: no model selected. Use --all or choose one model with '
-            '--model or a shortcut like --katz2003.'
+            "Error: no model selected.\n\n"
+            "Use --all or choose one model with --model or a shortcut like --katz_2003.\n\n"
+            "Available models:\n"
+            f"{models_list}"
         )
 
     if len(selected_models) > 1:
