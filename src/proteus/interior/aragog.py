@@ -268,8 +268,8 @@ class AragogRunner:
                     solid_eos_file=solid_eos,
                     liquid_eos_file=liquid_eos,
                     P_range=(1e5, P_max),
-                    n_P=500,
-                    n_T=500,
+                    n_P=200,
+                    n_T=200,
                     output_dir=LOOK_UP_DIR,
                 )
             elif not has_2phase:
