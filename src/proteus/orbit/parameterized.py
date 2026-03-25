@@ -107,7 +107,7 @@ def high_eccentricity_migration(t: float, ecc: float, sma_init: float, sma_final
         return sma_init, ecc
     else:
         e_mig = np.sqrt(1.0 - sma_final / sma_init)
-        sma = sma_final / (1.0 + e_mig ** 2 * np.exp( -2 * (t - time_migration) / tau_mig))
+        sma = sma_final / (1.0 - e_mig ** 2 * np.exp( -2 * (t - time_migration) / tau_mig))
         ecc = np.sqrt(max(0, 1.0 - sma_final / sma))
         return sma, ecc
 
