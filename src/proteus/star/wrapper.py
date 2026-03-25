@@ -538,7 +538,7 @@ def update_instellation(hf_row: dict, config: Config, stellar_track=None):
                     age_star, 'Leuv'
                 )
                 Fxuv_SI = (
-                    Lxuv_cgs / (4 * np.pi * (hf_row['separation'] * 1e2) ** 2) * ergcm2stoWm2
+                    Lxuv_cgs / (4 * np.pi * (hf_row['semimajorax'] * 1e2) ** 2 * np.sqrt(1 - hf_row['eccentricity'] ** 2)) * ergcm2stoWm2
                 )
 
             case 'baraffe':
