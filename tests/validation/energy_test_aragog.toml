@@ -166,10 +166,10 @@ version = "2.0"
         event_triggering         = true
         mass_coordinates         = true
 
-# No outgassing (zero volatile inventory)
+# Calliope outgassing with minimal volatiles (required module, cannot be "none")
 [outgas]
     fO2_shift_IW = 0
-    module       = "none"
+    module       = "calliope"
     h2_binodal   = false
 
 [atmos_chem]
@@ -178,7 +178,7 @@ version = "2.0"
 [observe]
     synthesis = "none"
 
-# Zero volatile inventory: ensures desiccation and no atmospheric mass.
+# Minimal volatile inventory (tiny H2O, triggers early desiccation)
 [delivery]
     initial    = "elements"
     module     = "none"
@@ -188,7 +188,7 @@ version = "2.0"
     radio_Th   = 0.0
 
     [delivery.elements]
-        H_ppmw   = 0.0
+        H_ppmw   = 1.0
         CH_ratio = 0.0
         NH_ratio = 0.0
         SH_ratio = 0.0
