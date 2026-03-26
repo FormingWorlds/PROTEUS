@@ -85,7 +85,7 @@ version = "2.0"
     # No structure updates during run (fixed mesh)
     update_interval       = 0
     update_dtmagma_frac   = 0.99
-    update_dphi_abs       = 1.0
+    update_dphi_abs       = 0.99
 
     [struct.zalmoxis]
         core_eos                   = "PALEOS:iron"
