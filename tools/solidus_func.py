@@ -63,6 +63,8 @@ import numpy as np
 import platformdirs
 from scipy.interpolate import RegularGridInterpolator, interp1d
 
+from proteus.utils.coupler import get_proteus_directories
+
 log = logging.getLogger(__name__)
 # =============================================================================
 # DEFAULT OUTPUT LOCATION
@@ -563,12 +565,10 @@ def make_entropy_header(
         ]
     )
 
+
 def get_default_spider_dir() -> Path:
-    """
-    Return the default SPIDER directory relative to this module.
-    """
-    script_dir = Path(__file__).resolve().parent
-    return (script_dir / '../SPIDER').resolve()
+    dirs = get_proteus_directories()
+    return Path(dirs["spider"])
 
 
 def validate_entropy_export_arrays(
