@@ -41,15 +41,15 @@ Notes
 
 References included here
 ------------------------
-- Andrault et al. (2011), DOI: 10.1016/j.epsl.2011.02.006
-- Monteux et al. (2016), DOI: 10.1016/j.epsl.2016.05.010
-- Lin et al. (2024), DOI: 10.1038/s41561-024-01495-1
-- Hirschmann (2000), DOI: 10.1029/2000GC000070
-- Katz et al. (2003), DOI: 10.1029/2002GC000433
-- Stixrude (2014), DOI: 10.1098/rsta.2013.0076
-- Fei et al. (2021), DOI: 10.1038/s41467-021-21170-y
-- Belonoshko et al. (2005), DOI: 10.1103/PhysRevLett.94.195701
-- Fiquet et al. (2010), DOI: 10.1126/science.1192448
+- Andrault et al. (2011), DOI: https://doi.org/10.1016/j.epsl.2011.02.006
+- Monteux et al. (2016), DOI: https://doi.org/10.1016/j.epsl.2016.05.010
+- Lin et al. (2024), DOI: https://doi.org/10.1038/s41561-024-01495-1
+- Hirschmann (2000), DOI: https://doi.org/10.1029/2000GC000070
+- Katz et al. (2003), DOI: https://doi.org/10.1029/2002GC000433
+- Stixrude (2014), DOI: https://doi.org/10.1098/rsta.2013.0076
+- Fei et al. (2021), DOI: https://doi.org/10.1038/s41467-021-21170-y
+- Belonoshko et al. (2005), DOI: https://doi.org/10.1103/PhysRevLett.94.195701
+- Fiquet et al. (2010), DOI: https://doi.org/10.1126/science.1192448
 """
 
 from __future__ import annotations
