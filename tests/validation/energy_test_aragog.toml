@@ -166,22 +166,11 @@ version = "2.0"
         event_triggering         = true
         mass_coordinates         = true
 
-# CALLIOPE with zero volatiles: desiccation triggers immediately, outgassing skipped.
+# No outgassing (zero volatile inventory)
 [outgas]
     fO2_shift_IW = 0
-    module       = "calliope"
+    module       = "none"
     h2_binodal   = false
-
-    [outgas.calliope]
-        include_H2O = true
-        include_CO2 = true
-        include_N2  = false
-        include_S2  = false
-        include_SO2 = false
-        include_H2  = false
-        include_CH4 = false
-        include_CO  = false
-        T_floor     = 800.0
 
 [atmos_chem]
     module = "none"
