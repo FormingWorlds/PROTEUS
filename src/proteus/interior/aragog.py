@@ -674,13 +674,17 @@ class AragogRunner:
     def get_output(self, hf_row: dict, interior_o: Interior_t):
         aragog_output: Output = Output(self.aragog_solver)
         aragog_output.state.update(aragog_output.solution.y, aragog_output.solution.t)
+        # F_int = F_atm by energy conservation: the prescribed surface BC
+        # determines the actual energy loss rate. The interior transport flux
+        # at near-surface nodes can differ from F_atm (thermal boundary layer),
+        # but the energy leaving the planet is F_atm.
         output = {
             'M_mantle': aragog_output.mantle_mass,
             'T_magma': aragog_output.solution_top_temperature,
             'Phi_global': aragog_output.melt_fraction_global,
             'RF_depth': aragog_output.rheological_front,
-            'F_int': aragog_output.total_heat_flux_basic[-3, -1],
-        }  # node near top
+            'F_int': hf_row['F_atm'],
+        }
 
         # Per-layer melt fraction and mass for proper liquid/solid mass (fixes #273)
         phi_s = np.array(aragog_output.melt_fraction_staggered[:, -1])  # per layer
