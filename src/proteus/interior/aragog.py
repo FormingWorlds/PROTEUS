@@ -213,13 +213,25 @@ class AragogRunner:
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 
+        # When initial_thermal_state = 'self_consistent', Zalmoxis computes
+        # T_surface from accretion + differentiation energy (White+Li 2025)
+        # and passes it via hf_row. This overrides the config ini_tmagma.
+        ini_tmagma = config.interior.aragog.ini_tmagma
+        T_surface_computed = hf_row.get('T_surface_initial', 0)
+        if T_surface_computed and T_surface_computed > 0:
+            logger.info(
+                'Overriding ini_tmagma with self-consistent thermal state: '
+                '%.0f K -> %.0f K', ini_tmagma, T_surface_computed,
+            )
+            ini_tmagma = T_surface_computed
+
         initial_condition = _InitialConditionParameters(
             # 1 = linear profile
             # 2 = user-defined profile
             # 3 = adiabatic profile
             initial_condition=initial_condition_temperature_profile,
             # initial top temperature (K)
-            surface_temperature=config.interior.aragog.ini_tmagma,
+            surface_temperature=ini_tmagma,
             basal_temperature=config.interior.aragog.basal_temperature,
             init_file=init_file_temperature_profile,
         )

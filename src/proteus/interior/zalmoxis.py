@@ -852,6 +852,35 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
         f'Overall Convergence Status: {converged} with Pressure: {converged_pressure}, Density: {converged_density}, Mass: {converged_mass}'
     )
 
+    # Self-consistent initial thermal state (White+Li 2025, Boujibar+2020)
+    if config.interior.initial_thermal_state == 'self_consistent':
+        from zalmoxis.energetics import initial_thermal_state
+
+        cmf = config.struct.zalmoxis.coremassfrac
+        thermal = initial_thermal_state(
+            model_results,
+            core_mass_fraction=cmf,
+            T_radiative_eq=config.interior.thermal_state_T_eq,
+            f_accretion=config.interior.thermal_state_f_accretion,
+            f_differentiation=config.interior.thermal_state_f_differentiation,
+            C_iron=config.interior.thermal_state_C_iron,
+            C_silicate=config.interior.thermal_state_C_silicate,
+        )
+        hf_row['T_cmb_initial'] = thermal['T_cmb']
+        hf_row['T_surface_initial'] = thermal['T_surface']
+        hf_row['U_grav_diff'] = thermal['U_differentiated']
+        hf_row['U_grav_undiff'] = thermal['U_undifferentiated']
+        hf_row['DeltaT_accretion'] = thermal['Delta_T_accretion']
+        hf_row['DeltaT_differentiation'] = thermal['Delta_T_differentiation']
+        hf_row['core_state_initial'] = thermal['core_state']
+        logger.info(
+            'Initial thermal state (White+Li 2025): T_CMB=%.0f K, '
+            'T_surface=%.0f K, DeltaT_G=%.0f K, DeltaT_D=%.0f K, core=%s',
+            thermal['T_cmb'], thermal['T_surface'],
+            thermal['Delta_T_accretion'], thermal['Delta_T_differentiation'],
+            thermal['core_state'],
+        )
+
     # Update the surface radius, interior radius, and mass in the hf_row
     hf_row['R_int'] = planet_radius
     hf_row['M_int'] = mass_enclosed[-1]

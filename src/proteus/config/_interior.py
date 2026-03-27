@@ -252,6 +252,21 @@ class Interior:
         Centre of rheological transition in terms of melt fraction
     rheo_phi_wid: float
         Width of rheological transition in terms of melt fraction
+    initial_thermal_state: str
+        Mode for setting the initial surface temperature.
+        'fixed': use ini_tmagma from solver config (default).
+        'self_consistent': compute from accretion + differentiation energy
+        budget following White+Li (2025). Requires struct.module = 'zalmoxis'.
+    thermal_state_T_eq: float
+        Radiative equilibrium temperature [K] for self-consistent mode.
+    thermal_state_f_accretion: float
+        Heat retention efficiency for accretion energy [0-1].
+    thermal_state_f_differentiation: float
+        Heat retention efficiency for differentiation energy [0-1].
+    thermal_state_C_iron: float
+        Specific heat capacity of iron [J/kg/K].
+    thermal_state_C_silicate: float
+        Specific heat capacity of silicate [J/kg/K].
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -288,3 +303,17 @@ class Interior:
     F_initial: float = field(default=0)
     rheo_phi_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
     rheo_phi_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
+
+    # Initial thermal state mode:
+    #   'fixed': use ini_tmagma from the solver config (current default)
+    #   'self_consistent': compute from accretion + differentiation energy
+    #                      budget (White+Li 2025). Requires struct.module = 'zalmoxis'.
+    initial_thermal_state: str = field(
+        default='fixed', validator=in_(('fixed', 'self_consistent'))
+    )
+    # Parameters for self-consistent thermal state (ignored when 'fixed'):
+    thermal_state_T_eq: float = field(default=255.0, validator=gt(0))
+    thermal_state_f_accretion: float = field(default=0.04, validator=ge(0))
+    thermal_state_f_differentiation: float = field(default=0.50, validator=ge(0))
+    thermal_state_C_iron: float = field(default=840.0, validator=gt(0))
+    thermal_state_C_silicate: float = field(default=1200.0, validator=gt(0))
