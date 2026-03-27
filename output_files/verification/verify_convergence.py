@@ -33,6 +33,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import curve_fit
 
+plt.rcParams.update({
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'legend.fontsize': 9,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'lines.linewidth': 1.5,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+})
+
 # ============================================================================
 # Physical parameters (all SI)
 # ============================================================================
@@ -62,7 +76,7 @@ SCALING_TIME = 31557600000.0  # 1000 yr in seconds
 # Integration end time
 END_TIME_YR = 5.0e9  # 5 Gyr
 
-ARAGOG_DIR = "/Users/timlichtenberg/git/PROTEUS/aragog"
+ARAGOG_DIR = "/Users/timlichtenberg/git/aragog"
 OUTPUT_DIR = "/Users/timlichtenberg/git/PROTEUS/output_files/verification"
 
 # Analytical steady-state coefficients
@@ -636,11 +650,11 @@ def plot_results(temporal_results, uniform_results, mass_results, mass_coord_fai
     tols = np.array([r["tol"] for r in temporal_results])
     rel_errs = np.array([r["rel_err"] for r in temporal_results])
 
-    ax1.loglog(tols, rel_errs, "ko-", markersize=8, linewidth=2, label="Fitted tau error")
+    ax1.loglog(tols, rel_errs, "o-", color="#2166ac", markersize=8, linewidth=2, label="Fitted tau error")
 
     # Reference 1:1 line
     tol_range = np.array([tols.min() / 3, tols.max() * 3])
-    ax1.loglog(tol_range, tol_range, "r--", linewidth=1.5, alpha=0.7,
+    ax1.loglog(tol_range, tol_range, "--", color="#b2182b", linewidth=1.5, alpha=0.7,
                label="1:1 (error = tolerance)")
 
     # Indicate spatial discretization floor
@@ -668,17 +682,17 @@ def plot_results(temporal_results, uniform_results, mass_results, mass_coord_fai
     Ns_uni = np.array([r["N"] for r in uniform_results], dtype=float)
     L2_uni = np.array([r["L2"] for r in uniform_results])
 
-    ax2.loglog(Ns_uni, L2_uni, "bo-", markersize=8, linewidth=2, label="Uniform spacing")
+    ax2.loglog(Ns_uni, L2_uni, "o-", color="#2166ac", markersize=8, linewidth=2, label="Uniform spacing")
 
     if not mass_coord_failed and len(mass_results) > 0:
         Ns_mass = np.array([r["N"] for r in mass_results], dtype=float)
         L2_mass = np.array([r["L2"] for r in mass_results])
-        ax2.loglog(Ns_mass, L2_mass, "rs--", markersize=8, linewidth=2, label="Mass-coord spacing")
+        ax2.loglog(Ns_mass, L2_mass, "s--", color="#b2182b", markersize=8, linewidth=2, label="Mass-coord spacing")
 
     # Reference N^{-2} slope
     N_range = np.array([Ns_uni[0], Ns_uni[-1]])
     ref_L2 = L2_uni[0] * (N_range / N_range[0])**(-2)
-    ax2.loglog(N_range, ref_L2, "k:", linewidth=1.5, alpha=0.6,
+    ax2.loglog(N_range, ref_L2, ":", color="#636363", linewidth=1.5, alpha=0.6,
                label=r"$\propto N^{-2}$ (2nd order)")
 
     ax2.set_xlabel("Number of basic nodes $N$")

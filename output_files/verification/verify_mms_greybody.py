@@ -27,10 +27,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import constants as spc
 
+plt.rcParams.update({
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'legend.fontsize': 9,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'lines.linewidth': 1.5,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+})
+
 # ===================================================================
 # Shared utilities
 # ===================================================================
-ARAGOG_ROOT = "/Users/timlichtenberg/git/PROTEUS/aragog"
+ARAGOG_ROOT = "/Users/timlichtenberg/git/aragog"
 OUT_DIR = "/Users/timlichtenberg/git/PROTEUS/output_files/verification"
 
 
@@ -279,11 +293,13 @@ def run_test5():
 
     ax_top.plot(r_fine_km, analytical_T_mms(r_fine), "k-", lw=1.5,
                 label="Analytical (conduction + heating)")
-    ax_top.plot(r_km, T_num, "ro", ms=3, alpha=0.7,
+    ax_top.plot(r_km, T_num, "o", color="#b2182b", ms=3, alpha=0.7,
                 label=f"Aragog (N={N_ref})")
     ax_top.set_ylabel("Temperature [K]")
     ax_top.legend(loc="upper right")
     ax_top.set_title("Steady-state conduction with uniform heating")
+    ax_top.text(0.02, 0.95, "(a)", transform=ax_top.transAxes,
+                fontsize=13, fontweight="bold", va="top")
     ax_top.text(
         0.02, 0.05,
         f"$a$ = {R_INNER/1e3:.0f} km, $b$ = {R_OUTER/1e3:.0f} km\n"
@@ -295,10 +311,12 @@ def run_test5():
     )
 
     residual = T_num - T_exact
-    ax_bot.plot(r_km, residual, "b.-", ms=3, lw=0.8)
-    ax_bot.axhline(0, color="k", lw=0.5, ls="--")
+    ax_bot.plot(r_km, residual, ".-", color="#2166ac", ms=3, lw=0.8)
+    ax_bot.axhline(0, color="#636363", lw=0.5, ls="--")
     ax_bot.set_xlabel("Radius [km]")
     ax_bot.set_ylabel("$T_{\\mathrm{num}} - T_{\\mathrm{exact}}$ [K]")
+    ax_bot.text(0.02, 0.95, "(b)", transform=ax_bot.transAxes,
+                fontsize=13, fontweight="bold", va="top")
     ax_bot.text(
         0.02, 0.90,
         f"$L_2$ = {L2_ref:.2e} K\n$L_\\infty$ = {Linf_ref:.2e} K",
@@ -365,11 +383,11 @@ def run_test5():
 
     # Convergence plot (added to mms figure as second page)
     fig2, ax2 = plt.subplots(figsize=(6, 5))
-    ax2.loglog(N_arr, L2_arr, "bo-", ms=7, lw=1.5, label="$L_2$ error")
-    ax2.loglog(N_arr, Linf_arr, "rs--", ms=7, lw=1.5, label="$L_\\infty$ error")
+    ax2.loglog(N_arr, L2_arr, "o-", color="#2166ac", ms=7, lw=1.5, label="$L_2$ error")
+    ax2.loglog(N_arr, Linf_arr, "s--", color="#b2182b", ms=7, lw=1.5, label="$L_\\infty$ error")
     N_slope = np.array([N_arr[0], N_arr[-1]])
     ref_L2 = L2_arr[0] * (N_slope / N_slope[0]) ** (-2)
-    ax2.loglog(N_slope, ref_L2, "k:", lw=1.5, alpha=0.6,
+    ax2.loglog(N_slope, ref_L2, ":", color="#636363", lw=1.5, alpha=0.6,
                label="$\\propto N^{-2}$ (2nd order)")
     ax2.set_xlabel("Number of basic nodes $N$")
     ax2.set_ylabel("Temperature error [K]")
@@ -643,8 +661,8 @@ def run_test6():
 
     # Panel (a): T_surf(t) for heated case
     ax = axes[0]
-    ax.plot(t_yr, T_surf_series, "b-", lw=1.2, label="Aragog $T_{\\mathrm{surf}}(t)$")
-    ax.axhline(T_SURF_ANALYTICAL, color="r", ls="--", lw=1.5,
+    ax.plot(t_yr, T_surf_series, "-", color="#2166ac", lw=1.2, label="Aragog $T_{\\mathrm{surf}}(t)$")
+    ax.axhline(T_SURF_ANALYTICAL, color="#b2182b", ls="--", lw=1.5,
                label=f"Analytical: {T_SURF_ANALYTICAL:.1f} K")
     ax.set_xlabel("Time [yr]")
     ax.set_ylabel("Surface temperature [K]")
@@ -661,8 +679,8 @@ def run_test6():
     # Panel (b): T(r) at steady state
     ax = axes[1]
     r_km = r_stag / 1e3
-    ax.plot(r_km, T_final_profile, "b-", lw=1.5, label="Final $T(r)$")
-    ax.axhline(T_SURF_ANALYTICAL, color="r", ls="--", lw=1, alpha=0.7,
+    ax.plot(r_km, T_final_profile, "-", color="#2166ac", lw=1.5, label="Final $T(r)$")
+    ax.axhline(T_SURF_ANALYTICAL, color="#b2182b", ls="--", lw=1, alpha=0.7,
                label="Analytical $T_{\\mathrm{surf}}$")
     ax.set_xlabel("Radius [km]")
     ax.set_ylabel("Temperature [K]")
@@ -671,9 +689,9 @@ def run_test6():
 
     # Panel (c): Power balance
     ax = axes[2]
-    ax.plot(t_yr, P_out_series, "b-", lw=1.2,
+    ax.plot(t_yr, P_out_series, "-", color="#2166ac", lw=1.2,
             label="$\\epsilon\\sigma T_s^4 A_{\\mathrm{surf}}$")
-    ax.axhline(P_in_total, color="r", ls="--", lw=1.5,
+    ax.axhline(P_in_total, color="#b2182b", ls="--", lw=1.5,
                label=f"$\\rho H V$ = {P_in_total:.2e} W")
     ax.set_xlabel("Time [yr]")
     ax.set_ylabel("Power [W]")

@@ -38,6 +38,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import curve_fit
 
+plt.rcParams.update({
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'legend.fontsize': 9,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'lines.linewidth': 1.5,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+})
+
 # ============================================================================
 # Physical parameters (all SI)
 # ============================================================================
@@ -66,7 +80,7 @@ SCALING_TIME = 31557600000.0  # 1000 yr in seconds
 # Integration end time: ~1.5 e-folding times
 END_TIME_YR = 5.0e9  # 5 Gyr in years
 
-ARAGOG_DIR = "/Users/timlichtenberg/git/PROTEUS/aragog"
+ARAGOG_DIR = "/Users/timlichtenberg/git/aragog"
 OUTPUT_DIR = "/Users/timlichtenberg/git/PROTEUS/output_files/verification"
 
 
@@ -422,8 +436,10 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
 
     # --- Top panel: max|dT| decay ---
     ax = axes[0]
+    ax.text(0.02, 0.97, "(a)", transform=ax.transAxes,
+            fontsize=13, fontweight="bold", va="top")
     times_sec = times_yr * sec_per_yr
-    ax.semilogy(times_yr / 1e9, max_dT, "k.", markersize=3, label="Aragog")
+    ax.semilogy(times_yr / 1e9, max_dT, ".", color="#636363", markersize=3, label="Aragog")
 
     # Analytical curve
     t_fine = np.linspace(0, times_sec[-1], 500)
@@ -431,7 +447,7 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
     ax.semilogy(
         t_fine / (sec_per_yr * 1e9),
         dT_analytical,
-        "r-",
+        "-", color="#b2182b",
         linewidth=1.5,
         label=f"Analytical (tau = {TAU_ANALYTICAL_YR/1e9:.3f} Gyr)",
     )
@@ -441,7 +457,7 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
     ax.semilogy(
         t_fine / (sec_per_yr * 1e9),
         dT_fitted,
-        "b--",
+        "--", color="#2166ac",
         linewidth=1.5,
         label=f"Fitted (tau = {tau_fit_yr/1e9:.3f} Gyr)",
     )
@@ -466,6 +482,8 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
 
     # --- Bottom panel: normalized spatial profiles at selected times ---
     ax = axes[1]
+    ax.text(0.02, 0.97, "(b)", transform=ax.transAxes,
+            fontsize=13, fontweight="bold", va="top")
     r_km = (r_stag - A_INNER) / 1e3  # depth from inner boundary in km
 
     # Select ~6 times spread across the run, ensuring distinct labels
@@ -538,13 +556,14 @@ def plot_convergence(results):
     errs = np.array([r[2] for r in results])
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.loglog(ns, errs, "ko-", markersize=8, linewidth=2, label="Measured")
+    ax.loglog(ns, errs, "o-", color="#2166ac", markersize=8, linewidth=2, label="Measured")
 
     # Overlay second-order reference line (BDF is second order)
     if len(ns) >= 2:
         # h ~ 1/N, so error ~ N^{-2} for second-order spatial discretization
         ref_errs = errs[0] * (ns[0] / ns) ** 2
-        ax.loglog(ns, ref_errs, "r--", linewidth=1.5, label=r"$\propto N^{-2}$ (reference)")
+        ax.loglog(ns, ref_errs, "--", color="#b2182b", linewidth=1.5,
+                  label=r"$\propto N^{-2}$ (reference)")
 
     ax.set_xlabel("Number of basic nodes N")
     ax.set_ylabel("Relative error in decay timescale")

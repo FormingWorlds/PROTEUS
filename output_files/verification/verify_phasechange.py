@@ -35,8 +35,22 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+plt.rcParams.update({
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'legend.fontsize': 9,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'lines.linewidth': 1.5,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+})
+
 # Must chdir to aragog root so relative data paths resolve
-os.chdir("/Users/timlichtenberg/git/PROTEUS/aragog")
+os.chdir("/Users/timlichtenberg/git/aragog")
 
 from aragog.solver import Solver  # noqa: E402
 
@@ -180,8 +194,9 @@ def extract_timeseries(solver):
     n_stag = sol.y.shape[0]
     n_times = sol.y.shape[1]
 
+    SEC_PER_YR = 31557600.0  # Julian year
     t_yr = sol.t * sc.time_years
-    t_s = sol.t * sc.time  # time in seconds
+    t_s = sol.t * SEC_PER_YR  # time in seconds (sol.t is in years)
 
     # Mesh quantities (dimensional)
     r_basic = solver.evaluator.mesh.basic.radii.ravel() * sc.radius

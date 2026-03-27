@@ -28,8 +28,22 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+plt.rcParams.update({
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'legend.fontsize': 9,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'lines.linewidth': 1.5,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+})
+
 # Must chdir to aragog root for data file paths in configs
-os.chdir("/Users/timlichtenberg/git/PROTEUS/aragog")
+os.chdir("/Users/timlichtenberg/git/aragog")
 
 from aragog.solver import Solver  # noqa: E402
 

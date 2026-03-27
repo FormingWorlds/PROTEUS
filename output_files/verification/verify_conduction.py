@@ -34,6 +34,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+plt.rcParams.update({
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'legend.fontsize': 9,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'lines.linewidth': 1.5,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+})
+
 # ---------------------------------------------------------------------------
 # Physical and geometric parameters (must match the .cfg files)
 # ---------------------------------------------------------------------------
@@ -164,7 +178,7 @@ def run_aragog(cfg_path):
         Final time in years.
     """
     # Aragog expects to find data/ relative to the aragog submodule root
-    aragog_root = "/Users/timlichtenberg/git/PROTEUS/aragog"
+    aragog_root = "/Users/timlichtenberg/git/aragog"
     orig_dir = os.getcwd()
     os.chdir(aragog_root)
 
@@ -270,11 +284,13 @@ def main():
     # Top panel: T(r)
     ax_top.plot(r_fine_km, analytical_T(r_fine), "k-", lw=1.5,
                 label="Analytical: $T = A/r + B$")
-    ax_top.plot(r_km, T_ref, "ro", ms=3, alpha=0.7,
+    ax_top.plot(r_km, T_ref, "o", color="#b2182b", ms=3, alpha=0.7,
                 label=f"Aragog (N={N_ref})")
     ax_top.set_ylabel("Temperature [K]")
     ax_top.legend(loc="upper right")
     ax_top.set_title("Steady-state conduction in a spherical shell")
+    ax_top.text(0.02, 0.95, "(a)", transform=ax_top.transAxes,
+                fontsize=13, fontweight="bold", va="top")
     ax_top.text(0.02, 0.05,
                 f"$a$ = {R_INNER/1e3:.0f} km, $b$ = {R_OUTER/1e3:.0f} km\n"
                 f"$T_a$ = {T_INNER:.0f} K, $T_b$ = {T_OUTER:.0f} K\n"
@@ -285,10 +301,12 @@ def main():
 
     # Bottom panel: residual
     residual = T_ref - T_exact_ref
-    ax_bot.plot(r_km, residual, "b.-", ms=3, lw=0.8)
-    ax_bot.axhline(0, color="k", lw=0.5, ls="--")
+    ax_bot.plot(r_km, residual, ".-", color="#2166ac", ms=3, lw=0.8)
+    ax_bot.axhline(0, color="#636363", lw=0.5, ls="--")
     ax_bot.set_xlabel("Radius [km]")
     ax_bot.set_ylabel("$T_{\\mathrm{num}} - T_{\\mathrm{exact}}$ [K]")
+    ax_bot.text(0.02, 0.95, "(b)", transform=ax_bot.transAxes,
+                fontsize=13, fontweight="bold", va="top")
     ax_bot.text(0.02, 0.90,
                 f"$L_2$ = {L2_ref:.2e} K\n$L_\\infty$ = {Linf_ref:.2e} K",
                 transform=ax_bot.transAxes, fontsize=9,
@@ -350,13 +368,14 @@ def main():
     # ------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(6, 5))
 
-    ax.loglog(N_arr, L2_arr, "bo-", ms=7, lw=1.5, label="$L_2$ error")
-    ax.loglog(N_arr, Linf_arr, "rs--", ms=7, lw=1.5, label="$L_\\infty$ error")
+    ax.loglog(N_arr, L2_arr, "o-", color="#2166ac", ms=7, lw=1.5, label="$L_2$ error")
+    ax.loglog(N_arr, Linf_arr, "s--", color="#b2182b", ms=7, lw=1.5, label="$L_\\infty$ error")
 
     # Reference slope: 2nd order
     N_slope = np.array([N_arr[0], N_arr[-1]])
     ref_L2 = L2_arr[0] * (N_slope / N_slope[0])**(-2)
-    ax.loglog(N_slope, ref_L2, "k:", lw=1.5, alpha=0.6, label="$\\propto N^{-2}$ (2nd order)")
+    ax.loglog(N_slope, ref_L2, ":", color="#636363", lw=1.5, alpha=0.6,
+              label="$\\propto N^{-2}$ (2nd order)")
 
     ax.set_xlabel("Number of basic nodes $N$")
     ax.set_ylabel("Temperature error [K]")

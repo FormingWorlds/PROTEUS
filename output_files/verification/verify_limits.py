@@ -16,10 +16,25 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-ARAGOG_DIR = "/Users/timlichtenberg/git/PROTEUS/aragog"
+ARAGOG_DIR = "/Users/timlichtenberg/git/aragog"
 OUT_DIR = "/Users/timlichtenberg/git/PROTEUS/output_files/verification"
 
 os.chdir(ARAGOG_DIR)
+
+plt.rcParams.update({
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'legend.fontsize': 9,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+    'figure.dpi': 150,
+    'savefig.dpi': 300,
+    'lines.linewidth': 1.5,
+    'axes.grid': True,
+    'grid.alpha': 0.3,
+})
+
 from aragog.solver import Solver  # noqa: E402
 
 
