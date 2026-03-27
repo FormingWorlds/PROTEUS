@@ -304,6 +304,17 @@ class Proteus:
             self.hf_row['F_int'] = self.hf_row['F_atm']
             self.hf_row['T_eqm'] = 2000.0
 
+            # Validate cross-config constraints
+            if (
+                self.config.interior.initial_thermal_state == 'self_consistent'
+                and self.config.struct.module != 'zalmoxis'
+            ):
+                raise ValueError(
+                    "initial_thermal_state='self_consistent' requires "
+                    "struct.module='zalmoxis' (needs Zalmoxis structure for "
+                    "gravitational energy computation)"
+                )
+
             # Solve interior structure
             solve_structure(
                 self.directories,
