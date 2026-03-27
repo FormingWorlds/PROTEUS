@@ -240,10 +240,9 @@ class Interior:
     grain_size: float
         Crystal settling grain size [m].
     F_initial: float
-        Initial heat flux guess [W m-2]. When <= 0, computed automatically
-        as sigma * T_magma^4 (Stefan-Boltzmann flux at the initial surface
-        temperature). This physically motivated default adapts to any
-        initial condition and ensures parity between SPIDER and Aragog.
+        Initial heat flux guess [W m-2]. When < 0 (default), computed
+        automatically as sigma * T_magma^4. Set to a positive value to
+        prescribe a specific initial flux. Set to 0 for zero initial flux.
     radiogenic_heat: bool
         Include radiogenic heat production?
     tidal_heat: bool
@@ -300,7 +299,7 @@ class Interior:
     dummy: InteriorDummy = field(factory=InteriorDummy, validator=valid_interiordummy)
 
     grain_size: float = field(default=0.1, validator=gt(0))
-    F_initial: float = field(default=0)
+    F_initial: float = field(default=-1)
     rheo_phi_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
     rheo_phi_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
 
