@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import platformdirs
 from scipy.interpolate import interp1d
-from zalmoxis.zalmoxis import main
+from zalmoxis.solver import main
 
 from proteus.config import Config
 from proteus.utils.constants import (
@@ -723,7 +723,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     input_data_dir = os.path.join(outdir, 'data')
 
     if config.struct.global_miscibility:
-        from zalmoxis.zalmoxis import solve_miscible_interior
+        from zalmoxis.solver import solve_miscible_interior
 
         # Build H2 mass targets from current volatile inventories
         h2_mass_targets = {}
