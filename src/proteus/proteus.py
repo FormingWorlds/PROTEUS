@@ -580,7 +580,10 @@ class Proteus:
                 # Fractional crystallization with compositional zonation requires
                 # explicit tracking of the solid composition field, which is beyond
                 # the current solver capabilities. See Boujibar+2020 for discussion.
-                if not self.crystallized:
+                if (
+                    self.config.params.stop.solid.freeze_volatiles
+                    and not self.crystallized
+                ):
                     if self.hf_row.get('Phi_global', 1.0) <= self.config.params.stop.solid.phi_crit:
                         self.crystallized = True
                         log.info(

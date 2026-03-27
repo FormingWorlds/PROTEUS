@@ -173,13 +173,21 @@ class StopSolid:
     Attributes
     ----------
     enabled: bool
-        Enable criteria if True.
+        Enable termination at solidification if True.
     phi_crit: float
-        Model will terminate when global melt fraction is less than this value [dimensionless].
+        Model will terminate (if enabled) or freeze volatiles (if
+        freeze_volatiles) when global melt fraction drops below this value.
+    freeze_volatiles: bool
+        When True, outgassing stops at crystallization (Phi_global < phi_crit)
+        but the simulation continues. Dissolved volatiles are trapped in the
+        solid mantle and preserved in the helpfile. The atmosphere retains
+        its current composition. When False, outgassing continues regardless
+        of melt fraction. Default True.
     """
 
     phi_crit: float = field(default=0.01, validator=(gt(0), lt(1)))
     enabled: bool = field(default=True)
+    freeze_volatiles: bool = field(default=True)
 
 
 @define
