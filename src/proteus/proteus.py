@@ -89,6 +89,27 @@ class Proteus:
         self.last_struct_Tmagma = np.inf
         self.last_struct_Phi = np.inf
 
+    def _get_initial_tmagma(self) -> float:
+        """Get the initial surface temperature from the solver config.
+
+        Returns
+        -------
+        float
+            Initial magma ocean surface temperature [K].
+        """
+        mod = self.config.interior.module
+        if mod == 'aragog':
+            T = self.config.interior.aragog.ini_tmagma
+        elif mod == 'spider':
+            # SPIDER uses ini_entropy, not ini_tmagma. Use a representative
+            # value based on typical magma ocean temperatures.
+            T = 3000.0
+        elif mod == 'dummy':
+            T = self.config.interior.dummy.ini_tmagma
+        else:
+            T = 3000.0
+        return float(T) if T and T > 0 else 3000.0
+
     def init_directories(self):
         """Initialize directories dictionary"""
         from proteus.utils.coupler import set_directories
@@ -268,8 +289,18 @@ class Proteus:
             self.hf_row['Time'] = 0.0
             self.hf_row['age_star'] = self.config.star.age_ini * 1e9
 
-            # Initial guess for flux
-            self.hf_row['F_atm'] = self.config.interior.F_initial
+            # Initial guess for flux.
+            # When F_initial <= 0, compute from Stefan-Boltzmann: sigma * T_magma^4.
+            # This is physically motivated (blackbody radiation from the surface)
+            # and adapts automatically to the initial temperature. Both SPIDER and
+            # Aragog receive the same value, ensuring parity in initial conditions.
+            F_init = self.config.interior.F_initial
+            if F_init <= 0:
+                from scipy.constants import Stefan_Boltzmann
+                T_ini = self._get_initial_tmagma()
+                F_init = Stefan_Boltzmann * T_ini**4
+                log.info('F_initial from sigma*T^4: T_magma=%.0f K -> F=%.2e W/m^2', T_ini, F_init)
+            self.hf_row['F_atm'] = F_init
             self.hf_row['F_int'] = self.hf_row['F_atm']
             self.hf_row['T_eqm'] = 2000.0
 
