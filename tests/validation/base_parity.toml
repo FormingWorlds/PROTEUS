@@ -83,7 +83,7 @@ version = "2.0"
     equilibrate_max_iter = 10
     equilibrate_tol      = 0.02
 
-    update_interval       = 1e5
+    update_interval       = 10
     update_dtmagma_frac   = 0.03
     update_dphi_abs       = 0.05
     mesh_max_shift        = 0.05
@@ -153,7 +153,7 @@ version = "2.0"
     radiogenic_heat = true
     tidal_heat      = false
     grain_size      = 0.1
-    F_initial       = 1e5
+    F_initial       = -1   # auto: sigma * T_magma^4
     rheo_phi_loc    = 0.4
     rheo_phi_wid    = 0.15
 
