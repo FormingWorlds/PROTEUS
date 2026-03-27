@@ -371,8 +371,7 @@ def solve_structure(
                 # Zalmoxis computes its own radius; disable orbital feedback.
                 # This is a known config mutation (saved in _orig_orbit_module
                 # for diagnostics but not restored during the run).
-                if not hasattr(config, '_orig_orbit_module'):
-                    config._orig_orbit_module = config.orbit.module
+                # Disable orbital feedback during Zalmoxis structure solve.
                 config.orbit.module = 'dummy'
                 if config.params.stop.solid.phi_crit < 0.01:
                     log.warning(
