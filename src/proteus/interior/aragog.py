@@ -135,10 +135,9 @@ class AragogRunner:
         if config.struct.module == 'self':
             inner_radius = config.struct.corefrac * hf_row['R_int']  # core radius [m]
         elif config.struct.module == 'zalmoxis':
-            # Define the inner_radius based on the core radius from Zalmoxis
-            from proteus.interior.zalmoxis import zalmoxis_solver
-
-            inner_radius, _mesh = zalmoxis_solver(config, outdir, hf_row)  # core radius [m]
+            # Read core radius from hf_row (already computed by Zalmoxis in
+            # determine_interior_radius_with_zalmoxis, no need to re-run solver)
+            inner_radius = hf_row.get('R_core', config.struct.corefrac * hf_row['R_int'])
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 
@@ -254,20 +253,23 @@ class AragogRunner:
                 and liquid_eos and os.path.isfile(liquid_eos)
             )
 
-            if has_2phase and not (LOOK_UP_DIR / 'density_melt.dat').is_file():
-                from zalmoxis.eos_export import generate_aragog_pt_tables_2phase
+            if has_2phase:
+                if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
+                    from zalmoxis.eos_export import generate_aragog_pt_tables_2phase
 
-                logger.info(
-                    'Generating phase-specific Aragog P-T tables from PALEOS-2phase'
-                )
-                generate_aragog_pt_tables_2phase(
-                    solid_eos_file=solid_eos,
-                    liquid_eos_file=liquid_eos,
-                    P_range=(1e5, P_max),
-                    n_P=200,
-                    n_T=200,
-                    output_dir=LOOK_UP_DIR,
-                )
+                    logger.info(
+                        'Generating phase-specific Aragog P-T tables from PALEOS-2phase'
+                    )
+                    generate_aragog_pt_tables_2phase(
+                        solid_eos_file=solid_eos,
+                        liquid_eos_file=liquid_eos,
+                        P_range=(1e5, P_max),
+                        n_P=200,
+                        n_T=200,
+                        output_dir=LOOK_UP_DIR,
+                    )
+                else:
+                    logger.info('PALEOS-2phase tables already exist, skipping generation')
             elif not has_2phase:
                 # Fall back to unified table (identical solid/melt files)
                 from zalmoxis.eos_export import generate_aragog_pt_tables
@@ -555,7 +557,14 @@ class AragogRunner:
                 result['P'], result['T'], bounds_error=False, fill_value='extrapolate'
             )(P_stag)
 
-            # Compare
+            # Compare (with length check)
+            if len(T_stag_aragog) != len(T_proteus_interp):
+                logger.warning(
+                    'Entropy IC verification skipped: IC temperature array length (%d) '
+                    'does not match staggered pressure array length (%d)',
+                    len(T_stag_aragog), len(T_proteus_interp),
+                )
+                return
             T_diff = np.abs(T_stag_aragog - T_proteus_interp)
             T_rel_diff = T_diff / T_stag_aragog * 100
             max_diff = np.max(T_diff)

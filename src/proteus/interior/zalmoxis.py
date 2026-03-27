@@ -110,14 +110,22 @@ def build_volatile_profile(hf_row: dict, mantle_eos: str):
         # Mass fraction in solid phase
         w_s = kg_sol / M_sol if M_sol > 0 else 0.0
 
-        # Clamp to physical range: volatile mass fraction in silicate melt
-        # should not exceed ~50% (would imply more volatile than silicate).
-        w_liquid[eos_name] = min(w_l, 0.5)
-        w_solid[eos_name] = min(w_s, 0.5)
+        w_liquid[eos_name] = w_l
+        w_solid[eos_name] = w_s
         has_nonzero = True
 
     if not has_nonzero:
         return None
+
+    # Normalize: total volatile fraction in each phase must not exceed 0.95
+    # (at least 5% silicate). Clamp proportionally if sum exceeds the limit.
+    for w_dict in (w_liquid, w_solid):
+        total = sum(w_dict.values())
+        max_volatile_frac = 0.95
+        if total > max_volatile_frac:
+            scale = max_volatile_frac / total
+            for k in w_dict:
+                w_dict[k] *= scale
 
     logger.info(
         'Built VolatileProfile: liquid=%s, solid=%s',
@@ -443,18 +451,9 @@ def scale_temperature_profile_for_aragog(
     # Create new evenly spaced radial positions for Aragog
     radii_to_interpolate = np.linspace(mantle_radii[0], mantle_radii[-1], mesh_grid_size)
 
-    # Interpolate the temperature profile onto the new radial positions
-    scaled_temperature_profile = np.interp(
-        radii_to_interpolate, mantle_radii, mantle_temperature_profile
-    )
-
-    # Create a cubic spline interpolation function
-    cubic_interp_func = interp1d(mantle_radii, mantle_temperature_profile, kind='cubic')
-
-    # Interpolate the temperature profile onto the new radial positions
-    scaled_temperature_profile = cubic_interp_func(radii_to_interpolate)
-
-    return scaled_temperature_profile
+    # Cubic interpolation onto the Aragog radial mesh
+    cubic_interp = interp1d(mantle_radii, mantle_temperature_profile, kind='cubic')
+    return cubic_interp(radii_to_interpolate)
 
 
 def write_spider_mesh_file(
@@ -581,12 +580,22 @@ def generate_spider_tables(config: Config, outdir: str):
     mat_dicts = load_zalmoxis_material_dictionaries()
     eos_entry = mat_dicts.get(mantle_eos)
 
-    # Only generate for PALEOS unified format
+    # Only generate for PALEOS unified format. PALEOS-2phase entries
+    # are nested dicts (core/melted_mantle/solid_mantle) without a top-level
+    # 'format' key; they require separate table generation via
+    # generate_aragog_pt_tables_2phase, not this SPIDER path.
     if eos_entry is None or eos_entry.get('format') != 'paleos_unified':
-        logger.info(
-            'Mantle EOS %s is not PALEOS unified; using pre-existing SPIDER tables.',
-            mantle_eos,
-        )
+        if eos_entry is not None and 'melted_mantle' in eos_entry:
+            logger.info(
+                'Mantle EOS %s is PALEOS-2phase (not unified); '
+                'SPIDER table generation not supported for this format.',
+                mantle_eos,
+            )
+        else:
+            logger.info(
+                'Mantle EOS %s is not PALEOS unified; using pre-existing SPIDER tables.',
+                mantle_eos,
+            )
         return None
 
     eos_file = eos_entry['eos_file']
@@ -630,7 +639,7 @@ def generate_spider_tables(config: Config, outdir: str):
         solidus_func=solidus_func,
         liquidus_func=liquidus_func,
         eos_file=eos_file,
-        P_range=(1e8, P_max),
+        P_range=(1e5, P_max),  # 1 bar lower bound (matches Aragog tables)
         n_P=500,
         output_dir=spider_eos_dir,
         solid_eos_file=solid_eos,
@@ -643,7 +652,7 @@ def generate_spider_tables(config: Config, outdir: str):
         eos_file=eos_file,
         solidus_func=solidus_func,
         liquidus_func=liquidus_func,
-        P_range=(1e8, P_max),
+        P_range=(1e5, P_max),  # 1 bar lower bound (matches Aragog tables)
         n_P=500,
         n_S=200,
         output_dir=spider_eos_dir,

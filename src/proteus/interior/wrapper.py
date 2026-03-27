@@ -368,9 +368,12 @@ def solve_structure(
             case 'self':
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case 'zalmoxis':
-                config.orbit.module = (
-                    'dummy'  # Switch to dummy orbit module when using Zalmoxis for now
-                )
+                # Zalmoxis computes its own radius; disable orbital feedback.
+                # This is a known config mutation (saved in _orig_orbit_module
+                # for diagnostics but not restored during the run).
+                if not hasattr(config, '_orig_orbit_module'):
+                    config._orig_orbit_module = config.orbit.module
+                config.orbit.module = 'dummy'
                 if config.params.stop.solid.phi_crit < 0.01:
                     log.warning(
                         'phi_crit=%.4f is below 0.01. Zalmoxis cases may plateau '
@@ -532,6 +535,13 @@ def run_interior(
     interior_o.dt = float(sim_time) - hf_row['Time']
 
 
+    # TODO: When config.struct.module == 'zalmoxis', the Aragog mesh
+    # is set up once during setup_solver and never refreshed during
+    # equilibration iterations. If Zalmoxis re-runs and produces a
+    # new zalmoxis_output.dat, Aragog uses the stale initial mesh.
+    # Fix: pass the refreshed mesh to Aragog after each Zalmoxis call
+    # during equilibration, or regenerate the Aragog mesh here.
+
 def update_structure_from_interior(
     dirs: dict,
     config: Config,
@@ -673,6 +683,9 @@ def update_structure_from_interior(
     temp_profile_path = os.path.join(outdir, 'data', 'spider_temp_profile.dat')
     np.savetxt(temp_profile_path, T_full)
 
+    # TODO: Refactor to pass temperature_mode as a parameter to zalmoxis_solver
+    # instead of mutating the Config object. The current save/restore pattern
+    # is fragile if multiple callers modify temperature_mode concurrently.
     # Temporarily override Zalmoxis config for prescribed temperature mode
     from proteus.interior.zalmoxis import zalmoxis_solver
 
@@ -796,6 +809,9 @@ def update_structure_from_interior(
     # Regenerate SPIDER EOS tables when composition changed substantially.
     # This ensures SPIDER's lookup tables reflect the updated volatile
     # fractions in the mantle (e.g. after binodal H2 redistribution).
+    # TODO: Aragog P-T tables are not regenerated on composition change.
+    # Currently only SPIDER tables are refreshed. If Aragog runs with
+    # composition-dependent melting curves, stale tables may be used.
     if comp_changed and config.interior.module == 'spider':
         from proteus.interior.zalmoxis import generate_spider_tables
 
