@@ -89,6 +89,9 @@ class AragogRunner:
                 interior_o.aragog_solver.parameters.initial_condition.initial_condition = 2
                 interior_o.aragog_solver.parameters.initial_condition.init_temperature = Tfield
             else:
+                # Refresh mesh with current planet radius and gravity,
+                # matching SPIDER which re-reads R_int and gravity at each call.
+                AragogRunner.update_structure(config, hf_row, interior_o)
                 AragogRunner.update_solver(dt, hf_row, interior_o)
             interior_o.aragog_solver.reset()
 
@@ -629,16 +632,28 @@ class AragogRunner:
 
     @staticmethod
     def update_structure(config: Config, hf_row: dict, interior_o: Interior_t):
-        """This update is needed during the inital phase of Proteus
-        (interior_o.ic == 1) as we sometimes run Aragog multiple times to solve
-        the structure which affects the interior mesh.
+        """Refresh the Aragog mesh with current planet structure.
+
+        Called at every coupling timestep to keep the mesh consistent
+        with the evolving planet radius and gravity, matching SPIDER's
+        behavior of re-reading R_int and gravity at each call.
+
+        For 'self' mode: updates outer/inner radius and gravity directly.
+        For 'zalmoxis' mode: outer radius and gravity are updated from
+        hf_row; inner radius and EOS profile come from Zalmoxis output
+        which is refreshed by the structure solver before the interior step.
         """
+        solver = interior_o.aragog_solver
+        solver.parameters.mesh.outer_radius = hf_row['R_int']
+        solver.parameters.mesh.gravitational_acceleration = hf_row['gravity']
+
         if config.struct.module == 'self':
-            interior_o.aragog_solver.parameters.mesh.outer_radius = hf_row['R_int']
-            interior_o.aragog_solver.parameters.mesh.inner_radius = (
+            solver.parameters.mesh.inner_radius = (
                 config.struct.corefrac * hf_row['R_int']
             )
-            interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = hf_row['gravity']
+        # For Zalmoxis: inner_radius is set at setup_solver from Zalmoxis output.
+        # The EOS file (zalmoxis_output.dat) is refreshed by the Zalmoxis solver
+        # before the interior step, so Aragog.reset() will re-read it.
 
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver
