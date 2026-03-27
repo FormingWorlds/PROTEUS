@@ -27,7 +27,7 @@ from aragog.parser import (
 )
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
+from proteus.utils.constants import radnuc_data
 
 logger = logging.getLogger('fwl.' + __name__)
 
@@ -86,7 +86,6 @@ class AragogRunner:
                 # Without this, reset() re-runs get_adiabat() from the config
                 # IC, losing the entropy-table correction from iteration 0.
                 Tfield = interior_o.aragog_solver.temperature_staggered[:, -1]
-                Tfield = Tfield / interior_o.aragog_solver.parameters.scalings.temperature
                 interior_o.aragog_solver.parameters.initial_condition.initial_condition = 2
                 interior_o.aragog_solver.parameters.initial_condition.init_temperature = Tfield
             else:
@@ -95,12 +94,9 @@ class AragogRunner:
 
     @staticmethod
     def setup_solver(config: Config, hf_row: dict, interior_o: Interior_t, outdir: str):
-        scalings = _ScalingsParameters(
-            radius=R_earth,  # scaling radius [m]
-            temperature=4000,  # scaling temperature [K]
-            density=4000,  # scaling density
-            time=secs_per_year,  # scaling time [sec]
-        )
+        # Non-dimensionalization removed: all quantities in SI, time in years.
+        # ScalingsParameters is vestigial (all scales = 1.0).
+        scalings = _ScalingsParameters()
 
         solver = _SolverParameters(
             start_time=0,
@@ -530,12 +526,9 @@ class AragogRunner:
             # Compute PROTEUS-side entropy-inverted profile
             T_surf = config.interior.aragog.ini_tmagma
             solver = interior_o.aragog_solver
-            T_scale = solver.parameters.scalings.temperature
-            P_scale = solver.parameters.scalings.pressure
-
-            # Get Aragog's basic node pressures and temperatures (in physical units)
-            P_basic = solver.evaluator.mesh.basic_pressure[:, -1] * P_scale
-            T_stag_aragog = solver.evaluator.initial_condition.temperature * T_scale
+            # Get Aragog's basic node pressures and temperatures
+            P_basic = solver.evaluator.mesh.basic_pressure[:, -1]
+            T_stag_aragog = solver.evaluator.initial_condition.temperature
 
             # Use 1 bar for surface pressure (Aragog mesh surface_pressure=0
             # causes log10(0)=NaN in entropy inversion)
@@ -556,7 +549,7 @@ class AragogRunner:
 
             # Interpolate PROTEUS profile onto Aragog's staggered mesh
             from scipy.interpolate import interp1d
-            P_stag = solver.evaluator.mesh.staggered_pressure[:, -1] * P_scale
+            P_stag = solver.evaluator.mesh.staggered_pressure[:, -1]
 
             T_proteus_interp = interp1d(
                 result['P'], result['T'], bounds_error=False, fill_value='extrapolate'
@@ -583,10 +576,7 @@ class AragogRunner:
                     max_diff, max_rel,
                 )
                 # Override Aragog's IC with the PROTEUS-computed profile.
-                # Scale to Aragog's internal units before assignment.
-                solver.evaluator.initial_condition._temperature = (
-                    T_proteus_interp / T_scale
-                )
+                solver.evaluator.initial_condition._temperature = T_proteus_interp
 
             # Save diagnostic data
             diag_dir = Path(outdir) / 'data' / 'entropy_ic_verification'
@@ -606,8 +596,7 @@ class AragogRunner:
     @staticmethod
     def update_solver(dt: float, hf_row: dict, interior_o: Interior_t, output_dir: str = None):
         # Set solver time
-        # hf_row["Time"] is in yr so do not need to scale as long as scaling
-        # time is secs_per_year
+        # hf_row["Time"] is in years, matching Aragog's time coordinate
         interior_o.aragog_solver.parameters.solver.start_time = hf_row['Time']
         interior_o.aragog_solver.parameters.solver.end_time = hf_row['Time'] + dt
 
@@ -617,9 +606,7 @@ class AragogRunner:
         else:  # get it from solver
             Tfield = interior_o.aragog_solver.temperature_staggered[:, -1]
 
-        # Update initial condition
-        Tfield = Tfield / interior_o.aragog_solver.parameters.scalings.temperature
-        # switch to user-defined init
+        # Update initial condition: switch to user-defined init
         (interior_o.aragog_solver.parameters.initial_condition.initial_condition) = 2
         (interior_o.aragog_solver.parameters.initial_condition.init_temperature) = Tfield
 
@@ -629,9 +616,7 @@ class AragogRunner:
         ]
 
         # Update tidal heating within the mantle
-        interior_o.aragog_solver.parameters.energy.tidal_array = (
-            interior_o.tides / interior_o.aragog_solver.parameters.scalings.power_per_mass
-        )
+        interior_o.aragog_solver.parameters.energy.tidal_array = interior_o.tides
 
     @staticmethod
     def update_structure(config: Config, hf_row: dict, interior_o: Interior_t):
@@ -640,18 +625,11 @@ class AragogRunner:
         the structure which affects the interior mesh.
         """
         if config.struct.module == 'self':
-            interior_o.aragog_solver.parameters.mesh.outer_radius = (
-                hf_row['R_int'] / interior_o.aragog_solver.parameters.scalings.radius
-            )
+            interior_o.aragog_solver.parameters.mesh.outer_radius = hf_row['R_int']
             interior_o.aragog_solver.parameters.mesh.inner_radius = (
-                config.struct.corefrac
-                * hf_row['R_int']
-                / interior_o.aragog_solver.parameters.scalings.radius
+                config.struct.corefrac * hf_row['R_int']
             )
-            interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = (
-                hf_row['gravity']
-                / interior_o.aragog_solver.parameters.scalings.gravitational_acceleration
-            )
+            interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = hf_row['gravity']
 
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver
@@ -688,40 +666,32 @@ class AragogRunner:
 
         # Per-layer melt fraction and mass for proper liquid/solid mass (fixes #273)
         phi_s = np.array(aragog_output.melt_fraction_staggered[:, -1])  # per layer
-        r_scale = self.aragog_solver.parameters.scalings.radius
-        rho_scale = self.aragog_solver.parameters.scalings.density
-        mass_scale = rho_scale * r_scale**3  # kg
-        mass_s_arr = aragog_output.mass_staggered[:, -1] * mass_scale  # [kg]
+        mass_s_arr = aragog_output.mass_staggered[:, -1]  # [kg]
 
         output['M_mantle_liquid'] = float(np.sum(phi_s * mass_s_arr))
         output['M_mantle_solid'] = float(output['M_mantle'] - output['M_mantle_liquid'])
 
-        # Volumetric melt fraction: approximate from mass-weighted Phi
-        # and average density ratio. For a proper per-layer calculation,
-        # need consistent physical-unit extraction from Aragog's scaled
-        # mesh, which is error-prone. Use the simple scaling:
-        #   Phi_vol ≈ Phi_mass * (rho_bulk / rho_liquid)
-        # This is exact for a uniform composition and a good approximation
-        # for the radially varying case.
+        # Volumetric melt fraction: computed per-layer from densities.
+        # porosity = (rho_s - rho_bulk) / (rho_s - rho_l), volume-weighted.
         P_stag = aragog_output.evaluator.mesh.staggered_pressure[:, -1]
         mixed_eval = aragog_output.evaluator.phases.mixed
         mixed_eval.set_pressure(P_stag)
-        # Liquid and solid densities at the liquidus/solidus (scaled)
-        rho_liq_scaled = np.array(mixed_eval._liquid.density()).flatten()
-        rho_sol_scaled = np.array(mixed_eval._solid.density()).flatten()
+        # Liquid and solid densities at the liquidus/solidus [kg/m3]
+        rho_liq = np.array(mixed_eval._liquid.density()).flatten()
+        rho_sol = np.array(mixed_eval._solid.density()).flatten()
         # Bulk density from volume additivity: 1/rho = phi/rho_l + (1-phi)/rho_s
-        rho_bulk_scaled = 1.0 / (
-            phi_s.flatten() / np.where(rho_liq_scaled > 0, rho_liq_scaled, 1.0)
-            + (1 - phi_s.flatten()) / np.where(rho_sol_scaled > 0, rho_sol_scaled, 1.0)
+        rho_bulk = 1.0 / (
+            phi_s.flatten() / np.where(rho_liq > 0, rho_liq, 1.0)
+            + (1 - phi_s.flatten()) / np.where(rho_sol > 0, rho_sol, 1.0)
         )
         # Volume fraction of melt per node: porosity = (rho_s - rho_bulk) / (rho_s - rho_l)
-        drho = rho_sol_scaled - rho_liq_scaled
+        drho = rho_sol - rho_liq
         safe_drho = np.where(np.abs(drho) > 1e-10, drho, 1.0)
-        porosity = np.clip((rho_sol_scaled - rho_bulk_scaled) / safe_drho, 0, 1)
+        porosity = np.clip((rho_sol - rho_bulk) / safe_drho, 0, 1)
         # Volume-weighted average porosity (= true melt volume fraction)
-        vol_scaled = aragog_output.evaluator.mesh.basic.volume.flatten()
+        vol = aragog_output.evaluator.mesh.basic.volume.flatten()
         output['Phi_global_vol'] = float(
-            np.sum(porosity * vol_scaled) / np.sum(vol_scaled)
+            np.sum(porosity * vol) / np.sum(vol)
         )
         output['T_pot'] = float(output['T_magma'])
 
