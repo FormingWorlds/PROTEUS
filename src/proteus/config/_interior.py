@@ -129,9 +129,9 @@ class Aragog:
     convection: bool
         Whether to include convective heat flux in the model. Default is True.
     gravitational_separation: bool
-        Whether to include gravitational separation flux in the model. Default is False.
+        Whether to include gravitational separation flux in the model. Default is True (matches SPIDER).
     mixing: bool
-        Whether to include mixing flux in the model. Default is False.
+        Whether to include mixing flux in the model. Default is True (matches SPIDER).
     dilatation: bool
         Whether to include dilatation source term in the model. Default is False.
     mass_coordinates: bool
@@ -172,8 +172,8 @@ class Aragog:
     inner_boundary_value: float = field(default=4000, validator=ge(0))
     conduction: bool = field(default=True)
     convection: bool = field(default=True)
-    gravitational_separation: bool = field(default=False)
-    mixing: bool = field(default=False)
+    gravitational_separation: bool = field(default=True)
+    mixing: bool = field(default=True)
     dilatation: bool = field(default=False)
     mass_coordinates: bool = field(default=True)
     tsurf_poststep_change: float = field(default=30, validator=ge(0))
