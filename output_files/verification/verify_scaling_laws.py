@@ -29,15 +29,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 plt.rcParams.update({
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'font.size': 13,
+    'axes.labelsize': 14,
+    'axes.titlesize': 15,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
     'figure.dpi': 150,
     'savefig.dpi': 300,
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.8,
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -393,7 +393,7 @@ def run_test9():
     fprint(f"\nBL data saved to {data_path}")
 
     # ---- Plotting ----
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
 
     # ---- Panel (a): delta/D vs Ra ----
     ax = ax1
@@ -458,10 +458,10 @@ def run_test9():
 
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel("Rayleigh number Ra", fontsize=12)
-    ax.set_ylabel(r"$\delta / D$", fontsize=12)
-    ax.set_title("Boundary layer thickness vs Rayleigh number", fontsize=13)
-    ax.legend(fontsize=7.5, loc="upper right")
+    ax.set_xlabel("Rayleigh number Ra")
+    ax.set_ylabel(r"$\delta / D$")
+    ax.set_title("BL thickness vs Rayleigh number")
+    ax.legend(fontsize=10, loc="upper right")
     ax.grid(True, which="both", ls="-", alpha=0.15)
 
     # ---- Panel (b): T(r) profiles ----
@@ -481,11 +481,11 @@ def run_test9():
         ax.text(0.5, 0.5, "No profile data", ha="center", va="center",
                 transform=ax.transAxes, fontsize=14)
 
-    ax.set_xlabel("Temperature (K)", fontsize=12)
-    ax.set_ylabel("Depth below surface (km)", fontsize=12)
-    ax.set_title("Steady-state T(r) (nearest-boundary $l$)", fontsize=13)
+    ax.set_xlabel("Temperature (K)")
+    ax.set_ylabel("Depth below surface (km)")
+    ax.set_title(r"Steady-state $T(r)$ (nearest-boundary $l$)")
     ax.invert_yaxis()
-    ax.legend(fontsize=7, loc="lower left")
+    ax.legend(fontsize=9, loc="lower left")
     ax.grid(True, which="both", ls="-", alpha=0.15)
 
     plot_path = os.path.join(OUT_DIR, "verify_bl_thickness.pdf")
@@ -774,7 +774,7 @@ def run_test10():
                     f"{r['tau_analytic']:.4e}  {r['T_surf'][-1]:.2f}\n")
     fprint(f"\nCooling data saved to {data_path}")
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
 
     # ---- Panel (a): T_surf(t) ----
     ax = ax1
@@ -793,10 +793,10 @@ def run_test10():
             ax.plot(r["tau"], T_THRESHOLD, "x", color=cmap_c[j],
                     ms=10, mew=2, zorder=5)
 
-    ax.set_xlabel("Time (yr)", fontsize=12)
-    ax.set_ylabel("Surface temperature (K)", fontsize=12)
-    ax.set_title("Magma ocean cooling: surface T evolution", fontsize=13)
-    ax.legend(fontsize=9, loc="upper right")
+    ax.set_xlabel("Time (yr)")
+    ax.set_ylabel("Surface temperature (K)")
+    ax.set_title(r"Magma ocean cooling: $T_\mathrm{surf}$ evolution")
+    ax.legend(fontsize=10, loc="upper right")
     ax.grid(True, which="both", ls="-", alpha=0.15)
     ax.set_xscale("log")
     t_mins = [r["t_yr"][r["t_yr"] > 0][0] if np.any(r["t_yr"] > 0) else 1
@@ -871,10 +871,10 @@ def run_test10():
 
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel(r"Planet mass ($M_\oplus$)", fontsize=12)
-    ax.set_ylabel(r"Cooling time $\tau$ (yr)", fontsize=12)
-    ax.set_title("Cooling timescale vs planet mass", fontsize=13)
-    ax.legend(fontsize=8, loc="upper left")
+    ax.set_xlabel(r"Planet mass ($M_\oplus$)")
+    ax.set_ylabel(r"Cooling time $\tau$ (yr)")
+    ax.set_title("Cooling timescale vs planet mass")
+    ax.legend(fontsize=10, loc="upper left")
     ax.grid(True, which="both", ls="-", alpha=0.15)
 
     plot_path = os.path.join(OUT_DIR, "verify_cooling_scaling.pdf")

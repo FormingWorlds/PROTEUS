@@ -34,15 +34,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 plt.rcParams.update({
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'font.size': 13,
+    'axes.labelsize': 14,
+    'axes.titlesize': 15,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
     'figure.dpi': 150,
     'savefig.dpi': 300,
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.8,
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -449,39 +449,39 @@ else:
 # ===========================================================================
 # PLOT: 3-panel diagnostic for Case 2
 # ===========================================================================
-fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
+fig, axes = plt.subplots(3, 1, figsize=(8, 11), sharex=True)
 
 # Panel (a): Total thermal energy vs time
 ax = axes[0]
 ax.plot(data2["t_phys"] / yr, data2["E_total"], "-", color="#2166ac", linewidth=1.2)
 ax.set_ylabel("Total thermal energy $E(t)$ [J]")
 ax.set_title("Aragog energy budget verification (convective cooling)")
-ax.text(0.02, 0.92, "(a)", transform=ax.transAxes, fontsize=12, fontweight="bold",
+ax.text(0.02, 0.92, "(a)", transform=ax.transAxes, fontsize=14, fontweight="bold",
         verticalalignment="top")
 ax.ticklabel_format(axis="y", style="scientific", scilimits=(0, 0))
 
 # Panel (b): dE/dt vs net boundary flux power
 ax = axes[1]
 t_yr = res2["t_mid"] / yr
-ax.plot(t_yr, res2["dEdt"], "-", color="#2166ac", linewidth=1.0, label=r"$dE/dt$ (finite diff.)")
-ax.plot(t_yr, res2["Q_net"], "--", color="#b2182b", linewidth=1.0, label=r"$Q_\mathrm{CMB} A_\mathrm{CMB} - Q_\mathrm{surf} A_\mathrm{surf}$")
+ax.plot(t_yr, res2["dEdt"], "-", color="#2166ac", linewidth=1.2, label=r"$dE/dt$ (finite diff.)")
+ax.plot(t_yr, res2["Q_net"], "--", color="#b2182b", linewidth=1.2, label=r"$Q_\mathrm{CMB} A_\mathrm{CMB} - Q_\mathrm{surf} A_\mathrm{surf}$")
 ax.set_ylabel("Power [W]")
-ax.legend(fontsize=9, loc="upper right")
-ax.text(0.02, 0.92, "(b)", transform=ax.transAxes, fontsize=12, fontweight="bold",
+ax.legend(fontsize=10, loc="upper right")
+ax.text(0.02, 0.92, "(b)", transform=ax.transAxes, fontsize=14, fontweight="bold",
         verticalalignment="top")
 ax.ticklabel_format(axis="y", style="scientific", scilimits=(0, 0))
 
 # Panel (c): Relative residual
 ax = axes[2]
 ax.semilogy(t_yr, res2["residual"], "-", color="#636363", linewidth=0.8)
-ax.axhline(1e-9, color="#636363", linestyle=":", linewidth=0.8, label="solver rtol = 1e-9")
+ax.axhline(1e-9, color="#636363", linestyle=":", linewidth=0.8, label="Solver rtol = $10^{-9}$")
 ax.axhline(np.median(res_trimmed), color="#2166ac", linestyle="--", linewidth=0.8,
-           label=f"median = {np.median(res_trimmed):.2e}")
+           label=f"Median = {np.median(res_trimmed):.2e}")
 ax.set_xlabel("Time [yr]")
 ax.set_ylabel(r"Relative residual $|dE/dt - Q_\mathrm{net}| \,/\, |Q_\mathrm{net}|$")
-ax.legend(fontsize=9, loc="upper right")
+ax.legend(fontsize=10, loc="upper right")
 ax.set_ylim(bottom=1e-12)
-ax.text(0.02, 0.92, "(c)", transform=ax.transAxes, fontsize=12, fontweight="bold",
+ax.text(0.02, 0.92, "(c)", transform=ax.transAxes, fontsize=14, fontweight="bold",
         verticalalignment="top")
 
 plt.tight_layout()

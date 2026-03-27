@@ -39,15 +39,15 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 plt.rcParams.update({
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'font.size': 13,
+    'axes.labelsize': 14,
+    'axes.titlesize': 15,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
     'figure.dpi': 150,
     'savefig.dpi': 300,
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.8,
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -432,14 +432,14 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
     sec_per_yr = 31557600.0
     tau_fit_sec = tau_fit_yr * sec_per_yr
 
-    fig, axes = plt.subplots(2, 1, figsize=(8, 10))
+    fig, axes = plt.subplots(2, 1, figsize=(8, 11))
 
     # --- Top panel: max|dT| decay ---
     ax = axes[0]
     ax.text(0.02, 0.97, "(a)", transform=ax.transAxes,
-            fontsize=13, fontweight="bold", va="top")
+            fontsize=14, fontweight="bold", va="top")
     times_sec = times_yr * sec_per_yr
-    ax.semilogy(times_yr / 1e9, max_dT, ".", color="#636363", markersize=3, label="Aragog")
+    ax.semilogy(times_yr / 1e9, max_dT, ".", color="#636363", markersize=5, label="Aragog")
 
     # Analytical curve
     t_fine = np.linspace(0, times_sec[-1], 500)
@@ -448,8 +448,8 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
         t_fine / (sec_per_yr * 1e9),
         dT_analytical,
         "-", color="#b2182b",
-        linewidth=1.5,
-        label=f"Analytical (tau = {TAU_ANALYTICAL_YR/1e9:.3f} Gyr)",
+        linewidth=1.8,
+        label=f"Analytical ($\\tau$ = {TAU_ANALYTICAL_YR/1e9:.3f} Gyr)",
     )
 
     # Fitted curve
@@ -458,13 +458,13 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
         t_fine / (sec_per_yr * 1e9),
         dT_fitted,
         "--", color="#2166ac",
-        linewidth=1.5,
-        label=f"Fitted (tau = {tau_fit_yr/1e9:.3f} Gyr)",
+        linewidth=1.8,
+        label=f"Fitted ($\\tau$ = {tau_fit_yr/1e9:.3f} Gyr)",
     )
 
     ax.set_xlabel("Time [Gyr]")
-    ax.set_ylabel("max |T - T_ss| [K]")
-    ax.set_title(f"Transient conduction decay (N = {n_nodes} basic nodes)")
+    ax.set_ylabel(r"max $|T - T_\mathrm{ss}|$ [K]")
+    ax.set_title(f"Transient conduction decay ($N = {n_nodes}$)")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
@@ -473,9 +473,9 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
     ax.text(
         0.02,
         0.02,
-        f"Relative error in tau: {rel_err:.2e}",
+        f"Relative error in $\\tau$: {rel_err:.2e}",
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=11,
         verticalalignment="bottom",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.7),
     )
@@ -483,7 +483,7 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
     # --- Bottom panel: normalized spatial profiles at selected times ---
     ax = axes[1]
     ax.text(0.02, 0.97, "(b)", transform=ax.transAxes,
-            fontsize=13, fontweight="bold", va="top")
+            fontsize=14, fontweight="bold", va="top")
     r_km = (r_stag - A_INNER) / 1e3  # depth from inner boundary in km
 
     # Select ~6 times spread across the run, ensuring distinct labels
@@ -529,9 +529,9 @@ def plot_decay(r_stag, times_yr, T_stag, max_dT, dT_profiles, tau_fit_yr, A_fit,
     )
 
     ax.set_xlabel("Distance from inner boundary [km]")
-    ax.set_ylabel("Normalized dT")
+    ax.set_ylabel(r"Normalized $\delta T$")
     ax.set_title("Spatial profile shape (normalized)")
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -555,7 +555,7 @@ def plot_convergence(results):
     ns = np.array([r[0] for r in results])
     errs = np.array([r[2] for r in results])
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(7, 5.5))
     ax.loglog(ns, errs, "o-", color="#2166ac", markersize=8, linewidth=2, label="Measured")
 
     # Overlay second-order reference line (BDF is second order)

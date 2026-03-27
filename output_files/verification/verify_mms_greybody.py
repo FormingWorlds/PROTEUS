@@ -28,15 +28,15 @@ import numpy as np
 from scipy import constants as spc
 
 plt.rcParams.update({
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'font.size': 13,
+    'axes.labelsize': 14,
+    'axes.titlesize': 15,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
     'figure.dpi': 150,
     'savefig.dpi': 300,
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.8,
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -291,36 +291,36 @@ def run_test5():
     r_fine = np.linspace(R_INNER, R_OUTER, 500)
     r_fine_km = r_fine / 1e3
 
-    ax_top.plot(r_fine_km, analytical_T_mms(r_fine), "k-", lw=1.5,
+    ax_top.plot(r_fine_km, analytical_T_mms(r_fine), "k-", lw=1.8,
                 label="Analytical (conduction + heating)")
-    ax_top.plot(r_km, T_num, "o", color="#b2182b", ms=3, alpha=0.7,
-                label=f"Aragog (N={N_ref})")
+    ax_top.plot(r_km, T_num, "o", color="#b2182b", ms=5, alpha=0.7,
+                label=f"Aragog ($N={N_ref}$)")
     ax_top.set_ylabel("Temperature [K]")
     ax_top.legend(loc="upper right")
     ax_top.set_title("Steady-state conduction with uniform heating")
     ax_top.text(0.02, 0.95, "(a)", transform=ax_top.transAxes,
-                fontsize=13, fontweight="bold", va="top")
+                fontsize=14, fontweight="bold", va="top")
     ax_top.text(
         0.02, 0.05,
         f"$a$ = {R_INNER/1e3:.0f} km, $b$ = {R_OUTER/1e3:.0f} km\n"
         f"$T_a$ = {T_INNER:.0f} K, $T_b$ = {T_OUTER:.0f} K\n"
         f"$k$ = {K_COND} W/m/K, H = {H_MMS:.0e} W/kg",
-        transform=ax_top.transAxes, fontsize=9,
+        transform=ax_top.transAxes, fontsize=10,
         verticalalignment="bottom",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
     )
 
     residual = T_num - T_exact
-    ax_bot.plot(r_km, residual, ".-", color="#2166ac", ms=3, lw=0.8)
+    ax_bot.plot(r_km, residual, ".-", color="#2166ac", ms=5, lw=0.8)
     ax_bot.axhline(0, color="#636363", lw=0.5, ls="--")
     ax_bot.set_xlabel("Radius [km]")
     ax_bot.set_ylabel("$T_{\\mathrm{num}} - T_{\\mathrm{exact}}$ [K]")
     ax_bot.text(0.02, 0.95, "(b)", transform=ax_bot.transAxes,
-                fontsize=13, fontweight="bold", va="top")
+                fontsize=14, fontweight="bold", va="top")
     ax_bot.text(
         0.02, 0.90,
         f"$L_2$ = {L2_ref:.2e} K\n$L_\\infty$ = {Linf_ref:.2e} K",
-        transform=ax_bot.transAxes, fontsize=9,
+        transform=ax_bot.transAxes, fontsize=10,
         verticalalignment="top",
         bbox=dict(boxstyle="round", facecolor="lightblue", alpha=0.5),
     )
@@ -382,9 +382,9 @@ def run_test5():
           f"Linf ~ N^{{{-coeffs_Linf[0]:.2f}}}")
 
     # Convergence plot (added to mms figure as second page)
-    fig2, ax2 = plt.subplots(figsize=(6, 5))
-    ax2.loglog(N_arr, L2_arr, "o-", color="#2166ac", ms=7, lw=1.5, label="$L_2$ error")
-    ax2.loglog(N_arr, Linf_arr, "s--", color="#b2182b", ms=7, lw=1.5, label="$L_\\infty$ error")
+    fig2, ax2 = plt.subplots(figsize=(7, 5.5))
+    ax2.loglog(N_arr, L2_arr, "o-", color="#2166ac", ms=8, lw=1.8, label="$L_2$ error")
+    ax2.loglog(N_arr, Linf_arr, "s--", color="#b2182b", ms=8, lw=1.8, label="$L_\\infty$ error")
     N_slope = np.array([N_arr[0], N_arr[-1]])
     ref_L2 = L2_arr[0] * (N_slope / N_slope[0]) ** (-2)
     ax2.loglog(N_slope, ref_L2, ":", color="#636363", lw=1.5, alpha=0.6,
@@ -398,7 +398,7 @@ def run_test5():
         0.98, 0.98,
         f"Fitted order (L2): {order_L2:.2f}\n"
         f"Fitted order (Linf): {order_Linf:.2f}",
-        transform=ax2.transAxes, fontsize=9,
+        transform=ax2.transAxes, fontsize=10,
         ha="right", va="top",
         bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.8),
     )
@@ -656,23 +656,23 @@ def run_test6():
     # ---------------------------------------------------------------
     # Plotting
     # ---------------------------------------------------------------
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    fig.suptitle("Grey-body radiative steady state verification", fontsize=13)
+    fig, axes = plt.subplots(1, 3, figsize=(17, 6))
+    fig.suptitle("Grey-body radiative steady state verification", fontsize=15)
 
     # Panel (a): T_surf(t) for heated case
     ax = axes[0]
-    ax.plot(t_yr, T_surf_series, "-", color="#2166ac", lw=1.2, label="Aragog $T_{\\mathrm{surf}}(t)$")
-    ax.axhline(T_SURF_ANALYTICAL, color="#b2182b", ls="--", lw=1.5,
+    ax.plot(t_yr, T_surf_series, "-", color="#2166ac", lw=1.5, label=r"Aragog $T_\mathrm{surf}(t)$")
+    ax.axhline(T_SURF_ANALYTICAL, color="#b2182b", ls="--", lw=1.8,
                label=f"Analytical: {T_SURF_ANALYTICAL:.1f} K")
     ax.set_xlabel("Time [yr]")
     ax.set_ylabel("Surface temperature [K]")
-    ax.legend(fontsize=8)
-    ax.set_title("(a) Surface T convergence to steady state")
+    ax.legend(fontsize=10)
+    ax.set_title("(a) $T_\\mathrm{surf}$ to steady state")
     ax.text(0.02, 0.02,
-            f"H = {H_TIDAL:.0e} W/kg\n"
-            f"Final $T_{{surf}}$ = {T_surf_final:.1f} K\n"
+            f"$H$ = {H_TIDAL:.0e} W/kg\n"
+            f"Final $T_\\mathrm{{surf}}$ = {T_surf_final:.1f} K\n"
             f"Error = {T_err:.2f}%",
-            transform=ax.transAxes, fontsize=8,
+            transform=ax.transAxes, fontsize=9,
             verticalalignment="bottom",
             bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
 
@@ -681,22 +681,22 @@ def run_test6():
     r_km = r_stag / 1e3
     ax.plot(r_km, T_final_profile, "-", color="#2166ac", lw=1.5, label="Final $T(r)$")
     ax.axhline(T_SURF_ANALYTICAL, color="#b2182b", ls="--", lw=1, alpha=0.7,
-               label="Analytical $T_{\\mathrm{surf}}$")
+               label=r"Analytical $T_\mathrm{surf}$")
     ax.set_xlabel("Radius [km]")
     ax.set_ylabel("Temperature [K]")
-    ax.legend(fontsize=8)
-    ax.set_title("(b) Steady-state T(r) profile")
+    ax.legend(fontsize=10)
+    ax.set_title("(b) Steady-state $T(r)$ profile")
 
     # Panel (c): Power balance
     ax = axes[2]
-    ax.plot(t_yr, P_out_series, "-", color="#2166ac", lw=1.2,
-            label="$\\epsilon\\sigma T_s^4 A_{\\mathrm{surf}}$")
-    ax.axhline(P_in_total, color="#b2182b", ls="--", lw=1.5,
+    ax.plot(t_yr, P_out_series, "-", color="#2166ac", lw=1.5,
+            label=r"$\epsilon\sigma T_s^4 A_\mathrm{surf}$")
+    ax.axhline(P_in_total, color="#b2182b", ls="--", lw=1.8,
                label=f"$\\rho H V$ = {P_in_total:.2e} W")
     ax.set_xlabel("Time [yr]")
     ax.set_ylabel("Power [W]")
-    ax.legend(fontsize=8)
-    ax.set_title("(c) Power balance: heating vs radiation")
+    ax.legend(fontsize=10)
+    ax.set_title("(c) Heating vs radiation")
     ax.ticklabel_format(style="sci", axis="y", scilimits=(0, 0))
 
     fig.tight_layout()

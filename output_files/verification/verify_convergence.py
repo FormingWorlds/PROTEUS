@@ -34,15 +34,15 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 plt.rcParams.update({
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'font.size': 13,
+    'axes.labelsize': 14,
+    'axes.titlesize': 15,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
     'figure.dpi': 150,
     'savefig.dpi': 300,
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.8,
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -644,13 +644,13 @@ def test_mesh_independence():
 
 def plot_results(temporal_results, uniform_results, mass_results, mass_coord_failed):
     """Create the 2-panel figure."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
     # --- Panel (a): Temporal convergence ---
     tols = np.array([r["tol"] for r in temporal_results])
     rel_errs = np.array([r["rel_err"] for r in temporal_results])
 
-    ax1.loglog(tols, rel_errs, "o-", color="#2166ac", markersize=8, linewidth=2, label="Fitted tau error")
+    ax1.loglog(tols, rel_errs, "o-", color="#2166ac", markersize=8, linewidth=2, label=r"Fitted $\tau$ error")
 
     # Reference 1:1 line
     tol_range = np.array([tols.min() / 3, tols.max() * 3])
@@ -667,14 +667,14 @@ def plot_results(temporal_results, uniform_results, mass_results, mass_coord_fai
     ax1.set_xlabel("Solver tolerance (rtol = atol)")
     ax1.set_ylabel(r"$|\tau_{\mathrm{fit}} - \tau_{\mathrm{exact}}| / \tau_{\mathrm{exact}}$")
     ax1.set_title("(a) Temporal convergence: BDF tolerance sweep")
-    ax1.legend(fontsize=9, loc="upper left")
+    ax1.legend(fontsize=10, loc="upper left")
     ax1.grid(True, which="both", alpha=0.3)
     ax1.invert_xaxis()  # tighter tolerance to the right
 
     ax1.text(0.97, 0.03,
-             "N = 101 nodes\n"
+             "$N = 101$ nodes\n"
              r"$\tau_{\mathrm{exact}}$" + f" = {TAU_ANALYTICAL_YR/1e9:.4f} Gyr",
-             transform=ax1.transAxes, fontsize=9,
+             transform=ax1.transAxes, fontsize=10,
              ha="right", va="bottom",
              bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.7))
 
@@ -697,8 +697,8 @@ def plot_results(temporal_results, uniform_results, mass_results, mass_coord_fai
 
     ax2.set_xlabel("Number of basic nodes $N$")
     ax2.set_ylabel("$L_2$ temperature error [K]")
-    ax2.set_title("(b) Mesh-type independence: steady-state conduction")
-    ax2.legend(fontsize=9)
+    ax2.set_title("(b) Mesh-type independence: conduction")
+    ax2.legend(fontsize=10)
     ax2.grid(True, which="both", alpha=0.3)
 
     # Annotate convergence order
@@ -711,7 +711,7 @@ def plot_results(temporal_results, uniform_results, mass_results, mass_coord_fai
             coeffs_mass = np.polyfit(np.log(Ns_m), np.log(L2_m), 1)
             order_text += f"\nMass-coord: order = {-coeffs_mass[0]:.2f}"
         ax2.text(0.97, 0.97, order_text,
-                 transform=ax2.transAxes, fontsize=9,
+                 transform=ax2.transAxes, fontsize=10,
                  ha="right", va="top",
                  bbox=dict(boxstyle="round", facecolor="lightyellow", alpha=0.8))
 

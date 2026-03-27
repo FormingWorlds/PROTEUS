@@ -36,15 +36,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 plt.rcParams.update({
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'font.size': 13,
+    'axes.labelsize': 14,
+    'axes.titlesize': 15,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
     'figure.dpi': 150,
     'savefig.dpi': 300,
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.8,
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -375,15 +375,15 @@ def main():
     # ------------------------------------------------------------------
     # Plot
     # ------------------------------------------------------------------
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    fig, axes = plt.subplots(2, 2, figsize=(13, 10))
     fig.suptitle(
-        "Aragog Phase-Change Energy Conservation Verification", fontsize=13)
+        "Aragog Phase-Change Energy Conservation", fontsize=15)
 
     # ---- (a) T_surf vs time ----
     ax = axes[0, 0]
-    ax.plot(ts_c["t_yr"], ts_c["T_surf"], "C0-", lw=1.5,
-            label="Composite (with phase change)")
-    ax.plot(ts_l["t_yr"], ts_l["T_surf"], "C1--", lw=1.5,
+    ax.plot(ts_c["t_yr"], ts_c["T_surf"], "C0-", lw=1.8,
+            label="Composite (phase change)")
+    ax.plot(ts_l["t_yr"], ts_l["T_surf"], "C1--", lw=1.8,
             label="Liquid (no phase change)")
     ax.axhline(T_liq_surf, color="C3", ls=":", lw=0.8,
                label=f"Liquidus ({T_liq_surf:.0f} K)")
@@ -391,14 +391,14 @@ def main():
                label=f"Solidus ({T_sol_surf:.0f} K)")
     ax.set_xlabel("Time [yr]")
     ax.set_ylabel("Surface temperature [K]")
-    ax.legend(fontsize=7, loc="upper right")
+    ax.legend(fontsize=10, loc="upper right")
     ax.set_title("(a) Surface temperature")
     ax.set_xlim(0, 200)
     ax.set_ylim(200, 2600)
 
     # ---- (b) Mean melt fraction vs time (composite only) ----
     ax = axes[0, 1]
-    ax.plot(ts_c["t_yr"], ts_c["phi_mean"], "C0-", lw=1.5)
+    ax.plot(ts_c["t_yr"], ts_c["phi_mean"], "C0-", lw=1.8)
     ax.set_xlabel("Time [yr]")
     ax.set_ylabel("Volume-averaged melt fraction")
     ax.set_title("(b) Melt fraction (composite)")
@@ -407,13 +407,13 @@ def main():
 
     # ---- (c) Cumulative energy budget ----
     ax = axes[1, 0]
-    ax.plot(ts_c["t_yr"], ts_c["cum_dH"], "C0-", lw=1.5,
+    ax.plot(ts_c["t_yr"], ts_c["cum_dH"], "C0-", lw=1.8,
             label=r"$\Delta H$ (enthalpy change)")
-    ax.plot(ts_c["t_yr"], -ts_c["cum_Wsurf"], "C1--", lw=1.5,
+    ax.plot(ts_c["t_yr"], -ts_c["cum_Wsurf"], "C1--", lw=1.8,
             label=r"$-\int P_{\mathrm{surf}}\,dt$")
     ax.set_xlabel("Time [yr]")
     ax.set_ylabel("Energy [J]")
-    ax.legend(fontsize=9)
+    ax.legend(fontsize=11)
     ax.set_title("(c) Cumulative energy budget")
     ax.set_xlim(left=0)
 
@@ -430,7 +430,7 @@ def main():
         r"$|\Delta H + \int P_{\mathrm{surf}}\,dt|"
         r"\;/\;\int P_{\mathrm{surf}}\,dt$")
     ax.set_title("(d) Relative cumulative energy residual")
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=10)
     ax.set_xlim(left=0)
     ax.set_ylim(1e-8, 1)
 

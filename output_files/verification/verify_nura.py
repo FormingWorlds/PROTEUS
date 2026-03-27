@@ -47,15 +47,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 plt.rcParams.update({
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'font.size': 13,
+    'axes.labelsize': 14,
+    'axes.titlesize': 15,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
     'figure.dpi': 150,
     'savefig.dpi': 300,
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.8,
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -403,7 +403,7 @@ if __name__ == "__main__":
     ra_fine_pos = ra_fine[pos]
     nu_fine_pos = nu_fine[pos]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6.5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
 
     colors = {"conductive": "gray", "viscous": "red", "inviscid": "blue"}
     markers = {"conductive": "s", "viscous": "^", "inviscid": "o"}
@@ -448,10 +448,10 @@ if __name__ == "__main__":
 
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel("Rayleigh number Ra", fontsize=12)
-    ax.set_ylabel("Nusselt number Nu", fontsize=12)
-    ax.set_title("Nu-Ra scaling (viscosity sweep)", fontsize=13)
-    ax.legend(fontsize=8, loc="upper left")
+    ax.set_xlabel("Rayleigh number Ra")
+    ax.set_ylabel("Nusselt number Nu")
+    ax.set_title("Nu-Ra scaling (viscosity sweep)")
+    ax.legend(fontsize=10, loc="upper left")
     ax.set_ylim(0.5, None)  # show conductive points (Nu ~ 0.86)
     ax.grid(True, which="both", ls="-", alpha=0.15)
 
@@ -485,10 +485,10 @@ if __name__ == "__main__":
     ax.axhline(SPHERE_CORRECTION, color="gray", ls="--", lw=1.0, alpha=0.5)
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel("Dynamic viscosity (Pa s)", fontsize=12)
-    ax.set_ylabel("Nusselt number Nu", fontsize=12)
-    ax.set_title("Nu vs viscosity", fontsize=13)
-    ax.legend(fontsize=8, loc="center left")
+    ax.set_xlabel("Dynamic viscosity (Pa s)")
+    ax.set_ylabel("Nusselt number Nu")
+    ax.set_title("Nu vs viscosity")
+    ax.legend(fontsize=10, loc="center left")
     ax.grid(True, which="both", ls="-", alpha=0.15)
     ax.set_ylim(0.5, None)  # show conductive points (Nu ~ 0.86)
     ax.invert_xaxis()

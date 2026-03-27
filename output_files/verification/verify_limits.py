@@ -22,15 +22,15 @@ OUT_DIR = "/Users/timlichtenberg/git/PROTEUS/output_files/verification"
 os.chdir(ARAGOG_DIR)
 
 plt.rcParams.update({
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'legend.fontsize': 9,
-    'xtick.labelsize': 10,
-    'ytick.labelsize': 10,
+    'font.size': 13,
+    'axes.labelsize': 14,
+    'axes.titlesize': 15,
+    'legend.fontsize': 11,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
     'figure.dpi': 150,
     'savefig.dpi': 300,
-    'lines.linewidth': 1.5,
+    'lines.linewidth': 1.8,
     'axes.grid': True,
     'grid.alpha': 0.3,
 })
@@ -442,7 +442,7 @@ if __name__ == "__main__":
     # ---------------------------------------------------------------
     # 4-panel figure
     # ---------------------------------------------------------------
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    fig, axes = plt.subplots(2, 2, figsize=(13, 11))
 
     # (a) Single-phase limit
     ax = axes[0, 0]
@@ -460,10 +460,10 @@ if __name__ == "__main__":
     for bar, val in zip(bars, diffs_11):
         y_pos = max(val, 1e-16) * 3
         ax.text(bar.get_x() + bar.get_width() / 2, y_pos, f"{val:.1e}",
-                ha="center", va="bottom", fontsize=9)
+                ha="center", va="bottom", fontsize=10)
     ax.set_title("(a) Single-Phase Limits", fontweight="bold")
     ax.axhline(1e-6, color="gray", ls="--", lw=0.8, label="tolerance = 1e-6 K")
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=10)
 
     # (b) Monotonic cooling
     ax = axes[0, 1]
@@ -477,7 +477,7 @@ if __name__ == "__main__":
     else:
         violation_text += "\nNo T increases detected"
     ax.annotate(violation_text, xy=(0.05, 0.05), xycoords="axes fraction",
-                fontsize=9, va="bottom",
+                fontsize=10, va="bottom",
                 bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", ec="gray"))
 
     # (c) Convective mixing homogenizes interior
@@ -485,29 +485,29 @@ if __name__ == "__main__":
     for lbl, clr, ls in [("conv", "blue", "-"), ("cond_only", "red", "--")]:
         res = r13[lbl]
         r_km = res["r_stag"] / 1e3
-        conv_label = "Convection + Conduction" if res["use_conv"] else "Conduction only"
-        ax.plot(r_km, res["T_final"], color=clr, ls=ls, lw=1.2,
-                label=f"{conv_label}\n(interior range = {res['T_range_interior']:.0f} K)")
+        conv_label = "Conv. + Cond." if res["use_conv"] else "Cond. only"
+        ax.plot(r_km, res["T_final"], color=clr, ls=ls, lw=1.5,
+                label=f"{conv_label}\n(range = {res['T_range_interior']:.0f} K)")
     ax.set_xlabel("Radius [km]")
     ax.set_ylabel("Temperature [K]")
     ax.set_title("(c) Convective Mixing (after 500 yr cooling)", fontweight="bold")
-    ax.legend(fontsize=8)
-    ax.annotate(f"Interior T range ratio: {r13.get('ratio', 0):.3f}",
-                xy=(0.05, 0.05), xycoords="axes fraction", fontsize=9, va="bottom",
+    ax.legend(fontsize=10)
+    ax.annotate(f"Interior $T$ range ratio: {r13.get('ratio', 0):.3f}",
+                xy=(0.05, 0.05), xycoords="axes fraction", fontsize=10, va="bottom",
                 bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", ec="gray"))
 
     # (d) Symmetry
     ax = axes[1, 1]
     r_km_orig = r14["original"]["r_stag"] / 1e3
     r_km_swap = r14["swapped"]["r_stag"] / 1e3
-    ax.plot(r_km_orig, r14["original"]["error"], "b-", lw=1.2,
-            label=f"Original (max = {r14['original']['max_err']:.2e} K)")
-    ax.plot(r_km_swap, r14["swapped"]["error"], "r--", lw=1.2,
-            label=f"Swapped (max = {r14['swapped']['max_err']:.2e} K)")
+    ax.plot(r_km_orig, r14["original"]["error"], "b-", lw=1.5,
+            label=f"Original ({r14['original']['max_err']:.2e} K)")
+    ax.plot(r_km_swap, r14["swapped"]["error"], "r--", lw=1.5,
+            label=f"Swapped ({r14['swapped']['max_err']:.2e} K)")
     ax.set_xlabel("Radius [km]")
-    ax.set_ylabel("T_numerical - T_analytical [K]")
-    ax.set_title("(d) Symmetry: Error for Original vs Swapped BCs", fontweight="bold")
-    ax.legend(fontsize=9)
+    ax.set_ylabel(r"$T_\mathrm{num} - T_\mathrm{ana}$ [K]")
+    ax.set_title("(d) Symmetry: Original vs Swapped BCs", fontweight="bold")
+    ax.legend(fontsize=10)
     ax.axhline(0, color="gray", ls=":", lw=0.5)
 
     plt.tight_layout()
