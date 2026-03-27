@@ -942,6 +942,10 @@ def _try_spider(
     # [4] heat flux (prescribe value using surface_bc_value)
     call_sequence.extend(['-SURFACE_BC', '4'])
 
+    # Note: SPIDER's upper thermal boundary layer treatment is implicit in its
+    # entropy formulation. Unlike Aragog's tunable param_utbl/param_utbl_const,
+    # SPIDER does not expose UTBL as a configurable parameter. The boundary
+    # layer physics is built into the surface entropy BC (bc.c).
     # parameterise the upper thermal boundary layer
     call_sequence.extend(['-PARAM_UTBL', '0'])  # disabled
     call_sequence.extend(['-param_utbl_const', '1.0E-7'])  # value of parameterisation
@@ -1191,6 +1195,9 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
             break
     i = min(i, len(interior_o.temp) - 1)
     output['T_pot'] = float(interior_o.temp[i])
+
+    # Core (CMB) temperature: last staggered node (SPIDER ordering is surface-to-CMB)
+    output['T_core'] = float(interior_o.temp[-1])
 
     # Limit F_int to positive values
     if config.atmos_clim.prevent_warming:

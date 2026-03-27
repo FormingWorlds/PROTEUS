@@ -65,6 +65,7 @@ class Proteus:
         self.finished_prev = False  # Satisfied termination in prev iteration
         self.finished_both = False  # Satisfied termination in current and previous
         self.desiccated = False  # Entire volatile inventory has been lost
+        self.crystallized = False  # Mantle solidified, outgassing stopped but evolution continues
         self.lockfile = '/tmp/none'  # Path to keepalive file
 
         # Default values for mors.spada cases
@@ -157,6 +158,7 @@ class Proteus:
         from proteus.outgas.wrapper import (
             calc_target_elemental_inventories,
             check_desiccation,
+            run_crystallized,
             run_desiccated,
             run_outgassing,
         )
@@ -571,14 +573,31 @@ class Proteus:
                 calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
 
             else:
-                # Check if desiccation has occurred
-                self.desiccated = check_desiccation(self.config, self.hf_row)
+                # Check crystallization: outgassing stops but simulation continues
+                # TODO (future development): Disequilibrium crystallization.
+                # The current framework assumes local thermodynamic equilibrium: melt
+                # fraction is determined by the local P-T via the melting curves.
+                # Fractional crystallization with compositional zonation requires
+                # explicit tracking of the solid composition field, which is beyond
+                # the current solver capabilities. See Boujibar+2020 for discussion.
+                if not self.crystallized:
+                    if self.hf_row.get('Phi_global', 1.0) <= self.config.params.stop.solid.phi_crit:
+                        self.crystallized = True
+                        log.info(
+                            'Mantle crystallized (Phi_global <= %.3f). '
+                            'Outgassing stopped. Dissolved volatiles trapped in solid mantle.',
+                            self.config.params.stop.solid.phi_crit,
+                        )
 
-            # handle desiccated planet
+                # Check desiccation (can happen even if crystallized, via escape)
+                if not self.desiccated:
+                    self.desiccated = check_desiccation(self.config, self.hf_row)
+
+            # Handle volatile exchange
             if self.desiccated:
                 run_desiccated(self.config, self.hf_row)
-
-            # solve for atmosphere composition
+            elif self.crystallized:
+                run_crystallized(self.config, self.hf_row)
             else:
                 run_outgassing(self.directories, self.config, self.hf_row)
 

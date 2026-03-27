@@ -731,6 +731,9 @@ class AragogRunner:
         )
         output['T_pot'] = float(output['T_magma'])
 
+        # Core (CMB) temperature: bottom-most basic node
+        output['T_core'] = float(aragog_output.temperature_K_basic[0, -1])
+
         # Calculate surface area
         radii = aragog_output.radii_km_basic * 1e3  # [m]
         area = 4 * np.pi * float(radii[-1].item()) ** 2  # [m^2]

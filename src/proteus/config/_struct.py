@@ -283,7 +283,7 @@ class Struct:
         validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),
     )
 
-    update_interval: float = field(default=0, validator=ge(0))
+    update_interval: float = field(default=10, validator=ge(0))
     update_min_interval: float = field(default=0, validator=ge(0))
     update_dtmagma_frac: float = field(default=0.03, validator=(gt(0), lt(1)))
     update_dphi_abs: float = field(default=0.05, validator=(gt(0), lt(1)))

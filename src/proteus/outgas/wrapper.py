@@ -128,6 +128,31 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))
 
 
+def run_crystallized(config: Config, hf_row: dict):
+    """Handle crystallized mantle: no volatile exchange but preserve reservoirs.
+
+    After the mantle solidifies (Phi_global < phi_crit), volatiles can no
+    longer exchange between the mantle and atmosphere. Dissolved volatiles
+    are trapped in the solid mantle. The atmosphere retains its current
+    composition but does not gain or lose volatiles.
+
+    Unlike run_desiccated() which zeros all reservoirs, this function
+    preserves them so they continue to influence the structure calculation
+    and can be tracked in the helpfile.
+
+    Parameters
+    ----------
+    config : Config
+        Configuration object
+    hf_row : dict
+        Dictionary of helpfile variables, at this iteration only
+    """
+    log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
+    # No changes to hf_row: all reservoirs (atm, liquid, solid) stay as-is.
+    # The atmosphere module will still compute radiative transfer with
+    # the existing atmospheric composition, but no new outgassing occurs.
+
+
 def run_desiccated(config: Config, hf_row: dict):
     """
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
