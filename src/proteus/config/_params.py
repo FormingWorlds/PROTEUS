@@ -187,7 +187,7 @@ class StopSolid:
 
     phi_crit: float = field(default=0.01, validator=(gt(0), lt(1)))
     enabled: bool = field(default=True)
-    freeze_volatiles: bool = field(default=True)
+    freeze_volatiles: bool = field(default=False)
 
 
 @define
