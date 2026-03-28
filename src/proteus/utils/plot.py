@@ -38,7 +38,7 @@ _preset_colours = {
     'O': '#88bb22',
     'N': '#ffaa00',
     'S': '#ff22ff',
-    'P': "#283134",
+    'P': "#33ccff",
     # refractory elements
     'Fe': '#888888',
     'Si': '#aa2277',
