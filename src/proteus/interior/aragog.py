@@ -694,15 +694,17 @@ class AragogRunner:
 
         # Debug: check what solve_ivp actually returned
         sol = aragog_output.solution
-        T_stag_last = sol.y[:, -1]
         T_stag_first = sol.y[:, 0]
-        logger.info(
+        T_stag_last = sol.y[:, -1]
+        T_basic_surf = aragog_output.temperature_K_basic[-1, -1]
+        logger.warning(
             'Aragog solve_ivp: t=[%.2e, %.2e], n_t=%d, '
-            'T_stag_surface: first=%.2f last=%.2f, '
+            'T_stag_surface: first=%.2f last=%.2f, dT=%.4f, '
             'T_basic_surface=%.2f, status=%d',
             sol.t[0], sol.t[-1], len(sol.t),
-            T_stag_last[-1], T_stag_first[-1],
-            aragog_output.temperature_K_basic[-1, -1],
+            T_stag_first[-1], T_stag_last[-1],
+            T_stag_last[-1] - T_stag_first[-1],
+            T_basic_surf,
             sol.status,
         )
 
