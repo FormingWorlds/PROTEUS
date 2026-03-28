@@ -770,6 +770,23 @@ class AragogRunner:
         # Core (CMB) temperature: bottom-most basic node
         output['T_core'] = float(aragog_output.temperature_K_basic[0, -1])
 
+        # Total thermal energy: E_th = sum(rho_i * Cp_i * T_i * V_i)
+        # This is formulation-independent and allows direct comparison with SPIDER.
+        T_stag = aragog_output.temperature_K_staggered[:, -1]
+        rho_stag = np.array(aragog_output.evaluator.phases.active.density()).flatten()
+        cp_stag = np.array(aragog_output.evaluator.phases.active.heat_capacity()).flatten()
+        vol_stag = aragog_output.evaluator.mesh.basic.volume.flatten()
+        n_stag = min(len(T_stag), len(rho_stag), len(cp_stag), len(vol_stag))
+        E_th = float(np.sum(
+            rho_stag[:n_stag] * cp_stag[:n_stag] * T_stag[:n_stag] * vol_stag[:n_stag]
+        ))
+        output['E_th_mantle'] = E_th
+        # Effective heat capacity: Cp_eff = sum(rho*Cp*V) / M_mantle
+        Cp_eff = float(np.sum(
+            rho_stag[:n_stag] * cp_stag[:n_stag] * vol_stag[:n_stag]
+        )) / max(output['M_mantle'], 1.0)
+        output['Cp_eff'] = Cp_eff
+
         # Calculate surface area
         radii = aragog_output.radii_km_basic * 1e3  # [m]
         area = 4 * np.pi * float(radii[-1].item()) ** 2  # [m^2]

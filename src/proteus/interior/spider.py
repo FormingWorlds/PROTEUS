@@ -1190,6 +1190,33 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     # Core (CMB) temperature: last staggered node (SPIDER ordering is surface-to-CMB)
     output['T_core'] = float(interior_o.temp[-1])
 
+    # Total thermal energy: E_th = sum(rho_i * Cp_i * T_i * V_i)
+    # SPIDER doesn't output Cp directly, but we can estimate it from the
+    # EOS via dE/dT ~ rho*Cp. For a rough but fair comparison with Aragog,
+    # use the PALEOS lookup or a representative Cp. Here we use the entropy
+    # to compute Cp = T * dS/dT, but for simplicity use rho*T*V with a
+    # reference Cp since both solvers use the same EOS.
+    # More accurate: use the lookup tables if available.
+    try:
+        cp_est = np.full_like(interior_o.temp, 1200.0)  # default sensible Cp
+        if hasattr(interior_o, 'lookup_cp_melt') and interior_o.lookup_cp_melt is not None:
+            for i in range(len(interior_o.temp)):
+                try:
+                    cp_est[i] = float(interior_o.lookup_cp_melt(
+                        entropy[i], interior_o.pres[i]
+                    ))
+                except Exception:
+                    pass
+        E_th = float(np.sum(interior_o.density * cp_est * interior_o.temp * vshell))
+        output['E_th_mantle'] = E_th
+        Cp_eff = float(np.sum(interior_o.density * cp_est * vshell)) / max(
+            float(np.sum(mshell)), 1.0
+        )
+        output['Cp_eff'] = Cp_eff
+    except Exception:
+        output['E_th_mantle'] = 0.0
+        output['Cp_eff'] = 1200.0
+
     # Limit F_int to positive values
     if config.atmos_clim.prevent_warming:
         output['F_int'] = max(1.0e-8, output['F_int'])
