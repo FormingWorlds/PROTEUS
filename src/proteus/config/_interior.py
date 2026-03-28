@@ -314,5 +314,5 @@ class Interior:
     thermal_state_T_eq: float = field(default=255.0, validator=gt(0))
     thermal_state_f_accretion: float = field(default=0.04, validator=ge(0))
     thermal_state_f_differentiation: float = field(default=0.50, validator=ge(0))
-    thermal_state_C_iron: float = field(default=840.0, validator=gt(0))
-    thermal_state_C_silicate: float = field(default=1200.0, validator=gt(0))
+    thermal_state_C_iron: float = field(default=450.0, validator=gt(0))  # Dulong-Petit (White+Li 2025)
+    thermal_state_C_silicate: float = field(default=1250.0, validator=gt(0))  # Dulong-Petit (White+Li 2025)

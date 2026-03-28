@@ -847,9 +847,8 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
 
         # Build PALEOS-derived nabla_ad and C_p when PALEOS EOS is configured.
         # This uses the actual EOS tables for the adiabatic gradient and heat
-        # capacities instead of the constant defaults (nabla_ad=0.3, C_Fe=840,
-        # C_sil=1200), which can underpredict T_surface by a factor of ~3
-        # and T_CMB by ~25% for Earth-mass planets (see tech doc Section 4).
+        # capacities instead of the constant defaults (Gruneisen adiabat,
+        # Dulong-Petit C_Fe=450, C_sil=1250 J/kg/K from White+Li 2025).
         nabla_ad_func = None
         cp_iron_func = None
         cp_silicate_func = None
@@ -946,13 +945,15 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
         hf_row['U_grav_undiff'] = thermal['U_undifferentiated']
         hf_row['DeltaT_accretion'] = thermal['Delta_T_accretion']
         hf_row['DeltaT_differentiation'] = thermal['Delta_T_differentiation']
+        hf_row['DeltaT_adiabat'] = thermal['Delta_T_adiabat']
         hf_row['core_state_initial'] = thermal['core_state']
         logger.info(
             'Initial thermal state (White+Li 2025): T_CMB=%.0f K, '
-            'T_surface=%.0f K, DeltaT_G=%.0f K, DeltaT_D=%.0f K, core=%s',
+            'T_surface=%.0f K, DeltaT_G=%.0f K, DeltaT_D=%.0f K, '
+            'DeltaT_ad=%.0f K, core=%s',
             thermal['T_cmb'], thermal['T_surface'],
             thermal['Delta_T_accretion'], thermal['Delta_T_differentiation'],
-            thermal['core_state'],
+            thermal['Delta_T_adiabat'], thermal['core_state'],
         )
 
     # Update the surface radius, interior radius, and mass in the hf_row
