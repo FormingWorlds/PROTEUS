@@ -101,6 +101,7 @@ def plot(plots, config_path: Path):
     for plot in plots:
         if plot not in plot_dispatch.keys():
             click.echo(f'Invalid plot: {plot}')
+            click.echo('Available plots: ' + ', '.join(plot_dispatch.keys()))
         else:
             click.echo(f'Plotting: {plot}')
             plot_func = plot_dispatch[plot]

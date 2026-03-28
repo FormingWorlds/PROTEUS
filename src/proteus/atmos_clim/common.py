@@ -150,6 +150,21 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
                 gas_lbl = ''.join([c.decode(encoding='utf-8') for c in gas]).strip()
                 out[gas_lbl + '_vmr'] = np.array(gas_x[:, igas])
 
+        # Reading aerosol mass mixing ratios
+        elif key == 'aer_mmr':
+            if 'aerosols' in ds.variables.keys():
+                aer_l = ds.variables['aerosols'][:]  # names (bytes matrix)
+                aer_x = ds.variables['aer_mmr'][:]  # mmrs (float matrix)
+
+                # get data for each aerosol
+                for iaer, aer in enumerate(aer_l):
+                    if aer[0] is not np.bytes_:
+                        continue
+                    aer_lbl = ''.join([c.decode(encoding='utf-8') for c in aer]).strip()
+                    out[aer_lbl + '_mmr'] = np.array(aer_x[:, iaer])
+            # Also store raw array
+            out[key] = np.array(ds.variables[key][:])
+
         else:
             out[key] = np.array(ds.variables[key][:])
 
