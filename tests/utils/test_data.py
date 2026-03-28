@@ -1957,6 +1957,7 @@ def test_download_surface_albedos_no_mapping(mock_get_info):
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_surface_albedos()
 
+
 @pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
 def test_download_scattering_no_mapping(mock_get_info):
@@ -1972,6 +1973,7 @@ def test_download_scattering_no_mapping(mock_get_info):
 
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_scattering()
+
 
 @pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
