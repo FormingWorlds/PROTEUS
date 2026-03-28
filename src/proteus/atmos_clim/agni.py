@@ -117,6 +117,33 @@ def _determine_condensates(vol_list: list):
     # all dry gases...
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
+def _determine_aerosols(dirs: dict) -> list:
+    """
+    Determine which aerosols are available.
+
+    Parameters
+    ----------
+        dirs : dict
+            Dictionary containing paths to directories
+
+    Returns
+    ----------
+        aerosols : list
+            List of available aerosols
+    """
+
+    aerosol_dir = os.path.join(dirs['fwl'], 'aerosols')
+    if not os.path.isdir(aerosol_dir):
+        log.warning(f'Aerosol directory not found: {aerosol_dir}')
+        return []
+
+    aerosols = []
+    for f in os.listdir(aerosol_dir):
+        if f.endswith('.mon'):
+            aerosols.append(f.split('.')[0])
+
+    log.debug(f'Available aerosols: {aerosols}')
+    return aerosols
 
 def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     """Initialise atmosphere struct for use by AGNI.
@@ -197,6 +224,13 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_top = config.atmos_clim.agni.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
+    # Aerosol species dictionary (set MMR to zero initially)
+    aerosol_species = dict()
+    if config.atmos_clim.aerosols_enabled:
+        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
+        if len(aerosol_species) == 0:
+            log.warning('No data found for aerosol species')
+
     # Setup struct
     succ = jl.AGNI.atmosphere.setup_b(
         atmos,
@@ -218,6 +252,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         IO_DIR=io_dir,
         flag_rayleigh=config.atmos_clim.rayleigh,
         flag_cloud=config.atmos_clim.cloud_enabled,
+        flag_aerosol=config.atmos_clim.aerosols_enabled,
+        aerosol_species=convert(jl.Dict, aerosol_species),
         overlap_method=config.atmos_clim.agni.overlap_method,
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,
