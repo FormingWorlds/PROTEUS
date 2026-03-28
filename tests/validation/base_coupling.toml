@@ -166,8 +166,8 @@ version = "2.0"
         num_levels      = 80
         tolerance       = 1e-6
         initial_condition = 3
-        inner_boundary_condition = 1
-        inner_boundary_value = 4000
+        inner_boundary_condition = 2  # prescribed flux = 0 (isolates interior physics for parity)
+        inner_boundary_value = 0
         conduction      = true
         convection      = true
         mixing          = false
