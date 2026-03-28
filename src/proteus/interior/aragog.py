@@ -104,10 +104,12 @@ class AragogRunner:
         solver = _SolverParameters(
             start_time=0,
             end_time=0,
-            # After the non-dim removal, T is in K (O(1000-5000)).
-            # atol must be in K: 1.0 K is ~0.03% relative at 3000 K.
-            # rtol from config (typically 1e-6 to 1e-8) is fine as-is.
-            atol=max(config.interior.aragog.tolerance, 1.0),
+            # T is in K (O(1000-5000)). For a convecting magma ocean near
+            # adiabatic equilibrium, dT/dt ~ 0.1-1 K/yr. atol must be small
+            # enough that the BDF solver resolves this: atol = 0.01 K ensures
+            # ~0.01 K precision, well below the ~0.3 K/yr cooling rate.
+            # Too large (e.g. 1.0 K) makes the solver skip the evolution entirely.
+            atol=max(config.interior.aragog.tolerance, 0.01),
             rtol=config.interior.aragog.tolerance,
             tsurf_poststep_change=config.interior.aragog.tsurf_poststep_change,
             event_triggering=config.interior.aragog.event_triggering,
