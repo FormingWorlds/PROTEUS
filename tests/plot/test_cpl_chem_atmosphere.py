@@ -75,6 +75,9 @@ def test_plot_chem_atmosphere_basic(
     ax1_mock.twiny.return_value = ax1_temp_mock
     ax2_mock.twiny.return_value = ax2_temp_mock
 
+    # Mock get_legend_handles_labels to return empty lists
+    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
     # Run function
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
@@ -135,6 +138,7 @@ def test_plot_chem_atmosphere_with_clouds(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
+    ax1_mock.get_legend_handles_labels.return_value = ([], [])
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
@@ -154,22 +158,24 @@ def test_plot_chem_atmosphere_with_aerosols(
     mock_join, mock_glob, mock_read, mock_subplots, mock_savefig
 ):
     """
-    Test plot generation including aerosol profiles.
+    Test plot generation including aerosol profiles with species names.
 
-    Physical scenario: aerosols (e.g., sulfate from volcanic outgassing) are
-    present when aerosols_enabled=True. Should appear in panel 2.
+    Physical scenario: aerosols (e.g., sulfate, silicate from volcanic outgassing)
+    are present when aerosols_enabled=True. Should appear in panel 2 with proper
+    labels for each aerosol species.
     """
     mock_glob.return_value = ['output_dir/data/1000_atm.nc']
     mock_join.return_value = 'output_dir/plots/plot_chem_atmosphere.png'
 
-    # Mock NetCDF with aerosol data
+    # Mock NetCDF with multiple aerosol species
     mock_read.return_value = {
         'pl': np.array([1e8, 1e7, 1e6, 1e5]),
         'tmpl': np.array([3000, 2000, 1000, 500]),
         'H2O_vmr': np.array([1e-3, 1e-4, 1e-5]),
         'cloud_mmr': np.array([0.0, 0.0, 0.0]),
-        'cloud_area': np.array([0.0, 0.0, 0.0]),
-        'aer_mmr': np.array([[1e-8], [5e-8], [1e-9]]),  # Total aerosol MMR (1 species)
+        'aerosols': ['Sulfate', 'Silicate'],  # Two aerosol species
+        'Sulfate_mmr': np.array([1e-8, 5e-8, 1e-9]),  # Individual aerosol MMRs
+        'Silicate_mmr': np.array([2e-9, 3e-9, 1e-10]),
     }
 
     # Mock matplotlib
@@ -179,12 +185,17 @@ def test_plot_chem_atmosphere_with_aerosols(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
+    ax1_mock.get_legend_handles_labels.return_value = ([], [])
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
     # Verify aerosol plotting on second panel
     assert ax2_mock.plot.called
     assert ax2_mock.legend.called
+
+    # Verify both aerosol species were plotted (2 species + maybe temperature)
+    # Each aerosol calls plot once
+    assert ax2_mock.plot.call_count >= 2
 
 
 @pytest.mark.unit
@@ -283,6 +294,7 @@ def test_plot_chem_atmosphere_temperature_overlay(
     ax2_temp_mock = MagicMock()
     ax1_mock.twiny.return_value = ax1_temp_mock
     ax2_mock.twiny.return_value = ax2_temp_mock
+    ax1_mock.get_legend_handles_labels.return_value = ([], [])
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
@@ -326,6 +338,7 @@ def test_plot_chem_atmosphere_time_annotation(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
+    ax1_mock.get_legend_handles_labels.return_value = ([], [])
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
@@ -334,3 +347,89 @@ def test_plot_chem_atmosphere_time_annotation(
     call_args = fig_mock.text.call_args[0]
     # Should contain the year value (5000)
     assert '5.00e+03' in call_args[2] or '5000' in str(call_args)
+
+
+@pytest.mark.unit
+@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
+@patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
+@patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
+@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
+def test_plot_chem_atmosphere_clouds_and_aerosols(
+    mock_glob, mock_read, mock_subplots, mock_savefig
+):
+    """
+    Test plotting with both clouds and aerosols present.
+
+    Physical scenario: Atmosphere with both water clouds and aerosol particles
+    (e.g., sulfate aerosols in a Venus-like atmosphere with H2SO4 clouds).
+    """
+    mock_glob.return_value = ['output_dir/data/200_atm.nc']
+
+    # Mock with both cloud and aerosol data
+    mock_read.return_value = {
+        'pl': np.array([1e8, 1e7, 1e6, 1e5]),
+        'tmpl': np.array([3000, 2000, 1000, 500]),
+        'H2O_vmr': np.array([1e-3, 1e-4, 1e-5]),
+        'CO2_vmr': np.array([1e-2, 1e-3, 1e-4]),
+        'cloud_mmr': np.array([1e-6, 5e-6, 1e-7]),  # Cloud present
+        'aerosols': ['Sulfate'],
+        'Sulfate_mmr': np.array([1e-8, 2e-8, 5e-9]),  # Aerosol present
+    }
+
+    fig_mock = MagicMock()
+    ax1_mock = MagicMock()
+    ax2_mock = MagicMock()
+    mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
+    ax1_mock.twiny.return_value = MagicMock()
+    ax2_mock.twiny.return_value = MagicMock()
+    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
+
+    # Verify both panels were plotted
+    assert ax1_mock.plot.called  # Gas species
+    assert ax2_mock.plot.called  # Clouds + aerosols
+
+    # Panel 2 should have plots for cloud + aerosol (at least 2)
+    assert ax2_mock.plot.call_count >= 2
+
+
+@pytest.mark.unit
+@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
+@patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
+@patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
+@patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
+def test_plot_chem_atmosphere_no_aerosols_key(
+    mock_glob, mock_read, mock_subplots, mock_savefig
+):
+    """
+    Test plotting when aerosols key is missing (backward compatibility).
+
+    Physical scenario: Reading output from older simulation without aerosol
+    support. Should handle gracefully and plot other data.
+    """
+    mock_glob.return_value = ['output_dir/data/100_atm.nc']
+
+    # Mock without aerosols key (older output format)
+    mock_read.return_value = {
+        'pl': np.array([1e8, 1e7, 1e6]),
+        'tmpl': np.array([3000, 2000, 1000]),
+        'H2O_vmr': np.array([1e-3, 1e-4]),
+        'cloud_mmr': np.array([0.0, 0.0]),
+        # No 'aerosols' key at all
+    }
+
+    fig_mock = MagicMock()
+    ax1_mock = MagicMock()
+    ax2_mock = MagicMock()
+    mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
+    ax1_mock.twiny.return_value = MagicMock()
+    ax2_mock.twiny.return_value = MagicMock()
+    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    # Should not crash
+    plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
+
+    # Verify gas panel was still plotted
+    assert ax1_mock.plot.called
+    mock_savefig.assert_called_once()
