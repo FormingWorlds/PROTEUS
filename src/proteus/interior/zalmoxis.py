@@ -857,14 +857,86 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
         from zalmoxis.energetics import initial_thermal_state
 
         cmf = config.struct.zalmoxis.coremassfrac
+        mantle_eos = config.struct.zalmoxis.mantle_eos
+
+        # Build PALEOS-derived nabla_ad and C_p when PALEOS EOS is configured.
+        # This uses the actual EOS tables for the adiabatic gradient and heat
+        # capacities instead of the constant defaults (nabla_ad=0.3, C_Fe=840,
+        # C_sil=1200), which can underpredict T_surface by a factor of ~3
+        # and T_CMB by ~25% for Earth-mass planets (see tech doc Section 4).
+        nabla_ad_func = None
+        C_iron = config.interior.thermal_state_C_iron
+        C_silicate = config.interior.thermal_state_C_silicate
+
+        if 'PALEOS' in mantle_eos:
+            try:
+                import math
+
+                from zalmoxis.eos.interpolation import load_paleos_unified_table
+
+                # Get EOS file paths from the material dictionaries
+                mat_dicts = load_zalmoxis_material_dictionaries()
+                mantle_mat = mat_dicts.get(mantle_eos, {})
+                core_mat = mat_dicts.get(config.struct.zalmoxis.core_eos, {})
+
+                # Build nabla_ad(P, T) from PALEOS MgSiO3 unified table
+                mantle_file = mantle_mat.get('eos_file', '')
+                if mantle_file and os.path.isfile(mantle_file):
+                    _cache = load_paleos_unified_table(mantle_file)
+
+                    def _paleos_nabla_ad(P_Pa, T_K, _c=_cache):
+                        if P_Pa <= 0 or T_K <= 0:
+                            return 0.3
+                        lp = max(_c['logp_min'], min(math.log10(P_Pa), _c['logp_max']))
+                        lt = max(_c['logt_min'], min(math.log10(T_K), _c['logt_max']))
+                        try:
+                            v = float(_c['nabla_ad_interp']([[lp, lt]])[0])
+                            if np.isfinite(v) and v > 0:
+                                return v
+                        except Exception:
+                            pass
+                        return 0.3
+
+                    nabla_ad_func = _paleos_nabla_ad
+                    logger.info('Using PALEOS nabla_ad(P,T) for initial thermal state adiabat')
+
+                # Query PALEOS C_p at CMB conditions for more accurate heat capacities
+                cmb_idx = int(np.argmin(np.abs(
+                    np.array(model_results['mass_enclosed']) -
+                    cmf * model_results['mass_enclosed'][-1])))
+                P_cmb = float(model_results['pressure'][cmb_idx])
+                T_est = 4000.0  # rough CMB temperature estimate for C_p query
+
+                for mat_name, mat_dict in [('iron', core_mat), ('MgSiO3', mantle_mat)]:
+                    eos_file = mat_dict.get('eos_file', '')
+                    if eos_file and os.path.isfile(eos_file):
+                        _data = np.genfromtxt(eos_file, usecols=range(9), comments='#')
+                        _P, _T, _cp = _data[:, 0], _data[:, 1], _data[:, 5]
+                        _valid = (_P > 0) & np.isfinite(_cp) & (_cp > 0) & (_cp < 5000)
+                        if np.sum(_valid) > 0:
+                            _dist = (np.log10(_P[_valid]) - math.log10(max(P_cmb, 1)))**2 + \
+                                    (np.log10(_T[_valid]) - math.log10(max(T_est, 1)))**2
+                            _cp_val = float(_cp[_valid][np.argmin(_dist)])
+                            if mat_name == 'iron':
+                                C_iron = _cp_val
+                            else:
+                                C_silicate = _cp_val
+                logger.info(
+                    'Using PALEOS C_p at CMB conditions: C_Fe=%.0f, C_sil=%.0f J/kg/K',
+                    C_iron, C_silicate,
+                )
+            except Exception as e:
+                logger.warning('Could not build PALEOS thermal properties: %s. Using constants.', e)
+
         thermal = initial_thermal_state(
             model_results,
             core_mass_fraction=cmf,
             T_radiative_eq=config.interior.thermal_state_T_eq,
             f_accretion=config.interior.thermal_state_f_accretion,
             f_differentiation=config.interior.thermal_state_f_differentiation,
-            C_iron=config.interior.thermal_state_C_iron,
-            C_silicate=config.interior.thermal_state_C_silicate,
+            C_iron=C_iron,
+            C_silicate=C_silicate,
+            nabla_ad_func=nabla_ad_func,
         )
         hf_row['T_cmb_initial'] = thermal['T_cmb']
         hf_row['T_surface_initial'] = thermal['T_surface']
