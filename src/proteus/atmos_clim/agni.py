@@ -228,7 +228,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
     # Aerosol species dictionary (set MMR to zero initially)
-    aerosol_species = dict()
+    aerosol_species = {}
     if config.atmos_clim.aerosols_enabled:
         aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
         if len(aerosol_species) == 0:
