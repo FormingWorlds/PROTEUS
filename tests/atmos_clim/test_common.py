@@ -156,6 +156,135 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
 
 
 @pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_with_aerosols(mock_ds, mock_isfile):
+    """
+    Test reading NetCDF profile data with aerosol mass mixing ratios.
+
+    Physical scenario: AGNI can output aerosol profiles (e.g., sulfate, silicate)
+    in the atmosphere. These are stored as aer_mmr(nlev_c, naeros) arrays with
+    corresponding names in the 'aerosols' variable.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    # Mock basic atmospheric profile
+    ds_instance.variables = {
+        'p': np.array([100.0]),
+        'pl': np.array([110.0, 90.0]),
+        'tmp': np.array([300.0]),
+        'tmpl': np.array([310.0, 290.0]),
+        'r': np.array([6.4e6]),
+        'rl': np.array([6.3e6, 6.5e6]),
+        'planet_radius': [6.0e6],
+        'transparent': np.array([b'y'], dtype='S1'),
+        # Aerosol data
+        'aerosols': np.array(
+            [
+                [
+                    b'S',
+                    b'u',
+                    b'l',
+                    b'f',
+                    b'a',
+                    b't',
+                    b'e',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                ],
+                [
+                    b'S',
+                    b'i',
+                    b'l',
+                    b'i',
+                    b'c',
+                    b'a',
+                    b't',
+                    b'e',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                ],
+            ],
+            dtype='S1',
+        ),
+        'aer_mmr': np.array([[1e-6], [2e-6]]),  # 2 levels, 1 aerosol type
+    }
+
+    # Read with aerosol data
+    result = read_ncdf_profile('dummy.nc', extra_keys=['aer_mmr'])
+
+    # Verify basic profile data
+    assert 'p' in result
+    assert 'transparent' in result
+
+    # Verify aerosol data was read
+    assert 'aer_mmr' in result
+    np.testing.assert_allclose(result['aer_mmr'], np.array([[1e-6], [2e-6]]))
+
+    # Note: Named aerosol extraction happens only if names are valid (not masked)
+    # With mock setup above, the names should parse
+    # But the actual extraction logic might skip empty/invalid names
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_with_clouds(mock_ds, mock_isfile):
+    """
+    Test reading NetCDF profile data with cloud properties.
+
+    Physical scenario: AGNI outputs cloud mass mixing ratio, cloud area fraction,
+    and cloud particle size when cloud_enabled=True.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0, 200.0]),
+        'pl': np.array([110.0, 150.0, 190.0]),
+        'tmp': np.array([300.0, 280.0]),
+        'tmpl': np.array([310.0, 290.0, 270.0]),
+        'r': np.array([6.4e6, 6.3e6]),
+        'rl': np.array([6.5e6, 6.35e6, 6.2e6]),
+        'planet_radius': [6.0e6],
+        'solved': np.array([b'y'], dtype='S1'),
+        # Cloud data
+        'cloud_mmr': np.array([1e-5, 2e-5]),
+        'cloud_area': np.array([0.5, 0.8]),
+        'cloud_size': np.array([1e-5, 1.2e-5]),
+    }
+
+    result = read_ncdf_profile('dummy.nc', extra_keys=['cloud_mmr', 'cloud_area', 'cloud_size'])
+
+    # Verify cloud data was read
+    assert 'cloud_mmr' in result
+    assert 'cloud_area' in result
+    assert 'cloud_size' in result
+
+    np.testing.assert_allclose(result['cloud_mmr'], np.array([1e-5, 2e-5]))
+    np.testing.assert_allclose(result['cloud_area'], np.array([0.5, 0.8]))
+    np.testing.assert_allclose(result['cloud_size'], np.array([1e-5, 1.2e-5]))
+
+
+@pytest.mark.unit
 @patch('proteus.atmos_clim.common.read_ncdf_profile')
 def test_read_atmosphere_data(mock_read):
     """
