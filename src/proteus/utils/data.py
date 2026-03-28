@@ -479,7 +479,7 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     # EOS material properties (OSF project: dpkjb)
     'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
     # Aerosol scattering data (no OSF project)
-    'scattering': {'zenodo_id': '19232950'},
+    'scattering': {'zenodo_id': '19294180'},
 }
 
 

@@ -92,7 +92,7 @@ def plot_chem_atmosphere(
         return
     nc_fpath = natural_sort(files)[-1]
     atm_profile = read_ncdf_profile(
-        nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas', 'cloud_mmr', 'cloud_area', 'aer_mmr']
+        nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas', 'cloud_mmr', 'aer_mmr', 'aerosols']
     )
 
     parr = atm_profile['pl'] * 1e-5  # convert to bar
@@ -148,7 +148,7 @@ def plot_chem_atmosphere(
 
         # create legend entry and store surface vmr
         if vmr > 0.0:
-            ax1.plot(1e30, 1e30, ls='solid', color=col, lw=_lw, alpha=al, label=lbl)
+            ax1.plot([], [], ls='solid', color=col, lw=_lw, alpha=al, label=lbl)
             vmr_surf.append(vmr)
 
     # Add temperature profile to Panel 1 (secondary x-axis at top)
@@ -175,12 +175,12 @@ def plot_chem_atmosphere(
         [labels[idx] for idx in order],
         loc='center left',
         bbox_to_anchor=(1.00, 0.5),
-        ncols=1,
-        fontsize=9,
+        ncols=max(1, len(order)//18+1),
+        fontsize=8,
         borderpad=0.0,
         labelspacing=0.3,
         columnspacing=1.0,
-        handlelength=1.0,
+        handlelength=0.9,
         handletextpad=0.3,
         frameon=False,
     )
@@ -191,34 +191,31 @@ def plot_chem_atmosphere(
     # Cloud profiles
     if 'cloud_mmr' in atm_profile.keys():
         cloud_mmr = atm_profile['cloud_mmr']
-        # Extend to match parr length (edge values)
-        if np.max(cloud_mmr) > 0:
-            ax2.plot(
-                [cloud_mmr[0]] + list(cloud_mmr),
-                parr,
-                ls='solid',
-                color=get_colour('cloud'),
-                lw=1.5,
-                alpha=0.7,
-                label='cloud',
-            )
+        ax2.plot(
+            [cloud_mmr[0]] + list(cloud_mmr),
+            parr,
+            ls='solid',
+            color=get_colour('cloud'),
+            lw=1.5,
+            alpha=0.7,
+            label='cloud',
+        )
 
     # Aerosol profiles
     # Check for individual aerosol species
-    for key in atm_profile.keys():
-        if key.endswith('_mmr') and 'cloud' not in key:
-            aer_mmr = atm_profile[key]
-            if np.max(aer_mmr) > 0:
-                aer_name = key.split('_')[0]
-                ax2.plot(
-                    [aer_mmr[0]] + list(aer_mmr),
-                    parr,
-                    ls='solid',
-                    lw=1.5,
-                    alpha=0.7,
-                    color=get_colour(aer_name),
-                    label=aer_name,
-                )
+    num_aerosols = 1
+    for aer_name in atm_profile['aerosols']:
+        num_aerosols += 1
+        aer_mmr = atm_profile[f'{aer_name}_mmr']
+        ax2.plot(
+            [aer_mmr[0]] + list(aer_mmr),
+            parr,
+            ls='solid',
+            lw=1.5,
+            alpha=0.7,
+            color=get_colour(aer_name),
+            label=aer_name,
+        )
 
     # Add temperature profile to Panel 2 (secondary x-axis at top)
     ax2_temp = ax2.twiny()
@@ -239,12 +236,12 @@ def plot_chem_atmosphere(
     ax2.legend(
         loc='center left',
         bbox_to_anchor=(1.00, 0.5),
-        ncols=1,
-        fontsize=9,
+        ncols=max(1, num_aerosols//18+1),
+        fontsize=8,
         borderpad=0.0,
         labelspacing=0.3,
         columnspacing=1.0,
-        handlelength=1.0,
+        handlelength=0.9,
         handletextpad=0.3,
         frameon=False,
     )

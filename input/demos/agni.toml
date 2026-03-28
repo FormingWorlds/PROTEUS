@@ -90,7 +90,7 @@ version = "2.0"
     rayleigh = false
     cloud_enabled   = false         # include water cloud radiative effects?
     cloud_alpha     = 0.5           # water condensate retention fraction
-    aerosols_enabled = false        # include aerosol radiative effects?
+    aerosols_enabled = true        # include aerosol radiative effects?
 
     [atmos_clim.agni]
         verbosity       = 1             # output verbosity for agni (0:none, 1:info, 2:debug)

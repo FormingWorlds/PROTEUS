@@ -67,12 +67,23 @@ _preset_colours = {
     'cor_bkg': '#efefef',
     # Clouds and aerosols
     'cloud': '#027FB1',
-    'freshsoot': '#876e44',
+    'frsoot': '#876e44',
     'soot': '#63401a',
-    'agedsoot': '#251607',
+    'agsoot': '#251607',
     'nitrate': '#ffaa00',
     'ash': '#970505',
     'sulph': '#ff22ff',
+    'biogenic': '#33ccff',
+    'bioms1': '#33ccaa',
+    'delta' : "#6a9064",
+    'dustdiv1' : "#fcfcd7",
+    'dustdiv2' : "#fbfca1",
+    'dustdiv3' : "#f6f873",
+    'dustdiv4' : "#fcff5d",
+    'dustdiv5' : "#fcff33",
+    'dustdiv6' : "#fbff21",
+    'naclflm' : "#fca1ff",
+    'nacljet' : "#ee29f5"
 }
 
 
