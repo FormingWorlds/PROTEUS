@@ -89,10 +89,17 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
         'rl': np.array([6.3e6, 6.5e6]),
         'planet_radius': [6.0e6],
         'transparent': np.array([b'y'], dtype='S1'),
+        'gases': np.array([[b'H', b'2', b'O'], [b'C', b'O', b'2']], dtype='S1'),
+        'x_gases': np.array([0.1, 0.9]),
+        'aerosols': np.array([[b's', b'o', b'o', b't'], [b's', b'u', b'l', b'f']], dtype='S1'),
+        'aer_mmr': np.array([[1e-6, 2e-6]]),
+        'cloud_mmr': np.array([1e-5]),
     }
 
     # Run function
-    result = read_ncdf_profile('dummy.nc')
+    result = read_ncdf_profile(
+        'dummy.nc', extra_keys=['gases', 'x_gases', 'aerosols', 'aer_mmr', 'cloud_mmr']
+    )
 
     # Verify values are correctly extracted
     assert result['p'][0] == 110.0  # Should match first element of pl
