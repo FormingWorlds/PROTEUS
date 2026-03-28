@@ -125,15 +125,6 @@ def _check_eos_table_range(eos_dir: str, mesh_file: str | None, P_cmb: float):
             s_max_solid,
         )
 
-    if P_cmb > 400e9:
-        log.warning(
-            'CMB pressure %.1f GPa exceeds 400 GPa. At these pressures the initial '
-            'adiabat may cross the liquidus, requiring solid-phase EOS evaluation at '
-            'entropy values beyond the table range (solid max: %.0f J/kg/K). '
-            'If SPIDER fails with CV_CONV_FAILURE at t=0, this is the likely cause.',
-            P_cmb / 1e9,
-            s_max_solid,
-        )
 
 
 # Nondimensional scaling reference (must match SPIDER call_sequence below)
