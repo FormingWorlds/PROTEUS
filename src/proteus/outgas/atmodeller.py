@@ -189,7 +189,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # Extract results
     output = model.output
     quick_look = output.quick_look()
-    total_P = float(output.total_pressure())
+    total_P = float(np.squeeze(output.total_pressure()))
 
     log.info('Atmodeller result: P_total=%.2f bar', total_P)
 
@@ -200,7 +200,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     for atm_name, p_bar in quick_look.items():
         proteus_name = _reverse_map.get(atm_name.replace('_g', ''))
         if proteus_name and proteus_name in gas_list:
-            p_val = float(p_bar)
+            p_val = float(np.squeeze(p_bar))
             hf_row[f'{proteus_name}_bar'] = p_val
             P_total += p_val
 
