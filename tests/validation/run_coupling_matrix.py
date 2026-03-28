@@ -209,22 +209,32 @@ def generate_slurm_script(cases, output_dir):
     script = f"""#!/bin/bash
 #SBATCH --job-name=proteus_validation
 #SBATCH --array=1-{len(cases)}
-#SBATCH --time=06:00:00
-#SBATCH --mem-per-cpu=8G
+#SBATCH --time=96:00:00
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=1
 #SBATCH --partition=regular
-#SBATCH --output=output/validation/slurm_%A_%a.out
-#SBATCH --error=output/validation/slurm_%A_%a.err
+#SBATCH --output=/home1/p311056/PROTEUS/output/validation/logs/%a_%x.out
+#SBATCH --error=/home1/p311056/PROTEUS/output/validation/logs/%a_%x.err
 
 # Load environment
 source ~/miniforge3/etc/profile.d/conda.sh
 conda activate proteus
+module load netCDF-Fortran/4.6.1-gompi-2023a libarchive 2>/dev/null
+export PYTHON_JULIAPKG_EXE=$HOME/.julia/juliaup/julia-1.12.5+0.x64.linux.gnu/bin/julia
 
 # Get config for this array task
 CONFIG=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {case_list_path})
 
-echo "Task $SLURM_ARRAY_TASK_ID: $CONFIG"
+echo "Running case $SLURM_ARRAY_TASK_ID: $CONFIG"
+echo "Start: $(date)"
+
+cd /home1/p311056/PROTEUS
 proteus start -c "$CONFIG"
-echo "Exit code: $?"
+
+EXIT=$?
+echo "End: $(date)"
+echo "Exit: $EXIT"
+exit $EXIT
 """
 
     with open(script_path, 'w') as f:
