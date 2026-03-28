@@ -22,7 +22,7 @@ import click
 from proteus import Proteus
 from proteus import __version__ as proteus_version
 from proteus.config import read_config_object
-from proteus.utils.data import download_sufficient_data
+from proteus.utils.data import download_scattering, download_sufficient_data
 from proteus.utils.logs import setup_logger
 
 config_option = click.option(
@@ -409,6 +409,12 @@ def surfaces():
 
     download_surface_albedos()
 
+@click.command()
+def scattering():
+    """Get scattering radiative properties"""
+    from .utils.data import download_scattering
+
+    download_scattering()
 
 @click.command()
 def reference():
@@ -463,6 +469,7 @@ def spider():
 cli.add_command(get)
 get.add_command(spectral)
 get.add_command(surfaces)
+get.add_command(scattering)
 get.add_command(muscles)
 get.add_command(phoenix)
 get.add_command(solar)

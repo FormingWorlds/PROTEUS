@@ -132,7 +132,7 @@ def _determine_aerosols(dirs: dict) -> list:
             List of available aerosols
     """
 
-    scattering_dir = os.path.join(dirs['fwl'], 'scattering')
+    scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
     if not os.path.isdir(scattering_dir):
         log.warning(f'Scattering data directory not found: {scattering_dir}')
         return []
