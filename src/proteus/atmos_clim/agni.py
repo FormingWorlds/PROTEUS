@@ -117,6 +117,7 @@ def _determine_condensates(vol_list: list):
     # all dry gases...
     return [v for v in vol_list if v not in ALWAYS_DRY]
 
+
 def _determine_aerosols(dirs: dict) -> list:
     """
     Determine which aerosols are available.
@@ -144,6 +145,7 @@ def _determine_aerosols(dirs: dict) -> list:
 
     log.debug(f'Available aerosols: {aerosols}')
     return aerosols
+
 
 def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     """Initialise atmosphere struct for use by AGNI.

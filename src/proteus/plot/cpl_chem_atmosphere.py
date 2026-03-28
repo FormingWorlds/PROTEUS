@@ -206,7 +206,7 @@ def plot_chem_atmosphere(
     # Aerosol profiles
     # Check for individual aerosol species
     for key in atm_profile.keys():
-        if key.endswith('_mmr') and "cloud" not in key:
+        if key.endswith('_mmr') and 'cloud' not in key:
             aer_mmr = atm_profile[key]
             if np.max(aer_mmr) > 0:
                 aer_name = key.split('_')[0]
@@ -250,8 +250,17 @@ def plot_chem_atmosphere(
     )
 
     # Add time annotation
-    fig.text(0.02, 0.98, f't = {year:.2e} yr', transform=ax1.transAxes,
-             ha='left', va='top',fontsize=11, weight='bold', zorder=999)
+    fig.text(
+        0.02,
+        0.98,
+        f't = {year:.2e} yr',
+        transform=ax1.transAxes,
+        ha='left',
+        va='top',
+        fontsize=11,
+        weight='bold',
+        zorder=999,
+    )
 
     # Save file
     fpath = os.path.join(output_dir, 'plots', 'plot_chem_atmosphere.%s' % plot_format)

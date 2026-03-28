@@ -38,7 +38,7 @@ _preset_colours = {
     'O': '#88bb22',
     'N': '#ffaa00',
     'S': '#ff22ff',
-    'P': "#33ccff",
+    'P': '#33ccff',
     # refractory elements
     'Fe': '#888888',
     'Si': '#aa2277',
@@ -66,13 +66,13 @@ _preset_colours = {
     'int_bkg': '#fffaf2',
     'cor_bkg': '#efefef',
     # Clouds and aerosols
-    'cloud': "#027FB1",
-    'freshsoot': "#876e44",
-    'soot': "#63401a",
-    'agedsoot': "#251607",
-    'nitrate': "#ffaa00",
-    'ash': "#970505",
-    'sulph': "#ff22ff"
+    'cloud': '#027FB1',
+    'freshsoot': '#876e44',
+    'soot': '#63401a',
+    'agedsoot': '#251607',
+    'nitrate': '#ffaa00',
+    'ash': '#970505',
+    'sulph': '#ff22ff',
 }
 
 
