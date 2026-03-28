@@ -1191,15 +1191,20 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     output['T_core'] = float(interior_o.temp[-1])
 
     # Total thermal energy: E_th = sum(rho_i * Cp_i * T_i * V_i)
-    # SPIDER doesn't output Cp directly, but we can estimate it from the
-    # EOS via dE/dT ~ rho*Cp. For a rough but fair comparison with Aragog,
-    # use the PALEOS lookup or a representative Cp. Here we use the entropy
-    # to compute Cp = T * dS/dT, but for simplicity use rho*T*V with a
-    # reference Cp since both solvers use the same EOS.
-    # More accurate: use the lookup tables if available.
+    # SPIDER has Cp in its EOS tables. Use the lookup if available,
+    # else fall back to Cp = T * dS/dT estimated from entropy tables.
     try:
-        cp_est = np.full_like(interior_o.temp, 1200.0)  # default sensible Cp
-        if hasattr(interior_o, 'lookup_cp_melt') and interior_o.lookup_cp_melt is not None:
+        cp_est = np.full_like(interior_o.temp, 1200.0)
+        # Try to get Cp from the SPIDER EOS lookup (P-S tables)
+        if hasattr(interior_o, 'lookup_cp') and interior_o.lookup_cp is not None:
+            for i in range(len(interior_o.temp)):
+                try:
+                    cp_est[i] = float(interior_o.lookup_cp(
+                        entropy[i], interior_o.pres[i]
+                    ))
+                except Exception:
+                    pass
+        elif hasattr(interior_o, 'lookup_cp_melt') and interior_o.lookup_cp_melt is not None:
             for i in range(len(interior_o.temp)):
                 try:
                     cp_est[i] = float(interior_o.lookup_cp_melt(
