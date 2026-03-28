@@ -865,6 +865,8 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
         # C_sil=1200), which can underpredict T_surface by a factor of ~3
         # and T_CMB by ~25% for Earth-mass planets (see tech doc Section 4).
         nabla_ad_func = None
+        cp_iron_func = None
+        cp_silicate_func = None
         C_iron = config.interior.thermal_state_C_iron
         C_silicate = config.interior.thermal_state_C_silicate
 
@@ -872,6 +874,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
             try:
                 import math
 
+                from scipy.interpolate import LinearNDInterpolator
                 from zalmoxis.eos.interpolation import load_paleos_unified_table
 
                 # Get EOS file paths from the material dictionaries
@@ -900,31 +903,42 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
                     nabla_ad_func = _paleos_nabla_ad
                     logger.info('Using PALEOS nabla_ad(P,T) for initial thermal state adiabat')
 
-                # Query PALEOS C_p at CMB conditions for more accurate heat capacities
-                cmb_idx = int(np.argmin(np.abs(
-                    np.array(model_results['mass_enclosed']) -
-                    cmf * model_results['mass_enclosed'][-1])))
-                P_cmb = float(model_results['pressure'][cmb_idx])
-                T_est = 4000.0  # rough CMB temperature estimate for C_p query
+                # Build C_p(P, T) interpolators from PALEOS tables for
+                # mass-weighted integration over the radial structure
+                def _build_cp_func(eos_file, fallback_cp):
+                    """Build a C_p(P, T) interpolator from a PALEOS table."""
+                    if not eos_file or not os.path.isfile(eos_file):
+                        return None
+                    _data = np.genfromtxt(eos_file, usecols=range(9), comments='#')
+                    _P, _T, _cp = _data[:, 0], _data[:, 1], _data[:, 5]
+                    _valid = (_P > 0) & np.isfinite(_cp) & (_cp > 0) & (_cp < 5000)
+                    if np.sum(_valid) < 10:
+                        return None
+                    _lp = np.log10(_P[_valid])
+                    _lt = np.log10(_T[_valid])
+                    _interp = LinearNDInterpolator(
+                        list(zip(_lp, _lt)), _cp[_valid]
+                    )
 
-                for mat_name, mat_dict in [('iron', core_mat), ('MgSiO3', mantle_mat)]:
-                    eos_file = mat_dict.get('eos_file', '')
-                    if eos_file and os.path.isfile(eos_file):
-                        _data = np.genfromtxt(eos_file, usecols=range(9), comments='#')
-                        _P, _T, _cp = _data[:, 0], _data[:, 1], _data[:, 5]
-                        _valid = (_P > 0) & np.isfinite(_cp) & (_cp > 0) & (_cp < 5000)
-                        if np.sum(_valid) > 0:
-                            _dist = (np.log10(_P[_valid]) - math.log10(max(P_cmb, 1)))**2 + \
-                                    (np.log10(_T[_valid]) - math.log10(max(T_est, 1)))**2
-                            _cp_val = float(_cp[_valid][np.argmin(_dist)])
-                            if mat_name == 'iron':
-                                C_iron = _cp_val
-                            else:
-                                C_silicate = _cp_val
-                logger.info(
-                    'Using PALEOS C_p at CMB conditions: C_Fe=%.0f, C_sil=%.0f J/kg/K',
-                    C_iron, C_silicate,
-                )
+                    def _cp_func(P_Pa, T_K, _i=_interp, _fb=fallback_cp):
+                        if P_Pa <= 0 or T_K <= 0:
+                            return _fb
+                        v = float(_i(math.log10(P_Pa), math.log10(T_K)))
+                        if np.isfinite(v) and 0 < v < 5000:
+                            return v
+                        return _fb
+
+                    return _cp_func
+
+                core_file = core_mat.get('eos_file', '')
+                cp_iron_func = _build_cp_func(core_file, C_iron)
+                cp_silicate_func = _build_cp_func(mantle_file, C_silicate)
+
+                if cp_iron_func is not None:
+                    logger.info('Using PALEOS C_p(P,T) for iron (mass-weighted integration)')
+                if cp_silicate_func is not None:
+                    logger.info('Using PALEOS C_p(P,T) for silicate (mass-weighted integration)')
+
             except Exception as e:
                 logger.warning('Could not build PALEOS thermal properties: %s. Using constants.', e)
 
@@ -937,6 +951,8 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
             C_iron=C_iron,
             C_silicate=C_silicate,
             nabla_ad_func=nabla_ad_func,
+            cp_iron_func=cp_iron_func,
+            cp_silicate_func=cp_silicate_func,
         )
         hf_row['T_cmb_initial'] = thermal['T_cmb']
         hf_row['T_surface_initial'] = thermal['T_surface']
