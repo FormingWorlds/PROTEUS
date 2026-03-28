@@ -78,8 +78,8 @@ version = "2.0"
     equilibrate_tol      = 0.02
 
     update_interval       = 0       # no dynamic structure updates
-    update_dtmagma_frac   = 1.0     # effectively disabled
-    update_dphi_abs       = 1.0     # effectively disabled
+    update_dtmagma_frac   = 0.99    # effectively disabled
+    update_dphi_abs       = 0.99    # effectively disabled
     mesh_max_shift        = 0.05
     mesh_convergence_interval = 10.0
 
