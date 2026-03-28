@@ -172,7 +172,8 @@ version = "2.0"
         convection      = true
         mixing          = false
         gravitational_separation = false
-        tsurf_poststep_change = 50.0
+        tsurf_poststep_change = 500.0
+        event_triggering = false
         param_utbl      = true
 
 [outgas]
