@@ -702,13 +702,27 @@ class AragogRunner:
         logger.warning(
             'Aragog solve_ivp: t=[%.2e, %.2e], n_t=%d, '
             'T_stag_surface: first=%.2f last=%.2f, dT=%.4f, '
-            'T_basic_surface=%.2f, status=%d',
+            'T_basic_surface=%.2f, status=%d, '
+            'T_stag_CMB: first=%.2f last=%.2f',
             sol.t[0], sol.t[-1], len(sol.t),
             T_stag_first[-1], T_stag_last[-1],
             T_stag_last[-1] - T_stag_first[-1],
             T_basic_surf,
             sol.status,
+            T_stag_first[0], T_stag_last[0],
         )
+        # Print dTdt at first and last call
+        if len(sol.t) > 1:
+            dt_sol = sol.t[-1] - sol.t[0]
+            if dt_sol > 0:
+                dT_surf = (T_stag_last[-1] - T_stag_first[-1]) / dt_sol
+                dT_cmb = (T_stag_last[0] - T_stag_first[0]) / dt_sol
+                dT_mid = (T_stag_last[len(T_stag_last)//2] - T_stag_first[len(T_stag_first)//2]) / dt_sol
+                logger.warning(
+                    'Aragog avg dT/dt: surface=%.4f mid=%.4f CMB=%.4f K/yr '
+                    'over %.2e yr',
+                    dT_surf, dT_mid, dT_cmb, dt_sol,
+                )
 
         # F_int = F_atm by energy conservation: the prescribed surface BC
         # determines the actual energy loss rate. The interior transport flux
