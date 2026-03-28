@@ -770,20 +770,23 @@ class AragogRunner:
         # Core (CMB) temperature: bottom-most basic node
         output['T_core'] = float(aragog_output.temperature_K_basic[0, -1])
 
-        # Total thermal energy: E_th = sum(rho_i * Cp_i * T_i * V_i)
-        # This is formulation-independent and allows direct comparison with SPIDER.
-        # Use the capacitance_staggered which includes latent heat in the mixed phase.
+        # Total thermal energy (sensible only): E_th = sum(mass_i * Cp_ref * T_i)
+        # Uses a fixed Cp_ref=1200 J/kg/K for fair comparison with SPIDER
+        # (which also uses this fallback). The sensible E_th tracks bulk cooling
+        # without latent heat confounding the comparison.
         T_stag = aragog_output.temperature_K_staggered[:, -1]
+        mass_stag = aragog_output.mass_staggered[:, -1]
+        n_stag = min(len(T_stag), len(mass_stag))
+        CP_REF = 1200.0  # J/kg/K, same reference for both solvers
+        E_th = float(np.sum(mass_stag[:n_stag] * CP_REF * T_stag[:n_stag]))
+        output['E_th_mantle'] = E_th
+
+        # Effective heat capacity including latent heat (diagnostic)
         cap_stag = aragog_output.state.capacitance_staggered()  # rho * Cp_eff [J/m^3/K]
         vol_stag = aragog_output.evaluator.mesh.basic.volume.flatten()
-        n_stag = min(len(T_stag), len(cap_stag), len(vol_stag))
-        # cap_stag may be 2D (n_stag, n_time); take last time
         if cap_stag.ndim > 1:
             cap_stag = cap_stag[:, -1]
         cap_flat = np.array(cap_stag).flatten()[:n_stag]
-        E_th = float(np.sum(cap_flat * T_stag[:n_stag] * vol_stag[:n_stag]))
-        output['E_th_mantle'] = E_th
-        # Effective heat capacity: mass-weighted Cp
         Cp_eff = float(np.sum(cap_flat * vol_stag[:n_stag])) / max(output['M_mantle'], 1.0)
         output['Cp_eff'] = Cp_eff
 
