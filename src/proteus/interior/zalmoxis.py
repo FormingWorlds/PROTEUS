@@ -883,6 +883,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
 
     # Update the surface radius, interior radius, and mass in the hf_row
     hf_row['R_int'] = planet_radius
+    hf_row['R_core'] = cmb_radius
     hf_row['M_int'] = mass_enclosed[-1]
     hf_row['M_core'] = mass_enclosed[cmb_index]
     hf_row['gravity'] = gravity[-1]
