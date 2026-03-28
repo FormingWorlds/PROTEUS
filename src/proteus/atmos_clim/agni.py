@@ -141,7 +141,8 @@ def _determine_aerosols(dirs: dict) -> list:
     aerosols = []
     for f in os.listdir(scattering_dir):
         if f.endswith('.mon'):
-            aerosols.append(f.split('.')[0])
+            aerosols.append(f.replace('.mon', ''))
+    aerosols = sorted(aerosols)
 
     log.debug(f'Available aerosols: {aerosols}')
     return aerosols
