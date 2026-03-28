@@ -175,7 +175,7 @@ def plot_chem_atmosphere(
         [labels[idx] for idx in order],
         loc='center left',
         bbox_to_anchor=(1.00, 0.5),
-        ncols=max(1, len(order)//18+1),
+        ncols=max(1, len(order) // 18 + 1),
         fontsize=8,
         borderpad=0.0,
         labelspacing=0.3,
@@ -236,7 +236,7 @@ def plot_chem_atmosphere(
     ax2.legend(
         loc='center left',
         bbox_to_anchor=(1.00, 0.5),
-        ncols=max(1, num_aerosols//18+1),
+        ncols=max(1, num_aerosols // 18 + 1),
         fontsize=8,
         borderpad=0.0,
         labelspacing=0.3,

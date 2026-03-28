@@ -158,7 +158,6 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
                 gas_lbl = ''.join([c.decode(encoding='utf-8') for c in gas]).strip()
                 out[gas_lbl + '_vmr'] = np.array(gas_x[:, igas])
 
-
         elif key == 'aerosols':
             if 'aerosols' in ds.variables.keys():
                 aer_l = ds.variables['aerosols'][:]  # names (bytes matrix)

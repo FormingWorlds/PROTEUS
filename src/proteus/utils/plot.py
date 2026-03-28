@@ -75,15 +75,15 @@ _preset_colours = {
     'sulph': '#ff22ff',
     'biogenic': '#33ccff',
     'bioms1': '#33ccaa',
-    'delta' : "#6a9064",
-    'dustdiv1' : "#fcfcd7",
-    'dustdiv2' : "#fbfca1",
-    'dustdiv3' : "#f6f873",
-    'dustdiv4' : "#fcff5d",
-    'dustdiv5' : "#fcff33",
-    'dustdiv6' : "#fbff21",
-    'naclflm' : "#fca1ff",
-    'nacljet' : "#ee29f5"
+    'delta': '#6a9064',
+    'dustdiv1': '#fcfcd7',
+    'dustdiv2': '#fbfca1',
+    'dustdiv3': '#f6f873',
+    'dustdiv4': '#fcff5d',
+    'dustdiv5': '#fcff33',
+    'dustdiv6': '#fbff21',
+    'naclflm': '#fca1ff',
+    'nacljet': '#ee29f5',
 }
 
 
