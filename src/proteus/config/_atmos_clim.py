@@ -18,7 +18,7 @@ def tmp_max_bigger_than_tmp_min(instance, attribute, value):
 
 def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
-        raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
+        raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
 def check_overlap(instance, attribute, value):

@@ -88,6 +88,9 @@ version = "2.0"
     albedo_pl       = 0.2   	# Bond albedo (scattering)
     module  = "agni"           # Which atmosphere module to use
     rayleigh = false
+    cloud_enabled   = false         # include water cloud radiative effects?
+    cloud_alpha     = 0.5           # water condensate retention fraction
+    aerosols_enabled = false        # include aerosol radiative effects?
 
     [atmos_clim.agni]
         verbosity       = 1             # output verbosity for agni (0:none, 1:info, 2:debug)
@@ -104,9 +107,6 @@ version = "2.0"
         overlap_method  = "ee"          # gas overlap method
         surf_roughness  = 1e-3          # characteristic surface roughness [m]
         surf_windspeed  = 2.0           # characteristic surface wind speed [m/s].
-        cloud_enabled   = false         # include water cloud radiative effects?
-        cloud_alpha     = 0.5           # water condensate retention fraction
-        aerosols_enabled = false        # include aerosol radiative effects?
         rainout         = true          # include volatile condensation/evaporation aloft
         latent_heat     = false         # include latent heat release when `rainout=true`?
         oceans          = true          # form liquid oceans at planet surface?
