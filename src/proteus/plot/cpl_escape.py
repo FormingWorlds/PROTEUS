@@ -55,16 +55,21 @@ def plot_escape(hf_all: pd.DataFrame, output_dir: str, plot_format='pdf'):
         col = get_colour(e)
 
         # Plot planetary inventory of this element
-        y = np.array(hf_crop[e + '_kg_total']) / M_uval
-        total += y
+        y = np.array(hf_crop[e+"_kg_total"])/M_uval
+        if y.ndim == 2:
+            y = y[:, 0]
         ax0.plot(time, y, lw=_lw, ls='dotted', color=col)
 
         # Plot atmospheric inventory of this element
         y = np.array(hf_crop[f'{e}_kg_atm']) / M_uval
+        if y.ndim == 2:
+            y = y[:, 0]
         ax0.plot(time, y, lw=_lw, ls='solid', color=col, label=e)
 
         # Plot escape rate of this element
         y = np.array(hf_crop[f'esc_rate_{e}']) * secs_per_year * 1e6 / M_uval
+        if y.ndim == 2:
+            y = y[:, 0]
         ax1.plot(time, y, lw=_lw, ls='solid', color=col)
 
     # Planetary element sum inventory
