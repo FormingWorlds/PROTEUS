@@ -203,19 +203,20 @@ def plot_chem_atmosphere(
 
     # Aerosol profiles
     # Check for individual aerosol species
-    num_aerosols = 1
-    for aer_name in atm_profile['aerosols']:
-        num_aerosols += 1
-        aer_mmr = atm_profile[f'{aer_name}_mmr']
-        ax2.plot(
-            [aer_mmr[0]] + list(aer_mmr),
-            parr,
-            ls='solid',
-            lw=1.5,
-            alpha=0.7,
-            color=get_colour(aer_name),
-            label=aer_name,
-        )
+    num_aerosols = 0
+    if 'aerosols' in atm_profile.keys():
+        for aer_name in atm_profile['aerosols']:
+            num_aerosols += 1
+            aer_mmr = atm_profile[f'{aer_name}_mmr']
+            ax2.plot(
+                [aer_mmr[0]] + list(aer_mmr),
+                parr,
+                ls='solid',
+                lw=1.5,
+                alpha=0.7,
+                color=get_colour(aer_name),
+                label=aer_name,
+            )
 
     # Add temperature profile to Panel 2 (secondary x-axis at top)
     ax2_temp = ax2.twiny()
@@ -247,7 +248,7 @@ def plot_chem_atmosphere(
     )
 
     # Add time annotation
-    fig.text(
+    ax1.text(
         0.02,
         0.98,
         f't = {year:.2e} yr',

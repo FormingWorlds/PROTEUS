@@ -479,7 +479,7 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     # EOS material properties (OSF project: dpkjb)
     'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
     # Aerosol scattering data (no OSF project)
-    'scattering': {'zenodo_id': '19294180'},
+    'scattering': {'zenodo_id': '19294180', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
 }
 
 
@@ -1013,6 +1013,7 @@ def download_scattering():
     download(
         folder=folder,
         target='scattering',
+        osf_id=source_info['osf_project'],
         zenodo_id=source_info['zenodo_id'],
         desc='radiative properties scattering data',
     )

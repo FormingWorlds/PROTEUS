@@ -164,7 +164,8 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
                 aerosols = []
                 for iaer, aer in enumerate(aer_l):
                     aer_lbl = ''.join([c.decode(encoding='utf-8') for c in aer]).strip()
-                    aerosols.append(aer_lbl)
+                    if len(aer_lbl) > 0:
+                        aerosols.append(aer_lbl)
                 out['aerosols'] = aerosols
 
         elif key == 'aer_mmr':
@@ -174,10 +175,9 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
                 # get data for each aerosol
                 for iaer, aer in enumerate(aer_l):
-                    if type(aer[0]) not in [bytes, np.bytes_]:
-                        continue
                     aer_lbl = ''.join([c.decode(encoding='utf-8') for c in aer]).strip()
-                    out[aer_lbl + '_mmr'] = np.array(aer_x[:, iaer])
+                    if len(aer_lbl) > 0:
+                        out[aer_lbl + '_mmr'] = np.array(aer_x[:, iaer])
 
         else:
             out[key] = np.array(ds.variables[key][:])
