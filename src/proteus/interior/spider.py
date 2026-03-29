@@ -914,6 +914,10 @@ def _try_spider(
     call_sequence.extend(['-eddy_diffusivity_thermal', '1.0'])
     call_sequence.extend(['-eddy_diffusivity_chemical', '1.0'])
 
+    # Phase-dependent eddy diffusivity floor
+    if config.interior.kappah_floor > 0:
+        call_sequence.extend(['-kappah_floor', str(config.interior.kappah_floor)])
+
     # smoothing of material properties across liquidus and solidus
     # units of melt fraction (non-dimensional)
     call_sequence.extend(

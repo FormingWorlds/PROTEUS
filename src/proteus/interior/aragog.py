@@ -183,6 +183,7 @@ class AragogRunner:
             radionuclides=config.interior.radiogenic_heat,
             tidal=config.interior.tidal_heat,
             tidal_array=interior_o.tides,
+            kappah_floor=config.interior.kappah_floor,
         )
 
         # Define initial conditions for prescribing temperature profile

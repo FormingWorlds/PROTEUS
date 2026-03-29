@@ -319,3 +319,9 @@ class Interior:
     thermal_state_f_differentiation: float = field(default=0.50, validator=ge(0))
     thermal_state_C_iron: float = field(default=450.0, validator=gt(0))  # Dulong-Petit (White+Li 2025)
     thermal_state_C_silicate: float = field(default=1250.0, validator=gt(0))  # Dulong-Petit (White+Li 2025)
+
+    # Phase-dependent eddy diffusivity floor [m^2/s]. Default 0 = standard MLT.
+    # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from
+    # 1 (liquid) to 0 (solid) at the rheological transition. Passed to both
+    # SPIDER (-kappah_floor) and Aragog (kappah_floor in energy config).
+    kappah_floor: float = field(default=0.0, validator=ge(0))
