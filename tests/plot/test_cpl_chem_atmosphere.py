@@ -40,9 +40,7 @@ def test_plot_chem_atmosphere_no_files(mock_glob):
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
-def test_plot_chem_atmosphere_basic(
-    mock_join, mock_glob, mock_read, mock_subplots
-):
+def test_plot_chem_atmosphere_basic(mock_join, mock_glob, mock_read, mock_subplots):
     """
     Test basic plot generation with gas species only.
 
@@ -111,9 +109,7 @@ def test_plot_chem_atmosphere_basic(
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
-def test_plot_chem_atmosphere_with_clouds(
-    mock_join, mock_glob, mock_read, mock_subplots
-):
+def test_plot_chem_atmosphere_with_clouds(mock_join, mock_glob, mock_read, mock_subplots):
     """
     Test plot generation including cloud profiles.
 
@@ -158,9 +154,7 @@ def test_plot_chem_atmosphere_with_clouds(
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
-def test_plot_chem_atmosphere_with_aerosols(
-    mock_join, mock_glob, mock_read, mock_subplots
-):
+def test_plot_chem_atmosphere_with_aerosols(mock_join, mock_glob, mock_read, mock_subplots):
     """
     Test plot generation including aerosol profiles with species names.
 
@@ -274,9 +268,7 @@ def test_plot_chem_atmosphere_with_offchem(
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_temperature_overlay(
-    mock_glob, mock_read, mock_subplots
-):
+def test_plot_chem_atmosphere_temperature_overlay(mock_glob, mock_read, mock_subplots):
     """
     Test that temperature profiles are added to both panels.
 
@@ -325,9 +317,7 @@ def test_plot_chem_atmosphere_temperature_overlay(
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_time_annotation(
-    mock_glob, mock_read, mock_subplots
-):
+def test_plot_chem_atmosphere_time_annotation(mock_glob, mock_read, mock_subplots):
     """
     Test that simulation time is annotated on the plot.
 
@@ -370,9 +360,7 @@ def test_plot_chem_atmosphere_time_annotation(
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_clouds_and_aerosols(
-    mock_glob, mock_read, mock_subplots
-):
+def test_plot_chem_atmosphere_clouds_and_aerosols(mock_glob, mock_read, mock_subplots):
     """
     Test plotting with both clouds and aerosols present.
 
@@ -418,9 +406,7 @@ def test_plot_chem_atmosphere_clouds_and_aerosols(
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
-def test_plot_chem_atmosphere_no_aerosols_key(
-    mock_glob, mock_read, mock_subplots
-):
+def test_plot_chem_atmosphere_no_aerosols_key(mock_glob, mock_read, mock_subplots):
     """
     Test plotting when aerosols key is missing (backward compatibility).
 
