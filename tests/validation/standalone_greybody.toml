@@ -214,7 +214,7 @@ version = "2.0"
     radio_Th   = 0.0
 
     [delivery.elements]
-        H_ppmw   = 0.0
-        CH_ratio = 0.5
+        H_ppmw   = 1.0       # minimal H2O to keep CALLIOPE happy
+        CH_ratio = 0.0
         NH_ratio = 0.0
         SH_ratio = 0.0
