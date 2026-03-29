@@ -116,9 +116,10 @@ class AragogRunner:
         )
 
         boundary_conditions = _BoundaryConditionsParameters(
-            # 4 = prescribed heat flux
-            outer_boundary_condition=4,
-            # first guess surface heat flux [W/m2]
+            # 4 = prescribed heat flux (PROTEUS coupling mode)
+            # 1 = native grey-body (standalone mode, sigma*T^4)
+            outer_boundary_condition=config.interior.aragog.outer_boundary_condition,
+            # first guess surface heat flux [W/m2] (only used if outer_bc=4)
             outer_boundary_value=hf_row['F_atm'],
             # 1 = core cooling model
             # 2 = prescribed heat flux

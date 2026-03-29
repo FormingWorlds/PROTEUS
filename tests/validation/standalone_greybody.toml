@@ -175,6 +175,7 @@ version = "2.0"
         initial_condition = 3
         inner_boundary_condition = 2
         inner_boundary_value = 0
+        outer_boundary_condition = 1  # native grey-body: F = sigma*(T^4 - T_eq^4)
         conduction      = true
         convection      = true
         mixing          = false
