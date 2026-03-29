@@ -36,13 +36,12 @@ def test_plot_chem_atmosphere_no_files(mock_glob):
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
 def test_plot_chem_atmosphere_basic(
-    mock_join, mock_glob, mock_read, mock_subplots, mock_savefig
+    mock_join, mock_glob, mock_read, mock_subplots
 ):
     """
     Test basic plot generation with gas species only.
@@ -75,8 +74,11 @@ def test_plot_chem_atmosphere_basic(
     ax1_mock.twiny.return_value = ax1_temp_mock
     ax2_mock.twiny.return_value = ax2_temp_mock
 
-    # Mock get_legend_handles_labels to return empty lists
-    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+    # Mock get_legend_handles_labels to return handles for the gas species
+    # Need 3 handles for H2O, CO2, N2 (all have nonzero VMR)
+    mock_handles = [MagicMock(), MagicMock(), MagicMock()]
+    mock_labels = ['H2O', 'CO2', 'N2']
+    ax1_mock.get_legend_handles_labels.return_value = (mock_handles, mock_labels)
 
     # Run function
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
@@ -101,17 +103,16 @@ def test_plot_chem_atmosphere_basic(
     ax2_mock.twiny.assert_called_once()
 
     # Verify plot was saved
-    mock_savefig.assert_called_once()
+    fig_mock.savefig.assert_called_once()
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
 def test_plot_chem_atmosphere_with_clouds(
-    mock_join, mock_glob, mock_read, mock_subplots, mock_savefig
+    mock_join, mock_glob, mock_read, mock_subplots
 ):
     """
     Test plot generation including cloud profiles.
@@ -138,7 +139,11 @@ def test_plot_chem_atmosphere_with_clouds(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
-    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    # Mock get_legend_handles_labels - only H2O has nonzero VMR
+    mock_handles = [MagicMock()]
+    mock_labels = ['H2O']
+    ax1_mock.get_legend_handles_labels.return_value = (mock_handles, mock_labels)
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
@@ -149,13 +154,12 @@ def test_plot_chem_atmosphere_with_clouds(
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
 def test_plot_chem_atmosphere_with_aerosols(
-    mock_join, mock_glob, mock_read, mock_subplots, mock_savefig
+    mock_join, mock_glob, mock_read, mock_subplots
 ):
     """
     Test plot generation including aerosol profiles with species names.
@@ -185,7 +189,11 @@ def test_plot_chem_atmosphere_with_aerosols(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
-    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    # Mock get_legend_handles_labels - only H2O has nonzero VMR
+    mock_handles = [MagicMock()]
+    mock_labels = ['H2O']
+    ax1_mock.get_legend_handles_labels.return_value = (mock_handles, mock_labels)
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
@@ -199,14 +207,13 @@ def test_plot_chem_atmosphere_with_aerosols(
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_result')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 @patch('proteus.plot.cpl_chem_atmosphere.os.path.join')
 def test_plot_chem_atmosphere_with_offchem(
-    mock_join, mock_glob, mock_read, mock_read_result, mock_subplots, mock_savefig
+    mock_join, mock_glob, mock_read, mock_read_result, mock_subplots
 ):
     """
     Test plot with offline chemistry results.
@@ -248,24 +255,27 @@ def test_plot_chem_atmosphere_with_offchem(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
-    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    # Mock get_legend_handles_labels - H2O and CO2 have nonzero VMR
+    mock_handles = [MagicMock(), MagicMock()]
+    mock_labels = ['H2O', 'CO2']
+    ax1_mock.get_legend_handles_labels.return_value = (mock_handles, mock_labels)
 
     plot_chem_atmosphere('output_dir', 'vulcan', plot_format='png', plot_offchem=True)
 
     # Verify offline chem was read
     mock_read_result.assert_called_once()
 
-    # Verify plot was created
-    mock_savefig.assert_called_once()
+    # Verify plot was saved
+    fig_mock.savefig.assert_called_once()
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 def test_plot_chem_atmosphere_temperature_overlay(
-    mock_glob, mock_read, mock_subplots, mock_savefig
+    mock_glob, mock_read, mock_subplots
 ):
     """
     Test that temperature profiles are added to both panels.
@@ -294,7 +304,11 @@ def test_plot_chem_atmosphere_temperature_overlay(
     ax2_temp_mock = MagicMock()
     ax1_mock.twiny.return_value = ax1_temp_mock
     ax2_mock.twiny.return_value = ax2_temp_mock
-    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    # Mock get_legend_handles_labels - only H2O has nonzero VMR
+    mock_handles = [MagicMock()]
+    mock_labels = ['H2O']
+    ax1_mock.get_legend_handles_labels.return_value = (mock_handles, mock_labels)
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
@@ -302,18 +316,17 @@ def test_plot_chem_atmosphere_temperature_overlay(
     ax1_temp_mock.plot.assert_called_once()
     ax2_temp_mock.plot.assert_called_once()
 
-    # Verify temperature axes were labeled
+    # Verify temperature axis was labeled on panel 1
     ax1_temp_mock.set_xlabel.assert_called_once()
-    ax2_temp_mock.set_xlabel.assert_called_once()
+    # Panel 2 temperature axis has no label (xticks hidden)
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 def test_plot_chem_atmosphere_time_annotation(
-    mock_glob, mock_read, mock_subplots, mock_savefig
+    mock_glob, mock_read, mock_subplots
 ):
     """
     Test that simulation time is annotated on the plot.
@@ -338,24 +351,27 @@ def test_plot_chem_atmosphere_time_annotation(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
-    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    # Mock get_legend_handles_labels - only H2O has nonzero VMR
+    mock_handles = [MagicMock()]
+    mock_labels = ['H2O']
+    ax1_mock.get_legend_handles_labels.return_value = (mock_handles, mock_labels)
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
-    # Verify time annotation was added to figure
-    fig_mock.text.assert_called_once()
-    call_args = fig_mock.text.call_args[0]
+    # Verify time annotation was added to ax1 (not fig)
+    ax1_mock.text.assert_called_once()
+    call_args = ax1_mock.text.call_args[0]
     # Should contain the year value (5000)
     assert '5.00e+03' in call_args[2] or '5000' in str(call_args)
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 def test_plot_chem_atmosphere_clouds_and_aerosols(
-    mock_glob, mock_read, mock_subplots, mock_savefig
+    mock_glob, mock_read, mock_subplots
 ):
     """
     Test plotting with both clouds and aerosols present.
@@ -382,7 +398,11 @@ def test_plot_chem_atmosphere_clouds_and_aerosols(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
-    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    # Mock get_legend_handles_labels - H2O and CO2 have nonzero VMR
+    mock_handles = [MagicMock(), MagicMock()]
+    mock_labels = ['H2O', 'CO2']
+    ax1_mock.get_legend_handles_labels.return_value = (mock_handles, mock_labels)
 
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
@@ -395,12 +415,11 @@ def test_plot_chem_atmosphere_clouds_and_aerosols(
 
 
 @pytest.mark.unit
-@patch('proteus.plot.cpl_chem_atmosphere.plt.savefig')
 @patch('proteus.plot.cpl_chem_atmosphere.plt.subplots')
 @patch('proteus.plot.cpl_chem_atmosphere.read_ncdf_profile')
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
 def test_plot_chem_atmosphere_no_aerosols_key(
-    mock_glob, mock_read, mock_subplots, mock_savefig
+    mock_glob, mock_read, mock_subplots
 ):
     """
     Test plotting when aerosols key is missing (backward compatibility).
@@ -425,11 +444,15 @@ def test_plot_chem_atmosphere_no_aerosols_key(
     mock_subplots.return_value = (fig_mock, (ax1_mock, ax2_mock))
     ax1_mock.twiny.return_value = MagicMock()
     ax2_mock.twiny.return_value = MagicMock()
-    ax1_mock.get_legend_handles_labels.return_value = ([], [])
+
+    # Mock get_legend_handles_labels - only H2O has nonzero VMR
+    mock_handles = [MagicMock()]
+    mock_labels = ['H2O']
+    ax1_mock.get_legend_handles_labels.return_value = (mock_handles, mock_labels)
 
     # Should not crash
     plot_chem_atmosphere('output_dir', None, plot_format='png', plot_offchem=False)
 
     # Verify gas panel was still plotted
     assert ax1_mock.plot.called
-    mock_savefig.assert_called_once()
+    fig_mock.savefig.assert_called_once()
