@@ -941,17 +941,25 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
         )
         hf_row['T_cmb_initial'] = thermal['T_cmb']
         hf_row['T_surface_initial'] = thermal['T_surface']
+        hf_row['T_bulk_avg_initial'] = thermal['T_bulk_avg']
         hf_row['U_grav_diff'] = thermal['U_differentiated']
         hf_row['U_grav_undiff'] = thermal['U_undifferentiated']
         hf_row['DeltaT_accretion'] = thermal['Delta_T_accretion']
         hf_row['DeltaT_differentiation'] = thermal['Delta_T_differentiation']
         hf_row['DeltaT_adiabat'] = thermal['Delta_T_adiabat']
         hf_row['core_state_initial'] = thermal['core_state']
+
+        # Store the adiabatic T(r) profile for interior solver initialization.
+        # SPIDER/Aragog can use this to set the initial temperature/entropy profile.
+        hf_row['_initial_T_profile'] = thermal['T_profile']
+        hf_row['_initial_T_radii'] = thermal['radii']
+        hf_row['_initial_T_pressure'] = thermal['pressure']
+
         logger.info(
             'Initial thermal state (White+Li 2025): T_CMB=%.0f K, '
-            'T_surface=%.0f K, DeltaT_G=%.0f K, DeltaT_D=%.0f K, '
-            'DeltaT_ad=%.0f K, core=%s',
-            thermal['T_cmb'], thermal['T_surface'],
+            'T_surface=%.0f K (adiabat), T_bulk_avg=%.0f K, '
+            'DeltaT_G=%.0f K, DeltaT_D=%.0f K, DeltaT_ad=%.0f K, core=%s',
+            thermal['T_cmb'], thermal['T_surface'], thermal['T_bulk_avg'],
             thermal['Delta_T_accretion'], thermal['Delta_T_differentiation'],
             thermal['Delta_T_adiabat'], thermal['core_state'],
         )
