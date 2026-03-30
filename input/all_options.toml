@@ -207,6 +207,7 @@ version = "2.0"
     prevent_warming = true      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
+    aerosols_enabled = false    # enable aerosol radiative effects
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
@@ -233,6 +234,9 @@ version = "2.0"
         overlap_method  = "ee"          # gas overlap method
         surf_roughness  = 1e-3          # characteristic surface roughness [m]
         surf_windspeed  = 2.0           # characteristic surface wind speed [m/s].
+        cloud_enabled   = false         # include water cloud radiative effects?
+        cloud_alpha     = 0.5           # water condensate retention fraction
+        aerosols_enabled = false        # include aerosol radiative effects?
         rainout         = true          # include volatile condensation/evaporation aloft
         latent_heat     = false         # include latent heat release when `rainout=true`?
         oceans          = true          # form liquid oceans at planet surface?

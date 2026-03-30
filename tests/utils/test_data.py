@@ -1960,6 +1960,23 @@ def test_download_surface_albedos_no_mapping(mock_get_info):
 
 @pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
+def test_download_scattering_no_mapping(mock_get_info):
+    """
+    Test scattering download raises error when no mapping found.
+
+    Physical scenario: if the DATA_SOURCE_MAP is misconfigured, fail fast
+    with a clear error rather than silently skipping the download.
+    """
+    from proteus.utils.data import download_scattering
+
+    mock_get_info.return_value = None
+
+    with pytest.raises(ValueError, match='No data source mapping found'):
+        download_scattering()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.get_data_source_info')
 def test_download_massradius_data_no_mapping(mock_get_info):
     """Test mass-radius data download raises error when no mapping found."""
     from proteus.utils.data import download_massradius_data

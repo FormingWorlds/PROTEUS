@@ -18,7 +18,7 @@ def tmp_max_bigger_than_tmp_min(instance, attribute, value):
 
 def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
-        raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
+        raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
 def check_overlap(instance, attribute, value):
@@ -310,6 +310,8 @@ class AtmosClim:
         Conductive skin thickness [m],
     surface_k: float
         Conductive skin thermal conductivity [W m-1 K-1].
+    aerosols_enabled: bool
+        Enable aerosol radiative effects.
     cloud_enabled: bool
         Enable water cloud radiative effects.
     cloud_alpha: float
@@ -346,7 +348,8 @@ class AtmosClim:
     prevent_warming: bool = field(default=False)
     surface_d: float = field(default=0.01, validator=gt(0))
     surface_k: float = field(default=2.0, validator=gt(0))
-    cloud_enabled: bool = field(default=False)
+    aerosols_enabled: bool = field(default=False, validator=warn_if_dummy)
+    cloud_enabled: bool = field(default=False, validator=warn_if_dummy)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.2, validator=(ge(0), le(1)))
     albedo_pl = field(default=0.0, validator=valid_albedo)
