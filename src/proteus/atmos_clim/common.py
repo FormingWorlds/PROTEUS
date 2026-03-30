@@ -141,7 +141,15 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
             continue
 
         # Reading composition
-        if key == 'x_gas':
+        if key == 'gases':
+            gas_l = ds.variables['gases'][:]  # names (bytes matrix)
+            gases = []
+            for igas, gas in enumerate(gas_l):
+                gas_lbl = ''.join([c.decode(encoding='utf-8') for c in gas]).strip()
+                gases.append(gas_lbl)
+            out['gases'] = gases
+
+        elif key == 'x_gas':
             gas_l = ds.variables['gases'][:]  # names (bytes matrix)
             gas_x = ds.variables['x_gas'][:]  # vmrs (float matrix)
 
@@ -149,6 +157,27 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
             for igas, gas in enumerate(gas_l):
                 gas_lbl = ''.join([c.decode(encoding='utf-8') for c in gas]).strip()
                 out[gas_lbl + '_vmr'] = np.array(gas_x[:, igas])
+
+        elif key == 'aerosols':
+            if 'aerosols' in ds.variables.keys():
+                aer_l = ds.variables['aerosols'][:]  # names (bytes matrix)
+                aerosols = []
+                for iaer, aer in enumerate(aer_l):
+                    aer_lbl = ''.join([c.decode(encoding='utf-8') for c in aer]).strip()
+                    if len(aer_lbl) > 0:
+                        aerosols.append(aer_lbl)
+                out['aerosols'] = aerosols
+
+        elif key == 'aer_mmr':
+            if 'aer_mmr' in ds.variables.keys():
+                aer_l = ds.variables['aerosols'][:]  # names (bytes matrix)
+                aer_x = ds.variables['aer_mmr'][:]  # mmrs (float matrix)
+
+                # get data for each aerosol
+                for iaer, aer in enumerate(aer_l):
+                    aer_lbl = ''.join([c.decode(encoding='utf-8') for c in aer]).strip()
+                    if len(aer_lbl) > 0:
+                        out[aer_lbl + '_mmr'] = np.array(aer_x[:, iaer])
 
         else:
             out[key] = np.array(ds.variables[key][:])
@@ -158,7 +187,10 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool 
 
     # convert to np arrays
     for key in out.keys():
-        out[key] = np.array(out[key], dtype=float)
+        try:
+            out[key] = np.array(out[key], dtype=float)
+        except (AttributeError, TypeError, ValueError):
+            out[key] = np.array(out[key])
 
     return out
 

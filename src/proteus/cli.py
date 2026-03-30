@@ -410,6 +410,14 @@ def surfaces():
 
 
 @click.command()
+def scattering():
+    """Get scattering radiative properties"""
+    from .utils.data import download_scattering
+
+    download_scattering()
+
+
+@click.command()
 def reference():
     """Get reference data (exoplanet populations, mass-radius curves, etc.)"""
     from .utils.data import download_exoplanet_data, download_massradius_data
@@ -462,6 +470,7 @@ def spider():
 cli.add_command(get)
 get.add_command(spectral)
 get.add_command(surfaces)
+get.add_command(scattering)
 get.add_command(muscles)
 get.add_command(phoenix)
 get.add_command(solar)

@@ -478,6 +478,8 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'Population': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
     # EOS material properties (OSF project: dpkjb)
     'EOS_Seager2007': {'zenodo_id': '15727998', 'osf_id': 'dpkjb', 'osf_project': 'dpkjb'},
+    # Aerosol scattering data (no OSF project)
+    'scattering': {'zenodo_id': '19294180', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
 }
 
 
@@ -999,6 +1001,24 @@ def download_surface_albedos():
     )
 
 
+def download_scattering():
+    """
+    Download scattering radiative properties data
+    """
+    folder = 'scattering'
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        raise ValueError(f'No data source mapping found for folder: {folder}')
+
+    download(
+        folder=folder,
+        target='scattering',
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
+        desc='radiative properties scattering data',
+    )
+
+
 def download_spectral_file(name: str, bands: str):
     """
     Download spectral file.
@@ -1448,6 +1468,10 @@ def _get_sufficient(config: Config, clean: bool = False):
     # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
         download_surface_albedos()
+
+    # Aerosol scattering data
+    if config.atmos_clim.module == 'agni' and config.atmos_clim.aerosols_enabled:
+        download_scattering()
 
     # Exoplanet population data
     download_exoplanet_data()
