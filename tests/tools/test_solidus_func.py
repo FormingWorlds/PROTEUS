@@ -238,12 +238,12 @@ class TestAndrault2011:
         the separation isn't maintained. Real usage with truncate_to_physical_interval
         enforces solidus < liquidus. This tests the raw parametrization.
         """
-        P_sol, T_sol = andrault_2011(kind="solidus", Pmin=50.0, Pmax=100.0, n=50)
-        P_liq, T_liq = andrault_2011(kind="liquidus", Pmin=50.0, Pmax=100.0, n=50)
+        P_sol, T_sol = andrault_2011(kind='solidus', Pmin=50.0, Pmax=100.0, n=50)
+        P_liq, T_liq = andrault_2011(kind='liquidus', Pmin=50.0, Pmax=100.0, n=50)
 
-        assert np.allclose(P_sol, P_liq), "Pressure grids must match"
+        assert np.allclose(P_sol, P_liq), 'Pressure grids must match'
         # At higher pressures where both curves are well-defined
-        assert np.all(T_sol < T_liq), "Solidus < liquidus in well-defined region"
+        assert np.all(T_sol < T_liq), 'Solidus < liquidus in well-defined region'
 
     def test_temperature_increases_with_pressure(self):
         """Temperature is monotonically increasing with pressure."""
@@ -284,8 +284,8 @@ class TestFei2021:
 
     def test_solidus_less_than_liquidus_at_valid_pressures(self):
         """Solidus < liquidus in physically valid regions (fei_2021 uses stixrude ratio)."""
-        P_sol, T_sol = fei_2021(kind="solidus", Pmin=10.0, Pmax=100.0, n=50)
-        P_liq, T_liq = fei_2021(kind="liquidus", Pmin=10.0, Pmax=100.0, n=50)
+        P_sol, T_sol = fei_2021(kind='solidus', Pmin=10.0, Pmax=100.0, n=50)
+        P_liq, T_liq = fei_2021(kind='liquidus', Pmin=10.0, Pmax=100.0, n=50)
 
         assert np.allclose(P_sol, P_liq)
         # Stixrude ratio ensures solidus < liquidus by construction
@@ -325,8 +325,8 @@ class TestBelonoshko2005:
 
     def test_solidus_less_than_liquidus_at_valid_pressures(self):
         """Solidus < liquidus in physically valid regions (uses stixrude ratio)."""
-        P_sol, T_sol = belonoshko_2005(kind="solidus", Pmin=10.0, Pmax=100.0, n=50)
-        P_liq, T_liq = belonoshko_2005(kind="liquidus", Pmin=10.0, Pmax=100.0, n=50)
+        P_sol, T_sol = belonoshko_2005(kind='solidus', Pmin=10.0, Pmax=100.0, n=50)
+        P_liq, T_liq = belonoshko_2005(kind='liquidus', Pmin=10.0, Pmax=100.0, n=50)
 
         assert np.allclose(P_sol, P_liq)
         # Stixrude ratio ensures solidus < liquidus by construction
@@ -366,8 +366,8 @@ class TestFiquet2010:
 
     def test_solidus_less_than_liquidus_at_valid_pressures(self):
         """Solidus < liquidus in physically valid regions (uses stixrude ratio)."""
-        P_sol, T_sol = fiquet_2010(kind="solidus", Pmin=10.0, Pmax=100.0, n=50)
-        P_liq, T_liq = fiquet_2010(kind="liquidus", Pmin=10.0, Pmax=100.0, n=50)
+        P_sol, T_sol = fiquet_2010(kind='solidus', Pmin=10.0, Pmax=100.0, n=50)
+        P_liq, T_liq = fiquet_2010(kind='liquidus', Pmin=10.0, Pmax=100.0, n=50)
 
         assert np.allclose(P_sol, P_liq)
         # Stixrude ratio ensures solidus < liquidus by construction
@@ -379,7 +379,7 @@ class TestFiquet2010:
 
         dT = np.diff(T)
         # Check that temperature is generally increasing (allow for very small numerical variations)
-        assert np.count_nonzero(dT > -1e-6) > len(dT) * 0.99, "Temperature should be increasing"
+        assert np.count_nonzero(dT > -1e-6) > len(dT) * 0.99, 'Temperature should be increasing'
 
 
 # =============================================================================
@@ -415,15 +415,15 @@ class TestMonteux2016:
 
     def test_piecewise_transition(self):
         """Piecewise function has well-defined behavior at transition."""
-        P, T = monteux_2016(kind="solidus", Pmin=15.0, Pmax=25.0, n=100)
+        P, T = monteux_2016(kind='solidus', Pmin=15.0, Pmax=25.0, n=100)
 
         # Check that temperature changes appropriately (no large jumps)
         dT = np.diff(T)
         finite_dT = dT[np.isfinite(dT)]
         if len(finite_dT) > 0:
             # Most gradients should be small and positive for smooth parametrization
-            assert np.median(finite_dT) > 0, "Median gradient should be positive"
-            assert np.max(np.abs(finite_dT)) < 100, "No unreasonable jumps in T"
+            assert np.median(finite_dT) > 0, 'Median gradient should be positive'
+            assert np.max(np.abs(finite_dT)) < 100, 'No unreasonable jumps in T'
 
 
 # =============================================================================
@@ -491,8 +491,8 @@ class TestStixrude2014:
 
     def test_solidus_less_than_liquidus_at_valid_pressures(self):
         """Solidus < liquidus in physically valid regions (uses stixrude ratio)."""
-        P_sol, T_sol = stixrude_2014(kind="solidus", Pmin=10.0, Pmax=100.0, n=50)
-        P_liq, T_liq = stixrude_2014(kind="liquidus", Pmin=10.0, Pmax=100.0, n=50)
+        P_sol, T_sol = stixrude_2014(kind='solidus', Pmin=10.0, Pmax=100.0, n=50)
+        P_liq, T_liq = stixrude_2014(kind='liquidus', Pmin=10.0, Pmax=100.0, n=50)
 
         assert np.allclose(P_sol, P_liq)
         # Stixrude ratio ensures solidus < liquidus by construction
@@ -536,7 +536,7 @@ class TestWolfBower2018:
 
         # Check temperature is generally monotonically increasing (with small numerical tolerance)
         dT = np.diff(T)
-        assert np.count_nonzero(dT > -1e-6) > len(dT) * 0.99, "Temperature should increase"
+        assert np.count_nonzero(dT > -1e-6) > len(dT) * 0.99, 'Temperature should increase'
 
 
 # =============================================================================
@@ -551,34 +551,30 @@ class TestKatz2003:
     def test_solidus_dry(self):
         """Solidus with X_h2o = 0 matches dry Wolf & Bower (2018) at valid pressures."""
         P_sol_katz, T_sol_katz = katz_2003(
-            kind="solidus", X_h2o=0.0, Pmin=50.0, Pmax=100.0, n=50
+            kind='solidus', X_h2o=0.0, Pmin=50.0, Pmax=100.0, n=50
         )
-        P_wb, T_wb = wolf_bower_2018(kind="solidus", Pmin=50.0, Pmax=100.0, n=50)
+        P_wb, T_wb = wolf_bower_2018(kind='solidus', Pmin=50.0, Pmax=100.0, n=50)
 
         assert np.allclose(T_sol_katz, T_wb, rtol=1e-10)
 
     def test_hydrous_effect(self):
         """Increasing water content decreases melting temperature (physical)."""
-        P, T_dry = katz_2003(kind="solidus", X_h2o=0.0, Pmin=50.0, Pmax=100.0, n=50)
-        _, T_wet = katz_2003(kind="solidus", X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50)
+        P, T_dry = katz_2003(kind='solidus', X_h2o=0.0, Pmin=50.0, Pmax=100.0, n=50)
+        _, T_wet = katz_2003(kind='solidus', X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50)
 
-        assert np.all(T_wet < T_dry), "Water lowers melting temperature"
+        assert np.all(T_wet < T_dry), 'Water lowers melting temperature'
 
     def test_default_water_content(self):
         """Default water content is X_h2o = 30 ppm."""
-        P1, T1 = katz_2003(kind="solidus", Pmin=50.0, Pmax=100.0, n=50)
-        P2, T2 = katz_2003(kind="solidus", X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50)
+        P1, T1 = katz_2003(kind='solidus', Pmin=50.0, Pmax=100.0, n=50)
+        P2, T2 = katz_2003(kind='solidus', X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50)
 
         assert np.allclose(T1, T2)
 
     def test_physical_constraint_solidus_less_than_liquidus(self):
         """Solidus < liquidus with hydration at valid pressures."""
-        P_sol, T_sol = katz_2003(
-            kind="solidus", X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50
-        )
-        P_liq, T_liq = katz_2003(
-            kind="liquidus", X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50
-        )
+        P_sol, T_sol = katz_2003(kind='solidus', X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50)
+        P_liq, T_liq = katz_2003(kind='liquidus', X_h2o=30.0, Pmin=50.0, Pmax=100.0, n=50)
 
         assert np.allclose(P_sol, P_liq)
         assert np.all(T_sol < T_liq)
@@ -595,7 +591,7 @@ class TestLin2024:
 
     def test_solidus_default_fo2(self):
         """Solidus with default fO2 = -4."""
-        P, T = lin_2024(kind="solidus", fO2=-4.0, Pmin=50.0, Pmax=100.0, n=50)
+        P, T = lin_2024(kind='solidus', fO2=-4.0, Pmin=50.0, Pmax=100.0, n=50)
         assert len(P) == 50
         assert len(T) == 50
         assert np.all(T > 0.0)
@@ -606,16 +602,16 @@ class TestLin2024:
         Lower (more reducing) fO2 values increase the solidus temperature;
         higher (more oxidizing) fO2 values decrease it.
         """
-        P, T_reducing = lin_2024(kind="solidus", fO2=-5.0, Pmin=50.0, Pmax=100.0, n=50)
-        _, T_oxidizing = lin_2024(kind="solidus", fO2=-3.0, Pmin=50.0, Pmax=100.0, n=50)
+        P, T_reducing = lin_2024(kind='solidus', fO2=-5.0, Pmin=50.0, Pmax=100.0, n=50)
+        _, T_oxidizing = lin_2024(kind='solidus', fO2=-3.0, Pmin=50.0, Pmax=100.0, n=50)
 
         # Lower fO2 (more reducing) -> higher T
-        assert np.all(T_reducing > T_oxidizing), "Lower fO2 should increase solidus T"
+        assert np.all(T_reducing > T_oxidizing), 'Lower fO2 should increase solidus T'
 
     def test_physical_constraint_solidus_less_than_liquidus(self):
         """Solidus < liquidus with varying fO2 at valid pressures."""
-        P_sol, T_sol = lin_2024(kind="solidus", fO2=-4.0, Pmin=50.0, Pmax=100.0, n=50)
-        P_liq, T_liq = lin_2024(kind="liquidus", fO2=-4.0, Pmin=50.0, Pmax=100.0, n=50)
+        P_sol, T_sol = lin_2024(kind='solidus', fO2=-4.0, Pmin=50.0, Pmax=100.0, n=50)
+        P_liq, T_liq = lin_2024(kind='liquidus', fO2=-4.0, Pmin=50.0, Pmax=100.0, n=50)
 
         assert np.allclose(P_sol, P_liq)
         assert np.all(T_sol < T_liq)
@@ -631,44 +627,42 @@ class TestGetMeltingCurves:
     """Test melting curve dispatcher."""
 
     @pytest.mark.parametrize(
-        "model_name,Pmin,Pmax",
+        'model_name,Pmin,Pmax',
         [
-            ("andrault_2011", 0.0, 100.0),
-            ("monteux_2016", 0.0, 100.0),
-            ("wolf_bower_2018", 0.0, 100.0),
-            ("katz_2003", 0.0, 100.0),
-            ("fei_2021", 1.0, 100.0),  # Requires Pmin >= 1
-            ("belonoshko_2005", 0.0, 100.0),
-            ("fiquet_2010", 0.0, 100.0),
-            ("hirschmann_2000", 0.0, 5.0),  # Low pressure only
-            ("stixrude_2014", 1.0, 100.0),  # Requires Pmin >= 1
-            ("lin_2024", 0.0, 100.0),
+            ('andrault_2011', 0.0, 100.0),
+            ('monteux_2016', 0.0, 100.0),
+            ('wolf_bower_2018', 0.0, 100.0),
+            ('katz_2003', 0.0, 100.0),
+            ('fei_2021', 1.0, 100.0),  # Requires Pmin >= 1
+            ('belonoshko_2005', 0.0, 100.0),
+            ('fiquet_2010', 0.0, 100.0),
+            ('hirschmann_2000', 0.0, 5.0),  # Low pressure only
+            ('stixrude_2014', 1.0, 100.0),  # Requires Pmin >= 1
+            ('lin_2024', 0.0, 100.0),
         ],
     )
     def test_all_supported_models(self, model_name, Pmin, Pmax):
         """Dispatcher returns correct shapes and physically valid results for all models."""
-        P_sol, T_sol, P_liq, T_liq = get_melting_curves(
-            model_name, Pmin=Pmin, Pmax=Pmax, n=50
-        )
+        P_sol, T_sol, P_liq, T_liq = get_melting_curves(model_name, Pmin=Pmin, Pmax=Pmax, n=50)
 
-        assert len(P_sol) > 0, f"{model_name}: no pressure values"
-        assert len(T_sol) > 0, f"{model_name}: no temperature values"
-        assert len(P_liq) > 0, f"{model_name}: no pressure values for liquidus"
-        assert len(T_liq) > 0, f"{model_name}: no liquidus temperature values"
+        assert len(P_sol) > 0, f'{model_name}: no pressure values'
+        assert len(T_sol) > 0, f'{model_name}: no temperature values'
+        assert len(P_liq) > 0, f'{model_name}: no pressure values for liquidus'
+        assert len(T_liq) > 0, f'{model_name}: no liquidus temperature values'
         # Check that most temperatures are positive
         positive_sol = np.count_nonzero(T_sol > 0)
         positive_liq = np.count_nonzero(T_liq > 0)
-        assert (
-            positive_sol > len(T_sol) * 0.8
-        ), f"{model_name}: most solidus temps should be positive, got {positive_sol}/{len(T_sol)}"
-        assert (
-            positive_liq > len(T_liq) * 0.8
-        ), f"{model_name}: most liquidus temps should be positive, got {positive_liq}/{len(T_liq)}"
+        assert positive_sol > len(T_sol) * 0.8, (
+            f'{model_name}: most solidus temps should be positive, got {positive_sol}/{len(T_sol)}'
+        )
+        assert positive_liq > len(T_liq) * 0.8, (
+            f'{model_name}: most liquidus temps should be positive, got {positive_liq}/{len(T_liq)}'
+        )
         # Most models satisfy solidus < liquidus for positive temps
         valid_pair_count = np.sum((T_sol > 0) & (T_liq > 0) & (T_sol < T_liq))
-        assert (
-            valid_pair_count > len(T_sol) * 0.5
-        ), f"{model_name}: solidus < liquidus should hold for ≥50% of valid points"
+        assert valid_pair_count > len(T_sol) * 0.5, (
+            f'{model_name}: solidus < liquidus should hold for ≥50% of valid points'
+        )
 
     def test_unknown_model(self):
         """Unknown model raises ValueError."""
@@ -677,14 +671,12 @@ class TestGetMeltingCurves:
 
     def test_custom_pressure_range(self):
         """Custom pressure range is applied correctly."""
-        P_sol, T_sol, _, _ = get_melting_curves(
-            "wolf_bower_2018", Pmin=10.0, Pmax=50.0, n=50
-        )
+        P_sol, T_sol, _, _ = get_melting_curves('wolf_bower_2018', Pmin=10.0, Pmax=50.0, n=50)
 
         # After truncation, pressure should be within requested range
         if len(P_sol) > 0:
-            assert P_sol[0] >= 10.0 - 1.0, "Lowest pressure should be near requested Pmin"
-            assert P_sol[-1] <= 50.0 + 1.0, "Highest pressure should be near requested Pmax"
+            assert P_sol[0] >= 10.0 - 1.0, 'Lowest pressure should be near requested Pmin'
+            assert P_sol[-1] <= 50.0 + 1.0, 'Highest pressure should be near requested Pmax'
 
 
 # =============================================================================
@@ -892,7 +884,7 @@ class TestValidateEntropyExportArrays:
         S_sol = np.array([])
         S_liq = np.array([])
 
-        with pytest.raises(ValueError, match="could not build|empty"):
+        with pytest.raises(ValueError, match='could not build|empty'):
             validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
 
     def test_mismatched_lengths_raises(self):
