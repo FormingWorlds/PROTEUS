@@ -13,7 +13,7 @@ log = logging.getLogger('fwl.' + __name__)
 
 def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
-        raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
+        raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
 def check_overlap(instance, attribute, value):
@@ -312,6 +312,8 @@ class AtmosClim:
         Conductive skin thickness [m].
     surface_k: float
         Conductive skin thermal conductivity [W m-1 K-1].
+    aerosols_enabled: bool
+        Enable aerosol radiative effects.
     cloud_enabled: bool
         Enable water cloud radiative effects (AGNI, JANUS only).
     surf_state: str
@@ -350,7 +352,9 @@ class AtmosClim:
     surf_state: str = field(default='skin', validator=(in_(('mixed_layer', 'fixed', 'skin')),))
     surface_d: float = field(default=0.01, validator=gt(0))
     surface_k: float = field(default=2.0, validator=gt(0))
-    cloud_enabled: bool = field(default=False)
+    aerosols_enabled: bool = field(default=False, validator=warn_if_dummy)
+    cloud_enabled: bool = field(default=False, validator=warn_if_dummy)
+    cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.1, validator=(ge(0), le(1)))
     albedo_pl = field(default=0.0, validator=valid_albedo)
     rayleigh: bool = field(default=True, validator=warn_if_dummy)

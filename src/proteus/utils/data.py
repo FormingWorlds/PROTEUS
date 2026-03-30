@@ -497,6 +497,8 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'EOS_PALEOS_H2O': {'zenodo_id': '19000316'},
     # Zalmoxis EOS: Chabrier+2019/2021 H/He
     'EOS_Chabrier2021_HHe': {'zenodo_id': '19135021'},
+    # Aerosol scattering data (no OSF project)
+    'scattering': {'zenodo_id': '19294180', 'osf_id': 'vehxg', 'osf_project': 'vehxg'},
 }
 
 
@@ -1018,6 +1020,24 @@ def download_surface_albedos():
     )
 
 
+def download_scattering():
+    """
+    Download scattering radiative properties data
+    """
+    folder = 'scattering'
+    source_info = get_data_source_info(folder)
+    if not source_info:
+        raise ValueError(f'No data source mapping found for folder: {folder}')
+
+    download(
+        folder=folder,
+        target='scattering',
+        osf_id=source_info['osf_project'],
+        zenodo_id=source_info['zenodo_id'],
+        desc='radiative properties scattering data',
+    )
+
+
 def download_spectral_file(name: str, bands: str):
     """
     Download spectral file.
@@ -1470,6 +1490,10 @@ def _get_sufficient(config: Config, clean: bool = False):
     # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
         download_surface_albedos()
+
+    # Aerosol scattering data
+    if config.atmos_clim.module == 'agni' and config.atmos_clim.aerosols_enabled:
+        download_scattering()
 
     # Exoplanet population data
     download_exoplanet_data()

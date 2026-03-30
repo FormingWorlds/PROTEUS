@@ -89,10 +89,17 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
         'rl': np.array([6.3e6, 6.5e6]),
         'planet_radius': [6.0e6],
         'transparent': np.array([b'y'], dtype='S1'),
+        'gases': np.array([[b'H', b'2', b'O'], [b'C', b'O', b'2']], dtype='S1'),
+        'x_gases': np.array([0.1, 0.9]),
+        'aerosols': np.array([[b's', b'o', b'o', b't'], [b's', b'u', b'l', b'f']], dtype='S1'),
+        'aer_mmr': np.array([[1e-6, 2e-6]]),
+        'cloud_mmr': np.array([1e-5]),
     }
 
     # Run function
-    result = read_ncdf_profile('dummy.nc')
+    result = read_ncdf_profile(
+        'dummy.nc', extra_keys=['gases', 'x_gases', 'aerosols', 'aer_mmr', 'cloud_mmr']
+    )
 
     # Verify values are correctly extracted
     assert result['p'][0] == 110.0  # Should match first element of pl
@@ -153,6 +160,269 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
     assert result['solved'] == 0.0
     assert result['transparent'] == 0.0
     assert result['converged'] == 0.0
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_with_aerosols(mock_ds, mock_isfile):
+    """
+    Test reading NetCDF profile data with aerosol mass mixing ratios.
+
+    Physical scenario: AGNI can output aerosol profiles (e.g., sulfate, silicate)
+    in the atmosphere. These are stored as aer_mmr(nlev_c, naeros) arrays with
+    corresponding names in the 'aerosols' variable.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    # Mock basic atmospheric profile with two aerosol species
+    ds_instance.variables = {
+        'p': np.array([100.0]),
+        'pl': np.array([110.0, 90.0]),
+        'tmp': np.array([300.0]),
+        'tmpl': np.array([310.0, 290.0]),
+        'r': np.array([6.4e6]),
+        'rl': np.array([6.3e6, 6.5e6]),
+        'planet_radius': [6.0e6],
+        'transparent': np.array([b'y'], dtype='S1'),
+        # Aerosol data: 2 species (Sulfate, Silicate) at 1 level each
+        'aerosols': np.array(
+            [
+                [
+                    b'S',
+                    b'u',
+                    b'l',
+                    b'f',
+                    b'a',
+                    b't',
+                    b'e',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                ],
+                [
+                    b'S',
+                    b'i',
+                    b'l',
+                    b'i',
+                    b'c',
+                    b'a',
+                    b't',
+                    b'e',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                    b' ',
+                ],
+            ],
+            dtype='S1',
+        ),
+        'aer_mmr': np.array([[1e-6, 2e-6]]),  # 1 level, 2 aerosol species
+    }
+
+    # Read with aerosol data
+    result = read_ncdf_profile('dummy.nc', extra_keys=['aer_mmr', 'aerosols'])
+
+    # Verify basic profile data
+    assert 'p' in result
+    assert 'transparent' in result
+
+    # Verify aerosol list was read (stored as numpy array)
+    assert 'aerosols' in result
+    assert len(result['aerosols']) == 2
+    assert 'Silicate' in result['aerosols']
+    assert 'Sulfate' in result['aerosols']
+
+    # Verify individual aerosol MMRs were extracted
+    assert 'Sulfate_mmr' in result
+    assert 'Silicate_mmr' in result
+    np.testing.assert_allclose(result['Sulfate_mmr'], np.array([1e-6]))
+    np.testing.assert_allclose(result['Silicate_mmr'], np.array([2e-6]))
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_gases_list(mock_ds, mock_isfile):
+    """
+    Test reading list of gas species names without VMRs.
+
+    Physical scenario: When reading just the gas species present in the
+    atmosphere without their mixing ratios (useful for metadata queries).
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    # Mock gas names only
+    ds_instance.variables = {
+        'p': np.array([100.0]),
+        'pl': np.array([110.0, 90.0]),
+        'tmp': np.array([300.0]),
+        'tmpl': np.array([310.0, 290.0]),
+        'r': np.array([6.4e6]),
+        'rl': np.array([6.3e6, 6.5e6]),
+        'planet_radius': [6.0e6],
+        'solved': np.array([b'y'], dtype='S1'),
+        # Gas species names (3 gases: H2O, CO2, N2)
+        'gases': np.array(
+            [
+                [b'H', b'2', b'O', b' ', b' ', b' '],
+                [b'C', b'O', b'2', b' ', b' ', b' '],
+                [b'N', b'2', b' ', b' ', b' ', b' '],
+            ],
+            dtype='S1',
+        ),
+    }
+
+    # Read with gases key
+    result = read_ncdf_profile('dummy.nc', extra_keys=['gases'])
+
+    # Verify gas list was read and parsed correctly
+    assert 'gases' in result
+    assert len(result['gases']) == 3
+    assert 'H2O' in result['gases']
+    assert 'CO2' in result['gases']
+    assert 'N2' in result['gases']
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_aerosols_list_only(mock_ds, mock_isfile):
+    """
+    Test reading list of aerosol species names without MMRs.
+
+    Physical scenario: When checking which aerosol types are available
+    in the simulation output without loading full profiles.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0]),
+        'pl': np.array([110.0, 90.0]),
+        'tmp': np.array([300.0]),
+        'tmpl': np.array([310.0, 290.0]),
+        'r': np.array([6.4e6]),
+        'rl': np.array([6.3e6, 6.5e6]),
+        'planet_radius': [6.0e6],
+        'solved': np.array([b'n'], dtype='S1'),
+        # Aerosol species names only
+        'aerosols': np.array(
+            [
+                [b'S', b'u', b'l', b'f', b'a', b't', b'e', b' '],
+                [b'H', b'a', b'z', b'e', b' ', b' ', b' ', b' '],
+            ],
+            dtype='S1',
+        ),
+    }
+
+    # Read with aerosols key
+    result = read_ncdf_profile('dummy.nc', extra_keys=['aerosols'])
+
+    # Verify aerosol list was read
+    assert 'aerosols' in result
+    assert len(result['aerosols']) == 2
+    assert 'Sulfate' in result['aerosols']
+    assert 'Haze' in result['aerosols']
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_no_aerosols_in_file(mock_ds, mock_isfile):
+    """
+    Test reading profile when aerosols key is requested but not present.
+
+    Physical scenario: Attempting to read aerosol data from a simulation
+    run without aerosols_enabled=True. Should handle gracefully.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    # No aerosol variables in dataset
+    ds_instance.variables = {
+        'p': np.array([100.0]),
+        'pl': np.array([110.0, 90.0]),
+        'tmp': np.array([300.0]),
+        'tmpl': np.array([310.0, 290.0]),
+        'r': np.array([6.4e6]),
+        'rl': np.array([6.3e6, 6.5e6]),
+        'planet_radius': [6.0e6],
+        'solved': np.array([b'y'], dtype='S1'),
+    }
+
+    # Read with aerosols/aer_mmr keys (should handle missing gracefully)
+    result = read_ncdf_profile('dummy.nc', extra_keys=['aerosols', 'aer_mmr'])
+
+    # Verify profile data is still read
+    assert 'p' in result
+    assert 'solved' in result
+
+    # Missing keys should not be in result
+    assert 'aerosols' not in result
+    assert 'aer_mmr' not in result
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_clim.common.os.path.isfile')
+@patch('netCDF4.Dataset')
+def test_read_ncdf_profile_with_clouds(mock_ds, mock_isfile):
+    """
+    Test reading NetCDF profile data with cloud properties.
+
+    Physical scenario: AGNI outputs cloud mass mixing ratio, cloud area fraction,
+    and cloud particle size when cloud_enabled=True.
+    """
+    mock_isfile.return_value = True
+
+    ds_instance = MagicMock()
+    mock_ds.return_value = ds_instance
+
+    ds_instance.variables = {
+        'p': np.array([100.0, 200.0]),
+        'pl': np.array([110.0, 150.0, 190.0]),
+        'tmp': np.array([300.0, 280.0]),
+        'tmpl': np.array([310.0, 290.0, 270.0]),
+        'r': np.array([6.4e6, 6.3e6]),
+        'rl': np.array([6.5e6, 6.35e6, 6.2e6]),
+        'planet_radius': [6.0e6],
+        'solved': np.array([b'y'], dtype='S1'),
+        # Cloud data
+        'cloud_mmr': np.array([1e-5, 2e-5]),
+        'cloud_area': np.array([0.5, 0.8]),
+        'cloud_size': np.array([1e-5, 1.2e-5]),
+    }
+
+    result = read_ncdf_profile('dummy.nc', extra_keys=['cloud_mmr', 'cloud_area', 'cloud_size'])
+
+    # Verify cloud data was read
+    assert 'cloud_mmr' in result
+    assert 'cloud_area' in result
+    assert 'cloud_size' in result
+
+    np.testing.assert_allclose(result['cloud_mmr'], np.array([1e-5, 2e-5]))
+    np.testing.assert_allclose(result['cloud_area'], np.array([0.5, 0.8]))
+    np.testing.assert_allclose(result['cloud_size'], np.array([1e-5, 1.2e-5]))
 
 
 @pytest.mark.unit
