@@ -476,19 +476,8 @@ def truncate_to_physical_interval(func):
 # MODEL DISPATCHER
 # =============================================================================
 
-SUPPORTED_MODELS = [
-    'andrault_2011',
-    'monteux_2016',
-    'wolf_bower_2018',
-    'katz_2003',
-    'fei_2021',
-    'belonoshko_2005',
-    'fiquet_2010',
-    'hirschmann_2000',
-    'stixrude_2014',
-    'lin_2024',
-]
 
+SUPPORTED_MODELS = list(DISPLAY_NAMES)
 
 def get_melting_curves(
     model_name: str, Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 2000, **kwargs

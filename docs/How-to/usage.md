@@ -330,7 +330,6 @@ steps:
 The following directory names are supported and should be used exactly as written
 in the TOML configuration in the `melting_dir` parameter:
 
-### Available parametrizations
 
 | Directory name      | Reference                     | DOI |
 |--------------------|------------------------------|-----|
