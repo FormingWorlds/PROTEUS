@@ -148,7 +148,7 @@ version = "2.0"
     [interior.aragog]
         num_levels                      = 70       # Number of Aragog grid levels
         tolerance                       = 5.0e-7   # solver tolerance
-        ini_tmagma                      = 2800.0   # Initial magma surface temperature [K]
+        Tsurf_init                      = 2800.0   # Initial magma surface temperature [K]
         tsurf_poststep_change           = 50       # threshold of maximum change on surface temperature, compares current and first Tsurf
 
 

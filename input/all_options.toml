@@ -338,7 +338,7 @@ version = "2.0"
         num_levels               = 50       # Number of Aragog grid levels
         tolerance                = 1.0e-7   # solver tolerance
         initial_condition        = 3        # Initial T(p); 1: linear, 2: user defined, 3: adiabat
-        ini_tmagma               = 3300.0   # Initial magma surface temperature [K]
+        Tsurf_init               = 3300.0   # Initial surface temperature [K]
         basal_temperature        = 7000.0   # CMB temperature when initial boundary = 1
         inner_boundary_condition = 1        # 1 = core cooling model, 2 = prescribed heat flux, 3 = prescribed temperature
         inner_boundary_value     = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
@@ -353,7 +353,7 @@ version = "2.0"
         bulk_modulus             = 260e9    # Adiabatic bulk modulus AW-EOS parameter [Pa].
 
     [interior.dummy]
-        ini_tmagma  = 3300.0    # Initial magma surface temperature [K]
+        Tsurf_init  = 3300.0    # Initial surface temperature [K]
         tmagma_atol = 30.0      # Max absolute Tsurf change in each step
         tmagma_rtol = 0.05      # Max relative Tsurf change in each step
         mantle_tliq = 2700.0    # Liquidus temperature

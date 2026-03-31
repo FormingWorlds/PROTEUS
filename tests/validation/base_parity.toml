@@ -5,7 +5,7 @@
 # Key matching choices:
 # - PALEOS:MgSiO3 EOS for both (via Zalmoxis)
 # - Entropy-conserving IC for Aragog (PALEOS entropy tables)
-# - Matched SPIDER ini_entropy=3200 <-> Aragog ini_tmagma=1861 K
+# - Matched SPIDER ini_entropy=3200 <-> Aragog Tsurf_init=1861 K
 # - Same mixing_length (constant), same phi_crit/phi_width
 # - mixing=false, gravitational_separation=false (isolate core physics first)
 # - Core BC: prescribed flux = 0 (removes core cooling model difference)
@@ -170,7 +170,7 @@ version = "2.0"
         tsurf_rtol    = 0.05
 
     [interior.aragog]
-        ini_tmagma      = 1861.0    # matches SPIDER ini_entropy=3200 at P_surf
+        Tsurf_init      = 1861.0    # matches SPIDER ini_entropy=3200 at P_surf
         basal_temperature = 5000.0
         num_levels      = 80
         tolerance       = 1e-6

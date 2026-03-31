@@ -1,0 +1,249 @@
+# PROTEUS configuration file — Scaling benchmark
+#
+# Purpose:  Clean reference config for performance/scaling benchmarks.
+#           Based on all_options.toml from main branch (2026-03-23).
+#           Uses struct.module = "self" (no Zalmoxis structure solver).
+#
+# Usage:    proteus start -c input/scaling_benchmark.toml
+#           Or use with input/scaling_benchmark.grid.toml for parallel scaling tests.
+#
+# Runtime:  Expect ~1-7 hours per run depending on cluster hardware.
+#           Uses AGNI atmosphere + SPIDER interior + CALLIOPE outgassing.
+#           An Earth-mass planet with 5 ocean equivalents of hydrogen.
+#
+# Module options (swap depending on what's compiled on your cluster):
+#   Atmosphere:  "agni"  (Julia+SOCRATES, default, most accurate)
+#                "janus" (Python, no compilation needed, backup option)
+#                "dummy" (grey atmosphere, very fast, minimal physics)
+#   Interior:    "spider" (C/PETSc, default, most mature)
+#                "aragog" (Python, no compilation needed, backup option)
+#                "dummy"  (parametric cooling, very fast)
+
+# ----------------------------------------------------
+
+version = "2.0"
+
+# ============================================================
+# [params] — Code execution, output, time-stepping, convergence
+# ============================================================
+[params]
+
+    [params.out]
+        path        = "scaling_benchmark"   # Output subfolder name (inside PROTEUS/output/)
+        logging     = "INFO"                # Log verbosity: DEBUG | INFO | WARNING | ERROR
+        plot_mod    = "none"                # Disable plotting for benchmarks (saves time)
+        plot_fmt    = "png"
+        write_mod   = 1                     # Write CSV every iteration (needed for diagnostics)
+        archive_mod = "none"                # Disable archiving for benchmarks (saves disk I/O)
+        remove_sf   = false                 # Keep SOCRATES spectral file
+
+    # Time-stepping
+    #   PROTEUS uses adaptive time-stepping: starts small, grows as the system evolves.
+    #   The interior module proposes dt; PROTEUS applies floor/ceiling.
+    [params.dt]
+        minimum      = 1e4      # Absolute minimum time-step [yr]
+        minimum_rel  = 1e-5     # Relative minimum time-step [dimensionless]
+        maximum      = 1e7      # Maximum time-step [yr]
+        initial      = 3e1      # Initial step size [yr] — small to let SPIDER equilibrate
+        starspec     = 1e9      # Re-calculate stellar spectrum interval [yr]
+        starinst     = 1e1      # Re-calculate instellation interval [yr]
+        method       = "adaptive"   # proportional | adaptive | maximum
+
+        [params.dt.adaptive]
+            atol     = 0.02     # Step size absolute tolerance
+            rtol     = 0.10     # Step size relative tolerance
+
+    # Termination criteria
+    #   The simulation stops when ANY enabled criterion is met (after minimum iters/time).
+    [params.stop]
+        strict = false          # false = stop on first trigger; true = require two consecutive triggers
+
+        [params.stop.iters]
+            enabled = true
+            minimum = 5         # Must run at least 5 iterations
+            maximum = 9000      # Hard cap on iterations (safety valve)
+
+        [params.stop.time]
+            enabled = true
+            minimum = 1.0e3     # Must run past t > 1000 yr
+            maximum = 4.567e+9  # Stop at solar system age [yr]
+
+        [params.stop.solid]
+            enabled  = true
+            phi_crit = 0.01     # Stop when global melt fraction < 1%
+
+        [params.stop.radeqm]
+            enabled = true
+            atol    = 0.2       # Absolute tolerance [W m-2]
+            rtol    = 1e-3      # Relative tolerance
+
+        [params.stop.escape]
+            enabled = true
+            p_stop  = 5.0       # Stop if surface pressure < 5 bar
+
+        [params.stop.disint]
+            enabled = false     # Disintegration check disabled
+
+# ============================================================
+# [star] — Stellar parameters
+# ============================================================
+[star]
+    mass    = 1.0       # Stellar mass [M_sun] — solar
+    age_ini = 0.100     # Simulation start age [Gyr] — 100 Myr (post-disk dispersal)
+    module  = "mors"    # MORS stellar evolution model
+
+    [star.mors]
+        rot_pcntle      = 50.0     # Rotation percentile (50 = median rotator)
+        rot_period       = "none"   # Use percentile, not fixed period
+        tracks           = "spada"  # Stellar evolution tracks: spada | baraffe
+        age_now          = 4.567    # Current stellar age for calibration [Gyr]
+        spectrum_source  = "solar"  # Spectrum: solar | muscles | phoenix
+        star_name        = "sun"    # Star name for spectrum lookup
+
+# ============================================================
+# [orbit] — Planetary orbital parameters
+# ============================================================
+[orbit]
+    semimajoraxis       = 1.0       # Semi-major axis [AU]
+    eccentricity        = 0.0       # Circular orbit
+    zenith_angle        = 48.19     # Characteristic zenith angle [degrees]
+    s0_factor           = 0.375     # Instellation scale factor [dimensionless]
+    instellation_method = "sma"     # Define orbit via semi-major axis
+    module              = "none"    # No tidal evolution (saves compute time)
+
+# ============================================================
+# [struct] — Planetary structure
+#   module = "self": radius/density from config values (no Zalmoxis solver).
+#   This is faster than Zalmoxis and sufficient for benchmarking.
+# ============================================================
+[struct]
+    module       = "self"           # "self" = use provided values; "zalmoxis" = solve structure
+    mass_tot     = 1.0              # Planet mass [M_earth]
+    corefrac     = 0.55             # Core radius fraction [non-dim.]
+    core_density = 10738.33         # Core density [kg m-3]
+    core_heatcap = 880.0            # Core specific heat capacity [J K-1 kg-1]
+
+# ============================================================
+# [atmos_clim] — Atmosphere climate model
+#   AGNI: Julia-based radiative-convective equilibrium solver with SOCRATES radiative transfer.
+#   This is the main computational bottleneck per iteration.
+#   Alternative: "janus" (Python, no compilation needed) or "dummy" (fast, minimal)
+# ============================================================
+[atmos_clim]
+    prevent_warming = true      # Do not allow net heating (physical for magma ocean cooling)
+    surface_d       = 0.01      # Conductive skin thickness [m]
+    surface_k       = 2.0       # Conductive skin thermal conductivity [W m-1 K-1]
+    cloud_enabled   = false     # No clouds
+    surf_state      = "fixed"   # Surface scheme: fixed | mixed_layer | skin
+    rayleigh        = true      # Rayleigh scattering enabled
+    module          = "agni"    # AGNI atmosphere module (Julia+SOCRATES)
+
+    [atmos_clim.agni]
+        p_top           = 1.0e-5        # Top of atmosphere pressure [bar]
+        spectral_group  = "Honeyside"   # Gas opacity set
+        spectral_bands  = "48"          # Number of spectral bands (16 = fast, 48 = standard, 256 = high-res)
+        num_levels      = 40            # Atmospheric grid levels
+        solve_energy    = true          # Solve for energy-conserving profile
+        solution_atol   = 0.5           # Solver absolute tolerance
+        solution_rtol   = 0.15          # Solver relative tolerance
+        convection      = true          # Convective heat transport (MLT)
+        conduction      = true          # Conductive heat transport
+        sens_heat       = true          # Sensible heat flux near surface
+        rainout         = true          # Volatile condensation/evaporation
+        oceans          = true          # Allow surface ocean formation
+
+    # Alternative: JANUS (uncomment if AGNI/SOCRATES not compiled on your cluster)
+    # [atmos_clim.janus]
+    #     p_top           = 1.0e-6
+    #     spectral_group  = "Honeyside"
+    #     spectral_bands  = "48"
+    #     num_levels      = 40
+
+# ============================================================
+# [escape] — Atmospheric escape
+#   Zephyrus: energy-limited XUV escape model. Very fast (analytic).
+# ============================================================
+[escape]
+    module = "zephyrus"
+
+    [escape.zephyrus]
+        efficiency = 0.1        # Escape efficiency factor
+        tidal      = false      # No tidal contribution
+
+# ============================================================
+# [interior] — Magma ocean model
+#   SPIDER: C-based entropy evolution solver (PETSc/SUNDIALS).
+#   This is the other main computational bottleneck.
+#   Alternative: "aragog" (Python, no compilation needed) or "dummy" (fast, parametric)
+# ============================================================
+[interior]
+    grain_size      = 0.1       # Crystal settling grain size [m]
+    F_initial       = 1e3       # Initial heat flux guess [W m-2]
+    radiogenic_heat = false     # No radiogenic heating (simpler benchmark)
+    tidal_heat      = false     # No tidal heating
+    module          = "spider"  # SPIDER interior module (C/PETSc)
+
+    [interior.spider]
+        num_levels      = 60        # SPIDER grid levels
+        mixing_length   = 2         # Mixing length parameterization
+        tolerance       = 1.0e-8    # Absolute solver tolerance
+        tolerance_rel   = 1.0e-8    # Relative solver tolerance
+        ini_entropy     = 2900.0    # Initial surface entropy [J K-1 kg-1]
+        conduction      = true      # Conductive heat transfer
+        convection      = true      # Convective heat transfer
+        mixing          = true      # Mixing enabled
+
+    # Alternative: Aragog (uncomment if PETSc/SPIDER not compiled on your cluster)
+    # [interior.aragog]
+    #     num_levels      = 50
+    #     tolerance       = 1.0e-7
+    #     initial_condition = 3
+    #     Tsurf_init      = 3300.0
+    #     conduction      = true
+    #     convection      = true
+
+# ============================================================
+# [outgas] — Outgassing / volatile partitioning
+#   CALLIOPE: Henry's law solubility model with fsolve.
+#   Fast (< 1 sec per call).
+# ============================================================
+[outgas]
+    fO2_shift_IW = 4            # Oxidation state [log10(delta-IW)]
+    module       = "calliope"   # CALLIOPE outgassing module
+
+    [outgas.calliope]
+        include_H2O = true
+        include_CO2 = true
+        include_N2  = true
+        include_S2  = true
+        include_SO2 = true
+        include_H2  = true
+        include_CO  = true
+        include_CH4 = true
+
+# ============================================================
+# [delivery] — Initial volatile inventory
+#   Specified as elemental abundances relative to mantle mass.
+#   H_oceans = 5 is a moderately volatile-rich Earth analogue.
+# ============================================================
+[delivery]
+    initial = "elements"
+    module  = "none"            # No accretion model
+
+    [delivery.elements]
+        H_oceans = 5.0          # Hydrogen inventory [Earth ocean equivalents]
+        CH_ratio = 1.0          # C/H mass ratio
+        NH_ratio = 0.5          # N/H mass ratio
+        SH_ratio = 2.0          # S/H mass ratio
+
+# ============================================================
+# [atmos_chem] — Atmospheric chemistry (disabled for benchmarks)
+# ============================================================
+[atmos_chem]
+    module = "none"
+
+# ============================================================
+# [observe] — Synthetic observations (disabled for benchmarks)
+# ============================================================
+[observe]
+    synthesis = "none"

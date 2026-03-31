@@ -1,0 +1,108 @@
+# GridPROTEUS config — Scaling benchmark
+#
+# Purpose:  Run the same planet many times for parallel scaling measurements.
+#           Produces N nearly identical simulations to measure wall-clock scaling
+#           as a function of concurrent jobs on the cluster.
+#
+# How it works:
+#   GridPROTEUS takes the Cartesian product of all parameter axes below and writes
+#   one TOML config per grid point. Here we define a single axis with N values that
+#   are physically identical (tiny H_oceans variation: 5.0000 to 5.0001).
+#   This tricks the grid system into producing N independent but equivalent runs.
+#
+# Usage on Kapteyn (local multiprocessing on norma1/norma2):
+#   1. Run the grid directly:
+#        proteus grid -c input/scaling_benchmark.grid.toml
+#      This generates N config files and runs them with local multiprocessing.
+#      Adjust max_jobs below to control concurrency.
+#
+#   2. Monitor:
+#        proteus grid-summarise -o output/scaling_benchmark_grid/
+#
+# Usage on Habrok (SLURM cluster):
+#   1. Set use_slurm = true below, then:
+#        proteus grid -c input/scaling_benchmark.grid.toml
+#      This creates output/scaling_benchmark_grid/slurm_dispatch.sh
+#   2. Submit: sbatch output/scaling_benchmark_grid/slurm_dispatch.sh
+#   3. Monitor: squeue -u $USER
+
+# ============================================================
+# Grid metadata
+# ============================================================
+
+# Output folder (inside PROTEUS/output/)
+output = "scaling_benchmark_grid/"
+
+# Symlink output to an alternative location (e.g., /scratch/$USER/proteus_scaling).
+# Set to "" to disable. Use an absolute path if enabled.
+# On Kapteyn, point this to a fast scratch filesystem if available.
+symlink = ""
+
+# Path to the base (reference) config, relative to PROTEUS root
+ref_config = "input/scaling_benchmark.toml"
+
+# ============================================================
+# Execution settings
+# ============================================================
+
+# Kapteyn uses HTCondor (not SLURM) for queuing. GridPROTEUS supports
+# SLURM or local multiprocessing. For Kapteyn, use local multiprocessing
+# (runs on norma1/norma2 directly). For Habrok, set use_slurm = true.
+use_slurm = false
+
+# Maximum concurrent tasks (processes on the local machine).
+max_jobs = 16
+
+# Maximum walltime per job [days] (only used with use_slurm = true).
+max_days = 1
+
+# Memory per CPU [GB] (only used with use_slurm = true).
+max_mem = 3
+
+# ============================================================
+# Parameter axes
+#   Each section defines one grid axis. The section name (in quotes) is
+#   the dotted path into the PROTEUS config (e.g., "struct.mass_tot").
+#
+#   Methods: direct (explicit list), linspace, logspace, arange
+#
+#   For scaling benchmarks we want N identical runs. We use linspace
+#   on H_oceans with a negligible range (5.0 to 5.0001) so all runs
+#   are physically equivalent but have distinct config files.
+# ============================================================
+
+# Number of replicas: change `count` to set how many parallel jobs to run.
+# All values in the range [5.0000, 5.0001] produce the same physical outcome.
+["delivery.elements.H_oceans"]
+    method = "linspace"
+    start  = 5.0
+    stop   = 5.0001
+    count  = 32             # <-- Change this for different scaling points (1, 2, 4, 8, 16, 32, 64, ...)
+
+# ============================================================
+# Optional: uncomment to add real physics dimensions for production grids
+# ============================================================
+
+# Planet mass
+# ["struct.mass_tot"]
+#     method = "direct"
+#     values = [0.5, 1.0, 2.0, 3.0, 5.0]
+
+# Hydrogen inventory (meaningful variation)
+# ["delivery.elements.H_ppmw"]
+#     method = "arange"
+#     start  = 5000
+#     stop   = 20000
+#     step   = 5000
+
+# Mantle redox state
+# ["outgas.fO2_shift_IW"]
+#     method = "direct"
+#     values = [-2, 0, 2, 4]
+
+# Core radius fraction
+# ["struct.corefrac"]
+#     method = "linspace"
+#     start  = 0.35
+#     stop   = 0.65
+#     count  = 4

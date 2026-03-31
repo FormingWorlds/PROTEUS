@@ -54,7 +54,7 @@ def test_integration_dummy_multi_timestep(proteus_multi_timestep_run):
         num_timesteps=5,
         max_time=1e6,  # years
         min_time=1e2,  # years
-        interior__dummy__ini_tmagma=2000.0,  # Prevent runaway heating
+        interior__dummy__Tsurf_init=2000.0,  # Prevent runaway heating
     )
 
     # Validate that helpfile was created and has multiple timesteps
@@ -137,7 +137,7 @@ def test_integration_dummy_extended_run(proteus_multi_timestep_run):
         num_timesteps=10,
         max_time=1e7,  # years
         min_time=1e2,  # years
-        interior__dummy__ini_tmagma=2000.0,  # Prevent runaway heating
+        interior__dummy__Tsurf_init=2000.0,  # Prevent runaway heating
     )
 
     # Validate that helpfile has multiple timesteps

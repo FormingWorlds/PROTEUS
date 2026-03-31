@@ -84,9 +84,9 @@ def valid_aragog(instance, attribute, value):
     if instance.module != 'aragog':
         return
 
-    ini_tmagma = instance.aragog.ini_tmagma
-    if (not ini_tmagma) or (ini_tmagma <= 200.0):
-        raise ValueError('`interior.aragog.ini_tmagma` must be >200')
+    Tsurf_init = instance.aragog.Tsurf_init
+    if (not Tsurf_init) or (Tsurf_init <= 200.0):
+        raise ValueError('`interior.aragog.Tsurf_init` must be >200')
 
     # at least one energy term enabled
     aragog = instance.aragog
@@ -114,8 +114,10 @@ class Aragog:
         Default is 3 (adiabat), which integrates dT/dP|_S from the surface downward.
     tolerance: float
         Solver tolerance.
-    ini_tmagma: float
-        Initial magma surface temperature [K].
+    Tsurf_init: float
+        Initial surface temperature [K]. Determines the isentropic entropy
+        of the mantle via PALEOS: S = S(P_surf, Tsurf_init). Higher values
+        produce hotter, more molten initial states.
     basal_temperature: float
         Temperature at the base of the mantle (if using a linear temperature profile to start)
     init_file: str
@@ -153,7 +155,7 @@ class Aragog:
     """
 
     logging: str = field(default='ERROR', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma = field(default=None)
+    Tsurf_init = field(default=None)
     basal_temperature: float = field(default=7000)
     init_file: str = field(default=None)
     num_levels: int = field(default=100, validator=ge(40))
@@ -190,9 +192,9 @@ def valid_interiordummy(instance, attribute, value):
     if instance.module != 'dummy':
         return
 
-    ini_tmagma = instance.dummy.ini_tmagma
-    if (not ini_tmagma) or (ini_tmagma <= 200.0):
-        raise ValueError('`interior.dummy.ini_tmagma` must be >200')
+    Tsurf_init = instance.dummy.Tsurf_init
+    if (not Tsurf_init) or (Tsurf_init <= 200.0):
+        raise ValueError('`interior.dummy.Tsurf_init` must be >200')
 
     tliq = instance.dummy.mantle_tliq
     tsol = instance.dummy.mantle_tsol
@@ -206,7 +208,7 @@ class InteriorDummy:
 
     Attributes
     ----------
-    ini_tmagma: float
+    Tsurf_init: float
         Initial magma surface temperature [K].
     tmagma_atol: float
         Max absolute change in surface temperature [K] during a single iteration.
@@ -224,7 +226,7 @@ class InteriorDummy:
         Constant radiogenic heating rate [W kg-1]
     """
 
-    ini_tmagma = field(default=None)
+    Tsurf_init = field(default=None)
     tmagma_atol: float = field(default=30.0, validator=ge(0))
     tmagma_rtol: float = field(default=0.05, validator=ge(0))
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
@@ -256,7 +258,7 @@ class Interior:
         Width of rheological transition in terms of melt fraction
     initial_thermal_state: str
         Mode for setting the initial surface temperature.
-        'fixed': use ini_tmagma from solver config (default).
+        'fixed': use Tsurf_init from solver config (default).
         'self_consistent': compute from accretion + differentiation energy
         budget following White+Li (2025). Requires struct.module = 'zalmoxis'.
     thermal_state_T_eq: float
@@ -307,7 +309,7 @@ class Interior:
     rheo_phi_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
 
     # Initial thermal state mode:
-    #   'fixed': use ini_tmagma from the solver config (current default)
+    #   'fixed': use Tsurf_init from the solver config (current default)
     #   'self_consistent': compute from accretion + differentiation energy
     #                      budget (White+Li 2025). Requires struct.module = 'zalmoxis'.
     initial_thermal_state: str = field(

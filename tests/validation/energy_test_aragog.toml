@@ -9,7 +9,7 @@
 #
 # Paired with: energy_test_spider.toml (identical except interior.module).
 #
-# The ini_tmagma = 1861 K corresponds to SPIDER ini_entropy = 3200 J/K/kg
+# The Tsurf_init = 1861 K corresponds to SPIDER ini_entropy = 3200 J/K/kg
 # at surface pressure, computed from the PALEOS MgSiO3 EOS.
 
 version = "2.0"
@@ -149,7 +149,7 @@ version = "2.0"
     rheo_phi_wid    = 0.15
 
     [interior.aragog]
-        ini_tmagma               = 1861.0
+        Tsurf_init               = 1861.0
         basal_temperature        = 5000.0
         num_levels               = 80
         tolerance                = 1e-8

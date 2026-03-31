@@ -227,15 +227,15 @@ class AragogRunner:
 
         # When initial_thermal_state = 'self_consistent', Zalmoxis computes
         # T_surface from accretion + differentiation energy (White+Li 2025)
-        # and passes it via hf_row. This overrides the config ini_tmagma.
-        ini_tmagma = config.interior.aragog.ini_tmagma
+        # and passes it via hf_row. This overrides the config Tsurf_init.
+        Tsurf_init = config.interior.aragog.Tsurf_init
         T_surface_computed = hf_row.get('T_surface_initial', 0)
         if T_surface_computed and T_surface_computed > 0:
             logger.info(
-                'Overriding ini_tmagma with self-consistent thermal state: '
-                '%.0f K -> %.0f K', ini_tmagma, T_surface_computed,
+                'Overriding Tsurf_init with self-consistent thermal state: '
+                '%.0f K -> %.0f K', Tsurf_init, T_surface_computed,
             )
-            ini_tmagma = T_surface_computed
+            Tsurf_init = T_surface_computed
 
         initial_condition = _InitialConditionParameters(
             # 1 = linear profile
@@ -243,7 +243,7 @@ class AragogRunner:
             # 3 = adiabatic profile
             initial_condition=initial_condition_temperature_profile,
             # initial top temperature (K)
-            surface_temperature=ini_tmagma,
+            surface_temperature=Tsurf_init,
             basal_temperature=config.interior.aragog.basal_temperature,
             init_file=init_file_temperature_profile,
         )
@@ -524,7 +524,7 @@ class AragogRunner:
         PALEOS P-S EOS tables. The temperature profile comes from either:
         - Zalmoxis adiabatic profile (IC=3)
         - Zalmoxis output file (IC=2, T-dependent EOS)
-        - Config ini_tmagma with linear/adiabatic profile
+        - Config Tsurf_init with linear/adiabatic profile
 
         Parameters
         ----------
@@ -567,17 +567,24 @@ class AragogRunner:
             solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
-            ini_tmagma = config.interior.aragog.ini_tmagma
+            Tsurf_init = config.interior.aragog.Tsurf_init
             T_surface_computed = interior_o.__dict__.get('T_surface_initial', 0)
             if T_surface_computed and T_surface_computed > 0:
-                ini_tmagma = T_surface_computed
+                Tsurf_init = T_surface_computed
 
-            P_surf = max(float(P_stag[-1]), 1e5)
-            P_cmb = float(P_stag[0])
+            # Use 1 bar as surface pressure for the entropy lookup.
+            # The mesh surface P can be negative or zero; the adiabat
+            # computation needs a physically meaningful surface P.
+            P_surf = 1e5  # 1 bar
+            P_cmb = max(float(P_stag[0]), 1e9)
 
+            # Compute target entropy: S_target = S(P_surf, Tsurf_init)
+            # Then set this S uniformly across the mantle (isentrope).
+            # This ensures the surface T will match Tsurf_init when
+            # the EOS is evaluated at (P_surf, S_target).
             result = compute_entropy_adiabat(
                 eos_file=paleos_eos_file,
-                T_surface=ini_tmagma,
+                T_surface=Tsurf_init,
                 P_surface=P_surf,
                 P_cmb=P_cmb,
                 n_points=500,
@@ -587,19 +594,24 @@ class AragogRunner:
                 liquid_eos_file=liquid_eos,
             )
 
-            # Interpolate S onto Aragog's staggered mesh
-            from scipy.interpolate import interp1d
-            S_interp = interp1d(
-                result['P'], result['S'],
-                bounds_error=False, fill_value='extrapolate',
-            )(P_stag)
+            # The isentropic profile: S_target is constant by construction.
+            # Use the target entropy (not the profile, which may have
+            # numerical noise from the root-finding).
+            S_target = result['S_target']
+            N = len(P_stag)
+            S_init = np.full(N, S_target)
 
-            solver.set_initial_entropy(S_interp)
-            logger.info(
-                'Entropy IC set from PALEOS: S range %.0f-%.0f J/kg/K, '
-                'T_surf=%.0f K',
-                S_interp.min(), S_interp.max(), ini_tmagma,
+            # Verify: T at surface should match Tsurf_init
+            T_check = solver.entropy_eos.temperature(
+                np.array([P_surf]), np.array([S_target])
             )
+            logger.info(
+                'Entropy IC: Tsurf_init=%.0f K -> S_target=%.1f J/kg/K '
+                '(verification: T(P_surf, S_target)=%.0f K)',
+                Tsurf_init, S_target, float(T_check),
+            )
+
+            solver.set_initial_entropy(S_init)
 
         except Exception as e:
             # Fallback: uniform entropy from SPIDER default
@@ -663,7 +675,7 @@ class AragogRunner:
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
             # Compute PROTEUS-side entropy-inverted profile
-            T_surf = config.interior.aragog.ini_tmagma
+            T_surf = config.interior.aragog.Tsurf_init
             solver = interior_o.aragog_solver
             # Get Aragog's basic node pressures and temperatures
             P_basic = solver.evaluator.mesh.basic_pressure[:, -1]

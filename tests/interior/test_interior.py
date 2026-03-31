@@ -221,7 +221,7 @@ def test_calculate_simple_mantle_mass_full_core():
 
 
 def _create_mock_config(
-    ini_tmagma: float = 3000.0,
+    Tsurf_init: float = 3000.0,
     mantle_tliq: float = 2500.0,
     mantle_tsol: float = 1500.0,
     mantle_cp: float = 1200.0,
@@ -235,7 +235,7 @@ def _create_mock_config(
 ) -> Any:
     """Helper to create minimal Config mock for interior tests."""
     config = MagicMock()
-    config.interior.dummy.ini_tmagma = ini_tmagma
+    config.interior.dummy.Tsurf_init = Tsurf_init
     config.interior.dummy.mantle_tliq = mantle_tliq
     config.interior.dummy.mantle_tsol = mantle_tsol
     config.interior.dummy.mantle_cp = mantle_cp
@@ -251,12 +251,12 @@ def _create_mock_config(
 
 @pytest.mark.unit
 def test_run_dummy_int_initialization():
-    """Test initial condition (ic=1) sets T_magma to ini_tmagma.
+    """Test initial condition (ic=1) sets T_magma to Tsurf_init.
 
     On the first interior timestep (ic=1), the magma temperature should
-    be initialized to the configured ini_tmagma value, with dt=0.
+    be initialized to the configured Tsurf_init value, with dt=0.
     """
-    config = _create_mock_config(ini_tmagma=3000.0)
+    config = _create_mock_config(Tsurf_init=3000.0)
     dirs = {}
     hf_row = {
         'F_atm': 100.0,
@@ -286,7 +286,7 @@ def test_run_dummy_int_melt_fraction_fully_solid():
     Below the solidus temperature, the mantle should be fully solid
     (phi=0). Validates phase boundary handling.
     """
-    config = _create_mock_config(ini_tmagma=1400.0, mantle_tsol=1500.0, mantle_tliq=2500.0)
+    config = _create_mock_config(Tsurf_init=1400.0, mantle_tsol=1500.0, mantle_tliq=2500.0)
     dirs = {}
     hf_row = {'F_atm': 50.0, 'R_int': 6e6, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
     hf_all = pd.DataFrame()
@@ -309,7 +309,7 @@ def test_run_dummy_int_melt_fraction_fully_molten():
     Above the liquidus temperature, the mantle should be fully molten
     (phi=1). Validates upper phase boundary.
     """
-    config = _create_mock_config(ini_tmagma=2600.0, mantle_tsol=1500.0, mantle_tliq=2500.0)
+    config = _create_mock_config(Tsurf_init=2600.0, mantle_tsol=1500.0, mantle_tliq=2500.0)
     dirs = {}
     hf_row = {'F_atm': 50.0, 'R_int': 6e6, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
     hf_all = pd.DataFrame()
@@ -336,7 +336,7 @@ def test_run_dummy_int_melt_fraction_partial():
     tliq = 2500.0
     tmid = (tsol + tliq) / 2.0  # 2000 K
 
-    config = _create_mock_config(ini_tmagma=tmid, mantle_tsol=tsol, mantle_tliq=tliq)
+    config = _create_mock_config(Tsurf_init=tmid, mantle_tsol=tsol, mantle_tliq=tliq)
     dirs = {}
     hf_row = {'F_atm': 50.0, 'R_int': 6e6, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
     hf_all = pd.DataFrame()
@@ -360,7 +360,7 @@ def test_run_dummy_int_radiogenic_heating():
     Validates that internal heat generation is correctly computed.
     """
     H_radio = 1e-11  # W/kg
-    config = _create_mock_config(H_radio=H_radio, ini_tmagma=2000.0)
+    config = _create_mock_config(H_radio=H_radio, Tsurf_init=2000.0)
     dirs = {}
     R_int = 6e6
     hf_row = {'F_atm': 100.0, 'R_int': R_int, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
@@ -385,7 +385,7 @@ def test_run_dummy_int_tidal_heating_enabled():
     When tidal heating is enabled, F_tidal should be computed from
     interior_o.tides[0] scaled by mantle mass and area.
     """
-    config = _create_mock_config(tidal_heat=True, ini_tmagma=2000.0)
+    config = _create_mock_config(tidal_heat=True, Tsurf_init=2000.0)
     dirs = {}
     R_int = 6e6
     hf_row = {'F_atm': 100.0, 'R_int': R_int, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
@@ -410,7 +410,7 @@ def test_run_dummy_int_tidal_heating_disabled():
     Even if interior_o.tides is nonzero, tidal heating should be
     ignored if the config flag is disabled.
     """
-    config = _create_mock_config(tidal_heat=False, ini_tmagma=2000.0)
+    config = _create_mock_config(tidal_heat=False, Tsurf_init=2000.0)
     dirs = {}
     hf_row = {'F_atm': 100.0, 'R_int': 6e6, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
     hf_all = pd.DataFrame()
@@ -431,7 +431,7 @@ def test_run_dummy_int_interior_arrays():
     Validates that phi, mass, visc, density, temp, pres, and radius
     arrays are set with correct shapes and physically valid values.
     """
-    config = _create_mock_config(ini_tmagma=2000.0, mantle_rho=4000.0)
+    config = _create_mock_config(Tsurf_init=2000.0, mantle_rho=4000.0)
     dirs = {}
     R_int = 6e6
     corefrac = 0.55
@@ -472,7 +472,7 @@ def test_run_dummy_int_rf_depth_scaling():
     the depth of the molten region normalized by planet radius.
     """
     config = _create_mock_config(
-        ini_tmagma=2000.0, mantle_tsol=1500.0, mantle_tliq=2500.0, corefrac=0.6
+        Tsurf_init=2000.0, mantle_tsol=1500.0, mantle_tliq=2500.0, corefrac=0.6
     )
     dirs = {}
     hf_row = {'F_atm': 100.0, 'R_int': 6e6, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}

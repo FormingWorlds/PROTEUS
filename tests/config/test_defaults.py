@@ -174,13 +174,13 @@ def test_interior_defaults():
     assert i.dummy.tmagma_atol == 30.0
 
     # Test Aragog module selection
-    aragog_cfg = Aragog(ini_tmagma=3000.0)
+    aragog_cfg = Aragog(Tsurf_init=3000.0)
     i2 = Interior(module='aragog', aragog=aragog_cfg)
     assert i2.module == 'aragog'
     assert i2.aragog == aragog_cfg
 
     # Test Dummy module selection
-    dummy_cfg = InteriorDummy(ini_tmagma=3000.0)
+    dummy_cfg = InteriorDummy(Tsurf_init=3000.0)
     i3 = Interior(module='dummy', dummy=dummy_cfg)
     assert i3.module == 'dummy'
     assert i3.dummy == dummy_cfg

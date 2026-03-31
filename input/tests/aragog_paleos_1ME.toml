@@ -151,7 +151,7 @@ version = "2.0"
     rheo_phi_wid    = 0.15
 
     [interior.aragog]
-        ini_tmagma      = 4000.0
+        Tsurf_init      = 4000.0
         basal_temperature = 5000.0
         num_levels      = 80
         tolerance       = 1e-8

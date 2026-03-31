@@ -199,12 +199,12 @@ def test_janus_escape_requires_escape_stop_flag():
 @pytest.mark.unit
 def test_valid_interiordummy_checks_tmagma_and_liquidus():
     """Dummy interior rejects unrealistically low magma temperature and thin liquidus gap."""
-    dummy = SimpleNamespace(ini_tmagma=150.0, mantle_tliq=1500.0, mantle_tsol=1600.0)
+    dummy = SimpleNamespace(Tsurf_init=150.0, mantle_tliq=1500.0, mantle_tsol=1600.0)
     inst = SimpleNamespace(module='dummy', dummy=dummy)
     with pytest.raises(ValueError):
         valid_interiordummy(inst, None, None)
 
-    dummy_ok = SimpleNamespace(ini_tmagma=500.0, mantle_tliq=1700.0, mantle_tsol=1600.0)
+    dummy_ok = SimpleNamespace(Tsurf_init=500.0, mantle_tliq=1700.0, mantle_tsol=1600.0)
     inst_ok = SimpleNamespace(module='dummy', dummy=dummy_ok)
     # Should not raise
     valid_interiordummy(inst_ok, None, None)
@@ -214,7 +214,7 @@ def test_valid_interiordummy_checks_tmagma_and_liquidus():
 def test_valid_aragog_requires_energy_term_and_tmagma():
     """Aragog interior needs at least one heat transport term and warm initial magma."""
     aragog = SimpleNamespace(
-        ini_tmagma=150.0,
+        Tsurf_init=150.0,
         conduction=False,
         convection=False,
         mixing=False,
@@ -225,7 +225,7 @@ def test_valid_aragog_requires_energy_term_and_tmagma():
         valid_aragog(inst, None, None)
 
     aragog_ok = SimpleNamespace(
-        ini_tmagma=800.0,
+        Tsurf_init=800.0,
         conduction=True,
         convection=False,
         mixing=False,

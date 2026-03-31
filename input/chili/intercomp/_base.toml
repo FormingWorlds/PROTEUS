@@ -170,7 +170,7 @@ tsurf_atol = 10.0
 tsurf_rtol = 0.02
 
 [interior.dummy]
-ini_tmagma = 3300.0
+Tsurf_init = 3300.0
 tmagma_atol = 30.0
 tmagma_rtol = 0.05
 mantle_tliq = 2700.0

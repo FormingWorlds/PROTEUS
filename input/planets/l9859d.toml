@@ -125,7 +125,7 @@ version = "2.0"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.dummy]
-        ini_tmagma = 3000.0
+        Tsurf_init = 3000.0
 
 
 [outgas]
