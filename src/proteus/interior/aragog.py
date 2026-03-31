@@ -14,7 +14,7 @@ import platformdirs
 
 from aragog import aragog_file_logger
 from aragog.eos.entropy import EntropyEOS
-from aragog.solver import EntropySolver
+from aragog.solver import EntropySolver, SolverOutput
 from aragog.parser import (
     Parameters,
     _BoundaryConditionsParameters,
@@ -536,7 +536,7 @@ class AragogRunner:
             Output directory.
         """
         solver = interior_o.aragog_solver
-        P_stag = np.asarray(solver.evaluator.mesh.staggered_pressure).flatten()
+        P_stag = solver._P_stag_flat
 
         # Compute entropy from T(P) via PALEOS lookup.
         # For a Zalmoxis-derived adiabatic IC: T decreases outward,
@@ -802,33 +802,64 @@ class AragogRunner:
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver
         self.aragog_solver.solve()
-        # Get Aragog output
-        output = self.get_output(hf_row, interior_o)
+
+        # Get clean output via the public API
+        out = self.aragog_solver.get_state()
+
+        # Build PROTEUS helpfile output from SolverOutput
+        output = self._build_helpfile_output(out, hf_row)
+
+        # Store arrays on interior object for inter-module access
+        interior_o.phi = out.phi_stag
+        interior_o.visc = out.visc_stag
+        interior_o.density = out.rho_stag
+        interior_o.radius = out.r_basic / 1e3  # km
+        interior_o.mass = out.mass_stag
+        interior_o.temp = out.T_stag
+        interior_o.pres = out.P_stag
+
         sim_time = self.aragog_solver.parameters.solver.end_time
 
         # Write output to a file
-        self.write_output(dirs['output'], sim_time)
+        self._write_output_ncdf(dirs['output'], sim_time, out)
 
         return sim_time, output
 
-    def write_output(self, output_dir: str, time: float):
-        """Write entropy solver output to NetCDF."""
-        solver = self.aragog_solver
-        sol = solver.solution
-        eos = solver.entropy_eos
-        mesh = solver.evaluator.mesh
+    @staticmethod
+    def _build_helpfile_output(out: SolverOutput, hf_row: dict) -> dict:
+        """Build the PROTEUS helpfile dict from SolverOutput."""
+        logger.info(
+            'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, '
+            'Phi=%.3f, status=%d',
+            out.T_magma, out.T_core, out.Phi_global, out.status,
+        )
 
-        S_final = sol.y[:, -1]
-        P_stag = np.asarray(mesh.staggered_pressure).flatten()
-        T_stag = np.asarray(eos.temperature(P_stag, S_final)).flatten()
-        phi_stag = np.asarray(eos.melt_fraction(P_stag, S_final)).flatten()
+        return {
+            'M_mantle': out.M_mantle,
+            'T_magma': out.T_magma,
+            'Phi_global': out.Phi_global,
+            'RF_depth': out.RF_depth,
+            'F_int': hf_row['F_atm'],
+            'M_mantle_liquid': out.M_mantle_liquid,
+            'M_mantle_solid': out.M_mantle_solid,
+            'Phi_global_vol': out.Phi_global_vol,
+            'T_pot': out.T_magma,
+            'T_core': out.T_core,
+            'E_th_mantle': out.E_th,
+            'Cp_eff': out.Cp_eff,
+            'F_radio': out.F_heat_total,
+            'F_tidal': 0.0,
+        }
 
+    @staticmethod
+    def _write_output_ncdf(output_dir: str, time: float, out: SolverOutput):
+        """Write entropy solver output to NetCDF using SolverOutput."""
         fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog entropy solver output'
 
-        n_stag = len(S_final)
-        n_basic = n_stag + 1
+        n_stag = len(out.S_final)
+        n_basic = len(out.r_basic)
         ds.createDimension('staggered', n_stag)
         ds.createDimension('basic', n_basic)
 
@@ -837,149 +868,26 @@ class AragogRunner:
             v[:] = data
             v.units = units
 
-        _add('entropy_s', S_final, 'staggered', 'J/kg/K')
-        _add('temp_s', T_stag, 'staggered', 'K')
-        _add('phi_s', phi_stag, 'staggered', '')
-        _add('radius_s', np.asarray(mesh.staggered.radii).flatten() / 1e3, 'staggered', 'km')
-        _add('pres_s', P_stag / 1e9, 'staggered', 'GPa')
-        _add('radius_b', np.asarray(mesh.basic.radii).flatten() / 1e3, 'basic', 'km')
+        _add('entropy_s', out.S_final, 'staggered', 'J/kg/K')
+        _add('temp_s', out.T_stag, 'staggered', 'K')
+        _add('phi_s', out.phi_stag, 'staggered', '')
+        _add('radius_s', out.r_stag / 1e3, 'staggered', 'km')
+        _add('pres_s', out.P_stag / 1e9, 'staggered', 'GPa')
+        _add('radius_b', out.r_basic / 1e3, 'basic', 'km')
+        _add('log10visc_s', np.log10(np.maximum(out.visc_stag, 1e-10)), 'staggered', 'Pa s')
+        _add('density_s', out.rho_stag, 'staggered', 'kg m-3')
+        _add('Ftotal_b', out.heat_flux, 'basic', 'W m-2')
+        _add('Htotal_s', out.heating, 'staggered', 'W kg-1')
+        _add('mass_s', out.mass_stag, 'staggered', 'kg')
 
-        # Derived quantities for plotting compatibility
-        state = solver.state
-        state.update(S_final, sol.t[-1])
-
-        # Viscosity
-        visc = np.asarray(state.phase_staggered.viscosity()).flatten()
-        _add('log10visc_s', np.log10(np.maximum(visc, 1e-10)), 'staggered', 'Pa s')
-
-        # Density
-        rho = np.asarray(eos.density(P_stag, S_final)).flatten()
-        _add('density_s', rho, 'staggered', 'kg m-3')
-
-        # Heat fluxes (at basic nodes, N+1)
-        hf = np.asarray(state.heat_flux).flatten()
-        _add('Ftotal_b', hf, 'basic', 'W m-2')
-
-        # Heating (at staggered nodes)
-        H = np.asarray(state.heating).flatten()
-        _add('Htotal_s', H, 'staggered', 'W kg-1')
-
-        # Mass per layer
-        vol = np.asarray(mesh.basic.volume).flatten()
-        _add('mass_s', rho * vol, 'staggered', 'kg')
-
-        # Scalars
         ds.createVariable('time', np.float64)
-        ds['time'][0] = float(sol.t[-1])
+        ds['time'][0] = float(time)
         ds['time'].units = 'yr'
 
         ds.createVariable('phi_global', np.float64)
-        ds['phi_global'][0] = float(np.dot(phi_stag, vol) / np.sum(vol))
+        ds['phi_global'][0] = out.Phi_global
 
         ds.close()
-
-    def get_output(self, hf_row: dict, interior_o: Interior_t):
-        """Extract output from the entropy solver for the PROTEUS helpfile."""
-        solver = self.aragog_solver
-        sol = solver.solution
-        eos = solver.entropy_eos
-        mesh = solver.evaluator.mesh
-        state = solver.state
-
-        S_final = sol.y[:, -1]
-        P_stag = np.asarray(mesh.staggered_pressure).flatten()
-        T_stag = np.asarray(eos.temperature(P_stag, S_final)).flatten()
-        phi_stag = np.asarray(eos.melt_fraction(P_stag, S_final)).flatten()
-        r_basic = np.asarray(mesh.basic.radii).flatten()
-        vol = np.asarray(mesh.basic.volume).flatten()
-
-        # Surface and CMB values
-        T_magma = float(T_stag[-1])
-        T_core = float(T_stag[0])
-        Phi_global = float(np.dot(phi_stag, vol) / np.sum(vol))
-
-        # Mantle mass from mesh
-        rho_stag = np.asarray(eos.density(P_stag, S_final)).flatten()
-        mass_stag = rho_stag * vol
-        M_mantle = float(np.sum(mass_stag))
-
-        # Rheological front: dimensionless depth where phi crosses rheological threshold
-        phi_rheo = solver.parameters.phase_mixed.rheological_transition_melt_fraction
-        phi_basic = mesh.quantity_at_basic_nodes(phi_stag)
-        if Phi_global > 0.99:
-            rf = float(np.asarray(r_basic).flat[0])
-        elif Phi_global < 0.01:
-            rf = float(np.asarray(r_basic).flat[-1])
-        else:
-            idx = np.argmin(np.abs(np.asarray(phi_basic).flatten() - phi_rheo))
-            rf = float(np.asarray(r_basic).flat[idx])
-        R_outer = float(np.asarray(r_basic).flat[-1])
-        RF_depth = 1.0 - rf / R_outer if R_outer > 0 else 0.0
-
-        logger.info(
-            'Aragog entropy: t=[%.2e, %.2e], T_surf=%.0f K, T_cmb=%.0f K, '
-            'Phi=%.3f, status=%d',
-            sol.t[0], sol.t[-1], T_magma, T_core, Phi_global, sol.status,
-        )
-
-        output = {
-            'M_mantle': M_mantle,
-            'T_magma': T_magma,
-            'Phi_global': Phi_global,
-            'RF_depth': RF_depth,
-            'F_int': hf_row['F_atm'],
-        }
-
-        # Per-layer liquid/solid mass
-        output['M_mantle_liquid'] = float(np.sum(phi_stag * mass_stag))
-        output['M_mantle_solid'] = float(M_mantle - output['M_mantle_liquid'])
-
-        # Volumetric melt fraction (porosity-based, for comparison with SPIDER)
-        rho_sol = np.asarray(eos._lookup_at_phase_boundary('density', P_stag, 'solid')).flatten()
-        rho_liq = np.asarray(eos._lookup_at_phase_boundary('density', P_stag, 'melt')).flatten()
-        rho_bulk = 1.0 / (
-            phi_stag / np.where(rho_liq > 0, rho_liq, 1.0)
-            + (1 - phi_stag) / np.where(rho_sol > 0, rho_sol, 1.0)
-        )
-        drho = rho_sol - rho_liq
-        safe_drho = np.where(np.abs(drho) > 1e-10, drho, 1.0)
-        porosity = np.clip((rho_sol - rho_bulk) / safe_drho, 0, 1)
-        output['Phi_global_vol'] = float(np.sum(porosity * vol) / np.sum(vol))
-
-        output['T_pot'] = T_magma
-        output['T_core'] = T_core
-
-        # Thermal energy (sensible, for comparison with SPIDER)
-        CP_REF = 1200.0
-        n_stag = len(T_stag)
-        E_th = float(np.sum(mass_stag[:n_stag] * CP_REF * T_stag[:n_stag]))
-        output['E_th_mantle'] = E_th
-
-        # Effective heat capacity
-        cap = np.asarray(state.capacitance_staggered()).flatten()
-        Cp_eff = float(np.sum(cap * vol)) / max(M_mantle, 1.0)
-        output['Cp_eff'] = Cp_eff
-
-        # Surface area
-        area = 4 * np.pi * float(r_basic[-1]) ** 2
-
-        # Total heating flux (radiogenic + tidal combined in entropy solver)
-        H_total = np.asarray(state.heating).flatten()
-        F_heat_total = float(np.dot(H_total[:n_stag], mass_stag[:n_stag])) / area
-        # Cannot decompose into radio/tidal in entropy solver; attribute to radio
-        output['F_radio'] = F_heat_total
-        output['F_tidal'] = 0.0
-
-        # Store arrays on interior object
-        interior_o.phi = phi_stag
-        interior_o.visc = np.asarray(state.phase_staggered.viscosity()).flatten()
-        interior_o.density = rho_stag
-        interior_o.radius = r_basic / 1e3  # km
-        interior_o.mass = mass_stag
-        interior_o.temp = T_stag
-        interior_o.pres = P_stag
-
-        return output
 
 
 def read_last_Sfield(output_dir: str, time: float):
