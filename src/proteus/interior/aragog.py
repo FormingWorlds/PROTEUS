@@ -807,7 +807,7 @@ class AragogRunner:
         mesh = solver.evaluator.mesh
 
         S_final = sol.y[:, -1]
-        P_stag = np.asarray(mesh.staggered.pressure).flatten()
+        P_stag = np.asarray(mesh.staggered_pressure).flatten()
         T_stag = np.asarray(eos.temperature(P_stag, S_final)).flatten()
         phi_stag = np.asarray(eos.melt_fraction(P_stag, S_final)).flatten()
 
@@ -852,7 +852,7 @@ class AragogRunner:
         state = solver.state
 
         S_final = sol.y[:, -1]
-        P_stag = np.asarray(mesh.staggered.pressure).flatten()
+        P_stag = np.asarray(mesh.staggered_pressure).flatten()
         T_stag = np.asarray(eos.temperature(P_stag, S_final)).flatten()
         phi_stag = np.asarray(eos.melt_fraction(P_stag, S_final)).flatten()
         r_basic = np.asarray(mesh.basic.radii).flatten()
