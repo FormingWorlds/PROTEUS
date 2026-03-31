@@ -262,7 +262,7 @@ class Proteus:
         self.interior_o = Interior_t(
             get_nlevb(self.config),
             spider_dir=spider_dir,
-            eos_dir=self.config.interior.eos_dir,
+            eos_dir=self.config.struct.eos_dir,
         )
 
         # Initialise atmosphere object

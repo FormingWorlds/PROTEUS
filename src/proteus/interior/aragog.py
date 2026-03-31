@@ -352,7 +352,7 @@ class AragogRunner:
                 / 'interior_lookup_tables'
                 / 'EOS'
                 / 'dynamic'
-                / config.interior.eos_dir
+                / config.struct.eos_dir
                 / 'P-T'
             )
             if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
@@ -407,8 +407,8 @@ class AragogRunner:
             liquidus_path = liq_file
         else:
             MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
-            solidus_path = MELTING_DIR / config.interior.melting_dir / 'solidus_P-T.dat'
-            liquidus_path = MELTING_DIR / config.interior.melting_dir / 'liquidus_P-T.dat'
+            solidus_path = MELTING_DIR / config.struct.melting_dir / 'solidus_P-T.dat'
+            liquidus_path = MELTING_DIR / config.struct.melting_dir / 'liquidus_P-T.dat'
 
         # check data exist
         if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():

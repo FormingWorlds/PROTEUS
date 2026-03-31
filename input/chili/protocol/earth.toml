@@ -165,7 +165,6 @@ tidal = true
 
 [interior]
 module = "spider"
-melting_dir = "Monteux-600"
 heat_radiogen = true
 heat_tidal = false
 grain_size = 0.1

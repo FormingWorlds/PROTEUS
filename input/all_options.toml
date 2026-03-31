@@ -166,6 +166,8 @@ version = "2.0"
     corefrac     = 0.55         # non-dim., radius fraction
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
+    melting_dir  = "Monteux-600"            # Melting curve folder (in FWL_DATA/interior_lookup_tables/Melting_curves/)
+    eos_dir      = "WolfBower2018_MgSiO3"  # EOS data folder (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
 
     module           = "zalmoxis"   # self | zalmoxis
     update_interval      = 0        # max interval (ceiling) between structure updates [yr]; 0 = only at init
@@ -327,8 +329,6 @@ version = "2.0"
     rfront_wid          = 0.2            # Width of rheological transition (melt fraction)
     grain_size          = 0.1            # Crystal settling grain size [m]
     flux_guess          = -1              # Initial F_atm guess [W m-2]; <0 = sigma*T^4, 0 = zero, >0 = prescribed
-    melting_dir         = "Monteux-600"  # Melting curve set (folder in FWL_DATA/interior_lookup_tables/Melting_curves/)
-    eos_dir             = "WolfBower2018_MgSiO3"  # EOS data (folder in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
 
     # ── Aragog-only parameters ────────────────────────────────────────
     [interior.aragog]

@@ -301,6 +301,9 @@ class Struct:
 
     core_density: float = field(default=10738.33, validator=gt(0))
     core_heatcap: float = field(default=880.0, validator=gt(0))
+
+    melting_dir: str = field(default='Monteux-600')
+    eos_dir: str = field(default='WolfBower2018_MgSiO3')
     mass_tot = field(default='none', validator=mass_radius_valid, converter=none_if_none)
     radius_int = field(default='none', validator=mass_radius_valid, converter=none_if_none)
 

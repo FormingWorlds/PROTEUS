@@ -263,8 +263,6 @@ class Interior:
     convection: bool = field(default=True)
     grav_sep: bool = field(default=True)
     mixing: bool = field(default=True)
-    melting_dir: str = field(default='Monteux-600', validator=valid_path)
-    eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
     heat_radiogenic: bool = field(default=True)
     heat_tidal: bool = field(default=True)
 

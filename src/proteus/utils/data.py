@@ -1207,7 +1207,7 @@ def download_melting_curves(config: Config, clean=False):
     Download melting curve data
     """
     log.debug('Download melting curve data')
-    dir = 'Melting_curves/' + config.interior.melting_dir
+    dir = 'Melting_curves/' + config.struct.melting_dir
 
     data_dir = GetFWLData() / 'interior_lookup_tables'
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -1440,11 +1440,11 @@ def _get_sufficient(config: Config, clean: bool = False):
         download_interior_lookuptables(clean=clean)
         download_melting_curves(config, clean=clean)
 
-    # Dynamic EOS for SPIDER and Aragog (uses interior.eos_dir)
+    # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir)
     if config.interior.module in ('spider', 'aragog'):
-        download_eos_dynamic(config.interior.eos_dir)
+        download_eos_dynamic(config.struct.eos_dir)
 
-    # EOS for Zalmoxis (derived from struct.zalmoxis config, not interior.eos_dir)
+    # EOS for Zalmoxis (derived from struct.zalmoxis config, not struct.eos_dir)
     if hasattr(config, 'struct') and getattr(config.struct, 'module', None) == 'zalmoxis':
         zconf = config.struct.zalmoxis
         download_zalmoxis_eos(
@@ -1866,7 +1866,7 @@ def get_zalmoxis_melting_curves(config: Config):
     """Load solidus and liquidus T(P) melting curves for Zalmoxis.
 
     Reads the melting curve files from the directory specified by
-    ``config.interior.melting_dir`` under ``FWL_DATA/interior_lookup_tables/Melting_curves/``.
+    ``config.struct.melting_dir`` under ``FWL_DATA/interior_lookup_tables/Melting_curves/``.
 
     Parameters
     ----------
@@ -1879,12 +1879,12 @@ def get_zalmoxis_melting_curves(config: Config):
         (solidus_func, liquidus_func) interpolation functions T(P) [K].
     """
     melting_curves_folder = (
-        FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / config.interior.melting_dir
+        FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / config.struct.melting_dir
     )
     if not melting_curves_folder.is_dir():
         raise FileNotFoundError(
             f'Melting curves directory not found: {melting_curves_folder}. '
-            f"Check interior.melting_dir='{config.interior.melting_dir}'."
+            f"Check struct.melting_dir='{config.struct.melting_dir}'."
         )
     solidus_func = load_melting_curve(melting_curves_folder / 'solidus_P-T.dat')
     liquidus_func = load_melting_curve(melting_curves_folder / 'liquidus_P-T.dat')
@@ -1902,7 +1902,7 @@ def get_zalmoxis_EOS():
     Falls back to legacy paths if the new structure is not yet populated.
 
     The folder name matches the Zalmoxis ``mantle_eos`` source string
-    (``WolfBower2018_MgSiO3``), not ``interior.eos_dir``.
+    (``WolfBower2018_MgSiO3``), not ``struct.eos_dir``.
 
     Returns
     -------
