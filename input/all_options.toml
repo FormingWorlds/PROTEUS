@@ -305,61 +305,65 @@ version = "2.0"
 
 # Interior - physics table
 [interior]
-    Tsurf_init      = 3300.0        # Initial surface temperature [K]
-    grain_size      = 0.1           # crystal settling grain size [m]
-    F_initial       = 1e3           # Initial heat flux guess [W m-2]
-    radiogenic_heat = false         # enable radiogenic heat production
-    tidal_heat      = false         # enable tidal heat production
-    rheo_phi_loc    = 0.6           # Centre of rheological transition
-    rheo_phi_wid    = 0.2           # Width of rheological transition
-    melting_dir     = "Monteux-600" # Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER)
-    eos_dir         = "WolfBower2018_MgSiO3" # Dynamic EOS for SPIDER + Aragog (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
+    # ── Universal parameters (all modules) ────────────────────────────
+    module          = "spider"       # Which interior module: "spider", "aragog", "dummy"
+    Tsurf_init      = 3300.0         # Initial surface temperature [K]
 
-
-    module = "spider"       # Which interior module to use
-
-    [interior.spider]
-        num_levels               = 60       # Number of SPIDER grid levels
-        mixing_length            = 2         # Mixing length parameterization
-        tolerance                = 1.0e-8    # absolute solver tolerance
-        tolerance_rel            = 1.0e-8    # relative solver tolerance
-        solver_type              = "bdf"     # SUNDIALS solver method
-        tsurf_atol               = 20.0      # tsurf_poststep_change
-        tsurf_rtol               = 0.02      # tsurf_poststep_change_frac
-        ini_entropy              = 3000.0    # Surface entropy conditions [J K-1 kg-1]
-        ini_dsdr                 = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
-        conduction               = true      # enable conductive heat transfer
-        convection               = true      # enable convective heat transfer
-        gravitational_separation = true      # enable gravitational separation
-        mixing                   = true      # enable mixing
-        matprop_smooth_width     = 1e-2      # melt-fraction window width over which to smooth material properties
-
-    [interior.aragog]
-        logging                  = "ERROR"  # Aragog log verbosity
-        num_levels               = 50       # Number of Aragog grid levels
-        tolerance                = 1.0e-7   # solver tolerance
-        initial_condition        = 3        # Initial T(p); 1: linear, 2: user defined, 3: adiabat
-        basal_temperature        = 7000.0   # CMB temperature when initial boundary = 1
-        inner_boundary_condition = 1        # 1 = core cooling model, 2 = prescribed heat flux, 3 = prescribed temperature
-        inner_boundary_value     = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
-        conduction               = true     # enable conductive heat transfer
-        convection               = true     # enable convective heat transfer
-        gravitational_separation = false    # enable gravitational separation
-        mixing                   = false    # enable mixing
-        dilatation               = false    # enable dilatation source term
-        mass_coordinates         = false    # enable mass coordinates
-        tsurf_poststep_change    = 30       # threshold of maximum change on surface temperature
-        event_triggering         = true     # enable events triggering to avoid abrupt jumps in surface temperature
-        bulk_modulus             = 260e9    # Adiabatic bulk modulus AW-EOS parameter [Pa].
-
+    # ── Dummy module (simple parameterized interior) ──────────────────
     [interior.dummy]
         tmagma_atol = 30.0      # Max absolute Tsurf change in each step
         tmagma_rtol = 0.05      # Max relative Tsurf change in each step
-        mantle_tliq = 2700.0    # Liquidus temperature
-        mantle_tsol = 1700.0    # Solidus temperature
+        mantle_tliq = 2700.0    # Liquidus temperature [K]
+        mantle_tsol = 1700.0    # Solidus temperature [K]
         mantle_rho  = 4550.0    # Mantle density [kg m-3]
         mantle_cp   = 1792.0    # Mantle heat capacity [J K-1 kg-1]
         H_radio     = 0.0       # Radiogenic heating rate [W/kg]
+
+    # ── Shared parameters (Aragog + SPIDER) ───────────────────────────
+    grain_size      = 0.1            # Crystal settling grain size [m]
+    F_initial       = 1e3            # Initial heat flux guess [W m-2]
+    radiogenic_heat = false          # Enable radiogenic heat production
+    tidal_heat      = false          # Enable tidal heat production
+    rheo_phi_loc    = 0.6            # Centre of rheological transition (melt fraction)
+    rheo_phi_wid    = 0.2            # Width of rheological transition (melt fraction)
+    melting_dir     = "Monteux-600"  # Melting curve set (folder in FWL_DATA/interior_lookup_tables/Melting_curves/)
+    eos_dir         = "WolfBower2018_MgSiO3"  # EOS data (folder in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
+
+    # ── Aragog-only parameters ────────────────────────────────────────
+    [interior.aragog]
+        logging                  = "ERROR"  # Log verbosity: INFO, DEBUG, ERROR, WARNING
+        num_levels               = 50       # Number of grid levels
+        tolerance                = 1.0e-7   # BDF solver tolerance
+        initial_condition        = 3        # Initial T(P): 1=linear, 2=from file, 3=adiabat
+        basal_temperature        = 7000.0   # CMB temperature [K] (if initial_condition=1)
+        inner_boundary_condition = 1        # CMB BC: 1=core cooling, 2=prescribed flux, 3=prescribed T
+        inner_boundary_value     = 4000     # CMB BC value [K or W/m^2, depends on inner_boundary_condition]
+        conduction               = true     # Enable conductive heat transfer
+        convection               = true     # Enable convective heat transfer (MLT)
+        gravitational_separation = true     # Enable gravitational separation of melt/solid
+        mixing                   = true     # Enable chemical mixing flux
+        dilatation               = false    # Enable dilatation source term
+        mass_coordinates         = false    # Use mass coordinates for mesh spacing
+        tsurf_poststep_change    = 30       # Max surface T change per step [K]
+        event_triggering         = true     # Stop solver on large T_surf jumps
+        bulk_modulus             = 260e9    # Adams-Williamson bulk modulus [Pa]
+
+    # ── SPIDER-only parameters ────────────────────────────────────────
+    [interior.spider]
+        num_levels               = 60       # Number of grid levels
+        mixing_length            = 2        # Mixing length: 1=nearest boundary, 2=constant D/4
+        tolerance                = 1.0e-8   # SUNDIALS absolute tolerance
+        tolerance_rel            = 1.0e-8   # SUNDIALS relative tolerance
+        solver_type              = "bdf"    # SUNDIALS solver method
+        tsurf_atol               = 20.0     # Max surface T change per step [K]
+        tsurf_rtol               = 0.02     # Max relative surface T change per step
+        ini_entropy              = 3000.0   # Initial entropy [J/kg/K] (overridden by Tsurf_init when using PALEOS)
+        ini_dsdr                 = -4.698e-6 # Initial entropy gradient [J/kg/K/m]
+        conduction               = true     # Enable conductive heat transfer
+        convection               = true     # Enable convective heat transfer (MLT)
+        gravitational_separation = true     # Enable gravitational separation
+        mixing                   = true     # Enable chemical mixing flux
+        matprop_smooth_width     = 1e-2     # Material property smoothing width (melt fraction)
 
 # Outgassing - physics table
 [outgas]
