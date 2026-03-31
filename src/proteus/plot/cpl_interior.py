@@ -58,13 +58,19 @@ def plot_interior(
 
         # Pressure [GPa] grid
         if module == 'aragog':
-            xx_pres = ds['pres_b']
+            # Entropy solver writes staggered variables (pres_s, temp_s, phi_s)
+            # Old T-solver wrote basic variables (pres_b, temp_b, phi_b)
+            _is_entropy = 'pres_s' in ds.keys() if hasattr(ds, 'keys') else 'pres_s' in ds
+            if _is_entropy:
+                xx_pres = ds['pres_s']
+            else:
+                xx_pres = ds['pres_b']
         elif module == 'spider':
             xx_pres = ds.get_dict_values(['data', 'pressure_b']) * 1e-9
 
         # Phase masks
         if module == 'aragog':
-            yy = np.array(ds['phi_b'])
+            yy = np.array(ds['phi_s'] if _is_entropy else ds['phi_b'])
             MASK_SO = yy < 0.05
             MASK_MI = (0.05 <= yy) & (yy <= 0.95)
             MASK_ME = yy > 0.95
@@ -74,11 +80,15 @@ def plot_interior(
             MASK_SO = ds.get_solid_phase_boolean_array('basic')
 
         # Widen mixed phase region by 1 index so that lines are continuous on the plot
-        MASK_MI[2:-2] = MASK_MI[2:-2] | MASK_MI[1:-3] | MASK_MI[3:-1]
+        if len(MASK_MI) > 4:
+            MASK_MI[2:-2] = MASK_MI[2:-2] | MASK_MI[1:-3] | MASK_MI[3:-1]
 
         # Depth [km] grid
         if module == 'aragog':
-            xx_radius = ds['radius_b'][:]
+            if _is_entropy:
+                xx_radius = ds['radius_s'][:]
+            else:
+                xx_radius = ds['radius_b'][:]
             xx_depth = xx_radius[-1] - xx_radius
         elif module == 'spider':
             xx_radius = ds.get_dict_values(['data', 'radius_b']) * 1e-3
@@ -87,7 +97,7 @@ def plot_interior(
 
         # Plot temperature
         if module == 'aragog':
-            yy = ds['temp_b'][:]
+            yy = ds['temp_s'][:] if _is_entropy else ds['temp_b'][:]
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'temp_b'])
         yy = np.array(yy, dtype=float) / 1e3  # convert to kK
@@ -100,7 +110,7 @@ def plot_interior(
 
         # Plot melt fraction
         if module == 'aragog':
-            yy = ds['phi_b'][:]
+            yy = ds['phi_s'][:] if _is_entropy else ds['phi_b'][:]
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'phi_b'])
         yy *= 100.0  # convert to percentage
@@ -108,19 +118,28 @@ def plot_interior(
         axs[1].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
         axs[1].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
 
-        # Plot viscosity
-        if module == 'aragog':
+        # Plot viscosity (not available in entropy NetCDF; skip)
+        if module == 'aragog' and _is_entropy:
+            pass  # viscosity not stored in entropy NetCDF
+        elif module == 'aragog':
             yy = 10 ** ds['log10visc_b'][:]
+            axs[2].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
+            axs[2].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
+            axs[2].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
+            visc_min = min(visc_min, np.amin(yy))
+            visc_max = max(visc_max, np.amax(yy))
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'visc_b'])
-        axs[2].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
-        axs[2].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
-        axs[2].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
-        visc_min = min(visc_min, np.amin(yy))
-        visc_max = max(visc_max, np.amax(yy))
+            axs[2].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
+            axs[2].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
+            axs[2].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
+            visc_min = min(visc_min, np.amin(yy))
+            visc_max = max(visc_max, np.amax(yy))
 
-        # Plot convective flux
-        if module == 'aragog':
+        # Plot convective flux (not available in entropy NetCDF; skip)
+        if module == 'aragog' and _is_entropy:
+            yy = np.zeros_like(xx_pres)  # placeholder
+        elif module == 'aragog':
             yy = ds['Fconv_b'][:]
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'Jconv_b'])
