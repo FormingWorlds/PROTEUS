@@ -81,8 +81,13 @@ def plot_structure(
         # Get temperuture-depth interior data for this time
         ds = int_data[i]
         if module == 'aragog':
-            int_t = ds['temp_b'][::-1]
-            int_r = ds['radius_b'][::-1] * 1e3
+            # Entropy solver uses staggered variables (temp_s, radius_s)
+            if 'temp_s' in ds:
+                int_t = ds['temp_s'][::-1]
+                int_r = ds['radius_s'][::-1] * 1e3
+            else:
+                int_t = ds['temp_b'][::-1]
+                int_r = ds['radius_b'][::-1] * 1e3
         elif module == 'spider':
             int_t = ds.get_dict_values(['data', 'temp_b'])
             int_r = ds.get_dict_values(['data', 'radius_b'])

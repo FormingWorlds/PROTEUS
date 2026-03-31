@@ -55,8 +55,10 @@ def plot_interior_cmesh(
     # Pressure [GPa] grid
     ds = data[0]
     if module == 'aragog':
-        arr_yb = ds['pres_b']
+        _is_entropy = 'pres_s' in ds
+        arr_yb = ds['pres_s'] if _is_entropy else ds['pres_b']
     elif module == 'spider':
+        _is_entropy = False
         arr_yb = ds.get_dict_values(['data', 'pressure_b']) * 1e-9
     nlev_b = len(arr_yb)
 
@@ -71,10 +73,16 @@ def plot_interior_cmesh(
         # Get 1D data for this index
         ds = data[i]
         if module == 'aragog':
-            y_tmp = ds['temp_b'][:]
-            y_phi = ds['phi_b'][:]
-            y_vis = 10 ** ds['log10visc_b'][:]
-            y_flx = ds['Fconv_b'][:]
+            if _is_entropy:
+                y_tmp = ds['temp_s'][:]
+                y_phi = ds['phi_s'][:]
+                y_vis = 10 ** ds['log10visc_s'][:] if 'log10visc_s' in ds else np.ones(nlev_b)
+                y_flx = 0.5 * (ds['Ftotal_b'][:-1] + ds['Ftotal_b'][1:]) if 'Ftotal_b' in ds else np.zeros(nlev_b)
+            else:
+                y_tmp = ds['temp_b'][:]
+                y_phi = ds['phi_b'][:]
+                y_vis = 10 ** ds['log10visc_b'][:]
+                y_flx = ds['Fconv_b'][:]
         elif module == 'spider':
             y_tmp = ds.get_dict_values(['data', 'temp_b'])
             y_phi = ds.get_dict_values(['data', 'phi_b'])
