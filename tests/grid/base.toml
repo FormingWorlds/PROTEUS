@@ -132,7 +132,7 @@ version = "2.0"
 # Interior - physics table
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
-    F_initial       = 1e6   # Initial heat flux guess [W m-2]
+    F_init       = 1e6   # Initial heat flux guess [W m-2]
     heat_radiogen = false  # enable radiogenic heat production
     heat_tidal      = true  # enable tidal heat production
     rfront_loc    = 0.4    # Centre of rheological transition

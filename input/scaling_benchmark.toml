@@ -175,7 +175,7 @@ version = "2.0"
 # ============================================================
 [interior]
     grain_size      = 0.1       # Crystal settling grain size [m]
-    F_initial       = 1e3       # Initial heat flux guess [W m-2]
+    F_init       = 1e3       # Initial heat flux guess [W m-2]
     heat_radiogen = false     # No radiogenic heating (simpler benchmark)
     heat_tidal      = false     # No tidal heating
     module          = "spider"  # SPIDER interior module (C/PETSc)
@@ -191,8 +191,8 @@ version = "2.0"
     #     tolerance       = 1.0e-7
     #     initial_condition = 3
     #     Tsurf_init      = 3300.0
-    #     conduction      = true
-    #     convection      = true
+    #     trans_conduction      = true
+    #     trans_convection      = true
 
 # ============================================================
 # [outgas] — Outgassing / volatile partitioning

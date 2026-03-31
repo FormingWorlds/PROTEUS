@@ -111,7 +111,7 @@ version = "2.0"
     heat_radiogen = false
     heat_tidal      = false
     grain_size      = 0.1
-    F_initial       = 1000.0
+    F_init       = 1000.0
     rfront_loc    = 0.5
     rfront_wid    = 0.2
 

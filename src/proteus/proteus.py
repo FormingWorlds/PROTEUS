@@ -296,7 +296,7 @@ class Proteus:
             # sigma * T_magma^4. This adapts to any initial temperature and
             # ensures parity between SPIDER and Aragog. F_initial=0 is valid
             # (zero flux) and will NOT trigger the automatic computation.
-            F_init = self.config.interior.F_initial
+            F_init = self.config.interior.F_init
             if F_init < 0:
                 from scipy.constants import Stefan_Boltzmann
                 T_ini = self._get_initial_tmagma()

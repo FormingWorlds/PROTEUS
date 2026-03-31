@@ -806,11 +806,11 @@ def _try_spider(
     call_sequence.extend(['-pressure0', '10.0E5'])
 
     # Energy transport physics (true->'1', false->'0')
-    call_sequence.extend(['-CONDUCTION', str(int(config.interior.conduction))])
-    call_sequence.extend(['-CONVECTION', str(int(config.interior.convection))])
-    call_sequence.extend(['-MIXING', str(int(config.interior.mixing))])
+    call_sequence.extend(['-CONDUCTION', str(int(config.interior.trans_conduction))])
+    call_sequence.extend(['-CONVECTION', str(int(config.interior.trans_convection))])
+    call_sequence.extend(['-MIXING', str(int(config.interior.trans_mixing))])
     call_sequence.extend(
-        ['-SEPARATION', str(int(config.interior.grav_sep))]
+        ['-SEPARATION', str(int(config.interior.trans_grav_sep))]
     )
 
     # Tidal heating

@@ -180,9 +180,9 @@ class AragogRunner:
             )  # Zalmoxis output file with mantle parameters
 
         energy = _EnergyParameters(
-            conduction=config.interior.conduction,
-            convection=config.interior.convection,
-            gravitational_separation=(config.interior.grav_sep),
+            conduction=config.interior.trans_conduction,
+            convection=config.interior.trans_convection,
+            gravitational_separation=(config.interior.trans_grav_sep),
             mixing=config.interior.mixing,
             dilatation=config.interior.aragog.dilatation,
             radionuclides=config.interior.heat_radiogen,
