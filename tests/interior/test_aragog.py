@@ -38,8 +38,8 @@ def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate
     config.interior.aragog.grav_sep = False
     config.interior.aragog.mixing = True
     config.interior.aragog.dilatation = False
-    config.interior.radiogenic_heat = False
-    config.interior.tidal_heat = False
+    config.interior.heat_radiogen = False
+    config.interior.heat_tidal = False
     config.interior.aragog.initial_condition = 1
     config.interior.aragog.init_file = 'dummy.txt'
     config.interior.aragog.Tsurf_init = 4000.0

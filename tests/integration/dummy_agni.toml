@@ -91,8 +91,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Interior - physics table
 [interior]
-    radiogenic_heat = false          # enable radiogenic heat production
-    tidal_heat      = true         # enable tidal heat production
+    heat_radiogen = false          # enable radiogenic heat production
+    heat_tidal      = true         # enable tidal heat production
     module = "dummy"               # Which interior module to use
 
     [interior.dummy]

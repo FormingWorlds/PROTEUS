@@ -160,8 +160,8 @@ def test_interior_defaults():
     i = Interior(module='spider', spider=spider_cfg)
     assert i.module == 'spider'
     assert i.spider == spider_cfg
-    assert i.radiogenic_heat is True  # Heating terms on
-    assert i.tidal_heat is True
+    assert i.heat_radiogen is True  # Heating terms on
+    assert i.heat_tidal is True
     assert i.grain_size == 0.1  # 10 cm crystals
     assert i.F_initial == 1e3  # 1000 W/m^2
 

@@ -87,10 +87,10 @@ version = "2.0"
 [interior]
     grain_size      = 0.1               # crystal settling grain size [m]
     F_initial       = 1e6               # Initial heat flux guess [W m-2]
-    radiogenic_heat = false             # enable radiogenic heat production
-    tidal_heat      = false             # enable tidal heat production
-    rheo_phi_loc    = 0.4               # Centre of rheological transition
-    rheo_phi_wid    = 0.15              # Width of rheological transition
+    heat_radiogen = false             # enable radiogenic heat production
+    heat_tidal      = false             # enable tidal heat production
+    rfront_loc    = 0.4               # Centre of rheological transition
+    rfront_wid    = 0.15              # Width of rheological transition
     melting_dir     = "Monteux-600"     # Liquidus from Monteux+2016 and solidus=liquidus-600
 
     module = "aragog"   # Which interior module to use

@@ -139,12 +139,12 @@ version = "2.0"
 
 [interior]
     module          = "spider"   # PLACEHOLDER: overridden per case
-    radiogenic_heat = true
-    tidal_heat      = false
+    heat_radiogen = true
+    heat_tidal      = false
     grain_size      = 0.1
     F_initial       = -1   # auto: sigma * T_magma^4
-    rheo_phi_loc    = 0.4
-    rheo_phi_wid    = 0.15
+    rfront_loc    = 0.4
+    rfront_wid    = 0.15
 
     [interior.spider]
         ini_entropy   = 3200.0

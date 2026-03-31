@@ -152,7 +152,7 @@ def test_satellite_evolve_rejects_combination():
 def test_tides_enabled_orbit_requires_orbit_module():
     """Tidal heating requires an orbit module to propagate the energy source."""
     inst = SimpleNamespace(
-        interior=SimpleNamespace(tidal_heat=True), orbit=SimpleNamespace(module=None)
+        interior=SimpleNamespace(heat_tidal=True), orbit=SimpleNamespace(module=None)
     )
     with pytest.raises(ValueError):
         tides_enabled_orbit(inst, None, None)
@@ -1672,7 +1672,7 @@ def test_config_tides_enabled_orbit_requires_orbit_module():
 
     # Invalid: tidal heating without orbit module
     instance = SimpleNamespace(
-        interior=SimpleNamespace(tidal_heat=True),
+        interior=SimpleNamespace(heat_tidal=True),
         orbit=SimpleNamespace(module=None),  # No orbit module - INVALID
     )
     with pytest.raises(ValueError, match='Interior tidal heating requires'):
@@ -1686,7 +1686,7 @@ def test_config_tides_enabled_orbit_allows_no_tides():
 
     # Valid: no tidal heating
     instance = SimpleNamespace(
-        interior=SimpleNamespace(tidal_heat=False),
+        interior=SimpleNamespace(heat_tidal=False),
         orbit=SimpleNamespace(module=None),
     )
     tides_enabled_orbit(instance, SimpleNamespace(), None)  # Should not raise

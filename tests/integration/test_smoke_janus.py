@@ -94,10 +94,10 @@ version = "2.0"
     module = "dummy"
     grain_size = 0.01
     F_initial = 100.0
-    radiogenic_heat = false
-    tidal_heat = false
-    rheo_phi_loc = 0.4
-    rheo_phi_wid = 0.1
+    heat_radiogen = false
+    heat_tidal = false
+    rfront_loc = 0.4
+    rfront_wid = 0.1
     bulk_modulus = 2e11
     melting_dir = "Monteux-600"
     [interior.dummy]

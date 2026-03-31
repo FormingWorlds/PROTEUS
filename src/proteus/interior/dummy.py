@@ -78,7 +78,7 @@ def run_dummy_int(
     # Subtract tidal contribution to the total heat flux.
     #    This heat energy is generated only in the mantle, not in the core.
     tidal_flux = 0.0
-    if config.interior.tidal_heat:
+    if config.interior.heat_tidal:
         tidal_flux = interior_o.tides[0] * output['M_mantle'] / area
     output['F_tidal'] = tidal_flux
 

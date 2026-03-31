@@ -106,10 +106,10 @@ version = "2.0"
 
 [interior]
     F_initial       = 1e4   # Initial heat flux guess [W m-2]
-    radiogenic_heat = true  # enable radiogenic heat production
-    tidal_heat      = true  # enable tidal heat production
-    rheo_phi_loc    = 0.3    # Centre of rheological transition
-    rheo_phi_wid    = 0.15   # Width of rheological transition
+    heat_radiogen = true  # enable radiogenic heat production
+    heat_tidal      = true  # enable tidal heat production
+    rfront_loc    = 0.3    # Centre of rheological transition
+    rfront_wid    = 0.15   # Width of rheological transition
 
     module = "spider"   # Which interior module to use
 

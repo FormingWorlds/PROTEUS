@@ -210,13 +210,13 @@ class Interior:
         Initial heat flux guess [W m-2]. When < 0 (default), computed
         automatically as sigma * T_magma^4. Set to a positive value to
         prescribe a specific initial flux. Set to 0 for zero initial flux.
-    radiogenic_heat: bool
+    heat_radiogen: bool
         Include radiogenic heat production?
-    tidal_heat: bool
+    heat_tidal: bool
         Include tidal heating?
-    rheo_phi_loc: float
+    rfront_loc: float
         Centre of rheological transition in terms of melt fraction
-    rheo_phi_wid: float
+    rfront_wid: float
         Width of rheological transition in terms of melt fraction
     initial_thermal_state: str
         Mode for setting the initial surface temperature.
@@ -265,8 +265,8 @@ class Interior:
     mixing: bool = field(default=True)
     melting_dir: str = field(default='Monteux-600', validator=valid_path)
     eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
-    radiogenic_heat: bool = field(default=True)
-    tidal_heat: bool = field(default=True)
+    heat_radiogen: bool = field(default=True)
+    heat_tidal: bool = field(default=True)
 
     spider: Spider = field(factory=Spider, validator=valid_spider)
     aragog: Aragog = field(factory=Aragog, validator=valid_aragog)
@@ -274,8 +274,8 @@ class Interior:
 
     grain_size: float = field(default=0.1, validator=gt(0))
     F_initial: float = field(default=-1)
-    rheo_phi_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
-    rheo_phi_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
+    rfront_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
+    rfront_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
 
     # Initial thermal state mode:
     #   'fixed': use Tsurf_init from the solver config (current default)

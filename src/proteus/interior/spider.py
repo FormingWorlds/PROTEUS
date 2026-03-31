@@ -631,8 +631,8 @@ def _try_spider(
     atol_sf = max(1.0e-10, atol_sf)
 
     # Solver tolerances
-    spider_atol = atol_sf * config.interior.tolerance
-    spider_rtol = atol_sf * config.interior.tolerance_rel
+    spider_atol = atol_sf * config.interior.num_tolerance
+    spider_rtol = atol_sf * config.interior.num_tolerance_rel
 
     # Bounds on tolerances
     spider_rtol = min(spider_rtol, 1e-1)
@@ -814,7 +814,7 @@ def _try_spider(
     )
 
     # Tidal heating
-    if config.interior.tidal_heat:
+    if config.interior.heat_tidal:
         call_sequence.extend(['-HTIDAL', '2'])
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
 
@@ -925,8 +925,8 @@ def _try_spider(
     )
 
     # Viscosity behaviour (rheological transition location and width, melt fractions)
-    call_sequence.extend(['-phi_critical', '%.6e' % (config.interior.rheo_phi_loc)])
-    call_sequence.extend(['-phi_width', '%.6e' % (config.interior.rheo_phi_wid)])
+    call_sequence.extend(['-phi_critical', '%.6e' % (config.interior.rfront_loc)])
+    call_sequence.extend(['-phi_width', '%.6e' % (config.interior.rfront_wid)])
 
     # Relating to the planet's metallic core
     call_sequence.extend(['-CORE_BC', '1'])  # CMB boundary condition
@@ -949,7 +949,7 @@ def _try_spider(
     call_sequence.extend(['-OXYGEN_FUGACITY', '2'])
 
     # radionuclides
-    if config.interior.radiogenic_heat:
+    if config.interior.heat_radiogen:
         # offset by age_ini, which converts model simulation time to the actual age
         radio_t0 = config.delivery.radio_tref - config.star.age_ini
         radio_t0 *= 1e9  # Convert Gyr to yr
@@ -1047,7 +1047,7 @@ def RunSPIDER(
 
     # Maximum dT
     dT_max = 1e99
-    if config.interior.tidal_heat and (np.amax(interior_o.tides) > 1e-10):
+    if config.interior.heat_tidal and (np.amax(interior_o.tides) > 1e-10):
         dT_max = 4.0
         log.info('Tidal heating active; limiting dT_magma to %.2f K' % dT_max)
 

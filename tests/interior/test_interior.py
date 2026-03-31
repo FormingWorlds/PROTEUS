@@ -231,7 +231,7 @@ def _create_mock_config(
     tmagma_atol: float = 10.0,
     corefrac: float = 0.55,
     core_heatcap: float = 8e26,
-    tidal_heat: bool = False,
+    heat_tidal: bool = False,
 ) -> Any:
     """Helper to create minimal Config mock for interior tests."""
     config = MagicMock()
@@ -245,7 +245,7 @@ def _create_mock_config(
     config.interior.dummy.tmagma_atol = tmagma_atol
     config.struct.corefrac = corefrac
     config.struct.core_heatcap = core_heatcap
-    config.interior.tidal_heat = tidal_heat
+    config.interior.heat_tidal = heat_tidal
     return config
 
 
@@ -353,7 +353,7 @@ def test_run_dummy_int_melt_fraction_partial():
 
 
 @pytest.mark.unit
-def test_run_dummy_int_radiogenic_heating():
+def test_run_dummy_int_heat_radiogening():
     """Test radiogenic heating contribution (F_radio).
 
     Radiogenic heat flux should equal H_radio * M_mantle / area.
@@ -379,13 +379,13 @@ def test_run_dummy_int_radiogenic_heating():
 
 
 @pytest.mark.unit
-def test_run_dummy_int_tidal_heating_enabled():
-    """Test tidal heating flux when tidal_heat=True.
+def test_run_dummy_int_heat_tidaling_enabled():
+    """Test tidal heating flux when heat_tidal=True.
 
     When tidal heating is enabled, F_tidal should be computed from
     interior_o.tides[0] scaled by mantle mass and area.
     """
-    config = _create_mock_config(tidal_heat=True, Tsurf_init=2000.0)
+    config = _create_mock_config(heat_tidal=True, Tsurf_init=2000.0)
     dirs = {}
     R_int = 6e6
     hf_row = {'F_atm': 100.0, 'R_int': R_int, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
@@ -404,13 +404,13 @@ def test_run_dummy_int_tidal_heating_enabled():
 
 
 @pytest.mark.unit
-def test_run_dummy_int_tidal_heating_disabled():
-    """Test that F_tidal=0 when tidal_heat=False.
+def test_run_dummy_int_heat_tidaling_disabled():
+    """Test that F_tidal=0 when heat_tidal=False.
 
     Even if interior_o.tides is nonzero, tidal heating should be
     ignored if the config flag is disabled.
     """
-    config = _create_mock_config(tidal_heat=False, Tsurf_init=2000.0)
+    config = _create_mock_config(heat_tidal=False, Tsurf_init=2000.0)
     dirs = {}
     hf_row = {'F_atm': 100.0, 'R_int': 6e6, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}
     hf_all = pd.DataFrame()

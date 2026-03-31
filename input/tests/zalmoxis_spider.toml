@@ -108,12 +108,12 @@ version = "2.0"
 
 [interior]
     module          = "spider"
-    radiogenic_heat = false
-    tidal_heat      = false
+    heat_radiogen = false
+    heat_tidal      = false
     grain_size      = 0.1
     F_initial       = 1000.0
-    rheo_phi_loc    = 0.5
-    rheo_phi_wid    = 0.2
+    rfront_loc    = 0.5
+    rfront_wid    = 0.2
 
     [interior.spider]
         ini_entropy  = 3000.0

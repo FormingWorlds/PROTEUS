@@ -915,11 +915,11 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior.spider.mixing = True
     config.interior.spider.grav_sep = False
     config.interior.spider.matprop_smooth_width = 0.1
-    config.interior.tidal_heat = False
-    config.interior.radiogenic_heat = False
+    config.interior.heat_tidal = False
+    config.interior.heat_radiogen = False
     config.interior.grain_size = 1e-3
-    config.interior.rheo_phi_loc = 0.4
-    config.interior.rheo_phi_wid = 0.15
+    config.interior.rfront_loc = 0.4
+    config.interior.rfront_wid = 0.15
     config.interior.eos_dir = 'WolfBower2018_MgSiO3'
     config.interior.melting_dir = 'Wolf_Bower+2018'
     config.outgas.fO2_shift_IW = 0.0
@@ -1430,7 +1430,7 @@ def test_run_spider_success_first_attempt():
     interior_o.tides = np.zeros(10)
 
     config = MagicMock()
-    config.interior.tidal_heat = False
+    config.interior.heat_tidal = False
 
     with patch('proteus.interior.spider._try_spider', return_value=True):
         result = RunSPIDER(
@@ -1454,7 +1454,7 @@ def test_run_spider_retry_then_success():
     interior_o.tides = np.zeros(10)
 
     config = MagicMock()
-    config.interior.tidal_heat = False
+    config.interior.heat_tidal = False
 
     # Fail first attempt, succeed second
     with patch('proteus.interior.spider._try_spider', side_effect=[False, True]) as mock_try:
@@ -1480,7 +1480,7 @@ def test_run_spider_all_attempts_fail():
     interior_o.tides = np.zeros(10)
 
     config = MagicMock()
-    config.interior.tidal_heat = False
+    config.interior.heat_tidal = False
 
     with (
         patch('proteus.interior.spider._try_spider', return_value=False),
@@ -1497,7 +1497,7 @@ def test_run_spider_all_attempts_fail():
 
 
 @pytest.mark.unit
-def test_run_spider_tidal_heat_active():
+def test_run_spider_heat_tidal_active():
     """RunSPIDER limits dT_max when tidal heating is active."""
     from proteus.interior.spider import RunSPIDER
 
@@ -1506,7 +1506,7 @@ def test_run_spider_tidal_heat_active():
     interior_o.tides = np.array([1e-5] * 10)  # > 1e-10
 
     config = MagicMock()
-    config.interior.tidal_heat = True
+    config.interior.heat_tidal = True
 
     with patch('proteus.interior.spider._try_spider', return_value=True) as mock_try:
         RunSPIDER(
@@ -1793,19 +1793,19 @@ def test_try_spider_resume_ic2(tmp_path):
 
 
 # ============================================================================
-# _try_spider with radiogenic_heat=True
+# _try_spider with heat_radiogen=True
 # ============================================================================
 
 
 @pytest.mark.unit
-def test_try_spider_radiogenic_heat(tmp_path):
-    """_try_spider adds radionuclide flags when radiogenic_heat is True."""
+def test_try_spider_heat_radiogen(tmp_path):
+    """_try_spider adds radionuclide flags when heat_radiogen is True."""
     from proteus.interior.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
 
     # Enable radiogenic heat
-    config.interior.radiogenic_heat = True
+    config.interior.heat_radiogen = True
     config.delivery.radio_tref = 4.5  # Gyr
     config.star.age_ini = 0.1  # Gyr
     config.delivery.radio_K = 240e-9  # ppm

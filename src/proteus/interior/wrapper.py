@@ -126,9 +126,9 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     # Set tolerance
     match config.interior.module:
         case 'aragog':
-            rtol = config.interior.tolerance
+            rtol = config.interior.num_tolerance
         case 'spider':
-            rtol = config.interior.tolerance
+            rtol = config.interior.num_tolerance
         case _:
             rtol = 1e-7
 
@@ -423,7 +423,7 @@ def run_interior(
     log.debug('Using %s module to evolve interior' % config.interior.module)
 
     # Write tidal heating file
-    if config.interior.tidal_heat:
+    if config.interior.heat_tidal:
         interior_o.write_tides(dirs['output'])
 
     if config.interior.module == 'spider':
@@ -526,9 +526,9 @@ def run_interior(
         log.info('    Phi_global = %.3f  ' % float(hf_row['Phi_global']))
         log.info('    RF_depth   = %.3f  ' % float(hf_row['RF_depth']))
         log.info('    F_int      = %.2e W m-2' % float(hf_row['F_int']))
-        if config.interior.tidal_heat:
+        if config.interior.heat_tidal:
             log.info('    F_tidal    = %.2e W m-2' % float(hf_row['F_tidal']))
-        if config.interior.radiogenic_heat:
+        if config.interior.heat_radiogen:
             log.info('    F_radio    = %.2e W m-2' % float(hf_row['F_radio']))
 
     # Actual time step size

@@ -223,7 +223,7 @@ def test_smoke_star_instellation():
 
 
 @pytest.mark.smoke
-def test_smoke_orbit_tidal_heating():
+def test_smoke_orbit_heat_tidaling():
     """Test orbit module + dummy interior coupling (1 timestep).
 
     Validates that orbital dynamics correctly calculates tidal heating and couples
@@ -262,7 +262,7 @@ def test_smoke_orbit_tidal_heating():
         runner.config.orbit.dummy.Imk2 = -1e5  # Love number
 
         # Enable tidal heating in interior
-        runner.config.interior.tidal_heat = True
+        runner.config.interior.heat_tidal = True
 
         # Fix: Lower Tsurf_init to prevent runaway heating
         runner.config.interior.dummy.Tsurf_init = 2000.0

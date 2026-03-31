@@ -167,12 +167,12 @@ tidal = true
 [interior]
 module = "spider"
 melting_dir = "Monteux-600"
-radiogenic_heat = true
-tidal_heat = false
+heat_radiogen = true
+heat_tidal = false
 grain_size = 0.1
 F_initial = 1000.0
-rheo_phi_loc = 0.5
-rheo_phi_wid = 0.2
+rfront_loc = 0.5
+rfront_wid = 0.2
 
 [interior.spider]
 ini_entropy = 3000.0

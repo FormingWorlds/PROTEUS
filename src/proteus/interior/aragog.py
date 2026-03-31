@@ -114,8 +114,8 @@ class AragogRunner:
             # enough that the BDF solver resolves this: atol = 0.01 K ensures
             # ~0.01 K precision, well below the ~0.3 K/yr cooling rate.
             # Too large (e.g. 1.0 K) makes the solver skip the evolution entirely.
-            atol=max(config.interior.tolerance, 0.01),
-            rtol=config.interior.tolerance,
+            atol=max(config.interior.num_tolerance, 0.01),
+            rtol=config.interior.num_tolerance,
             tsurf_poststep_change=config.interior.aragog.tsurf_poststep_change,
             event_triggering=config.interior.aragog.event_triggering,
         )
@@ -185,8 +185,8 @@ class AragogRunner:
             gravitational_separation=(config.interior.grav_sep),
             mixing=config.interior.mixing,
             dilatation=config.interior.aragog.dilatation,
-            radionuclides=config.interior.radiogenic_heat,
-            tidal=config.interior.tidal_heat,
+            radionuclides=config.interior.heat_radiogen,
+            tidal=config.interior.heat_tidal,
             tidal_array=interior_o.tides,
             kappah_floor=config.interior.kappah_floor,
         )
@@ -447,8 +447,8 @@ class AragogRunner:
 
         phase_mixed = _PhaseMixedParameters(
             latent_heat_of_fusion=4e6,
-            rheological_transition_melt_fraction=config.interior.rheo_phi_loc,
-            rheological_transition_width=config.interior.rheo_phi_wid,
+            rheological_transition_melt_fraction=config.interior.rfront_loc,
+            rheological_transition_width=config.interior.rfront_wid,
             solidus=solidus_path,
             liquidus=liquidus_path,
             phase='mixed',
@@ -457,7 +457,7 @@ class AragogRunner:
         )
 
         radionuclides = []
-        if config.interior.radiogenic_heat:
+        if config.interior.heat_radiogen:
             # offset by age_ini, which converts model simulation time to the
             # actual age
             radio_t0 = config.delivery.radio_tref - config.star.age_ini

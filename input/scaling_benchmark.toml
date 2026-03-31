@@ -176,8 +176,8 @@ version = "2.0"
 [interior]
     grain_size      = 0.1       # Crystal settling grain size [m]
     F_initial       = 1e3       # Initial heat flux guess [W m-2]
-    radiogenic_heat = false     # No radiogenic heating (simpler benchmark)
-    tidal_heat      = false     # No tidal heating
+    heat_radiogen = false     # No radiogenic heating (simpler benchmark)
+    heat_tidal      = false     # No tidal heating
     module          = "spider"  # SPIDER interior module (C/PETSc)
 
     [interior.spider]
