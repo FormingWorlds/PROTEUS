@@ -181,7 +181,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Interior - physics table
 [interior]
     grain_size      = 0.1           # crystal settling grain size [m]
-    F_init       = 1e6           # Initial heat flux guess [W m-2]
+    flux_guess       = 1e6           # Initial heat flux guess [W m-2]
     heat_radiogen = true          # enable radiogenic heat production
     heat_tidal      = false         # enable tidal heat production
     rfront_loc    = 0.4           # Centre of rheological transition

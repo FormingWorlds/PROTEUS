@@ -206,7 +206,7 @@ class Interior:
     ----------
     grain_size: float
         Crystal settling grain size [m].
-    F_initial: float
+    flux_guess: float
         Initial heat flux guess [W m-2]. When < 0 (default), computed
         automatically as sigma * T_magma^4. Set to a positive value to
         prescribe a specific initial flux. Set to 0 for zero initial flux.
@@ -273,7 +273,7 @@ class Interior:
     dummy: InteriorDummy = field(factory=InteriorDummy, validator=valid_interiordummy)
 
     grain_size: float = field(default=0.1, validator=gt(0))
-    F_initial: float = field(default=-1)
+    flux_guess: float = field(default=-1)
     rfront_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
 

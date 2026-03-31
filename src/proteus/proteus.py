@@ -292,17 +292,17 @@ class Proteus:
             self.hf_row['age_star'] = self.config.star.age_ini * 1e9
 
             # Initial guess for flux.
-            # When F_initial < 0 (sentinel), compute from Stefan-Boltzmann:
+            # When flux_guess < 0 (sentinel), compute from Stefan-Boltzmann:
             # sigma * T_magma^4. This adapts to any initial temperature and
-            # ensures parity between SPIDER and Aragog. F_initial=0 is valid
+            # ensures parity between SPIDER and Aragog. flux_guess=0 is valid
             # (zero flux) and will NOT trigger the automatic computation.
-            F_init = self.config.interior.F_init
-            if F_init < 0:
+            flux_guess = self.config.interior.flux_guess
+            if flux_guess < 0:
                 from scipy.constants import Stefan_Boltzmann
                 T_ini = self._get_initial_tmagma()
-                F_init = Stefan_Boltzmann * T_ini**4
-                log.info('F_initial from sigma*T^4: T_magma=%.0f K -> F=%.2e W/m^2', T_ini, F_init)
-            self.hf_row['F_atm'] = F_init
+                flux_guess = Stefan_Boltzmann * T_ini**4
+                log.info('flux_guess from sigma*T^4: T_magma=%.0f K -> F=%.2e W/m^2', T_ini, flux_guess)
+            self.hf_row['F_atm'] = flux_guess
             self.hf_row['F_int'] = self.hf_row['F_atm']
             self.hf_row['T_eqm'] = 2000.0
 

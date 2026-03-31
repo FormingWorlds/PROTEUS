@@ -151,7 +151,7 @@ version = "2.0"
     heat_radiogen = true
     heat_tidal      = false
     grain_size      = 0.1
-    F_init       = -1   # auto: sigma * T_magma^4
+    flux_guess       = -1   # auto: sigma * T_magma^4
     rfront_loc    = 0.4
     rfront_wid    = 0.15
 

@@ -326,7 +326,7 @@ version = "2.0"
     rfront_loc          = 0.6            # Centre of rheological transition (melt fraction)
     rfront_wid          = 0.2            # Width of rheological transition (melt fraction)
     grain_size          = 0.1            # Crystal settling grain size [m]
-    F_init              = 1e3            # Initial heat flux guess [W m-2]
+    flux_guess              = -1             # Initial F_atm guess [W m-2]; -1 = auto (sigma*T^4), 0 = zero, >0 = prescribed [W m-2]
     melting_dir         = "Monteux-600"  # Melting curve set (folder in FWL_DATA/interior_lookup_tables/Melting_curves/)
     eos_dir             = "WolfBower2018_MgSiO3"  # EOS data (folder in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
 
