@@ -32,6 +32,7 @@ version = "2.0"
     # output files
     [params.out]
         path        = "all_options"
+        logging     = "INFO"  # Log verbosity: INFO, DEBUG, ERROR, WARNING
         plot_mod    = 3      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
