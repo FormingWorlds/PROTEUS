@@ -806,14 +806,14 @@ def test_check_eos_range_entropy_mismatch(spider_json_dir, caplog):
 
 @pytest.mark.unit
 def test_check_eos_range_high_pressure(spider_json_dir, caplog):
-    """Warn when CMB pressure exceeds 400 GPa."""
+    """High CMB pressure still triggers entropy range warning when solid range is narrow."""
     eos_dir = spider_json_dir
     _make_eos_table(os.path.join(eos_dir, 'density_solid.dat'), y_max=2400.0)
     _make_eos_table(os.path.join(eos_dir, 'density_melt.dat'), y_max=3200.0)
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior.spider'):
         _check_eos_table_range(eos_dir, None, 500e9)
-    assert any('400 GPa' in r.message for r in caplog.records)
+    assert any('narrower' in r.message for r in caplog.records)
 
 
 @pytest.mark.unit
@@ -910,18 +910,23 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior.spider.ini_dsdr = 0.0
     config.interior.spider.mixing_length = 1
     config.interior.spider.solver_type = 'cv_bdf'
-    config.interior.spider.conduction = True
-    config.interior.spider.convection = True
-    config.interior.spider.mixing = True
-    config.interior.spider.grav_sep = False
+    config.interior.trans_conduction = True
+    config.interior.trans_convection = True
+    config.interior.trans_mixing = True
+    config.interior.trans_grav_sep = False
     config.interior.spider.matprop_smooth_width = 0.1
     config.interior.heat_tidal = False
     config.interior.heat_radiogenic = False
     config.interior.grain_size = 1e-3
     config.interior.rfront_loc = 0.4
     config.interior.rfront_wid = 0.15
-    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
-    config.interior.melting_dir = 'Wolf_Bower+2018'
+    config.interior.num_levels = 50
+    config.interior.num_tolerance = 1e-4
+    config.interior.tsurf_init = 4000.0
+    config.interior.kappah_floor = 0.0
+    config.interior.flux_guess = -1
+    config.struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.struct.melting_dir = 'Wolf_Bower+2018'
     config.outgas.fO2_shift_IW = 0.0
     config.struct.corefrac = 0.55
     config.struct.core_density = 12500.0

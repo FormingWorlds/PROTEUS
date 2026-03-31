@@ -148,6 +148,8 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
         'R_int': float(R_earth),
         'M_int': 1.0 * M_earth,
         'gravity': 9.81,
+        'Phi_global': 0.5,
+        'T_magma': 3000.0,
     }
 
     # Patch run_interior to simply set some interior-related keys
@@ -163,14 +165,16 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
         patch(
             'proteus.interior.wrapper.run_interior', side_effect=fake_run_interior
         ) as mock_run,
+        patch('proteus.outgas.wrapper.calc_target_masses') as mock_calc_masses,
     ):
         # Call the function under test
         determine_interior_radius(dirs, config, hf_all, hf_row)
 
         # Ensure patched functions were called
         assert mock_run.called
+        assert mock_calc_masses.called
 
-        # Check that element totals were set, confirming the call to calc_target_elemental_inventories
+        # Check that element totals were initialized to 0 by calc_target_elemental_inventories
         for e in element_list:
             assert hf_row[e + '_kg_total'] == pytest.approx(0.0)
 
@@ -235,7 +239,7 @@ def _create_mock_config(
 ) -> Any:
     """Helper to create minimal Config mock for interior tests."""
     config = MagicMock()
-    config.interior.dummy.tsurf_init = tsurf_init
+    config.interior.tsurf_init = tsurf_init
     config.interior.dummy.mantle_tliq = mantle_tliq
     config.interior.dummy.mantle_tsol = mantle_tsol
     config.interior.dummy.mantle_cp = mantle_cp

@@ -117,16 +117,16 @@ class TestBuildVolatileProfile:
         assert result is not None
         assert 'PALEOS:H2O' in result.w_liquid or 'Chabrier:H' in result.w_liquid
 
-    def test_fractions_below_half(self):
-        """Volatile mass fractions are clamped to < 0.5."""
+    def test_fractions_clamped_below_limit(self):
+        """Total volatile mass fraction per phase is clamped to <= 0.95."""
         from proteus.interior.zalmoxis import build_volatile_profile
 
         # Extreme case: volatile mass > mantle mass
         hf_row = self._make_hf_row(M_liq=1e20, H2O_liq=1e24)
         result = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
         if result is not None:
-            for v in result.w_liquid.values():
-                assert v <= 0.5
+            total = sum(result.w_liquid.values())
+            assert total <= 0.95 + 1e-10
 
 
 @pytest.mark.unit

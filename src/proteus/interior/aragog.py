@@ -183,7 +183,7 @@ class AragogRunner:
             conduction=config.interior.trans_conduction,
             convection=config.interior.trans_convection,
             gravitational_separation=(config.interior.trans_grav_sep),
-            mixing=config.interior.mixing,
+            mixing=config.interior.trans_mixing,
             dilatation=config.interior.aragog.dilatation,
             radionuclides=config.interior.heat_radiogenic,
             tidal=config.interior.heat_tidal,

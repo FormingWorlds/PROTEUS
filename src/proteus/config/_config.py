@@ -54,7 +54,7 @@ def satellite_evolve(instance, attribute, value):
 
 def tides_enabled_orbit(instance, attribute, value):
     # Tides in interior requires orbit module to not be None
-    if (instance.interior.tidal_heat) and (instance.orbit.module is None):
+    if (instance.interior.heat_tidal) and (instance.orbit.module is None):
         raise ValueError('Interior tidal heating requires an orbit module to be enabled')
 
 

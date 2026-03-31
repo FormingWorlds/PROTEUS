@@ -1518,7 +1518,7 @@ def test_download_melting_curves(mock_rm, mock_getfwl, mock_download, tmp_path):
 
     # Create mock config with melting_dir
     mock_config = MagicMock(spec=Config)
-    mock_config.interior.melting_dir = 'Wolf_Bower+2018'
+    mock_config.struct.melting_dir = 'Wolf_Bower+2018'
 
     download_melting_curves(mock_config, clean=False)
 
@@ -1873,7 +1873,7 @@ def test_download_melting_curves_no_mapping(mock_get_info):
     from proteus.utils.data import download_melting_curves
 
     mock_config = MagicMock(spec=Config)
-    mock_config.interior.melting_dir = 'UnknownCurve'
+    mock_config.struct.melting_dir = 'UnknownCurve'
     mock_get_info.return_value = None
 
     with pytest.raises(ValueError, match='No data source mapping found'):
@@ -1897,7 +1897,7 @@ def test_download_melting_curves_canonical_copy(mock_rm, mock_getfwl, mock_downl
     (mc_dir / 'liquidus.dat').write_text('liquidus data')
 
     mock_config = MagicMock()
-    mock_config.interior.melting_dir = 'Wolf_Bower+2018'
+    mock_config.struct.melting_dir = 'Wolf_Bower+2018'
 
     download_melting_curves(mock_config, clean=False)
 
@@ -1926,7 +1926,7 @@ def test_download_melting_curves_canonical_skip_existing(
     (mc_dir / 'liquidus.dat').write_text('old liquidus')
 
     mock_config = MagicMock()
-    mock_config.interior.melting_dir = 'Wolf_Bower+2018'
+    mock_config.struct.melting_dir = 'Wolf_Bower+2018'
 
     download_melting_curves(mock_config, clean=False)
 

@@ -59,20 +59,22 @@ def test_calc_target_elemental_inventories_calliope_enabled():
 
 
 @pytest.mark.unit
-def test_calc_target_elemental_inventories_disabled():
+def test_calc_target_elemental_inventories_always_calls_calc_target_masses():
     """
-    Test that calc_target_elemental_inventories does nothing when module != 'calliope'.
+    Test that calc_target_elemental_inventories always computes element budgets.
 
-    Physics: If outgassing is disabled, volatile masses remain constant (no updates).
+    Physics: Element budgets (H, C, N, S) are needed by ALL outgas modules,
+    not just CALLIOPE, because they drive the mass balance. The function
+    always calls calc_target_masses regardless of the outgas module.
     """
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
-    config.outgas.module = 'none'  # Disabled
+    config.outgas.module = 'none'
     hf_row = {'Time': 0.0}
 
     with patch('proteus.outgas.wrapper.calc_target_masses') as mock_calc:
         calc_target_elemental_inventories(dirs, config, hf_row)
-        mock_calc.assert_not_called()
+        mock_calc.assert_called_once_with(dirs, config, hf_row)
 
 
 @pytest.mark.unit

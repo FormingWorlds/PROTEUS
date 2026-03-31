@@ -216,10 +216,10 @@ def test_valid_aragog_requires_energy_term_and_tmagma():
     inst = SimpleNamespace(
         module='aragog',
         tsurf_init=150.0,
-        conduction=False,
-        convection=False,
-        mixing=False,
-        grav_sep=False,
+        trans_conduction=False,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
         aragog=SimpleNamespace(),
     )
     with pytest.raises(ValueError):
@@ -228,10 +228,10 @@ def test_valid_aragog_requires_energy_term_and_tmagma():
     inst_ok = SimpleNamespace(
         module='aragog',
         tsurf_init=800.0,
-        conduction=True,
-        convection=False,
-        mixing=False,
-        grav_sep=False,
+        trans_conduction=True,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
         aragog=SimpleNamespace(),
     )
     valid_aragog(inst_ok, None, None)
@@ -242,10 +242,10 @@ def test_valid_spider_requires_energy_term_and_entropy():
     """Spider interior requires an energy transport term and positive entropy."""
     inst = SimpleNamespace(
         module='spider',
-        conduction=False,
-        convection=False,
-        mixing=False,
-        grav_sep=False,
+        trans_conduction=False,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
         spider=SimpleNamespace(ini_entropy=150.0),
     )
     with pytest.raises(ValueError):
@@ -253,10 +253,10 @@ def test_valid_spider_requires_energy_term_and_entropy():
 
     inst_ok = SimpleNamespace(
         module='spider',
-        conduction=True,
-        convection=False,
-        mixing=False,
-        grav_sep=False,
+        trans_conduction=True,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
         spider=SimpleNamespace(ini_entropy=400.0),
     )
     valid_spider(inst_ok, None, None)
@@ -639,13 +639,11 @@ def test_interior_spider_entropy_minimum():
     # Valid entropy
     config = SimpleNamespace(
         module='spider',
-        spider=SimpleNamespace(
-            ini_entropy=250.0,  # Valid: > 200
-            conduction=True,
-            convection=True,
-            mixing=False,
-            grav_sep=False,
-        ),
+        trans_conduction=True,
+        trans_convection=True,
+        trans_mixing=False,
+        trans_grav_sep=False,
+        spider=SimpleNamespace(ini_entropy=250.0),
     )
 
     # Should not raise error
@@ -670,20 +668,18 @@ def test_interior_spider_energy_term_required():
     # At least one enabled - valid
     config = SimpleNamespace(
         module='spider',
-        spider=SimpleNamespace(
-            ini_entropy=250.0,
-            conduction=True,  # At least this one
-            convection=False,
-            mixing=False,
-            grav_sep=False,
-        ),
+        trans_conduction=True,
+        trans_convection=False,
+        trans_mixing=False,
+        trans_grav_sep=False,
+        spider=SimpleNamespace(ini_entropy=250.0),
     )
 
     # Should not raise error
     valid_spider(config, SimpleNamespace(), None)
 
     # All disabled - invalid
-    config.spider.conduction = False
+    config.trans_conduction = False
     with pytest.raises(ValueError, match='Must enable at least one energy transport term'):
         valid_spider(config, SimpleNamespace(), None)
 

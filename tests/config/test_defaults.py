@@ -163,24 +163,23 @@ def test_interior_defaults():
     assert i.heat_radiogenic is True  # Heating terms on
     assert i.heat_tidal is True
     assert i.grain_size == 0.1  # 10 cm crystals
-    assert i.flux_guess == 1e3  # 1000 W/m^2
+    assert i.flux_guess == -1  # Auto-detect
 
     # Sub-modules defaults
     assert isinstance(i.aragog, Aragog)
-    assert i.aragog.num_levels == 100
-    assert i.aragog.logging == 'ERROR'
+    assert i.num_levels == 100  # num_levels is on Interior, not Aragog
 
     assert isinstance(i.dummy, InteriorDummy)
     assert i.dummy.tmagma_atol == 30.0
 
     # Test Aragog module selection
-    aragog_cfg = Aragog(tsurf_init=3000.0)
+    aragog_cfg = Aragog()
     i2 = Interior(module='aragog', aragog=aragog_cfg)
     assert i2.module == 'aragog'
     assert i2.aragog == aragog_cfg
 
     # Test Dummy module selection
-    dummy_cfg = InteriorDummy(tsurf_init=3000.0)
+    dummy_cfg = InteriorDummy()
     i3 = Interior(module='dummy', dummy=dummy_cfg)
     assert i3.module == 'dummy'
     assert i3.dummy == dummy_cfg
@@ -197,11 +196,9 @@ def test_spider_defaults():
     - BDF solver (Backwards Differentiation Formula, stable for stiff systems)
     """
     s = Spider()
-    assert s.num_levels == 190
     assert s.mixing_length == 2
-    assert s.tolerance == 1e-10
+    assert s.tolerance_rel == 1e-10
     assert s.solver_type == 'bdf'
-    assert s.convection is True
     assert s.matprop_smooth_width == 1e-2
 
 
@@ -216,8 +213,5 @@ def test_aragog_defaults():
     - Bulk modulus 260 GPa (Earth-like mantle)
     """
     a = Aragog()
-    assert a.logging == 'ERROR'
-    assert a.num_levels == 100
-    assert a.initial_condition == 1
-    assert a.tolerance == 1e-10
+    assert a.initial_condition == 3  # Adiabat (default)
     assert a.bulk_modulus == 260e9

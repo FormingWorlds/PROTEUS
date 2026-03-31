@@ -36,20 +36,20 @@ def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate
     config.interior.trans_conduction = True
     config.interior.trans_convection = True
     config.interior.trans_grav_sep = False
-    config.interior.aragog.mixing = True
+    config.interior.trans_mixing = True
     config.interior.aragog.dilatation = False
     config.interior.heat_radiogenic = False
     config.interior.heat_tidal = False
     config.interior.aragog.initial_condition = 1
     config.interior.aragog.init_file = 'dummy.txt'
-    config.interior.aragog.tsurf_init = 4000.0
+    config.interior.tsurf_init = 4000.0
     config.interior.aragog.basal_temperature = 5000.0
     config.interior.num_tolerance = 1e-4
     config.interior.aragog.tsurf_poststep_change = 100.0
     config.interior.aragog.event_triggering = True
     config.interior.aragog.inner_boundary_condition = 1
     config.interior.aragog.inner_boundary_value = 5000.0
-    config.interior.params.out.logging = 'WARNING'
+    config.params.out.logging = 'WARNING'
     config.struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.struct.melting_dir = 'Wolf_Bower+2018'
     return config
@@ -57,14 +57,16 @@ def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate
 
 @pytest.mark.unit
 def test_setup_solver_zalmoxis_inner_radius(tmp_path):
-    """setup_solver uses zalmoxis_solver for inner_radius when struct.module='zalmoxis'."""
+    """setup_solver reads R_core from hf_row when struct.module='zalmoxis'."""
     from proteus.interior.aragog import AragogRunner
 
     outdir = str(tmp_path)
     config = _make_aragog_config(struct_module='zalmoxis')
 
+    R_core_expected = 3.48e6
     hf_row = {
         'R_int': 6.371e6,
+        'R_core': R_core_expected,
         'gravity': 9.81,
         'T_magma': 3000.0,
         'T_eqm': 255.0,
@@ -72,6 +74,9 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     }
     interior_o = MagicMock()
     interior_o.tides = np.zeros(20)
+    spider_eos_dir = tmp_path / 'spider_eos'
+    spider_eos_dir.mkdir(parents=True)
+    interior_o._spider_eos_dir = str(spider_eos_dir)
 
     # Create EOS dir
     eos_dir = (
@@ -83,17 +88,17 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     mc_dir.mkdir(parents=True)
 
     with (
-        patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
-            return_value=(3.48e6, None),
-        ) as mock_zal,
         patch('proteus.interior.aragog.FWL_DATA_DIR', tmp_path),
-        patch('proteus.interior.aragog.Parameters'),
-        patch('proteus.interior.aragog.Solver'),
+        patch('proteus.interior.aragog.Parameters') as mock_params,
+        patch('proteus.interior.aragog.EntropySolver'),
+        patch('proteus.interior.aragog.EntropyEOS'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
-    mock_zal.assert_called_once()
+    # Verify inner_radius was set from hf_row['R_core']
+    call_kwargs = mock_params.call_args
+    mesh_arg = call_kwargs.kwargs.get('mesh') or call_kwargs[1].get('mesh')
+    assert mesh_arg.inner_radius == pytest.approx(R_core_expected)
 
 
 @pytest.mark.unit
@@ -113,6 +118,9 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
     }
     interior_o = MagicMock()
     interior_o.tides = np.zeros(20)
+    spider_eos_dir = tmp_path / 'spider_eos'
+    spider_eos_dir.mkdir(parents=True)
+    interior_o._spider_eos_dir = str(spider_eos_dir)
 
     eos_dir = (
         tmp_path / 'interior_lookup_tables' / 'EOS' / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
@@ -129,7 +137,8 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
         ),
         patch('proteus.interior.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior.aragog.Parameters'),
-        patch('proteus.interior.aragog.Solver'),
+        patch('proteus.interior.aragog.EntropySolver'),
+        patch('proteus.interior.aragog.EntropyEOS'),
         patch('proteus.interior.aragog._InitialConditionParameters') as mock_ic,
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
@@ -158,6 +167,9 @@ def test_setup_solver_eos_fallback(tmp_path):
     }
     interior_o = MagicMock()
     interior_o.tides = np.zeros(20)
+    spider_eos_dir = tmp_path / 'spider_eos'
+    spider_eos_dir.mkdir(parents=True)
+    interior_o._spider_eos_dir = str(spider_eos_dir)
 
     # Only create legacy path, NOT unified path
     legacy_dir = (
@@ -174,7 +186,8 @@ def test_setup_solver_eos_fallback(tmp_path):
     with (
         patch('proteus.interior.aragog.FWL_DATA_DIR', tmp_path),
         patch('proteus.interior.aragog.Parameters'),
-        patch('proteus.interior.aragog.Solver') as mock_solver,
+        patch('proteus.interior.aragog.EntropySolver') as mock_solver,
+        patch('proteus.interior.aragog.EntropyEOS'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 

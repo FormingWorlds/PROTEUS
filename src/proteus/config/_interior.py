@@ -16,7 +16,7 @@ def valid_spider(instance, attribute, value):
     if not (
         instance.trans_conduction
         or instance.trans_convection
-        or instance.mixing
+        or instance.trans_mixing
         or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in SPIDER')
@@ -69,7 +69,7 @@ def valid_aragog(instance, attribute, value):
     if not (
         instance.trans_conduction
         or instance.trans_convection
-        or instance.mixing
+        or instance.trans_mixing
         or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in Aragog')
