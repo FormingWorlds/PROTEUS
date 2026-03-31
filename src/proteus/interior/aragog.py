@@ -868,15 +868,18 @@ class AragogRunner:
         mass_stag = rho_stag * vol
         M_mantle = float(np.sum(mass_stag))
 
-        # Rheological front from diagnostics
-        from aragog.output.diagnostics import rheological_front
-        RF_depth = rheological_front(
-            mesh=mesh,
-            melt_fraction_basic=mesh.quantity_at_basic_nodes(phi_stag),
-            rheological_transition_melt_fraction=(
-                solver.parameters.phase_mixed.rheological_transition_melt_fraction),
-            phi_global=Phi_global,
-        )
+        # Rheological front: dimensionless depth where phi crosses rheological threshold
+        phi_rheo = solver.parameters.phase_mixed.rheological_transition_melt_fraction
+        phi_basic = mesh.quantity_at_basic_nodes(phi_stag)
+        if Phi_global > 0.99:
+            rf = float(np.asarray(r_basic).flat[0])
+        elif Phi_global < 0.01:
+            rf = float(np.asarray(r_basic).flat[-1])
+        else:
+            idx = np.argmin(np.abs(np.asarray(phi_basic).flatten() - phi_rheo))
+            rf = float(np.asarray(r_basic).flat[idx])
+        R_outer = float(np.asarray(r_basic).flat[-1])
+        RF_depth = 1.0 - rf / R_outer if R_outer > 0 else 0.0
 
         logger.info(
             'Aragog entropy: t=[%.2e, %.2e], T_surf=%.0f K, T_cmb=%.0f K, '
