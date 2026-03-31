@@ -107,7 +107,6 @@ version = "2.0"
     tidal_heat      = false
     module = "dummy"
     [interior.dummy]
-        Tsurf_init      = 3500.0
 
 [outgas]
     fO2_shift_IW    = 2

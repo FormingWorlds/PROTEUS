@@ -206,10 +206,8 @@ version = "2.0"
     [interior.aragog]
         num_levels      = 100       					# Number of Aragog grid levels
         tolerance       = 1.0e-7    					# solver tolerance
-        Tsurf_init      = 3000.0    					# Initial magma surface temperature [K]
 
     [interior.dummy]
-        Tsurf_init      = 3500.0    # Initial magma surface temperature [K]
 
 # Outgassing - physics table
 [outgas]

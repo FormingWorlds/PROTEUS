@@ -84,10 +84,6 @@ def valid_aragog(instance, attribute, value):
     if instance.module != 'aragog':
         return
 
-    Tsurf_init = instance.aragog.Tsurf_init
-    if (not Tsurf_init) or (Tsurf_init <= 200.0):
-        raise ValueError('`interior.aragog.Tsurf_init` must be >200')
-
     # at least one energy term enabled
     aragog = instance.aragog
     if not (
@@ -114,10 +110,6 @@ class Aragog:
         Default is 3 (adiabat), which integrates dT/dP|_S from the surface downward.
     tolerance: float
         Solver tolerance.
-    Tsurf_init: float
-        Initial surface temperature [K]. Determines the isentropic entropy
-        of the mantle via PALEOS: S = S(P_surf, Tsurf_init). Higher values
-        produce hotter, more molten initial states.
     basal_temperature: float
         Temperature at the base of the mantle (if using a linear temperature profile to start)
     init_file: str
@@ -155,7 +147,6 @@ class Aragog:
     """
 
     logging: str = field(default='ERROR', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    Tsurf_init = field(default=None)
     basal_temperature: float = field(default=7000)
     init_file: str = field(default=None)
     num_levels: int = field(default=100, validator=ge(40))
@@ -192,9 +183,7 @@ def valid_interiordummy(instance, attribute, value):
     if instance.module != 'dummy':
         return
 
-    Tsurf_init = instance.dummy.Tsurf_init
-    if (not Tsurf_init) or (Tsurf_init <= 200.0):
-        raise ValueError('`interior.dummy.Tsurf_init` must be >200')
+    pass  # dummy validation uses interior.Tsurf_init (top-level)
 
     tliq = instance.dummy.mantle_tliq
     tsol = instance.dummy.mantle_tsol
@@ -226,7 +215,6 @@ class InteriorDummy:
         Constant radiogenic heating rate [W kg-1]
     """
 
-    Tsurf_init = field(default=None)
     tmagma_atol: float = field(default=30.0, validator=ge(0))
     tmagma_rtol: float = field(default=0.05, validator=ge(0))
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
@@ -294,6 +282,7 @@ class Interior:
     """
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
+    Tsurf_init: float = field(default=3300.0, validator=gt(200))
     melting_dir: str = field(default='Monteux-600', validator=valid_path)
     eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
     radiogenic_heat: bool = field(default=True)

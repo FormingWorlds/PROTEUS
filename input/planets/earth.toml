@@ -94,7 +94,6 @@ version = "2.0"
     module = "dummy"
 
     [interior.dummy]
-        Tsurf_init = 3000.0
         H_radio    = 8e-12
         mantle_cp  = 2000.0
 

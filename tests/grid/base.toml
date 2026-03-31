@@ -143,7 +143,6 @@ version = "2.0"
     module = "dummy"   # Which interior module to use
 
     [interior.dummy]
-        Tsurf_init      = 3500.0    # Initial magma surface temperature [K]
 
 # Outgassing - physics table
 [outgas]
