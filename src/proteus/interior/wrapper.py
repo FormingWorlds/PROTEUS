@@ -219,7 +219,7 @@ def determine_interior_radius_with_zalmoxis(
     # Generate SPIDER P-S EOS tables from PALEOS if applicable.
     # This converts Zalmoxis's P-T EOS data into the P-S format that both
     # SPIDER and Aragog (entropy solver) need.
-    if config.interior.module in ('spider', 'aragog'):
+    if config.interior.module in ('spider', 'aragog', 'aragog_jax'):
         from proteus.interior.zalmoxis import generate_spider_tables
 
         spider_tables = generate_spider_tables(config, outdir)
@@ -333,7 +333,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         )
 
     # 4. Regenerate SPIDER EOS tables with final composition
-    if config.interior.module in ('spider', 'aragog'):
+    if config.interior.module in ('spider', 'aragog', 'aragog_jax'):
         spider_tables = generate_spider_tables(config, outdir)
         if spider_tables is not None:
             dirs['spider_eos_dir'] = spider_tables['eos_dir']
@@ -442,6 +442,12 @@ def run_interior(
         # Run Aragog
         sim_time, output = AragogRunnerInstance.run_solver(hf_row, interior_o, dirs)
 
+    elif config.interior.module == 'aragog_jax':
+        from proteus.interior.aragog_jax import AragogJAXRunner
+
+        runner = AragogJAXRunner(config, dirs, hf_row, hf_all, interior_o)
+        sim_time, output = runner.run_solver(hf_row, interior_o, dirs)
+
     elif config.interior.module == 'dummy':
         # Import
         from proteus.interior.dummy import run_dummy_int
@@ -509,7 +515,7 @@ def run_interior(
         if config.interior.module == 'spider':
             dT_delta = config.interior.spider.tsurf_atol
             dT_delta += config.interior.spider.tsurf_rtol * T_magma_prev
-        elif config.interior.module == 'aragog':
+        elif config.interior.module in ('aragog', 'aragog_jax'):
             dT_delta = float(config.interior.aragog.tsurf_poststep_change)
         else:
             dT_delta = config.interior.dummy.tmagma_atol
@@ -812,7 +818,7 @@ def update_structure_from_interior(
     # TODO: Aragog P-T tables are not regenerated on composition change.
     # Currently only SPIDER tables are refreshed. If Aragog runs with
     # composition-dependent melting curves, stale tables may be used.
-    if comp_changed and config.interior.module in ('spider', 'aragog'):
+    if comp_changed and config.interior.module in ('spider', 'aragog', 'aragog_jax'):
         from proteus.interior.zalmoxis import generate_spider_tables
 
         spider_tables = generate_spider_tables(config, outdir)

@@ -62,7 +62,7 @@ class Spider:
 
 
 def valid_aragog(instance, attribute, value):
-    if instance.module != 'aragog':
+    if instance.module not in ('aragog', 'aragog_jax'):
         return
 
     # at least one energy term enabled (uses top-level interior fields)
@@ -252,7 +252,7 @@ class Interior:
         Zalmoxis derives its EOS paths from struct.zalmoxis config instead.
     """
 
-    module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
+    module: str = field(validator=in_(('spider', 'aragog', 'aragog_jax', 'dummy')))
     tsurf_init: float = field(default=3300.0, validator=gt(200))
     num_levels: int = field(default=100, validator=ge(40))
     num_tolerance: float = field(default=1e-10, validator=gt(0))
