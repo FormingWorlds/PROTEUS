@@ -89,7 +89,6 @@ version = "2.0"
         spectral_group  = "Frostflow"
         spectral_bands  = 16
         F_atm_bc        = 0
-        num_levels      = 30
         tropopause      = "skin"
         overlap_method  = "ro"
 

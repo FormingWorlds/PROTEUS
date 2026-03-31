@@ -69,7 +69,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 60            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = false         # solve for energy-conserving atmosphere profile

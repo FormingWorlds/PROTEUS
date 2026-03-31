@@ -186,7 +186,6 @@ version = "2.0"
         surface_temperature        = 3500                           # Surface temperature [K]
         center_temperature         = 6000                           # Center temperature [K], used for "linear" and "adiabatic" (initial guess)
         temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # prescribed temperature profile filename, required for temperature_mode="prescribed"
-        num_levels                 = 100                            # number of Zalmoxis radius layers
         max_iterations_outer       = 100                            # max. iterations for the outer loop
         tolerance_outer            = 3e-3                           # tolerance for the outer loop
         max_iterations_inner       = 100                            # max. iterations for the inner loop
@@ -224,7 +223,6 @@ version = "2.0"
         p_obs           = 0.02          # bar, level probed in transmission
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true          # solve for energy-conserving atmosphere profile
@@ -236,8 +234,6 @@ version = "2.0"
         rainout         = true          # include volatile condensation/evaporation aloft
         latent_heat     = false         # include latent heat release when `rainout=true`?
         oceans          = true          # form liquid oceans at planet surface?
-        convection      = true          # include convective heat transport, with MLT
-        conduction      = true          # include conductive heat transport, with Fourier's law
         sens_heat       = true          # include sensible heat flux near surface, with TKE scheme
         real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
@@ -261,7 +257,6 @@ version = "2.0"
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 40            # Number of atmospheric grid levels
         tropopause      = "none"        # none | skin | dynamic
         overlap_method    = "ee"        # gas overlap method
 
@@ -320,6 +315,12 @@ version = "2.0"
         H_radio     = 0.0       # Radiogenic heating rate [W/kg]
 
     # ── Shared parameters (Aragog + SPIDER) ───────────────────────────
+    num_levels      = 100            # Number of radial grid levels
+    tolerance       = 1.0e-8         # Solver absolute tolerance
+    conduction      = true           # Enable conductive heat transfer
+    convection      = true           # Enable convective heat transfer (MLT)
+    grav_sep = true  # Enable gravitational separation of melt/solid
+    mixing          = true           # Enable chemical mixing flux
     grain_size      = 0.1            # Crystal settling grain size [m]
     F_initial       = 1e3            # Initial heat flux guess [W m-2]
     radiogenic_heat = false          # Enable radiogenic heat production
@@ -332,16 +333,10 @@ version = "2.0"
     # ── Aragog-only parameters ────────────────────────────────────────
     [interior.aragog]
         logging                  = "ERROR"  # Log verbosity: INFO, DEBUG, ERROR, WARNING
-        num_levels               = 50       # Number of grid levels
-        tolerance                = 1.0e-7   # BDF solver tolerance
         initial_condition        = 3        # Initial T(P): 1=linear, 2=from file, 3=adiabat
         basal_temperature        = 7000.0   # CMB temperature [K] (if initial_condition=1)
         inner_boundary_condition = 1        # CMB BC: 1=core cooling, 2=prescribed flux, 3=prescribed T
         inner_boundary_value     = 4000     # CMB BC value [K or W/m^2, depends on inner_boundary_condition]
-        conduction               = true     # Enable conductive heat transfer
-        convection               = true     # Enable convective heat transfer (MLT)
-        gravitational_separation = true     # Enable gravitational separation of melt/solid
-        mixing                   = true     # Enable chemical mixing flux
         dilatation               = false    # Enable dilatation source term
         mass_coordinates         = false    # Use mass coordinates for mesh spacing
         tsurf_poststep_change    = 30       # Max surface T change per step [K]
@@ -350,19 +345,13 @@ version = "2.0"
 
     # ── SPIDER-only parameters ────────────────────────────────────────
     [interior.spider]
-        num_levels               = 60       # Number of grid levels
         mixing_length            = 2        # Mixing length: 1=nearest boundary, 2=constant D/4
-        tolerance                = 1.0e-8   # SUNDIALS absolute tolerance
         tolerance_rel            = 1.0e-8   # SUNDIALS relative tolerance
         solver_type              = "bdf"    # SUNDIALS solver method
         tsurf_atol               = 20.0     # Max surface T change per step [K]
         tsurf_rtol               = 0.02     # Max relative surface T change per step
         ini_entropy              = 3000.0   # Initial entropy [J/kg/K] (overridden by Tsurf_init when using PALEOS)
         ini_dsdr                 = -4.698e-6 # Initial entropy gradient [J/kg/K/m]
-        conduction               = true     # Enable conductive heat transfer
-        convection               = true     # Enable convective heat transfer (MLT)
-        gravitational_separation = true     # Enable gravitational separation
-        mixing                   = true     # Enable chemical mixing flux
         matprop_smooth_width     = 1e-2     # Material property smoothing width (melt fraction)
 
 # Outgassing - physics table

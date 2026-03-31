@@ -446,7 +446,7 @@ def scale_temperature_profile_for_aragog(
     """
 
     # Number of levels in Aragog mesh
-    mesh_grid_size = config.interior.aragog.num_levels - 1
+    mesh_grid_size = config.interior.num_levels - 1
 
     # Create new evenly spaced radial positions for Aragog
     radii_to_interpolate = np.linspace(mantle_radii[0], mantle_radii[-1], mesh_grid_size)

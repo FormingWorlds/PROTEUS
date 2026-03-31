@@ -68,7 +68,6 @@ version = "2.0"
 
     [atmos_clim.agni]
         p_top          = 1e-4
-        num_levels     = 40
         dx_max         = 100.0
         sens_heat      = false
         cloud_enabled  = false
@@ -99,7 +98,6 @@ version = "2.0"
 
     [interior.spider]
         ini_entropy = 2900.0
-        num_levels  = 60
 
 [outgas]
     fO2_shift_IW    = 4

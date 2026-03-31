@@ -91,7 +91,6 @@ version = "2.0"
         spectral_bands = "16"
         p_top = 1e-05
         surf_material = "surface_albedos/Hammond24/lunarmarebasalt.dat"
-        num_levels = 32
         chemistry = "none"
         solution_atol = 2.0
         solution_rtol = 0.13

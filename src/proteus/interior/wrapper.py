@@ -64,9 +64,9 @@ def get_nlevb(config: Config):
     """
     match config.interior.module:
         case 'spider':
-            return int(config.interior.spider.num_levels)
+            return int(config.interior.num_levels)
         case 'aragog':
-            return int(config.interior.aragog.num_levels)
+            return int(config.interior.num_levels)
         case 'dummy':
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
@@ -126,9 +126,9 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     # Set tolerance
     match config.interior.module:
         case 'aragog':
-            rtol = config.interior.aragog.tolerance
+            rtol = config.interior.tolerance
         case 'spider':
-            rtol = config.interior.spider.tolerance
+            rtol = config.interior.tolerance
         case _:
             rtol = 1e-7
 

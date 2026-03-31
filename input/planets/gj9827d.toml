@@ -95,7 +95,6 @@ version = "2.0"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 45            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
@@ -125,9 +124,7 @@ version = "2.0"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 120       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1e-10     # absolute solver tolerance
         tolerance_rel   = 1e-9      # relative solver tolerance
         tsurf_atol      = 10.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
@@ -136,8 +133,6 @@ version = "2.0"
 
     [interior.aragog]
         logging         = "ERROR"
-        num_levels      = 120       # Number of Aragog grid levels
-        tolerance       = 1.0e-10   # solver tolerance
 
     [interior.dummy]
 

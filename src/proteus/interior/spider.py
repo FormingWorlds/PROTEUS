@@ -631,8 +631,8 @@ def _try_spider(
     atol_sf = max(1.0e-10, atol_sf)
 
     # Solver tolerances
-    spider_atol = atol_sf * config.interior.spider.tolerance
-    spider_rtol = atol_sf * config.interior.spider.tolerance_rel
+    spider_atol = atol_sf * config.interior.tolerance
+    spider_rtol = atol_sf * config.interior.tolerance_rel
 
     # Bounds on tolerances
     spider_rtol = min(spider_rtol, 1e-1)
@@ -733,7 +733,7 @@ def _try_spider(
         '-teqm',
         '%.6e' % (hf_row['T_eqm']),
         '-n',
-        '%d' % (config.interior.spider.num_levels),
+        '%d' % (config.interior.num_levels),
         '-nstepsmacro',
         '%d' % (nstepsmacro),
         '-dtmacro',
@@ -789,7 +789,7 @@ def _try_spider(
         )
 
     # Mixing length parameterization: 1: variable | 2: constant
-    call_sequence.extend(['-mixing_length', str(config.interior.spider.mixing_length)])
+    call_sequence.extend(['-mixing_length', str(config.interior.mixing_length)])
 
     # Solver tolerances
     call_sequence.extend(['-ts_sundials_atol', str(spider_atol)])
@@ -806,11 +806,11 @@ def _try_spider(
     call_sequence.extend(['-pressure0', '10.0E5'])
 
     # Energy transport physics (true->'1', false->'0')
-    call_sequence.extend(['-CONDUCTION', str(int(config.interior.spider.conduction))])
-    call_sequence.extend(['-CONVECTION', str(int(config.interior.spider.convection))])
-    call_sequence.extend(['-MIXING', str(int(config.interior.spider.mixing))])
+    call_sequence.extend(['-CONDUCTION', str(int(config.interior.conduction))])
+    call_sequence.extend(['-CONVECTION', str(int(config.interior.convection))])
+    call_sequence.extend(['-MIXING', str(int(config.interior.mixing))])
     call_sequence.extend(
-        ['-SEPARATION', str(int(config.interior.spider.gravitational_separation))]
+        ['-SEPARATION', str(int(config.interior.grav_sep))]
     )
 
     # Tidal heating

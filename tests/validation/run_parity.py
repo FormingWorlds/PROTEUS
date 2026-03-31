@@ -67,9 +67,9 @@ def generate_config(mass, interior, with_mixing=False):
 
     if with_mixing:
         cfg['interior']['spider']['mixing'] = True
-        cfg['interior']['spider']['gravitational_separation'] = True
+        cfg['interior']['spider']['grav_sep'] = True
         cfg['interior']['aragog']['mixing'] = True
-        cfg['interior']['aragog']['gravitational_separation'] = True
+        cfg['interior']['aragog']['grav_sep'] = True
 
     # Adjust for high mass
     if mass > 3.0:

@@ -92,7 +92,6 @@ version = "2.0"
         temperature_mode           = "adiabatic"
         surface_temperature        = 4000
         center_temperature         = 6000
-        num_levels                 = 120
         max_iterations_outer       = 80
         tolerance_outer            = 3e-3
         max_iterations_inner       = 80
@@ -124,7 +123,6 @@ version = "2.0"
         p_top           = 1.0e-5
         spectral_group  = "Dayspring"
         spectral_bands  = "48"
-        num_levels      = 30
         chemistry       = "none"
         surf_material   = "greybody"
         solve_energy    = true
@@ -153,11 +151,7 @@ version = "2.0"
     [interior.spider]
         ini_entropy   = 3200.0
         ini_dsdr      = -1.0e-6
-        num_levels    = 50
         mixing_length = 2
-        mixing        = false    # Disabled: PALEOS EOS causes CVode failure with MIXING=1
-        gravitational_separation = false  # Disabled for PALEOS stability
-        tolerance     = 1e-4
         tolerance_rel = 1e-4
         tsurf_atol    = 50.0
         tsurf_rtol    = 0.05

@@ -13,12 +13,11 @@ def valid_spider(instance, attribute, value):
         raise ValueError('`interior.spider.ini_entropy` must be >200')
 
     # at least one energy term enabled
-    spider = instance.spider
     if not (
-        spider.conduction
-        or spider.convection
-        or spider.mixing
-        or spider.gravitational_separation
+        instance.conduction
+        or instance.convection
+        or instance.mixing
+        or instance.grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in SPIDER')
 
@@ -34,14 +33,10 @@ class Spider:
 
     Attributes
     ----------
-    num_levels: int
-        Number of SPIDER grid levels.
     mixing_length: int
         Parameterisation used to determine convective mixing length.
-    tolerance: float
-        Absolute solver tolerance.
     tolerance_rel: float
-        Relative solver tolerance.
+        Relative solver tolerance (SUNDIALS-specific).
     tsurf_atol: float
         Absolute tolerance on change in T_mantle during a single interior iteration.
     tsurf_rtol: float
@@ -52,31 +47,17 @@ class Spider:
         Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     solver_type: str
         Numerical integrator. Choices: 'adams', 'bdf'.
-    conduction: bool
-        Whether to include conductive heat flux in the model.
-    convection: bool
-        Whether to include convective heat flux in the model.
-    gravitational_separation: bool
-        Whether to include gravitational separation flux in the model.
-    mixing: bool
-        Whether to include mixing flux in the model.
     matprop_smooth_width: float
         Window width, in melt-fraction, for smoothing properties across liquidus and solidus
     """
 
     ini_entropy = field(default=None)
     ini_dsdr: float = field(default=-4.698e-6, validator=lt(0))
-    num_levels: int = field(default=190, validator=ge(40))
     mixing_length: int = field(default=2, validator=in_((1, 2)))
-    tolerance: float = field(default=1e-10, validator=gt(0))
     tolerance_rel: float = field(default=1e-10, validator=gt(0))
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
     tsurf_atol: float = field(default=10.0, validator=gt(0))
     tsurf_rtol: float = field(default=0.01, validator=gt(0))
-    conduction: bool = field(default=True)
-    convection: bool = field(default=True)
-    gravitational_separation: bool = field(default=True)
-    mixing: bool = field(default=True)
     matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
 
 
@@ -84,13 +65,12 @@ def valid_aragog(instance, attribute, value):
     if instance.module != 'aragog':
         return
 
-    # at least one energy term enabled
-    aragog = instance.aragog
+    # at least one energy term enabled (uses top-level interior fields)
     if not (
-        aragog.conduction
-        or aragog.convection
-        or aragog.mixing
-        or aragog.gravitational_separation
+        instance.conduction
+        or instance.convection
+        or instance.mixing
+        or instance.grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in Aragog')
 
@@ -122,7 +102,7 @@ class Aragog:
         Whether to include conductive heat flux in the model. Default is True.
     convection: bool
         Whether to include convective heat flux in the model. Default is True.
-    gravitational_separation: bool
+    grav_sep: bool
         Whether to include gravitational separation flux in the model. Default is True (matches SPIDER).
     mixing: bool
         Whether to include mixing flux in the model. Default is True (matches SPIDER).
@@ -149,7 +129,6 @@ class Aragog:
     logging: str = field(default='ERROR', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     basal_temperature: float = field(default=7000)
     init_file: str = field(default=None)
-    num_levels: int = field(default=100, validator=ge(40))
     initial_condition: int = field(
         default=3,
         validator=in_(
@@ -160,16 +139,11 @@ class Aragog:
             )
         ),
     )
-    tolerance: float = field(default=1e-10, validator=gt(0))
     inner_boundary_condition: int = field(default=1, validator=ge(0))
     inner_boundary_value: float = field(default=4000, validator=ge(0))
     outer_boundary_condition: int = field(default=4, validator=in_((1, 4)))
     # 4 = prescribed flux from atmosphere (default, PROTEUS coupling mode)
     # 1 = native grey-body (sigma*T^4, standalone mode, bypasses atmosphere)
-    conduction: bool = field(default=True)
-    convection: bool = field(default=True)
-    gravitational_separation: bool = field(default=True)
-    mixing: bool = field(default=True)
     dilatation: bool = field(default=False)
     mass_coordinates: bool = field(default=True)
     tsurf_poststep_change: float = field(default=30, validator=ge(0))
@@ -283,6 +257,12 @@ class Interior:
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
     Tsurf_init: float = field(default=3300.0, validator=gt(200))
+    num_levels: int = field(default=100, validator=ge(40))
+    tolerance: float = field(default=1e-10, validator=gt(0))
+    conduction: bool = field(default=True)
+    convection: bool = field(default=True)
+    grav_sep: bool = field(default=True)
+    mixing: bool = field(default=True)
     melting_dir: str = field(default='Monteux-600', validator=valid_path)
     eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
     radiogenic_heat: bool = field(default=True)

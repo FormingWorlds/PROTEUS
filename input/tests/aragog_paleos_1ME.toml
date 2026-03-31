@@ -92,7 +92,6 @@ version = "2.0"
         temperature_mode           = "adiabatic"
         surface_temperature        = 4000
         center_temperature         = 6000
-        num_levels                 = 120
         max_iterations_outer       = 80
         tolerance_outer            = 3e-3
         max_iterations_inner       = 80
@@ -124,7 +123,6 @@ version = "2.0"
         p_top           = 1.0e-5
         spectral_group  = "Dayspring"
         spectral_bands  = "48"
-        num_levels      = 30
         chemistry       = "none"
         surf_material   = "greybody"
         solve_energy    = true
@@ -152,15 +150,9 @@ version = "2.0"
 
     [interior.aragog]
         basal_temperature = 5000.0
-        num_levels      = 80
-        tolerance       = 1e-8
         initial_condition = 3
         inner_boundary_condition = 1
         inner_boundary_value = 4000
-        conduction      = true
-        convection      = true
-        mixing          = false
-        gravitational_separation = false
         tsurf_poststep_change = 50.0
 
 [outgas]

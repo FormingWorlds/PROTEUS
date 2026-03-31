@@ -7,7 +7,7 @@
 # - Entropy-conserving IC for Aragog (PALEOS entropy tables)
 # - Matched SPIDER ini_entropy=3200 <-> Aragog Tsurf_init=1861 K
 # - Same mixing_length (constant), same phi_crit/phi_width
-# - mixing=false, gravitational_separation=false (isolate core physics first)
+# - mixing=false, grav_sep=false (isolate core physics first)
 # - Core BC: prescribed flux = 0 (removes core cooling model difference)
 # - Dummy star + no escape (pure interior-atmosphere coupling)
 
@@ -99,7 +99,6 @@ version = "2.0"
         temperature_mode           = "adiabatic"
         surface_temperature        = 4000
         center_temperature         = 6000
-        num_levels                 = 120
         max_iterations_outer       = 80
         tolerance_outer            = 3e-3
         max_iterations_inner       = 80
@@ -131,7 +130,6 @@ version = "2.0"
         p_top           = 1.0e-5
         spectral_group  = "Dayspring"
         spectral_bands  = "48"
-        num_levels      = 30
         chemistry       = "none"
         surf_material   = "greybody"
         solve_energy    = true
@@ -160,26 +158,16 @@ version = "2.0"
     [interior.spider]
         ini_entropy   = 3200.0
         ini_dsdr      = -1.0e-6
-        num_levels    = 80
         mixing_length = 2
-        mixing        = false
-        gravitational_separation = false
-        tolerance     = 1e-4
         tolerance_rel = 1e-4
         tsurf_atol    = 50.0
         tsurf_rtol    = 0.05
 
     [interior.aragog]
         basal_temperature = 5000.0
-        num_levels      = 80
-        tolerance       = 1e-6
         initial_condition = 3       # adiabatic (uses entropy-conserving with PALEOS)
         inner_boundary_condition = 2  # prescribed flux (matches SPIDER core_bc)
         inner_boundary_value = 0      # zero CMB flux (isolates interior physics)
-        conduction      = true
-        convection      = true
-        mixing          = false       # match SPIDER
-        gravitational_separation = false  # match SPIDER
         tsurf_poststep_change = 50.0
         param_utbl      = true
 

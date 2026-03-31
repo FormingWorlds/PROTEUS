@@ -142,12 +142,9 @@ version = "2.0"
         p_top           = 1.0e-5        # Top of atmosphere pressure [bar]
         spectral_group  = "Honeyside"   # Gas opacity set
         spectral_bands  = "48"          # Number of spectral bands (16 = fast, 48 = standard, 256 = high-res)
-        num_levels      = 40            # Atmospheric grid levels
         solve_energy    = true          # Solve for energy-conserving profile
         solution_atol   = 0.5           # Solver absolute tolerance
         solution_rtol   = 0.15          # Solver relative tolerance
-        convection      = true          # Convective heat transport (MLT)
-        conduction      = true          # Conductive heat transport
         sens_heat       = true          # Sensible heat flux near surface
         rainout         = true          # Volatile condensation/evaporation
         oceans          = true          # Allow surface ocean formation
@@ -184,14 +181,9 @@ version = "2.0"
     module          = "spider"  # SPIDER interior module (C/PETSc)
 
     [interior.spider]
-        num_levels      = 60        # SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-8    # Absolute solver tolerance
         tolerance_rel   = 1.0e-8    # Relative solver tolerance
         ini_entropy     = 2900.0    # Initial surface entropy [J K-1 kg-1]
-        conduction      = true      # Conductive heat transfer
-        convection      = true      # Convective heat transfer
-        mixing          = true      # Mixing enabled
 
     # Alternative: Aragog (uncomment if PETSc/SPIDER not compiled on your cluster)
     # [interior.aragog]

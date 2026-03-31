@@ -35,7 +35,7 @@ def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate
     config.interior.aragog.mass_coordinates = False
     config.interior.aragog.conduction = True
     config.interior.aragog.convection = True
-    config.interior.aragog.gravitational_separation = False
+    config.interior.aragog.grav_sep = False
     config.interior.aragog.mixing = True
     config.interior.aragog.dilatation = False
     config.interior.radiogenic_heat = False

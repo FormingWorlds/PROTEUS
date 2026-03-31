@@ -114,8 +114,8 @@ class AragogRunner:
             # enough that the BDF solver resolves this: atol = 0.01 K ensures
             # ~0.01 K precision, well below the ~0.3 K/yr cooling rate.
             # Too large (e.g. 1.0 K) makes the solver skip the evolution entirely.
-            atol=max(config.interior.aragog.tolerance, 0.01),
-            rtol=config.interior.aragog.tolerance,
+            atol=max(config.interior.tolerance, 0.01),
+            rtol=config.interior.tolerance,
             tsurf_poststep_change=config.interior.aragog.tsurf_poststep_change,
             event_triggering=config.interior.aragog.event_triggering,
         )
@@ -161,7 +161,7 @@ class AragogRunner:
             # core radius [m]
             inner_radius=inner_radius,
             # basic nodes
-            number_of_nodes=config.interior.aragog.num_levels,
+            number_of_nodes=config.interior.num_levels,
             mixing_length_profile='constant',
             core_density=config.struct.core_density,
             eos_method=1,  # 1: Adams-Williamson / 2: User defined
@@ -180,10 +180,10 @@ class AragogRunner:
             )  # Zalmoxis output file with mantle parameters
 
         energy = _EnergyParameters(
-            conduction=config.interior.aragog.conduction,
-            convection=config.interior.aragog.convection,
-            gravitational_separation=(config.interior.aragog.gravitational_separation),
-            mixing=config.interior.aragog.mixing,
+            conduction=config.interior.conduction,
+            convection=config.interior.convection,
+            gravitational_separation=(config.interior.grav_sep),
+            mixing=config.interior.mixing,
             dilatation=config.interior.aragog.dilatation,
             radionuclides=config.interior.radiogenic_heat,
             tidal=config.interior.tidal_heat,

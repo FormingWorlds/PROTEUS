@@ -95,7 +95,6 @@ version = "2.0"
         p_obs           = 0.02          # bar, level probed in transmission
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "16"          # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = false          # solve for energy-conserving atmosphere profile
@@ -107,8 +106,6 @@ version = "2.0"
         rainout         = true          # include volatile condensation/evaporation aloft
         latent_heat     = false         # include latent heat release when `rainout=true`?
         oceans          = true          # form liquid oceans at planet surface?
-        convection      = true          # include convective heat transport, with MLT
-        conduction      = true          # include conductive heat transport, with Fourier's law
         sens_heat       = true          # include sensible heat flux near surface, with TKE scheme
         real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode

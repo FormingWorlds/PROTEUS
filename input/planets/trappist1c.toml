@@ -54,7 +54,6 @@ version = "2.0"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
@@ -76,8 +75,6 @@ version = "2.0"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 200       # Number of SPIDER grid levels
-        tolerance       = 1.0e-10   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
         ini_entropy     = 3300.0    # Surface entropy conditions [J K-1 kg-1]
@@ -85,8 +82,6 @@ version = "2.0"
 
     [interior.aragog]
         logging         = "ERROR"
-        num_levels      = 220       # Number of Aragog grid levels
-        tolerance       = 1.0e-10   # solver tolerance
 
     [interior.dummy]
 

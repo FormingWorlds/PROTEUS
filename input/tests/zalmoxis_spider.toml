@@ -76,7 +76,6 @@ version = "2.0"
         temperature_mode           = "adiabatic"
         surface_temperature        = 3500
         center_temperature         = 6000
-        num_levels                 = 150
         max_iterations_outer       = 100
         tolerance_outer            = 3e-3
         max_iterations_inner       = 100
@@ -119,9 +118,7 @@ version = "2.0"
     [interior.spider]
         ini_entropy  = 3000.0
         ini_dsdr     = -4.698e-6
-        num_levels   = 50
         mixing_length = 2
-        tolerance     = 1e-8
         tolerance_rel = 1e-8
         solver_type   = "bdf"
         tsurf_atol    = 20.0

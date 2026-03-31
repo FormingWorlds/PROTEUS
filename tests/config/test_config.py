@@ -213,50 +213,52 @@ def test_valid_interiordummy_checks_tmagma_and_liquidus():
 @pytest.mark.unit
 def test_valid_aragog_requires_energy_term_and_tmagma():
     """Aragog interior needs at least one heat transport term and warm initial magma."""
-    aragog = SimpleNamespace(
+    inst = SimpleNamespace(
+        module='aragog',
         Tsurf_init=150.0,
         conduction=False,
         convection=False,
         mixing=False,
-        gravitational_separation=False,
+        grav_sep=False,
+        aragog=SimpleNamespace(),
     )
-    inst = SimpleNamespace(module='aragog', aragog=aragog)
     with pytest.raises(ValueError):
         valid_aragog(inst, None, None)
 
-    aragog_ok = SimpleNamespace(
+    inst_ok = SimpleNamespace(
+        module='aragog',
         Tsurf_init=800.0,
         conduction=True,
         convection=False,
         mixing=False,
-        gravitational_separation=False,
+        grav_sep=False,
+        aragog=SimpleNamespace(),
     )
-    inst_ok = SimpleNamespace(module='aragog', aragog=aragog_ok)
     valid_aragog(inst_ok, None, None)
 
 
 @pytest.mark.unit
 def test_valid_spider_requires_energy_term_and_entropy():
     """Spider interior requires an energy transport term and positive entropy."""
-    spider = SimpleNamespace(
-        ini_entropy=150.0,
+    inst = SimpleNamespace(
+        module='spider',
         conduction=False,
         convection=False,
         mixing=False,
-        gravitational_separation=False,
+        grav_sep=False,
+        spider=SimpleNamespace(ini_entropy=150.0),
     )
-    inst = SimpleNamespace(module='spider', spider=spider)
     with pytest.raises(ValueError):
         valid_spider(inst, None, None)
 
-    spider_ok = SimpleNamespace(
-        ini_entropy=400.0,
+    inst_ok = SimpleNamespace(
+        module='spider',
         conduction=True,
         convection=False,
         mixing=False,
-        gravitational_separation=False,
+        grav_sep=False,
+        spider=SimpleNamespace(ini_entropy=400.0),
     )
-    inst_ok = SimpleNamespace(module='spider', spider=spider_ok)
     valid_spider(inst_ok, None, None)
 
 
@@ -642,7 +644,7 @@ def test_interior_spider_entropy_minimum():
             conduction=True,
             convection=True,
             mixing=False,
-            gravitational_separation=False,
+            grav_sep=False,
         ),
     )
 
@@ -673,7 +675,7 @@ def test_interior_spider_energy_term_required():
             conduction=True,  # At least this one
             convection=False,
             mixing=False,
-            gravitational_separation=False,
+            grav_sep=False,
         ),
     )
 

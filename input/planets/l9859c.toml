@@ -82,7 +82,6 @@ version = "2.0"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
@@ -109,9 +108,7 @@ version = "2.0"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 80       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1e-6   # solver tolerance
         tsurf_atol      = 7.0      # tsurf_poststep_change
         tsurf_rtol      = 0.004      # tsurf_poststep_change_frac
         ini_entropy     = 3500.0    # Surface entropy conditions [J K-1 kg-1]

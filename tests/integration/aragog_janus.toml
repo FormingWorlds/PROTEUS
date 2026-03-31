@@ -143,7 +143,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = false         # solve for energy-conserving atmosphere profile
@@ -159,7 +158,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "16"          # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 130           # Number of atmospheric grid levels
         tropopause      = "skin"        # none | skin | dynamic
         overlap_method  = "ro"          # gas overlap method
 
@@ -194,9 +192,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "aragog"               # Which interior module to use
 
     [interior.spider]
-        num_levels      = 220       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-10   # solver tolerance
         tsurf_atol      = 30.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
         ini_entropy     = 2700.0    # Surface entropy conditions [J K-1 kg-1]
@@ -204,14 +200,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [interior.aragog]
         logging                       = "ERROR"
-        num_levels                    = 90       # Number of Aragog grid levels
-        tolerance                     = 1.0e-7   # solver tolerance
         inner_boundary_condition      = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
         inner_boundary_value          = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
-        conduction                    = true     # enable conductive heat transfer
-        convection                    = true     # enable convective heat transfer
-        gravitational_separation      = true     # enable gravitational separation
-        mixing                        = true     # enable mixing
         tsurf_poststep_change         = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
         event_triggering              = true    # enable events triggering to avoid abrupt jumps in surface temperature
 
