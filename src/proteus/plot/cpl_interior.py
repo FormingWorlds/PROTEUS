@@ -118,29 +118,33 @@ def plot_interior(
         axs[1].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
         axs[1].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
 
-        # Plot viscosity (not available in entropy NetCDF; skip)
-        if module == 'aragog' and _is_entropy:
-            pass  # viscosity not stored in entropy NetCDF
-        elif module == 'aragog':
-            yy = 10 ** ds['log10visc_b'][:]
-            axs[2].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
-            axs[2].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
-            axs[2].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
-            visc_min = min(visc_min, np.amin(yy))
-            visc_max = max(visc_max, np.amax(yy))
+        # Plot viscosity
+        if module == 'aragog':
+            if _is_entropy and 'log10visc_s' in ds:
+                yy = 10 ** ds['log10visc_s'][:]
+            elif 'log10visc_b' in ds:
+                yy = 10 ** ds['log10visc_b'][:]
+            else:
+                yy = None
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'visc_b'])
+        if yy is not None:
             axs[2].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
             axs[2].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
             axs[2].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
             visc_min = min(visc_min, np.amin(yy))
             visc_max = max(visc_max, np.amax(yy))
 
-        # Plot convective flux (not available in entropy NetCDF; skip)
-        if module == 'aragog' and _is_entropy:
-            yy = np.zeros_like(xx_pres)  # placeholder
-        elif module == 'aragog':
-            yy = ds['Fconv_b'][:]
+        # Plot total flux
+        if module == 'aragog':
+            if _is_entropy and 'Ftotal_b' in ds:
+                # Total flux at basic nodes; interpolate to staggered for plotting
+                fb = ds['Ftotal_b'][:]
+                yy = 0.5 * (fb[:-1] + fb[1:])
+            elif 'Fconv_b' in ds:
+                yy = ds['Fconv_b'][:]
+            else:
+                yy = np.zeros_like(xx_pres)
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'Jconv_b'])
         yy = np.array(yy) / 1e3  # convert units to kW/m2
@@ -150,13 +154,20 @@ def plot_interior(
         flux_min = min(flux_min, np.amin(yy))
         flux_max = max(flux_max, np.amax(yy))
 
-        # Plot tidal heating
+        # Plot heating (total for entropy solver, tidal for old solver / SPIDER)
         if module == 'aragog':
-            yy = ds['Htidal_s'][:]
+            if _is_entropy and 'Htotal_s' in ds:
+                yy = ds['Htotal_s'][:]
+            elif 'Htidal_s' in ds:
+                yy = ds['Htidal_s'][:]
+            else:
+                yy = np.zeros(len(xx_pres))
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'Htidal_s'])
         yy = np.array(yy) * 1e9  # convert units to nW/kg
-        yy = np.append([yy[0]], yy)  # extend to surface (_s arrays are shorter than _b)
+        # Staggered heating has N points; pad to match pressure grid if needed
+        if len(yy) < len(xx_pres):
+            yy = np.append([yy[0]], yy)
         axs[4].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
         axs[4].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
         axs[4].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
@@ -192,14 +203,14 @@ def plot_interior(
     if visc_max > 100.0 * visc_min:
         axs[2].set_xscale('log')
 
-    title = '(d) Convective flux'
-    axs[3].set(title=title, xlabel=r'$F_c$ [kW m$^{-2}$]')
-    if flux_max > 100.0 * flux_min:
+    title = '(d) Heat flux'
+    axs[3].set(title=title, xlabel=r'$F$ [kW m$^{-2}$]')
+    if flux_max > 100.0 * abs(flux_min):
         axs[3].set_xscale('symlog', linthresh=1.0)
-    axs[3].set_xlim(left=0.0, right=flux_max)
+    axs[3].set_xlim(left=0.0, right=max(flux_max, 1.0))
 
-    title = '(e) Tidal power density'
-    axs[4].set(title=title, xlabel=r'$H_t$ [nW kg$^{-1}$]')
+    title = '(e) Heating'
+    axs[4].set(title=title, xlabel=r'$H$ [nW kg$^{-1}$]')
     axs[4].set_xlim(left=tide_min, right=tide_max * 1.5)
     axs[4].set_xscale('symlog', linthresh=1.0)
 

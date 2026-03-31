@@ -832,13 +832,36 @@ class AragogRunner:
         _add('pres_s', P_stag / 1e9, 'staggered', 'GPa')
         _add('radius_b', np.asarray(mesh.basic.radii).flatten() / 1e3, 'basic', 'km')
 
+        # Derived quantities for plotting compatibility
+        state = solver.state
+        state.update(S_final, sol.t[-1])
+
+        # Viscosity
+        visc = np.asarray(state.phase_staggered.viscosity()).flatten()
+        _add('log10visc_s', np.log10(np.maximum(visc, 1e-10)), 'staggered', 'Pa s')
+
+        # Density
+        rho = np.asarray(eos.density(P_stag, S_final)).flatten()
+        _add('density_s', rho, 'staggered', 'kg m-3')
+
+        # Heat fluxes (at basic nodes, N+1)
+        hf = np.asarray(state.heat_flux).flatten()
+        _add('Ftotal_b', hf, 'basic', 'W m-2')
+
+        # Heating (at staggered nodes)
+        H = np.asarray(state.heating).flatten()
+        _add('Htotal_s', H, 'staggered', 'W kg-1')
+
+        # Mass per layer
+        vol = np.asarray(mesh.basic.volume).flatten()
+        _add('mass_s', rho * vol, 'staggered', 'kg')
+
         # Scalars
         ds.createVariable('time', np.float64)
         ds['time'][0] = float(sol.t[-1])
         ds['time'].units = 'yr'
 
         ds.createVariable('phi_global', np.float64)
-        vol = np.asarray(mesh.basic.volume).flatten()
         ds['phi_global'][0] = float(np.dot(phi_stag, vol) / np.sum(vol))
 
         ds.close()
