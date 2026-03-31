@@ -10,7 +10,6 @@ version = "2.0"
 
 [params]
     [params.out]
-        logging     = "ERROR"
         path        = "albedo_lookup"
         plot_mod    = 0
 

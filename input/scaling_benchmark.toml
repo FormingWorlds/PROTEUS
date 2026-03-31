@@ -30,7 +30,6 @@ version = "2.0"
 
     [params.out]
         path        = "scaling_benchmark"   # Output subfolder name (inside PROTEUS/output/)
-        logging     = "INFO"                # Log verbosity: DEBUG | INFO | WARNING | ERROR
         plot_mod    = "none"                # Disable plotting for benchmarks (saves time)
         plot_fmt    = "png"
         write_mod   = 1                     # Write CSV every iteration (needed for diagnostics)

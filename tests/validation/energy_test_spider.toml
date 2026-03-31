@@ -14,7 +14,6 @@ version = "2.0"
 [params]
     [params.out]
         path     = "energy_test_spider"
-        logging  = "INFO"
         plot_mod = 0
         write_mod = 1
 

@@ -32,7 +32,6 @@ version = "2.0"
     # output files
     [params.out]
         path        = "all_options"
-        logging     = "INFO"
         plot_mod    = 3      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -332,7 +331,6 @@ version = "2.0"
 
     # ── Aragog-only parameters ────────────────────────────────────────
     [interior.aragog]
-        logging                  = "ERROR"  # Log verbosity: INFO, DEBUG, ERROR, WARNING
         initial_condition        = 3        # Initial T(P): 1=linear, 2=from file, 3=adiabat
         basal_temperature        = 7000.0   # CMB temperature [K] (if initial_condition=1)
         inner_boundary_condition = 1        # CMB BC: 1=core cooling, 2=prescribed flux, 3=prescribed T

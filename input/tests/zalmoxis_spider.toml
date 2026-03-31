@@ -8,7 +8,6 @@ version = "2.0"
 [params]
     [params.out]
         path     = "test_zalmoxis_spider"
-        logging  = "INFO"
         plot_mod = 0
         write_mod = 0
         archive_mod = "none"

@@ -58,7 +58,7 @@ class AragogRunner:
 
     @staticmethod
     def setup_logger(config: Config, dirs: dict):
-        file_level = logging.getLevelName(config.interior.aragog.logging)
+        file_level = logging.getLevelName(config.params.out.logging)
         aragog_file_logger(
             console_level=logging.WARNING, file_level=file_level, log_dir=dirs['output']
         )

@@ -7,7 +7,6 @@ version = "2.0"
 # Parameters
 [params]
     [params.out]
-        logging     = "INFO"
         path        = "escape"
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
 

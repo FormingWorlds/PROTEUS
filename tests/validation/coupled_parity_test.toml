@@ -8,7 +8,6 @@ version = "2.0"
 [params]
     [params.out]
         path     = "PLACEHOLDER_PATH"
-        logging  = "INFO"
         plot_mod = 0
         write_mod = 1
 

@@ -81,8 +81,6 @@ class Aragog:
 
     Attributes
     ----------
-    logging: str
-        Log verbosity of Aragog. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
     num_levels: int
         Number of Aragog grid levels (basic mesh).
     initial_condition: int
@@ -126,7 +124,6 @@ class Aragog:
         UTBL scaling constant [K^-2]. Default is 1e-7 (matches SPIDER).
     """
 
-    logging: str = field(default='ERROR', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     basal_temperature: float = field(default=7000)
     init_file: str = field(default=None)
     initial_condition: int = field(

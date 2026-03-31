@@ -8,7 +8,6 @@ version = "2.0"
     # output files
     [params.out]
         path        = "gj9827d_5"
-        logging     = "INFO"
         plot_mod    = 50
         write_mod   = 5
         archive_mod = 0
@@ -132,7 +131,6 @@ version = "2.0"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        logging         = "ERROR"
 
     [interior.dummy]
 
