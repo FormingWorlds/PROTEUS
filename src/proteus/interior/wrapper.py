@@ -217,8 +217,9 @@ def determine_interior_radius_with_zalmoxis(
     dirs['mesh_convergence_steps'] = 0
 
     # Generate SPIDER P-S EOS tables from PALEOS if applicable.
-    # This converts Zalmoxis's P-T EOS data into the P-S format SPIDER needs.
-    if config.interior.module == 'spider':
+    # This converts Zalmoxis's P-T EOS data into the P-S format that both
+    # SPIDER and Aragog (entropy solver) need.
+    if config.interior.module in ('spider', 'aragog'):
         from proteus.interior.zalmoxis import generate_spider_tables
 
         spider_tables = generate_spider_tables(config, outdir)
@@ -332,7 +333,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         )
 
     # 4. Regenerate SPIDER EOS tables with final composition
-    if config.interior.module == 'spider':
+    if config.interior.module in ('spider', 'aragog'):
         spider_tables = generate_spider_tables(config, outdir)
         if spider_tables is not None:
             dirs['spider_eos_dir'] = spider_tables['eos_dir']
@@ -811,7 +812,7 @@ def update_structure_from_interior(
     # TODO: Aragog P-T tables are not regenerated on composition change.
     # Currently only SPIDER tables are refreshed. If Aragog runs with
     # composition-dependent melting curves, stale tables may be used.
-    if comp_changed and config.interior.module == 'spider':
+    if comp_changed and config.interior.module in ('spider', 'aragog'):
         from proteus.interior.zalmoxis import generate_spider_tables
 
         spider_tables = generate_spider_tables(config, outdir)
