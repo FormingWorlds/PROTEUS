@@ -536,7 +536,7 @@ class AragogRunner:
             Output directory.
         """
         solver = interior_o.aragog_solver
-        P_stag = np.asarray(solver.evaluator.mesh.staggered.pressure).flatten()
+        P_stag = np.asarray(solver.evaluator.mesh.staggered_pressure).flatten()
 
         # Compute entropy from T(P) via PALEOS lookup.
         # For a Zalmoxis-derived adiabatic IC: T decreases outward,
