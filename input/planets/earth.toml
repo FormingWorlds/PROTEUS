@@ -93,7 +93,7 @@ version = "2.0"
     module = "dummy"
 
     [interior.dummy]
-        H_radio    = 8e-12
+        heat_internal    = 8e-12
         mantle_cp  = 2000.0
 
     [interior.spider]

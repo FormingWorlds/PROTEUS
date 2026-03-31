@@ -185,7 +185,7 @@ class AragogRunner:
             gravitational_separation=(config.interior.trans_grav_sep),
             mixing=config.interior.mixing,
             dilatation=config.interior.aragog.dilatation,
-            radionuclides=config.interior.heat_radiogen,
+            radionuclides=config.interior.heat_radiogenic,
             tidal=config.interior.heat_tidal,
             tidal_array=interior_o.tides,
             kappah_floor=config.interior.kappah_floor,
@@ -227,15 +227,15 @@ class AragogRunner:
 
         # When initial_thermal_state = 'self_consistent', Zalmoxis computes
         # T_surface from accretion + differentiation energy (White+Li 2025)
-        # and passes it via hf_row. This overrides the config Tsurf_init.
-        Tsurf_init = config.interior.Tsurf_init
+        # and passes it via hf_row. This overrides the config tsurf_init.
+        tsurf_init = config.interior.tsurf_init
         T_surface_computed = hf_row.get('T_surface_initial', 0)
         if T_surface_computed and T_surface_computed > 0:
             logger.info(
-                'Overriding Tsurf_init with self-consistent thermal state: '
-                '%.0f K -> %.0f K', Tsurf_init, T_surface_computed,
+                'Overriding tsurf_init with self-consistent thermal state: '
+                '%.0f K -> %.0f K', tsurf_init, T_surface_computed,
             )
-            Tsurf_init = T_surface_computed
+            tsurf_init = T_surface_computed
 
         initial_condition = _InitialConditionParameters(
             # 1 = linear profile
@@ -243,7 +243,7 @@ class AragogRunner:
             # 3 = adiabatic profile
             initial_condition=initial_condition_temperature_profile,
             # initial top temperature (K)
-            surface_temperature=Tsurf_init,
+            surface_temperature=tsurf_init,
             basal_temperature=config.interior.aragog.basal_temperature,
             init_file=init_file_temperature_profile,
         )
@@ -457,7 +457,7 @@ class AragogRunner:
         )
 
         radionuclides = []
-        if config.interior.heat_radiogen:
+        if config.interior.heat_radiogenic:
             # offset by age_ini, which converts model simulation time to the
             # actual age
             radio_t0 = config.delivery.radio_tref - config.star.age_ini
@@ -524,7 +524,7 @@ class AragogRunner:
         PALEOS P-S EOS tables. The temperature profile comes from either:
         - Zalmoxis adiabatic profile (IC=3)
         - Zalmoxis output file (IC=2, T-dependent EOS)
-        - Config Tsurf_init with linear/adiabatic profile
+        - Config tsurf_init with linear/adiabatic profile
 
         Parameters
         ----------
@@ -567,10 +567,10 @@ class AragogRunner:
             solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
-            Tsurf_init = config.interior.Tsurf_init
+            tsurf_init = config.interior.tsurf_init
             T_surface_computed = interior_o.__dict__.get('T_surface_initial', 0)
             if T_surface_computed and T_surface_computed > 0:
-                Tsurf_init = T_surface_computed
+                tsurf_init = T_surface_computed
 
             # Use 1 bar as surface pressure for the entropy lookup.
             # The mesh surface P can be negative or zero; the adiabat
@@ -578,13 +578,13 @@ class AragogRunner:
             P_surf = 1e5  # 1 bar
             P_cmb = max(float(P_stag[0]), 1e9)
 
-            # Compute target entropy: S_target = S(P_surf, Tsurf_init)
+            # Compute target entropy: S_target = S(P_surf, tsurf_init)
             # Then set this S uniformly across the mantle (isentrope).
-            # This ensures the surface T will match Tsurf_init when
+            # This ensures the surface T will match tsurf_init when
             # the EOS is evaluated at (P_surf, S_target).
             result = compute_entropy_adiabat(
                 eos_file=paleos_eos_file,
-                T_surface=Tsurf_init,
+                T_surface=tsurf_init,
                 P_surface=P_surf,
                 P_cmb=P_cmb,
                 n_points=500,
@@ -601,14 +601,14 @@ class AragogRunner:
             N = len(P_stag)
             S_init = np.full(N, S_target)
 
-            # Verify: T at surface should match Tsurf_init
+            # Verify: T at surface should match tsurf_init
             T_check = solver.entropy_eos.temperature(
                 np.array([P_surf]), np.array([S_target])
             )
             logger.info(
-                'Entropy IC: Tsurf_init=%.0f K -> S_target=%.1f J/kg/K '
+                'Entropy IC: tsurf_init=%.0f K -> S_target=%.1f J/kg/K '
                 '(verification: T(P_surf, S_target)=%.0f K)',
-                Tsurf_init, S_target, float(T_check),
+                tsurf_init, S_target, float(T_check),
             )
 
             solver.set_initial_entropy(S_init)
@@ -675,7 +675,7 @@ class AragogRunner:
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
             # Compute PROTEUS-side entropy-inverted profile
-            T_surf = config.interior.Tsurf_init
+            T_surf = config.interior.tsurf_init
             solver = interior_o.aragog_solver
             # Get Aragog's basic node pressures and temperatures
             P_basic = solver.evaluator.mesh.basic_pressure[:, -1]

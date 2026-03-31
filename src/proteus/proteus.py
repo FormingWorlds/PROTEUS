@@ -100,13 +100,13 @@ class Proteus:
         """
         mod = self.config.interior.module
         if mod == 'aragog':
-            T = self.config.interior.Tsurf_init
+            T = self.config.interior.tsurf_init
         elif mod == 'spider':
-            # SPIDER uses ini_entropy, not Tsurf_init. Use a representative
+            # SPIDER uses ini_entropy, not tsurf_init. Use a representative
             # value based on typical magma ocean temperatures.
             T = 3000.0
         elif mod == 'dummy':
-            T = self.config.interior.Tsurf_init
+            T = self.config.interior.tsurf_init
         else:
             T = 3000.0
         return float(T) if T and T > 0 else 3000.0

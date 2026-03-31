@@ -61,7 +61,7 @@ def proteus_multi_timestep_run():
         max_time: Maximum simulation time in years (float, default: 1e6)
         min_time: Minimum simulation time in years (float, default: 1e2)
         output_suffix: Suffix for output directory (str, default: auto-generated UUID)
-        **kwargs: Additional config overrides (e.g., `interior.dummy.Tsurf_init=2000.0`)
+        **kwargs: Additional config overrides (e.g., `interior.dummy.tsurf_init=2000.0`)
 
     **Returns**:
         Proteus: Runner object with completed simulation
@@ -72,7 +72,7 @@ def proteus_multi_timestep_run():
                 config_path='input/demos/dummy.toml',
                 num_timesteps=10,
                 max_time=1e7,
-                interior__dummy__Tsurf_init=2000.0,
+                interior__dummy__tsurf_init=2000.0,
             )
             assert len(runner.hf_all) >= 10
     """
@@ -94,7 +94,7 @@ def proteus_multi_timestep_run():
             max_time: Maximum simulation time in years
             min_time: Minimum simulation time in years
             output_suffix: Suffix for output directory (auto-generated if None)
-            **config_overrides: Config overrides using dot notation (e.g., `interior__dummy__Tsurf_init=2000.0`)
+            **config_overrides: Config overrides using dot notation (e.g., `interior__dummy__tsurf_init=2000.0`)
 
         Returns:
             Proteus runner with completed simulation
@@ -120,7 +120,7 @@ def proteus_multi_timestep_run():
 
             # Apply config overrides (convert dot notation to nested attribute access)
             for key, value in config_overrides.items():
-                # Convert 'interior__dummy__Tsurf_init' to nested attribute access
+                # Convert 'interior__dummy__tsurf_init' to nested attribute access
                 parts = key.split('__')
                 obj = runner.config
                 for part in parts[:-1]:

@@ -67,8 +67,8 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
         # Re-initialize directories after changing output path
         runner.init_directories()
 
-        # Fix: Lower Tsurf_init to prevent runaway heating (T_magma > 1e6 K issue)
-        runner.config.interior.dummy.Tsurf_init = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating (T_magma > 1e6 K issue)
+        runner.config.interior.dummy.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr, minimum time

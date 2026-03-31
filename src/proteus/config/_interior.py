@@ -157,7 +157,7 @@ def valid_interiordummy(instance, attribute, value):
     if instance.module != 'dummy':
         return
 
-    pass  # dummy validation uses interior.Tsurf_init (top-level)
+    pass  # dummy validation uses interior.tsurf_init (top-level)
 
     tliq = instance.dummy.mantle_tliq
     tsol = instance.dummy.mantle_tsol
@@ -171,7 +171,7 @@ class InteriorDummy:
 
     Attributes
     ----------
-    Tsurf_init: float
+    tsurf_init: float
         Initial magma surface temperature [K].
     tmagma_atol: float
         Max absolute change in surface temperature [K] during a single iteration.
@@ -185,8 +185,8 @@ class InteriorDummy:
         Mantle liquidus temperature [K]
     mantle_tsol: float
         Mantle solidus temperature [K]
-    H_radio: float
-        Constant radiogenic heating rate [W kg-1]
+    heat_internal: float
+        Internal heating rate (e.g., radiogenic, tidal) [W kg-1]
     """
 
     tmagma_atol: float = field(default=30.0, validator=ge(0))
@@ -195,7 +195,7 @@ class InteriorDummy:
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
     mantle_rho: float = field(default=4.55e3, validator=gt(0))
     mantle_cp: float = field(default=1792.0, validator=ge(0))
-    H_radio: float = field(default=0.0, validator=ge(0))
+    heat_internal: float = field(default=0.0, validator=ge(0))
 
 
 @define
@@ -210,7 +210,7 @@ class Interior:
         Initial heat flux guess [W m-2]. When < 0 (default), computed
         automatically as sigma * T_magma^4. Set to a positive value to
         prescribe a specific initial flux. Set to 0 for zero initial flux.
-    heat_radiogen: bool
+    heat_radiogenic: bool
         Include radiogenic heat production?
     heat_tidal: bool
         Include tidal heating?
@@ -220,7 +220,7 @@ class Interior:
         Width of rheological transition in terms of melt fraction
     initial_thermal_state: str
         Mode for setting the initial surface temperature.
-        'fixed': use Tsurf_init from solver config (default).
+        'fixed': use tsurf_init from solver config (default).
         'self_consistent': compute from accretion + differentiation energy
         budget following White+Li (2025). Requires struct.module = 'zalmoxis'.
     thermal_state_T_eq: float
@@ -256,7 +256,7 @@ class Interior:
     """
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
-    Tsurf_init: float = field(default=3300.0, validator=gt(200))
+    tsurf_init: float = field(default=3300.0, validator=gt(200))
     num_levels: int = field(default=100, validator=ge(40))
     tolerance: float = field(default=1e-10, validator=gt(0))
     conduction: bool = field(default=True)
@@ -265,7 +265,7 @@ class Interior:
     mixing: bool = field(default=True)
     melting_dir: str = field(default='Monteux-600', validator=valid_path)
     eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
-    heat_radiogen: bool = field(default=True)
+    heat_radiogenic: bool = field(default=True)
     heat_tidal: bool = field(default=True)
 
     spider: Spider = field(factory=Spider, validator=valid_spider)
@@ -278,7 +278,7 @@ class Interior:
     rfront_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
 
     # Initial thermal state mode:
-    #   'fixed': use Tsurf_init from the solver config (current default)
+    #   'fixed': use tsurf_init from the solver config (current default)
     #   'self_consistent': compute from accretion + differentiation energy
     #                      budget (White+Li 2025). Requires struct.module = 'zalmoxis'.
     initial_thermal_state: str = field(

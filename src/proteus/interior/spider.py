@@ -949,7 +949,7 @@ def _try_spider(
     call_sequence.extend(['-OXYGEN_FUGACITY', '2'])
 
     # radionuclides
-    if config.interior.heat_radiogen:
+    if config.interior.heat_radiogenic:
         # offset by age_ini, which converts model simulation time to the actual age
         radio_t0 = config.delivery.radio_tref - config.star.age_ini
         radio_t0 *= 1e9  # Convert Gyr to yr

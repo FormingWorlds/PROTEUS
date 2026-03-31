@@ -528,7 +528,7 @@ def run_interior(
         log.info('    F_int      = %.2e W m-2' % float(hf_row['F_int']))
         if config.interior.heat_tidal:
             log.info('    F_tidal    = %.2e W m-2' % float(hf_row['F_tidal']))
-        if config.interior.heat_radiogen:
+        if config.interior.heat_radiogenic:
             log.info('    F_radio    = %.2e W m-2' % float(hf_row['F_radio']))
 
     # Actual time step size

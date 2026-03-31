@@ -170,14 +170,14 @@ tsurf_atol = 10.0
 tsurf_rtol = 0.02
 
 [interior.dummy]
-Tsurf_init = 3300.0
+tsurf_init = 3300.0
 tmagma_atol = 30.0
 tmagma_rtol = 0.05
 mantle_tliq = 2700.0
 mantle_tsol = 1700.0
 mantle_rho = 4550.0
 mantle_cp = 1792.0
-H_radio = 0.0
+heat_internal = 0.0
 
 [outgas]
 fO2_shift_IW = 4.0

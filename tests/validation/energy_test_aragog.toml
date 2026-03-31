@@ -9,7 +9,7 @@
 #
 # Paired with: energy_test_spider.toml (identical except interior.module).
 #
-# The Tsurf_init = 1861 K corresponds to SPIDER ini_entropy = 3200 J/K/kg
+# The tsurf_init = 1861 K corresponds to SPIDER ini_entropy = 3200 J/K/kg
 # at surface pressure, computed from the PALEOS MgSiO3 EOS.
 
 version = "2.0"

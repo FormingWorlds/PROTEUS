@@ -190,7 +190,7 @@ version = "2.0"
     #     num_levels      = 50
     #     tolerance       = 1.0e-7
     #     initial_condition = 3
-    #     Tsurf_init      = 3300.0
+    #     tsurf_init      = 3300.0
     #     trans_conduction      = true
     #     trans_convection      = true
 

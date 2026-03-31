@@ -302,17 +302,17 @@ version = "2.0"
 [interior]
     # ── Universal parameters (all modules) ────────────────────────────
     module          = "spider"       # Which interior module: "spider", "aragog", "dummy"
-    Tsurf_init      = 3300.0         # Initial surface temperature [K]
+    tsurf_init      = 3300.0         # Initial surface temperature [K]
 
     # ── Dummy module (simple parameterized interior) ──────────────────
     [interior.dummy]
-        tmagma_atol = 30.0      # Max absolute Tsurf change in each step
-        tmagma_rtol = 0.05      # Max relative Tsurf change in each step
-        mantle_tliq = 2700.0    # Liquidus temperature [K]
-        mantle_tsol = 1700.0    # Solidus temperature [K]
-        mantle_rho  = 4550.0    # Mantle density [kg m-3]
-        mantle_cp   = 1792.0    # Mantle heat capacity [J K-1 kg-1]
-        H_radio     = 0.0       # Radiogenic heating rate [W/kg]
+        mantle_tliq     = 2700.0    # Liquidus temperature [K]
+        mantle_tsol     = 1700.0    # Solidus temperature [K]
+        mantle_rho      = 4550.0    # Mantle density [kg m-3]
+        mantle_cp       = 1792.0    # Mantle heat capacity [J K-1 kg-1]
+        tmagma_atol     = 30.0      # Max absolute Tsurf change in each step [K]
+        tmagma_rtol     = 0.05      # Max relative Tsurf change in each step
+        heat_internal   = 0.0       # Internal heating rate [W/kg] (e.g., radiogenic, tidal)
 
     # ── Shared parameters (Aragog + SPIDER) ───────────────────────────
     num_levels          = 100            # Number of radial grid levels
@@ -350,7 +350,7 @@ version = "2.0"
         solver_type              = "bdf"    # SUNDIALS solver method
         tsurf_atol               = 20.0     # Max surface T change per step [K]
         tsurf_rtol               = 0.02     # Max relative surface T change per step
-        ini_entropy              = 3000.0   # Initial entropy [J/kg/K] (overridden by Tsurf_init when using PALEOS)
+        ini_entropy              = 3000.0   # Initial entropy [J/kg/K] (overridden by tsurf_init when using PALEOS)
         ini_dsdr                 = -4.698e-6 # Initial entropy gradient [J/kg/K/m]
         matprop_smooth_width     = 1e-2     # Material property smoothing width (melt fraction)
 

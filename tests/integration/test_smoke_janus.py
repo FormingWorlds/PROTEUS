@@ -101,7 +101,7 @@ version = "2.0"
     bulk_modulus = 2e11
     melting_dir = "Monteux-600"
     [interior.dummy]
-        Tsurf_init = 2000.0
+        tsurf_init = 2000.0
 
 [atmos_clim]
     module = "janus"

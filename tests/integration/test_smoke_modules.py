@@ -70,8 +70,8 @@ def test_smoke_escape_dummy_atmos():
         runner.config.delivery.elements.N_ppmw = 100.0  # Nitrogen inventory
         runner.config.delivery.elements.SH_ratio = 1.0  # S/H ratio
 
-        # Fix: Lower Tsurf_init to prevent runaway heating
-        runner.config.interior.dummy.Tsurf_init = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.interior.dummy.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -159,8 +159,8 @@ def test_smoke_star_instellation():
         runner.config.star.dummy.Teff = 5772.0  # Solar temperature
         runner.config.star.dummy.radius = 1.0  # Solar radius
 
-        # Fix: Lower Tsurf_init to prevent runaway heating
-        runner.config.interior.dummy.Tsurf_init = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.interior.dummy.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -264,8 +264,8 @@ def test_smoke_orbit_heat_tidaling():
         # Enable tidal heating in interior
         runner.config.interior.heat_tidal = True
 
-        # Fix: Lower Tsurf_init to prevent runaway heating
-        runner.config.interior.dummy.Tsurf_init = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.interior.dummy.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -363,8 +363,8 @@ def test_smoke_outgas_atmos_volatiles():
         runner.config.delivery.elements.N_ppmw = 100.0  # Nitrogen inventory
         runner.config.delivery.elements.SH_ratio = 1.0  # S/H ratio
 
-        # Fix: Lower Tsurf_init to prevent runaway heating
-        runner.config.interior.dummy.Tsurf_init = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.interior.dummy.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -459,8 +459,8 @@ def test_smoke_dummy_full_chain():
         runner.config.atmos_clim.module = 'dummy'
         runner.config.escape.module = 'dummy'
 
-        # Fix: Lower Tsurf_init to prevent runaway heating
-        runner.config.interior.dummy.Tsurf_init = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.interior.dummy.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr

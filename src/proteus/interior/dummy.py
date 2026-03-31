@@ -55,7 +55,7 @@ def run_dummy_int(
     # Physical parameters
     tmp_liq = config.interior.dummy.mantle_tliq  # Liquidus
     tmp_sol = config.interior.dummy.mantle_tsol  # Solidus
-    tmp_init = config.interior.Tsurf_init  # Initial magma temperature
+    tmp_init = config.interior.tsurf_init  # Initial magma temperature
     area = 4 * np.pi * hf_row['R_int'] ** 2
 
     # Get mantle melt fraction as a function of temperature
@@ -83,7 +83,7 @@ def run_dummy_int(
     output['F_tidal'] = tidal_flux
 
     # Radiogenic heating constant with time
-    output['F_radio'] = config.interior.dummy.H_radio * output['M_mantle'] / area
+    output['F_radio'] = config.interior.dummy.heat_internal * output['M_mantle'] / area
 
     # Total flux loss
     F_loss = output['F_int'] - output['F_tidal'] - output['F_radio']

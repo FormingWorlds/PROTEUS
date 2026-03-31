@@ -42,7 +42,7 @@ def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate
     config.interior.heat_tidal = False
     config.interior.aragog.initial_condition = 1
     config.interior.aragog.init_file = 'dummy.txt'
-    config.interior.aragog.Tsurf_init = 4000.0
+    config.interior.aragog.tsurf_init = 4000.0
     config.interior.aragog.basal_temperature = 5000.0
     config.interior.aragog.tolerance = 1e-4
     config.interior.aragog.tsurf_poststep_change = 100.0

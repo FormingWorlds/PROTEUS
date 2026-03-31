@@ -64,7 +64,7 @@ def test_integration_calliope_multi_timestep(proteus_multi_timestep_run):
         delivery__elements__N_ppmw=100.0,  # Nitrogen inventory
         delivery__elements__SH_ratio=1.0,  # S/H ratio
         # Prevent runaway heating
-        interior__dummy__Tsurf_init=2000.0,
+        interior__dummy__tsurf_init=2000.0,
     )
 
     # Validate that helpfile was created and has multiple timesteps
@@ -174,7 +174,7 @@ def test_integration_calliope_extended_run(proteus_multi_timestep_run):
         delivery__elements__N_ppmw=100.0,
         delivery__elements__SH_ratio=1.0,
         # Prevent runaway heating
-        interior__dummy__Tsurf_init=2000.0,
+        interior__dummy__tsurf_init=2000.0,
     )
 
     # Validate that helpfile has multiple timesteps
