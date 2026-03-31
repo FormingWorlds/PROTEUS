@@ -928,11 +928,12 @@ class AragogRunner:
         # Surface area
         area = 4 * np.pi * float(r_basic[-1]) ** 2
 
-        # Radiogenic and tidal heating fluxes
-        H_radio = np.asarray(state.heating_radio).flatten()
-        H_tidal = np.asarray(state.heating_tidal).flatten()
-        output['F_radio'] = float(np.dot(H_radio[:n_stag], mass_stag[:n_stag])) / area
-        output['F_tidal'] = float(np.dot(H_tidal[:n_stag], mass_stag[:n_stag])) / area
+        # Total heating flux (radiogenic + tidal combined in entropy solver)
+        H_total = np.asarray(state.heating).flatten()
+        F_heat_total = float(np.dot(H_total[:n_stag], mass_stag[:n_stag])) / area
+        # Cannot decompose into radio/tidal in entropy solver; attribute to radio
+        output['F_radio'] = F_heat_total
+        output['F_tidal'] = 0.0
 
         # Store arrays on interior object
         interior_o.phi = phi_stag
