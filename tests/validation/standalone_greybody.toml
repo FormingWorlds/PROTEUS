@@ -145,7 +145,7 @@ version = "2.0"
 
 [interior]
     module          = "spider"    # PLACEHOLDER: overridden per case
-    heat_radiogen = false       # disable for clean comparison
+    heat_radiogenic = false       # disable for clean comparison
     heat_tidal      = false
     grain_size      = 0.1
     flux_guess       = -1          # auto: sigma * T_magma^4

@@ -86,7 +86,7 @@ version = "2.0"
         tidal       = true         # Tidal contribution enabled
 
 [interior]
-    heat_radiogen = false
+    heat_radiogenic = false
     heat_tidal      = false
 
     module = "dummy"

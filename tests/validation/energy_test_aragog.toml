@@ -139,7 +139,7 @@ version = "2.0"
 # Aragog interior module
 [interior]
     module          = "aragog"
-    heat_radiogen = false
+    heat_radiogenic = false
     heat_tidal      = false
     grain_size      = 0.1
     flux_guess       = 1e5

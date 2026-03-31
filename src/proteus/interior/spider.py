@@ -632,7 +632,7 @@ def _try_spider(
 
     # Solver tolerances
     spider_atol = atol_sf * config.interior.num_tolerance
-    spider_rtol = atol_sf * config.interior.num_tolerance_rel
+    spider_rtol = atol_sf * config.interior.spider.tolerance_rel
 
     # Bounds on tolerances
     spider_rtol = min(spider_rtol, 1e-1)
@@ -789,7 +789,7 @@ def _try_spider(
         )
 
     # Mixing length parameterization: 1: variable | 2: constant
-    call_sequence.extend(['-mixing_length', str(config.interior.mixing_length)])
+    call_sequence.extend(['-mixing_length', str(config.interior.spider.mixing_length)])
 
     # Solver tolerances
     call_sequence.extend(['-ts_sundials_atol', str(spider_atol)])

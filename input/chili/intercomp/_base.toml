@@ -151,7 +151,7 @@ tidal = true
 
 [interior]
 module = "spider"
-heat_radiogen = true
+heat_radiogenic = true
 heat_tidal = false
 grain_size = 0.1
 flux_guess = 1000.0

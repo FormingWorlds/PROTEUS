@@ -14,10 +14,10 @@ def valid_spider(instance, attribute, value):
 
     # at least one energy term enabled
     if not (
-        instance.conduction
-        or instance.convection
+        instance.trans_conduction
+        or instance.trans_convection
         or instance.mixing
-        or instance.grav_sep
+        or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in SPIDER')
 
@@ -67,10 +67,10 @@ def valid_aragog(instance, attribute, value):
 
     # at least one energy term enabled (uses top-level interior fields)
     if not (
-        instance.conduction
-        or instance.convection
+        instance.trans_conduction
+        or instance.trans_convection
         or instance.mixing
-        or instance.grav_sep
+        or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in Aragog')
 
@@ -96,13 +96,13 @@ class Aragog:
         Type of inner boundary condition. Choices:  1 (core cooling), 2 (prescribed heat flux), 3 (prescribed temperature).
     inner_boundary_value: float
         Value of the inner boundary condition, either temperature or heat flux, depending on the chosen condition.
-    conduction: bool
+    trans_conduction: bool
         Whether to include conductive heat flux in the model. Default is True.
-    convection: bool
+    trans_convection: bool
         Whether to include convective heat flux in the model. Default is True.
-    grav_sep: bool
+    trans_grav_sep: bool
         Whether to include gravitational separation flux in the model. Default is True (matches SPIDER).
-    mixing: bool
+    trans_mixing: bool
         Whether to include mixing flux in the model. Default is True (matches SPIDER).
     dilatation: bool
         Whether to include dilatation source term in the model. Default is False.
@@ -255,11 +255,11 @@ class Interior:
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
     tsurf_init: float = field(default=3300.0, validator=gt(200))
     num_levels: int = field(default=100, validator=ge(40))
-    tolerance: float = field(default=1e-10, validator=gt(0))
-    conduction: bool = field(default=True)
-    convection: bool = field(default=True)
-    grav_sep: bool = field(default=True)
-    mixing: bool = field(default=True)
+    num_tolerance: float = field(default=1e-10, validator=gt(0))
+    trans_conduction: bool = field(default=True)
+    trans_convection: bool = field(default=True)
+    trans_grav_sep: bool = field(default=True)
+    trans_mixing: bool = field(default=True)
     heat_radiogenic: bool = field(default=True)
     heat_tidal: bool = field(default=True)
 

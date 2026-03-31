@@ -30,28 +30,28 @@ def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate
     config.struct.zalmoxis.mantle_eos = mantle_eos
     config.struct.core_density = 12500.0
     config.struct.core_heatcap = 880.0
-    config.interior.aragog.num_levels = 20
+    config.interior.num_levels = 20
     config.interior.aragog.bulk_modulus = 200e9
     config.interior.aragog.mass_coordinates = False
-    config.interior.aragog.conduction = True
-    config.interior.aragog.convection = True
-    config.interior.aragog.grav_sep = False
+    config.interior.trans_conduction = True
+    config.interior.trans_convection = True
+    config.interior.trans_grav_sep = False
     config.interior.aragog.mixing = True
     config.interior.aragog.dilatation = False
-    config.interior.heat_radiogen = False
+    config.interior.heat_radiogenic = False
     config.interior.heat_tidal = False
     config.interior.aragog.initial_condition = 1
     config.interior.aragog.init_file = 'dummy.txt'
     config.interior.aragog.tsurf_init = 4000.0
     config.interior.aragog.basal_temperature = 5000.0
-    config.interior.aragog.tolerance = 1e-4
+    config.interior.num_tolerance = 1e-4
     config.interior.aragog.tsurf_poststep_change = 100.0
     config.interior.aragog.event_triggering = True
     config.interior.aragog.inner_boundary_condition = 1
     config.interior.aragog.inner_boundary_value = 5000.0
-    config.interior.aragog.logging = 'WARNING'
-    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
-    config.interior.melting_dir = 'Wolf_Bower+2018'
+    config.interior.params.out.logging = 'WARNING'
+    config.struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.struct.melting_dir = 'Wolf_Bower+2018'
     return config
 
 
@@ -188,7 +188,7 @@ def test_setup_solver_eos_not_found(tmp_path):
 
     outdir = str(tmp_path)
     config = _make_aragog_config(struct_module='self')
-    config.interior.eos_dir = 'NonexistentEOS'
+    config.struct.eos_dir = 'NonexistentEOS'
 
     hf_row = {
         'R_int': 6.371e6,

@@ -102,7 +102,7 @@ version = "2.0"
 
 [interior]
     flux_guess       = 1e5   # Initial heat flux guess [W m-2]
-    heat_radiogen = true  # enable radiogenic heat production
+    heat_radiogenic = true  # enable radiogenic heat production
     heat_tidal      = true  # enable tidal heat production
     rfront_loc    = 0.3    # Centre of rheological transition
     rfront_wid    = 0.15   # Width of rheological transition

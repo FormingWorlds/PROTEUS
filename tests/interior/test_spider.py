@@ -916,7 +916,7 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior.spider.grav_sep = False
     config.interior.spider.matprop_smooth_width = 0.1
     config.interior.heat_tidal = False
-    config.interior.heat_radiogen = False
+    config.interior.heat_radiogenic = False
     config.interior.grain_size = 1e-3
     config.interior.rfront_loc = 0.4
     config.interior.rfront_wid = 0.15
@@ -1799,13 +1799,13 @@ def test_try_spider_resume_ic2(tmp_path):
 
 @pytest.mark.unit
 def test_try_spider_heat_radiogen(tmp_path):
-    """_try_spider adds radionuclide flags when heat_radiogen is True."""
+    """_try_spider adds radionuclide flags when heat_radiogenic is True."""
     from proteus.interior.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
 
     # Enable radiogenic heat
-    config.interior.heat_radiogen = True
+    config.interior.heat_radiogenic = True
     config.delivery.radio_tref = 4.5  # Gyr
     config.star.age_ini = 0.1  # Gyr
     config.delivery.radio_K = 240e-9  # ppm

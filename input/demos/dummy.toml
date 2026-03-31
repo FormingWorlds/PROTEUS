@@ -99,7 +99,7 @@ version = "2.0"
         rate        = 1e6           # Bulk unfractionated escape rate [kg s-1]
 
 [interior]
-    heat_radiogen = false  # enable radiogenic heat production
+    heat_radiogenic = false  # enable radiogenic heat production
     heat_tidal      = false  # enable tidal heat production
     module = "dummy"   # Which interior module to use
     [interior.dummy]

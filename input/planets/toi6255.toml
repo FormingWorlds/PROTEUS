@@ -74,7 +74,7 @@ version = "2.0"
 
 # Interior - physics table
 [interior]
-    heat_radiogen = true  # enable radiogenic heat production
+    heat_radiogenic = true  # enable radiogenic heat production
     heat_tidal      = true  # enable tidal heat production
 
     module = "spider"   # Which interior module to use
