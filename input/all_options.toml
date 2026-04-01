@@ -23,435 +23,415 @@
 
 # ----------------------------------------------------
 
-# Parameters
+# Code execution, outputs, time-stepping, convergence
 [params]
-    # output files
+
     [params.out]
         path        = "all_options"
-        logging     = "INFO"  # Log verbosity: INFO, DEBUG, ERROR, WARNING
-        plot_mod    = 3      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
-        plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
-        write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
-        archive_mod = 5      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
-        remove_sf = false    # Remove SOCRATES spectral file when simulation ends.
+        logging     = "INFO"       # INFO | DEBUG | ERROR | WARNING
+        plot_mod    = 3            # 0: at end | n: every n iters | none: never
+        plot_fmt    = "png"        # png | pdf
+        write_mod   = 1            # 0: at end | n: every n iters
+        archive_mod = 5            # 0: at end | n: every n iters | none: never
+        remove_sf   = false        # remove spectral file when done
 
-    # time-stepping
     [params.dt]
-        minimum      = 1e4    # absolute minimum time-step [years]
-        minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
-        maximum      = 1e7    # maximum time-step [yr]
-        initial      = 3e1    # inital step size [yr]
-        starspec     = 1e9    # interval to re-calculate the stellar spectrum [yr]
-        starinst     = 1e1    # interval to re-calculate the instellation [yr]
-        method       = "adaptive"  # proportional | adaptive | maximum
+        minimum     = 1e4          # minimum time step [yr]
+        minimum_rel = 1e-5         # minimum relative time step
+        maximum     = 1e7          # maximum time step [yr]
+        initial     = 3e1          # initial step size [yr]
+        starspec    = 1e9          # recalculate stellar spectrum interval [yr]
+        starinst    = 1e1          # recalculate instellation interval [yr]
+        method      = "adaptive"   # proportional | adaptive | maximum
 
         [params.dt.proportional]
-            propconst    = 52.0   # Proportionality constant
+            propconst = 52.0       # proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.02   # Step size atol
-            rtol         = 0.10   # Step size rtol
+            atol      = 0.02       # step size absolute tolerance
+            rtol      = 0.10       # step size relative tolerance
 
-    # Termination criteria
-    #     Set enabled=true/false in each section to enable/disable that termination criterion
+    # Termination criteria (enabled=true/false per criterion)
     [params.stop]
+        strict = false             # require criteria satisfied twice before exit
 
-        # Require criteria to be satisfied twice before model will exit?
-        strict = false
-
-        # required number of iterations
         [params.stop.iters]
             enabled = true
             minimum = 5
             maximum = 9000
 
-        # required time constraints
         [params.stop.time]
             enabled = true
-            minimum = 1.0e3      # model will certainly run to t > minimum [yr]
-            maximum = 4.567e+9   # model will terminate when t > maximum [yr]
+            minimum = 1.0e3        # run at least this long [yr]
+            maximum = 4.567e+9     # stop after this time [yr]
 
-        # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.01      # non-dim., model will terminate when global melt fraction < phi_crit
+            phi_crit = 0.01        # stop when global melt fraction < phi_crit
 
-        # radiative equilibrium
         [params.stop.radeqm]
             enabled = true
-            atol    = 0.2        # absolute tolerance [W m-2]
-            rtol    = 1e-3       # relative tolerance
+            atol    = 0.2          # radiative equilibrium tolerance [W m-2]
+            rtol    = 1e-3
 
         [params.stop.escape]
             enabled = true
-            p_stop  = 5.0        # Stop surface pressure is less than this value
+            p_stop  = 5.0          # stop when surface pressure < p_stop [bar]
 
-        # disintegration
         [params.stop.disint]
-            enabled   = false
-
+            enabled       = false
             roche_enabled = true
-            offset_roche  = 0 # correction to calculated Roche limit [m]
-
+            offset_roche  = 0      # correction to Roche limit [m]
             spin_enabled  = true
-            offset_spin   = 0 # correction to calculated Breakup period [s]
-
+            offset_spin   = 0      # correction to breakup period [s]
 
 # ----------------------------------------------------
-# Bulk planet properties
+
+# Bulk planet properties and initial volatile inventory
 [planet]
-    planet_mass_tot = 1.0       # Total planet mass [M_earth]
-    initial = 'elements'        # 'elements' | 'volatiles'
+    planet_mass_tot = 1.0          # total planet mass [M_earth]
+    initial         = 'elements'   # initial inventory method: 'elements' | 'volatiles'
 
-    # Set initial volatile inventory by planetary element abundances if [initial = 'elements']
+    # Element abundances (used when initial = 'elements')
+    # For each element: set XH_ratio (mass ratio to H), X_ppmw, or X_kg.
+    # For H: set H_oceans, H_ppmw, or H_kg.
     [planet.elements]
-        use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
-        metallicity = 1000	 # metallicity relative to solar metallicity
+        use_metallicity = false    # scale C/N/S from solar metallicity
+        metallicity     = 1000     # metallicity relative to solar [by mass]
 
-        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
-        # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
-        # H_kg       = 1e20       # Hydrogen inventory in kg
+        H_oceans    = 1.0          # H inventory [Earth oceans]
+        # H_ppmw    = 109.0        # H inventory [ppmw of mantle]
+        # H_kg      = 1e20         # H inventory [kg]
 
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw     = 0.0        # Carbon inventory in ppmw relative to mantle mass
-        # C_kg       = 1e20       # Carbon inventory in kg
+        CH_ratio    = 1.0          # C/H mass ratio
+        # C_ppmw    = 0.0          # C inventory [ppmw of mantle]
+        # C_kg      = 1e20         # C inventory [kg]
 
-        NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
-        # N_ppmw      = 0.5       # Nitrogen inventory in ppmw relative to mantle mass
-        # N_kg       = 1e20       # Nitrogen inventory in kg
+        NH_ratio    = 0.5          # N/H mass ratio
+        # N_ppmw    = 0.5          # N inventory [ppmw of mantle]
+        # N_kg      = 1e20         # N inventory [kg]
 
-        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
-        # S_ppmw      = 2.0       # Sulfur inventory in ppmw relative to mantle mass
-        # S_kg       = 1e20       # Sulfur inventory in kg
+        SH_ratio    = 2.0          # S/H mass ratio
+        # S_ppmw    = 2.0          # S inventory [ppmw of mantle]
+        # S_kg      = 1e20         # S inventory [kg]
 
-    # Set initial volatile inventory by partial pressures in atmosphere if [initial = 'volatiles']
+    # Partial pressures (used when initial = 'volatiles') [bar]
     [planet.volatiles]
-        H2O  = 20.0             # partial pressure of H2O
-        CO2  = 30.0             # partial pressure of CO2
-        N2   = 0.0              # etc.
-        S2   = 0.0
-        SO2  = 0.0
-        H2S  = 0.0
-        NH3  = 0.0
-        H2   = 0.0
-        CH4  = 0.0
-        CO   = 0.0
+        H2O = 20.0
+        CO2 = 30.0
+        N2  = 0.0
+        S2  = 0.0
+        SO2 = 0.0
+        H2S = 0.0
+        NH3 = 0.0
+        H2  = 0.0
+        CH4 = 0.0
+        CO  = 0.0
 
 # ----------------------------------------------------
-# Star
+
+# Stellar model and parameters
 [star]
-
-    # Physical parameters
-    mass    = 1.0       # stellar mass [M_sun]
-    age_ini = 0.100     # model initialisation age [Gyr]
-
-    module  = "mors"
+    mass    = 1.0                  # stellar mass [M_sun]
+    age_ini = 0.100                # model start age [Gyr]
+    module  = "mors"               # mors | dummy
 
     [star.mors]
-        rot_pcntle  = 50.0          # rotation percentile
-        rot_period  = "none"        # rotation period [days]
-        tracks      = "spada"       # evolution tracks: spada | baraffe
-        age_now     = 4.567         # current age of star [Gyr]
-        spectrum_source = "solar"   # Spectrum source: 'solar' for solar spectra; 'muscles' for MUSCLES spectra; 'phoenix' for synthetic PHOENIX spectrum; see https://proteus-framework.org/proteus/data.html#stellar-spectra
-        star_name   = "sun"         # star name, relevant for when spectrum_source = 'solar' (use e.g. 'sun' or 'Sun0.6Ga') or when spectrum_source = 'muscles' (use e.g. 'trappist-1' or 'gj1214'). Not relevent when spectrum_source = 'phoenix'.
-        star_path   = "none"        # optional override star path to custom stellar spectrum, e.g. "$FWL_DATA/stellar_spectra/solar/sun.txt"
+        rot_pcntle      = 50.0            # rotation percentile
+        rot_period       = "none"          # rotation period [days]; overrides rot_pcntle
+        tracks           = "spada"         # evolution tracks: spada | baraffe
+        age_now          = 4.567           # current age of star [Gyr]
+        spectrum_source  = "solar"         # solar | muscles | phoenix
+        star_name        = "sun"           # e.g. 'sun', 'Sun0.6Ga', 'trappist-1', 'gj1214'
+        star_path        = "none"          # custom spectrum file path (overrides source)
 
-        # PHOENIX parameters, only relevant if spectrum_source = "phoenix". Defaults to solar (0.0).
-        phoenix_FeH         = 0.0           # metallicity [Fe/H]
-        phoenix_alpha       = 0.0           # alpha enhancement [α/M]
-
-        # if None, calculated by mors
-        phoenix_radius      = "none"        # Stellar radius [R_sun] used for PHOENIX spectrum scaling
-        phoenix_log_g       = "none"        # Stellar surface gravity [dex]
-        phoenix_Teff        = "none"        # Stellar effective temperature [K]
+        # PHOENIX synthetic spectrum parameters (only if spectrum_source = "phoenix")
+        phoenix_FeH      = 0.0            # metallicity [Fe/H]
+        phoenix_alpha    = 0.0             # alpha enhancement [alpha/M]
+        phoenix_radius   = "none"          # stellar radius [R_sun]; none = from MORS
+        phoenix_log_g    = "none"          # surface gravity [dex]; none = from MORS
+        phoenix_Teff     = "none"          # effective temperature [K]; none = from MORS
 
     [star.dummy]
-        radius           = 1.0      # Constant stellar radius [R_sun]
-        calculate_radius = false    # Calculate star radius using scaling from Teff?
-        Teff             = 5772.0   # Star's brightness temperature [K]
+        radius           = 1.0             # constant stellar radius [R_sun]
+        calculate_radius = false           # derive radius from Teff scaling
+        Teff             = 5772.0          # brightness temperature [K]
 
-# Orbital system
+# Planetary orbit
 [orbit]
-    instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
-    instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
-    semimajoraxis = 1.0         # initial semi-major axis of planet's orbit [AU]
-    eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
-    zenith_angle = 48.19        # characteristic zenith angle [degrees]
-    s0_factor = 0.375           # instellation scale factor [dimensionless]
+    instellation_method = 'sma'    # 'sma' (semi-major axis) | 'inst' (instellation flux)
+    instellationflux    = 1.0      # instellation flux [Earth units] (if method = 'inst')
+    semimajoraxis       = 1.0      # semi-major axis [AU]
+    eccentricity        = 0.0      # eccentricity
+    zenith_angle        = 48.19    # characteristic zenith angle [degrees]
+    s0_factor           = 0.375    # instellation scale factor
 
-    evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "none"          # module used to calculate tidal heating
-
-    axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
-    satellite = false           # include satellite (moon)?
-    mass_sat = 7.347e+22        # mass of satellite [kg]
-    semimajoraxis_sat = 3e8     # initial SMA of satellite's orbit [m]
+    evolve       = false           # evolve semi-major axis and eccentricity
+    module       = "none"          # tidal heating module: none | dummy | lovepy
+    axial_period = "none"          # day length [hours]; none = tidally locked
+    satellite    = false           # include satellite (moon)
+    mass_sat     = 7.347e+22       # satellite mass [kg]
+    semimajoraxis_sat = 3e8        # satellite orbit semi-major axis [m]
 
     [orbit.dummy]
-        H_tide  = 1e-7      # Fixed tidal power density [W kg-1]
-        Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
-        Imk2    = 0.0       # Fixed imaginary part of k2 love number, cannot be positive
+        H_tide   = 1e-7           # fixed tidal power density [W kg-1]
+        Phi_tide = "<0.3"         # apply heating where melt fraction satisfies inequality
+        Imk2     = 0.0            # fixed Im(k2) love number (must be <= 0)
 
     [orbit.lovepy]
-        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
+        visc_thresh = 1e9         # minimum viscosity for tidal heating [Pa s]
 
-# Planetary structure - physics table
+# ----------------------------------------------------
+
+# Interior structure (hydrostatic equilibrium, composition)
 [interior_struct]
-    corefrac     = 0.55         # non-dim., radius fraction
-    core_density = 10738.33     # Core density [kg m-3]
-    core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
-    melting_dir  = "Monteux-600"            # Melting curve folder (in FWL_DATA/interior_lookup_tables/Melting_curves/)
-    eos_dir      = "WolfBower2018_MgSiO3"  # EOS data folder (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
+    corefrac     = 0.55            # core radius fraction
+    core_density = 10738.33        # core density [kg m-3]
+    core_heatcap = 880.0           # core heat capacity [J K-1 kg-1]
+    melting_dir  = "Monteux-600"           # melting curve folder in FWL_DATA
+    eos_dir      = "WolfBower2018_MgSiO3"  # EOS folder in FWL_DATA
 
-    module           = "zalmoxis"   # self | zalmoxis
-    update_interval      = 0        # max interval (ceiling) between structure updates [yr]; 0 = only at init
-    update_min_interval  = 0        # min interval (floor) between updates [yr]; prevents thrashing
-    update_dtmagma_frac  = 0.03     # trigger on relative T_magma change (3%)
-    update_dphi_abs      = 0.05     # trigger on absolute Phi_global change
+    module              = "zalmoxis"  # self | zalmoxis
+    update_interval     = 0        # max time between structure updates [yr]; 0 = init only
+    update_min_interval = 0        # min time between updates [yr]
+    update_dtmagma_frac = 0.03     # trigger on relative T_magma change
+    update_dphi_abs     = 0.05     # trigger on absolute Phi_global change
 
     [interior_struct.zalmoxis]
-        # Per-layer EOS: "<source>:<material>". See Zalmoxis docs for valid options.
-        # Tabulated: Seager2007:iron, Seager2007:MgSiO3, WolfBower2018:MgSiO3, RTPress100TPa:MgSiO3, Seager2007:H2O
-        # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O, Analytic:graphite, Analytic:SiC
-        core_eos                   = "Seager2007:iron"              # core layer EOS
-        mantle_eos                 = "WolfBower2018:MgSiO3"         # mantle layer EOS
-        ice_layer_eos              = ""                             # ice/water layer EOS (empty = 2-layer model)
-        coremassfrac               = 0.325                          # core mass fraction [non-dim.]
-        mantle_mass_fraction       = 0                              # mantle mass fraction; 0 = auto (1 - coremassfrac) for 2-layer models
-        temperature_mode           = "adiabatic"                     # "isothermal", "linear", "prescribed", "adiabatic"
-        surface_temperature        = 3500                           # Surface temperature [K]
-        center_temperature         = 6000                           # Center temperature [K], used for "linear" and "adiabatic" (initial guess)
-        temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # prescribed temperature profile filename, required for temperature_mode="prescribed"
-        max_iterations_outer       = 100                            # max. iterations for the outer loop
-        tolerance_outer            = 3e-3                           # tolerance for the outer loop
-        max_iterations_inner       = 100                            # max. iterations for the inner loop
-        tolerance_inner            = 1e-4                           # tolerance for the inner loop
-        relative_tolerance         = 1e-5                           # relative tolerance for solve_ivp
-        absolute_tolerance         = 1e-6                           # absolute tolerance for solve_ivp
-        maximum_step               = 250000                         # maximum integration step size [m]
-        adaptive_radial_fraction   = 0.98                           # radial fraction for adaptive-to-fixed-step transition (WolfBower2018 EOS)
-        max_center_pressure_guess  = 0.99e12                        # maximum central pressure guess [Pa]
-        target_surface_pressure    = 101325                         # target surface pressure [Pa]
-        pressure_tolerance         = 1e9                            # tolerance surface pressure [Pa]
-        max_iterations_pressure    = 200                            # max. iterations for the innermost loop
-        verbose                    = false                          # detailed convergence info and warnings printing?
-        iteration_profiles_enabled = false                          # pressure and density profiles for each iteration logging?
+        # Per-layer EOS: "<source>:<material>"
+        # Tabulated: Seager2007:iron, WolfBower2018:MgSiO3, RTPress100TPa:MgSiO3, Seager2007:H2O
+        # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O
+        core_eos                   = "Seager2007:iron"
+        mantle_eos                 = "WolfBower2018:MgSiO3"
+        ice_layer_eos              = ""              # empty = 2-layer model
+        coremassfrac               = 0.325           # core mass fraction
+        mantle_mass_fraction       = 0               # 0 = auto (1 - coremassfrac)
+        temperature_mode           = "adiabatic"     # isothermal | linear | prescribed | adiabatic
+        surface_temperature        = 3500            # [K]
+        center_temperature         = 6000            # [K] (initial guess for adiabatic)
+        temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # for prescribed mode
+        max_iterations_outer       = 100
+        tolerance_outer            = 3e-3
+        max_iterations_inner       = 100
+        tolerance_inner            = 1e-4
+        relative_tolerance         = 1e-5            # solve_ivp rtol
+        absolute_tolerance         = 1e-6            # solve_ivp atol
+        maximum_step               = 250000          # max integration step [m]
+        adaptive_radial_fraction   = 0.98            # adaptive-to-fixed step transition
+        max_center_pressure_guess  = 0.99e12         # max central pressure guess [Pa]
+        target_surface_pressure    = 101325          # target surface pressure [Pa]
+        pressure_tolerance         = 1e9             # surface pressure tolerance [Pa]
+        max_iterations_pressure    = 200
+        verbose                    = false
+        iteration_profiles_enabled = false
 
-# Interior energetics - physics table
+# Interior energy transport (magma ocean evolution)
 [interior_energetics]
-    # ── Universal parameters (all modules) ────────────────────────────
-    module          = "spider"       # Which interior module: "spider", "aragog", "dummy"
-    tsurf_init      = 3300.0         # Initial surface temperature [K]
+    module          = "spider"     # spider | aragog | dummy
+    tsurf_init      = 3300.0       # initial surface temperature [K]
 
-    # ── Dummy module (simple parameterized interior) ──────────────────
+    # ── Dummy module ─────────────────────────────────────────────────
     [interior_energetics.dummy]
-        mantle_tliq     = 2700.0    # Liquidus temperature [K]
-        mantle_tsol     = 1700.0    # Solidus temperature [K]
-        mantle_rho      = 4550.0    # Mantle density [kg m-3]
-        mantle_cp       = 1792.0    # Mantle heat capacity [J K-1 kg-1]
-        tmagma_atol     = 30.0      # Max absolute Tsurf change in each step [K]
-        tmagma_rtol     = 0.05      # Max relative Tsurf change in each step
-        heat_internal   = 0.0       # Internal heating rate [W/kg] (e.g., radiogenic, tidal)
+        mantle_tliq   = 2700.0     # liquidus [K]
+        mantle_tsol   = 1700.0     # solidus [K]
+        mantle_rho    = 4550.0     # mantle density [kg m-3]
+        mantle_cp     = 1792.0     # mantle heat capacity [J K-1 kg-1]
+        tmagma_atol   = 30.0       # max absolute T_surf change per step [K]
+        tmagma_rtol   = 0.05       # max relative T_surf change per step
+        heat_internal = 0.0        # internal heating rate [W kg-1]
 
-    # ── Shared parameters (Aragog + SPIDER) ───────────────────────────
-    num_levels          = 100            # Number of radial grid levels
-    num_tolerance       = 1.0e-8         # Solver absolute tolerance
-    trans_conduction    = true           # Enable conductive heat transfer
-    trans_convection    = true           # Enable convective heat transfer (MLT)
-    trans_grav_sep      = true           # Enable gravitational separation of melt/solid
-    trans_mixing        = true           # Enable chemical mixing flux
-    heat_tidal          = false          # Enable tidal heat production
-    rfront_loc          = 0.6            # Centre of rheological transition (melt fraction)
-    rfront_wid          = 0.2            # Width of rheological transition (melt fraction)
-    grain_size          = 0.1            # Crystal settling grain size [m]
-    flux_guess          = -1             # Initial F_atm guess [W m-2]; <0 = sigma*T^4, 0 = zero, >0 = prescribed
-    heat_radiogenic     = false          # Enable radiogenic heat production
-    radio_tref          = 4.55           # Reference age for concentrations [Gyr]
-    radio_K             = 310.0          # ppmw of potassium (all isotopes)
-    radio_U             = 0.031          # ppmw of uranium (all isotopes)
-    radio_Th            = 0.124          # ppmw of thorium (all isotopes)
+    # ── Shared parameters (Aragog + SPIDER) ──────────────────────────
+    num_levels       = 100         # radial grid levels
+    num_tolerance    = 1.0e-8      # solver tolerance
+    trans_conduction = true        # conductive heat transfer
+    trans_convection = true        # convective heat transfer (MLT)
+    trans_grav_sep   = true        # gravitational separation
+    trans_mixing     = true        # chemical mixing flux
+    heat_tidal       = false       # tidal heating
+    rfront_loc       = 0.6         # rheological transition centre (melt fraction)
+    rfront_wid       = 0.2         # rheological transition width (melt fraction)
+    grain_size       = 0.1         # crystal grain size [m]
+    flux_guess       = -1          # initial F_atm [W m-2]; <0 = sigma*T^4
+    heat_radiogenic  = false       # radiogenic heating
+    radio_tref       = 4.55        # reference age for concentrations [Gyr]
+    radio_K          = 310.0       # potassium concentration [ppmw, all isotopes]
+    radio_U          = 0.031       # uranium concentration [ppmw, all isotopes]
+    radio_Th         = 0.124       # thorium concentration [ppmw, all isotopes]
 
-    # ── Aragog-only parameters ────────────────────────────────────────
+    # ── Aragog-only ──────────────────────────────────────────────────
     [interior_energetics.aragog]
-        initial_condition        = 3        # Initial T(P): 1=linear, 2=from file, 3=adiabat
-        basal_temperature        = 7000.0   # CMB temperature [K] (if initial_condition=1)
-        inner_boundary_condition = 1        # CMB BC: 1=core cooling, 2=prescribed flux, 3=prescribed T
-        inner_boundary_value     = 4000     # CMB BC value [K or W/m^2, depends on inner_boundary_condition]
-        dilatation               = false    # Enable dilatation source term
-        mass_coordinates         = false    # Use mass coordinates for mesh spacing
-        tsurf_poststep_change    = 30       # Max surface T change per step [K]
-        event_triggering         = true     # Stop solver on large T_surf jumps
-        bulk_modulus             = 260e9    # Adams-Williamson bulk modulus [Pa]
-        jax                      = false    # Use JAX/diffrax solver backend (requires jax, equinox, diffrax)
+        initial_condition        = 3       # 1: linear | 2: from file | 3: adiabat
+        basal_temperature        = 7000.0  # CMB temperature [K] (for IC=1)
+        inner_boundary_condition = 1       # CMB BC: 1=core cooling | 2=flux | 3=temperature
+        inner_boundary_value     = 4000    # CMB BC value [K or W m-2]
+        dilatation               = false   # dilatation source term
+        mass_coordinates         = false   # mass coordinate mesh spacing
+        tsurf_poststep_change    = 30      # max surface T change per step [K]
+        event_triggering         = true    # stop solver on large T_surf jumps
+        bulk_modulus             = 260e9   # Adams-Williamson bulk modulus [Pa]
+        jax                      = false   # JAX/diffrax solver (requires jax, equinox, diffrax)
 
-    # ── SPIDER-only parameters ────────────────────────────────────────
+    # ── SPIDER-only ──────────────────────────────────────────────────
     [interior_energetics.spider]
-        mixing_length            = 2        # Mixing length: 1=nearest boundary, 2=constant D/4
-        tolerance_rel            = 1.0e-8   # SUNDIALS relative tolerance
-        solver_type              = "bdf"    # SUNDIALS solver method
-        tsurf_atol               = 20.0     # Max surface T change per step [K]
-        tsurf_rtol               = 0.02     # Max relative surface T change per step
-        ini_entropy              = 3000.0   # Initial entropy [J/kg/K] (overridden by tsurf_init when using PALEOS)
-        ini_dsdr                 = -4.698e-6 # Initial entropy gradient [J/kg/K/m]
-        matprop_smooth_width     = 1e-2     # Material property smoothing width (melt fraction)
+        mixing_length        = 2           # 1: nearest boundary | 2: constant D/4
+        tolerance_rel        = 1.0e-8      # SUNDIALS relative tolerance
+        solver_type          = "bdf"       # SUNDIALS method: adams | bdf
+        tsurf_atol           = 20.0        # max absolute T_surf change per step [K]
+        tsurf_rtol           = 0.02        # max relative T_surf change per step
+        ini_entropy          = 3000.0      # initial entropy [J kg-1 K-1]
+        ini_dsdr             = -4.698e-6   # initial entropy gradient [J kg-1 K-1 m-1]
+        matprop_smooth_width = 1e-2        # material property smoothing (melt fraction)
 
-# Outgassing - physics table
+# ----------------------------------------------------
+
+# Outgassing (volatile partitioning between interior and atmosphere)
 [outgas]
-    fO2_shift_IW    = 4         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
-
-    module = "calliope"         # Which outgassing module to use
+    fO2_shift_IW = 4               # redox state [log10(delta_IW)]
+    module       = "calliope"      # calliope | atmodeller
 
     [outgas.calliope]
-        include_H2O  = true     # Include H2O compound
-        include_CO2  = true     # Include CO2 compound
-        include_N2   = true     # Include N2 compound
-        include_S2   = true     # Include S2 compound
-        include_SO2  = true     # Include SO2 compound
-        include_H2S  = true     # Include H2S compound
-        include_NH3  = true     # Include NH3 compound
-        include_H2   = true     # Include H2 compound
-        include_CH4  = true     # Include CH4 compound
-        include_CO   = true     # Include CO compound
-        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
-        rtol         = 0.0001   # Relative mass tolerance
-        xtol         = 1e-06    # Absolute mass tolerance
-        solubility   = true     # Enable solubility?
+        include_H2O = true
+        include_CO2 = true
+        include_N2  = true
+        include_S2  = true
+        include_SO2 = true
+        include_H2S = true
+        include_NH3 = true
+        include_H2  = true
+        include_CH4 = true
+        include_CO  = true
+        T_floor     = 700.0       # temperature floor [K]
+        rtol        = 0.0001      # relative mass tolerance
+        xtol        = 1e-06       # absolute mass tolerance
+        solubility  = true        # enable solubility
 
     [outgas.atmodeller]
         some_parameter = "some_value"
 
-# Atmosphere - physics table
+# Atmosphere climate (radiative-convective structure)
 [atmos_clim]
-    prevent_warming = true      # do not allow the planet to heat up
-    surface_d       = 0.01      # m, conductive skin thickness
-    surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
-    cloud_enabled   = false     # enable water cloud radiative effects
-    cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
-    surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
-    surf_greyalbedo = 0.1       # surface grey albedo
-    albedo_pl       = 0.0   	# Enforced input value of bond albedo; float (0 to 1) or str (path to CSV)
-    rayleigh        = true     # enable rayleigh scattering
-    tmp_minimum     = 0.5       # temperature floor on solver
-    tmp_maximum     = 5000.0    # temperature ceiling on solver
-
-    module  = "agni"            # Which atmosphere module to use
+    prevent_warming = true         # do not allow planet to heat up
+    surface_d       = 0.01         # conductive skin thickness [m]
+    surface_k       = 2.0          # conductive skin conductivity [W m-1 K-1]
+    cloud_enabled   = false        # water cloud radiative effects
+    cloud_alpha     = 0.0          # condensate retention fraction (0 to 1)
+    surf_state      = "fixed"      # mixed_layer | fixed | skin
+    surf_greyalbedo = 0.1          # surface grey albedo
+    albedo_pl       = 0.0          # bond albedo; float or path to CSV
+    rayleigh        = true         # Rayleigh scattering
+    tmp_minimum     = 0.5          # solver temperature floor [K]
+    tmp_maximum     = 5000.0       # solver temperature ceiling [K]
+    module          = "agni"       # agni | janus | dummy
 
     [atmos_clim.agni]
-        verbosity       = 1             # output verbosity for agni (0:none, 1:info, 2:debug)
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        p_obs           = 0.02          # bar, level probed in transmission
-        spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        chemistry       = "none"        # "none" | "eq"
-        surf_material   = "greybody"    # surface material file for scattering
-        solve_energy    = true          # solve for energy-conserving atmosphere profile
-        solution_atol   = 0.5           # solver absolute tolerance
-        solution_rtol   = 0.15          # solver relative tolerance
-        overlap_method  = "ee"          # gas overlap method
-        surf_roughness  = 1e-3          # characteristic surface roughness [m]
-        surf_windspeed  = 2.0           # characteristic surface wind speed [m/s].
-        rainout         = true          # include volatile condensation/evaporation aloft
-        latent_heat     = false         # include latent heat release when `rainout=true`?
-        oceans          = true          # form liquid oceans at planet surface?
-        sens_heat       = true          # include sensible heat flux near surface, with TKE scheme
-        real_gas        = false         # use real-gas equations of state
-        psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
-        dx_max_ini      = 300.0         # initial maximum temperature step [kelvin] allowed by solver
-        dx_max          = 35.0          # maximum temperature step [kelvin] allowed by solver
-        max_steps       = 70            # max steps allowed by solver during each iteration
-        perturb_all     = true          # updated entire jacobian each step?
-        mlt_criterion   = "s"           # MLT convection stability criterion; (l)edoux or (s)chwarzschild
-        fastchem_floor        = 150.0   # Minimum temperature allowed to be sent to FC
-        fastchem_maxiter_chem = 60000   # Maximum FC iterations (chemistry)
-        fastchem_maxiter_solv = 20000   # Maximum FC iterations (internal solver)
-        fastchem_xtol_chem    = 1e-4    # FC solver tolerance (chemistry)
-        fastchem_xtol_elem    = 1e-4    # FC solver tolerance (elemental)
-        ini_profile     = 'isothermal'  # Initial guess for temperature profile shape
-        ls_default      = 2             # Default linesearch method (0:none, 1:gs, 2:bt)
-        fdo             = 2             # finite-difference order (options: 2, 4)
+        verbosity       = 1               # 0: none | 1: info | 2: debug
+        p_top           = 1.0e-5          # TOA pressure [bar]
+        p_obs           = 0.02            # transmission probing level [bar]
+        spectral_group  = "Honeyside"     # gas opacity set
+        spectral_bands  = "48"            # number of spectral bands
+        chemistry       = "none"          # none | eq
+        surf_material   = "greybody"      # surface scattering material
+        solve_energy    = true            # energy-conserving profile
+        solution_atol   = 0.5             # solver absolute tolerance
+        solution_rtol   = 0.15            # solver relative tolerance
+        overlap_method  = "ee"            # gas overlap method
+        surf_roughness  = 1e-3            # surface roughness [m]
+        surf_windspeed  = 2.0             # surface wind speed [m s-1]
+        rainout         = true            # volatile condensation/evaporation
+        latent_heat     = false           # latent heat release
+        oceans          = true            # surface liquid oceans
+        sens_heat       = true            # sensible heat flux (TKE scheme)
+        real_gas        = false           # real-gas EOS
+        psurf_thresh    = 0.1             # transparent mode threshold [bar]
+        dx_max_ini      = 300.0           # initial max temperature step [K]
+        dx_max          = 35.0            # max temperature step [K]
+        max_steps       = 70              # max solver steps per iteration
+        perturb_all     = true            # full Jacobian update each step
+        mlt_criterion   = "s"             # (l)edoux | (s)chwarzschild
+        fastchem_floor        = 150.0     # min temperature for FastChem [K]
+        fastchem_maxiter_chem = 60000     # FastChem max iterations (chemistry)
+        fastchem_maxiter_solv = 20000     # FastChem max iterations (solver)
+        fastchem_xtol_chem    = 1e-4      # FastChem tolerance (chemistry)
+        fastchem_xtol_elem    = 1e-4      # FastChem tolerance (elemental)
+        ini_profile     = 'isothermal'    # initial T(P) guess shape
+        ls_default      = 2               # linesearch: 0=none | 1=GS | 2=BT
+        fdo             = 2               # finite-difference order: 2 | 4
 
     [atmos_clim.janus]
-        p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
-        p_obs           = 1.0e-3        # bar, observed pressure level
-        spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        tropopause      = "none"        # none | skin | dynamic
-        overlap_method    = "ee"        # gas overlap method
+        p_top          = 1.0e-6           # TOA pressure [bar]
+        p_obs          = 1.0e-3           # observed pressure level [bar]
+        spectral_group = "Honeyside"      # gas opacity set
+        spectral_bands = "48"             # number of spectral bands
+        F_atm_bc       = 0                # outgoing flux at: 0=TOA | 1=surface
+        tropopause     = "none"           # none | skin | dynamic
+        overlap_method = "ee"             # gas overlap method
 
     [atmos_clim.dummy]
-        gamma           = 0.01          # atmosphere opacity between 0 and 1
-        height_factor   = 3.0           # observed height is this times the scale height
+        gamma         = 0.01              # grey opacity (0 to 1)
+        height_factor = 3.0               # observed height / scale height
 
-# Volatile escape - physics table
+# Atmospheric escape
 [escape]
-
-    module     = "zephyrus"         # Which escape module to use
-    reservoir  = "outgas"           # Reservoir that sets escaping composition when fractionation disabled
+    module    = "zephyrus"         # zephyrus | dummy | boreas
+    reservoir = "outgas"           # reservoir setting escaping composition
 
     [escape.zephyrus]
-        Pxuv        = 5e-5          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.1           # Escape efficiency factor
-        tidal       = false         # Tidal contribution enabled
+        Pxuv       = 5e-5         # XUV opacity pressure level [bar]
+        efficiency = 0.1          # escape efficiency
+        tidal      = false        # tidal contribution
 
     [escape.dummy]
-        rate        = 0.0           # Bulk unfractionated escape rate [kg s-1]
+        rate       = 0.0          # bulk escape rate [kg s-1]
 
     [escape.boreas]
-        fractionate  = true         # Include fractionation in outflow?
-        efficiency   = 0.1          # Escape efficiency factor
-        sigma_H   = 1.89e-18        # H absorption cross-section in XUV [cm2]
-        sigma_O   = 2.00e-18        # O absorption ^
-        sigma_C   = 2.50e-18        # C absorption ^
-        sigma_N   = 3.00e-18        # N absorption ^
-        sigma_S   = 6.00e-18        # S absorption ^
-        kappa_H2  = 0.01            # H2  opacity in IR, grey [cm2 g-1]
-        kappa_H2O = 1.0             # H2O opacity ^
-        kappa_O2  = 1.0             # O2  opacity ^
-        kappa_CO2 = 1.0             # CO2 opacity ^
-        kappa_CO  = 1.0             # CO  opacity ^
-        kappa_CH4 = 1.0             # CH4 opacity ^
-        kappa_N2  = 1.0             # N2  opacity ^
-        kappa_NH3 = 1.0             # NH3 opacity ^
-        kappa_H2S = 1.0             # H2S opacity ^
-        kappa_SO2 = 1.0             # SO2 opacity ^
-        kappa_S2  = 1.0             # S2  opacity ^
+        fractionate = true        # fractionated outflow
+        efficiency  = 0.1         # escape efficiency
+        sigma_H  = 1.89e-18       # XUV cross-sections [cm2]
+        sigma_O  = 2.00e-18
+        sigma_C  = 2.50e-18
+        sigma_N  = 3.00e-18
+        sigma_S  = 6.00e-18
+        kappa_H2  = 0.01          # IR grey opacities [cm2 g-1]
+        kappa_H2O = 1.0
+        kappa_O2  = 1.0
+        kappa_CO2 = 1.0
+        kappa_CO  = 1.0
+        kappa_CH4 = 1.0
+        kappa_N2  = 1.0
+        kappa_NH3 = 1.0
+        kappa_H2S = 1.0
+        kappa_SO2 = 1.0
+        kappa_S2  = 1.0
 
 # Late accretion
 [accretion]
-    module = "none"
+    module = "none"                # not yet implemented
 
-# Atmospheric chemistry postprocessing
+# Atmospheric chemistry (post-processing)
 [atmos_chem]
+    module       = "vulcan"        # vulcan
+    when         = "manually"      # manually | offline | online
+    photo_on     = true            # photochemistry
+    Kzz_on       = true            # eddy diffusion
+    Kzz_const    = "none"          # constant Kzz [cm2 s-1]; none = use profile
+    moldiff_on   = true            # molecular diffusion
+    updraft_const = 0.0            # constant updraft velocity [cm s-1]
 
-    module  = "vulcan"          # Atmospheric chemistry module
-    when    = "manually"        # When to run chemistry (manually, offline, online)
-
-    # Physics flags
-    photo_on        = true      # Enable photochemistry
-    Kzz_on          = true      # Enable eddy diffusion
-    Kzz_const       = "none"    # Constant eddy diffusion coefficient (none => use profile)
-    moldiff_on      = true      # Enable molecular diffusion in the atmosphere
-    updraft_const   = 0.0       # Set constant updraft velocity
-
-    # Vulcan-specific atmospheric chemistry parameters
     [atmos_chem.vulcan]
-        clip_fl     = 1e-20     # Floor on stellar spectrum [erg s-1 cm-2 nm-1]
-        clip_vmr    = 1e-10     # Neglect species with vmr < clip_vmr
-        make_funs   = true      # Generate reaction network functions
-        ini_mix     = "profile" # Initial mixing ratios (profile, outgas)
-        fix_surf    = false     # Fixed surface mixing ratios
-        network     = "SNCHO"   # Class of chemical network to use (CHO, NCHO, SNCHO)
-        save_frames = false      # Plot frames during iterations
-        yconv_cri   = 0.05      # Convergence criterion, value of mixing ratios
-        slope_cri   = 0.0001    # Convergence criterion, rate of change of mixing ratios
+        clip_fl     = 1e-20        # stellar spectrum floor [erg s-1 cm-2 nm-1]
+        clip_vmr    = 1e-10        # neglect species below this VMR
+        make_funs   = true         # generate reaction network functions
+        ini_mix     = "profile"    # initial mixing: profile | outgas
+        fix_surf    = false        # fixed surface mixing ratios
+        network     = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
+        save_frames = false        # plot frames during iterations
+        yconv_cri   = 0.05         # convergence criterion (mixing ratios)
+        slope_cri   = 0.0001       # convergence criterion (rate of change)
 
-# Calculate simulated observations
+# Synthetic observations
 [observe]
-
-    # Module with which to calculate the synthetic observables
-    synthesis = "none"
+    synthesis = "none"             # none | platon
 
     [observe.platon]
-        downsample = 8      # Factor to downsample opacities
-        clip_vmr   = 1e-8   # Minimum VMR for a species to be included
+        downsample = 8             # opacity downsample factor
+        clip_vmr   = 1e-8          # minimum VMR for inclusion
