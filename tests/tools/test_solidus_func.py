@@ -380,8 +380,12 @@ class TestFiquet2010:
         # Branch-wise smoothness: verify monotonic increase away from the 20 GPa split.
         low = P < 20.0
         high = P > 20.0
-        assert np.all(np.diff(T[low]) > 0.0), 'Low-pressure branch should increase with pressure'
-        assert np.all(np.diff(T[high]) > 0.0), 'High-pressure branch should increase with pressure'
+        assert np.all(np.diff(T[low]) > 0.0), (
+            'Low-pressure branch should increase with pressure'
+        )
+        assert np.all(np.diff(T[high]) > 0.0), (
+            'High-pressure branch should increase with pressure'
+        )
 
         # The implementation uses two branches that are not exactly continuous at 20 GPa.
         # Measure the one-sided jump from function output (left/right of the split):
