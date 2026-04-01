@@ -200,7 +200,7 @@ def determine_interior_radius_with_zalmoxis(
     # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
     # through entropy evolution, so the linear T initial guess is fine.
     _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-    _orig_temp_mode = config.interior_struct.zalmoxis.temperature_mode
+    _orig_temp_mode = config.planet.temperature_mode
     if (
         config.interior_energetics.module == 'spider'
         and _orig_temp_mode == 'isothermal'
@@ -210,7 +210,7 @@ def determine_interior_radius_with_zalmoxis(
             'Switching Zalmoxis temperature_mode from isothermal to adiabatic '
             'for SPIDER coupling with T-dependent mantle EOS',
         )
-        config.interior_struct.zalmoxis.temperature_mode = 'adiabatic'
+        config.planet.temperature_mode = 'adiabatic'
 
     # Request SPIDER mesh file if interior module is SPIDER
     num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
@@ -219,7 +219,7 @@ def determine_interior_radius_with_zalmoxis(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
     finally:
-        config.interior_struct.zalmoxis.temperature_mode = _orig_temp_mode
+        config.planet.temperature_mode = _orig_temp_mode
 
     # Store mesh file path for subsequent SPIDER calls
     if spider_mesh_file:
@@ -658,7 +658,6 @@ def update_structure_from_interior(
     log.info('Updating structure from interior T(r) via Zalmoxis (trigger: %s)', reason)
 
     outdir = dirs['output']
-    num_layers = config.interior_struct.zalmoxis.num_levels
 
     # Build SPIDER's mantle T(r) in ascending radius (CMB to surface)
     # interior_o.radius is basic nodes (surface to CMB), temp is staggered nodes

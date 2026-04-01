@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attr.validators import ge, in_
+from attr.validators import ge, gt, in_
 from attrs import define, field
 
 from ._converters import none_if_none
@@ -124,14 +124,33 @@ class GasPrs:
 
 @define
 class Planet:
-    """Bulk planet properties and initial volatile inventory.
+    """Bulk planet properties, initial temperature profile, and volatile inventory.
 
     Attributes
     ----------
     mass_tot: float
         Total planet mass (interior + atmosphere) in Earth masses [M_earth].
+    temperature_mode: str
+        How to set the initial temperature profile.
+        'isothermal': T = tsurf_init everywhere.
+        'linear': T from tsurf_init (surface) to center_temperature (center).
+        'adiabatic': integrate dT/dP|_S downward from tsurf_init.
+        'accretion': White & Li (2025) parameterization. Computes T from
+        accretion and differentiation energy. Requires Zalmoxis.
+    tsurf_init: float
+        Initial magma surface temperature [K]. Used by isothermal, linear,
+        and adiabatic modes. Ignored in accretion mode (computed by Zalmoxis).
+    center_temperature: float
+        Center temperature [K]. Used by linear mode (endpoint) and adiabatic
+        mode (initial guess). Ignored in isothermal and accretion modes.
+    f_accretion: float
+        Heat retention efficiency for accretion energy [0-1].
+        Only used in accretion mode. Default 0.04 (White & Li 2025).
+    f_differentiation: float
+        Heat retention efficiency for core-mantle differentiation energy [0-1].
+        Only used in accretion mode. Default 0.50 (White & Li 2025).
     volatile_mode: str
-        How to set the initial volatile inventory. Options: 'volatiles', 'elements'.
+        How to set the initial volatile inventory. Options: 'elements', 'gas_prs'.
     elements: Elements
         Parameters for setting volatile inventory by element abundances.
     gas_prs: GasPrs
@@ -143,6 +162,17 @@ class Planet:
         converter=none_if_none,
     )
 
+    # Initial temperature profile
+    temperature_mode: str = field(
+        default='adiabatic',
+        validator=in_(('isothermal', 'linear', 'adiabatic', 'accretion')),
+    )
+    tsurf_init: float = field(default=4000.0, validator=gt(0))
+    center_temperature: float = field(default=6000.0, validator=gt(0))
+    f_accretion: float = field(default=0.04, validator=ge(0))
+    f_differentiation: float = field(default=0.50, validator=ge(0))
+
+    # Initial volatile inventory
     volatile_mode: str = field(default='elements', validator=in_(('elements', 'gas_prs')))
     elements: Elements = field(factory=Elements)
     gas_prs: GasPrs = field(factory=GasPrs)

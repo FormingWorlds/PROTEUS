@@ -346,7 +346,7 @@ def test_mesh_convergence_trigger():
     config.interior_struct.update_dphi_abs = 0.05
     config.interior_struct.mesh_max_shift = 0.05
     config.interior_struct.mesh_convergence_interval = 10.0
-    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.num_levels = 50
     config.interior_energetics.module = 'spider'
 
@@ -919,7 +919,7 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior_energetics.rfront_wid = 0.15
     config.interior_energetics.num_levels = 50
     config.interior_energetics.num_tolerance = 1e-4
-    config.interior_energetics.tsurf_init = 4000.0
+    config.planet.tsurf_init = 4000.0
     config.interior_energetics.kappah_floor = 0.0
     config.interior_energetics.flux_guess = -1
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'

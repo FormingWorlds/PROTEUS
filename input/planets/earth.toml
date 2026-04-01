@@ -97,7 +97,6 @@ version = "2.0"
         mantle_cp  = 2000.0
 
     [interior_energetics.spider]
-        ini_entropy = 2900.0
 
 [outgas]
     fO2_shift_IW    = 4

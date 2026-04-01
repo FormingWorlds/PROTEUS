@@ -101,15 +101,6 @@ class Zalmoxis:
         Required for 3-layer models (with ice layer) and for T-dependent
         2-layer models (WolfBower2018, RTPress100TPa) where it partitions
         mass between core and mantle layers.
-    temperature_mode: str
-        Choice of input temperature profile: "isothermal", "linear",
-        "prescribed", "adiabatic".
-    surface_temperature: float
-        Surface temperature (K), required for temperature_mode="isothermal",
-        "linear", or "adiabatic", ignored otherwise.
-    center_temperature: float
-        Center temperature (K), required for temperature_mode="linear"
-        or "adiabatic" (initial guess), ignored otherwise.
     num_levels: int
         Number of Zalmoxis radius layers.
     """
@@ -121,12 +112,6 @@ class Zalmoxis:
     mushy_zone_factor: float = field(default=0.8, validator=(ge(0.7), le(1.0)))
 
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
-    temperature_mode: str = field(
-        default='isothermal',
-        validator=in_(('isothermal', 'linear', 'adiabatic')),
-    )
-    surface_temperature: float = field(default=3500, validator=ge(0))
-    center_temperature: float = field(default=6000, validator=ge(0))
 
     num_levels: int = field(default=150)
 

@@ -90,9 +90,6 @@ version = "2.0"
         ice_layer_eos = "none"
         mushy_zone_factor          = 0.8
         mantle_mass_fraction       = 0
-        temperature_mode           = "adiabatic"
-        surface_temperature        = 4000
-        center_temperature         = 6000
 
 [atmos_clim]
     surf_state      = "skin"

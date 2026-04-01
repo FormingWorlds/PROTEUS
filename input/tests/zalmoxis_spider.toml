@@ -74,9 +74,6 @@ version = "2.0"
         mantle_eos                 = "WolfBower2018:MgSiO3"
         ice_layer_eos = "none"
         mantle_mass_fraction       = 0
-        temperature_mode           = "adiabatic"
-        surface_temperature        = 3500
-        center_temperature         = 6000
 
 [atmos_clim]
     surf_state = "fixed"
@@ -103,7 +100,6 @@ version = "2.0"
     rfront_wid    = 0.2
 
     [interior_energetics.spider]
-        ini_entropy  = 3000.0
         ini_dsdr     = -4.698e-6
         mixing_length = 2
         tolerance_rel = 1e-8

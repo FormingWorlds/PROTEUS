@@ -56,7 +56,7 @@ def run_dummy_int(
     # Physical parameters
     tmp_liq = config.interior_energetics.dummy.mantle_tliq  # Liquidus
     tmp_sol = config.interior_energetics.dummy.mantle_tsol  # Solidus
-    tmp_init = config.interior_energetics.tsurf_init  # Initial magma temperature
+    tmp_init = config.planet.tsurf_init  # Initial magma temperature
     area = 4 * np.pi * hf_row['R_int'] ** 2
 
     # Get mantle melt fraction as a function of temperature

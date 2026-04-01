@@ -165,7 +165,6 @@ rfront_loc = 0.5
 rfront_wid = 0.2
 
 [interior_energetics.spider]
-ini_entropy = 3900.0
 ini_dsdr = -4.698e-06
 num_levels = 150
 mixing_length = 2
@@ -176,7 +175,6 @@ tsurf_atol = 10.0
 tsurf_rtol = 0.02
 
 [interior_energetics.dummy]
-tsurf_init = 3300.0
 tmagma_atol = 30.0
 tmagma_rtol = 0.05
 mantle_tliq = 2700.0

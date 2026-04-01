@@ -45,7 +45,7 @@ def _mock_config(
     config.interior_struct.update_dphi_abs = update_dphi_abs
     config.interior_struct.mesh_max_shift = mesh_max_shift
     config.interior_struct.mesh_convergence_interval = mesh_convergence_interval
-    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.num_levels = num_levels
     config.interior_energetics.module = 'spider'
     config.interior_energetics.spider.num_levels = num_levels
@@ -598,7 +598,7 @@ def test_determine_zalmoxis_spider_mesh(tmp_path):
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
     config.interior_energetics.spider.num_levels = 50
-    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
@@ -632,7 +632,7 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
     config.interior_energetics.spider.num_levels = 50
-    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
@@ -651,7 +651,7 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
 
     # Mode should be restored after the call
-    assert config.interior_struct.zalmoxis.temperature_mode == 'isothermal'
+    assert config.planet.temperature_mode == 'isothermal'
     assert any('adiabatic' in r.message for r in caplog.records)
     # No mesh file → no spider_mesh key
     assert 'spider_mesh' not in dirs
@@ -667,7 +667,7 @@ def test_determine_zalmoxis_no_adiabatic_switch_non_tdep():
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'Seager2007'
     config.interior_energetics.spider.num_levels = 50
-    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
 
     dirs = {'spider': '/nonexistent/spider'}
@@ -685,7 +685,7 @@ def test_determine_zalmoxis_no_adiabatic_switch_non_tdep():
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
 
     # Should not have been changed
-    assert config.interior_struct.zalmoxis.temperature_mode == 'isothermal'
+    assert config.planet.temperature_mode == 'isothermal'
 
 
 @pytest.mark.unit

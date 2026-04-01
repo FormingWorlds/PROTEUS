@@ -98,18 +98,7 @@ class Proteus:
         float
             Initial magma ocean surface temperature [K].
         """
-        mod = self.config.interior_energetics.module
-        if mod == 'aragog':
-            T = self.config.interior_energetics.tsurf_init
-        elif mod == 'spider':
-            # SPIDER uses ini_entropy, not tsurf_init. Use a representative
-            # value based on typical magma ocean temperatures.
-            T = 3000.0
-        elif mod == 'dummy':
-            T = self.config.interior_energetics.tsurf_init
-        else:
-            T = 3000.0
-        return float(T) if T and T > 0 else 3000.0
+        return float(self.config.planet.tsurf_init)
 
     def init_directories(self):
         """Initialize directories dictionary"""
@@ -308,13 +297,13 @@ class Proteus:
 
             # Validate cross-config constraints
             if (
-                self.config.interior_energetics.initial_thermal_state == 'self_consistent'
+                self.config.planet.temperature_mode == 'accretion'
                 and self.config.interior_struct.module == 'spider'
             ):
                 raise ValueError(
-                    "initial_thermal_state='self_consistent' requires "
-                    "struct.module='zalmoxis' (needs Zalmoxis structure for "
-                    "gravitational energy computation)"
+                    "temperature_mode='accretion' requires "
+                    "interior_struct.module='zalmoxis' (needs Zalmoxis "
+                    "structure for gravitational energy computation)"
                 )
 
             # Solve interior structure

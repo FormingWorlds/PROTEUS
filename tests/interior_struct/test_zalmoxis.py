@@ -200,9 +200,9 @@ def test_zalmoxis_config_with_ice_layer():
     config.interior_struct.zalmoxis.ice_layer_eos = 'Seager2007:water'
     config.interior_struct.core_frac = 0.325
     config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
-    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
-    config.interior_struct.zalmoxis.surface_temperature = 300
-    config.interior_struct.zalmoxis.center_temperature = 5000
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.tsurf_init = 300
+    config.planet.center_temperature = 5000
     config.interior_struct.zalmoxis.num_levels = 200
 
     hf_row = {
@@ -226,9 +226,9 @@ def test_zalmoxis_config_no_ice_layer():
     config.interior_struct.zalmoxis.ice_layer_eos = None
     config.interior_struct.core_frac = 0.325
     config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
-    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
-    config.interior_struct.zalmoxis.surface_temperature = 300
-    config.interior_struct.zalmoxis.center_temperature = 5000
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.tsurf_init = 300
+    config.planet.center_temperature = 5000
     config.interior_struct.zalmoxis.num_levels = 200
 
     hf_row = {

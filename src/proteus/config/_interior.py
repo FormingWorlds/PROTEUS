@@ -8,10 +8,6 @@ def valid_spider(instance, attribute, value):
     if instance.module != 'spider':
         return
 
-    ini_entropy = instance.spider.ini_entropy
-    if (not ini_entropy) or (ini_entropy <= 200.0):
-        raise ValueError('`interior.spider.ini_entropy` must be >200')
-
     # at least one energy term enabled
     if not (
         instance.trans_conduction
@@ -41,8 +37,6 @@ class Spider:
         Absolute tolerance on change in T_mantle during a single interior iteration.
     tsurf_rtol: float
         Relative tolerance on change in T_mantle during a single interior iteration.
-    ini_entropy: float
-        Initial specific surface entropy [J K-1 kg-1].
     ini_dsdr: float
         Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     solver_type: str
@@ -51,7 +45,7 @@ class Spider:
         Window width, in melt-fraction, for smoothing properties across liquidus and solidus
     """
 
-    ini_entropy = field(default=None)
+    ini_entropy: float = field(default=3200.0, validator=gt(200.0))
     ini_dsdr: float = field(default=-4.698e-6, validator=lt(0))
     mixing_length: int = field(default=2, validator=in_((1, 2)))
     tolerance_rel: float = field(default=1e-10, validator=gt(0))
@@ -228,21 +222,6 @@ class Interior:
         Centre of rheological transition in terms of melt fraction
     rfront_wid: float
         Width of rheological transition in terms of melt fraction
-    initial_thermal_state: str
-        Mode for setting the initial surface temperature.
-        'fixed': use tsurf_init from solver config (default).
-        'self_consistent': compute from accretion + differentiation energy
-        budget following White+Li (2025). Requires struct.module = 'zalmoxis'.
-    thermal_state_T_eq: float
-        Radiative equilibrium temperature [K] for self-consistent mode.
-    thermal_state_f_accretion: float
-        Heat retention efficiency for accretion energy [0-1].
-    thermal_state_f_differentiation: float
-        Heat retention efficiency for differentiation energy [0-1].
-    thermal_state_C_iron: float
-        Specific heat capacity of iron [J/kg/K].
-    thermal_state_C_silicate: float
-        Specific heat capacity of silicate [J/kg/K].
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -266,7 +245,6 @@ class Interior:
     """
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
-    tsurf_init: float = field(default=3300.0, validator=gt(200))
     num_levels: int = field(default=100, validator=ge(40))
     num_tolerance: float = field(default=1e-10, validator=gt(0))
     trans_conduction: bool = field(default=True)
@@ -290,20 +268,6 @@ class Interior:
 
     rfront_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
-
-    # Initial thermal state mode:
-    #   'fixed': use tsurf_init from the solver config (current default)
-    #   'self_consistent': compute from accretion + differentiation energy
-    #                      budget (White+Li 2025). Requires struct.module = 'zalmoxis'.
-    initial_thermal_state: str = field(
-        default='fixed', validator=in_(('fixed', 'self_consistent'))
-    )
-    # Parameters for self-consistent thermal state (ignored when 'fixed'):
-    thermal_state_T_eq: float = field(default=255.0, validator=gt(0))
-    thermal_state_f_accretion: float = field(default=0.04, validator=ge(0))
-    thermal_state_f_differentiation: float = field(default=0.50, validator=ge(0))
-    thermal_state_C_iron: float = field(default=450.0, validator=gt(0))  # Dulong-Petit (White+Li 2025)
-    thermal_state_C_silicate: float = field(default=1250.0, validator=gt(0))  # Dulong-Petit (White+Li 2025)
 
     # Phase-dependent eddy diffusivity floor [m^2/s]. Default 0 = standard MLT.
     # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from

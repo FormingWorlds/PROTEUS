@@ -239,7 +239,7 @@ def _create_mock_config(
 ) -> Any:
     """Helper to create minimal Config mock for interior tests."""
     config = MagicMock()
-    config.interior_energetics.tsurf_init = tsurf_init
+    config.planet.tsurf_init = tsurf_init
     config.interior_energetics.dummy.mantle_tliq = mantle_tliq
     config.interior_energetics.dummy.mantle_tsol = mantle_tsol
     config.interior_energetics.dummy.mantle_cp = mantle_cp

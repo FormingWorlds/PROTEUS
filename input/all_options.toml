@@ -83,10 +83,19 @@
 
 # ----------------------------------------------------
 
-# Bulk planet properties and initial volatile inventory
+# Bulk planet properties, initial temperature, and volatile inventory
 [planet]
-    mass_tot         = 1.0         # total initial planet mass [M_earth]
-    volatile_mode    = 'elements'  # set volatile inventory by: 'elements' | 'gas_prs'
+    mass_tot            = 1.0         # total initial planet mass [M_earth]
+
+    # Initial temperature profile
+    temperature_mode    = "adiabatic" # isothermal | linear | adiabatic | accretion
+    tsurf_init          = 4000        # initial surface temperature [K] (isothermal/linear/adiabatic)
+    center_temperature  = 6000        # center temperature [K] (linear: endpoint; adiabatic: guess)
+    f_accretion         = 0.04        # accretion heat retention [0-1] (accretion mode, White & Li 2025)
+    f_differentiation   = 0.50        # differentiation heat retention [0-1] (accretion mode)
+
+    # Initial volatile inventory
+    volatile_mode       = 'elements'  # set volatile inventory by: 'elements' | 'gas_prs'
 
     # Element abundances (used when volatile_mode = 'elements')
     # For each element: set XH_ratio (mass ratio to H), X_ppmw, or X_kg.
@@ -202,14 +211,10 @@
         core_eos                   = "PALEOS:iron"   # "<source>:<material>", recommended: "PALEOS:iron"
         mantle_eos                 = "PALEOS:MgSiO3" # "<source>:<material>", recommended: "PALEOS:MgSiO3"
         ice_layer_eos              = "none"          # same as the two above; "none" = 2-layer model (core+mantle)
-        temperature_mode           = "adiabatic"     # isothermal | linear | adiabatic
-        surface_temperature        = 3500            # [K]
-        center_temperature         = 6000            # [K] (initial guess for adiabatic)
 
 # Interior energy transport (magma ocean evolution)
 [interior_energetics]
     module          = "spider"     # spider | aragog | dummy
-    tsurf_init      = 3300.0       # initial surface temperature [K]
 
     # ── Dummy module ─────────────────────────────────────────────────
     [interior_energetics.dummy]
@@ -259,7 +264,7 @@
         solver_type          = "bdf"       # SUNDIALS method: adams | bdf
         tsurf_atol           = 20.0        # max absolute T_surf change per step [K]
         tsurf_rtol           = 0.02        # max relative T_surf change per step
-        ini_entropy          = 3000.0      # initial entropy [J kg-1 K-1]
+        ini_entropy          = 3200.0      # initial entropy [J kg-1 K-1] (~4000 K surface)
         ini_dsdr             = -4.698e-6   # initial entropy gradient [J kg-1 K-1 m-1]
         matprop_smooth_width = 1e-2        # material property smoothing (melt fraction)
 

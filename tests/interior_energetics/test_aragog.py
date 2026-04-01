@@ -42,7 +42,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.heat_tidal = False
     config.interior_energetics.aragog.initial_condition = 1
     config.interior_energetics.aragog.init_file = 'dummy.txt'
-    config.interior_energetics.tsurf_init = 4000.0
+    config.planet.tsurf_init = 4000.0
     config.interior_energetics.aragog.basal_temperature = 5000.0
     config.interior_energetics.num_tolerance = 1e-4
     config.interior_energetics.aragog.tsurf_poststep_change = 100.0

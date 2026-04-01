@@ -633,31 +633,20 @@ def test_orbit_phi_tide_value_bounds():
 
 @pytest.mark.unit
 def test_interior_spider_entropy_minimum():
-    """Test SPIDER validator requires minimum initial entropy."""
-    from proteus.config._interior import valid_spider
+    """Test SPIDER ini_entropy field rejects values <= 200."""
+    from proteus.config._interior import Spider
 
-    # Valid entropy
-    config = SimpleNamespace(
-        module='spider',
-        trans_conduction=True,
-        trans_convection=True,
-        trans_mixing=False,
-        trans_grav_sep=False,
-        spider=SimpleNamespace(ini_entropy=250.0),
-    )
-
-    # Should not raise error
-    valid_spider(config, SimpleNamespace(), None)
+    # Valid entropy - should not raise
+    s = Spider(ini_entropy=250.0)
+    assert s.ini_entropy == 250.0
 
     # Entropy = 200.0 - invalid (must be > 200)
-    config.spider.ini_entropy = 200.0
-    with pytest.raises(ValueError, match='ini_entropy.*must be >200'):
-        valid_spider(config, SimpleNamespace(), None)
+    with pytest.raises((ValueError, TypeError)):
+        Spider(ini_entropy=200.0)
 
-    # Entropy = None - invalid
-    config.spider.ini_entropy = None
-    with pytest.raises(ValueError, match='ini_entropy.*must be >200'):
-        valid_spider(config, SimpleNamespace(), None)
+    # Entropy = 100.0 - invalid
+    with pytest.raises((ValueError, TypeError)):
+        Spider(ini_entropy=100.0)
 
 
 @pytest.mark.unit

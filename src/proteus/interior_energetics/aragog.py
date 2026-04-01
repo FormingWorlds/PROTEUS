@@ -237,7 +237,7 @@ class AragogRunner:
         # When initial_thermal_state = 'self_consistent', Zalmoxis computes
         # T_surface from accretion + differentiation energy (White+Li 2025)
         # and passes it via hf_row. This overrides the config tsurf_init.
-        tsurf_init = config.interior_energetics.tsurf_init
+        tsurf_init = config.planet.tsurf_init
         T_surface_computed = hf_row.get('T_surface_initial', 0)
         if T_surface_computed and T_surface_computed > 0:
             logger.info(
@@ -576,7 +576,7 @@ class AragogRunner:
             solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
-            tsurf_init = config.interior_energetics.tsurf_init
+            tsurf_init = config.planet.tsurf_init
             T_surface_computed = interior_o.__dict__.get('T_surface_initial', 0)
             if T_surface_computed and T_surface_computed > 0:
                 tsurf_init = T_surface_computed
@@ -684,7 +684,7 @@ class AragogRunner:
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
             # Compute PROTEUS-side entropy-inverted profile
-            T_surf = config.interior_energetics.tsurf_init
+            T_surf = config.planet.tsurf_init
             solver = interior_o.aragog_solver
             # Get Aragog's basic node pressures and temperatures
             P_basic = solver.evaluator.mesh.basic_pressure[:, -1]

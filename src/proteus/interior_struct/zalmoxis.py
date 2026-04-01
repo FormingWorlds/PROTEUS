@@ -284,9 +284,14 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'core_mass_fraction': config.interior_struct.core_frac,
         'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
-        'temperature_mode': config.interior_struct.zalmoxis.temperature_mode,
-        'surface_temperature': config.interior_struct.zalmoxis.surface_temperature,
-        'center_temperature': config.interior_struct.zalmoxis.center_temperature,
+        # For the structure solve, 'accretion' mode uses 'adiabatic' internally
+        # (White+Li computes T after the structure converges)
+        'temperature_mode': (
+            'adiabatic' if config.planet.temperature_mode == 'accretion'
+            else config.planet.temperature_mode
+        ),
+        'surface_temperature': config.planet.tsurf_init,
+        'center_temperature': config.planet.center_temperature,
         'temp_profile_file': None,
         'layer_eos_config': layer_eos_config,
         'mushy_zone_factor': mzf,
@@ -876,7 +881,7 @@ def zalmoxis_solver(
     )
 
     # Self-consistent initial thermal state (White+Li 2025, Boujibar+2020)
-    if config.interior_energetics.initial_thermal_state == 'self_consistent':
+    if config.planet.temperature_mode == 'accretion':
         from zalmoxis.energetics import initial_thermal_state
 
         cmf = config.interior_struct.core_frac
@@ -889,8 +894,8 @@ def zalmoxis_solver(
         nabla_ad_func = None
         cp_iron_func = None
         cp_silicate_func = None
-        C_iron = config.interior_energetics.thermal_state_C_iron
-        C_silicate = config.interior_energetics.thermal_state_C_silicate
+        C_iron = 450.0
+        C_silicate = 1250.0
 
         if 'PALEOS' in mantle_eos:
             try:
@@ -967,9 +972,9 @@ def zalmoxis_solver(
         thermal = initial_thermal_state(
             model_results,
             core_mass_fraction=cmf,
-            T_radiative_eq=config.interior_energetics.thermal_state_T_eq,
-            f_accretion=config.interior_energetics.thermal_state_f_accretion,
-            f_differentiation=config.interior_energetics.thermal_state_f_differentiation,
+            T_radiative_eq=hf_row.get('T_eqm', 255.0),
+            f_accretion=config.planet.f_accretion,
+            f_differentiation=config.planet.f_differentiation,
             C_iron=C_iron,
             C_silicate=C_silicate,
             nabla_ad_func=nabla_ad_func,
@@ -978,6 +983,8 @@ def zalmoxis_solver(
         )
         hf_row['T_cmb_initial'] = thermal['T_cmb']
         hf_row['T_surf_accr'] = thermal['T_surf_accr']
+        # Key consumed by Aragog setup_solver and _set_entropy_ic
+        hf_row['T_surface_initial'] = thermal['T_surf_accr']
         hf_row['U_grav_diff'] = thermal['U_differentiated']
         hf_row['U_grav_undiff'] = thermal['U_undifferentiated']
         hf_row['DeltaT_accretion'] = thermal['Delta_T_accretion']
