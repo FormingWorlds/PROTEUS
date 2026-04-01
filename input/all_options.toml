@@ -11,21 +11,18 @@
 # ----------------------------------------------------
 
 # The general structure is:
-#   [params]        parameters for code execution, output files, time-stepping, convergence
-#   [star]          stellar parameters, model selection
-#   [orbit]         planetary orbital parameters
-#
-[planet]
-    planet_mass_tot = 1.0          # M_earth
-
-[interior_struct]        planetary structure (mass, radius)
-#   [atmos_clim]    atmosphere climate parameters, model selection
-#   [atmos_chem]    atmosphere chemistry parameters, model selection
-#   [escape]        escape parameters, model selection
-#   [interior_energetics]      magma ocean model selection and parameters
-#   [outgas]        outgassing parameters (fO2) and included volatiles
-#   [delivery]      initial volatile inventory, and delivery model selection
-#   [observe]       synthetic observations
+#   [params]              code execution, output files, time-stepping, convergence
+#   [planet]              bulk planet properties (mass)
+#   [star]                stellar parameters, model selection
+#   [orbit]               planetary orbital parameters
+#   [interior_struct]     planetary structure (radius, composition, Zalmoxis)
+#   [interior_energetics] magma ocean model selection and parameters
+#   [atmos_clim]          atmosphere climate parameters, model selection
+#   [atmos_chem]          atmosphere chemistry parameters, model selection
+#   [escape]              escape parameters, model selection
+#   [outgas]              outgassing parameters (fO2) and included volatiles
+#   [delivery]            initial volatile inventory, and delivery model selection
+#   [observe]             synthetic observations
 
 # ----------------------------------------------------
 
@@ -104,6 +101,11 @@ version = "2.0"
             spin_enabled  = true
             offset_spin   = 0 # correction to calculated Breakup period [s]
 
+
+# ----------------------------------------------------
+# Bulk planet properties
+[planet]
+    planet_mass_tot = 1.0       # Total planet mass [M_earth]
 
 # ----------------------------------------------------
 # Star
@@ -206,6 +208,60 @@ version = "2.0"
         verbose                    = false                          # detailed convergence info and warnings printing?
         iteration_profiles_enabled = false                          # pressure and density profiles for each iteration logging?
 
+# Interior energetics - physics table
+[interior_energetics]
+    # ── Universal parameters (all modules) ────────────────────────────
+    module          = "spider"       # Which interior module: "spider", "aragog", "dummy"
+    tsurf_init      = 3300.0         # Initial surface temperature [K]
+
+    # ── Dummy module (simple parameterized interior) ──────────────────
+    [interior_energetics.dummy]
+        mantle_tliq     = 2700.0    # Liquidus temperature [K]
+        mantle_tsol     = 1700.0    # Solidus temperature [K]
+        mantle_rho      = 4550.0    # Mantle density [kg m-3]
+        mantle_cp       = 1792.0    # Mantle heat capacity [J K-1 kg-1]
+        tmagma_atol     = 30.0      # Max absolute Tsurf change in each step [K]
+        tmagma_rtol     = 0.05      # Max relative Tsurf change in each step
+        heat_internal   = 0.0       # Internal heating rate [W/kg] (e.g., radiogenic, tidal)
+
+    # ── Shared parameters (Aragog + SPIDER) ───────────────────────────
+    num_levels          = 100            # Number of radial grid levels
+    num_tolerance       = 1.0e-8         # Solver absolute tolerance
+    trans_conduction    = true           # Enable conductive heat transfer
+    trans_convection    = true           # Enable convective heat transfer (MLT)
+    trans_grav_sep      = true           # Enable gravitational separation of melt/solid
+    trans_mixing        = true           # Enable chemical mixing flux
+    heat_radiogenic     = false          # Enable radiogenic heat production
+    heat_tidal          = false          # Enable tidal heat production
+    rfront_loc          = 0.6            # Centre of rheological transition (melt fraction)
+    rfront_wid          = 0.2            # Width of rheological transition (melt fraction)
+    grain_size          = 0.1            # Crystal settling grain size [m]
+    flux_guess          = -1             # Initial F_atm guess [W m-2]; <0 = sigma*T^4, 0 = zero, >0 = prescribed
+
+    # ── Aragog-only parameters ────────────────────────────────────────
+    [interior_energetics.aragog]
+        initial_condition        = 3        # Initial T(P): 1=linear, 2=from file, 3=adiabat
+        basal_temperature        = 7000.0   # CMB temperature [K] (if initial_condition=1)
+        inner_boundary_condition = 1        # CMB BC: 1=core cooling, 2=prescribed flux, 3=prescribed T
+        inner_boundary_value     = 4000     # CMB BC value [K or W/m^2, depends on inner_boundary_condition]
+        dilatation               = false    # Enable dilatation source term
+        mass_coordinates         = false    # Use mass coordinates for mesh spacing
+        tsurf_poststep_change    = 30       # Max surface T change per step [K]
+        event_triggering         = true     # Stop solver on large T_surf jumps
+        bulk_modulus             = 260e9    # Adams-Williamson bulk modulus [Pa]
+        jax                      = false    # Use JAX/diffrax solver backend (requires jax, equinox, diffrax)
+
+    # ── SPIDER-only parameters ────────────────────────────────────────
+    [interior_energetics.spider]
+        mixing_length            = 2        # Mixing length: 1=nearest boundary, 2=constant D/4
+        tolerance_rel            = 1.0e-8   # SUNDIALS relative tolerance
+        solver_type              = "bdf"    # SUNDIALS solver method
+        tsurf_atol               = 20.0     # Max surface T change per step [K]
+        tsurf_rtol               = 0.02     # Max relative surface T change per step
+        ini_entropy              = 3000.0   # Initial entropy [J/kg/K] (overridden by tsurf_init when using PALEOS)
+        ini_dsdr                 = -4.698e-6 # Initial entropy gradient [J/kg/K/m]
+        matprop_smooth_width     = 1e-2     # Material property smoothing width (melt fraction)
+
 # Atmosphere - physics table
 [atmos_clim]
     prevent_warming = true      # do not allow the planet to heat up
@@ -302,60 +358,6 @@ version = "2.0"
         kappa_H2S = 1.0             # H2S opacity ^
         kappa_SO2 = 1.0             # SO2 opacity ^
         kappa_S2  = 1.0             # S2  opacity ^
-
-# Interior - physics table
-[interior_energetics]
-    # ── Universal parameters (all modules) ────────────────────────────
-    module          = "spider"       # Which interior module: "spider", "aragog", "dummy"
-    tsurf_init      = 3300.0         # Initial surface temperature [K]
-
-    # ── Dummy module (simple parameterized interior) ──────────────────
-    [interior_energetics.dummy]
-        mantle_tliq     = 2700.0    # Liquidus temperature [K]
-        mantle_tsol     = 1700.0    # Solidus temperature [K]
-        mantle_rho      = 4550.0    # Mantle density [kg m-3]
-        mantle_cp       = 1792.0    # Mantle heat capacity [J K-1 kg-1]
-        tmagma_atol     = 30.0      # Max absolute Tsurf change in each step [K]
-        tmagma_rtol     = 0.05      # Max relative Tsurf change in each step
-        heat_internal   = 0.0       # Internal heating rate [W/kg] (e.g., radiogenic, tidal)
-
-    # ── Shared parameters (Aragog + SPIDER) ───────────────────────────
-    num_levels          = 100            # Number of radial grid levels
-    num_tolerance       = 1.0e-8         # Solver absolute tolerance
-    trans_conduction    = true           # Enable conductive heat transfer
-    trans_convection    = true           # Enable convective heat transfer (MLT)
-    trans_grav_sep      = true           # Enable gravitational separation of melt/solid
-    trans_mixing        = true           # Enable chemical mixing flux
-    heat_radiogenic       = false          # Enable radiogenic heat production
-    heat_tidal          = false          # Enable tidal heat production
-    rfront_loc          = 0.6            # Centre of rheological transition (melt fraction)
-    rfront_wid          = 0.2            # Width of rheological transition (melt fraction)
-    grain_size          = 0.1            # Crystal settling grain size [m]
-    flux_guess          = -1              # Initial F_atm guess [W m-2]; <0 = sigma*T^4, 0 = zero, >0 = prescribed
-
-    # ── Aragog-only parameters ────────────────────────────────────────
-    [interior_energetics.aragog]
-        initial_condition        = 3        # Initial T(P): 1=linear, 2=from file, 3=adiabat
-        basal_temperature        = 7000.0   # CMB temperature [K] (if initial_condition=1)
-        inner_boundary_condition = 1        # CMB BC: 1=core cooling, 2=prescribed flux, 3=prescribed T
-        inner_boundary_value     = 4000     # CMB BC value [K or W/m^2, depends on inner_boundary_condition]
-        dilatation               = false    # Enable dilatation source term
-        mass_coordinates         = false    # Use mass coordinates for mesh spacing
-        tsurf_poststep_change    = 30       # Max surface T change per step [K]
-        event_triggering         = true     # Stop solver on large T_surf jumps
-        bulk_modulus             = 260e9    # Adams-Williamson bulk modulus [Pa]
-        jax                      = false    # Use JAX/diffrax solver backend (requires jax, equinox, diffrax)
-
-    # ── SPIDER-only parameters ────────────────────────────────────────
-    [interior_energetics.spider]
-        mixing_length            = 2        # Mixing length: 1=nearest boundary, 2=constant D/4
-        tolerance_rel            = 1.0e-8   # SUNDIALS relative tolerance
-        solver_type              = "bdf"    # SUNDIALS solver method
-        tsurf_atol               = 20.0     # Max surface T change per step [K]
-        tsurf_rtol               = 0.02     # Max relative surface T change per step
-        ini_entropy              = 3000.0   # Initial entropy [J/kg/K] (overridden by tsurf_init when using PALEOS)
-        ini_dsdr                 = -4.698e-6 # Initial entropy gradient [J/kg/K/m]
-        matprop_smooth_width     = 1e-2     # Material property smoothing width (melt fraction)
 
 # Outgassing - physics table
 [outgas]
