@@ -79,7 +79,7 @@ class Elements:
 
 
 @define
-class Volatiles:
+class GasPrs:
     """Initial volatile inventory set by partial pressures in atmosphere.
 
     Attributes
@@ -134,7 +134,7 @@ class Planet:
         How to set the initial volatile inventory. Options: 'volatiles', 'elements'.
     elements: Elements
         Parameters for setting volatile inventory by element abundances.
-    volatiles: Volatiles
+    gas_prs: GasPrs
         Parameters for setting volatile inventory by partial pressures.
     """
 
@@ -143,6 +143,6 @@ class Planet:
         converter=none_if_none,
     )
 
-    volatile_mode: str = field(default='elements', validator=in_(('elements', 'volatiles')))
+    volatile_mode: str = field(default='elements', validator=in_(('elements', 'gas_prs')))
     elements: Elements = field(factory=Elements)
-    volatiles: Volatiles = field(factory=Volatiles)
+    gas_prs: GasPrs = field(factory=GasPrs)

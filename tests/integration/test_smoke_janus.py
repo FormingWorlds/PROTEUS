@@ -150,7 +150,7 @@ version = "2.0"
     radio_K = 0.0
     radio_U = 0.0
     radio_Th = 0.0
-    [delivery.volatiles]
+    [delivery.gas_prs]
         H2O = 100.0
         CO2 = 10.0
         N2 = 0.0

@@ -336,7 +336,7 @@ class Proteus:
             inc_gases = []
             for s in vol_list:
                 if s != 'O2':
-                    pp_val = self.config.planet.volatiles.get_pressure(s)
+                    pp_val = self.config.planet.gas_prs.get_pressure(s)
                     include = self.config.outgas.calliope.is_included(s)
                 else:
                     pp_val = 0.0
@@ -358,7 +358,7 @@ class Proteus:
                 write = '    '
                 write += 'vapour  ' if s in vap_list else 'volatile'
                 write += '  %-8s' % s
-                if self.config.planet.volatile_mode == 'volatiles':
+                if self.config.planet.volatile_mode == 'gas_prs':
                     write += ' : %6.2f bar' % self.hf_row[s + '_bar']
                 log.info(write)
 

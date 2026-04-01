@@ -210,7 +210,7 @@ N_ppmw = 0.0
 SH_ratio = 2.0
 S_ppmw = 0.0
 
-[planet.volatiles]
+[planet.gas_prs]
 H2O = 20.0
 CO2 = 30.0
 N2 = 0.0

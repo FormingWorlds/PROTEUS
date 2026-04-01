@@ -222,7 +222,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mass of melt
 
     # Set initial volatile inventory by partial pressures in atmosphere
-    [planet.volatiles]
+    [planet.gas_prs]
         H2O  = 0.0           # partial pressure of H2O
         CO2  = 0.0          # partial pressure of CO2
         N2   = 0.0          # etc

@@ -86,7 +86,7 @@
 # Bulk planet properties and initial volatile inventory
 [planet]
     mass_tot         = 1.0         # total initial planet mass [M_earth]
-    volatile_mode    = 'elements'  # how inventory is set: 'elements' | 'volatiles'
+    volatile_mode    = 'elements'  # how inventory is set: 'elements' | 'gas_prs'
 
     # Element abundances (used when volatile_mode = 'elements')
     # For each element: set XH_ratio (mass ratio to H), X_ppmw, or X_kg.
@@ -111,8 +111,8 @@
         # S_ppmw    = 2.0          # S inventory [ppmw of mantle]
         # S_kg      = 1e20         # S inventory [kg]
 
-    # Partial pressures (used when volatile_mode = 'volatiles') [bar]
-    [planet.volatiles]
+    # Partial pressures (used when volatile_mode = 'gas_prs') [bar]
+    [planet.gas_prs]
         H2O = 20.0
         CO2 = 30.0
         N2  = 0.0

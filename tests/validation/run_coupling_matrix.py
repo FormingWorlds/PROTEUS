@@ -275,8 +275,8 @@ def main():
         filters['interior'] = [args.interior]
     if args.outgas:
         filters['outgas'] = [args.outgas]
-    if args.volatiles:
-        filters['volatiles'] = [args.volatiles]
+    if args.gas_prs:
+        filters['volatiles'] = [args.gas_prs]
 
     # Generate configs
     cases = generate_all_configs(args.base_toml, args.output_dir, filters)

@@ -29,7 +29,7 @@ from proteus.config._converters import none_if_none
 from proteus.config._interior import valid_aragog, valid_interiordummy, valid_spider
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
-from proteus.config._planet import Volatiles
+from proteus.config._planet import GasPrs
 
 PATHS = chain(
     (PROTEUS_ROOT / 'input').glob('*.toml'),
@@ -110,7 +110,7 @@ def test_calliope_is_included():
 @pytest.mark.unit
 def test_delivery_get_pressure():
     """Volatile partial pressure lookup succeeds for known keys and errors otherwise."""
-    conf = Volatiles(N2=123.0)
+    conf = GasPrs(N2=123.0)
     assert conf.get_pressure('N2') == 123.0
     with pytest.raises(AttributeError):
         conf.get_pressure('fails')

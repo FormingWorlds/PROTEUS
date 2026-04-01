@@ -50,7 +50,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     # Volatile inventory
     for s in vol_list:
         if s != 'O2':
-            pressure = config.planet.volatiles.get_pressure(s)
+            pressure = config.planet.gas_prs.get_pressure(s)
             included = config.outgas.calliope.is_included(s)
         else:
             pressure = 0.0
@@ -64,7 +64,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
             raise ValueError(f'Missing required volatile {s}')
 
     # Set by volatiles?
-    if config.planet.volatile_mode == 'volatiles':
+    if config.planet.volatile_mode == 'gas_prs':
         return solvevol_inp
 
     # Calculate hydrogen inventory...
