@@ -62,6 +62,7 @@ version = "2.0"
 
 [planet]
     planet_mass_tot = 1.0
+    initial = "elements"
 
 [interior_struct]
     corefrac     = 0.55
@@ -133,11 +134,10 @@ version = "2.0"
     [outgas.calliope]
         include_NH3 = false
 
-[delivery]
-    initial = "elements"
+[accretion]
     module  = "none"
 
-    [delivery.elements]
+    [planet.elements]
         H_ppmw   = 3e3
         CH_ratio = 1.0
         N_ppmw   = 0.0

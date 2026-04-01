@@ -56,6 +56,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [planet]
     planet_mass_tot = 2.14       # M_earth
+    initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
     corefrac    = 0.55      # non-dim., radius fraction
@@ -106,16 +107,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "calliope"         # Which outgassing module to use
 
 # Volatile delivery - physics table
-[delivery]
+[accretion]
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
+    [planet.elements]
         H_oceans    = 6.0       # Hydrogen inventory in units of equivalent Earth oceans
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         N_ppmw      = 2.0      # Nitrogen inventory in ppmw relative to mantle mass

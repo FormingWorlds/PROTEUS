@@ -70,7 +70,7 @@ def generate_config(base_toml, output_dir, mass, cmf, interior, outgas, volatile
     # Volatile inventory
     vol_cfg = VOLATILE_CONFIGS[volatiles]
     for key, val in vol_cfg.items():
-        cfg['delivery']['elements'][key] = val
+        cfg['planet']['elements'][key] = val
 
     # Adjust for high mass: increase max center pressure guess
     if mass > 3.0:

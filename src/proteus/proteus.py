@@ -336,7 +336,7 @@ class Proteus:
             inc_gases = []
             for s in vol_list:
                 if s != 'O2':
-                    pp_val = self.config.delivery.volatiles.get_pressure(s)
+                    pp_val = self.config.planet.volatiles.get_pressure(s)
                     include = self.config.outgas.calliope.is_included(s)
                 else:
                     pp_val = 0.0
@@ -352,13 +352,13 @@ class Proteus:
                 self.hf_row[s + '_bar'] = 0.0
 
             # Inform user
-            log.info("Initial inventory set by '%s'" % self.config.delivery.initial)
+            log.info("Initial inventory set by '%s'" % self.config.planet.initial)
             log.info('Included gases:')
             for s in inc_gases:
                 write = '    '
                 write += 'vapour  ' if s in vap_list else 'volatile'
                 write += '  %-8s' % s
-                if self.config.delivery.initial == 'volatiles':
+                if self.config.planet.initial == 'volatiles':
                     write += ' : %6.2f bar' % self.hf_row[s + '_bar']
                 log.info(write)
 

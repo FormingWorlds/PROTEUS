@@ -11,13 +11,14 @@
 #
 [planet]
     planet_mass_tot = 5.0       # M_earth
+    initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]   planetary structure (mass, radius)
 #   [atmos]    atmosphere parameters, model selection
 #   [escape]   escape parameters, model selection
 #   [interior_energetics] magma ocean model selection and parameters
 #   [outgas]   outgassing parameters (fO2) and included volatiles
-#   [delivery] initial volatile inventory, and delivery model selection
+#   [accretion] initial volatile inventory, and delivery model selection
 
 # ----------------------------------------------------
 # Metadata
@@ -229,18 +230,16 @@ version = "2.0"
         some_parameter = "some_value"
 
 # Volatile delivery - physics table
-[delivery]
+[accretion]
 
-    # Radionuclide parameters
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
+    [planet.elements]
         use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
         metallicity = 1000	 # metallicity relative to solar metallicity
 
@@ -258,7 +257,7 @@ version = "2.0"
 
 
     # Set initial volatile inventory by partial pressures in atmosphere
-    [delivery.volatiles]
+    [planet.volatiles]
         H2O  = 0.0           # partial pressure of H2O
         CO2  = 0.0          # partial pressure of CO2
         N2   = 0.0          # etc

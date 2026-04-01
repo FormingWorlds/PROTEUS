@@ -71,6 +71,7 @@ version = "2.0"
 
 [planet]
     planet_mass_tot = 0.9           # Total planet mass [M_earth]
+    initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
     corefrac    = 0.55          # non-dim., radius fraction
@@ -168,16 +169,15 @@ version = "2.0"
         include_CH4  = true    # Include CH4 compound
         include_CO   = true    # Include CO compound
 
-[delivery]
+[accretion]
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
 
     # Set initial volatile inventory by partial pressures in atmosphere
-    [delivery.elements]
+    [planet.elements]
         H_oceans = 200.0
         CH_ratio = 1.0
         SH_ratio = 2.0

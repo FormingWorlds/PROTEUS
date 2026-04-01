@@ -74,6 +74,7 @@ version = "2.0"
 
 [planet]
     planet_mass_tot = 1.0
+    initial  = "elements"
 
 [interior_struct]
     corefrac     = 0.55
@@ -184,10 +185,9 @@ version = "2.0"
 [observe]
     synthesis = "none"
 
-[delivery]
-    initial  = "elements"
+[accretion]
     module   = "none"
-    [delivery.elements]
+    [planet.elements]
         H_ppmw   = 500.0
         CH_ratio = 0.5
         NH_ratio = 0.0

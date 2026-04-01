@@ -48,6 +48,7 @@ version = "2.0"
 # Planetary structure - physics table
 [planet]
     planet_mass_tot = 0.8
+    initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
     corefrac    = 0.65      # non-dim., radius fraction
@@ -129,18 +130,16 @@ version = "2.0"
         include_CH4  = false     # Include CH4 compound
         include_CO   = false     # Include CO compound
 
-[delivery]
+[accretion]
 
-    # Radionuclide parameters
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
+    [planet.elements]
         H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
         #H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
@@ -154,7 +153,7 @@ version = "2.0"
         S_ppmw      = 1.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
-    [delivery.volatiles]
+    [planet.volatiles]
         H2O  = 20.0          # partial pressure of H2O
         CO2  = 30.0          # partial pressure of CO2
         N2   = 0.0          # etc

@@ -67,6 +67,7 @@ version = "2.0"
 
 [planet]
     planet_mass_tot = 2.25       # M_earth
+    initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
     corefrac    = 0.55      # non-dim., radius fraction
@@ -121,11 +122,10 @@ version = "2.0"
     fO2_shift_IW    = 0         # log10(ΔIW), atmosphere/interior boundary oxidation state
     module = "calliope"         # Which outgassing module to use
 
-[delivery]
-    initial = 'elements'        # "elements" | "volatiles"
+[accretion]
     module = "none"
 
-    [delivery.elements]
+    [planet.elements]
         H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system

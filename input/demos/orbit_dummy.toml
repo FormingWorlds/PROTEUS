@@ -88,6 +88,7 @@ version = "2.0"
 
 [planet]
     planet_mass_tot = 1.0           # Total planet mass [M_earth]
+    initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
     corefrac     = 0.55          # non-dim., radius fraction
@@ -124,12 +125,11 @@ version = "2.0"
     [outgas.calliope]
         include_NH3 = false
 
-[delivery]
+[accretion]
 
-    initial = 'elements'        # "elements" | "volatiles"
     module = "none"
 
-    [delivery.elements]
+    [planet.elements]
         H_ppmw      = 200.0     # Hydrogen inventory in ppmw relative to mantle mass
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         N_ppmw      = 0.0       # Nitrogen inventory in ppmw relative to mantle mass

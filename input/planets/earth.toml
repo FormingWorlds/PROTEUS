@@ -105,11 +105,11 @@ version = "2.0"
 
     module = "calliope"
 
-[delivery]
+[accretion]
 
     module = "none"
 
-    [delivery.elements]
+    [planet.elements]
         H_oceans    = 2.0       # Hydrogen inventory in units of equivalent Earth oceans
         # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 

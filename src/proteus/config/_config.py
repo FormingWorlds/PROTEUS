@@ -5,10 +5,10 @@ import logging
 import tomlkit
 from attrs import asdict, define, field, validators
 
+from ._accretion import Accretion
 from ._atmos_chem import AtmosChem
 from ._atmos_clim import AtmosClim
 from ._converters import dict_replace_none
-from ._delivery import Delivery
 from ._escape import Escape
 from ._interior import Interior
 from ._observe import Observe
@@ -106,21 +106,21 @@ class Config:
     orbit: Orbit
         Orbital and star-system parameters.
     planet: Planet
-        Bulk planet properties (mass).
+        Bulk planet properties (mass, initial volatile inventory).
     interior_struct: Struct
         Planetary structure calculation (radius, composition, Zalmoxis).
     interior_energetics: Interior
         Magma ocean / mantle energetics model parameters, model selection.
+    outgas: Outgas
+        Outgassing parameters (fO2, etc) and included volatiles.
     atmos_clim: AtmosClim
         Planetary atmosphere climate parameters, model selection.
     atmos_chem: AtmosChem
         Planetary atmosphere chemistry parameters, model selection.
     escape: Escape
         Atmospheric escape parameters, model selection.
-    outgas: Outgas
-        Outgassing parameters (fO2, etc) and included volatiles.
-    delivery: Delivery
-        Initial volatile inventory, and delivery model selection.
+    accretion: Accretion
+        Late accretion / delivery model selection.
     observe: Observe
         Synthetic observations.
     """
@@ -133,11 +133,11 @@ class Config:
     planet: Planet = field(validator=(planet_mass_valid,))
     interior_struct: Struct = field()
     interior_energetics: Interior = field(validator=(tides_enabled_orbit,))
+    outgas: Outgas
     atmos_clim: AtmosClim
     atmos_chem: AtmosChem
     escape: Escape = field(validator=(spada_zephyrus,))
-    outgas: Outgas
-    delivery: Delivery
+    accretion: Accretion
     observe: Observe
 
     def write(self, out: str):

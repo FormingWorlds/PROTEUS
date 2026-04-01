@@ -13,7 +13,7 @@
 #   [escape]   escape parameters, model selection
 #   [interior_energetics] magma ocean model selection and parameters
 #   [outgas]   outgassing parameters (fO2) and included volatiles
-#   [delivery] initial volatile inventory, and delivery model selection
+#   [accretion] initial volatile inventory, and delivery model selection
 
 # ----------------------------------------------------
 # Metadata
@@ -207,25 +207,24 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         some_parameter = "some_value"
 
 # Volatile delivery - physics table
-[delivery]
+[accretion]
 
     # [Settings here for accretion rate, etc.]
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
+    [planet.elements]
         CH_ratio    = 1.0       # C/H ratio in mantle/atmosphere system
         H_oceans    = 8.0       # Hydrogen inventory in units of equivalent Earth oceans, by mass
         N_ppmw      = 2.01      # Nitrogen inventory in ppmw relative to mantle mass, by mass
         S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mass of melt
 
     # Set initial volatile inventory by partial pressures in atmosphere
-    [delivery.volatiles]
+    [planet.volatiles]
         H2O  = 0.0           # partial pressure of H2O
         CO2  = 0.0          # partial pressure of CO2
         N2   = 0.0          # etc

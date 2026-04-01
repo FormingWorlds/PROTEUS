@@ -85,6 +85,7 @@ visc_thresh = 1000000000.0
 
 [planet]
 planet_mass_tot = 1.0
+initial = "elements"
 
 [interior_struct]
 corefrac = 0.55
@@ -198,11 +199,10 @@ include_CO = true
 [outgas.atmodeller]
 some_parameter = "some_value"
 
-[delivery]
+[accretion]
 module = "none"
-initial = "elements"
 
-[delivery.elements]
+[planet.elements]
 H_oceans = 5.0
 H_ppmw = 0.0
 CH_ratio = 1.0
@@ -212,7 +212,7 @@ N_ppmw = 0.0
 SH_ratio = 2.0
 S_ppmw = 0.0
 
-[delivery.volatiles]
+[planet.volatiles]
 H2O = 20.0
 CO2 = 30.0
 N2 = 0.0

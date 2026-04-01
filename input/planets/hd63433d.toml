@@ -40,6 +40,7 @@ version = "2.0"
 # Planetary structure - physics table
 [planet]
     planet_mass_tot = 1.07
+    initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
     corefrac    = 0.55      # non-dim., radius fraction
@@ -91,13 +92,12 @@ version = "2.0"
 
 
 # Volatile delivery - physics table
-[delivery]
-    initial = 'elements'        # "elements" | "volatiles"
+[accretion]
 
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
+    [planet.elements]
         H_oceans    = 8.0       # Hydrogen inventory in units of equivalent Earth oceans
         # H_ppmw      = 0.0     # Hydrogen inventory in ppmw relative to mantle mass
 

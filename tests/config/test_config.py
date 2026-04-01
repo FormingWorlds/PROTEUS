@@ -26,10 +26,10 @@ from proteus.config._config import (
     tides_enabled_orbit,
 )
 from proteus.config._converters import none_if_none
-from proteus.config._delivery import Volatiles
 from proteus.config._interior import valid_aragog, valid_interiordummy, valid_spider
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
+from proteus.config._planet import Volatiles
 
 PATHS = chain(
     (PROTEUS_ROOT / 'input').glob('*.toml'),

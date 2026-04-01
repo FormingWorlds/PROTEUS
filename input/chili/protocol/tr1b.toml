@@ -92,6 +92,7 @@ instellationflux = 1.0
 
 [planet]
 planet_mass_tot = 1.0
+initial = "elements"
 
 [interior_struct]
 corefrac = 0.55
@@ -211,11 +212,10 @@ rtol = 0.0001
 xtol = 1e-06
 solubility = true
 
-[delivery]
+[accretion]
 module = "none"
-initial = "elements"
 
-[delivery.elements]
+[planet.elements]
 use_metallicity = false
 metallicity = 1000.0
 H_oceans = 0.0

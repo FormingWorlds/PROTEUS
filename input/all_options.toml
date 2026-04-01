@@ -7,9 +7,9 @@
 
 # ----------------------------------------------------
 
-# The general structure is:
+# Structure of the file and parameter sections:
 #   [params]              code execution, outputs, time-stepping, convergence
-#   [planet]              bulk planet properties: mass, element abundances
+#   [planet]              bulk planet properties: mass, start element abundances
 #   [star]                stellar model & parameters
 #   [orbit]               planetary orbit model & parameters
 #   [interior_struct]     interior structure & chemistry model & parameters
@@ -18,12 +18,10 @@
 #   [atmos_clim]          atmosphere structure & energy transport model & params
 #   [atmos_chem]          atmosphere chemistry model & parameters
 #   [escape]              escape parameters, model selection
-#   [delivery]            initial volatile inventory, and delivery model selection
+#   [accretion]           late accretion model selection
 #   [observe]             synthetic observations
 
 # ----------------------------------------------------
-
-version = "2.0"
 
 # Parameters
 [params]
@@ -103,6 +101,41 @@ version = "2.0"
 # Bulk planet properties
 [planet]
     planet_mass_tot = 1.0       # Total planet mass [M_earth]
+    initial = 'elements'        # 'elements' | 'volatiles'
+
+    # Set initial volatile inventory by planetary element abundances if [initial = 'elements']
+    [planet.elements]
+        use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
+        metallicity = 1000	 # metallicity relative to solar metallicity
+
+        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
+        # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
+        # H_kg       = 1e20       # Hydrogen inventory in kg
+
+        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        # C_ppmw     = 0.0        # Carbon inventory in ppmw relative to mantle mass
+        # C_kg       = 1e20       # Carbon inventory in kg
+
+        NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
+        # N_ppmw      = 0.5       # Nitrogen inventory in ppmw relative to mantle mass
+        # N_kg       = 1e20       # Nitrogen inventory in kg
+
+        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
+        # S_ppmw      = 2.0       # Sulfur inventory in ppmw relative to mantle mass
+        # S_kg       = 1e20       # Sulfur inventory in kg
+
+    # Set initial volatile inventory by partial pressures in atmosphere if [initial = 'volatiles']
+    [planet.volatiles]
+        H2O  = 20.0             # partial pressure of H2O
+        CO2  = 30.0             # partial pressure of CO2
+        N2   = 0.0              # etc.
+        S2   = 0.0
+        SO2  = 0.0
+        H2S  = 0.0
+        NH3  = 0.0
+        H2   = 0.0
+        CH4  = 0.0
+        CO   = 0.0
 
 # ----------------------------------------------------
 # Star
@@ -384,48 +417,9 @@ version = "2.0"
         kappa_SO2 = 1.0             # SO2 opacity ^
         kappa_S2  = 1.0             # S2  opacity ^
 
-# Volatile delivery - physics table
-[delivery]
-
-    # Which initial inventory to use?
-    initial = 'elements'        # 'elements' | 'volatiles'
-
-    # No module for accretion as of yet
+# Late accretion
+[accretion]
     module = "none"
-
-    # Set initial volatile inventory by planetary element abundances if [initial = 'elements']
-    [delivery.elements]
-        use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
-        metallicity = 1000	 # metallicity relative to solar metallicity
-
-        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
-        # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
-        # H_kg       = 1e20       # Hydrogen inventory in kg
-
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw     = 0.0        # Carbon inventory in ppmw relative to mantle mass
-        # C_kg       = 1e20       # Carbon inventory in kg
-
-        NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
-        # N_ppmw      = 0.5       # Nitrogen inventory in ppmw relative to mantle mass
-        # N_kg       = 1e20       # Nitrogen inventory in kg
-
-        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
-        # S_ppmw      = 2.0       # Sulfur inventory in ppmw relative to mantle mass
-        # S_kg       = 1e20       # Sulfur inventory in kg
-
-    # Set initial volatile inventory by partial pressures in atmosphere if [initial = 'volatiles']
-    [delivery.volatiles]
-        H2O  = 20.0             # partial pressure of H2O
-        CO2  = 30.0             # partial pressure of CO2
-        N2   = 0.0              # etc.
-        S2   = 0.0
-        SO2  = 0.0
-        H2S  = 0.0
-        NH3  = 0.0
-        H2   = 0.0
-        CH4  = 0.0
-        CO   = 0.0
 
 # Atmospheric chemistry postprocessing
 [atmos_chem]

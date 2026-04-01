@@ -50,7 +50,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     # Volatile inventory
     for s in vol_list:
         if s != 'O2':
-            pressure = config.delivery.volatiles.get_pressure(s)
+            pressure = config.planet.volatiles.get_pressure(s)
             included = config.outgas.calliope.is_included(s)
         else:
             pressure = 0.0
@@ -64,17 +64,17 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
             raise ValueError(f'Missing required volatile {s}')
 
     # Set by volatiles?
-    if config.delivery.initial == 'volatiles':
+    if config.planet.initial == 'volatiles':
         return solvevol_inp
 
     # Calculate hydrogen inventory...
 
     #    absolute part (H_kg = H_oceans * number_ocean_moles * molar_mass['H2'])
-    H_abs = float(config.delivery.elements.H_oceans) * mass_ocean
-    H_abs += float(config.delivery.elements.H_kg)
+    H_abs = float(config.planet.elements.H_oceans) * mass_ocean
+    H_abs += float(config.planet.elements.H_kg)
 
     #    relative part (H_kg = H_rel * 1e-6 * M_mantle)
-    H_rel = config.delivery.elements.H_ppmw * 1e-6 * hf_row['M_mantle']
+    H_rel = config.planet.elements.H_ppmw * 1e-6 * hf_row['M_mantle']
 
     #    use whichever was set (one of these will be zero)
     if H_abs < 1.0:
@@ -91,25 +91,25 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
         H_kg = -1  # dummy value
 
     # calculating elemental abundances using metallicity
-    if config.delivery.elements.use_metallicity:
-        CH_ratio = config.delivery.elements.metallicity * C_solar
+    if config.planet.elements.use_metallicity:
+        CH_ratio = config.planet.elements.metallicity * C_solar
         N_ppmw = 0.0
         S_ppmw = 0.0
 
         # if planet has nitrogen
-        if config.delivery.elements.NH_ratio > 0.0:
-            NH_ratio = config.delivery.elements.metallicity * N_solar
+        if config.planet.elements.NH_ratio > 0.0:
+            NH_ratio = config.planet.elements.metallicity * N_solar
             N_ppmw = 1e6 * NH_ratio * H_kg / hf_row['M_mantle']
 
         # if planet has sulfur
-        if config.delivery.elements.SH_ratio > 0.0:
-            SH_ratio = config.delivery.elements.metallicity * S_solar
+        if config.planet.elements.SH_ratio > 0.0:
+            SH_ratio = config.planet.elements.metallicity * S_solar
             S_ppmw = 1e6 * SH_ratio * H_kg / hf_row['M_mantle']
 
     else:
         # Calculate carbon inventory (we need CH_ratio for calliope)
-        CH_ratio = float(config.delivery.elements.CH_ratio)
-        C_ppmw = float(config.delivery.elements.C_ppmw)
+        CH_ratio = float(config.planet.elements.CH_ratio)
+        C_ppmw = float(config.planet.elements.C_ppmw)
         if CH_ratio > 1e-10:
             # check that C_ppmw isn't also set
             if C_ppmw > 1e-10:
@@ -117,14 +117,14 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
                 invalid = True
         else:
             # calculate C/H ratio for calliope from C_kg and H_kg
-            C_kg = float(config.delivery.elements.C_ppmw) * 1e-6 * hf_row['M_mantle']
-            C_kg += float(config.delivery.elements.C_kg)
+            C_kg = float(config.planet.elements.C_ppmw) * 1e-6 * hf_row['M_mantle']
+            C_kg += float(config.planet.elements.C_kg)
             CH_ratio = C_kg / H_kg
 
         # Calculate nitrogen inventory (we need N_ppmw for calliope)
-        NH_ratio = float(config.delivery.elements.NH_ratio)
-        N_ppmw = float(config.delivery.elements.N_ppmw)
-        N_ppmw += float(config.delivery.elements.N_kg) / (1e-6 * hf_row['M_mantle'])
+        NH_ratio = float(config.planet.elements.NH_ratio)
+        N_ppmw = float(config.planet.elements.N_ppmw)
+        N_ppmw += float(config.planet.elements.N_kg) / (1e-6 * hf_row['M_mantle'])
         if NH_ratio > 1e-10:
             # check that N_ppmw isn't also set
             if N_ppmw > 1e-10:
@@ -136,9 +136,9 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
             N_ppmw = 1e6 * NH_ratio * H_kg / hf_row['M_mantle']
 
         # Calculate sulfur inventory (we need S_ppmw for calliope)
-        SH_ratio = float(config.delivery.elements.SH_ratio)
-        S_ppmw = float(config.delivery.elements.S_ppmw)
-        S_ppmw += float(config.delivery.elements.S_kg) / (1e-6 * hf_row['M_mantle'])
+        SH_ratio = float(config.planet.elements.SH_ratio)
+        S_ppmw = float(config.planet.elements.S_ppmw)
+        S_ppmw += float(config.planet.elements.S_kg) / (1e-6 * hf_row['M_mantle'])
         if SH_ratio > 1e-10:
             # check that S_ppmw isn't also set
             if S_ppmw > 1e-10:
@@ -173,7 +173,7 @@ def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
     solvevol_inp = construct_options(dirs, config, hf_row)
 
     # calculate target mass of atoms (except O, which is derived from fO2)
-    if config.delivery.initial == 'elements':
+    if config.planet.initial == 'elements':
         solvevol_target = get_target_from_params(solvevol_inp)
     else:
         solvevol_target = get_target_from_pressures(solvevol_inp)

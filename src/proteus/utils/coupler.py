@@ -360,7 +360,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
         log.info('  - Julia         version ' + _get_julia_version())
 
     # Delivery module
-    log.info('Delivery module   %s' % config.delivery.module)
+    log.info('Delivery module   %s' % config.accretion.module)
 
     # Atmospheric chemistry module
     log.info('Atmos_chem module %s' % config.atmos_chem.module)
@@ -444,7 +444,7 @@ def print_citation(config: Config):
             pass
 
     # Delivery module
-    match config.delivery.module:
+    match config.accretion.module:
         case _:
             pass
 

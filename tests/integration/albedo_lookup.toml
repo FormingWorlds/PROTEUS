@@ -33,6 +33,7 @@ version = "2.0"
 
 [planet]
     planet_mass_tot = 1.0           # [M_earth]
+    initial = 'elements'        # Which initial inventory to use?
 
 [interior_struct]
     corefrac    = 0.55          # Radius fraction [non-dim.]
@@ -65,12 +66,11 @@ version = "2.0"
     fO2_shift_IW    = 4         # Atmosphere/interior boundary oxidation state [log10(ΔIW)]
     module = "calliope"         # Which outgassing module to use
 
-[delivery]
-    initial = 'elements'        # Which initial inventory to use?
+[accretion]
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
+    [planet.elements]
         H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
