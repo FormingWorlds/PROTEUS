@@ -14,10 +14,10 @@
 #   [orbit]               planetary orbit model & parameters
 #   [interior_struct]     interior structure & chemistry model & parameters
 #   [interior_energetics] interior energy transport model & parameters
+#   [outgas]              outgassing parameters (fO2) and included volatiles
 #   [atmos_clim]          atmosphere structure & energy transport model & params
 #   [atmos_chem]          atmosphere chemistry model & parameters
 #   [escape]              escape parameters, model selection
-#   [outgas]              outgassing parameters (fO2) and included volatiles
 #   [delivery]            initial volatile inventory, and delivery model selection
 #   [observe]             synthetic observations
 
@@ -262,6 +262,31 @@ version = "2.0"
         ini_dsdr                 = -4.698e-6 # Initial entropy gradient [J/kg/K/m]
         matprop_smooth_width     = 1e-2     # Material property smoothing width (melt fraction)
 
+# Outgassing - physics table
+[outgas]
+    fO2_shift_IW    = 4         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
+
+    module = "calliope"         # Which outgassing module to use
+
+    [outgas.calliope]
+        include_H2O  = true     # Include H2O compound
+        include_CO2  = true     # Include CO2 compound
+        include_N2   = true     # Include N2 compound
+        include_S2   = true     # Include S2 compound
+        include_SO2  = true     # Include SO2 compound
+        include_H2S  = true     # Include H2S compound
+        include_NH3  = true     # Include NH3 compound
+        include_H2   = true     # Include H2 compound
+        include_CH4  = true     # Include CH4 compound
+        include_CO   = true     # Include CO compound
+        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
+        rtol         = 0.0001   # Relative mass tolerance
+        xtol         = 1e-06    # Absolute mass tolerance
+        solubility   = true     # Enable solubility?
+
+    [outgas.atmodeller]
+        some_parameter = "some_value"
+
 # Atmosphere - physics table
 [atmos_clim]
     prevent_warming = true      # do not allow the planet to heat up
@@ -358,31 +383,6 @@ version = "2.0"
         kappa_H2S = 1.0             # H2S opacity ^
         kappa_SO2 = 1.0             # SO2 opacity ^
         kappa_S2  = 1.0             # S2  opacity ^
-
-# Outgassing - physics table
-[outgas]
-    fO2_shift_IW    = 4         # atmosphere/interior boundary oxidation state [log10(ΔIW)]
-
-    module = "calliope"         # Which outgassing module to use
-
-    [outgas.calliope]
-        include_H2O  = true     # Include H2O compound
-        include_CO2  = true     # Include CO2 compound
-        include_N2   = true     # Include N2 compound
-        include_S2   = true     # Include S2 compound
-        include_SO2  = true     # Include SO2 compound
-        include_H2S  = true     # Include H2S compound
-        include_NH3  = true     # Include NH3 compound
-        include_H2   = true     # Include H2 compound
-        include_CH4  = true     # Include CH4 compound
-        include_CO   = true     # Include CO compound
-        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
-        rtol         = 0.0001   # Relative mass tolerance
-        xtol         = 1e-06    # Absolute mass tolerance
-        solubility   = true     # Enable solubility?
-
-    [outgas.atmodeller]
-        some_parameter = "some_value"
 
 # Volatile delivery - physics table
 [delivery]
