@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 
-def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate'):
+def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silicate'):
     """Create a mock config for AragogRunner.setup_solver tests."""
     config = MagicMock()
     config.interior_struct.module = struct_module
@@ -156,7 +156,7 @@ def test_setup_solver_eos_fallback(tmp_path):
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
-    config = _make_aragog_config(struct_module='self')
+    config = _make_aragog_config(struct_module='spider')
 
     hf_row = {
         'R_int': 6.371e6,
@@ -200,7 +200,7 @@ def test_setup_solver_eos_not_found(tmp_path):
     from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
-    config = _make_aragog_config(struct_module='self')
+    config = _make_aragog_config(struct_module='spider')
     config.interior_struct.eos_dir = 'NonexistentEOS'
 
     hf_row = {

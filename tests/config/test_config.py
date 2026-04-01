@@ -1266,10 +1266,10 @@ def test_planet_mass_valid_rejects_too_large():
 
 @pytest.mark.unit
 def test_struct_zalmoxis_module_skip():
-    """Test valid_zalmoxis validator skips when module != 'zalmoxis'."""
+    """Test valid_zalmoxis validator skips when module == 'spider'."""
     from proteus.config._struct import valid_zalmoxis
 
-    instance = SimpleNamespace(module='self', zalmoxis=SimpleNamespace())
+    instance = SimpleNamespace(module='spider', zalmoxis=SimpleNamespace())
     valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
 
 

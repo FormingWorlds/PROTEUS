@@ -155,7 +155,7 @@ class AragogRunner:
         )
 
         # Define the inner_radius for the mesh
-        if config.interior_struct.module == 'self':
+        if config.interior_struct.module == 'spider':
             inner_radius = config.interior_struct.core_frac * hf_row['R_int']  # core radius [m]
         elif config.interior_struct.module == 'zalmoxis':
             # Read core radius from hf_row (already computed by Zalmoxis in
@@ -201,7 +201,7 @@ class AragogRunner:
         )
 
         # Define initial conditions for prescribing temperature profile
-        if config.interior_struct.module == 'self':
+        if config.interior_struct.module == 'spider':
             initial_condition_temperature_profile = config.interior_energetics.aragog.initial_condition
             init_file_temperature_profile = os.path.join(
                 FWL_DATA_DIR, f'interior_lookup_tables/{config.interior_energetics.aragog.init_file}'
@@ -800,7 +800,7 @@ class AragogRunner:
         solver.parameters.mesh.outer_radius = hf_row['R_int']
         solver.parameters.mesh.gravitational_acceleration = hf_row['gravity']
 
-        if config.interior_struct.module == 'self':
+        if config.interior_struct.module == 'spider':
             solver.parameters.mesh.inner_radius = (
                 config.interior_struct.core_frac * hf_row['R_int']
             )

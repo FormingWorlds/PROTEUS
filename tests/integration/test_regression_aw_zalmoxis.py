@@ -52,7 +52,7 @@ def _run_proteus(config_path, tmpdir, label, struct_module):
     runner.config.params.out.path = str(Path(tmpdir) / label)
     runner.config.interior_struct.module = struct_module
 
-    if struct_module == 'self':
+    if struct_module == 'spider':
         runner.config.interior_struct.zalmoxis = None
 
     runner.init_directories()

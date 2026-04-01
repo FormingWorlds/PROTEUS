@@ -309,7 +309,7 @@ class Proteus:
             # Validate cross-config constraints
             if (
                 self.config.interior_energetics.initial_thermal_state == 'self_consistent'
-                and self.config.interior_struct.module != 'zalmoxis'
+                and self.config.interior_struct.module == 'spider'
             ):
                 raise ValueError(
                     "initial_thermal_state='self_consistent' requires "

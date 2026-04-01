@@ -26,7 +26,7 @@ class TestGlobalMiscibilityConfig:
         from proteus.config._struct import Struct
 
         with pytest.raises(ValueError, match='zalmoxis'):
-            Struct(core_frac=0.3, module='self', global_miscibility=True, core_density=10738.0, core_heatcap=880.0)
+            Struct(core_frac=0.3, module='spider', global_miscibility=True, core_density=10738.0, core_heatcap=880.0)
 
     def test_accepts_zalmoxis(self):
         """global_miscibility=True with module='zalmoxis' is valid."""

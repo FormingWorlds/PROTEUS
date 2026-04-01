@@ -181,9 +181,9 @@
 
 # Interior structure (hydrostatic equilibrium, composition)
 [interior_struct]
-    module              = "zalmoxis"  # self | zalmoxis
-    core_frac           = 0.55        # core fraction (radius or mass, see core_frac_mode)
-    core_frac_mode      = "radius"    # "radius" | "mass"; "mass" requires zalmoxis
+    module              = "zalmoxis"  # spider | zalmoxis
+    core_frac           = 0.325       # core fraction (radius or mass, see core_frac_mode)
+    core_frac_mode      = "mass"      # "radius" | "mass"; "mass" requires zalmoxis
     core_density        = "self"      # core density [kg m-3]; "self" = from zalmoxis
     core_heatcap        = "self"      # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis
     update_interval     = 0           # max time between structure updates [yr]; 0 = init only

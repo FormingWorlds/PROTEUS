@@ -95,7 +95,7 @@ initial = "elements"
 
 [interior_struct]
 core_frac = 0.55
-module = "self"
+module = "spider"
 core_density = 10738.33
 core_heatcap = 880.0
 

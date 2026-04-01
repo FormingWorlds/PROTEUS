@@ -7,7 +7,7 @@ from attrs.validators import ge, gt, in_, le, lt
 
 
 def valid_zalmoxis(instance, attribute, value):
-    if instance.module != 'zalmoxis':
+    if instance.module == 'spider':
         return
 
     max_iterations_outer = instance.zalmoxis.max_iterations_outer
@@ -240,11 +240,11 @@ class Struct:
     """
 
     core_frac: float = field(validator=(gt(0), lt(1)))
-    core_frac_mode: str = field(default='radius', validator=in_(('radius', 'mass')))
+    core_frac_mode: str = field(default='mass', validator=in_(('radius', 'mass')))
 
     module: Optional[str] = field(
-        default='self',
-        validator=lambda inst, attr, val: val is None or val in ('self', 'zalmoxis'),
+        default='zalmoxis',
+        validator=lambda inst, attr, val: val is None or val in ('spider', 'zalmoxis'),
     )
     zalmoxis: Optional[Zalmoxis] = field(
         default=None,
@@ -279,27 +279,27 @@ class Struct:
                 f'<= `update_interval` ({self.update_interval}), otherwise '
                 f'the floor blocks all updates before the ceiling can fire.'
             )
-        if self.global_miscibility and self.module != 'zalmoxis':
+        if self.global_miscibility and self.module == 'spider':
             raise ValueError(
                 '`global_miscibility` requires `module = "zalmoxis"`. '
                 'The binodal-aware structure solver is only available in Zalmoxis.'
             )
 
         # core_frac_mode = "mass" requires Zalmoxis
-        if self.core_frac_mode == 'mass' and self.module != 'zalmoxis':
+        if self.core_frac_mode == 'mass' and self.module == 'spider':
             raise ValueError(
                 '`core_frac_mode = "mass"` requires `module = "zalmoxis"`. '
-                'The self module only supports radius-based core fraction.'
+                'The spider module only supports radius-based core fraction.'
             )
 
         # core_density and core_heatcap: "self" requires Zalmoxis
         for param_name in ('core_density', 'core_heatcap'):
             val = getattr(self, param_name)
             if val == 'self':
-                if self.module != 'zalmoxis':
+                if self.module == 'spider':
                     raise ValueError(
                         f'`{param_name} = "self"` requires `module = "zalmoxis"`. '
-                        f'Set a numerical value when using module = "self".'
+                        f'Set a numerical value when using module = "spider".'
                     )
             elif not isinstance(val, (int, float)) or val <= 0:
                 raise ValueError(
