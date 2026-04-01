@@ -29,8 +29,11 @@ version = "2.0"
     s0_factor       = 0.375     # [dimensionless]
     module          = "lovepy"
 
-[struct]
-    mass_tot    = 1.0           # [M_earth]
+
+[planet]
+    planet_mass_tot = 1.0           # [M_earth]
+
+[interior_struct]
     corefrac    = 0.55          # Radius fraction [non-dim.]
 
 [atmos_clim]
@@ -43,10 +46,10 @@ version = "2.0"
 [escape]
     module = "zephyrus"
 
-[interior]
+[interior_energetics]
     module = "spider"
 
-    [interior.spider]
+    [interior_energetics.spider]
         ini_entropy = 2900.0    # Surface entropy conditions [J K-1 kg-1]
 
 [outgas]

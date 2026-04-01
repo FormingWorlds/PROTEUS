@@ -98,15 +98,15 @@ class Proteus:
         float
             Initial magma ocean surface temperature [K].
         """
-        mod = self.config.interior.module
+        mod = self.config.interior_energetics.module
         if mod == 'aragog':
-            T = self.config.interior.tsurf_init
+            T = self.config.interior_energetics.tsurf_init
         elif mod == 'spider':
             # SPIDER uses ini_entropy, not tsurf_init. Use a representative
             # value based on typical magma ocean temperatures.
             T = 3000.0
         elif mod == 'dummy':
-            T = self.config.interior.tsurf_init
+            T = self.config.interior_energetics.tsurf_init
         else:
             T = 3000.0
         return float(T) if T and T > 0 else 3000.0
@@ -140,8 +140,8 @@ class Proteus:
         from proteus.escape.wrapper import run_escape
 
         #    interior
-        from proteus.interior.common import Interior_t
-        from proteus.interior.wrapper import (
+        from proteus.interior_energetics.common import Interior_t
+        from proteus.interior_energetics.wrapper import (
             get_nlevb,
             run_interior,
             solve_structure,
@@ -255,14 +255,14 @@ class Proteus:
         download_sufficient_data(self.config)
 
         # Initialise interior object
-        if self.config.interior.module == 'spider':
+        if self.config.interior_energetics.module == 'spider':
             spider_dir = self.directories['spider']
         else:
             spider_dir = None
         self.interior_o = Interior_t(
             get_nlevb(self.config),
             spider_dir=spider_dir,
-            eos_dir=self.config.struct.eos_dir,
+            eos_dir=self.config.interior_struct.eos_dir,
         )
 
         # Initialise atmosphere object
@@ -296,7 +296,7 @@ class Proteus:
             # sigma * T_magma^4. This adapts to any initial temperature and
             # ensures parity between SPIDER and Aragog. flux_guess=0 is valid
             # (zero flux) and will NOT trigger the automatic computation.
-            flux_guess = self.config.interior.flux_guess
+            flux_guess = self.config.interior_energetics.flux_guess
             if flux_guess < 0:
                 from scipy.constants import Stefan_Boltzmann
                 T_ini = self._get_initial_tmagma()
@@ -308,8 +308,8 @@ class Proteus:
 
             # Validate cross-config constraints
             if (
-                self.config.interior.initial_thermal_state == 'self_consistent'
-                and self.config.struct.module != 'zalmoxis'
+                self.config.interior_energetics.initial_thermal_state == 'self_consistent'
+                and self.config.interior_struct.module != 'zalmoxis'
             ):
                 raise ValueError(
                     "initial_thermal_state='self_consistent' requires "
@@ -365,8 +365,8 @@ class Proteus:
             # Equilibrate structure + composition before main loop.
             # Iterates CALLIOPE + Zalmoxis (no SPIDER) until R_int and
             # P_surf converge. Only active when config flag is set.
-            if self.config.struct.equilibrate_init and self.config.struct.module == 'zalmoxis':
-                from proteus.interior.wrapper import equilibrate_initial_state
+            if self.config.interior_struct.equilibrate_init and self.config.interior_struct.module == 'zalmoxis':
+                from proteus.interior_energetics.wrapper import equilibrate_initial_state
 
                 equilibrate_initial_state(
                     self.directories,
@@ -413,8 +413,8 @@ class Proteus:
 
             # Restore Zalmoxis mesh path for resumed SPIDER runs
             if (
-                self.config.struct.module == 'zalmoxis'
-                and self.config.interior.module == 'spider'
+                self.config.interior_struct.module == 'zalmoxis'
+                and self.config.interior_energetics.module == 'spider'
             ):
                 mesh_path = os.path.join(self.directories['output'], 'data', 'spider_mesh.dat')
                 if os.path.isfile(mesh_path):
@@ -479,10 +479,10 @@ class Proteus:
             # Re-compute structure if Zalmoxis feedback is active
             if (
                 not self.init_stage
-                and self.config.struct.module == 'zalmoxis'
-                and self.config.struct.update_interval > 0
+                and self.config.interior_struct.module == 'zalmoxis'
+                and self.config.interior_struct.update_interval > 0
             ):
-                from proteus.interior.wrapper import update_structure_from_interior
+                from proteus.interior_energetics.wrapper import update_structure_from_interior
 
                 (
                     self.last_struct_time,
@@ -618,7 +618,7 @@ class Proteus:
             # so the atmosphere is computed from the solvus outward.
             # Save originals to restore after the atmosphere step.
             _saved_atm_bc = {}
-            if self.config.struct.global_miscibility and 'R_solvus' in self.hf_row:
+            if self.config.interior_struct.global_miscibility and 'R_solvus' in self.hf_row:
                 R_sol = self.hf_row.get('R_solvus')
                 if R_sol is not None and R_sol < self.hf_row['R_int']:
                     _saved_atm_bc = {

@@ -15,6 +15,7 @@ from ._observe import Observe
 from ._orbit import Orbit
 from ._outgas import Outgas
 from ._params import Params
+from ._planet import Planet
 from ._star import Star
 from ._struct import Struct
 
@@ -54,7 +55,7 @@ def satellite_evolve(instance, attribute, value):
 
 def tides_enabled_orbit(instance, attribute, value):
     # Tides in interior requires orbit module to not be None
-    if (instance.interior.heat_tidal) and (instance.orbit.module is None):
+    if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
         raise ValueError('Interior tidal heating requires an orbit module to be enabled')
 
 
@@ -76,6 +77,33 @@ def janus_escape_atmosphere(instance, attribute, value):
         )
 
 
+def mass_radius_valid(instance, attribute, value):
+    """Cross-section validator: exactly one of planet_mass_tot or radius_int must be set."""
+    from ._converters import none_if_none
+
+    radius_int = none_if_none(instance.interior_struct.radius_int)
+    mass_tot = none_if_none(instance.planet.planet_mass_tot)
+
+    if (radius_int is None) and (mass_tot is None):
+        raise ValueError('Must set one of `planet.planet_mass_tot` or `interior_struct.radius_int`')
+    if (radius_int is not None) and (mass_tot is not None):
+        raise ValueError(
+            'Must set either `planet.planet_mass_tot` or `interior_struct.radius_int`, not both'
+        )
+
+    if mass_tot is not None:
+        if mass_tot < 0:
+            raise ValueError('The total planet mass must be > 0')
+        if mass_tot > 20:
+            raise ValueError('The total planet mass must be < 20 M_earth')
+
+    if radius_int is not None:
+        if radius_int < 0:
+            raise ValueError('The interior radius must be > 0')
+        if radius_int > 10:
+            raise ValueError('The interior radius must be < 10 R_earth')
+
+
 @define
 class Config:
     """Root config parameters.
@@ -90,16 +118,18 @@ class Config:
         Stellar parameters, model selection.
     orbit: Orbit
         Orbital and star-system parameters.
-    struct: Struct
-        Planetary structure calculation (mass, radius).
+    planet: Planet
+        Bulk planet properties (mass).
+    interior_struct: Struct
+        Planetary structure calculation (radius, composition, Zalmoxis).
+    interior_energetics: Interior
+        Magma ocean / mantle energetics model parameters, model selection.
     atmos_clim: AtmosClim
         Planetary atmosphere climate parameters, model selection.
     atmos_chem: AtmosChem
         Planetary atmosphere chemistry parameters, model selection.
     escape: Escape
         Atmospheric escape parameters, model selection.
-    interior: Interior
-        Magma ocean / mantle model parameters, model selection.
     outgas: Outgas
         Outgassing parameters (fO2, etc) and included volatiles.
     delivery: Delivery
@@ -113,11 +143,12 @@ class Config:
     params: Params
     star: Star
     orbit: Orbit = field(validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
-    struct: Struct
+    planet: Planet = field(validator=(mass_radius_valid,))
+    interior_struct: Struct = field()
+    interior_energetics: Interior = field(validator=(tides_enabled_orbit,))
     atmos_clim: AtmosClim
     atmos_chem: AtmosChem
     escape: Escape = field(validator=(spada_zephyrus,))
-    interior: Interior = field(validator=(tides_enabled_orbit,))
     outgas: Outgas
     delivery: Delivery
     observe: Observe

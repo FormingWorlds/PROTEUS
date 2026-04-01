@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior.wrapper module — structure update triggers.
+Unit tests for proteus.interior_energetics.wrapper module — structure update triggers.
 
 Tests the dynamic trigger logic in update_structure_from_interior() that
 decides when to re-run Zalmoxis with SPIDER's evolved temperature profile.
@@ -24,8 +24,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from proteus.interior.common import Interior_t
-from proteus.interior.wrapper import update_structure_from_interior
+from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.wrapper import update_structure_from_interior
 
 
 def _mock_config(
@@ -39,17 +39,17 @@ def _mock_config(
 ):
     """Create a minimal mock config for update_structure trigger tests."""
     config = MagicMock()
-    config.struct.update_interval = update_interval
-    config.struct.update_min_interval = update_min_interval
-    config.struct.update_dtmagma_frac = update_dtmagma_frac
-    config.struct.update_dphi_abs = update_dphi_abs
-    config.struct.mesh_max_shift = mesh_max_shift
-    config.struct.mesh_convergence_interval = mesh_convergence_interval
-    config.struct.zalmoxis.temperature_mode = 'isothermal'
-    config.struct.zalmoxis.temperature_profile_file = None
-    config.struct.zalmoxis.num_levels = num_levels
-    config.interior.module = 'spider'
-    config.interior.spider.num_levels = num_levels
+    config.interior_struct.update_interval = update_interval
+    config.interior_struct.update_min_interval = update_min_interval
+    config.interior_struct.update_dtmagma_frac = update_dtmagma_frac
+    config.interior_struct.update_dphi_abs = update_dphi_abs
+    config.interior_struct.mesh_max_shift = mesh_max_shift
+    config.interior_struct.mesh_convergence_interval = mesh_convergence_interval
+    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.interior_struct.zalmoxis.temperature_profile_file = None
+    config.interior_struct.zalmoxis.num_levels = num_levels
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.spider.num_levels = num_levels
     return config
 
 
@@ -116,9 +116,9 @@ def test_ceiling_trigger():
     interior_o = _mock_interior_o()
 
     with (
-        patch('proteus.interior.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
@@ -152,9 +152,9 @@ def test_tmagma_trigger():
     interior_o = _mock_interior_o()
 
     with (
-        patch('proteus.interior.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
@@ -208,9 +208,9 @@ def test_phi_trigger():
     interior_o = _mock_interior_o()
 
     with (
-        patch('proteus.interior.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 2990.0, 0.80
@@ -286,9 +286,9 @@ def test_no_mesh_resets_convergence():
     interior_o = _mock_interior_o()
 
     with (
-        patch('proteus.interior.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
         update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     # No mesh file returned → convergence state reset
@@ -330,16 +330,16 @@ def test_full_update_with_mesh_blending(tmp_path):
 
     with (
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.504e6, mesh_file),
         ),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch(
-            'proteus.interior.spider.blend_mesh_files',
+            'proteus.interior_energetics.spider.blend_mesh_files',
             return_value=0.15,
         ),
-        patch('proteus.interior.wrapper.gc.collect'),
+        patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
@@ -380,16 +380,16 @@ def test_convergence_max_exceeded(tmp_path):
 
     with (
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.504e6, mesh_file),
         ),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch(
-            'proteus.interior.spider.blend_mesh_files',
+            'proteus.interior_energetics.spider.blend_mesh_files',
             return_value=0.15,
         ),
-        patch('proteus.interior.wrapper.gc.collect'),
+        patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
@@ -429,21 +429,21 @@ def test_update_with_entropy_remap(tmp_path):
 
     with (
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.504e6, mesh_file),
         ),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch(
-            'proteus.interior.spider.blend_mesh_files',
+            'proteus.interior_energetics.spider.blend_mesh_files',
             return_value=0.02,
         ),
         patch(
-            'proteus.interior.spider.get_all_output_times',
+            'proteus.interior_energetics.spider.get_all_output_times',
             return_value=[0.0, 500.0],
         ),
-        patch('proteus.interior.spider.remap_entropy_for_new_mesh') as mock_remap,
-        patch('proteus.interior.wrapper.gc.collect'),
+        patch('proteus.interior_energetics.spider.remap_entropy_for_new_mesh') as mock_remap,
+        patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
@@ -484,20 +484,20 @@ def test_entropy_remap_exception(tmp_path):
 
     with (
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.504e6, mesh_file),
         ),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch(
-            'proteus.interior.spider.blend_mesh_files',
+            'proteus.interior_energetics.spider.blend_mesh_files',
             return_value=0.02,
         ),
         patch(
-            'proteus.interior.spider.get_all_output_times',
+            'proteus.interior_energetics.spider.get_all_output_times',
             side_effect=RuntimeError('no JSON files'),
         ),
-        patch('proteus.interior.wrapper.gc.collect'),
+        patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
         # Should not raise
         result = update_structure_from_interior(
@@ -534,20 +534,20 @@ def test_update_creates_prev_file(tmp_path):
 
     with (
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.504e6, mesh_file),
         ),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
         patch(
-            'proteus.interior.spider.blend_mesh_files',
+            'proteus.interior_energetics.spider.blend_mesh_files',
             return_value=0.02,
         ),
         patch(
-            'proteus.interior.spider.get_all_output_times',
+            'proteus.interior_energetics.spider.get_all_output_times',
             return_value=[],
         ),
-        patch('proteus.interior.wrapper.gc.collect'),
+        patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
@@ -567,15 +567,15 @@ def test_update_creates_prev_file(tmp_path):
 @pytest.mark.unit
 def test_phi_crit_warning(caplog):
     """phi_crit < 0.01 in solve_structure should emit a warning."""
-    from proteus.interior.wrapper import solve_structure
+    from proteus.interior_energetics.wrapper import solve_structure
 
     config = MagicMock()
-    config.struct.set_by = 'mass_tot'
-    config.struct.module = 'zalmoxis'
+    config.planet.planet_mass_tot = 1.0
+    config.interior_struct.module = 'zalmoxis'
     config.params.stop.solid.phi_crit = 0.005
 
     with caplog.at_level('WARNING'):
-        with patch('proteus.interior.wrapper.determine_interior_radius_with_zalmoxis'):
+        with patch('proteus.interior_energetics.wrapper.determine_interior_radius_with_zalmoxis'):
             solve_structure({}, config, None, {}, '/tmp')
 
     assert any('phi_crit' in r.message for r in caplog.records)
@@ -589,30 +589,30 @@ def test_phi_crit_warning(caplog):
 @pytest.mark.unit
 def test_determine_zalmoxis_spider_mesh(tmp_path):
     """determine_interior_radius_with_zalmoxis stores mesh path and .prev copy."""
-    from proteus.interior.wrapper import determine_interior_radius_with_zalmoxis
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
 
     mesh_file = str(tmp_path / 'data' / 'spider_mesh.dat')
     (tmp_path / 'data').mkdir()
     (tmp_path / 'data' / 'spider_mesh.dat').write_text('# 50 49\n1.0 2.0 3.0 -4.0\n')
 
     config = MagicMock()
-    config.interior.module = 'spider'
-    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
-    config.interior.spider.num_levels = 50
-    config.struct.zalmoxis.temperature_mode = 'isothermal'
-    config.struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_energetics.spider.num_levels = 50
+    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
     hf_row = {'R_int': 6.371e6, 'gravity': 9.81, 'T_magma': 3000.0}
 
     with (
-        patch('proteus.interior.wrapper.get_nlevb', return_value=50),
-        patch('proteus.interior.wrapper.Interior_t'),
+        patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior_energetics.wrapper.Interior_t'),
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.48e6, mesh_file),
         ),
-        patch('proteus.interior.wrapper.run_interior'),
+        patch('proteus.interior_energetics.wrapper.run_interior'),
     ):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, str(tmp_path))
 
@@ -627,32 +627,32 @@ def test_determine_zalmoxis_spider_mesh(tmp_path):
 @pytest.mark.unit
 def test_determine_zalmoxis_adiabatic_switch(caplog):
     """SPIDER + isothermal + T-dep EOS switches to adiabatic, then restores."""
-    from proteus.interior.wrapper import determine_interior_radius_with_zalmoxis
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
 
     config = MagicMock()
-    config.interior.module = 'spider'
-    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
-    config.interior.spider.num_levels = 50
-    config.struct.zalmoxis.temperature_mode = 'isothermal'
-    config.struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_energetics.spider.num_levels = 50
+    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
     hf_row = {'R_int': 6.371e6}
 
     with (
-        patch('proteus.interior.wrapper.get_nlevb', return_value=50),
-        patch('proteus.interior.wrapper.Interior_t'),
+        patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior_energetics.wrapper.Interior_t'),
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.48e6, None),
         ),
-        patch('proteus.interior.wrapper.run_interior'),
+        patch('proteus.interior_energetics.wrapper.run_interior'),
         caplog.at_level('INFO'),
     ):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
 
     # Mode should be restored after the call
-    assert config.struct.zalmoxis.temperature_mode == 'isothermal'
+    assert config.interior_struct.zalmoxis.temperature_mode == 'isothermal'
     assert any('adiabatic' in r.message for r in caplog.records)
     # No mesh file → no spider_mesh key
     assert 'spider_mesh' not in dirs
@@ -662,41 +662,41 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
 @pytest.mark.unit
 def test_determine_zalmoxis_no_adiabatic_switch_non_tdep():
     """Non-T-dep EOS does not trigger adiabatic switch."""
-    from proteus.interior.wrapper import determine_interior_radius_with_zalmoxis
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
 
     config = MagicMock()
-    config.interior.module = 'spider'
-    config.interior.eos_dir = 'Seager2007'
-    config.interior.spider.num_levels = 50
-    config.struct.zalmoxis.temperature_mode = 'isothermal'
-    config.struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.eos_dir = 'Seager2007'
+    config.interior_energetics.spider.num_levels = 50
+    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
 
     dirs = {'spider': '/nonexistent/spider'}
     hf_row = {'R_int': 6.371e6}
 
     with (
-        patch('proteus.interior.wrapper.get_nlevb', return_value=50),
-        patch('proteus.interior.wrapper.Interior_t'),
+        patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior_energetics.wrapper.Interior_t'),
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.48e6, None),
         ),
-        patch('proteus.interior.wrapper.run_interior'),
+        patch('proteus.interior_energetics.wrapper.run_interior'),
     ):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
 
     # Should not have been changed
-    assert config.struct.zalmoxis.temperature_mode == 'isothermal'
+    assert config.interior_struct.zalmoxis.temperature_mode == 'isothermal'
 
 
 @pytest.mark.unit
 def test_solve_structure_invalid_module():
     """solve_structure raises ValueError for unknown struct.module."""
-    from proteus.interior.wrapper import solve_structure
+    from proteus.interior_energetics.wrapper import solve_structure
 
     config = MagicMock()
-    config.struct.set_by = 'mass_tot'
-    config.struct.module = 'nonexistent_module'
+    config.planet.planet_mass_tot = 1.0
+    config.interior_struct.module = 'nonexistent_module'
     config.params.stop.solid.phi_crit = 0.5
 
     with pytest.raises(ValueError, match='Invalid structure interior module'):

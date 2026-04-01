@@ -18,7 +18,7 @@ class TestGlobalMiscibilityConfig:
         """global_miscibility defaults to False."""
         from proteus.config._struct import Struct
 
-        s = Struct(corefrac=0.3, mass_tot=1.0)
+        s = Struct(corefrac=0.3)
         assert s.global_miscibility is False
 
     def test_requires_zalmoxis(self):
@@ -26,7 +26,7 @@ class TestGlobalMiscibilityConfig:
         from proteus.config._struct import Struct
 
         with pytest.raises(ValueError, match='zalmoxis'):
-            Struct(corefrac=0.3, module='self', global_miscibility=True, mass_tot=1.0)
+            Struct(corefrac=0.3, module='self', global_miscibility=True)
 
     def test_accepts_zalmoxis(self):
         """global_miscibility=True with module='zalmoxis' is valid."""
@@ -36,7 +36,7 @@ class TestGlobalMiscibilityConfig:
             corefrac=0.3,
             module='zalmoxis',
             global_miscibility=True,
-            mass_tot=1.0,
+
             zalmoxis=Zalmoxis(),
         )
         assert s.global_miscibility is True
@@ -94,7 +94,7 @@ class TestBuildVolatileProfile:
 
     def test_returns_none_when_no_mantle_mass(self):
         """Returns None when M_mantle_liquid + M_mantle_solid = 0."""
-        from proteus.interior.zalmoxis import build_volatile_profile
+        from proteus.interior_struct.zalmoxis import build_volatile_profile
 
         hf_row = self._make_hf_row(M_liq=0, M_sol=0)
         result = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
@@ -102,7 +102,7 @@ class TestBuildVolatileProfile:
 
     def test_returns_none_when_no_volatiles(self):
         """Returns None when all volatile masses are zero."""
-        from proteus.interior.zalmoxis import build_volatile_profile
+        from proteus.interior_struct.zalmoxis import build_volatile_profile
 
         hf_row = self._make_hf_row(H2O_liq=0, H2_liq=0)
         result = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
@@ -110,7 +110,7 @@ class TestBuildVolatileProfile:
 
     def test_returns_profile_with_volatiles(self):
         """Returns VolatileProfile when volatiles are present."""
-        from proteus.interior.zalmoxis import build_volatile_profile
+        from proteus.interior_struct.zalmoxis import build_volatile_profile
 
         hf_row = self._make_hf_row()
         result = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
@@ -119,7 +119,7 @@ class TestBuildVolatileProfile:
 
     def test_fractions_clamped_below_limit(self):
         """Total volatile mass fraction per phase is clamped to <= 0.95."""
-        from proteus.interior.zalmoxis import build_volatile_profile
+        from proteus.interior_struct.zalmoxis import build_volatile_profile
 
         # Extreme case: volatile mass > mantle mass
         hf_row = self._make_hf_row(M_liq=1e20, H2O_liq=1e24)
@@ -138,7 +138,7 @@ class TestOutgasDispatch:
         # This is a code path test: verify the logic in wrapper.py
         # Without a full Config, test the conditional logic directly
         class MockConfig:
-            class struct:
+            class interior_struct:
                 global_miscibility = True
 
             class outgas:
@@ -146,7 +146,7 @@ class TestOutgasDispatch:
 
         config = MockConfig()
         # The logic: if global_miscibility -> skip, elif h2_binodal -> apply
-        if config.struct.global_miscibility:
+        if config.interior_struct.global_miscibility:
             action = 'skip'
         elif config.outgas.h2_binodal:
             action = 'apply'
@@ -158,14 +158,14 @@ class TestOutgasDispatch:
         """apply_binodal_h2 is applied when h2_binodal=True, miscibility=False."""
 
         class MockConfig:
-            class struct:
+            class interior_struct:
                 global_miscibility = False
 
             class outgas:
                 h2_binodal = True
 
         config = MockConfig()
-        if config.struct.global_miscibility:
+        if config.interior_struct.global_miscibility:
             action = 'skip'
         elif config.outgas.h2_binodal:
             action = 'apply'

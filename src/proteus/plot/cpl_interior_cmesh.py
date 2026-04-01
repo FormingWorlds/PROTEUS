@@ -10,7 +10,7 @@ import numpy as np
 from cmcrameri import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.interior.wrapper import read_interior_data
+from proteus.interior_energetics.wrapper import read_interior_data
 from proteus.utils.plot import sample_output
 
 if TYPE_CHECKING:
@@ -195,7 +195,7 @@ def plot_interior_cmesh(
 
 def plot_interior_cmesh_entry(handler: Proteus):
     # Which module was used?
-    module = handler.config.interior.module
+    module = handler.config.interior_energetics.module
     if module == 'spider':
         extension = '.json'
     elif module == 'aragog':

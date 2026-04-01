@@ -62,9 +62,9 @@ def generate_config(base_toml, output_dir, mass, cmf, interior, outgas, volatile
     # Override parameters
     # PROTEUS prepends 'output/' to the path, so use relative path without it
     cfg['params']['out']['path'] = f'validation/{name}'
-    cfg['struct']['mass_tot'] = mass
-    cfg['struct']['zalmoxis']['coremassfrac'] = cmf
-    cfg['interior']['module'] = interior
+    cfg['planet']['planet_mass_tot'] = mass
+    cfg['interior_struct']['zalmoxis']['coremassfrac'] = cmf
+    cfg['interior_energetics']['module'] = interior
     cfg['outgas']['module'] = outgas
 
     # Volatile inventory
@@ -74,7 +74,7 @@ def generate_config(base_toml, output_dir, mass, cmf, interior, outgas, volatile
 
     # Adjust for high mass: increase max center pressure guess
     if mass > 3.0:
-        cfg['struct']['zalmoxis']['max_center_pressure_guess'] = 5e13
+        cfg['interior_struct']['zalmoxis']['max_center_pressure_guess'] = 5e13
 
     # Write TOML
     config_path = Path(output_dir) / 'configs' / f'{name}.toml'

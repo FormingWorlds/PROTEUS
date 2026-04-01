@@ -208,7 +208,7 @@ def plot_global(
 
     # PLOT ax_bl
     ax_bl.axhline(
-        y=config.struct.corefrac,
+        y=config.interior_struct.corefrac,
         ls='dashed',
         lw=lw * 1.5,
         alpha=al,

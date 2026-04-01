@@ -62,8 +62,11 @@ version = "2.0"
     s0_factor     = 0.375
     module        = "none"
 
-[struct]
-    mass_tot     = 1.0          # M_Earth (override for mass sweep)
+
+[planet]
+    planet_mass_tot = 1.0          # M_Earth (override for mass sweep)
+
+[interior_struct]
     corefrac     = 0.55
     core_density = 10738.33
     core_heatcap = 880.0
@@ -81,7 +84,7 @@ version = "2.0"
     mesh_max_shift        = 0.05
     mesh_convergence_interval = 10.0
 
-    [struct.zalmoxis]
+    [interior_struct.zalmoxis]
         core_eos                   = "PALEOS:iron"
         mantle_eos                 = "PALEOS:MgSiO3"
         ice_layer_eos              = ""
@@ -138,7 +141,7 @@ version = "2.0"
 [escape]
     module = "none"
 
-[interior]
+[interior_energetics]
     module          = "spider"
     heat_radiogenic = true
     heat_tidal      = false
@@ -147,7 +150,7 @@ version = "2.0"
     rfront_loc    = 0.4
     rfront_wid    = 0.15
 
-    [interior.spider]
+    [interior_energetics.spider]
         ini_entropy   = 3200.0
         ini_dsdr      = -1.0e-6
         mixing_length = 2

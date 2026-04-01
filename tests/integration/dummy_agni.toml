@@ -53,8 +53,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
-[struct]
-    mass_tot    = 2.14       # M_earth
+
+[planet]
+    planet_mass_tot = 2.14       # M_earth
+
+[interior_struct]
     corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table
@@ -89,12 +92,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         efficiency  = 0.1           # Escape efficiency factor
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     heat_radiogenic = false          # enable radiogenic heat production
     heat_tidal      = true         # enable tidal heat production
     module = "dummy"               # Which interior module to use
 
-    [interior.dummy]
+    [interior_energetics.dummy]
 
 
 # Outgassing - physics table

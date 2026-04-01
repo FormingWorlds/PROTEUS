@@ -37,10 +37,10 @@ def generate_configs():
             cfg['params']['out']['path'] = f'standalone_greybody/{name}'
 
             # Set mass
-            cfg['struct']['mass_tot'] = mass
+            cfg['planet']['planet_mass_tot'] = mass
 
             # Set interior module
-            cfg['interior']['module'] = solver
+            cfg['interior_energetics']['module'] = solver
 
             # Write config
             cfg_path = config_dir / f'{name}.toml'

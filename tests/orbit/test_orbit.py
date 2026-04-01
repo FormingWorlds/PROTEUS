@@ -8,7 +8,7 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-from proteus.interior.common import Interior_t
+from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.dummy import run_dummy_orbit
 
 

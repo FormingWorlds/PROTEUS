@@ -85,8 +85,11 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
-[struct]
-    mass_tot     = 1.0           # Total planet mass [M_earth]
+
+[planet]
+    planet_mass_tot = 1.0           # Total planet mass [M_earth]
+
+[interior_struct]
     corefrac     = 0.55          # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
@@ -108,11 +111,11 @@ version = "2.0"
     [escape.dummy]
         rate        = 1.0e5           # Bulk unfractionated escape rate [kg s-1]
 
-[interior]
+[interior_energetics]
     heat_radiogenic = false  # enable radiogenic heat production
     heat_tidal      = false  # enable tidal heat production
     module = "dummy"   # Which interior module to use
-    [interior.dummy]
+    [interior_energetics.dummy]
 
 [outgas]
     fO2_shift_IW    = 2         # log10(ΔIW), atmosphere/interior boundary oxidation state

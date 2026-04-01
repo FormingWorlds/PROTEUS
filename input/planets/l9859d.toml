@@ -70,8 +70,11 @@ version = "2.0"
     [orbit.lovepy]
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
-[struct]
-    mass_tot    = 1.64       # M_earth
+
+[planet]
+    planet_mass_tot = 1.64       # M_earth
+
+[interior_struct]
     corefrac    = 0.15      # non-dim., radius fraction
 
 [atmos_clim]
@@ -103,7 +106,7 @@ version = "2.0"
         efficiency = 0.1
         tidal = false
 
-[interior]
+[interior_energetics]
     flux_guess       = 1e4   # Initial heat flux guess [W m-2]
     heat_radiogenic = true  # enable radiogenic heat production
     heat_tidal      = true  # enable tidal heat production
@@ -112,7 +115,7 @@ version = "2.0"
 
     module = "spider"   # Which interior module to use
 
-    [interior.spider]
+    [interior_energetics.spider]
         mixing_length   = 2         # Mixing length parameterization
         tolerance_rel   = 1e-9      # relative solver tolerance
         tsurf_atol      = 5.0      # tsurf_poststep_change
@@ -120,7 +123,7 @@ version = "2.0"
         ini_entropy     = 3150.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
-    [interior.dummy]
+    [interior_energetics.dummy]
 
 
 [outgas]

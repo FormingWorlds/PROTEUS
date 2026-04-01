@@ -72,8 +72,11 @@ version = "2.0"
     module        = "none"
 
 # Planetary structure via Zalmoxis with PALEOS EOS
-[struct]
-    mass_tot     = 1.0
+
+[planet]
+    planet_mass_tot = 1.0
+
+[interior_struct]
     corefrac     = 0.55
     core_density = 10738.33
     core_heatcap = 880.0
@@ -89,7 +92,7 @@ version = "2.0"
     update_dtmagma_frac   = 0.99
     update_dphi_abs       = 0.99
 
-    [struct.zalmoxis]
+    [interior_struct.zalmoxis]
         core_eos                   = "PALEOS:iron"
         mantle_eos                 = "PALEOS:MgSiO3"
         ice_layer_eos              = ""
@@ -137,7 +140,7 @@ version = "2.0"
     module = "none"
 
 # Aragog interior module
-[interior]
+[interior_energetics]
     module          = "aragog"
     heat_radiogenic = false
     heat_tidal      = false
@@ -146,7 +149,7 @@ version = "2.0"
     rfront_loc    = 0.4
     rfront_wid    = 0.15
 
-    [interior.aragog]
+    [interior_energetics.aragog]
         basal_temperature        = 5000.0
         initial_condition        = 3
         inner_boundary_condition = 2

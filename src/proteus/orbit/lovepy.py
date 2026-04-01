@@ -8,7 +8,7 @@ import juliacall
 import numpy as np
 from juliacall import Main as jl
 
-from proteus.interior.common import Interior_t
+from proteus.interior_energetics.common import Interior_t
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -63,13 +63,13 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
 
     # Reverse arrays if using SPIDER
     #  Such that i=0 is at the CMB
-    if config.interior.module == 'spider':
+    if config.interior_energetics.module == 'spider':
         for k in arr_keys:
             lov[k] = lov[k][::-1]
 
     # Get viscous region and check if fully liquid
     i_top = 0  # index of topmost cell which has visc>visc_thresh
-    if config.interior.module == 'dummy':
+    if config.interior_energetics.module == 'dummy':
         if lov['visc'][0] < config.orbit.lovepy.visc_thresh:
             return 0.0
 
@@ -119,7 +119,7 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
         raise RuntimeError('Encountered problem when running lovepy module')
 
     # Extract result and store
-    if config.interior.module == 'dummy':
+    if config.interior_energetics.module == 'dummy':
         interior_o.tides[0] = power_prf[1]
 
     else:
@@ -129,7 +129,7 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
         tides[0] = tides[1]
 
         # Store result, flipping for SPIDER
-        if config.interior.module == 'spider':
+        if config.interior_energetics.module == 'spider':
             interior_o.tides[:] = tides[::-1]
         else:
             interior_o.tides[:] = tides[:]

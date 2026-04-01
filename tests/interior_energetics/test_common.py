@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior.common module — Interior_t lookup table loading.
+Unit tests for proteus.interior_energetics.common module — Interior_t lookup table loading.
 
 Tests the _load_rho_melt() method which loads SPIDER's P-S density_melt
 table with FWL_DATA fallback logic.
@@ -20,7 +20,7 @@ import os
 import numpy as np
 import pytest
 
-from proteus.interior.common import Interior_t
+from proteus.interior_energetics.common import Interior_t
 
 
 def _make_density_melt_file(filepath, nP=3, nS=4):

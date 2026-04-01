@@ -152,7 +152,7 @@ def test_satellite_evolve_rejects_combination():
 def test_tides_enabled_orbit_requires_orbit_module():
     """Tidal heating requires an orbit module to propagate the energy source."""
     inst = SimpleNamespace(
-        interior=SimpleNamespace(heat_tidal=True), orbit=SimpleNamespace(module=None)
+        interior_energetics=SimpleNamespace(heat_tidal=True), orbit=SimpleNamespace(module=None)
     )
     with pytest.raises(ValueError):
         tides_enabled_orbit(inst, None, None)
@@ -1227,58 +1227,76 @@ def test_params_valid_mod_negative():
 
 @pytest.mark.unit
 def test_struct_mass_radius_valid_mass_tot_set():
-    """Test mass_radius_valid validator accepts mass_tot being set."""
-    from proteus.config._struct import mass_radius_valid
+    """Test mass_radius_valid validator accepts planet_mass_tot being set."""
+    from proteus.config._config import mass_radius_valid
 
-    instance = SimpleNamespace(mass_tot=1.0, radius_int=None)  # Only mass_tot set
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(planet_mass_tot=1.0),
+        interior_struct=SimpleNamespace(radius_int=None),
+    )
     mass_radius_valid(instance, SimpleNamespace(), None)  # Should not raise
 
 
 @pytest.mark.unit
 def test_struct_mass_radius_valid_radius_int_set():
     """Test mass_radius_valid validator accepts radius_int being set."""
-    from proteus.config._struct import mass_radius_valid
+    from proteus.config._config import mass_radius_valid
 
-    instance = SimpleNamespace(mass_tot=None, radius_int=1.0)  # Only radius_int set
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(planet_mass_tot=None),
+        interior_struct=SimpleNamespace(radius_int=1.0),
+    )
     mass_radius_valid(instance, SimpleNamespace(), None)  # Should not raise
 
 
 @pytest.mark.unit
 def test_struct_mass_radius_neither_set():
-    """Test mass_radius_valid validator rejects when neither mass_tot nor radius_int set."""
-    from proteus.config._struct import mass_radius_valid
+    """Test mass_radius_valid validator rejects when neither set."""
+    from proteus.config._config import mass_radius_valid
 
-    instance = SimpleNamespace(mass_tot=None, radius_int=None)
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(planet_mass_tot=None),
+        interior_struct=SimpleNamespace(radius_int=None),
+    )
     with pytest.raises(ValueError, match='Must set one of'):
         mass_radius_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
 def test_struct_mass_radius_both_set():
-    """Test mass_radius_valid validator rejects when both mass_tot and radius_int set."""
-    from proteus.config._struct import mass_radius_valid
+    """Test mass_radius_valid validator rejects when both set."""
+    from proteus.config._config import mass_radius_valid
 
-    instance = SimpleNamespace(mass_tot=1.0, radius_int=1.0)
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(planet_mass_tot=1.0),
+        interior_struct=SimpleNamespace(radius_int=1.0),
+    )
     with pytest.raises(ValueError, match='Must set either'):
         mass_radius_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
 def test_struct_mass_radius_mass_tot_negative():
-    """Test mass_radius_valid validator rejects negative mass_tot."""
-    from proteus.config._struct import mass_radius_valid
+    """Test mass_radius_valid validator rejects negative planet_mass_tot."""
+    from proteus.config._config import mass_radius_valid
 
-    instance = SimpleNamespace(mass_tot=-1.0, radius_int=None)
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(planet_mass_tot=-1.0),
+        interior_struct=SimpleNamespace(radius_int=None),
+    )
     with pytest.raises(ValueError, match='must be > 0'):
         mass_radius_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
 def test_struct_mass_radius_mass_tot_too_large():
-    """Test mass_radius_valid validator rejects mass_tot > 20 M_earth."""
-    from proteus.config._struct import mass_radius_valid
+    """Test mass_radius_valid validator rejects planet_mass_tot > 20 M_earth."""
+    from proteus.config._config import mass_radius_valid
 
-    instance = SimpleNamespace(mass_tot=21.0, radius_int=None)
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(planet_mass_tot=21.0),
+        interior_struct=SimpleNamespace(radius_int=None),
+    )
     with pytest.raises(ValueError, match='must be < 20'):
         mass_radius_valid(instance, SimpleNamespace(), None)
 
@@ -1286,9 +1304,12 @@ def test_struct_mass_radius_mass_tot_too_large():
 @pytest.mark.unit
 def test_struct_mass_radius_radius_int_negative():
     """Test mass_radius_valid validator rejects negative radius_int."""
-    from proteus.config._struct import mass_radius_valid
+    from proteus.config._config import mass_radius_valid
 
-    instance = SimpleNamespace(mass_tot=None, radius_int=-1.0)
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(planet_mass_tot=None),
+        interior_struct=SimpleNamespace(radius_int=-1.0),
+    )
     with pytest.raises(ValueError, match='must be > 0'):
         mass_radius_valid(instance, SimpleNamespace(), None)
 
@@ -1296,9 +1317,12 @@ def test_struct_mass_radius_radius_int_negative():
 @pytest.mark.unit
 def test_struct_mass_radius_radius_int_too_large():
     """Test mass_radius_valid validator rejects radius_int > 10 R_earth."""
-    from proteus.config._struct import mass_radius_valid
+    from proteus.config._config import mass_radius_valid
 
-    instance = SimpleNamespace(mass_tot=None, radius_int=11.0)
+    instance = SimpleNamespace(
+        planet=SimpleNamespace(planet_mass_tot=None),
+        interior_struct=SimpleNamespace(radius_int=11.0),
+    )
     with pytest.raises(ValueError, match='must be < 10'):
         mass_radius_valid(instance, SimpleNamespace(), None)
 
@@ -1314,25 +1338,15 @@ def test_struct_zalmoxis_module_skip():
 
 @pytest.mark.unit
 def test_struct_zalmoxis_mass_tot_required():
-    """Test valid_zalmoxis validator requires mass_tot."""
-    from proteus.config._struct import valid_zalmoxis
+    """Test Config-level mass_radius_valid rejects no mass and no radius."""
+    from proteus.config._config import mass_radius_valid
 
     instance = SimpleNamespace(
-        module='zalmoxis',
-        mass_tot=None,  # INVALID
-        zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
-            core_eos='Seager2007:iron',
-            mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos='',
-            coremassfrac=0.325,
-            mantle_mass_fraction=0,
-        ),
+        planet=SimpleNamespace(planet_mass_tot=None),
+        interior_struct=SimpleNamespace(radius_int=None),
     )
-    with pytest.raises(ValueError, match='`mass_tot` must be set'):
-        valid_zalmoxis(instance, SimpleNamespace(), None)
+    with pytest.raises(ValueError, match='Must set one of'):
+        mass_radius_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
@@ -1668,7 +1682,7 @@ def test_config_tides_enabled_orbit_requires_orbit_module():
 
     # Invalid: tidal heating without orbit module
     instance = SimpleNamespace(
-        interior=SimpleNamespace(heat_tidal=True),
+        interior_energetics=SimpleNamespace(heat_tidal=True),
         orbit=SimpleNamespace(module=None),  # No orbit module - INVALID
     )
     with pytest.raises(ValueError, match='Interior tidal heating requires'):
@@ -1682,7 +1696,7 @@ def test_config_tides_enabled_orbit_allows_no_tides():
 
     # Valid: no tidal heating
     instance = SimpleNamespace(
-        interior=SimpleNamespace(heat_tidal=False),
+        interior_energetics=SimpleNamespace(heat_tidal=False),
         orbit=SimpleNamespace(module=None),
     )
     tides_enabled_orbit(instance, SimpleNamespace(), None)  # Should not raise

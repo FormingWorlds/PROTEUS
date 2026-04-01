@@ -14,11 +14,15 @@
 #   [params]        parameters for code execution, output files, time-stepping, convergence
 #   [star]          stellar parameters, model selection
 #   [orbit]         planetary orbital parameters
-#   [struct]        planetary structure (mass, radius)
+#
+[planet]
+    planet_mass_tot = 1.0          # M_earth
+
+[interior_struct]        planetary structure (mass, radius)
 #   [atmos_clim]    atmosphere climate parameters, model selection
 #   [atmos_chem]    atmosphere chemistry parameters, model selection
 #   [escape]        escape parameters, model selection
-#   [interior]      magma ocean model selection and parameters
+#   [interior_energetics]      magma ocean model selection and parameters
 #   [outgas]        outgassing parameters (fO2) and included volatiles
 #   [delivery]      initial volatile inventory, and delivery model selection
 #   [observe]       synthetic observations
@@ -160,8 +164,7 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
-[struct]
-    mass_tot     = 1.0          # M_earth
+[interior_struct]
     radius_int   = "none"       # R_earth
     corefrac     = 0.55         # non-dim., radius fraction
     core_density = 10738.33     # Core density [kg m-3]
@@ -175,7 +178,7 @@ version = "2.0"
     update_dtmagma_frac  = 0.03     # trigger on relative T_magma change (3%)
     update_dphi_abs      = 0.05     # trigger on absolute Phi_global change
 
-    [struct.zalmoxis]
+    [interior_struct.zalmoxis]
         # Per-layer EOS: "<source>:<material>". See Zalmoxis docs for valid options.
         # Tabulated: Seager2007:iron, Seager2007:MgSiO3, WolfBower2018:MgSiO3, RTPress100TPa:MgSiO3, Seager2007:H2O
         # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O, Analytic:graphite, Analytic:SiC
@@ -301,13 +304,13 @@ version = "2.0"
         kappa_S2  = 1.0             # S2  opacity ^
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     # ── Universal parameters (all modules) ────────────────────────────
     module          = "spider"       # Which interior module: "spider", "aragog", "dummy"
     tsurf_init      = 3300.0         # Initial surface temperature [K]
 
     # ── Dummy module (simple parameterized interior) ──────────────────
-    [interior.dummy]
+    [interior_energetics.dummy]
         mantle_tliq     = 2700.0    # Liquidus temperature [K]
         mantle_tsol     = 1700.0    # Solidus temperature [K]
         mantle_rho      = 4550.0    # Mantle density [kg m-3]
@@ -331,7 +334,7 @@ version = "2.0"
     flux_guess          = -1              # Initial F_atm guess [W m-2]; <0 = sigma*T^4, 0 = zero, >0 = prescribed
 
     # ── Aragog-only parameters ────────────────────────────────────────
-    [interior.aragog]
+    [interior_energetics.aragog]
         initial_condition        = 3        # Initial T(P): 1=linear, 2=from file, 3=adiabat
         basal_temperature        = 7000.0   # CMB temperature [K] (if initial_condition=1)
         inner_boundary_condition = 1        # CMB BC: 1=core cooling, 2=prescribed flux, 3=prescribed T
@@ -344,7 +347,7 @@ version = "2.0"
         jax                      = false    # Use JAX/diffrax solver backend (requires jax, equinox, diffrax)
 
     # ── SPIDER-only parameters ────────────────────────────────────────
-    [interior.spider]
+    [interior_energetics.spider]
         mixing_length            = 2        # Mixing length: 1=nearest boundary, 2=constant D/4
         tolerance_rel            = 1.0e-8   # SUNDIALS relative tolerance
         solver_type              = "bdf"    # SUNDIALS solver method

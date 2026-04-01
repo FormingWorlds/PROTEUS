@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.interior.common import Interior_t
+from proteus.interior_energetics.common import Interior_t
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
@@ -34,11 +34,11 @@ def calculate_core_mass(hf_row: dict, config: Config):
     Calculate the core mass of the planet.
     """
     hf_row['M_core'] = (
-        config.struct.core_density
+        config.interior_struct.core_density
         * 4.0
         / 3.0
         * np.pi
-        * (hf_row['R_int'] * config.struct.corefrac) ** 3.0
+        * (hf_row['R_int'] * config.interior_struct.corefrac) ** 3.0
     )
 
 
@@ -62,14 +62,14 @@ def get_nlevb(config: Config):
     """
     Get number of interior basic-nodes (level edges) from config.
     """
-    match config.interior.module:
+    match config.interior_energetics.module:
         case 'spider':
-            return int(config.interior.num_levels)
+            return int(config.interior_energetics.num_levels)
         case 'aragog':
-            return int(config.interior.num_levels)
+            return int(config.interior_energetics.num_levels)
         case 'dummy':
             return 2
-    raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
+    raise ValueError(f"Invalid interior module selected '{config.interior_energetics.module}'")
 
 
 def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict):
@@ -81,15 +81,15 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     achieves the target mass provided by the user in the config file.
     """
 
-    log.info('Using %s interior module to solve structure' % config.interior.module)
+    log.info('Using %s interior module to solve structure' % config.interior_energetics.module)
 
     # Initial guess for interior radius and gravity
-    if config.interior.module == 'spider':
+    if config.interior_energetics.module == 'spider':
         spider_dir = dirs['spider']
     else:
         spider_dir = None
     int_o = Interior_t(
-        get_nlevb(config), spider_dir=spider_dir, eos_dir=config.struct.eos_dir
+        get_nlevb(config), spider_dir=spider_dir, eos_dir=config.interior_struct.eos_dir
     )
     int_o.ic = 1
     hf_row['R_int'] = R_earth
@@ -97,9 +97,9 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     hf_row['gravity'] = 9.81
 
     # Target mass
-    M_target = config.struct.mass_tot * M_earth
+    M_target = config.planet.planet_mass_tot * M_earth
 
-    # We need to solve for the state hf_row[M_planet] = config.struct.mass_tot
+    # We need to solve for the state hf_row[M_planet] = config.planet.planet_mass_tot
     # This function takes R_int as the input value, and returns the mass residual
     def _resid(x):
         hf_row['R_int'] = x
@@ -124,11 +124,11 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         return res
 
     # Set tolerance
-    match config.interior.module:
+    match config.interior_energetics.module:
         case 'aragog':
-            rtol = config.interior.num_tolerance
+            rtol = config.interior_energetics.num_tolerance
         case 'spider':
-            rtol = config.interior.num_tolerance
+            rtol = config.interior_energetics.num_tolerance
         case _:
             rtol = 1e-7
 
@@ -168,11 +168,11 @@ def determine_interior_radius_with_zalmoxis(
     """
 
     log.info('Using Zalmoxis to solve for interior structure')
-    from proteus.interior.zalmoxis import zalmoxis_solver
+    from proteus.interior_struct.zalmoxis import zalmoxis_solver
 
     nlev_b = get_nlevb(config)
-    spider_dir = dirs.get('spider') if config.interior.module == 'spider' else None
-    int_o = Interior_t(nlev_b, spider_dir=spider_dir, eos_dir=config.struct.eos_dir)
+    spider_dir = dirs.get('spider') if config.interior_energetics.module == 'spider' else None
+    int_o = Interior_t(nlev_b, spider_dir=spider_dir, eos_dir=config.interior_struct.eos_dir)
     int_o.ic = 1
 
     # Set Zalmoxis to 'adiabatic' mode for T-dependent mantle EOS.
@@ -183,26 +183,26 @@ def determine_interior_radius_with_zalmoxis(
     # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
     # through entropy evolution, so the linear T initial guess is fine.
     _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-    _orig_temp_mode = config.struct.zalmoxis.temperature_mode
+    _orig_temp_mode = config.interior_struct.zalmoxis.temperature_mode
     if (
-        config.interior.module == 'spider'
+        config.interior_energetics.module == 'spider'
         and _orig_temp_mode == 'isothermal'
-        and config.struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES)
+        and config.interior_struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES)
     ):
         log.info(
             'Switching Zalmoxis temperature_mode from isothermal to adiabatic '
             'for SPIDER coupling with T-dependent mantle EOS',
         )
-        config.struct.zalmoxis.temperature_mode = 'adiabatic'
+        config.interior_struct.zalmoxis.temperature_mode = 'adiabatic'
 
     # Request SPIDER mesh file if interior module is SPIDER
-    num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
+    num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
     try:
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
     finally:
-        config.struct.zalmoxis.temperature_mode = _orig_temp_mode
+        config.interior_struct.zalmoxis.temperature_mode = _orig_temp_mode
 
     # Store mesh file path for subsequent SPIDER calls
     if spider_mesh_file:
@@ -219,8 +219,8 @@ def determine_interior_radius_with_zalmoxis(
     # Generate SPIDER P-S EOS tables from PALEOS if applicable.
     # This converts Zalmoxis's P-T EOS data into the P-S format that both
     # SPIDER and Aragog (entropy solver) need.
-    if config.interior.module in ('spider', 'aragog'):
-        from proteus.interior.zalmoxis import generate_spider_tables
+    if config.interior_energetics.module in ('spider', 'aragog'):
+        from proteus.interior_struct.zalmoxis import generate_spider_tables
 
         spider_tables = generate_spider_tables(config, outdir)
         if spider_tables is not None:
@@ -257,13 +257,13 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
     outdir : str
         Output directory for Zalmoxis files.
     """
-    from proteus.interior.zalmoxis import generate_spider_tables, zalmoxis_solver
+    from proteus.interior_struct.zalmoxis import generate_spider_tables, zalmoxis_solver
     from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 
-    max_iter = config.struct.equilibrate_max_iter
-    tol = config.struct.equilibrate_tol
+    max_iter = config.interior_struct.equilibrate_max_iter
+    tol = config.interior_struct.equilibrate_tol
     nlev_b = get_nlevb(config)
-    num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
+    num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
 
     log.info(
         'Starting init equilibration loop (max %d iter, tol %.1f%%)',
@@ -333,7 +333,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         )
 
     # 4. Regenerate SPIDER EOS tables with final composition
-    if config.interior.module in ('spider', 'aragog'):
+    if config.interior_energetics.module in ('spider', 'aragog'):
         spider_tables = generate_spider_tables(config, outdir)
         if spider_tables is not None:
             dirs['spider_eos_dir'] = spider_tables['eos_dir']
@@ -354,18 +354,18 @@ def solve_structure(
 
     # Set total mass by radius
     # We might need here to setup a determine_interior_mass function as mass calculation depends on gravity
-    if config.struct.set_by == 'radius_int':
+    if config.interior_struct.set_by == 'radius_int':
         # radius defines interior structure
-        hf_row['R_int'] = config.struct.radius_int * R_earth
+        hf_row['R_int'] = config.interior_struct.radius_int * R_earth
         calculate_core_mass(hf_row, config)
         # initial guess for mass, which will be updated by the interior model
         hf_row['M_int'] = 1.2 * M_earth
         update_gravity(hf_row)
 
     # Set by total mass (mantle + core + volatiles)
-    elif config.struct.set_by == 'mass_tot':
+    elif config.planet.planet_mass_tot is not None:
         # Choose the method to determine the interior radius
-        match config.struct.module:
+        match config.interior_struct.module:
             case 'self':
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case 'zalmoxis':
@@ -384,11 +384,11 @@ def solve_structure(
                 return determine_interior_radius_with_zalmoxis(
                     dirs, config, hf_all, hf_row, outdir
                 )
-        raise ValueError(f"Invalid structure interior module selected '{config.struct.module}'")
+        raise ValueError(f"Invalid structure interior module selected '{config.interior_struct.module}'")
 
     # Otherwise, error
     else:
-        log.error('Invalid constraint on interior structure: %s' % config.struct.set_by)
+        log.error('Invalid constraint on interior structure: %s' % config.interior_struct.set_by)
 
 
 def run_interior(
@@ -420,30 +420,30 @@ def run_interior(
     # Use the appropriate interior model
     if verbose:
         log.info('Evolve interior...')
-    log.debug('Using %s module to evolve interior' % config.interior.module)
+    log.debug('Using %s module to evolve interior' % config.interior_energetics.module)
 
     # Write tidal heating file
-    if config.interior.heat_tidal:
+    if config.interior_energetics.heat_tidal:
         interior_o.write_tides(dirs['output'])
 
-    if config.interior.module == 'spider':
+    if config.interior_energetics.module == 'spider':
         # Import
-        from proteus.interior.spider import ReadSPIDER, RunSPIDER
+        from proteus.interior_energetics.spider import ReadSPIDER, RunSPIDER
 
         # Run SPIDER (pass external mesh file if available from Zalmoxis)
         mesh_file = dirs.get('spider_mesh')
         RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
-    elif config.interior.module == 'aragog':
-        from proteus.interior.aragog import AragogRunner
+    elif config.interior_energetics.module == 'aragog':
+        from proteus.interior_energetics.aragog import AragogRunner
 
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         sim_time, output = runner.run_solver(hf_row, interior_o, dirs)
 
-    elif config.interior.module == 'dummy':
+    elif config.interior_energetics.module == 'dummy':
         # Import
-        from proteus.interior.dummy import run_dummy_int
+        from proteus.interior_energetics.dummy import run_dummy_int
 
         # Run dummy interior
         sim_time, output = run_dummy_int(config, dirs, hf_row, hf_all, interior_o)
@@ -476,7 +476,7 @@ def run_interior(
 
     # Update rheological parameters
     #    Only calculate viscosity here if using dummy module
-    calc_visc = bool(config.interior.module == 'dummy')
+    calc_visc = bool(config.interior_energetics.module == 'dummy')
     interior_o.update_rheology(visc=calc_visc)
 
     # Ensure values are >= 0
@@ -505,14 +505,14 @@ def run_interior(
 
         # Do not allow massive increases to T_surf, always
         # Use module-appropriate tolerances for the T_magma limiter
-        if config.interior.module == 'spider':
-            dT_delta = config.interior.spider.tsurf_atol
-            dT_delta += config.interior.spider.tsurf_rtol * T_magma_prev
-        elif config.interior.module == 'aragog':
-            dT_delta = float(config.interior.aragog.tsurf_poststep_change)
+        if config.interior_energetics.module == 'spider':
+            dT_delta = config.interior_energetics.spider.tsurf_atol
+            dT_delta += config.interior_energetics.spider.tsurf_rtol * T_magma_prev
+        elif config.interior_energetics.module == 'aragog':
+            dT_delta = float(config.interior_energetics.aragog.tsurf_poststep_change)
         else:
-            dT_delta = config.interior.dummy.tmagma_atol
-            dT_delta += config.interior.dummy.tmagma_rtol * T_magma_prev
+            dT_delta = config.interior_energetics.dummy.tmagma_atol
+            dT_delta += config.interior_energetics.dummy.tmagma_rtol * T_magma_prev
         if hf_row['T_magma'] > T_magma_prev + dT_delta:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
@@ -525,16 +525,16 @@ def run_interior(
         log.info('    Phi_global = %.3f  ' % float(hf_row['Phi_global']))
         log.info('    RF_depth   = %.3f  ' % float(hf_row['RF_depth']))
         log.info('    F_int      = %.2e W m-2' % float(hf_row['F_int']))
-        if config.interior.heat_tidal:
+        if config.interior_energetics.heat_tidal:
             log.info('    F_tidal    = %.2e W m-2' % float(hf_row['F_tidal']))
-        if config.interior.heat_radiogenic:
+        if config.interior_energetics.heat_radiogenic:
             log.info('    F_radio    = %.2e W m-2' % float(hf_row['F_radio']))
 
     # Actual time step size
     interior_o.dt = float(sim_time) - hf_row['Time']
 
 
-    # TODO: When config.struct.module == 'zalmoxis', the Aragog mesh
+    # TODO: When config.interior_struct.module == 'zalmoxis', the Aragog mesh
     # is set up once during setup_solver and never refreshed during
     # equilibration iterations. If Zalmoxis re-runs and produces a
     # new zalmoxis_output.dat, Aragog uses the stale initial mesh.
@@ -588,7 +588,7 @@ def update_structure_from_interior(
     no_update = (last_struct_time, last_Tmagma, last_Phi)
 
     # Dynamic updates disabled
-    if config.struct.update_interval <= 0:
+    if config.interior_struct.update_interval <= 0:
         return no_update
 
     current_time = hf_row['Time']
@@ -601,35 +601,35 @@ def update_structure_from_interior(
     # Mesh convergence trigger: bypasses normal floor when mesh is still
     # converging toward the true Zalmoxis solution after blending
     mesh_converging = dirs.get('mesh_shift_active', False)
-    if mesh_converging and elapsed >= config.struct.mesh_convergence_interval:
+    if mesh_converging and elapsed >= config.interior_struct.mesh_convergence_interval:
         triggered = True
         reason = (
             f'mesh convergence (elapsed {elapsed:.1f} yr '
-            f'>= {config.struct.mesh_convergence_interval:.1f} yr)'
+            f'>= {config.interior_struct.mesh_convergence_interval:.1f} yr)'
         )
 
     # Floor: don't update too frequently (only for non-convergence triggers)
-    if not triggered and elapsed < config.struct.update_min_interval:
+    if not triggered and elapsed < config.interior_struct.update_min_interval:
         return no_update
 
     # Ceiling: guaranteed update after max interval
-    if not triggered and elapsed >= config.struct.update_interval:
+    if not triggered and elapsed >= config.interior_struct.update_interval:
         triggered = True
-        reason = f'ceiling ({elapsed:.1f} yr >= {config.struct.update_interval:.1f} yr)'
+        reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.update_interval:.1f} yr)'
 
     # T_magma relative change
     if not triggered and last_Tmagma > 0:
         dT_frac = abs(hf_row['T_magma'] - last_Tmagma) / last_Tmagma
-        if dT_frac >= config.struct.update_dtmagma_frac:
+        if dT_frac >= config.interior_struct.update_dtmagma_frac:
             triggered = True
-            reason = f'dT/T={dT_frac:.3f} >= {config.struct.update_dtmagma_frac}'
+            reason = f'dT/T={dT_frac:.3f} >= {config.interior_struct.update_dtmagma_frac}'
 
     # Phi_global absolute change
     if not triggered:
         dPhi = abs(hf_row['Phi_global'] - last_Phi)
-        if dPhi >= config.struct.update_dphi_abs:
+        if dPhi >= config.interior_struct.update_dphi_abs:
             triggered = True
-            reason = f'dPhi={dPhi:.3f} >= {config.struct.update_dphi_abs}'
+            reason = f'dPhi={dPhi:.3f} >= {config.interior_struct.update_dphi_abs}'
 
     # Composition change: check dissolved volatile fractions.
     # When the binodal or CALLIOPE changes how much H2/H2O is dissolved,
@@ -655,7 +655,7 @@ def update_structure_from_interior(
     log.info('Updating structure from interior T(r) via Zalmoxis (trigger: %s)', reason)
 
     outdir = dirs['output']
-    num_layers = config.struct.zalmoxis.num_levels
+    num_layers = config.interior_struct.zalmoxis.num_levels
 
     # Build SPIDER's mantle T(r) in ascending radius (CMB to surface)
     # interior_o.radius is basic nodes (surface to CMB), temp is staggered nodes
@@ -686,13 +686,13 @@ def update_structure_from_interior(
     # instead of mutating the Config object. The current save/restore pattern
     # is fragile if multiple callers modify temperature_mode concurrently.
     # Temporarily override Zalmoxis config for prescribed temperature mode
-    from proteus.interior.zalmoxis import zalmoxis_solver
+    from proteus.interior_struct.zalmoxis import zalmoxis_solver
 
-    orig_temp_mode = config.struct.zalmoxis.temperature_mode
-    orig_temp_file = config.struct.zalmoxis.temperature_profile_file
+    orig_temp_mode = config.interior_struct.zalmoxis.temperature_mode
+    orig_temp_file = config.interior_struct.zalmoxis.temperature_profile_file
 
-    config.struct.zalmoxis.temperature_mode = 'prescribed'
-    config.struct.zalmoxis.temperature_profile_file = temp_profile_path
+    config.interior_struct.zalmoxis.temperature_mode = 'prescribed'
+    config.interior_struct.zalmoxis.temperature_profile_file = temp_profile_path
 
     # Save current mesh as baseline for blending
     prev_path = dirs.get('spider_mesh_prev')
@@ -705,27 +705,27 @@ def update_structure_from_interior(
 
     try:
         nlev_b = get_nlevb(config)
-        num_spider_nodes = nlev_b if config.interior.module == 'spider' else 0
+        num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
     finally:
         # Restore original config
-        config.struct.zalmoxis.temperature_mode = orig_temp_mode
-        config.struct.zalmoxis.temperature_profile_file = orig_temp_file
+        config.interior_struct.zalmoxis.temperature_mode = orig_temp_mode
+        config.interior_struct.zalmoxis.temperature_profile_file = orig_temp_file
 
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file
 
         # Blend mesh to limit per-update radius shift
-        from proteus.interior.spider import blend_mesh_files
+        from proteus.interior_energetics.spider import blend_mesh_files
 
         actual_shift = blend_mesh_files(
             prev_path or '',
             spider_mesh_file,
-            max_shift=config.struct.mesh_max_shift,
+            max_shift=config.interior_struct.mesh_max_shift,
         )
-        still_converging = actual_shift > config.struct.mesh_max_shift
+        still_converging = actual_shift > config.interior_struct.mesh_max_shift
 
         # Track convergence steps; give up after 20 consecutive blends
         # to avoid infinite rapid-update loops when Zalmoxis and SPIDER
@@ -749,7 +749,7 @@ def update_structure_from_interior(
                     n_conv,
                     max_convergence_steps,
                     actual_shift * 100,
-                    config.struct.mesh_max_shift * 100,
+                    config.interior_struct.mesh_max_shift * 100,
                 )
         else:
             n_conv = 0
@@ -766,8 +766,8 @@ def update_structure_from_interior(
         # Remap entropy in the latest SPIDER JSON to match the new mesh.
         # Without this, the old dS/dxi applied on the new xi grid produces
         # incorrect absolute entropy, causing CVode failures at high mass.
-        if config.interior.module == 'spider':
-            from proteus.interior.spider import (
+        if config.interior_energetics.module == 'spider':
+            from proteus.interior_energetics.spider import (
                 get_all_output_times,
                 remap_entropy_for_new_mesh,
             )
@@ -787,7 +787,7 @@ def update_structure_from_interior(
                 # When global_miscibility is enabled, SPIDER's domain
                 # extends to R_solvus, not R_int. Use the appropriate
                 # radius for entropy remapping.
-                if config.struct.global_miscibility and 'R_solvus' in hf_row:
+                if config.interior_struct.global_miscibility and 'R_solvus' in hf_row:
                     remap_radius = hf_row['R_solvus']
                 else:
                     remap_radius = hf_row['R_int']
@@ -811,8 +811,8 @@ def update_structure_from_interior(
     # TODO: Aragog P-T tables are not regenerated on composition change.
     # Currently only SPIDER tables are refreshed. If Aragog runs with
     # composition-dependent melting curves, stale tables may be used.
-    if comp_changed and config.interior.module in ('spider', 'aragog'):
-        from proteus.interior.zalmoxis import generate_spider_tables
+    if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
+        from proteus.interior_struct.zalmoxis import generate_spider_tables
 
         spider_tables = generate_spider_tables(config, outdir)
         if spider_tables is not None:
@@ -839,9 +839,9 @@ def update_structure_from_interior(
 
 def get_all_output_times(output_dir: str, model: str):
     if model == 'spider':
-        from proteus.interior.spider import get_all_output_times as _get_output_times
+        from proteus.interior_energetics.spider import get_all_output_times as _get_output_times
     elif model == 'aragog':
-        from proteus.interior.aragog import get_all_output_times as _get_output_times
+        from proteus.interior_energetics.aragog import get_all_output_times as _get_output_times
     else:
         return []
 
@@ -853,12 +853,12 @@ def read_interior_data(output_dir: str, model: str, times: list):
         return []
 
     if model == 'spider':
-        from proteus.interior.spider import read_jsons
+        from proteus.interior_energetics.spider import read_jsons
 
         return read_jsons(output_dir, times)
 
     elif model == 'aragog':
-        from proteus.interior.aragog import read_ncdfs
+        from proteus.interior_energetics.aragog import read_ncdfs
 
         return read_ncdfs(output_dir, times)
 

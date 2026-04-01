@@ -1518,7 +1518,7 @@ def test_download_melting_curves(mock_rm, mock_getfwl, mock_download, tmp_path):
 
     # Create mock config with melting_dir
     mock_config = MagicMock(spec=Config)
-    mock_config.struct.melting_dir = 'Wolf_Bower+2018'
+    mock_config.interior_struct.melting_dir = 'Wolf_Bower+2018'
 
     download_melting_curves(mock_config, clean=False)
 
@@ -1873,7 +1873,7 @@ def test_download_melting_curves_no_mapping(mock_get_info):
     from proteus.utils.data import download_melting_curves
 
     mock_config = MagicMock(spec=Config)
-    mock_config.struct.melting_dir = 'UnknownCurve'
+    mock_config.interior_struct.melting_dir = 'UnknownCurve'
     mock_get_info.return_value = None
 
     with pytest.raises(ValueError, match='No data source mapping found'):
@@ -1897,7 +1897,7 @@ def test_download_melting_curves_canonical_copy(mock_rm, mock_getfwl, mock_downl
     (mc_dir / 'liquidus.dat').write_text('liquidus data')
 
     mock_config = MagicMock()
-    mock_config.struct.melting_dir = 'Wolf_Bower+2018'
+    mock_config.interior_struct.melting_dir = 'Wolf_Bower+2018'
 
     download_melting_curves(mock_config, clean=False)
 
@@ -1926,7 +1926,7 @@ def test_download_melting_curves_canonical_skip_existing(
     (mc_dir / 'liquidus.dat').write_text('old liquidus')
 
     mock_config = MagicMock()
-    mock_config.struct.melting_dir = 'Wolf_Bower+2018'
+    mock_config.interior_struct.melting_dir = 'Wolf_Bower+2018'
 
     download_melting_curves(mock_config, clean=False)
 
@@ -2246,12 +2246,12 @@ def test_get_sufficient_zalmoxis_wolf_bower(
     from proteus.utils.data import _get_sufficient
 
     config = MagicMock()
-    config.interior.module = 'spider'
-    config.interior.eos_dir = 'WolfBower2018_MgSiO3'
-    config.struct.module = 'zalmoxis'
-    config.struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
-    config.struct.zalmoxis.core_eos = 'Seager2007:iron'
-    config.struct.zalmoxis.ice_layer_eos = ''
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+    config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.interior_struct.zalmoxis.ice_layer_eos = ''
 
     _get_sufficient(config, clean=False)
 
@@ -2294,11 +2294,11 @@ def test_get_sufficient_zalmoxis_seager_only(
     from proteus.utils.data import _get_sufficient
 
     config = MagicMock()
-    config.interior.module = 'dummy'  # no spider/aragog
-    config.struct.module = 'zalmoxis'
-    config.struct.zalmoxis.mantle_eos = 'Seager2007:MgSiO3'
-    config.struct.zalmoxis.core_eos = 'Seager2007:iron'
-    config.struct.zalmoxis.ice_layer_eos = ''
+    config.interior_energetics.module = 'dummy'  # no spider/aragog
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:MgSiO3'
+    config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
+    config.interior_struct.zalmoxis.ice_layer_eos = ''
 
     _get_sufficient(config, clean=False)
 
@@ -2339,11 +2339,11 @@ def test_get_sufficient_zalmoxis_paleos(
     from proteus.utils.data import _get_sufficient
 
     config = MagicMock()
-    config.interior.module = 'dummy'
-    config.struct.module = 'zalmoxis'
-    config.struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
-    config.struct.zalmoxis.core_eos = 'PALEOS:iron'
-    config.struct.zalmoxis.ice_layer_eos = 'PALEOS:H2O'
+    config.interior_energetics.module = 'dummy'
+    config.interior_struct.module = 'zalmoxis'
+    config.interior_struct.zalmoxis.mantle_eos = 'PALEOS:MgSiO3'
+    config.interior_struct.zalmoxis.core_eos = 'PALEOS:iron'
+    config.interior_struct.zalmoxis.ice_layer_eos = 'PALEOS:H2O'
 
     _get_sufficient(config, clean=False)
 

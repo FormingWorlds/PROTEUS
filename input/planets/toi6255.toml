@@ -39,7 +39,7 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
-[struct]
+[interior_struct]
     radius_int  = 1.079       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
@@ -73,13 +73,13 @@ version = "2.0"
     module = "none"    # Which escape module to use
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     heat_radiogenic = true  # enable radiogenic heat production
     heat_tidal      = true  # enable tidal heat production
 
     module = "spider"   # Which interior module to use
 
-    [interior.spider]
+    [interior_energetics.spider]
         mixing_length            = 2         # Mixing length parameterization
         tolerance_rel            = 1.0e-8    # relative solver tolerance
         solver_type              = "bdf"     # SUNDIALS solver method

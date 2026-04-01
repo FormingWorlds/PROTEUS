@@ -69,8 +69,11 @@ version = "2.0"
     module        = "none"
 
 # Planetary structure via Zalmoxis with PALEOS EOS
-[struct]
-    mass_tot     = 1.0
+
+[planet]
+    planet_mass_tot = 1.0
+
+[interior_struct]
     corefrac     = 0.55
     core_density = 10738.33
     core_heatcap = 880.0
@@ -86,7 +89,7 @@ version = "2.0"
     update_dtmagma_frac   = 0.99
     update_dphi_abs       = 0.99
 
-    [struct.zalmoxis]
+    [interior_struct.zalmoxis]
         core_eos                   = "PALEOS:iron"
         mantle_eos                 = "PALEOS:MgSiO3"
         ice_layer_eos              = ""
@@ -134,7 +137,7 @@ version = "2.0"
     module = "none"
 
 # SPIDER interior module
-[interior]
+[interior_energetics]
     module          = "spider"
     heat_radiogenic = false
     heat_tidal      = false
@@ -143,7 +146,7 @@ version = "2.0"
     rfront_loc    = 0.4
     rfront_wid    = 0.15
 
-    [interior.spider]
+    [interior_energetics.spider]
         ini_entropy   = 3200.0
         ini_dsdr      = -1.0e-6
         mixing_length = 2

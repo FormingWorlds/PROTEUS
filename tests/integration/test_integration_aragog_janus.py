@@ -12,7 +12,7 @@ from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
 from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
-from proteus.interior.aragog import read_ncdf as read_interior
+from proteus.interior_energetics.aragog import read_ncdf as read_interior
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
 out_dir = PROTEUS_ROOT / 'output' / 'aragog_janus'
@@ -122,7 +122,7 @@ def test_aragog_janus_interior(aragog_janus_run):
     out = read_interior(_out)
 
     # Compare to config
-    assert len(out['radius_b']) == aragog_janus_run.config.interior.aragog.num_levels
+    assert len(out['radius_b']) == aragog_janus_run.config.interior_energetics.aragog.num_levels
 
     # Load interior reference
     ref = read_interior(_ref)

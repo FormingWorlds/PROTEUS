@@ -50,10 +50,10 @@ def _run_proteus(config_path, tmpdir, label, struct_module):
     """
     runner = Proteus(config_path=config_path)
     runner.config.params.out.path = str(Path(tmpdir) / label)
-    runner.config.struct.module = struct_module
+    runner.config.interior_struct.module = struct_module
 
     if struct_module == 'self':
-        runner.config.struct.zalmoxis = None
+        runner.config.interior_struct.zalmoxis = None
 
     runner.init_directories()
     runner.start(resume=False, offline=True)

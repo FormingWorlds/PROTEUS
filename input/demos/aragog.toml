@@ -46,7 +46,7 @@ version = "2.0"
     module = 'none'
 
 # Planetary structure - physics table
-[struct]
+[interior_struct]
     radius_int  = 0.9       # R_earth
     corefrac    = 0.65      # non-dim., radius fraction
 
@@ -83,7 +83,7 @@ version = "2.0"
     [escape.dummy]
         rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
 
-[interior]
+[interior_energetics]
     grain_size      = 0.1               # crystal settling grain size [m]
     flux_guess       = 1e6               # Initial heat flux guess [W m-2]
     heat_radiogenic = false             # enable radiogenic heat production
@@ -93,21 +93,21 @@ version = "2.0"
 
     module = "aragog"   # Which interior module to use
 
-    [interior.spider]
+    [interior_energetics.spider]
         mixing_length   = 2         # Mixing length parameterization
         tsurf_atol      = 30.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
         ini_entropy     = 2700.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
-    [interior.aragog]
+    [interior_energetics.aragog]
         inner_boundary_condition        = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
         inner_boundary_value            = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
         tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
         event_triggering                = true    # enable events triggering to avoid abrupt jumps in surface temperature
 
 
-    [interior.dummy]
+    [interior_energetics.dummy]
 
 # Outgassing - physics table
 [outgas]

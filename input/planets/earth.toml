@@ -55,7 +55,7 @@ version = "2.0"
     s0_factor       = 0.375
     module  = "none"
 
-[struct]
+[interior_struct]
     radius_int  = 1.0
     corefrac    = 0.55
 
@@ -85,17 +85,17 @@ version = "2.0"
         efficiency  = 0.15           # Escape efficiency factor
         tidal       = true         # Tidal contribution enabled
 
-[interior]
+[interior_energetics]
     heat_radiogenic = false
     heat_tidal      = false
 
     module = "dummy"
 
-    [interior.dummy]
+    [interior_energetics.dummy]
         heat_internal    = 8e-12
         mantle_cp  = 2000.0
 
-    [interior.spider]
+    [interior_energetics.spider]
         ini_entropy = 2900.0
 
 [outgas]

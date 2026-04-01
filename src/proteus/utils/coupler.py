@@ -202,7 +202,7 @@ def validate_module_versions(dirs: dict, config: Config):
     valid = True
 
     # Interior module
-    match config.interior.module:
+    match config.interior_energetics.module:
         case 'spider':
             # do not validate SPIDER version
             pass
@@ -212,7 +212,7 @@ def validate_module_versions(dirs: dict, config: Config):
             valid &= _valid_ver(aragog_version, _get_expver('fwl-aragog'), 'Aragog')
 
     # Struct module
-    if config.struct.module == 'zalmoxis':
+    if config.interior_struct.module == 'zalmoxis':
         from zalmoxis import __version__ as zalmoxis_version
 
         valid &= _valid_ver(zalmoxis_version, _get_expver('fwl-zalmoxis'), 'Zalmoxis')
@@ -298,8 +298,8 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     log.info(' ')
 
     # Interior module
-    write = 'Interior module   %s' % config.interior.module
-    match config.interior.module:
+    write = 'Interior module   %s' % config.interior_energetics.module
+    match config.interior_energetics.module:
         case 'spider':
             write += ' version ' + _get_spider_version()
         case 'aragog':
@@ -307,7 +307,7 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
 
             write += ' version ' + aragog_version
     log.info(write)
-    if config.interior.module == 'spider':
+    if config.interior_energetics.module == 'spider':
         log.info('  - PETSc         version ' + _get_petsc_version())
 
     # Atmosphere module
@@ -401,7 +401,7 @@ def print_citation(config: Config):
             pass
 
     # Interior module
-    match config.interior.module:
+    match config.interior_energetics.module:
         case 'spider':
             _cite('Bower et al. (2021)', 'https://doi.org/10.3847/PSJ/ac5fb1')
         case 'aragog':
@@ -742,7 +742,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
     # Import utilities
     from proteus.atmos_clim.common import read_atmosphere_data
-    from proteus.interior.wrapper import read_interior_data
+    from proteus.interior_energetics.wrapper import read_interior_data
 
     # Import plotting functions
     from proteus.plot.cpl_atmosphere import plot_atmosphere
@@ -772,21 +772,21 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
-    dummy_int = config.interior.module == 'dummy'
+    dummy_int = config.interior_energetics.module == 'dummy'
     agni = config.atmos_clim.module == 'agni'
-    spider = config.interior.module == 'spider'
-    aragog = config.interior.module == 'aragog'
+    spider = config.interior_energetics.module == 'spider'
+    aragog = config.interior_energetics.module == 'aragog'
     observed = bool(config.observe.synthesis is not None)
 
     # Get all output times
     output_times = []
     plot_times = []
     if spider:
-        from proteus.interior.spider import get_all_output_times
+        from proteus.interior_energetics.spider import get_all_output_times
 
         output_times = get_all_output_times(output_dir)
     if aragog:
-        from proteus.interior.aragog import get_all_output_times
+        from proteus.interior_energetics.aragog import get_all_output_times
 
         output_times = get_all_output_times(output_dir)
 
@@ -821,12 +821,12 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
         # Interior profiles
         if not dummy_int:
-            int_data = read_interior_data(output_dir, config.interior.module, plot_times)
+            int_data = read_interior_data(output_dir, config.interior_energetics.module, plot_times)
             plot_interior(
                 output_dir,
                 plot_times,
                 int_data,
-                config.interior.module,
+                config.interior_energetics.module,
                 config.params.out.plot_fmt,
             )
 
@@ -853,7 +853,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
                     plot_times,
                     int_data,
                     atm_data,
-                    config.interior.module,
+                    config.interior_energetics.module,
                     config.params.out.plot_fmt,
                 )
 
@@ -909,7 +909,7 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
                     output_dir,
                     plot_times,
                     int_data,
-                    config.interior.module,
+                    config.interior_energetics.module,
                     plot_format=config.params.out.plot_fmt,
                 )
 

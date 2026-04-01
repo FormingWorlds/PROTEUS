@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior.aragog module — Zalmoxis integration paths.
+Unit tests for proteus.interior_energetics.aragog module — Zalmoxis integration paths.
 
 Tests the Zalmoxis-specific branches in AragogRunner.setup_solver() that set
 inner_radius from zalmoxis_solver and configure temperature-dependent initial
@@ -25,40 +25,40 @@ import pytest
 def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate'):
     """Create a mock config for AragogRunner.setup_solver tests."""
     config = MagicMock()
-    config.struct.module = struct_module
-    config.struct.corefrac = 0.55
-    config.struct.zalmoxis.mantle_eos = mantle_eos
-    config.struct.core_density = 12500.0
-    config.struct.core_heatcap = 880.0
-    config.interior.num_levels = 20
-    config.interior.aragog.bulk_modulus = 200e9
-    config.interior.aragog.mass_coordinates = False
-    config.interior.trans_conduction = True
-    config.interior.trans_convection = True
-    config.interior.trans_grav_sep = False
-    config.interior.trans_mixing = True
-    config.interior.aragog.dilatation = False
-    config.interior.heat_radiogenic = False
-    config.interior.heat_tidal = False
-    config.interior.aragog.initial_condition = 1
-    config.interior.aragog.init_file = 'dummy.txt'
-    config.interior.tsurf_init = 4000.0
-    config.interior.aragog.basal_temperature = 5000.0
-    config.interior.num_tolerance = 1e-4
-    config.interior.aragog.tsurf_poststep_change = 100.0
-    config.interior.aragog.event_triggering = True
-    config.interior.aragog.inner_boundary_condition = 1
-    config.interior.aragog.inner_boundary_value = 5000.0
+    config.interior_struct.module = struct_module
+    config.interior_struct.corefrac = 0.55
+    config.interior_struct.zalmoxis.mantle_eos = mantle_eos
+    config.interior_struct.core_density = 12500.0
+    config.interior_struct.core_heatcap = 880.0
+    config.interior_energetics.num_levels = 20
+    config.interior_energetics.aragog.bulk_modulus = 200e9
+    config.interior_energetics.aragog.mass_coordinates = False
+    config.interior_energetics.trans_conduction = True
+    config.interior_energetics.trans_convection = True
+    config.interior_energetics.trans_grav_sep = False
+    config.interior_energetics.trans_mixing = True
+    config.interior_energetics.aragog.dilatation = False
+    config.interior_energetics.heat_radiogenic = False
+    config.interior_energetics.heat_tidal = False
+    config.interior_energetics.aragog.initial_condition = 1
+    config.interior_energetics.aragog.init_file = 'dummy.txt'
+    config.interior_energetics.tsurf_init = 4000.0
+    config.interior_energetics.aragog.basal_temperature = 5000.0
+    config.interior_energetics.num_tolerance = 1e-4
+    config.interior_energetics.aragog.tsurf_poststep_change = 100.0
+    config.interior_energetics.aragog.event_triggering = True
+    config.interior_energetics.aragog.inner_boundary_condition = 1
+    config.interior_energetics.aragog.inner_boundary_value = 5000.0
     config.params.out.logging = 'WARNING'
-    config.struct.eos_dir = 'WolfBower2018_MgSiO3'
-    config.struct.melting_dir = 'Wolf_Bower+2018'
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_struct.melting_dir = 'Wolf_Bower+2018'
     return config
 
 
 @pytest.mark.unit
 def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     """setup_solver reads R_core from hf_row when struct.module='zalmoxis'."""
-    from proteus.interior.aragog import AragogRunner
+    from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
     config = _make_aragog_config(struct_module='zalmoxis')
@@ -88,10 +88,10 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     mc_dir.mkdir(parents=True)
 
     with (
-        patch('proteus.interior.aragog.FWL_DATA_DIR', tmp_path),
-        patch('proteus.interior.aragog.Parameters') as mock_params,
-        patch('proteus.interior.aragog.EntropySolver'),
-        patch('proteus.interior.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters') as mock_params,
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog.EntropyEOS'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -104,7 +104,7 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
 @pytest.mark.unit
 def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
     """setup_solver uses Zalmoxis T-profile for WolfBower2018 EOS (initial_condition=2)."""
-    from proteus.interior.aragog import AragogRunner
+    from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
     config = _make_aragog_config(struct_module='zalmoxis', mantle_eos='WolfBower2018:MgSiO3')
@@ -132,14 +132,14 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
 
     with (
         patch(
-            'proteus.interior.zalmoxis.zalmoxis_solver',
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.48e6, None),
         ),
-        patch('proteus.interior.aragog.FWL_DATA_DIR', tmp_path),
-        patch('proteus.interior.aragog.Parameters'),
-        patch('proteus.interior.aragog.EntropySolver'),
-        patch('proteus.interior.aragog.EntropyEOS'),
-        patch('proteus.interior.aragog._InitialConditionParameters') as mock_ic,
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver'),
+        patch('proteus.interior_energetics.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog._InitialConditionParameters') as mock_ic,
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -153,7 +153,7 @@ def test_setup_solver_zalmoxis_wolfbower_temp(tmp_path):
 @pytest.mark.unit
 def test_setup_solver_eos_fallback(tmp_path):
     """setup_solver falls back to legacy EOS path when unified path is missing."""
-    from proteus.interior.aragog import AragogRunner
+    from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
     config = _make_aragog_config(struct_module='self')
@@ -184,10 +184,10 @@ def test_setup_solver_eos_fallback(tmp_path):
     mc_dir.mkdir(parents=True)
 
     with (
-        patch('proteus.interior.aragog.FWL_DATA_DIR', tmp_path),
-        patch('proteus.interior.aragog.Parameters'),
-        patch('proteus.interior.aragog.EntropySolver') as mock_solver,
-        patch('proteus.interior.aragog.EntropyEOS'),
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.Parameters'),
+        patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
+        patch('proteus.interior_energetics.aragog.EntropyEOS'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
@@ -197,11 +197,11 @@ def test_setup_solver_eos_fallback(tmp_path):
 @pytest.mark.unit
 def test_setup_solver_eos_not_found(tmp_path):
     """setup_solver raises FileNotFoundError when EOS data is missing."""
-    from proteus.interior.aragog import AragogRunner
+    from proteus.interior_energetics.aragog import AragogRunner
 
     outdir = str(tmp_path)
     config = _make_aragog_config(struct_module='self')
-    config.struct.eos_dir = 'NonexistentEOS'
+    config.interior_struct.eos_dir = 'NonexistentEOS'
 
     hf_row = {
         'R_int': 6.371e6,
@@ -214,7 +214,7 @@ def test_setup_solver_eos_not_found(tmp_path):
     interior_o.tides = np.zeros(20)
 
     with (
-        patch('proteus.interior.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
         pytest.raises(FileNotFoundError, match='Aragog lookup data not found'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)

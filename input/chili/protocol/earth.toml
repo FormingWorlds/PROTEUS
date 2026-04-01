@@ -89,13 +89,16 @@ semimajoraxis_sat = 300000000.0
 instellation_method = "sma"
 instellationflux = 1.0
 
-[struct]
+
+[planet]
+planet_mass_tot = 1.0
+
+[interior_struct]
 corefrac = 0.55
 module = "self"
 zalmoxis = "none"
 core_density = 10738.33
 core_heatcap = 880.0
-mass_tot = 1.0
 radius_int = "none"
 
 [atmos_clim]
@@ -163,7 +166,7 @@ Pxuv = 5e-05
 efficiency = 0.1
 tidal = true
 
-[interior]
+[interior_energetics]
 module = "spider"
 heat_radiogenic = true
 heat_tidal = false
@@ -172,7 +175,7 @@ flux_guess = 1000.0
 rfront_loc = 0.5
 rfront_wid = 0.2
 
-[interior.spider]
+[interior_energetics.spider]
 ini_entropy = 3000.0
 ini_dsdr = -4.698e-06
 num_levels = 140

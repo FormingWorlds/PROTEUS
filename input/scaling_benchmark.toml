@@ -111,13 +111,16 @@ version = "2.0"
     module              = "none"    # No tidal evolution (saves compute time)
 
 # ============================================================
-# [struct] — Planetary structure
+#
+[planet]
+    planet_mass_tot = 1.0              # Planet mass [M_earth]
+
+[interior_struct] — Planetary structure
 #   module = "self": radius/density from config values (no Zalmoxis solver).
 #   This is faster than Zalmoxis and sufficient for benchmarking.
 # ============================================================
-[struct]
+[interior_struct]
     module       = "self"           # "self" = use provided values; "zalmoxis" = solve structure
-    mass_tot     = 1.0              # Planet mass [M_earth]
     corefrac     = 0.55             # Core radius fraction [non-dim.]
     core_density = 10738.33         # Core density [kg m-3]
     core_heatcap = 880.0            # Core specific heat capacity [J K-1 kg-1]
@@ -167,25 +170,25 @@ version = "2.0"
         tidal      = false      # No tidal contribution
 
 # ============================================================
-# [interior] — Magma ocean model
+# [interior_energetics] — Magma ocean model
 #   SPIDER: C-based entropy evolution solver (PETSc/SUNDIALS).
 #   This is the other main computational bottleneck.
 #   Alternative: "aragog" (Python, no compilation needed) or "dummy" (fast, parametric)
 # ============================================================
-[interior]
+[interior_energetics]
     grain_size      = 0.1       # Crystal settling grain size [m]
     flux_guess       = 1e3       # Initial heat flux guess [W m-2]
     heat_radiogenic = false     # No radiogenic heating (simpler benchmark)
     heat_tidal      = false     # No tidal heating
     module          = "spider"  # SPIDER interior module (C/PETSc)
 
-    [interior.spider]
+    [interior_energetics.spider]
         mixing_length   = 2         # Mixing length parameterization
         tolerance_rel   = 1.0e-8    # Relative solver tolerance
         ini_entropy     = 2900.0    # Initial surface entropy [J K-1 kg-1]
 
     # Alternative: Aragog (uncomment if PETSc/SPIDER not compiled on your cluster)
-    # [interior.aragog]
+    # [interior_energetics.aragog]
     #     num_levels      = 50
     #     tolerance       = 1.0e-7
     #     initial_condition = 3

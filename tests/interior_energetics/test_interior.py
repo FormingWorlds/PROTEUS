@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior.dummy module
+Unit tests for proteus.interior_energetics.dummy module
 
 This test file validates the dummy interior evolution model used for simple
 thermal evolution calculations without full mantle convection physics.
@@ -24,9 +24,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from proteus.interior.common import Interior_t
-from proteus.interior.dummy import calculate_simple_mantle_mass, run_dummy_int
-from proteus.interior.wrapper import determine_interior_radius, update_planet_mass
+from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.dummy import calculate_simple_mantle_mass, run_dummy_int
+from proteus.interior_energetics.wrapper import determine_interior_radius, update_planet_mass
 from proteus.utils.constants import M_earth, R_earth, element_list
 
 # ============================================================================
@@ -131,11 +131,11 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
 
     # Minimal config mock
     config = MagicMock()
-    config.interior = MagicMock()
-    config.interior.module = 'dummy'
-    config.struct = MagicMock()
-    config.struct.mass_tot = 1.0  # 1 Earth mass target
-    config.interior.spider = MagicMock()
+    config.interior_energetics = MagicMock()
+    config.interior_energetics.module = 'dummy'
+    config.interior_struct = MagicMock()
+    config.planet.planet_mass_tot = 1.0  # 1 Earth mass target
+    config.interior_energetics.spider = MagicMock()
 
     # Historical dataframe with one previous row (used by run_interior patch)
     import pandas as pd
@@ -163,7 +163,7 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
 
     with (
         patch(
-            'proteus.interior.wrapper.run_interior', side_effect=fake_run_interior
+            'proteus.interior_energetics.wrapper.run_interior', side_effect=fake_run_interior
         ) as mock_run,
         patch('proteus.outgas.wrapper.calc_target_masses') as mock_calc_masses,
     ):
@@ -239,17 +239,17 @@ def _create_mock_config(
 ) -> Any:
     """Helper to create minimal Config mock for interior tests."""
     config = MagicMock()
-    config.interior.tsurf_init = tsurf_init
-    config.interior.dummy.mantle_tliq = mantle_tliq
-    config.interior.dummy.mantle_tsol = mantle_tsol
-    config.interior.dummy.mantle_cp = mantle_cp
-    config.interior.dummy.mantle_rho = mantle_rho
-    config.interior.dummy.heat_internal = heat_internal
-    config.interior.dummy.tmagma_rtol = tmagma_rtol
-    config.interior.dummy.tmagma_atol = tmagma_atol
-    config.struct.corefrac = corefrac
-    config.struct.core_heatcap = core_heatcap
-    config.interior.heat_tidal = heat_tidal
+    config.interior_energetics.tsurf_init = tsurf_init
+    config.interior_energetics.dummy.mantle_tliq = mantle_tliq
+    config.interior_energetics.dummy.mantle_tsol = mantle_tsol
+    config.interior_energetics.dummy.mantle_cp = mantle_cp
+    config.interior_energetics.dummy.mantle_rho = mantle_rho
+    config.interior_energetics.dummy.heat_internal = heat_internal
+    config.interior_energetics.dummy.tmagma_rtol = tmagma_rtol
+    config.interior_energetics.dummy.tmagma_atol = tmagma_atol
+    config.interior_struct.corefrac = corefrac
+    config.interior_struct.core_heatcap = core_heatcap
+    config.interior_energetics.heat_tidal = heat_tidal
     return config
 
 
@@ -505,7 +505,7 @@ def test_eval_rheoparam_viscosity_solid():
     without rheological reduction from melting. Expected viscosity = 1.0 Pa·s
     based on par_visc parameters.
     """
-    from proteus.interior.common import eval_rheoparam
+    from proteus.interior_energetics.common import eval_rheoparam
 
     phi = 0.0  # Solid state
     visc = eval_rheoparam(phi, 'visc')
@@ -523,7 +523,7 @@ def test_eval_rheoparam_viscosity_molten():
     viscosity due to melt weakening. Viscosity should be much lower than solid case.
     Venus-like magma ocean scenario: phi ~0.3-0.4.
     """
-    from proteus.interior.common import eval_rheoparam
+    from proteus.interior_energetics.common import eval_rheoparam
 
     phi_solid = 0.0
     phi_molten = 0.35
@@ -543,7 +543,7 @@ def test_eval_rheoparam_shear_modulus():
     Physics: Shear modulus (rigidity) decreases with melt fraction.
     par_shear parameters are from Kervazo+21 for melt weakening behavior.
     """
-    from proteus.interior.common import eval_rheoparam
+    from proteus.interior_energetics.common import eval_rheoparam
 
     phi_low = 0.1
     phi_high = 0.3
@@ -564,7 +564,7 @@ def test_eval_rheoparam_bulk_modulus():
     Physics: Bulk modulus (incompressibility) also affected by melt fraction.
     Represents resistance to compression in melted material.
     """
-    from proteus.interior.common import eval_rheoparam
+    from proteus.interior_energetics.common import eval_rheoparam
 
     phi = 0.2
 
@@ -582,7 +582,7 @@ def test_eval_rheoparam_invalid_parameter():
     Physics: Only 'visc', 'shear', 'bulk' are valid rheological parameters
     in the match statement. Invalid names should fail with clear error.
     """
-    from proteus.interior.common import eval_rheoparam
+    from proteus.interior_energetics.common import eval_rheoparam
 
     with pytest.raises(ValueError, match='Invalid rheological parameter'):
         eval_rheoparam(0.2, 'invalid')
@@ -596,7 +596,7 @@ def test_interior_t_initialization():
     (creating nlev_s=nlev_b-1 shell layers). All property arrays should be
     initialized to zero.
     """
-    from proteus.interior.common import Interior_t
+    from proteus.interior_energetics.common import Interior_t
 
     nlev_b = 5
     interior = Interior_t(nlev_b)
@@ -617,7 +617,7 @@ def test_interior_t_update_rheology_solid():
     Physics: Solid mantle (all phi=0) should compute rheological parameters
     without melt weakening. Shear and bulk moduli should be positive and stable.
     """
-    from proteus.interior.common import Interior_t
+    from proteus.interior_energetics.common import Interior_t
 
     interior = Interior_t(nlev_b=3)
     interior.phi = np.array([0.0, 0.0])  # Solid mantle
@@ -641,7 +641,7 @@ def test_interior_t_update_rheology_with_viscosity():
     fraction. Mixed melt-solid case: phi=[0.1, 0.3] creates different
     viscosities at different depths.
     """
-    from proteus.interior.common import Interior_t
+    from proteus.interior_energetics.common import Interior_t
 
     interior = Interior_t(nlev_b=3)
     interior.phi = np.array([0.1, 0.3])  # Partially molten
@@ -662,7 +662,7 @@ def test_get_file_tides_path():
     Physics: Tidal heating array saved in data/ subdirectory with filename
     'tides_recent.dat' for model resumption from previous state.
     """
-    from proteus.interior.common import get_file_tides
+    from proteus.interior_energetics.common import get_file_tides
 
     outdir = '/tmp/output'
     fpath = get_file_tides(outdir)
@@ -680,7 +680,7 @@ def test_interior_t_resume_tides_file_missing(tmp_path):
     should log warning and return without error, allowing simulation to
     continue with default (zero) tidal heating.
     """
-    from proteus.interior.common import Interior_t
+    from proteus.interior_energetics.common import Interior_t
 
     outdir = str(tmp_path / 'output')
     interior = Interior_t(nlev_b=3)
@@ -700,7 +700,7 @@ def test_interior_t_write_and_resume_tides(tmp_path):
     melt fraction arrays to disk. Reading back should restore exact values
     (within floating-point precision).
     """
-    from proteus.interior.common import Interior_t
+    from proteus.interior_energetics.common import Interior_t
 
     outdir = str(tmp_path / 'output')
     (tmp_path / 'output' / 'data').mkdir(parents=True)
@@ -728,7 +728,7 @@ def test_interior_t_single_layer_dummy_interior():
     Physics: Dummy interior models (nlev_b=2) represent single-layer mantle
     without internal resolution, used for fast calculations.
     """
-    from proteus.interior.common import Interior_t
+    from proteus.interior_energetics.common import Interior_t
 
     interior = Interior_t(nlev_b=2)
 

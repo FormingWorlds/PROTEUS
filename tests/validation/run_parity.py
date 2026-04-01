@@ -62,18 +62,18 @@ def generate_config(mass, interior, with_mixing=False):
         cfg = tomllib.load(f)
 
     cfg['params']['out']['path'] = f'parity/{name}'
-    cfg['struct']['mass_tot'] = mass
-    cfg['interior']['module'] = interior
+    cfg['planet']['planet_mass_tot'] = mass
+    cfg['interior_energetics']['module'] = interior
 
     if with_mixing:
-        cfg['interior']['spider']['mixing'] = True
-        cfg['interior']['spider']['grav_sep'] = True
-        cfg['interior']['aragog']['mixing'] = True
-        cfg['interior']['aragog']['grav_sep'] = True
+        cfg['interior_energetics']['spider']['mixing'] = True
+        cfg['interior_energetics']['spider']['grav_sep'] = True
+        cfg['interior_energetics']['aragog']['mixing'] = True
+        cfg['interior_energetics']['aragog']['grav_sep'] = True
 
     # Adjust for high mass
     if mass > 3.0:
-        cfg['struct']['zalmoxis']['max_center_pressure_guess'] = 5e13
+        cfg['interior_struct']['zalmoxis']['max_center_pressure_guess'] = 5e13
 
     config_dir = OUTPUT_BASE / 'configs'
     config_dir.mkdir(parents=True, exist_ok=True)

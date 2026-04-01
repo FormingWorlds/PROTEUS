@@ -59,14 +59,17 @@ version = "2.0"
     s0_factor     = 0.375
     module        = "none"
 
-[struct]
-    mass_tot     = 1.0
+
+[planet]
+    planet_mass_tot = 1.0
+
+[interior_struct]
     corefrac     = 0.55
     core_density = 10738.33
     core_heatcap = 880.0
     module       = "zalmoxis"
 
-    [struct.zalmoxis]
+    [interior_struct.zalmoxis]
         core_eos                   = "Seager2007:iron"
         mantle_eos                 = "WolfBower2018:MgSiO3"
         ice_layer_eos              = ""
@@ -105,7 +108,7 @@ version = "2.0"
     [escape.dummy]
         rate = 1.0
 
-[interior]
+[interior_energetics]
     module          = "spider"
     heat_radiogenic = false
     heat_tidal      = false
@@ -114,7 +117,7 @@ version = "2.0"
     rfront_loc    = 0.5
     rfront_wid    = 0.2
 
-    [interior.spider]
+    [interior_energetics.spider]
         ini_entropy  = 3000.0
         ini_dsdr     = -4.698e-6
         mixing_length = 2

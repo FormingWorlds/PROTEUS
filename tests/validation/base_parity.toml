@@ -71,8 +71,11 @@ version = "2.0"
     s0_factor     = 0.375
     module        = "none"
 
-[struct]
-    mass_tot     = 1.0
+
+[planet]
+    planet_mass_tot = 1.0
+
+[interior_struct]
     corefrac     = 0.55
     core_density = 10738.33
     core_heatcap = 880.0
@@ -88,7 +91,7 @@ version = "2.0"
     mesh_max_shift        = 0.05
     mesh_convergence_interval = 10.0
 
-    [struct.zalmoxis]
+    [interior_struct.zalmoxis]
         core_eos                   = "PALEOS:iron"
         mantle_eos                 = "PALEOS:MgSiO3"
         ice_layer_eos              = ""
@@ -145,7 +148,7 @@ version = "2.0"
 [escape]
     module = "none"
 
-[interior]
+[interior_energetics]
     module          = "spider"    # overridden per case
     heat_radiogenic = true
     heat_tidal      = false
@@ -154,7 +157,7 @@ version = "2.0"
     rfront_loc    = 0.4
     rfront_wid    = 0.15
 
-    [interior.spider]
+    [interior_energetics.spider]
         ini_entropy   = 3200.0
         ini_dsdr      = -1.0e-6
         mixing_length = 2
@@ -162,7 +165,7 @@ version = "2.0"
         tsurf_atol    = 50.0
         tsurf_rtol    = 0.05
 
-    [interior.aragog]
+    [interior_energetics.aragog]
         basal_temperature = 5000.0
         initial_condition = 3       # adiabatic (uses entropy-conserving with PALEOS)
         inner_boundary_condition = 2  # prescribed flux (matches SPIDER core_bc)

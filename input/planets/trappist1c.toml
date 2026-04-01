@@ -35,8 +35,11 @@ version = "2.0"
     module  = "none"
 
 # Planetary structure - physics table
-[struct]
-    mass_tot    = 1.308       # M_earth
+
+[planet]
+    planet_mass_tot = 1.308       # M_earth
+
+[interior_struct]
     corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table
@@ -67,21 +70,21 @@ version = "2.0"
     module = "none"    # Which escape module to use
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     heat_radiogenic = true  # enable radiogenic heat production
     heat_tidal      = false  # enable tidal heat production
 
     module = "spider"   # Which interior module to use
 
-    [interior.spider]
+    [interior_energetics.spider]
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
         ini_entropy     = 3300.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
-    [interior.aragog]
+    [interior_energetics.aragog]
 
-    [interior.dummy]
+    [interior_energetics.dummy]
 
 # Outgassing - physics table
 [outgas]

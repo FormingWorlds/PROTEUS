@@ -68,7 +68,7 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
         runner.init_directories()
 
         # Fix: Lower tsurf_init to prevent runaway heating (T_magma > 1e6 K issue)
-        runner.config.interior.dummy.tsurf_init = 2000.0
+        runner.config.interior_energetics.dummy.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr, minimum time
@@ -155,7 +155,7 @@ def test_smoke_janus_dummy_interior_radiation_balance():
         runner.init_directories()
 
         # Use dummy interior (fast) - already set in janus.toml
-        runner.config.interior.module = 'dummy'
+        runner.config.interior_energetics.module = 'dummy'
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2
@@ -229,7 +229,7 @@ def test_smoke_agni_dummy_interior_convergence():
         runner.init_directories()
 
         # Use dummy interior - already set in agni.toml
-        runner.config.interior.module = 'dummy'
+        runner.config.interior_energetics.module = 'dummy'
 
         # Override stop time
         runner.config.params.stop.time.minimum = 1e2

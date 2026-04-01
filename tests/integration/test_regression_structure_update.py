@@ -54,7 +54,7 @@ def test_structure_update_consistency():
         runner.config.params.out.path = str(Path(tmpdir) / 'output')
 
         # Enable structure updates every 100 yr
-        runner.config.struct.update_interval = 100.0
+        runner.config.interior_struct.update_interval = 100.0
 
         runner.init_directories()
         runner.start(resume=False, offline=True)
@@ -77,7 +77,7 @@ def test_structure_update_consistency():
         # The T-dependent EOS causes M_int to shift when the temperature
         # profile changes (linear init -> SPIDER evolved), so we check
         # against the target mass, not against the initial M_int.
-        M_target = runner.config.struct.mass_tot * M_earth
+        M_target = runner.config.planet.planet_mass_tot * M_earth
         M_int = hf['M_int'].values
         for i in range(len(M_int)):
             rel_dev = abs(M_int[i] - M_target) / M_target

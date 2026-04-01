@@ -8,10 +8,10 @@
 #   [params]   parameters for code execution, output files, time-stepping, convergence
 #   [star]     stellar parameters, model selection
 #   [orbit]    planetary orbital parameters
-#   [struct]   planetary structure (mass, radius)
+#   [interior_struct]   planetary structure (mass, radius)
 #   [atmos]    atmosphere parameters, model selection
 #   [escape]   escape parameters, model selection
-#   [interior] magma ocean model selection and parameters
+#   [interior_energetics] magma ocean model selection and parameters
 #   [outgas]   outgassing parameters (fO2) and included volatiles
 #   [delivery] initial volatile inventory, and delivery model selection
 
@@ -113,7 +113,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 
 # Planetary structure - physics table
-[struct]
+[interior_struct]
     mass        = 1.0       # M_earth
     radius      = 1.073     # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
@@ -168,13 +168,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         rate = 0.0    #  Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
 
     module = "spider"   # Which interior module to use
 
-    [interior.spider]
+    [interior_energetics.spider]
         num_levels      = 220       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-10   # solver tolerance
@@ -183,7 +183,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_entropy     = 3200.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
-    [interior.aragog]
+    [interior_energetics.aragog]
         num_levels      = 220       # Number of Aragog grid levels
         tolerance       = 1.0e-10   # solver tolerance
 

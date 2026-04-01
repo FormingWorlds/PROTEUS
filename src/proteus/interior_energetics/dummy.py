@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.interior.common import Interior_t
-from proteus.interior.timestep import next_step
+from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.timestep import next_step
 from proteus.utils.constants import secs_per_year
 
 if TYPE_CHECKING:
@@ -49,13 +49,13 @@ def run_dummy_int(
 
     # Interior structure
     output['M_mantle'] = calculate_simple_mantle_mass(
-        hf_row['R_int'], config.struct.corefrac, config.interior.dummy.mantle_rho
+        hf_row['R_int'], config.interior_struct.corefrac, config.interior_energetics.dummy.mantle_rho
     )
 
     # Physical parameters
-    tmp_liq = config.interior.dummy.mantle_tliq  # Liquidus
-    tmp_sol = config.interior.dummy.mantle_tsol  # Solidus
-    tmp_init = config.interior.tsurf_init  # Initial magma temperature
+    tmp_liq = config.interior_energetics.dummy.mantle_tliq  # Liquidus
+    tmp_sol = config.interior_energetics.dummy.mantle_tsol  # Solidus
+    tmp_init = config.interior_energetics.tsurf_init  # Initial magma temperature
     area = 4 * np.pi * hf_row['R_int'] ** 2
 
     # Get mantle melt fraction as a function of temperature
@@ -71,19 +71,19 @@ def run_dummy_int(
 
     # Interior heat capacity [J K-1]
     cp_int = (
-        config.interior.dummy.mantle_cp * output['M_mantle']
-        + config.struct.core_heatcap * hf_row['M_core']
+        config.interior_energetics.dummy.mantle_cp * output['M_mantle']
+        + config.interior_struct.core_heatcap * hf_row['M_core']
     )
 
     # Subtract tidal contribution to the total heat flux.
     #    This heat energy is generated only in the mantle, not in the core.
     tidal_flux = 0.0
-    if config.interior.heat_tidal:
+    if config.interior_energetics.heat_tidal:
         tidal_flux = interior_o.tides[0] * output['M_mantle'] / area
     output['F_tidal'] = tidal_flux
 
     # Radiogenic heating constant with time
-    output['F_radio'] = config.interior.dummy.heat_internal * output['M_mantle'] / area
+    output['F_radio'] = config.interior_energetics.dummy.heat_internal * output['M_mantle'] / area
 
     # Total flux loss
     F_loss = output['F_int'] - output['F_tidal'] - output['F_radio']
@@ -101,8 +101,8 @@ def run_dummy_int(
 
         # limit time-step based on max change to T_magma
         dtmp_max = (
-            hf_row['T_magma'] * config.interior.dummy.tmagma_rtol
-            + config.interior.dummy.tmagma_atol
+            hf_row['T_magma'] * config.interior_energetics.dummy.tmagma_rtol
+            + config.interior_energetics.dummy.tmagma_atol
         )
         dt = min(dt, abs(dtmp_max / dTdt) / secs_per_year)  # years
 
@@ -115,14 +115,14 @@ def run_dummy_int(
     output['Phi_global_vol'] = output['Phi_global']
     output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
     output['M_mantle_solid'] = output['M_mantle'] - output['M_mantle_liquid']
-    output['RF_depth'] = output['Phi_global'] * (1 - config.struct.corefrac)
-    R_core = config.struct.corefrac * hf_row['R_int']
+    output['RF_depth'] = output['Phi_global'] * (1 - config.interior_struct.corefrac)
+    R_core = config.interior_struct.corefrac * hf_row['R_int']
 
     # Store arrays
     interior_o.phi = np.array([output['Phi_global']])
     interior_o.mass = np.array([output['M_mantle']])
     interior_o.visc = np.array([1.0])  # placeholder to be updated elsewhere
-    interior_o.density = np.array([config.interior.dummy.mantle_rho])
+    interior_o.density = np.array([config.interior_energetics.dummy.mantle_rho])
     interior_o.temp = np.array([output['T_magma']])
     interior_o.pres = np.array([hf_row['P_surf']])
     interior_o.radius = np.array([R_core, hf_row['R_int']])

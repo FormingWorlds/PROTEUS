@@ -1,6 +1,6 @@
 # JAX Aragog interior module
 #
-# Called by AragogRunner when config.interior.aragog.jax = True.
+# Called by AragogRunner when config.interior_energetics.aragog.jax = True.
 # Delegates the ODE solve to aragog.jax.solver (diffrax). Output
 # uses the same helpfile dict contract as the scipy version.
 from __future__ import annotations
@@ -14,7 +14,7 @@ import jax.numpy as jnp
 import netCDF4 as nc
 import numpy as np
 
-from proteus.interior.common import Interior_t
+from proteus.interior_energetics.common import Interior_t
 
 jax.config.update('jax_enable_x64', True)
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class AragogJAXRunner:
     """JAX-based Aragog entropy solver backend.
 
-    Called by AragogRunner when config.interior.aragog.jax is True.
+    Called by AragogRunner when config.interior_energetics.aragog.jax is True.
     All setup (config, EOS tables, mesh, IC) is done by AragogRunner;
     this class only handles JAX-specific components and the diffrax solve.
     """
@@ -73,20 +73,20 @@ class AragogJAXRunner:
 
         # Phase parameters from config
         interior_o._jax_params = PhaseParams(
-            phi_rheo=config.interior.rfront_loc,
-            phi_width=config.interior.rfront_wid,
+            phi_rheo=config.interior_energetics.rfront_loc,
+            phi_width=config.interior_energetics.rfront_wid,
             viscosity_solid=1e21,  # TODO: wire from config
             viscosity_liquid=1e-1,
-            grain_size=config.interior.grain_size,
+            grain_size=config.interior_energetics.grain_size,
             k_solid=4.0,
             k_liquid=2.0,
-            conduction=config.interior.trans_conduction,
-            convection=config.interior.trans_convection,
-            grav_sep=config.interior.trans_grav_sep,
-            mixing=config.interior.trans_mixing,
+            conduction=config.interior_energetics.trans_conduction,
+            convection=config.interior_energetics.trans_convection,
+            grav_sep=config.interior_energetics.trans_grav_sep,
+            mixing=config.interior_energetics.trans_mixing,
             eddy_diff_thermal=1.0,
             eddy_diff_chemical=1.0,
-            kappah_floor=config.interior.kappah_floor,
+            kappah_floor=config.interior_energetics.kappah_floor,
         )
 
         # Boundary conditions
@@ -146,10 +146,10 @@ class AragogJAXRunner:
         # Heating (radionuclide + tidal, computed from numpy solver's config)
         n_stag = len(S0)
         heating_np = np.zeros(n_stag)
-        if self._config.interior.heat_radiogenic:
+        if self._config.interior_energetics.heat_radiogenic:
             for r in solver.parameters.radionuclides:
                 heating_np += r.get_heating(t_start)
-        if self._config.interior.heat_tidal:
+        if self._config.interior_energetics.heat_tidal:
             tides = getattr(interior_o, 'tides', [0.0])
             if len(tides) == 1:
                 heating_np += tides[0]
@@ -159,8 +159,8 @@ class AragogJAXRunner:
         self._last_heating = heating_np  # store for _extract_output
 
         # Solve
-        atol = max(self._config.interior.num_tolerance, 0.01)
-        rtol = self._config.interior.num_tolerance
+        atol = max(self._config.interior_energetics.num_tolerance, 0.01)
+        rtol = self._config.interior_energetics.num_tolerance
 
         logger.info(
             'JAX Aragog: integrating [%.2e, %.2e] yr, N=%d',
@@ -211,7 +211,7 @@ class AragogJAXRunner:
 
         # Rheological front
         r_basic = np.asarray(mesh.radii_basic)
-        phi_rheo = self._config.interior.rfront_loc
+        phi_rheo = self._config.interior_energetics.rfront_loc
         if Phi_global > 0.99:
             rf = float(r_basic[0])
         elif Phi_global < 0.01:

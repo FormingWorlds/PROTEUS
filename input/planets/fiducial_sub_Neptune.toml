@@ -8,10 +8,14 @@
 #   [params]   parameters for code execution, output files, time-stepping, convergence
 #   [star]     stellar parameters, model selection
 #   [orbit]    planetary orbital parameters
-#   [struct]   planetary structure (mass, radius)
+#
+[planet]
+    planet_mass_tot = 5.0       # M_earth
+
+[interior_struct]   planetary structure (mass, radius)
 #   [atmos]    atmosphere parameters, model selection
 #   [escape]   escape parameters, model selection
-#   [interior] magma ocean model selection and parameters
+#   [interior_energetics] magma ocean model selection and parameters
 #   [outgas]   outgassing parameters (fO2) and included volatiles
 #   [delivery] initial volatile inventory, and delivery model selection
 
@@ -119,9 +123,8 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
-[struct]
+[interior_struct]
     set_by       = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot     = 5.0       # M_earth
     corefrac     = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
@@ -181,7 +184,7 @@ version = "2.0"
         rate        = 0.0           # Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     grain_size      = 0.1   # crystal settling grain size [m]
     flux_guess       = 1e5   # Initial heat flux guess [W m-2]
     heat_radiogenic = true  # enable radiogenic heat production
@@ -191,16 +194,16 @@ version = "2.0"
 
     module = "spider"   # Which interior module to use
 
-    [interior.spider]
+    [interior_energetics.spider]
         mixing_length   = 2         # Mixing length parameterization
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
         ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
-    [interior.aragog]
+    [interior_energetics.aragog]
 
-    [interior.dummy]
+    [interior_energetics.dummy]
 
 # Outgassing - physics table
 [outgas]

@@ -87,8 +87,11 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
-[struct]
-    mass_tot    = 1.0       # M_earth
+
+[planet]
+    planet_mass_tot = 1.0       # M_earth
+
+[interior_struct]
     corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
@@ -122,7 +125,7 @@ version = "2.0"
         rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
-[interior]
+[interior_energetics]
     grain_size      = 0.1   # crystal settling grain size [m]
     flux_guess       = 1e6   # Initial heat flux guess [W m-2]
     heat_radiogenic = false  # enable radiogenic heat production
@@ -133,7 +136,7 @@ version = "2.0"
 
     module = "dummy"   # Which interior module to use
 
-    [interior.dummy]
+    [interior_energetics.dummy]
 
 # Outgassing - physics table
 [outgas]

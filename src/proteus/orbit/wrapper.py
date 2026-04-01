@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.interior.common import Interior_t
+from proteus.interior_energetics.common import Interior_t
 from proteus.utils.constants import AU, L_sun, R_sun, const_G, secs_per_day, secs_per_hour
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ def init_orbit(handler: Proteus):
         return
 
     log.info(f"Preparing tides model '{module}'")
-    if not handler.config.interior.tidal_heat:
+    if not handler.config.interior_energetics.tidal_heat:
         log.warning('Tidal heating is disabled within interior configuration!')
 
     if module == 'lovepy':

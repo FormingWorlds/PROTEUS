@@ -10,7 +10,7 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
-from proteus.interior.wrapper import read_interior_data
+from proteus.interior_energetics.wrapper import read_interior_data
 from proteus.utils.plot import latex_float, sample_output
 
 if TYPE_CHECKING:
@@ -231,7 +231,7 @@ def plot_interior(
 
 
 def plot_interior_entry(handler: Proteus):
-    module = handler.config.interior.module
+    module = handler.config.interior_energetics.module
     if module == 'spider':
         extension = '.json'
     elif module == 'aragog':

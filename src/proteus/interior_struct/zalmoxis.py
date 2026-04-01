@@ -200,15 +200,15 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
     """
 
     # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
-    total_planet_mass = config.struct.mass_tot * M_earth
+    total_planet_mass = config.planet.planet_mass_tot * M_earth
 
     logger.info(
         'Total target planet mass (dry mass + volatiles): %s kg '
         'with EOS: core=%s, mantle=%s, ice=%s',
         total_planet_mass,
-        config.struct.zalmoxis.core_eos,
-        config.struct.zalmoxis.mantle_eos,
-        config.struct.zalmoxis.ice_layer_eos or '(none)',
+        config.interior_struct.zalmoxis.core_eos,
+        config.interior_struct.zalmoxis.mantle_eos,
+        config.interior_struct.zalmoxis.ice_layer_eos or '(none)',
     )
 
     # Calculate the total mass of 'wet' elements in the planet
@@ -227,15 +227,15 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
 
     # Build per-layer EOS config dict from PROTEUS config fields
     layer_eos_config = {
-        'core': config.struct.zalmoxis.core_eos,
-        'mantle': config.struct.zalmoxis.mantle_eos,
+        'core': config.interior_struct.zalmoxis.core_eos,
+        'mantle': config.interior_struct.zalmoxis.mantle_eos,
     }
-    if config.struct.zalmoxis.ice_layer_eos:
-        layer_eos_config['ice_layer'] = config.struct.zalmoxis.ice_layer_eos
+    if config.interior_struct.zalmoxis.ice_layer_eos:
+        layer_eos_config['ice_layer'] = config.interior_struct.zalmoxis.ice_layer_eos
 
     # Mushy zone factor: controls width of partially molten region in PALEOS
     # unified EOS. Applied as T_solidus = T_liquidus * mushy_zone_factor.
-    mzf = config.struct.zalmoxis.mushy_zone_factor
+    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     mushy_zone_factors = {
         'PALEOS:iron': mzf,
         'PALEOS:MgSiO3': mzf,
@@ -244,30 +244,30 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
 
     return {
         'planet_mass': planet_mass,
-        'core_mass_fraction': config.struct.zalmoxis.coremassfrac,
-        'mantle_mass_fraction': config.struct.zalmoxis.mantle_mass_fraction,
-        'temperature_mode': config.struct.zalmoxis.temperature_mode,
-        'surface_temperature': config.struct.zalmoxis.surface_temperature,
-        'center_temperature': config.struct.zalmoxis.center_temperature,
-        'temp_profile_file': config.struct.zalmoxis.temperature_profile_file,
+        'core_mass_fraction': config.interior_struct.zalmoxis.coremassfrac,
+        'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
+        'temperature_mode': config.interior_struct.zalmoxis.temperature_mode,
+        'surface_temperature': config.interior_struct.zalmoxis.surface_temperature,
+        'center_temperature': config.interior_struct.zalmoxis.center_temperature,
+        'temp_profile_file': config.interior_struct.zalmoxis.temperature_profile_file,
         'layer_eos_config': layer_eos_config,
         'mushy_zone_factor': mzf,
         'mushy_zone_factors': mushy_zone_factors,
-        'num_layers': config.struct.zalmoxis.num_levels,
-        'max_iterations_outer': config.struct.zalmoxis.max_iterations_outer,
-        'tolerance_outer': config.struct.zalmoxis.tolerance_outer,
-        'max_iterations_inner': config.struct.zalmoxis.max_iterations_inner,
-        'tolerance_inner': config.struct.zalmoxis.tolerance_inner,
-        'relative_tolerance': config.struct.zalmoxis.relative_tolerance,
-        'absolute_tolerance': config.struct.zalmoxis.absolute_tolerance,
-        'maximum_step': config.struct.zalmoxis.maximum_step,
-        'adaptive_radial_fraction': config.struct.zalmoxis.adaptive_radial_fraction,
-        'max_center_pressure_guess': config.struct.zalmoxis.max_center_pressure_guess,
-        'target_surface_pressure': config.struct.zalmoxis.target_surface_pressure,
-        'pressure_tolerance': config.struct.zalmoxis.pressure_tolerance,
-        'max_iterations_pressure': config.struct.zalmoxis.max_iterations_pressure,
-        'verbose': config.struct.zalmoxis.verbose,
-        'iteration_profiles_enabled': config.struct.zalmoxis.iteration_profiles_enabled,
+        'num_layers': config.interior_struct.zalmoxis.num_levels,
+        'max_iterations_outer': config.interior_struct.zalmoxis.max_iterations_outer,
+        'tolerance_outer': config.interior_struct.zalmoxis.tolerance_outer,
+        'max_iterations_inner': config.interior_struct.zalmoxis.max_iterations_inner,
+        'tolerance_inner': config.interior_struct.zalmoxis.tolerance_inner,
+        'relative_tolerance': config.interior_struct.zalmoxis.relative_tolerance,
+        'absolute_tolerance': config.interior_struct.zalmoxis.absolute_tolerance,
+        'maximum_step': config.interior_struct.zalmoxis.maximum_step,
+        'adaptive_radial_fraction': config.interior_struct.zalmoxis.adaptive_radial_fraction,
+        'max_center_pressure_guess': config.interior_struct.zalmoxis.max_center_pressure_guess,
+        'target_surface_pressure': config.interior_struct.zalmoxis.target_surface_pressure,
+        'pressure_tolerance': config.interior_struct.zalmoxis.pressure_tolerance,
+        'max_iterations_pressure': config.interior_struct.zalmoxis.max_iterations_pressure,
+        'verbose': config.interior_struct.zalmoxis.verbose,
+        'iteration_profiles_enabled': config.interior_struct.zalmoxis.iteration_profiles_enabled,
     }
 
 
@@ -418,7 +418,7 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
                 solidus_id='Stixrude14-solidus',  # unused, but API requires it
                 liquidus_id='PALEOS-liquidus',
             )
-            mzf = config.struct.zalmoxis.mushy_zone_factor
+            mzf = config.interior_struct.zalmoxis.mushy_zone_factor
             solidus_func = _make_derived_solidus(liquidus_func, mzf)
             logger.info(
                 'PALEOS melting curves: liquidus from PALEOS, '
@@ -446,7 +446,7 @@ def scale_temperature_profile_for_aragog(
     """
 
     # Number of levels in Aragog mesh
-    mesh_grid_size = config.interior.num_levels - 1
+    mesh_grid_size = config.interior_energetics.num_levels - 1
 
     # Create new evenly spaced radial positions for Aragog
     radii_to_interpolate = np.linspace(mantle_radii[0], mantle_radii[-1], mesh_grid_size)
@@ -560,7 +560,7 @@ def generate_spider_tables(config: Config, outdir: str):
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
     from zalmoxis.melting_curves import get_solidus_liquidus_functions
 
-    mantle_eos = config.struct.zalmoxis.mantle_eos
+    mantle_eos = config.interior_struct.zalmoxis.mantle_eos
 
     # Use FWL_DATA paths (not ZALMOXIS_ROOT) for EOS file lookup
     mat_dicts = load_zalmoxis_material_dictionaries()
@@ -595,7 +595,7 @@ def generate_spider_tables(config: Config, outdir: str):
         solidus_id='Stixrude14-solidus',  # unused, but API requires it
         liquidus_id='PALEOS-liquidus',
     )
-    mzf = config.struct.zalmoxis.mushy_zone_factor
+    mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     solidus_func = _make_derived_solidus(liquidus_func, mzf)
     logger.info(
         'SPIDER phase boundaries: solidus = liquidus * %.2f (mushy_zone_factor)',
@@ -605,7 +605,7 @@ def generate_spider_tables(config: Config, outdir: str):
     spider_eos_dir = os.path.join(outdir, 'data', 'spider_eos')
 
     # Determine pressure range from planet mass (higher mass needs wider range)
-    mass_tot = config.struct.mass_tot or 1.0
+    mass_tot = config.planet.planet_mass_tot or 1.0
     P_max = min(200e9, 50e9 * mass_tot + 100e9)
 
     # Check for 2-phase PALEOS tables (separate solid/liquid).
@@ -681,11 +681,11 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
 
     # Build volatile profile from dissolved volatile masses (if available).
     # This enables phi(r)-weighted volatile blending inside the Zalmoxis ODE.
-    mantle_eos = config.struct.zalmoxis.mantle_eos
+    mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     volatile_profile = build_volatile_profile(hf_row, mantle_eos)
 
     # Configure global miscibility if enabled
-    if config.struct.global_miscibility and volatile_profile is not None:
+    if config.interior_struct.global_miscibility and volatile_profile is not None:
         volatile_profile.global_miscibility = True
         # Initialize x_interior from current dissolved masses
         M_mantle = float(hf_row.get('M_mantle', 0.0))
@@ -717,7 +717,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
     input_data_dir = os.path.join(outdir, 'data')
 
-    if config.struct.global_miscibility:
+    if config.interior_struct.global_miscibility:
         from zalmoxis.solver import solve_miscible_interior
 
         # Build H2 mass targets from current volatile inventories
@@ -739,8 +739,8 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
             h2_mass_targets=h2_mass_targets,
-            max_iterations=config.struct.miscibility_max_iter,
-            mass_tolerance=config.struct.miscibility_tol,
+            max_iterations=config.interior_struct.miscibility_max_iter,
+            mass_tolerance=config.interior_struct.miscibility_tol,
         )
 
         # Write solvus info to hf_row
@@ -794,8 +794,8 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
             f'pressure={converged_pressure}, density={converged_density}, '
             f'mass={converged_mass}. '
             f'Final M={mass_enclosed[-1]:.2e} kg, R={radii[-1]:.2e} m. '
-            f'EOS: core={config.struct.zalmoxis.core_eos}, '
-            f'mantle={config.struct.zalmoxis.mantle_eos}.'
+            f'EOS: core={config.interior_struct.zalmoxis.core_eos}, '
+            f'mantle={config.interior_struct.zalmoxis.mantle_eos}.'
         )
         logger.error(diag)
         raise RuntimeError(diag)
@@ -839,11 +839,11 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     )
 
     # Self-consistent initial thermal state (White+Li 2025, Boujibar+2020)
-    if config.interior.initial_thermal_state == 'self_consistent':
+    if config.interior_energetics.initial_thermal_state == 'self_consistent':
         from zalmoxis.energetics import initial_thermal_state
 
-        cmf = config.struct.zalmoxis.coremassfrac
-        mantle_eos = config.struct.zalmoxis.mantle_eos
+        cmf = config.interior_struct.zalmoxis.coremassfrac
+        mantle_eos = config.interior_struct.zalmoxis.mantle_eos
 
         # Build PALEOS-derived nabla_ad and C_p when PALEOS EOS is configured.
         # This uses the actual EOS tables for the adiabatic gradient and heat
@@ -852,8 +852,8 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
         nabla_ad_func = None
         cp_iron_func = None
         cp_silicate_func = None
-        C_iron = config.interior.thermal_state_C_iron
-        C_silicate = config.interior.thermal_state_C_silicate
+        C_iron = config.interior_energetics.thermal_state_C_iron
+        C_silicate = config.interior_energetics.thermal_state_C_silicate
 
         if 'PALEOS' in mantle_eos:
             try:
@@ -865,7 +865,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
                 # Get EOS file paths from the material dictionaries
                 mat_dicts = load_zalmoxis_material_dictionaries()
                 mantle_mat = mat_dicts.get(mantle_eos, {})
-                core_mat = mat_dicts.get(config.struct.zalmoxis.core_eos, {})
+                core_mat = mat_dicts.get(config.interior_struct.zalmoxis.core_eos, {})
 
                 # Build nabla_ad(P, T) from PALEOS MgSiO3 unified table
                 mantle_file = mantle_mat.get('eos_file', '')
@@ -930,9 +930,9 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
         thermal = initial_thermal_state(
             model_results,
             core_mass_fraction=cmf,
-            T_radiative_eq=config.interior.thermal_state_T_eq,
-            f_accretion=config.interior.thermal_state_f_accretion,
-            f_differentiation=config.interior.thermal_state_f_differentiation,
+            T_radiative_eq=config.interior_energetics.thermal_state_T_eq,
+            f_accretion=config.interior_energetics.thermal_state_f_accretion,
+            f_differentiation=config.interior_energetics.thermal_state_f_differentiation,
             C_iron=C_iron,
             C_silicate=C_silicate,
             nabla_ad_func=nabla_ad_func,
@@ -1003,7 +1003,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     spider_density = mantle_density
     spider_gravity = mantle_gravity
 
-    if config.struct.global_miscibility:
+    if config.interior_struct.global_miscibility:
         R_solvus = hf_row.get('R_solvus')
         if R_solvus is not None and R_solvus < planet_radius:
             # Truncate arrays at the solvus: SPIDER only evolves the

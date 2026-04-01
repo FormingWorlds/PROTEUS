@@ -8,28 +8,6 @@ from attrs.validators import ge, gt, in_, le, lt
 from ._converters import none_if_none
 
 
-def mass_radius_valid(instance, attribute, value):
-    radius_int = none_if_none(instance.radius_int)
-    mass_tot = none_if_none(instance.mass_tot)
-
-    if (radius_int is None) and (mass_tot is None):
-        raise ValueError('Must set one of `radius_int` or `mass_tot`')
-    if (radius_int is not None) and (mass_tot is not None):
-        raise ValueError('Must set either `radius_int` or `mass_tot`, not both')
-
-    if mass_tot is not None:
-        if mass_tot < 0:
-            raise ValueError('The total planet mass must be > 0')
-        if mass_tot > 20:
-            raise ValueError('The total planet mass must be < 20 M_earth')
-
-    if radius_int is not None:
-        if radius_int < 0:
-            raise ValueError('The interior radius must be > 0')
-        if radius_int > 10:
-            raise ValueError('The interior radius must be < 10 R_earth')
-
-
 def valid_zalmoxis(instance, attribute, value):
     if instance.module != 'zalmoxis':
         return
@@ -42,10 +20,7 @@ def valid_zalmoxis(instance, attribute, value):
     ice_layer_eos = instance.zalmoxis.ice_layer_eos
     core_mass_fraction = instance.zalmoxis.coremassfrac
     mantle_mass_fraction = instance.zalmoxis.mantle_mass_fraction
-    mass_tot = instance.mass_tot
 
-    if mass_tot is None:
-        raise ValueError('`mass_tot` must be set when using the Zalmoxis module.')
     if max_iterations_outer < 3:
         raise ValueError('`interior.zalmoxis.max_iterations_outer` must be > 2')
     if max_iterations_inner < 13:
@@ -71,14 +46,6 @@ def valid_zalmoxis(instance, attribute, value):
     import logging as _logging
 
     _log = _logging.getLogger('fwl.' + __name__)
-    if mass_tot is not None and mass_tot > 2.0 and mantle_eos.startswith('WolfBower2018'):
-        _log.warning(
-            'WolfBower2018 EOS is limited to 1 TPa and may not converge '
-            'for planets > 2 M_earth (mass_tot=%.1f). '
-            'Consider RTPress100TPa or PALEOS for high-mass planets.',
-            mass_tot,
-        )
-
     # mushy_zone_factor only applies to PALEOS unified tables
     mzf = getattr(instance.zalmoxis, 'mushy_zone_factor', 0.8)
     if mzf < 1.0 and not mantle_eos.startswith('PALEOS:'):
@@ -304,8 +271,7 @@ class Struct:
 
     melting_dir: str = field(default='Monteux-600')
     eos_dir: str = field(default='WolfBower2018_MgSiO3')
-    mass_tot = field(default='none', validator=mass_radius_valid, converter=none_if_none)
-    radius_int = field(default='none', validator=mass_radius_valid, converter=none_if_none)
+    radius_int = field(default='none', converter=none_if_none)
 
     def __attrs_post_init__(self):
         if self.update_interval > 0 and self.update_min_interval > self.update_interval:
@@ -322,9 +288,7 @@ class Struct:
 
     @property
     def set_by(self) -> str:
-        """How is the structure set?"""
-        if self.mass_tot is not None:
-            return 'mass_tot'
+        """How is the structure set? Check radius_int; mass_tot is in [planet]."""
         if self.radius_int is not None:
             return 'radius_int'
         return 'none'

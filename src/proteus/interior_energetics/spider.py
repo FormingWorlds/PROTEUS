@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import RegularGridInterpolator
 
-from proteus.interior.common import Interior_t, get_file_tides
-from proteus.interior.timestep import next_step
+from proteus.interior_energetics.common import Interior_t, get_file_tides
+from proteus.interior_energetics.timestep import next_step
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
@@ -631,8 +631,8 @@ def _try_spider(
     atol_sf = max(1.0e-10, atol_sf)
 
     # Solver tolerances
-    spider_atol = atol_sf * config.interior.num_tolerance
-    spider_rtol = atol_sf * config.interior.spider.tolerance_rel
+    spider_atol = atol_sf * config.interior_energetics.num_tolerance
+    spider_rtol = atol_sf * config.interior_energetics.spider.tolerance_rel
 
     # Bounds on tolerances
     spider_rtol = min(spider_rtol, 1e-1)
@@ -671,14 +671,14 @@ def _try_spider(
     open(empty_file, 'w').close()
 
     # Compute coresize: use external mesh radii when available, otherwise config
-    coresize = config.struct.corefrac
-    rho_core = config.struct.core_density
+    coresize = config.interior_struct.corefrac
+    rho_core = config.interior_struct.core_density
     if mesh_file and os.path.isfile(mesh_file):
         coresize = _coresize_from_mesh(mesh_file)
         log.debug(
             'coresize from external mesh: %.6f (config: %.6f)',
             coresize,
-            config.struct.corefrac,
+            config.interior_struct.corefrac,
         )
         # Derive average core density from the self-consistent core mass
         # (set by Zalmoxis) and the CMB radius from the mesh file
@@ -689,7 +689,7 @@ def _try_spider(
             log.debug(
                 'rho_core from Zalmoxis structure: %.2f kg/m^3 (config: %.2f)',
                 rho_core,
-                config.struct.core_density,
+                config.interior_struct.core_density,
             )
 
     # Determine SPIDER domain boundaries.
@@ -698,7 +698,7 @@ def _try_spider(
     spider_radius = hf_row['R_int']
     spider_gravity = hf_row['gravity']
     spider_coresize = coresize
-    if config.struct.global_miscibility and 'R_solvus' in hf_row:
+    if config.interior_struct.global_miscibility and 'R_solvus' in hf_row:
         R_solvus = hf_row['R_solvus']
         if R_solvus is not None and R_solvus < hf_row['R_int']:
             spider_radius = R_solvus
@@ -733,7 +733,7 @@ def _try_spider(
         '-teqm',
         '%.6e' % (hf_row['T_eqm']),
         '-n',
-        '%d' % (config.interior.num_levels),
+        '%d' % (config.interior_energetics.num_levels),
         '-nstepsmacro',
         '%d' % (nstepsmacro),
         '-dtmacro',
@@ -745,17 +745,17 @@ def _try_spider(
         '-coresize',
         '%.6e' % spider_coresize,
         '-grain',
-        '%.6e' % (config.interior.grain_size),
+        '%.6e' % (config.interior_energetics.grain_size),
     ]
 
     # Tolerance on the change in T_magma during a single SPIDER call
     if hf_row['Time'] > 0:
         dT_poststep = (
-            config.interior.spider.tsurf_rtol * hf_row['T_magma']
-            + config.interior.spider.tsurf_atol
+            config.interior_energetics.spider.tsurf_rtol * hf_row['T_magma']
+            + config.interior_energetics.spider.tsurf_atol
         )
     else:
-        dT_poststep = float(config.interior.spider.tsurf_atol)
+        dT_poststep = float(config.interior_energetics.spider.tsurf_atol)
     call_sequence.extend(['-tsurf_poststep_change', str(min(dT_max, dT_poststep))])
 
     # set surface and core entropy (-1 is a flag to ignore)
@@ -782,19 +782,19 @@ def _try_spider(
         call_sequence.extend(
             [
                 '-ic_adiabat_entropy',
-                str(config.interior.spider.ini_entropy),
+                str(config.interior_energetics.spider.ini_entropy),
                 '-ic_dsdr',
-                str(config.interior.spider.ini_dsdr),  # initial dS/dr everywhere
+                str(config.interior_energetics.spider.ini_dsdr),  # initial dS/dr everywhere
             ]
         )
 
     # Mixing length parameterization: 1: variable | 2: constant
-    call_sequence.extend(['-mixing_length', str(config.interior.spider.mixing_length)])
+    call_sequence.extend(['-mixing_length', str(config.interior_energetics.spider.mixing_length)])
 
     # Solver tolerances
     call_sequence.extend(['-ts_sundials_atol', str(spider_atol)])
     call_sequence.extend(['-ts_sundials_rtol', str(spider_rtol)])
-    call_sequence.extend(['-ts_sundials_type', str(config.interior.spider.solver_type)])
+    call_sequence.extend(['-ts_sundials_type', str(config.interior_energetics.spider.solver_type)])
 
     # Rollback
     call_sequence.extend(['-activate_poststep', '-activate_rollback'])
@@ -806,15 +806,15 @@ def _try_spider(
     call_sequence.extend(['-pressure0', '10.0E5'])
 
     # Energy transport physics (true->'1', false->'0')
-    call_sequence.extend(['-CONDUCTION', str(int(config.interior.trans_conduction))])
-    call_sequence.extend(['-CONVECTION', str(int(config.interior.trans_convection))])
-    call_sequence.extend(['-MIXING', str(int(config.interior.trans_mixing))])
+    call_sequence.extend(['-CONDUCTION', str(int(config.interior_energetics.trans_conduction))])
+    call_sequence.extend(['-CONVECTION', str(int(config.interior_energetics.trans_convection))])
+    call_sequence.extend(['-MIXING', str(int(config.interior_energetics.trans_mixing))])
     call_sequence.extend(
-        ['-SEPARATION', str(int(config.interior.trans_grav_sep))]
+        ['-SEPARATION', str(int(config.interior_energetics.trans_grav_sep))]
     )
 
     # Tidal heating
-    if config.interior.heat_tidal:
+    if config.interior_energetics.heat_tidal:
         call_sequence.extend(['-HTIDAL', '2'])
         call_sequence.extend(['-htidal_filename', get_file_tides(dirs['output'])])
 
@@ -824,14 +824,14 @@ def _try_spider(
         eos_dir = dirs['spider_eos_dir']
         log.info('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
     else:
-        eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.struct.eos_dir, 'P-S')
+        eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior_struct.eos_dir, 'P-S')
         if not os.path.isdir(eos_dir):
             # Fall back to SPIDER's local lookup_data (uses legacy directory name)
             eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
         if not os.path.isdir(eos_dir):
             raise FileNotFoundError(
                 f'SPIDER EOS directory not found: {eos_dir}. '
-                f"Check interior.eos_dir='{config.struct.eos_dir}'."
+                f"Check interior.eos_dir='{config.interior_struct.eos_dir}'."
             )
 
     # Resolve melting curve S(P) files: prefer generated paths, then FWL_DATA
@@ -840,7 +840,7 @@ def _try_spider(
         solidus_ps = dirs['spider_solidus_ps']
         log.info('Using Zalmoxis-generated phase boundaries')
     else:
-        mc_dir = os.path.join(MELTING_CURVES_DIR, config.struct.melting_dir)
+        mc_dir = os.path.join(MELTING_CURVES_DIR, config.interior_struct.melting_dir)
         liquidus_ps = os.path.join(mc_dir, 'liquidus_P-S.dat')
         solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
         for fpath in (liquidus_ps, solidus_ps):
@@ -848,7 +848,7 @@ def _try_spider(
                 raise FileNotFoundError(
                     f'SPIDER phase boundary file not found: {fpath}. '
                     f"Run 'python tools/generate_spider_phase_boundaries.py "
-                    f"--melting-dir {config.struct.melting_dir}' to generate it."
+                    f"--melting-dir {config.interior_struct.melting_dir}' to generate it."
                 )
 
     call_sequence.extend(['-phase_names', 'melt,solid'])
@@ -915,23 +915,23 @@ def _try_spider(
     call_sequence.extend(['-eddy_diffusivity_chemical', '1.0'])
 
     # Phase-dependent eddy diffusivity floor
-    if config.interior.kappah_floor > 0:
-        call_sequence.extend(['-kappah_floor', str(config.interior.kappah_floor)])
+    if config.interior_energetics.kappah_floor > 0:
+        call_sequence.extend(['-kappah_floor', str(config.interior_energetics.kappah_floor)])
 
     # smoothing of material properties across liquidus and solidus
     # units of melt fraction (non-dimensional)
     call_sequence.extend(
-        ['-matprop_smooth_width', '%.6e' % (config.interior.spider.matprop_smooth_width)]
+        ['-matprop_smooth_width', '%.6e' % (config.interior_energetics.spider.matprop_smooth_width)]
     )
 
     # Viscosity behaviour (rheological transition location and width, melt fractions)
-    call_sequence.extend(['-phi_critical', '%.6e' % (config.interior.rfront_loc)])
-    call_sequence.extend(['-phi_width', '%.6e' % (config.interior.rfront_wid)])
+    call_sequence.extend(['-phi_critical', '%.6e' % (config.interior_energetics.rfront_loc)])
+    call_sequence.extend(['-phi_width', '%.6e' % (config.interior_energetics.rfront_wid)])
 
     # Relating to the planet's metallic core
     call_sequence.extend(['-CORE_BC', '1'])  # CMB boundary condition
     call_sequence.extend(['-rho_core', '%.6e' % rho_core])  # density
-    call_sequence.extend(['-cp_core', '%.6e' % (config.struct.core_heatcap)])  # heat capacity
+    call_sequence.extend(['-cp_core', '%.6e' % (config.interior_struct.core_heatcap)])  # heat capacity
 
     # surface boundary condition
     # [4] heat flux (prescribe value using surface_bc_value)
@@ -949,7 +949,7 @@ def _try_spider(
     call_sequence.extend(['-OXYGEN_FUGACITY', '2'])
 
     # radionuclides
-    if config.interior.heat_radiogenic:
+    if config.interior_energetics.heat_radiogenic:
         # offset by age_ini, which converts model simulation time to the actual age
         radio_t0 = config.delivery.radio_tref - config.star.age_ini
         radio_t0 *= 1e9  # Convert Gyr to yr
@@ -1047,7 +1047,7 @@ def RunSPIDER(
 
     # Maximum dT
     dT_max = 1e99
-    if config.interior.heat_tidal and (np.amax(interior_o.tides) > 1e-10):
+    if config.interior_energetics.heat_tidal and (np.amax(interior_o.tides) > 1e-10):
         dT_max = 4.0
         log.info('Tidal heating active; limiting dT_magma to %.2f K' % dT_max)
 

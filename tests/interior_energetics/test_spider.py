@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior.spider module.
+Unit tests for proteus.interior_energetics.spider module.
 
 Tests entropy remapping, mesh blending, mesh file I/O, core-size
 extraction, EOS range checking, JSON solution rewriting, and the
@@ -32,7 +32,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from proteus.interior.spider import (
+from proteus.interior_energetics.spider import (
     RADIUS0,
     _check_eos_table_range,
     _coresize_from_mesh,
@@ -336,21 +336,21 @@ def test_mesh_convergence_trigger():
     """
     from unittest.mock import MagicMock, patch
 
-    from proteus.interior.wrapper import update_structure_from_interior
+    from proteus.interior_energetics.wrapper import update_structure_from_interior
 
     # Create minimal config mock
     config = MagicMock()
-    config.struct.update_interval = 1000.0
-    config.struct.update_min_interval = 100.0
-    config.struct.update_dtmagma_frac = 0.03
-    config.struct.update_dphi_abs = 0.05
-    config.struct.mesh_max_shift = 0.05
-    config.struct.mesh_convergence_interval = 10.0
-    config.struct.zalmoxis.temperature_mode = 'isothermal'
-    config.struct.zalmoxis.temperature_profile_file = None
-    config.struct.zalmoxis.num_levels = 50
-    config.interior.module = 'spider'
-    config.interior.spider.num_levels = 50
+    config.interior_struct.update_interval = 1000.0
+    config.interior_struct.update_min_interval = 100.0
+    config.interior_struct.update_dtmagma_frac = 0.03
+    config.interior_struct.update_dphi_abs = 0.05
+    config.interior_struct.mesh_max_shift = 0.05
+    config.interior_struct.mesh_convergence_interval = 10.0
+    config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
+    config.interior_struct.zalmoxis.temperature_profile_file = None
+    config.interior_struct.zalmoxis.num_levels = 50
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.spider.num_levels = 50
 
     dirs = {
         'output': '/tmp/test_output',
@@ -379,9 +379,9 @@ def test_mesh_convergence_trigger():
 
     # Patch zalmoxis_solver at its source module (locally imported)
     with (
-        patch('proteus.interior.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
-        patch('proteus.interior.wrapper.np.savetxt'),
-        patch('proteus.interior.wrapper.shutil.copy2'),
+        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, last_struct_time, last_Tmagma, last_Phi
@@ -799,7 +799,7 @@ def test_check_eos_range_entropy_mismatch(spider_json_dir, caplog):
     _make_eos_table(os.path.join(eos_dir, 'density_solid.dat'), y_max=2400.0)
     _make_eos_table(os.path.join(eos_dir, 'density_melt.dat'), y_max=3200.0)
 
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior.spider'):
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.spider'):
         _check_eos_table_range(eos_dir, None, 100e9)
     assert any('narrower' in r.message for r in caplog.records)
 
@@ -811,7 +811,7 @@ def test_check_eos_range_high_pressure(spider_json_dir, caplog):
     _make_eos_table(os.path.join(eos_dir, 'density_solid.dat'), y_max=2400.0)
     _make_eos_table(os.path.join(eos_dir, 'density_melt.dat'), y_max=3200.0)
 
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior.spider'):
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.spider'):
         _check_eos_table_range(eos_dir, None, 500e9)
     assert any('narrower' in r.message for r in caplog.records)
 
@@ -829,7 +829,7 @@ def test_check_eos_range_no_warnings(spider_json_dir, caplog):
     _make_eos_table(os.path.join(eos_dir, 'density_solid.dat'), y_max=3200.0)
     _make_eos_table(os.path.join(eos_dir, 'density_melt.dat'), y_max=3200.0)
 
-    with caplog.at_level('WARNING', logger='fwl.proteus.interior.spider'):
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.spider'):
         _check_eos_table_range(eos_dir, None, 100e9)
     spider_warnings = [r for r in caplog.records if 'spider' in r.name]
     assert len(spider_warnings) == 0
@@ -886,14 +886,14 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     data_dir = output_dir / 'data'
     data_dir.mkdir()
 
-    # EOS directory matching config.interior.eos_dir
+    # EOS directory matching config.interior_energetics.eos_dir
     eos_base = tmp_path / 'eos_dynamic'
     eos_dir = eos_base / 'WolfBower2018_MgSiO3' / 'P-S'
     eos_dir.mkdir(parents=True)
     for name in _EOS_FILE_NAMES:
         _make_eos_table(str(eos_dir / name))
 
-    # Melting curves directory matching config.interior.melting_dir
+    # Melting curves directory matching config.interior_energetics.melting_dir
     mc_base = tmp_path / 'melting_curves'
     mc_dir = mc_base / 'Wolf_Bower+2018'
     mc_dir.mkdir(parents=True)
@@ -901,36 +901,36 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     (mc_dir / 'solidus_P-S.dat').write_text('dummy')
 
     config = MagicMock()
-    config.interior.spider.num_levels = 50
-    config.interior.spider.tolerance = 1e-4
-    config.interior.spider.tolerance_rel = 1e-4
-    config.interior.spider.tsurf_rtol = 0.02
-    config.interior.spider.tsurf_atol = 100.0
-    config.interior.spider.ini_entropy = 2993.0
-    config.interior.spider.ini_dsdr = 0.0
-    config.interior.spider.mixing_length = 1
-    config.interior.spider.solver_type = 'cv_bdf'
-    config.interior.trans_conduction = True
-    config.interior.trans_convection = True
-    config.interior.trans_mixing = True
-    config.interior.trans_grav_sep = False
-    config.interior.spider.matprop_smooth_width = 0.1
-    config.interior.heat_tidal = False
-    config.interior.heat_radiogenic = False
-    config.interior.grain_size = 1e-3
-    config.interior.rfront_loc = 0.4
-    config.interior.rfront_wid = 0.15
-    config.interior.num_levels = 50
-    config.interior.num_tolerance = 1e-4
-    config.interior.tsurf_init = 4000.0
-    config.interior.kappah_floor = 0.0
-    config.interior.flux_guess = -1
-    config.struct.eos_dir = 'WolfBower2018_MgSiO3'
-    config.struct.melting_dir = 'Wolf_Bower+2018'
+    config.interior_energetics.spider.num_levels = 50
+    config.interior_energetics.spider.tolerance = 1e-4
+    config.interior_energetics.spider.tolerance_rel = 1e-4
+    config.interior_energetics.spider.tsurf_rtol = 0.02
+    config.interior_energetics.spider.tsurf_atol = 100.0
+    config.interior_energetics.spider.ini_entropy = 2993.0
+    config.interior_energetics.spider.ini_dsdr = 0.0
+    config.interior_energetics.spider.mixing_length = 1
+    config.interior_energetics.spider.solver_type = 'cv_bdf'
+    config.interior_energetics.trans_conduction = True
+    config.interior_energetics.trans_convection = True
+    config.interior_energetics.trans_mixing = True
+    config.interior_energetics.trans_grav_sep = False
+    config.interior_energetics.spider.matprop_smooth_width = 0.1
+    config.interior_energetics.heat_tidal = False
+    config.interior_energetics.heat_radiogenic = False
+    config.interior_energetics.grain_size = 1e-3
+    config.interior_energetics.rfront_loc = 0.4
+    config.interior_energetics.rfront_wid = 0.15
+    config.interior_energetics.num_levels = 50
+    config.interior_energetics.num_tolerance = 1e-4
+    config.interior_energetics.tsurf_init = 4000.0
+    config.interior_energetics.kappah_floor = 0.0
+    config.interior_energetics.flux_guess = -1
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_struct.melting_dir = 'Wolf_Bower+2018'
     config.outgas.fO2_shift_IW = 0.0
-    config.struct.corefrac = 0.55
-    config.struct.core_density = 12500.0
-    config.struct.core_heatcap = 880.0
+    config.interior_struct.corefrac = 0.55
+    config.interior_struct.core_density = 12500.0
+    config.interior_struct.core_heatcap = 880.0
 
     dirs = {
         'spider': str(spider_dir),
@@ -966,16 +966,16 @@ def test_try_spider_init_with_mesh(tmp_path):
     Verifies that the EOS path resolution, melting curve validation,
     and -MESH_SOURCE 1 arguments are correctly added to the call sequence.
     """
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
         tmp_path, with_mesh=True
     )
 
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
-        patch('proteus.interior.spider.sp.run') as mock_run,
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1013,25 +1013,25 @@ def test_try_spider_init_with_mesh(tmp_path):
     # Without M_core in hf_row, rho_core should fall back to config value
     idx = call_args.index('-rho_core')
     rho_val = float(call_args[idx + 1])
-    assert pytest.approx(rho_val, rel=1e-3) == config.struct.core_density
+    assert pytest.approx(rho_val, rel=1e-3) == config.interior_struct.core_density
 
 
 @pytest.mark.unit
 def test_try_spider_rho_core_from_zalmoxis(tmp_path):
     """When hf_row contains M_core (set by Zalmoxis), SPIDER receives
     the effective average core density derived from M_core and R_cmb,
-    not the static config.struct.core_density value.
+    not the static config.interior_struct.core_density value.
 
     This ensures the core thermal inertia in SPIDER's CMB boundary
     condition is consistent with Zalmoxis's self-consistent structure.
     """
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, mesh_path = _setup_spider_env(
         tmp_path, with_mesh=True
     )
 
-    # Set M_core as Zalmoxis would (different from config.struct.core_density
+    # Set M_core as Zalmoxis would (different from config.interior_struct.core_density
     # * 4/3 pi R_cmb^3 to demonstrate the fix)
     R_int = hf_row['R_int']  # 6.371e6 m
     coresize = 0.55  # matches mesh
@@ -1042,9 +1042,9 @@ def test_try_spider_rho_core_from_zalmoxis(tmp_path):
     expected_rho = M_core_zalmoxis / (4.0 / 3.0 * np.pi * R_cmb**3)
 
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
-        patch('proteus.interior.spider.sp.run') as mock_run,
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1066,7 +1066,7 @@ def test_try_spider_rho_core_from_zalmoxis(tmp_path):
     rho_val = float(call_args[idx + 1])
     assert pytest.approx(rho_val, rel=1e-3) == expected_rho
     # Confirm it differs from the static config value
-    assert rho_val != pytest.approx(config.struct.core_density, rel=1e-2)
+    assert rho_val != pytest.approx(config.interior_struct.core_density, rel=1e-2)
 
 
 @pytest.mark.unit
@@ -1075,14 +1075,14 @@ def test_try_spider_init_aw(tmp_path):
 
     Verifies AW parameters are added instead of -MESH_SOURCE.
     """
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
 
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
-        patch('proteus.interior.spider.sp.run') as mock_run,
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1108,14 +1108,14 @@ def test_try_spider_init_aw(tmp_path):
 @pytest.mark.unit
 def test_try_spider_missing_eos_dir(tmp_path):
     """Missing EOS directory raises FileNotFoundError."""
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, _, mc_base, _ = _setup_spider_env(tmp_path)
 
     # Both FWL_DATA EOS path and SPIDER-local fallback (lookup_data/) are absent
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
     ):
         with pytest.raises(FileNotFoundError, match='SPIDER EOS directory not found'):
             _try_spider(
@@ -1133,13 +1133,13 @@ def test_try_spider_missing_eos_dir(tmp_path):
 @pytest.mark.unit
 def test_try_spider_missing_melting_curves(tmp_path):
     """Missing melting curve files raise FileNotFoundError."""
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, _, _ = _setup_spider_env(tmp_path)
 
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', '/nonexistent/mc'),
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', '/nonexistent/mc'),
     ):
         with pytest.raises(FileNotFoundError, match='SPIDER phase boundary file'):
             _try_spider(
@@ -1157,7 +1157,7 @@ def test_try_spider_missing_melting_curves(tmp_path):
 @pytest.mark.unit
 def test_try_spider_eos_fallback_to_local(tmp_path):
     """EOS dir resolves to SPIDER local fallback when FWL_DATA path missing."""
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, _, mc_base, _ = _setup_spider_env(tmp_path)
 
@@ -1168,9 +1168,9 @@ def test_try_spider_eos_fallback_to_local(tmp_path):
         _make_eos_table(os.path.join(local_eos, name))
 
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
-        patch('proteus.interior.spider.sp.run') as mock_run,
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1196,15 +1196,15 @@ def test_try_spider_subprocess_timeout(tmp_path):
     """SPIDER subprocess timeout returns False."""
     import subprocess as sub
 
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
 
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
         patch(
-            'proteus.interior.spider.sp.run',
+            'proteus.interior_energetics.spider.sp.run',
             side_effect=sub.TimeoutExpired(cmd='spider', timeout=60),
         ),
     ):
@@ -1300,7 +1300,7 @@ def _make_spider_json(filepath, step=0, sim_time=0.0, num_stag=10, num_basic=11)
 @pytest.mark.unit
 def test_myjson_load_and_get(tmp_path):
     """MyJSON loads a JSON file and provides dict access."""
-    from proteus.interior.spider import MyJSON
+    from proteus.interior_energetics.spider import MyJSON
 
     fpath = str(tmp_path / '0.json')
     _make_spider_json(fpath, step=5)
@@ -1313,7 +1313,7 @@ def test_myjson_load_and_get(tmp_path):
 @pytest.mark.unit
 def test_myjson_missing_file(tmp_path):
     """MyJSON sets data_d to None when file doesn't exist."""
-    from proteus.interior.spider import MyJSON
+    from proteus.interior_energetics.spider import MyJSON
 
     jobj = MyJSON(str(tmp_path / 'missing.json'))
     assert jobj.data_d is None
@@ -1322,7 +1322,7 @@ def test_myjson_missing_file(tmp_path):
 @pytest.mark.unit
 def test_myjson_get_dict_values(tmp_path):
     """MyJSON.get_dict_values returns correctly scaled values."""
-    from proteus.interior.spider import MyJSON
+    from proteus.interior_energetics.spider import MyJSON
 
     fpath = str(tmp_path / '0.json')
     _make_spider_json(fpath)
@@ -1341,7 +1341,7 @@ def test_myjson_get_dict_values(tmp_path):
 @pytest.mark.unit
 def test_myjson_phase_boolean_arrays(tmp_path):
     """MyJSON phase boolean arrays work for staggered and basic nodes."""
-    from proteus.interior.spider import MyJSON
+    from proteus.interior_energetics.spider import MyJSON
 
     fpath = str(tmp_path / '0.json')
     _make_spider_json(fpath)
@@ -1359,7 +1359,7 @@ def test_myjson_phase_boolean_arrays(tmp_path):
 @pytest.mark.unit
 def test_get_all_output_times(tmp_path):
     """get_all_output_times returns sorted times from JSON filenames."""
-    from proteus.interior.spider import get_all_output_times
+    from proteus.interior_energetics.spider import get_all_output_times
 
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
@@ -1374,7 +1374,7 @@ def test_get_all_output_times(tmp_path):
 @pytest.mark.unit
 def test_get_all_output_times_empty(tmp_path):
     """get_all_output_times raises on empty data directory."""
-    from proteus.interior.spider import get_all_output_times
+    from proteus.interior_energetics.spider import get_all_output_times
 
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
@@ -1386,7 +1386,7 @@ def test_get_all_output_times_empty(tmp_path):
 @pytest.mark.unit
 def test_read_jsons(tmp_path):
     """read_jsons loads MyJSON objects for given times."""
-    from proteus.interior.spider import read_jsons
+    from proteus.interior_energetics.spider import read_jsons
 
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
@@ -1402,7 +1402,7 @@ def test_read_jsons(tmp_path):
 @pytest.mark.unit
 def test_interp_rho_melt():
     """interp_rho_melt returns a density value from a synthetic lookup table."""
-    from proteus.interior.spider import interp_rho_melt
+    from proteus.interior_energetics.spider import interp_rho_melt
 
     # Create a 4x3x3 lookup: [nS, nP, 3] with columns (P, S, rho)
     nP, nS = 3, 4
@@ -1428,16 +1428,16 @@ def test_interp_rho_melt():
 @pytest.mark.unit
 def test_run_spider_success_first_attempt():
     """RunSPIDER returns True when _try_spider succeeds on first attempt."""
-    from proteus.interior.spider import RunSPIDER
+    from proteus.interior_energetics.spider import RunSPIDER
 
     interior_o = MagicMock()
     interior_o.ic = 1
     interior_o.tides = np.zeros(10)
 
     config = MagicMock()
-    config.interior.heat_tidal = False
+    config.interior_energetics.heat_tidal = False
 
-    with patch('proteus.interior.spider._try_spider', return_value=True):
+    with patch('proteus.interior_energetics.spider._try_spider', return_value=True):
         result = RunSPIDER(
             dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
             config=config,
@@ -1452,17 +1452,17 @@ def test_run_spider_success_first_attempt():
 @pytest.mark.unit
 def test_run_spider_retry_then_success():
     """RunSPIDER retries with relaxed tolerances after first failure."""
-    from proteus.interior.spider import RunSPIDER
+    from proteus.interior_energetics.spider import RunSPIDER
 
     interior_o = MagicMock()
     interior_o.ic = 2
     interior_o.tides = np.zeros(10)
 
     config = MagicMock()
-    config.interior.heat_tidal = False
+    config.interior_energetics.heat_tidal = False
 
     # Fail first attempt, succeed second
-    with patch('proteus.interior.spider._try_spider', side_effect=[False, True]) as mock_try:
+    with patch('proteus.interior_energetics.spider._try_spider', side_effect=[False, True]) as mock_try:
         result = RunSPIDER(
             dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
             config=config,
@@ -1478,18 +1478,18 @@ def test_run_spider_retry_then_success():
 @pytest.mark.unit
 def test_run_spider_all_attempts_fail():
     """RunSPIDER raises RuntimeError after max_attempts failures."""
-    from proteus.interior.spider import RunSPIDER
+    from proteus.interior_energetics.spider import RunSPIDER
 
     interior_o = MagicMock()
     interior_o.ic = 1
     interior_o.tides = np.zeros(10)
 
     config = MagicMock()
-    config.interior.heat_tidal = False
+    config.interior_energetics.heat_tidal = False
 
     with (
-        patch('proteus.interior.spider._try_spider', return_value=False),
-        patch('proteus.interior.spider.UpdateStatusfile'),
+        patch('proteus.interior_energetics.spider._try_spider', return_value=False),
+        patch('proteus.interior_energetics.spider.UpdateStatusfile'),
         pytest.raises(RuntimeError, match='error occurred when executing SPIDER'),
     ):
         RunSPIDER(
@@ -1504,16 +1504,16 @@ def test_run_spider_all_attempts_fail():
 @pytest.mark.unit
 def test_run_spider_heat_tidal_active():
     """RunSPIDER limits dT_max when tidal heating is active."""
-    from proteus.interior.spider import RunSPIDER
+    from proteus.interior_energetics.spider import RunSPIDER
 
     interior_o = MagicMock()
     interior_o.ic = 1
     interior_o.tides = np.array([1e-5] * 10)  # > 1e-10
 
     config = MagicMock()
-    config.interior.heat_tidal = True
+    config.interior_energetics.heat_tidal = True
 
-    with patch('proteus.interior.spider._try_spider', return_value=True) as mock_try:
+    with patch('proteus.interior_energetics.spider._try_spider', return_value=True) as mock_try:
         RunSPIDER(
             dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
             config=config,
@@ -1535,8 +1535,8 @@ def test_run_spider_heat_tidal_active():
 @pytest.mark.unit
 def test_read_spider_basic(tmp_path):
     """ReadSPIDER extracts scalars and arrays from a SPIDER JSON file."""
-    from proteus.interior.common import Interior_t
-    from proteus.interior.spider import ReadSPIDER
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
 
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
@@ -1577,8 +1577,8 @@ def test_read_spider_basic(tmp_path):
 @pytest.mark.unit
 def test_read_spider_prevent_warming(tmp_path):
     """ReadSPIDER clamps F_int to 1e-8 when prevent_warming is True."""
-    from proteus.interior.common import Interior_t
-    from proteus.interior.spider import ReadSPIDER
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
 
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
@@ -1611,8 +1611,8 @@ def test_read_spider_prevent_warming(tmp_path):
 @pytest.mark.unit
 def test_read_spider_nan_temperature(tmp_path):
     """ReadSPIDER raises when T_magma is NaN."""
-    from proteus.interior.common import Interior_t
-    from proteus.interior.spider import ReadSPIDER
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
 
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
@@ -1656,7 +1656,7 @@ def test_read_spider_nan_temperature(tmp_path):
 @pytest.mark.unit
 def test_myjson_get_dict_units(tmp_path):
     """MyJSON.get_dict_units returns units string or None for 'None'."""
-    from proteus.interior.spider import MyJSON
+    from proteus.interior_energetics.spider import MyJSON
 
     fpath = str(tmp_path / '0.json')
     _make_spider_json(fpath)
@@ -1678,7 +1678,7 @@ def test_myjson_get_dict_units(tmp_path):
 @pytest.mark.unit
 def test_myjson_get_dict_values_internal(tmp_path):
     """MyJSON.get_dict_values_internal strips top and bottom nodes."""
-    from proteus.interior.spider import MyJSON
+    from proteus.interior_energetics.spider import MyJSON
 
     fpath = str(tmp_path / '0.json')
     _make_spider_json(fpath, num_basic=11)
@@ -1692,7 +1692,7 @@ def test_myjson_get_dict_values_internal(tmp_path):
 @pytest.mark.unit
 def test_myjson_phase_boolean_all_branches(tmp_path):
     """Phase boolean arrays work for basic, basic_internal, and staggered."""
-    from proteus.interior.spider import MyJSON
+    from proteus.interior_energetics.spider import MyJSON
 
     fpath = str(tmp_path / '0.json')
     _make_spider_json(fpath, num_stag=10, num_basic=11)
@@ -1740,7 +1740,7 @@ def test_blend_mesh_node_count_mismatch(spider_json_dir, caplog):
     new_path = os.path.join(spider_json_dir, 'new_30.dat')
     _make_mesh_file(new_path, r_b_new, r_s_new)
 
-    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior.spider'):
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.spider'):
         result = blend_mesh_files(old_path, new_path, max_shift=0.05)
 
     assert result == 0.0
@@ -1755,7 +1755,7 @@ def test_blend_mesh_node_count_mismatch(spider_json_dir, caplog):
 @pytest.mark.unit
 def test_try_spider_resume_ic2(tmp_path):
     """_try_spider with IC_INTERIOR=2 reads JSON to get step number."""
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
 
@@ -1773,10 +1773,10 @@ def test_try_spider_resume_ic2(tmp_path):
     )
 
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
-        patch('proteus.interior.spider.next_step', return_value=50.0),
-        patch('proteus.interior.spider.sp.run') as mock_run,
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.next_step', return_value=50.0),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1805,12 +1805,12 @@ def test_try_spider_resume_ic2(tmp_path):
 @pytest.mark.unit
 def test_try_spider_heat_radiogen(tmp_path):
     """_try_spider adds radionuclide flags when heat_radiogenic is True."""
-    from proteus.interior.spider import _try_spider
+    from proteus.interior_energetics.spider import _try_spider
 
     dirs, config, hf_row, eos_base, mc_base, _ = _setup_spider_env(tmp_path)
 
     # Enable radiogenic heat
-    config.interior.heat_radiogenic = True
+    config.interior_energetics.heat_radiogenic = True
     config.delivery.radio_tref = 4.5  # Gyr
     config.star.age_ini = 0.1  # Gyr
     config.delivery.radio_K = 240e-9  # ppm
@@ -1818,11 +1818,11 @@ def test_try_spider_heat_radiogen(tmp_path):
     config.delivery.radio_U = 20e-9
 
     with (
-        patch('proteus.interior.spider.EOS_DYNAMIC_DIR', eos_base),
-        patch('proteus.interior.spider.MELTING_CURVES_DIR', mc_base),
-        patch('proteus.interior.spider.sp.run') as mock_run,
+        patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
+        patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
         patch(
-            'proteus.interior.spider.radnuc_data',
+            'proteus.interior_energetics.spider.radnuc_data',
             {
                 'k40': {'abundance': 1.17e-4, 'heatprod': 2.92e-5, 'halflife': 1.25e9},
                 'th232': {'abundance': 1.0, 'heatprod': 2.64e-5, 'halflife': 1.40e10},

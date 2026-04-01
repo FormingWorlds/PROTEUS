@@ -12,7 +12,7 @@ from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
 from proteus.atmos_clim.common import read_atmosphere_data
-from proteus.interior.wrapper import read_interior_data
+from proteus.interior_energetics.wrapper import read_interior_data
 from proteus.utils.constants import R_earth
 from proteus.utils.plot import get_colour, latex_float, sample_output
 
@@ -168,7 +168,7 @@ def plot_structure_entry(handler: Proteus):
         os.path.join(handler.directories['output'], 'runtime_helpfile.csv'), sep=r'\s+'
     )
 
-    int_module = handler.config.interior.module
+    int_module = handler.config.interior_energetics.module
     output_dir = handler.directories['output']
 
     int_data = read_interior_data(output_dir, int_module, plot_times)

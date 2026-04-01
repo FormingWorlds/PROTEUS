@@ -27,8 +27,8 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-from proteus.interior.common import Interior_t
-from proteus.interior.timestep import next_step
+from proteus.interior_energetics.common import Interior_t
+from proteus.interior_energetics.timestep import next_step
 from proteus.utils.constants import radnuc_data
 
 logger = logging.getLogger('fwl.' + __name__)
@@ -56,11 +56,11 @@ class AragogRunner:
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
         self.aragog_solver = interior_o.aragog_solver
         self._config = config
-        self._use_jax = config.interior.aragog.jax
+        self._use_jax = config.interior_energetics.aragog.jax
 
         # Build JAX components if needed (cached on interior_o across steps)
         if self._use_jax:
-            from proteus.interior.aragog_jax import AragogJAXRunner
+            from proteus.interior_energetics.aragog_jax import AragogJAXRunner
 
             self._jax_runner = AragogJAXRunner(config, dirs, hf_row, hf_all, interior_o)
 
@@ -122,44 +122,44 @@ class AragogRunner:
             # enough that the BDF solver resolves this: atol = 0.01 K ensures
             # ~0.01 K precision, well below the ~0.3 K/yr cooling rate.
             # Too large (e.g. 1.0 K) makes the solver skip the evolution entirely.
-            atol=max(config.interior.num_tolerance, 0.01),
-            rtol=config.interior.num_tolerance,
-            tsurf_poststep_change=config.interior.aragog.tsurf_poststep_change,
-            event_triggering=config.interior.aragog.event_triggering,
+            atol=max(config.interior_energetics.num_tolerance, 0.01),
+            rtol=config.interior_energetics.num_tolerance,
+            tsurf_poststep_change=config.interior_energetics.aragog.tsurf_poststep_change,
+            event_triggering=config.interior_energetics.aragog.event_triggering,
         )
 
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode)
             # 1 = native grey-body (standalone mode, sigma*T^4)
-            outer_boundary_condition=config.interior.aragog.outer_boundary_condition,
+            outer_boundary_condition=config.interior_energetics.aragog.outer_boundary_condition,
             # first guess surface heat flux [W/m2] (only used if outer_bc=4)
             outer_boundary_value=hf_row['F_atm'],
             # 1 = core cooling model
             # 2 = prescribed heat flux
             # 3 = prescribed temperature
-            inner_boundary_condition=(config.interior.aragog.inner_boundary_condition),
+            inner_boundary_condition=(config.interior_energetics.aragog.inner_boundary_condition),
             # core temperature [K], if inner_boundary_condition = 3
-            inner_boundary_value=(config.interior.aragog.inner_boundary_value),
+            inner_boundary_value=(config.interior_energetics.aragog.inner_boundary_value),
             # only used in gray body BC, outer_boundary_condition = 1
             emissivity=1,
             # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature=hf_row['T_eqm'],
             # used if inner_boundary_condition = 1
-            core_heat_capacity=config.struct.core_heatcap,
+            core_heat_capacity=config.interior_struct.core_heatcap,
             # core T_avg/T_cmb ratio from adiabatic gradient (Bower+2018 Table 2)
             tfac_core_avg=1.147,
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
-            param_utbl=config.interior.aragog.param_utbl,
-            param_utbl_const=config.interior.aragog.param_utbl_const,
+            param_utbl=config.interior_energetics.aragog.param_utbl,
+            param_utbl_const=config.interior_energetics.aragog.param_utbl_const,
         )
 
         # Define the inner_radius for the mesh
-        if config.struct.module == 'self':
-            inner_radius = config.struct.corefrac * hf_row['R_int']  # core radius [m]
-        elif config.struct.module == 'zalmoxis':
+        if config.interior_struct.module == 'self':
+            inner_radius = config.interior_struct.corefrac * hf_row['R_int']  # core radius [m]
+        elif config.interior_struct.module == 'zalmoxis':
             # Read core radius from hf_row (already computed by Zalmoxis in
             # determine_interior_radius_with_zalmoxis, no need to re-run solver)
-            inner_radius = hf_row.get('R_core', config.struct.corefrac * hf_row['R_int'])
+            inner_radius = hf_row.get('R_core', config.interior_struct.corefrac * hf_row['R_int'])
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 
@@ -169,53 +169,53 @@ class AragogRunner:
             # core radius [m]
             inner_radius=inner_radius,
             # basic nodes
-            number_of_nodes=config.interior.num_levels,
+            number_of_nodes=config.interior_energetics.num_levels,
             mixing_length_profile='constant',
-            core_density=config.struct.core_density,
+            core_density=config.interior_struct.core_density,
             eos_method=1,  # 1: Adams-Williamson / 2: User defined
             surface_density=4090,  # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
-            adiabatic_bulk_modulus=config.interior.aragog.bulk_modulus,  # AW-EOS parameter [Pa]
-            mass_coordinates=config.interior.aragog.mass_coordinates,
+            adiabatic_bulk_modulus=config.interior_energetics.aragog.bulk_modulus,  # AW-EOS parameter [Pa]
+            mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
             surface_pressure=0.0,  # TODO: wire to atmospheric overburden when available
         )
 
         # Update the mesh if the module is 'zalmoxis'
-        if config.struct.module == 'zalmoxis':
+        if config.interior_struct.module == 'zalmoxis':
             mesh.eos_method = 2  # User-defined EOS based on Zalmoxis
             mesh.eos_file = os.path.join(
                 outdir, 'data', 'zalmoxis_output.dat'
             )  # Zalmoxis output file with mantle parameters
 
         energy = _EnergyParameters(
-            conduction=config.interior.trans_conduction,
-            convection=config.interior.trans_convection,
-            gravitational_separation=(config.interior.trans_grav_sep),
-            mixing=config.interior.trans_mixing,
-            dilatation=config.interior.aragog.dilatation,
-            radionuclides=config.interior.heat_radiogenic,
-            tidal=config.interior.heat_tidal,
+            conduction=config.interior_energetics.trans_conduction,
+            convection=config.interior_energetics.trans_convection,
+            gravitational_separation=(config.interior_energetics.trans_grav_sep),
+            mixing=config.interior_energetics.trans_mixing,
+            dilatation=config.interior_energetics.aragog.dilatation,
+            radionuclides=config.interior_energetics.heat_radiogenic,
+            tidal=config.interior_energetics.heat_tidal,
             tidal_array=interior_o.tides,
-            kappah_floor=config.interior.kappah_floor,
+            kappah_floor=config.interior_energetics.kappah_floor,
         )
 
         # Define initial conditions for prescribing temperature profile
-        if config.struct.module == 'self':
-            initial_condition_temperature_profile = config.interior.aragog.initial_condition
+        if config.interior_struct.module == 'self':
+            initial_condition_temperature_profile = config.interior_energetics.aragog.initial_condition
             init_file_temperature_profile = os.path.join(
-                FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
+                FWL_DATA_DIR, f'interior_lookup_tables/{config.interior_energetics.aragog.init_file}'
             )
-        elif config.struct.module == 'zalmoxis':
+        elif config.interior_struct.module == 'zalmoxis':
             _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-            if config.struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES):
+            if config.interior_struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES):
                 # When using Zalmoxis with temperature-dependent silicate EOS, set initial condition to user-defined temperature field (from file) in Aragog
                 initial_condition_temperature_profile = 2
                 init_file_temperature_profile = os.path.join(
                     outdir, 'data', 'zalmoxis_output_temp.txt'
                 )
             elif (
-                config.struct.zalmoxis.mantle_eos.startswith('PALEOS:')
-                and config.interior.aragog.initial_condition == 3
+                config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+                and config.interior_energetics.aragog.initial_condition == 3
             ):
                 # For PALEOS EOS with adiabatic IC: Aragog uses IC=3 with
                 # entropy tables for its entropy-conserving adiabat. After
@@ -226,9 +226,9 @@ class AragogRunner:
                 init_file_temperature_profile = ''
             else:
                 # Otherwise, use the initial condition from aragog config
-                initial_condition_temperature_profile = config.interior.aragog.initial_condition
+                initial_condition_temperature_profile = config.interior_energetics.aragog.initial_condition
                 init_file_temperature_profile = os.path.join(
-                    FWL_DATA_DIR, f'interior_lookup_tables/{config.interior.aragog.init_file}'
+                    FWL_DATA_DIR, f'interior_lookup_tables/{config.interior_energetics.aragog.init_file}'
                 )
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
@@ -236,7 +236,7 @@ class AragogRunner:
         # When initial_thermal_state = 'self_consistent', Zalmoxis computes
         # T_surface from accretion + differentiation energy (White+Li 2025)
         # and passes it via hf_row. This overrides the config tsurf_init.
-        tsurf_init = config.interior.tsurf_init
+        tsurf_init = config.interior_energetics.tsurf_init
         T_surface_computed = hf_row.get('T_surface_initial', 0)
         if T_surface_computed and T_surface_computed > 0:
             logger.info(
@@ -252,7 +252,7 @@ class AragogRunner:
             initial_condition=initial_condition_temperature_profile,
             # initial top temperature (K)
             surface_temperature=tsurf_init,
-            basal_temperature=config.interior.aragog.basal_temperature,
+            basal_temperature=config.interior_energetics.aragog.basal_temperature,
             init_file=init_file_temperature_profile,
         )
 
@@ -264,18 +264,18 @@ class AragogRunner:
         # The unified table has interpolation artifacts across the melting
         # curve discontinuity.
         if (
-            config.struct.module == 'zalmoxis'
-            and config.struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+            config.interior_struct.module == 'zalmoxis'
+            and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
         ):
-            from proteus.interior.zalmoxis import load_zalmoxis_material_dictionaries
+            from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
 
             mat_dicts = load_zalmoxis_material_dictionaries()
 
             # Get unified table path (needed for melting curves and fallback)
-            eos_entry = mat_dicts.get(config.struct.zalmoxis.mantle_eos, {})
+            eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
             paleos_eos_file = eos_entry.get('eos_file', '')
 
-            mass_tot = config.struct.mass_tot or 1.0
+            mass_tot = config.planet.planet_mass_tot or 1.0
             P_max = min(200e9, 50e9 * mass_tot + 100e9)
             LOOK_UP_DIR = Path(outdir) / 'data' / 'aragog_pt'
 
@@ -310,12 +310,12 @@ class AragogRunner:
                 from zalmoxis.eos_export import generate_aragog_pt_tables
 
                 if paleos_eos_file and os.path.isfile(paleos_eos_file):
-                    from proteus.interior.zalmoxis import (
+                    from proteus.interior_struct.zalmoxis import (
                         load_zalmoxis_solidus_liquidus_functions,
                     )
 
                     melt_funcs = load_zalmoxis_solidus_liquidus_functions(
-                        config.struct.zalmoxis.mantle_eos, config
+                        config.interior_struct.zalmoxis.mantle_eos, config
                     )
                     if melt_funcs is not None:
                         sol_func, liq_func = melt_funcs
@@ -360,7 +360,7 @@ class AragogRunner:
                 / 'interior_lookup_tables'
                 / 'EOS'
                 / 'dynamic'
-                / config.struct.eos_dir
+                / config.interior_struct.eos_dir
                 / 'P-T'
             )
             if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
@@ -376,21 +376,21 @@ class AragogRunner:
         # Without this, Aragog uses Monteux-600 which differs by ~600 K,
         # making melt fractions incomparable.
         if (
-            config.struct.module == 'zalmoxis'
-            and config.struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+            config.interior_struct.module == 'zalmoxis'
+            and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
         ):
             paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
             paleos_melt_dir.mkdir(parents=True, exist_ok=True)
             sol_file = paleos_melt_dir / 'solidus_P-T.dat'
             liq_file = paleos_melt_dir / 'liquidus_P-T.dat'
             if not sol_file.is_file():
-                from proteus.interior.zalmoxis import (
+                from proteus.interior_struct.zalmoxis import (
                     _make_derived_solidus,
                     load_zalmoxis_solidus_liquidus_functions,
                 )
 
                 melt_fns = load_zalmoxis_solidus_liquidus_functions(
-                    config.struct.zalmoxis.mantle_eos, config
+                    config.interior_struct.zalmoxis.mantle_eos, config
                 )
                 if melt_fns is not None:
                     s_fn, l_fn = melt_fns
@@ -401,7 +401,7 @@ class AragogRunner:
 
                     _, l_fn = _gslf('Stixrude14-solidus', 'PALEOS-liquidus')
                     s_fn = _make_derived_solidus(
-                        l_fn, config.struct.zalmoxis.mushy_zone_factor
+                        l_fn, config.interior_struct.zalmoxis.mushy_zone_factor
                     )
 
                 P_arr = np.logspace(8, 12, 500)
@@ -415,8 +415,8 @@ class AragogRunner:
             liquidus_path = liq_file
         else:
             MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
-            solidus_path = MELTING_DIR / config.struct.melting_dir / 'solidus_P-T.dat'
-            liquidus_path = MELTING_DIR / config.struct.melting_dir / 'liquidus_P-T.dat'
+            solidus_path = MELTING_DIR / config.interior_struct.melting_dir / 'solidus_P-T.dat'
+            liquidus_path = MELTING_DIR / config.interior_struct.melting_dir / 'liquidus_P-T.dat'
 
         # check data exist
         if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
@@ -455,17 +455,17 @@ class AragogRunner:
 
         phase_mixed = _PhaseMixedParameters(
             latent_heat_of_fusion=4e6,
-            rheological_transition_melt_fraction=config.interior.rfront_loc,
-            rheological_transition_width=config.interior.rfront_wid,
+            rheological_transition_melt_fraction=config.interior_energetics.rfront_loc,
+            rheological_transition_width=config.interior_energetics.rfront_wid,
             solidus=solidus_path,
             liquidus=liquidus_path,
             phase='mixed',
             phase_transition_width=0.1,
-            grain_size=config.interior.grain_size,
+            grain_size=config.interior_energetics.grain_size,
         )
 
         radionuclides = []
-        if config.interior.heat_radiogenic:
+        if config.interior_energetics.heat_radiogenic:
             # offset by age_ini, which converts model simulation time to the
             # actual age
             radio_t0 = config.delivery.radio_tref - config.star.age_ini
@@ -552,17 +552,17 @@ class AragogRunner:
         try:
             from zalmoxis.eos_export import compute_entropy_adiabat
 
-            from proteus.interior.zalmoxis import (
+            from proteus.interior_struct.zalmoxis import (
                 load_zalmoxis_material_dictionaries,
                 load_zalmoxis_solidus_liquidus_functions,
             )
 
             mat_dicts = load_zalmoxis_material_dictionaries()
-            eos_entry = mat_dicts.get(config.struct.zalmoxis.mantle_eos, {})
+            eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
             paleos_eos_file = eos_entry.get('eos_file', '')
 
             melt_funcs = load_zalmoxis_solidus_liquidus_functions(
-                config.struct.zalmoxis.mantle_eos, config
+                config.interior_struct.zalmoxis.mantle_eos, config
             )
             sol_func = liq_func = None
             if melt_funcs is not None:
@@ -575,7 +575,7 @@ class AragogRunner:
             solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
-            tsurf_init = config.interior.tsurf_init
+            tsurf_init = config.interior_energetics.tsurf_init
             T_surface_computed = interior_o.__dict__.get('T_surface_initial', 0)
             if T_surface_computed and T_surface_computed > 0:
                 tsurf_init = T_surface_computed
@@ -648,28 +648,28 @@ class AragogRunner:
             Output directory for diagnostic files.
         """
         if not (
-            config.struct.module == 'zalmoxis'
-            and config.struct.zalmoxis.mantle_eos.startswith('PALEOS:')
-            and config.interior.aragog.initial_condition == 3
+            config.interior_struct.module == 'zalmoxis'
+            and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+            and config.interior_energetics.aragog.initial_condition == 3
         ):
             return
 
         try:
             from zalmoxis.eos_export import compute_entropy_adiabat
 
-            from proteus.interior.zalmoxis import (
+            from proteus.interior_struct.zalmoxis import (
                 load_zalmoxis_material_dictionaries,
                 load_zalmoxis_solidus_liquidus_functions,
             )
 
             mat_dicts = load_zalmoxis_material_dictionaries()
-            eos_entry = mat_dicts.get(config.struct.zalmoxis.mantle_eos, {})
+            eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
             paleos_eos_file = eos_entry.get('eos_file', '')
             if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
                 return
 
             melt_funcs = load_zalmoxis_solidus_liquidus_functions(
-                config.struct.zalmoxis.mantle_eos, config
+                config.interior_struct.zalmoxis.mantle_eos, config
             )
             sol_func = liq_func = None
             if melt_funcs is not None:
@@ -683,7 +683,7 @@ class AragogRunner:
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
             # Compute PROTEUS-side entropy-inverted profile
-            T_surf = config.interior.tsurf_init
+            T_surf = config.interior_energetics.tsurf_init
             solver = interior_o.aragog_solver
             # Get Aragog's basic node pressures and temperatures
             P_basic = solver.evaluator.mesh.basic_pressure[:, -1]
@@ -799,9 +799,9 @@ class AragogRunner:
         solver.parameters.mesh.outer_radius = hf_row['R_int']
         solver.parameters.mesh.gravitational_acceleration = hf_row['gravity']
 
-        if config.struct.module == 'self':
+        if config.interior_struct.module == 'self':
             solver.parameters.mesh.inner_radius = (
-                config.struct.corefrac * hf_row['R_int']
+                config.interior_struct.corefrac * hf_row['R_int']
             )
         # For Zalmoxis: inner_radius is set at setup_solver from Zalmoxis output.
         # The EOS file (zalmoxis_output.dat) is refreshed by the Zalmoxis solver

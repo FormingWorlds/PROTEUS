@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.interior.common import Interior_t
+from proteus.interior_energetics.common import Interior_t
 
 if TYPE_CHECKING:
     from proteus.config import Config
