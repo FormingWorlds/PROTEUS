@@ -110,9 +110,6 @@ class Zalmoxis:
     center_temperature: float
         Center temperature (K), required for temperature_mode="linear"
         or "adiabatic" (initial guess), ignored otherwise.
-    temperature_profile_file: Optional[str]
-        Filename containing a prescribed temperature profile, required for
-        temperature_mode="prescribed".
     num_levels: int
         Number of Zalmoxis radius layers.
     """
@@ -126,21 +123,12 @@ class Zalmoxis:
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
     temperature_mode: str = field(
         default='isothermal',
-        validator=in_(('isothermal', 'linear', 'prescribed', 'adiabatic')),
+        validator=in_(('isothermal', 'linear', 'adiabatic')),
     )
     surface_temperature: float = field(default=3500, validator=ge(0))
     center_temperature: float = field(default=6000, validator=ge(0))
-    temperature_profile_file: Optional[str] = field(default=None)
 
     num_levels: int = field(default=150)
-
-    def __attrs_post_init__(self):
-        if self.temperature_mode == 'prescribed':
-            if not self.temperature_profile_file:
-                raise ValueError(
-                    '`temperature_profile_file` must be provided when '
-                    "`temperature_mode` is 'prescribed'."
-                )
 
 
 @define

@@ -347,7 +347,6 @@ def test_mesh_convergence_trigger():
     config.interior_struct.mesh_max_shift = 0.05
     config.interior_struct.mesh_convergence_interval = 10.0
     config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
-    config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = 50
     config.interior_energetics.module = 'spider'
 

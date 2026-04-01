@@ -202,10 +202,9 @@
         core_eos                   = "PALEOS:iron"   # "<source>:<material>", recommended: "PALEOS:iron"
         mantle_eos                 = "PALEOS:MgSiO3" # "<source>:<material>", recommended: "PALEOS:MgSiO3"
         ice_layer_eos              = "none"          # same as the two above; "none" = 2-layer model (core+mantle)
-        temperature_mode           = "adiabatic"     # isothermal | linear | prescribed | adiabatic
+        temperature_mode           = "adiabatic"     # isothermal | linear | adiabatic
         surface_temperature        = 3500            # [K]
         center_temperature         = 6000            # [K] (initial guess for adiabatic)
-        temperature_profile_file   = "zalmoxis_ini_input_temp.txt"  # for prescribed mode
 
 # Interior energy transport (magma ocean evolution)
 [interior_energetics]

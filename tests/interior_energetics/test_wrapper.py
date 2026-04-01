@@ -46,7 +46,6 @@ def _mock_config(
     config.interior_struct.mesh_max_shift = mesh_max_shift
     config.interior_struct.mesh_convergence_interval = mesh_convergence_interval
     config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
-    config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = num_levels
     config.interior_energetics.module = 'spider'
     config.interior_energetics.spider.num_levels = num_levels

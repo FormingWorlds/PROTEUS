@@ -666,36 +666,24 @@ def update_structure_from_interior(
     r_ascending = r_stag[::-1]
     T_ascending = interior_o.temp[::-1]
 
-    # Zalmoxis prescribed mode expects a 1D array of num_layers temperatures
-    # sampled from center (r=0) to surface (r=R_planet), matching its internal
-    # radii. SPIDER only covers the mantle (CMB to surface), so we hold T
-    # constant at the CMB value for the core region.
+    # Build T(r,P) interpolator from SPIDER/Aragog output in memory.
+    # SPIDER only covers the mantle (CMB to surface), so hold T constant
+    # at the CMB value for the core region.
     R_cmb = float(np.squeeze(r_ascending[0]))
-    R_surf = float(np.squeeze(r_ascending[-1]))
     T_cmb = float(np.squeeze(T_ascending[0]))
 
-    r_full = np.linspace(0.0, R_surf, num_layers)
-    T_full = np.empty(num_layers)
-    for i, r in enumerate(r_full):
-        if r <= R_cmb:
-            T_full[i] = T_cmb
-        else:
-            T_full[i] = np.interp(r, r_ascending, T_ascending)
+    # Capture arrays in closure for the temperature function
+    _r_asc = np.asarray(r_ascending, dtype=float)
+    _T_asc = np.asarray(T_ascending, dtype=float)
+    _R_cmb = R_cmb
+    _T_cmb = T_cmb
 
-    temp_profile_path = os.path.join(outdir, 'data', 'spider_temp_profile.dat')
-    np.savetxt(temp_profile_path, T_full)
+    def temperature_function(r, P):
+        if r <= _R_cmb:
+            return _T_cmb
+        return float(np.interp(r, _r_asc, _T_asc))
 
-    # TODO: Refactor to pass temperature_mode as a parameter to zalmoxis_solver
-    # instead of mutating the Config object. The current save/restore pattern
-    # is fragile if multiple callers modify temperature_mode concurrently.
-    # Temporarily override Zalmoxis config for prescribed temperature mode
     from proteus.interior_struct.zalmoxis import zalmoxis_solver
-
-    orig_temp_mode = config.interior_struct.zalmoxis.temperature_mode
-    orig_temp_file = config.interior_struct.zalmoxis.temperature_profile_file
-
-    config.interior_struct.zalmoxis.temperature_mode = 'prescribed'
-    config.interior_struct.zalmoxis.temperature_profile_file = temp_profile_path
 
     # Save current mesh as baseline for blending
     prev_path = dirs.get('spider_mesh_prev')
@@ -706,16 +694,13 @@ def update_structure_from_interior(
             dirs['spider_mesh_prev'] = prev_path
         shutil.copy2(current_mesh, prev_path)
 
-    try:
-        nlev_b = get_nlevb(config)
-        num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
-        _cmb_radius, spider_mesh_file = zalmoxis_solver(
-            config, outdir, hf_row, num_spider_nodes=num_spider_nodes
-        )
-    finally:
-        # Restore original config
-        config.interior_struct.zalmoxis.temperature_mode = orig_temp_mode
-        config.interior_struct.zalmoxis.temperature_profile_file = orig_temp_file
+    nlev_b = get_nlevb(config)
+    num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
+    _cmb_radius, spider_mesh_file = zalmoxis_solver(
+        config, outdir, hf_row,
+        num_spider_nodes=num_spider_nodes,
+        temperature_function=temperature_function,
+    )
 
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file
@@ -805,7 +790,7 @@ def update_structure_from_interior(
         dirs['mesh_convergence_steps'] = 0
 
     # Clean up temporary arrays
-    del r_stag, r_ascending, T_ascending, r_full, T_full
+    del r_stag, r_ascending, T_ascending
     gc.collect()
 
     # Regenerate SPIDER EOS tables when composition changed substantially.

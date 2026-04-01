@@ -203,7 +203,6 @@ def test_zalmoxis_config_with_ice_layer():
     config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.surface_temperature = 300
     config.interior_struct.zalmoxis.center_temperature = 5000
-    config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = 200
 
     hf_row = {
@@ -230,7 +229,6 @@ def test_zalmoxis_config_no_ice_layer():
     config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.surface_temperature = 300
     config.interior_struct.zalmoxis.center_temperature = 5000
-    config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = 200
 
     hf_row = {

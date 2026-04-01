@@ -287,7 +287,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'temperature_mode': config.interior_struct.zalmoxis.temperature_mode,
         'surface_temperature': config.interior_struct.zalmoxis.surface_temperature,
         'center_temperature': config.interior_struct.zalmoxis.center_temperature,
-        'temp_profile_file': config.interior_struct.zalmoxis.temperature_profile_file,
+        'temp_profile_file': None,
         'layer_eos_config': layer_eos_config,
         'mushy_zone_factor': mzf,
         'mushy_zone_factors': mushy_zone_factors,
@@ -678,7 +678,13 @@ def generate_spider_tables(config: Config, outdir: str):
     }
 
 
-def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes: int = 0):
+def zalmoxis_solver(
+    config: Config,
+    outdir: str,
+    hf_row: dict,
+    num_spider_nodes: int = 0,
+    temperature_function=None,
+):
     """Run the Zalmoxis solver to compute the interior structure of a planet.
 
     Parameters
@@ -692,6 +698,10 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     num_spider_nodes : int
         Number of SPIDER basic nodes. If > 0, writes a SPIDER mesh file
         and returns its path as the second element of the return tuple.
+    temperature_function : callable or None, optional
+        External temperature function ``f(r, P) -> T`` in (m, Pa, K).
+        When provided, bypasses Zalmoxis's internal temperature mode
+        dispatch. Used to pass SPIDER/Aragog T(r) profiles in memory.
 
     Returns
     -------
@@ -763,6 +773,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
             melting_curves_functions=melt_funcs,
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
+            temperature_function=temperature_function,
             h2_mass_targets=h2_mass_targets,
             max_iterations=config.interior_struct.miscibility_max_iter,
             mass_tolerance=config.interior_struct.miscibility_tol,
@@ -794,6 +805,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
             melting_curves_functions=melt_funcs,
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
+            temperature_function=temperature_function,
         )
 
     # Extract results from the model
