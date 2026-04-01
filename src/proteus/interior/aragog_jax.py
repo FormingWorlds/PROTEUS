@@ -1,9 +1,8 @@
 # JAX Aragog interior module
 #
-# Reuses the numpy AragogRunner for config translation, EOS table
-# generation, mesh construction, and IC setup. Delegates the actual
-# ODE solve to aragog.jax.solver (diffrax). Output uses the same
-# SolverOutput contract as the numpy version.
+# Called by AragogRunner when config.interior.aragog.jax = True.
+# Delegates the ODE solve to aragog.jax.solver (diffrax). Output
+# uses the same helpfile dict contract as the scipy version.
 from __future__ import annotations
 
 import logging
@@ -14,9 +13,7 @@ import jax
 import jax.numpy as jnp
 import netCDF4 as nc
 import numpy as np
-import pandas as pd
 
-from proteus.interior.aragog import AragogRunner
 from proteus.interior.common import Interior_t
 
 jax.config.update('jax_enable_x64', True)
@@ -28,25 +25,23 @@ if TYPE_CHECKING:
 
 
 class AragogJAXRunner:
-    """PROTEUS wrapper for the JAX-based Aragog entropy solver.
+    """JAX-based Aragog entropy solver backend.
 
-    Inherits all setup logic from AragogRunner (config, EOS tables,
-    mesh, IC). Replaces the scipy BDF solve with diffrax.
+    Called by AragogRunner when config.interior.aragog.jax is True.
+    All setup (config, EOS tables, mesh, IC) is done by AragogRunner;
+    this class only handles JAX-specific components and the diffrax solve.
     """
 
     def __init__(
         self,
-        config: Config,
+        config: 'Config',
         dirs: dict,
         hf_row: dict,
-        hf_all: pd.DataFrame,
+        hf_all,
         interior_o: Interior_t,
     ):
-        # Reuse numpy AragogRunner for all setup
-        AragogRunner.setup_logger(config, dirs)
-        interior_o._spider_eos_dir = dirs.get('spider_eos_dir', '')
-        dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
-        AragogRunner.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
+        # The numpy AragogRunner already ran setup (logger, time step, solver).
+        # We just grab the solver reference and build JAX-specific components.
         self.aragog_solver = interior_o.aragog_solver
         self._config = config
 

@@ -341,6 +341,7 @@ version = "2.0"
         tsurf_poststep_change    = 30       # Max surface T change per step [K]
         event_triggering         = true     # Stop solver on large T_surf jumps
         bulk_modulus             = 260e9    # Adams-Williamson bulk modulus [Pa]
+        jax                      = false    # Use JAX/diffrax solver backend (requires jax, equinox, diffrax)
 
     # ── SPIDER-only parameters ────────────────────────────────────────
     [interior.spider]

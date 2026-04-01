@@ -62,7 +62,7 @@ class Spider:
 
 
 def valid_aragog(instance, attribute, value):
-    if instance.module not in ('aragog', 'aragog_jax'):
+    if instance.module != 'aragog':
         return
 
     # at least one energy term enabled (uses top-level interior fields)
@@ -122,6 +122,10 @@ class Aragog:
         boundary layer (Bower et al. 2018, Eq. 18). Default is True (matches SPIDER).
     param_utbl_const: float
         UTBL scaling constant [K^-2]. Default is 1e-7 (matches SPIDER).
+    jax: bool
+        Use JAX/diffrax solver backend instead of scipy BDF. Default is False.
+        When True, the entropy ODE is integrated with diffrax Tsit5 instead of
+        scipy solve_ivp (BDF). Requires jax, equinox, and diffrax packages.
     """
 
     basal_temperature: float = field(default=7000)
@@ -148,6 +152,7 @@ class Aragog:
     bulk_modulus: float = field(default=260e9, validator=gt(0))
     param_utbl: bool = field(default=True)
     param_utbl_const: float = field(default=1e-7, validator=gt(0))
+    jax: bool = field(default=False)
 
 
 def valid_interiordummy(instance, attribute, value):
@@ -252,7 +257,7 @@ class Interior:
         Zalmoxis derives its EOS paths from struct.zalmoxis config instead.
     """
 
-    module: str = field(validator=in_(('spider', 'aragog', 'aragog_jax', 'dummy')))
+    module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
     tsurf_init: float = field(default=3300.0, validator=gt(200))
     num_levels: int = field(default=100, validator=ge(40))
     num_tolerance: float = field(default=1e-10, validator=gt(0))
