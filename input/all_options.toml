@@ -190,14 +190,14 @@
     update_dtmagma_frac = 0.05        # trigger on relative T_magma change
     update_dphi_abs     = 0.05        # trigger on absolute Phi_global change
     melting_dir  = "Monteux-600"           # melting curve folder in FWL_DATA
-    eos_dir      = "WolfBower2018_MgSiO3"  # EOS folder in FWL_DATA
+    eos_dir      = "PALEOS_MgSiO3"         # EOS folder in FWL_DATA
 
     [interior_struct.zalmoxis]
         # Per-layer EOS: "<source>:<material>"
-        # Tabulated: Seager2007:iron, WolfBower2018:MgSiO3, RTPress100TPa:MgSiO3, Seager2007:H2O
+        # Tabulated: PALEOS:iron, PALEOS:MgSiO3, Seager2007:iron, WolfBower2018:MgSiO3, RTPress100TPa:MgSiO3, Seager2007:H2O
         # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O
-        core_eos                   = "Seager2007:iron"
-        mantle_eos                 = "WolfBower2018:MgSiO3"
+        core_eos                   = "PALEOS:iron"
+        mantle_eos                 = "PALEOS:MgSiO3"
         ice_layer_eos              = ""              # empty = 2-layer model
         coremassfrac               = 0.325           # core mass fraction
         mantle_mass_fraction       = 0               # 0 = auto (1 - coremassfrac)
