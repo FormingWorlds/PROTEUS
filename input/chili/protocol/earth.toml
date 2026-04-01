@@ -93,7 +93,7 @@ planet_mass_tot = 1.0
 initial = "elements"
 
 [interior_struct]
-corefrac = 0.55
+core_frac = 0.55
 module = "self"
 zalmoxis = "none"
 core_density = 10738.33

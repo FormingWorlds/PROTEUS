@@ -29,6 +29,7 @@ from aragog.parser import (
 )
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.timestep import next_step
+from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
 
 logger = logging.getLogger('fwl.' + __name__)
@@ -145,7 +146,7 @@ class AragogRunner:
             # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature=hf_row['T_eqm'],
             # used if inner_boundary_condition = 1
-            core_heat_capacity=config.interior_struct.core_heatcap,
+            core_heat_capacity=get_core_heatcap(config, hf_row),
             # core T_avg/T_cmb ratio from adiabatic gradient (Bower+2018 Table 2)
             tfac_core_avg=1.147,
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
@@ -155,11 +156,11 @@ class AragogRunner:
 
         # Define the inner_radius for the mesh
         if config.interior_struct.module == 'self':
-            inner_radius = config.interior_struct.corefrac * hf_row['R_int']  # core radius [m]
+            inner_radius = config.interior_struct.core_frac * hf_row['R_int']  # core radius [m]
         elif config.interior_struct.module == 'zalmoxis':
             # Read core radius from hf_row (already computed by Zalmoxis in
             # determine_interior_radius_with_zalmoxis, no need to re-run solver)
-            inner_radius = hf_row.get('R_core', config.interior_struct.corefrac * hf_row['R_int'])
+            inner_radius = hf_row.get('R_core', config.interior_struct.core_frac * hf_row['R_int'])
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 
@@ -171,7 +172,7 @@ class AragogRunner:
             # basic nodes
             number_of_nodes=config.interior_energetics.num_levels,
             mixing_length_profile='constant',
-            core_density=config.interior_struct.core_density,
+            core_density=get_core_density(config, hf_row),
             eos_method=1,  # 1: Adams-Williamson / 2: User defined
             surface_density=4090,  # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
@@ -801,7 +802,7 @@ class AragogRunner:
 
         if config.interior_struct.module == 'self':
             solver.parameters.mesh.inner_radius = (
-                config.interior_struct.corefrac * hf_row['R_int']
+                config.interior_struct.core_frac * hf_row['R_int']
             )
         # For Zalmoxis: inner_radius is set at setup_solver from Zalmoxis output.
         # The EOS file (zalmoxis_output.dat) is refreshed by the Zalmoxis solver

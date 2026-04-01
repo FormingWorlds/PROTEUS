@@ -139,7 +139,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     if hasattr(config.struct, 'zalmoxis') and config.interior_struct.zalmoxis:
         cmf = config.interior_struct.zalmoxis.coremassfrac
     else:
-        cmf = config.interior_struct.corefrac
+        cmf = config.interior_struct.core_frac
 
     planet = Planet(
         planet_mass=M_planet,

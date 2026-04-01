@@ -207,7 +207,7 @@ class Struct:
 
     Attributes
     ----------
-    corefrac: float
+    core_frac: float
         Fraction of the planet's interior radius corresponding to the core.
     module: str
         Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
@@ -227,13 +227,20 @@ class Struct:
     update_dphi_abs: float
         Absolute change in Phi_global that triggers a structure update.
         Update fires when |Phi_new - Phi_ref| >= this value.
-    core_density: float
-        Density of the planet's core [kg m-3]
-    core_heatcap: float
-        Specific heat capacity of the planet's core [J kg-1 K-1]
+    core_frac_mode: str
+        How core_frac is interpreted. 'radius': fraction of planet radius.
+        'mass': fraction of total planet mass. Only 'radius' is supported
+        when module = 'self'.
+    core_density: float or str
+        Density of the planet's core [kg m-3]. Set to 'self' for
+        self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
+    core_heatcap: float or str
+        Specific heat capacity of the planet's core [J kg-1 K-1]. Set to 'self'
+        for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
     """
 
-    corefrac: float = field(validator=(gt(0), lt(1)))
+    core_frac: float = field(validator=(gt(0), lt(1)))
+    core_frac_mode: str = field(default='radius', validator=in_(('radius', 'mass')))
 
     module: Optional[str] = field(
         default='self',
@@ -260,8 +267,8 @@ class Struct:
     miscibility_max_iter: int = field(default=10, validator=ge(1))
     miscibility_tol: float = field(default=0.01, validator=gt(0))
 
-    core_density: float = field(default=10738.33, validator=gt(0))
-    core_heatcap: float = field(default=880.0, validator=gt(0))
+    core_density = field(default=10738.33)
+    core_heatcap = field(default=880.0)
 
     melting_dir: str = field(default='Monteux-600')
     eos_dir: str = field(default='WolfBower2018_MgSiO3')
@@ -277,3 +284,24 @@ class Struct:
                 '`global_miscibility` requires `module = "zalmoxis"`. '
                 'The binodal-aware structure solver is only available in Zalmoxis.'
             )
+
+        # core_frac_mode = "mass" requires Zalmoxis
+        if self.core_frac_mode == 'mass' and self.module != 'zalmoxis':
+            raise ValueError(
+                '`core_frac_mode = "mass"` requires `module = "zalmoxis"`. '
+                'The self module only supports radius-based core fraction.'
+            )
+
+        # core_density and core_heatcap: "self" requires Zalmoxis
+        for param_name in ('core_density', 'core_heatcap'):
+            val = getattr(self, param_name)
+            if val == 'self':
+                if self.module != 'zalmoxis':
+                    raise ValueError(
+                        f'`{param_name} = "self"` requires `module = "zalmoxis"`. '
+                        f'Set a numerical value when using module = "self".'
+                    )
+            elif not isinstance(val, (int, float)) or val <= 0:
+                raise ValueError(
+                    f'`{param_name}` must be "self" or a positive number, got {val!r}'
+                )

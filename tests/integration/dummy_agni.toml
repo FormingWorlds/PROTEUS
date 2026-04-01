@@ -59,7 +59,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
-    corefrac    = 0.55      # non-dim., radius fraction
+    core_frac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table
 [atmos_clim]

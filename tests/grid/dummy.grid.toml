@@ -36,7 +36,7 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     step     = 1000
 
 # Core radius fraction set by linspace
-["struct.corefrac"]
+["struct.core_frac"]
     method = "linspace"
     start  = 0.35
     stop   = 0.95

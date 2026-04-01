@@ -69,7 +69,7 @@ version = "2.0"
     initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
-    corefrac    = 0.55      # non-dim., radius fraction
+    core_frac    = 0.55      # non-dim., radius fraction
 
 [atmos_clim]
     prevent_warming = true     # do not allow the planet to heat up

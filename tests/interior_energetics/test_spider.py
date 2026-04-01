@@ -928,7 +928,7 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.interior_struct.melting_dir = 'Wolf_Bower+2018'
     config.outgas.fO2_shift_IW = 0.0
-    config.interior_struct.corefrac = 0.55
+    config.interior_struct.core_frac = 0.55
     config.interior_struct.core_density = 12500.0
     config.interior_struct.core_heatcap = 880.0
 

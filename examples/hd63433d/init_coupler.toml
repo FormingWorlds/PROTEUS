@@ -114,7 +114,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [interior_struct]
     mass        = 1.0       # M_earth
     radius      = 1.073     # R_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+    core_frac    = 0.55      # non-dim., radius fraction
 
     # No module for specifically for internal structure
     module  = "none"

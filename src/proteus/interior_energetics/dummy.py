@@ -9,6 +9,7 @@ import pandas as pd
 
 from proteus.interior_energetics.common import Interior_t
 from proteus.interior_energetics.timestep import next_step
+from proteus.interior_energetics.wrapper import get_core_heatcap
 from proteus.utils.constants import secs_per_year
 
 if TYPE_CHECKING:
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
-def calculate_simple_mantle_mass(radius: float, corefrac: float, density: float) -> float:
+def calculate_simple_mantle_mass(radius: float, core_frac: float, density: float) -> float:
     """
     A very simple interior structure model.
 
@@ -27,7 +28,7 @@ def calculate_simple_mantle_mass(radius: float, corefrac: float, density: float)
     """
 
     # Volume of mantle shell
-    mantle_volume = (4 * np.pi / 3) * (radius**3 - (radius * corefrac) ** 3)
+    mantle_volume = (4 * np.pi / 3) * (radius**3 - (radius * core_frac) ** 3)
 
     # Get mass [in SI units]
     mantle_mass = mantle_volume * density
@@ -49,7 +50,7 @@ def run_dummy_int(
 
     # Interior structure
     output['M_mantle'] = calculate_simple_mantle_mass(
-        hf_row['R_int'], config.interior_struct.corefrac, config.interior_energetics.dummy.mantle_rho
+        hf_row['R_int'], config.interior_struct.core_frac, config.interior_energetics.dummy.mantle_rho
     )
 
     # Physical parameters
@@ -72,7 +73,7 @@ def run_dummy_int(
     # Interior heat capacity [J K-1]
     cp_int = (
         config.interior_energetics.dummy.mantle_cp * output['M_mantle']
-        + config.interior_struct.core_heatcap * hf_row['M_core']
+        + get_core_heatcap(config, hf_row) * hf_row['M_core']
     )
 
     # Subtract tidal contribution to the total heat flux.
@@ -115,8 +116,8 @@ def run_dummy_int(
     output['Phi_global_vol'] = output['Phi_global']
     output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
     output['M_mantle_solid'] = output['M_mantle'] - output['M_mantle_liquid']
-    output['RF_depth'] = output['Phi_global'] * (1 - config.interior_struct.corefrac)
-    R_core = config.interior_struct.corefrac * hf_row['R_int']
+    output['RF_depth'] = output['Phi_global'] * (1 - config.interior_struct.core_frac)
+    R_core = config.interior_struct.core_frac * hf_row['R_int']
 
     # Store arrays
     interior_o.phi = np.array([output['Phi_global']])

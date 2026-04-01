@@ -102,7 +102,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     initial = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
-    corefrac    = 0.55      # non-dim., radius fraction
+    core_frac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 

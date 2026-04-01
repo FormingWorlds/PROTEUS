@@ -671,14 +671,16 @@ def _try_spider(
     open(empty_file, 'w').close()
 
     # Compute coresize: use external mesh radii when available, otherwise config
-    coresize = config.interior_struct.corefrac
-    rho_core = config.interior_struct.core_density
+    coresize = config.interior_struct.core_frac
+    from proteus.interior_energetics.wrapper import get_core_density
+
+    rho_core = get_core_density(config, hf_row)
     if mesh_file and os.path.isfile(mesh_file):
         coresize = _coresize_from_mesh(mesh_file)
         log.debug(
             'coresize from external mesh: %.6f (config: %.6f)',
             coresize,
-            config.interior_struct.corefrac,
+            config.interior_struct.core_frac,
         )
         # Derive average core density from the self-consistent core mass
         # (set by Zalmoxis) and the CMB radius from the mesh file
@@ -686,11 +688,7 @@ def _try_spider(
         M_core = hf_row.get('M_core', 0)
         if R_cmb > 0 and M_core > 0:
             rho_core = M_core / (4.0 / 3.0 * np.pi * R_cmb**3)
-            log.debug(
-                'rho_core from Zalmoxis structure: %.2f kg/m^3 (config: %.2f)',
-                rho_core,
-                config.interior_struct.core_density,
-            )
+            log.debug('rho_core from Zalmoxis structure: %.2f kg/m^3', rho_core)
 
     # Determine SPIDER domain boundaries.
     # When global_miscibility is enabled, SPIDER evolves the miscible
@@ -931,7 +929,9 @@ def _try_spider(
     # Relating to the planet's metallic core
     call_sequence.extend(['-CORE_BC', '1'])  # CMB boundary condition
     call_sequence.extend(['-rho_core', '%.6e' % rho_core])  # density
-    call_sequence.extend(['-cp_core', '%.6e' % (config.interior_struct.core_heatcap)])  # heat capacity
+    from proteus.interior_energetics.wrapper import get_core_heatcap
+
+    call_sequence.extend(['-cp_core', '%.6e' % get_core_heatcap(config, hf_row)])  # heat capacity
 
     # surface boundary condition
     # [4] heat flux (prescribe value using surface_bc_value)

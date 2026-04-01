@@ -22,6 +22,22 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 
+def get_core_density(config: Config, hf_row: dict) -> float:
+    """Resolve core density: numerical value from config, or from hf_row if 'self'."""
+    val = config.interior_struct.core_density
+    if val == 'self':
+        return float(hf_row.get('core_density', 10738.0))
+    return float(val)
+
+
+def get_core_heatcap(config: Config, hf_row: dict) -> float:
+    """Resolve core heat capacity: numerical value from config, or from hf_row if 'self'."""
+    val = config.interior_struct.core_heatcap
+    if val == 'self':
+        return float(hf_row.get('core_heatcap', 450.0))
+    return float(val)
+
+
 def update_gravity(hf_row: dict):
     """
     Update surface gravity.
@@ -33,12 +49,13 @@ def calculate_core_mass(hf_row: dict, config: Config):
     """
     Calculate the core mass of the planet.
     """
+    rho_core = get_core_density(config, hf_row)
     hf_row['M_core'] = (
-        config.interior_struct.core_density
+        rho_core
         * 4.0
         / 3.0
         * np.pi
-        * (hf_row['R_int'] * config.interior_struct.corefrac) ** 3.0
+        * (hf_row['R_int'] * config.interior_struct.core_frac) ** 3.0
     )
 
 

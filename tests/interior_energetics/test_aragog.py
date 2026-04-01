@@ -26,7 +26,7 @@ def _make_aragog_config(*, struct_module='self', mantle_eos='Seager2007:silicate
     """Create a mock config for AragogRunner.setup_solver tests."""
     config = MagicMock()
     config.interior_struct.module = struct_module
-    config.interior_struct.corefrac = 0.55
+    config.interior_struct.core_frac = 0.55
     config.interior_struct.zalmoxis.mantle_eos = mantle_eos
     config.interior_struct.core_density = 12500.0
     config.interior_struct.core_heatcap = 880.0

@@ -36,7 +36,7 @@ version = "2.0"
     initial = 'elements'        # Which initial inventory to use?
 
 [interior_struct]
-    corefrac    = 0.55          # Radius fraction [non-dim.]
+    core_frac    = 0.55          # Radius fraction [non-dim.]
 
 [atmos_clim]
     module  = "dummy"            # Which atmosphere module to use

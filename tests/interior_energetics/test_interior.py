@@ -38,15 +38,15 @@ from proteus.utils.constants import M_earth, R_earth, element_list
 def test_calculate_simple_mantle_mass_earth_like():
     """Test mantle mass calculation for Earth-like planet.
 
-    Uses realistic values: R_earth = 6.371e6 m, corefrac = 0.55,
+    Uses realistic values: R_earth = 6.371e6 m, core_frac = 0.55,
     rho_mantle = 4000 kg/m³. Validates that computed mantle mass
     is physically reasonable (~4e24 kg).
     """
     radius = 6.371e6  # meters (Earth radius)
-    corefrac = 0.55
+    core_frac = 0.55
     density = 4000.0  # kg/m³
 
-    mantle_mass = calculate_simple_mantle_mass(radius, corefrac, density)
+    mantle_mass = calculate_simple_mantle_mass(radius, core_frac, density)
 
     # Earth's mantle mass is ~4.0e24 kg
     assert mantle_mass > 0
@@ -57,14 +57,14 @@ def test_calculate_simple_mantle_mass_earth_like():
 def test_calculate_simple_mantle_mass_no_core():
     """Test mantle mass with zero core fraction (entire planet is mantle).
 
-    For corefrac=0, the mantle volume equals the full planet volume.
+    For core_frac=0, the mantle volume equals the full planet volume.
     This validates the limiting case of a coreless body.
     """
     radius = 1e6  # meters
-    corefrac = 0.0
+    core_frac = 0.0
     density = 3000.0  # kg/m³
 
-    mantle_mass = calculate_simple_mantle_mass(radius, corefrac, density)
+    mantle_mass = calculate_simple_mantle_mass(radius, core_frac, density)
 
     # Full sphere volume: (4/3) * pi * r^3
     expected_mass = (4 * np.pi / 3) * radius**3 * density
@@ -80,11 +80,11 @@ def test_calculate_simple_mantle_mass_scales_with_radius_cubed():
     """
     radius1 = 1e6
     radius2 = 2e6
-    corefrac = 0.5
+    core_frac = 0.5
     density = 3500.0
 
-    mass1 = calculate_simple_mantle_mass(radius1, corefrac, density)
-    mass2 = calculate_simple_mantle_mass(radius2, corefrac, density)
+    mass1 = calculate_simple_mantle_mass(radius1, core_frac, density)
+    mass2 = calculate_simple_mantle_mass(radius2, core_frac, density)
 
     # Volume scaling: (2r)³ = 8r³
     assert mass2 / mass1 == pytest.approx(8.0, rel=1e-8)
@@ -190,30 +190,30 @@ def test_calculate_simple_mantle_mass_scales_with_density():
     Validates that density is correctly applied to volume.
     """
     radius = 5e6
-    corefrac = 0.4
+    core_frac = 0.4
     density1 = 3000.0
     density2 = 6000.0
 
-    mass1 = calculate_simple_mantle_mass(radius, corefrac, density1)
-    mass2 = calculate_simple_mantle_mass(radius, corefrac, density2)
+    mass1 = calculate_simple_mantle_mass(radius, core_frac, density1)
+    mass2 = calculate_simple_mantle_mass(radius, core_frac, density2)
 
     # Linear density scaling
     assert mass2 / mass1 == pytest.approx(2.0, rel=1e-10)
 
 
 @pytest.mark.unit
-@pytest.mark.skip(reason='Source code raises exception for corefrac=1.0 by design')
+@pytest.mark.skip(reason='Source code raises exception for core_frac=1.0 by design')
 def test_calculate_simple_mantle_mass_full_core():
-    """Test edge case: core fills entire planet (corefrac=1.0).
+    """Test edge case: core fills entire planet (core_frac=1.0).
 
     This should result in zero mantle volume and thus zero mantle mass.
     Validates handling of geometric degeneracy.
     """
     radius = 1e6
-    corefrac = 1.0
+    core_frac = 1.0
     density = 3000.0
 
-    mantle_mass = calculate_simple_mantle_mass(radius, corefrac, density)
+    mantle_mass = calculate_simple_mantle_mass(radius, core_frac, density)
 
     # No mantle if core fills entire planet
     assert mantle_mass == pytest.approx(0.0, abs=1e-10)
@@ -233,7 +233,7 @@ def _create_mock_config(
     heat_internal: float = 5e-12,
     tmagma_rtol: float = 0.01,
     tmagma_atol: float = 10.0,
-    corefrac: float = 0.55,
+    core_frac: float = 0.55,
     core_heatcap: float = 8e26,
     heat_tidal: bool = False,
 ) -> Any:
@@ -247,7 +247,7 @@ def _create_mock_config(
     config.interior_energetics.dummy.heat_internal = heat_internal
     config.interior_energetics.dummy.tmagma_rtol = tmagma_rtol
     config.interior_energetics.dummy.tmagma_atol = tmagma_atol
-    config.interior_struct.corefrac = corefrac
+    config.interior_struct.core_frac = core_frac
     config.interior_struct.core_heatcap = core_heatcap
     config.interior_energetics.heat_tidal = heat_tidal
     return config
@@ -438,7 +438,7 @@ def test_run_dummy_int_interior_arrays():
     config = _create_mock_config(tsurf_init=2000.0, mantle_rho=4000.0)
     dirs = {}
     R_int = 6e6
-    corefrac = 0.55
+    core_frac = 0.55
     P_surf = 1e5
     hf_row = {'F_atm': 100.0, 'R_int': R_int, 'M_core': 2e24, 'P_surf': P_surf, 'Time': 0.0}
     hf_all = pd.DataFrame()
@@ -464,7 +464,7 @@ def test_run_dummy_int_interior_arrays():
     assert interior_o.density[0] == pytest.approx(4000.0)
     assert interior_o.temp[0] == pytest.approx(output['T_magma'])
     assert interior_o.pres[0] == pytest.approx(P_surf)
-    assert interior_o.radius[0] == pytest.approx(corefrac * R_int)
+    assert interior_o.radius[0] == pytest.approx(core_frac * R_int)
     assert interior_o.radius[1] == pytest.approx(R_int)
 
 
@@ -472,11 +472,11 @@ def test_run_dummy_int_interior_arrays():
 def test_run_dummy_int_rf_depth_scaling():
     """Test RF_depth (rheological front depth) scales with melt fraction.
 
-    RF_depth should be Phi_global * (1 - corefrac), representing
+    RF_depth should be Phi_global * (1 - core_frac), representing
     the depth of the molten region normalized by planet radius.
     """
     config = _create_mock_config(
-        tsurf_init=2000.0, mantle_tsol=1500.0, mantle_tliq=2500.0, corefrac=0.6
+        tsurf_init=2000.0, mantle_tsol=1500.0, mantle_tliq=2500.0, core_frac=0.6
     )
     dirs = {}
     hf_row = {'F_atm': 100.0, 'R_int': 6e6, 'M_core': 2e24, 'P_surf': 1e5, 'Time': 0.0}

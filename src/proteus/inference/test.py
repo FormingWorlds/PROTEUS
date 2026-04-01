@@ -33,7 +33,7 @@ print('\nperform sanity check')
 # Define parameter bounds matching prot_builder setup
 params = {
     'planet.planet_mass_tot': [0.5, 3.0],
-    'struct.corefrac': [0.3, 0.9],
+    'struct.core_frac': [0.3, 0.9],
     'atmos_clim.dummy.gamma': [0.05, 0.95],
     'escape.dummy.rate': [1.0, 1e5],
     'interior.dummy.ini_tmagma': [2000.0, 4500.0],

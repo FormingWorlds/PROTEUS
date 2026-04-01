@@ -182,9 +182,10 @@
 # Interior structure (hydrostatic equilibrium, composition)
 [interior_struct]
     module              = "zalmoxis"  # self | zalmoxis
-    corefrac            = 0.55        # core radius fraction
-    core_density        = 10738.33    # core density [kg m-3]
-    core_heatcap        = 880.0       # core heat capacity [J K-1 kg-1]
+    core_frac           = 0.55        # core fraction (radius or mass, see core_frac_mode)
+    core_frac_mode      = "radius"    # "radius" | "mass"; "mass" requires zalmoxis
+    core_density        = "self"      # core density [kg m-3]; "self" = from zalmoxis
+    core_heatcap        = "self"      # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis
     update_interval     = 0           # max time between structure updates [yr]; 0 = init only
     update_min_interval = 0           # min time between updates [yr]
     update_dtmagma_frac = 0.05        # trigger on relative T_magma change

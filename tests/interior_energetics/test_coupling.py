@@ -18,7 +18,7 @@ class TestGlobalMiscibilityConfig:
         """global_miscibility defaults to False."""
         from proteus.config._struct import Struct
 
-        s = Struct(corefrac=0.3)
+        s = Struct(core_frac=0.3, core_density=10738.0, core_heatcap=880.0)
         assert s.global_miscibility is False
 
     def test_requires_zalmoxis(self):
@@ -26,14 +26,14 @@ class TestGlobalMiscibilityConfig:
         from proteus.config._struct import Struct
 
         with pytest.raises(ValueError, match='zalmoxis'):
-            Struct(corefrac=0.3, module='self', global_miscibility=True)
+            Struct(core_frac=0.3, module='self', global_miscibility=True, core_density=10738.0, core_heatcap=880.0)
 
     def test_accepts_zalmoxis(self):
         """global_miscibility=True with module='zalmoxis' is valid."""
         from proteus.config._struct import Struct, Zalmoxis
 
         s = Struct(
-            corefrac=0.3,
+            core_frac=0.3,
             module='zalmoxis',
             global_miscibility=True,
 

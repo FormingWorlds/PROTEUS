@@ -58,7 +58,7 @@ version = "2.0"
     planet_mass_tot = 1.0
 
 [interior_struct]
-    corefrac    = 0.55
+    core_frac    = 0.55
 
 [atmos_clim]
     surf_state      = "skin"

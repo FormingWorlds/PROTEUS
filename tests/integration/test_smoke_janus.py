@@ -86,7 +86,7 @@ version = "2.0"
 
 [struct]
     mass_tot = 1.0
-    corefrac = 0.5
+    core_frac = 0.5
     core_density = 8000.0
     core_heatcap = 1000.0
 
