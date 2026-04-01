@@ -373,13 +373,10 @@ def solve_structure(
     if config.planet.planet_mass_tot is not None:
         # Choose the method to determine the interior radius
         match config.interior_struct.module:
-            case 'self':
+            case 'spider':
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case 'zalmoxis':
                 # Zalmoxis computes its own radius; disable orbital feedback.
-                # This is a known config mutation (saved in _orig_orbit_module
-                # for diagnostics but not restored during the run).
-                # Disable orbital feedback during Zalmoxis structure solve.
                 config.orbit.module = 'dummy'
                 if config.params.stop.solid.phi_crit < 0.01:
                     log.warning(
@@ -393,9 +390,8 @@ def solve_structure(
                 )
         raise ValueError(f"Invalid structure interior module selected '{config.interior_struct.module}'")
 
-    # Otherwise, error
     else:
-        log.error('Invalid constraint on interior structure: %s' % config.interior_struct.set_by)
+        raise ValueError('planet.planet_mass_tot must be set to solve for the interior structure')
 
 
 def run_interior(

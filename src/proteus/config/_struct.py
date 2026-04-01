@@ -21,17 +21,17 @@ def valid_zalmoxis(instance, attribute, value):
     mantle_mass_fraction = instance.zalmoxis.mantle_mass_fraction
 
     if max_iterations_outer < 3:
-        raise ValueError('`interior.zalmoxis.max_iterations_outer` must be > 2')
+        raise ValueError('`interior_struct.zalmoxis.max_iterations_outer` must be > 2')
     if max_iterations_inner < 13:
-        raise ValueError('`interior.zalmoxis.max_iterations_inner` must be > 12')
+        raise ValueError('`interior_struct.zalmoxis.max_iterations_inner` must be > 12')
     if max_iterations_pressure < 13:
-        raise ValueError('`interior.zalmoxis.max_iterations_pressure` must be > 12')
+        raise ValueError('`interior_struct.zalmoxis.max_iterations_pressure` must be > 12')
 
     # EOS format validation: must be "<source>:<material>"
     for name, eos_val in [('core_eos', core_eos), ('mantle_eos', mantle_eos)]:
         if ':' not in eos_val:
             raise ValueError(
-                f"`struct.zalmoxis.{name}` must be in '<source>:<material>' format, "
+                f"`interior_struct.zalmoxis.{name}` must be in '<source>:<material>' format, "
                 f"got '{eos_val}'"
             )
     if ice_layer_eos is not None and ':' not in ice_layer_eos:
@@ -62,7 +62,7 @@ def valid_zalmoxis(instance, attribute, value):
     if ice_layer_eos is None and not mantle_eos.startswith(_TDEP_PREFIXES):
         if mantle_mass_fraction != 0:
             raise ValueError(
-                '`struct.zalmoxis.mantle_mass_fraction` must be 0 for a 2-layer model '
+                '`interior_struct.zalmoxis.mantle_mass_fraction` must be 0 for a 2-layer model '
                 'without T-dependent mantle EOS (only core + mantle are modeled).'
             )
 
@@ -209,7 +209,7 @@ class Struct:
     core_frac: float
         Fraction of the planet's interior radius corresponding to the core.
     module: str
-        Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
+        Module for solving the planet's interior structure. Choices: 'spider', 'zalmoxis'.
     zalmoxis: Zalmoxis or None
         Zalmoxis parameters if module is 'zalmoxis'.
     update_interval: float
@@ -229,7 +229,7 @@ class Struct:
     core_frac_mode: str
         How core_frac is interpreted. 'radius': fraction of planet radius.
         'mass': fraction of total planet mass. Only 'radius' is supported
-        when module = 'self'.
+        when module = 'spider'.
     core_density: float or str
         Density of the planet's core [kg m-3]. Set to 'self' for
         self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').

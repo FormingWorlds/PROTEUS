@@ -162,7 +162,7 @@ class AragogRunner:
             # determine_interior_radius_with_zalmoxis, no need to re-run solver)
             inner_radius = hf_row.get('R_core', config.interior_struct.core_frac * hf_row['R_int'])
         else:
-            raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+            raise ValueError("Invalid module configuration. Expected 'spider' or 'zalmoxis'.")
 
         mesh = _MeshParameters(
             # planet radius [m]
@@ -232,7 +232,7 @@ class AragogRunner:
                     FWL_DATA_DIR, f'interior_lookup_tables/{config.interior_energetics.aragog.init_file}'
                 )
         else:
-            raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+            raise ValueError("Invalid module configuration. Expected 'spider' or 'zalmoxis'.")
 
         # When initial_thermal_state = 'self_consistent', Zalmoxis computes
         # T_surface from accretion + differentiation energy (White+Li 2025)
