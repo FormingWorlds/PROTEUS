@@ -242,14 +242,12 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'PALEOS:H2O': mzf,
     }
 
-    # Core fraction: interpreted as mass or radius fraction per core_frac_mode.
-    # Zalmoxis always receives it as core_mass_fraction; when mode is "radius",
-    # Zalmoxis internally converts radius fraction to mass fraction.
-    core_mass_fraction = config.interior_struct.core_frac
-
+    # Core fraction: value from config, interpretation from core_frac_mode.
+    # When mode is "mass", this is the true mass fraction.
+    # When mode is "radius", Zalmoxis converts radius fraction to mass fraction internally.
     return {
         'planet_mass': planet_mass,
-        'core_mass_fraction': core_mass_fraction,
+        'core_mass_fraction': config.interior_struct.core_frac,
         'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
         'temperature_mode': config.interior_struct.zalmoxis.temperature_mode,
@@ -984,11 +982,10 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     else:
         hf_row['core_density'] = 0.0
 
-    # Core heat capacity from Zalmoxis EOS (Dulong-Petit approximation for iron)
-    # PALEOS iron EOS does not provide Cp directly, so we use the standard
-    # Dulong-Petit value for iron: Cp = 3R/M_Fe = 3*8.314/0.05585 ~ 450 J/kg/K
-    # This is overridden if a numerical value is set in the config.
-    hf_row['core_heatcap'] = 450.0
+    # Core heat capacity: when 'self', use Dulong-Petit for iron (~450 J/kg/K).
+    # When numeric, use the config value directly.
+    cfg_heatcap = config.interior_struct.core_heatcap
+    hf_row['core_heatcap'] = 450.0 if cfg_heatcap == 'self' else float(cfg_heatcap)
 
     logger.info(f'Saving Zalmoxis output to {output_zalmoxis}')
 
