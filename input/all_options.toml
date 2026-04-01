@@ -86,16 +86,13 @@
 # Bulk planet properties and initial volatile inventory
 [planet]
     mass_tot         = 1.0         # total initial planet mass [M_earth]
-    volatile_mode    = 'elements'  # how inventory is set: 'elements' | 'gas_prs'
+    volatile_mode    = 'elements'  # set volatile inventory by: 'elements' | 'gas_prs'
 
     # Element abundances (used when volatile_mode = 'elements')
     # For each element: set XH_ratio (mass ratio to H), X_ppmw, or X_kg.
     # For H: set H_oceans, H_ppmw, or H_kg.
     [planet.elements]
-        use_metallicity = false    # scale C/N/S from solar metallicity
-        metallicity     = 1000     # metallicity relative to solar [by mass]
-
-        H_oceans    = 1.0          # H inventory [Earth oceans]
+        H_oceans    = 1.0          # H inventory [Earth oceans], 1 EO ~ 1.55e20 kg of H
         # H_ppmw    = 109.0        # H inventory [ppmw of mantle]
         # H_kg      = 1e20         # H inventory [kg]
 
@@ -107,13 +104,17 @@
         # N_ppmw    = 0.5          # N inventory [ppmw of mantle]
         # N_kg      = 1e20         # N inventory [kg]
 
-        SH_ratio    = 2.0          # S/H mass ratio
+        SH_ratio    = 1.0          # S/H mass ratio
         # S_ppmw    = 2.0          # S inventory [ppmw of mantle]
         # S_kg      = 1e20         # S inventory [kg]
 
-    # Partial pressures (used when volatile_mode = 'gas_prs') [bar]
+        use_metallicity = false    # scale C/N/S from solar metallicity, overwrites C/N/S settings
+        metallicity     = 1000     # metallicity relative to solar [by mass] (if use_metallicity == true)
+
+    # Initial atmospheric partial pressures (used when volatile_mode = 'gas_prs')
+    # Will be partitioned between interior and atmosphere upon simulation start
     [planet.gas_prs]
-        H2O = 20.0
+        H2O = 20.0                 # Surface pressure [bar]
         CO2 = 30.0
         N2  = 0.0
         S2  = 0.0
@@ -128,12 +129,12 @@
 
 # Stellar model and parameters
 [star]
-    mass    = 1.0                  # stellar mass [M_sun]
-    age_ini = 0.100                # model start age [Gyr]
-    module  = "mors"               # mors | dummy
+    mass                 = 1.0             # stellar mass [M_sun]
+    age_ini              = 0.100           # model start age [Gyr]
+    module               = "mors"          # 'mors' | 'dummy'
 
     [star.mors]
-        rot_pcntle      = 50.0            # rotation percentile
+        rot_pcntle       = 50.0            # rotation percentile
         rot_period       = "none"          # rotation period [days]; overrides rot_pcntle
         tracks           = "spada"         # evolution tracks: spada | baraffe
         age_now          = 4.567           # current age of star [Gyr]
@@ -141,8 +142,8 @@
         star_name        = "sun"           # e.g. 'sun', 'Sun0.6Ga', 'trappist-1', 'gj1214'
         star_path        = "none"          # custom spectrum file path (overrides source)
 
-        # PHOENIX synthetic spectrum parameters (only if spectrum_source = "phoenix")
-        phoenix_FeH      = 0.0            # metallicity [Fe/H]
+        # PHOENIX synthetic spectrum parameters (only used if spectrum_source == "phoenix")
+        phoenix_FeH      = 0.0             # metallicity [Fe/H]
         phoenix_alpha    = 0.0             # alpha enhancement [alpha/M]
         phoenix_radius   = "none"          # stellar radius [R_sun]; none = from MORS
         phoenix_log_g    = "none"          # surface gravity [dex]; none = from MORS
