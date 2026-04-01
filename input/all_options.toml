@@ -153,11 +153,11 @@
         calculate_radius = false           # derive radius from Teff scaling
         Teff             = 5772.0          # brightness temperature [K]
 
-# Planetary orbit
+# Planetary orbit & tides
 [orbit]
     instellation_method = 'sma'    # 'sma' (semi-major axis) | 'inst' (instellation flux)
-    instellationflux    = 1.0      # instellation flux [Earth units] (if method = 'inst')
     semimajoraxis       = 1.0      # semi-major axis [AU]
+    instellationflux    = 1.0      # instellation flux [Earth units] (if method = 'inst')
     eccentricity        = 0.0      # eccentricity
     zenith_angle        = 48.19    # characteristic zenith angle [degrees]
     s0_factor           = 0.375    # instellation scale factor
@@ -181,17 +181,16 @@
 
 # Interior structure (hydrostatic equilibrium, composition)
 [interior_struct]
-    corefrac     = 0.55            # core radius fraction
-    core_density = 10738.33        # core density [kg m-3]
-    core_heatcap = 880.0           # core heat capacity [J K-1 kg-1]
+    module              = "zalmoxis"  # self | zalmoxis
+    corefrac            = 0.55        # core radius fraction
+    core_density        = 10738.33    # core density [kg m-3]
+    core_heatcap        = 880.0       # core heat capacity [J K-1 kg-1]
+    update_interval     = 0           # max time between structure updates [yr]; 0 = init only
+    update_min_interval = 0           # min time between updates [yr]
+    update_dtmagma_frac = 0.05        # trigger on relative T_magma change
+    update_dphi_abs     = 0.05        # trigger on absolute Phi_global change
     melting_dir  = "Monteux-600"           # melting curve folder in FWL_DATA
     eos_dir      = "WolfBower2018_MgSiO3"  # EOS folder in FWL_DATA
-
-    module              = "zalmoxis"  # self | zalmoxis
-    update_interval     = 0        # max time between structure updates [yr]; 0 = init only
-    update_min_interval = 0        # min time between updates [yr]
-    update_dtmagma_frac = 0.03     # trigger on relative T_magma change
-    update_dphi_abs     = 0.05     # trigger on absolute Phi_global change
 
     [interior_struct.zalmoxis]
         # Per-layer EOS: "<source>:<material>"
