@@ -171,6 +171,10 @@ heat_radiogenic = true
 heat_tidal = false
 grain_size = 0.1
 flux_guess = 1000.0
+radio_tref = 4.55
+radio_K = 310.0
+radio_U = 0.031
+radio_Th = 0.124
 rfront_loc = 0.5
 rfront_wid = 0.2
 
@@ -210,10 +214,6 @@ solubility = true
 [delivery]
 module = "none"
 initial = "elements"
-radio_tref = 4.55
-radio_K = 310.0
-radio_U = 0.031
-radio_Th = 0.124
 
 [delivery.elements]
 use_metallicity = false

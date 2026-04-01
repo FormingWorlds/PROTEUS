@@ -147,6 +147,10 @@ version = "2.0"
     heat_tidal      = false
     grain_size      = 0.1
     flux_guess       = 1e5
+    radio_tref = 4.55
+    radio_K    = 310.0
+    radio_U    = 0.031
+    radio_Th   = 0.124
     rfront_loc    = 0.4
     rfront_wid    = 0.15
 
@@ -176,10 +180,6 @@ version = "2.0"
 [delivery]
     initial    = "elements"
     module     = "none"
-    radio_tref = 4.55
-    radio_K    = 310.0
-    radio_U    = 0.031
-    radio_Th   = 0.124
 
     [delivery.elements]
         H_ppmw   = 500.0

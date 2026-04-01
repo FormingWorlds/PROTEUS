@@ -152,6 +152,10 @@ version = "2.0"
     heat_tidal      = false
     grain_size      = 0.1
     flux_guess       = -1          # auto: sigma * T_magma^4
+    radio_tref = 4.55
+    radio_K    = 0.0
+    radio_U    = 0.0
+    radio_Th   = 0.0
     rfront_loc    = 0.4
     rfront_wid    = 0.15
 
@@ -198,10 +202,6 @@ version = "2.0"
 [delivery]
     initial    = "elements"
     module     = "none"
-    radio_tref = 4.55
-    radio_K    = 0.0
-    radio_U    = 0.0
-    radio_Th   = 0.0
 
     [delivery.elements]
         H_ppmw   = 1.0       # minimal H2O to keep CALLIOPE happy

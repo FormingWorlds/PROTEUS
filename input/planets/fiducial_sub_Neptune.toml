@@ -186,6 +186,10 @@ version = "2.0"
 [interior_energetics]
     grain_size      = 0.1   # crystal settling grain size [m]
     flux_guess       = 1e5   # Initial heat flux guess [W m-2]
+    radio_tref = 4.55   # Reference age for concentrations [Gyr]
+    radio_K    = 310.0  # ppmw of potassium (all isotopes)
+    radio_U    = 0.031  # ppmw of uranium (all isotopes)
+    radio_Th   = 0.124  # ppmw of thorium (all isotopes)
     heat_radiogenic = true  # enable radiogenic heat production
     heat_tidal      = false  # enable tidal heat production
     rfront_loc    = 0.4    # Centre of rheological transition
@@ -228,10 +232,6 @@ version = "2.0"
 [delivery]
 
     # Radionuclide parameters
-    radio_tref = 4.55   # Reference age for concentrations [Gyr]
-    radio_K    = 310.0  # ppmw of potassium (all isotopes)
-    radio_U    = 0.031  # ppmw of uranium (all isotopes)
-    radio_Th   = 0.124  # ppmw of thorium (all isotopes)
 
     # Which initial inventory to use?
     initial = 'elements'        # "elements" | "volatiles"

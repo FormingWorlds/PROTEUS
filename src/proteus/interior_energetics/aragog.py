@@ -468,7 +468,7 @@ class AragogRunner:
         if config.interior_energetics.heat_radiogenic:
             # offset by age_ini, which converts model simulation time to the
             # actual age
-            radio_t0 = config.delivery.radio_tref - config.star.age_ini
+            radio_t0 = config.interior_energetics.radio_tref - config.star.age_ini
             radio_t0 *= 1e9  # Convert Gyr to yr
 
             def _append_radnuc(_iso, _cnc):
@@ -483,15 +483,15 @@ class AragogRunner:
                     )
                 )
 
-            if config.delivery.radio_K > 0.0:
-                _append_radnuc('k40', config.delivery.radio_K)
+            if config.interior_energetics.radio_K > 0.0:
+                _append_radnuc('k40', config.interior_energetics.radio_K)
 
-            if config.delivery.radio_Th > 0.0:
-                _append_radnuc('th232', config.delivery.radio_Th)
+            if config.interior_energetics.radio_Th > 0.0:
+                _append_radnuc('th232', config.interior_energetics.radio_Th)
 
-            if config.delivery.radio_U > 0.0:
-                _append_radnuc('u235', config.delivery.radio_U)
-                _append_radnuc('u238', config.delivery.radio_U)
+            if config.interior_energetics.radio_U > 0.0:
+                _append_radnuc('u235', config.interior_energetics.radio_U)
+                _append_radnuc('u238', config.interior_energetics.radio_U)
 
         param = Parameters(
             boundary_conditions=boundary_conditions,

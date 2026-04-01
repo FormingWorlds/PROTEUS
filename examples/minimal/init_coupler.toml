@@ -145,6 +145,10 @@ tidal = false
 rate = "none"
 
 [interior_energetics]
+radio_tref = 4.55
+radio_K = 310.0
+radio_U = 0.031
+radio_Th = 0.124
 module = "spider"
 melting_dir = "Monteux-600"
 radiogenic_heat = true
@@ -198,10 +202,6 @@ some_parameter = "some_value"
 [delivery]
 module = "none"
 initial = "elements"
-radio_tref = 4.55
-radio_K = 310.0
-radio_U = 0.031
-radio_Th = 0.124
 
 [delivery.elements]
 H_oceans = 1.0

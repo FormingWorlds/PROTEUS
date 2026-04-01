@@ -230,12 +230,16 @@ version = "2.0"
     trans_convection    = true           # Enable convective heat transfer (MLT)
     trans_grav_sep      = true           # Enable gravitational separation of melt/solid
     trans_mixing        = true           # Enable chemical mixing flux
-    heat_radiogenic     = false          # Enable radiogenic heat production
     heat_tidal          = false          # Enable tidal heat production
     rfront_loc          = 0.6            # Centre of rheological transition (melt fraction)
     rfront_wid          = 0.2            # Width of rheological transition (melt fraction)
     grain_size          = 0.1            # Crystal settling grain size [m]
     flux_guess          = -1             # Initial F_atm guess [W m-2]; <0 = sigma*T^4, 0 = zero, >0 = prescribed
+    heat_radiogenic     = false          # Enable radiogenic heat production
+    radio_tref          = 4.55           # Reference age for concentrations [Gyr]
+    radio_K             = 310.0          # ppmw of potassium (all isotopes)
+    radio_U             = 0.031          # ppmw of uranium (all isotopes)
+    radio_Th            = 0.124          # ppmw of thorium (all isotopes)
 
     # ── Aragog-only parameters ────────────────────────────────────────
     [interior_energetics.aragog]
@@ -385,12 +389,6 @@ version = "2.0"
 
 # Volatile delivery - physics table
 [delivery]
-
-    # Radionuclide parameters
-    radio_tref = 4.55   # Reference age for concentrations [Gyr]
-    radio_K    = 310.0  # ppmw of potassium (all isotopes)
-    radio_U    = 0.031  # ppmw of uranium (all isotopes)
-    radio_Th   = 0.124  # ppmw of thorium (all isotopes)
 
     # Which initial inventory to use?
     initial = 'elements'        # 'elements' | 'volatiles'

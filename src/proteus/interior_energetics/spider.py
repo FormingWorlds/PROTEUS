@@ -951,7 +951,7 @@ def _try_spider(
     # radionuclides
     if config.interior_energetics.heat_radiogenic:
         # offset by age_ini, which converts model simulation time to the actual age
-        radio_t0 = config.delivery.radio_tref - config.star.age_ini
+        radio_t0 = config.interior_energetics.radio_tref - config.star.age_ini
         radio_t0 *= 1e9  # Convert Gyr to yr
         radnuc_names = []
 
@@ -967,15 +967,15 @@ def _try_spider(
             )
             call_sequence.extend([f'-{_iso}_half_life', '%.5e' % radnuc_data[_iso]['halflife']])
 
-        if config.delivery.radio_K > 0.0:
-            _append_radnuc('k40', config.delivery.radio_K)
+        if config.interior_energetics.radio_K > 0.0:
+            _append_radnuc('k40', config.interior_energetics.radio_K)
 
-        if config.delivery.radio_Th > 0.0:
-            _append_radnuc('th232', config.delivery.radio_Th)
+        if config.interior_energetics.radio_Th > 0.0:
+            _append_radnuc('th232', config.interior_energetics.radio_Th)
 
-        if config.delivery.radio_U > 0.0:
-            _append_radnuc('u235', config.delivery.radio_U)
-            _append_radnuc('u238', config.delivery.radio_U)
+        if config.interior_energetics.radio_U > 0.0:
+            _append_radnuc('u235', config.interior_energetics.radio_U)
+            _append_radnuc('u238', config.interior_energetics.radio_U)
 
         call_sequence.extend(['-radionuclide_names', ','.join(radnuc_names)])
 

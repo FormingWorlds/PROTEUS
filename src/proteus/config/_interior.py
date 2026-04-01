@@ -212,6 +212,14 @@ class Interior:
         Initial heat flux guess [W m-2]. When < 0 (default), computed
         automatically as sigma * T_magma^4. Set to a positive value to
         prescribe a specific initial flux. Set to 0 for zero initial flux.
+    radio_tref: float
+        Reference age for setting radioactive decay [Gyr].
+    radio_K: float
+        Concentration (ppmw) of potassium-40 at reference age t=radio_tref.
+    radio_U: float
+        Concentration (ppmw) of uranium at reference age t=radio_tref.
+    radio_Th: float
+        Concentration (ppmw) of thorium-232 at reference age t=radio_tref.
     heat_radiogenic: bool
         Include radiogenic heat production?
     heat_tidal: bool
@@ -274,6 +282,12 @@ class Interior:
 
     grain_size: float = field(default=0.1, validator=gt(0))
     flux_guess: float = field(default=-1)
+
+    radio_tref: float = field(default=4.55, validator=gt(0))
+    radio_K: float = field(default=310.0, validator=ge(0))
+    radio_U: float = field(default=0.031, validator=ge(0))
+    radio_Th: float = field(default=0.124, validator=ge(0))
+
     rfront_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
     rfront_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
 

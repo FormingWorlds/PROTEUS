@@ -1811,11 +1811,11 @@ def test_try_spider_heat_radiogen(tmp_path):
 
     # Enable radiogenic heat
     config.interior_energetics.heat_radiogenic = True
-    config.delivery.radio_tref = 4.5  # Gyr
+    config.interior_energetics.radio_tref = 4.5  # Gyr
     config.star.age_ini = 0.1  # Gyr
-    config.delivery.radio_K = 240e-9  # ppm
-    config.delivery.radio_Th = 80e-9
-    config.delivery.radio_U = 20e-9
+    config.interior_energetics.radio_K = 240e-9  # ppm
+    config.interior_energetics.radio_Th = 80e-9
+    config.interior_energetics.radio_U = 20e-9
 
     with (
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),

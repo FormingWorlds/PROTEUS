@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attr.validators import ge, gt, in_
+from attr.validators import ge, in_
 from attrs import define, field
 
 from ._converters import none_if_none
@@ -136,14 +136,6 @@ class Delivery:
         Parameters used when setting volatile inventory by element abundances.
     volatiles: Volatiles
         Parameters used when setting volatile inventory by partial pressures.
-    radio_tref: float
-        Reference age for setting radioactive decay [Gyr].
-    radio_U: float
-        Concentration (ppmw) of uranium at reference age of `t=radio_tref`
-    radio_K: float
-        Concentration (ppmw) of potassium at reference age of `t=radio_tref`
-    radio_Th: float
-        Concentration (ppmw) of thorium at reference age of `t=radio_tref`
     """
 
     module: str | None = field(validator=in_((None,)), converter=none_if_none)
@@ -152,8 +144,3 @@ class Delivery:
     volatiles: Volatiles = field(factory=Volatiles)
 
     initial: str = field(default='elements', validator=in_(('elements', 'volatiles')))
-
-    radio_tref: float = field(default=4.55, validator=gt(0))
-    radio_K: float = field(default=310.0, validator=ge(0))
-    radio_U: float = field(default=0.031, validator=ge(0))
-    radio_Th: float = field(default=0.124, validator=ge(0))
