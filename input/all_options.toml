@@ -8,14 +8,14 @@
 # ----------------------------------------------------
 
 # The general structure is:
-#   [params]              code execution, output files, time-stepping, convergence
-#   [planet]              bulk planet properties (mass)
-#   [star]                stellar parameters, model selection
-#   [orbit]               planetary orbital parameters
-#   [interior_struct]     planetary structure (radius, composition, Zalmoxis)
-#   [interior_energetics] magma ocean model selection and parameters
-#   [atmos_clim]          atmosphere climate parameters, model selection
-#   [atmos_chem]          atmosphere chemistry parameters, model selection
+#   [params]              code execution, outputs, time-stepping, convergence
+#   [planet]              bulk planet properties: mass, element abundances
+#   [star]                stellar model & parameters
+#   [orbit]               planetary orbit model & parameters
+#   [interior_struct]     interior structure & chemistry model & parameters
+#   [interior_energetics] interior energy transport model & parameters
+#   [atmos_clim]          atmosphere structure & energy transport model & params
+#   [atmos_chem]          atmosphere chemistry model & parameters
 #   [escape]              escape parameters, model selection
 #   [outgas]              outgassing parameters (fO2) and included volatiles
 #   [delivery]            initial volatile inventory, and delivery model selection
