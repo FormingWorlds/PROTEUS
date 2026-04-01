@@ -85,8 +85,8 @@
 
 # Bulk planet properties and initial volatile inventory
 [planet]
-    mass_tot = 1.0          # total planet mass [M_earth]
-    volatile_mode         = 'elements'   # initial inventory method: 'elements' | 'volatiles'
+    mass_tot         = 1.0         # total initial planet mass [M_earth]
+    volatile_mode    = 'elements'  # how inventory is set: 'elements' | 'volatiles'
 
     # Element abundances (used when volatile_mode = 'elements')
     # For each element: set XH_ratio (mass ratio to H), X_ppmw, or X_kg.
