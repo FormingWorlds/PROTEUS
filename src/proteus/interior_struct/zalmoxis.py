@@ -208,7 +208,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         total_planet_mass,
         config.interior_struct.zalmoxis.core_eos,
         config.interior_struct.zalmoxis.mantle_eos,
-        config.interior_struct.zalmoxis.ice_layer_eos or '(none)',
+        config.interior_struct.zalmoxis.ice_layer_eos or 'none',
     )
 
     # Calculate the total mass of 'wet' elements in the planet
@@ -230,7 +230,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'core': config.interior_struct.zalmoxis.core_eos,
         'mantle': config.interior_struct.zalmoxis.mantle_eos,
     }
-    if config.interior_struct.zalmoxis.ice_layer_eos:
+    if config.interior_struct.zalmoxis.ice_layer_eos is not None:
         layer_eos_config['ice_layer'] = config.interior_struct.zalmoxis.ice_layer_eos
 
     # Mushy zone factor: controls width of partially molten region in PALEOS

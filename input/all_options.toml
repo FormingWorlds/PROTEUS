@@ -199,7 +199,7 @@
         # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O
         core_eos                   = "PALEOS:iron"
         mantle_eos                 = "PALEOS:MgSiO3"
-        ice_layer_eos              = ""              # empty = 2-layer model
+        ice_layer_eos              = "none"           # "none" = 2-layer model
         temperature_mode           = "adiabatic"     # isothermal | linear | prescribed | adiabatic
         surface_temperature        = 3500            # [K]
         center_temperature         = 6000            # [K] (initial guess for adiabatic)

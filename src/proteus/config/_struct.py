@@ -5,6 +5,8 @@ from typing import Optional
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt
 
+from ._converters import none_if_none
+
 
 def valid_zalmoxis(instance, attribute, value):
     if instance.module == 'spider':
@@ -32,9 +34,9 @@ def valid_zalmoxis(instance, attribute, value):
                 f"`struct.zalmoxis.{name}` must be in '<source>:<material>' format, "
                 f"got '{eos_val}'"
             )
-    if ice_layer_eos and ':' not in ice_layer_eos:
+    if ice_layer_eos is not None and ':' not in ice_layer_eos:
         raise ValueError(
-            f"`struct.zalmoxis.ice_layer_eos` must be empty or '<source>:<material>' format, "
+            f"`interior_struct.zalmoxis.ice_layer_eos` must be 'none' or '<source>:<material>' format, "
             f"got '{ice_layer_eos}'"
         )
 
@@ -57,7 +59,7 @@ def valid_zalmoxis(instance, attribute, value):
 
     # 2-layer model (no ice layer, non-T-dep mantle): mantle_mass_fraction must be 0
     _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-    if not ice_layer_eos and not mantle_eos.startswith(_TDEP_PREFIXES):
+    if ice_layer_eos is None and not mantle_eos.startswith(_TDEP_PREFIXES):
         if mantle_mass_fraction != 0:
             raise ValueError(
                 '`struct.zalmoxis.mantle_mass_fraction` must be 0 for a 2-layer model '
@@ -65,7 +67,7 @@ def valid_zalmoxis(instance, attribute, value):
             )
 
     # 3-layer model (with ice layer): mass fractions must not exceed 75%
-    if ice_layer_eos:
+    if ice_layer_eos is not None:
         cmf = instance.core_frac if instance.core_frac_mode == 'mass' else 0.325
         if cmf + mantle_mass_fraction > 0.75:
             raise ValueError(
@@ -88,8 +90,8 @@ class Zalmoxis:
         EOS for the mantle layer. Format: "<source>:<material>".
         Tabulated: "Seager2007:MgSiO3", "WolfBower2018:MgSiO3".
         Analytic: "Analytic:MgSiO3", "Analytic:MgFeSiO3", etc.
-    ice_layer_eos: str
-        EOS for the ice/water layer (3-layer model). Empty string for
+    ice_layer_eos: str or None
+        EOS for the ice/water layer (3-layer model). 'none' for
         2-layer model (core + mantle only).
         Tabulated: "Seager2007:H2O". Analytic: "Analytic:H2O".
     mushy_zone_factor: float
@@ -157,7 +159,7 @@ class Zalmoxis:
 
     core_eos: str = field(default='Seager2007:iron')
     mantle_eos: str = field(default='Seager2007:MgSiO3')
-    ice_layer_eos: str = field(default='')
+    ice_layer_eos = field(default=None, converter=none_if_none)
 
     mushy_zone_factor: float = field(default=0.8, validator=(ge(0.7), le(1.0)))
 

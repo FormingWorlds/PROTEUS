@@ -1450,7 +1450,7 @@ def _get_sufficient(config: Config, clean: bool = False):
         download_zalmoxis_eos(
             mantle_eos=getattr(zconf, 'mantle_eos', ''),
             core_eos=getattr(zconf, 'core_eos', ''),
-            ice_layer_eos=getattr(zconf, 'ice_layer_eos', ''),
+            ice_layer_eos=getattr(zconf, 'ice_layer_eos', None) or '',
         )
 
 

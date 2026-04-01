@@ -1296,7 +1296,7 @@ def test_struct_zalmoxis_max_iterations_outer_minimum():
             max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos='',
+            ice_layer_eos=None,
             mantle_mass_fraction=0,
         ),
     )
@@ -1317,7 +1317,7 @@ def test_struct_zalmoxis_max_iterations_inner_minimum():
             max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos='',
+            ice_layer_eos=None,
             mantle_mass_fraction=0,
         ),
     )
@@ -1338,7 +1338,7 @@ def test_struct_zalmoxis_max_iterations_pressure_minimum():
             max_iterations_pressure=12,  # INVALID (must be > 12)
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos='',
+            ice_layer_eos=None,
             mantle_mass_fraction=0,
         ),
     )
@@ -1359,7 +1359,7 @@ def test_struct_zalmoxis_two_layer_requires_no_mantle_fraction():
             max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos='',
+            ice_layer_eos=None,
             mantle_mass_fraction=0.2,  # INVALID (must be 0)
         ),
     )
@@ -1403,7 +1403,7 @@ def test_struct_zalmoxis_valid_configuration():
             max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos='',
+            ice_layer_eos=None,
             mantle_mass_fraction=0,
         ),
     )
@@ -1423,7 +1423,7 @@ def test_struct_zalmoxis_eos_format_missing_colon():
             max_iterations_pressure=200,
             core_eos='iron_no_source',
             mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos='',
+            ice_layer_eos=None,
             mantle_mass_fraction=0,
         ),
     )
@@ -1465,7 +1465,7 @@ def test_struct_zalmoxis_tdep_allows_mantle_fraction():
             max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='WolfBower2018:MgSiO3',
-            ice_layer_eos='',
+            ice_layer_eos=None,
             mantle_mass_fraction=0.675,
         ),
     )
