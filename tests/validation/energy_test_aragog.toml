@@ -97,7 +97,6 @@ version = "2.0"
         mantle_eos                 = "PALEOS:MgSiO3"
         ice_layer_eos              = ""
         mushy_zone_factor          = 0.8
-        coremassfrac               = 0.325
         mantle_mass_fraction       = 0
         temperature_mode           = "adiabatic"
         surface_temperature        = 4000

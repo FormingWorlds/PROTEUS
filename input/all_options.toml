@@ -200,8 +200,6 @@
         core_eos                   = "PALEOS:iron"
         mantle_eos                 = "PALEOS:MgSiO3"
         ice_layer_eos              = ""              # empty = 2-layer model
-        coremassfrac               = 0.325           # core mass fraction
-        mantle_mass_fraction       = 0               # 0 = auto (1 - coremassfrac)
         temperature_mode           = "adiabatic"     # isothermal | linear | prescribed | adiabatic
         surface_temperature        = 3500            # [K]
         center_temperature         = 6000            # [K] (initial guess for adiabatic)

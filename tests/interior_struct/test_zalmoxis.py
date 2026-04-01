@@ -198,7 +198,7 @@ def test_zalmoxis_config_with_ice_layer():
     config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
     config.interior_struct.zalmoxis.ice_layer_eos = 'Seager2007:water'
-    config.interior_struct.zalmoxis.coremassfrac = 0.325
+    config.interior_struct.core_frac = 0.325
     config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
     config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.surface_temperature = 300
@@ -239,7 +239,7 @@ def test_zalmoxis_config_no_ice_layer():
     config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
     config.interior_struct.zalmoxis.ice_layer_eos = ''
-    config.interior_struct.zalmoxis.coremassfrac = 0.325
+    config.interior_struct.core_frac = 0.325
     config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
     config.interior_struct.zalmoxis.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.surface_temperature = 300

@@ -63,7 +63,7 @@ def generate_config(base_toml, output_dir, mass, cmf, interior, outgas, volatile
     # PROTEUS prepends 'output/' to the path, so use relative path without it
     cfg['params']['out']['path'] = f'validation/{name}'
     cfg['planet']['planet_mass_tot'] = mass
-    cfg['interior_struct']['zalmoxis']['coremassfrac'] = cmf
+    cfg['interior_struct']['core_frac'] = cmf
     cfg['interior_energetics']['module'] = interior
     cfg['outgas']['module'] = outgas
 

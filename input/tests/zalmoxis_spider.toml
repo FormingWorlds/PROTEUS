@@ -73,7 +73,6 @@ version = "2.0"
         core_eos                   = "Seager2007:iron"
         mantle_eos                 = "WolfBower2018:MgSiO3"
         ice_layer_eos              = ""
-        coremassfrac               = 0.325
         mantle_mass_fraction       = 0
         temperature_mode           = "adiabatic"
         surface_temperature        = 3500

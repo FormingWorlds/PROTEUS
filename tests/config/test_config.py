@@ -1297,7 +1297,6 @@ def test_struct_zalmoxis_max_iterations_outer_minimum():
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='',
-            coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
     )
@@ -1319,7 +1318,6 @@ def test_struct_zalmoxis_max_iterations_inner_minimum():
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='',
-            coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
     )
@@ -1341,7 +1339,6 @@ def test_struct_zalmoxis_max_iterations_pressure_minimum():
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='',
-            coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
     )
@@ -1363,7 +1360,6 @@ def test_struct_zalmoxis_two_layer_requires_no_mantle_fraction():
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='',
-            coremassfrac=0.325,
             mantle_mass_fraction=0.2,  # INVALID (must be 0)
         ),
     )
@@ -1378,6 +1374,8 @@ def test_struct_zalmoxis_three_layer_mass_constraint():
 
     instance = SimpleNamespace(
         module='zalmoxis',
+        core_frac=0.5,
+        core_frac_mode='mass',
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=100,
@@ -1385,8 +1383,7 @@ def test_struct_zalmoxis_three_layer_mass_constraint():
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='Seager2007:H2O',
-            coremassfrac=0.5,  # 50%
-            mantle_mass_fraction=0.3,  # 30%, sum=80% > 75% INVALID
+            mantle_mass_fraction=0.3,  # 50%+30%=80% > 75% INVALID
         ),
     )
     with pytest.raises(ValueError, match='must add up to <= 75%'):
@@ -1407,7 +1404,6 @@ def test_struct_zalmoxis_valid_configuration():
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='',
-            coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
     )
@@ -1428,7 +1424,6 @@ def test_struct_zalmoxis_eos_format_missing_colon():
             core_eos='iron_no_source',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='',
-            coremassfrac=0.325,
             mantle_mass_fraction=0,
         ),
     )
@@ -1450,7 +1445,6 @@ def test_struct_zalmoxis_ice_eos_format_missing_colon():
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='H2O_bad_format',
-            coremassfrac=0.25,
             mantle_mass_fraction=0,
         ),
     )
@@ -1472,7 +1466,6 @@ def test_struct_zalmoxis_tdep_allows_mantle_fraction():
             core_eos='Seager2007:iron',
             mantle_eos='WolfBower2018:MgSiO3',
             ice_layer_eos='',
-            coremassfrac=0.325,
             mantle_mass_fraction=0.675,
         ),
     )

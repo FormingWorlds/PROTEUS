@@ -242,16 +242,15 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'PALEOS:H2O': mzf,
     }
 
-    # Core mass fraction: from top-level core_frac when mode is "mass",
-    # otherwise from the Zalmoxis-specific coremassfrac parameter
-    if config.interior_struct.core_frac_mode == 'mass':
-        core_mass_fraction = config.interior_struct.core_frac
-    else:
-        core_mass_fraction = config.interior_struct.zalmoxis.coremassfrac
+    # Core fraction: interpreted as mass or radius fraction per core_frac_mode.
+    # Zalmoxis always receives it as core_mass_fraction; when mode is "radius",
+    # Zalmoxis internally converts radius fraction to mass fraction.
+    core_mass_fraction = config.interior_struct.core_frac
 
     return {
         'planet_mass': planet_mass,
         'core_mass_fraction': core_mass_fraction,
+        'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
         'temperature_mode': config.interior_struct.zalmoxis.temperature_mode,
         'surface_temperature': config.interior_struct.zalmoxis.surface_temperature,
@@ -849,7 +848,7 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     if config.interior_energetics.initial_thermal_state == 'self_consistent':
         from zalmoxis.energetics import initial_thermal_state
 
-        cmf = config.interior_struct.zalmoxis.coremassfrac
+        cmf = config.interior_struct.core_frac
         mantle_eos = config.interior_struct.zalmoxis.mantle_eos
 
         # Build PALEOS-derived nabla_ad and C_p when PALEOS EOS is configured.

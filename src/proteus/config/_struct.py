@@ -16,7 +16,6 @@ def valid_zalmoxis(instance, attribute, value):
     core_eos = instance.zalmoxis.core_eos
     mantle_eos = instance.zalmoxis.mantle_eos
     ice_layer_eos = instance.zalmoxis.ice_layer_eos
-    core_mass_fraction = instance.zalmoxis.coremassfrac
     mantle_mass_fraction = instance.zalmoxis.mantle_mass_fraction
 
     if max_iterations_outer < 3:
@@ -67,9 +66,10 @@ def valid_zalmoxis(instance, attribute, value):
 
     # 3-layer model (with ice layer): mass fractions must not exceed 75%
     if ice_layer_eos:
-        if core_mass_fraction + mantle_mass_fraction > 0.75:
+        cmf = instance.core_frac if instance.core_frac_mode == 'mass' else 0.325
+        if cmf + mantle_mass_fraction > 0.75:
             raise ValueError(
-                '`struct.zalmoxis.coremassfrac` and `struct.zalmoxis.mantle_mass_fraction` '
+                '`core_frac` and `zalmoxis.mantle_mass_fraction` '
                 'must add up to <= 75% for a 3-layer model (Seager 2007).'
             )
 
@@ -104,8 +104,6 @@ class Zalmoxis:
         melting curve files). This factor is applied consistently across
         Zalmoxis (density interpolation), SPIDER (phase boundaries),
         and the VolatileProfile phi-blending.
-    coremassfrac: float
-        Fraction of the planet's interior mass corresponding to the core.
     mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the mantle.
         Required for 3-layer models (with ice layer) and for T-dependent
@@ -163,7 +161,6 @@ class Zalmoxis:
 
     mushy_zone_factor: float = field(default=0.8, validator=(ge(0.7), le(1.0)))
 
-    coremassfrac: float = field(default=0.325, validator=(gt(0), lt(1)))
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
     temperature_mode: str = field(
         default='isothermal',
