@@ -1,12 +1,9 @@
 # PROTEUS configuration file
+# Documentation: https://proteus-framework.org/PROTEUS/How-to/config.html
 
-# This is a comprehensive outline of all configuration options. It includes variables
-# which have default values, in order to showcase the range of potential options available.
-# Variable defaults are defined in `src/proteus/config/*.py`
-
-# Root tables should be physical, with the exception of "params"
-# Software related options should go within the appropriate physical table
-# For configuration see https://proteus-framework.org/PROTEUS/How-to/config.html
+# Comprehensive outline of all configuration options. Includes variables
+# with default values to showcase the range of options available.
+# Defaults are defined in `src/proteus/config/*.py`
 
 # ----------------------------------------------------
 
