@@ -20,7 +20,6 @@ minimum_rel = 1e-05
 maximum = 10000000.0
 initial = 30.0
 
-[params.dt.adaptive]
 atol = 0.02
 rtol = 0.09
 

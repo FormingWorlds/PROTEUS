@@ -18,8 +18,6 @@ import pytest
 
 from proteus.config._interior import Aragog, Interior, InteriorDummy, Spider
 from proteus.config._params import (
-    DtAdaptive,
-    DtProportional,
     OutputParams,
     Params,
     StopDisint,
@@ -70,13 +68,10 @@ def test_dt_params_defaults():
     assert dt.maximum == 1e7  # Maximum step 10 Myr
     assert dt.initial == 1e3  # Start with 1000 years
 
-    # Sub-configs
-    assert isinstance(dt.proportional, DtProportional)
-    assert dt.proportional.propconst == 52.0
-
-    assert isinstance(dt.adaptive, DtAdaptive)
-    assert dt.adaptive.atol == 0.02
-    assert dt.adaptive.rtol == 0.10
+    # Proportional and adaptive parameters (flattened)
+    assert dt.propconst == 52.0
+    assert dt.atol == 0.02
+    assert dt.rtol == 0.10
 
 
 @pytest.mark.unit

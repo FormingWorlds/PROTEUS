@@ -22,10 +22,8 @@ minimum_rel = 1e-05
 maximum = 10000000.0
 initial = 30.0
 
-[params.dt.proportional]
 propconst = 52.0
 
-[params.dt.adaptive]
 atol = 0.03
 rtol = 0.10
 

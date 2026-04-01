@@ -169,7 +169,7 @@ def next_step(
         # Proportional time-step calculation
         if config.params.dt.method == 'proportional':
             log.info('Time-stepping intent: proportional')
-            dtswitch = hf_row['Time'] / config.params.dt.proportional.propconst
+            dtswitch = hf_row['Time'] / config.params.dt.propconst
 
         # Dynamic time-step calculation
         elif config.params.dt.method == 'adaptive':
@@ -191,8 +191,8 @@ def next_step(
             phi_12 = abs(phi_2 - phi_1)
 
             # Determine new time-step given the tolerances
-            dt_rtol = config.params.dt.adaptive.rtol
-            dt_atol = config.params.dt.adaptive.atol
+            dt_rtol = config.params.dt.rtol
+            dt_atol = config.params.dt.atol
             speed_up = True
             speed_up = speed_up and (F_atm_12 < dt_rtol * abs(F_atm_2) + dt_atol)
             speed_up = speed_up and (phi_12 < dt_rtol * abs(phi_2) + dt_atol)

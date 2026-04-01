@@ -20,7 +20,6 @@ version = "2.0"
 
         method = 'maximum'
 
-        [params.dt.adaptive]
             atol         = 0.01   # Step size atol
             rtol         = 0.06   # Step size rtol
 

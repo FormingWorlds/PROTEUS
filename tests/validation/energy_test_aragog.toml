@@ -28,7 +28,6 @@ version = "2.0"
         starinst = 1e9
         method   = "adaptive"
 
-        [params.dt.adaptive]
             atol = 0.02
             rtol = 0.10
 

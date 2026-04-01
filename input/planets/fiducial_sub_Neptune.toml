@@ -43,10 +43,8 @@ version = "2.0"
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
-        [params.dt.proportional]
             propconst    = 52.0   # Proportionality constant
 
-        [params.dt.adaptive]
             atol         = 0.03   # Step size atol
             rtol         = 0.15   # Step size rtol
 

@@ -14,7 +14,6 @@ version = "2.0"
         minimum      = 1e5
         initial      = 1e5
 
-        [params.dt.adaptive]
             atol         = 0.03
             rtol         = 0.12
 

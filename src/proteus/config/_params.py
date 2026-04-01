@@ -58,37 +58,8 @@ class OutputParams:
 
 
 @define
-class DtProportional:
-    """Parameters used to configure the proportional time-stepping scheme.
-
-    Attributes
-    ----------
-    propconst: float
-        Proportionality constant.
-    """
-
-    propconst: float = field(default=52.0, validator=gt(0))
-
-
-@define
-class DtAdaptive:
-    """Parameters used to configure the adaptive time-stepping scheme.
-
-    Attributes
-    ----------
-    atol: float
-        Absolute tolerance on time-step size [yr].
-    rtol: float
-        Relative tolerance on time-step size [dimensionless].
-    """
-
-    atol: float = field(default=0.02, validator=gt(0))
-    rtol: float = field(default=0.10, validator=gt(0))
-
-
-@define
 class TimeStepParams:
-    """Parameters for time-stepping parameters
+    """Parameters for time-stepping.
 
     Attributes
     ----------
@@ -106,10 +77,12 @@ class TimeStepParams:
         Maximum interval at which to recalculate instellation flux [yr].
     method: str
         Time-stepping method. Choices: 'proportional', 'adaptive', 'maximum'.
-    proportional: DtProportional
-        Parameters used to configure the proportional time-stepping scheme.
-    adaptive: DtAdaptive
-        Parameters used to configure the adaptive time-stepping scheme.
+    propconst: float
+        Proportionality constant (proportional method).
+    atol: float
+        Absolute tolerance on time-step size (adaptive method) [yr].
+    rtol: float
+        Relative tolerance on time-step size (adaptive method) [dimensionless].
     """
 
     starspec: float = field(default=3e6, validator=ge(0))
@@ -119,8 +92,9 @@ class TimeStepParams:
         default='adaptive', validator=in_(('proportional', 'adaptive', 'maximum'))
     )
 
-    proportional: DtProportional = field(factory=DtProportional)
-    adaptive: DtAdaptive = field(factory=DtAdaptive)
+    propconst: float = field(default=52.0, validator=gt(0))
+    atol: float = field(default=0.02, validator=gt(0))
+    rtol: float = field(default=0.10, validator=gt(0))
 
     minimum: float = field(default=3e2, validator=gt(0))
     minimum_rel: float = field(default=1e-6, validator=gt(0))

@@ -19,7 +19,6 @@ version = "2.0"
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
-        [params.dt.adaptive]
             atol         = 0.04  # Step size atol
             rtol         = 0.14   # Step size rtol
 

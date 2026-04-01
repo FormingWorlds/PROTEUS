@@ -43,46 +43,42 @@
         starspec    = 1e9          # recalculate stellar spectrum interval [yr]
         starinst    = 1e1          # recalculate instellation interval [yr]
         method      = "adaptive"   # proportional | adaptive | maximum
-
-        [params.dt.proportional]
-            propconst = 52.0       # proportionality constant
-
-        [params.dt.adaptive]
-            atol      = 0.02       # step size absolute tolerance
-            rtol      = 0.10       # step size relative tolerance
+        propconst   = 52.0         # proportionality constant (proportional method)
+        atol        = 0.02         # step size absolute tolerance (adaptive method)
+        rtol        = 0.10         # step size relative tolerance (adaptive method)
 
     # Termination criteria (enabled=true/false per criterion)
     [params.stop]
         strict = false             # require criteria satisfied twice before exit
 
-        [params.stop.iters]
+        [params.stop.iters]        # iteration count limits
             enabled = true
-            minimum = 5
-            maximum = 9000
+            minimum = 5            # run at least this many iterations
+            maximum = 9000         # stop after this many iterations
 
-        [params.stop.time]
+        [params.stop.time]         # simulation time limits
             enabled = true
             minimum = 1.0e3        # run at least this long [yr]
             maximum = 4.567e+9     # stop after this time [yr]
 
-        [params.stop.solid]
+        [params.stop.solid]        # solidification criterion
             enabled  = true
             phi_crit = 0.01        # stop when global melt fraction < phi_crit
 
-        [params.stop.radeqm]
+        [params.stop.radeqm]      # radiative equilibrium criterion
             enabled = true
-            atol    = 0.2          # radiative equilibrium tolerance [W m-2]
-            rtol    = 1e-3
+            atol    = 0.2          # |F_int - F_atm| tolerance [W m-2]
+            rtol    = 1e-3         # relative tolerance
 
-        [params.stop.escape]
+        [params.stop.escape]       # atmosphere loss criterion
             enabled = true
             p_stop  = 5.0          # stop when surface pressure < p_stop [bar]
 
-        [params.stop.disint]
+        [params.stop.disint]       # planetary disintegration criterion
             enabled       = false
-            roche_enabled = true
+            roche_enabled = true   # check Roche limit
             offset_roche  = 0      # correction to Roche limit [m]
-            spin_enabled  = true
+            spin_enabled  = true   # check rotational breakup
             offset_spin   = 0      # correction to breakup period [s]
 
 # ----------------------------------------------------
