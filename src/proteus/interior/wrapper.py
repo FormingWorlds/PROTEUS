@@ -65,7 +65,7 @@ def get_nlevb(config: Config):
     match config.interior.module:
         case 'spider':
             return int(config.interior.num_levels)
-        case 'aragog':
+        case 'aragog' | 'aragog_jax':
             return int(config.interior.num_levels)
         case 'dummy':
             return 2

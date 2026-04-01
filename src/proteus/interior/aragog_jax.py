@@ -148,10 +148,20 @@ class AragogJAXRunner:
                 tfac_core_avg=bc.tfac_core_avg,
             )
 
-        # Heating (radionuclide + tidal)
+        # Heating (radionuclide + tidal, computed from numpy solver's config)
         n_stag = len(S0)
-        heating = jnp.zeros(n_stag)
-        # TODO: wire radionuclide and tidal heating from config/interior_o
+        heating_np = np.zeros(n_stag)
+        if self._config.interior.heat_radiogenic:
+            for r in solver.parameters.radionuclides:
+                heating_np += r.get_heating(t_start)
+        if self._config.interior.heat_tidal:
+            tides = getattr(interior_o, 'tides', [0.0])
+            if len(tides) == 1:
+                heating_np += tides[0]
+            elif len(tides) == n_stag:
+                heating_np += np.array(tides)
+        heating = jnp.asarray(heating_np)
+        self._last_heating = heating_np  # store for _extract_output
 
         # Solve
         atol = max(self._config.interior.num_tolerance, 0.01)
@@ -218,11 +228,25 @@ class AragogJAXRunner:
         R_outer = float(r_basic[-1])
         RF_depth = 1.0 - rf / R_outer if R_outer > 0 else 0.0
 
-        # Store arrays on interior_o
+        # Compute phase properties for stored arrays and Cp_eff
         from aragog.jax.phase import evaluate_phase
         props = evaluate_phase(eos, self._params_jax, P, S)
+        visc = np.asarray(props.viscosity)
+        cap = np.asarray(props.capacitance)  # rho * T
+        Cp_eff = float(np.sum(cap * vol)) / max(M_mantle, 1.0)
+
+        # Thermal energy (sensible, with reference Cp=1200 matching numpy)
+        CP_REF = 1200.0
+        E_th = float(np.sum(mass * CP_REF * T))
+
+        # Heating flux (radionuclide + tidal combined)
+        heating_np = np.asarray(self._last_heating) if hasattr(self, '_last_heating') else np.zeros_like(T)
+        area_surf = 4 * np.pi * float(r_basic[-1]) ** 2
+        F_heat_total = float(np.dot(heating_np, mass)) / area_surf
+
+        # Store arrays on interior_o
         interior_o.phi = phi
-        interior_o.visc = np.asarray(props.viscosity)
+        interior_o.visc = visc
         interior_o.density = rho
         interior_o.radius = r_basic / 1e3
         interior_o.mass = mass
@@ -242,12 +266,12 @@ class AragogJAXRunner:
             'F_int': hf_row['F_atm'],
             'M_mantle_liquid': float(np.sum(phi * mass)),
             'M_mantle_solid': float(M_mantle - np.sum(phi * mass)),
-            'Phi_global_vol': Phi_global,  # simplified
+            'Phi_global_vol': Phi_global,  # simplified (same as mass-weighted)
             'T_pot': T_magma,
             'T_core': T_core,
-            'E_th_mantle': float(np.sum(mass * 1200.0 * T)),
-            'Cp_eff': 1200.0,  # simplified
-            'F_radio': 0.0,
+            'E_th_mantle': E_th,
+            'Cp_eff': Cp_eff,
+            'F_radio': F_heat_total,
             'F_tidal': 0.0,
         }
 
@@ -284,6 +308,18 @@ class AragogJAXRunner:
         _add('radius_b', np.asarray(mesh.radii_basic) / 1e3, 'basic', 'km')
         _add('density_s', rho, 'staggered', 'kg m-3')
         _add('mass_s', rho * np.asarray(mesh.volume), 'staggered', 'kg')
+
+        # Viscosity (compute from phase evaluator)
+        from aragog.jax.phase import evaluate_phase
+        props = evaluate_phase(self._eos_jax, self._params_jax, P, S)
+        _add('log10visc_s', np.log10(np.maximum(np.asarray(props.viscosity), 1e-10)), 'staggered', 'Pa s')
+
+        # Heat flux and heating (recompute from full flux computation)
+        from aragog.jax.phase import compute_fluxes
+        flux_out = compute_fluxes(S, time, self._eos_jax, self._params_jax,
+                                  self._mesh_jax, jnp.asarray(self._last_heating))
+        _add('Ftotal_b', np.asarray(flux_out.heat_flux), 'basic', 'W m-2')
+        _add('Htotal_s', np.asarray(flux_out.heating), 'staggered', 'W kg-1')
 
         ds.createVariable('time', np.float64)
         ds['time'][0] = float(time)
