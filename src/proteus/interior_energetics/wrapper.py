@@ -352,18 +352,8 @@ def solve_structure(
     solved as an inverse problem for now.
     """
 
-    # Set total mass by radius
-    # We might need here to setup a determine_interior_mass function as mass calculation depends on gravity
-    if config.interior_struct.set_by == 'radius_int':
-        # radius defines interior structure
-        hf_row['R_int'] = config.interior_struct.radius_int * R_earth
-        calculate_core_mass(hf_row, config)
-        # initial guess for mass, which will be updated by the interior model
-        hf_row['M_int'] = 1.2 * M_earth
-        update_gravity(hf_row)
-
     # Set by total mass (mantle + core + volatiles)
-    elif config.planet.planet_mass_tot is not None:
+    if config.planet.planet_mass_tot is not None:
         # Choose the method to determine the interior radius
         match config.interior_struct.module:
             case 'self':

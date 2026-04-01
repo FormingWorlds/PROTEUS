@@ -38,8 +38,10 @@ version = "2.0"
     module  = "none"
 
 # Planetary structure - physics table
+[planet]
+    planet_mass_tot = 1.07
+
 [interior_struct]
-    radius_int  = 1.073       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table

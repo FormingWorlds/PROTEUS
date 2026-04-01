@@ -6,7 +6,7 @@
 
 # Root tables should be physical, with the exception of "params"
 # Software related options should go within the appropriate physical table
-# For configuration see https://fwl-proteus.readthedocs.io/en/latest/config.html
+# For configuration see https://proteus-framework.org/PROTEUS/How-to/config.html
 
 # ----------------------------------------------------
 
@@ -167,7 +167,6 @@ version = "2.0"
 
 # Planetary structure - physics table
 [interior_struct]
-    radius_int   = "none"       # R_earth
     corefrac     = 0.55         # non-dim., radius fraction
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]

@@ -11,9 +11,8 @@ class Planet:
 
     Attributes
     ----------
-    planet_mass_tot: float or None
+    planet_mass_tot: float
         Total planet mass (interior + atmosphere) in Earth masses [M_earth].
-        Set to 'none' if using radius_int in [interior_struct] instead.
     """
 
     planet_mass_tot = field(

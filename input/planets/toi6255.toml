@@ -39,8 +39,10 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
+[planet]
+    planet_mass_tot = 1.08
+
 [interior_struct]
-    radius_int  = 1.079       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table

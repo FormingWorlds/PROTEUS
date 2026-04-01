@@ -5,8 +5,6 @@ from typing import Optional
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le, lt
 
-from ._converters import none_if_none
-
 
 def valid_zalmoxis(instance, attribute, value):
     if instance.module != 'zalmoxis':
@@ -215,10 +213,6 @@ class Struct:
         Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
     zalmoxis: Zalmoxis or None
         Zalmoxis parameters if module is 'zalmoxis'.
-    mass_tot: float
-        Total mass of the planet [M_earth]
-    radius_int: float
-        Radius of the atmosphere-mantle boundary [R_earth]
     update_interval: float
         Maximum interval (ceiling) between structure re-computations [yr].
         Only used when module is 'zalmoxis'. 0 means only compute structure
@@ -271,8 +265,6 @@ class Struct:
 
     melting_dir: str = field(default='Monteux-600')
     eos_dir: str = field(default='WolfBower2018_MgSiO3')
-    radius_int = field(default='none', converter=none_if_none)
-
     def __attrs_post_init__(self):
         if self.update_interval > 0 and self.update_min_interval > self.update_interval:
             raise ValueError(
@@ -285,10 +277,3 @@ class Struct:
                 '`global_miscibility` requires `module = "zalmoxis"`. '
                 'The binodal-aware structure solver is only available in Zalmoxis.'
             )
-
-    @property
-    def set_by(self) -> str:
-        """How is the structure set? Check radius_int; mass_tot is in [planet]."""
-        if self.radius_int is not None:
-            return 'radius_int'
-        return 'none'

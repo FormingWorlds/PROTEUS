@@ -99,7 +99,6 @@ module = "self"
 zalmoxis = "none"
 core_density = 10738.33
 core_heatcap = 880.0
-radius_int = "none"
 
 [atmos_clim]
 module = "agni"

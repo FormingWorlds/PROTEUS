@@ -77,31 +77,18 @@ def janus_escape_atmosphere(instance, attribute, value):
         )
 
 
-def mass_radius_valid(instance, attribute, value):
-    """Cross-section validator: exactly one of planet_mass_tot or radius_int must be set."""
+def planet_mass_valid(instance, attribute, value):
+    """Validate that planet_mass_tot is set and within range."""
     from ._converters import none_if_none
 
-    radius_int = none_if_none(instance.interior_struct.radius_int)
     mass_tot = none_if_none(instance.planet.planet_mass_tot)
 
-    if (radius_int is None) and (mass_tot is None):
-        raise ValueError('Must set one of `planet.planet_mass_tot` or `interior_struct.radius_int`')
-    if (radius_int is not None) and (mass_tot is not None):
-        raise ValueError(
-            'Must set either `planet.planet_mass_tot` or `interior_struct.radius_int`, not both'
-        )
-
-    if mass_tot is not None:
-        if mass_tot < 0:
-            raise ValueError('The total planet mass must be > 0')
-        if mass_tot > 20:
-            raise ValueError('The total planet mass must be < 20 M_earth')
-
-    if radius_int is not None:
-        if radius_int < 0:
-            raise ValueError('The interior radius must be > 0')
-        if radius_int > 10:
-            raise ValueError('The interior radius must be < 10 R_earth')
+    if mass_tot is None:
+        raise ValueError('`planet.planet_mass_tot` must be set')
+    if mass_tot <= 0:
+        raise ValueError('The total planet mass must be > 0')
+    if mass_tot > 20:
+        raise ValueError('The total planet mass must be < 20 M_earth')
 
 
 @define
@@ -143,7 +130,7 @@ class Config:
     params: Params
     star: Star
     orbit: Orbit = field(validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
-    planet: Planet = field(validator=(mass_radius_valid,))
+    planet: Planet = field(validator=(planet_mass_valid,))
     interior_struct: Struct = field()
     interior_energetics: Interior = field(validator=(tides_enabled_orbit,))
     atmos_clim: AtmosClim

@@ -84,11 +84,10 @@ visc_thresh = 1000000000.0
 
 
 [planet]
-planet_mass_tot = "none"
+planet_mass_tot = 1.0
 
 [interior_struct]
 corefrac = 0.55
-radius_int = 1.0
 core_density = 10738.33
 core_heatcap = 880.0
 

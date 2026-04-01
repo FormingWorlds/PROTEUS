@@ -1226,105 +1226,42 @@ def test_params_valid_mod_negative():
 
 
 @pytest.mark.unit
-def test_struct_mass_radius_valid_mass_tot_set():
-    """Test mass_radius_valid validator accepts planet_mass_tot being set."""
-    from proteus.config._config import mass_radius_valid
+def test_planet_mass_valid_accepts_positive():
+    """Test planet_mass_valid validator accepts positive planet_mass_tot."""
+    from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=1.0),
-        interior_struct=SimpleNamespace(radius_int=None),
-    )
-    mass_radius_valid(instance, SimpleNamespace(), None)  # Should not raise
+    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=1.0))
+    planet_mass_valid(instance, SimpleNamespace(), None)  # Should not raise
 
 
 @pytest.mark.unit
-def test_struct_mass_radius_valid_radius_int_set():
-    """Test mass_radius_valid validator accepts radius_int being set."""
-    from proteus.config._config import mass_radius_valid
+def test_planet_mass_valid_rejects_none():
+    """Test planet_mass_valid validator rejects None."""
+    from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=None),
-        interior_struct=SimpleNamespace(radius_int=1.0),
-    )
-    mass_radius_valid(instance, SimpleNamespace(), None)  # Should not raise
+    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=None))
+    with pytest.raises(ValueError, match='must be set'):
+        planet_mass_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
-def test_struct_mass_radius_neither_set():
-    """Test mass_radius_valid validator rejects when neither set."""
-    from proteus.config._config import mass_radius_valid
+def test_planet_mass_valid_rejects_negative():
+    """Test planet_mass_valid validator rejects negative planet_mass_tot."""
+    from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=None),
-        interior_struct=SimpleNamespace(radius_int=None),
-    )
-    with pytest.raises(ValueError, match='Must set one of'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_mass_radius_both_set():
-    """Test mass_radius_valid validator rejects when both set."""
-    from proteus.config._config import mass_radius_valid
-
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=1.0),
-        interior_struct=SimpleNamespace(radius_int=1.0),
-    )
-    with pytest.raises(ValueError, match='Must set either'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_mass_radius_mass_tot_negative():
-    """Test mass_radius_valid validator rejects negative planet_mass_tot."""
-    from proteus.config._config import mass_radius_valid
-
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=-1.0),
-        interior_struct=SimpleNamespace(radius_int=None),
-    )
+    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=-1.0))
     with pytest.raises(ValueError, match='must be > 0'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
+        planet_mass_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
-def test_struct_mass_radius_mass_tot_too_large():
-    """Test mass_radius_valid validator rejects planet_mass_tot > 20 M_earth."""
-    from proteus.config._config import mass_radius_valid
+def test_planet_mass_valid_rejects_too_large():
+    """Test planet_mass_valid validator rejects planet_mass_tot > 20 M_earth."""
+    from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=21.0),
-        interior_struct=SimpleNamespace(radius_int=None),
-    )
+    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=21.0))
     with pytest.raises(ValueError, match='must be < 20'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_mass_radius_radius_int_negative():
-    """Test mass_radius_valid validator rejects negative radius_int."""
-    from proteus.config._config import mass_radius_valid
-
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=None),
-        interior_struct=SimpleNamespace(radius_int=-1.0),
-    )
-    with pytest.raises(ValueError, match='must be > 0'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_mass_radius_radius_int_too_large():
-    """Test mass_radius_valid validator rejects radius_int > 10 R_earth."""
-    from proteus.config._config import mass_radius_valid
-
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=None),
-        interior_struct=SimpleNamespace(radius_int=11.0),
-    )
-    with pytest.raises(ValueError, match='must be < 10'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
+        planet_mass_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
@@ -1337,16 +1274,13 @@ def test_struct_zalmoxis_module_skip():
 
 
 @pytest.mark.unit
-def test_struct_zalmoxis_mass_tot_required():
-    """Test Config-level mass_radius_valid rejects no mass and no radius."""
-    from proteus.config._config import mass_radius_valid
+def test_planet_mass_required_for_zalmoxis():
+    """Test planet_mass_valid rejects None mass (required for Zalmoxis)."""
+    from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(
-        planet=SimpleNamespace(planet_mass_tot=None),
-        interior_struct=SimpleNamespace(radius_int=None),
-    )
-    with pytest.raises(ValueError, match='Must set one of'):
-        mass_radius_valid(instance, SimpleNamespace(), None)
+    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=None))
+    with pytest.raises(ValueError, match='must be set'):
+        planet_mass_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
@@ -1356,7 +1290,6 @@ def test_struct_zalmoxis_max_iterations_outer_minimum():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=2,  # INVALID (must be > 2)
             max_iterations_inner=100,
@@ -1379,7 +1312,6 @@ def test_struct_zalmoxis_max_iterations_inner_minimum():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=12,  # INVALID (must be > 12)
@@ -1402,7 +1334,6 @@ def test_struct_zalmoxis_max_iterations_pressure_minimum():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=100,
@@ -1425,7 +1356,6 @@ def test_struct_zalmoxis_two_layer_requires_no_mantle_fraction():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=100,
@@ -1448,7 +1378,6 @@ def test_struct_zalmoxis_three_layer_mass_constraint():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=100,
@@ -1471,7 +1400,6 @@ def test_struct_zalmoxis_valid_configuration():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=100,
@@ -1493,7 +1421,6 @@ def test_struct_zalmoxis_eos_format_missing_colon():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=100,
@@ -1516,7 +1443,6 @@ def test_struct_zalmoxis_ice_eos_format_missing_colon():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=100,
@@ -1539,7 +1465,6 @@ def test_struct_zalmoxis_tdep_allows_mantle_fraction():
 
     instance = SimpleNamespace(
         module='zalmoxis',
-        mass_tot=1.0,
         zalmoxis=SimpleNamespace(
             max_iterations_outer=100,
             max_iterations_inner=100,
