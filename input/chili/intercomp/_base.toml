@@ -85,7 +85,7 @@ axial_period = "none"
 satellite = false
 mass_sat = 7.347e+22
 semimajoraxis_sat = 300000000.0
-instellation_method = "sma"
+instellation_method = "distance"
 instellationflux = 1.0
 
 

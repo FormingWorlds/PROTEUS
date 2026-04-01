@@ -77,7 +77,7 @@ class Orbit:
     eccentricity: float
         Initial Eccentricity of the planet's orbit.
     instellation_method: str
-        Whether to use the semi-major axis ('sma') or instellation flux ('inst') to define the planet's initial orbit
+        Whether to use the semi-major axis ('distance') or instellation flux ('inst') to define the planet's initial orbit
     instellationflux: float
         Instellation flux initially received by the planet in Earth units.
 
@@ -136,5 +136,5 @@ class Orbit:
     dummy: OrbitDummy = field(factory=OrbitDummy)
     lovepy: Lovepy = field(factory=Lovepy)
 
-    instellation_method: str = field(default='sma', validator=in_(('sma', 'inst')))
+    instellation_method: str = field(default='distance', validator=in_(('distance', 'inst')))
     instellationflux: float = field(default=1.0, validator=gt(0))

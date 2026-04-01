@@ -108,7 +108,8 @@
         # S_ppmw    = 2.0          # S inventory [ppmw of mantle]
         # S_kg      = 1e20         # S inventory [kg]
 
-        use_metallicity = false    # scale C/N/S from solar metallicity, overwrites C/N/S settings
+        # Alternative to setting C/N/S: set only H + scale relative 'metallicity'
+        use_metallicity = false    # scale C/N/S from solar metallicity, overwrites C/N/S parameters
         metallicity     = 1000     # metallicity relative to solar [by mass] (if use_metallicity == true)
 
     # Initial atmospheric partial pressures (used when volatile_mode = 'gas_prs')
@@ -129,78 +130,78 @@
 
 # Stellar model and parameters
 [star]
-    mass                 = 1.0             # stellar mass [M_sun]
-    age_ini              = 0.100           # model start age [Gyr]
-    module               = "mors"          # 'mors' | 'dummy'
+    mass                 = 1.0       # stellar mass [M_sun]
+    age_ini              = 0.100     # model start age [Gyr]
+    module               = "mors"    # 'mors' | 'dummy'
 
     [star.mors]
-        rot_pcntle       = 50.0            # rotation percentile
-        rot_period       = "none"          # rotation period [days]; overrides rot_pcntle
-        tracks           = "spada"         # evolution tracks: spada | baraffe
-        age_now          = 4.567           # current age of star [Gyr]
-        spectrum_source  = "solar"         # solar | muscles | phoenix
-        star_name        = "sun"           # e.g. 'sun', 'Sun0.6Ga', 'trappist-1', 'gj1214'
-        star_path        = "none"          # custom spectrum file path (overrides source)
+        rot_pcntle       = 50.0      # rotation percentile
+        rot_period       = "none"    # rotation period [days]; overrides rot_pcntle
+        tracks           = "spada"   # evolution tracks: spada | baraffe
+        age_now          = 4.567     # current age of star [Gyr]
+        spectrum_source  = "solar"   # solar | muscles | phoenix
+        star_name        = "sun"     # e.g. 'sun', 'Sun0.6Ga', 'trappist-1', 'gj1214'
+        star_path        = "none"    # custom spectrum file path (overrides source)
 
         # PHOENIX synthetic spectrum parameters (only used if spectrum_source == "phoenix")
-        phoenix_FeH      = 0.0             # metallicity [Fe/H]
-        phoenix_alpha    = 0.0             # alpha enhancement [alpha/M]
-        phoenix_radius   = "none"          # stellar radius [R_sun]; none = from MORS
-        phoenix_log_g    = "none"          # surface gravity [dex]; none = from MORS
-        phoenix_Teff     = "none"          # effective temperature [K]; none = from MORS
+        phoenix_FeH      = 0.0       # metallicity [Fe/H]
+        phoenix_alpha    = 0.0       # alpha enhancement [alpha/M]
+        phoenix_radius   = "none"    # stellar radius [R_sun]; none = from MORS
+        phoenix_log_g    = "none"    # surface gravity [dex]; none = from MORS
+        phoenix_Teff     = "none"    # effective temperature [K]; none = from MORS
 
     [star.dummy]
-        radius           = 1.0             # constant stellar radius [R_sun]
-        calculate_radius = false           # derive radius from Teff scaling
-        Teff             = 5772.0          # brightness temperature [K]
+        radius           = 1.0       # constant stellar radius [R_sun]
+        calculate_radius = false     # derive radius from Teff scaling
+        Teff             = 5772.0    # brightness temperature [K]
 
 # Planetary orbit & tides
 [orbit]
-    instellation_method = 'sma'    # 'sma' (semi-major axis) | 'inst' (instellation flux)
-    semimajoraxis       = 1.0      # semi-major axis [AU]
-    instellationflux    = 1.0      # instellation flux [Earth units] (if method = 'inst')
-    eccentricity        = 0.0      # eccentricity
-    zenith_angle        = 48.19    # characteristic zenith angle [degrees]
-    s0_factor           = 0.375    # instellation scale factor
+    instellation_method = 'distance' # 'distance' (semi-major axis) | 'inst' (instellation flux)
+    semimajoraxis       = 1.0        # semi-major axis [AU] (if method = 'distance')
+    instellationflux    = 1.0        # instellation flux [Earth units] (if method = 'inst')
 
-    evolve       = false           # evolve semi-major axis and eccentricity
-    module       = "none"          # tidal heating module: none | dummy | lovepy
-    axial_period = "none"          # day length [hours]; none = tidally locked
-    satellite    = false           # include satellite (moon)
-    mass_sat     = 7.347e+22       # satellite mass [kg]
-    semimajoraxis_sat = 3e8        # satellite orbit semi-major axis [m]
+    eccentricity        = 0.0        # eccentricity
+    zenith_angle        = 48.19      # characteristic zenith angle [degrees]
+    s0_factor           = 0.375      # instellation scale factor
+
+    evolve              = false      # evolve semi-major axis and eccentricity
+    module              = "none"     # tidal heating module: none | dummy | lovepy
+    axial_period        = "none"     # day length [hours]; none = tidally locked
+
+    satellite           = false      # include satellite (moon)
+    mass_sat            = 7.347e+22  # satellite mass [kg]
+    semimajoraxis_sat   = 3e8        # satellite orbit semi-major axis [m]
 
     [orbit.dummy]
-        H_tide   = 1e-7           # fixed tidal power density [W kg-1]
-        Phi_tide = "<0.3"         # apply heating where melt fraction satisfies inequality
-        Imk2     = 0.0            # fixed Im(k2) love number (must be <= 0)
+        H_tide          = 1e-7       # fixed tidal power density [W kg-1]
+        Phi_tide        = "<0.3"     # apply heating where melt fraction satisfies inequality
+        Imk2            = 0.0        # fixed Im(k2) love number (must be <= 0)
 
     [orbit.lovepy]
-        visc_thresh = 1e9         # minimum viscosity for tidal heating [Pa s]
+        visc_thresh     = 1e9           # minimum viscosity for tidal heating [Pa s]
 
 # ----------------------------------------------------
 
 # Interior structure (hydrostatic equilibrium, composition)
 [interior_struct]
-    module              = "zalmoxis"  # spider | zalmoxis
-    core_frac           = 0.325       # core fraction (radius or mass, see core_frac_mode)
-    core_frac_mode      = "mass"      # "radius" | "mass"; "mass" requires zalmoxis
-    core_density        = "self"      # core density [kg m-3]; "self" = from zalmoxis
-    core_heatcap        = "self"      # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis
-    update_interval     = 0           # max time between structure updates [yr]; 0 = init only
-    update_min_interval = 0           # min time between updates [yr]
-    update_dtmagma_frac = 0.05        # trigger on relative T_magma change
-    update_dphi_abs     = 0.05        # trigger on absolute Phi_global change
-    melting_dir  = "Monteux-600"           # melting curve folder in FWL_DATA
-    eos_dir      = "PALEOS_MgSiO3"         # EOS folder in FWL_DATA
+    module              = "zalmoxis"      # zalmoxis | spider
+    core_frac           = 0.325           # core fraction (radius or mass, see core_frac_mode)
+    core_frac_mode      = "mass"          # "radius" | "mass"; "mass" requires zalmoxis
+    core_density        = "self"          # core density [kg m-3]; "self" = set by zalmoxis
+    core_heatcap        = "self"          # core heat capacity [J K-1 kg-1]; "self" = set by zalmoxis
+    update_dphi_abs     = 0.05            # trigger on absolute global melt fraction change
+    update_dtmagma_frac = 0.05            # trigger on relative T_magma change
+    update_interval     = 1e9             # max time between structure updates [yr]; 0 = init only
+    update_min_interval = 0               # min time between updates [yr]
+    melting_dir         = "Monteux-600"   # melting curve folder in FWL_DATA
+    eos_dir             = "PALEOS_MgSiO3" # EOS folder in FWL_DATA
 
+    # Interior structure & compositional properties set by zalmoxis
     [interior_struct.zalmoxis]
-        # Per-layer EOS: "<source>:<material>"
-        # Tabulated: PALEOS:iron, PALEOS:MgSiO3, Seager2007:iron, WolfBower2018:MgSiO3, RTPress100TPa:MgSiO3, Seager2007:H2O
-        # Analytic:  Analytic:iron, Analytic:MgSiO3, Analytic:MgFeSiO3, Analytic:H2O
-        core_eos                   = "PALEOS:iron"
-        mantle_eos                 = "PALEOS:MgSiO3"
-        ice_layer_eos              = "none"           # "none" = 2-layer model
+        core_eos                   = "PALEOS:iron"   # "<source>:<material>", recommended: "PALEOS:iron"
+        mantle_eos                 = "PALEOS:MgSiO3" # "<source>:<material>", recommended: "PALEOS:MgSiO3"
+        ice_layer_eos              = "none"          # same as the two above; "none" = 2-layer model (core+mantle)
         temperature_mode           = "adiabatic"     # isothermal | linear | prescribed | adiabatic
         surface_temperature        = 3500            # [K]
         center_temperature         = 6000            # [K] (initial guess for adiabatic)
