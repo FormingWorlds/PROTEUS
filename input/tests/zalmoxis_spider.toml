@@ -77,7 +77,6 @@ version = "2.0"
         temperature_mode           = "adiabatic"
         surface_temperature        = 3500
         center_temperature         = 6000
-        target_surface_pressure    = 101325
 
 [atmos_clim]
     surf_state = "fixed"

@@ -190,6 +190,40 @@ def extend_mantle_eos_with_volatiles(mantle_eos: str, volatile_profile) -> str:
     return extended
 
 
+def _get_target_surface_pressure(config: Config, hf_row: dict) -> float:
+    """Determine the surface pressure boundary condition for Zalmoxis.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration object.
+    hf_row : dict
+        Current helpfile row.
+
+    Returns
+    -------
+    float
+        Target surface pressure in Pa.
+    """
+    # After outgassing has run, use the atmospheric surface pressure
+    p_surf_bar = hf_row.get('P_surf', 0)
+    if p_surf_bar > 0:
+        return p_surf_bar * 1e5  # bar -> Pa
+
+    # First call, before outgassing. Estimate from initial volatile
+    # partial pressures specified in the config.
+    _SPECIES = ('H2O', 'CO2', 'N2', 'S2', 'SO2', 'H2S', 'NH3', 'H2', 'CH4', 'CO')
+    try:
+        gas_prs = config.planet.gas_prs
+        p_init_bar = sum(float(getattr(gas_prs, s, 0)) for s in _SPECIES)
+        p_init_pa = p_init_bar * 1e5  # bar -> Pa
+    except (TypeError, ValueError, AttributeError):
+        p_init_pa = 0.0
+
+    # Floor at 1 atm (bare rock), ceiling at 1 GPa
+    return max(101325.0, min(p_init_pa, 1e9))
+
+
 def load_zalmoxis_configuration(config: Config, hf_row: dict):
     """Loads the model configuration for Zalmoxis and calculates the dry mass of the planet based on the total mass and the mass of volatiles.
     Args:
@@ -258,7 +292,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'mushy_zone_factor': mzf,
         'mushy_zone_factors': mushy_zone_factors,
         'num_layers': config.interior_struct.zalmoxis.num_levels,
-        'target_surface_pressure': config.interior_struct.zalmoxis.target_surface_pressure,
+        'target_surface_pressure': _get_target_surface_pressure(config, hf_row),
     }
 
 

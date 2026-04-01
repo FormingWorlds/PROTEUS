@@ -205,7 +205,6 @@ def test_zalmoxis_config_with_ice_layer():
     config.interior_struct.zalmoxis.center_temperature = 5000
     config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = 200
-    config.interior_struct.zalmoxis.target_surface_pressure = 1e5
 
     hf_row = {
         f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')
@@ -233,7 +232,6 @@ def test_zalmoxis_config_no_ice_layer():
     config.interior_struct.zalmoxis.center_temperature = 5000
     config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = 200
-    config.interior_struct.zalmoxis.target_surface_pressure = 1e5
 
     hf_row = {
         f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')

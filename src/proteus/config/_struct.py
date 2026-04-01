@@ -115,8 +115,6 @@ class Zalmoxis:
         temperature_mode="prescribed".
     num_levels: int
         Number of Zalmoxis radius layers.
-    target_surface_pressure: float
-        Target surface pressure for the pressure adjustment [Pa].
     """
 
     core_eos: str = field(default='Seager2007:iron')
@@ -135,8 +133,6 @@ class Zalmoxis:
     temperature_profile_file: Optional[str] = field(default=None)
 
     num_levels: int = field(default=150)
-
-    target_surface_pressure: float = field(default=101325, validator=ge(0))
 
     def __attrs_post_init__(self):
         if self.temperature_mode == 'prescribed':
