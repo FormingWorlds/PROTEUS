@@ -1284,69 +1284,6 @@ def test_planet_mass_required_for_zalmoxis():
 
 
 @pytest.mark.unit
-def test_struct_zalmoxis_max_iterations_outer_minimum():
-    """Test valid_zalmoxis validator enforces max_iterations_outer > 2."""
-    from proteus.config._struct import valid_zalmoxis
-
-    instance = SimpleNamespace(
-        module='zalmoxis',
-        zalmoxis=SimpleNamespace(
-            max_iterations_outer=2,  # INVALID (must be > 2)
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
-            core_eos='Seager2007:iron',
-            mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos=None,
-            mantle_mass_fraction=0,
-        ),
-    )
-    with pytest.raises(ValueError, match='max_iterations_outer.*must be > 2'):
-        valid_zalmoxis(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_zalmoxis_max_iterations_inner_minimum():
-    """Test valid_zalmoxis validator enforces max_iterations_inner > 12."""
-    from proteus.config._struct import valid_zalmoxis
-
-    instance = SimpleNamespace(
-        module='zalmoxis',
-        zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=12,  # INVALID (must be > 12)
-            max_iterations_pressure=200,
-            core_eos='Seager2007:iron',
-            mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos=None,
-            mantle_mass_fraction=0,
-        ),
-    )
-    with pytest.raises(ValueError, match='max_iterations_inner.*must be > 12'):
-        valid_zalmoxis(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
-def test_struct_zalmoxis_max_iterations_pressure_minimum():
-    """Test valid_zalmoxis validator enforces max_iterations_pressure > 12."""
-    from proteus.config._struct import valid_zalmoxis
-
-    instance = SimpleNamespace(
-        module='zalmoxis',
-        zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=12,  # INVALID (must be > 12)
-            core_eos='Seager2007:iron',
-            mantle_eos='Seager2007:MgSiO3',
-            ice_layer_eos=None,
-            mantle_mass_fraction=0,
-        ),
-    )
-    with pytest.raises(ValueError, match='max_iterations_pressure.*must be > 12'):
-        valid_zalmoxis(instance, SimpleNamespace(), None)
-
-
-@pytest.mark.unit
 def test_struct_zalmoxis_two_layer_requires_no_mantle_fraction():
     """Test valid_zalmoxis requires mantle_mass_fraction=0 for 2-layer non-Tdep model."""
     from proteus.config._struct import valid_zalmoxis
@@ -1354,9 +1291,6 @@ def test_struct_zalmoxis_two_layer_requires_no_mantle_fraction():
     instance = SimpleNamespace(
         module='zalmoxis',
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos=None,
@@ -1377,9 +1311,6 @@ def test_struct_zalmoxis_three_layer_mass_constraint():
         core_frac=0.5,
         core_frac_mode='mass',
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='Seager2007:H2O',
@@ -1398,9 +1329,6 @@ def test_struct_zalmoxis_valid_configuration():
     instance = SimpleNamespace(
         module='zalmoxis',
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos=None,
@@ -1418,9 +1346,6 @@ def test_struct_zalmoxis_eos_format_missing_colon():
     instance = SimpleNamespace(
         module='zalmoxis',
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
             core_eos='iron_no_source',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos=None,
@@ -1439,9 +1364,6 @@ def test_struct_zalmoxis_ice_eos_format_missing_colon():
     instance = SimpleNamespace(
         module='zalmoxis',
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='Seager2007:MgSiO3',
             ice_layer_eos='H2O_bad_format',
@@ -1460,9 +1382,6 @@ def test_struct_zalmoxis_tdep_allows_mantle_fraction():
     instance = SimpleNamespace(
         module='zalmoxis',
         zalmoxis=SimpleNamespace(
-            max_iterations_outer=100,
-            max_iterations_inner=100,
-            max_iterations_pressure=200,
             core_eos='Seager2007:iron',
             mantle_eos='WolfBower2018:MgSiO3',
             ice_layer_eos=None,

@@ -12,20 +12,10 @@ def valid_zalmoxis(instance, attribute, value):
     if instance.module == 'spider':
         return
 
-    max_iterations_outer = instance.zalmoxis.max_iterations_outer
-    max_iterations_inner = instance.zalmoxis.max_iterations_inner
-    max_iterations_pressure = instance.zalmoxis.max_iterations_pressure
     core_eos = instance.zalmoxis.core_eos
     mantle_eos = instance.zalmoxis.mantle_eos
     ice_layer_eos = instance.zalmoxis.ice_layer_eos
     mantle_mass_fraction = instance.zalmoxis.mantle_mass_fraction
-
-    if max_iterations_outer < 3:
-        raise ValueError('`interior_struct.zalmoxis.max_iterations_outer` must be > 2')
-    if max_iterations_inner < 13:
-        raise ValueError('`interior_struct.zalmoxis.max_iterations_inner` must be > 12')
-    if max_iterations_pressure < 13:
-        raise ValueError('`interior_struct.zalmoxis.max_iterations_pressure` must be > 12')
 
     # EOS format validation: must be "<source>:<material>"
     for name, eos_val in [('core_eos', core_eos), ('mantle_eos', mantle_eos)]:
@@ -125,36 +115,8 @@ class Zalmoxis:
         temperature_mode="prescribed".
     num_levels: int
         Number of Zalmoxis radius layers.
-    max_iterations_outer: int
-        Maximum number of iterations for the outer loop.
-    tolerance_outer: float
-        Convergence tolerance for the outer loop [kg].
-    max_iterations_inner: int
-        Maximum number of iterations for the inner loop.
-    tolerance_inner: float
-        Convergence tolerance for the inner loop [kg/m^3].
-    relative_tolerance: float
-        Relative tolerance for solve_ivp.
-    absolute_tolerance: float
-        Absolute tolerance for solve_ivp.
-    maximum_step: float
-        Maximum integration step size for solve_ivp (m).
-    adaptive_radial_fraction: float
-        Fraction (0-1) of the radial domain defining where solve_ivp
-        transitions from adaptive to fixed-step integration when using
-        the WolfBower2018 T-dependent mantle EOS.
-    max_center_pressure_guess: float
-        Maximum pressure guess at the center of the planet (Pa).
     target_surface_pressure: float
         Target surface pressure for the pressure adjustment [Pa].
-    pressure_tolerance: float
-        Convergence tolerance for the pressure adjustment [Pa].
-    max_iterations_pressure: int
-        Maximum number of iterations for the pressure adjustment.
-    verbose: bool
-        If true, logs detailed convergence info and warnings.
-    iteration_profiles_enabled: bool
-        If true, writes pressure and density profiles for each iteration.
     """
 
     core_eos: str = field(default='Seager2007:iron')
@@ -174,22 +136,7 @@ class Zalmoxis:
 
     num_levels: int = field(default=150)
 
-    max_iterations_outer: int = field(default=100, validator=ge(1))
-    tolerance_outer: float = field(default=3e-3, validator=ge(0))
-    max_iterations_inner: int = field(default=100, validator=ge(1))
-    tolerance_inner: float = field(default=1e-4, validator=ge(0))
-    relative_tolerance: float = field(default=1e-5, validator=ge(0))
-    absolute_tolerance: float = field(default=1e-6, validator=ge(0))
-    maximum_step: float = field(default=250000, validator=ge(0))
-    adaptive_radial_fraction: float = field(default=0.98, validator=ge(0))
-    max_center_pressure_guess: float = field(default=0.99e12, validator=ge(0))
-
     target_surface_pressure: float = field(default=101325, validator=ge(0))
-    pressure_tolerance: float = field(default=1e9, validator=ge(0))
-    max_iterations_pressure: int = field(default=200, validator=ge(1))
-
-    verbose: bool = field(default=False)
-    iteration_profiles_enabled: bool = field(default=False)
 
     def __attrs_post_init__(self):
         if self.temperature_mode == 'prescribed':

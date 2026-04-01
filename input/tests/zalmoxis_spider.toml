@@ -77,20 +77,7 @@ version = "2.0"
         temperature_mode           = "adiabatic"
         surface_temperature        = 3500
         center_temperature         = 6000
-        max_iterations_outer       = 100
-        tolerance_outer            = 3e-3
-        max_iterations_inner       = 100
-        tolerance_inner            = 1e-4
-        relative_tolerance         = 1e-5
-        absolute_tolerance         = 1e-6
-        maximum_step               = 250000
-        adaptive_radial_fraction   = 0.98
-        max_center_pressure_guess  = 0.99e12
         target_surface_pressure    = 101325
-        pressure_tolerance         = 1e9
-        max_iterations_pressure    = 200
-        verbose                    = false
-        iteration_profiles_enabled = false
 
 [atmos_clim]
     surf_state = "fixed"

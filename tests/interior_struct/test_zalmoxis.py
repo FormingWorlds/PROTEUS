@@ -205,20 +205,7 @@ def test_zalmoxis_config_with_ice_layer():
     config.interior_struct.zalmoxis.center_temperature = 5000
     config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = 200
-    config.interior_struct.zalmoxis.max_iterations_outer = 50
-    config.interior_struct.zalmoxis.tolerance_outer = 1e-3
-    config.interior_struct.zalmoxis.max_iterations_inner = 100
-    config.interior_struct.zalmoxis.tolerance_inner = 1e-6
-    config.interior_struct.zalmoxis.relative_tolerance = 1e-8
-    config.interior_struct.zalmoxis.absolute_tolerance = 1e-12
-    config.interior_struct.zalmoxis.maximum_step = 100.0
-    config.interior_struct.zalmoxis.adaptive_radial_fraction = 0.01
-    config.interior_struct.zalmoxis.max_center_pressure_guess = 1e14
     config.interior_struct.zalmoxis.target_surface_pressure = 1e5
-    config.interior_struct.zalmoxis.pressure_tolerance = 0.01
-    config.interior_struct.zalmoxis.max_iterations_pressure = 20
-    config.interior_struct.zalmoxis.verbose = False
-    config.interior_struct.zalmoxis.iteration_profiles_enabled = False
 
     hf_row = {
         f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')
@@ -246,20 +233,7 @@ def test_zalmoxis_config_no_ice_layer():
     config.interior_struct.zalmoxis.center_temperature = 5000
     config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = 200
-    config.interior_struct.zalmoxis.max_iterations_outer = 50
-    config.interior_struct.zalmoxis.tolerance_outer = 1e-3
-    config.interior_struct.zalmoxis.max_iterations_inner = 100
-    config.interior_struct.zalmoxis.tolerance_inner = 1e-6
-    config.interior_struct.zalmoxis.relative_tolerance = 1e-8
-    config.interior_struct.zalmoxis.absolute_tolerance = 1e-12
-    config.interior_struct.zalmoxis.maximum_step = 100.0
-    config.interior_struct.zalmoxis.adaptive_radial_fraction = 0.01
-    config.interior_struct.zalmoxis.max_center_pressure_guess = 1e14
     config.interior_struct.zalmoxis.target_surface_pressure = 1e5
-    config.interior_struct.zalmoxis.pressure_tolerance = 0.01
-    config.interior_struct.zalmoxis.max_iterations_pressure = 20
-    config.interior_struct.zalmoxis.verbose = False
-    config.interior_struct.zalmoxis.iteration_profiles_enabled = False
 
     hf_row = {
         f'{e}_kg_total': 0 for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na', 'He')

@@ -258,20 +258,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'mushy_zone_factor': mzf,
         'mushy_zone_factors': mushy_zone_factors,
         'num_layers': config.interior_struct.zalmoxis.num_levels,
-        'max_iterations_outer': config.interior_struct.zalmoxis.max_iterations_outer,
-        'tolerance_outer': config.interior_struct.zalmoxis.tolerance_outer,
-        'max_iterations_inner': config.interior_struct.zalmoxis.max_iterations_inner,
-        'tolerance_inner': config.interior_struct.zalmoxis.tolerance_inner,
-        'relative_tolerance': config.interior_struct.zalmoxis.relative_tolerance,
-        'absolute_tolerance': config.interior_struct.zalmoxis.absolute_tolerance,
-        'maximum_step': config.interior_struct.zalmoxis.maximum_step,
-        'adaptive_radial_fraction': config.interior_struct.zalmoxis.adaptive_radial_fraction,
-        'max_center_pressure_guess': config.interior_struct.zalmoxis.max_center_pressure_guess,
         'target_surface_pressure': config.interior_struct.zalmoxis.target_surface_pressure,
-        'pressure_tolerance': config.interior_struct.zalmoxis.pressure_tolerance,
-        'max_iterations_pressure': config.interior_struct.zalmoxis.max_iterations_pressure,
-        'verbose': config.interior_struct.zalmoxis.verbose,
-        'iteration_profiles_enabled': config.interior_struct.zalmoxis.iteration_profiles_enabled,
     }
 
 
