@@ -136,10 +136,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     Phi_global = float(hf_row.get('Phi_global', 1.0))
 
     # Core mass fraction from config
-    if hasattr(config.struct, 'zalmoxis') and config.interior_struct.zalmoxis:
-        cmf = config.interior_struct.core_frac
-    else:
-        cmf = config.interior_struct.core_frac
+    cmf = config.interior_struct.core_frac
 
     planet = Planet(
         planet_mass=M_planet,

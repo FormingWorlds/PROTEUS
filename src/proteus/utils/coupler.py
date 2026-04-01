@@ -359,8 +359,8 @@ def print_module_configuration(dirs: dict, config: Config, config_path: str):
     if config.orbit.module == 'lovepy':
         log.info('  - Julia         version ' + _get_julia_version())
 
-    # Delivery module
-    log.info('Delivery module   %s' % config.accretion.module)
+    # Accretion module
+    log.info('Accretion module  %s' % config.accretion.module)
 
     # Atmospheric chemistry module
     log.info('Atmos_chem module %s' % config.atmos_chem.module)

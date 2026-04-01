@@ -350,7 +350,6 @@ def test_mesh_convergence_trigger():
     config.interior_struct.zalmoxis.temperature_profile_file = None
     config.interior_struct.zalmoxis.num_levels = 50
     config.interior_energetics.module = 'spider'
-    config.interior_energetics.spider.num_levels = 50
 
     dirs = {
         'output': '/tmp/test_output',
@@ -901,7 +900,6 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     (mc_dir / 'solidus_P-S.dat').write_text('dummy')
 
     config = MagicMock()
-    config.interior_energetics.spider.num_levels = 50
     config.interior_energetics.spider.tolerance = 1e-4
     config.interior_energetics.spider.tolerance_rel = 1e-4
     config.interior_energetics.spider.tsurf_rtol = 0.02
