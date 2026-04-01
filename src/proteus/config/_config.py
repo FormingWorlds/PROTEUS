@@ -78,13 +78,13 @@ def janus_escape_atmosphere(instance, attribute, value):
 
 
 def planet_mass_valid(instance, attribute, value):
-    """Validate that planet_mass_tot is set and within range."""
+    """Validate that mass_tot is set and within range."""
     from ._converters import none_if_none
 
-    mass_tot = none_if_none(instance.planet.planet_mass_tot)
+    mass_tot = none_if_none(instance.planet.mass_tot)
 
     if mass_tot is None:
-        raise ValueError('`planet.planet_mass_tot` must be set')
+        raise ValueError('`planet.mass_tot` must be set')
     if mass_tot <= 0:
         raise ValueError('The total planet mass must be > 0')
     if mass_tot > 20:

@@ -62,7 +62,7 @@ def generate_config(mass, interior, with_mixing=False):
         cfg = tomllib.load(f)
 
     cfg['params']['out']['path'] = f'parity/{name}'
-    cfg['planet']['planet_mass_tot'] = mass
+    cfg['planet']['mass_tot'] = mass
     cfg['interior_energetics']['module'] = interior
 
     if with_mixing:

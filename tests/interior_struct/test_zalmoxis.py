@@ -194,7 +194,7 @@ def test_zalmoxis_config_with_ice_layer():
     from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
     config = MagicMock()
-    config.planet.planet_mass_tot = 1.0
+    config.planet.mass_tot = 1.0
     config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
     config.interior_struct.zalmoxis.ice_layer_eos = 'Seager2007:water'
@@ -235,7 +235,7 @@ def test_zalmoxis_config_no_ice_layer():
     from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
     config = MagicMock()
-    config.planet.planet_mass_tot = 1.0
+    config.planet.mass_tot = 1.0
     config.interior_struct.zalmoxis.core_eos = 'Seager2007:iron'
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
     config.interior_struct.zalmoxis.ice_layer_eos = None

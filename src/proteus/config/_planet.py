@@ -128,21 +128,21 @@ class Planet:
 
     Attributes
     ----------
-    planet_mass_tot: float
+    mass_tot: float
         Total planet mass (interior + atmosphere) in Earth masses [M_earth].
-    initial: str
-        Method to set the initial volatile inventory. Options: 'volatiles', 'elements'.
+    volatile_mode: str
+        How to set the initial volatile inventory. Options: 'volatiles', 'elements'.
     elements: Elements
         Parameters for setting volatile inventory by element abundances.
     volatiles: Volatiles
         Parameters for setting volatile inventory by partial pressures.
     """
 
-    planet_mass_tot = field(
+    mass_tot = field(
         default='none',
         converter=none_if_none,
     )
 
-    initial: str = field(default='elements', validator=in_(('elements', 'volatiles')))
+    volatile_mode: str = field(default='elements', validator=in_(('elements', 'volatiles')))
     elements: Elements = field(factory=Elements)
     volatiles: Volatiles = field(factory=Volatiles)

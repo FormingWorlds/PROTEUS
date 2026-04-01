@@ -10,8 +10,8 @@
 #   [orbit]    planetary orbital parameters
 #
 [planet]
-    planet_mass_tot = 1.0       # M_earth
-    initial = 'elements'        # "elements" | "volatiles"
+    mass_tot = 1.0       # M_earth
+    volatile_mode = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]   planetary structure (mass, radius)
 #   [atmos]    atmosphere parameters, model selection

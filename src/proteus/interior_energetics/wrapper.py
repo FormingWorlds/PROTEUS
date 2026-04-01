@@ -114,9 +114,9 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     hf_row['gravity'] = 9.81
 
     # Target mass
-    M_target = config.planet.planet_mass_tot * M_earth
+    M_target = config.planet.mass_tot * M_earth
 
-    # We need to solve for the state hf_row[M_planet] = config.planet.planet_mass_tot
+    # We need to solve for the state hf_row[M_planet] = config.planet.mass_tot
     # This function takes R_int as the input value, and returns the mass residual
     def _resid(x):
         hf_row['R_int'] = x
@@ -370,7 +370,7 @@ def solve_structure(
     """
 
     # Set by total mass (mantle + core + volatiles)
-    if config.planet.planet_mass_tot is not None:
+    if config.planet.mass_tot is not None:
         # Choose the method to determine the interior radius
         match config.interior_struct.module:
             case 'spider':
@@ -391,7 +391,7 @@ def solve_structure(
         raise ValueError(f"Invalid structure interior module selected '{config.interior_struct.module}'")
 
     else:
-        raise ValueError('planet.planet_mass_tot must be set to solve for the interior structure')
+        raise ValueError('planet.mass_tot must be set to solve for the interior structure')
 
 
 def run_interior(

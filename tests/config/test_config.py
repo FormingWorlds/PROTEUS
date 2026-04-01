@@ -1227,10 +1227,10 @@ def test_params_valid_mod_negative():
 
 @pytest.mark.unit
 def test_planet_mass_valid_accepts_positive():
-    """Test planet_mass_valid validator accepts positive planet_mass_tot."""
+    """Test planet_mass_valid validator accepts positive mass_tot."""
     from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=1.0))
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=1.0))
     planet_mass_valid(instance, SimpleNamespace(), None)  # Should not raise
 
 
@@ -1239,27 +1239,27 @@ def test_planet_mass_valid_rejects_none():
     """Test planet_mass_valid validator rejects None."""
     from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=None))
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=None))
     with pytest.raises(ValueError, match='must be set'):
         planet_mass_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
 def test_planet_mass_valid_rejects_negative():
-    """Test planet_mass_valid validator rejects negative planet_mass_tot."""
+    """Test planet_mass_valid validator rejects negative mass_tot."""
     from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=-1.0))
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=-1.0))
     with pytest.raises(ValueError, match='must be > 0'):
         planet_mass_valid(instance, SimpleNamespace(), None)
 
 
 @pytest.mark.unit
 def test_planet_mass_valid_rejects_too_large():
-    """Test planet_mass_valid validator rejects planet_mass_tot > 20 M_earth."""
+    """Test planet_mass_valid validator rejects mass_tot > 20 M_earth."""
     from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=21.0))
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=21.0))
     with pytest.raises(ValueError, match='must be < 20'):
         planet_mass_valid(instance, SimpleNamespace(), None)
 
@@ -1278,7 +1278,7 @@ def test_planet_mass_required_for_zalmoxis():
     """Test planet_mass_valid rejects None mass (required for Zalmoxis)."""
     from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(planet=SimpleNamespace(planet_mass_tot=None))
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=None))
     with pytest.raises(ValueError, match='must be set'):
         planet_mass_valid(instance, SimpleNamespace(), None)
 

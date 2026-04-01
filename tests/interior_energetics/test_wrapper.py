@@ -570,7 +570,7 @@ def test_phi_crit_warning(caplog):
     from proteus.interior_energetics.wrapper import solve_structure
 
     config = MagicMock()
-    config.planet.planet_mass_tot = 1.0
+    config.planet.mass_tot = 1.0
     config.interior_struct.module = 'zalmoxis'
     config.params.stop.solid.phi_crit = 0.005
 
@@ -695,7 +695,7 @@ def test_solve_structure_invalid_module():
     from proteus.interior_energetics.wrapper import solve_structure
 
     config = MagicMock()
-    config.planet.planet_mass_tot = 1.0
+    config.planet.mass_tot = 1.0
     config.interior_struct.module = 'nonexistent_module'
     config.params.stop.solid.phi_crit = 0.5
 

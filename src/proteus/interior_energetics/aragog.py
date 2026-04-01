@@ -276,7 +276,7 @@ class AragogRunner:
             eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
             paleos_eos_file = eos_entry.get('eos_file', '')
 
-            mass_tot = config.planet.planet_mass_tot or 1.0
+            mass_tot = config.planet.mass_tot or 1.0
             P_max = min(200e9, 50e9 * mass_tot + 100e9)
             LOOK_UP_DIR = Path(outdir) / 'data' / 'aragog_pt'
 

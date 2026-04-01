@@ -64,7 +64,7 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
             raise ValueError(f'Missing required volatile {s}')
 
     # Set by volatiles?
-    if config.planet.initial == 'volatiles':
+    if config.planet.volatile_mode == 'volatiles':
         return solvevol_inp
 
     # Calculate hydrogen inventory...
@@ -173,7 +173,7 @@ def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
     solvevol_inp = construct_options(dirs, config, hf_row)
 
     # calculate target mass of atoms (except O, which is derived from fO2)
-    if config.planet.initial == 'elements':
+    if config.planet.volatile_mode == 'elements':
         solvevol_target = get_target_from_params(solvevol_inp)
     else:
         solvevol_target = get_target_from_pressures(solvevol_inp)

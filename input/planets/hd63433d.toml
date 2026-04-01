@@ -39,8 +39,8 @@ version = "2.0"
 
 # Planetary structure - physics table
 [planet]
-    planet_mass_tot = 1.07
-    initial = 'elements'        # "elements" | "volatiles"
+    mass_tot = 1.07
+    volatile_mode = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
     core_frac    = 0.55      # non-dim., radius fraction

@@ -43,9 +43,9 @@
         starspec    = 1e9          # recalculate stellar spectrum interval [yr]
         starinst    = 1e1          # recalculate instellation interval [yr]
         method      = "adaptive"   # proportional | adaptive | maximum
-        propconst   = 52.0         # proportionality constant (proportional method)
-        atol        = 0.02         # step size absolute tolerance (adaptive method)
-        rtol        = 0.10         # step size relative tolerance (adaptive method)
+        propconst   = 52.0         # proportionality constant (if proportional method)
+        atol        = 0.02         # step size absolute tolerance (if adaptive method)
+        rtol        = 0.10         # step size relative tolerance (if adaptive method)
 
     # Termination criteria (enabled=true/false per criterion)
     [params.stop]
@@ -85,10 +85,10 @@
 
 # Bulk planet properties and initial volatile inventory
 [planet]
-    planet_mass_tot = 1.0          # total planet mass [M_earth]
-    initial         = 'elements'   # initial inventory method: 'elements' | 'volatiles'
+    mass_tot = 1.0          # total planet mass [M_earth]
+    volatile_mode         = 'elements'   # initial inventory method: 'elements' | 'volatiles'
 
-    # Element abundances (used when initial = 'elements')
+    # Element abundances (used when volatile_mode = 'elements')
     # For each element: set XH_ratio (mass ratio to H), X_ppmw, or X_kg.
     # For H: set H_oceans, H_ppmw, or H_kg.
     [planet.elements]
@@ -111,7 +111,7 @@
         # S_ppmw    = 2.0          # S inventory [ppmw of mantle]
         # S_kg      = 1e20         # S inventory [kg]
 
-    # Partial pressures (used when initial = 'volatiles') [bar]
+    # Partial pressures (used when volatile_mode = 'volatiles') [bar]
     [planet.volatiles]
         H2O = 20.0
         CO2 = 30.0

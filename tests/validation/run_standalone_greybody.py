@@ -37,7 +37,7 @@ def generate_configs():
             cfg['params']['out']['path'] = f'standalone_greybody/{name}'
 
             # Set mass
-            cfg['planet']['planet_mass_tot'] = mass
+            cfg['planet']['mass_tot'] = mass
 
             # Set interior module
             cfg['interior_energetics']['module'] = solver

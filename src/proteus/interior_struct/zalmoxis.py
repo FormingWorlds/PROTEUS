@@ -200,7 +200,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
     """
 
     # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
-    total_planet_mass = config.planet.planet_mass_tot * M_earth
+    total_planet_mass = config.planet.mass_tot * M_earth
 
     logger.info(
         'Total target planet mass (dry mass + volatiles): %s kg '
@@ -611,7 +611,7 @@ def generate_spider_tables(config: Config, outdir: str):
     spider_eos_dir = os.path.join(outdir, 'data', 'spider_eos')
 
     # Determine pressure range from planet mass (higher mass needs wider range)
-    mass_tot = config.planet.planet_mass_tot or 1.0
+    mass_tot = config.planet.mass_tot or 1.0
     P_max = min(200e9, 50e9 * mass_tot + 100e9)
 
     # Check for 2-phase PALEOS tables (separate solid/liquid).

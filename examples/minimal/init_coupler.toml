@@ -82,8 +82,8 @@ visc_thresh = 1000000000.0
 
 
 [planet]
-planet_mass_tot = 1.0
-initial = "elements"
+mass_tot = 1.0
+volatile_mode = "elements"
 
 [interior_struct]
 core_frac = 0.55

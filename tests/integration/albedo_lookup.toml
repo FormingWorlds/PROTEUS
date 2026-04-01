@@ -32,8 +32,8 @@ version = "2.0"
 
 
 [planet]
-    planet_mass_tot = 1.0           # [M_earth]
-    initial = 'elements'        # Which initial inventory to use?
+    mass_tot = 1.0           # [M_earth]
+    volatile_mode = 'elements'        # Which initial inventory to use?
 
 [interior_struct]
     core_frac    = 0.55          # Radius fraction [non-dim.]

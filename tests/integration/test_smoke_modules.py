@@ -64,7 +64,7 @@ def test_smoke_escape_dummy_atmos():
         # Set initial volatile inventory (needed for escape to work)
         # Use delivery module to set initial elements
         runner.config.accretion.module = 'none'  # No delivery module, just initial inventory
-        runner.config.planet.initial = 'elements'
+        runner.config.planet.volatile_mode = 'elements'
         runner.config.planet.elements.H_ppmw = 3e3  # Hydrogen inventory
         runner.config.planet.elements.CH_ratio = 1.0  # C/H ratio
         runner.config.planet.elements.N_ppmw = 100.0  # Nitrogen inventory
@@ -357,7 +357,7 @@ def test_smoke_outgas_atmos_volatiles():
 
         # Set initial volatile inventory
         runner.config.accretion.module = 'none'  # No delivery module, just initial inventory
-        runner.config.planet.initial = 'elements'
+        runner.config.planet.volatile_mode = 'elements'
         runner.config.planet.elements.H_ppmw = 3e3  # Hydrogen inventory
         runner.config.planet.elements.CH_ratio = 1.0  # C/H ratio
         runner.config.planet.elements.N_ppmw = 100.0  # Nitrogen inventory

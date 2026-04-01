@@ -63,8 +63,8 @@ version = "2.0"
 
 
 [planet]
-    planet_mass_tot = 3.0          # M_Earth (override for mass sweep)
-    initial    = "elements"
+    mass_tot = 3.0          # M_Earth (override for mass sweep)
+    volatile_mode    = "elements"
 
 [interior_struct]
     core_frac     = 0.55
