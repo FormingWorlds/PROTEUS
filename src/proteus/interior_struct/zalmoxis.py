@@ -207,7 +207,7 @@ def _get_target_surface_pressure(config: Config, hf_row: dict) -> float:
     """
     # After outgassing has run, use the atmospheric surface pressure
     p_surf_bar = hf_row.get('P_surf', 0)
-    if p_surf_bar > 0:
+    if np.isfinite(p_surf_bar) and p_surf_bar > 0:
         return p_surf_bar * 1e5  # bar -> Pa
 
     # First call, before outgassing. Estimate from initial volatile
