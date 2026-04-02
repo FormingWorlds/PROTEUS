@@ -133,14 +133,14 @@ class Planet:
     temperature_mode: str
         How to set the initial temperature profile.
         'isothermal': T = tsurf_init everywhere.
-        'linear': T from tsurf_init (surface) to center_temperature (center).
+        'linear': T from tsurf_init (surface) to tcenter_init (center).
         'adiabatic': integrate dT/dP|_S downward from tsurf_init.
         'accretion': White & Li (2025) parameterization. Computes T from
         accretion and differentiation energy. Requires Zalmoxis.
     tsurf_init: float
         Initial magma surface temperature [K]. Used by isothermal, linear,
         and adiabatic modes. Ignored in accretion mode (computed by Zalmoxis).
-    center_temperature: float
+    tcenter_init: float
         Center temperature [K]. Used by linear mode (endpoint) and adiabatic
         mode (initial guess). Ignored in isothermal and accretion modes.
     f_accretion: float
@@ -168,7 +168,7 @@ class Planet:
         validator=in_(('isothermal', 'linear', 'adiabatic', 'accretion')),
     )
     tsurf_init: float = field(default=4000.0, validator=gt(0))
-    center_temperature: float = field(default=6000.0, validator=gt(0))
+    tcenter_init: float = field(default=6000.0, validator=gt(0))
     f_accretion: float = field(default=0.04, validator=ge(0))
     f_differentiation: float = field(default=0.50, validator=ge(0))
 

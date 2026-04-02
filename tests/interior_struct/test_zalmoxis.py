@@ -202,7 +202,7 @@ def test_zalmoxis_config_with_ice_layer():
     config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
     config.planet.temperature_mode = 'isothermal'
     config.planet.tsurf_init = 300
-    config.planet.center_temperature = 5000
+    config.planet.tcenter_init = 5000
     config.interior_struct.zalmoxis.num_levels = 200
 
     hf_row = {
@@ -228,7 +228,7 @@ def test_zalmoxis_config_no_ice_layer():
     config.interior_struct.zalmoxis.mantle_mass_fraction = 0.0
     config.planet.temperature_mode = 'isothermal'
     config.planet.tsurf_init = 300
-    config.planet.center_temperature = 5000
+    config.planet.tcenter_init = 5000
     config.interior_struct.zalmoxis.num_levels = 200
 
     hf_row = {
