@@ -190,7 +190,7 @@ def test_spider_defaults():
     - BDF solver (Backwards Differentiation Formula, stable for stiff systems)
     """
     s = Spider()
-    assert s.mixing_length == 2
+    # mixing_length moved to shared Interior level
     assert s.tolerance_rel == 1e-10
     assert s.solver_type == 'bdf'
     assert s.matprop_smooth_width == 1e-2

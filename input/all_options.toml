@@ -226,6 +226,7 @@
     rfront_loc                = 0.50         # rheological transition centre (melt fraction)
     rfront_wid                = 0.20         # rheological transition width (melt fraction)
     grain_size                = 0.1          # crystal grain size [m]
+    mixing_length             = "constant"   # nearest_boundary | constant (D/4)
     flux_guess                = -1           # initial F_atm [W m-2]; <0 = sigma*T^4
     tmagma_atol               = 20.0        # max absolute T_magma change per step [K]
     tmagma_rtol               = 0.02        # max relative T_magma change per step
@@ -249,7 +250,6 @@
 
     # SPIDER-only parameters
     [interior_energetics.spider]
-        mixing_length         = 2            # 1: nearest boundary | 2: constant D/4
         tolerance_rel         = 1.0e-8       # SUNDIALS relative tolerance
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
         ini_entropy           = 3200.0       # initial entropy [J kg-1 K-1]

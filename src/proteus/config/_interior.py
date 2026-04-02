@@ -29,8 +29,6 @@ class Spider:
 
     Attributes
     ----------
-    mixing_length: int
-        Parameterisation used to determine convective mixing length.
     tolerance_rel: float
         Relative solver tolerance (SUNDIALS-specific).
     ini_dsdr: float
@@ -43,7 +41,6 @@ class Spider:
 
     ini_entropy: float = field(default=3200.0, validator=gt(200.0))
     ini_dsdr: float = field(default=-4.698e-6, validator=lt(0))
-    mixing_length: int = field(default=2, validator=in_((1, 2)))
     tolerance_rel: float = field(default=1e-10, validator=gt(0))
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
     matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
@@ -208,6 +205,9 @@ class Interior:
     aragog: Aragog = field(factory=Aragog, validator=valid_aragog)
     dummy: InteriorDummy = field(factory=InteriorDummy, validator=valid_interiordummy)
 
+    mixing_length: str = field(
+        default='constant', validator=in_(('nearest_boundary', 'constant'))
+    )
     grain_size: float = field(default=0.1, validator=gt(0))
     flux_guess: float = field(default=-1)
     tmagma_atol: float = field(default=20.0, validator=ge(0))

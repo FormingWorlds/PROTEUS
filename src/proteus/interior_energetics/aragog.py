@@ -175,7 +175,7 @@ class AragogRunner:
             inner_radius=inner_radius,
             # basic nodes
             number_of_nodes=config.interior_energetics.num_levels,
-            mixing_length_profile='constant',
+            mixing_length_profile=config.interior_energetics.mixing_length,
             core_density=get_core_density(config, hf_row),
             eos_method=1,  # 1: Adams-Williamson / 2: User defined
             surface_density=4090,  # AdamsWilliamsonEOS parameter [kg/m3]
