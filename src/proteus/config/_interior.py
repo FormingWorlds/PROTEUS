@@ -259,7 +259,9 @@ class Interior:
     grain_size: float = field(default=0.1, validator=gt(0))
     flux_guess: float = field(default=-1)
 
-    radio_tref: float = field(default=4.55, validator=gt(0))
+    radio_tref: float = field(default=4.567, validator=ge(0))
+    radio_Al: float = field(default=0.0, validator=ge(0))
+    radio_Fe: float = field(default=0.0, validator=ge(0))
     radio_K: float = field(default=310.0, validator=ge(0))
     radio_U: float = field(default=0.031, validator=ge(0))
     radio_Th: float = field(default=0.124, validator=ge(0))

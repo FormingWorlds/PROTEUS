@@ -1810,6 +1810,8 @@ def test_try_spider_heat_radiogen(tmp_path):
     config.interior_energetics.heat_radiogenic = True
     config.interior_energetics.radio_tref = 4.5  # Gyr
     config.star.age_ini = 0.1  # Gyr
+    config.interior_energetics.radio_Al = 0.0
+    config.interior_energetics.radio_Fe = 0.0
     config.interior_energetics.radio_K = 240e-9  # ppm
     config.interior_energetics.radio_Th = 80e-9
     config.interior_energetics.radio_U = 20e-9

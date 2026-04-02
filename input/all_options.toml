@@ -111,7 +111,7 @@
         N_budget              = 0.5          # unit defined by N_mode
         S_mode                = "S/H"        # S/H mass ratio | ppmw | kg
         S_budget              = 1.0          # unit defined by S_mode
-        use_metallicity       = false        # scale C/N/S from solar metallicity
+        use_metallicity       = false        # scale C/N/S from solar metallicity; replaces C/N/S budgets
         metallicity           = 1000         # metallicity relative to solar [by mass]
 
     # Partial pressures (used when volatile_mode = 'gas_prs') [bar]
@@ -140,7 +140,7 @@
         rot_pcntle            = 50.0         # rotation percentile
         rot_period            = "none"       # rotation period [days]; overrides rot_pcntle
         tracks                = "spada"      # evolution tracks: spada | baraffe
-        age_now               = 4.567        # current age of star [Gyr]
+        age_now               = 4.567        # current age of star [Gyr] (= time of spectrum)
         spectrum_source       = "phoenix"    # solar | muscles | phoenix
         star_name             = "none"       # e.g. 'sun', 'trappist-1' (solar/muscles only)
         star_path             = "none"       # custom spectrum file path (overrides source)
@@ -164,7 +164,7 @@
     zenith_angle              = 48.19        # characteristic zenith angle [degrees]
     s0_factor                 = 0.375        # instellation scale factor
     evolve                    = false        # evolve semi-major axis and eccentricity
-    module                    = "none"       # tidal heating module: none | dummy | lovepy
+    module                    = "none"       # orbit+tidal heating module: none | dummy | lovepy
     axial_period              = "none"       # day length [hours]; none = tidally locked
     satellite                 = false        # include satellite (moon)
     mass_sat                  = 7.347e+22    # satellite mass [kg]
@@ -207,32 +207,34 @@
         core_eos              = "PALEOS:iron"    # "<source>:<material>"
         mantle_eos            = "PALEOS:MgSiO3"  # "<source>:<material>"
         ice_layer_eos         = "none"       # "none" = 2-layer model (core+mantle)
-        mushy_zone_factor     = 0.8          # solidus/liquidus ratio for PALEOS [0.7-1.0]
+        mushy_zone_factor     = 0.8          # solidus/liquidus ratio [0.7-1.0] if EOS==PALEOS
         mantle_mass_fraction  = 0            # 0 = auto (1 - core_frac) for 2-layer models
-        num_levels            = 100          # radial grid levels
+        num_levels            = 100          # radial grid levels (whole interior of planet)
 
 # Interior energy transport (mantle & core thermal evolution)
 [interior_energetics]
     module                    = "aragog"     # aragog | spider | dummy
 
     # Shared parameters (Aragog + SPIDER, ignored for dummy)
-    num_levels                = 60           # radial grid levels
+    num_levels                = 60           # radial grid levels (energetics module domain only)
     num_tolerance             = 1.0e-8       # solver tolerance
     trans_conduction          = true         # conductive heat transfer
     trans_convection          = true         # convective heat transfer (MLT)
     trans_grav_sep            = true         # gravitational separation
     trans_mixing              = true         # chemical mixing flux
-    heat_tidal                = false        # tidal heating
-    rfront_loc                = 0.6          # rheological transition centre (melt fraction)
-    rfront_wid                = 0.2          # rheological transition width (melt fraction)
+    heat_tidal                = false        # tidal heating (additional switch to orbit.module)
+    rfront_loc                = 0.50         # rheological transition centre (melt fraction)
+    rfront_wid                = 0.20         # rheological transition width (melt fraction)
     grain_size                = 0.1          # crystal grain size [m]
     flux_guess                = -1           # initial F_atm [W m-2]; <0 = sigma*T^4
     kappah_floor              = 0.0          # eddy diffusivity floor [m^2/s]; 0 = standard MLT
     heat_radiogenic           = false        # radiogenic heating
-    radio_tref                = 4.55         # reference age for concentrations [Gyr]
-    radio_K                   = 310.0        # potassium concentration [ppmw, all isotopes]
-    radio_U                   = 0.031        # uranium concentration [ppmw, all isotopes]
-    radio_Th                  = 0.124        # thorium concentration [ppmw, all isotopes]
+    radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
+    radio_Al                  = 0.0          # 26Al [ppmw of isotope]; 1.23 = canonical (26Al/27Al=5.25e-5)
+    radio_Fe                  = 0.0          # 60Fe [ppmw of isotope]; 6.3e-4 = canonical (60Fe/56Fe=1e-8)
+    radio_K                   = 240.0        # potassium [ppmw of element, all isotopes]; BSE value
+    radio_U                   = 0.020        # uranium [ppmw of element, all isotopes]; BSE value
+    radio_Th                  = 0.080        # thorium [ppmw of element, all isotopes]; BSE value
 
     # Aragog-only parameters
     [interior_energetics.aragog]

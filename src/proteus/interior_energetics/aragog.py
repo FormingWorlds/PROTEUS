@@ -489,6 +489,12 @@ class AragogRunner:
                     )
                 )
 
+            if config.interior_energetics.radio_Al > 0.0:
+                _append_radnuc('al26', config.interior_energetics.radio_Al)
+
+            if config.interior_energetics.radio_Fe > 0.0:
+                _append_radnuc('fe60', config.interior_energetics.radio_Fe)
+
             if config.interior_energetics.radio_K > 0.0:
                 _append_radnuc('k40', config.interior_energetics.radio_K)
 
