@@ -294,7 +294,7 @@
         solver_multistart     = 10           # number of random restarts
         include_condensates   = true         # graphite condensation
         T_floor               = 700.0        # skip outgassing below this T [K]
-        # Solubility laws per species; set to "none" to disable solubility for that species
+        # Solubility laws per species; "none" = gas stays in atmosphere only (no melt dissolution)
         solubility_H2O        = "H2O_peridotite_sossi23"
         solubility_CO2        = "CO2_basalt_dixon95"
         solubility_H2         = "H2_basalt_hirschmann12"
