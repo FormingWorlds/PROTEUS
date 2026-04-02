@@ -125,7 +125,7 @@ class Struct:
     core_frac: float
         Fraction of the planet's interior radius corresponding to the core.
     module: str
-        Module for solving the planet's interior structure. Choices: 'spider', 'zalmoxis'.
+        Module for solving the planet's interior structure. Choices: 'dummy', 'spider', 'zalmoxis'.
     zalmoxis: Zalmoxis or None
         Zalmoxis parameters if module is 'zalmoxis'.
     update_interval: float
@@ -159,7 +159,7 @@ class Struct:
 
     module: Optional[str] = field(
         default='zalmoxis',
-        validator=lambda inst, attr, val: val is None or val in ('spider', 'zalmoxis'),
+        validator=lambda inst, attr, val: val is None or val in ('dummy', 'spider', 'zalmoxis'),
     )
     zalmoxis: Optional[Zalmoxis] = field(
         default=None,

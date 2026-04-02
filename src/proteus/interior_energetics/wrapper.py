@@ -173,6 +173,59 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     log.info(' ')
 
 
+def determine_interior_radius_with_dummy(
+    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+):
+    """Determine interior structure using Noack & Lasbleis (2020) scaling laws.
+
+    Ultra-fast analytical parameterization replacing Zalmoxis. Fills all
+    hf_row keys and writes output files needed by SPIDER/Aragog.
+    """
+    from proteus.interior_struct.dummy import solve_dummy_structure
+
+    nlev_b = get_nlevb(config)
+    num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
+
+    spider_mesh_file = solve_dummy_structure(
+        config, hf_row, outdir, num_spider_nodes=num_spider_nodes,
+    )
+
+    if spider_mesh_file:
+        dirs['spider_mesh'] = spider_mesh_file
+        dirs['spider_mesh_prev'] = spider_mesh_file + '.prev'
+
+    # Generate P-S EOS tables for SPIDER/Aragog (if PALEOS)
+    if config.interior_energetics.module in ('spider', 'aragog'):
+        from proteus.interior_struct.zalmoxis import generate_spider_tables
+
+        spider_tables = generate_spider_tables(config, outdir)
+        if spider_tables is not None:
+            dirs['spider_eos_dir'] = spider_tables['eos_dir']
+            dirs['spider_solidus_ps'] = spider_tables['solidus_path']
+            dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
+
+    # Derived quantities
+    hf_row['M_mantle'] = hf_row['M_int'] - hf_row['M_core']
+
+    # Run first interior step
+    int_o = Interior_t(
+        nlev_b, spider_dir=dirs.get('spider'), eos_dir=config.interior_struct.eos_dir
+    )
+    int_o.ic = 1
+    run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
+    update_gravity(hf_row)
+
+    calc_target_elemental_inventories(config, hf_row)
+    update_planet_mass(hf_row)
+
+    log.info('Dummy structure solve complete')
+    log.info(
+        'R_int: %.1e m = %.3f R_earth, M_int: %.1e kg = %.3f M_earth',
+        hf_row['R_int'], hf_row['R_int'] / R_earth,
+        hf_row['M_int'], hf_row['M_int'] / M_earth,
+    )
+
+
 def determine_interior_radius_with_zalmoxis(
     dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
 ):
@@ -373,6 +426,10 @@ def solve_structure(
     if config.planet.mass_tot is not None:
         # Choose the method to determine the interior radius
         match config.interior_struct.module:
+            case 'dummy':
+                return determine_interior_radius_with_dummy(
+                    dirs, config, hf_all, hf_row, outdir
+                )
             case 'spider':
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case 'zalmoxis':

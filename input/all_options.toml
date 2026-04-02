@@ -194,9 +194,9 @@
 
 # Interior structure (hydrostatic equilibrium, composition)
 [interior_struct]
-    module              = "zalmoxis"      # zalmoxis | spider
+    module              = "zalmoxis"      # dummy | spider | zalmoxis
     core_frac           = 0.325           # core fraction (radius or mass, see core_frac_mode)
-    core_frac_mode      = "mass"          # "radius" | "mass"; "mass" requires zalmoxis
+    core_frac_mode      = "mass"          # "radius" | "mass"; "mass" requires zalmoxis or dummy
     core_density        = "self"          # core density [kg m-3]; "self" = set by zalmoxis
     core_heatcap        = "self"          # core heat capacity [J K-1 kg-1]; "self" = set by zalmoxis
     update_dphi_abs     = 0.05            # trigger on absolute global melt fraction change
