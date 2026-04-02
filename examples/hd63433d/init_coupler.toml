@@ -215,10 +215,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by planetary element abundances
     [planet.elements]
-        CH_ratio    = 1.0       # C/H ratio in mantle/atmosphere system
-        H_oceans    = 8.0       # Hydrogen inventory in units of equivalent Earth oceans, by mass
-        N_ppmw      = 2.01      # Nitrogen inventory in ppmw relative to mantle mass, by mass
-        S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mass of melt
+        H_mode          = "oceans"
+        H_budget        = 8.0
+        C_mode          = "C/H"
+        C_budget        = 1.0
+        N_mode          = "ppmw"
+        N_budget        = 2.01
+        S_mode          = "ppmw"
+        S_budget        = 235.0
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [planet.gas_prs]

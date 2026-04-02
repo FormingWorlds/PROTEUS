@@ -37,9 +37,9 @@ INTERIOR_MODULES = ['spider', 'aragog']
 OUTGAS_MODULES = ['calliope', 'atmodeller']
 VOLATILE_CONFIGS = {
     # "dry" uses minimal volatiles (1 ppmw H) to avoid division by zero in CALLIOPE
-    'dry': {'H_ppmw': 1.0, 'CH_ratio': 0.0, 'NH_ratio': 0.0, 'SH_ratio': 0.0},
-    '1EO_H2O': {'H_ppmw': 709.0, 'CH_ratio': 0.0, 'NH_ratio': 0.0, 'SH_ratio': 0.0},
-    '500ppmw_H': {'H_ppmw': 500.0, 'CH_ratio': 0.5, 'NH_ratio': 0.1, 'SH_ratio': 0.5},
+    'dry': {'H_mode': 'ppmw', 'H_budget': 1.0, 'C_mode': 'C/H', 'C_budget': 0.0, 'N_mode': 'N/H', 'N_budget': 0.0, 'S_mode': 'S/H', 'S_budget': 0.0},
+    '1EO_H2O': {'H_mode': 'ppmw', 'H_budget': 709.0, 'C_mode': 'C/H', 'C_budget': 0.0, 'N_mode': 'N/H', 'N_budget': 0.0, 'S_mode': 'S/H', 'S_budget': 0.0},
+    '500ppmw_H': {'H_mode': 'ppmw', 'H_budget': 500.0, 'C_mode': 'C/H', 'C_budget': 0.5, 'N_mode': 'N/H', 'N_budget': 0.1, 'S_mode': 'S/H', 'S_budget': 0.5},
 }
 
 # ── Config generation ───────────────────────────────────────────────

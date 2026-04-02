@@ -8,74 +8,61 @@ from ._converters import none_if_none
 
 @define
 class Elements:
-    """Initial volatile inventory by planetary *bulk* element abundances.
+    """Initial volatile inventory by element abundances.
 
-    There are various ways to set these. You can specify a metallicity relative to solar
-    alongside a total hydrogen abundance by providing `use_metallicity=True`.
+    Each element has a mode (how the budget is specified) and a budget (the value).
 
-    Instead of metallicity, provide the abundance of each element with either specific
-    mass ratio relative to hydrogen or in terms of the concentration in the mantle.
-    For X in {C, N, S}: only XH_ratio or X_ppmw should be used at any one time.
+    H_mode options:
+        'oceans': H_budget in Earth oceans (1 EO ~ 1.55e20 kg H).
+        'ppmw': H_budget in ppmw relative to volatile_reservoir mass.
+        'kg': H_budget in kg (absolute).
 
-    Hydrogen abundance is set via *either* `H_oceans`, which is the number of oceans of
-    hydrogen in the planet's mantle at initialisation (assumed to be fully molten). Or,
-    you can set the hydrogen abundance in ppm relative to the mantle mass with `H_ppmw`.
-    For hydrogen: only H_oceans or H_ppmw should be used at any one time.
+    C_mode / N_mode / S_mode options:
+        'C/H' / 'N/H' / 'S/H': budget is mass ratio to H.
+        'ppmw': budget in ppmw relative to volatile_reservoir mass.
+        'kg': budget in kg (absolute).
+
+    use_metallicity: when True, C/N/S are scaled from solar metallicity
+    relative to H, overriding C_mode/N_mode/S_mode settings.
 
     Attributes
     ----------
-    H_oceans: float
-        Absolute hydrogen inventory, units of equivalent Earth oceans.
-    H_kg: float
-        Absolute hydrogen inventory, kg.
-    H_ppmw: float
-        Relative hydrogen inventory, ppmw relative to mantle mass.
-
+    H_mode: str
+        How H_budget is interpreted: 'oceans', 'ppmw', 'kg'.
+    H_budget: float
+        Hydrogen inventory value (units depend on H_mode).
+    C_mode: str
+        How C_budget is interpreted: 'C/H', 'ppmw', 'kg'.
+    C_budget: float
+        Carbon inventory value (units depend on C_mode).
+    N_mode: str
+        How N_budget is interpreted: 'N/H', 'ppmw', 'kg'.
+    N_budget: float
+        Nitrogen inventory value (units depend on N_mode).
+    S_mode: str
+        How S_budget is interpreted: 'S/H', 'ppmw', 'kg'.
+    S_budget: float
+        Sulfur inventory value (units depend on S_mode).
     use_metallicity: bool
-        Whether or not to specify the elemental abundances in terms of solar metallicity
+        Scale C/N/S from solar metallicity (overrides C/N/S mode+budget).
     metallicity: float
-        Elemental metallicity relative to solar metallicity, by mass
-
-    CH_ratio: float
-        Carbon metallicity. C/H mass ratio in combined mantle+atmosphere system.
-    C_kg: float
-        Absolute carbon inventory, kg.
-    C_ppmw: float
-        Relative carbon inventory, ppmw relative to mantle mass.
-
-    NH_ratio: float
-        Nitrogen metallicity. N/H mass ratio in combined mantle+atmosphere system.
-    N_kg: float
-        Absolute nitrogen inventory, kg.
-    N_ppmw: float
-        Relative nitrogen inventory, ppmw relative to mantle mass.
-
-    SH_ratio: float
-        Sulfur metallicity. C/H mass ratio in combined mantle+atmosphere system.
-    S_kg: float
-        Absolute sulfur inventory, kg.
-    S_ppmw: float
-        Absolute sulfur inventory, ppmw relative to mantle mass.
+        Metallicity relative to solar, by mass (only if use_metallicity=True).
     """
 
-    use_metallicity: float = field(default=False)
+    H_mode: str = field(default='oceans', validator=in_(('oceans', 'ppmw', 'kg')))
+    H_budget: float = field(default=0.0, validator=ge(0))
+
+    C_mode: str = field(default='C/H', validator=in_(('C/H', 'ppmw', 'kg')))
+    C_budget: float = field(default=0.0, validator=ge(0))
+
+    N_mode: str = field(default='N/H', validator=in_(('N/H', 'ppmw', 'kg')))
+    N_budget: float = field(default=0.0, validator=ge(0))
+
+    S_mode: str = field(default='S/H', validator=in_(('S/H', 'ppmw', 'kg')))
+    S_budget: float = field(default=0.0, validator=ge(0))
+
+    use_metallicity: bool = field(default=False)
     metallicity: float = field(default=1000.0, validator=ge(0))
-
-    H_oceans: float = field(default=0.0, validator=ge(0))
-    H_kg: float = field(default=0.0, validator=ge(0))
-    H_ppmw: float = field(default=0.0, validator=ge(0))
-
-    CH_ratio: float = field(default=0.0, validator=ge(0))
-    C_kg: float = field(default=0.0, validator=ge(0))
-    C_ppmw: float = field(default=0.0, validator=ge(0))
-
-    NH_ratio: float = field(default=0.0, validator=ge(0))
-    N_kg: float = field(default=0.0, validator=ge(0))
-    N_ppmw: float = field(default=0.0, validator=ge(0))
-
-    SH_ratio: float = field(default=0.0, validator=ge(0))
-    S_kg: float = field(default=0.0, validator=ge(0))
-    S_ppmw: float = field(default=0.0, validator=ge(0))
 
 
 @define
@@ -135,26 +122,25 @@ class Planet:
         'isothermal': T = tsurf_init everywhere.
         'linear': T from tsurf_init (surface) to tcenter_init (center).
         'adiabatic': integrate dT/dP|_S downward from tsurf_init.
-        'accretion': White & Li (2025) parameterization. Computes T from
-        accretion and differentiation energy. Requires Zalmoxis.
+        'accretion': White & Li (2025) parameterization.
     tsurf_init: float
-        Initial magma surface temperature [K]. Used by isothermal, linear,
-        and adiabatic modes. Ignored in accretion mode (computed by Zalmoxis).
+        Initial magma surface temperature [K] (isothermal, linear, adiabatic).
     tcenter_init: float
-        Center temperature [K]. Used by linear mode only (center endpoint).
-        Ignored in isothermal, adiabatic, and accretion modes.
+        Center temperature [K] (linear only).
     f_accretion: float
-        Heat retention efficiency for accretion energy [0-1].
-        Only used in accretion mode. Default 0.04 (White & Li 2025).
+        Accretion heat retention [0-1] (accretion mode, White & Li 2025).
     f_differentiation: float
-        Heat retention efficiency for core-mantle differentiation energy [0-1].
-        Only used in accretion mode. Default 0.50 (White & Li 2025).
+        Differentiation heat retention [0-1] (accretion mode).
     volatile_mode: str
-        How to set the initial volatile inventory. Options: 'elements', 'gas_prs'.
+        How to set the initial volatile inventory: 'elements' or 'gas_prs'.
+    volatile_reservoir: str
+        Interior mass reference for ppmw calculations.
+        'mantle': M_mantle = M_int - M_core (default, backward compatible).
+        'mantle+core': M_int = M_mantle + M_core (total dry interior).
     elements: Elements
-        Parameters for setting volatile inventory by element abundances.
+        Element abundance parameters (used when volatile_mode = 'elements').
     gas_prs: GasPrs
-        Parameters for setting volatile inventory by partial pressures.
+        Partial pressure parameters (used when volatile_mode = 'gas_prs').
     """
 
     mass_tot = field(
@@ -174,5 +160,6 @@ class Planet:
 
     # Initial volatile inventory
     volatile_mode: str = field(default='elements', validator=in_(('elements', 'gas_prs')))
+    volatile_reservoir: str = field(default='mantle', validator=in_(('mantle', 'mantle+core')))
     elements: Elements = field(factory=Elements)
     gas_prs: GasPrs = field(factory=GasPrs)

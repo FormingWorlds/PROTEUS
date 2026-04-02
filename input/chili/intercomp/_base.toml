@@ -208,11 +208,15 @@ solubility = true
 module = "none"
 
 [planet.elements]
+        H_mode          = "kg"
+        H_budget        = 4.7e20
+        C_mode          = "C/H"
+        C_budget        = 0.0
+        N_mode          = "N/H"
+        N_budget        = 0.0
+        S_mode          = "S/H"
+        S_budget        = 0.0
 use_metallicity = false
-H_kg = 4.7e20
-C_kg = 2.73e20
-N_kg = 0.0
-S_kg = 0.0
 
 [observe]
 synthesis = "none"

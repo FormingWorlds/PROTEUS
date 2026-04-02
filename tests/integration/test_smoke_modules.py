@@ -65,10 +65,14 @@ def test_smoke_escape_dummy_atmos():
         # Use delivery module to set initial elements
         runner.config.accretion.module = 'none'  # No delivery module, just initial inventory
         runner.config.planet.volatile_mode = 'elements'
-        runner.config.planet.elements.H_ppmw = 3e3  # Hydrogen inventory
-        runner.config.planet.elements.CH_ratio = 1.0  # C/H ratio
-        runner.config.planet.elements.N_ppmw = 100.0  # Nitrogen inventory
-        runner.config.planet.elements.SH_ratio = 1.0  # S/H ratio
+        runner.config.planet.elements.H_mode = "ppmw"
+        runner.config.planet.elements.H_budget = 3e3  # Hydrogen inventory
+        runner.config.planet.elements.C_mode = "C/H"
+        runner.config.planet.elements.C_budget = 1.0  # C/H ratio
+        runner.config.planet.elements.N_mode = "ppmw"
+        runner.config.planet.elements.N_budget = 100.0  # Nitrogen inventory
+        runner.config.planet.elements.S_mode = "S/H"
+        runner.config.planet.elements.S_budget = 1.0  # S/H ratio
 
         # Fix: Lower tsurf_init to prevent runaway heating
         runner.config.interior_energetics.dummy.tsurf_init = 2000.0
@@ -358,10 +362,14 @@ def test_smoke_outgas_atmos_volatiles():
         # Set initial volatile inventory
         runner.config.accretion.module = 'none'  # No delivery module, just initial inventory
         runner.config.planet.volatile_mode = 'elements'
-        runner.config.planet.elements.H_ppmw = 3e3  # Hydrogen inventory
-        runner.config.planet.elements.CH_ratio = 1.0  # C/H ratio
-        runner.config.planet.elements.N_ppmw = 100.0  # Nitrogen inventory
-        runner.config.planet.elements.SH_ratio = 1.0  # S/H ratio
+        runner.config.planet.elements.H_mode = "ppmw"
+        runner.config.planet.elements.H_budget = 3e3  # Hydrogen inventory
+        runner.config.planet.elements.C_mode = "C/H"
+        runner.config.planet.elements.C_budget = 1.0  # C/H ratio
+        runner.config.planet.elements.N_mode = "ppmw"
+        runner.config.planet.elements.N_budget = 100.0  # Nitrogen inventory
+        runner.config.planet.elements.S_mode = "S/H"
+        runner.config.planet.elements.S_budget = 1.0  # S/H ratio
 
         # Fix: Lower tsurf_init to prevent runaway heating
         runner.config.interior_energetics.dummy.tsurf_init = 2000.0

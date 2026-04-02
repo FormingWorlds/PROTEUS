@@ -61,10 +61,14 @@ version = "2.0"
 
     # Set initial volatile inventory by planetary element abundances
     [planet.elements]
-        H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
-        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
+        H_mode          = "oceans"
+        H_budget        = 5.0
+        C_mode          = "C/H"
+        C_budget        = 1.0
+        N_mode          = "N/H"
+        N_budget        = 0.5
+        S_mode          = "S/H"
+        S_budget        = 2.0
 
 # Calculate simulated observations
 [observe]

@@ -148,10 +148,14 @@ version = "2.0"
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [planet.elements]
-        H_oceans = 30.0
-        CH_ratio = 1.0
-        SH_ratio = 2.0
-        N_ppmw   = 3.0
+        H_mode          = "oceans"
+        H_budget        = 30.0
+        C_mode          = "C/H"
+        C_budget        = 1.0
+        N_mode          = "ppmw"
+        N_budget        = 3.0
+        S_mode          = "S/H"
+        S_budget        = 2.0
 
 # Calculate simulated observations
 [observe]

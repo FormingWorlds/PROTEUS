@@ -120,10 +120,14 @@ version = "2.0"
     module = "none"
 
     [planet.elements]
-        H_ppmw      = 3e3
-        CH_ratio    = 1.0
-        N_ppmw      = 0.0
-        SH_ratio    = 1.0
+        H_mode          = "ppmw"
+        H_budget        = 3e3
+        C_mode          = "C/H"
+        C_budget        = 1.0
+        N_mode          = "ppmw"
+        N_budget        = 0.0
+        S_mode          = "S/H"
+        S_budget        = 1.0
 
 [observe]
     synthesis = "none"

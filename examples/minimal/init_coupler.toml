@@ -201,14 +201,14 @@ some_parameter = "some_value"
 module = "none"
 
 [planet.elements]
-H_oceans = 1.0
-H_ppmw = 0.0
-CH_ratio = 1.0
-C_ppmw = 0.0
-NH_ratio = 0.0
-N_ppmw = 1.0
-SH_ratio = 2.0
-S_ppmw = 0.0
+        H_mode          = "ppmw"
+        H_budget        = 0.0
+        C_mode          = "ppmw"
+        C_budget        = 0.0
+        N_mode          = "ppmw"
+        N_budget        = 1.0
+        S_mode          = "ppmw"
+        S_budget        = 0.0
 
 [planet.gas_prs]
 H2O = 0

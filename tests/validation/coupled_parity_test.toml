@@ -186,7 +186,11 @@ version = "2.0"
 [accretion]
     module     = "none"
     [planet.elements]
-        H_ppmw   = 1.0
-        CH_ratio = 0.0
-        NH_ratio = 0.0
-        SH_ratio = 0.0
+        H_mode          = "ppmw"
+        H_budget        = 1.0
+        C_mode          = "C/H"
+        C_budget        = 0.0
+        N_mode          = "N/H"
+        N_budget        = 0.0
+        S_mode          = "S/H"
+        S_budget        = 0.0

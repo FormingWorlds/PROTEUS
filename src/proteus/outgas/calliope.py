@@ -28,7 +28,6 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     Construct CALLIOPE options dictionary
     """
 
-    invalid = False  # Invalid options set by config
 
     solvevol_inp = {}
 
@@ -63,109 +62,95 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
             UpdateStatusfile(dirs, 20)
             raise ValueError(f'Missing required volatile {s}')
 
-    # Set by volatiles?
+    # Set by partial pressures?
     if config.planet.volatile_mode == 'gas_prs':
         return solvevol_inp
 
-    # Calculate hydrogen inventory...
+    # --- Element abundance mode ---
+    elem = config.planet.elements
 
-    #    absolute part (H_kg = H_oceans * number_ocean_moles * molar_mass['H2'])
-    H_abs = float(config.planet.elements.H_oceans) * mass_ocean
-    H_abs += float(config.planet.elements.H_kg)
-
-    #    relative part (H_kg = H_rel * 1e-6 * M_mantle)
-    H_rel = config.planet.elements.H_ppmw * 1e-6 * hf_row['M_mantle']
-
-    #    use whichever was set (one of these will be zero)
-    if H_abs < 1.0:
-        if H_rel < 1.0:
-            log.error('Hydrogen inventory is unspecified')
-            invalid = True
-        else:
-            H_kg = H_rel
-    elif H_rel < 1.0:
-        H_kg = H_abs
+    # Reservoir mass for ppmw calculations
+    M_mantle = hf_row['M_mantle']
+    if config.planet.volatile_reservoir == 'mantle+core':
+        M_reservoir = hf_row['M_int']  # M_mantle + M_core
     else:
-        log.error('Hydrogen inventory must be specified by H_oceans or H_ppmw, not both')
-        invalid = True
-        H_kg = -1  # dummy value
+        M_reservoir = M_mantle
 
-    # calculating elemental abundances using metallicity
-    if config.planet.elements.use_metallicity:
-        CH_ratio = config.planet.elements.metallicity * C_solar
-        N_ppmw = 0.0
-        S_ppmw = 0.0
+    # Hydrogen inventory [kg]
+    match elem.H_mode:
+        case 'oceans':
+            H_kg = float(elem.H_budget) * mass_ocean
+        case 'ppmw':
+            H_kg = float(elem.H_budget) * 1e-6 * M_reservoir
+        case 'kg':
+            H_kg = float(elem.H_budget)
 
-        # if planet has nitrogen
-        if config.planet.elements.NH_ratio > 0.0:
-            NH_ratio = config.planet.elements.metallicity * N_solar
-            N_ppmw = 1e6 * NH_ratio * H_kg / hf_row['M_mantle']
-
-        # if planet has sulfur
-        if config.planet.elements.SH_ratio > 0.0:
-            SH_ratio = config.planet.elements.metallicity * S_solar
-            S_ppmw = 1e6 * SH_ratio * H_kg / hf_row['M_mantle']
-
-    else:
-        # Calculate carbon inventory (we need CH_ratio for calliope)
-        CH_ratio = float(config.planet.elements.CH_ratio)
-        C_ppmw = float(config.planet.elements.C_ppmw)
-        if CH_ratio > 1e-10:
-            # check that C_ppmw isn't also set
-            if C_ppmw > 1e-10:
-                log.error('Carbon inventory must be specified by CH_ratio or C_ppmw, not both')
-                invalid = True
-        else:
-            # calculate C/H ratio for calliope from C_kg and H_kg
-            C_kg = float(config.planet.elements.C_ppmw) * 1e-6 * hf_row['M_mantle']
-            C_kg += float(config.planet.elements.C_kg)
-            CH_ratio = C_kg / H_kg
-
-        # Calculate nitrogen inventory (we need N_ppmw for calliope)
-        NH_ratio = float(config.planet.elements.NH_ratio)
-        N_ppmw = float(config.planet.elements.N_ppmw)
-        N_ppmw += float(config.planet.elements.N_kg) / (1e-6 * hf_row['M_mantle'])
-        if NH_ratio > 1e-10:
-            # check that N_ppmw isn't also set
-            if N_ppmw > 1e-10:
-                log.error(
-                    'Nitrogen inventory must be specified by NH_ratio or N_ppmw, not both'
-                )
-                invalid = True
-            # calculate N_ppmw
-            N_ppmw = 1e6 * NH_ratio * H_kg / hf_row['M_mantle']
-
-        # Calculate sulfur inventory (we need S_ppmw for calliope)
-        SH_ratio = float(config.planet.elements.SH_ratio)
-        S_ppmw = float(config.planet.elements.S_ppmw)
-        S_ppmw += float(config.planet.elements.S_kg) / (1e-6 * hf_row['M_mantle'])
-        if SH_ratio > 1e-10:
-            # check that S_ppmw isn't also set
-            if S_ppmw > 1e-10:
-                log.error('Sulfur inventory must be specified by SH_ratio or S_ppmw, not both')
-                invalid = True
-            # calculate S_ppmw
-            S_ppmw = 1e6 * SH_ratio * H_kg / hf_row['M_mantle']
-
-    # Volatile abundances are over-specified in the config file.
-    # The code exits here, rather than above, in case there are multiple
-    #   instances of volatiles being over-specified in the file.
-    if invalid:
-        log.error('  a) set X by metallicity, e.g. XH_ratio=1.2 and X_ppmw=0')
-        log.error('  b) set X by concentration, e.g. XH_ratio=0 and X_ppmw=2.01')
-        log.error(
-            '  Can also specify X_ppmw and X_kg together, to set the absolute X inventory'
-        )
+    if H_kg < 1.0:
+        log.error('Hydrogen inventory is zero or unspecified (H_mode=%s, H_budget=%g)',
+                  elem.H_mode, elem.H_budget)
         UpdateStatusfile(dirs, 20)
-        raise ValueError('Invalid volatile inventory configuration')
+        raise ValueError('Hydrogen inventory must be > 0')
 
-    # Pass elemental inventory
+    # C/N/S inventories
+    if elem.use_metallicity:
+        # Scale from solar metallicity relative to H
+        CH_ratio = elem.metallicity * C_solar
+        N_kg = elem.metallicity * N_solar * H_kg
+        S_kg = elem.metallicity * S_solar * H_kg
+    else:
+        # Carbon
+        C_kg = _resolve_element(elem.C_mode, elem.C_budget, H_kg, M_reservoir, 'C')
+        CH_ratio = C_kg / H_kg if H_kg > 0 else 0.0
+
+        # Nitrogen
+        N_kg = _resolve_element(elem.N_mode, elem.N_budget, H_kg, M_reservoir, 'N')
+
+        # Sulfur
+        S_kg = _resolve_element(elem.S_mode, elem.S_budget, H_kg, M_reservoir, 'S')
+
+    # Convert to CALLIOPE's internal units (always relative to M_mantle)
+    N_ppmw = 1e6 * N_kg / M_mantle if M_mantle > 0 else 0.0
+    S_ppmw = 1e6 * S_kg / M_mantle if M_mantle > 0 else 0.0
+
     solvevol_inp['hydrogen_earth_oceans'] = H_kg / mass_ocean
     solvevol_inp['CH_ratio'] = CH_ratio
     solvevol_inp['nitrogen_ppmw'] = N_ppmw
     solvevol_inp['sulfur_ppmw'] = S_ppmw
 
     return solvevol_inp
+
+
+def _resolve_element(mode: str, budget: float, H_kg: float, M_reservoir: float, name: str) -> float:
+    """Convert element mode+budget to absolute mass [kg].
+
+    Parameters
+    ----------
+    mode : str
+        'X/H' (mass ratio to H), 'ppmw' (relative to M_reservoir), or 'kg'.
+    budget : float
+        The value in the units defined by mode.
+    H_kg : float
+        Hydrogen mass [kg] (for X/H mode).
+    M_reservoir : float
+        Reservoir mass [kg] for ppmw (M_mantle or M_int).
+    name : str
+        Element name (for error messages).
+
+    Returns
+    -------
+    float
+        Element mass [kg].
+    """
+    ratio_key = f'{name}/H'
+    match mode:
+        case _ if mode == ratio_key:
+            return float(budget) * H_kg
+        case 'ppmw':
+            return float(budget) * 1e-6 * M_reservoir
+        case 'kg':
+            return float(budget)
+        case _:
+            raise ValueError(f"Unknown {name}_mode: '{mode}'. Expected '{ratio_key}', 'ppmw', or 'kg'")
 
 
 def calc_target_masses(dirs: dict, config: Config, hf_row: dict):

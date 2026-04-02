@@ -213,20 +213,16 @@ solubility = true
 module = "none"
 
 [planet.elements]
+        H_mode          = "ppmw"
+        H_budget        = 0.0
+        C_mode          = "ppmw"
+        C_budget        = 0.0
+        N_mode          = "ppmw"
+        N_budget        = 0.0
+        S_mode          = "ppmw"
+        S_budget        = 0.0
 use_metallicity = false
 metallicity = 1000.0
-H_oceans = 0.0
-H_kg = 4.7e20
-H_ppmw = 0.0
-CH_ratio = 0.0
-C_kg = 2.72e20
-C_ppmw = 0.0
-NH_ratio = 0.0
-N_kg = 0.0
-N_ppmw = 0.0
-SH_ratio = 0.0
-S_kg = 0.0
-S_ppmw = 0.0
 
 [observe]
 synthesis = "none"

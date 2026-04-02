@@ -59,10 +59,10 @@ def test_integration_calliope_multi_timestep(proteus_multi_timestep_run):
         # Set initial volatile inventory
         delivery__module='none',
         delivery__initial='elements',
-        delivery__elements__H_ppmw=3e3,  # Hydrogen inventory
-        delivery__elements__CH_ratio=1.0,  # C/H ratio
-        delivery__elements__N_ppmw=100.0,  # Nitrogen inventory
-        delivery__elements__SH_ratio=1.0,  # S/H ratio
+        planet__elements__H_mode="ppmw", planet__elements__H_budget=3e3,  # Hydrogen inventory
+        planet__elements__C_mode="C/H", planet__elements__C_budget=1.0,  # C/H ratio
+        planet__elements__N_mode="ppmw", planet__elements__N_budget=100.0,  # Nitrogen inventory
+        planet__elements__S_mode="S/H", planet__elements__S_budget=1.0,  # S/H ratio
         # Prevent runaway heating
         interior__dummy__tsurf_init=2000.0,
     )
@@ -169,10 +169,10 @@ def test_integration_calliope_extended_run(proteus_multi_timestep_run):
         # Set initial volatile inventory
         delivery__module='none',
         delivery__initial='elements',
-        delivery__elements__H_ppmw=3e3,
-        delivery__elements__CH_ratio=1.0,
-        delivery__elements__N_ppmw=100.0,
-        delivery__elements__SH_ratio=1.0,
+        planet__elements__H_mode="ppmw", planet__elements__H_budget=3e3,
+        planet__elements__C_mode="C/H", planet__elements__C_budget=1.0,
+        planet__elements__N_mode="ppmw", planet__elements__N_budget=100.0,
+        planet__elements__S_mode="S/H", planet__elements__S_budget=1.0,
         # Prevent runaway heating
         interior__dummy__tsurf_init=2000.0,
     )
