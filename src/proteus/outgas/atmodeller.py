@@ -266,16 +266,32 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{s}_vmr'] = 0.0
 
     # Dissolved masses from atmodeller output (thermodynamically consistent)
-    output_dict = output.asdict()
+    # Dissolved masses from atmodeller output (thermodynamically consistent)
+    # Falls back to kg_total - kg_atm for species not in the solve or without
+    # a dissolved_mass output (e.g., gas-only species like H2S, NH3)
+    try:
+        output_dict = output.asdict()
+    except Exception:
+        output_dict = {}
+
     for proteus_name, atm_name in _atm_gas_species.items():
         if proteus_name not in gas_list:
             continue
         species_key = f'{atm_name}_g'
-        if species_key in output_dict:
-            dissolved_kg = float(np.squeeze(output_dict[species_key].get('dissolved_mass', 0.0)))
-            hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, dissolved_kg)
+        species_data = output_dict.get(species_key, {})
+        dissolved_val = species_data.get('dissolved_mass', None) if isinstance(species_data, dict) else None
+
+        if dissolved_val is not None:
+            try:
+                dissolved_kg = float(np.squeeze(dissolved_val))
+                hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, dissolved_kg)
+            except (TypeError, ValueError):
+                # JAX array conversion failed; fallback
+                kg_total = float(hf_row.get(f'{proteus_name}_kg_total', 0.0))
+                kg_atm = float(hf_row.get(f'{proteus_name}_kg_atm', 0.0))
+                hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, kg_total - kg_atm)
         else:
-            # Species not in solve; fallback to subtraction
+            # Species without solubility or not in solve; subtraction fallback
             kg_total = float(hf_row.get(f'{proteus_name}_kg_total', 0.0))
             kg_atm = float(hf_row.get(f'{proteus_name}_kg_atm', 0.0))
             hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, kg_total - kg_atm)

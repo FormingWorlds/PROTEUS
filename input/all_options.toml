@@ -301,9 +301,10 @@
         solubility_CO2        = "CO2_basalt_dixon95"         # none | CO2_basalt_dixon95
         solubility_H2         = "H2_basalt_hirschmann12"     # none | H2_basalt_hirschmann12 | H2_chachan18
         solubility_N2         = "N2_basalt_dasgupta22"       # none | N2_basalt_dasgupta22 | N2_basalt_libourel03
-        solubility_S2         = "S2_sulfide_basalt_boulliung23" # none | S2_sulfide_basalt_boulliung23
+        solubility_S2         = "S2_sulfide_basalt_boulliung23" # reducing; use S2_sulfate_* for oxidizing
         solubility_CO         = "CO_basalt_yoshioka19"       # none | CO_basalt_yoshioka19 | CO_basalt_armstrong15
         solubility_CH4        = "CH4_basalt_ardia13"         # none | CH4_basalt_ardia13
+        # H2S, NH3: included as gas-only species (no solubility laws available yet)
         # Real gas EOS per species ("none" = ideal gas; important at high pressures >100 bar)
         eos_H2O               = "none"        # none | H2O_holland_powell91 | H2O_zhang_duan06
         eos_CO2               = "none"        # none | CO2_zhang_duan06 | CO2_holland_powell91
