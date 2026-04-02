@@ -99,7 +99,7 @@ class Aragog:
     trans_mixing: bool
         Whether to include mixing flux in the model. Default is True (matches SPIDER).
     dilatation: bool
-        Whether to include dilatation source term in the model. Default is False.
+        Whether to include dilatation source term in the model. Default is True.
     mass_coordinates: bool
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
@@ -139,7 +139,7 @@ class Aragog:
     outer_boundary_condition: int = field(default=4, validator=in_((1, 4)))
     # 4 = prescribed flux from atmosphere (default, PROTEUS coupling mode)
     # 1 = native grey-body (sigma*T^4, standalone mode, bypasses atmosphere)
-    dilatation: bool = field(default=False)
+    dilatation: bool = field(default=True)
     mass_coordinates: bool = field(default=True)
     tsurf_poststep_change: float = field(default=30, validator=ge(0))
     event_triggering: bool = field(default=True)

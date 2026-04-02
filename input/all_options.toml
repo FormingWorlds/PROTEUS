@@ -238,14 +238,11 @@
 
     # Aragog-only parameters
     [interior_energetics.aragog]
-        initial_condition     = 3            # 1: linear | 2: from file | 3: adiabat
-        init_file             = "none"       # IC file path (for IC=2)
-        basal_temperature     = 7000.0       # CMB temperature [K] (for IC=1)
         inner_boundary_condition = 1         # CMB BC: 1=core cooling | 2=flux | 3=temperature
         inner_boundary_value  = 4000         # CMB BC value [K or W m-2]
         outer_boundary_condition = 4         # surface BC: 4=prescribed flux | 1=grey-body
-        dilatation            = false        # dilatation source term
-        mass_coordinates      = false        # mass coordinate mesh spacing
+        dilatation            = true         # dilatation source term
+        mass_coordinates      = true         # mass coordinate mesh spacing
         tsurf_poststep_change = 30           # max surface T change per step [K]
         event_triggering      = true         # stop solver on large T_surf jumps
         bulk_modulus          = 260e9        # Adams-Williamson bulk modulus [Pa]
