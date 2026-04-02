@@ -246,7 +246,6 @@
     [interior_energetics.aragog]
         dilatation            = true         # dilatation source term
         mass_coordinates      = true         # mass coordinate mesh spacing
-        event_triggering      = true         # stop solver on large T_surf jumps
         jax                   = false        # JAX/diffrax solver (requires jax, equinox, diffrax)
 
     # SPIDER-only parameters

@@ -78,7 +78,6 @@ class Aragog:
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
         at the surface where density is lower, matching SPIDER's mesh.
-    event_triggering: bool
         Whether to include event triggering in the solver. Default is True.
     jax: bool
         Use JAX/diffrax solver backend instead of scipy BDF. Default is False.
@@ -88,7 +87,6 @@ class Aragog:
 
     dilatation: bool = field(default=True)
     mass_coordinates: bool = field(default=True)
-    event_triggering: bool = field(default=True)
     jax: bool = field(default=False)
 
 

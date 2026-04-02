@@ -151,7 +151,6 @@ version = "2.0"
 
     [interior_energetics.aragog]
         param_utbl      = false
-        event_triggering = false
 
 [outgas]
     fO2_shift_IW = 0

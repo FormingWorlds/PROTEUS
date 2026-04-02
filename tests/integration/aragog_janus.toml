@@ -198,7 +198,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         mixing_length   = 2         # Mixing length parameterization
 
     [interior_energetics.aragog]
-        event_triggering              = true    # enable events triggering to avoid abrupt jumps in surface temperature
 
 
 

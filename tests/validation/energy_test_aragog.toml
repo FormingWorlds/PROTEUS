@@ -152,7 +152,6 @@ version = "2.0"
     [interior_energetics.aragog]
         param_utbl               = false
         param_utbl_const         = 1e-7
-        event_triggering         = true
         mass_coordinates         = true
 
 # Calliope outgassing with minimal volatiles (required module, cannot be "none")
