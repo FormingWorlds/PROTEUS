@@ -101,8 +101,7 @@
     volatile_reservoir   = "mantle"   # mantle | mantle+core
 
     # Element abundances (used when volatile_mode = 'elements')
-    # For each element: set XH_ratio (mass ratio to H), X_ppmw, or X_kg.
-    # For H: set H_oceans, H_ppmw, or H_kg.
+    # Each element: X_mode sets interpretation, X_budget sets the value
     [planet.elements]
         H_mode          = "oceans"
         H_budget        = 0.0
@@ -204,10 +203,10 @@
 # Interior structure (hydrostatic equilibrium & composition)
 [interior_struct]
     module              = "zalmoxis"      # zalmoxis | dummy | spider
-    core_frac           = 0.325           # core fraction (radius or mass, see core_frac_mode)
     core_frac_mode      = "mass"          # "radius" | "mass"; "mass" requires zalmoxis or dummy
-    core_density        = "self"          # core density [kg m-3]; "self" = set by zalmoxis
-    core_heatcap        = "self"          # core heat capacity [J K-1 kg-1]; "self" = set by zalmoxis
+    core_frac           = 0.325           # radius or mass fraction, depending on core_frac_mode
+    core_density        = "self"          # core density [kg m-3]; "self" = set by zalmoxis/dummy
+    core_heatcap        = "self"          # core heat capacity [J K-1 kg-1]; "self" = set by zalmoxis/dummy
     update_dphi_abs     = 0.05            # trigger on absolute global melt fraction change
     update_dtmagma_frac = 0.05            # trigger on relative T_magma change
     update_interval     = 1e9             # max time between structure updates [yr]; 0 = init only
@@ -228,31 +227,31 @@
 
     # ── Dummy module ─────────────────────────────────────────────────
     [interior_energetics.dummy]
-        mantle_tliq   = 2700.0     # liquidus [K]
-        mantle_tsol   = 1700.0     # solidus [K]
-        mantle_rho    = 4550.0     # mantle density [kg m-3]
-        mantle_cp     = 1792.0     # mantle heat capacity [J K-1 kg-1]
-        tmagma_atol   = 30.0       # max absolute T_surf change per step [K]
-        tmagma_rtol   = 0.05       # max relative T_surf change per step
-        heat_internal = 0.0        # internal heating rate [W kg-1]
+        mantle_tliq   = 2700.0             # liquidus [K]
+        mantle_tsol   = 1700.0             # solidus [K]
+        mantle_rho    = 4550.0             # mantle density [kg m-3]
+        mantle_cp     = 1792.0             # mantle heat capacity [J K-1 kg-1]
+        tmagma_atol   = 30.0               # max absolute T_surf change per step [K]
+        tmagma_rtol   = 0.05               # max relative T_surf change per step
+        heat_internal = 0.0                # internal heating rate [W kg-1]
 
     # ── Shared parameters (Aragog + SPIDER) ──────────────────────────
-    num_levels       = 100         # radial grid levels
-    num_tolerance    = 1.0e-8      # solver tolerance
-    trans_conduction = true        # conductive heat transfer
-    trans_convection = true        # convective heat transfer (MLT)
-    trans_grav_sep   = true        # gravitational separation
-    trans_mixing     = true        # chemical mixing flux
-    heat_tidal       = false       # tidal heating
-    rfront_loc       = 0.6         # rheological transition centre (melt fraction)
-    rfront_wid       = 0.2         # rheological transition width (melt fraction)
-    grain_size       = 0.1         # crystal grain size [m]
-    flux_guess       = -1          # initial F_atm [W m-2]; <0 = sigma*T^4
-    heat_radiogenic  = false       # radiogenic heating
-    radio_tref       = 4.55        # reference age for concentrations [Gyr]
-    radio_K          = 310.0       # potassium concentration [ppmw, all isotopes]
-    radio_U          = 0.031       # uranium concentration [ppmw, all isotopes]
-    radio_Th         = 0.124       # thorium concentration [ppmw, all isotopes]
+    num_levels        = 100                # radial grid levels
+    num_tolerance     = 1.0e-8             # solver tolerance
+    trans_conduction  = true               # conductive heat transfer
+    trans_convection  = true               # convective heat transfer (MLT)
+    trans_grav_sep    = true               # gravitational separation
+    trans_mixing      = true               # chemical mixing flux
+    heat_tidal        = false              # tidal heating
+    rfront_loc        = 0.6                # rheological transition centre (melt fraction)
+    rfront_wid        = 0.2                # rheological transition width (melt fraction)
+    grain_size        = 0.1                # crystal grain size [m]
+    flux_guess        = -1                 # initial F_atm [W m-2]; <0 = sigma*T^4
+    heat_radiogenic   = false              # radiogenic heating
+    radio_tref        = 4.55               # reference age for concentrations [Gyr]
+    radio_K           = 310.0              # potassium concentration [ppmw, all isotopes]
+    radio_U           = 0.031              # uranium concentration [ppmw, all isotopes]
+    radio_Th          = 0.124              # thorium concentration [ppmw, all isotopes]
 
     # ── Aragog-only ──────────────────────────────────────────────────
     [interior_energetics.aragog]

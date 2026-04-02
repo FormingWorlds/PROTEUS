@@ -41,7 +41,6 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 #     values = [-3, -2, -1]
 
 # Planet bulk S/H ratio set directly
-# ["delivery.elements.SH_ratio"]
 #     method = "direct"
 #     values = [2, 4, 6, 8]
 

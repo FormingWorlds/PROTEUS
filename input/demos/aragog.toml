@@ -147,13 +147,9 @@ version = "2.0"
         N_budget        = 1.0
         S_mode          = "ppmw"
         S_budget        = 1.0
-        #H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
-        # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
-        # NH_ratio    = 0.0       # N/H mass ratio in mantle/atmosphere system
 
-        #SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [planet.gas_prs]

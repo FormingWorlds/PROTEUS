@@ -68,8 +68,8 @@ def test_integration_aragog_agni_multi_timestep(proteus_multi_timestep_run):
         atmos_clim__module='agni',
         # Ensure first atmosphere has at least one 'safe' gas (dry + opacity + thermo)
         # so AGNI's allocate! check passes. N2 is dry and has opacity in Frostflow.
-        delivery__initial='volatiles',
-        delivery__volatiles__N2=0.01,
+        planet__volatile_mode='gas_prs',
+        planet__gas_prs__N2=0.01,
         # Allow allocate when composition has no AGNI "safe" gas (e.g. spectral set
         # or first-step state). Prefer fixing composition; this is a fallback for CI.
         atmos_clim__agni__check_safe_gas=False,

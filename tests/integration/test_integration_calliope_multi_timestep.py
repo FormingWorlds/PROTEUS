@@ -57,8 +57,8 @@ def test_integration_calliope_multi_timestep(proteus_multi_timestep_run):
         outgas__module='calliope',
         outgas__fO2_shift_IW=0,  # No fO2 shift
         # Set initial volatile inventory
-        delivery__module='none',
-        delivery__initial='elements',
+        accretion__module='none',
+        planet__volatile_mode='elements',
         planet__elements__H_mode="ppmw", planet__elements__H_budget=3e3,  # Hydrogen inventory
         planet__elements__C_mode="C/H", planet__elements__C_budget=1.0,  # C/H ratio
         planet__elements__N_mode="ppmw", planet__elements__N_budget=100.0,  # Nitrogen inventory
@@ -167,8 +167,8 @@ def test_integration_calliope_extended_run(proteus_multi_timestep_run):
         outgas__module='calliope',
         outgas__fO2_shift_IW=0,
         # Set initial volatile inventory
-        delivery__module='none',
-        delivery__initial='elements',
+        accretion__module='none',
+        planet__volatile_mode='elements',
         planet__elements__H_mode="ppmw", planet__elements__H_budget=3e3,
         planet__elements__C_mode="C/H", planet__elements__C_budget=1.0,
         planet__elements__N_mode="ppmw", planet__elements__N_budget=100.0,

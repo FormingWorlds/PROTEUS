@@ -187,13 +187,9 @@ version = "2.0"
         N_budget        = 0.5
         S_mode          = "S/H"
         S_budget        = 2.0
-        #H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
-        # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
-        # N_ppmw      = 0.5      # Nitrogen inventory in ppmw relative to mantle mass
 
-        # S_ppmw      = 2.0     # Sulfur inventory in ppmw relative to mantle mass
 
 [observe]
     synthesis = "none"

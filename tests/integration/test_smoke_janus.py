@@ -84,24 +84,26 @@ version = "2.0"
         H_tide = 0.0
         Phi_tide = "<0.3"
 
-[struct]
+[planet]
     mass_tot = 1.0
+    volatile_mode = "gas_prs"
+    tsurf_init = 2000.0
+
+[interior_struct]
+    module = "spider"
     core_frac = 0.5
+    core_frac_mode = "radius"
     core_density = 8000.0
     core_heatcap = 1000.0
 
-[interior]
+[interior_energetics]
     module = "dummy"
     grain_size = 0.01
-    F_initial = 100.0
+    flux_guess = 100.0
     heat_radiogenic = false
     heat_tidal = false
     rfront_loc = 0.4
     rfront_wid = 0.1
-    bulk_modulus = 2e11
-    melting_dir = "Monteux-600"
-    [interior.dummy]
-        tsurf_init = 2000.0
 
 [atmos_clim]
     module = "janus"
@@ -143,24 +145,20 @@ version = "2.0"
         include_CH4 = false
         include_CO = false
 
-[delivery]
+[accretion]
     module = "none"
-    initial = "volatiles"
-    radio_tref = 4.5
-    radio_K = 0.0
-    radio_U = 0.0
-    radio_Th = 0.0
-    [delivery.gas_prs]
-        H2O = 100.0
-        CO2 = 10.0
-        N2 = 0.0
-        S2 = 0.0
-        SO2 = 0.0
-        H2S = 0.0
-        NH3 = 0.0
-        H2 = 0.0
-        CH4 = 0.0
-        CO = 0.0
+
+[planet.gas_prs]
+    H2O = 100.0
+    CO2 = 10.0
+    N2 = 0.0
+    S2 = 0.0
+    SO2 = 0.0
+    H2S = 0.0
+    NH3 = 0.0
+    H2 = 0.0
+    CH4 = 0.0
+    CO = 0.0
 
 [escape]
     module = "dummy"
