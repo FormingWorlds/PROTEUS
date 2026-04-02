@@ -77,7 +77,7 @@ version = "2.0"
 
 [planet]
     mass_tot = 3.02       # M_earth
-    volatile_mode = 'elements'        # "elements" | "volatiles"
+    volatile_mode = 'elements'        # "elements" | "gas_prs"
 
 [interior_struct]
     core_frac    = 0.55      # non-dim., radius fraction

@@ -11,9 +11,9 @@
 #
 [planet]
     mass_tot = 5.0       # M_earth
-    volatile_mode = 'elements'        # "elements" | "volatiles"
+    volatile_mode = 'elements'        # "elements" | "gas_prs"
 
-[interior_struct]   planetary structure (mass, radius)
+[interior_struct]   # planetary structure (mass, radius)
 #   [atmos]    atmosphere parameters, model selection
 #   [escape]   escape parameters, model selection
 #   [interior_energetics] magma ocean model selection and parameters

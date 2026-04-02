@@ -25,7 +25,7 @@ def init_orbit(handler: Proteus):
         return
 
     log.info(f"Preparing tides model '{module}'")
-    if not handler.config.interior_energetics.tidal_heat:
+    if not handler.config.interior_energetics.heat_tidal:
         log.warning('Tidal heating is disabled within interior configuration!')
 
     if module == 'lovepy':
