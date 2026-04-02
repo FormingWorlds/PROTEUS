@@ -782,7 +782,7 @@ def _try_spider(
                 '-ic_adiabat_entropy',
                 str(config.interior_energetics.spider.ini_entropy),
                 '-ic_dsdr',
-                str(config.interior_energetics.spider.ini_dsdr),  # initial dS/dr everywhere
+                '-4.698e-6',  # initial dS/dr [J/kg/K/m] (slight superadiabatic gradient)
             ]
         )
 

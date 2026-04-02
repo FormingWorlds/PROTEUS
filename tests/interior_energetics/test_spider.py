@@ -904,7 +904,6 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior_energetics.tmagma_rtol = 0.02
     config.interior_energetics.tmagma_atol = 100.0
     config.interior_energetics.spider.ini_entropy = 2993.0
-    config.interior_energetics.spider.ini_dsdr = 0.0
     config.interior_energetics.mixing_length = 'nearest'
     config.interior_energetics.spider.solver_type = 'cv_bdf'
     config.interior_energetics.trans_conduction = True

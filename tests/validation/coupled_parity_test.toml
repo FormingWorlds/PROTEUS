@@ -146,7 +146,6 @@ version = "2.0"
     kappah_floor    = 100.0       # phase-dependent eddy diffusivity floor
 
     [interior_energetics.spider]
-        ini_dsdr      = -1.0e-6
         mixing_length = 2
         tolerance_rel = 1e-4
 

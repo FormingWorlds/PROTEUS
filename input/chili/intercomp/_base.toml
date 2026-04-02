@@ -165,7 +165,6 @@ rfront_loc = 0.5
 rfront_wid = 0.2
 
 [interior_energetics.spider]
-ini_dsdr = -4.698e-06
 num_levels = 150
 mixing_length = 2
 tolerance = 1e-08

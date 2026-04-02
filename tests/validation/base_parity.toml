@@ -154,7 +154,6 @@ version = "2.0"
     rfront_wid    = 0.15
 
     [interior_energetics.spider]
-        ini_dsdr      = -1.0e-6
         mixing_length = 2
         tolerance_rel = 1e-4
 

@@ -31,8 +31,6 @@ class Spider:
     ----------
     tolerance_rel: float
         Relative solver tolerance (SUNDIALS-specific).
-    ini_dsdr: float
-        Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     solver_type: str
         Numerical integrator. Choices: 'adams', 'bdf'.
     matprop_smooth_width: float
@@ -40,7 +38,6 @@ class Spider:
     """
 
     ini_entropy: float = field(default=3200.0, validator=gt(200.0))
-    ini_dsdr: float = field(default=-4.698e-6, validator=lt(0))
     tolerance_rel: float = field(default=1e-10, validator=gt(0))
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
     matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
@@ -227,4 +224,4 @@ class Interior:
     # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from
     # 1 (liquid) to 0 (solid) at the rheological transition. Passed to both
     # SPIDER (-kappah_floor) and Aragog (kappah_floor in energy config).
-    kappah_floor: float = field(default=0.0, validator=ge(0))
+    kappah_floor: float = field(default=10.0, validator=ge(0))

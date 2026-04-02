@@ -157,7 +157,6 @@ rheo_phi_loc = 0.3
 rheo_phi_wid = 0.15
 
 [interior_energetics.spider]
-ini_dsdr = -4.698e-06
 num_levels = 150
 mixing_length = 2
 tolerance = 1e-08
