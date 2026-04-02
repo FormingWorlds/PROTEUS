@@ -822,6 +822,11 @@ def _try_spider(
         eos_dir = dirs['spider_eos_dir']
         log.info('Using Zalmoxis-generated SPIDER EOS tables from %s', eos_dir)
     else:
+        if config.interior_struct.eos_dir is None:
+            raise FileNotFoundError(
+                'interior_struct.eos_dir must be set when no Zalmoxis-generated '
+                'EOS tables are available. Set eos_dir to a valid EOS folder name.'
+            )
         eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior_struct.eos_dir, 'P-S')
         if not os.path.isdir(eos_dir):
             # Fall back to SPIDER's local lookup_data (uses legacy directory name)

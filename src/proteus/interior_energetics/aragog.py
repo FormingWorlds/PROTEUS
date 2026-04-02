@@ -415,6 +415,11 @@ class AragogRunner:
             solidus_path = sol_file
             liquidus_path = liq_file
         else:
+            if config.interior_struct.melting_dir is None:
+                raise ValueError(
+                    'interior_struct.melting_dir must be set for non-PALEOS EOS. '
+                    'Provide a melting curve folder name (e.g. "Monteux-600").'
+                )
             MELTING_DIR = FWL_DATA_DIR / 'interior_lookup_tables/Melting_curves/'
             solidus_path = MELTING_DIR / config.interior_struct.melting_dir / 'solidus_P-T.dat'
             liquidus_path = MELTING_DIR / config.interior_struct.melting_dir / 'liquidus_P-T.dat'

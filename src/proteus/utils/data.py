@@ -1207,6 +1207,9 @@ def download_melting_curves(config: Config, clean=False):
     Download melting curve data
     """
     log.debug('Download melting curve data')
+    if config.interior_struct.melting_dir is None:
+        log.debug('melting_dir is None, skipping melting curve download')
+        return
     dir = 'Melting_curves/' + config.interior_struct.melting_dir
 
     data_dir = GetFWLData() / 'interior_lookup_tables'
@@ -1440,8 +1443,8 @@ def _get_sufficient(config: Config, clean: bool = False):
         download_interior_lookuptables(clean=clean)
         download_melting_curves(config, clean=clean)
 
-    # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir)
-    if config.interior_energetics.module in ('spider', 'aragog'):
+    # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir, skip if None/PALEOS)
+    if config.interior_energetics.module in ('spider', 'aragog') and config.interior_struct.eos_dir is not None:
         download_eos_dynamic(config.interior_struct.eos_dir)
 
     # EOS for Zalmoxis (derived from struct.zalmoxis config, not struct.eos_dir)
@@ -1878,6 +1881,8 @@ def get_zalmoxis_melting_curves(config: Config):
     tuple
         (solidus_func, liquidus_func) interpolation functions T(P) [K].
     """
+    if config.interior_struct.melting_dir is None:
+        return None
     melting_curves_folder = (
         FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / config.interior_struct.melting_dir
     )

@@ -185,8 +185,8 @@ class Struct:
     core_density = field(default=10738.33)
     core_heatcap = field(default=880.0)
 
-    melting_dir: str = field(default='Monteux-600')
-    eos_dir: str = field(default='WolfBower2018_MgSiO3')
+    melting_dir = field(default=None, converter=none_if_none)
+    eos_dir = field(default=None, converter=none_if_none)
     def __attrs_post_init__(self):
         if self.update_interval > 0 and self.update_min_interval > self.update_interval:
             raise ValueError(
@@ -219,4 +219,20 @@ class Struct:
             elif not isinstance(val, (int, float)) or val <= 0:
                 raise ValueError(
                     f'`{param_name}` must be "self" or a positive number, got {val!r}'
+                )
+
+        # melting_dir and eos_dir: required for the spider struct module
+        # (Zalmoxis and dummy derive EOS from their own config)
+        if self.module == 'spider':
+            if self.melting_dir is None:
+                raise ValueError(
+                    'interior_struct.melting_dir must be set when module = "spider". '
+                    'Provide a melting curve folder name (e.g. "Monteux-600") from '
+                    'FWL_DATA/interior_lookup_tables/Melting_curves/.'
+                )
+            if self.eos_dir is None:
+                raise ValueError(
+                    'interior_struct.eos_dir must be set when module = "spider". '
+                    'Provide an EOS folder name (e.g. "WolfBower2018_MgSiO3") from '
+                    'FWL_DATA/interior_lookup_tables/EOS/dynamic/.'
                 )

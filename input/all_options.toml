@@ -201,7 +201,7 @@
 
 # ----------------------------------------------------
 
-# Interior structure (hydrostatic equilibrium, composition)
+# Interior structure (hydrostatic equilibrium & composition)
 [interior_struct]
     module              = "zalmoxis"      # zalmoxis | dummy | spider
     core_frac           = 0.325           # core fraction (radius or mass, see core_frac_mode)
@@ -212,16 +212,17 @@
     update_dtmagma_frac = 0.05            # trigger on relative T_magma change
     update_interval     = 1e9             # max time between structure updates [yr]; 0 = init only
     update_min_interval = 0               # min time between updates [yr]
-    melting_dir         = "Monteux-600"   # melting curve folder in FWL_DATA
-    eos_dir             = "PALEOS_MgSiO3" # EOS folder in FWL_DATA
+
+    melting_dir         = "none"          # legacy, if EOS != PALEOS: melting curve folder in FWL_DATA
+    eos_dir             = "none"          # legacy, if EOS != PALEOS: EOS folder in FWL_DATA
 
     # Interior structure & compositional properties set by zalmoxis
     [interior_struct.zalmoxis]
-        core_eos                   = "PALEOS:iron"   # "<source>:<material>", recommended: "PALEOS:iron"
-        mantle_eos                 = "PALEOS:MgSiO3" # "<source>:<material>", recommended: "PALEOS:MgSiO3"
-        ice_layer_eos              = "none"          # same as the two above; "none" = 2-layer model (core+mantle)
+        core_eos        = "PALEOS:iron"   # "<source>:<material>", recommended: "PALEOS:iron"
+        mantle_eos      = "PALEOS:MgSiO3" # "<source>:<material>", recommended: "PALEOS:MgSiO3"
+        ice_layer_eos   = "none"          # same as the two above; "none" = 2-layer model (core+mantle)
 
-# Interior energy transport (magma ocean evolution)
+# Interior energy transport (mantle & core thermal evolution)
 [interior_energetics]
     module          = "spider"     # spider | aragog | dummy
 
