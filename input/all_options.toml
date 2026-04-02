@@ -65,7 +65,7 @@
             enabled  = true
             phi_crit = 0.01        # stop when global melt fraction < phi_crit
 
-        [params.stop.radeqm]      # radiative equilibrium criterion
+        [params.stop.radeqm]       # radiative equilibrium criterion
             enabled = true
             atol    = 0.2          # |F_int - F_atm| tolerance [W m-2]
             rtol    = 1e-3         # relative tolerance
@@ -98,7 +98,7 @@
     volatile_mode       = 'elements'  # set volatile inventory by: 'elements' | 'gas_prs'
 
     # Interior reservoirs participating in volatile exchange
-    volatile_reservoir   = "mantle"    # mantle | mantle+core
+    volatile_reservoir   = "mantle"   # mantle | mantle+core
 
     # Element abundances (used when volatile_mode = 'elements')
     # For each element: set XH_ratio (mass ratio to H), X_ppmw, or X_kg.
@@ -155,14 +155,15 @@
         rot_pcntle       = 50.0      # rotation percentile
         rot_period       = "none"    # rotation period [days]; overrides rot_pcntle
         tracks           = "spada"   # evolution tracks: spada | baraffe
-        age_now          = 4.567     # current age of star [Gyr]
-        spectrum_source  = "solar"   # solar | muscles | phoenix
-        star_name        = "sun"     # e.g. 'sun', 'Sun0.6Ga', 'trappist-1', 'gj1214'
+
+        age_now          = 4.567     # current age of star [Gyr] (= absolute age of spectrum)
+        spectrum_source  = "phoenix" # solar | muscles | phoenix
+        star_name        = "none"    # if spectrum_source == muscles, e.g. 'sun', 'Sun0.6Ga', 'trappist-1', 'gj1214'
         star_path        = "none"    # custom spectrum file path (overrides source)
 
-        # PHOENIX synthetic spectrum parameters (only used if spectrum_source == "phoenix")
-        phoenix_FeH      = 0.0       # metallicity [Fe/H]
-        phoenix_alpha    = 0.0       # alpha enhancement [alpha/M]
+        # PHOENIX synthetic spectrum parameters (if spectrum_source == "phoenix")
+        phoenix_FeH      = 0.0       # metallicity [Fe/H]; 0.0 == solar
+        phoenix_alpha    = 0.0       # alpha enhancement [alpha/M]; 0.0 == solar
         phoenix_radius   = "none"    # stellar radius [R_sun]; none = from MORS
         phoenix_log_g    = "none"    # surface gravity [dex]; none = from MORS
         phoenix_Teff     = "none"    # effective temperature [K]; none = from MORS
@@ -196,13 +197,13 @@
         Imk2            = 0.0        # fixed Im(k2) love number (must be <= 0)
 
     [orbit.lovepy]
-        visc_thresh     = 1e9           # minimum viscosity for tidal heating [Pa s]
+        visc_thresh     = 1e9        # minimum viscosity for (solid) tidal heating [Pa s]
 
 # ----------------------------------------------------
 
 # Interior structure (hydrostatic equilibrium, composition)
 [interior_struct]
-    module              = "zalmoxis"      # dummy | spider | zalmoxis
+    module              = "zalmoxis"      # zalmoxis | dummy | spider
     core_frac           = 0.325           # core fraction (radius or mass, see core_frac_mode)
     core_frac_mode      = "mass"          # "radius" | "mass"; "mass" requires zalmoxis or dummy
     core_density        = "self"          # core density [kg m-3]; "self" = set by zalmoxis

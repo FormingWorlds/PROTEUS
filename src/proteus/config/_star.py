@@ -12,10 +12,11 @@ def valid_mors(instance, attribute, value):
 
     if (instance.mors.age_now is None) or (instance.mors.age_now <= 0):
         raise ValueError('mors.age_now must be > 0')
-    if instance.mors.star_name is None:
-        raise ValueError('Must provide mors.star_name')
-
     src = instance.mors.spectrum_source
+
+    # star_name required for solar and muscles spectra (not for phoenix)
+    if instance.mors.star_name is None and src in ('solar', 'muscles'):
+        raise ValueError('Must provide mors.star_name for spectrum_source=%s' % src)
     if src == 'phoenix':
         if instance.mors.phoenix_alpha is None or instance.mors.phoenix_FeH is None:
             raise ValueError(

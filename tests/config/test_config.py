@@ -324,17 +324,17 @@ def test_star_mors_invalid_age():
 
 @pytest.mark.unit
 def test_star_mors_missing_spec():
-    """Test MORS validator requires star_name."""
+    """Test MORS validator requires star_name for solar/muscles spectra."""
     from proteus.config._star import valid_mors
 
     config = SimpleNamespace(
         module='mors',
         mors=SimpleNamespace(
-            age_now=5.0,  # Valid age
-            star_name=None,  # Invalid: missing star name
+            age_now=5.0,
+            star_name=None,  # Invalid: missing for solar source
             rot_pcntle=50.0,
             rot_period=None,
-            spectrum_source=None,
+            spectrum_source='solar',
         ),
     )
 
