@@ -129,13 +129,19 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
         # Solubility law (if configured)
         sol_key = _sol_map.get(proteus_name)
-        if sol_key and sol_key in solubility_models:
-            kwargs['solubility'] = solubility_models[sol_key]
+        if sol_key:
+            if sol_key in solubility_models:
+                kwargs['solubility'] = solubility_models[sol_key]
+            else:
+                log.warning('Solubility model %r not found for %s; using no solubility', sol_key, proteus_name)
 
         # Real gas EOS (if configured)
         eos_key = _eos_map.get(proteus_name)
-        if eos_key and eos_key in eos_models:
-            kwargs['activity'] = eos_models[eos_key]
+        if eos_key:
+            if eos_key in eos_models:
+                kwargs['activity'] = eos_models[eos_key]
+            else:
+                log.warning('EOS model %r not found for %s; using ideal gas', eos_key, proteus_name)
 
         species_list.append(ChemicalSpecies.create_gas(atm_name, **kwargs))
 
@@ -241,7 +247,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     P_total = 0.0
     for atm_name, p_bar in quick_look.items():
         proteus_name = _reverse_map.get(atm_name.replace('_g', ''))
-        if proteus_name and proteus_name in gas_list:
+        if proteus_name is None:
+            log.debug('Atmodeller quick_look key %r not in species map; skipping', atm_name)
+            continue
+        if proteus_name not in gas_list:
+            continue
             p_val = float(np.squeeze(p_bar))
             hf_row[f'{proteus_name}_bar'] = p_val
             P_total += p_val
@@ -265,7 +275,6 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         for s in gas_list:
             hf_row[f'{s}_vmr'] = 0.0
 
-    # Dissolved masses from atmodeller output (thermodynamically consistent)
     # Dissolved masses from atmodeller output (thermodynamically consistent)
     # Falls back to kg_total - kg_atm for species not in the solve or without
     # a dissolved_mass output (e.g., gas-only species like H2S, NH3)
