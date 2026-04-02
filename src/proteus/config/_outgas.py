@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from attrs import define, field, validators
 
+from ._converters import none_if_none
+
 
 @define
 class Calliope:
@@ -72,8 +74,16 @@ class Atmodeller:
     solver_mode : str
         Root-finding mode: 'robust' (slower compile, better convergence)
         or 'basic' (faster compile, less robust).
+    solver_atol : float
+        Absolute tolerance for the root-finder.
+    solver_max_steps : int
+        Maximum iterations for the root-finder.
+    solver_multistart : int
+        Number of random restarts for the root-finder.
     include_condensates : bool
         Enable condensate phases (graphite, etc.) in the equilibrium.
+    T_floor : float
+        Temperature floor [K]. Outgassing skipped below this temperature.
     solubility_H2O : str
         Solubility law for H2O. See atmodeller.solubility.library.
     solubility_CO2 : str
@@ -84,18 +94,28 @@ class Atmodeller:
         Solubility law for N2.
     solubility_S2 : str
         Solubility law for S2.
+    solubility_CO : str
+        Solubility law for CO. 'none' = no solubility.
+    solubility_CH4 : str
+        Solubility law for CH4. 'none' = no solubility.
     """
 
     solver_mode: str = field(
         default='robust',
         validator=validators.in_(('robust', 'basic')),
     )
+    solver_atol: float = field(default=1e-6, validator=validators.gt(0))
+    solver_max_steps: int = field(default=256, validator=validators.gt(0))
+    solver_multistart: int = field(default=10, validator=validators.gt(0))
     include_condensates: bool = True
+    T_floor: float = field(default=700.0, validator=validators.ge(0))
     solubility_H2O: str = 'H2O_peridotite_sossi23'
     solubility_CO2: str = 'CO2_basalt_dixon95'
     solubility_H2: str = 'H2_basalt_hirschmann12'
     solubility_N2: str = 'N2_basalt_dasgupta22'
     solubility_S2: str = 'S2_sulfide_basalt_boulliung23'
+    solubility_CO: str = field(default='none', converter=none_if_none)
+    solubility_CH4: str = field(default='none', converter=none_if_none)
 
 
 @define

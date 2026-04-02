@@ -288,7 +288,19 @@
         solubility            = true         # enable solubility
 
     [outgas.atmodeller]
-        some_parameter        = "some_value"
+        solver_mode           = "robust"     # robust (better convergence) | basic (faster)
+        solver_atol           = 1e-6         # root-finder absolute tolerance
+        solver_max_steps      = 256          # root-finder max iterations
+        solver_multistart     = 10           # number of random restarts
+        include_condensates   = true         # graphite condensation
+        T_floor               = 700.0        # skip outgassing below this T [K]
+        solubility_H2O        = "H2O_peridotite_sossi23"
+        solubility_CO2        = "CO2_basalt_dixon95"
+        solubility_H2         = "H2_basalt_hirschmann12"
+        solubility_N2         = "N2_basalt_dasgupta22"
+        solubility_S2         = "S2_sulfide_basalt_boulliung23"
+        solubility_CO         = "none"       # none | CO_basalt_armstrong15 | CO_basalt_yoshioka19
+        solubility_CH4        = "none"       # none | CH4_basalt_ardia13
 
 # Atmosphere climate (radiative-convective structure)
 [atmos_clim]

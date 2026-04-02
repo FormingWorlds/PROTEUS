@@ -63,7 +63,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'H2': atm_config.solubility_H2,
         'N2': atm_config.solubility_N2,
         'S2': atm_config.solubility_S2,
+        'CO': atm_config.solubility_CO,
+        'CH4': atm_config.solubility_CH4,
     }
+    # Remove None entries (solubility disabled for that species)
+    _sol_map = {k: v for k, v in _sol_map.items() if v is not None}
 
     # Only include species whose constituent elements ALL have non-zero budgets.
     # Atmodeller's solver fails when the species network introduces elements
@@ -164,11 +168,28 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         log.warning('No volatile element budgets above threshold; skipping atmodeller')
         return
 
+    # Temperature floor guard
+    if T_magma < atm_config.T_floor:
+        log.warning(
+            'T_magma=%.0f K below T_floor=%.0f K; skipping atmodeller',
+            T_magma, atm_config.T_floor,
+        )
+        return
+
     log.info(
         'Atmodeller solve: T=%.0f K, Phi=%.2f, elements=%s',
         T_magma,
         Phi_global,
         {k: f'{v:.2e}' for k, v in mass_constraints.items()},
+    )
+
+    # Build solver parameters from config
+    from atmodeller.containers import SolverParameters
+
+    solver_params = SolverParameters(
+        atol=atm_config.solver_atol,
+        max_steps=atm_config.solver_max_steps,
+        multistart=atm_config.solver_multistart,
     )
 
     # Solve equilibrium
@@ -178,6 +199,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             fugacity_constraints=fugacity_constraints,
             mass_constraints=mass_constraints,
             solver=atm_config.solver_mode,
+            solver_parameters=solver_params,
         )
     except Exception as e:
         log.error('Atmodeller solve failed: %s', e)
