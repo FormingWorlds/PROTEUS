@@ -53,6 +53,19 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     atm_config = config.outgas.atmodeller
     solubility_models = get_solubility_models()
 
+    # Real gas EOS models (None = ideal gas)
+    from atmodeller.eos import get_eos_models
+
+    eos_models = get_eos_models()
+    _eos_map = {
+        'H2O': atm_config.eos_H2O,
+        'CO2': atm_config.eos_CO2,
+        'H2': atm_config.eos_H2,
+        'CH4': atm_config.eos_CH4,
+        'CO': atm_config.eos_CO,
+    }
+    _eos_map = {k: v for k, v in _eos_map.items() if v is not None}
+
     # Build species network
     species_list = []
 
@@ -81,8 +94,10 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'CO': {'C'},
         'CH4': {'H', 'C'},
         'N2': {'N'},
+        'NH3': {'H', 'N'},
         'S2': {'S'},
         'SO2': {'S'},
+        'H2S': {'H', 'S'},
         'O2': set(),  # always included for fO2
     }
 
@@ -101,21 +116,28 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
     _atm_gas_species = {
         'H2O': 'H2O', 'H2': 'H2', 'CO2': 'CO2', 'CO': 'CO',
-        'CH4': 'CH4', 'N2': 'N2', 'S2': 'S2', 'SO2': 'SO2', 'O2': 'O2',
+        'CH4': 'CH4', 'N2': 'N2', 'NH3': 'H3N', 'S2': 'S2',
+        'SO2': 'SO2', 'H2S': 'H2S', 'O2': 'O2',
     }
 
     for proteus_name, atm_name in _atm_gas_species.items():
         if proteus_name not in active_species:
             continue
+
+        # Build kwargs for create_gas
+        kwargs = {}
+
+        # Solubility law (if configured)
         sol_key = _sol_map.get(proteus_name)
         if sol_key and sol_key in solubility_models:
-            species_list.append(
-                ChemicalSpecies.create_gas(
-                    atm_name, solubility=solubility_models[sol_key]
-                )
-            )
-        else:
-            species_list.append(ChemicalSpecies.create_gas(atm_name))
+            kwargs['solubility'] = solubility_models[sol_key]
+
+        # Real gas EOS (if configured)
+        eos_key = _eos_map.get(proteus_name)
+        if eos_key and eos_key in eos_models:
+            kwargs['activity'] = eos_models[eos_key]
+
+        species_list.append(ChemicalSpecies.create_gas(atm_name, **kwargs))
 
     log.info(
         'Atmodeller species: %s (active elements: %s)',
@@ -188,6 +210,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
     solver_params = SolverParameters(
         atol=atm_config.solver_atol,
+        rtol=atm_config.solver_rtol,
         max_steps=atm_config.solver_max_steps,
         multistart=atm_config.solver_multistart,
     )
@@ -242,12 +265,21 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         for s in gas_list:
             hf_row[f'{s}_vmr'] = 0.0
 
-    # Dissolved masses: compute from total - atmospheric
-    for s in gas_list:
-        kg_total = float(hf_row.get(f'{s}_kg_total', 0.0))
-        kg_atm = float(hf_row.get(f'{s}_kg_atm', 0.0))
-        hf_row[f'{s}_kg_liquid'] = max(0.0, kg_total - kg_atm)
-        hf_row[f'{s}_kg_solid'] = 0.0
+    # Dissolved masses from atmodeller output (thermodynamically consistent)
+    output_dict = output.asdict()
+    for proteus_name, atm_name in _atm_gas_species.items():
+        if proteus_name not in gas_list:
+            continue
+        species_key = f'{atm_name}_g'
+        if species_key in output_dict:
+            dissolved_kg = float(np.squeeze(output_dict[species_key].get('dissolved_mass', 0.0)))
+            hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, dissolved_kg)
+        else:
+            # Species not in solve; fallback to subtraction
+            kg_total = float(hf_row.get(f'{proteus_name}_kg_total', 0.0))
+            kg_atm = float(hf_row.get(f'{proteus_name}_kg_atm', 0.0))
+            hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, kg_total - kg_atm)
+        hf_row[f'{proteus_name}_kg_solid'] = 0.0
 
     # Mean molecular weight (approximate from VMRs)
     _mmw = {

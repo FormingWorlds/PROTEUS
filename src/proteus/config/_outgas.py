@@ -76,6 +76,8 @@ class Atmodeller:
         or 'basic' (faster compile, less robust).
     solver_atol : float
         Absolute tolerance for the root-finder.
+    solver_rtol : float
+        Relative tolerance for the root-finder.
     solver_max_steps : int
         Maximum iterations for the root-finder.
     solver_multistart : int
@@ -98,6 +100,16 @@ class Atmodeller:
         Solubility law for CO. 'none' = no solubility.
     solubility_CH4 : str
         Solubility law for CH4. 'none' = no solubility.
+    eos_H2O : str
+        Real gas EOS for H2O. 'none' = ideal gas.
+    eos_CO2 : str
+        Real gas EOS for CO2. 'none' = ideal gas.
+    eos_H2 : str
+        Real gas EOS for H2. 'none' = ideal gas.
+    eos_CH4 : str
+        Real gas EOS for CH4. 'none' = ideal gas.
+    eos_CO : str
+        Real gas EOS for CO. 'none' = ideal gas.
     """
 
     solver_mode: str = field(
@@ -105,6 +117,7 @@ class Atmodeller:
         validator=validators.in_(('robust', 'basic')),
     )
     solver_atol: float = field(default=1e-6, validator=validators.gt(0))
+    solver_rtol: float = field(default=1e-6, validator=validators.gt(0))
     solver_max_steps: int = field(default=256, validator=validators.gt(0))
     solver_multistart: int = field(default=10, validator=validators.gt(0))
     include_condensates: bool = True
@@ -116,6 +129,11 @@ class Atmodeller:
     solubility_S2 = field(default='S2_sulfide_basalt_boulliung23', converter=none_if_none)
     solubility_CO = field(default='CO_basalt_yoshioka19', converter=none_if_none)
     solubility_CH4 = field(default='CH4_basalt_ardia13', converter=none_if_none)
+    eos_H2O = field(default=None, converter=none_if_none)
+    eos_CO2 = field(default=None, converter=none_if_none)
+    eos_H2 = field(default=None, converter=none_if_none)
+    eos_CH4 = field(default=None, converter=none_if_none)
+    eos_CO = field(default=None, converter=none_if_none)
 
 
 @define
