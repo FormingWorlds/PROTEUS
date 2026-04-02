@@ -794,8 +794,9 @@ def _try_spider(
     call_sequence.extend(['-ts_sundials_rtol', str(spider_rtol)])
     call_sequence.extend(['-ts_sundials_type', str(config.interior_energetics.spider.solver_type)])
 
-    # Rollback
-    call_sequence.extend(['-activate_poststep', '-activate_rollback'])
+    # Rollback (only add if not already set by IC_INTERIOR=2 branch above)
+    if IC_INTERIOR != 2:
+        call_sequence.extend(['-activate_poststep', '-activate_rollback'])
 
     # Dimensional scalings
     call_sequence.extend(['-radius0', '63710000.0'])

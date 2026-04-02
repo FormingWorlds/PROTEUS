@@ -215,7 +215,7 @@ def determine_interior_radius_with_dummy(
     run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
     update_gravity(hf_row)
 
-    calc_target_elemental_inventories(config, hf_row)
+    calc_target_elemental_inventories(dirs, config, hf_row)
     update_planet_mass(hf_row)
 
     log.info('Dummy structure solve complete')

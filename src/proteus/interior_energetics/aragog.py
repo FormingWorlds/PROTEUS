@@ -208,7 +208,7 @@ class AragogRunner:
         if config.interior_struct.module == 'spider':
             initial_condition_temperature_profile = 3
             init_file_temperature_profile = os.path.join(
-                FWL_DATA_DIR, f'interior_lookup_tables/{None}'
+                FWL_DATA_DIR, ''
             )
         elif config.interior_struct.module == 'zalmoxis':
             _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
@@ -220,7 +220,7 @@ class AragogRunner:
                 )
             elif (
                 config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
-                and 3 == 3
+
             ):
                 # For PALEOS EOS with adiabatic IC: Aragog uses IC=3 with
                 # entropy tables for its entropy-conserving adiabat. After
@@ -233,7 +233,7 @@ class AragogRunner:
                 # Otherwise, use the initial condition from aragog config
                 initial_condition_temperature_profile = 3
                 init_file_temperature_profile = os.path.join(
-                    FWL_DATA_DIR, f'interior_lookup_tables/{None}'
+                    FWL_DATA_DIR, ''
                 )
         else:
             raise ValueError("Invalid module configuration. Expected 'spider' or 'zalmoxis'.")
@@ -671,7 +671,7 @@ class AragogRunner:
         if not (
             config.interior_struct.module == 'zalmoxis'
             and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
-            and 3 == 3
+
         ):
             return
 
