@@ -24,7 +24,10 @@
 # ----------------------------------------------------
 
 # Code execution, outputs, time-stepping, convergence
+
 [params]
+    resume          = false          # resume from previous run
+    offline         = false          # offline mode (no data downloads)
 
     [params.out]
         path        = "all_options"
@@ -64,6 +67,7 @@
         [params.stop.solid]        # solidification criterion
             enabled  = true
             phi_crit = 0.01        # stop when global melt fraction < phi_crit
+            freeze_volatiles  = false  # freeze mantle volatiles at solidification
 
         [params.stop.radeqm]       # radiative equilibrium criterion
             enabled = true
@@ -149,6 +153,7 @@
     mass                 = 1.0       # stellar mass [M_sun]
     age_ini              = 0.100     # model start age [Gyr]
     module               = "mors"    # 'mors' | 'dummy'
+    bol_scale            = 1.0       # bolometric luminosity scaling factor
 
     [star.mors]
         rot_pcntle       = 50.0      # rotation percentile
@@ -197,6 +202,7 @@
 
     [orbit.lovepy]
         visc_thresh     = 1e9        # minimum viscosity for (solid) tidal heating [Pa s]
+        ncalc           = 1000       # grid points for tidal calculation
 
 # ----------------------------------------------------
 
@@ -211,6 +217,14 @@
     update_dtmagma_frac = 0.05            # trigger on relative T_magma change
     update_interval     = 1e9             # max time between structure updates [yr]; 0 = init only
     update_min_interval = 0               # min time between updates [yr]
+    mesh_max_shift          = 0.05        # max fractional radius shift per update
+    mesh_convergence_interval = 10.0      # convergence time after mesh update [yr]
+    equilibrate_init     = false           # enable equilibration at init
+    equilibrate_max_iter = 15              # max equilibration iterations
+    equilibrate_tol      = 0.01            # equilibration convergence tolerance
+    global_miscibility   = false           # enable binodal-aware structure
+    miscibility_max_iter = 10              # max miscibility iterations
+    miscibility_tol      = 0.01            # miscibility convergence tolerance
 
     melting_dir         = "none"          # legacy, if EOS != PALEOS: melting curve folder in FWL_DATA
     eos_dir             = "none"          # legacy, if EOS != PALEOS: EOS folder in FWL_DATA
@@ -220,7 +234,9 @@
         core_eos        = "PALEOS:iron"   # "<source>:<material>", recommended: "PALEOS:iron"
         mantle_eos      = "PALEOS:MgSiO3" # "<source>:<material>", recommended: "PALEOS:MgSiO3"
         ice_layer_eos   = "none"          # same as the two above; "none" = 2-layer model (core+mantle)
-        num_levels      = 150             # Zalmoxis radial grid layers
+        mushy_zone_factor    = 0.8             # solidus/liquidus ratio for PALEOS [0.7-1.0]
+        mantle_mass_fraction = 0               # 0 = auto (1 - core_frac) for 2-layer models
+        num_levels      = 100             # radial grid levels
 
 # Interior energy transport (mantle & core thermal evolution)
 [interior_energetics]
@@ -238,6 +254,7 @@
     rfront_wid        = 0.2                # rheological transition width (melt fraction)
     grain_size        = 0.1                # crystal grain size [m]
     flux_guess        = -1                 # initial F_atm [W m-2]; <0 = sigma*T^4
+    kappah_floor      = 0.0                # eddy diffusivity floor [m^2/s]; 0 = standard MLT
     heat_radiogenic   = false              # radiogenic heating
     radio_tref        = 4.55               # reference age for concentrations [Gyr]
     radio_K           = 310.0              # potassium concentration [ppmw, all isotopes]
@@ -247,14 +264,18 @@
     # ── Aragog-only parameters ─────────────────────────────────────────
     [interior_energetics.aragog]
         initial_condition        = 3       # 1: linear | 2: from file | 3: adiabat
+        init_file                = "none"  # IC file path (for IC=2)
         basal_temperature        = 7000.0  # CMB temperature [K] (for IC=1)
         inner_boundary_condition = 1       # CMB BC: 1=core cooling | 2=flux | 3=temperature
         inner_boundary_value     = 4000    # CMB BC value [K or W m-2]
+        outer_boundary_condition = 4       # surface BC: 4=prescribed flux | 1=grey-body
         dilatation               = false   # dilatation source term
         mass_coordinates         = false   # mass coordinate mesh spacing
         tsurf_poststep_change    = 30      # max surface T change per step [K]
         event_triggering         = true    # stop solver on large T_surf jumps
         bulk_modulus             = 260e9   # Adams-Williamson bulk modulus [Pa]
+        param_utbl               = true    # ultra-thin boundary layer parameterization
+        param_utbl_const         = 1e-7    # UTBL scaling constant [K^-2]
         jax                      = false   # JAX/diffrax solver (requires jax, equinox, diffrax)
 
     # ── SPIDER-only parameters ─────────────────────────────────────────
@@ -284,6 +305,8 @@
 [outgas]
     fO2_shift_IW = 4               # redox state [log10(delta_IW)]
     module       = "calliope"      # calliope | atmodeller
+    mass_thresh  = 1e16            # minimum volatile mass threshold [kg]
+    h2_binodal   = false           # enable H2 binodal partitioning
 
     [outgas.calliope]
         include_H2O = true
@@ -344,6 +367,7 @@
         max_steps       = 70              # max solver steps per iteration
         perturb_all     = true            # full Jacobian update each step
         mlt_criterion   = "s"             # (l)edoux | (s)chwarzschild
+        check_safe_gas  = false           # validate gas composition before solve
         fastchem_floor        = 150.0     # min temperature for FastChem [K]
         fastchem_maxiter_chem = 60000     # FastChem max iterations (chemistry)
         fastchem_maxiter_solv = 20000     # FastChem max iterations (solver)
