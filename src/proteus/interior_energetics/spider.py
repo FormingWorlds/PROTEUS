@@ -126,7 +126,6 @@ def _check_eos_table_range(eos_dir: str, mesh_file: str | None, P_cmb: float):
         )
 
 
-
 # Nondimensional scaling reference (must match SPIDER call_sequence below)
 RADIUS0 = 63710000.0  # m
 
@@ -696,7 +695,7 @@ def _try_spider(
     spider_radius = hf_row['R_int']
     spider_gravity = hf_row['gravity']
     spider_coresize = coresize
-    if config.interior_struct.global_miscibility and 'R_solvus' in hf_row:
+    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
         R_solvus = hf_row['R_solvus']
         if R_solvus is not None and R_solvus < hf_row['R_int']:
             spider_radius = R_solvus
@@ -707,8 +706,7 @@ def _try_spider(
             R_cmb_actual = coresize * hf_row['R_int']
             spider_coresize = R_cmb_actual / R_solvus if R_solvus > 0 else coresize
             log.info(
-                'SPIDER domain: [%.2e, %.2e] m (solvus), '
-                'coresize=%.4f, gravity=%.2f m/s^2',
+                'SPIDER domain: [%.2e, %.2e] m (solvus), coresize=%.4f, gravity=%.2f m/s^2',
                 R_cmb_actual,
                 R_solvus,
                 spider_coresize,
@@ -776,13 +774,16 @@ def _try_spider(
             ]
         )
     else:
-        # set to adiabat
+        # Compute initial entropy from planet temperature settings (PALEOS lookup)
+        from proteus.interior_energetics.common import compute_initial_entropy
+
+        ini_entropy = compute_initial_entropy(config, hf_row)
         call_sequence.extend(
             [
                 '-ic_adiabat_entropy',
-                str(config.interior_energetics.spider.ini_entropy),
+                str(ini_entropy),
                 '-ic_dsdr',
-                '-4.698e-6',  # initial dS/dr [J/kg/K/m] (slight superadiabatic gradient)
+                '-4.698e-6',  # numerical perturbation [J/kg/K/m] for SPIDER convergence
             ]
         )
 
@@ -793,7 +794,9 @@ def _try_spider(
     # Solver tolerances
     call_sequence.extend(['-ts_sundials_atol', str(spider_atol)])
     call_sequence.extend(['-ts_sundials_rtol', str(spider_rtol)])
-    call_sequence.extend(['-ts_sundials_type', str(config.interior_energetics.spider.solver_type)])
+    call_sequence.extend(
+        ['-ts_sundials_type', str(config.interior_energetics.spider.solver_type)]
+    )
 
     # Rollback (only add if not already set by IC_INTERIOR=2 branch above)
     if IC_INTERIOR != 2:
@@ -809,9 +812,7 @@ def _try_spider(
     call_sequence.extend(['-CONDUCTION', str(int(config.interior_energetics.trans_conduction))])
     call_sequence.extend(['-CONVECTION', str(int(config.interior_energetics.trans_convection))])
     call_sequence.extend(['-MIXING', str(int(config.interior_energetics.trans_mixing))])
-    call_sequence.extend(
-        ['-SEPARATION', str(int(config.interior_energetics.trans_grav_sep))]
-    )
+    call_sequence.extend(['-SEPARATION', str(int(config.interior_energetics.trans_grav_sep))])
 
     # Tidal heating
     if config.interior_energetics.heat_tidal:
@@ -926,7 +927,10 @@ def _try_spider(
     # smoothing of material properties across liquidus and solidus
     # units of melt fraction (non-dimensional)
     call_sequence.extend(
-        ['-matprop_smooth_width', '%.6e' % (config.interior_energetics.spider.matprop_smooth_width)]
+        [
+            '-matprop_smooth_width',
+            '%.6e' % (config.interior_energetics.spider.matprop_smooth_width),
+        ]
     )
 
     # Viscosity behaviour (rheological transition location and width, melt fractions)
@@ -938,19 +942,21 @@ def _try_spider(
     call_sequence.extend(['-rho_core', '%.6e' % rho_core])  # density
     from proteus.interior_energetics.wrapper import get_core_heatcap
 
-    call_sequence.extend(['-cp_core', '%.6e' % get_core_heatcap(config, hf_row)])  # heat capacity
+    call_sequence.extend(
+        ['-cp_core', '%.6e' % get_core_heatcap(config, hf_row)]
+    )  # heat capacity
 
     # surface boundary condition
     # [4] heat flux (prescribe value using surface_bc_value)
     call_sequence.extend(['-SURFACE_BC', '4'])
 
-    # Note: SPIDER's upper thermal boundary layer treatment is implicit in its
-    # entropy formulation. Unlike Aragog's tunable param_utbl/param_utbl_const,
-    # SPIDER does not expose UTBL as a configurable parameter. The boundary
-    # layer physics is built into the surface entropy BC (bc.c).
-    # parameterise the upper thermal boundary layer
-    call_sequence.extend(['-PARAM_UTBL', '0'])  # disabled
-    call_sequence.extend(['-param_utbl_const', '1.0E-7'])  # value of parameterisation
+    # Ultra-thin thermal boundary layer (Bower et al. 2018, Eq. 18).
+    # Shared with Aragog via config.interior_energetics.param_utbl.
+    utbl_flag = '1' if config.interior_energetics.param_utbl else '0'
+    call_sequence.extend(['-PARAM_UTBL', utbl_flag])
+    call_sequence.extend(
+        ['-param_utbl_const', str(config.interior_energetics.param_utbl_const)]
+    )
 
     # fO2 buffer chosen to define fO2 (7: Iron-Wustite)
     call_sequence.extend(['-OXYGEN_FUGACITY', '2'])
@@ -1216,17 +1222,13 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
         if hasattr(interior_o, 'lookup_cp') and interior_o.lookup_cp is not None:
             for i in range(len(interior_o.temp)):
                 try:
-                    cp_est[i] = float(interior_o.lookup_cp(
-                        entropy[i], interior_o.pres[i]
-                    ))
+                    cp_est[i] = float(interior_o.lookup_cp(entropy[i], interior_o.pres[i]))
                 except Exception:
                     pass
         elif hasattr(interior_o, 'lookup_cp_melt') and interior_o.lookup_cp_melt is not None:
             for i in range(len(interior_o.temp)):
                 try:
-                    cp_est[i] = float(interior_o.lookup_cp_melt(
-                        entropy[i], interior_o.pres[i]
-                    ))
+                    cp_est[i] = float(interior_o.lookup_cp_melt(entropy[i], interior_o.pres[i]))
                 except Exception:
                     pass
         E_th = float(np.sum(interior_o.density * cp_est * interior_o.temp * vshell))

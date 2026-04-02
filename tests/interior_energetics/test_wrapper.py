@@ -39,12 +39,12 @@ def _mock_config(
 ):
     """Create a minimal mock config for update_structure trigger tests."""
     config = MagicMock()
-    config.interior_struct.update_interval = update_interval
-    config.interior_struct.update_min_interval = update_min_interval
-    config.interior_struct.update_dtmagma_frac = update_dtmagma_frac
-    config.interior_struct.update_dphi_abs = update_dphi_abs
-    config.interior_struct.mesh_max_shift = mesh_max_shift
-    config.interior_struct.mesh_convergence_interval = mesh_convergence_interval
+    config.interior_struct.zalmoxis.update_interval = update_interval
+    config.interior_struct.zalmoxis.update_min_interval = update_min_interval
+    config.interior_struct.zalmoxis.update_dtmagma_frac = update_dtmagma_frac
+    config.interior_struct.zalmoxis.update_dphi_abs = update_dphi_abs
+    config.interior_struct.zalmoxis.mesh_max_shift = mesh_max_shift
+    config.interior_struct.zalmoxis.mesh_convergence_interval = mesh_convergence_interval
     config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.num_levels = num_levels
     config.interior_energetics.module = 'spider'
@@ -574,7 +574,9 @@ def test_phi_crit_warning(caplog):
     config.params.stop.solid.phi_crit = 0.005
 
     with caplog.at_level('WARNING'):
-        with patch('proteus.interior_energetics.wrapper.determine_interior_radius_with_zalmoxis'):
+        with patch(
+            'proteus.interior_energetics.wrapper.determine_interior_radius_with_zalmoxis'
+        ):
             solve_structure({}, config, None, {}, '/tmp')
 
     assert any('phi_crit' in r.message for r in caplog.records)

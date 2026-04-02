@@ -115,6 +115,34 @@ class Zalmoxis:
 
     num_levels: int = field(default=150)
 
+    # Structure update triggers (during coupled evolution)
+    update_interval: float = field(default=10, validator=ge(0))
+    update_min_interval: float = field(default=0, validator=ge(0))
+    update_dtmagma_frac: float = field(default=0.03, validator=(gt(0), lt(1)))
+    update_dphi_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
+
+    # Mesh smoothing
+    mesh_max_shift: float = field(default=0.05, validator=(gt(0), lt(1)))
+    mesh_convergence_interval: float = field(default=10.0, validator=gt(0))
+
+    # Pre-main-loop equilibration (CALLIOPE + Zalmoxis convergence)
+    equilibrate_init: bool = True
+    equilibrate_max_iter: int = field(default=15, validator=ge(1))
+    equilibrate_tol: float = field(default=0.01, validator=gt(0))
+
+    # Binodal-aware miscibility (H2-MgSiO3 solvus)
+    global_miscibility: bool = field(default=False)
+    miscibility_max_iter: int = field(default=10, validator=ge(1))
+    miscibility_tol: float = field(default=0.01, validator=gt(0))
+
+    def __attrs_post_init__(self):
+        if self.update_interval > 0 and self.update_min_interval > self.update_interval:
+            raise ValueError(
+                f'`update_min_interval` ({self.update_min_interval}) must be '
+                f'<= `update_interval` ({self.update_interval}), otherwise '
+                f'the floor blocks all updates before the ceiling can fire.'
+            )
+
 
 @define
 class Struct:
@@ -128,20 +156,6 @@ class Struct:
         Module for solving the planet's interior structure. Choices: 'dummy', 'spider', 'zalmoxis'.
     zalmoxis: Zalmoxis or None
         Zalmoxis parameters if module is 'zalmoxis'.
-    update_interval: float
-        Maximum interval (ceiling) between structure re-computations [yr].
-        Only used when module is 'zalmoxis'. 0 means only compute structure
-        at init (no dynamic updates).
-    update_min_interval: float
-        Minimum interval (floor) between structure re-computations [yr].
-        Prevents thrashing during rapid cooling. Only used when
-        update_interval > 0.
-    update_dtmagma_frac: float
-        Fractional change in T_magma that triggers a structure update.
-        Update fires when |T_new - T_ref| / T_ref >= this value.
-    update_dphi_abs: float
-        Absolute change in Phi_global that triggers a structure update.
-        Update fires when |Phi_new - Phi_ref| >= this value.
     core_frac_mode: str
         How core_frac is interpreted. 'radius': fraction of planet radius.
         'mass': fraction of total planet mass. Only 'radius' is supported
@@ -166,40 +180,13 @@ class Struct:
         validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),
     )
 
-    update_interval: float = field(default=10, validator=ge(0))
-    update_min_interval: float = field(default=0, validator=ge(0))
-    update_dtmagma_frac: float = field(default=0.03, validator=(gt(0), lt(1)))
-    update_dphi_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
-
-    mesh_max_shift: float = field(default=0.05, validator=(gt(0), lt(1)))
-    mesh_convergence_interval: float = field(default=10.0, validator=gt(0))
-
-    equilibrate_init: bool = False
-    equilibrate_max_iter: int = field(default=15, validator=ge(1))
-    equilibrate_tol: float = field(default=0.01, validator=gt(0))
-
-    global_miscibility: bool = field(default=False)
-    miscibility_max_iter: int = field(default=10, validator=ge(1))
-    miscibility_tol: float = field(default=0.01, validator=gt(0))
-
     core_density = field(default=10738.33)
     core_heatcap = field(default=880.0)
 
     melting_dir = field(default=None, converter=none_if_none)
     eos_dir = field(default=None, converter=none_if_none)
-    def __attrs_post_init__(self):
-        if self.update_interval > 0 and self.update_min_interval > self.update_interval:
-            raise ValueError(
-                f'`update_min_interval` ({self.update_min_interval}) must be '
-                f'<= `update_interval` ({self.update_interval}), otherwise '
-                f'the floor blocks all updates before the ceiling can fire.'
-            )
-        if self.global_miscibility and self.module == 'spider':
-            raise ValueError(
-                '`global_miscibility` requires `module = "zalmoxis"`. '
-                'The binodal-aware structure solver is only available in Zalmoxis.'
-            )
 
+    def __attrs_post_init__(self):
         # core_frac_mode = "mass" requires Zalmoxis
         if self.core_frac_mode == 'mass' and self.module == 'spider':
             raise ValueError(

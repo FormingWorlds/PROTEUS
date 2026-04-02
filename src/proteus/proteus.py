@@ -362,7 +362,7 @@ class Proteus:
             # Iterates CALLIOPE + Zalmoxis (no SPIDER) until R_int and
             # P_surf converge. Only active when config flag is set.
             if (
-                self.config.interior_struct.equilibrate_init
+                self.config.interior_struct.zalmoxis.equilibrate_init
                 and self.config.interior_struct.module == 'zalmoxis'
             ):
                 from proteus.interior_energetics.wrapper import equilibrate_initial_state
@@ -500,7 +500,7 @@ class Proteus:
             if (
                 not self.init_stage
                 and self.config.interior_struct.module == 'zalmoxis'
-                and self.config.interior_struct.update_interval > 0
+                and self.config.interior_struct.zalmoxis.update_interval > 0
             ):
                 from proteus.interior_energetics.wrapper import update_structure_from_interior
 
@@ -638,7 +638,10 @@ class Proteus:
             # so the atmosphere is computed from the solvus outward.
             # Save originals to restore after the atmosphere step.
             _saved_atm_bc = {}
-            if self.config.interior_struct.global_miscibility and 'R_solvus' in self.hf_row:
+            if (
+                self.config.interior_struct.zalmoxis.global_miscibility
+                and 'R_solvus' in self.hf_row
+            ):
                 R_sol = self.hf_row.get('R_solvus')
                 if R_sol is not None and R_sol < self.hf_row['R_int']:
                     _saved_atm_bc = {
@@ -754,6 +757,19 @@ class Proteus:
         # Write conditions at the end of simulation
         log.info('Writing data')
         WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+
+        # Ensure the final interior state is on disk so resume can find it.
+        # dt_write_rel may have suppressed the write on the last iteration.
+        if (
+            self.config.interior_energetics.module == 'aragog'
+            and self.interior_o.aragog_solver is not None
+        ):
+            from proteus.interior_energetics.aragog import AragogRunner
+
+            out = self.interior_o.aragog_solver.get_state()
+            AragogRunner._write_output_ncdf(
+                self.directories['output'], self.hf_row['Time'], out
+            )
 
         # Run offline chemistry
         if self.config.atmos_chem.when == 'offline':

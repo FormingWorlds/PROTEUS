@@ -189,18 +189,6 @@
     core_frac                 = 0.325        # radius or mass fraction (see core_frac_mode)
     core_density              = "self"       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = "self"       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
-    update_dphi_abs           = 0.05         # trigger on absolute melt fraction change
-    update_dtmagma_frac       = 0.05         # trigger on relative T_magma change
-    update_interval           = 1e9          # max time between structure updates [yr]; 0 = init only
-    update_min_interval       = 0            # min time between updates [yr]
-    mesh_max_shift            = 0.05         # max fractional radius shift per update
-    mesh_convergence_interval = 10.0         # convergence time after mesh update [yr]
-    equilibrate_init          = false        # enable equilibration at init
-    equilibrate_max_iter      = 15           # max equilibration iterations
-    equilibrate_tol           = 0.01         # equilibration convergence tolerance
-    global_miscibility        = false        # enable binodal-aware structure
-    miscibility_max_iter      = 10           # max miscibility iterations
-    miscibility_tol           = 0.01         # miscibility convergence tolerance
     melting_dir               = "none"       # melting curve folder in FWL_DATA; none if PALEOS
     eos_dir                   = "none"       # EOS folder in FWL_DATA; none if PALEOS
 
@@ -211,13 +199,25 @@
         mushy_zone_factor     = 0.8          # solidus/liquidus ratio [0.7-1.0] if EOS==PALEOS
         mantle_mass_fraction  = 0            # 0 = auto (1 - core_frac) for 2-layer models
         num_levels            = 100          # radial grid levels (whole interior of planet)
+        update_dphi_abs       = 0.05         # trigger on absolute melt fraction change
+        update_dtmagma_frac   = 0.05         # trigger on relative T_magma change
+        update_interval       = 1e9          # max time between structure updates [yr]; 0 = init only
+        update_min_interval   = 0            # min time between updates [yr]
+        mesh_max_shift        = 0.05         # max fractional radius shift per update
+        mesh_convergence_interval = 10.0     # convergence time after mesh update [yr]
+        equilibrate_init      = true         # equilibrate structure + composition before main loop
+        equilibrate_max_iter  = 15           # max equilibration iterations
+        equilibrate_tol       = 0.01         # equilibration convergence tolerance
+        global_miscibility    = false        # enable binodal-aware structure
+        miscibility_max_iter  = 10           # max miscibility iterations
+        miscibility_tol       = 0.01         # miscibility convergence tolerance
 
 # Interior energy transport (mantle & core thermal evolution)
 [interior_energetics]
     module                    = "aragog"     # aragog | spider | dummy
 
     # Shared parameters (Aragog + SPIDER, ignored for dummy)
-    num_levels                = 60           # radial grid levels (energetics module domain only)
+    num_levels                = 80           # radial grid levels (energetics module domain only)
     num_tolerance             = 1.0e-8       # solver tolerance
     trans_conduction          = true         # conductive heat transfer
     trans_convection          = true         # convective heat transfer (MLT)
@@ -239,21 +239,20 @@
     radio_K                   = 310.0        # potassium [ppmw of element, all isotopes]; BSE value
     radio_U                   = 0.031        # uranium [ppmw of element, all isotopes]; BSE value
     radio_Th                  = 0.124        # thorium [ppmw of element, all isotopes]; BSE value
+    param_utbl                = false        # ultra-thin boundary layer (Bower+2018 Eq.18)
+    param_utbl_const          = 1e-7         # UTBL scaling constant [K^-1]
 
     # Aragog-only parameters
     [interior_energetics.aragog]
         dilatation            = true         # dilatation source term
         mass_coordinates      = true         # mass coordinate mesh spacing
         event_triggering      = true         # stop solver on large T_surf jumps
-        param_utbl            = true         # ultra-thin boundary layer parameterization
-        param_utbl_const      = 1e-7         # UTBL scaling constant [K^-2]
         jax                   = false        # JAX/diffrax solver (requires jax, equinox, diffrax)
 
     # SPIDER-only parameters
     [interior_energetics.spider]
         tolerance_rel         = 1.0e-8       # SUNDIALS relative tolerance
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
-        ini_entropy           = 3200.0       # initial entropy [J kg-1 K-1]
         matprop_smooth_width  = 1e-2         # material property smoothing (melt fraction)
 
     # Dummy module parameters

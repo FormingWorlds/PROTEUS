@@ -54,7 +54,7 @@ def test_structure_update_consistency():
         runner.config.params.out.path = str(Path(tmpdir) / 'output')
 
         # Enable structure updates every 100 yr
-        runner.config.interior_struct.update_interval = 100.0
+        runner.config.interior_struct.zalmoxis.update_interval = 100.0
 
         runner.init_directories()
         runner.start(resume=False, offline=True)

@@ -335,8 +335,8 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
     from proteus.interior_struct.zalmoxis import generate_spider_tables, zalmoxis_solver
     from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 
-    max_iter = config.interior_struct.equilibrate_max_iter
-    tol = config.interior_struct.equilibrate_tol
+    max_iter = config.interior_struct.zalmoxis.equilibrate_max_iter
+    tol = config.interior_struct.zalmoxis.equilibrate_tol
     nlev_b = get_nlevb(config)
     num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
 
@@ -502,7 +502,9 @@ def run_interior(
         # Import
         from proteus.interior_energetics.spider import ReadSPIDER, RunSPIDER
 
-        # Run SPIDER (pass external mesh file if available from Zalmoxis)
+        # Run SPIDER (pass external mesh file if available from Zalmoxis).
+        # Note: write_data is not forwarded here. SPIDER JSON output is
+        # controlled by the C binary; Python cannot suppress it per-timestep.
         mesh_file = dirs.get('spider_mesh')
         RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
@@ -653,7 +655,7 @@ def update_structure_from_interior(
     no_update = (last_struct_time, last_Tmagma, last_Phi)
 
     # Dynamic updates disabled
-    if config.interior_struct.update_interval <= 0:
+    if config.interior_struct.zalmoxis.update_interval <= 0:
         return no_update
 
     current_time = hf_row['Time']
@@ -666,37 +668,37 @@ def update_structure_from_interior(
     # Mesh convergence trigger: bypasses normal floor when mesh is still
     # converging toward the true Zalmoxis solution after blending
     mesh_converging = dirs.get('mesh_shift_active', False)
-    if mesh_converging and elapsed >= config.interior_struct.mesh_convergence_interval:
+    if mesh_converging and elapsed >= config.interior_struct.zalmoxis.mesh_convergence_interval:
         triggered = True
         reason = (
             f'mesh convergence (elapsed {elapsed:.1f} yr '
-            f'>= {config.interior_struct.mesh_convergence_interval:.1f} yr)'
+            f'>= {config.interior_struct.zalmoxis.mesh_convergence_interval:.1f} yr)'
         )
 
     # Floor: don't update too frequently (only for non-convergence triggers)
-    if not triggered and elapsed < config.interior_struct.update_min_interval:
+    if not triggered and elapsed < config.interior_struct.zalmoxis.update_min_interval:
         return no_update
 
     # Ceiling: guaranteed update after max interval
-    if not triggered and elapsed >= config.interior_struct.update_interval:
+    if not triggered and elapsed >= config.interior_struct.zalmoxis.update_interval:
         triggered = True
-        reason = (
-            f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.update_interval:.1f} yr)'
-        )
+        reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
     # T_magma relative change
     if not triggered and last_Tmagma > 0:
         dT_frac = abs(hf_row['T_magma'] - last_Tmagma) / last_Tmagma
-        if dT_frac >= config.interior_struct.update_dtmagma_frac:
+        if dT_frac >= config.interior_struct.zalmoxis.update_dtmagma_frac:
             triggered = True
-            reason = f'dT/T={dT_frac:.3f} >= {config.interior_struct.update_dtmagma_frac}'
+            reason = (
+                f'dT/T={dT_frac:.3f} >= {config.interior_struct.zalmoxis.update_dtmagma_frac}'
+            )
 
     # Phi_global absolute change
     if not triggered:
         dPhi = abs(hf_row['Phi_global'] - last_Phi)
-        if dPhi >= config.interior_struct.update_dphi_abs:
+        if dPhi >= config.interior_struct.zalmoxis.update_dphi_abs:
             triggered = True
-            reason = f'dPhi={dPhi:.3f} >= {config.interior_struct.update_dphi_abs}'
+            reason = f'dPhi={dPhi:.3f} >= {config.interior_struct.zalmoxis.update_dphi_abs}'
 
     # Composition change: check dissolved volatile fractions.
     # When the binodal or CALLIOPE changes how much H2/H2O is dissolved,
@@ -776,9 +778,9 @@ def update_structure_from_interior(
         actual_shift = blend_mesh_files(
             prev_path or '',
             spider_mesh_file,
-            max_shift=config.interior_struct.mesh_max_shift,
+            max_shift=config.interior_struct.zalmoxis.mesh_max_shift,
         )
-        still_converging = actual_shift > config.interior_struct.mesh_max_shift
+        still_converging = actual_shift > config.interior_struct.zalmoxis.mesh_max_shift
 
         # Track convergence steps; give up after 20 consecutive blends
         # to avoid infinite rapid-update loops when Zalmoxis and SPIDER
@@ -802,7 +804,7 @@ def update_structure_from_interior(
                     n_conv,
                     max_convergence_steps,
                     actual_shift * 100,
-                    config.interior_struct.mesh_max_shift * 100,
+                    config.interior_struct.zalmoxis.mesh_max_shift * 100,
                 )
         else:
             n_conv = 0
@@ -840,7 +842,7 @@ def update_structure_from_interior(
                 # When global_miscibility is enabled, SPIDER's domain
                 # extends to R_solvus, not R_int. Use the appropriate
                 # radius for entropy remapping.
-                if config.interior_struct.global_miscibility and 'R_solvus' in hf_row:
+                if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
                     remap_radius = hf_row['R_solvus']
                 else:
                     remap_radius = hf_row['R_int']

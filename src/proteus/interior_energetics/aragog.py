@@ -154,8 +154,8 @@ class AragogRunner:
             # core T_avg/T_cmb ratio from adiabatic gradient (Bower+2018 Table 2)
             tfac_core_avg=1.147,
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
-            param_utbl=config.interior_energetics.aragog.param_utbl,
-            param_utbl_const=config.interior_energetics.aragog.param_utbl_const,
+            param_utbl=config.interior_energetics.param_utbl,
+            param_utbl_const=config.interior_energetics.param_utbl_const,
         )
 
         # Define the inner_radius for the mesh

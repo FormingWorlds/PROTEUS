@@ -246,7 +246,7 @@ def test_valid_spider_requires_energy_term_and_entropy():
         trans_convection=False,
         trans_mixing=False,
         trans_grav_sep=False,
-        spider=SimpleNamespace(ini_entropy=150.0),
+        spider=SimpleNamespace(),
     )
     with pytest.raises(ValueError):
         valid_spider(inst, None, None)
@@ -257,7 +257,7 @@ def test_valid_spider_requires_energy_term_and_entropy():
         trans_convection=False,
         trans_mixing=False,
         trans_grav_sep=False,
-        spider=SimpleNamespace(ini_entropy=400.0),
+        spider=SimpleNamespace(),
     )
     valid_spider(inst_ok, None, None)
 
@@ -632,24 +632,6 @@ def test_orbit_phi_tide_value_bounds():
 
 
 @pytest.mark.unit
-def test_interior_spider_entropy_minimum():
-    """Test SPIDER ini_entropy field rejects values <= 200."""
-    from proteus.config._interior import Spider
-
-    # Valid entropy - should not raise
-    s = Spider(ini_entropy=250.0)
-    assert s.ini_entropy == 250.0
-
-    # Entropy = 200.0 - invalid (must be > 200)
-    with pytest.raises((ValueError, TypeError)):
-        Spider(ini_entropy=200.0)
-
-    # Entropy = 100.0 - invalid
-    with pytest.raises((ValueError, TypeError)):
-        Spider(ini_entropy=100.0)
-
-
-@pytest.mark.unit
 def test_interior_spider_energy_term_required():
     """Test SPIDER validator requires at least one energy transport term enabled."""
     from proteus.config._interior import valid_spider
@@ -661,7 +643,7 @@ def test_interior_spider_energy_term_required():
         trans_convection=False,
         trans_mixing=False,
         trans_grav_sep=False,
-        spider=SimpleNamespace(ini_entropy=250.0),
+        spider=SimpleNamespace(),
     )
 
     # Should not raise error

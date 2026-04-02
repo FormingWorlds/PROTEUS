@@ -98,7 +98,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # already set during the structure update. Skip the bulk binodal here.
     # When global_miscibility is disabled but h2_binodal is on, use the
     # original bulk binodal override from Rogers+2025.
-    if config.interior_struct.global_miscibility:
+    if config.interior_struct.zalmoxis.global_miscibility:
         log.debug('Skipping apply_binodal_h2: handled by Zalmoxis (global_miscibility)')
     elif config.outgas.h2_binodal:
         from proteus.outgas.binodal import apply_binodal_h2

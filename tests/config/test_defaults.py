@@ -151,7 +151,7 @@ def test_interior_defaults():
     """
     # Interior requires module argument
     # If module='spider', we must provide a valid spider config
-    spider_cfg = Spider(ini_entropy=3000.0)
+    spider_cfg = Spider()
     i = Interior(module='spider', spider=spider_cfg)
     assert i.module == 'spider'
     assert i.spider == spider_cfg
@@ -162,7 +162,7 @@ def test_interior_defaults():
 
     # Sub-modules defaults
     assert isinstance(i.aragog, Aragog)
-    assert i.num_levels == 100  # num_levels is on Interior, not Aragog
+    assert i.num_levels == 80  # num_levels is on Interior, not Aragog
 
     assert isinstance(i.dummy, InteriorDummy)
 
@@ -206,5 +206,4 @@ def test_aragog_defaults():
     a = Aragog()
     assert a.dilatation is True
     assert a.mass_coordinates is True
-    assert a.param_utbl is True
     assert a.jax is False

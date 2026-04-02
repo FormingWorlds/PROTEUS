@@ -15,31 +15,23 @@ class TestGlobalMiscibilityConfig:
     """Config validation for global_miscibility."""
 
     def test_default_is_false(self):
-        """global_miscibility defaults to False."""
-        from proteus.config._struct import Struct
+        """global_miscibility defaults to False on Zalmoxis."""
+        from proteus.config._struct import Zalmoxis
 
-        s = Struct(core_frac=0.3, core_density=10738.0, core_heatcap=880.0)
-        assert s.global_miscibility is False
-
-    def test_requires_zalmoxis(self):
-        """global_miscibility=True requires module='zalmoxis'."""
-        from proteus.config._struct import Struct
-
-        with pytest.raises(ValueError, match='zalmoxis'):
-            Struct(core_frac=0.3, module='spider', global_miscibility=True, core_density=10738.0, core_heatcap=880.0)
+        z = Zalmoxis()
+        assert z.global_miscibility is False
 
     def test_accepts_zalmoxis(self):
-        """global_miscibility=True with module='zalmoxis' is valid."""
+        """global_miscibility=True with Zalmoxis is valid."""
         from proteus.config._struct import Struct, Zalmoxis
 
+        z = Zalmoxis(global_miscibility=True)
         s = Struct(
             core_frac=0.3,
             module='zalmoxis',
-            global_miscibility=True,
-
-            zalmoxis=Zalmoxis(),
+            zalmoxis=z,
         )
-        assert s.global_miscibility is True
+        assert s.zalmoxis.global_miscibility is True
 
 
 @pytest.mark.unit
@@ -135,18 +127,20 @@ class TestOutgasDispatch:
 
     def test_binodal_skipped_with_miscibility(self):
         """apply_binodal_h2 is skipped when global_miscibility=True."""
+
         # This is a code path test: verify the logic in wrapper.py
         # Without a full Config, test the conditional logic directly
         class MockConfig:
             class interior_struct:
-                global_miscibility = True
+                class zalmoxis:
+                    global_miscibility = True
 
             class outgas:
                 h2_binodal = True
 
         config = MockConfig()
         # The logic: if global_miscibility -> skip, elif h2_binodal -> apply
-        if config.interior_struct.global_miscibility:
+        if config.interior_struct.zalmoxis.global_miscibility:
             action = 'skip'
         elif config.outgas.h2_binodal:
             action = 'apply'
@@ -159,13 +153,14 @@ class TestOutgasDispatch:
 
         class MockConfig:
             class interior_struct:
-                global_miscibility = False
+                class zalmoxis:
+                    global_miscibility = False
 
             class outgas:
                 h2_binodal = True
 
         config = MockConfig()
-        if config.interior_struct.global_miscibility:
+        if config.interior_struct.zalmoxis.global_miscibility:
             action = 'skip'
         elif config.outgas.h2_binodal:
             action = 'apply'

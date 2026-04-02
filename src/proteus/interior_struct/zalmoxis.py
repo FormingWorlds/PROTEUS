@@ -287,7 +287,8 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         # For the structure solve, 'accretion' mode uses 'adiabatic' internally
         # (White+Li computes T after the structure converges)
         'temperature_mode': (
-            'adiabatic' if config.planet.temperature_mode == 'accretion'
+            'adiabatic'
+            if config.planet.temperature_mode == 'accretion'
             else config.planet.temperature_mode
         ),
         'surface_temperature': config.planet.tsurf_init,
@@ -725,7 +726,7 @@ def zalmoxis_solver(
     volatile_profile = build_volatile_profile(hf_row, mantle_eos)
 
     # Configure global miscibility if enabled
-    if config.interior_struct.global_miscibility and volatile_profile is not None:
+    if config.interior_struct.zalmoxis.global_miscibility and volatile_profile is not None:
         volatile_profile.global_miscibility = True
         # Initialize x_interior from current dissolved masses
         M_mantle = float(hf_row.get('M_mantle', 0.0))
@@ -757,7 +758,7 @@ def zalmoxis_solver(
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
     input_data_dir = os.path.join(outdir, 'data')
 
-    if config.interior_struct.global_miscibility:
+    if config.interior_struct.zalmoxis.global_miscibility:
         from zalmoxis.solver import solve_miscible_interior
 
         # Build H2 mass targets from current volatile inventories
@@ -780,8 +781,8 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=temperature_function,
             h2_mass_targets=h2_mass_targets,
-            max_iterations=config.interior_struct.miscibility_max_iter,
-            mass_tolerance=config.interior_struct.miscibility_tol,
+            max_iterations=config.interior_struct.zalmoxis.miscibility_max_iter,
+            mass_tolerance=config.interior_struct.zalmoxis.miscibility_tol,
         )
 
         # Write solvus info to hf_row
@@ -943,9 +944,7 @@ def zalmoxis_solver(
                         return None
                     _lp = np.log10(_P[_valid])
                     _lt = np.log10(_T[_valid])
-                    _interp = LinearNDInterpolator(
-                        list(zip(_lp, _lt)), _cp[_valid]
-                    )
+                    _interp = LinearNDInterpolator(list(zip(_lp, _lt)), _cp[_valid])
 
                     def _cp_func(P_Pa, T_K, _i=_interp, _fb=fallback_cp):
                         if P_Pa <= 0 or T_K <= 0:
@@ -964,10 +963,14 @@ def zalmoxis_solver(
                 if cp_iron_func is not None:
                     logger.info('Using PALEOS C_p(P,T) for iron (mass-weighted integration)')
                 if cp_silicate_func is not None:
-                    logger.info('Using PALEOS C_p(P,T) for silicate (mass-weighted integration)')
+                    logger.info(
+                        'Using PALEOS C_p(P,T) for silicate (mass-weighted integration)'
+                    )
 
             except Exception as e:
-                logger.warning('Could not build PALEOS thermal properties: %s. Using constants.', e)
+                logger.warning(
+                    'Could not build PALEOS thermal properties: %s. Using constants.', e
+                )
 
         thermal = initial_thermal_state(
             model_results,
@@ -1002,9 +1005,12 @@ def zalmoxis_solver(
             'Initial thermal state (White+Li 2025): T_CMB=%.0f K, '
             'T_surf_accr=%.0f K, DeltaT_G=%.0f K, DeltaT_D=%.0f K, '
             'DeltaT_ad=%.0f K, core=%s',
-            thermal['T_cmb'], thermal['T_surf_accr'],
-            thermal['Delta_T_accretion'], thermal['Delta_T_differentiation'],
-            thermal['Delta_T_adiabat'], thermal['core_state'],
+            thermal['T_cmb'],
+            thermal['T_surf_accr'],
+            thermal['Delta_T_accretion'],
+            thermal['Delta_T_differentiation'],
+            thermal['Delta_T_adiabat'],
+            thermal['core_state'],
         )
 
     # Update the surface radius, interior radius, and mass in the hf_row
@@ -1016,9 +1022,7 @@ def zalmoxis_solver(
 
     # Self-consistent core density from Zalmoxis structure
     if cmb_radius > 0:
-        hf_row['core_density'] = mass_enclosed[cmb_index] / (
-            4.0 / 3.0 * np.pi * cmb_radius**3
-        )
+        hf_row['core_density'] = mass_enclosed[cmb_index] / (4.0 / 3.0 * np.pi * cmb_radius**3)
     else:
         hf_row['core_density'] = 0.0
 
@@ -1060,7 +1064,7 @@ def zalmoxis_solver(
     spider_density = mantle_density
     spider_gravity = mantle_gravity
 
-    if config.interior_struct.global_miscibility:
+    if config.interior_struct.zalmoxis.global_miscibility:
         R_solvus = hf_row.get('R_solvus')
         if R_solvus is not None and R_solvus < planet_radius:
             # Truncate arrays at the solvus: SPIDER only evolves the

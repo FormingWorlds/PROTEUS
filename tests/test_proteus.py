@@ -28,7 +28,7 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
 
     config = MagicMock()
     config.interior_struct.module = struct_module
-    config.interior_struct.update_interval = 0
+    config.interior_struct.zalmoxis.update_interval = 0
     config.interior_energetics.module = interior_module
     config.interior_energetics.spider.num_levels = 50
     config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
@@ -107,7 +107,9 @@ def _resume_with_patches(p, hf_df):
         for target in _START_PATCHES:
             stack.enter_context(patch(target))
 
-        stack.enter_context(patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
         stack.enter_context(
             patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=hf_df)
         )
@@ -117,7 +119,9 @@ def _resume_with_patches(p, hf_df):
         stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
 
         # Interior_t mock
-        mock_interior_t = stack.enter_context(patch('proteus.interior_energetics.common.Interior_t'))
+        mock_interior_t = stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t')
+        )
         mock_int = MagicMock()
         mock_int.ic = 1
         mock_interior_t.return_value = mock_int

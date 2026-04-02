@@ -12,7 +12,7 @@ from scipy.special import erf
 from proteus.utils.constants import B_ein
 
 if TYPE_CHECKING:
-    pass
+    from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -63,6 +63,118 @@ def eval_rheoparam(phi: float, which: str):
     numer = 1.0 + _bigphi(phi, par) ** par.delta
     denom = (1.0 - _bigf(phi, par)) ** (B_ein * (1 - par.phist))
     return par.dotl * numer / denom
+
+
+def compute_initial_entropy(
+    config: Config,
+    hf_row: dict | None = None,
+    fallback: float = 3200.0,
+) -> float:
+    """Compute initial mantle entropy from planet temperature settings.
+
+    Converts the initial surface temperature to specific entropy using
+    the PALEOS EOS tables (via Zalmoxis). Both SPIDER and Aragog use this
+    to derive a physically consistent initial condition from
+    config.planet.tsurf_init (or the accretion-mode override).
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    hf_row : dict, optional
+        Helpfile row. When provided, checks for T_surface_initial
+        (computed by Zalmoxis accretion mode) to override tsurf_init.
+    fallback : float
+        Entropy value [J/kg/K] returned when PALEOS is unavailable.
+
+    Returns
+    -------
+    float
+        Initial specific entropy [J/kg/K].
+    """
+    # Determine effective surface temperature
+    tsurf = config.planet.tsurf_init
+    if hf_row is not None:
+        T_computed = hf_row.get('T_surface_initial', 0)
+        if T_computed and T_computed > 0:
+            log.info(
+                'Overriding tsurf_init with accretion thermal state: %.0f K -> %.0f K',
+                tsurf,
+                T_computed,
+            )
+            tsurf = T_computed
+
+    # Import errors (broken Zalmoxis install) should propagate, not fall back
+    # silently. Only catch expected failures (missing config, missing tables).
+    try:
+        from zalmoxis.eos_export import compute_entropy_adiabat
+
+        from proteus.interior_struct.zalmoxis import (
+            load_zalmoxis_material_dictionaries,
+            load_zalmoxis_solidus_liquidus_functions,
+        )
+    except (ImportError, ModuleNotFoundError):
+        log.warning(
+            'Zalmoxis not installed. Using fallback S=%.1f J/kg/K for tsurf=%.0f K.',
+            fallback,
+            tsurf,
+        )
+        return fallback
+
+    try:
+        # Guard: Zalmoxis config may be absent when interior_struct.module='spider'
+        zalmoxis_cfg = getattr(config.interior_struct, 'zalmoxis', None)
+        if zalmoxis_cfg is None:
+            raise RuntimeError('Zalmoxis config not available')
+
+        mat_dicts = load_zalmoxis_material_dictionaries()
+        eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
+        paleos_eos_file = eos_entry.get('eos_file', '')
+        if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
+            raise FileNotFoundError(f'PALEOS table not found: {paleos_eos_file}')
+
+        melt_funcs = load_zalmoxis_solidus_liquidus_functions(zalmoxis_cfg.mantle_eos, config)
+        sol_func = liq_func = None
+        if melt_funcs is not None:
+            sol_func, liq_func = melt_funcs
+
+        # Check for 2-phase tables (cleaner entropy at melting curve)
+        twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
+        solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
+        liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
+        solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
+        liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+
+        # P_cmb only controls the diagnostic T(P) profile grid, not S_target.
+        # S_target = S(P_surface, T_surface) is independent of P_cmb.
+        result = compute_entropy_adiabat(
+            eos_file=paleos_eos_file,
+            T_surface=tsurf,
+            P_surface=1e5,  # 1 bar
+            P_cmb=135e9,
+            n_points=500,
+            solidus_func=sol_func,
+            liquidus_func=liq_func,
+            solid_eos_file=solid_eos,
+            liquid_eos_file=liquid_eos,
+        )
+        S_target = float(result['S_target'])
+        log.info(
+            'Initial entropy: tsurf=%.0f K -> S=%.1f J/kg/K (PALEOS)',
+            tsurf,
+            S_target,
+        )
+        return S_target
+
+    except (RuntimeError, FileNotFoundError, KeyError, ValueError) as e:
+        log.warning(
+            'Could not compute entropy from PALEOS (%s). '
+            'Using fallback S=%.1f J/kg/K for tsurf=%.0f K.',
+            e,
+            fallback,
+            tsurf,
+        )
+        return fallback
 
 
 # Path to location at which to save tidal heating array

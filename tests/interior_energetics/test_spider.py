@@ -340,12 +340,12 @@ def test_mesh_convergence_trigger():
 
     # Create minimal config mock
     config = MagicMock()
-    config.interior_struct.update_interval = 1000.0
-    config.interior_struct.update_min_interval = 100.0
-    config.interior_struct.update_dtmagma_frac = 0.03
-    config.interior_struct.update_dphi_abs = 0.05
-    config.interior_struct.mesh_max_shift = 0.05
-    config.interior_struct.mesh_convergence_interval = 10.0
+    config.interior_struct.zalmoxis.update_interval = 1000.0
+    config.interior_struct.zalmoxis.update_min_interval = 100.0
+    config.interior_struct.zalmoxis.update_dtmagma_frac = 0.03
+    config.interior_struct.zalmoxis.update_dphi_abs = 0.05
+    config.interior_struct.zalmoxis.mesh_max_shift = 0.05
+    config.interior_struct.zalmoxis.mesh_convergence_interval = 10.0
     config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.num_levels = 50
     config.interior_energetics.module = 'spider'
@@ -903,7 +903,6 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior_energetics.spider.tolerance_rel = 1e-4
     config.interior_energetics.tmagma_rtol = 0.02
     config.interior_energetics.tmagma_atol = 100.0
-    config.interior_energetics.spider.ini_entropy = 2993.0
     config.interior_energetics.mixing_length = 'nearest'
     config.interior_energetics.spider.solver_type = 'cv_bdf'
     config.interior_energetics.trans_conduction = True
@@ -1458,7 +1457,9 @@ def test_run_spider_retry_then_success():
     config.interior_energetics.heat_tidal = False
 
     # Fail first attempt, succeed second
-    with patch('proteus.interior_energetics.spider._try_spider', side_effect=[False, True]) as mock_try:
+    with patch(
+        'proteus.interior_energetics.spider._try_spider', side_effect=[False, True]
+    ) as mock_try:
         result = RunSPIDER(
             dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
             config=config,

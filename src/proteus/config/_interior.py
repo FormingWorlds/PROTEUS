@@ -37,7 +37,6 @@ class Spider:
         Window width, in melt-fraction, for smoothing properties across liquidus and solidus
     """
 
-    ini_entropy: float = field(default=3200.0, validator=gt(200.0))
     tolerance_rel: float = field(default=1e-10, validator=gt(0))
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
     matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
@@ -81,12 +80,6 @@ class Aragog:
         at the surface where density is lower, matching SPIDER's mesh.
     event_triggering: bool
         Whether to include event triggering in the solver. Default is True.
-    param_utbl: bool
-        Whether to parameterize the ultra-thin thermal boundary layer at the surface.
-        Reduces the effective radiating temperature to account for the unresolved
-        boundary layer (Bower et al. 2018, Eq. 18). Default is True (matches SPIDER).
-    param_utbl_const: float
-        UTBL scaling constant [K^-2]. Default is 1e-7 (matches SPIDER).
     jax: bool
         Use JAX/diffrax solver backend instead of scipy BDF. Default is False.
         When True, the entropy ODE is integrated with diffrax Tsit5 instead of
@@ -96,8 +89,6 @@ class Aragog:
     dilatation: bool = field(default=True)
     mass_coordinates: bool = field(default=True)
     event_triggering: bool = field(default=True)
-    param_utbl: bool = field(default=True)
-    param_utbl_const: float = field(default=1e-7, validator=gt(0))
     jax: bool = field(default=False)
 
 
@@ -189,7 +180,7 @@ class Interior:
     """
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
-    num_levels: int = field(default=100, validator=ge(40))
+    num_levels: int = field(default=80, validator=ge(40))
     num_tolerance: float = field(default=1e-10, validator=gt(0))
     trans_conduction: bool = field(default=True)
     trans_convection: bool = field(default=True)
@@ -202,9 +193,7 @@ class Interior:
     aragog: Aragog = field(factory=Aragog, validator=valid_aragog)
     dummy: InteriorDummy = field(factory=InteriorDummy, validator=valid_interiordummy)
 
-    mixing_length: str = field(
-        default='nearest', validator=in_(('nearest', 'constant'))
-    )
+    mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
     grain_size: float = field(default=0.1, validator=gt(0))
     flux_guess: float = field(default=-1)
     tmagma_atol: float = field(default=20.0, validator=ge(0))
@@ -225,3 +214,10 @@ class Interior:
     # 1 (liquid) to 0 (solid) at the rheological transition. Passed to both
     # SPIDER (-kappah_floor) and Aragog (kappah_floor in energy config).
     kappah_floor: float = field(default=10.0, validator=ge(0))
+
+    # Ultra-thin thermal boundary layer parameterization (Bower et al. 2018, Eq. 18).
+    # Corrects the surface temperature for the unresolved boundary layer:
+    #   T_interior = T_surf + param_utbl_const * T_surf^3
+    # Applies to both SPIDER and Aragog. Default off.
+    param_utbl: bool = field(default=False)
+    param_utbl_const: float = field(default=1e-7, validator=gt(0))
