@@ -326,6 +326,17 @@ pre-commit install -f
 - **Randomness:** Explicitly set seeds (e.g., `np.random.seed(42)`) in tests.
 - **Files:** Do not generate tests that produce large output files (unless explicitly instructed); use `tempfile` or mocks.
 
+## Verification and Diagnostic Plots
+
+When testing new routines, reviewing behavior, or investigating edge cases across any PROTEUS ecosystem module:
+
+- **Always produce plots** that verify the requested behavior. Plots are the primary verification artifact for scientific simulation code.
+- **Store all generated plots and data in gitignored folders.** Use `output_files/` (already in `.gitignore`). Never commit generated plots or simulation output to the repository.
+- **Store raw simulation data** alongside plots (same gitignored folder) when feasible (up to a few hundred MB). Formats: `.txt`, `.csv`, or `.npz`. This allows replotting without re-running.
+- **Store plot-generating scripts in gitignored folders** unless the user explicitly asks to commit them. If committing, place in `src/tests/`.
+- **At the end of a plotting task**, report: (1) output folder path, (2) what each plot shows, (3) notable findings or anomalies.
+- **Plot standards**: matplotlib, `dpi >= 150`, clear axis labels with units, legends, descriptive titles. PNG format.
+
 ## Code Quality
 
 **Style** (enforced by ruff):

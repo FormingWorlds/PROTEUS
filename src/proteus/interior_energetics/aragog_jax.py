@@ -108,9 +108,10 @@ class AragogJAXRunner:
     def _build_mesh_arrays(self):
         """Convert numpy mesh to JAX arrays."""
         from aragog.jax.phase import MeshArrays
+
         return MeshArrays.from_numpy_mesh(self.aragog_solver.evaluator.mesh)
 
-    def run_solver(self, hf_row, interior_o, dirs):
+    def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
         """Run the JAX solver and return output in the same format."""
         from aragog.jax.solver import BoundaryParams, solve_entropy
 
@@ -164,13 +165,23 @@ class AragogJAXRunner:
 
         logger.info(
             'JAX Aragog: integrating [%.2e, %.2e] yr, N=%d',
-            t_start, t_end, n_stag,
+            t_start,
+            t_end,
+            n_stag,
         )
 
         result = solve_entropy(
-            S0, t_start, t_end,
-            self._eos_jax, self._params_jax, self._mesh_jax, bc, heating,
-            atol=atol, rtol=rtol, max_steps=100_000,
+            S0,
+            t_start,
+            t_end,
+            self._eos_jax,
+            self._params_jax,
+            self._mesh_jax,
+            bc,
+            heating,
+            atol=atol,
+            rtol=rtol,
+            max_steps=100_000,
             method='tsit5',
         )
 
@@ -186,8 +197,9 @@ class AragogJAXRunner:
         out = self._extract_output(result, hf_row, interior_o)
         sim_time = result.t_final
 
-        # Write NetCDF
-        self._write_ncdf(dirs['output'], sim_time, result)
+        # Write NetCDF (skipped when dt_write suppresses this step)
+        if write_data:
+            self._write_ncdf(dirs['output'], sim_time, result)
 
         return sim_time, out
 
@@ -225,6 +237,7 @@ class AragogJAXRunner:
 
         # Compute phase properties for stored arrays and Cp_eff
         from aragog.jax.phase import evaluate_phase
+
         props = evaluate_phase(eos, self._params_jax, P, S)
         visc = np.asarray(props.viscosity)
         cap = np.asarray(props.capacitance)  # rho * T
@@ -235,7 +248,11 @@ class AragogJAXRunner:
         E_th = float(np.sum(mass * CP_REF * T))
 
         # Heating flux (radionuclide + tidal combined)
-        heating_np = np.asarray(self._last_heating) if hasattr(self, '_last_heating') else np.zeros_like(T)
+        heating_np = (
+            np.asarray(self._last_heating)
+            if hasattr(self, '_last_heating')
+            else np.zeros_like(T)
+        )
         area_surf = 4 * np.pi * float(r_basic[-1]) ** 2
         F_heat_total = float(np.dot(heating_np, mass)) / area_surf
 
@@ -250,7 +267,10 @@ class AragogJAXRunner:
 
         logger.info(
             'JAX Aragog: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, steps=%d',
-            T_magma, T_core, Phi_global, result.n_steps,
+            T_magma,
+            T_core,
+            Phi_global,
+            result.n_steps,
         )
 
         return {
@@ -306,13 +326,26 @@ class AragogJAXRunner:
 
         # Viscosity (compute from phase evaluator)
         from aragog.jax.phase import evaluate_phase
+
         props = evaluate_phase(self._eos_jax, self._params_jax, P, S)
-        _add('log10visc_s', np.log10(np.maximum(np.asarray(props.viscosity), 1e-10)), 'staggered', 'Pa s')
+        _add(
+            'log10visc_s',
+            np.log10(np.maximum(np.asarray(props.viscosity), 1e-10)),
+            'staggered',
+            'Pa s',
+        )
 
         # Heat flux and heating (recompute from full flux computation)
         from aragog.jax.phase import compute_fluxes
-        flux_out = compute_fluxes(S, time, self._eos_jax, self._params_jax,
-                                  self._mesh_jax, jnp.asarray(self._last_heating))
+
+        flux_out = compute_fluxes(
+            S,
+            time,
+            self._eos_jax,
+            self._params_jax,
+            self._mesh_jax,
+            jnp.asarray(self._last_heating),
+        )
         _add('Ftotal_b', np.asarray(flux_out.heat_flux), 'basic', 'W m-2')
         _add('Htotal_s', np.asarray(flux_out.heating), 'staggered', 'W kg-1')
 

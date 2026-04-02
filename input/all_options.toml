@@ -34,6 +34,7 @@
         plot_mod              = 3            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
+        dt_write_rel          = 1e-3         # min write interval as fraction of elapsed simulation time (0: off)
         archive_mod           = 5            # 0: at end | n: every n iters | none: never
         remove_sf             = false        # remove spectral file when done
 
@@ -228,8 +229,8 @@
     grain_size                = 0.1          # crystal grain size [m]
     mixing_length             = "nearest"    # nearest (min distance to boundary) | constant (D/4)
     flux_guess                = -1           # initial F_atm [W m-2]; <0 = sigma*T^4
-    tmagma_atol               = 20.0        # max absolute T_magma change per step [K]
-    tmagma_rtol               = 0.02        # max relative T_magma change per step
+    tmagma_atol               = 20.0         # max absolute T_magma change per step [K]
+    tmagma_rtol               = 0.02         # max relative T_magma change per step
     kappah_floor              = 10.0         # eddy diffusivity floor [m^2/s]; prevents MLT freeze on isentropic IC
     heat_radiogenic           = false        # radiogenic heating
     radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE

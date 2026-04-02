@@ -187,7 +187,10 @@ def determine_interior_radius_with_dummy(
     num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
 
     spider_mesh_file = solve_dummy_structure(
-        config, hf_row, outdir, num_spider_nodes=num_spider_nodes,
+        config,
+        hf_row,
+        outdir,
+        num_spider_nodes=num_spider_nodes,
     )
 
     if spider_mesh_file:
@@ -221,8 +224,10 @@ def determine_interior_radius_with_dummy(
     log.info('Dummy structure solve complete')
     log.info(
         'R_int: %.1e m = %.3f R_earth, M_int: %.1e kg = %.3f M_earth',
-        hf_row['R_int'], hf_row['R_int'] / R_earth,
-        hf_row['M_int'], hf_row['M_int'] / M_earth,
+        hf_row['R_int'],
+        hf_row['R_int'] / R_earth,
+        hf_row['M_int'],
+        hf_row['M_int'] / M_earth,
     )
 
 
@@ -363,9 +368,7 @@ def equilibrate_initial_state(dirs: dict, config: Config, hf_row: dict, outdir: 
         # Update M_mantle from Zalmoxis results (M_int and M_core are set
         # by zalmoxis_solver, but M_mantle is not). run_outgassing needs
         # an up-to-date M_mantle for dissolved fraction calculations.
-        hf_row['M_mantle'] = float(hf_row.get('M_int', 0.0)) - float(
-            hf_row.get('M_core', 0.0)
-        )
+        hf_row['M_mantle'] = float(hf_row.get('M_int', 0.0)) - float(hf_row.get('M_core', 0.0))
 
         # Update mesh path if written
         if spider_mesh_file:
@@ -445,7 +448,9 @@ def solve_structure(
                 return determine_interior_radius_with_zalmoxis(
                     dirs, config, hf_all, hf_row, outdir
                 )
-        raise ValueError(f"Invalid structure interior module selected '{config.interior_struct.module}'")
+        raise ValueError(
+            f"Invalid structure interior module selected '{config.interior_struct.module}'"
+        )
 
     else:
         raise ValueError('planet.mass_tot must be set to solve for the interior structure')
@@ -458,6 +463,7 @@ def run_interior(
     hf_row: dict,
     interior_o: Interior_t,
     verbose: bool = True,
+    write_data: bool = True,
 ):
     """Run interior mantle evolution model.
 
@@ -475,6 +481,12 @@ def run_interior(
             Interior struct.
         verbose : bool
             Verbose printing enabled.
+        write_data : bool
+            Write per-timestep data files (NetCDF/JSON) to disk. When False,
+            the solver still runs but skips the data file write. Used by the
+            dt_write time guard to prevent excessive output during rapid
+            early evolution. SPIDER JSON writes are unaffected (managed by
+            the C binary).
     """
 
     # Use the appropriate interior model
@@ -499,7 +511,7 @@ def run_interior(
         from proteus.interior_energetics.aragog import AragogRunner
 
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
-        sim_time, output = runner.run_solver(hf_row, interior_o, dirs)
+        sim_time, output = runner.run_solver(hf_row, interior_o, dirs, write_data=write_data)
 
     elif config.interior_energetics.module == 'dummy':
         # Import
@@ -586,13 +598,13 @@ def run_interior(
     # Actual time step size
     interior_o.dt = float(sim_time) - hf_row['Time']
 
-
     # TODO: When config.interior_struct.module == 'zalmoxis', the Aragog mesh
     # is set up once during setup_solver and never refreshed during
     # equilibration iterations. If Zalmoxis re-runs and produces a
     # new zalmoxis_output.dat, Aragog uses the stale initial mesh.
     # Fix: pass the refreshed mesh to Aragog after each Zalmoxis call
     # during equilibration, or regenerate the Aragog mesh here.
+
 
 def update_structure_from_interior(
     dirs: dict,
@@ -668,7 +680,9 @@ def update_structure_from_interior(
     # Ceiling: guaranteed update after max interval
     if not triggered and elapsed >= config.interior_struct.update_interval:
         triggered = True
-        reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.update_interval:.1f} yr)'
+        reason = (
+            f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.update_interval:.1f} yr)'
+        )
 
     # T_magma relative change
     if not triggered and last_Tmagma > 0:
@@ -746,7 +760,9 @@ def update_structure_from_interior(
     nlev_b = get_nlevb(config)
     num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
     _cmb_radius, spider_mesh_file = zalmoxis_solver(
-        config, outdir, hf_row,
+        config,
+        outdir,
+        hf_row,
         num_spider_nodes=num_spider_nodes,
         temperature_function=temperature_function,
     )

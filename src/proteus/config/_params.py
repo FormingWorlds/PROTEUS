@@ -40,6 +40,13 @@ class OutputParams:
         Plotting output file format. Choices: "png", "pdf".
     write_mod: int
         Write CSV frequency. 0: wait until completion. n: every n iterations.
+    dt_write_rel: float
+        Minimum elapsed simulation time between data writes, expressed as a
+        fraction of the current simulation time. The effective minimum write
+        interval is ``dt_write_rel * Time``. This gives logarithmic spacing:
+        at Time=1e3 yr with dt_write_rel=1e-3 the guard is 1 yr; at
+        Time=1e9 yr it is 1e6 yr. Set to 0 to write every time write_mod
+        triggers (default, preserving existing behaviour).
     plot_mod: int | None
         Plotting frequency. 0: wait until completion. n: every n iterations. None: never plot.
     archive_mod: int | None
@@ -52,6 +59,7 @@ class OutputParams:
     logging: str = field(default='INFO', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     plot_fmt: str = field(default='png', validator=in_(('pdf', 'png')))
     write_mod: int = field(default=1, validator=ge(0))
+    dt_write_rel: float = field(default=0.0, validator=ge(0))
     plot_mod = field(default=10, validator=valid_mod, converter=none_if_none)
     archive_mod = field(default=None, validator=valid_mod, converter=none_if_none)
     remove_sf: bool = field(default=False)

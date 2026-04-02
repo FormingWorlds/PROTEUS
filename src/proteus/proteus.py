@@ -65,7 +65,9 @@ class Proteus:
         self.finished_prev = False  # Satisfied termination in prev iteration
         self.finished_both = False  # Satisfied termination in current and previous
         self.desiccated = False  # Entire volatile inventory has been lost
-        self.crystallized = False  # Mantle solidified, outgassing stopped but evolution continues
+        self.crystallized = (
+            False  # Mantle solidified, outgassing stopped but evolution continues
+        )
         self.lockfile = '/tmp/none'  # Path to keepalive file
 
         # Default values for mors.spada cases
@@ -288,9 +290,14 @@ class Proteus:
             flux_guess = self.config.interior_energetics.flux_guess
             if flux_guess < 0:
                 from scipy.constants import Stefan_Boltzmann
+
                 T_ini = self._get_initial_tmagma()
                 flux_guess = Stefan_Boltzmann * T_ini**4
-                log.info('flux_guess from sigma*T^4: T_magma=%.0f K -> F=%.2e W/m^2', T_ini, flux_guess)
+                log.info(
+                    'flux_guess from sigma*T^4: T_magma=%.0f K -> F=%.2e W/m^2',
+                    T_ini,
+                    flux_guess,
+                )
             self.hf_row['F_atm'] = flux_guess
             self.hf_row['F_int'] = self.hf_row['F_atm']
             self.hf_row['T_eqm'] = 2000.0
@@ -303,7 +310,7 @@ class Proteus:
                 raise ValueError(
                     "temperature_mode='accretion' requires "
                     "interior_struct.module='zalmoxis' (needs Zalmoxis "
-                    "structure for gravitational energy computation)"
+                    'structure for gravitational energy computation)'
                 )
 
             # Solve interior structure
@@ -354,7 +361,10 @@ class Proteus:
             # Equilibrate structure + composition before main loop.
             # Iterates CALLIOPE + Zalmoxis (no SPIDER) until R_int and
             # P_surf converge. Only active when config flag is set.
-            if self.config.interior_struct.equilibrate_init and self.config.interior_struct.module == 'zalmoxis':
+            if (
+                self.config.interior_struct.equilibrate_init
+                and self.config.interior_struct.module == 'zalmoxis'
+            ):
                 from proteus.interior_energetics.wrapper import equilibrate_initial_state
 
                 equilibrate_initial_state(
@@ -428,13 +438,29 @@ class Proteus:
         # Prepare orbit stuff
         init_orbit(self)
 
+        # Track the last simulation time at which data was written to disk,
+        # so that dt_write_rel can suppress high-frequency writes during
+        # rapid early evolution. Initialised to -inf so the first eligible
+        # iteration always writes.
+        self.last_write_time = -np.inf
+
         # Main loop
         # Collects the index of the snapshots that already underwent a VULCAN calculation to avoid repeating:
         vulcan_completed_loops = set()
         UpdateStatusfile(self.directories, 1)
         while not self.finished_both:
-            # Ensure that VULCAN's csv file aligns with nc output files: (multiples of write_mod)
-            is_snapshot = multiple(self.loops['total'], self.config.params.out.write_mod)
+            # Determine whether this iteration is a data-write snapshot.
+            # Two conditions must both be satisfied:
+            #   1. iteration count matches write_mod (existing behaviour)
+            #   2. enough simulation time has elapsed since the last write
+            #      (relative guard: min interval = dt_write_rel * Time)
+            iter_ok = multiple(self.loops['total'], self.config.params.out.write_mod)
+            dt_write_rel = self.config.params.out.dt_write_rel
+            cur_time = self.hf_row.get('Time', 0.0)
+            time_ok = dt_write_rel <= 0 or (
+                cur_time - self.last_write_time >= dt_write_rel * max(cur_time, 1.0)
+            )
+            is_snapshot = iter_ok and time_ok
             # New rows
             if self.loops['total'] > 0:
                 # Create new row to hold the updated variables. This will be
@@ -458,7 +484,12 @@ class Proteus:
 
             # Evolve interior
             run_interior(
-                self.directories, self.config, self.hf_all, self.hf_row, self.interior_o
+                self.directories,
+                self.config,
+                self.hf_all,
+                self.hf_row,
+                self.interior_o,
+                write_data=is_snapshot,
             )
 
             # Advance current time in main loop according to interior step
@@ -569,11 +600,11 @@ class Proteus:
                 # Fractional crystallization with compositional zonation requires
                 # explicit tracking of the solid composition field, which is beyond
                 # the current solver capabilities. See Boujibar+2020 for discussion.
-                if (
-                    self.config.params.stop.solid.freeze_volatiles
-                    and not self.crystallized
-                ):
-                    if self.hf_row.get('Phi_global', 1.0) <= self.config.params.stop.solid.phi_crit:
+                if self.config.params.stop.solid.freeze_volatiles and not self.crystallized:
+                    if (
+                        self.hf_row.get('Phi_global', 1.0)
+                        <= self.config.params.stop.solid.phi_crit
+                    ):
                         self.crystallized = True
                         log.info(
                             'Mantle crystallized (Phi_global <= %.3f). '
@@ -683,9 +714,11 @@ class Proteus:
                 # first iter => generate new HF from dict
                 self.hf_all = CreateHelpfileFromDict(self.hf_row)
 
-            # Write helpfile to disk
-            if multiple(self.loops['total'], self.config.params.out.write_mod):
+            # Write helpfile to disk (gated by is_snapshot, which
+            # combines write_mod iteration check and dt_write time check)
+            if is_snapshot:
                 WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+                self.last_write_time = self.hf_row.get('Time', 0.0)
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
@@ -697,7 +730,8 @@ class Proteus:
 
             # Make plots
             if (
-                multiple(self.loops['total'], self.config.params.out.plot_mod)
+                is_snapshot
+                and multiple(self.loops['total'], self.config.params.out.plot_mod)
                 and not self.finished_both
             ):
                 log.info('Making plots')
@@ -705,7 +739,8 @@ class Proteus:
 
             # Update or create data archive
             if (
-                multiple(self.loops['total'], self.config.params.out.archive_mod)
+                is_snapshot
+                and multiple(self.loops['total'], self.config.params.out.archive_mod)
                 and not self.finished_both
             ):
                 log.info('Updating archive of model output data')
