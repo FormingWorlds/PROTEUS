@@ -185,8 +185,6 @@ mixing_length = 2
 tolerance = 1e-08
 tolerance_rel = 1e-08
 solver_type = "bdf"
-tsurf_atol = 10.0
-tsurf_rtol = 0.02
 
 [outgas]
 fO2_shift_IW = 4.0

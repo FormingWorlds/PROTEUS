@@ -165,7 +165,6 @@ def test_interior_defaults():
     assert i.num_levels == 100  # num_levels is on Interior, not Aragog
 
     assert isinstance(i.dummy, InteriorDummy)
-    assert i.dummy.tmagma_atol == 30.0
 
     # Test Aragog module selection
     aragog_cfg = Aragog()

@@ -102,8 +102,8 @@ def run_dummy_int(
 
         # limit time-step based on max change to T_magma
         dtmp_max = (
-            hf_row['T_magma'] * config.interior_energetics.dummy.tmagma_rtol
-            + config.interior_energetics.dummy.tmagma_atol
+            hf_row['T_magma'] * config.interior_energetics.tmagma_rtol
+            + config.interior_energetics.tmagma_atol
         )
         dt = min(dt, abs(dtmp_max / dTdt) / secs_per_year)  # years
 

@@ -227,6 +227,8 @@
     rfront_wid                = 0.20         # rheological transition width (melt fraction)
     grain_size                = 0.1          # crystal grain size [m]
     flux_guess                = -1           # initial F_atm [W m-2]; <0 = sigma*T^4
+    tmagma_atol               = 20.0        # max absolute T_magma change per step [K]
+    tmagma_rtol               = 0.02        # max relative T_magma change per step
     kappah_floor              = 0.0          # eddy diffusivity floor [m^2/s]; 0 = standard MLT
     heat_radiogenic           = false        # radiogenic heating
     radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
@@ -240,7 +242,6 @@
     [interior_energetics.aragog]
         dilatation            = true         # dilatation source term
         mass_coordinates      = true         # mass coordinate mesh spacing
-        tsurf_poststep_change = 30           # max surface T change per step [K]
         event_triggering      = true         # stop solver on large T_surf jumps
         param_utbl            = true         # ultra-thin boundary layer parameterization
         param_utbl_const      = 1e-7         # UTBL scaling constant [K^-2]
@@ -251,8 +252,6 @@
         mixing_length         = 2            # 1: nearest boundary | 2: constant D/4
         tolerance_rel         = 1.0e-8       # SUNDIALS relative tolerance
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
-        tsurf_atol            = 20.0         # max absolute T_surf change per step [K]
-        tsurf_rtol            = 0.02         # max relative T_surf change per step
         ini_entropy           = 3200.0       # initial entropy [J kg-1 K-1]
         ini_dsdr              = -4.698e-6    # initial entropy gradient [J kg-1 K-1 m-1]
         matprop_smooth_width  = 1e-2         # material property smoothing (melt fraction)
@@ -263,8 +262,6 @@
         mantle_tsol           = 1700.0       # solidus [K]
         mantle_rho            = 4550.0       # mantle density [kg m-3]
         mantle_cp             = 1792.0       # mantle heat capacity [J K-1 kg-1]
-        tmagma_atol           = 30.0         # max absolute T_surf change per step [K]
-        tmagma_rtol           = 0.05         # max relative T_surf change per step
         heat_internal         = 0.0          # internal heating rate [W kg-1]
 
 # ----------------------------------------------------

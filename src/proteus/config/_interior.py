@@ -33,10 +33,6 @@ class Spider:
         Parameterisation used to determine convective mixing length.
     tolerance_rel: float
         Relative solver tolerance (SUNDIALS-specific).
-    tsurf_atol: float
-        Absolute tolerance on change in T_mantle during a single interior iteration.
-    tsurf_rtol: float
-        Relative tolerance on change in T_mantle during a single interior iteration.
     ini_dsdr: float
         Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     solver_type: str
@@ -50,8 +46,6 @@ class Spider:
     mixing_length: int = field(default=2, validator=in_((1, 2)))
     tolerance_rel: float = field(default=1e-10, validator=gt(0))
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
-    tsurf_atol: float = field(default=10.0, validator=gt(0))
-    tsurf_rtol: float = field(default=0.01, validator=gt(0))
     matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
 
 
@@ -91,8 +85,6 @@ class Aragog:
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
         at the surface where density is lower, matching SPIDER's mesh.
-    tsurf_poststep_change: float
-        Maximum change in surface temperature allowed during a single interior iteration [K].
     event_triggering: bool
         Whether to include event triggering in the solver. Default is True.
     param_utbl: bool
@@ -109,7 +101,6 @@ class Aragog:
 
     dilatation: bool = field(default=True)
     mass_coordinates: bool = field(default=True)
-    tsurf_poststep_change: float = field(default=30, validator=ge(0))
     event_triggering: bool = field(default=True)
     param_utbl: bool = field(default=True)
     param_utbl_const: float = field(default=1e-7, validator=gt(0))
@@ -134,10 +125,6 @@ class InteriorDummy:
 
     Attributes
     ----------
-    tmagma_atol: float
-        Max absolute change in surface temperature [K] during a single iteration.
-    tmagma_rtol: float
-        Max relative change in surface temperature [K] during a single iteration.
     mantle_rho: float
         Mantle mass density [kg m-3].
     mantle_cp: float
@@ -150,8 +137,6 @@ class InteriorDummy:
         Internal heating rate (e.g., radiogenic, tidal) [W kg-1]
     """
 
-    tmagma_atol: float = field(default=30.0, validator=ge(0))
-    tmagma_rtol: float = field(default=0.05, validator=ge(0))
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
     mantle_rho: float = field(default=4.55e3, validator=gt(0))
@@ -225,6 +210,8 @@ class Interior:
 
     grain_size: float = field(default=0.1, validator=gt(0))
     flux_guess: float = field(default=-1)
+    tmagma_atol: float = field(default=20.0, validator=ge(0))
+    tmagma_rtol: float = field(default=0.02, validator=ge(0))
 
     radio_tref: float = field(default=4.567, validator=ge(0))
     radio_Al: float = field(default=0.0, validator=ge(0))

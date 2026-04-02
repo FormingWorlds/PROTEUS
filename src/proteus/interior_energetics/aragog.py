@@ -125,7 +125,7 @@ class AragogRunner:
             # Too large (e.g. 1.0 K) makes the solver skip the evolution entirely.
             atol=max(config.interior_energetics.num_tolerance, 0.01),
             rtol=config.interior_energetics.num_tolerance,
-            tsurf_poststep_change=config.interior_energetics.aragog.tsurf_poststep_change,
+            tsurf_poststep_change=config.interior_energetics.tmagma_atol,
             event_triggering=config.interior_energetics.aragog.event_triggering,
         )
 

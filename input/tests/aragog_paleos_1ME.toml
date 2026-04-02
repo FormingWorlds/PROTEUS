@@ -137,7 +137,6 @@ version = "2.0"
     rfront_wid    = 0.15
 
     [interior_energetics.aragog]
-        tsurf_poststep_change = 50.0
 
 [outgas]
     fO2_shift_IW = 0

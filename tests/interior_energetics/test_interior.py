@@ -245,8 +245,8 @@ def _create_mock_config(
     config.interior_energetics.dummy.mantle_cp = mantle_cp
     config.interior_energetics.dummy.mantle_rho = mantle_rho
     config.interior_energetics.dummy.heat_internal = heat_internal
-    config.interior_energetics.dummy.tmagma_rtol = tmagma_rtol
-    config.interior_energetics.dummy.tmagma_atol = tmagma_atol
+    config.interior_energetics.tmagma_rtol = tmagma_rtol
+    config.interior_energetics.tmagma_atol = tmagma_atol
     config.interior_struct.core_frac = core_frac
     config.interior_struct.core_heatcap = core_heatcap
     config.interior_energetics.heat_tidal = heat_tidal

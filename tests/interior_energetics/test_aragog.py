@@ -41,7 +41,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.heat_tidal = False
     config.planet.tsurf_init = 4000.0
     config.interior_energetics.num_tolerance = 1e-4
-    config.interior_energetics.aragog.tsurf_poststep_change = 100.0
+    config.interior_energetics.tmagma_atol = 100.0
     config.interior_energetics.aragog.event_triggering = True
     config.params.out.logging = 'WARNING'
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'

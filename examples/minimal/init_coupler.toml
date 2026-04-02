@@ -164,8 +164,6 @@ mixing_length = 2
 tolerance = 1e-10
 tolerance_rel = 1e-10
 solver_type = "bdf"
-tsurf_atol = 10.0
-tsurf_rtol = 0.01
 
 [interior_energetics.aragog]
 logging = "ERROR"

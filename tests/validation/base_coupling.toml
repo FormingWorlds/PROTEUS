@@ -152,11 +152,8 @@ version = "2.0"
         ini_dsdr      = -1.0e-6
         mixing_length = 2
         tolerance_rel = 1e-4
-        tsurf_atol    = 50.0
-        tsurf_rtol    = 0.05
 
     [interior_energetics.aragog]
-        tsurf_poststep_change = 500.0
         event_triggering = false
         param_utbl      = true
 

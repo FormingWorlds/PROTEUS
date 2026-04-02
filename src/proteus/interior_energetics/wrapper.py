@@ -563,16 +563,9 @@ def run_interior(
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
 
-        # Do not allow massive increases to T_surf, always
-        # Use module-appropriate tolerances for the T_magma limiter
-        if config.interior_energetics.module == 'spider':
-            dT_delta = config.interior_energetics.spider.tsurf_atol
-            dT_delta += config.interior_energetics.spider.tsurf_rtol * T_magma_prev
-        elif config.interior_energetics.module == 'aragog':
-            dT_delta = float(config.interior_energetics.aragog.tsurf_poststep_change)
-        else:
-            dT_delta = config.interior_energetics.dummy.tmagma_atol
-            dT_delta += config.interior_energetics.dummy.tmagma_rtol * T_magma_prev
+        # Do not allow massive increases to T_surf
+        dT_delta = config.interior_energetics.tmagma_atol
+        dT_delta += config.interior_energetics.tmagma_rtol * T_magma_prev
         if hf_row['T_magma'] > T_magma_prev + dT_delta:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])

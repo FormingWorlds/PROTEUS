@@ -140,8 +140,6 @@ version = "2.0"
         ini_dsdr      = -1.0e-6
         mixing_length = 2
         tolerance_rel = 1e-4
-        tsurf_atol    = 50.0
-        tsurf_rtol    = 0.05
 
 [outgas]
     fO2_shift_IW = 0

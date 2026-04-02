@@ -749,11 +749,11 @@ def _try_spider(
     # Tolerance on the change in T_magma during a single SPIDER call
     if hf_row['Time'] > 0:
         dT_poststep = (
-            config.interior_energetics.spider.tsurf_rtol * hf_row['T_magma']
-            + config.interior_energetics.spider.tsurf_atol
+            config.interior_energetics.tmagma_rtol * hf_row['T_magma']
+            + config.interior_energetics.tmagma_atol
         )
     else:
-        dT_poststep = float(config.interior_energetics.spider.tsurf_atol)
+        dT_poststep = float(config.interior_energetics.tmagma_atol)
     call_sequence.extend(['-tsurf_poststep_change', str(min(dT_max, dT_poststep))])
 
     # set surface and core entropy (-1 is a flag to ignore)
