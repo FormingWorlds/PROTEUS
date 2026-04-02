@@ -220,6 +220,7 @@
         core_eos        = "PALEOS:iron"   # "<source>:<material>", recommended: "PALEOS:iron"
         mantle_eos      = "PALEOS:MgSiO3" # "<source>:<material>", recommended: "PALEOS:MgSiO3"
         ice_layer_eos   = "none"          # same as the two above; "none" = 2-layer model (core+mantle)
+        num_levels      = 150             # Zalmoxis radial grid layers
 
 # Interior energy transport (mantle & core thermal evolution)
 [interior_energetics]
