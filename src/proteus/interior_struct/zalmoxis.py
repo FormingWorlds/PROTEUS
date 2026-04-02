@@ -291,7 +291,7 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
             else config.planet.temperature_mode
         ),
         'surface_temperature': config.planet.tsurf_init,
-        'tcenter_init': config.planet.tcenter_init,
+        'center_temperature': config.planet.tcenter_init,
         'temp_profile_file': None,
         'layer_eos_config': layer_eos_config,
         'mushy_zone_factor': mzf,

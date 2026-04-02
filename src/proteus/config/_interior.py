@@ -153,7 +153,7 @@ def valid_interiordummy(instance, attribute, value):
     if instance.module != 'dummy':
         return
 
-    pass  # dummy validation uses interior.tsurf_init (top-level)
+    pass  # dummy uses planet.tsurf_init for initial temperature
 
     tliq = instance.dummy.mantle_tliq
     tsol = instance.dummy.mantle_tsol
@@ -167,8 +167,6 @@ class InteriorDummy:
 
     Attributes
     ----------
-    tsurf_init: float
-        Initial magma surface temperature [K].
     tmagma_atol: float
         Max absolute change in surface temperature [K] during a single iteration.
     tmagma_rtol: float

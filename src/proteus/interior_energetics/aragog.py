@@ -92,7 +92,7 @@ class AragogRunner:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             interior_o.aragog_solver.initialize()
             # Set entropy IC from Zalmoxis T(r) profile via PALEOS inversion
-            AragogRunner._set_entropy_ic(config, interior_o, dirs['output'])
+            AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
         else:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
@@ -526,14 +526,15 @@ class AragogRunner:
         interior_o.aragog_solver = EntropySolver(param, entropy_eos)
 
     @staticmethod
-    def _set_entropy_ic(config: Config, interior_o: Interior_t, outdir: str):
+    def _set_entropy_ic(config: Config, interior_o: Interior_t, outdir: str,
+                        hf_row: dict | None = None):
         """Set the entropy IC from the Zalmoxis T(r) profile via PALEOS.
 
         Converts the temperature initial condition to entropy using the
         PALEOS P-S EOS tables. The temperature profile comes from either:
         - Zalmoxis adiabatic profile (IC=3)
         - Zalmoxis output file (IC=2, T-dependent EOS)
-        - Config tsurf_init with linear/adiabatic profile
+        - Config planet.tsurf_init (or computed T_surface_initial from accretion mode)
 
         Parameters
         ----------
@@ -543,6 +544,9 @@ class AragogRunner:
             Interior object with initialized EntropySolver.
         outdir : str
             Output directory.
+        hf_row : dict, optional
+            Helpfile row. When provided, checks for T_surface_initial
+            (computed by Zalmoxis accretion mode) to override tsurf_init.
         """
         solver = interior_o.aragog_solver
         P_stag = solver._P_stag_flat
@@ -577,9 +581,10 @@ class AragogRunner:
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
             tsurf_init = config.planet.tsurf_init
-            T_surface_computed = interior_o.__dict__.get('T_surface_initial', 0)
-            if T_surface_computed and T_surface_computed > 0:
-                tsurf_init = T_surface_computed
+            if hf_row is not None:
+                T_surface_computed = hf_row.get('T_surface_initial', 0)
+                if T_surface_computed and T_surface_computed > 0:
+                    tsurf_init = T_surface_computed
 
             # Use 1 bar as surface pressure for the entropy lookup.
             # The mesh surface P can be negative or zero; the adiabat
