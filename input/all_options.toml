@@ -232,9 +232,9 @@
     radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
     radio_Al                  = 0.0          # 26Al [ppmw of isotope]; 1.23 = canonical (26Al/27Al=5.25e-5)
     radio_Fe                  = 0.0          # 60Fe [ppmw of isotope]; 6.3e-4 = canonical (60Fe/56Fe=1e-8)
-    radio_K                   = 240.0        # potassium [ppmw of element, all isotopes]; BSE value
-    radio_U                   = 0.020        # uranium [ppmw of element, all isotopes]; BSE value
-    radio_Th                  = 0.080        # thorium [ppmw of element, all isotopes]; BSE value
+    radio_K                   = 310.0        # potassium [ppmw of element, all isotopes]; BSE value
+    radio_U                   = 0.031        # uranium [ppmw of element, all isotopes]; BSE value
+    radio_Th                  = 0.124        # thorium [ppmw of element, all isotopes]; BSE value
 
     # Aragog-only parameters
     [interior_energetics.aragog]
