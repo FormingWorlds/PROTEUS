@@ -206,7 +206,7 @@ class Interior:
     dummy: InteriorDummy = field(factory=InteriorDummy, validator=valid_interiordummy)
 
     mixing_length: str = field(
-        default='nearest_boundary', validator=in_(('nearest_boundary', 'constant'))
+        default='nearest', validator=in_(('nearest', 'constant'))
     )
     grain_size: float = field(default=0.1, validator=gt(0))
     flux_guess: float = field(default=-1)

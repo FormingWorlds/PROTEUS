@@ -787,7 +787,7 @@ def _try_spider(
         )
 
     # Mixing length parameterization: SPIDER uses 1=nearest_boundary, 2=constant
-    spider_ml = 1 if config.interior_energetics.mixing_length == 'nearest_boundary' else 2
+    spider_ml = 1 if config.interior_energetics.mixing_length == 'nearest' else 2
     call_sequence.extend(['-mixing_length', str(spider_ml)])
 
     # Solver tolerances
