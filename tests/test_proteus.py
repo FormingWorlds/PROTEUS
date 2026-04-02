@@ -30,8 +30,7 @@ def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_modul
     config.interior_struct.module = struct_module
     config.interior_struct.zalmoxis.update_interval = 0
     config.interior_energetics.module = interior_module
-    config.interior_energetics.spider.num_levels = 50
-    config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
+    config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.orbit.module = None
     # Attributes used during start() setup
     config.params.out.logging = 'WARNING'

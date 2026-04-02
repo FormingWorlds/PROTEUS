@@ -48,7 +48,6 @@ def _mock_config(
     config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.num_levels = num_levels
     config.interior_energetics.module = 'spider'
-    config.interior_energetics.spider.num_levels = num_levels
     return config
 
 
@@ -599,7 +598,6 @@ def test_determine_zalmoxis_spider_mesh(tmp_path):
     config = MagicMock()
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
-    config.interior_energetics.spider.num_levels = 50
     config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
@@ -633,7 +631,6 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
     config = MagicMock()
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
-    config.interior_energetics.spider.num_levels = 50
     config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
@@ -668,7 +665,6 @@ def test_determine_zalmoxis_no_adiabatic_switch_non_tdep():
     config = MagicMock()
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'Seager2007'
-    config.interior_energetics.spider.num_levels = 50
     config.planet.temperature_mode = 'isothermal'
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
 

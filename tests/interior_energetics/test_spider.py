@@ -899,7 +899,6 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     (mc_dir / 'solidus_P-S.dat').write_text('dummy')
 
     config = MagicMock()
-    config.interior_energetics.spider.tolerance = 1e-4
     config.interior_energetics.spider.tolerance_rel = 1e-4
     config.interior_energetics.tmagma_rtol = 0.02
     config.interior_energetics.tmagma_atol = 100.0
