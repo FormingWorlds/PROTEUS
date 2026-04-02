@@ -191,7 +191,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     heat_tidal      = false         # enable tidal heat production
     rfront_loc    = 0.4           # Centre of rheological transition
     rfront_wid    = 0.15          # Width of rheological transition
-    bulk_modulus    = 260e9         # Bulk modulus [Pa]
 
     module = "aragog"               # Which interior module to use
 
@@ -202,8 +201,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior_energetics.aragog]
-        inner_boundary_condition      = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
-        inner_boundary_value          = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
         tsurf_poststep_change         = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
         event_triggering              = true    # enable events triggering to avoid abrupt jumps in surface temperature
 

@@ -77,19 +77,6 @@ class Aragog:
     ----------
     num_levels: int
         Number of Aragog grid levels (basic mesh).
-    initial_condition: int
-        How to define the intial temperature profile (1: linear, 2: user defined, 3: adiabat).
-        Default is 3 (adiabat), which integrates dT/dP|_S from the surface downward.
-    tolerance: float
-        Solver tolerance.
-    basal_temperature: float
-        Temperature at the base of the mantle (if using a linear temperature profile to start)
-    init_file: str
-        File containing the initial temperature file for aragog
-    inner_boundary_condition: int
-        Type of inner boundary condition. Choices:  1 (core cooling), 2 (prescribed heat flux), 3 (prescribed temperature).
-    inner_boundary_value: float
-        Value of the inner boundary condition, either temperature or heat flux, depending on the chosen condition.
     trans_conduction: bool
         Whether to include conductive heat flux in the model. Default is True.
     trans_convection: bool
@@ -108,8 +95,6 @@ class Aragog:
         Maximum change in surface temperature allowed during a single interior iteration [K].
     event_triggering: bool
         Whether to include event triggering in the solver. Default is True.
-    bulk_modulus: float
-        Adiabatic bulk modulus AW-EOS parameter [Pa].
     param_utbl: bool
         Whether to parameterize the ultra-thin thermal boundary layer at the surface.
         Reduces the effective radiating temperature to account for the unresolved
@@ -122,28 +107,10 @@ class Aragog:
         scipy solve_ivp (BDF). Requires jax, equinox, and diffrax packages.
     """
 
-    basal_temperature: float = field(default=7000)
-    init_file: str = field(default=None)
-    initial_condition: int = field(
-        default=3,
-        validator=in_(
-            (
-                1,
-                2,
-                3,
-            )
-        ),
-    )
-    inner_boundary_condition: int = field(default=1, validator=ge(0))
-    inner_boundary_value: float = field(default=4000, validator=ge(0))
-    outer_boundary_condition: int = field(default=4, validator=in_((1, 4)))
-    # 4 = prescribed flux from atmosphere (default, PROTEUS coupling mode)
-    # 1 = native grey-body (sigma*T^4, standalone mode, bypasses atmosphere)
     dilatation: bool = field(default=True)
     mass_coordinates: bool = field(default=True)
     tsurf_poststep_change: float = field(default=30, validator=ge(0))
     event_triggering: bool = field(default=True)
-    bulk_modulus: float = field(default=260e9, validator=gt(0))
     param_utbl: bool = field(default=True)
     param_utbl_const: float = field(default=1e-7, validator=gt(0))
     jax: bool = field(default=False)

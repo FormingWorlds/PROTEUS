@@ -137,7 +137,6 @@ version = "2.0"
     heat_tidal      = true  # enable tidal heat production
     rfront_loc    = 0.4    # Centre of rheological transition
     rfront_wid    = 0.15   # Width of rheological transition
-    bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
     module = "dummy"   # Which interior module to use
 

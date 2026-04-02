@@ -155,7 +155,6 @@ grain_size = 0.1
 F_initial = 1000.0
 rheo_phi_loc = 0.3
 rheo_phi_wid = 0.15
-bulk_modulus = 260000000000.0
 
 [interior_energetics.spider]
 ini_dsdr = -4.698e-06

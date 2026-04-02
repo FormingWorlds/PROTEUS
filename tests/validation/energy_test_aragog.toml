@@ -150,10 +150,6 @@ version = "2.0"
     rfront_wid    = 0.15
 
     [interior_energetics.aragog]
-        basal_temperature        = 5000.0
-        initial_condition        = 3
-        inner_boundary_condition = 2
-        inner_boundary_value     = 0
         tsurf_poststep_change    = 50.0
         param_utbl               = false
         param_utbl_const         = 1e-7

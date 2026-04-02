@@ -31,7 +31,6 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_struct.core_density = 12500.0
     config.interior_struct.core_heatcap = 880.0
     config.interior_energetics.num_levels = 20
-    config.interior_energetics.aragog.bulk_modulus = 200e9
     config.interior_energetics.aragog.mass_coordinates = False
     config.interior_energetics.trans_conduction = True
     config.interior_energetics.trans_convection = True
@@ -40,15 +39,10 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.dilatation = False
     config.interior_energetics.heat_radiogenic = False
     config.interior_energetics.heat_tidal = False
-    config.interior_energetics.aragog.initial_condition = 1
-    config.interior_energetics.aragog.init_file = 'dummy.txt'
     config.planet.tsurf_init = 4000.0
-    config.interior_energetics.aragog.basal_temperature = 5000.0
     config.interior_energetics.num_tolerance = 1e-4
     config.interior_energetics.aragog.tsurf_poststep_change = 100.0
     config.interior_energetics.aragog.event_triggering = True
-    config.interior_energetics.aragog.inner_boundary_condition = 1
-    config.interior_energetics.aragog.inner_boundary_value = 5000.0
     config.params.out.logging = 'WARNING'
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.interior_struct.melting_dir = 'Wolf_Bower+2018'

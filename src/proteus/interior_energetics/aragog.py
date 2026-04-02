@@ -132,15 +132,15 @@ class AragogRunner:
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode)
             # 1 = native grey-body (standalone mode, sigma*T^4)
-            outer_boundary_condition=config.interior_energetics.aragog.outer_boundary_condition,
+            outer_boundary_condition=4,
             # first guess surface heat flux [W/m2] (only used if outer_bc=4)
             outer_boundary_value=hf_row['F_atm'],
             # 1 = core cooling model
             # 2 = prescribed heat flux
             # 3 = prescribed temperature
-            inner_boundary_condition=(config.interior_energetics.aragog.inner_boundary_condition),
+            inner_boundary_condition=(1),
             # core temperature [K], if inner_boundary_condition = 3
-            inner_boundary_value=(config.interior_energetics.aragog.inner_boundary_value),
+            inner_boundary_value=(4000),
             # only used in gray body BC, outer_boundary_condition = 1
             emissivity=1,
             # only used in gray body BC, outer_boundary_condition = 1
@@ -176,7 +176,7 @@ class AragogRunner:
             eos_method=1,  # 1: Adams-Williamson / 2: User defined
             surface_density=4090,  # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
-            adiabatic_bulk_modulus=config.interior_energetics.aragog.bulk_modulus,  # AW-EOS parameter [Pa]
+            adiabatic_bulk_modulus=260e9,  # AW-EOS parameter [Pa]
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
             surface_pressure=0.0,  # TODO: wire to atmospheric overburden when available
         )
@@ -202,9 +202,9 @@ class AragogRunner:
 
         # Define initial conditions for prescribing temperature profile
         if config.interior_struct.module == 'spider':
-            initial_condition_temperature_profile = config.interior_energetics.aragog.initial_condition
+            initial_condition_temperature_profile = 3
             init_file_temperature_profile = os.path.join(
-                FWL_DATA_DIR, f'interior_lookup_tables/{config.interior_energetics.aragog.init_file}'
+                FWL_DATA_DIR, f'interior_lookup_tables/{None}'
             )
         elif config.interior_struct.module == 'zalmoxis':
             _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
@@ -216,7 +216,7 @@ class AragogRunner:
                 )
             elif (
                 config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
-                and config.interior_energetics.aragog.initial_condition == 3
+                and 3 == 3
             ):
                 # For PALEOS EOS with adiabatic IC: Aragog uses IC=3 with
                 # entropy tables for its entropy-conserving adiabat. After
@@ -227,9 +227,9 @@ class AragogRunner:
                 init_file_temperature_profile = ''
             else:
                 # Otherwise, use the initial condition from aragog config
-                initial_condition_temperature_profile = config.interior_energetics.aragog.initial_condition
+                initial_condition_temperature_profile = 3
                 init_file_temperature_profile = os.path.join(
-                    FWL_DATA_DIR, f'interior_lookup_tables/{config.interior_energetics.aragog.init_file}'
+                    FWL_DATA_DIR, f'interior_lookup_tables/{None}'
                 )
         else:
             raise ValueError("Invalid module configuration. Expected 'spider' or 'zalmoxis'.")
@@ -253,7 +253,7 @@ class AragogRunner:
             initial_condition=initial_condition_temperature_profile,
             # initial top temperature (K)
             surface_temperature=tsurf_init,
-            basal_temperature=config.interior_energetics.aragog.basal_temperature,
+            basal_temperature=7000.0,
             init_file=init_file_temperature_profile,
         )
 
@@ -667,7 +667,7 @@ class AragogRunner:
         if not (
             config.interior_struct.module == 'zalmoxis'
             and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
-            and config.interior_energetics.aragog.initial_condition == 3
+            and 3 == 3
         ):
             return
 

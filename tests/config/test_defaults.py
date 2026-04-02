@@ -202,11 +202,10 @@ def test_aragog_defaults():
     """
     Test verification of Aragog specific defaults.
 
-    Verifies ARAGOG (Python-based interior module) defaults:
-    - 100 grid levels
-    - Initial condition 1 (Linear temperature profile)
-    - Bulk modulus 260 GPa (Earth-like mantle)
+    Verifies ARAGOG (Python-based interior module) defaults.
     """
     a = Aragog()
-    assert a.initial_condition == 3  # Adiabat (default)
-    assert a.bulk_modulus == 260e9
+    assert a.dilatation is True
+    assert a.mass_coordinates is True
+    assert a.param_utbl is True
+    assert a.jax is False
