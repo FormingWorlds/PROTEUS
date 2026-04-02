@@ -141,8 +141,8 @@ class Planet:
         Initial magma surface temperature [K]. Used by isothermal, linear,
         and adiabatic modes. Ignored in accretion mode (computed by Zalmoxis).
     tcenter_init: float
-        Center temperature [K]. Used by linear mode (endpoint) and adiabatic
-        mode (initial guess). Ignored in isothermal and accretion modes.
+        Center temperature [K]. Used by linear mode only (center endpoint).
+        Ignored in isothermal, adiabatic, and accretion modes.
     f_accretion: float
         Heat retention efficiency for accretion energy [0-1].
         Only used in accretion mode. Default 0.04 (White & Li 2025).

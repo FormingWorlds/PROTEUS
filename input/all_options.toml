@@ -89,10 +89,10 @@
 
     # Initial temperature profile
     temperature_mode    = "adiabatic" # isothermal | linear | adiabatic | accretion
-    tsurf_init          = 4000        # initial surface temperature [K] (isothermal/linear/adiabatic)
-    tcenter_init        = 6000        # center temperature [K] (linear: endpoint; adiabatic: guess)
-    f_accretion         = 0.04        # accretion heat retention [0-1] (accretion mode, White & Li 2025)
-    f_differentiation   = 0.50        # differentiation heat retention [0-1] (accretion mode)
+    tsurf_init          = 4000        # surface temperature [K] (isothermal, linear, adiabatic)
+    tcenter_init        = 6000        # center temperature [K] (linear only)
+    f_accretion         = 0.04        # accretion heat retention [0-1] (accretion only)
+    f_differentiation   = 0.50        # differentiation heat retention [0-1] (accretion only)
 
     # Initial volatile inventory
     volatile_mode       = 'elements'  # set volatile inventory by: 'elements' | 'gas_prs'
