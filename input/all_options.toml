@@ -223,20 +223,10 @@
 
 # Interior energy transport (mantle & core thermal evolution)
 [interior_energetics]
-    module          = "spider"     # spider | aragog | dummy
+    module          = "aragog"             # aragog | spider | dummy
 
-    # ── Dummy module ─────────────────────────────────────────────────
-    [interior_energetics.dummy]
-        mantle_tliq   = 2700.0             # liquidus [K]
-        mantle_tsol   = 1700.0             # solidus [K]
-        mantle_rho    = 4550.0             # mantle density [kg m-3]
-        mantle_cp     = 1792.0             # mantle heat capacity [J K-1 kg-1]
-        tmagma_atol   = 30.0               # max absolute T_surf change per step [K]
-        tmagma_rtol   = 0.05               # max relative T_surf change per step
-        heat_internal = 0.0                # internal heating rate [W kg-1]
-
-    # ── Shared parameters (Aragog + SPIDER) ──────────────────────────
-    num_levels        = 100                # radial grid levels
+    # ── Shared parameters (Aragog + SPIDER, ignored for dummy) ─────────
+    num_levels        = 60                 # radial grid levels
     num_tolerance     = 1.0e-8             # solver tolerance
     trans_conduction  = true               # conductive heat transfer
     trans_convection  = true               # convective heat transfer (MLT)
@@ -253,7 +243,7 @@
     radio_U           = 0.031              # uranium concentration [ppmw, all isotopes]
     radio_Th          = 0.124              # thorium concentration [ppmw, all isotopes]
 
-    # ── Aragog-only ──────────────────────────────────────────────────
+    # ── Aragog-only parameters ─────────────────────────────────────────
     [interior_energetics.aragog]
         initial_condition        = 3       # 1: linear | 2: from file | 3: adiabat
         basal_temperature        = 7000.0  # CMB temperature [K] (for IC=1)
@@ -266,7 +256,7 @@
         bulk_modulus             = 260e9   # Adams-Williamson bulk modulus [Pa]
         jax                      = false   # JAX/diffrax solver (requires jax, equinox, diffrax)
 
-    # ── SPIDER-only ──────────────────────────────────────────────────
+    # ── SPIDER-only parameters ─────────────────────────────────────────
     [interior_energetics.spider]
         mixing_length        = 2           # 1: nearest boundary | 2: constant D/4
         tolerance_rel        = 1.0e-8      # SUNDIALS relative tolerance
@@ -276,6 +266,16 @@
         ini_entropy          = 3200.0      # initial entropy [J kg-1 K-1] (~4000 K surface)
         ini_dsdr             = -4.698e-6   # initial entropy gradient [J kg-1 K-1 m-1]
         matprop_smooth_width = 1e-2        # material property smoothing (melt fraction)
+
+    # ── Dummy module parameters ─────────────────────────────────────────
+    [interior_energetics.dummy]
+        mantle_tliq   = 2700.0             # liquidus [K]
+        mantle_tsol   = 1700.0             # solidus [K]
+        mantle_rho    = 4550.0             # mantle density [kg m-3]
+        mantle_cp     = 1792.0             # mantle heat capacity [J K-1 kg-1]
+        tmagma_atol   = 30.0               # max absolute T_surf change per step [K]
+        tmagma_rtol   = 0.05               # max relative T_surf change per step
+        heat_internal = 0.0                # internal heating rate [W kg-1]
 
 # ----------------------------------------------------
 
