@@ -114,8 +114,8 @@ class Atmodeller:
     solubility_H2: str = 'H2_basalt_hirschmann12'
     solubility_N2: str = 'N2_basalt_dasgupta22'
     solubility_S2: str = 'S2_sulfide_basalt_boulliung23'
-    solubility_CO: str = field(default='none', converter=none_if_none)
-    solubility_CH4: str = field(default='none', converter=none_if_none)
+    solubility_CO: str = field(default='CO_basalt_yoshioka19', converter=none_if_none)
+    solubility_CH4: str = field(default='CH4_basalt_ardia13', converter=none_if_none)
 
 
 @define
