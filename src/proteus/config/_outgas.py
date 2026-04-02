@@ -109,13 +109,13 @@ class Atmodeller:
     solver_multistart: int = field(default=10, validator=validators.gt(0))
     include_condensates: bool = True
     T_floor: float = field(default=700.0, validator=validators.ge(0))
-    solubility_H2O: str = 'H2O_peridotite_sossi23'
-    solubility_CO2: str = 'CO2_basalt_dixon95'
-    solubility_H2: str = 'H2_basalt_hirschmann12'
-    solubility_N2: str = 'N2_basalt_dasgupta22'
-    solubility_S2: str = 'S2_sulfide_basalt_boulliung23'
-    solubility_CO: str = field(default='CO_basalt_yoshioka19', converter=none_if_none)
-    solubility_CH4: str = field(default='CH4_basalt_ardia13', converter=none_if_none)
+    solubility_H2O = field(default='H2O_peridotite_sossi23', converter=none_if_none)
+    solubility_CO2 = field(default='CO2_basalt_dixon95', converter=none_if_none)
+    solubility_H2 = field(default='H2_basalt_hirschmann12', converter=none_if_none)
+    solubility_N2 = field(default='N2_basalt_dasgupta22', converter=none_if_none)
+    solubility_S2 = field(default='S2_sulfide_basalt_boulliung23', converter=none_if_none)
+    solubility_CO = field(default='CO_basalt_yoshioka19', converter=none_if_none)
+    solubility_CH4 = field(default='CH4_basalt_ardia13', converter=none_if_none)
 
 
 @define
