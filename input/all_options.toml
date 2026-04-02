@@ -272,6 +272,7 @@
     h2_binodal                = false        # enable H2 binodal partitioning
 
     [outgas.calliope]
+        # Include species in equilibrium (false = species excluded entirely from calculation)
         include_H2O           = true
         include_CO2           = true
         include_N2            = true
@@ -282,10 +283,10 @@
         include_H2            = true
         include_CH4           = true
         include_CO            = true
-        T_floor               = 700.0        # temperature floor [K]
-        rtol                  = 0.0001       # relative mass tolerance
-        xtol                  = 1e-06        # absolute mass tolerance
-        solubility            = true         # enable solubility
+        T_floor               = 700.0       # skip outgassing below this T [K]
+        rtol                  = 0.0001      # relative mass tolerance
+        xtol                  = 1e-06       # absolute mass tolerance
+        solubility            = true        # melt-gas partitioning (false = all volatiles in atmosphere)
 
     [outgas.atmodeller]
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
