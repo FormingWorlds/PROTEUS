@@ -324,8 +324,8 @@ class AtmosClim:
     dummy: Dummy = field(factory=Dummy)
 
     # Grid and spectral setup (shared by agni + janus)
-    spectral_group: str = field(default=None)
-    spectral_bands: str = field(default=None)
+    spectral_group: str = field(default='Honeyside')
+    spectral_bands: str = field(default='48')
     num_levels: int = field(default=50, validator=ge(15))
     p_top: float = field(default=1e-6, validator=gt(0))
     p_obs: float = field(default=20e-3, validator=gt(0))

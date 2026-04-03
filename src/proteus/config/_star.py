@@ -72,15 +72,15 @@ class Mors:
         Effective temperature [K]. If 'none', Teff will be calculated will be calculated using mors' stellar tracks, if spectrum_source is 'phoenix'.
     """
 
-    age_now = field(default=None)
+    age_now = field(default=4.567)
     star_name = field(default=None, converter=none_if_none)
     star_path = field(default=None, converter=none_if_none)
-    rot_pcntle = field(default=None, converter=none_if_none)
+    rot_pcntle = field(default=50.0, converter=none_if_none)
     rot_period = field(default=None, converter=none_if_none)
     tracks: str = field(default='spada', validator=in_(('spada', 'baraffe')))
 
     spectrum_source: str = field(
-        default=None,
+        default='phoenix',
         validator=in_(('solar', 'muscles', 'phoenix', None)),
         converter=none_if_none,
     )
