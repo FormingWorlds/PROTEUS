@@ -46,7 +46,7 @@ seed = 2
 output = "infer_demo/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/demos/dummy.toml"
+ref_config = "input/dummy.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = '2'         # Number of random samples if starting from scratch.
@@ -78,7 +78,7 @@ n_samples  = 1000     # Raw samples for acquisition optimization
 Execute the main optimisation process by using the PROTEUS command-line interface
 
 ```bash
-proteus infer --config input/ensembles/example.infer.toml
+proteus infer --config input/example.infer.toml
 ```
 
 In this case, we randomly sample the parameter space to provide a starting point for the

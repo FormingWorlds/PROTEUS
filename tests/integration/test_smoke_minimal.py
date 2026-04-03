@@ -29,7 +29,7 @@ def test_proteus_dummy_init():
     - Directory structure is set up
     - All required attributes are present
     """
-    config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+    config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
     # Initialize PROTEUS with minimal config
     runner = Proteus(config_path=config_path)

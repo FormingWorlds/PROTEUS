@@ -45,7 +45,7 @@ def test_smoke_escape_dummy_atmos():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration (uses dummy escape + dummy atmos)
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -145,7 +145,7 @@ def test_smoke_star_instellation():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -247,7 +247,7 @@ def test_smoke_orbit_heat_tidaling():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -344,7 +344,7 @@ def test_smoke_outgas_atmos_volatiles():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -449,7 +449,7 @@ def test_smoke_dummy_full_chain():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration (uses all dummy modules)
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)

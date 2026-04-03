@@ -49,7 +49,7 @@ def test_integration_calliope_multi_timestep(proteus_multi_timestep_run):
     """
     # Run PROTEUS for 5 timesteps with CALLIOPE outgassing
     runner = proteus_multi_timestep_run(
-        config_path='input/demos/dummy.toml',
+        config_path='input/dummy.toml',
         num_timesteps=5,
         max_time=1e6,  # years
         min_time=1e2,  # years
@@ -159,7 +159,7 @@ def test_integration_calliope_extended_run(proteus_multi_timestep_run):
     """
     # Run PROTEUS for 10 timesteps
     runner = proteus_multi_timestep_run(
-        config_path='input/demos/dummy.toml',
+        config_path='input/dummy.toml',
         num_timesteps=10,
         max_time=1e7,  # years
         min_time=1e2,  # years

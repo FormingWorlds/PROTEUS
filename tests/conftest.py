@@ -163,94 +163,6 @@ def proteus_root() -> Path:
 
 
 @pytest.fixture(scope='session')
-def config_earth(proteus_root: Path):
-    """
-    Load Earth configuration file (CHILI Protocol).
-
-    **Depends on**: proteus_root fixture
-
-    **Returns**:
-        Path: Path to input/chili/protocol/earth.toml
-
-    **Raises**:
-        AssertionError: If config file not found (PROTEUS not installed properly)
-
-    **Notes**:
-        - Source: CHILI Protocol Earth benchmark
-        - Requires PROTEUS installed in editable mode
-        - Fails fast if file missing (safety check)
-    """
-    config_path = proteus_root / 'input' / 'chili' / 'protocol' / 'earth.toml'
-    assert config_path.exists(), f'CHILI Earth config not found at {config_path}'
-    return config_path
-
-
-@pytest.fixture(scope='session')
-def config_fiducial(proteus_root: Path):
-    """
-    Load Fiducial Sub-Neptune configuration file.
-
-    **Returns**:
-        Path: Path to input/planets/fiducial_sub_Neptune.toml
-    """
-    config_path = proteus_root / 'input' / 'planets' / 'fiducial_sub_Neptune.toml'
-    assert config_path.exists(), f'Fiducial config not found at {config_path}'
-    return config_path
-
-
-@pytest.fixture(scope='session')
-def config_l9859d(proteus_root: Path):
-    """
-    Load L 98-59 d configuration file (Volatile-rich Super-Earth).
-
-    **Returns**:
-        Path: Path to input/planets/l9859d.toml
-    """
-    config_path = proteus_root / 'input' / 'planets' / 'l9859d.toml'
-    assert config_path.exists(), f'L 98-59 d config not found at {config_path}'
-    return config_path
-
-
-@pytest.fixture(scope='session')
-def config_gj9827d(proteus_root: Path):
-    """
-    Load GJ 9827 d configuration file.
-
-    **Returns**:
-        Path: Path to input/planets/gj9827d.toml
-    """
-    config_path = proteus_root / 'input' / 'planets' / 'gj9827d.toml'
-    assert config_path.exists(), f'GJ 9827 d config not found at {config_path}'
-    return config_path
-
-
-@pytest.fixture(scope='session')
-def config_trappist1c(proteus_root: Path):
-    """
-    Load TRAPPIST-1 c configuration file.
-
-    **Returns**:
-        Path: Path to input/planets/trappist1c.toml
-    """
-    config_path = proteus_root / 'input' / 'planets' / 'trappist1c.toml'
-    assert config_path.exists(), f'TRAPPIST-1 c config not found at {config_path}'
-    return config_path
-
-
-@pytest.fixture(scope='session')
-def config_tr1b(proteus_root: Path):
-    """
-    Load TRAPPIST-1 b configuration file (CHILI Protocol).
-
-    **Returns**:
-        Path: Path to input/chili/protocol/tr1b.toml
-    """
-    config_path = proteus_root / 'input' / 'chili' / 'protocol' / 'tr1b.toml'
-    assert config_path.exists(), f'CHILI TRAPPIST-1 b config not found at {config_path}'
-    return config_path
-
-
-@pytest.fixture(scope='session')
 def config_minimal(proteus_root: Path):
     """
     Load minimal configuration file for quick validation tests.
@@ -280,7 +192,7 @@ def config_dummy(proteus_root: Path):
     **Depends on**: proteus_root fixture
 
     **Returns**:
-        Path: Path to input/demos/dummy.toml (fastest initialization)
+        Path: Path to input/dummy.toml (fastest initialization)
 
     **Use Case**: Unit tests validating Python logic only (no heavy physics)
 
@@ -290,7 +202,7 @@ def config_dummy(proteus_root: Path):
         - No heavy Fortran computations
         - Preferred for @pytest.mark.unit tests
     """
-    config_path = proteus_root / 'input' / 'demos' / 'dummy.toml'
+    config_path = proteus_root / 'input' / 'dummy.toml'
     assert config_path.exists(), f'Dummy config not found at {config_path}'
     return config_path
 

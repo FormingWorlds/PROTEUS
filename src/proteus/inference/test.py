@@ -25,7 +25,7 @@ dtype = torch.double
 torch.manual_seed(1)
 
 # Reference configuration for the PROTEUS simulator
-ref = 'input/demos/dummy.toml'
+ref = 'input/dummy.toml'
 output = 'output/inference/'
 
 print('\nperform sanity check')

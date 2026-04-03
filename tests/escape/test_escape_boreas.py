@@ -67,7 +67,7 @@ def _make_minimal_hf_row() -> dict:
 @pytest.fixture(scope='module')
 def boreas_config() -> object:
     """Load the demo BOREAS TOML into a validated Config object."""
-    config_path = Path('input/demos/boreas.toml')
+    config_path = Path('input/dummy.toml')
     cfg = read_config_object(config_path)
     # Ensure module selection
     cfg.escape.module = 'boreas'

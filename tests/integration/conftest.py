@@ -17,7 +17,7 @@ establishing integration test infrastructure.
     @pytest.mark.integration
     def test_multi_timestep(proteus_multi_timestep_run):
         runner = proteus_multi_timestep_run(
-            config_path='input/demos/dummy.toml',
+            config_path='input/dummy.toml',
             num_timesteps=5,
             max_time=1e6,  # years
         )
@@ -69,7 +69,7 @@ def proteus_multi_timestep_run():
     **Example**:
         def test_my_integration(proteus_multi_timestep_run):
             runner = proteus_multi_timestep_run(
-                config_path='input/demos/dummy.toml',
+                config_path='input/dummy.toml',
                 num_timesteps=10,
                 max_time=1e7,
                 interior__dummy__tsurf_init=2000.0,

@@ -25,7 +25,7 @@ output = "auto"
 symlink = ""
 
 # Base config file (relative to PROTEUS root)
-ref_config = "input/demos/dummy.toml"
+ref_config = "input/dummy.toml"
 
 # SLURM settings
 use_slurm = false

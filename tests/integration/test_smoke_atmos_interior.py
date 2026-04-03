@@ -56,7 +56,7 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration (uses dummy atmos + dummy interior)
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -145,7 +145,7 @@ def test_smoke_janus_dummy_interior_radiation_balance():
     # Create temporary output directory
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load JANUS configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'janus.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -219,7 +219,7 @@ def test_smoke_agni_dummy_interior_convergence():
     # Create temporary output directory
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load AGNI configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'agni.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
