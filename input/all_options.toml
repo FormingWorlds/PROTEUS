@@ -141,18 +141,23 @@
     bol_scale                 = 1.0          # bolometric luminosity scaling factor
 
     [star.mors]
-        rot_pcntle            = 50.0         # rotation percentile
+        # Rotation and evolution
+        rot_pcntle            = 50.0         # rotation percentile of stellar population
         rot_period            = "none"       # rotation period [days]; overrides rot_pcntle
         tracks                = "spada"      # evolution tracks: spada | baraffe
-        age_now               = 4.567        # current age of star [Gyr] (= time of spectrum)
+        age_now               = 4.567        # observed/estimated age of star [Gyr]
+
+        # Spectrum source
         spectrum_source       = "phoenix"    # solar | muscles | phoenix
-        star_name             = "none"       # e.g. 'sun', 'trappist-1' (solar/muscles only)
-        star_path             = "none"       # custom spectrum file path (overrides source)
+        star_name             = "none"       # named star for solar/muscles (e.g. "sun", "trappist-1")
+        star_path             = "none"       # custom spectrum file; overrides spectrum_source
+
+        # PHOENIX synthetic spectra (only used when spectrum_source = "phoenix")
         phoenix_FeH           = 0.0          # metallicity [Fe/H]; 0.0 = solar
-        phoenix_alpha         = 0.0          # alpha enhancement [alpha/M]; 0.0 = solar
-        phoenix_radius        = "none"       # stellar radius [R_sun]; none = from MORS
-        phoenix_log_g         = "none"       # surface gravity [dex]; none = from MORS
-        phoenix_Teff          = "none"       # effective temperature [K]; none = from MORS
+        phoenix_alpha         = 0.0          # alpha enhancement [alpha/Fe]; 0.0 = solar
+        phoenix_radius        = "none"       # stellar radius [R_sun]; none = from MORS tracks
+        phoenix_log_g         = "none"       # surface gravity [log10 cgs]; none = from MORS tracks
+        phoenix_Teff          = "none"       # effective temperature [K]; none = from MORS tracks
 
     [star.dummy]
         radius                = 1.0          # constant stellar radius [R_sun]
@@ -161,16 +166,22 @@
 
 # Planetary orbit & tides
 [orbit]
-    instellation_method       = 'distance'   # 'distance' (semi-major axis) | 'inst' (flux)
-    semimajoraxis             = 1.0          # semi-major axis [AU] (if method = 'distance')
-    instellationflux          = 1.0          # instellation flux [Earth units] (if method = 'inst')
-    eccentricity              = 0.0          # eccentricity
+    module                    = "none"       # tidal heating module: none | dummy | lovepy
+
+    # Orbit geometry and instellation
+    instellation_method       = "distance"   # "distance" (semi-major axis) | "inst" (flux)
+    semimajoraxis             = 1.0          # semi-major axis [AU] (if method = "distance")
+    instellationflux          = 1.0          # instellation [S_Earth] (if method = "inst")
+    eccentricity              = 0.0          # orbital eccentricity
     zenith_angle              = 48.19        # characteristic zenith angle [degrees]
-    s0_factor                 = 0.375        # instellation scale factor
+    s0_factor                 = 0.375        # instellation geometric scale factor
+
+    # Tidal evolution and rotation
     evolve                    = false        # evolve semi-major axis and eccentricity
-    module                    = "none"       # orbit+tidal heating module: none | dummy | lovepy
     axial_period              = "none"       # day length [hours]; none = tidally locked
-    satellite                 = false        # include satellite (moon)
+
+    # Satellite (moon)
+    satellite                 = false        # include satellite
     mass_sat                  = 7.347e+22    # satellite mass [kg]
     semimajoraxis_sat         = 3e8          # satellite orbit semi-major axis [m]
 
@@ -196,22 +207,31 @@
     eos_dir                   = "none"       # EOS folder in FWL_DATA; none if PALEOS
 
     [interior_struct.zalmoxis]
+        # Equation of state
         core_eos              = "PALEOS:iron"    # "<source>:<material>"
         mantle_eos            = "PALEOS:MgSiO3"  # "<source>:<material>"
-        ice_layer_eos         = "none"       # "none" = 2-layer model (core+mantle)
-        mushy_zone_factor     = 0.8          # solidus/liquidus ratio [0.7-1.0] if EOS==PALEOS
+        ice_layer_eos         = "none"       # "none" = 2-layer model (core + mantle)
+        mushy_zone_factor     = 0.8          # solidus/liquidus ratio [0.7-1.0] (PALEOS only)
         mantle_mass_fraction  = 0            # 0 = auto (1 - core_frac) for 2-layer models
-        num_levels            = 150          # radial grid levels (whole interior of planet)
+
+        # Grid
+        num_levels            = 150          # radial grid levels (full interior)
+
+        # Structure update triggers
         update_dphi_abs       = 0.05         # trigger on absolute melt fraction change
         update_dtmagma_frac   = 0.05         # trigger on relative T_magma change
-        update_interval       = 1e9          # max time between structure updates [yr]; 0 = init only
+        update_interval       = 1e9          # max time between updates [yr]; 0 = init only
         update_min_interval   = 0            # min time between updates [yr]
         mesh_max_shift        = 0.05         # max fractional radius shift per update
         mesh_convergence_interval = 10.0     # convergence time after mesh update [yr]
+
+        # Initialization
         equilibrate_init      = true         # equilibrate structure + composition before main loop
         equilibrate_max_iter  = 15           # max equilibration iterations
         equilibrate_tol       = 0.01         # equilibration convergence tolerance
-        global_miscibility    = false        # enable binodal-aware structure
+
+        # Miscibility (H2-silicate binodal)
+        global_miscibility    = false        # enable binodal-aware radial structure
         miscibility_max_iter  = 10           # max miscibility iterations
         miscibility_tol       = 0.01         # miscibility convergence tolerance
 
@@ -219,31 +239,41 @@
 [interior_energetics]
     module                    = "aragog"     # aragog | spider | dummy
 
-    # Shared parameters (Aragog + SPIDER, ignored for dummy)
-    num_levels                = 80           # radial grid levels (energetics module domain only)
-    num_tolerance             = 1.0e-10      # solver tolerance
+    # Grid and solver (shared by Aragog + SPIDER; ignored for dummy)
+    num_levels                = 80           # radial grid levels (energetics domain only)
+    num_tolerance             = 1.0e-10      # ODE solver tolerance
+    flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
+
+    # Transport physics
     trans_conduction          = true         # conductive heat transfer
     trans_convection          = true         # convective heat transfer (MLT)
-    trans_grav_sep            = true         # gravitational separation
+    trans_grav_sep            = true         # gravitational separation (Stokes settling)
     trans_mixing              = true         # chemical mixing flux
-    heat_tidal                = false        # tidal heating (additional switch to orbit.module)
-    rfront_loc                = 0.50         # rheological transition centre (melt fraction)
-    rfront_wid                = 0.20         # rheological transition width (melt fraction)
+    heat_tidal                = false        # tidal heating (requires orbit.module != "none")
+
+    # Rheology and convection
+    rfront_loc                = 0.50         # rheological front centre [melt fraction]
+    rfront_wid                = 0.20         # rheological front width [melt fraction]
     grain_size                = 0.1          # crystal grain size [m]
-    mixing_length             = "nearest"    # nearest (min distance to boundary) | constant (D/4)
-    flux_guess                = -1           # initial F_atm [W m-2]; <0 = sigma*T^4
-    tmagma_atol               = 20.0         # max absolute T_magma change per step [K]
-    tmagma_rtol               = 0.02         # max relative T_magma change per step
-    kappah_floor              = 10.0         # eddy diffusivity floor [m^2/s]; prevents MLT freeze on isentropic IC
-    heat_radiogenic           = true         # radiogenic heating
+    mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
+    kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
+
+    # Coupling limits (max T_magma change per PROTEUS step)
+    tmagma_atol               = 20.0         # absolute limit [K]
+    tmagma_rtol               = 0.02         # relative limit
+
+    # Radiogenic heating
+    heat_radiogenic           = true         # enable radiogenic heating
     radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
-    radio_Al                  = 0.0          # 26Al [ppmw of isotope]; 1.23 = canonical (26Al/27Al=5.25e-5)
-    radio_Fe                  = 0.0          # 60Fe [ppmw of isotope]; 6.3e-4 = canonical (60Fe/56Fe=1e-8)
-    radio_K                   = 310.0        # potassium [ppmw of element, all isotopes]; BSE value
-    radio_U                   = 0.031        # uranium [ppmw of element, all isotopes]; BSE value
-    radio_Th                  = 0.124        # thorium [ppmw of element, all isotopes]; BSE value
-    param_utbl                = false        # ultra-thin boundary layer (Bower+2018 Eq.18)
-    param_utbl_const          = 1e-7         # UTBL scaling constant [K^-1]
+    radio_Al                  = 0.0          # 26Al [ppmw]; 1.23 = canonical (26Al/27Al = 5.25e-5)
+    radio_Fe                  = 0.0          # 60Fe [ppmw]; 6.3e-4 = canonical (60Fe/56Fe = 1e-8)
+    radio_K                   = 310.0        # 40K [ppmw of element]; BSE value
+    radio_U                   = 0.031        # U [ppmw of element]; BSE value
+    radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
+
+    # Ultra-thin boundary layer parameterization (Bower+2018 Eq.18)
+    param_utbl                = false        # enable UTBL
+    param_utbl_const          = 1e-7         # UTBL scaling constant [K-1]
 
     # Aragog-only parameters
     [interior_energetics.aragog]
@@ -317,18 +347,24 @@
 # Atmosphere climate (radiative-convective structure)
 [atmos_clim]
     module                    = "agni"       # agni | janus | dummy
-    rayleigh                  = true         # Rayleigh scattering (agni, janus)
-    cloud_enabled             = false        # water cloud radiative effects (agni, janus)
-    surf_greyalbedo           = 0.1          # surface grey albedo
-    albedo_pl                 = 0.0          # bond albedo; float or path to CSV
-    surf_state                = "skin"       # mixed_layer | fixed | skin
+
+    # Radiative properties (agni, janus only)
+    rayleigh                  = true         # Rayleigh scattering
+    cloud_enabled             = false        # water cloud radiative effects
+    albedo_pl                 = 0.0          # planetary bond albedo; float or path to CSV lookup
+    surf_greyalbedo           = 0.1          # grey surface albedo (used when agni.surf_material = "greybody")
+
+    # Surface boundary condition
+    surf_state                = "skin"       # energy balance: mixed_layer | fixed | skin
     surface_d                 = 0.01         # conductive skin thickness [m]
-    surface_k                 = 2.0          # conductive skin conductivity [W m-1 K-1]
-    tmp_minimum               = 0.5          # solver temperature floor [K] (agni, janus)
+    surface_k                 = 2.0          # conductive skin conductivity [W/m/K]
+
+    # Solver limits (agni, janus only)
+    tmp_minimum               = 0.5          # temperature floor [K]
 
     [atmos_clim.agni]
         # Grid and spectral setup
-        spectral_group        = "Honeyside"  # opacity k-table set; see docs/spectral_files.pdf
+        spectral_group        = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
         spectral_bands        = "48"         # wavenumber bands in k-table
         num_levels            = 50           # vertical atmosphere levels (min 25)
         p_top                 = 1.0e-6       # top-of-atmosphere pressure [bar]
@@ -378,14 +414,17 @@
         fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
 
     [atmos_clim.janus]
-        num_levels            = 90           # number of atmosphere levels
-        p_top                 = 1.0e-6       # TOA pressure [bar]
-        p_obs                 = 1.0e-3       # observed pressure level [bar]
-        spectral_group        = "Honeyside"  # gas opacity set
-        spectral_bands        = "48"         # number of spectral bands
-        F_atm_bc              = 0            # outgoing flux at: 0=TOA | 1=surface
-        tropopause            = "none"       # none | skin | dynamic
-        overlap_method        = "ee"         # gas overlap method
+        # Grid and spectral setup
+        spectral_group        = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
+        spectral_bands        = "48"         # wavenumber bands in k-table
+        num_levels            = 90           # vertical atmosphere levels (min 15)
+        p_top                 = 1.0e-6       # top-of-atmosphere pressure [bar]
+        p_obs                 = 1.0e-3       # observation pressure level [bar] (transit radius)
+        overlap_method        = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
+
+        # Physics
+        F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
+        tropopause            = "none"       # tropopause scheme: none | skin | dynamic
         cloud_alpha           = 0.0          # condensate retention fraction (0 to 1)
         tmp_maximum           = 5000.0       # solver temperature ceiling [K]
 
@@ -407,14 +446,18 @@
         rate                  = 0.0          # bulk escape rate [kg s-1]
 
     [escape.boreas]
-        fractionate           = true         # fractionated outflow
+        fractionate           = true         # fractionated (element-specific) outflow
         efficiency            = 0.1          # escape efficiency
-        sigma_H               = 1.89e-18     # XUV cross-sections [cm2]
+
+        # XUV absorption cross-sections per element [cm2]
+        sigma_H               = 1.89e-18
         sigma_O               = 2.00e-18
         sigma_C               = 2.50e-18
         sigma_N               = 3.00e-18
         sigma_S               = 6.00e-18
-        kappa_H2              = 0.01         # IR grey opacities [cm2 g-1]
+
+        # IR grey opacities per species [cm2/g]
+        kappa_H2              = 0.01
         kappa_H2O             = 1.0
         kappa_O2              = 1.0
         kappa_CO2             = 1.0
@@ -434,22 +477,29 @@
 [atmos_chem]
     module                    = "vulcan"     # vulcan
     when                      = "manually"   # manually | offline | online
+
+    # Transport processes
     photo_on                  = true         # photochemistry
     Kzz_on                    = true         # eddy diffusion
-    Kzz_const                 = "none"       # constant Kzz [cm2 s-1]; none = use profile
+    Kzz_const                 = "none"       # constant Kzz [cm2/s]; none = use computed profile
     moldiff_on                = true         # molecular diffusion
-    updraft_const             = 0.0          # constant updraft velocity [cm s-1]
+    updraft_const             = 0.0          # constant updraft velocity [cm/s]
 
     [atmos_chem.vulcan]
-        clip_fl               = 1e-20        # stellar spectrum floor [erg s-1 cm-2 nm-1]
-        clip_vmr              = 1e-10        # neglect species below this VMR
-        make_funs             = true         # generate reaction network functions
-        ini_mix               = "profile"    # initial mixing: profile | outgas
-        fix_surf              = false        # fixed surface mixing ratios
+        # Setup
         network               = "SNCHO"      # chemical network: CHO | NCHO | SNCHO
-        save_frames           = false        # plot frames during iterations
+        ini_mix               = "profile"    # initial mixing ratios: profile | outgas
+        fix_surf              = false        # hold surface mixing ratios fixed
+        make_funs             = true         # generate reaction network functions
+
+        # Convergence
         yconv_cri             = 0.05         # convergence criterion (mixing ratios)
         slope_cri             = 0.0001       # convergence criterion (rate of change)
+
+        # Numerical
+        clip_fl               = 1e-20        # stellar flux floor [erg/s/cm2/nm]
+        clip_vmr              = 1e-10        # neglect species below this VMR
+        save_frames           = false        # save plot frames during iterations
 
 # Synthetic observations
 [observe]
