@@ -886,7 +886,8 @@ def test_atmos_clim_janus_spectral_group_required():
 
     instance = SimpleNamespace(
         module='janus',
-        janus=SimpleNamespace(spectral_group=None, spectral_bands='16'),
+        tmp_minimum=0.5,
+        janus=SimpleNamespace(spectral_group=None, spectral_bands='16', tmp_maximum=5000.0),
     )
     with pytest.raises(ValueError, match='Must set atmos_clim.janus.spectral_group'):
         valid_janus(instance, SimpleNamespace(), None)
@@ -899,7 +900,8 @@ def test_atmos_clim_janus_spectral_bands_required():
 
     instance = SimpleNamespace(
         module='janus',
-        janus=SimpleNamespace(spectral_group='sw', spectral_bands=None),
+        tmp_minimum=0.5,
+        janus=SimpleNamespace(spectral_group='sw', spectral_bands=None, tmp_maximum=5000.0),
     )
     with pytest.raises(ValueError, match='Must set atmos_clim.janus.spectral_bands'):
         valid_janus(instance, SimpleNamespace(), None)

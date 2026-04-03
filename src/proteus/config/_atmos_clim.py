@@ -11,11 +11,6 @@ from ._converters import lowercase, none_if_none
 log = logging.getLogger('fwl.' + __name__)
 
 
-def tmp_max_bigger_than_tmp_min(instance, attribute, value):
-    """Kept for backward compatibility with test imports; actual check is in valid_janus."""
-    pass
-
-
 def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
         raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
