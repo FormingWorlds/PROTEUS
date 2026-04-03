@@ -78,7 +78,6 @@ class Aragog:
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
         at the surface where density is lower, matching SPIDER's mesh.
-        Whether to include event triggering in the solver. Default is True.
     jax: bool
         Use JAX/diffrax solver backend instead of scipy BDF. Default is False.
         When True, the entropy ODE is integrated with diffrax Tsit5 instead of

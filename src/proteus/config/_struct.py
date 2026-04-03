@@ -176,7 +176,7 @@ class Struct:
         validator=lambda inst, attr, val: val is None or val in ('dummy', 'spider', 'zalmoxis'),
     )
     zalmoxis: Optional[Zalmoxis] = field(
-        default=None,
+        factory=Zalmoxis,
         validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),
     )
 

@@ -180,11 +180,11 @@ def test_spada_zephyrus_requires_mors_spada():
 
 @pytest.mark.unit
 def test_janus_escape_requires_escape_stop_flag():
-    """Janus escape needs stop.escape flag to prevent runaway mass loss."""
+    """Janus escape needs stop.escape.enabled=True to prevent runaway mass loss."""
     inst = SimpleNamespace(
         escape=SimpleNamespace(module='zephyrus'),
         atmos_clim=SimpleNamespace(module='janus'),
-        params=SimpleNamespace(stop=SimpleNamespace(escape=False)),
+        params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
     with pytest.raises(ValueError):
         janus_escape_atmosphere(inst, None, None)
@@ -1565,14 +1565,14 @@ def test_config_observe_resolved_atmosphere_allows_no_synthesis():
 
 @pytest.mark.unit
 def test_config_janus_escape_atmosphere_requires_stop_escape():
-    """Test janus_escape_atmosphere validator requires stop.escape=True."""
+    """Test janus_escape_atmosphere validator requires stop.escape.enabled=True."""
     from proteus.config._config import janus_escape_atmosphere
 
-    # Invalid: Zephyrus + JANUS without stop.escape
+    # Invalid: Zephyrus + JANUS without stop.escape enabled
     instance = SimpleNamespace(
         escape=SimpleNamespace(module='zephyrus'),
         atmos_clim=SimpleNamespace(module='janus'),
-        params=SimpleNamespace(stop=SimpleNamespace(escape=False)),  # INVALID
+        params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
     with pytest.raises(ValueError, match='params.stop.escape must be True'):
         janus_escape_atmosphere(instance, SimpleNamespace(), None)
@@ -1587,7 +1587,7 @@ def test_config_janus_escape_atmosphere_non_zephyrus_skip():
     instance = SimpleNamespace(
         escape=SimpleNamespace(module='dummy'),
         atmos_clim=SimpleNamespace(module='janus'),
-        params=SimpleNamespace(stop=SimpleNamespace(escape=False)),
+        params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
     janus_escape_atmosphere(instance, SimpleNamespace(), None)  # Should not raise
 
@@ -1601,6 +1601,6 @@ def test_config_janus_escape_atmosphere_non_janus_skip():
     instance = SimpleNamespace(
         escape=SimpleNamespace(module='zephyrus'),
         atmos_clim=SimpleNamespace(module='agni'),
-        params=SimpleNamespace(stop=SimpleNamespace(escape=False)),
+        params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
     janus_escape_atmosphere(instance, SimpleNamespace(), None)  # Should not raise

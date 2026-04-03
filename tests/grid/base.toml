@@ -1,9 +1,4 @@
-# PROTEUS configuration file (version 2.0)
-
-# ----------------------------------------------------
-# Metadata
-# ----------------------------------------------------
-# Parameters
+# PROTEUS grid test base config
 # Config file format version
 config_version = "3.0"
 

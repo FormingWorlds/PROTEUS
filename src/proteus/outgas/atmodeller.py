@@ -252,17 +252,17 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             continue
         if proteus_name not in gas_list:
             continue
-            p_val = float(np.squeeze(p_bar))
-            hf_row[f'{proteus_name}_bar'] = p_val
-            P_total += p_val
+        p_val = float(np.squeeze(p_bar))
+        hf_row[f'{proteus_name}_bar'] = p_val
+        P_total += p_val
 
-            # Atmospheric mass: P = m*g / (4*pi*R^2)
-            gravity = float(hf_row.get('gravity', 9.81))
-            area = 4.0 * np.pi * R_int**2
-            if gravity > 0 and area > 0:
-                hf_row[f'{proteus_name}_kg_atm'] = p_val * 1e5 * area / gravity
-            else:
-                hf_row[f'{proteus_name}_kg_atm'] = 0.0
+        # Atmospheric mass: P = m*g / (4*pi*R^2)
+        gravity = float(hf_row.get('gravity', 9.81))
+        area = 4.0 * np.pi * R_int**2
+        if gravity > 0 and area > 0:
+            hf_row[f'{proteus_name}_kg_atm'] = p_val * 1e5 * area / gravity
+        else:
+            hf_row[f'{proteus_name}_kg_atm'] = 0.0
 
     # Total surface pressure
     hf_row['P_surf'] = P_total

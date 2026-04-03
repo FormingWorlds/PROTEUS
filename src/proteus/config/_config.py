@@ -83,7 +83,7 @@ def janus_escape_atmosphere(instance, attribute, value):
     if (
         (instance.escape.module == 'zephyrus')
         and (instance.atmos_clim.module == 'janus')
-        and (instance.params.stop.escape is False)
+        and (not instance.params.stop.escape.enabled)
     ):
         raise ValueError(
             'When using escape.zephyrus with JANUS, params.stop.escape must be True.'

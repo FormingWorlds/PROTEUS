@@ -34,6 +34,10 @@ def valid_agni(instance, attribute, value):
     if instance.p_top > instance.p_obs:
         raise ValueError('Must set `p_top` to be less than `p_obs`')
 
+    # agni does not support mixed_layer surface state
+    if instance.surf_state == 'mixed_layer':
+        raise ValueError("AGNI does not support `surf_state='mixed_layer'`. Use 'fixed' or 'skin'.")
+
     # agni must solve_energy=true if surf_state=skin
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
         raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
