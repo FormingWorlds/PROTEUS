@@ -559,17 +559,17 @@ def test_escape_zephyrus_pxuv_bounds():
 
     # Pxuv = 0 - invalid
     config.zephyrus.Pxuv = 0.0
-    with pytest.raises(ValueError, match='Pxuv.*must be >0 and < 10'):
+    with pytest.raises(ValueError, match='Pxuv.*must be >0 and <= 10'):
         valid_zephyrus(config, SimpleNamespace(), None)
 
     # Pxuv = 10.1 - invalid
     config.zephyrus.Pxuv = 10.1
-    with pytest.raises(ValueError, match='Pxuv.*must be >0 and < 10'):
+    with pytest.raises(ValueError, match='Pxuv.*must be >0 and <= 10'):
         valid_zephyrus(config, SimpleNamespace(), None)
 
     # Pxuv = None - invalid
     config.zephyrus.Pxuv = None
-    with pytest.raises(ValueError, match='Pxuv.*must be >0 and < 10'):
+    with pytest.raises(ValueError, match='Pxuv.*must be >0 and <= 10'):
         valid_zephyrus(config, SimpleNamespace(), None)
 
 
@@ -622,14 +622,18 @@ def test_escape_dummy_rate_positive():
     # Should not raise error
     valid_escapedummy(config, SimpleNamespace(), None)
 
-    # Rate = 0 - invalid
+    # Rate = 0 - valid (zero escape)
     config.dummy.rate = 0.0
-    with pytest.raises(ValueError, match='rate.*must be >0'):
-        valid_escapedummy(config, SimpleNamespace(), None)
+    valid_escapedummy(config, SimpleNamespace(), None)  # Should not raise
 
     # Rate = None - invalid
     config.dummy.rate = None
-    with pytest.raises(ValueError, match='rate.*must be >0'):
+    with pytest.raises(ValueError, match='rate.*must be >= 0'):
+        valid_escapedummy(config, SimpleNamespace(), None)
+
+    # Rate = -1 - invalid
+    config.dummy.rate = -1.0
+    with pytest.raises(ValueError, match='rate.*must be >= 0'):
         valid_escapedummy(config, SimpleNamespace(), None)
 
 
@@ -702,25 +706,6 @@ def test_interior_spider_energy_term_required():
         valid_spider(config, SimpleNamespace(), None)
 
 
-@pytest.mark.unit
-def test_interior_valid_path_string_required():
-    """Test valid_path validator requires non-empty string."""
-    from proteus.config._interior import valid_path
-
-    # Valid path
-    valid_path(SimpleNamespace(), SimpleNamespace(name='path_field'), '/some/path')  # OK
-
-    # Empty string - invalid
-    with pytest.raises(ValueError, match='must be a non-empty string'):
-        valid_path(SimpleNamespace(), SimpleNamespace(name='path_field'), '')
-
-    # Non-string - invalid
-    with pytest.raises(ValueError, match='must be a non-empty string'):
-        valid_path(SimpleNamespace(), SimpleNamespace(name='path_field'), None)
-
-    # Whitespace only - invalid
-    with pytest.raises(ValueError, match='must be a non-empty string'):
-        valid_path(SimpleNamespace(), SimpleNamespace(name='path_field'), '   ')
 
 
 # ========================

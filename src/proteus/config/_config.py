@@ -92,8 +92,8 @@ def check_module_dependencies(instance, attribute, value):
         if needed:
             try:
                 importlib.import_module(pkg)
-            except ImportError:
-                raise ImportError(msg) from None
+            except ImportError as e:
+                raise ImportError(f'{msg}\n  Original error: {e}') from e
 
 
 def boreas_requires_atmosphere(instance, attribute, value):

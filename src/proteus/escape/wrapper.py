@@ -5,7 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from proteus.escape.common import calc_unfract_fluxes
-from proteus.utils.constants import element_list, secs_per_year
+from proteus.utils.constants import M_sun, element_list, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -144,7 +144,7 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
         hf_row['semimajorax'],  # planetary semi-major axis [m]
         hf_row['eccentricity'],  # eccentricity
         hf_row['M_planet'],  # planetary mass [kg]
-        config.star.mass,  # stellar mass [kg]
+        config.star.mass * M_sun,  # stellar mass [kg] (config is in M_sun)
         config.escape.zephyrus.efficiency,  # efficiency factor
         hf_row['R_int'],  # planetary radius [m]
         hf_row['R_xuv'],  # XUV optically thick planetary radius [m]

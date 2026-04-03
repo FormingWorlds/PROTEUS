@@ -11,11 +11,11 @@ def valid_zephyrus(instance, attribute, value):
         return
 
     Pxuv = instance.zephyrus.Pxuv
-    if (not Pxuv) or (Pxuv < 0) or (Pxuv > 10):
-        raise ValueError('`zephyrus.Pxuv` must be >0 and < 10 bar')
+    if Pxuv is None or Pxuv <= 0 or Pxuv > 10:
+        raise ValueError('`zephyrus.Pxuv` must be >0 and <= 10 bar')
 
     efficiency = instance.zephyrus.efficiency
-    if (not efficiency) or (efficiency < 0) or (efficiency > 1):
+    if efficiency is None or efficiency < 0 or efficiency > 1:
         raise ValueError('`zephyrus.efficiency` must be >=0 and <=1')
 
 
@@ -43,8 +43,8 @@ def valid_escapedummy(instance, attribute, value):
         return
 
     rate = instance.dummy.rate
-    if (not rate) or (rate < 0):
-        raise ValueError('`escape.dummy.rate` must be >0')
+    if rate is None or rate < 0:
+        raise ValueError('`escape.dummy.rate` must be >= 0')
 
 
 @define

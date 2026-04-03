@@ -39,10 +39,7 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
 
     module = config.atmos_chem.module
 
-    # When to run chemistry: 'manually' (skip), 'offline' (post-processing),
-    # or 'online' (every snapshot during simulation). Defaults to 'manually'
-    # for backwards compatibility with configs that lack the 'when' field.
-    when = getattr(config.atmos_chem, 'when', 'manually')
+    when = config.atmos_chem.when
 
     # Guard: no module configured
     if not module or module == 'none':

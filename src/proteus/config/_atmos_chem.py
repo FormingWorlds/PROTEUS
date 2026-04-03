@@ -79,6 +79,6 @@ class AtmosChem:
     when: str = field(default='manually', validator=in_(('manually', 'offline', 'online')))
     photo_on: bool = field(default=True)
     Kzz_on: bool = field(default=True)
-    Kzz_const = field(default=None, converter=none_if_none)
+    Kzz_const: float | None = field(default=None, converter=none_if_none)
     moldiff_on: bool = field(default=True)
     updraft_const: float = field(default=0.0)

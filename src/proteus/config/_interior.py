@@ -18,11 +18,6 @@ def valid_spider(instance, attribute, value):
         raise ValueError('Must enable at least one energy transport term in SPIDER')
 
 
-def valid_path(instance, attribute, value):
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"'{attribute.name}' must be a non-empty string")
-
-
 @define
 class Spider:
     """Parameters for SPIDER module.
