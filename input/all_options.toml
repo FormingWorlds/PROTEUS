@@ -267,7 +267,7 @@
 # Outgassing (volatile partitioning between interior and atmosphere)
 [outgas]
     fO2_shift_IW              = 4            # redox state [log10(delta_IW)]
-    module                    = "calliope"   # calliope | atmodeller
+    module                    = "calliope"   # calliope | atmodeller | dummy
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false         # enable H2 binodal partitioning
 
