@@ -997,7 +997,15 @@ def set_directories(config: Config) -> dict[str, str]:
     dirs : dict
         Dictionary of paths to important directories
     """
-    dirs = get_proteus_directories(outdir=config.params.out.path)
+    # Resolve 'auto' path to a timestamped unique name
+    outdir = config.params.out.path
+    if outdir == 'auto':
+        from datetime import datetime
+
+        outdir = 'run_' + datetime.now().strftime('%Y%m%d_%H%M%S')
+        config.params.out.path = outdir
+
+    dirs = get_proteus_directories(outdir=outdir)
 
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:

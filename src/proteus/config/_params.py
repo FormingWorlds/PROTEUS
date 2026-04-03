@@ -55,7 +55,7 @@ class OutputParams:
         Remove SOCRATES spectral files after model terminates.
     """
 
-    path: str = field(validator=valid_path)
+    path: str = field(default='auto', validator=valid_path)
     logging: str = field(default='INFO', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     plot_fmt: str = field(default='png', validator=in_(('pdf', 'png')))
     write_mod: int = field(default=1, validator=ge(0))

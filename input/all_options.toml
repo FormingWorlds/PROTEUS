@@ -30,7 +30,7 @@ version = "3.0"
     offline                   = false        # offline mode (no data downloads)
 
     [params.out]
-        path                  = "all_options"
+        path                  = "all_options" # output folder name; "auto" = timestamped (run_YYYYMMDD_HHMMSS)
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf
