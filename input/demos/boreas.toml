@@ -72,12 +72,12 @@ version = "2.0"
     mass_tot = 0.9           # Total planet mass [M_earth]
     volatile_mode = 'elements'        # "elements" | "gas_prs"
 
+    prevent_warming = true      # do not allow the planet to heat up
 [interior_struct]
     core_frac    = 0.55          # non-dim., radius fraction
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = true      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"

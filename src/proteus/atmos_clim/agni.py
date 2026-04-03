@@ -692,7 +692,7 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     F_atm_new = tot_flux[0]
 
     # Enforce positive limit on F_atm, if enabled
-    if config.atmos_clim.prevent_warming:
+    if config.planet.prevent_warming:
         F_atm_lim = max(1e-8, F_atm_new)
     else:
         F_atm_lim = F_atm_new

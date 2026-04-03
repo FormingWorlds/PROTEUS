@@ -1242,7 +1242,7 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
         output['Cp_eff'] = 1200.0
 
     # Limit F_int to positive values
-    if config.atmos_clim.prevent_warming:
+    if config.planet.prevent_warming:
         output['F_int'] = max(1.0e-8, output['F_int'])
 
     # Check NaNs

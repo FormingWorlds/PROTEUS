@@ -12,8 +12,8 @@ log = logging.getLogger('fwl.' + __name__)
 
 
 def tmp_max_bigger_than_tmp_min(instance, attribute, value):
-    if value <= instance.tmp_minimum:
-        raise ValueError("'tmp_maximum' has to be bigger than 'tmp_minimum'.")
+    """Kept for backward compatibility with test imports; actual check is in valid_janus."""
+    pass
 
 
 def warn_if_dummy(instance, attribute, value):
@@ -226,6 +226,10 @@ def valid_janus(instance, attribute, value):
     if not instance.janus.spectral_bands:
         raise ValueError('Must set atmos_clim.janus.spectral_bands')
 
+    # tmp_maximum must exceed tmp_minimum
+    if instance.janus.tmp_maximum <= instance.tmp_minimum:
+        raise ValueError("'janus.tmp_maximum' has to be bigger than 'tmp_minimum'.")
+
 
 @define
 class Janus:
@@ -249,6 +253,10 @@ class Janus:
         Scheme for determining tropopause location. Choices: "none", "skin", "dynamic".
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
+    cloud_alpha: float
+        Condensate retention fraction (0 => full rainout, 1 => fully retained).
+    tmp_maximum: float
+        Maximum temperature throughout the atmosphere [K].
     """
 
     spectral_group: str = field(default=None)
@@ -261,6 +269,8 @@ class Janus:
         default='none', validator=in_((None, 'skin', 'dynamic')), converter=none_if_none
     )
     overlap_method: str = field(default='ee', validator=check_overlap)
+    cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
+    tmp_maximum: float = field(default=5000.0, validator=gt(0))
 
 
 @define
@@ -304,16 +314,12 @@ class AtmosClim:
 
     Attributes
     ----------
-    prevent_warming: bool
-        When True, require the planet to monotonically cool over time.
     surface_d: float
-        Conductive skin thickness [m],
+        Conductive skin thickness [m].
     surface_k: float
         Conductive skin thermal conductivity [W m-1 K-1].
     cloud_enabled: bool
-        Enable water cloud radiative effects.
-    cloud_alpha: float
-        Condensate retention fraction (0 => full rainout, 1 => fully retained).
+        Enable water cloud radiative effects (AGNI, JANUS only).
     surf_state: str
         Surface energy balance scheme. Choices: "mixed_layer", "fixed", "skin".
     surf_greyalbedo : float
@@ -321,19 +327,17 @@ class AtmosClim:
     albedo_pl: float | str
         Planetary bond albedo used to emulate scattering. Can be float (0 to 1) or str (path to CSV file containing lookup data).
     rayleigh: bool
-        Include Rayleigh scattering in the radiative transfer calculations.
+        Include Rayleigh scattering in the radiative transfer calculations (AGNI, JANUS only).
     tmp_minimum: float
-        Minimum temperature throughout the atmosphere [K].
-    tmp_maximum: float
-        Maximum temperature throughout the atmosphere [K].
+        Minimum temperature throughout the atmosphere [K] (AGNI, JANUS only).
     module: str
         Which atmosphere module to use.
     agni: Agni
-        Config parameters for AGNI atmosphere module
+        Config parameters for AGNI atmosphere module.
     janus: Janus
-        Config parameters for JANUS atmosphere module
+        Config parameters for JANUS atmosphere module.
     dummy: Dummy
-        Config parameters for dummy atmosphere module
+        Config parameters for dummy atmosphere module.
     """
 
     module: str = field(validator=in_(('dummy', 'agni', 'janus')))
@@ -343,16 +347,13 @@ class AtmosClim:
     dummy: Dummy = field(factory=Dummy)
 
     surf_state: str = field(default='skin', validator=(in_(('mixed_layer', 'fixed', 'skin')),))
-    prevent_warming: bool = field(default=False)
     surface_d: float = field(default=0.01, validator=gt(0))
     surface_k: float = field(default=2.0, validator=gt(0))
     cloud_enabled: bool = field(default=False)
-    cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.1, validator=(ge(0), le(1)))
     albedo_pl = field(default=0.0, validator=valid_albedo)
     rayleigh: bool = field(default=True, validator=warn_if_dummy)
     tmp_minimum: float = field(default=0.5, validator=gt(0))
-    tmp_maximum: float = field(default=5000.0, validator=tmp_max_bigger_than_tmp_min)
 
     @property
     def surf_state_int(self) -> int:

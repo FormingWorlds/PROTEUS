@@ -66,6 +66,7 @@ version = "2.0"
     mass_tot = 5.0          # M_Earth (override for mass sweep)
     volatile_mode    = "elements"
 
+    prevent_warming = true
 [interior_struct]
     core_frac     = 0.55
     core_density = 10738.33
@@ -99,8 +100,6 @@ version = "2.0"
     rayleigh        = true
     cloud_enabled   = false
     tmp_minimum     = 0.5
-    tmp_maximum     = 5000.0
-    prevent_warming = true
     module          = "agni"
 
     [atmos_clim.agni]

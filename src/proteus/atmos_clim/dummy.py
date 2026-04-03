@@ -90,7 +90,7 @@ def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
 
     # Require that the net flux must be upward
     F_atm_lim = fluxes['fl_N']
-    if config.atmos_clim.prevent_warming:
+    if config.planet.prevent_warming:
         F_atm_lim = max(1.0e-8, F_atm_lim)
 
     # Print if a limit was applied

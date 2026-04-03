@@ -73,6 +73,7 @@ version = "2.0"
     mass_tot = 1.0
     volatile_mode    = "elements"
 
+    prevent_warming = true
 [interior_struct]
     core_frac     = 0.55
     core_density = 10738.33
@@ -121,8 +122,6 @@ version = "2.0"
     rayleigh        = false
     cloud_enabled   = false
     tmp_minimum     = 0.5
-    tmp_maximum     = 5000.0
-    prevent_warming = true
     module          = "dummy"
 
     [atmos_clim.dummy]

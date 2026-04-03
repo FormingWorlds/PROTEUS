@@ -35,12 +35,12 @@ version = "2.0"
     mass_tot = 1.0           # [M_earth]
     volatile_mode = 'elements'        # Which initial inventory to use?
 
+    prevent_warming = false
 [interior_struct]
     core_frac    = 0.55          # Radius fraction [non-dim.]
 
 [atmos_clim]
     module  = "dummy"            # Which atmosphere module to use
-    prevent_warming = false
 
     rayleigh        = false
     cloud_enabled   = false

@@ -64,10 +64,10 @@ def InitAtm(dirs: dict, config: Config):
         vol_mixing=vol_dict,  # var
         req_levels=config.atmos_clim.janus.num_levels,
         water_lookup=False,
-        alpha_cloud=config.atmos_clim.cloud_alpha,
+        alpha_cloud=config.atmos_clim.janus.cloud_alpha,
         trppT=config.atmos_clim.tmp_minimum,
         minT=config.atmos_clim.tmp_minimum,
-        maxT=config.atmos_clim.tmp_maximum,
+        maxT=config.atmos_clim.janus.tmp_maximum,
         do_cloud=config.atmos_clim.cloud_enabled,
         re=1.0e-5,  # Effective radius of the droplets [m] (drizzle forms above 20 microns)
         lwm=0.8,  # Liquid water mass fraction [kg/kg]
@@ -221,7 +221,7 @@ def RunJANUS(
             T_surf_old = hf_all.iloc[-1]['T_surf']
 
             # Prevent heating of the interior
-            if config.atmos_clim.prevent_warming:
+            if config.planet.prevent_warming:
                 T_surf_max = T_surf_old
 
             # calculate tolerance
@@ -279,7 +279,7 @@ def RunJANUS(
 
     # Require that the net flux must be upward
     F_atm_lim = F_atm_new
-    if config.atmos_clim.prevent_warming:
+    if config.planet.prevent_warming:
         F_atm_lim = max(1.0e-8, F_atm_new)
 
     # Print if a limit was applied

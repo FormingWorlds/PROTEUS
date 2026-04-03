@@ -141,6 +141,9 @@ class Planet:
         Element abundance parameters (used when volatile_mode = 'elements').
     gas_prs: GasPrs
         Partial pressure parameters (used when volatile_mode = 'gas_prs').
+    prevent_warming: bool
+        When True, require the planet to monotonically cool over time.
+        Enforced in all atmosphere modules and termination checks.
     """
 
     mass_tot = field(
@@ -163,3 +166,6 @@ class Planet:
     volatile_reservoir: str = field(default='mantle', validator=in_(('mantle', 'mantle+core')))
     elements: Elements = field(factory=Elements)
     gas_prs: GasPrs = field(factory=GasPrs)
+
+    # Cooling constraint
+    prevent_warming: bool = field(default=False)

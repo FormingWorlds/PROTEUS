@@ -1553,7 +1553,7 @@ def test_read_spider_basic(tmp_path):
     interior_o.lookup_rho_melt = lookup
 
     config = MagicMock()
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {
         'output': str(tmp_path),
@@ -1594,7 +1594,7 @@ def test_read_spider_prevent_warming(tmp_path):
     interior_o.lookup_rho_melt = lookup
 
     config = MagicMock()
-    config.atmos_clim.prevent_warming = True
+    config.planet.prevent_warming = True
 
     dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
 
@@ -1636,7 +1636,7 @@ def test_read_spider_nan_temperature(tmp_path):
     interior_o.lookup_rho_melt = lookup
 
     config = MagicMock()
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
 

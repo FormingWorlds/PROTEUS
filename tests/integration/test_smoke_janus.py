@@ -88,6 +88,7 @@ version = "2.0"
     mass_tot = 1.0
     volatile_mode = "gas_prs"
     tsurf_init = 2000.0
+    prevent_warming = false
 
 [interior_struct]
     module = "spider"
@@ -107,17 +108,14 @@ version = "2.0"
 
 [atmos_clim]
     module = "janus"
-    prevent_warming = false
     surface_d = 0.01
     surface_k = 2.0
     cloud_enabled = false
-    cloud_alpha = 0.0
     surf_state = "fixed"
     surf_greyalbedo = 0.1
     albedo_pl = 0.0
     rayleigh = false
     tmp_minimum = 10.0
-    tmp_maximum = 5000.0
 
     [atmos_clim.janus]
         p_top = 1e-4
@@ -127,6 +125,8 @@ version = "2.0"
         F_atm_bc = 0
         num_levels = 30
         tropopause = "skin"
+        cloud_alpha = 0.0
+        tmp_maximum = 5000.0
         overlap_method = "ro"
 
 [outgas]

@@ -73,7 +73,7 @@ def _check_radeqm(handler: Proteus) -> bool:
         return True
 
     # Simulation when wants to warm up but cannot do so
-    if handler.config.atmos_clim.prevent_warming and (F_eps < 0):
+    if handler.config.planet.prevent_warming and (F_eps < 0):
         UpdateStatusfile(handler.directories, 14)
         _msg_termination('Planet is no longer cooling')
         return True

@@ -13,6 +13,7 @@
     mass_tot = 1.0       # M_earth
     volatile_mode = 'elements'        # "elements" | "volatiles"
 
+    prevent_warming = false      # do not allow the planet to heat up
 [interior_struct]   planetary structure (mass, radius)
 #   [atmos]    atmosphere parameters, model selection
 #   [escape]   escape parameters, model selection
@@ -126,17 +127,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = false      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
-    cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo  = 0.1      # surface grey albedo
     albedo_pl       = 0.0   	# Bond albedo (scattering)
     rayleigh        = true      # enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
-    tmp_maximum     = 5000.0        # temperature ceiling on solver
 
     module  = "janus"           # Which atmosphere module to use
 
@@ -162,6 +160,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tropopause      = "skin"        # none | skin | dynamic
         overlap_method  = "ro"          # gas overlap method
 
+        cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
+        tmp_maximum     = 5000.0        # temperature ceiling on solver
     [atmos_clim.dummy]
         gamma           = 0.8           # atmosphere opacity between 0 and 1
 

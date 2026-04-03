@@ -573,7 +573,7 @@ def run_interior(
         # Prevent increasing melt fraction, if enabled
         T_magma_prev = float(hf_all.iloc[-1]['T_magma'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
-        if config.atmos_clim.prevent_warming and (interior_o.ic == 2):
+        if config.planet.prevent_warming and (interior_o.ic == 2):
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
 

@@ -55,7 +55,7 @@ def test_rundummyatm_fixed_surface():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1  # Low surface albedo
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     # Minimal dirs (not used in fixed mode but required by function signature)
     dirs = {}
@@ -110,7 +110,7 @@ def test_rundummyatm_transparent_atmosphere():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.0  # Zero surface albedo
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -149,7 +149,7 @@ def test_rundummyatm_opaque_atmosphere():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.0
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -192,7 +192,7 @@ def test_rundummyatm_skin_mode():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'skin'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
     config.atmos_clim.surface_k = 2.0  # W/(m·K); thermal conductivity
     config.atmos_clim.surface_d = 1000.0  # m; conductive lid thickness
 
@@ -241,7 +241,7 @@ def test_rundummyatm_skin_convergence():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.2
     config.atmos_clim.surf_state = 'skin'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
     config.atmos_clim.surface_k = 3.0  # W/(m·K)
     config.atmos_clim.surface_d = 500.0  # m
 
@@ -287,7 +287,7 @@ def test_rundummyatm_prevent_warming():
     config.orbit.s0_factor = 0.1  # Very low insolation factor
     config.atmos_clim.surf_greyalbedo = 0.9  # High surface albedo
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = True  # Enable constraint
+    config.planet.prevent_warming = True  # Enable constraint
 
     dirs = {}
 
@@ -325,7 +325,7 @@ def test_rundummyatm_scale_height():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -366,7 +366,7 @@ def test_rundummyatm_zenith_angle_effect():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -411,7 +411,7 @@ def test_rundummyatm_invalid_surf_state(mock_update):
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'invalid_state'  # Invalid
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -448,7 +448,7 @@ def test_rundummyatm_albedo_calculation():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.5  # Moderate surface reflectivity
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 
@@ -487,7 +487,7 @@ def test_rundummyatm_output_keys():
     config.orbit.s0_factor = 1.0
     config.atmos_clim.surf_greyalbedo = 0.1
     config.atmos_clim.surf_state = 'fixed'
-    config.atmos_clim.prevent_warming = False
+    config.planet.prevent_warming = False
 
     dirs = {}
 

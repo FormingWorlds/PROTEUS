@@ -680,35 +680,56 @@ def test_interior_valid_path_string_required():
 
 
 @pytest.mark.unit
-def test_atmos_clim_tmp_max_bigger_than_tmp_min_valid():
-    """Test tmp_max_bigger_than_tmp_min validator with valid inputs."""
-    from proteus.config._atmos_clim import tmp_max_bigger_than_tmp_min
+def test_janus_tmp_max_bigger_than_tmp_min_valid():
+    """Test valid_janus accepts janus.tmp_maximum > tmp_minimum."""
+    from proteus.config._atmos_clim import valid_janus
 
-    # Valid case: tmp_maximum > tmp_minimum
-    instance = SimpleNamespace(tmp_minimum=300.0)
-    tmp_max_bigger_than_tmp_min(instance, SimpleNamespace(), 5000.0)  # Should not raise
-
-
-@pytest.mark.unit
-def test_atmos_clim_tmp_max_equals_tmp_min_invalid():
-    """Test tmp_max_bigger_than_tmp_min validator rejects equal values."""
-    from proteus.config._atmos_clim import tmp_max_bigger_than_tmp_min
-
-    # Invalid: tmp_maximum == tmp_minimum
-    instance = SimpleNamespace(tmp_minimum=300.0)
-    with pytest.raises(ValueError, match="'tmp_maximum' has to be bigger than 'tmp_minimum'"):
-        tmp_max_bigger_than_tmp_min(instance, SimpleNamespace(), 300.0)
+    instance = SimpleNamespace(
+        module='janus',
+        tmp_minimum=300.0,
+        janus=SimpleNamespace(
+            spectral_group='Honeyside',
+            spectral_bands='48',
+            tmp_maximum=5000.0,
+        ),
+    )
+    valid_janus(instance, SimpleNamespace(), instance.janus)  # Should not raise
 
 
 @pytest.mark.unit
-def test_atmos_clim_tmp_max_less_than_tmp_min_invalid():
-    """Test tmp_max_bigger_than_tmp_min validator rejects tmp_max < tmp_min."""
-    from proteus.config._atmos_clim import tmp_max_bigger_than_tmp_min
+def test_janus_tmp_max_equals_tmp_min_invalid():
+    """Test valid_janus rejects janus.tmp_maximum == tmp_minimum."""
+    from proteus.config._atmos_clim import valid_janus
 
-    # Invalid: tmp_maximum < tmp_minimum
-    instance = SimpleNamespace(tmp_minimum=400.0)
-    with pytest.raises(ValueError, match="'tmp_maximum' has to be bigger than 'tmp_minimum'"):
-        tmp_max_bigger_than_tmp_min(instance, SimpleNamespace(), 300.0)
+    instance = SimpleNamespace(
+        module='janus',
+        tmp_minimum=300.0,
+        janus=SimpleNamespace(
+            spectral_group='Honeyside',
+            spectral_bands='48',
+            tmp_maximum=300.0,
+        ),
+    )
+    with pytest.raises(ValueError, match="has to be bigger"):
+        valid_janus(instance, SimpleNamespace(), instance.janus)
+
+
+@pytest.mark.unit
+def test_janus_tmp_max_less_than_tmp_min_invalid():
+    """Test valid_janus rejects janus.tmp_maximum < tmp_minimum."""
+    from proteus.config._atmos_clim import valid_janus
+
+    instance = SimpleNamespace(
+        module='janus',
+        tmp_minimum=400.0,
+        janus=SimpleNamespace(
+            spectral_group='Honeyside',
+            spectral_bands='48',
+            tmp_maximum=300.0,
+        ),
+    )
+    with pytest.raises(ValueError, match="has to be bigger"):
+        valid_janus(instance, SimpleNamespace(), instance.janus)
 
 
 @pytest.mark.unit
@@ -891,7 +912,8 @@ def test_atmos_clim_janus_valid_spectral_config():
 
     instance = SimpleNamespace(
         module='janus',
-        janus=SimpleNamespace(spectral_group='sw_lw', spectral_bands='16'),
+        tmp_minimum=0.5,
+        janus=SimpleNamespace(spectral_group='sw_lw', spectral_bands='16', tmp_maximum=5000.0),
     )
     valid_janus(instance, SimpleNamespace(), None)  # Should not raise
 
