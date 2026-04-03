@@ -1000,9 +1000,12 @@ def set_directories(config: Config) -> dict[str, str]:
     # Resolve 'auto' path to a timestamped unique name
     outdir = config.params.out.path
     if outdir == 'auto':
+        import secrets
         from datetime import datetime
 
-        outdir = 'run_' + datetime.now().strftime('%Y%m%d_%H%M%S')
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        suffix = secrets.token_hex(2)  # 4 hex chars
+        outdir = f'run_{stamp}_{suffix}'
         config.params.out.path = outdir
 
     dirs = get_proteus_directories(outdir=outdir)
