@@ -2,7 +2,6 @@
 
 version = "3.0"
 
-[params]
     [params.out]
         path        = "auto"
         plot_mod    = 30      # Plotting frequency, 0: wait until completion | n: every n iterations
@@ -18,8 +17,6 @@ version = "3.0"
         method       = "adaptive"  # proportional | adaptive | maximum
             atol         = 0.02  # Step size atol
             rtol         = 0.10   # Step size rtol
-
-    [params.stop]
 
         [params.stop.time]
             enabled = true
@@ -111,9 +108,6 @@ version = "3.0"
     rfront_wid    = 0.15   # Width of rheological transition
 
     module = "spider"   # Which interior module to use
-
-    [interior_energetics.spider]
-
 
 [outgas]
     fO2_shift_IW    = 0         # log10(ΔIW), atmosphere/interior boundary oxidation state

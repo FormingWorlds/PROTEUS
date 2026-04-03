@@ -1,7 +1,6 @@
 # BOREAS escape demo: fractionated hydrodynamic escape with MUSCLES spectrum.
 version = "3.0"
 
-[params]
     [params.out]
         path = "auto"
 
@@ -12,7 +11,6 @@ version = "3.0"
         starspec = 1e10
         method   = "maximum"
 
-    [params.stop]
         [params.stop.time]
             minimum = 8e8
             maximum = 1e9
@@ -88,7 +86,3 @@ version = "3.0"
     [escape.boreas]
         fractionate = true
         efficiency  = 0.5
-
-[accretion]
-[observe]
-[atmos_chem]

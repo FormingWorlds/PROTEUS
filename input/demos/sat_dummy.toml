@@ -1,7 +1,6 @@
 # Satellite demo (dummy tides): planet with a moon, parameterized tidal heating.
 version = "3.0"
 
-[params]
     [params.out]
         path      = "auto"
         write_mod = 400
@@ -11,7 +10,6 @@ version = "3.0"
         maximum = 3e7
         initial = 1e2
 
-    [params.stop]
         [params.stop.time]
             maximum = 1e9
         [params.stop.solid]
@@ -80,7 +78,3 @@ version = "3.0"
     module = "dummy"
     [escape.dummy]
         rate = 1.0e5
-
-[accretion]
-[observe]
-[atmos_chem]

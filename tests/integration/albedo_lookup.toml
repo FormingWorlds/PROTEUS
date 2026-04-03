@@ -8,7 +8,6 @@
 
 version = "3.0"
 
-[params]
     [params.out]
         path        = "auto"
         plot_mod    = 0
@@ -49,18 +48,12 @@ version = "3.0"
 
     spectral_group  = "Honeyside"   # Which gas opacities to include
     spectral_bands  = "48"  # How many spectral bands
-    [atmos_clim.agni]
-
 [escape]
     module = "zephyrus"
 
 [interior_energetics]
     module = "dummy"
     heat_tidal = false
-
-    [interior_energetics.aragog]
-
-    [interior_energetics.dummy]
 
 [outgas]
     fO2_shift_IW    = 4         # Atmosphere/interior boundary oxidation state [log10(ΔIW)]

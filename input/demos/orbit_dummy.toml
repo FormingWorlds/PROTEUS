@@ -2,7 +2,6 @@
 # Tests orbital evolution + disintegration checks with dummy modules.
 version = "3.0"
 
-[params]
     [params.out]
         path      = "auto"
         write_mod = 400
@@ -12,7 +11,6 @@ version = "3.0"
         maximum = 1e7
         initial = 1e3
 
-    [params.stop]
         [params.stop.time]
             maximum = 1e7
         [params.stop.solid]
@@ -84,7 +82,3 @@ version = "3.0"
     module = "dummy"
     [escape.dummy]
         rate = 1.0e5
-
-[accretion]
-[observe]
-[atmos_chem]

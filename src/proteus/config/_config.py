@@ -125,18 +125,18 @@ class Config:
         Synthetic observations.
     """
 
-    params: Params
-    star: Star
-    orbit: Orbit = field(validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
-    planet: Planet = field(validator=(planet_mass_valid,))
-    interior_struct: Struct = field()
-    interior_energetics: Interior = field(validator=(tides_enabled_orbit,))
-    outgas: Outgas
-    atmos_clim: AtmosClim
-    atmos_chem: AtmosChem
-    escape: Escape = field(validator=(spada_zephyrus,))
-    accretion: Accretion
-    observe: Observe
+    params: Params = field(factory=Params)
+    star: Star = field(factory=Star)
+    orbit: Orbit = field(factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
+    planet: Planet = field(factory=Planet, validator=(planet_mass_valid,))
+    interior_struct: Struct = field(factory=Struct)
+    interior_energetics: Interior = field(factory=Interior, validator=(tides_enabled_orbit,))
+    outgas: Outgas = field(factory=Outgas)
+    atmos_clim: AtmosClim = field(factory=AtmosClim)
+    atmos_chem: AtmosChem = field(factory=AtmosChem)
+    escape: Escape = field(factory=Escape, validator=(spada_zephyrus,))
+    accretion: Accretion = field(factory=Accretion)
+    observe: Observe = field(factory=Observe)
 
     version: str = field(default='3.0', validator=validators.in_(('3.0',)))
 

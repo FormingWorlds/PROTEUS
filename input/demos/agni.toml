@@ -1,7 +1,6 @@
 # AGNI atmosphere demo: SOCRATES radiative transfer with dummy interior/escape.
 version = "3.0"
 
-[params]
     [params.out]
         path      = "auto"
         write_mod = 50
@@ -14,7 +13,6 @@ version = "3.0"
         atol    = 0.05
         rtol    = 0.13
 
-    [params.stop]
         [params.stop.time]
             maximum = 1e9
         [params.stop.solid]
@@ -90,7 +88,3 @@ version = "3.0"
     module = "dummy"
     [escape.dummy]
         rate = 1e7
-
-[accretion]
-[observe]
-[atmos_chem]

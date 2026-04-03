@@ -2,7 +2,6 @@
 
 version = "3.0"
 
-[params]
     [params.out]
         path        = "auto"
         plot_mod    = 100      # Plotting frequency, 0: wait until completion | n: every n iterations
@@ -21,8 +20,6 @@ version = "3.0"
         method       = "adaptive"  # proportional | adaptive | maximum
             atol         = 0.04  # Step size atol
             rtol         = 0.14   # Step size rtol
-
-    [params.stop]
 
         [params.stop.time]
             enabled = true
@@ -117,9 +114,6 @@ version = "3.0"
 
     [interior_energetics.spider]
         tolerance_rel   = 1e-9      # relative solver tolerance
-
-    [interior_energetics.dummy]
-
 
 [outgas]
     fO2_shift_IW    = -4         # log10(ΔIW), atmosphere/interior boundary oxidation state

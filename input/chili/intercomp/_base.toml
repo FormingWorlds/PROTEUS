@@ -1,7 +1,5 @@
 version = "3.0"
 
-[params]
-
 [params.out]
 path        = "auto"
 logging = "INFO"

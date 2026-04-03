@@ -2,13 +2,9 @@
 # Only a few example science-critical parameters are set here to illustrate
 # how a minimal physics-based config file can be structured. All parameters
 # have defaults, which are listed in the documentation and in all_options.toml.
-# Section headers must be present even when empty (required by the config parser).
+# Empty sections can be omitted entirely.
 version = "3.0"
 
-[params]
-    [params.out]
-
-[star]
     [star.mors]
         rot_pcntle      = 50.0
         age_now         = 4.567
@@ -25,17 +21,9 @@ version = "3.0"
         H_mode   = "oceans"
         H_budget = 5.0               # [Earth oceans]
 
-[interior_struct]
-[interior_energetics]
-
 [outgas]
     fO2_shift_IW = 4                 # [log10 delta IW]
 
 [atmos_clim]
     spectral_group = "Honeyside"
     spectral_bands = "48"
-
-[escape]
-[accretion]
-[observe]
-[atmos_chem]

@@ -2,7 +2,6 @@
 # All modules set to "dummy" for rapid iteration and wiring tests.
 version = "3.0"
 
-[params]
     [params.out]
         path = "auto"
 
@@ -11,7 +10,6 @@ version = "3.0"
         minimum  = 1e2           # min step [yr]
         maximum  = 3e7           # max step [yr]
 
-    [params.stop]
         [params.stop.time]
             maximum = 1e9        # stop time [yr]
         [params.stop.solid]
@@ -73,10 +71,6 @@ version = "3.0"
     [escape.dummy]
         rate = 1e6               # bulk escape rate [kg/s]
 
-[accretion]
-[observe]
-
-# Atmospheric chemistry: parameterized profiles (no kinetics solver)
 [atmos_chem]
     module = "dummy"
     when   = "offline"

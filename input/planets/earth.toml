@@ -2,7 +2,6 @@
 
 version = "3.0"
 
-[params]
     [params.out]
         path        = "auto"
         plot_mod    = 10
@@ -16,8 +15,6 @@ version = "3.0"
 
             atol         = 0.03
             rtol         = 0.12
-
-    [params.stop]
 
         [params.stop.time]
             enabled = true
@@ -95,8 +92,6 @@ version = "3.0"
     [interior_energetics.dummy]
         heat_internal    = 8e-12
         mantle_cp  = 2000.0
-
-    [interior_energetics.spider]
 
 [outgas]
     fO2_shift_IW    = 4

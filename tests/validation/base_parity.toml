@@ -13,7 +13,6 @@
 
 version = "3.0"
 
-[params]
     [params.out]
         path        = "auto"
         plot_mod = 0

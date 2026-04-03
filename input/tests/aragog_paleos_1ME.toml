@@ -7,7 +7,6 @@
 
 version = "3.0"
 
-[params]
     [params.out]
         path        = "auto"
         plot_mod = 0
@@ -134,8 +133,6 @@ version = "3.0"
     radio_Th   = 0.124
     rfront_loc    = 0.4
     rfront_wid    = 0.15
-
-    [interior_energetics.aragog]
 
 [outgas]
     fO2_shift_IW = 0

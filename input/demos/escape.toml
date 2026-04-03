@@ -1,7 +1,6 @@
 # Escape demo: XUV-driven atmospheric escape with MORS stellar evolution.
 version = "3.0"
 
-[params]
     [params.out]
         path     = "auto"
         plot_fmt = "pdf"
@@ -13,7 +12,6 @@ version = "3.0"
         starinst = 100
         method   = "maximum"
 
-    [params.stop]
         [params.stop.time]
             minimum = 8e8
             maximum = 2e9
@@ -85,7 +83,3 @@ version = "3.0"
     module = "dummy"
     [escape.dummy]
         rate = 1e6
-
-[accretion]
-[observe]
-[atmos_chem]

@@ -1,7 +1,6 @@
 # Satellite demo (physical tides): planet with moon, SPIDER + LovePy coupling.
 version = "3.0"
 
-[params]
     [params.out]
         path      = "auto"
         write_mod = 10
@@ -12,7 +11,6 @@ version = "3.0"
         maximum = 3e7
         initial = 1e2
 
-    [params.stop]
         [params.stop.time]
             maximum = 1e9
         [params.stop.solid]
@@ -88,7 +86,3 @@ version = "3.0"
 # Escape: none
 [escape]
     module = "none"
-
-[accretion]
-[observe]
-[atmos_chem]

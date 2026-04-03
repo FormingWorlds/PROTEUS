@@ -1,7 +1,6 @@
 # JANUS atmosphere demo: convective pseudoadiabat with SOCRATES RT.
 version = "3.0"
 
-[params]
     [params.out]
         path      = "auto"
         write_mod = 400
@@ -11,7 +10,6 @@ version = "3.0"
         minimum = 1e2
         maximum = 3e7
 
-    [params.stop]
         [params.stop.time]
             maximum = 1e9
         [params.stop.solid]
@@ -86,7 +84,3 @@ version = "3.0"
     module = "dummy"
     [escape.dummy]
         rate = 1e6
-
-[accretion]
-[observe]
-[atmos_chem]

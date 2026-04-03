@@ -1,7 +1,6 @@
 # Aragog interior demo: scipy BDF thermal evolution with dummy atmosphere.
 version = "3.0"
 
-[params]
     [params.out]
         path      = "auto"
         plot_mod  = 1
@@ -15,7 +14,6 @@ version = "3.0"
         starspec    = 1e9
         starinst    = 1e1
 
-    [params.stop]
         [params.stop.solid]
             enabled = false
 
@@ -80,7 +78,3 @@ version = "3.0"
     module = "dummy"
     [escape.dummy]
         rate = 2.0e4
-
-[accretion]
-[observe]
-[atmos_chem]

@@ -4,8 +4,6 @@ version = "3.0"
 
 # ----------------------------------------------------
 # Parameters
-[params]
-    # output files
     [params.out]
         path        = "auto"
         plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
