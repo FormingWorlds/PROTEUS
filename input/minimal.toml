@@ -1,14 +1,13 @@
-# Minimal PROTEUS configuration file.
-# All sections must be present; omitted fields use Python defaults.
+# Minimal PROTEUS configuration.
+# Only science-critical parameters are set here; everything else uses defaults.
+# All section headers must be present (required by cattrs), but can be empty.
 # See all_options.toml for the full set of options.
 version = "3.0"
 
 [params]
     [params.out]
-        path = "auto"
 
 [star]
-    module = "mors"
     [star.mors]
         rot_pcntle      = 50.0
         age_now         = 4.567
@@ -16,37 +15,26 @@ version = "3.0"
         star_name       = "sun"
 
 [orbit]
-    module = "none"
+    semimajoraxis = 1.0              # [AU]
 
 [planet]
-    mass_tot      = 1.0
+    mass_tot      = 1.0              # [M_earth]
     volatile_mode = "elements"
     [planet.elements]
         H_mode   = "oceans"
-        H_budget = 5.0
+        H_budget = 5.0               # [Earth oceans]
 
 [interior_struct]
-    core_frac = 0.55
-
 [interior_energetics]
-    module = "spider"
 
 [outgas]
-    module = "calliope"
+    fO2_shift_IW = 4                 # [log10 delta IW]
 
 [atmos_clim]
-    module         = "agni"
     spectral_group = "Honeyside"
     spectral_bands = "48"
 
 [escape]
-    module = "zephyrus"
-
 [accretion]
-    module = "none"
-
 [observe]
-    synthesis = "none"
-
 [atmos_chem]
-    module = "none"
