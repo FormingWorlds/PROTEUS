@@ -13,7 +13,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path     = "energy_test_spider"
+        path        = "auto"
         plot_mod = 0
         write_mod = 1
 

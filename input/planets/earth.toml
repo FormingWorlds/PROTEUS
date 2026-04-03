@@ -4,7 +4,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path        = "earth"
+        path        = "auto"
         plot_mod    = 10
         write_mod   = 2
 

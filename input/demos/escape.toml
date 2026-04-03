@@ -7,7 +7,7 @@ version = "3.0"
 # Parameters
 [params]
     [params.out]
-        path        = "escape"
+        path        = "auto"
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping

@@ -30,7 +30,9 @@ version = "3.0"
     offline                   = false        # offline mode (no data downloads)
 
     [params.out]
-        path                  = "all_options" # output folder name; "auto" = timestamped (run_YYYYMMDD_HHMMSS)
+        # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
+        # name (run_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
+        path                  = "auto"
         logging               = "INFO"       # INFO | DEBUG | ERROR | WARNING
         plot_mod              = 5            # 0: at end | n: every n iters | none: never
         plot_fmt              = "png"        # png | pdf

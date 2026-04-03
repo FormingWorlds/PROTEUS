@@ -9,7 +9,7 @@ version = "3.0"
 [params]
     # output files
     [params.out]
-        path        = "base"
+        path        = "auto"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 100      # Write CSV frequency, 0: wait until completion | n: every n iterations

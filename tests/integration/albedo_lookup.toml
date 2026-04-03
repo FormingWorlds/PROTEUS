@@ -10,7 +10,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path        = "albedo_lookup"
+        path        = "auto"
         plot_mod    = 0
 
 [star]

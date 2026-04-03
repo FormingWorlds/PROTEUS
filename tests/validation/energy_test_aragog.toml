@@ -16,7 +16,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path     = "energy_test_aragog"
+        path        = "auto"
         plot_mod = 0
         write_mod = 1
 

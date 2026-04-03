@@ -3,7 +3,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path        = "agni"
+        path        = "auto"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 50      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'

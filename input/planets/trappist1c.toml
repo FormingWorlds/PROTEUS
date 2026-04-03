@@ -7,7 +7,7 @@ version = "3.0"
 [params]
     # output files
     [params.out]
-        path        = "trappist1c"
+        path        = "auto"
         plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
 
 # ----------------------------------------------------

@@ -9,7 +9,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path     = "test_aragog_paleos_1ME"
+        path        = "auto"
         plot_mod = 0
         write_mod = 1
 

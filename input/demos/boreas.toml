@@ -7,7 +7,7 @@ version = "3.0"
 # Parameters
 [params]
     [params.out]
-        path        = "boreas"
+        path        = "auto"
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping

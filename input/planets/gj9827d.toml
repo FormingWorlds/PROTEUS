@@ -7,7 +7,7 @@ version = "3.0"
 [params]
     # output files
     [params.out]
-        path        = "gj9827d_5"
+        path        = "auto"
         plot_mod    = 50
         write_mod   = 5
         archive_mod = 0

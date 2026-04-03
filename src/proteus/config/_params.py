@@ -33,7 +33,9 @@ class OutputParams:
     Attributes
     ----------
     path: str
-        Path to output folder relative to `PROTEUS/output/`.
+        Output folder name inside ``PROTEUS/output/``. Set to ``"auto"``
+        (default) for a unique timestamped name (``run_YYYYMMDD_HHMMSS_xxxx``),
+        or any string for a fixed folder (e.g. ``"my_earth_run"``).
     logging: str
         Log verbosity. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
     plot_fmt: str

@@ -4,7 +4,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path        = "janus"
+        path        = "auto"
         plot_mod    = 0
         write_mod   = 400
         archive_mod = 'none'

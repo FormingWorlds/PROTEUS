@@ -5,7 +5,7 @@ resume = false
 offline = false
 
 [params.out]
-path = "chili_protocol_earth"
+path        = "auto"
 logging = "INFO"
 plot_fmt = "png"
 write_mod = 1

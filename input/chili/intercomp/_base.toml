@@ -3,7 +3,7 @@ version = "3.0"
 [params]
 
 [params.out]
-path = "chili_base"
+path        = "auto"
 logging = "INFO"
 plot_fmt = "pdf"
 write_mod = 2

@@ -10,7 +10,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path        = "minimal"
+        path        = "auto"
 
 [star]
     mass    = 1.0               # [M_sun]

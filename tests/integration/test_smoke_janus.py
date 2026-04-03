@@ -38,7 +38,7 @@ version = "3.0"
 
 [params]
     [params.out]
-        path = "smoke_janus"
+        path = "auto"
         logging = "INFO"
     [params.dt]
         initial = 1e2
