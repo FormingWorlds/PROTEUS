@@ -14,6 +14,9 @@
 # Each grid point gets a copy of the base config with the axis values
 # set via recursive attribute assignment.
 
+# Config file format version
+config_version = "3.0"
+
 # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
 # name (grid_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
 output = "auto"

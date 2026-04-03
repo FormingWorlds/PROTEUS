@@ -2,6 +2,9 @@
 #
 # See input/ensembles/example.grid.toml for method documentation.
 
+# Config file format version
+config_version = "3.0"
+
 # Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
 # name (grid_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
 output = "auto"
