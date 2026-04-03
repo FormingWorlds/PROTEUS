@@ -19,7 +19,7 @@ version = "3.0"
     volatile_mode = "elements"
     [planet.elements]
         H_mode   = "oceans"
-        H_budget = 5.0               # [Earth oceans]
+        H_budget = 0.5               # [Earth oceans]
 
 [outgas]
     fO2_shift_IW = 4                 # [log10 delta IW]
