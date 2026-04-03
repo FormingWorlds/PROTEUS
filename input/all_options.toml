@@ -423,7 +423,7 @@ version = "3.0"
         tmp_maximum           = 5000.0       # solver temperature ceiling [K]
 
     [atmos_clim.dummy]
-        gamma                 = 0.5          # greenhouse factor (0 = no greenhouse, 1 = fully opaque)
+        gamma                 = 0.5          # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
         height_factor         = 3.0          # observed height / scale height
 
 # Atmospheric escape

@@ -65,7 +65,7 @@ version = "3.0"
     rayleigh   = false
     albedo_pl  = 0.1
     [atmos_clim.dummy]
-        gamma = 0.7              # greenhouse factor (0 = no greenhouse, 1 = fully opaque)
+        gamma = 0.7              # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
 
 # Escape: fixed bulk rate
 [escape]
