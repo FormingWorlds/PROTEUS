@@ -165,7 +165,7 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
         patch(
             'proteus.interior_energetics.wrapper.run_interior', side_effect=fake_run_interior
         ) as mock_run,
-        patch('proteus.outgas.wrapper.calc_target_masses') as mock_calc_masses,
+        patch('proteus.outgas.calliope.calc_target_masses') as mock_calc_masses,
     ):
         # Call the function under test
         determine_interior_radius(dirs, config, hf_all, hf_row)

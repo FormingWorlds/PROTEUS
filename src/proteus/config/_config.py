@@ -72,6 +72,39 @@ def valid_config_version(instance, attribute, value):
         )
 
 
+def check_module_dependencies(instance, attribute, value):
+    """Check that required external packages are importable for the selected modules."""
+    import importlib
+
+    checks = {
+        'calliope': (instance.outgas.module == 'calliope', 'calliope',
+                     'outgas.module = "calliope" requires the calliope package. '
+                     'Install with: git clone git@github.com:FormingWorlds/CALLIOPE && pip install -e CALLIOPE/.'),
+        'atmodeller': (instance.outgas.module == 'atmodeller', 'atmodeller',
+                       'outgas.module = "atmodeller" requires the atmodeller package. '
+                       'Install with: pip install atmodeller'),
+        'boreas': (instance.escape.module == 'boreas', 'boreas',
+                   'escape.module = "boreas" requires the boreas package. '
+                   'Install with: pip install boreas'),
+    }
+
+    for name, (needed, pkg, msg) in checks.items():
+        if needed:
+            try:
+                importlib.import_module(pkg)
+            except ImportError:
+                raise ImportError(msg) from None
+
+
+def boreas_requires_atmosphere(instance, attribute, value):
+    """BOREAS escape requires a radiative atmosphere (not dummy)."""
+    if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
+        raise ValueError(
+            'escape.module = "boreas" requires a radiative atmosphere model (agni or janus), '
+            'not atmos_clim.module = "dummy". BOREAS needs per-level T/P/composition profiles.'
+        )
+
+
 def observe_resolved_atmosphere(instance, attribute, value):
     # Synthetic observations require a spatially resolved atmosphere profile
     if (instance.observe.synthesis is not None) and (instance.atmos_clim.module == 'dummy'):
@@ -147,11 +180,17 @@ class Config:
     outgas: Outgas = field(factory=Outgas)
     atmos_clim: AtmosClim = field(factory=AtmosClim)
     atmos_chem: AtmosChem = field(factory=AtmosChem)
-    escape: Escape = field(factory=Escape, validator=(spada_zephyrus, janus_escape_atmosphere))
+    escape: Escape = field(
+        factory=Escape,
+        validator=(spada_zephyrus, janus_escape_atmosphere, boreas_requires_atmosphere),
+    )
     accretion: Accretion = field(factory=Accretion)
     observe: Observe = field(factory=Observe, validator=(observe_resolved_atmosphere,))
 
-    config_version: str = field(default='3.0', validator=valid_config_version)
+    config_version: str = field(
+        default='3.0',
+        validator=(valid_config_version, check_module_dependencies),
+    )
 
     def write(self, out: str):
         """

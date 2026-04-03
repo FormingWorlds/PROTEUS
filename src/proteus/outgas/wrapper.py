@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, gas_list
 
@@ -29,6 +28,8 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     # CALLIOPE's calc_target_masses computes element budgets (H, C, N, S)
     # from the delivery parameters. This is needed by ALL outgas modules,
     # not just CALLIOPE, because the element budgets drive the mass balance.
+    from proteus.outgas.calliope import calc_target_masses
+
     calc_target_masses(dirs, config, hf_row)
 
     # Update total mass of tracked elements
@@ -86,6 +87,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
+        from proteus.outgas.calliope import calc_surface_pressures
+
         calc_surface_pressures(dirs, config, hf_row)
     elif config.outgas.module == 'atmodeller':
         from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller

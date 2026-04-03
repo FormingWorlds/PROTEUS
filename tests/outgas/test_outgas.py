@@ -53,7 +53,7 @@ def test_calc_target_elemental_inventories_calliope_enabled():
     config.outgas.module = 'calliope'
     hf_row = {'Time': 0.0}
 
-    with patch('proteus.outgas.wrapper.calc_target_masses') as mock_calc:
+    with patch('proteus.outgas.calliope.calc_target_masses') as mock_calc:
         calc_target_elemental_inventories(dirs, config, hf_row)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
 
@@ -72,7 +72,7 @@ def test_calc_target_elemental_inventories_always_calls_calc_target_masses():
     config.outgas.module = 'none'
     hf_row = {'Time': 0.0}
 
-    with patch('proteus.outgas.wrapper.calc_target_masses') as mock_calc:
+    with patch('proteus.outgas.calliope.calc_target_masses') as mock_calc:
         calc_target_elemental_inventories(dirs, config, hf_row)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
 
@@ -188,7 +188,7 @@ def test_run_outgassing_calliope_calculation():
     hf_row['P_surf'] = 300.0  # Total surface pressure (bar)
     hf_row['atm_kg_per_mol'] = 0.018  # Mean molecular weight (kg/mol) for steam
 
-    with patch('proteus.outgas.wrapper.calc_surface_pressures') as mock_calc:
+    with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
         run_outgassing(dirs, config, hf_row)
 
         # Verify CALLIOPE was called
@@ -239,7 +239,7 @@ def test_run_outgassing_atmosphere_mass_conservation():
     hf_row['P_surf'] = 100.0
     hf_row['atm_kg_per_mol'] = 0.029  # N2-like
 
-    with patch('proteus.outgas.wrapper.calc_surface_pressures'):
+    with patch('proteus.outgas.calliope.calc_surface_pressures'):
         run_outgassing(dirs, config, hf_row)
 
         # Check mass conservation with tolerance for floating point
@@ -269,7 +269,7 @@ def test_run_outgassing_disabled_module():
     hf_row['P_surf'] = 90.0
     hf_row['atm_kg_per_mol'] = 0.044  # CO2-like
 
-    with patch('proteus.outgas.wrapper.calc_surface_pressures') as mock_calc:
+    with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
         run_outgassing(dirs, config, hf_row)
 
         # CALLIOPE should not be called
@@ -379,7 +379,7 @@ def test_run_outgassing_zero_atmosphere_mass():
     hf_row['P_surf'] = 0.0
     hf_row['atm_kg_per_mol'] = 0.029  # Arbitrary (not used when M_atm=0)
 
-    with patch('proteus.outgas.wrapper.calc_surface_pressures'):
+    with patch('proteus.outgas.calliope.calc_surface_pressures'):
         run_outgassing(dirs, config, hf_row)
 
         # M_atm should be exactly zero
@@ -463,7 +463,7 @@ def test_run_outgassing_mixed_species_dominance():
     hf_row['P_surf'] = 1.0  # 1 bar
     hf_row['atm_kg_per_mol'] = 0.029  # N2/O2-dominated
 
-    with patch('proteus.outgas.wrapper.calc_surface_pressures'):
+    with patch('proteus.outgas.calliope.calc_surface_pressures'):
         run_outgassing(dirs, config, hf_row)
 
         # Check mass conservation
