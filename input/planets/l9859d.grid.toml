@@ -1,72 +1,68 @@
-# Config file for running a grid of forward models
+# Grid config for L 98-59 d parameter sweep
+#
+# See input/ensembles/example.grid.toml for method documentation.
 
-# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+# Output folder (relative to PROTEUS output/)
 output = "scratch/l98d_updated7/"
 
-# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+# Symbolic link to alternative storage location (absolute path, or "" to disable)
 symlink = ""
 
-# Path to base (reference) config file relative to PROTEUS root folder
+# Base config file (relative to PROTEUS root)
 ref_config = "input/planets/l9859d.toml"
 
-# Use SLURM?
+# SLURM settings
 use_slurm = true
+max_jobs = 300      # max concurrent tasks
+max_days = 2        # max walltime [days]
+max_mem  = 3        # max memory per CPU [GB]
 
-# Execution limits
-max_jobs = 300       # maximum number of concurrent tasks (e.g. 500 on Habrok)
-max_days = 2        # maximum number of days to run (e.g. 1)
-max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+# -------------------------------------------------------
+# Grid axes
+# -------------------------------------------------------
 
-# Now define grid axes...
-#    Each axis must be a new section (table) in this file.
-#    Each table corresponds to the name of the parameter to be varied.
-#    Each table name must be written in double quotes.
-#    See examples below
-
-# Planet mass set directly
-# ["struct.mass_tot"]
+# Planet mass [M_earth]
+# ["planet.mass_tot"]
 #     method = "direct"
 #     values = [1.57, 1.64, 1.71]
 
-# Hydrogen inventory set by arange
-["delivery.elements.H_ppmw"]
+# Hydrogen inventory [ppmw] (requires H_mode = "ppmw" in base config)
+["planet.elements.H_budget"]
     method = "arange"
-    start    = 10000
-    stop     = 35000
-    step     = 6000
+    start  = 10000
+    stop   = 35000
+    step   = 6000
 
-# Mantle redox state set directly
+# Mantle redox state [log10(delta_IW)]
 ["outgas.fO2_shift_IW"]
     method = "direct"
     values = [-5.0, -4.5, -4.0, -3.5, -3.0, -2.5, -2.0, -1.5]
 
-# Planet bulk S/H ratio set directly
-["delivery.elements.SH_ratio"]
+# S/H mass ratio (requires S_mode = "S/H" in base config)
+["planet.elements.S_budget"]
     method = "direct"
     values = [1.0, 2.0, 4.0, 8.0]
 
-# Core radius fraction set by linspace
-["struct.core_frac"]
+# Core mass fraction
+["interior_struct.core_frac"]
     method = "direct"
     values = [0.15, 0.20, 0.25, 0.30, 0.35]
 
-# Escape efficiency set by arange
+# Escape efficiency
 # ["escape.zephyrus.efficiency"]
-#     method   = "arange"
-#     start    = 0.0
-#     stop     = 0.25
-#     step     = 0.05
+#     method = "arange"
+#     start  = 0.0
+#     stop   = 0.25
+#     step   = 0.05
 
-
-# Orbital eccentricity set by logspace
+# Orbital eccentricity (log-spaced)
 # ["orbit.eccentricity"]
 #     method = "logspace"
 #     start  = 0.001
 #     stop   = 0.15
 #     count  = 25
 
-
-# Spectral bands set directly
+# Spectral bands (string values)
 # ["atmos_clim.spectral_bands"]
 #     method = "direct"
 #     values = ["16", "48", "256"]

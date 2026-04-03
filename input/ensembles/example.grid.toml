@@ -1,72 +1,82 @@
-# Config file for running a grid of forward models
+# Grid config for running an ensemble of PROTEUS forward models
+#
+# Grid axes are defined as TOML tables with dotted names matching Config
+# field paths (e.g. "planet.mass_tot" maps to config.planet.mass_tot).
+# Each axis specifies a method and its parameters.
+#
+# Available methods:
+#   direct   - explicit list of values (floats, ints, or strings)
+#   arange   - start, stop, step (inclusive of endpoint)
+#   linspace - start, stop, count (evenly spaced)
+#   logspace - start, stop, count (log-spaced)
+#
+# The Cartesian product of all active axes defines the full grid.
+# Each grid point gets a copy of the base config with the axis values
+# set via recursive attribute assignment.
 
-# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+# Output folder (relative to PROTEUS output/)
 output = "grid_demo/"
 
-# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+# Symbolic link to alternative storage location (absolute path, or "" to disable)
 symlink = ""
 
-# Path to base (reference) config file relative to PROTEUS root folder
+# Base config file (relative to PROTEUS root)
 ref_config = "input/demos/dummy.toml"
 
-# Use SLURM?
+# SLURM settings
 use_slurm = false
+max_jobs = 10       # max concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # max walltime [days]
+max_mem  = 3        # max memory per CPU [GB]
 
-# Execution limits
-max_jobs = 10       # maximum number of concurrent tasks (e.g. 500 on Habrok)
-max_days = 1        # maximum number of days to run (e.g. 1)
-max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+# -------------------------------------------------------
+# Grid axes
+# -------------------------------------------------------
 
-# Now define grid axes...
-#    Each axis must be a new section (table) in this file.
-#    Each table corresponds to the name of the parameter to be varied.
-#    Each table name must be written in double quotes.
-#    See examples below
-
-# Planet mass set directly
-["struct.mass_tot"]
+# Planet mass [M_earth]
+["planet.mass_tot"]
     method = "direct"
     values = [0.7, 1.0, 2.0, 3.0]
 
-# Hydrogen inventory set by arange
-["delivery.elements.H_ppmw"]
+# Hydrogen inventory [ppmw] (requires H_mode = "ppmw" in base config)
+["planet.elements.H_budget"]
     method = "arange"
-    start    = 5000
-    stop     = 20000
-    step     = 5000
+    start  = 5000
+    stop   = 20000
+    step   = 5000
 
-# Mantle redox state set directly
+# Mantle redox state [log10(delta_IW)]
 # ["outgas.fO2_shift_IW"]
 #     method = "direct"
 #     values = [-3, -2, -1]
 
-# Planet bulk S/H ratio set directly
+# S/H mass ratio (requires S_mode = "S/H" in base config)
+# ["planet.elements.S_budget"]
 #     method = "direct"
 #     values = [2, 4, 6, 8]
 
-# Escape efficiency set by arange
-# ["escape.zephyrus.efficiency"]
-#     method   = "arange"
-#     start    = 0.0
-#     stop     = 0.25
-#     step     = 0.05
-
-# Core radius fraction set by linspace
-# ["struct.core_frac"]
+# Core mass fraction
+# ["interior_struct.core_frac"]
 #     method = "linspace"
-#     start  = 0.35
-#     stop   = 0.95
+#     start  = 0.20
+#     stop   = 0.45
 #     count  = 3
 
-# Orbital eccentricity set by logspace
+# Escape efficiency
+# ["escape.zephyrus.efficiency"]
+#     method = "arange"
+#     start  = 0.0
+#     stop   = 0.25
+#     step   = 0.05
+
+# Orbital eccentricity (log-spaced)
 # ["orbit.eccentricity"]
 #     method = "logspace"
 #     start  = 0.001
 #     stop   = 0.15
 #     count  = 25
 
-
-# Spectral bands set directly
+# Spectral bands (string values)
 # ["atmos_clim.spectral_bands"]
 #     method = "direct"
 #     values = ["16", "48", "256"]
