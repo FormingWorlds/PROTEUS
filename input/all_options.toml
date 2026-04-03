@@ -329,7 +329,7 @@
 
     [atmos_clim.agni]
         verbosity             = 1            # 0: none | 1: info | 2: debug
-        p_top                 = 1.0e-5       # TOA pressure [bar]
+        p_top                 = 1.0e-6       # TOA pressure [bar]
         p_obs                 = 0.02         # transmission probing level [bar]
         spectral_group        = "Honeyside"  # gas opacity set
         spectral_bands        = "48"         # number of spectral bands
@@ -353,7 +353,7 @@
         perturb_all           = true         # full Jacobian update each step
         mlt_criterion         = "s"          # (l)edoux | (s)chwarzschild
         check_safe_gas        = true        # validate gas composition before solve
-        num_levels            = 40           # number of atmosphere levels
+        num_levels            = 50           # number of atmosphere levels
         convection            = true         # enable convective adjustment
         conduction            = true         # enable conductive heat transfer
         phs_timescale         = 1e6          # phase transition timescale [yr]
