@@ -469,7 +469,7 @@ version = "3.0"
 
 # Atmospheric chemistry (post-processing)
 [atmos_chem]
-    module                    = "vulcan"     # vulcan
+    module                    = "vulcan"     # none | vulcan | dummy
     when                      = "manually"   # manually | offline | online
 
     # Transport processes
