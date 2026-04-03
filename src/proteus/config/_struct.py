@@ -103,6 +103,10 @@ class Zalmoxis:
         mass between core and mantle layers.
     num_levels: int
         Number of Zalmoxis radius layers.
+    lookup_nP: int
+        Number of pressure points in SPIDER P-S tables generated from PALEOS.
+    lookup_nS: int
+        Number of entropy points in SPIDER P-S tables generated from PALEOS.
     """
 
     core_eos: str = field(default='PALEOS:iron')
@@ -129,6 +133,10 @@ class Zalmoxis:
     equilibrate_init: bool = field(default=True)
     equilibrate_max_iter: int = field(default=15, validator=ge(1))
     equilibrate_tol: float = field(default=0.01, validator=gt(0))
+
+    # SPIDER P-S table resolution (generated from PALEOS)
+    lookup_nP: int = field(default=1000, validator=ge(100))
+    lookup_nS: int = field(default=250, validator=ge(50))
 
     # Binodal-aware miscibility (H2-MgSiO3 solvus)
     global_miscibility: bool = field(default=False)

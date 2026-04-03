@@ -235,6 +235,10 @@ config_version = "3.0"
         equilibrate_max_iter  = 15           # max equilibration iterations
         equilibrate_tol       = 0.01         # equilibration convergence tolerance
 
+        # P-S lookup table resolution (generated from PALEOS for SPIDER + Aragog)
+        lookup_nP             = 1000         # pressure points in P-S lookup tables
+        lookup_nS             = 250          # entropy points in P-S lookup tables
+
         # Miscibility (H2-silicate binodal)
         global_miscibility    = false        # enable binodal-aware radial structure
         miscibility_max_iter  = 10           # max miscibility iterations

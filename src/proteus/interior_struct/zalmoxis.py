@@ -650,28 +650,32 @@ def generate_spider_tables(config: Config, outdir: str):
     if solid_eos and liquid_eos:
         logger.info('Using PALEOS-2phase tables for SPIDER EOS generation')
 
+    # Table resolution from config (default 1000x250; native PALEOS is 150 ppd)
+    nP = config.interior_struct.zalmoxis.lookup_nP
+    nS = config.interior_struct.zalmoxis.lookup_nS
+
     # Generate phase boundaries
-    logger.info('Generating SPIDER P-S phase boundaries from PALEOS...')
+    logger.info('Generating SPIDER P-S phase boundaries from PALEOS (%d P points)...', nP)
     pb_result = generate_spider_phase_boundaries(
         solidus_func=solidus_func,
         liquidus_func=liquidus_func,
         eos_file=eos_file,
-        P_range=(1e5, P_max),  # 1 bar lower bound (matches Aragog tables)
-        n_P=500,
+        P_range=(1e5, P_max),
+        n_P=nP,
         output_dir=spider_eos_dir,
         solid_eos_file=solid_eos,
         liquid_eos_file=liquid_eos,
     )
 
     # Generate full EOS tables
-    logger.info('Generating SPIDER P-S EOS tables from PALEOS...')
+    logger.info('Generating SPIDER P-S EOS tables from PALEOS (%d x %d)...', nP, nS)
     generate_spider_eos_tables(
         eos_file=eos_file,
         solidus_func=solidus_func,
         liquidus_func=liquidus_func,
-        P_range=(1e5, P_max),  # 1 bar lower bound (matches Aragog tables)
-        n_P=500,
-        n_S=200,
+        P_range=(1e5, P_max),
+        n_P=nP,
+        n_S=nS,
         output_dir=spider_eos_dir,
         solid_eos_file=solid_eos,
         liquid_eos_file=liquid_eos,
