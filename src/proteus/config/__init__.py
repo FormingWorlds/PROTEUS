@@ -18,7 +18,22 @@ def read_config(path: Path | str) -> dict:
 def read_config_object(path: Path | str) -> Config:
     """Read and validate config into Config object."""
     cfg = read_config(path)
-    return cattrs.structure(cfg, Config)
+    try:
+        return cattrs.structure(cfg, Config)
+    except cattrs.errors.ClassValidationError as e:
+        # Extract actionable error messages from the nested exception group
+        messages = []
+        for exc in e.exceptions:
+            if hasattr(exc, 'exceptions'):
+                for sub in exc.exceptions:
+                    messages.append(str(sub))
+            else:
+                messages.append(str(exc))
+        detail = '\n  '.join(messages)
+        raise ValueError(
+            f'Invalid configuration in {path}:\n  {detail}\n'
+            f'See input/all_options.toml for the full parameter reference.'
+        ) from None
 
 
 __all__ = ['Config', 'read_config_object', 'read_config']

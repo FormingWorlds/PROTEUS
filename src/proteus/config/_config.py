@@ -147,9 +147,9 @@ class Config:
     outgas: Outgas = field(factory=Outgas)
     atmos_clim: AtmosClim = field(factory=AtmosClim)
     atmos_chem: AtmosChem = field(factory=AtmosChem)
-    escape: Escape = field(factory=Escape, validator=(spada_zephyrus,))
+    escape: Escape = field(factory=Escape, validator=(spada_zephyrus, janus_escape_atmosphere))
     accretion: Accretion = field(factory=Accretion)
-    observe: Observe = field(factory=Observe)
+    observe: Observe = field(factory=Observe, validator=(observe_resolved_atmosphere,))
 
     config_version: str = field(default='3.0', validator=valid_config_version)
 

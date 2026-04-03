@@ -522,7 +522,7 @@ def offchem(config_path: Path):
     """Run offline chemistry on PROTEUS output files"""
     runner = Proteus(config_path=config_path)
     setup_logger(
-        logpath=runner.directories['output'] + 'offchem.log',
+        logpath=os.path.join(runner.directories['output'], 'offchem.log'),
         logterm=True,
         level=runner.config.params.out.logging,
     )
@@ -535,7 +535,7 @@ def observe(config_path: Path):
     """Run synthetic observations pipeline"""
     runner = Proteus(config_path=config_path)
     setup_logger(
-        logpath=runner.directories['output'] + 'observe.log',
+        logpath=os.path.join(runner.directories['output'], 'observe.log'),
         logterm=True,
         level=runner.config.params.out.logging,
     )

@@ -190,10 +190,9 @@ def validate_module_versions(dirs: dict, config: Config):
 
         log.debug(f'Parsed {name:10s} version as {vact}. Requires>={vexp}')
 
-        # Check major, minor, patch
-        for i in range(3):
-            if vact[i] >= vexp[i]:
-                return True
+        # Lexicographic tuple comparison (correct semver ordering)
+        if vact >= vexp:
+            return True
 
         log.error(f'{name} module is out of date: installed {act_str} < expected {exp_str}')
         return False
@@ -1007,13 +1006,17 @@ def set_directories(config: Config) -> dict[str, str]:
         suffix = secrets.token_hex(2)  # 4 hex chars
         outdir = f'run_{stamp}_{suffix}'
         config.params.out.path = outdir
+        log.info('Auto output path: %s', outdir)
 
     dirs = get_proteus_directories(outdir=outdir)
 
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
-        raise EnvironmentError('The FWL_DATA environment variable has not been set')
+        raise EnvironmentError(
+            'The FWL_DATA environment variable has not been set. '
+            'See https://proteus-framework.org/PROTEUS/How-to/installation.html'
+        )
     else:
         dirs['fwl'] = os.environ.get('FWL_DATA')
 
@@ -1023,7 +1026,10 @@ def set_directories(config: Config) -> dict[str, str]:
 
         if os.environ.get('RAD_DIR') is None:
             UpdateStatusfile(dirs, 20)
-            raise EnvironmentError('The RAD_DIR environment variable has not been set')
+            raise EnvironmentError(
+                'The RAD_DIR environment variable has not been set (required by AGNI/JANUS). '
+                'See https://proteus-framework.org/PROTEUS/How-to/installation.html'
+            )
         else:
             dirs['rad'] = os.environ.get('RAD_DIR')
 
