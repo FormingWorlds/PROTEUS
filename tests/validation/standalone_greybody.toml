@@ -5,7 +5,7 @@
 # The ONLY difference between cases is interior.module.
 # Everything else is identical.
 
-version = "2.0"
+version = "3.0"
 
 [params]
     [params.out]

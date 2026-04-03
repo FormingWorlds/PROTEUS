@@ -317,7 +317,7 @@ class AtmosClim:
         Config parameters for dummy atmosphere module.
     """
 
-    module: str = field(validator=in_(('dummy', 'agni', 'janus')))
+    module: str = field(default='agni', validator=in_(('dummy', 'agni', 'janus')))
 
     agni: Agni = field(factory=Agni, validator=valid_agni)
     janus: Janus = field(factory=Janus, validator=valid_janus)

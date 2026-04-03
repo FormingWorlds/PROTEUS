@@ -177,7 +177,7 @@ class Interior:
         Zalmoxis derives its EOS paths from struct.zalmoxis config instead.
     """
 
-    module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
+    module: str = field(default='aragog', validator=in_(('spider', 'aragog', 'dummy')))
     num_levels: int = field(default=80, validator=ge(40))
     num_tolerance: float = field(default=1e-10, validator=gt(0))
     trans_conduction: bool = field(default=True)

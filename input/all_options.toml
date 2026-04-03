@@ -24,6 +24,7 @@
 # ----------------------------------------------------
 
 # Code execution, outputs, time-stepping, convergence
+version = "3.0"
 [params]
     resume                    = false        # resume from previous run
     offline                   = false        # offline mode (no data downloads)

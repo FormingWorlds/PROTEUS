@@ -145,8 +145,8 @@ class Outgas:
         Parameters for atmodeller module.
     """
 
-    module: str = field(validator=validators.in_(('calliope', 'atmodeller', 'dummy')))
-    fO2_shift_IW: float
+    module: str = field(default='atmodeller', validator=validators.in_(('calliope', 'atmodeller', 'dummy')))
+    fO2_shift_IW: float = field(default=4.0)
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
     h2_binodal: bool = False

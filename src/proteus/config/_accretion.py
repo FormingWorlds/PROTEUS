@@ -16,4 +16,4 @@ class Accretion:
         Accretion module to use. Currently only None is supported.
     """
 
-    module: str | None = field(validator=in_((None,)), converter=none_if_none)
+    module: str | None = field(default='none', validator=in_((None,)), converter=none_if_none)

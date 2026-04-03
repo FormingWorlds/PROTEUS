@@ -163,12 +163,13 @@ class Star:
     """
 
     module: str | None = field(
+        default='mors',
         validator=in_((None, 'mors', 'dummy')),
         converter=none_if_none,
     )
 
-    mass: float = field(validator=gt(0))
-    age_ini: float = field(validator=gt(0))
+    mass: float = field(default=1.0, validator=gt(0))
+    age_ini: float = field(default=0.1, validator=gt(0))
 
     mors: Mors = field(factory=Mors, validator=valid_mors)
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)

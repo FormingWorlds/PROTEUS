@@ -125,8 +125,6 @@ class Config:
         Synthetic observations.
     """
 
-    version: str = field(validator=validators.in_(('2.0',)))
-
     params: Params
     star: Star
     orbit: Orbit = field(validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
@@ -139,6 +137,8 @@ class Config:
     escape: Escape = field(validator=(spada_zephyrus,))
     accretion: Accretion
     observe: Observe
+
+    version: str = field(default='3.0', validator=validators.in_(('3.0',)))
 
     def write(self, out: str):
         """

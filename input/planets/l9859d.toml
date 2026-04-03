@@ -1,6 +1,6 @@
 # PROTEUS configuration file (version 2.0)
 
-version = "2.0"
+version = "3.0"
 
 [params]
     [params.out]

@@ -101,11 +101,12 @@ class Orbit:
     """
 
     # Tidal heating modules
-    module: str | None = field(validator=in_((None, 'dummy', 'lovepy')), converter=none_if_none)
+    module: str | None = field(default='none', validator=in_((None, 'dummy', 'lovepy')), converter=none_if_none)
 
     # Planet initial orbital parameter
-    semimajoraxis: float = field(validator=gt(0))
+    semimajoraxis: float = field(default=1.0, validator=gt(0))
     eccentricity: float = field(
+        default=0.0,
         validator=(
             ge(0),
             lt(1),
@@ -114,12 +115,13 @@ class Orbit:
 
     # Climate parameters set by rotation of planet
     zenith_angle: float = field(
+        default=48.19,
         validator=(
             ge(0),
             lt(90),
         )
     )
-    s0_factor: float = field(validator=gt(0))
+    s0_factor: float = field(default=0.375, validator=gt(0))
 
     # Allow the planet's orbit to evolve based on eccentricity tides?
     evolve: bool = field(default=False)

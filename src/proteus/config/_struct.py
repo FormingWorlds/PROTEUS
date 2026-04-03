@@ -168,7 +168,7 @@ class Struct:
         for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
     """
 
-    core_frac: float = field(validator=(gt(0), lt(1)))
+    core_frac: float = field(default=0.325, validator=(gt(0), lt(1)))
     core_frac_mode: str = field(default='mass', validator=in_(('radius', 'mass')))
 
     module: Optional[str] = field(

@@ -1,6 +1,7 @@
 # Config file for inference scheme
 
 # Set seed for reproducibility
+version = "3.0"
 seed = 1
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
