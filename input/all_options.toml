@@ -35,7 +35,7 @@
         plot_fmt              = "png"        # png | pdf
         write_mod             = 1            # 0: at end | n: every n iters
         dt_write_rel          = 1e-3         # min write interval as fraction of elapsed simulation time (0: off)
-        archive_mod           = "none"            # 0: at end | n: every n iters | none: never
+        archive_mod           = "none"       # 0: at end | n: every n iters | none: never
         remove_sf             = false        # remove spectral file when done
 
     [params.dt]
