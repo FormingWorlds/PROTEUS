@@ -1,5 +1,5 @@
 # AGNI atmosphere demo: SOCRATES radiative transfer with dummy interior/escape.
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path      = "auto"

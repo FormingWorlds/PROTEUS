@@ -1,5 +1,5 @@
 # BOREAS escape demo: fractionated hydrodynamic escape with MUSCLES spectrum.
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path = "auto"

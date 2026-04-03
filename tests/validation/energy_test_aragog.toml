@@ -12,7 +12,7 @@
 # The tsurf_init = 1861 K corresponds to SPIDER ini_entropy = 3200 J/K/kg
 # at surface pressure, computed from the PALEOS MgSiO3 EOS.
 
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path        = "auto"

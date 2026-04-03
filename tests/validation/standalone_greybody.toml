@@ -5,7 +5,7 @@
 # The ONLY difference between cases is interior.module.
 # Everything else is identical.
 
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path        = "auto"

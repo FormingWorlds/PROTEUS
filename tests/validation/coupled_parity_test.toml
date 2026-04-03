@@ -3,7 +3,7 @@
 # 1 M_Earth, dry, kappah_floor=100
 # Purpose: verify that atmosphere feedback narrows the solidification timescale gap
 
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path        = "auto"

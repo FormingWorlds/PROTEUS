@@ -2,7 +2,7 @@
 # Parameters marked with PLACEHOLDER are overridden by run_coupling_matrix.py.
 # All others are fixed across the matrix.
 
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path        = "auto"

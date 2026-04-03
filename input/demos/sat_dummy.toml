@@ -1,5 +1,5 @@
 # Satellite demo (dummy tides): planet with a moon, parameterized tidal heating.
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path      = "auto"

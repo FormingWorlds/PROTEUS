@@ -1,6 +1,6 @@
 # Orbit demo (physical tides): close-in planet with LovePy viscoelastic tidal heating.
 # Tests orbit evolution + SPIDER interior + tidal dissipation coupling.
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path      = "auto"

@@ -24,7 +24,7 @@
         S_mode          = "S/H"
         S_budget        = 0.0
 
-version = "3.0"
+config_version = "3.0"
 
 # ----------------------------------------------------
 # Parameters

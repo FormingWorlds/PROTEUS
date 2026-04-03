@@ -34,7 +34,7 @@ def test_smoke_janus_dummy_coupling(tmp_path):
     # 1. Define minimal TOML content
     toml_content = """
 # Minimal Smoke Test Config
-version = "3.0"
+config_version = "3.0"
 
 [params]
     [params.out]

@@ -1,5 +1,5 @@
 # Escape demo: XUV-driven atmospheric escape with MORS stellar evolution.
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path     = "auto"

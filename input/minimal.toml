@@ -3,7 +3,7 @@
 # how a minimal physics-based config file can be structured. All parameters
 # have defaults, which are listed in the documentation and in all_options.toml.
 # Empty sections can be omitted entirely.
-version = "3.0"
+config_version = "3.0"
 
 [orbit]
     semimajoraxis = 1.0              # [AU]

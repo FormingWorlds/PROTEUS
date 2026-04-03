@@ -15,7 +15,7 @@
 
     prevent_warming = false      # do not allow the planet to heat up
 
-version = "3.0"
+config_version = "3.0"
 author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # ----------------------------------------------------

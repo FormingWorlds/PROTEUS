@@ -1,5 +1,5 @@
 # Aragog interior demo: scipy BDF thermal evolution with dummy atmosphere.
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path      = "auto"

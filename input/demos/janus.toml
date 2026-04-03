@@ -1,5 +1,5 @@
 # JANUS atmosphere demo: convective pseudoadiabat with SOCRATES RT.
-version = "3.0"
+config_version = "3.0"
 
     [params.out]
         path      = "auto"

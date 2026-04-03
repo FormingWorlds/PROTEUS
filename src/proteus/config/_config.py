@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 import tomlkit
-from attrs import asdict, define, field, validators
+from attrs import asdict, define, field
 
 from ._accretion import Accretion
 from ._atmos_chem import AtmosChem
@@ -59,6 +59,19 @@ def tides_enabled_orbit(instance, attribute, value):
         raise ValueError('Interior tidal heating requires an orbit module to be enabled')
 
 
+CURRENT_CONFIG_VERSION = '3.0'
+
+
+def valid_config_version(instance, attribute, value):
+    if value != CURRENT_CONFIG_VERSION:
+        raise ValueError(
+            f'Config file version "{value}" is not compatible with this version of PROTEUS '
+            f'(requires config_version = "{CURRENT_CONFIG_VERSION}"). '
+            f'Please update your configuration file to match the current format. '
+            f'See input/all_options.toml for the full reference.'
+        )
+
+
 def observe_resolved_atmosphere(instance, attribute, value):
     # Synthetic observations require a spatially resolved atmosphere profile
     if (instance.observe.synthesis is not None) and (instance.atmos_clim.module == 'dummy'):
@@ -97,8 +110,8 @@ class Config:
 
     Attributes
     ----------
-    version: str
-        Version of the configuration file.
+    config_version: str
+        Version of the configuration file format.
     params: Params
         Parameters for code execution, output files, time-stepping, convergence.
     star: Star
@@ -138,7 +151,7 @@ class Config:
     accretion: Accretion = field(factory=Accretion)
     observe: Observe = field(factory=Observe)
 
-    version: str = field(default='3.0', validator=validators.in_(('3.0',)))
+    config_version: str = field(default='3.0', validator=valid_config_version)
 
     def write(self, out: str):
         """
