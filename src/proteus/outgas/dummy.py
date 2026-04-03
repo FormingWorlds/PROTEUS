@@ -30,9 +30,9 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Molar masses [kg/mol]
 _MMW = {
-    'H2O': 18.015e-3, 'CO2': 44.01e-3, 'O2': 32.0e-3, 'H2': 2.016e-3,
-    'CH4': 16.04e-3, 'CO': 28.01e-3, 'N2': 28.01e-3, 'NH3': 17.03e-3,
-    'S2': 64.13e-3, 'SO2': 64.07e-3, 'H2S': 34.08e-3,
+    'H2O': 18.015e-3, 'CO2': 44.009e-3, 'O2': 31.998e-3, 'H2': 2.016e-3,
+    'CH4': 16.04e-3, 'CO': 28.010e-3, 'N2': 28.014e-3, 'NH3': 17.031e-3,
+    'S2': 64.13e-3, 'SO2': 64.065e-3, 'H2S': 34.08e-3,
     'SiO': 44.08e-3, 'SiO2': 60.08e-3, 'MgO': 40.30e-3, 'FeO2': 87.84e-3,
 }
 
@@ -40,9 +40,9 @@ _MMW = {
 # Each entry: (species_name, kg_element_per_kg_species)
 _ELEMENT_TO_SPECIES = {
     'H': ('H2O', 2 * 1.008 / 18.015),     # H2O: 2H per molecule
-    'C': ('CO2', 12.011 / 44.01),          # CO2: 1C per molecule
-    'N': ('N2', 2 * 14.007 / 28.01),       # N2: 2N per molecule
-    'S': ('SO2', 32.065 / 64.07),          # SO2: 1S per molecule
+    'C': ('CO2', 12.011 / 44.009),         # CO2: 1C per molecule
+    'N': ('N2', 2 * 14.007 / 28.014),      # N2: 2N per molecule
+    'S': ('SO2', 32.065 / 64.065),         # SO2: 1S per molecule
 }
 
 
@@ -63,12 +63,9 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
     R_int = float(hf_row.get('R_int', 6.371e6))
     area = 4.0 * np.pi * R_int**2
 
-    # Initialize all expected keys to zero
+    # Initialize all expected keys to zero (M_atm is set by wrapper)
     for key in expected_keys():
-        if key not in ('M_atm',):  # M_atm is set by wrapper
-            hf_row.setdefault(key, 0.0)
-            if isinstance(hf_row[key], str):
-                continue
+        if key != 'M_atm':
             hf_row[key] = 0.0
 
     # Partition coefficient: fraction dissolved in melt
@@ -132,9 +129,9 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
     # Element reservoir masses (from species)
     _species_elements = {
         'H2O': {'H': 2 * 1.008 / 18.015, 'O': 15.999 / 18.015},
-        'CO2': {'C': 12.011 / 44.01, 'O': 2 * 15.999 / 44.01},
+        'CO2': {'C': 12.011 / 44.009, 'O': 2 * 15.999 / 44.009},
         'N2': {'N': 1.0},
-        'SO2': {'S': 32.065 / 64.07, 'O': 2 * 15.999 / 64.07},
+        'SO2': {'S': 32.065 / 64.065, 'O': 2 * 15.999 / 64.065},
     }
     for e in element_list:
         hf_row[f'{e}_kg_atm'] = 0.0

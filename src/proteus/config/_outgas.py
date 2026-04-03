@@ -145,7 +145,7 @@ class Outgas:
     fO2_shift_IW: float
         Homogeneous oxygen fugacity in the magma ocean used to represent redox state (log10 units relative to Iron-Wustite).
     module: str
-        Outgassing module to be used. Choices: 'calliope' only.
+        Outgassing module to be used. Choices: 'calliope', 'atmodeller', 'dummy'.
     mass_thresh: float
         Minimum threshold for element mass [kg]. Inventories below this are set to zero.
     h2_binodal: bool
