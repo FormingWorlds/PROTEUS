@@ -43,12 +43,11 @@ version = "3.0"
         H_budget = 3e3
         N_budget = 0.0
 
-# Interior structure
+# Interior structure: scaling laws (no external solver)
 [interior_struct]
+    module         = "dummy"
     core_frac      = 0.55        # radius fraction
     core_frac_mode = "radius"
-    core_density   = 10738.33    # [kg/m3]
-    core_heatcap   = 880.0       # [J/K/kg]
 
 # Interior energetics: parameterized cooling
 [interior_energetics]
