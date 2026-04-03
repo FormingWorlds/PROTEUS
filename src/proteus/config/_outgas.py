@@ -35,17 +35,17 @@ class Calliope:
         Enable solubility of volatiles into melt.
     """
 
-    include_H2O: bool = True
-    include_CO2: bool = True
-    include_N2: bool = True
-    include_S2: bool = True
-    include_SO2: bool = True
-    include_H2S: bool = True
-    include_NH3: bool = True
-    include_H2: bool = True
-    include_CH4: bool = True
-    include_CO: bool = True
-    solubility: bool = True
+    include_H2O: bool = field(default=True)
+    include_CO2: bool = field(default=True)
+    include_N2: bool = field(default=True)
+    include_S2: bool = field(default=True)
+    include_SO2: bool = field(default=True)
+    include_H2S: bool = field(default=True)
+    include_NH3: bool = field(default=True)
+    include_H2: bool = field(default=True)
+    include_CH4: bool = field(default=True)
+    include_CO: bool = field(default=True)
+    solubility: bool = field(default=True)
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""
@@ -103,7 +103,7 @@ class Atmodeller:
     )
     solver_max_steps: int = field(default=256, validator=validators.gt(0))
     solver_multistart: int = field(default=10, validator=validators.gt(0))
-    include_condensates: bool = True
+    include_condensates: bool = field(default=True)
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
     solubility_CO2: str | None = field(default='CO2_basalt_dixon95', converter=none_if_none)
     solubility_H2: str | None = field(default='H2_basalt_hirschmann12', converter=none_if_none)

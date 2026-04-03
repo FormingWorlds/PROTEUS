@@ -126,7 +126,7 @@ class Zalmoxis:
     mesh_convergence_interval: float = field(default=10.0, validator=gt(0))
 
     # Pre-main-loop equilibration (CALLIOPE + Zalmoxis convergence)
-    equilibrate_init: bool = True
+    equilibrate_init: bool = field(default=True)
     equilibrate_max_iter: int = field(default=15, validator=ge(1))
     equilibrate_tol: float = field(default=0.01, validator=gt(0))
 

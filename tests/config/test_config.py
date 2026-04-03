@@ -62,6 +62,56 @@ def test_read_config_returns_dict():
 
 
 @pytest.mark.unit
+def test_valid_config_version_rejects_old():
+    """config_version validator rejects old versions with a clear upgrade message."""
+    from proteus.config._config import valid_config_version
+
+    instance = SimpleNamespace()
+    with pytest.raises(ValueError, match='config_version = "3.0"'):
+        valid_config_version(instance, SimpleNamespace(), '2.0')
+
+
+@pytest.mark.unit
+def test_valid_config_version_accepts_current():
+    """config_version validator accepts the current version."""
+    from proteus.config._config import valid_config_version
+
+    instance = SimpleNamespace()
+    valid_config_version(instance, SimpleNamespace(), '3.0')  # Should not raise
+
+
+@pytest.mark.unit
+def test_auto_output_path_resolved():
+    """params.out.path = 'auto' resolves to run_YYYYMMDD_HHMMSS_xxxx."""
+    import re
+
+    from proteus.config import read_config_object
+    from proteus.utils.coupler import set_directories
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    assert cfg.params.out.path == 'auto'
+    set_directories(cfg)
+    assert cfg.params.out.path != 'auto'
+    assert re.match(r'run_\d{8}_\d{6}_[0-9a-f]{4}', cfg.params.out.path)
+
+
+@pytest.mark.unit
+def test_factory_defaults_from_minimal_config():
+    """Config sections omitted from TOML use factory defaults."""
+    from proteus.config import read_config_object
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
+    # Omitted sections should use factory defaults
+    assert cfg.escape.module == 'zephyrus'
+    assert cfg.accretion.module is None
+    assert cfg.observe.synthesis is None
+    assert cfg.atmos_chem.module is None
+    assert cfg.interior_energetics.module == 'aragog'
+    assert cfg.star.module == 'mors'
+    assert cfg.atmos_clim.module == 'agni'
+
+
+@pytest.mark.unit
 def test_read_config_object_returns_config():
     """
     read_config_object returns a validated Config instance.

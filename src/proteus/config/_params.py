@@ -62,8 +62,8 @@ class OutputParams:
     plot_fmt: str = field(default='png', validator=in_(('pdf', 'png')))
     write_mod: int = field(default=1, validator=ge(0))
     dt_write_rel: float = field(default=0.0, validator=ge(0))
-    plot_mod = field(default=5, validator=valid_mod, converter=none_if_none)
-    archive_mod = field(default=None, validator=valid_mod, converter=none_if_none)
+    plot_mod: int | None = field(default=5, validator=valid_mod, converter=none_if_none)
+    archive_mod: int | None = field(default=None, validator=valid_mod, converter=none_if_none)
     remove_sf: bool = field(default=False)
 
 
