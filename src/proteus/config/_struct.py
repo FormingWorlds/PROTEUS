@@ -135,8 +135,8 @@ class Zalmoxis:
     equilibrate_tol: float = field(default=0.01, validator=gt(0))
 
     # SPIDER P-S table resolution (generated from PALEOS)
-    lookup_nP: int = field(default=1000, validator=ge(100))
-    lookup_nS: int = field(default=250, validator=ge(50))
+    lookup_nP: int = field(default=1350, validator=ge(100))
+    lookup_nS: int = field(default=280, validator=ge(50))
 
     # Binodal-aware miscibility (H2-MgSiO3 solvus)
     global_miscibility: bool = field(default=False)

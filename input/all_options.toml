@@ -236,8 +236,8 @@ config_version = "3.0"
         equilibrate_tol       = 0.01         # equilibration convergence tolerance
 
         # P-S lookup table resolution (generated from PALEOS for SPIDER + Aragog)
-        lookup_nP             = 1000         # pressure points in P-S lookup tables
-        lookup_nS             = 250          # entropy points in P-S lookup tables
+        lookup_nP             = 1350         # pressure points in P-S lookup tables (native PALEOS: 1352)
+        lookup_nS             = 280          # entropy points in P-S lookup tables (native PALEOS: 280)
 
         # Miscibility (H2-silicate binodal)
         global_miscibility    = false        # enable binodal-aware radial structure
