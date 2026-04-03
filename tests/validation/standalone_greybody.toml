@@ -92,20 +92,6 @@ config_version = "3.0"
         ice_layer_eos = "none"
         mushy_zone_factor          = 0.8
         mantle_mass_fraction       = 0
-        max_iterations_outer       = 80
-        tolerance_outer            = 3e-3
-        max_iterations_inner       = 80
-        tolerance_inner            = 1e-4
-        relative_tolerance         = 1e-5
-        absolute_tolerance         = 1e-6
-        maximum_step               = 200000
-        adaptive_radial_fraction   = 0.98
-        max_center_pressure_guess  = 1e13
-        target_surface_pressure    = 101325
-        pressure_tolerance         = 1e9
-        max_iterations_pressure    = 200
-        verbose                    = false
-        iteration_profiles_enabled = false
 
 # Grey-body atmosphere: F_atm = sigma * T_magma^4
 # gamma=0 means fully transparent atmosphere: F_OLR = sigma * (T_surf*(1-gamma))^4 = sigma*T_surf^4

@@ -72,10 +72,6 @@ def generate_config(base_toml, output_dir, mass, cmf, interior, outgas, volatile
     for key, val in vol_cfg.items():
         cfg['planet']['elements'][key] = val
 
-    # Adjust for high mass: increase max center pressure guess
-    if mass > 3.0:
-        cfg['interior_struct']['zalmoxis']['max_center_pressure_guess'] = 5e13
-
     # Write TOML
     config_path = Path(output_dir) / 'configs' / f'{name}.toml'
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -220,7 +216,7 @@ def generate_slurm_script(cases, output_dir):
 source ~/miniforge3/etc/profile.d/conda.sh
 conda activate proteus
 module load netCDF-Fortran/4.6.1-gompi-2023a libarchive 2>/dev/null
-export PYTHON_JULIAPKG_EXE=$HOME/.julia/juliaup/julia-1.12.5+0.x64.linux.gnu/bin/julia
+export PYTHON_JULIAPKG_EXE=$(which julia)
 
 # Get config for this array task
 CONFIG=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {case_list_path})
