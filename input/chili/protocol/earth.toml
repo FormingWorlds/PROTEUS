@@ -95,10 +95,13 @@ volatile_mode = "elements"
 prevent_warming = true
 [interior_struct]
 core_frac = 0.55
+core_frac_mode = "radius"
 module = "spider"
 zalmoxis = "none"
 core_density = 10738.33
 core_heatcap = 880.0
+melting_dir = "Monteux-600"
+eos_dir = "WolfBower2018"
 
 [atmos_clim]
 module = "agni"

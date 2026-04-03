@@ -29,6 +29,8 @@ version = "3.0"
 # Star: fixed solar
 [star]
     module = "dummy"
+    [star.dummy]
+        radius = 1.0
 
 # Orbit: very close (0.03 AU), high eccentricity, evolving with LovePy
 [orbit]
@@ -40,6 +42,7 @@ version = "3.0"
 
 # Planet
 [planet]
+    mass_tot = 1.0
     volatile_mode = "elements"
     [planet.elements]
         H_mode   = "oceans"

@@ -40,6 +40,7 @@ version = "3.0"
 
 # Planet: volatile-rich
 [planet]
+    mass_tot        = 1.0
     prevent_warming = true
     volatile_mode   = "elements"
     [planet.elements]

@@ -22,6 +22,8 @@ version = "3.0"
 # Star: fixed solar luminosity
 [star]
     module = "dummy"
+    [star.dummy]
+        radius = 1.0
 
 # Orbit: 1 AU, no tides
 [orbit]

@@ -22,6 +22,8 @@ version = "3.0"
 # Star: fixed solar
 [star]
     module = "dummy"
+    [star.dummy]
+        radius = 1.0
 
 # Orbit: 1 AU with satellite
 [orbit]
@@ -37,6 +39,7 @@ version = "3.0"
 
 # Planet
 [planet]
+    mass_tot = 1.0
     volatile_mode = "elements"
     [planet.elements]
         H_mode   = "ppmw"

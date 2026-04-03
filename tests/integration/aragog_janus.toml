@@ -14,15 +14,7 @@
     volatile_mode = 'elements'        # "elements" | "volatiles"
 
     prevent_warming = false      # do not allow the planet to heat up
-[interior_struct]   planetary structure (mass, radius)
-#   [atmos]    atmosphere parameters, model selection
-#   [escape]   escape parameters, model selection
-#   [interior_energetics] magma ocean model selection and parameters
-#   [outgas]   outgassing parameters (fO2) and included volatiles
-#   [accretion] initial volatile inventory, and delivery model selection
 
-# ----------------------------------------------------
-# Metadata
 version = "3.0"
 author  = "Harrison Nicholls, Tim Lichtenberg"
 
