@@ -197,10 +197,10 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         return
 
     # Temperature floor guard
-    if T_magma < atm_config.T_floor:
+    if T_magma < config.outgas.T_floor:
         log.warning(
             'T_magma=%.0f K below T_floor=%.0f K; skipping atmodeller',
-            T_magma, atm_config.T_floor,
+            T_magma, config.outgas.T_floor,
         )
         return
 
@@ -215,8 +215,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     from atmodeller.containers import SolverParameters
 
     solver_params = SolverParameters(
-        atol=atm_config.solver_atol,
-        rtol=atm_config.solver_rtol,
+        atol=config.outgas.solver_atol,
+        rtol=config.outgas.solver_rtol,
         max_steps=atm_config.solver_max_steps,
         multistart=atm_config.solver_multistart,
     )

@@ -284,8 +284,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         opts[f'{s}_included'] = int(p_incl[s])
 
     # Do not allow low temperatures
-    if opts['T_magma'] < config.outgas.calliope.T_floor:
-        opts['T_magma'] = config.outgas.calliope.T_floor
+    if opts['T_magma'] < config.outgas.T_floor:
+        opts['T_magma'] = config.outgas.T_floor
         log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
     # get atmospheric compositison
@@ -293,8 +293,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         solvevol_result = equilibrium_atmosphere(
             target,
             opts,
-            xtol=config.outgas.calliope.xtol,
-            rtol=config.outgas.calliope.rtol,
+            xtol=config.outgas.solver_atol,
+            rtol=config.outgas.solver_rtol,
             atol=config.outgas.mass_thresh,
             nguess=int(1e3),
             nsolve=int(3e3),

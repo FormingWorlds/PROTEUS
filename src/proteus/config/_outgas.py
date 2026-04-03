@@ -11,8 +11,6 @@ class Calliope:
 
     Attributes
     ----------
-    T_floor: float
-        Temperature floor applied to chemistry calculation [K].
     include_H2O: bool
         If True, include H2O.
     include_CO2: bool
@@ -33,15 +31,10 @@ class Calliope:
         If True, include CH4.
     include_CO: bool
         If True, include CO.
-    rtol: float
-        Relative tolerance on solver for mass conservation.
-    xtol: float
-        Absolute tolerance on solver for mass conservation.
     solubility: bool
         Enable solubility of volatiles into melt.
     """
 
-    T_floor: float = field(default=700.0, validator=validators.gt(0.0))
     include_H2O: bool = True
     include_CO2: bool = True
     include_N2: bool = True
@@ -52,8 +45,6 @@ class Calliope:
     include_H2: bool = True
     include_CH4: bool = True
     include_CO: bool = True
-    rtol: float = field(default=1e-4, validator=validators.gt(0.0))
-    xtol: float = field(default=1e-6, validator=validators.gt(0.0))
     solubility: bool = True
 
     def is_included(self, vol: str) -> bool:
@@ -74,18 +65,12 @@ class Atmodeller:
     solver_mode : str
         Root-finding mode: 'robust' (slower compile, better convergence)
         or 'basic' (faster compile, less robust).
-    solver_atol : float
-        Absolute tolerance for the root-finder.
-    solver_rtol : float
-        Relative tolerance for the root-finder.
     solver_max_steps : int
         Maximum iterations for the root-finder.
     solver_multistart : int
         Number of random restarts for the root-finder.
     include_condensates : bool
         Enable condensate phases (graphite, etc.) in the equilibrium.
-    T_floor : float
-        Temperature floor [K]. Outgassing skipped below this temperature.
     solubility_H2O : str
         Solubility law for H2O. See atmodeller.solubility.library.
     solubility_CO2 : str
@@ -116,12 +101,9 @@ class Atmodeller:
         default='robust',
         validator=validators.in_(('robust', 'basic')),
     )
-    solver_atol: float = field(default=1e-6, validator=validators.gt(0))
-    solver_rtol: float = field(default=1e-6, validator=validators.gt(0))
     solver_max_steps: int = field(default=256, validator=validators.gt(0))
     solver_multistart: int = field(default=10, validator=validators.gt(0))
     include_condensates: bool = True
-    T_floor: float = field(default=700.0, validator=validators.ge(0))
     solubility_H2O: str | None = field(default='H2O_peridotite_sossi23', converter=none_if_none)
     solubility_CO2: str | None = field(default='CO2_basalt_dixon95', converter=none_if_none)
     solubility_H2: str | None = field(default='H2_basalt_hirschmann12', converter=none_if_none)
@@ -142,30 +124,37 @@ class Outgas:
 
     Attributes
     ----------
-    fO2_shift_IW: float
-        Homogeneous oxygen fugacity in the magma ocean used to represent redox state (log10 units relative to Iron-Wustite).
     module: str
         Outgassing module to be used. Choices: 'calliope', 'atmodeller', 'dummy'.
+    fO2_shift_IW: float
+        Oxygen fugacity relative to Iron-Wustite [log10 units].
     mass_thresh: float
         Minimum threshold for element mass [kg]. Inventories below this are set to zero.
     h2_binodal: bool
         Enable binodal-controlled H2 partitioning between atmosphere and
         magma ocean using the Rogers+2025 H2-MgSiO3 miscibility model.
-        When enabled, H2 dissolves into the melt above the binodal
-        temperature and remains in the atmosphere below it.
+    T_floor: float
+        Temperature floor [K]. Outgassing skipped below this temperature.
+    solver_rtol: float
+        Relative tolerance for the volatile equilibrium solver.
+    solver_atol: float
+        Absolute tolerance for the volatile equilibrium solver.
     calliope: Calliope
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
     """
 
+    module: str = field(validator=validators.in_(('calliope', 'atmodeller', 'dummy')))
     fO2_shift_IW: float
 
-    module: str = field(validator=validators.in_(('calliope', 'atmodeller', 'dummy')))
-
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
-
     h2_binodal: bool = False
+
+    # Shared solver parameters (calliope + atmodeller)
+    T_floor: float = field(default=700.0, validator=validators.gt(0.0))
+    solver_rtol: float = field(default=1e-4, validator=validators.gt(0.0))
+    solver_atol: float = field(default=1e-6, validator=validators.gt(0.0))
 
     calliope: Calliope = field(factory=Calliope)
     atmodeller: Atmodeller = field(factory=Atmodeller)

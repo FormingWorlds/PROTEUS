@@ -97,7 +97,6 @@ def test_proteus_init(path):
 def test_calliope_is_included():
     """Calliope includes/excludes species based on boolean flags."""
     conf = Calliope(
-        T_floor=0.1,
         include_CO=False,
         include_H2=True,
     )

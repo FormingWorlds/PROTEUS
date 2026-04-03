@@ -269,10 +269,15 @@
 
 # Outgassing (volatile partitioning between interior and atmosphere)
 [outgas]
-    fO2_shift_IW              = 4            # redox state [log10(delta_IW)]
     module                    = "calliope"   # calliope | atmodeller | dummy
+    fO2_shift_IW              = 4            # redox state [log10(delta_IW)]
     mass_thresh               = 1e16         # minimum volatile mass threshold [kg]
     h2_binodal                = false        # enable H2 binodal partitioning
+
+    # Shared solver parameters (calliope + atmodeller)
+    T_floor                   = 700.0        # skip outgassing below this T [K]
+    solver_rtol               = 1e-4         # relative mass/equilibrium tolerance
+    solver_atol               = 1e-6         # absolute mass/equilibrium tolerance
 
     [outgas.calliope]
         # Species switches (false = excluded entirely from equilibrium calculation)
@@ -286,19 +291,13 @@
         include_H2            = true
         include_CH4           = true
         include_CO            = true
-        T_floor               = 700.0        # skip outgassing below this T [K]
-        rtol                  = 0.0001       # relative mass tolerance
-        xtol                  = 1e-06        # absolute mass tolerance
         solubility            = true         # melt-gas partitioning (false = all in atmosphere)
 
     [outgas.atmodeller]
         solver_mode           = "robust"     # robust (better convergence) | basic (faster)
-        solver_atol           = 1e-6         # root-finder absolute tolerance
-        solver_rtol           = 1e-6         # root-finder relative tolerance
         solver_max_steps      = 256          # root-finder max iterations
         solver_multistart     = 10           # number of random restarts
         include_condensates   = true         # graphite condensation
-        T_floor               = 700.0        # skip outgassing below this T [K]
         # Solubility law per species ("none" = no dissolution, gas stays in atmosphere)
         solubility_H2O        = "H2O_peridotite_sossi23"     # none | H2O_peridotite_sossi23 | H2O_basalt_dixon95
         solubility_CO2        = "CO2_basalt_dixon95"         # none | CO2_basalt_dixon95
