@@ -327,44 +327,55 @@
     tmp_minimum               = 0.5          # solver temperature floor [K] (agni, janus)
 
     [atmos_clim.agni]
-        verbosity             = 1            # 0: none | 1: info | 2: debug
-        p_top                 = 1.0e-6       # TOA pressure [bar]
-        p_obs                 = 0.02         # transmission probing level [bar]
-        spectral_group        = "Honeyside"  # gas opacity set
-        spectral_bands        = "48"         # number of spectral bands
-        chemistry             = "none"       # none | eq
-        surf_material         = "greybody"   # surface scattering material
-        solve_energy          = true         # energy-conserving profile
-        solution_atol         = 0.5          # solver absolute tolerance
-        solution_rtol         = 0.15         # solver relative tolerance
-        overlap_method        = "ee"         # gas overlap method
-        surf_roughness        = 1e-3         # surface roughness [m]
-        surf_windspeed        = 2.0          # surface wind speed [m s-1]
-        rainout               = true         # volatile condensation/evaporation
-        latent_heat           = false        # latent heat release
-        oceans                = true         # surface liquid oceans
-        sens_heat             = true         # sensible heat flux (TKE scheme)
-        real_gas              = false        # real-gas EOS
-        psurf_thresh          = 0.1          # transparent mode threshold [bar]
-        dx_max_ini            = 300.0        # initial max temperature step [K]
-        dx_max                = 35.0         # max temperature step [K]
-        max_steps             = 70           # max solver steps per iteration
-        perturb_all           = true         # full Jacobian update each step
-        mlt_criterion         = "s"          # (l)edoux | (s)chwarzschild
-        check_safe_gas        = true         # validate gas composition before solve
-        num_levels            = 50           # number of atmosphere levels
-        convection            = true         # enable convective adjustment
-        conduction            = true         # enable conductive heat transfer
-        phs_timescale         = 1e6          # phase transition timescale [yr]
-        evap_efficiency       = 0.01         # ocean evaporation efficiency
-        fastchem_floor        = 150.0        # min temperature for FastChem [K]
-        fastchem_maxiter_chem = 60000        # FastChem max iterations (chemistry)
-        fastchem_maxiter_solv = 20000        # FastChem max iterations (solver)
-        fastchem_xtol_chem    = 1e-4         # FastChem tolerance (chemistry)
-        fastchem_xtol_elem    = 1e-4         # FastChem tolerance (elemental)
-        ini_profile           = 'isothermal' # isothermal | loglinear | dry_adiabat | analytic
-        ls_default            = 2            # linesearch: 0=none | 1=GS | 2=BT
-        fdo                   = 2            # finite-difference order: 2 | 4
+        # Grid and spectral setup
+        spectral_group        = "Honeyside"  # opacity k-table set; see docs/spectral_files.pdf
+        spectral_bands        = "48"         # wavenumber bands in k-table
+        num_levels            = 50           # vertical atmosphere levels (min 25)
+        p_top                 = 1.0e-6       # top-of-atmosphere pressure [bar]
+        p_obs                 = 0.02         # observation pressure level [bar] (transit radius)
+        overlap_method        = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
+
+        # Physics switches
+        solve_energy          = true         # iterative energy-conserving T(p) profile
+        convection            = true         # convective adjustment (MLT)
+        conduction            = true         # conductive heat transport (Fourier)
+        sens_heat             = true         # sensible heat flux at surface
+        rainout               = true         # volatile condensation and evaporation
+        oceans                = true         # surface liquid water oceans
+        latent_heat           = false        # latent heat from condensation/evaporation
+        real_gas              = false        # real-gas EOS where available
+        chemistry             = "none"       # atmospheric chemistry: none | eq (FastChem)
+        mlt_criterion         = "s"          # convection criterion: s (Schwarzschild) | l (Ledoux)
+
+        # Surface properties
+        surf_material         = "greybody"   # surface scattering; "greybody" uses surf_greyalbedo
+        surf_roughness        = 1e-3         # characteristic roughness scale [m]
+        surf_windspeed        = 2.0          # characteristic wind speed [m/s]
+
+        # Condensation and clouds
+        phs_timescale         = 1e6          # phase change relaxation timescale [s]
+        evap_efficiency       = 0.01         # raindrop re-evaporation efficiency (0 to 1)
+
+        # Solver tuning (rarely need to change)
+        solution_atol         = 0.5          # Newton solver absolute tolerance [W/m2]
+        solution_rtol         = 0.15         # Newton solver relative tolerance
+        psurf_thresh          = 0.1          # skip full RCE when P_surf below this [bar]
+        dx_max                = 35.0         # max Newton step per iteration [K]
+        dx_max_ini            = 300.0        # max Newton step during first few PROTEUS loops [K]
+        max_steps             = 70           # max Newton iterations per call
+        perturb_all           = true         # recompute full Jacobian each iteration
+        ini_profile           = "isothermal" # initial T(p) guess: isothermal | loglinear | dry_adiabat | analytic
+        ls_default            = 2            # linesearch method: 0 (none) | 1 (golden section) | 2 (backtracking)
+        fdo                   = 2            # finite-difference order for Jacobian: 2 | 4
+        check_safe_gas        = true         # require at least one gas with opacity+thermo data
+        verbosity             = 1            # AGNI log level: 0 (silent) | 1 (info) | 2 (debug)
+
+        # FastChem equilibrium chemistry (only used when chemistry = "eq")
+        fastchem_floor        = 150.0        # min temperature sent to FastChem [K]
+        fastchem_maxiter_chem = 60000        # max FastChem iterations (chemistry)
+        fastchem_maxiter_solv = 20000        # max FastChem iterations (internal solver)
+        fastchem_xtol_chem    = 1e-4         # FastChem convergence tolerance (chemistry)
+        fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
 
     [atmos_clim.janus]
         num_levels            = 90           # number of atmosphere levels
