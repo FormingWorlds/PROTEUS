@@ -363,7 +363,7 @@
         fastchem_maxiter_solv = 20000        # FastChem max iterations (solver)
         fastchem_xtol_chem    = 1e-4         # FastChem tolerance (chemistry)
         fastchem_xtol_elem    = 1e-4         # FastChem tolerance (elemental)
-        ini_profile           = 'isothermal' # initial T(P) guess shape
+        ini_profile           = 'isothermal' # isothermal | loglinear | dry_adiabat | analytic
         ls_default            = 2            # linesearch: 0=none | 1=GS | 2=BT
         fdo                   = 2            # finite-difference order: 2 | 4
 
