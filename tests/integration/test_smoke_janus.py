@@ -108,6 +108,12 @@ version = "2.0"
 
 [atmos_clim]
     module = "janus"
+    spectral_group = "Frostflow"
+    spectral_bands = 16
+    num_levels = 30
+    p_top = 1e-4
+    p_obs = 1e-3
+    overlap_method = "ro"
     surface_d = 0.01
     surface_k = 2.0
     cloud_enabled = false
@@ -118,16 +124,10 @@ version = "2.0"
     tmp_minimum = 10.0
 
     [atmos_clim.janus]
-        p_top = 1e-4
-        p_obs = 1e-3
-        spectral_group = "Frostflow"
-        spectral_bands = 16
         F_atm_bc = 0
-        num_levels = 30
         tropopause = "skin"
         cloud_alpha = 0.0
         tmp_maximum = 5000.0
-        overlap_method = "ro"
 
 [outgas]
     module = "calliope"

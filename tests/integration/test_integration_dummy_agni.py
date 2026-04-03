@@ -93,7 +93,7 @@ def test_dummy_agni_atmosphere(dummy_agni_run):
     out = read_atmosphere(_out, extra_keys=fields)
 
     # Compare to config
-    assert len(out['tmpl']) == dummy_agni_run.config.atmos_clim.agni.num_levels + 1
+    assert len(out['tmpl']) == dummy_agni_run.config.atmos_clim.num_levels + 1
     assert np.all(out['Kzz'] >= 0)
     assert np.all(out['rl'][:-1] - out['rl'][1:] > 0)
 

@@ -186,8 +186,8 @@ def test_spfile_helpers():
     # Mock config object
     mock_conf = MagicMock()
     mock_conf.atmos_clim.module = 'janus'
-    mock_conf.atmos_clim.janus.spectral_bands = '16'
-    mock_conf.atmos_clim.janus.spectral_group = 'Dayspring'
+    mock_conf.atmos_clim.spectral_bands = '16'
+    mock_conf.atmos_clim.spectral_group = 'Dayspring'
 
     # Test get_spfile_name_and_bands
     group, bands = get_spfile_name_and_bands(mock_conf)

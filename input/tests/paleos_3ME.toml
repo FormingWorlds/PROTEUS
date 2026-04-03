@@ -102,16 +102,16 @@ version = "2.0"
     tmp_minimum     = 0.5
     module          = "agni"
 
+    p_top           = 1.0e-5
+    spectral_group  = "Dayspring"
+    spectral_bands  = "48"
+    overlap_method  = "ee"
     [atmos_clim.agni]
-        p_top           = 1.0e-5
-        spectral_group  = "Dayspring"
-        spectral_bands  = "48"
         chemistry       = "none"
         surf_material   = "greybody"
         solve_energy    = true
         solution_atol   = 1e-2
         solution_rtol   = 1e-1
-        overlap_method  = "ee"
         rainout         = true
         real_gas        = true
         psurf_thresh    = 1e-3

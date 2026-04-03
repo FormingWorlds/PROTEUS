@@ -84,19 +84,19 @@ version = "2.0"
 
     module  = "agni"           # Which atmosphere module to use
 
+    spectral_group = "Dayspring"
+    spectral_bands = "16"
+    p_top = 1e-05
+    overlap_method = "ee"
     [atmos_clim.dummy]
         gamma = 0.98
 
     [atmos_clim.agni]
         solve_energy = false
-        spectral_group = "Dayspring"
-        spectral_bands = "16"
-        p_top = 1e-05
         surf_material = "surface_albedos/Hammond24/lunarmarebasalt.dat"
         chemistry = "none"
         solution_atol = 2.0
         solution_rtol = 0.13
-        overlap_method = "ee"
         rainout = false
         real_gas = true
 

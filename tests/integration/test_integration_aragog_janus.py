@@ -98,7 +98,7 @@ def test_aragog_janus_atmosphere(aragog_janus_run):
     out = read_atmosphere(_out, extra_keys=fields)
 
     # Compare to config
-    assert len(out['t']) == aragog_janus_run.config.atmos_clim.janus.num_levels * 2 + 1
+    assert len(out['t']) == aragog_janus_run.config.atmos_clim.num_levels * 2 + 1
 
     # Load atmosphere reference
     ref = read_atmosphere(_ref, extra_keys=fields)

@@ -174,12 +174,8 @@ def get_spfile_name_and_bands(config: Config):
     Get spectral file name and bands from config
     """
 
-    # Get table corresponding to the right atmosphere module
-    obj = getattr(config.atmos_clim, config.atmos_clim.module)
-
-    # Get bands and group name (strings)
-    bands = obj.spectral_bands
-    group = obj.spectral_group
+    group = config.atmos_clim.spectral_group
+    bands = config.atmos_clim.spectral_bands
 
     return group, bands
 

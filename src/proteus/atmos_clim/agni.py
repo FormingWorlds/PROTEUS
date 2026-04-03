@@ -194,7 +194,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     # Boundary pressures
     p_surf = hf_row['P_surf']
-    p_top = config.atmos_clim.agni.p_top
+    p_top = config.atmos_clim.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
     # Setup struct
@@ -210,7 +210,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         hf_row['T_surf'],
         hf_row['gravity'],
         hf_row['R_int'],
-        int(config.atmos_clim.agni.num_levels),
+        int(config.atmos_clim.num_levels),
         p_surf,
         p_top,
         vol_dict,
@@ -218,7 +218,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         IO_DIR=io_dir,
         flag_rayleigh=config.atmos_clim.rayleigh,
         flag_cloud=config.atmos_clim.cloud_enabled,
-        overlap_method=config.atmos_clim.agni.overlap_method,
+        overlap_method=config.atmos_clim.overlap_method,
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,
         surf_roughness=config.atmos_clim.agni.surf_roughness,
@@ -639,7 +639,7 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     # Opaque case
     else:
         # Set observed pressure
-        atmos.transspec_p = float(config.atmos_clim.agni.p_obs * 1e5)  # converted to Pa
+        atmos.transspec_p = float(config.atmos_clim.p_obs * 1e5)  # converted to Pa
 
         # full solver
         if config.atmos_clim.agni.solve_energy:

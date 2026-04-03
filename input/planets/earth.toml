@@ -66,15 +66,15 @@ version = "2.0"
     module          = "agni"
     albedo_pl       = 0.0      # test guess, contribution from clouds
 
+    p_top          = 1e-4
+    spectral_group = "Dayspring"
+    spectral_bands = "48"
     [atmos_clim.agni]
-        p_top          = 1e-4
         dx_max         = 100.0
         sens_heat      = false
         cloud_enabled  = false
         rainout        = false
         oceans         = true
-        spectral_group = "Dayspring"
-        spectral_bands = "48"
         solution_atol  = 2.0
         ls_default     = 2
 

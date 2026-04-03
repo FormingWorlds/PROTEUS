@@ -67,6 +67,6 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 
 
 # Spectral bands set directly
-# ["atmos_clim.agni.spectral_bands"]
+# ["atmos_clim.spectral_bands"]
 #     method = "direct"
 #     values = ["16", "48", "256"]

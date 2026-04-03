@@ -40,9 +40,9 @@ version = "2.0"
 [atmos_clim]
     module  = "agni"            # Which atmosphere module to use
 
+    spectral_group  = "Honeyside"   # Which gas opacities to include
+    spectral_bands  = "48"  # How many spectral bands
     [atmos_clim.agni]
-        spectral_group  = "Honeyside"   # Which gas opacities to include
-        spectral_bands  = "48"  # How many spectral bands
 
 [escape]
     module = "zephyrus"

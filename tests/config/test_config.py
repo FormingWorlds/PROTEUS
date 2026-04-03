@@ -685,10 +685,10 @@ def test_janus_tmp_max_bigger_than_tmp_min_valid():
 
     instance = SimpleNamespace(
         module='janus',
+        spectral_group='Honeyside',
+        spectral_bands='48',
         tmp_minimum=300.0,
         janus=SimpleNamespace(
-            spectral_group='Honeyside',
-            spectral_bands='48',
             tmp_maximum=5000.0,
         ),
     )
@@ -702,10 +702,10 @@ def test_janus_tmp_max_equals_tmp_min_invalid():
 
     instance = SimpleNamespace(
         module='janus',
+        spectral_group='Honeyside',
+        spectral_bands='48',
         tmp_minimum=300.0,
         janus=SimpleNamespace(
-            spectral_group='Honeyside',
-            spectral_bands='48',
             tmp_maximum=300.0,
         ),
     )
@@ -720,10 +720,10 @@ def test_janus_tmp_max_less_than_tmp_min_invalid():
 
     instance = SimpleNamespace(
         module='janus',
+        spectral_group='Honeyside',
+        spectral_bands='48',
         tmp_minimum=400.0,
         janus=SimpleNamespace(
-            spectral_group='Honeyside',
-            spectral_bands='48',
             tmp_maximum=300.0,
         ),
     )
@@ -873,7 +873,8 @@ def test_atmos_clim_janus_module_skip():
     # With module='agni', validator should return early without checking janus config
     instance = SimpleNamespace(
         module='agni',
-        janus=SimpleNamespace(spectral_group=None, spectral_bands=None),
+        spectral_group=None,
+        spectral_bands=None,
     )
     valid_janus(instance, SimpleNamespace(), None)  # Should not raise
 
@@ -885,10 +886,11 @@ def test_atmos_clim_janus_spectral_group_required():
 
     instance = SimpleNamespace(
         module='janus',
+        spectral_group=None,
+        spectral_bands='16',
         tmp_minimum=0.5,
-        janus=SimpleNamespace(spectral_group=None, spectral_bands='16', tmp_maximum=5000.0),
     )
-    with pytest.raises(ValueError, match='Must set atmos_clim.janus.spectral_group'):
+    with pytest.raises(ValueError, match='Must set atmos_clim.spectral_group'):
         valid_janus(instance, SimpleNamespace(), None)
 
 
@@ -899,10 +901,11 @@ def test_atmos_clim_janus_spectral_bands_required():
 
     instance = SimpleNamespace(
         module='janus',
+        spectral_group='sw',
+        spectral_bands=None,
         tmp_minimum=0.5,
-        janus=SimpleNamespace(spectral_group='sw', spectral_bands=None, tmp_maximum=5000.0),
     )
-    with pytest.raises(ValueError, match='Must set atmos_clim.janus.spectral_bands'):
+    with pytest.raises(ValueError, match='Must set atmos_clim.spectral_bands'):
         valid_janus(instance, SimpleNamespace(), None)
 
 
@@ -913,8 +916,10 @@ def test_atmos_clim_janus_valid_spectral_config():
 
     instance = SimpleNamespace(
         module='janus',
+        spectral_group='sw_lw',
+        spectral_bands='16',
         tmp_minimum=0.5,
-        janus=SimpleNamespace(spectral_group='sw_lw', spectral_bands='16', tmp_maximum=5000.0),
+        janus=SimpleNamespace(tmp_maximum=5000.0),
     )
     valid_janus(instance, SimpleNamespace(), None)  # Should not raise
 
@@ -936,21 +941,21 @@ def test_atmos_clim_agni_p_top_must_be_less_than_psurf_thresh():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=0.2,  # Greater than psurf_thresh,
+        p_obs=1.0,
         agni=SimpleNamespace(
-            p_top=0.2,  # Greater than psurf_thresh
             psurf_thresh=0.1,  # Less than p_top - INVALID
-            p_obs=1.0,
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',
     )
     with pytest.raises(
-        ValueError, match='Must set `agni.p_top` to be less than `agni.psurf_thresh`'
+        ValueError, match='Must set `p_top` to be less than `agni.psurf_thresh`'
     ):
         valid_agni(instance, SimpleNamespace(), None)
 
@@ -962,20 +967,20 @@ def test_atmos_clim_agni_p_top_must_be_less_than_p_obs():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=2.0,  # Greater than p_obs,
+        p_obs=1.0,  # Less than p_top - INVALID,
         agni=SimpleNamespace(
-            p_top=2.0,  # Greater than p_obs
             psurf_thresh=5.0,  # Valid: > p_top
-            p_obs=1.0,  # Less than p_top - INVALID
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',
     )
-    with pytest.raises(ValueError, match='Must set `agni.p_top` to be less than `agni.p_obs`'):
+    with pytest.raises(ValueError, match='Must set `p_top` to be less than `p_obs`'):
         valid_agni(instance, SimpleNamespace(), None)
 
 
@@ -986,15 +991,15 @@ def test_atmos_clim_agni_solve_energy_required_for_skin_surf_state():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=False,  # INVALID for skin surf_state
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',  # Requires solve_energy=True
@@ -1012,15 +1017,15 @@ def test_atmos_clim_agni_latent_heat_requires_rainout():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=True,
             latent_heat=True,  # Requires rainout=True
             rainout=False,  # INVALID
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',
@@ -1038,20 +1043,20 @@ def test_atmos_clim_agni_spectral_group_required():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group=None,
+        spectral_bands='16',
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group=None,  # INVALID
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',
     )
-    with pytest.raises(ValueError, match='Must set atmos_clim.agni.spectral_group'):
+    with pytest.raises(ValueError, match='Must set atmos_clim.spectral_group'):
         valid_agni(instance, SimpleNamespace(), None)
 
 
@@ -1062,20 +1067,20 @@ def test_atmos_clim_agni_spectral_bands_required():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands=None,
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands=None,  # INVALID
             chemistry='none',
         ),
         surf_state='skin',
     )
-    with pytest.raises(ValueError, match='Must set atmos_clim.agni.spectral_bands'):
+    with pytest.raises(ValueError, match='Must set atmos_clim.spectral_bands'):
         valid_agni(instance, SimpleNamespace(), None)
 
 
@@ -1086,15 +1091,15 @@ def test_atmos_clim_agni_valid_complete_config():
 
     instance = SimpleNamespace(
         module='agni',
+        spectral_group='sw_lw',
+        spectral_bands='16',
+        p_top=1e-5,
+        p_obs=0.02,
         agni=SimpleNamespace(
-            p_top=1e-5,
             psurf_thresh=0.1,
-            p_obs=0.02,
             solve_energy=True,
             latent_heat=False,
             rainout=True,
-            spectral_group='sw_lw',
-            spectral_bands='16',
             chemistry='none',
         ),
         surf_state='skin',

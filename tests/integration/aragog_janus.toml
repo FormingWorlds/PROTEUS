@@ -138,27 +138,24 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     module  = "janus"           # Which atmosphere module to use
 
+    p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
+    p_obs           = 1.0e-3        # bar, observed pressure level
+    spectral_group  = "Frostflow"   # which gas opacities to include
+    spectral_bands  = "16"          # how many spectral bands?
+    overlap_method  = "ro"          # gas overlap method
+
     [atmos_clim.agni]
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
-        overlap_method  = "ee"          # gas overlap method
         condensation    = true          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
-        p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
-        p_obs           = 1.0e-3        # bar, observed pressure level
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "16"          # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
         tropopause      = "skin"        # none | skin | dynamic
-        overlap_method  = "ro"          # gas overlap method
 
         cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
         tmp_maximum     = 5000.0        # temperature ceiling on solver

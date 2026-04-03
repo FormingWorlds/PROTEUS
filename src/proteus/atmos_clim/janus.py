@@ -57,12 +57,12 @@ def InitAtm(dirs: dict, config: Config):
     atm = atmos(
         0.0,  # var
         1e5,  # var
-        config.atmos_clim.janus.p_top * 1e5,
+        config.atmos_clim.p_top * 1e5,
         6.371e6,  # var
         5.972e24,  # var
         band_edges,
         vol_mixing=vol_dict,  # var
-        req_levels=config.atmos_clim.janus.num_levels,
+        req_levels=config.atmos_clim.num_levels,
         water_lookup=False,
         alpha_cloud=config.atmos_clim.janus.cloud_alpha,
         trppT=config.atmos_clim.tmp_minimum,
@@ -81,7 +81,7 @@ def InitAtm(dirs: dict, config: Config):
     atm.skin_d = config.atmos_clim.surface_d
     atm.skin_k = config.atmos_clim.surface_k
 
-    match config.atmos_clim.janus.overlap_method:
+    match config.atmos_clim.overlap_method:
         case 'ro':
             atm.overlap_type = 2
         case 'ee':
@@ -112,7 +112,7 @@ def UpdateStateAtm(atm, config: Config, hf_row: dict, tropopause):
     """
 
     atm.setSurfaceTemperature(hf_row['T_surf'])
-    atm.setSurfacePressure(max(hf_row['P_surf'], config.atmos_clim.janus.p_top * 1.1) * 1e5)
+    atm.setSurfacePressure(max(hf_row['P_surf'], config.atmos_clim.p_top * 1.1) * 1e5)
     atm.setPlanetProperties(hf_row['R_int'], hf_row['M_int'])
 
     # Warn about rock vapours
@@ -291,7 +291,7 @@ def RunJANUS(
     P_surf_clim = atm.ps / 1e5  # bar
 
     # observables
-    p_obs = float(config.atmos_clim.janus.p_obs) * 1e5  # converted to Pa
+    p_obs = float(config.atmos_clim.p_obs) * 1e5  # converted to Pa
     r_arr = np.array(atm.z[:], copy=True, dtype=float) + hf_row['R_int']
     t_arr = np.array(atm.tmp[:], copy=True, dtype=float)
     if atm.height_error:

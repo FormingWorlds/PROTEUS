@@ -91,18 +91,18 @@ version = "2.0"
     module  = "agni"           # Which atmosphere module to use
     rayleigh = false
 
+    p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+    p_obs           = 0.02          # bar, level probed in transmission
+    spectral_group  = "Dayspring"   # which gas opacities to include
+    spectral_bands  = "16"          # how many spectral bands?
+    overlap_method  = "ee"          # gas overlap method
     [atmos_clim.agni]
         verbosity       = 1             # output verbosity for agni (0:none, 1:info, 2:debug)
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        p_obs           = 0.02          # bar, level probed in transmission
-        spectral_group  = "Dayspring"   # which gas opacities to include
-        spectral_bands  = "16"          # how many spectral bands?
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = false          # solve for energy-conserving atmosphere profile
         solution_atol   = 0.5           # solver absolute tolerance
         solution_rtol   = 0.15          # solver relative tolerance
-        overlap_method  = "ee"          # gas overlap method
         surf_roughness  = 1e-3          # characteristic surface roughness [m]
         surf_windspeed  = 2.0           # characteristic surface wind speed [m/s].
         rainout         = true          # include volatile condensation/evaporation aloft

@@ -111,18 +111,18 @@ albedo_pl = 0.1
 rayleigh = false
 tmp_minimum = 0.5
 
-[atmos_clim.agni]
 spectral_group = "Dayspring"
 spectral_bands = "48"
 p_top = 1e-05
 p_obs = 0.02
-surf_material = "greybody"
 num_levels = 42
+overlap_method = "ee"
+[atmos_clim.agni]
+surf_material = "greybody"
 chemistry = "none"
 solve_energy = true
 solution_atol = 0.1
 solution_rtol = 0.1
-overlap_method = "ee"
 rainout = false
 latent_heat = false
 real_gas = false

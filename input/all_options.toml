@@ -348,6 +348,14 @@
 [atmos_clim]
     module                    = "agni"       # agni | janus | dummy
 
+    # Grid and spectral setup (shared by agni + janus)
+    spectral_group            = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
+    spectral_bands            = "48"         # wavenumber bands in k-table
+    num_levels                = 50           # vertical atmosphere levels (min 15)
+    p_top                     = 1.0e-6       # top-of-atmosphere pressure [bar]
+    p_obs                     = 0.02         # observation pressure level [bar] (transit radius)
+    overlap_method            = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
+
     # Radiative properties (agni, janus only)
     rayleigh                  = true         # Rayleigh scattering
     cloud_enabled             = false        # water cloud radiative effects
@@ -363,14 +371,6 @@
     tmp_minimum               = 0.5          # temperature floor [K]
 
     [atmos_clim.agni]
-        # Grid and spectral setup
-        spectral_group        = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
-        spectral_bands        = "48"         # wavenumber bands in k-table
-        num_levels            = 50           # vertical atmosphere levels (min 25)
-        p_top                 = 1.0e-6       # top-of-atmosphere pressure [bar]
-        p_obs                 = 0.02         # observation pressure level [bar] (transit radius)
-        overlap_method        = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
-
         # Physics switches
         solve_energy          = true         # iterative energy-conserving T(p) profile
         convection            = true         # convective adjustment (MLT)
@@ -414,15 +414,6 @@
         fastchem_xtol_elem    = 1e-4         # FastChem convergence tolerance (elemental)
 
     [atmos_clim.janus]
-        # Grid and spectral setup
-        spectral_group        = "Honeyside"  # opacity k-table set; see docs/assets/spectral_files.pdf
-        spectral_bands        = "48"         # wavenumber bands in k-table
-        num_levels            = 90           # vertical atmosphere levels (min 15)
-        p_top                 = 1.0e-6       # top-of-atmosphere pressure [bar]
-        p_obs                 = 1.0e-3       # observation pressure level [bar] (transit radius)
-        overlap_method        = "ee"         # gas overlap: ro | rorr | ee (equivalent extinction)
-
-        # Physics
         F_atm_bc              = 0            # outgoing flux boundary: 0 (TOA) | 1 (surface)
         tropopause            = "none"       # tropopause scheme: none | skin | dynamic
         cloud_alpha           = 0.0          # condensate retention fraction (0 to 1)

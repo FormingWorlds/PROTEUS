@@ -27,12 +27,12 @@ def valid_agni(instance, attribute, value):
         return
 
     # ensure psurf_thresh is greater than p_top, to avoid upside-down atmosphere in transparent mode
-    if instance.agni.p_top > instance.agni.psurf_thresh:
-        raise ValueError('Must set `agni.p_top` to be less than `agni.psurf_thresh`')
+    if instance.p_top > instance.agni.psurf_thresh:
+        raise ValueError('Must set `p_top` to be less than `agni.psurf_thresh`')
 
     # ensure p_obs is greater than p_top
-    if instance.agni.p_top > instance.agni.p_obs:
-        raise ValueError('Must set `agni.p_top` to be less than `agni.p_obs`')
+    if instance.p_top > instance.p_obs:
+        raise ValueError('Must set `p_top` to be less than `p_obs`')
 
     # agni must solve_energy=true if surf_state=skin
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
@@ -44,10 +44,10 @@ def valid_agni(instance, attribute, value):
         )
 
     # set spectral files?
-    if not instance.agni.spectral_group:
-        raise ValueError('Must set atmos_clim.agni.spectral_group')
-    if not instance.agni.spectral_bands:
-        raise ValueError('Must set atmos_clim.agni.spectral_bands')
+    if not instance.spectral_group:
+        raise ValueError('Must set atmos_clim.spectral_group')
+    if not instance.spectral_bands:
+        raise ValueError('Must set atmos_clim.spectral_bands')
 
     # fastchem installed?
     if instance.agni.chemistry == 'eq':
@@ -151,19 +151,13 @@ class Agni:
             )
         ),
     )
-    spectral_group: str = field(default=None)
-    spectral_bands: str = field(default=None)
-    p_top: float = field(default=1e-6, validator=gt(0))
-    p_obs: float = field(default=20e-3, validator=gt(0))
     surf_material: str = field(default='surface_albedos/Hammond24/lunarmarebasalt.dat')
-    num_levels: int = field(default=50, validator=ge(25))
     chemistry: str = field(default='none', validator=in_((None, 'eq')), converter=none_if_none)
     solve_energy: bool = field(default=True)
     solution_atol: float = field(default=0.5, validator=gt(0))
     solution_rtol: float = field(default=0.15, validator=gt(0))
     surf_roughness: float = field(default=1e-3, validator=gt(0))
     surf_windspeed: float = field(default=2.0, validator=gt(0))
-    overlap_method: str = field(default='ee', validator=check_overlap)
     phs_timescale: float = field(default=1e6, validator=gt(0))
     evap_efficiency: float = field(default=0.01, validator=(le(1), ge(0)))
     rainout: bool = field(default=True)
@@ -216,10 +210,10 @@ def valid_janus(instance, attribute, value):
         return
 
     # set spectral files?
-    if not instance.janus.spectral_group:
-        raise ValueError('Must set atmos_clim.janus.spectral_group')
-    if not instance.janus.spectral_bands:
-        raise ValueError('Must set atmos_clim.janus.spectral_bands')
+    if not instance.spectral_group:
+        raise ValueError('Must set atmos_clim.spectral_group')
+    if not instance.spectral_bands:
+        raise ValueError('Must set atmos_clim.spectral_bands')
 
     # tmp_maximum must exceed tmp_minimum
     if instance.janus.tmp_maximum <= instance.tmp_minimum:
@@ -254,16 +248,10 @@ class Janus:
         Maximum temperature throughout the atmosphere [K].
     """
 
-    spectral_group: str = field(default=None)
-    spectral_bands: str = field(default=None)
-    p_top: float = field(default=1e-6, validator=gt(0))
-    p_obs: float = field(default=2e-3, validator=gt(0))
     F_atm_bc: int = field(default=0, validator=in_((0, 1)))
-    num_levels: int = field(default=90, validator=ge(15))
     tropopause: str | None = field(
         default='none', validator=in_((None, 'skin', 'dynamic')), converter=none_if_none
     )
-    overlap_method: str = field(default='ee', validator=check_overlap)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     tmp_maximum: float = field(default=5000.0, validator=gt(0))
 
@@ -309,6 +297,20 @@ class AtmosClim:
 
     Attributes
     ----------
+    module: str
+        Which atmosphere module to use. Choices: 'agni', 'janus', 'dummy'.
+    spectral_group: str
+        Spectral file group defining gas opacities. See docs/assets/spectral_files.pdf.
+    spectral_bands: str
+        Number of wavenumber bands in k-table.
+    num_levels: int
+        Number of vertical atmosphere levels.
+    p_top: float
+        Top-of-atmosphere pressure [bar].
+    p_obs: float
+        Observation pressure level [bar] (transit radius).
+    overlap_method: str
+        Gas overlap method. Choices: 'ro', 'rorr', 'ee'.
     surface_d: float
         Conductive skin thickness [m].
     surface_k: float
@@ -316,17 +318,15 @@ class AtmosClim:
     cloud_enabled: bool
         Enable water cloud radiative effects (AGNI, JANUS only).
     surf_state: str
-        Surface energy balance scheme. Choices: "mixed_layer", "fixed", "skin".
-    surf_greyalbedo : float
+        Surface energy balance scheme. Choices: 'mixed_layer', 'fixed', 'skin'.
+    surf_greyalbedo: float
         Grey surface albedo.
     albedo_pl: float | str
-        Planetary bond albedo used to emulate scattering. Can be float (0 to 1) or str (path to CSV file containing lookup data).
+        Planetary bond albedo. Can be float (0 to 1) or str (path to CSV lookup).
     rayleigh: bool
-        Include Rayleigh scattering in the radiative transfer calculations (AGNI, JANUS only).
+        Include Rayleigh scattering (AGNI, JANUS only).
     tmp_minimum: float
         Minimum temperature throughout the atmosphere [K] (AGNI, JANUS only).
-    module: str
-        Which atmosphere module to use.
     agni: Agni
         Config parameters for AGNI atmosphere module.
     janus: Janus
@@ -341,6 +341,15 @@ class AtmosClim:
     janus: Janus = field(factory=Janus, validator=valid_janus)
     dummy: Dummy = field(factory=Dummy)
 
+    # Grid and spectral setup (shared by agni + janus)
+    spectral_group: str = field(default=None)
+    spectral_bands: str = field(default=None)
+    num_levels: int = field(default=50, validator=ge(15))
+    p_top: float = field(default=1e-6, validator=gt(0))
+    p_obs: float = field(default=20e-3, validator=gt(0))
+    overlap_method: str = field(default='ee', validator=check_overlap)
+
+    # Radiative and surface properties
     surf_state: str = field(default='skin', validator=(in_(('mixed_layer', 'fixed', 'skin')),))
     surface_d: float = field(default=0.01, validator=gt(0))
     surface_k: float = field(default=2.0, validator=gt(0))
