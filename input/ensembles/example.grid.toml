@@ -14,8 +14,9 @@
 # Each grid point gets a copy of the base config with the axis values
 # set via recursive attribute assignment.
 
-# Output folder (relative to PROTEUS output/)
-output = "grid_demo/"
+# Output folder inside PROTEUS/output/. Set "auto" for a unique timestamped
+# name (grid_YYYYMMDD_HHMMSS_xxxx), or any string for a fixed folder name.
+output = "auto"
 
 # Symbolic link to alternative storage location (absolute path, or "" to disable)
 symlink = ""
