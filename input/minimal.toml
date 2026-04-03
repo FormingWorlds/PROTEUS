@@ -1,8 +1,8 @@
-# Minimal PROTEUS configuration example.
-# Only a few example science-critical parameters are set here to illustrate
-# how a minimal physics-based config file can be structured. All parameters
-# have defaults, which are listed in the documentation and in all_options.toml.
-# Empty sections can be omitted entirely.
+# PROTEUS: minimal configuration example
+# Demonstrates how little a config file needs: just a few science-critical
+# parameters (planet mass, orbit, volatiles, redox). Everything else uses
+# defaults (see all_options.toml). Empty sections can be omitted entirely.
+
 # Config file format version
 config_version = "3.0"
 

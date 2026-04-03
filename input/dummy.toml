@@ -1,5 +1,7 @@
-# Dummy demo: fast test run using parameterized modules (no external solvers).
-# All modules set to "dummy" for rapid iteration and wiring tests.
+# PROTEUS: all-dummy configuration
+# Every module set to "dummy" for fast test runs without external solvers
+# (no AGNI, SPIDER, VULCAN, MORS, Zalmoxis, CALLIOPE, or SOCRATES needed).
+# Use this for wiring tests, CI, and rapid development iteration.
 # Config file format version
 config_version = "3.0"
 

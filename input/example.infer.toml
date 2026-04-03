@@ -1,34 +1,41 @@
-# Config file for inference scheme
+# PROTEUS: Bayesian inference example
+# Optimizes planet parameters to match target observables using Bayesian
+# optimization with a Gaussian process surrogate. Each evaluation runs
+# a full PROTEUS forward model.
+#
+# Run with: proteus infer --config input/example.infer.toml
 
-# Set seed for reproducibility
+# Config file format version
 config_version = "3.0"
+
+# Reproducibility
 seed = 1
 
-# Path to output folder where inference will be saved (relative to PROTEUS output folder)
+# Output folder (relative to PROTEUS output/)
 output = "infer_toy/BO/"
 
-# Path to base (reference) config file relative to PROTEUS root folder
+# Base config file (relative to PROTEUS root)
 ref_config = "input/dummy.toml"
 
-# Method for initialising the inference scheme (one of these must be 'none')
-init_samps = 10        # Number of random samples if starting from scratch.
-init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
+# Initialization: random samples or pre-computed grid (one must be "none")
+init_samps = 10                      # number of random initial samples
+init_grid  = "none"                  # path to pre-computed grid, or "none"
 
-# Parameters for Bayesian optimisation
-n_workers  = 6        # Number of parallel workers
-kernel     = "MAT3/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
-acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "E-LogEI"
-n_steps    = 50       # Total number of evaluations (i.e. BO steps)
+# Bayesian optimization settings
+n_workers  = 6                       # parallel workers
+kernel     = "MAT3/2"               # GP kernel: RBF | MAT1/2 | MAT3/2 | MAT5/2
+acqf       = "LogEI"                # acquisition function: UCB | LogEI | E-LogEI
+n_steps    = 50                      # total BO evaluations
 
-# Parameters to optimize (with bounds)
+# Parameters to optimize [min, max]
 [parameters]
-"struct.mass_tot" = [0.7, 3.0]
-"struct.core_frac" = [0.3, 0.9]
-# "outgas.fO2_shift_IW" = [-3.0, 5.0]
-# "escape.dummy.rate" = [1e5, 1e7]
+"planet.mass_tot"        = [0.7, 3.0]
+"interior_struct.core_frac" = [0.3, 0.9]
+# "outgas.fO2_shift_IW"  = [-3.0, 5.0]
+# "escape.dummy.rate"    = [1e5, 1e7]
 
-# Target observables to match by optimisation
+# Target observables to match
 [observables]
-"R_obs" = 7965615.42040000017732382
-# "H2O_vmr" = 0.69457002234999998
-"P_surf" = 16333.19793399999980466
+"R_obs"   = 7965615.42
+# "H2O_vmr" = 0.6946
+"P_surf"  = 16333.20

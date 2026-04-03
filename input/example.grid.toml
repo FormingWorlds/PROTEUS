@@ -1,18 +1,16 @@
-# Grid config for running an ensemble of PROTEUS forward models
+# PROTEUS: ensemble grid example
+# Runs a Cartesian product of parameter sweeps as parallel PROTEUS jobs.
+# Each axis is a TOML table whose dotted name matches a Config field path
+# (e.g. "planet.mass_tot" -> config.planet.mass_tot). See all_options.toml
+# for available parameter paths.
 #
-# Grid axes are defined as TOML tables with dotted names matching Config
-# field paths (e.g. "planet.mass_tot" maps to config.planet.mass_tot).
-# Each axis specifies a method and its parameters.
-#
-# Available methods:
+# Sweep methods:
 #   direct   - explicit list of values (floats, ints, or strings)
 #   arange   - start, stop, step (inclusive of endpoint)
 #   linspace - start, stop, count (evenly spaced)
 #   logspace - start, stop, count (log-spaced)
 #
-# The Cartesian product of all active axes defines the full grid.
-# Each grid point gets a copy of the base config with the axis values
-# set via recursive attribute assignment.
+# Run with: proteus grid -c input/example.grid.toml
 
 # Config file format version
 config_version = "3.0"

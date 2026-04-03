@@ -1,10 +1,9 @@
-# PROTEUS configuration file
+# PROTEUS: all configuration options
+# Full reference of every available parameter with recommended starting values.
+# Use this as a guide when building your own config files. Values shown here
+# are recommended starting points for a typical rocky planet and may differ
+# from Python-level defaults. Omitted fields fall back to their defaults.
 # Documentation: https://proteus-framework.org/PROTEUS/How-to/config.html
-
-# Comprehensive outline of all configuration options.
-# Values shown are recommended starting points for a typical rocky planet run.
-# They may differ from the Python-level defaults in `src/proteus/config/*.py`.
-# Omitted fields fall back to their Python defaults.
 
 # ----------------------------------------------------
 
