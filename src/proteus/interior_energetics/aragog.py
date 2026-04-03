@@ -153,16 +153,16 @@ class AragogRunner:
         )
 
         # Define the inner_radius for the mesh
-        if config.interior_struct.module == 'spider':
-            inner_radius = config.interior_struct.core_frac * hf_row['R_int']  # core radius [m]
+        if config.interior_struct.module in ('spider', 'dummy'):
+            inner_radius = config.interior_struct.core_frac * hf_row['R_int']
         elif config.interior_struct.module == 'zalmoxis':
-            # Read core radius from hf_row (already computed by Zalmoxis in
-            # determine_interior_radius_with_zalmoxis, no need to re-run solver)
             inner_radius = hf_row.get(
                 'R_core', config.interior_struct.core_frac * hf_row['R_int']
             )
         else:
-            raise ValueError("Invalid module configuration. Expected 'spider' or 'zalmoxis'.")
+            raise ValueError(
+                f"Aragog: unsupported interior_struct.module = '{config.interior_struct.module}'"
+            )
 
         mesh = _MeshParameters(
             # planet radius [m]
@@ -205,7 +205,7 @@ class AragogRunner:
         )
 
         # Define initial conditions for prescribing temperature profile
-        if config.interior_struct.module == 'spider':
+        if config.interior_struct.module in ('spider', 'dummy'):
             initial_condition_temperature_profile = 3
             init_file_temperature_profile = os.path.join(FWL_DATA_DIR, '')
         elif config.interior_struct.module == 'zalmoxis':
@@ -229,7 +229,9 @@ class AragogRunner:
                 initial_condition_temperature_profile = 3
                 init_file_temperature_profile = os.path.join(FWL_DATA_DIR, '')
         else:
-            raise ValueError("Invalid module configuration. Expected 'spider' or 'zalmoxis'.")
+            raise ValueError(
+                f"Aragog IC: unsupported interior_struct.module = '{config.interior_struct.module}'"
+            )
 
         # When initial_thermal_state = 'self_consistent', Zalmoxis computes
         # T_surface from accretion + differentiation energy (White+Li 2025)
