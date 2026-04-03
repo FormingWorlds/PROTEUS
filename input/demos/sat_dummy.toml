@@ -33,7 +33,7 @@ version = "3.0"
     semimajoraxis_sat = 32e6         # [m]
     [orbit.dummy]
         H_tide = 1e-7
-        Imk2   = -1e5
+        Imk2   = -0.01
 
 # Planet
 [planet]

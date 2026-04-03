@@ -94,16 +94,23 @@ def test_dummy_chem_vmr_normalization():
 
 @pytest.mark.unit
 def test_dummy_chem_h2o_cold_trap():
-    """H2O VMR decreases above cold trap (lower T -> lower saturation)."""
-    hf_row = _make_hf_row(T_magma=2000.0, P_surf=100.0, H2O_vmr=0.9)
+    """H2O VMR limited by Clausius-Clapeyron in the cold stratosphere.
+
+    Use low T_surf (300 K) so the stratosphere (~200 K) has P_sat
+    much smaller than P_total at intermediate pressures, and the
+    cold trap suppresses H2O by orders of magnitude.
+    """
+    hf_row = _make_hf_row(T_magma=300.0, P_surf=1.0, H2O_vmr=0.5, CO2_vmr=0.3, N2_vmr=0.1, H2_vmr=0.05, CH4_vmr=0.05)
     config = _make_config()
     result = _build_profiles(hf_row, config, num_levels=50)
 
     h2o = result['H2O']
-    # Surface VMR should be close to input
-    assert h2o[-1] > 0.5
-    # TOA VMR should be much lower (cold trap)
-    assert h2o[0] < h2o[-1]
+    # Find minimum H2O in the column (cold trap minimum, not at TOA/surface)
+    h2o_min = np.min(h2o)
+    h2o_surf = h2o[-1]
+    # Cold trap should suppress H2O by at least 10x relative to surface
+    assert h2o_min < 0.1 * h2o_surf, \
+        f'Cold trap should suppress H2O: min={h2o_min:.4e} vs surface={h2o_surf:.4e}'
 
 
 @pytest.mark.unit

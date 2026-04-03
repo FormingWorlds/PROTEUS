@@ -30,7 +30,7 @@ version = "3.0"
     eccentricity  = 0.1
     [orbit.dummy]
         H_tide = 1e-9
-        Imk2   = -1e5
+        Imk2   = -0.01
 
 # Planet
 [planet]

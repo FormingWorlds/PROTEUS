@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 
 def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     """
-    Run atmospheric chemistry model offline, to postprocess final PROTEUS iteration.
+    Run atmospheric chemistry model (offline post-processing or online per-snapshot).
 
-    Results are saved to files on the disk, and returned as a DataFrame.
+    Results are saved to CSV files on disk and returned as a DataFrame.
 
     Parameters
     ----------
@@ -37,7 +37,6 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
 
     log.info('Running atmospheric chemistry...')
 
-    # Which chemistry solver to use (currently only 'vulcan' is supported)
     module = config.atmos_chem.module
 
     # When to run chemistry: 'manually' (skip), 'offline' (post-processing),

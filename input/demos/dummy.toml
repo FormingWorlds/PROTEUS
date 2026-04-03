@@ -32,7 +32,7 @@ version = "3.0"
     eccentricity  = 0.1
     [orbit.dummy]
         H_tide = 1e-9            # tidal power density [W/kg]
-        Imk2   = -1e5            # Im(k2) love number
+        Imk2   = -0.01           # Im(k2) love number
 
 # Planet: 1 Earth mass, 3000 ppmw H
 [planet]
