@@ -65,7 +65,7 @@ version = "3.0"
     rayleigh   = false
     albedo_pl  = 0.1
     [atmos_clim.dummy]
-        gamma = 0.7              # opacity factor (0 = transparent, 1 = opaque)
+        gamma = 0.7              # greenhouse factor (0 = no greenhouse, 1 = fully opaque)
 
 # Escape: fixed bulk rate
 [escape]
