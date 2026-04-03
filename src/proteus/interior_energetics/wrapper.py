@@ -436,18 +436,23 @@ def solve_structure(
             case 'spider':
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case 'zalmoxis':
-                # Zalmoxis computes its own radius; disable orbital feedback.
+                # Zalmoxis computes its own radius; temporarily disable orbital
+                # feedback during structure solve (restored after return).
+                _orig_orbit_module = config.orbit.module
                 config.orbit.module = 'dummy'
-                if config.params.stop.solid.phi_crit < 0.01:
-                    log.warning(
-                        'phi_crit=%.4f is below 0.01. Zalmoxis cases may plateau '
-                        'at ~0.9%% melt fraction, so phi_crit < 0.01 can prevent '
-                        'the simulation from terminating. Consider phi_crit >= 0.01.',
-                        config.params.stop.solid.phi_crit,
+                try:
+                    if config.params.stop.solid.phi_crit < 0.01:
+                        log.warning(
+                            'phi_crit=%.4f is below 0.01. Zalmoxis cases may plateau '
+                            'at ~0.9%% melt fraction, so phi_crit < 0.01 can prevent '
+                            'the simulation from terminating. Consider phi_crit >= 0.01.',
+                            config.params.stop.solid.phi_crit,
+                        )
+                    return determine_interior_radius_with_zalmoxis(
+                        dirs, config, hf_all, hf_row, outdir
                     )
-                return determine_interior_radius_with_zalmoxis(
-                    dirs, config, hf_all, hf_row, outdir
-                )
+                finally:
+                    config.orbit.module = _orig_orbit_module
         raise ValueError(
             f"Invalid structure interior module selected '{config.interior_struct.module}'"
         )

@@ -996,7 +996,9 @@ def set_directories(config: Config) -> dict[str, str]:
     dirs : dict
         Dictionary of paths to important directories
     """
-    # Resolve 'auto' path to a timestamped unique name
+    # Resolve 'auto' path to a timestamped unique name.
+    # Note: this mutates config.params.out.path so that Config.write()
+    # records the resolved name in init_coupler.toml (intentional).
     outdir = config.params.out.path
     if outdir == 'auto':
         import secrets
