@@ -180,8 +180,8 @@ class Struct:
         validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val),
     )
 
-    core_density = field(default=10738.33)
-    core_heatcap = field(default=880.0)
+    core_density = field(default='self')
+    core_heatcap = field(default='self')
 
     melting_dir = field(default=None, converter=none_if_none)
     eos_dir = field(default=None, converter=none_if_none)

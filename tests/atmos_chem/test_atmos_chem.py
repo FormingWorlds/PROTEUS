@@ -176,6 +176,9 @@ def test_read_result_preserves_whitespace_format(tmp_path):
     # Check that pressure column has correct first value
     assert pytest.approx(result['p'].iloc[0], rel=1e-3) == 1.0
 
+
+@pytest.mark.unit
+def test_run_chemistry_disabled_module():
     """
     Test run_chemistry when no module is specified (disabled mode).
 

@@ -38,7 +38,17 @@ version = "3.0"
 
 [planet]
     mass_tot = 1.308       # M_earth
-    volatile_mode = 'elements'        # "elements" | "gas_prs"
+    volatile_mode = "elements"
+
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 8.0
+        C_mode   = "C/H"
+        C_budget = 1.0
+        N_mode   = "ppmw"
+        N_budget = 2.01
+        S_mode   = "ppmw"
+        S_budget = 235.0
 
 [interior_struct]
     core_frac    = 0.55      # non-dim., radius fraction
@@ -89,24 +99,8 @@ version = "3.0"
     module = "calliope"         # Which outgassing module to use
 
 
-# Volatile delivery - physics table
 [accretion]
-
     module = "none"
-
-    # Set initial volatile inventory by planetary element abundances
-    [planet.elements]
-        H_mode          = "oceans"
-        H_budget        = 8.0
-        C_mode          = "C/H"
-        C_budget        = 1.0
-        N_mode          = "ppmw"
-        N_budget        = 2.01
-        S_mode          = "ppmw"
-        S_budget        = 235.0
-
-
-
 
 # Calculate simulated observations
 [observe]

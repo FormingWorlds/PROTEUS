@@ -142,7 +142,7 @@ class Agni:
             )
         ),
     )
-    surf_material: str = field(default='surface_albedos/Hammond24/lunarmarebasalt.dat')
+    surf_material: str = field(default='greybody')
     chemistry: str = field(default='none', validator=in_((None, 'eq')), converter=none_if_none)
     solve_energy: bool = field(default=True)
     solution_atol: float = field(default=0.5, validator=gt(0))

@@ -77,7 +77,17 @@ version = "3.0"
 
 [planet]
     mass_tot = 3.02       # M_earth
-    volatile_mode = 'elements'        # "elements" | "gas_prs"
+    volatile_mode = "elements"
+
+    [planet.elements]
+        H_mode   = "ppmw"
+        H_budget = 2e4
+        C_mode   = "C/H"
+        C_budget = 1.0
+        N_mode   = "N/H"
+        N_budget = 0.1
+        S_mode   = "S/H"
+        S_budget = 2.0
 
 [interior_struct]
     core_frac    = 0.55      # non-dim., radius fraction
@@ -140,21 +150,8 @@ version = "3.0"
         solubility   = true    # enable solubility?
 
 
-# Volatile delivery - physics table
 [accretion]
-
     module = "none"
-
-    # Set initial volatile inventory by planetary element abundances
-    [planet.elements]
-        H_mode          = "ppmw"
-        H_budget        = 2e4
-        C_mode          = "C/H"
-        C_budget        = 1.0
-        N_mode          = "N/H"
-        N_budget        = 0.1
-        S_mode          = "S/H"
-        S_budget        = 2.0
 
 # Calculate simulated observations
 [observe]

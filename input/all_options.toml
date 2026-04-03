@@ -1,9 +1,10 @@
 # PROTEUS configuration file
 # Documentation: https://proteus-framework.org/PROTEUS/How-to/config.html
 
-# Comprehensive outline of all configuration options. Includes variables
-# with default values to showcase the range of options available.
-# Defaults are defined in `src/proteus/config/*.py`
+# Comprehensive outline of all configuration options.
+# Values shown are recommended starting points for a typical rocky planet run.
+# They may differ from the Python-level defaults in `src/proteus/config/*.py`.
+# Omitted fields fall back to their Python defaults.
 
 # ----------------------------------------------------
 

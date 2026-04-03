@@ -177,7 +177,6 @@ rfront_loc = 0.5
 rfront_wid = 0.2
 
 [interior_energetics.spider]
-tolerance = 1e-08
 tolerance_rel = 1e-08
 solver_type = "bdf"
 

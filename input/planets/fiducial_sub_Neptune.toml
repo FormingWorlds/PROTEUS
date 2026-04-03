@@ -11,9 +11,18 @@
 #
 [planet]
     mass_tot = 5.0       # M_earth
-    volatile_mode = 'elements'        # "elements" | "gas_prs"
+    volatile_mode = 'elements'
+    prevent_warming = false
 
-    prevent_warming = false     # do not allow the planet to heat up
+    [planet.elements]
+        H_mode          = "ppmw"
+        H_budget        = 709.0
+        C_mode          = "C/H"
+        C_budget        = 0.32
+        N_mode          = "N/H"
+        N_budget        = 0.09
+        S_mode          = "S/H"
+        S_budget        = 0.0
 [interior_struct]   # planetary structure (mass, radius)
 #   [atmos]    atmosphere parameters, model selection
 #   [escape]   escape parameters, model selection
@@ -217,29 +226,8 @@ version = "3.0"
 
     [outgas.atmodeller]
 
-# Volatile delivery - physics table
 [accretion]
-
-
-    # Which initial inventory to use?
-
-    # No module for accretion as of yet
     module = "none"
-
-    # Set initial volatile inventory by planetary element abundances
-    [planet.elements]
-        H_mode          = "ppmw"
-        H_budget        = 709.0
-        C_mode          = "C/H"
-        C_budget        = 0.32
-        N_mode          = "N/H"
-        N_budget        = 0.09
-        S_mode          = "S/H"
-        S_budget        = 0.0
-        use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
-        metallicity = 1000	 # metallicity relative to solar metallicity
-
-
 
 
 
