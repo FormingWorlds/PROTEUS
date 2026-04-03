@@ -145,7 +145,6 @@ version = "2.0"
     kappah_floor    = 100.0       # phase-dependent eddy diffusivity floor
 
     [interior_energetics.spider]
-        mixing_length = 2
         tolerance_rel = 1e-4
 
     [interior_energetics.aragog]
@@ -165,7 +164,6 @@ version = "2.0"
         include_H2  = true
         include_CH4 = true
         include_CO  = true
-        T_floor     = 800.0
 
 [atmos_chem]
     module = "none"

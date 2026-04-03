@@ -63,34 +63,25 @@ def valid_agni(instance, attribute, value):
 
 @define
 class Agni:
-    """AGNI atmosphere module.
+    """AGNI atmosphere module (AGNI-specific parameters only).
+
+    Grid, spectral, and pressure parameters are shared with JANUS
+    and live on the parent AtmosClim class.
 
     Attributes
     ----------
     verbosity: int
-        Logging and output verbosity for agni (0:none, 1:info, 2:debug)
-    p_top: float
-        Top of atmosphere grid pressure [bar].
-    p_obs: float
-        Pressure level probed by observations [bar]
-    spectral_group: str
-        Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
-    spectral_bands: str
-        Number of wavenumer bands in k-table. See documentation.
-    surf_material : str
-        File name for material used to set surface single-scattering properties, relative to FWL data directory. Set to 'greybody' to use `surf_greyalbedo`. See [documentation](https://proteus-framework.org/proteus/data.html#surfaces) for potential options.
-    num_levels: str
-        Number of atmospheric grid levels.
+        Logging and output verbosity for agni (0:none, 1:info, 2:debug).
+    surf_material: str
+        Surface scattering material file. Set to 'greybody' to use surf_greyalbedo.
     chemistry: str | None
-        Treatment of self-consistent atmospheric chemsitry. Choices: "none", "eq".
+        Atmospheric chemistry treatment. Choices: 'none', 'eq' (FastChem).
     solve_energy: bool
         Solve for an energy-conserving atmosphere solution.
     solution_atol: float
-        Absolute tolerance on the atmosphere solution.
+        Absolute tolerance on the atmosphere solution [W/m2].
     solution_rtol: float
         Relative tolerance on the atmosphere solution.
-    overlap_method: str
-        Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     surf_roughness: float
         Characteristic surface roughness scale [metres].
     surf_windspeed: float
@@ -222,30 +213,21 @@ def valid_janus(instance, attribute, value):
 
 @define
 class Janus:
-    """JANUS atmosphere module.
+    """JANUS atmosphere module (JANUS-specific parameters only).
+
+    Grid, spectral, and pressure parameters are shared with AGNI
+    and live on the parent AtmosClim class.
 
     Attributes
     ----------
-    p_top: float
-        Top of atmosphere grid pressure [bar].
-    p_obs: float
-        Pressure level probed by observations [bar]
-    spectral_group: str
-        Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
-    spectral_bands: str
-        Number of wavenumer bands in k-table. See documentation.
     F_atm_bc: int
-        Measure outgoing flux using value at TOA (0) or surface (1).
-    num_levels: int
-        Number of atmospheric grid levels.
+        Outgoing flux boundary: 0 (TOA) or 1 (surface).
     tropopause: str | None
-        Scheme for determining tropopause location. Choices: "none", "skin", "dynamic".
-    overlap_method: str
-        Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
+        Tropopause scheme. Choices: 'none', 'skin', 'dynamic'.
     cloud_alpha: float
-        Condensate retention fraction (0 => full rainout, 1 => fully retained).
+        Condensate retention fraction (0 = full rainout, 1 = fully retained).
     tmp_maximum: float
-        Maximum temperature throughout the atmosphere [K].
+        Solver temperature ceiling [K].
     """
 
     F_atm_bc: int = field(default=0, validator=in_((0, 1)))

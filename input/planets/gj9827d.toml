@@ -125,7 +125,6 @@ version = "2.0"
     module = "spider"   # Which interior module to use
 
     [interior_energetics.spider]
-        mixing_length   = 2         # Mixing length parameterization
         tolerance_rel   = 1e-9      # relative solver tolerance
 
     [interior_energetics.aragog]
@@ -139,7 +138,6 @@ version = "2.0"
 
      [outgas.calliope]
         solubility   = true    # enable solubility?
-        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
 
 # Volatile delivery - physics table

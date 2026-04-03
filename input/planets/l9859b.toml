@@ -113,7 +113,6 @@ version = "2.0"
     module = "spider"   # Which interior module to use
 
     [interior_energetics.spider]
-        mixing_length   = 2         # Mixing length parameterization
 
 
 [outgas]

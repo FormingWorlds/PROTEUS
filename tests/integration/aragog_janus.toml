@@ -192,7 +192,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "aragog"               # Which interior module to use
 
     [interior_energetics.spider]
-        mixing_length   = 2         # Mixing length parameterization
 
     [interior_energetics.aragog]
 
@@ -217,10 +216,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
-        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
     [outgas.atmodeller]
-        some_parameter = "some_value"
 
 # Volatile delivery - physics table
 [accretion]

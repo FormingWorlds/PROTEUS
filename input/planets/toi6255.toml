@@ -83,7 +83,6 @@ version = "2.0"
     module = "spider"   # Which interior module to use
 
     [interior_energetics.spider]
-        mixing_length            = 2         # Mixing length parameterization
         tolerance_rel            = 1.0e-8    # relative solver tolerance
         solver_type              = "bdf"     # SUNDIALS solver method
         matprop_smooth_width     = 1e-2      # melt-fraction window width over which to smooth material properties

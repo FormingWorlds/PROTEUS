@@ -102,6 +102,9 @@
     volatile_mode             = 'elements'   # set volatile inventory by: 'elements' | 'gas_prs'
     volatile_reservoir        = "mantle"     # ppmw reference mass: mantle | mantle+core
 
+    # Cooling constraint
+    prevent_warming           = false        # require monotonic cooling
+
     # Element abundances (used when volatile_mode = 'elements')
     [planet.elements]
         H_mode                = "oceans"     # oceans | ppmw | kg
@@ -127,9 +130,6 @@
         H2                    = 0.0
         CH4                   = 0.0
         CO                    = 0.0
-
-    # Other global planetary settings
-    prevent_warming           = false        # require monotonic cooling
 
 # ----------------------------------------------------
 

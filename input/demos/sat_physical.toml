@@ -149,7 +149,6 @@ version = "2.0"
     module = "spider"   # Which interior module to use
 
     [interior_energetics.spider]
-        mixing_length   = 2         # Mixing length parameterization
         tolerance_rel   = 1.0e-8    # relative solver tolerance
         solver_type     = "bdf"     # SUNDIALS solver method
 
@@ -168,7 +167,6 @@ version = "2.0"
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
-        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
 [accretion]
 

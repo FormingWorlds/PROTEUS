@@ -152,7 +152,6 @@ version = "2.0"
         include_H2  = true
         include_CH4 = true
         include_CO  = true
-        T_floor     = 800.0
 
 [accretion]
     module     = "none"

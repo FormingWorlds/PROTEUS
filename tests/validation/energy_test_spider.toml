@@ -146,7 +146,6 @@ version = "2.0"
     rfront_wid    = 0.15
 
     [interior_energetics.spider]
-        mixing_length = 2
         tolerance_rel = 1e-4
 
 # Calliope outgassing with minimal volatiles (required module, cannot be "none")

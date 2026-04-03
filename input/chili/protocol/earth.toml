@@ -176,8 +176,6 @@ rfront_loc = 0.5
 rfront_wid = 0.2
 
 [interior_energetics.spider]
-num_levels = 140
-mixing_length = 2
 tolerance = 1e-08
 tolerance_rel = 1e-08
 solver_type = "bdf"
@@ -188,7 +186,6 @@ module = "calliope"
 mass_thresh = 1e+16
 
 [outgas.calliope]
-T_floor = 700.0
 include_H2O = true
 include_CO2 = true
 include_N2 = true
@@ -199,8 +196,6 @@ include_NH3 = false
 include_H2 = true
 include_CH4 = true
 include_CO = true
-rtol = 0.0001
-xtol = 1e-06
 solubility = true
 
 
