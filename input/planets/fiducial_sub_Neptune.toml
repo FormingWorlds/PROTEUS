@@ -9,6 +9,9 @@
 #   [star]     stellar parameters, model selection
 #   [orbit]    planetary orbital parameters
 #
+# Config file format version
+config_version = "3.0"
+
 [planet]
     mass_tot = 5.0       # M_earth
     volatile_mode = 'elements'
@@ -23,8 +26,6 @@
         N_budget        = 0.09
         S_mode          = "S/H"
         S_budget        = 0.0
-
-config_version = "3.0"
 
 # ----------------------------------------------------
 # Parameters

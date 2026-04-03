@@ -11,6 +11,7 @@
 # - Core BC: prescribed flux = 0 (removes core cooling model difference)
 # - Dummy star + no escape (pure interior-atmosphere coupling)
 
+# Config file format version
 config_version = "3.0"
 
     [params.out]

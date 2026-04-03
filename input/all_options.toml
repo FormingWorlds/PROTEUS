@@ -24,8 +24,10 @@
 
 # ----------------------------------------------------
 
-# Code execution, outputs, time-stepping, convergence
+# Config file format version (must match the PROTEUS version you are running)
 config_version = "3.0"
+
+# Code execution, outputs, time-stepping, convergence
 [params]
     resume                    = false        # resume from previous run
     offline                   = false        # offline mode (no data downloads)

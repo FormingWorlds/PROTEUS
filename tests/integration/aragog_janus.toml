@@ -9,13 +9,15 @@
 #   [star]     stellar parameters, model selection
 #   [orbit]    planetary orbital parameters
 #
+# Config file format version
+config_version = "3.0"
+
 [planet]
     mass_tot = 1.0       # M_earth
     volatile_mode = 'elements'        # "elements" | "volatiles"
 
     prevent_warming = false      # do not allow the planet to heat up
 
-config_version = "3.0"
 author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # ----------------------------------------------------

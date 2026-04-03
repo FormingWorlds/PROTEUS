@@ -1,5 +1,6 @@
 # Orbit demo (dummy tides): close-in planet with parameterized tidal heating.
 # Tests orbital evolution + disintegration checks with dummy modules.
+# Config file format version
 config_version = "3.0"
 
     [params.out]

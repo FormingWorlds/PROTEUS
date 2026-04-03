@@ -3,6 +3,7 @@
 # Tests that Zalmoxis computes structure, writes SPIDER mesh file,
 # and SPIDER evolves entropy on the external mesh without errors.
 
+# Config file format version
 config_version = "3.0"
 
     [params.out]

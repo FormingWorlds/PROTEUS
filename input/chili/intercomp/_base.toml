@@ -1,3 +1,4 @@
+# Config file format version
 config_version = "3.0"
 
 [params.out]

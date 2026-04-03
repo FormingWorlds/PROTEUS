@@ -1,9 +1,10 @@
 # PROTEUS configuration file (version 2.0)
 
-config_version = "3.0"
-
 # ----------------------------------------------------
 # Parameters
+# Config file format version
+config_version = "3.0"
+
     [params.out]
         path        = "auto"
         plot_mod    = 50

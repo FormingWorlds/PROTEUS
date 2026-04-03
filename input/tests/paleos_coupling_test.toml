@@ -5,6 +5,7 @@
 # mushy_zone_factor, VolatileProfile phi-blending, and composition feedback.
 # Designed to run locally at 1-5 M_Earth for quick verification.
 
+# Config file format version
 config_version = "3.0"
 
     [params.out]

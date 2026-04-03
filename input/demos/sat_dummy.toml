@@ -1,4 +1,5 @@
 # Satellite demo (dummy tides): planet with a moon, parameterized tidal heating.
+# Config file format version
 config_version = "3.0"
 
     [params.out]

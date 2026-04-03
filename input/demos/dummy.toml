@@ -1,5 +1,6 @@
 # Dummy demo: fast test run using parameterized modules (no external solvers).
 # All modules set to "dummy" for rapid iteration and wiring tests.
+# Config file format version
 config_version = "3.0"
 
     [params.out]

@@ -5,6 +5,7 @@
 # The ONLY difference between cases is interior.module.
 # Everything else is identical.
 
+# Config file format version
 config_version = "3.0"
 
     [params.out]

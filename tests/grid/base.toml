@@ -2,10 +2,11 @@
 
 # ----------------------------------------------------
 # Metadata
-config_version = "3.0"
-
 # ----------------------------------------------------
 # Parameters
+# Config file format version
+config_version = "3.0"
+
     [params.out]
         path        = "auto"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
