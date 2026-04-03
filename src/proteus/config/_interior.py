@@ -185,7 +185,7 @@ class Interior:
     trans_grav_sep: bool = field(default=True)
     trans_mixing: bool = field(default=True)
     heat_radiogenic: bool = field(default=True)
-    heat_tidal: bool = field(default=True)
+    heat_tidal: bool = field(default=False)
 
     spider: Spider = field(factory=Spider, validator=valid_spider)
     aragog: Aragog = field(factory=Aragog, validator=valid_aragog)
@@ -204,8 +204,8 @@ class Interior:
     radio_U: float = field(default=0.031, validator=ge(0))
     radio_Th: float = field(default=0.124, validator=ge(0))
 
-    rfront_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
-    rfront_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
+    rfront_loc: float = field(default=0.5, validator=(gt(0), lt(1)))
+    rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
 
     # Phase-dependent eddy diffusivity floor [m^2/s]. Default 0 = standard MLT.
     # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from

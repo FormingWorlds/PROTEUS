@@ -280,7 +280,7 @@ class Dummy:
         A multiplying factor applied to the ideal-gas scale height.
     """
 
-    gamma: float = field(default=0.7, validator=(ge(0), le(1)))
+    gamma: float = field(default=0.5, validator=(ge(0), le(1)))
     height_factor: float = field(default=3.0, validator=ge(0))
 
 
@@ -348,7 +348,7 @@ class AtmosClim:
     surface_k: float = field(default=2.0, validator=gt(0))
     cloud_enabled: bool = field(default=False)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
-    surf_greyalbedo: float = field(default=0.2, validator=(ge(0), le(1)))
+    surf_greyalbedo: float = field(default=0.1, validator=(ge(0), le(1)))
     albedo_pl = field(default=0.0, validator=valid_albedo)
     rayleigh: bool = field(default=True, validator=warn_if_dummy)
     tmp_minimum: float = field(default=0.5, validator=gt(0))

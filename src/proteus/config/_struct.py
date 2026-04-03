@@ -105,8 +105,8 @@ class Zalmoxis:
         Number of Zalmoxis radius layers.
     """
 
-    core_eos: str = field(default='Seager2007:iron')
-    mantle_eos: str = field(default='Seager2007:MgSiO3')
+    core_eos: str = field(default='PALEOS:iron')
+    mantle_eos: str = field(default='PALEOS:MgSiO3')
     ice_layer_eos = field(default=None, converter=none_if_none)
 
     mushy_zone_factor: float = field(default=0.8, validator=(ge(0.7), le(1.0)))
@@ -116,9 +116,9 @@ class Zalmoxis:
     num_levels: int = field(default=150)
 
     # Structure update triggers (during coupled evolution)
-    update_interval: float = field(default=10, validator=ge(0))
+    update_interval: float = field(default=1e9, validator=ge(0))
     update_min_interval: float = field(default=0, validator=ge(0))
-    update_dtmagma_frac: float = field(default=0.03, validator=(gt(0), lt(1)))
+    update_dtmagma_frac: float = field(default=0.05, validator=(gt(0), lt(1)))
     update_dphi_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
 
     # Mesh smoothing

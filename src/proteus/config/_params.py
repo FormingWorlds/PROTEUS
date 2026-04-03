@@ -60,7 +60,7 @@ class OutputParams:
     plot_fmt: str = field(default='png', validator=in_(('pdf', 'png')))
     write_mod: int = field(default=1, validator=ge(0))
     dt_write_rel: float = field(default=0.0, validator=ge(0))
-    plot_mod = field(default=10, validator=valid_mod, converter=none_if_none)
+    plot_mod = field(default=5, validator=valid_mod, converter=none_if_none)
     archive_mod = field(default=None, validator=valid_mod, converter=none_if_none)
     remove_sf: bool = field(default=False)
 
@@ -93,8 +93,8 @@ class TimeStepParams:
         Relative tolerance on time-step size (adaptive method) [dimensionless].
     """
 
-    starspec: float = field(default=3e6, validator=ge(0))
-    starinst: float = field(default=1e3, validator=ge(0))
+    starspec: float = field(default=1e8, validator=ge(0))
+    starinst: float = field(default=1e2, validator=ge(0))
 
     method: str = field(
         default='adaptive', validator=in_(('proportional', 'adaptive', 'maximum'))
@@ -104,10 +104,10 @@ class TimeStepParams:
     atol: float = field(default=0.02, validator=gt(0))
     rtol: float = field(default=0.10, validator=gt(0))
 
-    minimum: float = field(default=3e2, validator=gt(0))
-    minimum_rel: float = field(default=1e-6, validator=gt(0))
+    minimum: float = field(default=1e4, validator=gt(0))
+    minimum_rel: float = field(default=1e-5, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
-    initial: float = field(default=1e3, validator=gt(0))
+    initial: float = field(default=3e1, validator=gt(0))
 
 
 @define
@@ -204,7 +204,7 @@ class StopEscape:
     """
 
     enabled: bool = field(default=True)
-    p_stop: float = field(default=1, validator=(gt(0), lt(1e6)))
+    p_stop: float = field(default=3.0, validator=(gt(0), lt(1e6)))
 
 
 @define

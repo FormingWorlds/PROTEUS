@@ -46,7 +46,7 @@ def test_output_params_defaults():
     assert out.logging == 'INFO'
     assert out.plot_fmt == 'png'
     assert out.write_mod == 1  # Write every step (safe for short runs)
-    assert out.plot_mod == 10  # Plot every 10 steps
+    assert out.plot_mod == 5  # Plot every 10 steps
     assert out.archive_mod is None  # Archiving disabled by default
     assert out.remove_sf is False  # Keep spectral files by default for debugging
 
@@ -63,10 +63,10 @@ def test_dt_params_defaults():
     """
     dt = TimeStepParams()
     assert dt.method == 'adaptive'
-    assert dt.minimum == 3e2  # Minimum step 300 years
-    assert dt.minimum_rel == 1e-6  # Relative minimum precision
+    assert dt.minimum == 1e4  # Minimum step 300 years
+    assert dt.minimum_rel == 1e-5  # Relative minimum precision
     assert dt.maximum == 1e7  # Maximum step 10 Myr
-    assert dt.initial == 1e3  # Start with 1000 years
+    assert dt.initial == 3e1  # Start with 1000 years
 
     # Proportional and adaptive parameters (flattened)
     assert dt.propconst == 52.0
@@ -111,7 +111,7 @@ def test_stop_params_defaults():
     # Escape
     assert isinstance(stop.escape, StopEscape)
     assert stop.escape.enabled is True
-    assert stop.escape.p_stop == 1
+    assert stop.escape.p_stop == 3.0
 
     # Disint (defaults to disabled)
     assert isinstance(stop.disint, StopDisint)
@@ -156,7 +156,7 @@ def test_interior_defaults():
     assert i.module == 'spider'
     assert i.spider == spider_cfg
     assert i.heat_radiogenic is True  # Heating terms on
-    assert i.heat_tidal is True
+    assert i.heat_tidal is False
     assert i.grain_size == 0.1  # 10 cm crystals
     assert i.flux_guess == -1  # Auto-detect
 

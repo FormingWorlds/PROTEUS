@@ -133,7 +133,7 @@ class StarDummy:
         Observed effective temperature [K].
     """
 
-    Teff = field(default=5780)
+    Teff = field(default=5772.0)
     radius: float | str = field(default=None, converter=none_if_none)
     calculate_radius: bool = field(default=False)
 
