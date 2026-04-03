@@ -6,10 +6,10 @@
 version = "3.0"
 
 [star.mors]
-        rot_pcntle      = 50.0
-        age_now         = 4.567
-        spectrum_source = "solar"
-        star_name       = "sun"
+    rot_pcntle      = 50.0
+    age_now         = 4.567
+    spectrum_source = "solar"
+    star_name       = "sun"
 
 [orbit]
     semimajoraxis = 1.0              # [AU]
