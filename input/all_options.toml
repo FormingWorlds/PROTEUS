@@ -229,8 +229,8 @@ config_version = "3.0"
         solver_max_iter_inner = 100          # max iterations for density convergence
 
         # Structure update triggers
-        update_dphi_abs       = 0.05         # trigger on absolute melt fraction change
-        update_dtmagma_frac   = 0.05         # trigger on relative T_magma change
+        update_dphi_abs       = 0.05         # primary trigger: absolute melt fraction change
+        update_dtmagma_frac   = 0.05         # secondary trigger: relative T_magma change
         update_interval       = 1e9          # max time between updates [yr]; 0 = init only
         update_min_interval   = 0            # min time between updates [yr]
         mesh_max_shift        = 0.05         # max fractional radius shift per update

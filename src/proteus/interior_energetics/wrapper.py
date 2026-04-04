@@ -689,7 +689,14 @@ def update_structure_from_interior(
         triggered = True
         reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
-    # T_magma relative change
+    # Phi_global absolute change (primary trigger: directly reflects rheological state)
+    if not triggered:
+        dPhi = abs(hf_row['Phi_global'] - last_Phi)
+        if dPhi >= config.interior_struct.zalmoxis.update_dphi_abs:
+            triggered = True
+            reason = f'dPhi={dPhi:.3f} >= {config.interior_struct.zalmoxis.update_dphi_abs}'
+
+    # T_magma relative change (secondary: catches cases where Phi is constant but T changes)
     if not triggered and last_Tmagma > 0:
         dT_frac = abs(hf_row['T_magma'] - last_Tmagma) / last_Tmagma
         if dT_frac >= config.interior_struct.zalmoxis.update_dtmagma_frac:
@@ -697,13 +704,6 @@ def update_structure_from_interior(
             reason = (
                 f'dT/T={dT_frac:.3f} >= {config.interior_struct.zalmoxis.update_dtmagma_frac}'
             )
-
-    # Phi_global absolute change
-    if not triggered:
-        dPhi = abs(hf_row['Phi_global'] - last_Phi)
-        if dPhi >= config.interior_struct.zalmoxis.update_dphi_abs:
-            triggered = True
-            reason = f'dPhi={dPhi:.3f} >= {config.interior_struct.zalmoxis.update_dphi_abs}'
 
     # Composition change: check dissolved volatile fractions.
     # When the binodal or CALLIOPE changes how much H2/H2O is dissolved,
