@@ -103,6 +103,14 @@ class Zalmoxis:
         mass between core and mantle layers.
     num_levels: int
         Number of Zalmoxis radius layers.
+    solver_tol_outer: float
+        Relative tolerance for mass convergence (outer loop).
+    solver_tol_inner: float
+        Relative tolerance for density convergence (inner loop).
+    solver_max_iter_outer: int
+        Max iterations for mass convergence (outer loop).
+    solver_max_iter_inner: int
+        Max iterations for density convergence (inner loop).
     lookup_nP: int
         Number of pressure points in SPIDER P-S tables generated from PALEOS.
     lookup_nS: int
@@ -118,6 +126,12 @@ class Zalmoxis:
     mantle_mass_fraction: float = field(default=0, validator=(ge(0), lt(1)))
 
     num_levels: int = field(default=150)
+
+    # Solver tuning (passed to Zalmoxis iterative solver)
+    solver_tol_outer: float = field(default=3e-3, validator=gt(0))
+    solver_tol_inner: float = field(default=1e-4, validator=gt(0))
+    solver_max_iter_outer: int = field(default=100, validator=ge(10))
+    solver_max_iter_inner: int = field(default=100, validator=ge(10))
 
     # Structure update triggers (during coupled evolution)
     update_interval: float = field(default=1e9, validator=ge(0))

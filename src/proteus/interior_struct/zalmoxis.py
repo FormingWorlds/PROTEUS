@@ -299,6 +299,11 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'mushy_zone_factors': mushy_zone_factors,
         'num_layers': config.interior_struct.zalmoxis.num_levels,
         'target_surface_pressure': _get_target_surface_pressure(config, hf_row),
+        # Solver tolerances and iteration limits
+        'tolerance_outer': config.interior_struct.zalmoxis.solver_tol_outer,
+        'tolerance_inner': config.interior_struct.zalmoxis.solver_tol_inner,
+        'max_iterations_outer': config.interior_struct.zalmoxis.solver_max_iter_outer,
+        'max_iterations_inner': config.interior_struct.zalmoxis.solver_max_iter_inner,
     }
 
 

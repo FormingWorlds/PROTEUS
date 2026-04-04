@@ -222,6 +222,12 @@ config_version = "3.0"
         # Grid
         num_levels            = 150          # radial grid levels (full interior)
 
+        # Solver tuning (iterative structure solver)
+        solver_tol_outer      = 3e-3         # relative tolerance for mass convergence
+        solver_tol_inner      = 1e-4         # relative tolerance for density convergence
+        solver_max_iter_outer = 100          # max iterations for mass convergence
+        solver_max_iter_inner = 100          # max iterations for density convergence
+
         # Structure update triggers
         update_dphi_abs       = 0.05         # trigger on absolute melt fraction change
         update_dtmagma_frac   = 0.05         # trigger on relative T_magma change
