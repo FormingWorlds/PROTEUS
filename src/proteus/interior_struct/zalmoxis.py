@@ -847,6 +847,7 @@ def zalmoxis_solver(
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
             temperature_function=temperature_function,
+            p_center_hint=hf_row.get('P_center'),
         )
 
     # Extract results from the model
@@ -1090,6 +1091,7 @@ def zalmoxis_solver(
     hf_row['M_int'] = mass_enclosed[-1]
     hf_row['M_core'] = mass_enclosed[cmb_index]
     hf_row['gravity'] = gravity[-1]
+    hf_row['P_center'] = model_results.get('p_center')
 
     # Self-consistent core density from Zalmoxis structure
     if cmb_radius > 0:
