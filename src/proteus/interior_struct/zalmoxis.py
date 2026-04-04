@@ -655,9 +655,28 @@ def generate_spider_tables(config: Config, outdir: str):
     if solid_eos and liquid_eos:
         logger.info('Using PALEOS-2phase tables for SPIDER EOS generation')
 
-    # Table resolution from config (default 1000x250; native PALEOS is 150 ppd)
+    # Table resolution from config
     nP = config.interior_struct.zalmoxis.lookup_nP
     nS = config.interior_struct.zalmoxis.lookup_nS
+
+    # Cache check: skip regeneration if tables exist and pressure range unchanged.
+    # The pressure range depends on planet mass, which doesn't change during evolution.
+    cache_marker = os.path.join(spider_eos_dir, '.cache_info.txt')
+    cache_key = f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}'
+    if os.path.isfile(cache_marker):
+        with open(cache_marker) as f:
+            existing_key = f.read().strip()
+        if existing_key == cache_key:
+            # Tables are up to date
+            solidus_path = os.path.join(spider_eos_dir, 'solidus.dat')
+            liquidus_path = os.path.join(spider_eos_dir, 'liquidus.dat')
+            if os.path.isfile(solidus_path) and os.path.isfile(liquidus_path):
+                logger.info('Reusing cached SPIDER P-S tables (P_max=%.2e, %dx%d)', P_max, nP, nS)
+                return {
+                    'eos_dir': spider_eos_dir,
+                    'solidus_path': solidus_path,
+                    'liquidus_path': liquidus_path,
+                }
 
     # Generate phase boundaries
     logger.info('Generating SPIDER P-S phase boundaries from PALEOS (%d P points)...', nP)
@@ -685,6 +704,13 @@ def generate_spider_tables(config: Config, outdir: str):
         solid_eos_file=solid_eos,
         liquid_eos_file=liquid_eos,
     )
+
+    # Write cache marker so subsequent calls skip regeneration
+    try:
+        with open(cache_marker, 'w') as f:
+            f.write(cache_key)
+    except OSError:
+        pass
 
     return {
         'eos_dir': spider_eos_dir,
