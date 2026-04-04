@@ -193,20 +193,28 @@ def run_matrix_local(cases, workers=1, resume=False):
 
 
 def generate_slurm_script(cases, output_dir):
-    """Generate a SLURM array job script for Habrok."""
+    """Generate a SLURM array job script for Habrok.
+
+    Generates a single array job. Walltime is set to 7 days to
+    accommodate wet cases on the ``regular`` partition (10-day max).
+    Dry cases finish in < 6h; wet cases may need 2-4 days.
+    """
     script_path = Path(output_dir) / 'submit_matrix.sh'
 
-    # Write case list
+    # Write case list (one config path per line, indexed from 1)
     case_list_path = Path(output_dir) / 'case_list.txt'
     with open(case_list_path, 'w') as f:
         for case in cases:
             f.write(f'{case["config"]}\n')
 
+    # Absolute path for case list inside the SLURM script
+    abs_case_list = str(Path(case_list_path).resolve())
+
     script = f"""#!/bin/bash
-#SBATCH --job-name=proteus_validation
+#SBATCH --job-name=proteus_val
 #SBATCH --array=1-{len(cases)}
-#SBATCH --time=96:00:00
-#SBATCH --mem=32G
+#SBATCH --time=7-00:00:00
+#SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
 #SBATCH --partition=regular
 #SBATCH --output=/home1/p311056/PROTEUS/output/validation/logs/%a_%x.out
@@ -216,12 +224,24 @@ def generate_slurm_script(cases, output_dir):
 source ~/miniforge3/etc/profile.d/conda.sh
 conda activate proteus
 module load netCDF-Fortran/4.6.1-gompi-2023a libarchive 2>/dev/null
-export PYTHON_JULIAPKG_EXE=$(which julia)
+
+# Pin Julia to 1.11.x (AGNI compat). Find the juliaup-managed binary.
+JULIA_BIN=$(find $HOME/.juliaup -name "julia" -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1)
+if [ -z "$JULIA_BIN" ]; then
+    JULIA_BIN=$(which julia 2>/dev/null)
+fi
+export PYTHON_JULIAPKG_EXE=$JULIA_BIN
+
+# Environment variables
+export FWL_DATA=$HOME/FWL_DATA
+export RAD_DIR=$HOME/PROTEUS/socrates
+export FC_DIR=$HOME/PROTEUS/AGNI/fastchem
 
 # Get config for this array task
-CONFIG=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {case_list_path})
+CONFIG=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {abs_case_list})
 
-echo "Running case $SLURM_ARRAY_TASK_ID: $CONFIG"
+echo "Task $SLURM_ARRAY_TASK_ID: $CONFIG"
+echo "Julia: $PYTHON_JULIAPKG_EXE"
 echo "Start: $(date)"
 
 cd /home1/p311056/PROTEUS

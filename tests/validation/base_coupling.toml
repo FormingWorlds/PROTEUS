@@ -35,7 +35,7 @@ config_version = "3.0"
 
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.01
+            phi_crit = 0.05
 
         [params.stop.radeqm]
             enabled = true
@@ -101,7 +101,7 @@ config_version = "3.0"
     rayleigh   = true
 
     p_top          = 1.0e-5
-    spectral_group = "Dayspring"
+    spectral_group = "Honeyside"
     spectral_bands = "48"
 
     [atmos_clim.agni]
