@@ -837,6 +837,42 @@ def zalmoxis_solver(
     converged_density = model_results['converged_density']
     converged_mass = model_results['converged_mass']
 
+    # Adaptive retry: if mass convergence failed, retry with relaxed tolerances
+    if not converged and converged_pressure and converged_density and not converged_mass:
+        retry_tol = config_params.get('tolerance_outer', 3e-3) * 3
+        retry_iter = int(config_params.get('max_iterations_outer', 100) * 2)
+        logger.warning(
+            'Zalmoxis mass convergence failed; retrying with relaxed tolerance '
+            '(tol_outer=%.1e, max_iter=%d)',
+            retry_tol, retry_iter,
+        )
+        config_params_retry = dict(config_params)
+        config_params_retry['tolerance_outer'] = retry_tol
+        config_params_retry['max_iterations_outer'] = retry_iter
+
+        model_results = main(
+            config_params_retry,
+            material_dictionaries=mat_dicts,
+            melting_curves_functions=melt_funcs,
+            input_dir=input_data_dir,
+            volatile_profile=volatile_profile,
+            temperature_function=temperature_function,
+        )
+
+        radii = model_results['radii']
+        pressure = model_results['pressure']
+        temperature = model_results['temperature']
+        mass_enclosed = model_results['mass_enclosed']
+        cmb_mass = model_results['cmb_mass']
+        core_mantle_mass = model_results['core_mantle_mass']
+        converged = model_results['converged']
+        converged_pressure = model_results['converged_pressure']
+        converged_density = model_results['converged_density']
+        converged_mass = model_results['converged_mass']
+
+        if converged:
+            logger.info('Zalmoxis converged on retry with relaxed tolerances')
+
     # Check convergence before proceeding. Non-converged solutions
     # (e.g. when EOS table range is exceeded) produce garbage values
     # that would corrupt the simulation state.
