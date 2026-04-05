@@ -97,7 +97,8 @@ config_version = "3.0"
 
 # Atmosphere: dummy (grey-body, sigma*T^4)
 [atmos_clim]
-    module = "dummy"
+    module   = "dummy"
+    rayleigh = false
 
 # Escape: disabled
 [escape]
