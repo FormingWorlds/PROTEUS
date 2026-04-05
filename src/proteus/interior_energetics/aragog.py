@@ -587,8 +587,22 @@ class AragogRunner:
         # ensuring the IC is consistent with the EOS used during
         # time integration (no P-T table dependency).
         try:
-            S_val = eos.invert_temperature(P_surf, float(tsurf_init))
-            S_target = S_val.item() if hasattr(S_val, 'item') else float(S_val)
+            from scipy.optimize import brentq
+
+            P_val = float(np.clip(float(tsurf_init), 1.0, 1e6))  # dummy, unused
+            P_val = float(np.clip(float(P_surf), float(eos.P_min), float(eos.P_max)))
+            T_val = float(tsurf_init)
+
+            def _residual(S_cand):
+                T_arr = eos.temperature(
+                    np.array([P_val]), np.array([float(S_cand)])
+                )
+                return float(np.squeeze(T_arr)) - T_val
+
+            S_lo, S_hi = float(eos.S_min), float(eos.S_max)
+            S_root = brentq(_residual, S_lo, S_hi, xtol=0.1, rtol=1e-10)
+            S_target = float(np.squeeze(np.asarray(S_root)))
+
             N = len(P_stag)
             S_init = np.full(N, S_target)
 
