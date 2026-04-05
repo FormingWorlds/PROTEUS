@@ -304,14 +304,16 @@ def _write_spider_mesh(data_dir, r_stag, P_stag, rho_stag, g_stag, R_c, R_p, num
 
     SPIDER convention: radii from surface to CMB, gravity negated.
     """
-    # Basic nodes (N+1): surface to CMB
+    # Basic nodes (N): surface to CMB.
+    # SPIDER convention: -n N means N basic nodes, N-1 staggered nodes.
+    # This matches the Zalmoxis mesh convention.
     N = num_nodes
-    r_basic = np.linspace(R_p, R_c, N + 1)
+    r_basic = np.linspace(R_p, R_c, N)
     P_basic = np.interp(r_basic, r_stag, P_stag)
     rho_basic = np.interp(r_basic, r_stag, rho_stag)
     g_basic = -np.interp(r_basic, r_stag, g_stag)  # SPIDER: negative = inward
 
-    # Staggered nodes (N): midpoints
+    # Staggered nodes (N-1): midpoints
     r_stag_spider = 0.5 * (r_basic[:-1] + r_basic[1:])
     P_stag_spider = np.interp(r_stag_spider, r_stag, P_stag)
     rho_stag_spider = np.interp(r_stag_spider, r_stag, rho_stag)
@@ -319,13 +321,13 @@ def _write_spider_mesh(data_dir, r_stag, P_stag, rho_stag, g_stag, R_c, R_p, num
 
     mesh_file = os.path.join(data_dir, 'spider_mesh.dat')
     with open(mesh_file, 'w') as f:
-        f.write(f'# {N + 1} {N}\n')
-        for i in range(N + 1):
+        f.write(f'# {N} {N - 1}\n')
+        for i in range(N):
             f.write(f'{r_basic[i]:.17e} {P_basic[i]:.17e} '
                     f'{rho_basic[i]:.17e} {g_basic[i]:.17e}\n')
-        for i in range(N):
+        for i in range(N - 1):
             f.write(f'{r_stag_spider[i]:.17e} {P_stag_spider[i]:.17e} '
                     f'{rho_stag_spider[i]:.17e} {g_stag_spider[i]:.17e}\n')
 
-    logger.info('Dummy SPIDER mesh: %s (%d basic + %d staggered nodes)', mesh_file, N + 1, N)
+    logger.info('Dummy SPIDER mesh: %s (%d basic + %d staggered nodes)', mesh_file, N, N - 1)
     return mesh_file
