@@ -85,6 +85,7 @@ config_version = "3.0"
 # Interior energetics: PLACEHOLDER (spider or aragog)
 [interior_energetics]
     module          = "spider"           # PLACEHOLDER
+    num_levels      = 79                 # dummy mesh writes N+1 basic nodes; SPIDER expects N
     heat_radiogenic = true
     flux_guess      = -1
     grain_size      = 0.1
