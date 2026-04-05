@@ -639,8 +639,15 @@ def _try_spider(
 
     # Recalculate time stepping
     if IC_INTERIOR == 2:
-        # Get step number from last JSON file
-        json_path = os.path.join(dirs['output/data'], '%.0f.json' % hf_row['Time'])
+        # Get step number from the latest JSON file.
+        # Use get_all_output_times (scans for *.json filenames) instead
+        # of hf_row['Time'], because SPIDER's tsurf_poststep_change can
+        # terminate the BDF early and the JSON filename (llround of
+        # actual time) may not match the coupling Time (which advances
+        # by dtswitch via Option D).
+        all_times = get_all_output_times(dirs['output'])
+        latest_spider_time = all_times[-1] if all_times else 0
+        json_path = os.path.join(dirs['output/data'], '%.0f.json' % latest_spider_time)
         json_file = MyJSON(json_path)
         if json_file.data_d is None:
             UpdateStatusfile(dirs, 21)
