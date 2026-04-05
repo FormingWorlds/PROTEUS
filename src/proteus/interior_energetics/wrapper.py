@@ -19,6 +19,11 @@ from proteus.utils.helper import UpdateStatusfile
 if TYPE_CHECKING:
     from proteus.config import Config
 
+# Counter for consecutive Zalmoxis convergence failures during time evolution.
+# Reset on each successful structure update. Crash after max_consecutive.
+_zalmoxis_fail_count = 0
+_ZALMOXIS_MAX_CONSECUTIVE_FAILS = 5
+
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -764,15 +769,51 @@ def update_structure_from_interior(
             dirs['spider_mesh_prev'] = prev_path
         shutil.copy2(current_mesh, prev_path)
 
+    global _zalmoxis_fail_count
+
     nlev_b = get_nlevb(config)
     num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
-    _cmb_radius, spider_mesh_file = zalmoxis_solver(
-        config,
-        outdir,
-        hf_row,
-        num_spider_nodes=num_spider_nodes,
-        temperature_function=temperature_function,
-    )
+
+    # Save current structure values for fallback on convergence failure
+    _saved_structure = {
+        k: hf_row[k]
+        for k in (
+            'R_int', 'M_int', 'M_core', 'M_mantle', 'P_surf',
+            'R_core', 'P_center', 'rho_avg',
+        )
+        if k in hf_row
+    }
+
+    try:
+        _cmb_radius, spider_mesh_file = zalmoxis_solver(
+            config,
+            outdir,
+            hf_row,
+            num_spider_nodes=num_spider_nodes,
+            temperature_function=temperature_function,
+        )
+        _zalmoxis_fail_count = 0  # Reset on success
+    except RuntimeError as e:
+        _zalmoxis_fail_count += 1
+        log.warning(
+            'Zalmoxis convergence failure #%d/%d during time evolution. '
+            'Falling back to previous structure. Error: %s',
+            _zalmoxis_fail_count,
+            _ZALMOXIS_MAX_CONSECUTIVE_FAILS,
+            str(e)[:200],
+        )
+        if _zalmoxis_fail_count >= _ZALMOXIS_MAX_CONSECUTIVE_FAILS:
+            log.error(
+                'Zalmoxis failed %d consecutive times. Aborting.',
+                _zalmoxis_fail_count,
+            )
+            raise
+        # Restore previous structure values
+        hf_row.update(_saved_structure)
+        hf_row['_structure_stale'] = True
+        # Keep the previous mesh file and CMB radius
+        spider_mesh_file = dirs.get('spider_mesh')
+        _cmb_radius = float(hf_row.get('R_core', 0.0))
 
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file

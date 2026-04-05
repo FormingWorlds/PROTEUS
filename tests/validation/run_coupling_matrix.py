@@ -214,7 +214,7 @@ def generate_slurm_script(cases, output_dir):
 #SBATCH --job-name=proteus_val
 #SBATCH --array=1-{len(cases)}
 #SBATCH --time=7-00:00:00
-#SBATCH --mem=4G
+#SBATCH --mem=12G
 #SBATCH --cpus-per-task=1
 #SBATCH --partition=regular
 #SBATCH --output=/home1/p311056/PROTEUS/output/validation/logs/%a_%x.out

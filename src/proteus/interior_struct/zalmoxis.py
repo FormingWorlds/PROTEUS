@@ -23,6 +23,11 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 # Set up logging
 logger = logging.getLogger('fwl.' + __name__)
 
+# Module-level cache for density seeding between Zalmoxis calls.
+# Stores the last successful density profile so the next call can
+# use it as a starting point for the Picard iteration.
+_density_cache = {'density': None, 'radii': None}
+
 # Mapping from PROTEUS volatile species to Zalmoxis EOS component names.
 # Only species with Zalmoxis EOS tables are included.
 _VOLATILE_EOS_MAP = {
@@ -848,6 +853,8 @@ def zalmoxis_solver(
             volatile_profile=volatile_profile,
             temperature_function=temperature_function,
             p_center_hint=hf_row.get('P_center'),
+            initial_density=_density_cache.get('density'),
+            initial_radii=_density_cache.get('radii'),
         )
 
     # Extract results from the model
@@ -924,6 +931,10 @@ def zalmoxis_solver(
 
     # Calculate the average density of the planet using the calculated mass and radius
     average_density = mass_enclosed[-1] / (4 / 3 * np.pi * radii[-1] ** 3)
+
+    # Cache density for next call's Picard seeding
+    _density_cache['density'] = model_results['density'].copy()
+    _density_cache['radii'] = model_results['radii'].copy()
 
     # Final results of the Zalmoxis interior model
     logger.info('Found solution for interior structure with Zalmoxis')
