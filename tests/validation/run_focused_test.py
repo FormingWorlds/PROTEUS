@@ -101,6 +101,12 @@ source ~/miniforge3/etc/profile.d/conda.sh
 conda activate proteus
 module load netCDF-Fortran/4.6.1-gompi-2023a libarchive 2>/dev/null
 
+# Force Python to not use bytecode cache (NFS propagation delays)
+export PYTHONDONTWRITEBYTECODE=1
+# Clear any stale pycache on the compute node
+find $HOME/PROTEUS/src -name '__pycache__' -exec rm -rf {{}} + 2>/dev/null
+find $HOME/PROTEUS/aragog/src -name '__pycache__' -exec rm -rf {{}} + 2>/dev/null
+
 JULIA_BIN=$(find $HOME/.juliaup -name "julia" -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1)
 if [ -z "$JULIA_BIN" ]; then JULIA_BIN=$(which julia 2>/dev/null); fi
 export PYTHON_JULIAPKG_EXE=$JULIA_BIN
