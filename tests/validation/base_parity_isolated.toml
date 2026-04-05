@@ -91,20 +91,13 @@ config_version = "3.0"
     rfront_loc      = 0.4
     rfront_wid      = 0.15
 
-# Outgassing: dummy (minimal, just tracks volatiles)
+# Outgassing: dummy
 [outgas]
-    module       = "calliope"
-    fO2_shift_IW = 0
+    module       = "dummy"
 
-# Atmosphere: dummy (grey-body)
+# Atmosphere: dummy (grey-body, sigma*T^4)
 [atmos_clim]
-    module     = "janus"
-    surf_state = "skin"
-    rayleigh   = true
-
-    p_top          = 1.0e-5
-    spectral_group = "Honeyside"
-    spectral_bands = "48"
+    module = "dummy"
 
 # Escape: disabled
 [escape]
