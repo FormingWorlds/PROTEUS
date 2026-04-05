@@ -587,7 +587,8 @@ class AragogRunner:
         # ensuring the IC is consistent with the EOS used during
         # time integration (no P-T table dependency).
         try:
-            S_target = eos.invert_temperature(P_surf, tsurf_init)
+            S_val = eos.invert_temperature(P_surf, float(tsurf_init))
+            S_target = S_val.item() if hasattr(S_val, 'item') else float(S_val)
             N = len(P_stag)
             S_init = np.full(N, S_target)
 
