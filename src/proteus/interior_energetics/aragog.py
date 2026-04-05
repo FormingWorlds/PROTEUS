@@ -93,6 +93,8 @@ class AragogRunner:
             interior_o.aragog_solver.initialize()
             # Set entropy IC from Zalmoxis T(r) profile via PALEOS inversion
             AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+            # Verify and correct IC if table resolution causes > 1% T mismatch
+            AragogRunner._verify_entropy_ic(config, interior_o, dirs['output'])
         else:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
