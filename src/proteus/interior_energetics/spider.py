@@ -784,7 +784,10 @@ def _try_spider(
         # Compute initial entropy from planet temperature settings (PALEOS lookup)
         from proteus.interior_energetics.common import compute_initial_entropy
 
-        ini_entropy = compute_initial_entropy(config, hf_row)
+        spider_eos_dir = os.path.join(dirs['output/data'], 'spider_eos')
+        ini_entropy = compute_initial_entropy(
+            config, hf_row, spider_eos_dir=spider_eos_dir,
+        )
         call_sequence.extend(
             [
                 '-ic_adiabat_entropy',
