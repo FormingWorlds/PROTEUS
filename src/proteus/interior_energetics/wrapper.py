@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 _zalmoxis_fail_count = 0
 _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 5
 
+# Counter for consecutive SPIDER CVode failures during time evolution.
+# Reset on each successful SPIDER call. Crash after max_consecutive.
+_spider_fail_count = 0
+_SPIDER_MAX_CONSECUTIVE_FAILS = 3
+
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -509,6 +514,7 @@ def run_interior(
         interior_o.write_tides(dirs['output'])
 
     if config.interior_energetics.module == 'spider':
+        global _spider_fail_count
         # Import
         from proteus.interior_energetics.spider import ReadSPIDER, RunSPIDER
 
@@ -516,7 +522,29 @@ def run_interior(
         # Note: write_data is not forwarded here. SPIDER JSON output is
         # controlled by the C binary; Python cannot suppress it per-timestep.
         mesh_file = dirs.get('spider_mesh')
-        RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
+        try:
+            RunSPIDER(dirs, config, hf_all, hf_row, interior_o, mesh_file=mesh_file)
+            _spider_fail_count = 0
+        except RuntimeError as e:
+            _spider_fail_count += 1
+            log.warning(
+                'SPIDER CVode failure #%d/%d. '
+                'Keeping previous interior state for this step. Error: %s',
+                _spider_fail_count,
+                _SPIDER_MAX_CONSECUTIVE_FAILS,
+                str(e)[:200],
+            )
+            if _spider_fail_count >= _SPIDER_MAX_CONSECUTIVE_FAILS:
+                log.error(
+                    'SPIDER failed %d consecutive times. Aborting.',
+                    _spider_fail_count,
+                )
+                raise
+            # Skip ReadSPIDER; keep hf_row values from previous step.
+            # The interior state is stale by one coupling step, but the
+            # atmosphere + outgassing still advance. The stale interior
+            # pushes the planet past the stiff rheological transition.
+            return
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior_energetics.module == 'aragog':

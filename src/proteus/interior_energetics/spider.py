@@ -1056,7 +1056,7 @@ def RunSPIDER(
     """
 
     # parameters
-    max_attempts = 5  # maximum number of attempts
+    max_attempts = 8  # maximum number of attempts (was 5)
     step_sf = 1.0  # step scale factor at attempt 1
     atol_sf = 1.0  # tolerance scale factor at attempt 1
 
@@ -1096,13 +1096,19 @@ def RunSPIDER(
             log.warning('Attempt %d failed' % attempts)
             if attempts >= max_attempts:
                 # give up
-                log.error('Giving up')
+                log.error('Giving up after %d attempts' % attempts)
                 break
             else:
-                # try again (change tolerance and step size)
-                log.warning('Trying again')
-                step_sf *= 0.1
-                atol_sf *= 10.0
+                # try again with smaller timestep and looser tolerance.
+                # Use gentler scaling (0.3x step, 5x tol) so more attempts
+                # remain in a useful parameter range. The old 0.1x/10x
+                # scaling exhausted useful ranges in 3 attempts.
+                step_sf *= 0.3
+                atol_sf *= 5.0
+                log.warning(
+                    'Retrying with step_sf=%.2e, atol_sf=%.2e',
+                    step_sf, atol_sf,
+                )
 
     # check status
     if spider_success:
