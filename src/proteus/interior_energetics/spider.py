@@ -1131,7 +1131,12 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     output = {}
 
     ### Read in last SPIDER base parameters
-    sim_time = get_all_output_times(dirs['output'])[-1]  # yr, as an integer value
+    # Get the simulation time from the latest JSON file.
+    # Prefer 'time_years_desired' (the macro-step time that always
+    # advances by dtmacro) over the JSON filename (which can be 0 when
+    # tsurf_poststep_change terminates the BDF early and llround rounds
+    # the actual BDF time to 0).
+    sim_time = get_all_output_times(dirs['output'])[-1]  # yr, from filename
 
     # load data file
     json_path = os.path.join(dirs['output/data'], '%.0f.json' % sim_time)
@@ -1139,6 +1144,17 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     if json_file.data_d is None:
         UpdateStatusfile(dirs, 21)
         raise ValueError("JSON file '%s' could not be loaded" % json_path)
+
+    # Override sim_time with the desired macro-step time from the JSON,
+    # which always advances by dtmacro. The filename-derived sim_time can
+    # be stuck at 0 when tsurf_poststep_change terminates the BDF early
+    # and the actual time rounds to 0.
+    try:
+        desired = json_file.get_dict(['time_years_desired'])
+        if desired is not None and float(desired) > sim_time:
+            sim_time = float(desired)
+    except (KeyError, TypeError):
+        pass  # old SPIDER binary without time_years_desired field
 
     # read scalars
     json_keys = {
