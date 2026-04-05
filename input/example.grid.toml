@@ -29,7 +29,7 @@ ref_config = "input/dummy.toml"
 use_slurm = false
 max_jobs = 10       # max concurrent tasks (e.g. 500 on Habrok)
 max_days = 1        # max walltime [days]
-max_mem  = 3        # max memory per CPU [GB]
+max_mem  = 12       # max memory per CPU [GB]
 
 # -------------------------------------------------------
 # Grid axes

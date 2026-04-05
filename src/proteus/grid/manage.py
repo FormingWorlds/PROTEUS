@@ -492,7 +492,7 @@ class Grid:
         )
 
     def slurm_config(
-        self, max_jobs: int, test_run: bool = False, max_days: int = 1, max_mem: int = 3
+        self, max_jobs: int, test_run: bool = False, max_days: int = 1, max_mem: int = 12
     ):
         """Write slurm config file.
 
