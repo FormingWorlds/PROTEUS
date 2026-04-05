@@ -79,8 +79,8 @@ config_version = "3.0"
     core_frac     = 0.325
     core_density  = 10738
     core_heatcap  = 880
-    melting_dir   = "Stixrude14"
-    eos_dir       = "WolfBower2018_MgSiO3"
+    melting_dir   = "Wolf_Bower+2018"
+    eos_dir       = "1TPa-dK09-elec-free"
 
 # Interior energetics: PLACEHOLDER (spider or aragog)
 [interior_energetics]
