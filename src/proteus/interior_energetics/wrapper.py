@@ -635,8 +635,21 @@ def run_interior(
         if config.interior_energetics.heat_radiogenic:
             log.info('    F_radio    = %.2e W m-2' % float(hf_row['F_radio']))
 
-    # Actual time step size
-    interior_o.dt = float(sim_time) - hf_row['Time']
+    # Actual time step size.
+    # For SPIDER: use the coupling timestepper's dtswitch directly,
+    # tracked via interior_o._spider_cumulative_time. The old approach
+    # (sim_time - hf_row['Time']) fails because SPIDER's JSON filenames
+    # alias to 0 when tsurf_poststep_change terminates the BDF early
+    # and llround(time_years) rounds to 0.
+    # For Aragog/dummy: sim_time is returned directly from the solver
+    # and is reliable.
+    if config.interior_energetics.module == 'spider':
+        from proteus.interior_energetics.timestep import next_step
+        dtswitch = next_step(config, dirs, hf_row, hf_all, 1.0)
+        interior_o._spider_cumulative_time += dtswitch
+        interior_o.dt = dtswitch
+    else:
+        interior_o.dt = float(sim_time) - hf_row['Time']
 
     # TODO: When config.interior_struct.module == 'zalmoxis', the Aragog mesh
     # is set up once during setup_solver and never refreshed during

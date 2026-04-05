@@ -191,6 +191,14 @@ class Interior_t:
         # Current time step length [yr]
         self.dt = 1.0
 
+        # Cumulative SPIDER time [yr]. Tracked separately from
+        # hf_row['Time'] because SPIDER's JSON filenames can alias
+        # (llround to the same integer) when tsurf_poststep_change
+        # terminates the BDF early. This counter always advances by
+        # the coupling timestepper's dtswitch after each successful
+        # SPIDER call.
+        self._spider_cumulative_time = 0.0
+
         # Lookup data for SPIDER (density of pure melt)
         self.lookup_rho_melt = None
         if spider_dir:
