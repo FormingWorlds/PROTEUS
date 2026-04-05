@@ -582,42 +582,24 @@ class AragogRunner:
         P_surf = 1e5  # 1 bar
 
         # Compute S_target by inverting the P-S temperature table:
-        # find S such that T(P_surf, S) = tsurf_init. This uses the
-        # exact same P-S tables as the entropy solver and SPIDER,
-        # ensuring the IC is consistent with the EOS used during
-        # time integration (no P-T table dependency).
+        # find S such that T(P_surf, S) = tsurf_init. Uses the EOS's
+        # pure-Python scalar inversion (brentq with bilinear interp),
+        # which avoids numpy scalar conversions that break on numpy >= 2.4.
         try:
-            from scipy.optimize import brentq
-
-            P_val = float(np.clip(float(tsurf_init), 1.0, 1e6))  # dummy, unused
-            P_val = float(np.clip(float(P_surf), float(eos.P_min), float(eos.P_max)))
-            T_val = float(tsurf_init)
-
-            def _residual(S_cand):
-                T_arr = eos.temperature(
-                    np.array([P_val]), np.array([S_cand])
-                )
-                # Must return a pure Python float; numpy scalars cause
-                # "0-dimensional arrays" errors in scipy brentq on numpy >= 2.2
-                T_scalar = np.asarray(T_arr).ravel()[0]
-                return T_scalar.__float__() - T_val
-
-            S_lo = np.asarray(eos.S_min).ravel()[0]
-            S_hi = np.asarray(eos.S_max).ravel()[0]
-            S_root = brentq(_residual, S_lo, S_hi, xtol=0.1, rtol=1e-10)
-            S_target = np.asarray(S_root).ravel()[0]
+            P_clamped = max(eos.P_min, min(float(P_surf), eos.P_max))
+            S_target = eos.invert_temperature(P_clamped, float(tsurf_init))
 
             N = len(P_stag)
             S_init = np.full(N, S_target)
 
             # Verify: T at surface should match tsurf_init
-            T_check = eos.temperature(np.array([P_surf]), np.array([S_target]))
+            T_check = eos.temperature_scalar(P_clamped, S_target)
             logger.info(
                 'Entropy IC from P-S inversion: tsurf_init=%.0f K -> '
                 'S_target=%.1f J/kg/K (verification: T=%.0f K)',
                 tsurf_init,
                 S_target,
-                float(T_check),
+                T_check,
             )
 
             solver.set_initial_entropy(S_init)
@@ -625,8 +607,10 @@ class AragogRunner:
         except Exception as e:
             # Fallback: try the old compute_entropy_adiabat from Zalmoxis
             # (uses P-T tables), then fall back to uniform S=3200.
+            import traceback as _tb
             logger.warning(
-                'P-S inversion failed (%s). Trying P-T fallback.', e,
+                'P-S inversion failed (%s). Traceback:\n%s\nTrying P-T fallback.',
+                e, _tb.format_exc(),
             )
             try:
                 from zalmoxis.eos_export import compute_entropy_adiabat
