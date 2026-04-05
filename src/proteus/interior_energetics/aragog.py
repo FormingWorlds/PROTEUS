@@ -595,13 +595,14 @@ class AragogRunner:
 
             def _residual(S_cand):
                 T_arr = eos.temperature(
-                    np.array([P_val]), np.array([float(S_cand)])
+                    np.array([P_val]), np.array([S_cand])
                 )
-                return float(np.squeeze(T_arr)) - T_val
+                return np.asarray(T_arr).ravel()[0] - T_val
 
-            S_lo, S_hi = float(eos.S_min), float(eos.S_max)
+            S_lo = np.asarray(eos.S_min).ravel()[0]
+            S_hi = np.asarray(eos.S_max).ravel()[0]
             S_root = brentq(_residual, S_lo, S_hi, xtol=0.1, rtol=1e-10)
-            S_target = float(np.squeeze(np.asarray(S_root)))
+            S_target = np.asarray(S_root).ravel()[0]
 
             N = len(P_stag)
             S_init = np.full(N, S_target)
