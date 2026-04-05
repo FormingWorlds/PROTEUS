@@ -597,7 +597,10 @@ class AragogRunner:
                 T_arr = eos.temperature(
                     np.array([P_val]), np.array([S_cand])
                 )
-                return np.asarray(T_arr).ravel()[0] - T_val
+                # Must return a pure Python float; numpy scalars cause
+                # "0-dimensional arrays" errors in scipy brentq on numpy >= 2.2
+                T_scalar = np.asarray(T_arr).ravel()[0]
+                return T_scalar.__float__() - T_val
 
             S_lo = np.asarray(eos.S_min).ravel()[0]
             S_hi = np.asarray(eos.S_max).ravel()[0]
