@@ -646,7 +646,7 @@ def _try_spider(
         # actual time) may not match the coupling Time (which advances
         # by dtswitch via Option D).
         all_times = get_all_output_times(dirs['output'])
-        latest_spider_time = all_times[-1] if all_times else 0
+        latest_spider_time = all_times[-1] if len(all_times) > 0 else 0
         json_path = os.path.join(dirs['output/data'], '%.0f.json' % latest_spider_time)
         json_file = MyJSON(json_path)
         if json_file.data_d is None:
