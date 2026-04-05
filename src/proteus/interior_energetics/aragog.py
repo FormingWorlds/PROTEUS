@@ -566,76 +566,34 @@ class AragogRunner:
         """
         solver = interior_o.aragog_solver
         P_stag = solver._P_stag_flat
+        eos = solver.entropy_eos
 
-        # Compute entropy from T(P) via PALEOS lookup.
-        # For a Zalmoxis-derived adiabatic IC: T decreases outward,
-        # and S should be roughly constant (isentropic).
+        tsurf_init = config.planet.tsurf_init
+        if hf_row is not None:
+            T_surface_computed = hf_row.get('T_surface_initial', 0)
+            if T_surface_computed and T_surface_computed > 0:
+                tsurf_init = T_surface_computed
+
+        # Use 1 bar as surface pressure for the entropy lookup.
+        # The mesh surface P can be negative or zero; the adiabat
+        # computation needs a physically meaningful surface P.
+        P_surf = 1e5  # 1 bar
+
+        # Compute S_target by inverting the P-S temperature table:
+        # find S such that T(P_surf, S) = tsurf_init. This uses the
+        # exact same P-S tables as the entropy solver and SPIDER,
+        # ensuring the IC is consistent with the EOS used during
+        # time integration (no P-T table dependency).
         try:
-            from zalmoxis.eos_export import compute_entropy_adiabat
-
-            from proteus.interior_struct.zalmoxis import (
-                load_zalmoxis_material_dictionaries,
-                load_zalmoxis_solidus_liquidus_functions,
-            )
-
-            mat_dicts = load_zalmoxis_material_dictionaries()
-            eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
-            paleos_eos_file = eos_entry.get('eos_file', '')
-
-            melt_funcs = load_zalmoxis_solidus_liquidus_functions(
-                config.interior_struct.zalmoxis.mantle_eos, config
-            )
-            sol_func = liq_func = None
-            if melt_funcs is not None:
-                sol_func, liq_func = melt_funcs
-
-            # Check for 2-phase tables
-            twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
-            solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
-            liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
-            solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
-            liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
-
-            tsurf_init = config.planet.tsurf_init
-            if hf_row is not None:
-                T_surface_computed = hf_row.get('T_surface_initial', 0)
-                if T_surface_computed and T_surface_computed > 0:
-                    tsurf_init = T_surface_computed
-
-            # Use 1 bar as surface pressure for the entropy lookup.
-            # The mesh surface P can be negative or zero; the adiabat
-            # computation needs a physically meaningful surface P.
-            P_surf = 1e5  # 1 bar
-            P_cmb = max(float(P_stag[0]), 1e9)
-
-            # Compute target entropy: S_target = S(P_surf, tsurf_init)
-            # Then set this S uniformly across the mantle (isentrope).
-            # This ensures the surface T will match tsurf_init when
-            # the EOS is evaluated at (P_surf, S_target).
-            result = compute_entropy_adiabat(
-                eos_file=paleos_eos_file,
-                T_surface=tsurf_init,
-                P_surface=P_surf,
-                P_cmb=P_cmb,
-                n_points=500,
-                solidus_func=sol_func,
-                liquidus_func=liq_func,
-                solid_eos_file=solid_eos,
-                liquid_eos_file=liquid_eos,
-            )
-
-            # The isentropic profile: S_target is constant by construction.
-            # Use the target entropy (not the profile, which may have
-            # numerical noise from the root-finding).
-            S_target = result['S_target']
+            S_target = eos.invert_temperature(P_surf, tsurf_init)
             N = len(P_stag)
             S_init = np.full(N, S_target)
 
             # Verify: T at surface should match tsurf_init
-            T_check = solver.entropy_eos.temperature(np.array([P_surf]), np.array([S_target]))
+            T_check = eos.temperature(np.array([P_surf]), np.array([S_target]))
             logger.info(
-                'Entropy IC: tsurf_init=%.0f K -> S_target=%.1f J/kg/K '
-                '(verification: T(P_surf, S_target)=%.0f K)',
+                'Entropy IC from P-S inversion: tsurf_init=%.0f K -> '
+                'S_target=%.1f J/kg/K (verification: T=%.0f K)',
                 tsurf_init,
                 S_target,
                 float(T_check),
@@ -644,13 +602,64 @@ class AragogRunner:
             solver.set_initial_entropy(S_init)
 
         except Exception as e:
-            # Fallback: uniform entropy from SPIDER default
+            # Fallback: try the old compute_entropy_adiabat from Zalmoxis
+            # (uses P-T tables), then fall back to uniform S=3200.
             logger.warning(
-                'Could not compute entropy IC from PALEOS (%s). Using uniform S=3200 J/kg/K.',
-                e,
+                'P-S inversion failed (%s). Trying P-T fallback.', e,
             )
-            N = len(P_stag)
-            solver.set_initial_entropy(np.full(N, 3200.0))
+            try:
+                from zalmoxis.eos_export import compute_entropy_adiabat
+
+                from proteus.interior_struct.zalmoxis import (
+                    load_zalmoxis_material_dictionaries,
+                    load_zalmoxis_solidus_liquidus_functions,
+                )
+
+                mat_dicts = load_zalmoxis_material_dictionaries()
+                eos_entry = mat_dicts.get(
+                    config.interior_struct.zalmoxis.mantle_eos, {}
+                )
+                paleos_eos_file = eos_entry.get('eos_file', '')
+                melt_funcs = load_zalmoxis_solidus_liquidus_functions(
+                    config.interior_struct.zalmoxis.mantle_eos, config
+                )
+                sol_func = liq_func = None
+                if melt_funcs is not None:
+                    sol_func, liq_func = melt_funcs
+
+                twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
+                solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
+                liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
+                solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
+                liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+
+                P_cmb = max(float(P_stag[0]), 1e9)
+                result = compute_entropy_adiabat(
+                    eos_file=paleos_eos_file,
+                    T_surface=tsurf_init,
+                    P_surface=P_surf,
+                    P_cmb=P_cmb,
+                    n_points=500,
+                    solidus_func=sol_func,
+                    liquidus_func=liq_func,
+                    solid_eos_file=solid_eos,
+                    liquid_eos_file=liquid_eos,
+                )
+                S_target = result['S_target']
+                N = len(P_stag)
+                solver.set_initial_entropy(np.full(N, S_target))
+                logger.info(
+                    'Entropy IC from P-T fallback: S_target=%.1f J/kg/K',
+                    S_target,
+                )
+            except Exception as e2:
+                logger.warning(
+                    'Could not compute entropy IC (%s). '
+                    'Using uniform S=3200 J/kg/K.',
+                    e2,
+                )
+                N = len(P_stag)
+                solver.set_initial_entropy(np.full(N, 3200.0))
 
     @staticmethod
     def _verify_entropy_ic(config: Config, interior_o: Interior_t, outdir: str):
