@@ -65,6 +65,137 @@ def eval_rheoparam(phi: float, which: str):
     return par.dotl * numer / denom
 
 
+def _verify_initial_entropy(
+    config: Config,
+    S_target: float,
+    tsurf: float,
+    source: str,
+) -> None:
+    """Cross-check a P-S-inverted entropy value against an independent PALEOS adiabat.
+
+    The primary entropy IC path (both SPIDER via this module and Aragog via
+    ``AragogRunner._set_entropy_ic``) inverts the P-S temperature table with
+    ``EntropyEOS.invert_temperature``. This helper provides an orthogonal
+    cross-check by calling ``zalmoxis.eos_export.compute_entropy_adiabat``,
+    which constructs a PALEOS adiabat by stepping ``dT/dP|_S`` from the
+    surface. The two code paths use the same underlying EOS tables but via
+    different algorithms, so agreement confirms neither the inversion nor
+    the adiabat integrator has drifted.
+
+    Verdict thresholds (relative to ``S_target``):
+        - PASS if abs((S_adiabat - S_target)/S_target) * 100 <= 1.0 %
+        - WARN at 1-5 %  (log warning, do not modify S_target)
+        - FAIL > 5 % raises RuntimeError (genuine divergence)
+
+    The cross-check is a no-op for configs that cannot supply a PALEOS EOS
+    file (no Zalmoxis installed, dummy structure, non-PALEOS mantle EOS).
+    It intentionally never swallows ``AttributeError``/``TypeError`` so that
+    stale solver APIs fail loudly.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration.
+    S_target : float
+        Entropy returned by the primary inversion path [J/kg/K].
+    tsurf : float
+        Surface temperature that was inverted to obtain ``S_target`` [K].
+    source : str
+        Name of the calling path (for log context).
+
+    Raises
+    ------
+    RuntimeError
+        If the cross-check FAILs (> 5 % discrepancy at the surface node).
+    """
+    try:
+        from zalmoxis.eos_export import compute_entropy_adiabat
+
+        from proteus.interior_struct.zalmoxis import (
+            load_zalmoxis_material_dictionaries,
+            load_zalmoxis_solidus_liquidus_functions,
+        )
+    except (ImportError, ModuleNotFoundError) as e:
+        log.debug('Entropy IC cross-check skipped: zalmoxis unavailable (%s)', e)
+        return
+
+    zalmoxis_cfg = getattr(config.interior_struct, 'zalmoxis', None)
+    if zalmoxis_cfg is None:
+        log.debug('Entropy IC cross-check skipped: no Zalmoxis config')
+        return
+
+    try:
+        mat_dicts = load_zalmoxis_material_dictionaries()
+        eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
+        paleos_eos_file = eos_entry.get('eos_file', '')
+        if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
+            log.debug(
+                'Entropy IC cross-check skipped: PALEOS file not found (%s)',
+                paleos_eos_file,
+            )
+            return
+
+        melt_funcs = load_zalmoxis_solidus_liquidus_functions(zalmoxis_cfg.mantle_eos, config)
+        sol_func = liq_func = None
+        if melt_funcs is not None:
+            sol_func, liq_func = melt_funcs
+
+        twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
+        solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
+        liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
+        solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
+        liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+
+        result = compute_entropy_adiabat(
+            eos_file=paleos_eos_file,
+            T_surface=tsurf,
+            P_surface=1e5,
+            P_cmb=135e9,
+            n_points=500,
+            solidus_func=sol_func,
+            liquidus_func=liq_func,
+            solid_eos_file=solid_eos,
+            liquid_eos_file=liquid_eos,
+        )
+    except (FileNotFoundError, KeyError, ValueError) as e:
+        log.warning('Entropy IC cross-check skipped (expected error: %s)', e)
+        return
+
+    S_adiabat = float(result['S_target'])
+    if S_target == 0.0:
+        log.warning('Entropy IC cross-check skipped: S_target is zero')
+        return
+
+    rel_diff = abs(S_adiabat - S_target) / abs(S_target) * 100.0
+
+    WARN_PCT = 1.0
+    FAIL_PCT = 5.0
+    if rel_diff <= WARN_PCT:
+        verdict = 'PASS'
+    elif rel_diff <= FAIL_PCT:
+        verdict = 'WARN'
+    else:
+        verdict = 'FAIL'
+
+    log.info(
+        'Entropy IC cross-check (%s): S_inversion=%.1f J/kg/K vs '
+        'S_adiabat=%.1f J/kg/K, diff=%.3f%%, verdict=%s',
+        source,
+        S_target,
+        S_adiabat,
+        rel_diff,
+        verdict,
+    )
+
+    if verdict == 'FAIL':
+        raise RuntimeError(
+            f'Entropy IC cross-check FAIL: S_inversion={S_target:.1f} '
+            f'vs S_adiabat={S_adiabat:.1f} ({rel_diff:.2f}% > {FAIL_PCT}%). '
+            f'Primary inversion path disagrees with PALEOS adiabat by more '
+            f'than the allowed tolerance. Investigate before running.'
+        )
+
+
 def compute_initial_entropy(
     config: Config,
     hf_row: dict | None = None,
@@ -116,8 +247,13 @@ def compute_initial_entropy(
             S_target = eos.invert_temperature(1e5, tsurf)
             log.info(
                 'Initial entropy from P-S inversion: tsurf=%.0f K -> S=%.1f J/kg/K',
-                tsurf, S_target,
+                tsurf,
+                S_target,
             )
+            # Cross-check against independent PALEOS adiabat. Raises
+            # RuntimeError on FAIL (> 5 % disagreement), otherwise logs
+            # the verdict. No-op when Zalmoxis/PALEOS are unavailable.
+            _verify_initial_entropy(config, S_target, tsurf, source='spider_eos_dir')
             return S_target
         except Exception as e:
             log.warning('P-S inversion failed in common.py: %s', e)

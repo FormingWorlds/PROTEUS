@@ -94,7 +94,12 @@ class AragogRunner:
             # Set entropy IC from Zalmoxis T(r) profile via PALEOS inversion
             AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
             # Verify and correct IC if table resolution causes > 1% T mismatch
-            AragogRunner._verify_entropy_ic(config, interior_o, dirs['output'])
+            AragogRunner._verify_entropy_ic(
+                config,
+                interior_o,
+                dirs['output'],
+                hf_row=hf_row,
+            )
         else:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
@@ -608,9 +613,11 @@ class AragogRunner:
             # Fallback: try the old compute_entropy_adiabat from Zalmoxis
             # (uses P-T tables), then fall back to uniform S=3200.
             import traceback as _tb
+
             logger.warning(
                 'P-S inversion failed (%s). Traceback:\n%s\nTrying P-T fallback.',
-                e, _tb.format_exc(),
+                e,
+                _tb.format_exc(),
             )
             try:
                 from zalmoxis.eos_export import compute_entropy_adiabat
@@ -621,9 +628,7 @@ class AragogRunner:
                 )
 
                 mat_dicts = load_zalmoxis_material_dictionaries()
-                eos_entry = mat_dicts.get(
-                    config.interior_struct.zalmoxis.mantle_eos, {}
-                )
+                eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
                 paleos_eos_file = eos_entry.get('eos_file', '')
                 melt_funcs = load_zalmoxis_solidus_liquidus_functions(
                     config.interior_struct.zalmoxis.mantle_eos, config
@@ -659,27 +664,49 @@ class AragogRunner:
                 )
             except Exception as e2:
                 logger.warning(
-                    'Could not compute entropy IC (%s). '
-                    'Using uniform S=3200 J/kg/K.',
+                    'Could not compute entropy IC (%s). Using uniform S=3200 J/kg/K.',
                     e2,
                 )
                 N = len(P_stag)
                 solver.set_initial_entropy(np.full(N, 3200.0))
 
     @staticmethod
-    def _verify_entropy_ic(config: Config, interior_o: Interior_t, outdir: str):
-        """Verify Aragog's IC against an independent PALEOS entropy inversion.
+    def _verify_entropy_ic(
+        config: Config,
+        interior_o: Interior_t,
+        outdir: str,
+        hf_row: dict | None = None,
+    ):
+        """Verify Aragog's IC against an independent PALEOS entropy adiabat.
 
-        When using PALEOS EOS with adiabatic IC, compute T(P) from PALEOS
-        entropy inversion and compare against Aragog's initialized T profile.
-        Logs a warning if the two disagree by more than 1%.
+        After ``_set_entropy_ic`` has written the entropy profile into the
+        solver, this function independently computes a PALEOS adiabat via
+        ``zalmoxis.eos_export.compute_entropy_adiabat`` and compares its T(P)
+        against the T(P) derived from Aragog's initialized entropy via the
+        P-S EOS tables. A mismatch > 1% triggers an override: the entropy
+        profile is replaced with values inverted from the adiabat's T profile.
+        A mismatch > 5% is raised as a ``RuntimeError`` (true code-path drift).
+
+        Notes
+        -----
+        History: this function was dead code between commits 63df1b1d
+        (when it was introduced) and the fix that references ``solver._S0``
+        / ``solver._P_stag_flat``. The original implementation referenced
+        ``solver.evaluator.initial_condition.temperature``, an attribute
+        of the old T-based Aragog solver that does not exist on the
+        lightweight ``_EntropyEvaluator`` from the entropy rewrite. The
+        resulting ``AttributeError`` was silently swallowed by a broad
+        ``except Exception``. Every run since 63df1b1d logged
+        "Entropy IC verification failed: '_EntropyEvaluator' object has
+        no attribute 'initial_condition'" as a warning and proceeded
+        without any cross-check.
 
         Parameters
         ----------
         config : Config
             PROTEUS configuration.
         interior_o : Interior_t
-            Interior object with initialized Aragog solver.
+            Interior object with initialized EntropySolver.
         outdir : str
             Output directory for diagnostic files.
         """
@@ -687,8 +714,17 @@ class AragogRunner:
             config.interior_struct.module == 'zalmoxis'
             and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
         ):
+            logger.debug(
+                'Entropy IC cross-check skipped: not zalmoxis+PALEOS '
+                "(interior_struct.module='%s')",
+                config.interior_struct.module,
+            )
             return
 
+        solver = interior_o.aragog_solver
+
+        # Catch expected failures only. AttributeError and TypeError must
+        # propagate so that future API drift fails loudly in tests.
         try:
             from zalmoxis.eos_export import compute_entropy_adiabat
 
@@ -701,6 +737,10 @@ class AragogRunner:
             eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
             paleos_eos_file = eos_entry.get('eos_file', '')
             if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
+                logger.debug(
+                    'Entropy IC cross-check skipped: PALEOS file not found (%s)',
+                    paleos_eos_file,
+                )
                 return
 
             melt_funcs = load_zalmoxis_solidus_liquidus_functions(
@@ -710,30 +750,55 @@ class AragogRunner:
             if melt_funcs is not None:
                 sol_func, liq_func = melt_funcs
 
-            # Check for 2-phase tables
+            # Prefer 2-phase tables (clean phase-specific entropy at melting curve)
             twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
             solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
             liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
             solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
             liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
-            # Compute PROTEUS-side entropy-inverted profile
-            T_surf = config.planet.tsurf_init
-            solver = interior_o.aragog_solver
-            # Get Aragog's basic node pressures and temperatures
-            P_basic = solver.evaluator.mesh.basic_pressure[:, -1]
-            T_stag_aragog = solver.evaluator.initial_condition.temperature
+            # ---- Current Aragog IC (from the entropy profile just set) ----
+            #
+            # The EntropySolver stores:
+            #   solver._S0           : staggered entropy profile [J/kg/K]
+            #   solver._P_stag_flat  : staggered pressures [Pa]
+            #   solver.entropy_eos   : EntropyEOS with temperature_scalar(P, S)
+            #
+            # Derive T(P) on Aragog's staggered mesh by looking up the EOS.
+            P_stag = np.asarray(solver._P_stag_flat, dtype=float)
+            S_stag = np.asarray(solver._S0, dtype=float)
+            if P_stag.shape != S_stag.shape:
+                raise RuntimeError(
+                    f'Entropy IC shape mismatch: P_stag={P_stag.shape}, S_stag={S_stag.shape}'
+                )
+            T_stag_aragog = np.array(
+                [
+                    float(solver.entropy_eos.temperature_scalar(float(p), float(s)))
+                    for p, s in zip(P_stag, S_stag)
+                ]
+            )
 
-            # Use 1 bar for surface pressure (Aragog mesh surface_pressure=0
-            # causes log10(0)=NaN in entropy inversion)
-            P_surf = max(float(P_basic[-1]), 1e5)
-            P_cmb = float(P_basic[0])
+            # ---- Independent PALEOS adiabat ----
+            # Use the same surface temperature that _set_entropy_ic used:
+            # config.planet.tsurf_init unless hf_row carries an accretion
+            # override (T_surface_initial from Zalmoxis White+Li mode).
+            T_surf = float(config.planet.tsurf_init)
+            if hf_row is not None:
+                T_surface_computed = hf_row.get('T_surface_initial', 0)
+                if T_surface_computed and T_surface_computed > 0:
+                    T_surf = float(T_surface_computed)
+
+            # Surface pressure: use 1 bar (same as _set_entropy_ic and
+            # common.compute_initial_entropy) to keep the cross-check
+            # comparing apples to apples.
+            P_surf_adiabat = 1e5
+            P_cmb_adiabat = float(P_stag[0])
 
             result = compute_entropy_adiabat(
                 eos_file=paleos_eos_file,
                 T_surface=T_surf,
-                P_surface=P_surf,
-                P_cmb=P_cmb,
+                P_surface=P_surf_adiabat,
+                P_cmb=P_cmb_adiabat,
                 n_points=500,
                 solidus_func=sol_func,
                 liquidus_func=liq_func,
@@ -741,63 +806,86 @@ class AragogRunner:
                 liquid_eos_file=liquid_eos,
             )
 
-            # Interpolate PROTEUS profile onto Aragog's staggered mesh
+            # Interpolate the independent adiabat onto Aragog's staggered mesh
             from scipy.interpolate import interp1d
 
-            P_stag = solver.evaluator.mesh.staggered_pressure[:, -1]
-
-            T_proteus_interp = interp1d(
-                result['P'], result['T'], bounds_error=False, fill_value='extrapolate'
+            T_adiabat_interp = interp1d(
+                result['P'],
+                result['T'],
+                bounds_error=False,
+                fill_value='extrapolate',
             )(P_stag)
 
-            # Compare (with length check)
-            if len(T_stag_aragog) != len(T_proteus_interp):
-                logger.warning(
-                    'Entropy IC verification skipped: IC temperature array length (%d) '
-                    'does not match staggered pressure array length (%d)',
-                    len(T_stag_aragog),
-                    len(T_proteus_interp),
-                )
-                return
-            T_diff = np.abs(T_stag_aragog - T_proteus_interp)
-            T_rel_diff = T_diff / T_stag_aragog * 100
-            max_diff = np.max(T_diff)
-            max_rel = np.max(T_rel_diff)
-            mean_rel = np.mean(T_rel_diff)
+            # ---- Compare ----
+            T_diff = np.abs(T_stag_aragog - T_adiabat_interp)
+            T_rel_diff = T_diff / np.maximum(T_stag_aragog, 1.0) * 100.0
+            max_diff = float(np.max(T_diff))
+            max_rel = float(np.max(T_rel_diff))
+            mean_rel = float(np.mean(T_rel_diff))
+
+            WARN_PCT = 1.0
+            FAIL_PCT = 5.0
+
+            if max_rel <= WARN_PCT:
+                verdict = 'PASS'
+            elif max_rel <= FAIL_PCT:
+                verdict = 'WARN'
+            else:
+                verdict = 'FAIL'
 
             logger.info(
-                'Entropy IC verification: Aragog vs PROTEUS T(P) '
-                'max_diff=%.1f K (%.2f%%), mean_rel=%.4f%%',
+                'Entropy IC cross-check (Aragog): max T diff = %.1f K (%.2f%%), '
+                'mean = %.3f%%, verdict = %s',
                 max_diff,
                 max_rel,
                 mean_rel,
+                verdict,
             )
 
-            if max_rel > 1.0:
-                logger.warning(
-                    'Entropy IC mismatch > 1%%: Aragog entropy tables too '
-                    'coarse. max_diff=%.1f K (%.2f%%). Overriding Aragog IC '
-                    'with high-resolution PALEOS entropy inversion.',
-                    max_diff,
-                    max_rel,
-                )
-                # Override Aragog's IC with the PROTEUS-computed profile.
-                solver.evaluator.initial_condition._temperature = T_proteus_interp
-
-            # Save diagnostic data
+            # Save diagnostic data on every call so post-mortem is possible
             diag_dir = Path(outdir) / 'data' / 'entropy_ic_verification'
             diag_dir.mkdir(parents=True, exist_ok=True)
             np.savez(
                 diag_dir / 'entropy_ic_comparison.npz',
                 P_staggered=P_stag,
+                S_aragog=S_stag,
                 T_aragog=T_stag_aragog,
-                T_proteus=T_proteus_interp,
+                T_adiabat=T_adiabat_interp,
                 T_diff=T_diff,
                 S_target=result['S_target'],
             )
 
-        except Exception as e:
-            logger.warning('Entropy IC verification failed: %s', e)
+            if verdict == 'WARN':
+                # Override Aragog's IC: convert the adiabat's T profile back
+                # to entropy via brentq inversion on the EOS, then reset.
+                logger.warning(
+                    'Entropy IC mismatch > %.1f%%: overriding with adiabat '
+                    '(max %.1f K / %.2f%%). Likely cause: coarse P-S tables.',
+                    WARN_PCT,
+                    max_diff,
+                    max_rel,
+                )
+                S_override = np.array(
+                    [
+                        float(solver.entropy_eos.invert_temperature(float(p), float(t)))
+                        for p, t in zip(P_stag, T_adiabat_interp)
+                    ]
+                )
+                solver.set_initial_entropy(S_override)
+
+            elif verdict == 'FAIL':
+                raise RuntimeError(
+                    f'Entropy IC cross-check FAIL: max T diff = '
+                    f'{max_diff:.1f} K ({max_rel:.2f}%). Aragog P-S tables '
+                    f'and PALEOS adiabat disagree by more than {FAIL_PCT}%. '
+                    f'This indicates a genuine code-path divergence, not a '
+                    f'table resolution issue. Investigate before running.'
+                )
+
+        except (FileNotFoundError, ImportError, ModuleNotFoundError, KeyError) as e:
+            # Expected failures: missing PALEOS files, missing Zalmoxis,
+            # missing config keys. Log and continue without the check.
+            logger.warning('Entropy IC cross-check skipped (expected error: %s)', e)
 
     @staticmethod
     def update_solver(dt: float, hf_row: dict, interior_o: Interior_t, output_dir: str = None):
