@@ -549,12 +549,29 @@ def GetHelpfileKeys():
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
+        'R_core',           # core radius [m]
+        'R_solvus',         # solvus radius for global_miscibility mode [m]
+        'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
+        'T_solvus',         # solvus temperature for global_miscibility mode [K]
+        'P_center',         # central pressure from Zalmoxis structure [Pa]
+        'core_density',     # core density from structure solver [kg m-3]
+        'core_heatcap',     # core heat capacity [J kg-1 K-1]
+        'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]
         'T_magma',          # global outgassing temperature [K]
+        'T_core',           # core temperature [K]
         'T_eqm',            # grey radiative equilibrium temperature [K]
         'T_skin',           # grey radiative skin temperature [K]
+        'T_surface_initial',  # self-consistent T_surf from accretion mode [K]
+        'T_surf_accr',      # surface temperature from accretion energy balance [K]
+        'T_cmb_initial',    # initial CMB temperature from White+Li thermal state [K]
+        'DeltaT_accretion',  # accretion-energy DeltaT contribution [K]
+        'DeltaT_adiabat',   # adiabatic DeltaT contribution [K]
+        'DeltaT_differentiation',  # core-mantle differentiation DeltaT contribution [K]
+        'U_grav_diff',      # gravitational binding energy (differentiated) [J]
+        'U_grav_undiff',    # gravitational binding energy (undifferentiated) [J]
 
         # Planet energy fluxes
         'F_int',            # flux from top of interior [W m-2]
@@ -676,10 +693,37 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     """
     log.debug('Extending helpfile with new row')
 
-    # validate keys
-    missing_keys = set(GetHelpfileKeys()) - set(new_row.keys())
-    if len(missing_keys) > 0:
-        raise Exception('There are mismatched keys in helpfile: %s' % missing_keys)
+    # Validate keys. We guard in both directions:
+    # - Missing keys (schema expects but new_row lacks) are a real bug (a
+    #   module forgot to set a value) and must raise.
+    # - Unknown keys (new_row has but schema doesn't) are silently dropped
+    #   by `columns=GetHelpfileKeys()` in the DataFrame construction, which
+    #   means resume would lose those values. We WARN here rather than raise
+    #   so existing hf_row private/transient fields (_structure_stale, etc.)
+    #   and string-valued fields (core_state_initial) don't break runs.
+    # Private (underscore-prefixed) keys are intentionally transient and
+    # are excluded from both checks.
+    schema = set(GetHelpfileKeys())
+    row_keys = {k for k in new_row.keys() if not k.startswith('_')}
+    # Known non-numeric / non-persistent keys that are written into hf_row
+    # but deliberately not tracked in the helpfile CSV schema.
+    _ALLOWED_NON_SCHEMA_KEYS = frozenset(
+        {
+            'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
+        }
+    )
+    missing_keys = schema - row_keys
+    unknown_keys = row_keys - schema - _ALLOWED_NON_SCHEMA_KEYS
+    if missing_keys:
+        raise Exception('Helpfile row is missing expected keys: %s' % missing_keys)
+    if unknown_keys:
+        log.warning(
+            'Helpfile row contains keys not declared in GetHelpfileKeys() '
+            '(they will be silently dropped from the CSV): %s. '
+            'Either add them to the schema or explicitly allowlist them in '
+            '_ALLOWED_NON_SCHEMA_KEYS.',
+            sorted(unknown_keys),
+        )
 
     # convert row to df
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
@@ -820,7 +864,9 @@ def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num
 
         # Interior profiles
         if not dummy_int:
-            int_data = read_interior_data(output_dir, config.interior_energetics.module, plot_times)
+            int_data = read_interior_data(
+                output_dir, config.interior_energetics.module, plot_times
+            )
             plot_interior(
                 output_dir,
                 plot_times,

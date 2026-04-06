@@ -544,6 +544,19 @@ def run_interior(
             # The interior state is stale by one coupling step, but the
             # atmosphere + outgassing still advance. The stale interior
             # pushes the planet past the stiff rheological transition.
+            #
+            # IMPORTANT: still advance interior_o.dt and _spider_cumulative_time
+            # so that main-loop bookkeeping stays consistent. Without this,
+            # the main loop at proteus.py:496 increments hf_row['Time'] by the
+            # previous successful dt (stale) while _spider_cumulative_time is
+            # frozen, leaving the two counters desynchronised by one dtswitch
+            # per fallback event. That in turn confuses the retry ladder on
+            # the next attempt.
+            from proteus.interior_energetics.timestep import next_step
+
+            dtswitch = next_step(config, dirs, hf_row, hf_all, 1.0)
+            interior_o._spider_cumulative_time += dtswitch
+            interior_o.dt = dtswitch
             return
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
@@ -645,6 +658,7 @@ def run_interior(
     # and is reliable.
     if config.interior_energetics.module == 'spider':
         from proteus.interior_energetics.timestep import next_step
+
         dtswitch = next_step(config, dirs, hf_row, hf_all, 1.0)
         interior_o._spider_cumulative_time += dtswitch
         interior_o.dt = dtswitch
@@ -819,8 +833,14 @@ def update_structure_from_interior(
     _saved_structure = {
         k: hf_row[k]
         for k in (
-            'R_int', 'M_int', 'M_core', 'M_mantle', 'P_surf',
-            'R_core', 'P_center', 'rho_avg',
+            'R_int',
+            'M_int',
+            'M_core',
+            'M_mantle',
+            'P_surf',
+            'R_core',
+            'P_center',
+            'rho_avg',
         )
         if k in hf_row
     }

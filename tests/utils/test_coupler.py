@@ -235,8 +235,32 @@ def test_extend_helpfile_validates_keys():
     # Create a row with missing keys
     row2 = {'Time': 1.0}  # Missing other keys
 
-    with pytest.raises(Exception, match='mismatched keys'):
+    with pytest.raises(Exception, match='missing expected keys'):
         ExtendHelpfile(hf, row2)
+
+
+@pytest.mark.unit
+def test_extend_helpfile_warns_on_unknown_keys(caplog):
+    """ExtendHelpfile should WARN (not raise) on unknown keys so the CSV
+    silently-drop-key bug is surfaced in logs. Private (underscore-prefixed)
+    keys are intentionally skipped. Explicitly-allowlisted non-schema keys
+    like ``core_state_initial`` are also skipped."""
+    import logging
+
+    row = ZeroHelpfileRow()
+    row['_structure_stale'] = True  # private transient key: must not warn
+    row['core_state_initial'] = 'liquid'  # allowlisted string key: must not warn
+    row['nonsense_future_key'] = 1.0  # genuine drift: must warn
+    hf = CreateHelpfileFromDict(ZeroHelpfileRow())
+
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.coupler'):
+        ExtendHelpfile(hf, row)
+
+    warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    joined = '\n'.join(r.message for r in warns)
+    assert 'nonsense_future_key' in joined, f'Expected unknown-key warning, got: {joined!r}'
+    assert '_structure_stale' not in joined, 'Private key leaked into warning'
+    assert 'core_state_initial' not in joined, 'Allowlisted key triggered warning'
 
 
 @pytest.mark.unit

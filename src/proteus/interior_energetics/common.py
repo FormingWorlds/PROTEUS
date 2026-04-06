@@ -240,6 +240,7 @@ def compute_initial_entropy(
     # This is the preferred path: it uses the exact same EOS tables
     # that SPIDER and Aragog use during time integration.
     if spider_eos_dir and os.path.isdir(spider_eos_dir):
+        S_target: float | None = None
         try:
             from aragog.eos.entropy import EntropyEOS
 
@@ -250,13 +251,21 @@ def compute_initial_entropy(
                 tsurf,
                 S_target,
             )
-            # Cross-check against independent PALEOS adiabat. Raises
-            # RuntimeError on FAIL (> 5 % disagreement), otherwise logs
-            # the verdict. No-op when Zalmoxis/PALEOS are unavailable.
+        except (ImportError, ValueError, FileNotFoundError) as e:
+            # Expected inversion failures: missing aragog module, out-of-range
+            # target temperature, or missing table files. Fall through to the
+            # Zalmoxis adiabat path below.
+            log.warning('P-S inversion failed in common.py: %s', e)
+            S_target = None
+
+        if S_target is not None:
+            # Cross-check against an independent PALEOS adiabat. Raises
+            # RuntimeError on FAIL (> 5% disagreement) — that is a genuine
+            # code-path divergence and MUST propagate up the stack. Do
+            # NOT catch this inside the inversion try block, or FAIL
+            # verdicts get silently demoted to warnings.
             _verify_initial_entropy(config, S_target, tsurf, source='spider_eos_dir')
             return S_target
-        except Exception as e:
-            log.warning('P-S inversion failed in common.py: %s', e)
 
     # Import errors (broken Zalmoxis install) should propagate, not fall back
     # silently. Only catch expected failures (missing config, missing tables).
