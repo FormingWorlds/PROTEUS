@@ -53,14 +53,25 @@ def main():
     cases = []
 
     # 4 all-dummy parity cases (WolfBower2018 EOS)
+    # Hot case uses 3000 K, not 3500 K: at 3500 K the near-fully-molten
+    # interior plus pure blackbody BC (F_atm = sigma*T^4 = 8.5e6 W/m^2) is
+    # too stiff for SPIDER's CVode. Retries do reduce dt correctly, but the
+    # required top-cell cooling rate exceeds what MLT can propagate from an
+    # isentropic IC, so the solver eventually aborts. 3000 K stays within
+    # the stable envelope.
     parity_base = base_dir / 'base_parity_isolated.toml'
     for interior in ['spider', 'aragog']:
-        for tsurf in [2500, 3500]:
+        for tsurf in [2500, 3000]:
             name = f'dummy_{interior}_Tsurf{tsurf}'
-            _, n = generate_config(parity_base, output_dir, name, {
-                'interior_energetics.module': interior,
-                'planet.tsurf_init': tsurf,
-            })
+            _, n = generate_config(
+                parity_base,
+                output_dir,
+                name,
+                {
+                    'interior_energetics.module': interior,
+                    'planet.tsurf_init': tsurf,
+                },
+            )
             cases.append({'config': str(Path(output_dir) / 'configs' / f'{n}.toml'), 'name': n})
 
     # 4 Earth-like dry cases (PALEOS EOS, AGNI atmosphere)
@@ -68,10 +79,15 @@ def main():
     for interior in ['spider', 'aragog']:
         for outgas in ['calliope', 'atmodeller']:
             name = f'earthlike_{interior}_{outgas}_dry'
-            _, n = generate_config(earthlike_base, output_dir, name, {
-                'interior_energetics.module': interior,
-                'outgas.module': outgas,
-            })
+            _, n = generate_config(
+                earthlike_base,
+                output_dir,
+                name,
+                {
+                    'interior_energetics.module': interior,
+                    'outgas.module': outgas,
+                },
+            )
             cases.append({'config': str(Path(output_dir) / 'configs' / f'{n}.toml'), 'name': n})
 
     print(f'Generated {len(cases)} configs:')

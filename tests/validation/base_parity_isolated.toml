@@ -13,9 +13,9 @@ config_version = "3.0"
         write_mod = 1
 
     [params.dt]
-        minimum  = 1e2
+        minimum  = 1.0                       # Allow tiny retries for stiff blackbody BCs
         maximum  = 1e7
-        initial  = 1e3
+        initial  = 10.0                      # Gentle warm-up; adaptive speed-up handles growth
         starspec = 1e9
         starinst = 1e2
         method   = "adaptive"
@@ -96,10 +96,18 @@ config_version = "3.0"
 [outgas]
     module       = "dummy"
 
-# Atmosphere: dummy (grey-body, sigma*T^4)
+# Atmosphere: dummy, pure blackbody BC (Option C for parity cases).
+# surf_state="fixed" pins T_surf=T_magma (no conductive lid drop).
+# dummy.gamma=0 makes the atmosphere transparent, so F_atm = sigma*T_magma^4.
+# This makes the atmospheric BC self-consistent with SPIDER's isentropic
+# initial condition (removes the stiff CBL transient that crashes CVode).
 [atmos_clim]
-    module   = "dummy"
-    rayleigh = false
+    module     = "dummy"
+    rayleigh   = false
+    surf_state = "fixed"
+
+    [atmos_clim.dummy]
+        gamma = 0.0
 
 # Escape: disabled
 [escape]
