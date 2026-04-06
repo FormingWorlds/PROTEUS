@@ -882,9 +882,24 @@ class AragogRunner:
                     f'table resolution issue. Investigate before running.'
                 )
 
-        except (FileNotFoundError, ImportError, ModuleNotFoundError, KeyError) as e:
-            # Expected failures: missing PALEOS files, missing Zalmoxis,
-            # missing config keys. Log and continue without the check.
+        except (
+            FileNotFoundError,
+            ImportError,
+            ModuleNotFoundError,
+            KeyError,
+            ValueError,
+        ) as e:
+            # Expected failures:
+            # - FileNotFoundError / ImportError: missing PALEOS files or Zalmoxis
+            #   not installed
+            # - KeyError: missing config keys
+            # - ValueError: scipy brentq inside compute_entropy_adiabat raises
+            #   this when the adiabat's internal root-find lands on a NaN, which
+            #   happens when the integrated T(P) exceeds the PALEOS table range
+            #   (T > ~4900 K at deep pressures for tsurf_init >= ~3500 K). The
+            #   SPIDER twin in common.py has the same guard; without this we
+            #   crash hot-initial-condition runs (e.g. earthlike_*_dry at
+            #   tsurf_init = 4000 K, which reaches T ~ 8000 K at the CMB).
             logger.warning('Entropy IC cross-check skipped (expected error: %s)', e)
 
     @staticmethod
