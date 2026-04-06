@@ -109,7 +109,7 @@ def _verify_initial_entropy(
         If the cross-check FAILs (> 5 % discrepancy at the surface node).
     """
     try:
-        from zalmoxis.eos_export import compute_entropy_adiabat
+        from zalmoxis.eos_export import compute_surface_entropy
 
         from proteus.interior_struct.zalmoxis import (
             load_zalmoxis_material_dictionaries,
@@ -146,12 +146,19 @@ def _verify_initial_entropy(
         solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
         liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
-        result = compute_entropy_adiabat(
+        # Surface-only lookup. We do NOT integrate the full adiabat for the
+        # cross-check because:
+        # (a) the cross-check only needs scalar S(P_surface, T_surface) to
+        #     compare against the primary EntropyEOS.invert_temperature call
+        # (b) the full-adiabat integrator's bracket expansion can overshoot
+        #     into the PALEOS non-converged region (MgSiO3 vapour regime at
+        #     low P / high T, ~100% NaN there) and crash with a ValueError
+        #     from brentq. This is exactly the bug that made the cross-check
+        #     effectively dead on production runs before this fix.
+        result = compute_surface_entropy(
             eos_file=paleos_eos_file,
             T_surface=tsurf,
             P_surface=1e5,
-            P_cmb=135e9,
-            n_points=500,
             solidus_func=sol_func,
             liquidus_func=liq_func,
             solid_eos_file=solid_eos,

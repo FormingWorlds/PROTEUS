@@ -7,10 +7,14 @@ Covers:
   (Aragog path)
 
 These are orthogonal guards that compare the result of the primary P-S
-``invert_temperature`` path against an independent PALEOS adiabat computed by
-``zalmoxis.eos_export.compute_entropy_adiabat``. The checks exist because
-past API drift in the Aragog entropy rewrite left the Aragog guard as dead
-code for several weeks, silently swallowed by a broad ``except Exception``.
+``invert_temperature`` path against an independent PALEOS entropy lookup.
+The SPIDER path uses ``zalmoxis.eos_export.compute_surface_entropy`` for a
+surface-only scalar comparison (safe against PALEOS non-converged cells).
+The Aragog path uses ``zalmoxis.eos_export.compute_entropy_adiabat`` for a
+full T(P) profile comparison (with defensive NaN handling in the bracket
+expansion). The checks exist because past API drift in the Aragog entropy
+rewrite left the Aragog guard as dead code for several weeks, silently
+swallowed by a broad ``except Exception``.
 These regression tests ensure that:
 
 1. A consistent inversion passes with a PASS log line.
@@ -98,40 +102,33 @@ def test_spider_verify_passes_on_consistent_inversion(caplog):
     # Adiabat 0.3 % off (within PASS window of 1 %)
     S_adiabat = S_target * 1.003
 
-    with (
-        pytest.LogCapture()
-        if False
-        else caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common')
-    ):
-        with patch.multiple(
-            'os.path',
-            isfile=lambda *_: True,
+    with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
+        with (
+            patch(
+                'zalmoxis.eos_export.compute_surface_entropy',
+                return_value={
+                    'S_target': S_adiabat,
+                    'P_surface': 1e5,
+                    'T_surface': 2500.0,
+                },
+                create=True,
+            ),
+            patch(
+                'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+                return_value={
+                    'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
+                    'PALEOS-2phase:MgSiO3': {},
+                },
+            ),
+            patch(
+                'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+                return_value=None,
+            ),
+            patch('os.path.isfile', return_value=True),
         ):
-            with (
-                patch(
-                    'zalmoxis.eos_export.compute_entropy_adiabat',
-                    return_value={
-                        'S_target': S_adiabat,
-                        'P': np.array([1e5]),
-                        'T': np.array([2500.0]),
-                    },
-                    create=True,
-                ),
-                patch(
-                    'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-                    return_value={
-                        'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                        'PALEOS-2phase:MgSiO3': {},
-                    },
-                ),
-                patch(
-                    'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-                    return_value=None,
-                ),
-            ):
-                _verify_initial_entropy(
-                    config, S_target=S_target, tsurf=2873.0, source='unit-test'
-                )
+            _verify_initial_entropy(
+                config, S_target=S_target, tsurf=2873.0, source='unit-test'
+            )
 
     joined = '\n'.join(r.message for r in caplog.records)
     assert 'verdict=PASS' in joined, f'Expected PASS verdict in log, got: {joined!r}'
@@ -154,11 +151,11 @@ def test_spider_verify_warns_on_moderate_mismatch(caplog):
     with caplog.at_level(logging.INFO, logger='fwl.proteus.interior_energetics.common'):
         with (
             patch(
-                'zalmoxis.eos_export.compute_entropy_adiabat',
+                'zalmoxis.eos_export.compute_surface_entropy',
                 return_value={
                     'S_target': S_adiabat,
-                    'P': np.array([1e5]),
-                    'T': np.array([3500.0]),
+                    'P_surface': 1e5,
+                    'T_surface': 3500.0,
                 },
                 create=True,
             ),
@@ -196,8 +193,8 @@ def test_spider_verify_raises_on_large_mismatch():
 
     with (
         patch(
-            'zalmoxis.eos_export.compute_entropy_adiabat',
-            return_value={'S_target': S_adiabat, 'P': np.array([1e5]), 'T': np.array([2500.0])},
+            'zalmoxis.eos_export.compute_surface_entropy',
+            return_value={'S_target': S_adiabat, 'P_surface': 1e5, 'T_surface': 2500.0},
             create=True,
         ),
         patch(
@@ -284,8 +281,8 @@ def test_spider_verify_zero_s_target_is_handled():
 
     with (
         patch(
-            'zalmoxis.eos_export.compute_entropy_adiabat',
-            return_value={'S_target': 1234.5, 'P': np.array([1e5]), 'T': np.array([2500.0])},
+            'zalmoxis.eos_export.compute_surface_entropy',
+            return_value={'S_target': 1234.5, 'P_surface': 1e5, 'T_surface': 2500.0},
             create=True,
         ),
         patch(

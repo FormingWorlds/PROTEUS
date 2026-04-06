@@ -786,7 +786,9 @@ def _try_spider(
 
         spider_eos_dir = os.path.join(dirs['output/data'], 'spider_eos')
         ini_entropy = compute_initial_entropy(
-            config, hf_row, spider_eos_dir=spider_eos_dir,
+            config,
+            hf_row,
+            spider_eos_dir=spider_eos_dir,
         )
         call_sequence.extend(
             [
@@ -956,9 +958,20 @@ def _try_spider(
         ['-cp_core', '%.6e' % get_core_heatcap(config, hf_row)]
     )  # heat capacity
 
-    # surface boundary condition
-    # [4] heat flux (prescribe value using surface_bc_value)
-    call_sequence.extend(['-SURFACE_BC', '4'])
+    # Surface boundary condition
+    # - 'flux' (default): SURFACE_BC=4, prescribed heat flux from
+    #   hf_row['F_atm'] (consumed unchanged for the full coupling step).
+    # - 'grey_body': SURFACE_BC=1, SPIDER computes Fatm internally per
+    #   CVode substep as emissivity0 * sigma * (T_surf^4 - T_eqm^4) using
+    #   the current top-cell T. emissivity0 is pinned to 1.0 to match
+    #   Aragog's hardcoded emissivity, so the two solvers follow the
+    #   identical physical law in parity runs.
+    _bc_mode = config.interior_energetics.surface_bc_mode
+    if _bc_mode == 'grey_body':
+        call_sequence.extend(['-SURFACE_BC', '1'])
+        call_sequence.extend(['-emissivity0', '1.0'])
+    else:
+        call_sequence.extend(['-SURFACE_BC', '4'])
 
     # Ultra-thin thermal boundary layer (Bower et al. 2018, Eq. 18).
     # Shared with Aragog via config.interior_energetics.param_utbl.
@@ -1117,7 +1130,8 @@ def RunSPIDER(
                 atol_sf *= 5.0
                 log.warning(
                     'Retrying with step_sf=%.2e, atol_sf=%.2e',
-                    step_sf, atol_sf,
+                    step_sf,
+                    atol_sf,
                 )
 
     # check status

@@ -134,10 +134,18 @@ class AragogRunner:
             rtol=config.interior_energetics.num_tolerance,
         )
 
+        # Surface boundary condition mode (matches SPIDER wrapper):
+        # - 'flux' (default): outer_bc=4, consume hf_row['F_atm'] unchanged.
+        # - 'grey_body': outer_bc=1, Aragog recomputes
+        #   emissivity * sigma * (T_surf^4 - T_eqm^4) per CVode substep using
+        #   the current top-cell T. emissivity=1 matches SPIDER's -emissivity0
+        #   setting for parity runs, so both solvers follow the identical
+        #   physical law.
+        _aragog_outer_bc = 1 if config.interior_energetics.surface_bc_mode == 'grey_body' else 4
         boundary_conditions = _BoundaryConditionsParameters(
-            # 4 = prescribed heat flux (PROTEUS coupling mode)
-            # 1 = native grey-body (standalone mode, sigma*T^4)
-            outer_boundary_condition=4,
+            # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
+            # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
+            outer_boundary_condition=_aragog_outer_bc,
             # first guess surface heat flux [W/m2] (only used if outer_bc=4)
             outer_boundary_value=hf_row['F_atm'],
             # 1 = core cooling model
@@ -620,7 +628,7 @@ class AragogRunner:
                 _tb.format_exc(),
             )
             try:
-                from zalmoxis.eos_export import compute_entropy_adiabat
+                from zalmoxis.eos_export import compute_surface_entropy
 
                 from proteus.interior_struct.zalmoxis import (
                     load_zalmoxis_material_dictionaries,
@@ -643,13 +651,15 @@ class AragogRunner:
                 solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
                 liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
-                P_cmb = max(float(P_stag[0]), 1e9)
-                result = compute_entropy_adiabat(
+                # Only need scalar S(P_surface, T_surface) for the uniform
+                # isentropic IC. Use the surface-only helper, not
+                # compute_entropy_adiabat, because the latter's bracket
+                # expansion can overshoot into PALEOS's NaN region at
+                # high T (see eos_export.compute_surface_entropy docstring).
+                result = compute_surface_entropy(
                     eos_file=paleos_eos_file,
                     T_surface=tsurf_init,
                     P_surface=P_surf,
-                    P_cmb=P_cmb,
-                    n_points=500,
                     solidus_func=sol_func,
                     liquidus_func=liq_func,
                     solid_eos_file=solid_eos,

@@ -213,3 +213,26 @@ class Interior:
     # Applies to both SPIDER and Aragog. Default off.
     param_utbl: bool = field(default=False)
     param_utbl_const: float = field(default=1e-7, validator=gt(0))
+
+    # Surface boundary condition mode for SPIDER/Aragog.
+    #
+    # - 'flux' (default): prescribed heat flux from hf_row['F_atm']. SPIDER
+    #   uses -SURFACE_BC 4, Aragog uses outer_boundary_condition=4. The Python
+    #   atmosphere module (dummy, AGNI, JANUS) is responsible for computing
+    #   F_atm, which the interior consumes unchanged for the full duration of
+    #   the coupling step.
+    #
+    # - 'grey_body': native grey-body BC computed inside the interior solver
+    #   per CVode substep from the current top-cell T. SPIDER uses -SURFACE_BC 1
+    #   -emissivity0 1.0, Aragog uses outer_boundary_condition=1 with
+    #   emissivity=1. Both compute F = sigma * (T_surf^4 - T_eqm^4) using the
+    #   T_eqm value in hf_row['T_eqm']. This is the formulation used by
+    #   SPIDER-Aragog parity tests: both solvers follow the identical physical
+    #   law so their cooling trajectories can be compared directly. The
+    #   Python-side atmosphere module still runs to populate diagnostic
+    #   helpfile fields (F_olr, F_sct, R_obs, ...), but its F_atm output is
+    #   not used by the interior.
+    surface_bc_mode: str = field(
+        default='flux',
+        validator=in_(('flux', 'grey_body')),
+    )

@@ -83,6 +83,12 @@ config_version = "3.0"
     eos_dir       = "1TPa-dK09-elec-free"
 
 # Interior energetics: PLACEHOLDER (spider or aragog)
+# surface_bc_mode = "grey_body": SPIDER and Aragog both compute their BC
+# natively as sigma*(T_surf^4 - T_eqm^4) with emissivity=1, per CVode
+# substep. This self-regulates the cooling rate and avoids the
+# rheological-front stiffness that kills constant-F BC=4 runs at
+# Phi~0.5. Both solvers use the identical physical law, so the parity
+# comparison is meaningful.
 [interior_energetics]
     module          = "spider"           # PLACEHOLDER
     num_levels      = 80
@@ -91,16 +97,20 @@ config_version = "3.0"
     grain_size      = 0.1
     rfront_loc      = 0.4
     rfront_wid      = 0.15
+    surface_bc_mode = "grey_body"
 
 # Outgassing: dummy
 [outgas]
     module       = "dummy"
 
-# Atmosphere: dummy, pure blackbody BC (Option C for parity cases).
-# surf_state="fixed" pins T_surf=T_magma (no conductive lid drop).
-# dummy.gamma=0 makes the atmosphere transparent, so F_atm = sigma*T_magma^4.
-# This makes the atmospheric BC self-consistent with SPIDER's isentropic
-# initial condition (removes the stiff CBL transient that crashes CVode).
+# Atmosphere: dummy. NOTE: with interior_energetics.surface_bc_mode =
+# "grey_body" above, the interior solver computes its own surface BC
+# from T_eqm and its current top-cell T, so the dummy atmosphere's
+# F_atm output is a DIAGNOSTIC ONLY (reported in the helpfile for
+# reference, not consumed by SPIDER/Aragog). surf_state="fixed" and
+# dummy.gamma=0 keep the diagnostic formula close to the interior's
+# grey-body so the helpfile F_atm is interpretable as a rough
+# comparison.
 [atmos_clim]
     module     = "dummy"
     rayleigh   = false
