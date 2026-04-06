@@ -229,11 +229,20 @@ def _get_target_surface_pressure(config: Config, hf_row: dict) -> float:
     return max(101325.0, min(p_init_pa, 1e9))
 
 
-def load_zalmoxis_configuration(config: Config, hf_row: dict):
+def load_zalmoxis_configuration(
+    config: Config,
+    hf_row: dict,
+    temperature_mode_override: str | None = None,
+):
     """Loads the model configuration for Zalmoxis and calculates the dry mass of the planet based on the total mass and the mass of volatiles.
     Args:
         config (Config): The configuration object containing the Zalmoxis parameters.
         hf_row (dict): A dictionary containing the mass of volatiles and other parameters.
+        temperature_mode_override: Optional local override for
+            ``config.planet.temperature_mode``. Lets callers force a different
+            structure-solve mode (e.g. 'adiabatic' for SPIDER coupling with
+            T-dependent mantle EOS) without mutating the shared Config object.
+            When None, falls back to ``config.planet.temperature_mode``.
     Returns:
         dict: A dictionary containing the Zalmoxis configuration parameters.
     """
@@ -290,11 +299,14 @@ def load_zalmoxis_configuration(config: Config, hf_row: dict):
         'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
         # For the structure solve, 'accretion' mode uses 'adiabatic' internally
-        # (White+Li computes T after the structure converges)
+        # (White+Li computes T after the structure converges).
+        # temperature_mode_override lets SPIDER coupling force adiabatic
+        # without mutating the shared Config object (see proteus rules
+        # §"Config mutability"). When absent, use the Config value.
         'temperature_mode': (
             'adiabatic'
-            if config.planet.temperature_mode == 'accretion'
-            else config.planet.temperature_mode
+            if (temperature_mode_override or config.planet.temperature_mode) == 'accretion'
+            else (temperature_mode_override or config.planet.temperature_mode)
         ),
         'surface_temperature': config.planet.tsurf_init,
         'center_temperature': config.planet.tcenter_init,
@@ -676,7 +688,9 @@ def generate_spider_tables(config: Config, outdir: str):
             solidus_path = os.path.join(spider_eos_dir, 'solidus.dat')
             liquidus_path = os.path.join(spider_eos_dir, 'liquidus.dat')
             if os.path.isfile(solidus_path) and os.path.isfile(liquidus_path):
-                logger.info('Reusing cached SPIDER P-S tables (P_max=%.2e, %dx%d)', P_max, nP, nS)
+                logger.info(
+                    'Reusing cached SPIDER P-S tables (P_max=%.2e, %dx%d)', P_max, nP, nS
+                )
                 return {
                     'eos_dir': spider_eos_dir,
                     'solidus_path': solidus_path,
@@ -730,6 +744,7 @@ def zalmoxis_solver(
     hf_row: dict,
     num_spider_nodes: int = 0,
     temperature_function=None,
+    temperature_mode_override: str | None = None,
 ):
     """Run the Zalmoxis solver to compute the interior structure of a planet.
 
@@ -748,6 +763,13 @@ def zalmoxis_solver(
         External temperature function ``f(r, P) -> T`` in (m, Pa, K).
         When provided, bypasses Zalmoxis's internal temperature mode
         dispatch. Used to pass SPIDER/Aragog T(r) profiles in memory.
+    temperature_mode_override : str or None, optional
+        Local override for ``config.planet.temperature_mode``. Lets callers
+        force a different structure-solve mode without mutating the shared
+        Config object (see proteus rules §"Config mutability"). When None,
+        the Config value is used. Currently used by
+        ``determine_interior_radius_with_zalmoxis`` to force ``adiabatic``
+        for SPIDER coupling with a T-dependent mantle EOS.
 
     Returns
     -------
@@ -758,7 +780,9 @@ def zalmoxis_solver(
     """
 
     # Load the Zalmoxis configuration parameters
-    config_params = load_zalmoxis_configuration(config, hf_row)
+    config_params = load_zalmoxis_configuration(
+        config, hf_row, temperature_mode_override=temperature_mode_override
+    )
 
     # Build volatile profile from dissolved volatile masses (if available).
     # This enables phi(r)-weighted volatile blending inside the Zalmoxis ODE.
@@ -878,7 +902,8 @@ def zalmoxis_solver(
         logger.warning(
             'Zalmoxis mass convergence failed; retrying with relaxed tolerance '
             '(tol_outer=%.1e, max_iter=%d)',
-            retry_tol, retry_iter,
+            retry_tol,
+            retry_iter,
         )
         config_params_retry = dict(config_params)
         config_params_retry['tolerance_outer'] = retry_tol
@@ -964,8 +989,12 @@ def zalmoxis_solver(
         f'Overall Convergence Status: {converged} with Pressure: {converged_pressure}, Density: {converged_density}, Mass: {converged_mass}'
     )
 
-    # Self-consistent initial thermal state (White+Li 2025, Boujibar+2020)
-    if config.planet.temperature_mode == 'accretion':
+    # Self-consistent initial thermal state (White+Li 2025, Boujibar+2020).
+    # Honor temperature_mode_override here as well: the accretion thermal
+    # state only runs when the user actually wants accretion mode, not
+    # when SPIDER has forced a local adiabatic override.
+    _effective_temp_mode = temperature_mode_override or config.planet.temperature_mode
+    if _effective_temp_mode == 'accretion':
         from zalmoxis.energetics import initial_thermal_state
 
         cmf = config.interior_struct.core_frac

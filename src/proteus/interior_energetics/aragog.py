@@ -964,11 +964,17 @@ class AragogRunner:
         # Build PROTEUS helpfile output from SolverOutput
         output = self._build_helpfile_output(out, hf_row)
 
-        # Store arrays on interior object for inter-module access
+        # Store arrays on interior object for inter-module access.
+        # Radius is stored in metres (SI), matching SPIDER's convention
+        # (spider.py:1185 reads radius_b directly from the SPIDER JSON
+        # in metres). Previously Aragog stored km, which silently broke
+        # update_structure_from_interior (wrapper.py:795) whenever
+        # Zalmoxis update_interval > 0: the r <= _R_cmb comparison and
+        # the downstream np.interp would use mixed units.
         interior_o.phi = out.phi_stag
         interior_o.visc = out.visc_stag
         interior_o.density = out.rho_stag
-        interior_o.radius = out.r_basic / 1e3  # km
+        interior_o.radius = out.r_basic  # m
         interior_o.mass = out.mass_stag
         interior_o.temp = out.T_stag
         interior_o.pres = out.P_stag

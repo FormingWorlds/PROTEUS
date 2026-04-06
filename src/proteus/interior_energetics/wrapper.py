@@ -268,26 +268,29 @@ def determine_interior_radius_with_zalmoxis(
     # adiabat if the gate is ever fixed.  SPIDER provides its own T(r)
     # through entropy evolution, so the linear T initial guess is fine.
     _TDEP_PREFIXES = ('WolfBower2018', 'RTPress100TPa')
-    _orig_temp_mode = config.planet.temperature_mode
+    _temp_mode_override: str | None = None
     if (
         config.interior_energetics.module == 'spider'
-        and _orig_temp_mode == 'isothermal'
+        and config.planet.temperature_mode == 'isothermal'
         and config.interior_struct.zalmoxis.mantle_eos.startswith(_TDEP_PREFIXES)
     ):
         log.info(
-            'Switching Zalmoxis temperature_mode from isothermal to adiabatic '
-            'for SPIDER coupling with T-dependent mantle EOS',
+            'Overriding Zalmoxis temperature_mode from isothermal to adiabatic '
+            'for SPIDER coupling with T-dependent mantle EOS (local override, '
+            'does not mutate config)',
         )
-        config.planet.temperature_mode = 'adiabatic'
+        _temp_mode_override = 'adiabatic'
 
-    # Request SPIDER mesh file if interior module is SPIDER
+    # Request SPIDER mesh file if interior module is SPIDER.
+    # Pass the override as a parameter instead of mutating config.planet.
     num_spider_nodes = nlev_b if config.interior_energetics.module == 'spider' else 0
-    try:
-        _cmb_radius, spider_mesh_file = zalmoxis_solver(
-            config, outdir, hf_row, num_spider_nodes=num_spider_nodes
-        )
-    finally:
-        config.planet.temperature_mode = _orig_temp_mode
+    _cmb_radius, spider_mesh_file = zalmoxis_solver(
+        config,
+        outdir,
+        hf_row,
+        num_spider_nodes=num_spider_nodes,
+        temperature_mode_override=_temp_mode_override,
+    )
 
     # Store mesh file path for subsequent SPIDER calls
     if spider_mesh_file:

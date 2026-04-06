@@ -256,11 +256,12 @@ class AragogJAXRunner:
         area_surf = 4 * np.pi * float(r_basic[-1]) ** 2
         F_heat_total = float(np.dot(heating_np, mass)) / area_surf
 
-        # Store arrays on interior_o
+        # Store arrays on interior_o. Radius in metres (SI), matching
+        # SPIDER's convention. See aragog.py:971 for the rationale.
         interior_o.phi = phi
         interior_o.visc = visc
         interior_o.density = rho
-        interior_o.radius = r_basic / 1e3
+        interior_o.radius = r_basic  # m
         interior_o.mass = mass
         interior_o.temp = T
         interior_o.pres = np.asarray(P)

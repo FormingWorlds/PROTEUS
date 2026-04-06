@@ -88,7 +88,11 @@ def run_atmosphere(
 
     # Handle new surface temperature
     if config.atmos_clim.surf_state == 'mixed_layer':
-        hf_row['T_surf'] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+        # Argument order: (current hf_row, previous committed row). The
+        # function integrates forward from hf_pre['Time'] to hf_cur['Time']
+        # starting at hf_pre['T_surf']. The previous call site had the
+        # arguments reversed, which integrated backward in time.
+        hf_row['T_surf'] = ShallowMixedOceanLayer(hf_row, hf_all.iloc[-1].to_dict())
 
     elif config.atmos_clim.surf_state == 'fixed':
         hf_row['T_surf'] = hf_row['T_magma']
