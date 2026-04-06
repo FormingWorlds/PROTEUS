@@ -222,16 +222,28 @@ def next_step(
             UpdateStatusfile(dirs, 20)
             raise ValueError(f'Invalid time-stepping method: {config.params.dt.method}')
 
-        # Step scale factor (is always <= 1.0)
-        dtswitch *= step_sf
-
-        # Max step size
-        dtswitch = min(dtswitch, config.params.dt.maximum)
-
-        # Min step size
+        # Min step size (adaptive branch only — the static and initial
+        # branches set dt from explicit config values and should not be
+        # floored to dt.minimum before the retry scaling is applied).
         dtminimum = config.params.dt.minimum  # absolute
         dtminimum += config.params.dt.minimum_rel * hf_row['Time'] * 0.01  # allow small steps
         dtswitch = max(dtswitch, dtminimum)
+
+    # Apply the SPIDER-retry step scale factor uniformly to all branches.
+    # This fixes a bug where "static" (Time < 2 yr) and "initial" retries
+    # silently ignored step_sf, so each retry tried the same macro step
+    # and only tightened tolerances — never actually shrinking dt. See
+    # next_step_retry notes in spider.py (max_attempts = 8).
+    dtswitch *= step_sf
+
+    # Always enforce the absolute maximum
+    dtswitch = min(dtswitch, config.params.dt.maximum)
+
+    # On retries (step_sf < 1) in the static/initial branches we
+    # deliberately allow dt to fall below dt.minimum — the whole point of
+    # a retry is to shrink the step below what would otherwise be allowed.
+    # In the adaptive branch, min has already been enforced before retry
+    # scaling, so there is no additional floor to apply here.
 
     log.info('New time-step target is %.2e years' % dtswitch)
     return dtswitch
