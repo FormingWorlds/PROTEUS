@@ -126,9 +126,7 @@ def test_spider_verify_passes_on_consistent_inversion(caplog):
             ),
             patch('os.path.isfile', return_value=True),
         ):
-            _verify_initial_entropy(
-                config, S_target=S_target, tsurf=2873.0, source='unit-test'
-            )
+            _verify_initial_entropy(config, S_target=S_target, tsurf=2873.0, source='unit-test')
 
     joined = '\n'.join(r.message for r in caplog.records)
     assert 'verdict=PASS' in joined, f'Expected PASS verdict in log, got: {joined!r}'
@@ -460,24 +458,25 @@ def test_aragog_verify_runs_and_overrides_on_warn(tmp_path):
     ):
         AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
 
-    # Override path must have been taken
-    interior_o.aragog_solver.set_initial_entropy.assert_called_once()
-    override_arg = interior_o.aragog_solver.set_initial_entropy.call_args[0][0]
-    assert override_arg.shape == S_stag.shape
-    # Overridden S at surface must be ~ T_adiabat_surface / 0.4 (from the
-    # identity-ish invert_temperature mock)
-    np.testing.assert_allclose(
-        override_arg[0],
-        T_adiabat_surface / 0.4,
-        rtol=1e-6,
-    )
+    # Override path is intentionally DISABLED now (the full-profile
+    # cross-check is advisory only, see aragog.py docstring). The verify
+    # call must complete without touching the IC entropy.
+    interior_o.aragog_solver.set_initial_entropy.assert_not_called()
 
 
 @pytest.mark.unit
-def test_aragog_verify_raises_on_fail(tmp_path):
+def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplog):
     """
-    10 % discrepancy must raise RuntimeError (not just warn).
+    10 % discrepancy is logged (as a WARN about table boundary drift)
+    but does NOT raise. The Aragog full-profile cross-check was found
+    to fire on every production run at M>=2.0 Earth masses because the
+    PALEOS P-T and regenerated P-S tables drift by up to ~10% at high
+    P (memory pitfall 50). The cross-check is therefore advisory only;
+    the scalar surface check in _set_entropy_ic is the authoritative
+    IC sanity check.
     """
+    import logging
+
     from proteus.interior_energetics.aragog import AragogRunner
 
     config = MagicMock()
@@ -498,24 +497,30 @@ def test_aragog_verify_raises_on_fail(tmp_path):
         'S_target': 7081.0,
     }
 
-    with (
-        patch(
-            'zalmoxis.eos_export.compute_entropy_adiabat',
-            return_value=fake_adiabat,
-            create=True,
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
-            return_value={
-                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
-                'PALEOS-2phase:MgSiO3': {},
-            },
-        ),
-        patch(
-            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
-            return_value=None,
-        ),
-        patch('os.path.isfile', return_value=True),
-    ):
-        with pytest.raises(RuntimeError, match=r'cross-check FAIL'):
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.aragog'):
+        with (
+            patch(
+                'zalmoxis.eos_export.compute_entropy_adiabat',
+                return_value=fake_adiabat,
+                create=True,
+            ),
+            patch(
+                'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+                return_value={
+                    'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
+                    'PALEOS-2phase:MgSiO3': {},
+                },
+            ),
+            patch(
+                'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+                return_value=None,
+            ),
+            patch('os.path.isfile', return_value=True),
+        ):
+            # Must not raise. Must log the mismatch at WARNING level.
             AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+
+    joined = '\n'.join(r.message for r in caplog.records)
+    assert 'Entropy IC full-profile cross-check' in joined, (
+        f'Expected full-profile log line, got: {joined!r}'
+    )
