@@ -145,13 +145,40 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
 
     # 1. Load tested input parameters in the grid
     raw_params = toml.load(grid_dir / "copy.grid.toml")
+    print(raw_params)
 
-    # Keep only the parameters and their values (ignore 'method' keys)
+    # Keep only the parameters and their values
     tested_params = {}
+
     for key, value in raw_params.items():
-        if isinstance(value, dict) and "values" in value:
-            # Only store the 'values' list
-            tested_params[key] = value["values"]
+        if isinstance(value, dict) and "method" in value: # filter to only get tested parameters (those with a "method" key)
+            method = value["method"]
+
+            if method == "direct":
+                tested_params[key] = value["values"]
+
+            elif method == "linspace":
+                tested_params[key] = np.linspace(
+                    value['start'], value['stop'], value['count']
+                )
+
+            elif method == "logspace":
+                tested_params[key] = np.logspace(
+                    np.log10(value['start']),
+                    np.log10(value['stop']),
+                    value['count']
+                )
+
+            elif method == "arange":
+                arr = list(np.arange(value['start'], value['stop'], value['step']))
+                # Ensure endpoint is included
+                if not np.isclose(arr[-1], value['stop']):
+                    arr.append(value['stop'])
+                tested_params[key] = np.array(arr, dtype=float)
+
+            else:
+                print(f"⚠️ Unknown method for {key}: {method}")
+                continue
 
     grid_param_paths = list(tested_params.keys())
 

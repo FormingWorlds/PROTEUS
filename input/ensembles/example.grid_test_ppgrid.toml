@@ -48,12 +48,7 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 
     colormap = "viridis"    # Default colormap for all input parameters
 
-    [input_parameters.struct.mass_tot]
-    label = "Mass [M_\\oplus]"
-    log_scale = false
 
-    [input_parameters.delivery.elements.H_ppmw]
-    log_scale = false
 
 # Output variables configuration for ECDF plot (1 column per output variable)
 [output_variables]
