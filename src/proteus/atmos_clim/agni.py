@@ -475,32 +475,58 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         # Update solver
         jl.AGNI.solver.ls_increase = float(ls_increase)
 
-        # Try solving temperature profile
-        agni_success = jl.AGNI.solver.solve_energy_b(
-            atmos,
-            sol_type=int(config.atmos_clim.surf_state_int),
-            method=int(1),
-            chem=chemistry,
-            conduct=config.atmos_clim.agni.conduction,
-            convect=config.atmos_clim.agni.convection,
-            sens_heat=config.atmos_clim.agni.sens_heat,
-            latent=config.atmos_clim.agni.latent_heat,
-            rainout=config.atmos_clim.agni.rainout,
-            oceans=config.atmos_clim.agni.oceans,
-            max_steps=int(max_steps),
-            max_runtime=900.0,
-            conv_atol=float(config.atmos_clim.agni.solution_atol),
-            conv_rtol=float(config.atmos_clim.agni.solution_rtol),
-            fdo=int(config.atmos_clim.agni.fdo),
-            ls_method=int(linesearch),
-            dx_max=float(dx_max),
-            easy_start=easy_start,
-            grey_start=grey_start,
-            perturb_all=perturb_all,
-            save_frames=False,
-            modplot=int(modplot),
-            plot_jacobian=plot_jacobian,
-        )
+        # Try solving temperature profile.
+        #
+        # We wrap the call in a try/except because AGNI unconditionally
+        # invokes `plot_step()` (solver.jl lines 969, 973, 978, 983, 986,
+        # 989) whenever its Newton solver fails. When the failure is due to
+        # NaN fluxes (CODE_NAN, CODE_OBJ), plot_fluxes passes the NaN to
+        # Julia's `range()` which rounds NaN to Int64 and throws
+        # InexactError. That exception propagates up the pyjulia boundary
+        # and would kill the whole Python process, bypassing the
+        # atmosphere-interior deadlock detector in proteus.py::start.
+        # Catching it here lets us report the failure cleanly and lets the
+        # main loop either retry with different solver params or abort via
+        # the deadlock counter.
+        try:
+            agni_success = jl.AGNI.solver.solve_energy_b(
+                atmos,
+                sol_type=int(config.atmos_clim.surf_state_int),
+                method=int(1),
+                chem=chemistry,
+                conduct=config.atmos_clim.agni.conduction,
+                convect=config.atmos_clim.agni.convection,
+                sens_heat=config.atmos_clim.agni.sens_heat,
+                latent=config.atmos_clim.agni.latent_heat,
+                rainout=config.atmos_clim.agni.rainout,
+                oceans=config.atmos_clim.agni.oceans,
+                max_steps=int(max_steps),
+                max_runtime=900.0,
+                conv_atol=float(config.atmos_clim.agni.solution_atol),
+                conv_rtol=float(config.atmos_clim.agni.solution_rtol),
+                fdo=int(config.atmos_clim.agni.fdo),
+                ls_method=int(linesearch),
+                dx_max=float(dx_max),
+                easy_start=easy_start,
+                grey_start=grey_start,
+                perturb_all=perturb_all,
+                save_frames=False,
+                modplot=int(modplot),
+                plot_jacobian=plot_jacobian,
+            )
+        except Exception as e:
+            # Any Julia-side exception (InexactError on NaN, SingularException,
+            # etc.) is treated as an AGNI non-convergence. We intentionally
+            # use a bare `Exception` here because juliacall raises its own
+            # exception hierarchy that may not be importable at module load
+            # time (chicken-and-egg with juliacall init). The message is
+            # logged with traceback for post-mortem, and agni_success stays
+            # False so the main loop's deadlock counter handles it.
+            log.warning(
+                'AGNI solve_energy_b raised a Julia-side exception; '
+                'treating as a non-converged attempt. Exception: %s', e
+            )
+            agni_success = False
 
         # Move AGNI logfile content into PROTEUS logfile
         sync_log_files(dirs['output'])
