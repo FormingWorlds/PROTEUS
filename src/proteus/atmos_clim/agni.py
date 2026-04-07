@@ -400,6 +400,9 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
     ----------
         atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
+        agni_success : bool
+            True if AGNI's Newton solver converged on at least one attempt.
+            False if all attempts exhausted with the "Maximum attempts" path.
     """
 
     # atmosphere solver plotting frequency
@@ -511,7 +514,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             # failure, loop again...
             log.warning('Attempt %d failed' % attempts)
 
-    return atmos
+    return atmos, bool(agni_success)
 
 
 def _solve_once(atmos, config: Config):
@@ -629,6 +632,12 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     # Solve atmosphere
     # ---------------------------
 
+    # Track whether AGNI's Newton solver actually converged. The transparent
+    # and prescribed-T branches do not run a Newton solver, so they cannot
+    # "fail" in the deadlock sense; only `_solve_energy` can. We default to
+    # True and override only in the energy branch.
+    agni_converged = True
+
     # Transparent case
     if bool(atmos.transparent):
         # no opacity
@@ -644,7 +653,7 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
         # full solver
         if config.atmos_clim.agni.solve_energy:
             log.info('Using nonlinear solver to conserve fluxes')
-            atmos = _solve_energy(atmos, loops_total, dirs, config)
+            atmos, agni_converged = _solve_energy(atmos, loops_total, dirs, config)
 
         # simplified T(p)
         else:
@@ -720,6 +729,11 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     output['T_obs'] = T_obs
     output['R_obs'] = R_obs
     output['albedo'] = albedo
+    # Transient-only flag (not persisted to helpfile). True if AGNI's Newton
+    # solver converged on at least one attempt; False if all attempts were
+    # exhausted via the "Maximum attempts" path. The main coupling loop uses
+    # this to detect AGNI deadlocks (see proteus.py).
+    output['agni_converged'] = bool(agni_converged)
     output['p_xuv'] = p_xuv  # Pressure at Rxuv   [bars]
     output['R_xuv'] = r_xuv  # Radius at Pxuv     [m]
     output['ocean_areacov'] = float(atmos.ocean_areacov)

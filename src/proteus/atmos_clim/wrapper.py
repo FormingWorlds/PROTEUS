@@ -183,6 +183,11 @@ def run_atmosphere(
         # Run dummy atmosphere model
         atm_output = RunDummyAtm(dirs, config, hf_row)
 
+    # Capture the atmosphere convergence flag onto the transient struct
+    # (not persisted to helpfile). AGNI sets this from its Newton solver;
+    # JANUS / dummy / transparent always succeed and default to True.
+    atmos_o.converged = bool(atm_output.pop('agni_converged', True))
+
     # Store variables common to `hf_row` and `atm_output`
     for key in atm_output.keys():
         if key in hf_row.keys():
