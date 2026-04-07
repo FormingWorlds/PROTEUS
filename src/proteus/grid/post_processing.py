@@ -721,7 +721,7 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
 # ---------------------------------------------------------
 # main
 # ---------------------------------------------------------
-def main(grid_analyse_toml_file: str | Path = None):
+def main(grid_analyse_toml_file: str | Path):
 
     # Load configuration from grid_analyse.toml
     with open(grid_analyse_toml_file, "rb") as f:
