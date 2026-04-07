@@ -216,6 +216,12 @@ def compute_initial_entropy(
     to derive a physically consistent initial condition from
     config.planet.tsurf_init (or the accretion-mode override).
 
+    Special case: when ``config.planet.temperature_mode == 'isentropic'``,
+    the entropy is taken directly from ``config.planet.ini_entropy`` and no
+    EOS lookup is performed. This matches the CHILI intercomparison protocol
+    and lets the interior solver map S -> T(P) via its own EOS table without
+    going through PALEOS or Zalmoxis.
+
     Parameters
     ----------
     config : Config
@@ -231,6 +237,17 @@ def compute_initial_entropy(
     float
         Initial specific entropy [J/kg/K].
     """
+    # Direct-entropy mode: skip all EOS lookups and return the user-set value.
+    # This is the CHILI-compatible path for SPIDER (and, once the "self" mode
+    # for Aragog lands, for Aragog too).
+    if config.planet.temperature_mode == 'isentropic':
+        S = float(config.planet.ini_entropy)
+        log.info(
+            'Initial entropy from planet.ini_entropy (isentropic mode): %.1f J/kg/K',
+            S,
+        )
+        return S
+
     # Determine effective surface temperature
     tsurf = config.planet.tsurf_init
     if hf_row is not None:

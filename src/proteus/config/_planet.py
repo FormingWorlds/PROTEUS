@@ -118,19 +118,31 @@ class Planet:
     mass_tot: float
         Total planet mass (interior + atmosphere) in Earth masses [M_earth].
     temperature_mode: str
-        How to set the initial temperature profile.
+        How to set the initial mantle thermal state.
         'isothermal': T = tsurf_init everywhere.
         'linear': T from tsurf_init (surface) to tcenter_init (center).
         'adiabatic': integrate dT/dP|_S downward from tsurf_init.
         'accretion': White & Li (2025) parameterization.
+        'isentropic': set the initial specific entropy directly via
+            ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the
+            CHILI intercomparison protocol). The interior solver maps the
+            entropy IC to T(P) via its own EOS table.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
+        Ignored when temperature_mode = 'isentropic'.
     tcenter_init: float
         Center temperature [K] (linear only).
     f_accretion: float
         Accretion heat retention [0-1] (accretion mode, White & Li 2025).
     f_differentiation: float
         Differentiation heat retention [0-1] (accretion mode).
+    ini_entropy: float
+        Initial specific entropy at the surface [J/kg/K] (isentropic mode).
+        CHILI Earth-SPIDER reference: 3900.0.
+    ini_dsdr: float
+        Initial entropy gradient with radius [J/kg/K/m] (isentropic mode).
+        CHILI Earth-SPIDER reference: -4.698e-6 (small numerical
+        perturbation needed for SPIDER's BDF stability on a uniform IC).
     volatile_mode: str
         How to set the initial volatile inventory: 'elements' or 'gas_prs'.
     volatile_reservoir: str
@@ -154,12 +166,18 @@ class Planet:
     # Initial temperature profile
     temperature_mode: str = field(
         default='adiabatic',
-        validator=in_(('isothermal', 'linear', 'adiabatic', 'accretion')),
+        validator=in_(('isothermal', 'linear', 'adiabatic', 'accretion', 'isentropic')),
     )
     tsurf_init: float = field(default=4000.0, validator=gt(0))
     tcenter_init: float = field(default=6000.0, validator=gt(0))
     f_accretion: float = field(default=0.04, validator=ge(0))
     f_differentiation: float = field(default=0.50, validator=ge(0))
+
+    # Isentropic IC: set the initial specific entropy directly. Used when
+    # temperature_mode = 'isentropic' (CHILI protocol). The interior solver
+    # maps S -> T(P) via its own EOS table; tsurf_init is ignored.
+    ini_entropy: float = field(default=3900.0, validator=gt(0))
+    ini_dsdr: float = field(default=-4.698e-6)
 
     # Initial volatile inventory
     volatile_mode: str = field(default='elements', validator=in_(('elements', 'gas_prs')))
