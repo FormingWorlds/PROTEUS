@@ -40,12 +40,14 @@ def ncdf_flag_to_bool(var) -> bool:
         raise ValueError(f'Could not parse NetCDF atmos flag variable \n {var}')
 
 
-def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
+def read_ncdf_profile(nc_fpath: str, extra_keys: list = [], combine_edges: bool = True) -> dict:
     """Read data from atmosphere NetCDF output file.
 
-    Automatically reads pressure (p), temperature (t), radius (z) arrays with
-    cell-centre (N) and cell-edge (N+1) values interleaved into a single combined array of
-    length (2*N+1).
+    All variables in SI units, same as NetCDF file content.
+
+    Automatically reads pressure (p), temperature (t), radius (z) arrays.
+    If `combine_edges` is True, cell-centre (N) and cell-edge (N+1) values
+    are interleaved into a single combined array of length (2*N+1).
 
     Extra keys can be read-in using the extra_keys parameter. These will be stored with
     the same dimensions as in the NetCDF file.
@@ -54,9 +56,10 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
     ----------
         nc_fpath : str
             Path to NetCDF file.
-
         extra_keys : list
             List of extra keys (strings) to read from the file.
+        combine_edges : bool
+            Whether to combine cell-centre and cell-edge values into a single array.
 
     Returns
     ----------
@@ -96,22 +99,32 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
 
     # read pressure, temperature, height data into dictionary values
     out = {}
-    out['p'] = [pl[0]]
-    out['t'] = [tl[0]]
-    out['z'] = [zl[0]]
-    out['r'] = [rl[0]]
-    for i in range(nlev_c):
-        out['p'].append(p[i])
-        out['p'].append(pl[i + 1])
+    if combine_edges:
+        out['p'] = [pl[0]]
+        out['t'] = [tl[0]]
+        out['z'] = [zl[0]]
+        out['r'] = [rl[0]]
+        for i in range(nlev_c):
+            out['p'].append(p[i])
+            out['p'].append(pl[i + 1])
 
-        out['t'].append(t[i])
-        out['t'].append(tl[i + 1])
+            out['t'].append(t[i])
+            out['t'].append(tl[i + 1])
 
-        out['z'].append(z[i])
-        out['z'].append(zl[i + 1])
+            out['z'].append(z[i])
+            out['z'].append(zl[i + 1])
 
-        out['r'].append(r[i])
-        out['r'].append(rl[i + 1])
+            out['r'].append(r[i])
+            out['r'].append(rl[i + 1])
+    else:
+        out['p'] = p
+        out['t'] = t
+        out['z'] = z
+        out['r'] = r
+        out['pl'] = pl
+        out['tmpl'] = tl
+        out['zl'] = zl
+        out['rl'] = rl
 
     # flags
     for fk in ('transparent', 'solved', 'converged'):
@@ -128,7 +141,15 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
             continue
 
         # Reading composition
-        if key == 'x_gas':
+        if key == 'gases':
+            gas_l = ds.variables['gases'][:]  # names (bytes matrix)
+            gases = []
+            for igas, gas in enumerate(gas_l):
+                gas_lbl = ''.join([c.decode(encoding='utf-8') for c in gas]).strip()
+                gases.append(gas_lbl)
+            out['gases'] = gases
+
+        elif key == 'x_gas':
             gas_l = ds.variables['gases'][:]  # names (bytes matrix)
             gas_x = ds.variables['x_gas'][:]  # vmrs (float matrix)
 
@@ -136,6 +157,27 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
             for igas, gas in enumerate(gas_l):
                 gas_lbl = ''.join([c.decode(encoding='utf-8') for c in gas]).strip()
                 out[gas_lbl + '_vmr'] = np.array(gas_x[:, igas])
+
+        elif key == 'aerosols':
+            if 'aerosols' in ds.variables.keys():
+                aer_l = ds.variables['aerosols'][:]  # names (bytes matrix)
+                aerosols = []
+                for iaer, aer in enumerate(aer_l):
+                    aer_lbl = ''.join([c.decode(encoding='utf-8') for c in aer]).strip()
+                    if len(aer_lbl) > 0:
+                        aerosols.append(aer_lbl)
+                out['aerosols'] = aerosols
+
+        elif key == 'aer_mmr':
+            if 'aer_mmr' in ds.variables.keys():
+                aer_l = ds.variables['aerosols'][:]  # names (bytes matrix)
+                aer_x = ds.variables['aer_mmr'][:]  # mmrs (float matrix)
+
+                # get data for each aerosol
+                for iaer, aer in enumerate(aer_l):
+                    aer_lbl = ''.join([c.decode(encoding='utf-8') for c in aer]).strip()
+                    if len(aer_lbl) > 0:
+                        out[aer_lbl + '_mmr'] = np.array(aer_x[:, iaer])
 
         else:
             out[key] = np.array(ds.variables[key][:])
@@ -145,7 +187,10 @@ def read_ncdf_profile(nc_fpath: str, extra_keys: list = []):
 
     # convert to np arrays
     for key in out.keys():
-        out[key] = np.array(out[key], dtype=float)
+        try:
+            out[key] = np.array(out[key], dtype=float)
+        except (AttributeError, TypeError, ValueError):
+            out[key] = np.array(out[key])
 
     return out
 
