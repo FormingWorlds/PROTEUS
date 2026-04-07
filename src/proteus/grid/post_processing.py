@@ -176,7 +176,7 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     return case_params, tested_params
 
 def load_phi_crit(grid_dir: str | Path):
-    """"
+    """
     Load the critical melt fraction (phi_crit) from the reference configuration file of the grid.
 
     Parameters
@@ -207,7 +207,7 @@ def load_phi_crit(grid_dir: str | Path):
     return phi_crit
 
 def extract_solidification_time(cases_data: list, grid_dir: str | Path):
-    """"
+    """
     Extract solidification time for each simulation of the grid for
     the condition Phi_global < phi_crit at last time step.
 
