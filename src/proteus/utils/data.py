@@ -1210,33 +1210,65 @@ def download_interior_lookuptables(clean=False):
         )
 
 
-def download_melting_curves(config: Config, clean=False):
+def download_melting_curves(config: Config, clean: bool = False):
     """
-    Download melting curve data
+    Ensure melting curve data are available locally.
+
+    Expected layout:
+        interior_lookup_tables/
+            Melting_curves/
+                <melting_dir>/
+                    solidus_P-T.dat
+                    liquidus_P-T.dat
+                    solidus_P-S.dat
+                    liquidus_P-S.dat
     """
     log.debug('Download melting curve data')
-    dir = 'Melting_curves/' + config.interior.melting_dir
+    rel_dir = Path('Melting_curves') / config.interior.melting_dir
 
     data_dir = GetFWLData() / 'interior_lookup_tables'
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    folder_dir = data_dir / dir
+    folder_dir = data_dir / rel_dir
+
     if clean:
         safe_rm(folder_dir.as_posix())
-    source_info = get_data_source_info(dir)
+
+    # ------------------------------------------------------------------
+    # Canonical flat layout: if files already exist locally, do not download.
+    # ------------------------------------------------------------------
+    solidus_pt = folder_dir / 'solidus_P-T.dat'
+    liquidus_pt = folder_dir / 'liquidus_P-T.dat'
+    solidus_ps = folder_dir / 'solidus_P-S.dat'
+    liquidus_ps = folder_dir / 'liquidus_P-S.dat'
+
+    if all(p.is_file() for p in (solidus_pt, liquidus_pt, solidus_ps, liquidus_ps)):
+        log.debug('Melting curve data already present locally: %s', folder_dir)
+        return
+
+    # ------------------------------------------------------------------
+    # Fallback: try remote source mapping.
+    # ------------------------------------------------------------------
+    source_info = get_data_source_info(rel_dir.as_posix())
     if not source_info:
-        raise ValueError(f'No data source mapping found for folder: {dir}')
+        raise ValueError(
+            f'No data source mapping found for folder: {rel_dir}. '
+            f'Also did not find local melting curve data in: {folder_dir}'
+        )
 
     download(
-        folder=dir,
+        folder=rel_dir.as_posix(),
         target=data_dir,
         osf_id=source_info['osf_project'],
         zenodo_id=source_info['zenodo_id'],
-        desc=f'Melting curve data: {dir}',
+        desc=f'Melting curve data: {rel_dir}',
     )
 
-    # Create canonical _P-T copies from Zenodo legacy names (solidus.dat -> solidus_P-T.dat).
-    # Keep originals so md5sum checks don't trigger unnecessary re-downloads.
+    # ------------------------------------------------------------------
+    # Legacy compatibility:
+    # - if download contains solidus.dat / liquidus.dat, treat them as P-T
+    #   and create canonical *_P-T.dat copies
+    # ------------------------------------------------------------------
     for stem in ('solidus', 'liquidus'):
         legacy = folder_dir / f'{stem}.dat'
         canonical = folder_dir / f'{stem}_P-T.dat'

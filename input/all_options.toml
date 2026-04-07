@@ -167,7 +167,7 @@ version = "2.0"
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
 
-    module           = "zalmoxis"   # self | zalmoxis
+    module           = "self"   # self | zalmoxis
     update_interval      = 0        # max interval (ceiling) between structure updates [yr]; 0 = only at init
     update_min_interval  = 0        # min interval (floor) between updates [yr]; prevents thrashing
     update_dtmagma_frac  = 0.03     # trigger on relative T_magma change (3%)
