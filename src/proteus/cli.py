@@ -550,15 +550,15 @@ cli.add_command(observe)
 # ----------------
 
 @click.command()
-@click.argument("path_grid_analyse", type=str, required=True)
+@config_option
 
-def grid_analyse(path_grid_analyse: str):
+def grid_analyse(config_path: Path):
     """Generate grid analysis plots and CSV summary files from a grid
-    path_grid_analyse : Path to the toml file containing grid analysis configuration
+    config_path : Path to the toml file containing grid analysis configuration
     """
     from proteus.grid.post_processing import main
 
-    main(path_grid_analyse)
+    main(config_path)
 
 cli.add_command(grid_analyse)
 

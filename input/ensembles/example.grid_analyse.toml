@@ -30,7 +30,7 @@ plot_ecdf   = true          # Generate ECDF grid plot for input parameters and o
     log_scale = true
 
     [input_parameters.outgas.fO2_shift_IW]
-    label = "\\log_{10} fO_2\\,[\\Delta IW]"
+    label = "\\Delta IW"
     log_scale = false
 
     [input_parameters.delivery.elements.CH_ratio]
