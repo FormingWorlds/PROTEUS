@@ -257,150 +257,69 @@ def extract_solidification_time(cases_data: list, grid_dir: str | Path):
 
     return solidification_times
 
-def generate_summary_csv(cases_data: list, case_params: dict, grid_dir: str | Path, grid_name: str):
+def generate_summary_csv(
+    cases_data: list,
+    case_params: dict,
+    grid_dir: str | Path,
+    grid_name: str,
+):
     """
-    Generate CSV file summarizing all simulation cases in the grid, including:
-        - Case status
-        - Values of tested grid parameters
-        - All extracted values from runtime_helpfile.csv (at last timestep)
-        - Solidification time
-
-    Parameters
-    ----------
-    cases_data : list
-        List of dictionaries containing simulation data.
-    case_params : dict
-        Dictionary mapping case index -> {parameter_name: value}
-    grid_dir : str or Path
-        Path to the grid directory containing ref_config.toml.
-    grid_name : str
-        Name of the grid.
+    Generate CSV files summarizing simulation cases:
+        - All cases
+        - Completed cases only
+        - Running + Error cases only
     """
 
-    # Compute solidification times
+    def include_case(status: str, mode: str) -> bool:
+        status = status.lower()
+        if mode == "all":
+            return True
+        elif mode == "completed":
+            return status.startswith("completed")
+        elif mode == "running_error":
+            return status.startswith("running") or status.startswith("error")
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
+
+    # Compute solidification times once
     solidification_times = extract_solidification_time(cases_data, grid_dir)
 
-    # Extract data for each case
-    summary_rows = []
-    for case_index, case in enumerate(cases_data):
-        row = {}
-
-        # Case status
-        row["case_number"] = case_index
-        row["status"] = case["status"]
-
-        # Values of tested grid parameters for each case
-        params = case_params.get(case_index, {})
-        for k, v in params.items():
-            row[k] = v
-
-        # Output values (at last timestep)
-        df = case["output_values"]
-        if df is not None:
-            for col in df.columns:
-                row[col] = df[col].iloc[-1]
-
-        # Solidification time
-        row["solidification_time"] = solidification_times[case_index]
-
-        summary_rows.append(row)
-
-    # Create DataFrame and save it in the grid directory in post_processing/extracted_data/
-    summary_df = pd.DataFrame(summary_rows)
-    output_dir = grid_dir / "post_processing" / "extracted_data"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"{grid_name}_final_extracted_data_all.csv"
-    summary_df.to_csv(output_file, sep="\t", index=False)
-
-def generate_completed_summary_csv(cases_data: list, case_params: dict, grid_dir: str | Path, grid_name: str):
-    """
-    Same function as generate_summary_csv, but only include fully 'Completed' cases.
-    """
-    # Compute solidification times
-    solidification_times = extract_solidification_time(cases_data, grid_dir)
-
-    # Extract data for each fully completed case
-    summary_rows = []
-    for case_index, case in enumerate(cases_data):
-        status = case.get("status", "").lower()
-        if not status.startswith("completed"):
-            continue  # skip non-completed cases
-
-        row = {}
-
-        # Case status
-        row["case_number"] = case_index
-        row["status"] = case["status"]
-
-        # Values of tested grid parameters for each case
-        params = case_params.get(case_index, {})
-        for k, v in params.items():
-            row[k] = v
-
-        # Output values (at last timestep)
-        df = case["output_values"]
-        if df is not None:
-            for col in df.columns:
-                row[col] = df[col].iloc[-1]
-
-        # Solidification time
-        row["solidification_time"] = solidification_times[case_index]
-
-        summary_rows.append(row)
-
-    # Create DataFrame and save
-    summary_df = pd.DataFrame(summary_rows)
     output_dir = grid_dir / "post_processing" / "extracted_data"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Updated CSV name to indicate only completed cases
-    output_file = output_dir / f"{grid_name}_final_extracted_data_completed.csv"
-    summary_df.to_csv(output_file, sep="\t", index=False)
+    modes = ["all", "completed", "running_error"]
 
-def generate_running_error_summary_csv(cases_data: list, case_params: dict, grid_dir: str | Path, grid_name: str):
-    """
-    Same function as generate_summary_csv, but only include 'Running' and 'Error' cases.
-    """
-    # Compute solidification times
-    solidification_times = extract_solidification_time(cases_data, grid_dir)
+    for mode in modes:
+        summary_rows = []
 
-    # Extract data for each running or error case
-    summary_rows = []
-    for case_index, case in enumerate(cases_data):
-        status = case.get("status", "").lower()
-        if not (status.startswith("running") or status.startswith("error")):
-            continue  # skip cases that are neither running nor error
+        for case_index, case in enumerate(cases_data):
+            status = case.get("status", "")
 
-        row = {}
+            if not include_case(status, mode):
+                continue
 
-        # Case status
-        row["case_number"] = case_index
-        row["status"] = case["status"]
+            row = {
+                "case_number": case_index,
+                "status": status,
+            }
 
-        # Values of tested grid parameters for each case
-        params = case_params.get(case_index, {})
-        for k, v in params.items():
-            row[k] = v
+            # Parameters
+            row.update(case_params.get(case_index, {}))
 
-        # Output values (at last timestep)
-        df = case["output_values"]
-        if df is not None:
-            for col in df.columns:
-                row[col] = df[col].iloc[-1]
+            # Output values
+            df = case.get("output_values")
+            if df is not None and not df.empty:
+                row.update(df.iloc[-1].to_dict())
 
-        # Solidification time
-        row["solidification_time"] = solidification_times[case_index]
+            # Solidification time
+            row["solidification_time"] = solidification_times[case_index]
 
-        summary_rows.append(row)
+            summary_rows.append(row)
 
-    # Create DataFrame and save
-    summary_df = pd.DataFrame(summary_rows)
-    output_dir = grid_dir / "post_processing" / "extracted_data"
-    output_dir.mkdir(parents=True, exist_ok=True)
+        summary_df = pd.DataFrame(summary_rows)
 
-    # Updated CSV name to indicate only running/error cases
-    output_file = output_dir / f"{grid_name}_final_extracted_data_running_error.csv"
-    summary_df.to_csv(output_file, sep="\t", index=False)
+        output_file = output_dir / f"{grid_name}_final_extracted_data_{mode}.csv"
+        summary_df.to_csv(output_file, sep="\t", index=False)
 
 # ---------------------------------------------------------
 # Plotting functions
@@ -829,12 +748,6 @@ def main(grid_analyse_toml_file: str | Path = None):
 
     if update_csv:
         generate_summary_csv(
-            data, input_param_grid_per_case, grid_path, grid_name
-        )
-        generate_completed_summary_csv(
-            data, input_param_grid_per_case, grid_path, grid_name
-        )
-        generate_running_error_summary_csv(
             data, input_param_grid_per_case, grid_path, grid_name
         )
     else:
