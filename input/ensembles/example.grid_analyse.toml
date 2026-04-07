@@ -57,7 +57,7 @@ plot_ecdf   = true          # Generate ECDF grid plot for input parameters and o
     [output_variables.T_surf]
     label = "T_{\\rm surf}\\,[10^{3}\\,\\mathrm{K}]"
     log_scale = false
-    scale = 0.001                       # convert K to 10^3 K for beyter readability on plot
+    scale = 0.001                       # convert K to 10^3 K for better readability on plot
 
     [output_variables.P_surf]
     label = "P_{\\rm surf}\\,[\\mathrm{bar}]"
