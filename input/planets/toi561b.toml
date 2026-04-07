@@ -45,7 +45,7 @@ version = "2.0"
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 5e8   # yr, maximum time-step # if higher like 1e9, will produce too few snapshots
         initial      = 1e3    # yr, inital step size
-        starspec     = 1e8    # yr, interval to re-calculate the stellar spectrum
+        starspec     = 1e6    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
@@ -160,17 +160,17 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
     [orbit.parameterized]
-        migration = "sigmoid"       # "none", "instant", "sigmoid" or "high_ecc" migration
+        migration = "none"       # "none", "instant", "sigmoid" or "high_ecc" migration
         sma_init = 0.029            # Initial semi-major axis before migration [AU]
         sma_final = 0.0106          # Final semi-major axis after migration s[AU]
-        time_migration = 10e9       # Time of migration [yr]
+        time_migration = 1e9       # Time of migration [yr]
         tau_migration = 1e9         # Migration timescale for sigmoid migration [yr]
 
 # Planetary structure - physics table
 [struct]
     mass_tot    = 2.24         # M_earth from Brinkman et al. 2023
     #radius_int  = 1.4195        # R_earth from Patel et al. 2023
-    corefrac    = 0.55          # non-dim., radius fraction 0.20 from Brinkman et al. 2023
+    corefrac    = 0.35          # non-dim., radius fraction 0.20 from Brinkman et al. 2023
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
 
@@ -277,7 +277,7 @@ version = "2.0"
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.1           # Escape efficiency factor
+        efficiency  = 0.001           # Escape efficiency factor
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
@@ -407,11 +407,11 @@ version = "2.0"
         use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
         metallicity = 1000	 # metallicity relative to solar metallicity
 
-        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_oceans    = 100.0       # Hydrogen inventory in units of equivalent Earth oceans
         #H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
         # H_kg       = 1e20       # Hydrogen inventory in kg
 
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        CH_ratio    = 0.1       # C/H mass ratio in mantle/atmosphere system
         #C_ppmw      = 109.0       # Carbon inventory in ppmw relative to mantle mass
         # C_kg       = 1e20       # Carbon inventory in kg
 
@@ -419,7 +419,7 @@ version = "2.0"
         N_ppmw      = 20.1       # Nitrogen inventory in ppmw relative to mantle mass
         # N_kg       = 1e20       # Nitrogen inventory in kg
 
-        SH_ratio    = 2.16       # S/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 10       # S/H mass ratio in mantle/atmosphere system
         #S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mantle mass
         # S_kg       = 1e20       # Sulfur inventory in kg
 
@@ -440,7 +440,7 @@ version = "2.0"
 [atmos_chem]
 
     module  = "vulcan"          # Atmospheric chemistry module
-    when    = "manually"        # When to run chemistry (manually, offline, online)
+    when    = "offline"        # When to run chemistry (manually, offline, online)
 
     # Physics flags
     photo_on        = true      # Enable photochemistry
