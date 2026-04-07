@@ -744,7 +744,7 @@ def main(grid_analyse_toml_file: str | Path):
     grid_path = Path(cfg["grid_path"])
     grid_name = get_grid_name(grid_path)
 
-    print(grid_path)
+    #print(grid_path)
     print(f"Analyzing grid: {grid_name}")
 
     # Load grid data
