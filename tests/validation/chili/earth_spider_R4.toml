@@ -1,0 +1,250 @@
+# PROTEUS / CHILI intercomparison: Earth, SPIDER baseline (interior_refactor v3 schema)
+#
+# This config is the v3 translation of the CHILI reference run
+# (chili/intercomparison/inputs/proteus/evolution-proteus-earth-config.in)
+# which was executed on PROTEUS main (hash 09052bf68326) by Harrison Nicholls
+# in Dec 2025–Jan 2026 with AGNI+SPIDER+Zephyrus+CALLIOPE+FastChem.
+#
+# The interior_refactor branch differs from PROTEUS main mainly in:
+#   1. Config schema v3 (sections renamed: interior -> interior_energetics,
+#      struct -> interior_struct, delivery.elements -> planet.elements).
+#   2. Default IC for SPIDER comes from PALEOS-inverted entropy. The CHILI
+#      protocol prescribes the entropy directly. We bypass PALEOS by using
+#      the new planet.temperature_mode = "isentropic" mode (added 2026-04-07).
+#   3. Default interior_struct.module = "zalmoxis"; we set "spider" so SPIDER
+#      uses its own internal Adams-Williamson structure model and reads the
+#      WolfBower2018 EOS files directly from the SPIDER-bundled lookup_data
+#      (no Zalmoxis preprocessing).
+#
+# Goal: reproduce the CHILI Earth reference data (output_files/chili_reference/
+# outputs/evolution-proteus-earth-data.csv) to within 10% on T_surf, Phi,
+# F_OLR, p_H2O, p_CO2 over the 0 - 468 kyr Model time window during which
+# the magma ocean solidifies (Phi crosses 0.05).
+
+config_version = "3.0"
+
+[params]
+    resume  = false
+    offline = true
+
+    [params.out]
+        path      = "earth_spider_R4"  # ls=2 + no perturb
+        logging   = "INFO"
+        plot_fmt  = "pdf"
+        write_mod = 4
+        plot_mod  = 40
+        remove_sf = true
+        # archive_mod left at default (None = never archive)
+
+    [params.dt]
+        method      = "adaptive"
+        starspec    = 1.0e9
+        starinst    = 10.0
+        minimum     = 100.0
+        minimum_rel = 0.005
+        maximum     = 1.0e7
+        initial     = 10.0
+        atol        = 0.04
+        rtol        = 0.11
+
+    [params.stop]
+        strict = false
+
+        [params.stop.iters]
+            enabled = true
+            minimum = 5
+            maximum = 9000
+
+        [params.stop.time]
+            enabled = true
+            minimum = 1000.0
+            maximum = 4.517e9   # ~age of present-day Earth
+
+        [params.stop.solid]
+            enabled  = true
+            phi_crit = 0.05
+
+        [params.stop.radeqm]
+            enabled = false
+
+        [params.stop.escape]
+            enabled = false
+
+# Star: Sun via MORS, Faint Young Sun (50 Myr age, bol_scale = 920/1010)
+[star]
+    module    = "mors"
+    mass      = 1.0
+    age_ini   = 0.05    # Gyr; CHILI starting age
+    bol_scale = 0.9151497065552572   # CHILI rescales Spada -> 920 W/m^2 at 1 AU
+
+    [star.mors]
+        age_now         = 4.567
+        star_name       = "sun"
+        rot_pcntle      = 50.0
+        tracks          = "spada"
+        spectrum_source = "solar"
+        # rot_period and star_path left at default None
+
+# Orbit: 1 AU, no tides, no satellite
+[orbit]
+    module           = "none"
+    semimajoraxis    = 1.0
+    eccentricity     = 0.0
+    zenith_angle     = 48.19
+    s0_factor        = 0.375
+    instellation_method = "distance"
+
+# Planet: 1 M_Earth, BSE volatile inventory (3 EO H2O equivalent + 1e21 kg CO2)
+# Initial mantle thermal state: prescribed entropy (CHILI Section 4.4.1)
+[planet]
+    mass_tot         = 1.0
+    prevent_warming  = true
+
+    # Isentropic IC (new in interior_refactor 2026-04-07): bypass PALEOS lookup
+    # and feed S=3900 J/kg/K directly to SPIDER. The small dsdr is the
+    # numerical perturbation SPIDER's BDF needs for stability on a uniform IC.
+    temperature_mode = "isentropic"
+    ini_entropy      = 3900.0
+    ini_dsdr         = -4.698e-6
+    tsurf_init       = 4000.0   # only used as a fallback for flux_guess auto-compute
+
+    volatile_mode    = "elements"
+
+    [planet.elements]
+        # Earth case from CHILI Table 2:
+        # H = 4.7e20 kg (= 3 Earth oceans of H2O = 4.2e21 kg H2O)
+        # C = 2.73e20 kg (= 1e21 kg CO2)
+        H_mode   = "kg"
+        H_budget = 4.7e20
+        C_mode   = "kg"
+        C_budget = 2.73e20
+        N_mode   = "kg"
+        N_budget = 0.0
+        S_mode   = "kg"
+        S_budget = 0.0
+
+# Interior structure: SPIDER-internal (no Zalmoxis), Adams-Williamson EOS
+# with WolfBower2018_MgSiO3 lookup tables and Monteux-600 melting curves.
+# spider.py will fall back to SPIDER-bundled lookup_data because the
+# WolfBower2018_MgSiO3/P-S/ folder is not present in FWL_DATA's dynamic dir.
+[interior_struct]
+    module       = "spider"
+    core_frac_mode = "radius"
+    core_frac    = 0.55
+    core_density = 10738.33
+    core_heatcap = 880.0
+    melting_dir  = "Monteux-600"           # falls back to SPIDER-bundled A11_H13
+    eos_dir      = "WolfBower2018_MgSiO3"  # falls back to SPIDER-bundled 1TPa-dK09
+
+# Interior energy transport: SPIDER with full physics
+[interior_energetics]
+    module           = "spider"
+    num_levels       = 80
+    flux_guess       = 1000.0   # W/m^2; matches CHILI F_initial
+    trans_conduction = true
+    trans_convection = true
+    trans_grav_sep   = true
+    trans_mixing     = true
+    heat_tidal       = false
+    heat_radiogenic  = true
+    radio_tref       = 4.55     # CHILI delivery.radio_tref
+    radio_K          = 310.0
+    radio_U          = 0.031
+    radio_Th         = 0.124
+    rfront_loc       = 0.5      # CHILI rheo_phi_loc
+    rfront_wid       = 0.2      # CHILI rheo_phi_wid
+    grain_size       = 0.1
+    mixing_length    = "constant"  # CHILI mixing_length = 2 in v2 (constant D/4)
+    kappah_floor     = 10.0
+    tmagma_atol      = 95.0     # ~ CHILI tsurf_poststep_change
+    tmagma_rtol      = 0.025
+
+    [interior_energetics.spider]
+        tolerance_rel        = 1.0e-8
+        solver_type          = "bdf"
+        matprop_smooth_width = 1.0e-2
+
+# Outgassing: CALLIOPE with all CHILI-relevant species, IW+4 redox
+[outgas]
+    module       = "calliope"
+    fO2_shift_IW = 4.0
+    mass_thresh  = 1.0e16
+    T_floor      = 700.0
+
+    [outgas.calliope]
+        include_H2O = true
+        include_CO2 = true
+        include_N2  = true
+        include_S2  = true
+        include_SO2 = false
+        include_H2S = false
+        include_NH3 = false
+        include_H2  = true
+        include_CH4 = true
+        include_CO  = true
+        solubility  = true
+
+# Atmosphere: AGNI with skin BC, Dayspring/48, real-gas, FastChem equilibrium
+[atmos_clim]
+    module          = "agni"
+    surf_state      = "skin"        # CHILI conductive lid
+    surface_d       = 0.01          # m
+    surface_k       = 2.0           # W/m/K
+    cloud_enabled   = false
+    cloud_alpha     = 0.0
+    rayleigh        = false
+    albedo_pl       = 0.1           # CHILI prescribed Bond albedo
+    tmp_minimum     = 0.5
+    tmp_maximum     = 5000.0
+    prevent_warming = true
+
+    spectral_group  = "Dayspring"
+    spectral_bands  = "48"
+    num_levels      = 45
+    p_top           = 1.0e-4        # bar
+    p_obs           = 0.02          # bar
+
+    [atmos_clim.agni]
+        verbosity        = 1
+        solve_energy     = true
+        chemistry        = "eq"
+        surf_material    = "surface_albedos/Hammond24/lunarmarebasalt.dat"
+        solution_atol    = 0.08
+        solution_rtol    = 0.1
+        surf_roughness   = 0.001
+        surf_windspeed   = 2.0
+        overlap_method   = "ee"
+        rainout          = false
+        oceans           = true
+        latent_heat      = false
+        convection       = true
+        conduction       = true
+        sens_heat        = true
+        real_gas         = true
+        dx_max           = 15.0
+        dx_max_ini       = 200.0
+        max_steps        = 70
+        perturb_all      = false
+        mlt_criterion    = "s"
+        ini_profile      = "isothermal"
+        ls_default       = 2
+        fdo              = 2
+        check_safe_gas   = true
+
+# Escape: Zephyrus, energy-limited, 30% efficiency
+[escape]
+    module    = "zephyrus"
+    reservoir = "outgas"
+
+    [escape.zephyrus]
+        Pxuv       = 5.0e-5
+        efficiency = 0.3
+        tidal      = true
+
+# Atmospheric chemistry: VULCAN, manual trigger only
+[atmos_chem]
+    module = "none"
+
+# Synthetic observations: none
+[observe]
+    synthesis = "none"
