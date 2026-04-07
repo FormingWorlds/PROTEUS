@@ -586,7 +586,9 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
     """
 
     # Load tested grid parameters
-    raw_params = toml.load(grid_dir / "copy.grid.toml")
+    #raw_params = toml.load(grid_dir / "copy.grid.toml")
+    with open(grid_dir / "copy.grid.toml", "r") as f:
+        raw_params = toml.load(f)
     tested_params = {}
     for key, value in raw_params.items():
         if isinstance(value, dict) and "values" in value:
