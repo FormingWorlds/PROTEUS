@@ -53,7 +53,6 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     log_scale = false
 
     [input_parameters.delivery.elements.H_ppmw]
-    label = "[H] [ppmw]"
     log_scale = false
 
 # Output variables configuration for ECDF plot (1 column per output variable)

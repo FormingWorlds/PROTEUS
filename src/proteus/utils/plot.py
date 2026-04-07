@@ -132,7 +132,7 @@ _preset_labels = {
     'eccentricity': 'e',
 
     # Planet structure
-    'R_int': 'Radius [m]',
+    'R_int': 'Interior Radius [m]',
     'M_int': 'Interior Mass [kg]',
     'M_planet': 'Planet Mass [kg]',
 
@@ -146,13 +146,13 @@ _preset_labels = {
     'Phi_global': 'Melt fraction',
 
     # Planet observational properties
-    'R_obs': 'Transit radius [R_\\oplus]',
-    'rho_obs': 'Transit bulk density [kg/m^3]',
+    'R_obs': 'R_{\\rm obs}\\,[R_\\oplus]',
+    'rho_obs': '\\rho_{\\rm obs}\\,[\\mathrm{kg/m^3}]',
 
     # Atmospheric composition from outgassing
     'M_atm': 'Atmosphere mass [kg]',
     'P_surf': 'P_{\\rm surf}\\,[bar]',
-    'atm_kg_per_mol': 'Atmosphere mean molar mass [kg/mol]',
+    'atm_kg_per_mol': 'MMW [kg/mol]',
 }
 
 

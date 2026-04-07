@@ -11,6 +11,8 @@ import seaborn as sns
 import toml
 from matplotlib import cm
 
+from proteus.utils.plot import _preset_labels
+
 # ---------------------------------------------------------
 # Data loading, extraction, and CSV generation functions
 # ---------------------------------------------------------
@@ -325,6 +327,25 @@ def generate_summary_csv(
 # Plotting functions
 # ---------------------------------------------------------
 
+def get_label(quant):
+   """"
+   Get label for a given quantity, using preset labels if available.
+   Parameters
+   ----------
+   quant : str
+       Quantity for which to get label.
+
+   Returns
+   -------
+   str
+       Label for the quantity.
+   """
+
+   if quant in _preset_labels:
+     return _preset_labels(quant)
+   else:
+     return quant
+
 def plot_grid_status(df: pd.DataFrame, cfg: dict, grid_dir: str | Path, grid_name: str):
     """
     Plot histogram summary of number of simulation statuses in
@@ -505,7 +526,7 @@ def load_ecdf_plot_settings(cfg):
     param_settings = {}
     for key, val in flat_params.items():
         param_settings[key] = {
-            "label": val.get("label", key),
+            "label": _preset_labels.get(key, val.get("label", key)),
             "colormap": default_cmap,
             "log_scale": val.get("log_scale", False),
         }
@@ -513,7 +534,7 @@ def load_ecdf_plot_settings(cfg):
     output_settings = {}
     for key, val in cfg.get("output_variables", {}).items():
         output_settings[key] = {
-            "label": val.get("label", key),
+            "label": _preset_labels.get(key, val.get("label", key)),
             "log_scale": val.get("log_scale", False),
             "scale": val.get("scale", 1.0),
         }
