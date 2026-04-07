@@ -741,7 +741,8 @@ def main(grid_analyse_toml_file: str | Path):
         cfg = tomllib.load(f)
 
     # Get grid path and name
-    grid_path = Path(cfg["grid_path"])
+    grid_path = Path('output/' + cfg["output"] + '/')
+    print(f"Grid path: {grid_path}")
     grid_name = get_grid_name(grid_path)
 
     #print(grid_path)

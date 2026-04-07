@@ -1,0 +1,110 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "scratch/grid_demo/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Post-processing options
+update_csv  = true              # Whether to update the summary CSV files before plotting
+plot_format = "png"             # Format for saving plots ("png" or "pdf")
+plot_status = true              # Generate status summary plot of the grid
+plot_ecdf   = true              # Generate ECDF grid plot for input parameters tested in the grid and output_variables defined below
+#output_variables = ["solidification_time", "Phi_global", "T_surf", "P_surf", "atm_kg_per_mol", "esc_rate_total", "rho_obs"]  # List of output variables to include in ECDF plot
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/demos/dummy.toml"
+
+# Use SLURM?
+use_slurm = true
+
+# Execution limits
+max_jobs = 10       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Planet mass set directly
+["struct.mass_tot"]
+    method = "direct"
+    values = [1.0, 2.0]
+
+# Hydrogen inventory set by arange
+["delivery.elements.H_ppmw"]
+    method = "arange"
+    start    = 1
+    stop     = 100
+    step     = 50
+
+
+# Input parameters configuration for ECDF plot (1 row per input parameter)
+[input_parameters]
+
+    colormap = "viridis"    # Default colormap for all input parameters
+
+    [input_parameters.struct.mass_tot]
+    label = "Mass [M_\\oplus]"
+    log_scale = false
+
+    [input_parameters.delivery.elements.H_ppmw]
+    label = "[H] [ppmw]"
+    log_scale = false
+
+# Output variables configuration for ECDF plot (1 column per output variable)
+[output_variables]
+
+    [output_variables.solidification_time]
+    label = "Solidification [yr]"       # label of the output variable on x-axis
+    log_scale = true                    # whether to use log scale or not on x-axis
+    scale = 1.0                         # scaling factor to apply to the output variable values
+
+    [output_variables.Phi_global]
+    label = "Melt fraction [%]"
+    log_scale = false
+    scale = 100.0                       # convert melt fraction to percentage
+
+    [output_variables.T_surf]
+    label = "T_{\\rm surf}\\,[10^{3}\\,\\mathrm{K}]"
+    log_scale = false
+    scale = 0.001                       # convert K to 10^3 K for better readability on plot
+
+    [output_variables.P_surf]
+    label = "P_{\\rm surf}\\,[\\mathrm{bar}]"
+    log_scale = true
+    scale = 1.0
+
+    [output_variables.atm_kg_per_mol]
+    label = "MMW [g/mol]"
+    log_scale = false
+    scale = 1000.0                      # convert kg/mol to g/mol
+
+    [output_variables.esc_rate_total]
+    label = "Escape rate [g/s]"
+    log_scale = true
+    scale = 1000.0
+
+    [output_variables.bond_albedo]
+    label = "Bond albedo"
+    log_scale = false
+    scale = 1.0
+
+    [output_variables.rho_obs]
+    label = "\\rho_{\\rm obs}\\,[\\mathrm{g/cm^3}]"
+    log_scale = false
+    scale = 0.001                       # convert kg/m^3 to g/cm^3
+
+    [output_variables.R_obs]
+    label = "R_{\\rm obs}\\,[R_\\oplus]" # in units of Earth radii
+    log_scale = false
+    scale = 1.56961231e-7                   # convert m to Earth radii
+
+    [output_variables.M_planet]
+    label = "M_{\\rm p}\\,[M_\\oplus]" # in units of Earth masses
+    log_scale = false
+    scale = 1.6744809e-25                     # convert kg to Earth masses

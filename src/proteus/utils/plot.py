@@ -86,6 +86,75 @@ _preset_colours = {
     'nacljet': '#ee29f5',
 }
 
+# Standard label for input and output variables
+_preset_labels = {
+    ## Input parameters (from input.toml files)
+    # Orbit module
+    'orbit.semimajoraxis': 'a [AU]',
+    'orbit.eccentricity': 'e',
+
+    # Structure module
+    'struct.mass_tot': 'Mass [M_\\oplus]',
+    'struct.radius_int': 'Radius [R_\\oplus]',
+    'struct.corefrac': 'CRF',
+
+    # Atmosphere module
+    'atmos_clim.module': 'Atmospheric\ntreatment',
+
+    # Escape module
+    'escape.zephyrus.efficiency': '\\rm \\epsilon',
+    'escape.zephyrus.Pxuv': 'P_{\\rm XUV}\\,[bar]',
+
+    # Outgassing module
+    'outgas.fO2_shift_IW': '\\Delta\\,IW',
+
+    # Delivery module
+    'delivery.elements.H_oceans': 'H [Earth oceans]',
+    'delivery.elements.H_ppmw': 'H [ppmw]',
+    'delivery.elements.H_kg': 'H [kg]',
+    'delivery.elements.CH_ratio': 'C/H ratio',
+    'delivery.elements.C_ppmw': 'C [ppmw]',
+    'delivery.elements.C_kg': 'C [kg]',
+    'delivery.elements.NH_ratio': 'N/H ratio',
+    'delivery.elements.N_ppmw': 'N [ppmw]',
+    'delivery.elements.N_kg': 'N [kg]',
+    'delivery.elements.SH_ratio': 'S/H ratio',
+    'delivery.elements.S_ppmw': 'S [ppmw]',
+    'delivery.elements.S_kg': 'S [kg]',
+
+    ## Output variables (from runtime_helpfile.csv)
+    # Model tracking
+    'Time': 'Time [yr]',
+    'solidification_time': 'Solidification time [yr]', # computed in post-processing script, not in runtime_helpfile.csv
+
+    # Orbital parameters
+    'semimajorax': 'a [m]',
+    'eccentricity': 'e',
+
+    # Planet structure
+    'R_int': 'Radius [m]',
+    'M_int': 'Interior Mass [kg]',
+    'M_planet': 'Planet Mass [kg]',
+
+    # Temperatures
+    'T_surf': 'T_{\\rm surf}\\,[\\mathrm{K}]',
+    'T_magma': 'T_{\\rm magma}\\,[\\mathrm{K}]',
+    'T_eqm': 'T_{\\rm eqm}\\,[\\mathrm{K}]',
+    'T_skin': 'T_{\\rm skin}\\,[\\mathrm{K}]',
+
+    # Planet interior properties
+    'Phi_global': 'Melt fraction',
+
+    # Planet observational properties
+    'R_obs': 'Transit radius [R_\\oplus]',
+    'rho_obs': 'Transit bulk density [kg/m^3]',
+
+    # Atmospheric composition from outgassing
+    'M_atm': 'Atmosphere mass [kg]',
+    'P_surf': 'P_{\\rm surf}\\,[bar]',
+    'atm_kg_per_mol': 'Atmosphere mean molar mass [kg/mol]',
+}
+
 
 def _generate_colour(gas: str):
     """
