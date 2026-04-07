@@ -551,7 +551,7 @@ def group_output_by_parameter(df, grid_parameters, outputs):
 
 def latex(label: str) -> str:
     """
-    Wraps a label in dollar signs for LaTeX formatting if it contains 2 backslashes.
+    Wraps a label in dollar signs for LaTeX formatting if it contains a backslash.
     """
     return f"${label}$" if "\\" in label else label
 
