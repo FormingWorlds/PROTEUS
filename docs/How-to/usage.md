@@ -179,7 +179,7 @@ Results from a PROTEUS grid can be post-processed using the `proteus grid-analys
 Before running the command, update the `example.grid_analyse.toml` file to match your grid. Specify the input parameters used in your simulations and select the output variables you want to visualize. To post-process a grid and generate ECDF plots for further analysis, run the following command:
 
 ```
-proteus grid-analyse input/ensembles/example.grid_analyse.toml
+proteus grid-analyse --config input/ensembles/example.grid_analyse.toml
 ```
 
 Executing the command creates a `post_processing` folder inside your grid directory containing all post-processing outputs:
