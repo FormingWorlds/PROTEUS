@@ -215,7 +215,7 @@ config_version = "3.0"
     core_frac                 = 0.325        # radius or mass fraction (see core_frac_mode)
     core_density              = "self"       # core density [kg m-3]; "self" = from zalmoxis/dummy
     core_heatcap              = "self"       # core heat capacity [J K-1 kg-1]; "self" = from zalmoxis/dummy
-    melting_dir               = "none"       # melting curve folder in FWL_DATA; none if PALEOS
+    melting_dir               = "none"       # melting curve folder in FWL_DATA; none if PALEOS-derived; otherwise see tools/solidus_func.py
     eos_dir                   = "none"       # EOS folder in FWL_DATA; none if PALEOS
 
     [interior_struct.zalmoxis]
