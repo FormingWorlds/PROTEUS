@@ -182,12 +182,12 @@ Before running the command, update the `example.grid_analyse.toml` file to match
 proteus grid-analyse input/ensembles/example.grid_analyse.toml
 ```
 
-Executing the command creates a `post_processing` folder inside your grid directory containing all post-processing outputs:  
+Executing the command creates a `post_processing` folder inside your grid directory containing all post-processing outputs:
 
-- Extracted data: CSV files with simulation status, input parameters, and output values at the last time step are stored in:  
-  `post_processing/extracted_data/`  
-- Plots: Status summaries and ECDF grid plots are saved in:  
-  `post_processing/plots/`  
+- Extracted data: CSV files with simulation status, input parameters, and output values at the last time step are stored in:
+  `post_processing/extracted_data/`
+- Plots: Status summaries and ECDF grid plots are saved in:
+  `post_processing/grid_plots/`
 
 
 ## Retrieval scheme (Bayesian optimisation)
