@@ -325,7 +325,7 @@ def generate_summary_csv(
 # Plotting functions
 # ---------------------------------------------------------
 
-def plot_grid_status(df: pd.DataFrame, grid_dir: str | Path, grid_name: str):
+def plot_grid_status(df: pd.DataFrame, cfg: dict, grid_dir: str | Path, grid_name: str):
     """
     Plot histogram summary of number of simulation statuses in
     the grid using the generated CSV file for all cases.
@@ -335,12 +335,17 @@ def plot_grid_status(df: pd.DataFrame, grid_dir: str | Path, grid_name: str):
     df : pandas.DataFrame
         DataFrame loaded from grid_name_final_extracted_data_all.csv.
 
+    cfg : dict
+        Configuration dictionary containing plotting options.
+
     grid_dir : Path
         Path to the grid directory.
 
     grid_name : str
         Name of the grid.
     """
+    # Extract plot_format from cfg
+    plot_format = cfg.get("plot_format")
 
     if "status" not in df.columns:
         raise ValueError("CSV must contain a 'status' column")
@@ -412,7 +417,7 @@ def plot_grid_status(df: pd.DataFrame, grid_dir: str | Path, grid_name: str):
     # Save
     output_dir = Path(grid_dir) / "post_processing" / "grid_plots"
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"summary_grid_statuses_{grid_name}.png"
+    output_file = output_dir / f"summary_grid_statuses_{grid_name}.{plot_format}"
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -484,6 +489,10 @@ def load_ecdf_plot_settings(cfg):
                 Whether to use a logarithmic x-axis.
             - "scale" : float
                 Factor applied to raw output values before plotting.
+
+    plot_format : str
+        Format for saving plots ("png" or "pdf").
+
     """
 
     # Load input parameter settings
@@ -509,7 +518,9 @@ def load_ecdf_plot_settings(cfg):
             "scale": val.get("scale", 1.0),
         }
 
-    return param_settings, output_settings
+    plot_format = cfg.get("plot_format")
+
+    return param_settings, output_settings, plot_format
 
 def group_output_by_parameter(df, grid_parameters, outputs):
     """
@@ -555,10 +566,10 @@ def latex(label: str) -> str:
     """
     return f"${label}$" if "\\" in label else label
 
-def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: dict, grid_dir: str | Path, grid_name: str):
+def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: dict, plot_format: str, grid_dir: str | Path, grid_name: str):
     """
     Creates ECDF grid plots where each row corresponds to one input parameter
-    and each column corresponds to one output. Saves the resulting figure as a PNG.
+    and each column corresponds to one output. Saves the resulting figure as a {plot_format}.
 
     Parameters
     ----------
@@ -578,6 +589,9 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
             - "log_scale": bool, whether to plot the x-axis on log scale
             - "scale": float, a factor to multiply raw values by before plotting
 
+    plot_format : str
+        Format for saving plots ("png" or "pdf").
+
     grid_dir : str or Path
         Path to the grid directory (used for saving the plot and loading tested parameters).
 
@@ -586,13 +600,12 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
     """
 
     # Load tested grid parameters
-    #raw_params = toml.load(grid_dir / "copy.grid.toml")
     with open(grid_dir / "copy.grid.toml", "r") as f:
         raw_params = toml.load(f)
     tested_params = {}
     for key, value in raw_params.items():
         if isinstance(value, dict) and "values" in value:
-            print(key, value["values"])
+            #print(key, value["values"])
             # Only store the 'values' list
             tested_params[key] = value["values"]
     grid_params = tested_params
@@ -714,7 +727,7 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
     # Save figure
     output_dir = grid_dir / "post_processing" / "grid_plots"
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"ecdf_grid_plot_{grid_name}.png"
+    output_file = output_dir / f"ecdf_grid_plot_{grid_name}.{plot_format}"
     fig.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close(fig)
 
@@ -764,7 +777,7 @@ def main(grid_analyse_toml_file: str | Path):
     # --- Plot grid status ---
     if cfg.get("plot_status", True):
         all_simulations_data_csv = pd.read_csv(summary_csv_all, sep="\t")
-        plot_grid_status(all_simulations_data_csv, grid_path, grid_name)
+        plot_grid_status(all_simulations_data_csv, cfg, grid_path, grid_name)
         print("Plot grid status summary is available.")
 
     # --- ECDF plots ---
@@ -780,13 +793,14 @@ def main(grid_analyse_toml_file: str | Path):
             )
             grouped_data.update(group)
 
-        param_settings_grid, output_settings_grid = load_ecdf_plot_settings(cfg)
+        param_settings_grid, output_settings_grid, plot_format = load_ecdf_plot_settings(cfg)
         ecdf_grid_plot(
             grouped_data,
             param_settings_grid,
             output_settings_grid,
+            plot_format,
             grid_path,
-            grid_name,
+            grid_name
         )
         print("ECDF grid plot is available.")
 
