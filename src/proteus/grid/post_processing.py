@@ -513,18 +513,18 @@ def load_ecdf_plot_settings(cfg):
 
 def group_output_by_parameter(df, grid_parameters, outputs):
     """
-    Groups output values (like P_surf) by a specific grid parameter.
+    Groups output values (like P_surf) by one or more grid parameters.
 
     Parameters
     ----------
     df : pd.DataFrame
-        DataFrame containing simulation results including value of the grid parameter and the corresponding extracted output.
+        DataFrame containing simulation results including values of the grid parameters and the corresponding extracted outputs.
 
-    grid_parameters : str
-        Column name of the grid parameter to group by (like 'escape.zephyrus.efficiency').
+    grid_parameters : list of str
+        Column names of the grid parameters to group by (for example, ['escape.zephyrus.efficiency']).
 
-    outputs : str
-        Column name of the output to extract (like 'P_surf').
+    outputs : list of str
+        Column names of the outputs to extract (for example, ['P_surf']).
 
     Returns
     -------
