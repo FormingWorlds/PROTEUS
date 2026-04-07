@@ -563,9 +563,6 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
     Parameters
     ----------
 
-    grid_params : dict
-        Dictionary of tested grid parameters and their grid values (directly from copy.grid.toml)
-
     grouped_data : dict
         Dictionary where each key is of the form '[output]_per_[parameter]', and each value is a dict {param_value: [output_values]}.
 
@@ -581,8 +578,11 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
             - "log_scale": bool, whether to plot the x-axis on log scale
             - "scale": float, a factor to multiply raw values by before plotting
 
-    plots_path : str
-        Path to the grid where to create "single_plots_ecdf" and save all .png plots
+    grid_dir : str or Path
+        Path to the grid directory (used for saving the plot and loading tested parameters).
+
+    grid_name : str
+        Name of the grid (used for saving the plot).
     """
 
     # Load tested grid parameters
