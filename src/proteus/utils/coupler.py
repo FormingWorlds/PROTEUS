@@ -618,6 +618,16 @@ def GetHelpfileKeys():
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # total surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
+
+        # Desiccation escape-balance gate (commit ea22c07b, 2026-04-08).
+        # M_vol_initial is the sum of non-oxygen *_kg_total captured on the
+        # first escape call, used as the reference point for
+        # `outgas.wrapper.check_desiccation`'s "is the loss accounted for by
+        # escape?" sanity check. esc_kg_cumulative is the running sum of
+        # esc_rate_total * dt over the whole run. Both must be persisted to
+        # the CSV so resume preserves the gate's state.
+        'M_vol_initial',    # bulk volatile inventory baseline [kg]
+        'esc_kg_cumulative', # cumulative escaped mass [kg]
     ]
 
     # quantities for each gas, from outgassing
