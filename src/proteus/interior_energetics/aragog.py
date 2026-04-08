@@ -559,13 +559,29 @@ class AragogRunner:
     def _set_entropy_ic(
         config: Config, interior_o: Interior_t, outdir: str, hf_row: dict | None = None
     ):
-        """Set the entropy IC from the Zalmoxis T(r) profile via PALEOS.
+        """Set the entropy IC via the shared compute_initial_entropy helper.
 
-        Converts the temperature initial condition to entropy using the
-        PALEOS P-S EOS tables. The temperature profile comes from either:
-        - Zalmoxis adiabatic profile (IC=3)
-        - Zalmoxis output file (IC=2, T-dependent EOS)
-        - Config planet.tsurf_init (or computed T_surface_initial from accretion mode)
+        Delegates to ``proteus.interior_energetics.common.compute_initial_entropy``
+        so that SPIDER and Aragog resolve the initial mantle entropy
+        through the same code path. That helper handles:
+
+        - ``temperature_mode = "isentropic"`` -> return
+          ``planet.ini_entropy`` verbatim (no EOS lookup). This is the
+          CHILI protocol path used by the R8 baseline.
+        - Otherwise: invert the P-S temperature table at (P=1 bar,
+          tsurf_init) using the Aragog EntropyEOS on the same tables the
+          solver integrates with.
+        - Fallback to the PALEOS adiabat via Zalmoxis if the P-S
+          inversion path is unavailable.
+
+        After obtaining the scalar ``S_target``, build the initial
+        entropy profile on the solver's staggered nodes. The baseline
+        is a uniform ``S_target`` profile; add a small linear
+        perturbation ``ini_dsdr * (r - r_surf)`` when
+        ``config.planet.ini_dsdr`` is non-zero. This matches SPIDER's
+        ``-ic_dsdr`` flag, which is the numerical perturbation SPIDER's
+        BDF solver needs for stability on a uniform isentropic IC
+        (the R8 CHILI baseline sets ``ini_dsdr = -4.698e-6 J/kg/K/m``).
 
         Parameters
         ----------
@@ -574,111 +590,68 @@ class AragogRunner:
         interior_o : Interior_t
             Interior object with initialized EntropySolver.
         outdir : str
-            Output directory.
+            Output directory (unused; kept for API compatibility).
         hf_row : dict, optional
-            Helpfile row. When provided, checks for T_surface_initial
-            (computed by Zalmoxis accretion mode) to override tsurf_init.
+            Helpfile row. Passed through to compute_initial_entropy so
+            it can honour Zalmoxis's accretion-mode T_surface_initial
+            override.
         """
+        from proteus.interior_energetics.common import compute_initial_entropy
+
         solver = interior_o.aragog_solver
+        spider_eos_dir = interior_o._spider_eos_dir or None
+
+        S_target = compute_initial_entropy(
+            config,
+            hf_row=hf_row,
+            spider_eos_dir=spider_eos_dir,
+        )
+
+        # Build the initial entropy profile. Baseline is uniform
+        # S_target on all staggered nodes. When ini_dsdr is non-zero,
+        # add a linear radial perturbation anchored at the surface
+        # (S_init[i] = S_target + ini_dsdr * (r_stag[i] - r_surf)) so the
+        # perturbation is exactly zero at the top cell and grows toward
+        # the CMB. This matches SPIDER's -ic_dsdr semantic — a small
+        # perturbation used purely to break degeneracy in the BDF
+        # solver; the physical magnitude is negligible
+        # (~ -14 J/kg/K over 3e6 m for the R8 default of -4.698e-6).
         P_stag = solver._P_stag_flat
-        eos = solver.entropy_eos
+        N = len(P_stag)
+        S_init = np.full(N, float(S_target))
 
-        tsurf_init = config.planet.tsurf_init
-        if hf_row is not None:
-            T_surface_computed = hf_row.get('T_surface_initial', 0)
-            if T_surface_computed and T_surface_computed > 0:
-                tsurf_init = T_surface_computed
-
-        # Use 1 bar as surface pressure for the entropy lookup.
-        # The mesh surface P can be negative or zero; the adiabat
-        # computation needs a physically meaningful surface P.
-        P_surf = 1e5  # 1 bar
-
-        # Compute S_target by inverting the P-S temperature table:
-        # find S such that T(P_surf, S) = tsurf_init. Uses the EOS's
-        # pure-Python scalar inversion (brentq with bilinear interp),
-        # which avoids numpy scalar conversions that break on numpy >= 2.4.
-        try:
-            P_clamped = max(eos.P_min, min(float(P_surf), eos.P_max))
-            S_target = eos.invert_temperature(P_clamped, float(tsurf_init))
-
-            N = len(P_stag)
-            S_init = np.full(N, S_target)
-
-            # Verify: T at surface should match tsurf_init
-            T_check = eos.temperature_scalar(P_clamped, S_target)
-            logger.info(
-                'Entropy IC from P-S inversion: tsurf_init=%.0f K -> '
-                'S_target=%.1f J/kg/K (verification: T=%.0f K)',
-                tsurf_init,
-                S_target,
-                T_check,
-            )
-
-            solver.set_initial_entropy(S_init)
-
-        except Exception as e:
-            # Fallback: try the old compute_entropy_adiabat from Zalmoxis
-            # (uses P-T tables), then fall back to uniform S=3200.
-            import traceback as _tb
-
-            logger.warning(
-                'P-S inversion failed (%s). Traceback:\n%s\nTrying P-T fallback.',
-                e,
-                _tb.format_exc(),
-            )
-            try:
-                from zalmoxis.eos_export import compute_surface_entropy
-
-                from proteus.interior_struct.zalmoxis import (
-                    load_zalmoxis_material_dictionaries,
-                    load_zalmoxis_solidus_liquidus_functions,
-                )
-
-                mat_dicts = load_zalmoxis_material_dictionaries()
-                eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
-                paleos_eos_file = eos_entry.get('eos_file', '')
-                melt_funcs = load_zalmoxis_solidus_liquidus_functions(
-                    config.interior_struct.zalmoxis.mantle_eos, config
-                )
-                sol_func = liq_func = None
-                if melt_funcs is not None:
-                    sol_func, liq_func = melt_funcs
-
-                twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
-                solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
-                liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
-                solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
-                liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
-
-                # Only need scalar S(P_surface, T_surface) for the uniform
-                # isentropic IC. Use the surface-only helper, not
-                # compute_entropy_adiabat, because the latter's bracket
-                # expansion can overshoot into PALEOS's NaN region at
-                # high T (see eos_export.compute_surface_entropy docstring).
-                result = compute_surface_entropy(
-                    eos_file=paleos_eos_file,
-                    T_surface=tsurf_init,
-                    P_surface=P_surf,
-                    solidus_func=sol_func,
-                    liquidus_func=liq_func,
-                    solid_eos_file=solid_eos,
-                    liquid_eos_file=liquid_eos,
-                )
-                S_target = result['S_target']
-                N = len(P_stag)
-                solver.set_initial_entropy(np.full(N, S_target))
+        ini_dsdr = float(config.planet.ini_dsdr)
+        if ini_dsdr != 0.0:
+            r_basic = np.asarray(solver._r_basic_flat, dtype=float)
+            # Staggered nodes sit between basic nodes; midpoints are exact
+            # for uniform meshes and a good approximation for mass-
+            # coordinate meshes. The perturbation magnitude is tiny so
+            # any small discretisation error is irrelevant.
+            r_stag = 0.5 * (r_basic[:-1] + r_basic[1:])
+            if len(r_stag) == N:
+                r_surf = float(r_basic[-1])
+                S_init = S_init + ini_dsdr * (r_stag - r_surf)
                 logger.info(
-                    'Entropy IC from P-T fallback: S_target=%.1f J/kg/K',
-                    S_target,
+                    'Applied ini_dsdr perturbation: %.3e J/kg/K/m, '
+                    'amplitude %.2f J/kg/K from surface to CMB',
+                    ini_dsdr,
+                    float(abs(S_init[0] - S_init[-1])),
                 )
-            except Exception as e2:
+            else:
                 logger.warning(
-                    'Could not compute entropy IC (%s). Using uniform S=3200 J/kg/K.',
-                    e2,
+                    'ini_dsdr perturbation skipped: r_stag length %d != '
+                    'staggered nodes %d. Using uniform S_target.',
+                    len(r_stag),
+                    N,
                 )
-                N = len(P_stag)
-                solver.set_initial_entropy(np.full(N, 3200.0))
+
+        solver.set_initial_entropy(S_init)
+        logger.info(
+            'Aragog entropy IC set from compute_initial_entropy: '
+            'S_target=%.1f J/kg/K (uniform baseline, %d staggered nodes)',
+            float(S_target),
+            N,
+        )
 
     @staticmethod
     def _verify_entropy_ic(
