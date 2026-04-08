@@ -93,22 +93,17 @@ _preset_labels = {
     # Orbit module
     'orbit.semimajoraxis': 'a [AU]',
     'orbit.eccentricity': 'e',
-
     # Structure module
     'struct.mass_tot': 'M_{\\mathrm{tot}} [M_\\oplus]',
     'struct.radius_int': 'R_{\\mathrm{int}} [R_\\oplus]',
     'struct.corefrac': 'CRF',
-
     # Atmosphere module
     'atmos_clim.module': 'Atmospheric\ntreatment',
-
     # Escape module
     'escape.zephyrus.efficiency': '\\rm \\epsilon',
     'escape.zephyrus.Pxuv': 'P_{\\rm XUV}\\,[bar]',
-
     # Outgassing module
     'outgas.fO2_shift_IW': '\\Delta\\,\\rm IW',
-
     # Delivery module
     'delivery.elements.H_oceans': 'H [Earth oceans]',
     'delivery.elements.H_ppmw': 'H [ppmw]',
@@ -122,39 +117,31 @@ _preset_labels = {
     'delivery.elements.SH_ratio': 'S/H ratio',
     'delivery.elements.S_ppmw': 'S [ppmw]',
     'delivery.elements.S_kg': 'S [kg]',
-
     ## Output variables (from runtime_helpfile.csv)
     # Model tracking
     'Time': 'Time [yr]',
-    'solidification_time': 'Solidification time [yr]', # computed in post-processing script, not in runtime_helpfile.csv
-
+    'solidification_time': 'Solidification time [yr]',  # computed in post-processing script, not in runtime_helpfile.csv
     # Orbital parameters
     'semimajorax': 'a [m]',
     'eccentricity': 'e',
-
     # Planet structure
     'R_int': 'R_{\\mathrm{int}} [R_\\oplus]',
     'M_int': 'M_{\\mathrm{int}} [M_\\oplus]',
     'M_planet': 'M_{\\mathrm{planet}} [M_\\oplus]',
-
     # Temperatures
     'T_surf': 'T_{\\rm surf}\\,[\\mathrm{K}]',
     'T_magma': 'T_{\\rm magma}\\,[\\mathrm{K}]',
     'T_eqm': 'T_{\\rm eqm}\\,[\\mathrm{K}]',
     'T_skin': 'T_{\\rm skin}\\,[\\mathrm{K}]',
-
     # Planet interior properties
     'Phi_global': 'Melt fraction [%]',
-
     # Planet observational properties
     'R_obs': 'R_{\\rm obs}\\,[R_\\oplus]',
     'rho_obs': '\\rho_{\\rm obs}\\,[\\mathrm{g/m^3}]',
-
     # Atmospheric composition from outgassing
     'M_atm': 'Atmosphere mass [kg]',
     'P_surf': 'P_{\\rm surf}\\,[\\mathrm{bar}]',
     'atm_kg_per_mol': 'MMW [g/mol]',
-
     # Atmospheric escape
     'esc_rate_total': 'Escape rate [g/s]',
 }
@@ -164,22 +151,17 @@ _preset_scales = {
     # Orbit module
     'orbit.semimajoraxis': 1.0,
     'orbit.eccentricity': 1.0,
-
     # Structure module
     'struct.mass_tot': 1.0,
     'struct.radius_int': 1.0,
     'struct.corefrac': 1.0,
-
     # Atmosphere module
     'atmos_clim.module': 1.0,
-
     # Escape module
     'escape.zephyrus.efficiency': 1.0,
     'escape.zephyrus.Pxuv': 1.0,
-
     # Outgassing module
     'outgas.fO2_shift_IW': 1.0,
-
     # Delivery module
     'delivery.elements.H_oceans': 1.0,
     'delivery.elements.H_ppmw': 1.0,
@@ -193,39 +175,31 @@ _preset_scales = {
     'delivery.elements.SH_ratio': 1.0,
     'delivery.elements.S_ppmw': 1.0,
     'delivery.elements.S_kg': 1.0,
-
     ## Output variables (from runtime_helpfile.csv)
     # Model tracking
     'Time': 1.0,
-    'solidification_time': 1.0, # computed in post-processing script, not in runtime_helpfile.csv
-
+    'solidification_time': 1.0,  # computed in post-processing script, not in runtime_helpfile.csv
     # Orbital parameters
     'semimajorax': 1.0,
     'eccentricity': 1.0,
-
     # Planet structure
     'R_int': 1.0 / R_earth,
     'M_int': 1.0 / M_earth,
     'M_planet': 1.0 / M_earth,
-
     # Temperatures
     'T_surf': 1.0,
     'T_magma': 1.0,
     'T_eqm': 1.0,
     'T_skin': 1.0,
-
     # Planet interior properties
     'Phi_global': 100.0,
-
     # Planet observational properties
     'R_obs': 1.0 / R_earth,
     'rho_obs': 0.001,
-
     # Atmospheric composition from outgassing
     'M_atm': 1.0,
     'P_surf': 1.0,
     'atm_kg_per_mol': 1000.0,
-
     # Atmospheric escape
     'esc_rate_total': 1000.0,
 }
@@ -235,22 +209,17 @@ _preset_log_scales = {
     # Orbit module
     'orbit.semimajoraxis': False,
     'orbit.eccentricity': False,
-
     # Structure module
     'struct.mass_tot': False,
     'struct.radius_int': False,
     'struct.corefrac': False,
-
     # Atmosphere module
     'atmos_clim.module': False,
-
     # Escape module
     'escape.zephyrus.efficiency': True,
     'escape.zephyrus.Pxuv': True,
-
     # Outgassing module
     'outgas.fO2_shift_IW': False,
-
     # Delivery module
     'delivery.elements.H_oceans': True,
     'delivery.elements.H_ppmw': True,
@@ -264,42 +233,35 @@ _preset_log_scales = {
     'delivery.elements.SH_ratio': True,
     'delivery.elements.S_ppmw': True,
     'delivery.elements.S_kg': True,
-
     ## Output variables (from runtime_helpfile.csv)
     # Model tracking
     'Time': True,
-    'solidification_time': True, # computed in post-processing script, not in runtime_helpfile.csv
-
+    'solidification_time': True,  # computed in post-processing script, not in runtime_helpfile.csv
     # Orbital parameters
     'semimajorax': False,
     'eccentricity': False,
-
     # Planet structure
     'R_int': False,
     'M_int': False,
     'M_planet': False,
-
     # Temperatures
     'T_surf': False,
     'T_magma': False,
     'T_eqm': False,
     'T_skin': False,
-
     # Planet interior properties
     'Phi_global': False,
-
     # Planet observational properties
     'R_obs': False,
     'rho_obs': False,
-
     # Atmospheric composition from outgassing
     'M_atm': False,
     'P_surf': True,
     'atm_kg_per_mol': False,
-
     # Atmospheric escape
     'esc_rate_total': True,
 }
+
 
 def _generate_colour(gas: str):
     """

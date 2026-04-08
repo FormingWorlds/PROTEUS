@@ -17,6 +17,7 @@ from proteus.utils.plot import _preset_labels, _preset_log_scales, _preset_scale
 # Data loading, extraction, and CSV generation functions
 # ---------------------------------------------------------
 
+
 def get_grid_name(grid_path: str | Path) -> str:
     """
     Returns the grid name (last part of the path) from the given grid path.
@@ -33,8 +34,9 @@ def get_grid_name(grid_path: str | Path) -> str:
     """
     grid_path = Path(grid_path)
     if not grid_path.is_dir():
-        raise ValueError(f"{grid_path} is not a valid directory")
+        raise ValueError(f'{grid_path} is not a valid directory')
     return grid_path.name
+
 
 def load_grid_cases(grid_dir: Path):
     """
@@ -74,7 +76,7 @@ def load_grid_cases(grid_dir: Path):
             try:
                 init_params = toml.load(init_file)
             except Exception as e:
-                print(f"Error reading init file in {case.name}: {e}")
+                print(f'Error reading init file in {case.name}: {e}')
 
         # Read runtime_helpfile.csv
         df = None
@@ -82,13 +84,17 @@ def load_grid_cases(grid_dir: Path):
             try:
                 df = pd.read_csv(runtime_file, sep='\t')
             except Exception as e:
-                print(f"WARNING : Error reading runtime_helpfile.csv for {case.name}: {e}")
+                print(f'WARNING : Error reading runtime_helpfile.csv for {case.name}: {e}')
 
         # Read status file
         status = 'Unknown'
         if status_file.exists():
             try:
-                raw_lines = [ln.strip() for ln in status_file.read_text(encoding='utf-8').splitlines() if ln.strip()]
+                raw_lines = [
+                    ln.strip()
+                    for ln in status_file.read_text(encoding='utf-8').splitlines()
+                    if ln.strip()
+                ]
                 if len(raw_lines) >= 2:
                     status = raw_lines[1]
                 elif raw_lines:
@@ -96,29 +102,28 @@ def load_grid_cases(grid_dir: Path):
                 else:
                     status = 'Empty'
             except Exception as e:
-                print(f"WARNING : Error reading status file in {case.name}: {e}")
+                print(f'WARNING : Error reading status file in {case.name}: {e}')
         else:
-            print(f"WARNING : Missing status file in {case.name}")
+            print(f'WARNING : Missing status file in {case.name}')
 
         # Combine all info about simulations into a list of dictionaries
-        combined_data.append({
-            'init_parameters': init_params,
-            'output_values'  : df,
-            'status'         : status
-        })
+        combined_data.append(
+            {'init_parameters': init_params, 'output_values': df, 'status': status}
+        )
 
     # Print summary of statuses
     statuses = [c['status'] for c in combined_data]
     status_counts = pd.Series(statuses).value_counts().sort_values(ascending=False)
     print('-----------------------------------------------------------')
-    print(f"Total number of simulations: {len(statuses)}")
+    print(f'Total number of simulations: {len(statuses)}')
     print('-----------------------------------------------------------')
-    print("Number of simulations per status:")
+    print('Number of simulations per status:')
     for st, count in status_counts.items():
-        print(f"  - {st:<45} : {count}")
+        print(f'  - {st:<45} : {count}')
     print('-----------------------------------------------------------')
 
     return combined_data
+
 
 def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     """
@@ -144,31 +149,29 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     grid_dir = Path(grid_dir)
 
     # 1. Load tested input parameters in the grid
-    raw_params = toml.load(grid_dir / "copy.grid.toml")
+    raw_params = toml.load(grid_dir / 'copy.grid.toml')
 
     # Keep only the parameters and their values
     tested_params = {}
 
     for key, value in raw_params.items():
-        if isinstance(value, dict) and "method" in value: # filter to only get tested parameters (those with a "method" key)
-            method = value["method"]
+        if (
+            isinstance(value, dict) and 'method' in value
+        ):  # filter to only get tested parameters (those with a "method" key)
+            method = value['method']
 
-            if method == "direct":
-                tested_params[key] = value["values"]
+            if method == 'direct':
+                tested_params[key] = value['values']
 
-            elif method == "linspace":
-                tested_params[key] = np.linspace(
-                    value['start'], value['stop'], value['count']
-                )
+            elif method == 'linspace':
+                tested_params[key] = np.linspace(value['start'], value['stop'], value['count'])
 
-            elif method == "logspace":
+            elif method == 'logspace':
                 tested_params[key] = np.logspace(
-                    np.log10(value['start']),
-                    np.log10(value['stop']),
-                    value['count']
+                    np.log10(value['start']), np.log10(value['stop']), value['count']
                 )
 
-            elif method == "arange":
+            elif method == 'arange':
                 arr = list(np.arange(value['start'], value['stop'], value['step']))
                 # Ensure endpoint is included
                 if not np.isclose(arr[-1], value['stop']):
@@ -176,7 +179,7 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
                 tested_params[key] = np.array(arr, dtype=float)
 
             else:
-                print(f"⚠️ Unknown method for {key}: {method}")
+                print(f'⚠️ Unknown method for {key}: {method}')
                 continue
 
     grid_param_paths = list(tested_params.keys())
@@ -187,10 +190,10 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     if cases_data:
         for idx, case in enumerate(cases_data):
             params_for_case = {}
-            init_params = case["init_parameters"]
+            init_params = case['init_parameters']
 
             for path in grid_param_paths:
-                keys = path.split(".")
+                keys = path.split('.')
                 val = init_params
 
                 try:
@@ -203,6 +206,7 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
             case_params[idx] = params_for_case
 
     return case_params, tested_params
+
 
 def load_phi_crit(grid_dir: str | Path):
     """
@@ -220,20 +224,21 @@ def load_phi_crit(grid_dir: str | Path):
 
     """
     grid_dir = Path(grid_dir)
-    ref_file = grid_dir / "ref_config.toml"
+    ref_file = grid_dir / 'ref_config.toml'
 
     if not ref_file.exists():
-        raise FileNotFoundError(f"ref_config.toml not found in {grid_dir}")
+        raise FileNotFoundError(f'ref_config.toml not found in {grid_dir}')
 
-    with ref_file.open("r", encoding="utf-8") as f:
+    with ref_file.open('r', encoding='utf-8') as f:
         ref = toml.load(f)
 
     try:
-        phi_crit = ref["params"]["stop"]["solid"]["phi_crit"]
+        phi_crit = ref['params']['stop']['solid']['phi_crit']
     except KeyError:
-        raise KeyError("phi_crit not found in ref_config.toml")
+        raise KeyError('phi_crit not found in ref_config.toml')
 
     return phi_crit
+
 
 def extract_solidification_time(cases_data: list, grid_dir: str | Path):
     """
@@ -275,16 +280,17 @@ def extract_solidification_time(cases_data: list, grid_dir: str | Path):
                 idx = condition.idxmax()
                 solidification_times.append(df.loc[idx, 'Time'])
             else:
-                solidification_times.append(np.nan) # if planet is not solidified, append NaN
+                solidification_times.append(np.nan)  # if planet is not solidified, append NaN
 
         else:
             if not columns_printed:
-                print("Warning: Missing Phi_global or Time column.")
-                print("Columns available:", df.columns.tolist())
+                print('Warning: Missing Phi_global or Time column.')
+                print('Columns available:', df.columns.tolist())
                 columns_printed = True
             solidification_times.append(np.nan)
 
     return solidification_times
+
 
 def validate_output_variables(df: pd.DataFrame, requested_outputs: list):
     """
@@ -311,16 +317,19 @@ def validate_output_variables(df: pd.DataFrame, requested_outputs: list):
         if var not in available:
             # Find index of 'Time' column
             try:
-                idx = available.index("Time")
+                idx = available.index('Time')
             except ValueError:
                 idx = 0  # fallback if Time is not in columns
 
             print(f"WARNING: Output variable '{var}' not found in data.")
-            print(f"Available columns include: {available[idx:]}")  # show all columns starting from 'Time'
+            print(
+                f'Available columns include: {available[idx:]}'
+            )  # show all columns starting from 'Time'
         else:
             valid_outputs.append(var)
 
     return valid_outputs
+
 
 def generate_summary_csv(
     cases_data: list,
@@ -337,58 +346,60 @@ def generate_summary_csv(
 
     def include_case(status: str, mode: str) -> bool:
         status = status.lower()
-        if mode == "all":
+        if mode == 'all':
             return True
-        elif mode == "completed":
-            return status.startswith("completed")
-        elif mode == "running_error":
-            return status.startswith("running") or status.startswith("error")
+        elif mode == 'completed':
+            return status.startswith('completed')
+        elif mode == 'running_error':
+            return status.startswith('running') or status.startswith('error')
         else:
-            raise ValueError(f"Unknown mode: {mode}")
+            raise ValueError(f'Unknown mode: {mode}')
 
     # Compute solidification times once
     solidification_times = extract_solidification_time(cases_data, grid_dir)
 
-    output_dir = grid_dir / "post_processing" / "extracted_data"
+    output_dir = grid_dir / 'post_processing' / 'extracted_data'
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    modes = ["all", "completed", "running_error"]
+    modes = ['all', 'completed', 'running_error']
 
     for mode in modes:
         summary_rows = []
 
         for case_index, case in enumerate(cases_data):
-            status = case.get("status", "")
+            status = case.get('status', '')
 
             if not include_case(status, mode):
                 continue
 
             row = {
-                "case_number": case_index,
-                "status": status,
+                'case_number': case_index,
+                'status': status,
             }
 
             # Parameters
             row.update(case_params.get(case_index, {}))
 
             # Output values
-            df = case.get("output_values")
+            df = case.get('output_values')
             if df is not None and not df.empty:
                 row.update(df.iloc[-1].to_dict())
 
             # Solidification time
-            row["solidification_time"] = solidification_times[case_index]
+            row['solidification_time'] = solidification_times[case_index]
 
             summary_rows.append(row)
 
         summary_df = pd.DataFrame(summary_rows)
 
-        output_file = output_dir / f"{grid_name}_final_extracted_data_{mode}.csv"
-        summary_df.to_csv(output_file, sep="\t", index=False)
+        output_file = output_dir / f'{grid_name}_final_extracted_data_{mode}.csv'
+        summary_df.to_csv(output_file, sep='\t', index=False)
+
 
 # ---------------------------------------------------------
 # Plotting functions
 # ---------------------------------------------------------
+
 
 def get_label(quant):
     """
@@ -411,6 +422,7 @@ def get_label(quant):
         # Take only the last part after the last dot
         return quant.split('.')[-1]
 
+
 def get_scale(quant):
     """
     Get scale factor for a given quantity, using preset scales if available.
@@ -430,6 +442,7 @@ def get_scale(quant):
     else:
         return 1.0
 
+
 def get_log_scale(quant):
     """
     Get log scale flag for a given quantity, using preset log scales if available.
@@ -448,6 +461,7 @@ def get_log_scale(quant):
         return _preset_log_scales[quant]
     else:
         return False
+
 
 def plot_grid_status(df: pd.DataFrame, cfg: dict, grid_dir: str | Path, grid_name: str):
     """
@@ -469,37 +483,34 @@ def plot_grid_status(df: pd.DataFrame, cfg: dict, grid_dir: str | Path, grid_nam
         Name of the grid.
     """
     # Extract plot_format from cfg
-    plot_format = cfg.get("plot_format")
+    plot_format = cfg.get('plot_format')
 
-    if "status" not in df.columns:
+    if 'status' not in df.columns:
         raise ValueError("CSV must contain a 'status' column")
 
     # Clean and count statuses
-    statuses = df["status"].astype(str)
+    statuses = df['status'].astype(str)
     status_counts = statuses.value_counts().sort_values(ascending=False)
     total_simulations = len(df)
 
     # Format status labels for better readability
-    formatted_status_keys = [s.replace(" (", " \n (") for s in status_counts.index]
-    palette = sns.color_palette("Accent", len(status_counts))
+    formatted_status_keys = [s.replace(' (', ' \n (') for s in status_counts.index]
+    palette = sns.color_palette('Accent', len(status_counts))
     palette = dict(zip(formatted_status_keys, palette))
 
     # Prepare DataFrame for plotting
-    plot_df = pd.DataFrame({
-        "Status": formatted_status_keys,
-        "Count": status_counts.values
-    })
+    plot_df = pd.DataFrame({'Status': formatted_status_keys, 'Count': status_counts.values})
 
     # Plot histogram
     plt.figure(figsize=(11, 7))
     ax = sns.barplot(
         data=plot_df,
-        x="Status",
-        y="Count",
-        hue="Status",
+        x='Status',
+        y='Count',
+        hue='Status',
         palette=palette,
         dodge=False,
-        edgecolor="black"
+        edgecolor='black',
     )
 
     # Remove legend
@@ -513,39 +524,40 @@ def plot_grid_status(df: pd.DataFrame, cfg: dict, grid_dir: str | Path, grid_nam
         ax.text(
             i,
             count + offset,
-            f"{count} ({percentage:.1f}%)",
-            ha="center",
-            va="bottom",
-            fontsize=14
+            f'{count} ({percentage:.1f}%)',
+            ha='center',
+            va='bottom',
+            fontsize=14,
         )
 
     # Add total number of simulations text
     ax.text(
         0.97,
         0.94,
-        f"Total number of simulations : {total_simulations}",
+        f'Total number of simulations : {total_simulations}',
         transform=ax.transAxes,
-        ha="right",
-        va="top",
-        fontsize=16
+        ha='right',
+        va='top',
+        fontsize=16,
     )
 
     # Formatting
-    ax.grid(alpha=0.2, axis="y")
-    ax.set_title(f"Simulation status summary for grid {grid_name}", fontsize=16)
-    ax.set_xlabel("Simulation status", fontsize=16)
-    ax.set_ylabel("Number of simulations", fontsize=16)
-    ax.tick_params(axis="x", labelsize=14)
-    ax.tick_params(axis="y", labelsize=14)
+    ax.grid(alpha=0.2, axis='y')
+    ax.set_title(f'Simulation status summary for grid {grid_name}', fontsize=16)
+    ax.set_xlabel('Simulation status', fontsize=16)
+    ax.set_ylabel('Number of simulations', fontsize=16)
+    ax.tick_params(axis='x', labelsize=14)
+    ax.tick_params(axis='y', labelsize=14)
 
     # Save
-    output_dir = Path(grid_dir) / "post_processing" / "grid_plots"
+    output_dir = Path(grid_dir) / 'post_processing' / 'grid_plots'
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"summary_grid_statuses_{grid_name}.{plot_format}"
+    output_file = output_dir / f'summary_grid_statuses_{grid_name}.{plot_format}'
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
 
-def flatten_input_parameters(d: dict, parent_key: str = "") -> dict:
+
+def flatten_input_parameters(d: dict, parent_key: str = '') -> dict:
     """
     Flattens a nested input-parameter dictionary from a TOML configuration
     into a flat mapping of dot-separated parameter paths to their plotting
@@ -568,12 +580,12 @@ def flatten_input_parameters(d: dict, parent_key: str = "") -> dict:
     flat = {}
 
     for k, v in d.items():
-        if k == "colormap":
+        if k == 'colormap':
             continue
 
-        new_key = f"{parent_key}.{k}" if parent_key else k
+        new_key = f'{parent_key}.{k}' if parent_key else k
 
-        if isinstance(v, dict) and "label" in v:
+        if isinstance(v, dict) and 'label' in v:
             # Leaf parameter block
             flat[new_key] = v
         elif isinstance(v, dict):
@@ -581,6 +593,7 @@ def flatten_input_parameters(d: dict, parent_key: str = "") -> dict:
             flat.update(flatten_input_parameters(v, new_key))
 
     return flat
+
 
 def load_ecdf_plot_settings(cfg, tested_params=None):
     """
@@ -623,41 +636,43 @@ def load_ecdf_plot_settings(cfg, tested_params=None):
     """
 
     if tested_params is None or len(tested_params) == 0:
-        raise ValueError("No tested parameters found for ECDF plotting")
+        raise ValueError('No tested parameters found for ECDF plotting')
 
     # Optional colormap from config
-    cmap_name = cfg.get("input_parameters", {}).get("colormap", "viridis")
+    cmap_name = cfg.get('input_parameters', {}).get('colormap', 'viridis')
     default_cmap = getattr(cm, cmap_name, cm.viridis)
 
     # Build parameter settings from config
     param_settings = {
         key: {
-            "label": get_label(key),
-            "colormap": default_cmap,
-            "log_scale": get_log_scale(key)
+            'label': get_label(key),
+            'colormap': default_cmap,
+            'log_scale': get_log_scale(key),
         }
         for key in tested_params
     }
 
     # Build output settings from config
     output_settings = {}
-    output_list = cfg.get("output_variables", [])
+    output_list = cfg.get('output_variables', [])
 
     for key in output_list:
         output_settings[key] = {
-            "label": get_label(key),
-            "log_scale": get_log_scale(key),
-            "scale": get_scale(key),
+            'label': get_label(key),
+            'log_scale': get_log_scale(key),
+            'scale': get_scale(key),
         }
 
     # Extract plot format
-    plot_format = cfg.get("plot_format")
+    plot_format = cfg.get('plot_format')
 
     return param_settings, output_settings, plot_format
 
+
 def clean_series(s):
-    '''Cleans a pandas Series by replacing inf values with NaN and dropping NaN values.'''
+    """Cleans a pandas Series by replacing inf values with NaN and dropping NaN values."""
     return s.replace([np.inf, -np.inf], np.nan).dropna().loc[lambda x: x > 0]
+
 
 def group_output_by_parameter(df, grid_parameters, outputs):
     """
@@ -683,7 +698,7 @@ def group_output_by_parameter(df, grid_parameters, outputs):
 
     for param in grid_parameters:
         for output in outputs:
-            key_name = f"{output}_per_{param}"
+            key_name = f'{output}_per_{param}'
             value_dict = {}
             for param_value in df[param].dropna().unique():
                 subset = df[df[param] == param_value]
@@ -695,13 +710,23 @@ def group_output_by_parameter(df, grid_parameters, outputs):
 
     return grouped
 
+
 def latex(label: str) -> str:
     """
     Wraps a label in dollar signs for LaTeX formatting if it contains a backslash.
     """
-    return f"${label}$" if "\\" in label else label
+    return f'${label}$' if '\\' in label else label
 
-def ecdf_grid_plot(tested_params: dict, grouped_data: dict, param_settings: dict, output_settings: dict, plot_format: str, grid_dir: str | Path, grid_name: str):
+
+def ecdf_grid_plot(
+    tested_params: dict,
+    grouped_data: dict,
+    param_settings: dict,
+    output_settings: dict,
+    plot_format: str,
+    grid_dir: str | Path,
+    grid_name: str,
+):
     """
     Creates ECDF grid plots where each row corresponds to one input parameter
     and each column corresponds to one output. Saves the resulting figure as a {plot_format}.
@@ -742,18 +767,24 @@ def ecdf_grid_plot(tested_params: dict, grouped_data: dict, param_settings: dict
 
     # List of parameter names (rows) and output names (columns)
     param_names = list(param_settings.keys())
-    out_names   = list(output_settings.keys())
+    out_names = list(output_settings.keys())
 
     # Create subplot grid: rows = input parameters, columns = outputs variables
     n_rows = len(param_names)
     n_cols = len(out_names)
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.75 * n_rows), squeeze=False, gridspec_kw={'wspace': 0.1,  'hspace': 0.2})
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(4 * n_cols, 2.75 * n_rows),
+        squeeze=False,
+        gridspec_kw={'wspace': 0.1, 'hspace': 0.2},
+    )
 
     # Loop through parameters (rows) and outputs (columns)
     for i, param_name in enumerate(param_names):
         tested_param = grid_params.get(param_name, [])
         if tested_param is None or len(tested_param) == 0:
-            print(f"Skipping {param_name} — no tested values found in grid_params")
+            print(f'Skipping {param_name} — no tested values found in grid_params')
             continue
         settings = param_settings[param_name]
 
@@ -763,19 +794,23 @@ def ecdf_grid_plot(tested_params: dict, grouped_data: dict, param_settings: dict
             vmin, vmax = min(tested_param), max(tested_param)
             if vmin == vmax:
                 vmin, vmax = vmin - 1e-9, vmax + 1e-9
-            if settings.get("log_scale", False):
+            if settings.get('log_scale', False):
                 norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
             else:
                 norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
             def color_func(v):
-                return settings["colormap"](norm(v))
+                return settings['colormap'](norm(v))
+
             colorbar_needed = True
         else:
             unique_vals = sorted(set(tested_param))
-            cmap = mpl.colormaps.get_cmap(settings["colormap"]).resampled(len(unique_vals))
+            cmap = mpl.colormaps.get_cmap(settings['colormap']).resampled(len(unique_vals))
             color_map = {val: cmap(j) for j, val in enumerate(unique_vals)}
+
             def color_func(v):
                 return color_map[v]
+
             colorbar_needed = False
 
         for j, output_name in enumerate(out_names):
@@ -785,7 +820,8 @@ def ecdf_grid_plot(tested_params: dict, grouped_data: dict, param_settings: dict
             # Add panel number in upper-left corner
             panel_number = i * n_cols + j + 1
             ax.text(
-                0.03, 0.95,
+                0.03,
+                0.95,
                 str(panel_number),
                 transform=ax.transAxes,
                 fontsize=18,
@@ -793,34 +829,36 @@ def ecdf_grid_plot(tested_params: dict, grouped_data: dict, param_settings: dict
                 va='top',
                 ha='left',
                 color='black',
-                bbox=dict(facecolor='white', edgecolor='silver', boxstyle='round,pad=0.2', alpha=0.8)
+                bbox=dict(
+                    facecolor='white', edgecolor='silver', boxstyle='round,pad=0.2', alpha=0.8
+                ),
             )
 
             # Plot one ECDF per tested parameter value
             for val in tested_param:
-                data_key = f"{output_name}_per_{param_name}"
+                data_key = f'{output_name}_per_{param_name}'
                 # if val not in grouped_data.get(data_key, {}):
                 #     continue
                 # raw = np.array(grouped_data[data_key][val]) * out_settings["scale"]
                 data_dict = grouped_data.get(data_key, {})
                 if val not in data_dict:
                     continue
-                raw = np.array(data_dict[val]) #* out_settings["scale"]
+                raw = np.array(data_dict[val])  # * out_settings["scale"]
 
                 # Plot ECDF
                 sns.ecdfplot(
                     data=raw,
-                    #log_scale=out_settings["log_scale"],
-                    stat="percent",
+                    # log_scale=out_settings["log_scale"],
+                    stat='percent',
                     color=color_func(val),
                     linewidth=4,
                     linestyle='-',
-                    ax=ax
-                    )
+                    ax=ax,
+                )
 
             # Configure x-axis labels, ticks, grids
             if i == n_rows - 1:
-                ax.set_xlabel(latex(out_settings["label"]), fontsize=22)
+                ax.set_xlabel(latex(out_settings['label']), fontsize=22)
                 ax.xaxis.set_label_coords(0.5, -0.3)
                 ax.tick_params(axis='x', labelsize=22)
             else:
@@ -828,70 +866,86 @@ def ecdf_grid_plot(tested_params: dict, grouped_data: dict, param_settings: dict
 
             # Configure y-axis (shared label added later)
             if j == 0:
-                ax.set_ylabel("")
+                ax.set_ylabel('')
                 ticks = [0.0, 50, 100]
                 ax.set_yticks(ticks)
                 ax.tick_params(axis='y', labelsize=22)
             else:
-                ax.set_ylabel("")
+                ax.set_ylabel('')
                 ax.set_yticks(ticks)
                 ax.tick_params(axis='y', labelleft=False)
-            ax.tick_params(axis='x', which='minor', direction='in', top=True, bottom=True, length=2)
-            ax.tick_params(axis='x', which='major', direction='inout', top=True, bottom=True, length=6)
+            ax.tick_params(
+                axis='x', which='minor', direction='in', top=True, bottom=True, length=2
+            )
+            ax.tick_params(
+                axis='x', which='major', direction='inout', top=True, bottom=True, length=6
+            )
 
             ax.grid(alpha=0.4)
 
             # Configure log scale for x-axis if needed
-            if out_settings["log_scale"]:
-                ax.set_xscale("log")
+            if out_settings['log_scale']:
+                ax.set_xscale('log')
 
         # After plotting all outputs for this parameter (row), add colorbar or legend
-        if colorbar_needed: # colorbar for numeric parameters
-            sm = mpl.cm.ScalarMappable(cmap=settings["colormap"], norm=norm)
-            rightmost_ax = axes[i, -1] # Get the rightmost axis in the current row
-            cbar = fig.colorbar(sm,ax=rightmost_ax,pad=0.03,aspect=10)
-            cbar.set_label(latex(settings["label"]), fontsize=24)
+        if colorbar_needed:  # colorbar for numeric parameters
+            sm = mpl.cm.ScalarMappable(cmap=settings['colormap'], norm=norm)
+            rightmost_ax = axes[i, -1]  # Get the rightmost axis in the current row
+            cbar = fig.colorbar(sm, ax=rightmost_ax, pad=0.03, aspect=10)
+            cbar.set_label(latex(settings['label']), fontsize=24)
             cbar.ax.yaxis.set_label_coords(6, 0.5)
             ticks = sorted(set(tested_param))
             cbar.set_ticks(ticks)
             cbar.ax.tick_params(labelsize=22)
-        else: # legend for string parameters
-            handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=4, label=str(val)) for val in unique_vals]
-            ax.legend(handles=handles, fontsize=24,bbox_to_anchor=(1.01, 1), loc='upper left')
+        else:  # legend for string parameters
+            handles = [
+                mpl.lines.Line2D([0], [0], color=color_map[val], lw=4, label=str(val))
+                for val in unique_vals
+            ]
+            ax.legend(handles=handles, fontsize=24, bbox_to_anchor=(1.01, 1), loc='upper left')
 
     # Add a single, shared y-axis label
-    fig.text(0.07, 0.5, 'Empirical cumulative distribution of grid simulations [%]', va='center', rotation='vertical', fontsize=40)
+    fig.text(
+        0.07,
+        0.5,
+        'Empirical cumulative distribution of grid simulations [%]',
+        va='center',
+        rotation='vertical',
+        fontsize=40,
+    )
 
     # Save figure
-    output_dir = grid_dir / "post_processing" / "grid_plots"
+    output_dir = grid_dir / 'post_processing' / 'grid_plots'
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"ecdf_grid_plot_{grid_name}.{plot_format}"
+    output_file = output_dir / f'ecdf_grid_plot_{grid_name}.{plot_format}'
     fig.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close(fig)
+
 
 # ---------------------------------------------------------
 # main
 # ---------------------------------------------------------
 
-def main(grid_analyse_toml_file: str | Path):
 
+def main(grid_analyse_toml_file: str | Path):
     # Load configuration from grid_analyse.toml
-    with open(grid_analyse_toml_file, "rb") as f:
+    with open(grid_analyse_toml_file, 'rb') as f:
         cfg = tomllib.load(f)
 
     # Get grid path and name
-    grid_path = Path('output/' + cfg["output"] + '/')
-    print(f"Grid path: {grid_path}")
+    grid_path = Path('output/' + cfg['output'] + '/')
+    print(f'Grid path: {grid_path}')
     grid_name = get_grid_name(grid_path)
 
-
     # --- Summary CSVs ---
-    update_csv = cfg.get("update_csv", True)
+    update_csv = cfg.get('update_csv', True)
 
-    summary_dir = grid_path / "post_processing" / "extracted_data"
-    summary_csv_all = summary_dir / f"{grid_name}_final_extracted_data_all.csv"
-    summary_csv_completed = summary_dir / f"{grid_name}_final_extracted_data_completed.csv"
-    summary_csv_running_error = summary_dir / f"{grid_name}_final_extracted_data_running_error.csv"
+    summary_dir = grid_path / 'post_processing' / 'extracted_data'
+    summary_csv_all = summary_dir / f'{grid_name}_final_extracted_data_all.csv'
+    summary_csv_completed = summary_dir / f'{grid_name}_final_extracted_data_completed.csv'
+    summary_csv_running_error = (
+        summary_dir / f'{grid_name}_final_extracted_data_running_error.csv'
+    )
 
     if update_csv:
         # Load grid data
@@ -901,42 +955,41 @@ def main(grid_analyse_toml_file: str | Path):
         )
 
         # Write CSV
-        generate_summary_csv(
-            data, input_param_grid_per_case, grid_path, grid_name
-        )
+        generate_summary_csv(data, input_param_grid_per_case, grid_path, grid_name)
     else:
         # Check that CSVs exist
         for f in [summary_csv_all, summary_csv_completed, summary_csv_running_error]:
             if not f.exists():
                 raise FileNotFoundError(
-                    f"{f.name} not found in {summary_dir}, "
-                    "but update_csv is set to False. Please set update_csv to True to generate it."
+                    f'{f.name} not found in {summary_dir}, '
+                    'but update_csv is set to False. Please set update_csv to True to generate it.'
                 )
         # Only load tested parameters from grid config
         _, tested_params_grid = get_tested_grid_parameters([], grid_path)
 
     # --- Plot grid status ---
-    if cfg.get("plot_status", True):
-        all_simulations_data_csv = pd.read_csv(summary_csv_all, sep="\t")
+    if cfg.get('plot_status', True):
+        all_simulations_data_csv = pd.read_csv(summary_csv_all, sep='\t')
         plot_grid_status(all_simulations_data_csv, cfg, grid_path, grid_name)
-        print("Plot grid status summary is available.")
+        print('Plot grid status summary is available.')
 
     # --- ECDF plots ---
-    if cfg.get("plot_ecdf", True):
-        completed_simulations_data_csv = pd.read_csv(summary_csv_completed, sep="\t")
+    if cfg.get('plot_ecdf', True):
+        completed_simulations_data_csv = pd.read_csv(summary_csv_completed, sep='\t')
         columns_output = validate_output_variables(
-            completed_simulations_data_csv,
-            cfg["output_variables"]
+            completed_simulations_data_csv, cfg['output_variables']
         )
         if len(columns_output) == 0:
-            raise ValueError("No valid output variables found. Check your config file.")
+            raise ValueError('No valid output variables found. Check your config file.')
         grouped_data = group_output_by_parameter(
-                        completed_simulations_data_csv,
-                        list(tested_params_grid.keys()),
-                        columns_output,
-                    )
+            completed_simulations_data_csv,
+            list(tested_params_grid.keys()),
+            columns_output,
+        )
 
-        param_settings_grid, output_settings_grid, plot_format = load_ecdf_plot_settings(cfg, tested_params_grid)
+        param_settings_grid, output_settings_grid, plot_format = load_ecdf_plot_settings(
+            cfg, tested_params_grid
+        )
         ecdf_grid_plot(
             tested_params_grid,
             grouped_data,
@@ -944,10 +997,10 @@ def main(grid_analyse_toml_file: str | Path):
             output_settings_grid,
             plot_format,
             grid_path,
-            grid_name
+            grid_name,
         )
-        print("ECDF grid plot is available.")
+        print('ECDF grid plot is available.')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

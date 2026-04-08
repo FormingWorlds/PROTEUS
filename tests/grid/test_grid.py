@@ -77,16 +77,26 @@ def test_grid_pack(grid_run):
     # check zip exists
     assert os.path.isfile(OUT_DIR / 'pack.zip')
 
+
 @pytest.mark.integration
 def test_grid_post_process(grid_run):
     # Test running grid-post-process command
     gpostprocess(GRID_CONFIG)
 
     # check post-processed summary CSV file exists
-    assert os.path.isfile(OUT_DIR / 'post_processing' / 'extracted_data' / f'{GRID_NAME}_final_extracted_data_all.csv')
+    assert os.path.isfile(
+        OUT_DIR
+        / 'post_processing'
+        / 'extracted_data'
+        / f'{GRID_NAME}_final_extracted_data_all.csv'
+    )
 
     # check that status summary plot was generated
-    assert os.path.isfile(OUT_DIR / 'post_processing' / 'grid_plots' / f'summary_grid_statuses_{GRID_NAME}.png')
+    assert os.path.isfile(
+        OUT_DIR / 'post_processing' / 'grid_plots' / f'summary_grid_statuses_{GRID_NAME}.png'
+    )
 
     # check that ECDF plot was generated
-    assert os.path.isfile(OUT_DIR / 'post_processing' / 'grid_plots' / f'ecdf_grid_plot_{GRID_NAME}.png')
+    assert os.path.isfile(
+        OUT_DIR / 'post_processing' / 'grid_plots' / f'ecdf_grid_plot_{GRID_NAME}.png'
+    )
