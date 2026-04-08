@@ -164,9 +164,9 @@ class Agni:
     real_gas: bool = field(default=False)
     psurf_thresh: float = field(default=0.1, validator=ge(0))
     dx_max: float = field(default=35.0, validator=gt(1))
-    dx_max_ini: float = field(default=300.0, validator=gt(1))
-    max_steps: int = field(default=70, validator=gt(2))
-    perturb_all: bool = field(default=True)
+    dx_max_ini: float = field(default=50.0, validator=gt(1))
+    max_steps: int = field(default=200, validator=gt(2))
+    perturb_all: bool = field(default=False)
     mlt_criterion: str = field(
         default='s',
         validator=in_(
@@ -176,7 +176,7 @@ class Agni:
             )
         ),
     )
-    fastchem_floor: float = field(default=150.0, validator=gt(0.0))
+    fastchem_floor: float = field(default=1000.0, validator=gt(0.0))
     fastchem_maxiter_chem: int = field(default=60000, validator=gt(200))
     fastchem_maxiter_solv: int = field(default=20000, validator=gt(200))
     fastchem_xtol_chem: float = field(default=1e-4, validator=gt(0.0))
