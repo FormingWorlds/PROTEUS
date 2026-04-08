@@ -11,7 +11,7 @@ update_csv  = true                  # Whether to update the summary CSV files be
 plot_format = "png"                 # Format for saving plots ("png" or "pdf")
 plot_status = true                  # Generate status summary plot of the grid
 plot_ecdf   = true                  # Generate ECDF grid plot for input parameters tested in the grid and output_variables defined below
-colormap    = "managua"             # Colormap for ECDF plot (e.g. "viridis", "managua")
+colormap    = "berlin"             # Colormap for ECDF plot (e.g. "viridis", "managua")
 output_variables = ["solidification_time", "Phi_global",
                     "T_surf", "P_surf", "atm_kg_per_mol",
                     "esc_rate_total", "rho_obs"]  # List of output variables to include in ECDF plot (name must match variable name in runtime_helpfile.csv)

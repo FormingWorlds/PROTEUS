@@ -1002,7 +1002,3 @@ def main(grid_analyse_toml_file: str | Path):
             grid_name,
         )
         print('ECDF grid plot is available.')
-
-# main() expects the TOML file from the CLI; no argument needed here.
-if __name__ == '__main__':
-    main()
