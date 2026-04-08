@@ -204,7 +204,7 @@ After execution, a `post_processing/` directory is created inside the grid folde
     - `{grid_name}_final_extracted_data_completed.csv` which contains only successful runs (used for ECDF plots)
     - `{grid_name}_final_extracted_data_running_error.csv` for only failed simulations with status `Running` or `Error`.
 
-- `grid_plots/` This directory contains a status dummary plot and a ECDF plot
+- `grid_plots/` This directory contains a status summary plot and a ECDF plot
 
 ## Retrieval scheme (Bayesian optimisation)
 
