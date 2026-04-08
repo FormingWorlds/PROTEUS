@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from proteus.escape.common import calc_unfract_fluxes
 from proteus.utils.constants import M_sun, element_list, secs_per_year
 
@@ -45,7 +47,28 @@ def run_escape(
         log.info(f'Escape is disabled, bulk rate = {hf_row["esc_rate_total"]:.2e} kg s-1')
         return
 
-    elif config.escape.module == 'dummy':
+    # Snapshot the initial bulk volatile inventory on the first escape call.
+    # This baseline is used by `outgas.wrapper.check_desiccation` to verify
+    # that any subsequent collapse of `*_kg_total` is actually accounted for
+    # by cumulative escape, rather than by an upstream AGNI/outgas failure
+    # zeroing the atmosphere as a side effect (CHILI sweep R7/R21 cascade).
+    m_init_prev = hf_row.get('M_vol_initial', None)
+    try:
+        m_init_prev_f = float(m_init_prev) if m_init_prev is not None else 0.0
+    except (TypeError, ValueError):
+        m_init_prev_f = 0.0
+    if not np.isfinite(m_init_prev_f) or m_init_prev_f <= 0.0:
+        m_vol_baseline = sum(
+            float(hf_row.get(f'{e}_kg_total', 0.0))
+            for e in element_list
+            if e != 'O'
+        )
+        hf_row['M_vol_initial'] = m_vol_baseline
+        # Reset the cumulative escape counter alongside the baseline so the
+        # ratio (lost vs escaped) starts from a consistent zero.
+        hf_row['esc_kg_cumulative'] = 0.0
+
+    if config.escape.module == 'dummy':
         run_dummy(config, hf_row)
 
     elif config.escape.module == 'zephyrus':
@@ -66,6 +89,15 @@ def run_escape(
         esc_e = float(hf_row.get(f'esc_rate_{e}', 0.0))
         if esc_e > 0:
             log.info('    %2s = %.2e kg s-1' % (e, esc_e))
+
+    # Accumulate cumulative escaped mass [kg] for the desiccation gate. This
+    # is the integral of `esc_rate_total * dt` over all escape calls and is
+    # persisted to the helpfile so it survives resume.
+    esc_step_kg = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
+    if np.isfinite(esc_step_kg) and esc_step_kg > 0.0:
+        hf_row['esc_kg_cumulative'] = (
+            float(hf_row.get('esc_kg_cumulative', 0.0)) + esc_step_kg
+        )
 
     # calculate new elemental inventories from loss over duration `dt`
     solvevol_target = calc_new_elements(

@@ -106,16 +106,132 @@ def test_check_desiccation_fully_desiccated():
     Test check_desiccation returns True when all volatiles (except O) below threshold.
 
     Physics: Complete desiccation after long-term escape (Mars-like scenario).
-    All H, C, N, S depleted to negligible amounts.
+    All H, C, N, S depleted to negligible amounts. With no escape baseline
+    tracked (M_vol_initial absent or zero), the function falls back to the
+    threshold-only behaviour.
     """
     config = MagicMock()
     config.outgas.mass_thresh = 1e16  # 10 petagrams
 
-    # All elements below threshold
+    # All elements below threshold; no M_vol_initial baseline -> fallback path.
     hf_row = {}
     for e in element_list:
         hf_row[e + '_kg_total'] = 1e12  # 1 teragram << threshold
 
+    result = check_desiccation(config, hf_row)
+    assert result is True
+
+
+@pytest.mark.unit
+def test_check_desiccation_refused_when_loss_unexplained():
+    """
+    Test the escape-balance gate: when M_ele has collapsed but cumulative
+    escape cannot account for it, check_desiccation must REFUSE to declare
+    desiccation. This is the regression guard for the CHILI sweep R7/R21
+    cascade where an AGNI failure wiped the atmosphere as a side effect and
+    the old check_desiccation laundered the failure into a fake "solidified
+    + desiccated" exit.
+
+    Discriminating values: initial inventory = 1e21 kg, escaped = 1e15 kg,
+    current = 1e10 kg. Loss = 1e21 - 1e10 ≈ 1e21 kg, which is 1e6x larger
+    than the cumulative escape can explain. The 1.5x slack and 1e3 floor
+    do not save it.
+    """
+    config = MagicMock()
+    config.outgas.mass_thresh = 1e16
+
+    hf_row = {}
+    for e in element_list:
+        if e == 'O':
+            hf_row[e + '_kg_total'] = 1e22
+        else:
+            hf_row[e + '_kg_total'] = 1e10  # well below threshold
+    hf_row['M_vol_initial'] = 1e21  # 1 EO H equivalent
+    hf_row['esc_kg_cumulative'] = 1e15  # only 0.1% of inventory could be lost
+
+    result = check_desiccation(config, hf_row)
+    assert result is False, (
+        'Loss of ~1e21 kg with only 1e15 kg escape budget MUST be refused'
+    )
+
+
+@pytest.mark.unit
+def test_check_desiccation_allowed_when_loss_matches_escape():
+    """
+    Test that legitimate desiccation (loss accounted for by escape) is still
+    accepted by the gate. This is the positive case the gate must NOT block.
+
+    Initial inventory = 1e16 kg, escaped = 1e16 kg over the run, current ~ 0.
+    Lost = 1e16 ≈ esc_cum, ratio ~ 1.0, well within the 1.5x tolerance.
+    """
+    config = MagicMock()
+    config.outgas.mass_thresh = 1e16
+
+    hf_row = {}
+    for e in element_list:
+        hf_row[e + '_kg_total'] = 1e10  # below threshold
+    hf_row['M_vol_initial'] = 1e16
+    hf_row['esc_kg_cumulative'] = 1.1e16  # slightly more than initial
+
+    result = check_desiccation(config, hf_row)
+    assert result is True, 'Loss matching cumulative escape must be allowed'
+
+
+@pytest.mark.unit
+def test_check_desiccation_gate_inactive_without_baseline():
+    """
+    Test that the gate falls back to threshold-only behaviour when
+    M_vol_initial is missing or zero (e.g. resuming from an old CSV that
+    predates the baseline tracking, or escape never ran).
+
+    Without a baseline we cannot reason about whether the loss is real, so
+    we trust the threshold check (preserving backward compatibility with
+    runs whose helpfile schema has no M_vol_initial column).
+    """
+    config = MagicMock()
+    config.outgas.mass_thresh = 1e16
+
+    hf_row = {}
+    for e in element_list:
+        hf_row[e + '_kg_total'] = 1e10  # below threshold
+
+    # Case A: key absent
+    assert check_desiccation(config, dict(hf_row)) is True
+
+    # Case B: key present but zero
+    case_b = dict(hf_row, M_vol_initial=0.0, esc_kg_cumulative=0.0)
+    assert check_desiccation(config, case_b) is True
+
+    # Case C: key present but NaN (e.g. cast from missing pandas column)
+    import math
+    case_c = dict(hf_row, M_vol_initial=math.nan, esc_kg_cumulative=0.0)
+    assert check_desiccation(config, case_c) is True
+
+
+@pytest.mark.unit
+def test_check_desiccation_gate_with_one_t_floor():
+    """
+    Test the absolute floor (1e3 kg) on the gate. With M_vol_initial near
+    the threshold and escape near zero, a tiny rounding-noise loss
+    (~ a few hundred kg) must NOT trip the refusal.
+
+    Edge case: cur_m_ele = M_vol_initial - 500 kg. lost = 500 kg, esc_cum = 0.
+    Predicate: 500 > 1.5 * 0 + 1000  →  False  →  desiccation allowed.
+    """
+    config = MagicMock()
+    config.outgas.mass_thresh = 1e16
+
+    hf_row = {}
+    for e in element_list:
+        if e == 'H':
+            hf_row[e + '_kg_total'] = 1e10  # tiny but the only contributor
+        else:
+            hf_row[e + '_kg_total'] = 0.0
+    # All elements are below threshold so the threshold check passes.
+    hf_row['M_vol_initial'] = 1e10 + 500.0  # 500 kg of "rounding noise"
+    hf_row['esc_kg_cumulative'] = 0.0
+
+    # 500 kg loss is below the 1e3 absolute floor, so the gate must allow it.
     result = check_desiccation(config, hf_row)
     assert result is True
 

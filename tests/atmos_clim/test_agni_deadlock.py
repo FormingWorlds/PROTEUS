@@ -294,3 +294,186 @@ def test_deadlock_counter_first_iteration_no_prev_row():
         )
     assert counter == 0
     assert not aborted
+
+
+# =====================================================================
+# AGNI post-solve validation gate (suggestion 1)
+# =====================================================================
+#
+# These tests cover `proteus.atmos_clim.agni._validate_agni_state`, which
+# guards against the failure mode where AGNI's solve_energy_b returns
+# True but the post-solve atmosphere struct holds NaN/inf/non-positive
+# values. Without this gate the bad values silently propagate into
+# hf_row and the deadlock detector never fires (CHILI sweep regression).
+
+
+class _MockAtmos:
+    """Minimal duck-typed stand-in for AGNI's Atmos_t struct.
+
+    Only the attributes inspected by `_validate_agni_state` are
+    populated. Tests adjust them to simulate each failure mode.
+    """
+
+    def __init__(
+        self,
+        is_converged: bool = True,
+        tmp_surf: float = 1500.0,
+        flux_tot=None,
+    ):
+        self.is_converged = is_converged
+        self.tmp_surf = tmp_surf
+        # Default to a finite, well-shaped flux profile
+        if flux_tot is None:
+            flux_tot = [1.0e3, 9.5e2, 9.0e2, 8.5e2, 8.0e2]
+        self.flux_tot = flux_tot
+
+
+def test_validate_agni_state_accepts_healthy():
+    """A converged solve with finite, positive state must pass validation.
+
+    Edge: T_surf at the lower end of the magma-ocean range (1500 K), flux
+    monotonically decreasing top→bottom (a typical cooling profile).
+    """
+    from proteus.atmos_clim.agni import _validate_agni_state
+
+    atmos = _MockAtmos(is_converged=True, tmp_surf=1500.0)
+    ok, reason = _validate_agni_state(atmos)
+    assert ok is True
+    assert reason == ''
+
+
+def test_validate_agni_state_rejects_nan_tsurf():
+    """NaN surface temperature must be rejected.
+
+    Discriminating: NaN is the actual failure signature observed in
+    CHILI sweep R12/R17 (line-search collapse + chemistry='eq' returned
+    NaN tmp_surf with success=True).
+    """
+    from proteus.atmos_clim.agni import _validate_agni_state
+
+    atmos = _MockAtmos(is_converged=True, tmp_surf=float('nan'))
+    ok, reason = _validate_agni_state(atmos)
+    assert ok is False
+    assert 'tmp_surf' in reason
+
+
+def test_validate_agni_state_rejects_negative_tsurf():
+    """Negative surface temperature must be rejected.
+
+    Physically unreasonable input: a Newton step that crossed zero would
+    produce T_surf <= 0 and corrupt every downstream calculation.
+    """
+    from proteus.atmos_clim.agni import _validate_agni_state
+
+    atmos = _MockAtmos(is_converged=True, tmp_surf=-100.0)
+    ok, reason = _validate_agni_state(atmos)
+    assert ok is False
+    assert 'tmp_surf' in reason
+
+    # Edge: exact zero must also fail
+    atmos_zero = _MockAtmos(is_converged=True, tmp_surf=0.0)
+    ok2, _ = _validate_agni_state(atmos_zero)
+    assert ok2 is False
+
+
+def test_validate_agni_state_rejects_inf_in_flux():
+    """A single infinite element in flux_tot must trigger rejection.
+
+    Discriminating: tests that the gate is element-wise, not just
+    "is the first element finite". An inf at index 3 of a 5-element
+    profile must still be caught.
+    """
+    from proteus.atmos_clim.agni import _validate_agni_state
+
+    flux = [1e3, 9.5e2, 9.0e2, float('inf'), 8e2]
+    atmos = _MockAtmos(is_converged=True, flux_tot=flux)
+    ok, reason = _validate_agni_state(atmos)
+    assert ok is False
+    assert 'flux_tot' in reason
+    assert 'non-finite' in reason
+
+
+def test_validate_agni_state_rejects_empty_flux():
+    """Empty flux array must be rejected (AGNI never returns this normally,
+    but a struct construction bug could leave it empty)."""
+    from proteus.atmos_clim.agni import _validate_agni_state
+
+    atmos = _MockAtmos(is_converged=True, flux_tot=[])
+    ok, reason = _validate_agni_state(atmos)
+    assert ok is False
+    assert 'flux_tot is empty' in reason
+
+
+def test_validate_agni_state_rejects_unconverged():
+    """If is_converged is False but solve_energy_b returned True, the gate
+    must reject this contradictory state. AGNI sets is_converged=True only
+    on CODE_SUC, so a conflict here means the state is corrupt."""
+    from proteus.atmos_clim.agni import _validate_agni_state
+
+    atmos = _MockAtmos(is_converged=False, tmp_surf=2000.0)
+    ok, reason = _validate_agni_state(atmos)
+    assert ok is False
+    assert 'is_converged' in reason
+
+
+# =====================================================================
+# AGNI failure-reason parser (suggestion 4)
+# =====================================================================
+
+
+def test_extract_agni_failure_reason_nan_flux():
+    """Parser must recognise the NaN-values failure marker emitted by
+    AGNI/src/solver.jl line 977."""
+    from proteus.atmos_clim.agni import _extract_agni_failure_reason
+
+    log_lines = [
+        '[2026-04-08 12:34:56] [info] AGNI solver iter 5\n',
+        '[2026-04-08 12:34:57] [error]     failure (NaN values)\n',
+    ]
+    reason = _extract_agni_failure_reason(log_lines)
+    assert reason == 'nan_flux'
+
+
+def test_extract_agni_failure_reason_singular_jacobian():
+    """Parser must recognise the singular-jacobian marker (solver.jl:971)."""
+    from proteus.atmos_clim.agni import _extract_agni_failure_reason
+
+    log_lines = ['[error]     failure (singular jacobian)\n']
+    assert _extract_agni_failure_reason(log_lines) == 'singular_jacobian'
+
+
+def test_extract_agni_failure_reason_max_iterations():
+    """Parser must recognise the max-iterations marker (solver.jl:968)."""
+    from proteus.atmos_clim.agni import _extract_agni_failure_reason
+
+    log_lines = ['[error]     failure (maximum iterations)\n']
+    assert _extract_agni_failure_reason(log_lines) == 'max_iterations'
+
+
+def test_extract_agni_failure_reason_picks_last_attempt():
+    """When multiple AGNI attempts emit failures within one PROTEUS
+    iteration, the parser must report the LAST one (the one that drove
+    the eventual non-convergence). Reverse-iteration is the discriminating
+    behaviour: a forward scan would return the first marker instead.
+    """
+    from proteus.atmos_clim.agni import _extract_agni_failure_reason
+
+    log_lines = [
+        '[error]     failure (singular jacobian)\n',  # attempt 1
+        '[info] retrying with linesearch\n',
+        '[error]     failure (NaN values)\n',  # attempt 2 (the latest)
+    ]
+    reason = _extract_agni_failure_reason(log_lines)
+    assert reason == 'nan_flux', (
+        'parser must report the latest failure marker, not the first'
+    )
+
+
+def test_extract_agni_failure_reason_unparsed_when_missing():
+    """Empty or non-matching log content must yield 'unparsed' so callers
+    can distinguish 'AGNI failed silently' from 'AGNI failed with
+    diagnosable mode'."""
+    from proteus.atmos_clim.agni import _extract_agni_failure_reason
+
+    assert _extract_agni_failure_reason([]) == 'unparsed'
+    assert _extract_agni_failure_reason(['[info] just chatter\n']) == 'unparsed'

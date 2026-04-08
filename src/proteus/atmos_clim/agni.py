@@ -31,26 +31,130 @@ AGNI_LOGFILE_NAME = 'agni_recent.log'
 ALWAYS_DRY = ('CO', 'N2', 'H2')
 
 
-def sync_log_files(outdir: str):
+def sync_log_files(outdir: str) -> list[str]:
+    """Move AGNI logfile content into the PROTEUS logfile and clear it.
+
+    Returns the list of lines that were copied, so that callers can scan
+    them for failure-mode markers (see `_extract_agni_failure_reason`).
+    Returns an empty list if the AGNI logfile cannot be read.
+    """
     # Logfile paths
     agni_logpath = os.path.join(outdir, AGNI_LOGFILE_NAME)
     logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
 
     # Copy logfile content
-    with open(agni_logpath, 'r') as infile:
-        inlines = infile.readlines()
+    try:
+        with open(agni_logpath, 'r') as infile:
+            inlines = infile.readlines()
+    except OSError:
+        return []
 
-        with open(logpath, 'a') as outfile:
-            for i, line in enumerate(inlines):
-                # First line of agni logfile has NULL chars at the start, for some reason
-                if i == 0:
-                    line = '[' + line.split('[', 1)[1]
-                # copy the line
-                outfile.write(line)
+    with open(logpath, 'a') as outfile:
+        for i, line in enumerate(inlines):
+            # First line of agni logfile has NULL chars at the start, for some reason
+            if i == 0 and '[' in line:
+                line = '[' + line.split('[', 1)[1]
+            # copy the line
+            outfile.write(line)
 
     # Remove logfile content
     with open(agni_logpath, 'w') as hdl:
         hdl.write('')
+
+    return inlines
+
+
+# AGNI failure-mode markers emitted by AGNI/src/solver.jl lines 967-993.
+# Each `failure (X)` substring corresponds to a CODE_* constant in solver.jl.
+# When `_solve_energy` detects a non-convergence, we scan the just-synced AGNI
+# log lines for the most recent matching marker so the deadlock detector and
+# user can distinguish NaN-flux from singular-jacobian from line-search etc.
+_AGNI_FAILURE_MARKERS = (
+    ('failure (NaN values)', 'nan_flux'),
+    ('failure (singular jacobian)', 'singular_jacobian'),
+    ('failure (maximum iterations)', 'max_iterations'),
+    ('failure (maximum time)', 'max_time'),
+    ('failure (configuration)', 'configuration'),
+    ('failure (objective function)', 'objective_function'),
+    ('failure (other; last step not ok)', 'last_step_failed'),
+    ('failure (hydrostatic integration)', 'hydrostatic_integration'),
+    ('failure (other)', 'unknown'),
+)
+
+
+def _extract_agni_failure_reason(loglines: list[str]) -> str:
+    """Scan AGNI log lines for the most-recent failure-mode marker.
+
+    Parameters
+    ----------
+        loglines : list[str]
+            Lines just emitted by AGNI's solver, as returned by `sync_log_files`.
+
+    Returns
+    -------
+        str
+            Short tag identifying the failure mode (e.g. 'nan_flux',
+            'singular_jacobian'), or 'unparsed' if no marker matched.
+    """
+    # Iterate from the end so the LAST attempt's failure wins when multiple
+    # AGNI attempts have run within one PROTEUS iteration.
+    for line in reversed(loglines):
+        for marker, tag in _AGNI_FAILURE_MARKERS:
+            if marker in line:
+                return tag
+    return 'unparsed'
+
+
+def _validate_agni_state(atmos) -> tuple[bool, str]:
+    """Validate that an AGNI atmosphere struct holds physically sane values.
+
+    Even when `solve_energy_b` returns success, the post-processing path can
+    leave non-finite or unphysical state on the struct (CHILI sweep R12, R17
+    sometimes returned T_surf=NaN with success=True). This guard catches that
+    before the values poison hf_row and propagate downstream.
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct returned by AGNI's solver.
+
+    Returns
+    -------
+        ok : bool
+            True if all checked fields are finite and physically valid.
+        reason : str
+            Empty string if ok, otherwise a short description of the failure.
+    """
+    # AGNI marks `is_converged=True` only on CODE_SUC (solver.jl:962-964).
+    # If solve_energy_b returned True but is_converged is False we have a
+    # contradictory state and must reject it.
+    try:
+        is_converged = bool(atmos.is_converged)
+    except (AttributeError, Exception):  # noqa: BLE001
+        is_converged = True  # missing flag = trust the boolean return
+    if not is_converged:
+        return False, 'atmos.is_converged is False despite solver success'
+
+    # Surface temperature must be finite and positive.
+    try:
+        t_surf = float(atmos.tmp_surf)
+    except (AttributeError, ValueError, Exception):  # noqa: BLE001
+        return False, 'atmos.tmp_surf could not be read'
+    if not np.isfinite(t_surf) or t_surf <= 0.0:
+        return False, f'atmos.tmp_surf = {t_surf} (non-finite or <= 0)'
+
+    # Total flux profile must be entirely finite.
+    try:
+        tot_flux = np.array(atmos.flux_tot, dtype=float)
+    except (AttributeError, ValueError, Exception):  # noqa: BLE001
+        return False, 'atmos.flux_tot could not be read'
+    if tot_flux.size == 0:
+        return False, 'atmos.flux_tot is empty'
+    if not np.all(np.isfinite(tot_flux)):
+        n_bad = int(np.sum(~np.isfinite(tot_flux)))
+        return False, f'atmos.flux_tot has {n_bad} non-finite element(s)'
+
+    return True, ''
 
 
 def activate_julia(dirs: dict, verbosity: int):
@@ -528,8 +632,26 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             )
             agni_success = False
 
-        # Move AGNI logfile content into PROTEUS logfile
-        sync_log_files(dirs['output'])
+        # Move AGNI logfile content into PROTEUS logfile (and capture lines
+        # for failure-mode parsing).
+        log_lines = sync_log_files(dirs['output'])
+
+        # Defensive: even when AGNI reports success, validate that the
+        # returned struct holds finite, physically valid state. AGNI's
+        # post-solve processing has been observed to leave NaN tmp_surf
+        # or non-finite flux_tot on the struct after `is_converged=True`
+        # in rare line-search collapse paths (CHILI sweep R12/R17). If we
+        # let those values propagate to hf_row, the deadlock detector
+        # never fires and the run silently produces garbage.
+        if agni_success:
+            ok, reason = _validate_agni_state(atmos)
+            if not ok:
+                log.error(
+                    'AGNI reported success but post-solve validation failed '
+                    '(%s). Forcing this attempt to be treated as a failure.',
+                    reason,
+                )
+                agni_success = False
 
         # Model status check
         if agni_success:
@@ -538,7 +660,8 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             break
         else:
             # failure, loop again...
-            log.warning('Attempt %d failed' % attempts)
+            reason = _extract_agni_failure_reason(log_lines)
+            log.warning('Attempt %d failed (reason: %s)', attempts, reason)
 
     return atmos, bool(agni_success)
 

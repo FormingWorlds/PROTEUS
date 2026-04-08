@@ -43,7 +43,8 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
 def check_desiccation(config: Config, hf_row: dict) -> bool:
     """
     Check if the planet has desiccated. This is done by checking if all volatile masses
-    are below a threshold.
+    are below a threshold AND verifying that the loss is consistent with cumulative
+    escape.
 
     Parameters
     ----------
@@ -56,15 +57,69 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     -------
         bool
             True if desiccation occurred, False otherwise
+
+    Notes
+    -----
+    The escape-balance gate guards against the failure mode where an
+    upstream AGNI or outgas failure wipes the atmosphere as a side
+    effect (e.g. NaN volume mixing ratios that get zeroed downstream),
+    causing all `*_kg_total` to collapse below `mass_thresh` in a single
+    iteration without `esc_kg_cumulative` having moved. The CHILI sweep
+    R7/R21 cascades fired this exact pattern: AGNI failed, the
+    atmosphere was wiped, and the old check_desiccation reported success
+    instead of letting the deadlock detector catch the upstream failure.
+
+    The gate compares (M_vol_initial - current M_ele) against
+    `1.5 * esc_kg_cumulative + 1e3 kg`. The 1.5x slack absorbs rounding
+    and threshold-truncation noise; the 1e3 kg floor prevents the gate
+    from firing on pathologically tiny inventories. If the gate is
+    inactive (no baseline tracked yet, e.g. resuming an old CSV without
+    `M_vol_initial`), the function falls back to the old threshold-only
+    behaviour.
     """
 
-    # check if desiccation has occurred
+    # Threshold check (unchanged): refuse desiccation while any element is
+    # still above the per-element mass threshold.
     for e in element_list:
         if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         if hf_row[e + '_kg_total'] > config.outgas.mass_thresh:
             log.info('Not desiccated, %s = %.2e kg' % (e, hf_row[e + '_kg_total']))
             return False  # return, and allow run_outgassing to proceed
+
+    # Escape-balance gate. Only enforced when a baseline has been
+    # snapshotted by `escape.wrapper.run_escape` (first escape call).
+    m_init_raw = hf_row.get('M_vol_initial', None)
+    try:
+        m_init = float(m_init_raw) if m_init_raw is not None else 0.0
+    except (TypeError, ValueError):
+        m_init = 0.0
+    if not np.isfinite(m_init) or m_init <= 0.0:
+        # No baseline -> fall back to old threshold-only behaviour.
+        return True
+
+    cur_m_ele = sum(
+        float(hf_row.get(f'{e}_kg_total', 0.0))
+        for e in element_list
+        if e != 'O'
+    )
+    lost = m_init - cur_m_ele
+    esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
+
+    # Allow 1.5x scaling slack plus a 1 t absolute floor for noise.
+    if lost > 1.5 * esc_cum + 1.0e3:
+        log.error(
+            'Desiccation check refused: %.2e kg of volatile mass loss is '
+            'unexplained by cumulative escape (%.2e kg). Initial=%.2e kg, '
+            'current=%.2e kg. This usually indicates an AGNI or outgas-side '
+            'failure that wiped the atmosphere as a side effect, not real '
+            'escape. The deadlock detector should fire on the next iteration.',
+            lost - esc_cum,
+            esc_cum,
+            m_init,
+            cur_m_ele,
+        )
+        return False
 
     return True
 

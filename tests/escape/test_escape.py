@@ -192,6 +192,133 @@ def test_run_escape_invalid_module():
         run_escape(config, hf_row, dt=1000.0, stellar_track=None)
 
 
+@pytest.mark.unit
+def test_run_escape_snapshots_baseline_on_first_call():
+    """Test that the first run_escape call snapshots the bulk volatile
+    inventory into M_vol_initial. This baseline is used by
+    `outgas.wrapper.check_desiccation` to detect unexplained mass loss
+    cascades (CHILI sweep R7/R21).
+
+    Physical scenario: Earth-like planet with mixed H/C/N/S inventory.
+    Validates that M_vol_initial = sum(*_kg_total) excluding O, and that
+    esc_kg_cumulative is initialised to zero alongside the baseline.
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.dummy.rate = 1e3  # kg/s
+    config.escape.reservoir = 'bulk'
+    config.outgas.mass_thresh = 1e10
+
+    hf_row = {
+        'H_kg_total': 4.7e20,
+        'C_kg_total': 2.7e20,
+        'N_kg_total': 0.0,
+        'S_kg_total': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_total': 0.0,
+        'O_kg_total': 1e22,  # excluded from baseline
+    }
+
+    run_escape(config, hf_row, dt=1000.0, stellar_track=None)
+
+    expected_baseline = 4.7e20 + 2.7e20  # H + C only (others zero, O excluded)
+    assert 'M_vol_initial' in hf_row
+    assert hf_row['M_vol_initial'] == pytest.approx(expected_baseline, rel=1e-10), (
+        'M_vol_initial must equal sum of *_kg_total over non-O elements'
+    )
+    assert 'esc_kg_cumulative' in hf_row
+    # Cumulative escape after one step at 1e3 kg/s for 1000 yr:
+    # 1e3 * 1000 * secs_per_year ≈ 3.156e13 kg
+    assert hf_row['esc_kg_cumulative'] > 0.0
+    assert hf_row['esc_kg_cumulative'] < 1e15
+
+
+@pytest.mark.unit
+def test_run_escape_baseline_persists_across_calls():
+    """Test that subsequent run_escape calls do NOT overwrite M_vol_initial.
+
+    Physical scenario: Multi-iteration evolution. The baseline must remain
+    the FIRST snapshot, not get re-snapshotted on every iteration (which
+    would defeat the desiccation gate).
+
+    Discriminating: snapshot baseline = 1e21 kg. After escape removes
+    ~3e16 kg, the second call must NOT reset M_vol_initial to 1e21 - 3e16.
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.dummy.rate = 1e9  # very high rate to make change visible
+    config.escape.reservoir = 'bulk'
+    config.outgas.mass_thresh = 1e10
+
+    hf_row = {
+        'H_kg_total': 1e21,
+        'C_kg_total': 0.0,
+        'N_kg_total': 0.0,
+        'S_kg_total': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_total': 0.0,
+    }
+
+    # Iteration 1
+    run_escape(config, hf_row, dt=1000.0, stellar_track=None)
+    baseline_iter1 = hf_row['M_vol_initial']
+    assert baseline_iter1 == pytest.approx(1e21, rel=1e-10)
+    cum_iter1 = hf_row['esc_kg_cumulative']
+
+    # Iteration 2 — H_kg_total has shrunk, but baseline must be unchanged
+    run_escape(config, hf_row, dt=1000.0, stellar_track=None)
+    assert hf_row['M_vol_initial'] == pytest.approx(baseline_iter1, rel=1e-12), (
+        'M_vol_initial must NOT be overwritten by subsequent escape calls'
+    )
+    # Cumulative escape must monotonically increase (not reset)
+    assert hf_row['esc_kg_cumulative'] > cum_iter1, (
+        'esc_kg_cumulative must accumulate, not reset, on subsequent calls'
+    )
+
+
+@pytest.mark.unit
+def test_run_escape_resets_baseline_if_corrupt():
+    """Test that a NaN or non-positive M_vol_initial gets re-snapshotted.
+
+    Physical scenario: Resume from an old CSV that has the column but with
+    NaN values, or a transient corruption. The gate must self-heal rather
+    than carry forward bogus data forever.
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.dummy.rate = 1e3
+    config.escape.reservoir = 'bulk'
+    config.outgas.mass_thresh = 1e10
+
+    hf_row = {
+        'H_kg_total': 5e20,
+        'C_kg_total': 0.0,
+        'N_kg_total': 0.0,
+        'S_kg_total': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_total': 0.0,
+        'M_vol_initial': float('nan'),  # corrupt baseline
+    }
+
+    run_escape(config, hf_row, dt=1.0, stellar_track=None)
+
+    assert hf_row['M_vol_initial'] == pytest.approx(5e20, rel=1e-10), (
+        'NaN baseline must be re-snapshotted from current inventory'
+    )
+
+
 # =======================================================================================
 # SECTION: run_zephyrus() — Energy-limited escape
 # =======================================================================================
