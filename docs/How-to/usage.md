@@ -174,21 +174,37 @@ proteus grid-pack -o output/grid_demo/
 ```
 ## Postprocessing of grid results
 
-Results from a PROTEUS grid can be post-processed using the `proteus grid-analyse` command. This generates ECDF plots that summarize the last time step of all simulation cases in the grid. (For more details on ECDF plots, see the [Seaborn `ecdfplot` documentation](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html).)
+Results from a PROTEUS grid can be post-processed using the `proteus grid-analyse` command. Running the analysis generates summary CSV files containing all tested input parameters and the final time-step outputs for each simulation, along with a status overview plot showing the distribution of simulation outcomes (e.g., completed, running, error) and empirical cumulative distribution function (ECDF) plots that summarize selected output variables across all completed simulations. (For more details on ECDF plots, see the [Seaborn `ecdfplot` documentation](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html).)
 
-Before running the command, update the `example.grid_analyse.toml` file to match your grid. Specify the input parameters used in your simulations and select the output variables you want to visualize. To post-process a grid and generate ECDF plots for further analysis, run the following command:
+Before running the command, configure the post-processing options in your grid configuration file:`input/ensembles/example.grid.toml`. The following options can be set:
+
+- `update_csv` — Generate or update the CSV summary files
+- `plot_format` — Output format for plots (e.g., `png`, `pdf`)
+- `plot_status` — Enable/disable the status summary plot
+- `plot_ecdf` — Enable/disable ECDF plot generation
+- `output_variables` — List of variables to include in ECDF plots
+
+> **Note:**
+> The variables specified in `output_variables` must match column names in `runtime_helpfile.csv`.
+> The `solidification_time` is the only variable computed during post-processing and is not directly stored in the simulation output.
+
+---
+
+To post-process a grid and generate ECDF plots for further analysis, run the following command:
 
 ```
 proteus grid-analyse --config input/ensembles/example.grid_analyse.toml
 ```
 
-Executing the command creates a `post_processing` folder inside your grid directory containing all post-processing outputs:
 
-- Extracted data: CSV files with simulation status, input parameters, and output values at the last time step are stored in:
-  `post_processing/extracted_data/`
-- Plots: Status summaries and ECDF grid plots are saved in:
-  `post_processing/grid_plots/`
+After execution, a `post_processing/` directory is created inside the grid folder with the following structure:
 
+- `extracted_data/` This directory contains three CSV files:
+    - `{grid_name}_final_extracted_data_all.csv` which includes every run in the grid
+    - `{grid_name}_final_extracted_data_completed.csv` which contains only successful runs (used for ECDF plots)
+    - `{grid_name}_final_extracted_data_running_error.csv` for only failed simulations with status `Running` or `Error`.
+
+- `grid_plots/` This directory contains a status dummary plot and a ECDF plot
 
 ## Retrieval scheme (Bayesian optimisation)
 
