@@ -137,7 +137,7 @@ _preset_labels = {
     'Phi_global': 'Melt fraction [%]',
     # Planet observational properties
     'R_obs': 'R_{\\rm obs}\\,[R_\\oplus]',
-    'rho_obs': '\\rho_{\\rm obs}\\,[\\mathrm{g/m^3}]',
+    'rho_obs': '\\rho_{\\rm obs}\\,[\\mathrm{g/cm^3}]',
     # Atmospheric composition from outgassing
     'M_atm': 'Atmosphere mass [kg]',
     'P_surf': 'P_{\\rm surf}\\,[\\mathrm{bar}]',
