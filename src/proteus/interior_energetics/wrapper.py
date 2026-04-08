@@ -121,6 +121,80 @@ _SPIDER_EOS_PHASE_FILES = (
 _SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
 
 
+def _rectangularize_spider_ps_file(src: str, dst: str) -> None:
+    """Read a SPIDER P-S phase-property table and write a strictly
+    rectangular version to dst.
+
+    SPIDER's bundled P-S tables (``SPIDER/lookup_data/1TPa-dK09-elec-free/``
+    and the corresponding Zenodo 19473625 uploads) are written with a
+    ``# 5 NX NY`` header where NX is the number of pressure points per
+    entropy slice and NY is the number of entropy slices. The data
+    layout iterates P fastest (inner loop) and S slowest (outer loop),
+    which matches what Aragog's EntropyEOS expects. HOWEVER, SPIDER's
+    table generator produces a tiny P drift across S slices (relative
+    drift ~1e-8), because each slice is computed independently from
+    the underlying equation of state. SPIDER's own C loader
+    (``interp.c::Interp2dCreateAndSet``) works around this by taking
+    the first NX rows as the canonical P grid (line 183-188) and
+    ignoring the drift. Aragog's Python loader uses
+    ``np.unique(P_all)`` which returns ~NX*NY values for the drifted
+    grid, and then scipy's ``RegularGridInterpolator`` refuses the
+    mismatch with ``ValueError: There are X points and Y values in
+    dimension 0``.
+
+    This helper normalises the grid: it snaps every P value to the
+    canonical value from the first S slice and every S value to the
+    first value in each slice, then writes a clean rectangular file
+    that Aragog can load without modification. Bit-level floating-
+    point artefacts are eliminated at the level of the 1e-8 drift,
+    which is six orders of magnitude below the physical resolution of
+    the tables (~1 K in T, ~1 kg/m^3 in rho).
+    """
+    with open(src) as f:
+        header_lines = []
+        for _ in range(5):
+            header_lines.append(f.readline())
+
+    h = header_lines[0].strip().lstrip('#').split()
+    n_head = int(h[0])
+    NX = int(h[1])
+    NY = int(h[2])
+
+    data = np.genfromtxt(src, skip_header=n_head)
+    if data.shape[0] != NX * NY:
+        raise ValueError(
+            f'{src}: header says NX*NY = {NX * NY} rows, file has {data.shape[0]}'
+        )
+
+    # SPIDER convention: P varies fastest (inner), S varies slowest
+    # (outer). First NX rows give the canonical P grid, first row of
+    # each block gives the canonical S grid.
+    P_canonical = data[:NX, 0]
+    S_canonical = data[::NX, 1][:NY]
+    Q_matrix = data[:, 2].reshape(NY, NX)
+
+    # Sanity: the drift should be tiny.
+    P_all = data[:, 0].reshape(NY, NX)
+    max_p_drift = float(np.max(np.abs(P_all - P_canonical)))
+    if max_p_drift / max(abs(P_canonical).max(), 1e-30) > 1e-4:
+        # Drift larger than 1e-4 relative is not a SPIDER-style rounding
+        # artefact; it means the file is genuinely non-rectangular and
+        # we cannot rectangularise it safely.
+        raise ValueError(
+            f'{src}: P grid drift across S slices is {max_p_drift:.3e} '
+            f'absolute, > 1e-4 relative. File is not quasi-rectangular '
+            f'and cannot be rectangularised.'
+        )
+
+    with open(dst, 'w') as out:
+        for line in header_lines:
+            out.write(line)
+        for yi in range(NY):
+            S_val = S_canonical[yi]
+            for xi in range(NX):
+                out.write(f'{P_canonical[xi]:.18e}\t{S_val:.18e}\t{Q_matrix[yi, xi]:.18e}\n')
+
+
 def _is_spider_ps_format(path: str) -> bool:
     """Cheap first-line sniff to distinguish P-S tables from P-T tables.
 
@@ -251,7 +325,12 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         log.info(
             'Providing P-S EOS tables to spider_eos_dir from FWL_DATA (Zenodo 19473625)'
         )
-        for f in zenodo_files:
+        for f in _SPIDER_EOS_PHASE_FILES:
+            src = str(zenodo_root / f)
+            dst = os.path.join(target_dir, f)
+            if not os.path.isfile(dst):
+                _rectangularize_spider_ps_file(src, dst)
+        for f in _SPIDER_EOS_MELTING_CURVES:
             src = zenodo_root / f
             dst = os.path.join(target_dir, f)
             if not os.path.isfile(dst):
@@ -294,7 +373,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
                 src = os.path.join(spider_bundle, f)
                 dst = os.path.join(target_dir, f)
                 if not os.path.isfile(dst):
-                    shutil.copy2(src, dst)
+                    _rectangularize_spider_ps_file(src, dst)
             for canonical, legacy in melt_map.items():
                 src = os.path.join(spider_bundle, legacy)
                 dst = os.path.join(target_dir, canonical)
