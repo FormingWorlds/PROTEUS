@@ -121,6 +121,30 @@ _SPIDER_EOS_PHASE_FILES = (
 _SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
 
 
+def _is_spider_ps_format(path: str) -> bool:
+    """Cheap first-line sniff to distinguish P-S tables from P-T tables.
+
+    SPIDER's canonical P-S format starts with ``# 5 <n_S> <n_P>`` (5 is
+    the number of header lines the loader expects). The legacy P-T
+    format (shipped in Zenodo 17417017) starts with
+    ``#pressure temperature density``. Both formats use the same
+    filenames, so a content sniff is the only way to distinguish them
+    when populating spider_eos_dir from FWL_DATA.
+    """
+    try:
+        with open(path) as f:
+            first = f.readline().strip()
+    except OSError:
+        return False
+    # P-S header is exactly "# 5 <int> <int>".
+    parts = first.split()
+    return (
+        len(parts) >= 2
+        and parts[0] == '#'
+        and parts[1] == '5'
+    )
+
+
 def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     """Ensure that Aragog and SPIDER can find a complete P-S lookup set.
 
@@ -197,13 +221,33 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     )
 
     # Case 2: FWL_DATA (Zenodo 19473625) complete set.
+    # We check BOTH that all 12 files exist AND that density_melt.dat
+    # is in the canonical SPIDER P-S format (not the legacy P-T format
+    # from the older Zenodo 17417017 record, which shipped under the
+    # same filenames). Without this content check a stale FWL_DATA tree
+    # from before the Zenodo 19473625 release would be silently accepted
+    # and Aragog's EntropyEOS would then crash trying to parse the P-T
+    # file as a P-S table. See chili_earth_spider_sweep.md migration note.
     zenodo_files = (
         list(_SPIDER_EOS_PHASE_FILES) + list(_SPIDER_EOS_MELTING_CURVES)
     )
     zenodo_missing = [
         f for f in zenodo_files if not (zenodo_root / f).is_file()
     ]
-    if not zenodo_missing:
+    zenodo_format_ok = (
+        not zenodo_missing
+        and _is_spider_ps_format(str(zenodo_root / 'density_melt.dat'))
+    )
+    if not zenodo_format_ok and not zenodo_missing:
+        log.warning(
+            'FWL_DATA EOS tables at %s exist but density_melt.dat is not '
+            'in SPIDER P-S format. This usually means the directory was '
+            'populated by the legacy Zenodo 17417017 record (P-T format). '
+            'Falling through to the SPIDER submodule. Refresh FWL_DATA '
+            'with `proteus get all` to fetch Zenodo 19473625.',
+            zenodo_root,
+        )
+    if zenodo_format_ok:
         log.info(
             'Providing P-S EOS tables to spider_eos_dir from FWL_DATA (Zenodo 19473625)'
         )
