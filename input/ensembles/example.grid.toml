@@ -14,7 +14,7 @@ plot_ecdf   = true                  # Generate ECDF grid plot for input paramete
 colormap    = "managua"             # Colormap for ECDF plot (e.g. "viridis", "managua")
 output_variables = ["solidification_time", "Phi_global",
                     "T_surf", "P_surf", "atm_kg_per_mol",
-                    "esc_rate_total"]  # List of output variables to include in ECDF plot (name must match variable name in runtime_helpfile.csv)
+                    "esc_rate_total", "rho_obs"]  # List of output variables to include in ECDF plot (name must match variable name in runtime_helpfile.csv)
 
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "input/demos/dummy.toml"
