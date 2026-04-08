@@ -639,7 +639,7 @@ def load_ecdf_plot_settings(cfg, tested_params=None):
         raise ValueError('No tested parameters found for ECDF plotting')
 
     # Optional colormap from config
-    cmap_name = cfg.get('input_parameters', {}).get('colormap', 'viridis')
+    cmap_name = cfg['colormap'] if 'colormap' in cfg else 'viridis'
     default_cmap = getattr(cm, cmap_name, cm.viridis)
 
     # Build parameter settings from config
