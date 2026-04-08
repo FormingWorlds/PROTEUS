@@ -676,6 +676,7 @@ def clean_series(s, log_scale):
         s_clean = s_clean.loc[lambda x: x > 0]
     return s_clean
 
+
 def group_output_by_parameter(df, grid_parameters, outputs):
     """
     Groups output values (like P_surf) by one or more grid parameters.
@@ -704,7 +705,9 @@ def group_output_by_parameter(df, grid_parameters, outputs):
             value_dict = {}
             for param_value in df[param].dropna().unique():
                 subset = df[df[param] == param_value]
-                output_values = clean_series(subset[output], get_log_scale(output)) * get_scale(output)
+                output_values = clean_series(subset[output], get_log_scale(output)) * get_scale(
+                    output
+                )
 
                 value_dict[param_value] = output_values
 
