@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import tomllib
 from pathlib import Path
 
@@ -13,10 +14,20 @@ from matplotlib import cm
 
 from proteus.utils.plot import _preset_labels
 
+
+# Time function
+def timed(func):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        print(f"{func.__name__} took {time.time() - start:.2f} s")
+        return result
+    return wrapper
+
 # ---------------------------------------------------------
 # Data loading, extraction, and CSV generation functions
 # ---------------------------------------------------------
-
+@timed
 def get_grid_name(grid_path: str | Path) -> str:
     """
     Returns the grid name (last part of the path) from the given grid path.
@@ -35,7 +46,7 @@ def get_grid_name(grid_path: str | Path) -> str:
     if not grid_path.is_dir():
         raise ValueError(f"{grid_path} is not a valid directory")
     return grid_path.name
-
+@timed
 def load_grid_cases(grid_dir: Path):
     """
     Load information for each simulation of a PROTEUS grid.
@@ -119,7 +130,7 @@ def load_grid_cases(grid_dir: Path):
     print('-----------------------------------------------------------')
 
     return combined_data
-
+@timed
 def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
     """
     Extract tested grid parameters per case using:
@@ -145,7 +156,6 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
 
     # 1. Load tested input parameters in the grid
     raw_params = toml.load(grid_dir / "copy.grid.toml")
-    print(raw_params)
 
     # Keep only the parameters and their values
     tested_params = {}
@@ -203,7 +213,7 @@ def get_tested_grid_parameters(cases_data: list, grid_dir: str | Path):
         case_params[idx] = params_for_case
 
     return case_params, tested_params
-
+@timed
 def load_phi_crit(grid_dir: str | Path):
     """
     Load the critical melt fraction (phi_crit) from the reference configuration file of the grid.
@@ -234,7 +244,7 @@ def load_phi_crit(grid_dir: str | Path):
         raise KeyError("phi_crit not found in ref_config.toml")
 
     return phi_crit
-
+@timed
 def extract_solidification_time(cases_data: list, grid_dir: str | Path):
     """
     Extract solidification time for each simulation of the grid for
@@ -285,7 +295,7 @@ def extract_solidification_time(cases_data: list, grid_dir: str | Path):
             solidification_times.append(np.nan)
 
     return solidification_times
-
+@timed
 def generate_summary_csv(
     cases_data: list,
     case_params: dict,
@@ -353,7 +363,7 @@ def generate_summary_csv(
 # ---------------------------------------------------------
 # Plotting functions
 # ---------------------------------------------------------
-
+@timed
 def get_label(quant):
    """"
    Get label for a given quantity, using preset labels if available.
@@ -369,10 +379,10 @@ def get_label(quant):
    """
 
    if quant in _preset_labels:
-     return _preset_labels(quant)
+     return _preset_labels[quant]
    else:
      return quant
-
+@timed
 def plot_grid_status(df: pd.DataFrame, cfg: dict, grid_dir: str | Path, grid_name: str):
     """
     Plot histogram summary of number of simulation statuses in
@@ -468,7 +478,7 @@ def plot_grid_status(df: pd.DataFrame, cfg: dict, grid_dir: str | Path, grid_nam
     output_file = output_dir / f"summary_grid_statuses_{grid_name}.{plot_format}"
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
-
+@timed
 def flatten_input_parameters(d: dict, parent_key: str = "") -> dict:
     """
     Flattens a nested input-parameter dictionary from a TOML configuration
@@ -505,8 +515,8 @@ def flatten_input_parameters(d: dict, parent_key: str = "") -> dict:
             flat.update(flatten_input_parameters(v, new_key))
 
     return flat
-
-def load_ecdf_plot_settings(cfg):
+@timed
+def load_ecdf_plot_settings(cfg, tested_params=None):
     """
     Load ECDF plotting settings for both input parameters and output variables
     from a configuration dictionary loaded from TOML.
@@ -515,6 +525,9 @@ def load_ecdf_plot_settings(cfg):
     ----------
     cfg : dict
         Configuration dictionary loaded from a TOML file.
+
+    tested_params : dict, optional
+        Dictionary of tested grid parameters and their grid values (directly from copy.grid.toml).
 
     Returns
     -------
@@ -543,33 +556,43 @@ def load_ecdf_plot_settings(cfg):
 
     """
 
-    # Load input parameter settings
-    raw_params = cfg["input_parameters"]
-    default_cmap = getattr(cm, raw_params.get("colormap", "viridis"))
+    if tested_params is None or len(tested_params) == 0:
+        raise ValueError("No tested parameters found for ECDF plotting")
 
-    # Flatten input parameters dictionary
-    flat_params = flatten_input_parameters(raw_params)
+    # Optional colormap from config
+    cmap_name = cfg.get("input_parameters", {}).get("colormap", "viridis")
+    default_cmap = getattr(cm, cmap_name, cm.viridis)
 
-    param_settings = {}
-    for key, val in flat_params.items():
-        param_settings[key] = {
-            "label": _preset_labels.get(key, val.get("label", key)),
+    # Build parameter settings from config
+    param_settings = {
+        key: {
+            "label": _preset_labels.get(key, key),
             "colormap": default_cmap,
-            "log_scale": val.get("log_scale", False),
+            "log_scale": False,
         }
+        for key in tested_params
+    }
 
+    # Build output settings from config
     output_settings = {}
-    for key, val in cfg.get("output_variables", {}).items():
+    output_list = cfg.get("output_variables", [])
+
+    for key in output_list:
         output_settings[key] = {
-            "label": _preset_labels.get(key, val.get("label", key)),
-            "log_scale": val.get("log_scale", False),
-            "scale": val.get("scale", 1.0),
+            "label": _preset_labels.get(key, key),
+            "log_scale": False,   # default
+            "scale": 1.0,         # default
         }
 
+    # Extract plot format
     plot_format = cfg.get("plot_format")
 
     return param_settings, output_settings, plot_format
-
+@timed
+def clean_series(s):
+    '''Cleans a pandas Series by replacing inf values with NaN and dropping NaN values.'''
+    return s.replace([np.inf, -np.inf], np.nan).dropna().loc[lambda x: x > 0]
+@timed
 def group_output_by_parameter(df, grid_parameters, outputs):
     """
     Groups output values (like P_surf) by one or more grid parameters.
@@ -598,29 +621,30 @@ def group_output_by_parameter(df, grid_parameters, outputs):
             value_dict = {}
             for param_value in df[param].dropna().unique():
                 subset = df[df[param] == param_value]
-                output_values = subset[output].replace([np.inf, -np.inf], np.nan) # Replace inf with NaN
-                output_values = output_values.dropna() # Remove NaN values
-                output_values = output_values[output_values > 0]  # Keep only positive values
+                output_values = clean_series(subset[output])
 
                 value_dict[param_value] = output_values
 
             grouped[key_name] = value_dict
 
     return grouped
-
+@timed
 def latex(label: str) -> str:
     """
     Wraps a label in dollar signs for LaTeX formatting if it contains a backslash.
     """
     return f"${label}$" if "\\" in label else label
-
-def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: dict, plot_format: str, grid_dir: str | Path, grid_name: str):
+@timed
+def ecdf_grid_plot(tested_params: dict, grouped_data: dict, param_settings: dict, output_settings: dict, plot_format: str, grid_dir: str | Path, grid_name: str):
     """
     Creates ECDF grid plots where each row corresponds to one input parameter
     and each column corresponds to one output. Saves the resulting figure as a {plot_format}.
 
     Parameters
     ----------
+
+    tested_params : dict
+        Dictionary of tested grid parameters and their grid values (directly from copy.grid.toml).
 
     grouped_data : dict
         Dictionary where each key is of the form '[output]_per_[parameter]', and each value is a dict {param_value: [output_values]}.
@@ -648,14 +672,6 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
     """
 
     # Load tested grid parameters
-    with open(grid_dir / "copy.grid.toml", "r") as f:
-        raw_params = toml.load(f)
-    tested_params = {}
-    for key, value in raw_params.items():
-        if isinstance(value, dict) and "values" in value:
-            #print(key, value["values"])
-            # Only store the 'values' list
-            tested_params[key] = value["values"]
     grid_params = tested_params
 
     # List of parameter names (rows) and output names (columns)
@@ -670,7 +686,7 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
     # Loop through parameters (rows) and outputs (columns)
     for i, param_name in enumerate(param_names):
         tested_param = grid_params.get(param_name, [])
-        if not tested_param:
+        if tested_param is None or len(tested_param) == 0:
             print(f"⚠️ Skipping {param_name} — no tested values found in grid_params")
             continue
         settings = param_settings[param_name]
@@ -712,9 +728,7 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
                 ha='left',
                 color='black',
                 bbox=dict(facecolor='white', edgecolor='silver', boxstyle='round,pad=0.2', alpha=0.8)
-            )
-
-            # Plot one ECDF per tested parameter value
+            )             # Plot one ECDF per tested parameter value
             for val in tested_param:
                 data_key = f"{output_name}_per_{param_name}"
                 if val not in grouped_data.get(data_key, {}):
@@ -782,6 +796,7 @@ def ecdf_grid_plot(grouped_data: dict, param_settings: dict, output_settings: di
 # ---------------------------------------------------------
 # main
 # ---------------------------------------------------------
+@timed
 def main(grid_analyse_toml_file: str | Path):
 
     # Load configuration from grid_analyse.toml
@@ -792,9 +807,6 @@ def main(grid_analyse_toml_file: str | Path):
     grid_path = Path('output/' + cfg["output"] + '/')
     print(f"Grid path: {grid_path}")
     grid_name = get_grid_name(grid_path)
-
-    #print(grid_path)
-    print(f"Analyzing grid: {grid_name}")
 
     # Load grid data
     data = load_grid_cases(grid_path)
@@ -832,18 +844,16 @@ def main(grid_analyse_toml_file: str | Path):
     # --- ECDF plots ---
     if cfg.get("plot_ecdf", True):
         completed_simulations_data_csv = pd.read_csv(summary_csv_completed, sep="\t")
-        columns_output = list(cfg["output_variables"].keys())
-        grouped_data = {}
-        for col in columns_output:
-            group = group_output_by_parameter(
-                completed_simulations_data_csv,
-                tested_params_grid,
-                [col],
-            )
-            grouped_data.update(group)
+        columns_output = cfg["output_variables"]
+        grouped_data = group_output_by_parameter(
+                        completed_simulations_data_csv,
+                        list(tested_params_grid.keys()),
+                        columns_output,
+                    )
 
-        param_settings_grid, output_settings_grid, plot_format = load_ecdf_plot_settings(cfg)
+        param_settings_grid, output_settings_grid, plot_format = load_ecdf_plot_settings(cfg, tested_params_grid)
         ecdf_grid_plot(
+            tested_params_grid,
             grouped_data,
             param_settings_grid,
             output_settings_grid,
