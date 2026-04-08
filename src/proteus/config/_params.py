@@ -62,8 +62,14 @@ class OutputParams:
     plot_fmt: str = field(default='png', validator=in_(('pdf', 'png')))
     write_mod: int = field(default=1, validator=ge(0))
     dt_write_rel: float = field(default=0.0, validator=ge(0))
-    plot_mod: int | None = field(default=5, validator=valid_mod, converter=none_if_none)
-    archive_mod: int | None = field(default=None, validator=valid_mod, converter=none_if_none)
+    # Type hint includes `str` so cattrs can structure the literal string
+    # "none" before the `none_if_none` converter maps it to Python None.
+    # Without `str` in the union, `int("none")` raises ValueError at
+    # structure time. Same pattern as star._star.Mors.rot_period.
+    plot_mod: int | str | None = field(default=5, validator=valid_mod, converter=none_if_none)
+    archive_mod: int | str | None = field(
+        default=None, validator=valid_mod, converter=none_if_none
+    )
     remove_sf: bool = field(default=False)
 
 

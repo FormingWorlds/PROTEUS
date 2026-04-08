@@ -75,8 +75,14 @@ class Mors:
     age_now: float = field(default=4.567)
     star_name: str | None = field(default=None, converter=none_if_none)
     star_path: str | None = field(default=None, converter=none_if_none)
-    rot_pcntle: float | None = field(default=50.0, converter=none_if_none)
-    rot_period: float | None = field(default=None, converter=none_if_none)
+    # Type hint includes `str` so cattrs can structure the literal string
+    # `"none"` (or other sentinels) before the `none_if_none` converter
+    # maps them to Python None. Pure `float | None` would make cattrs try
+    # `float("none")` and raise `could not convert string to float: 'none'`,
+    # because None is a singleton type not a string-coercion target. Same
+    # pattern as phoenix_radius/log_g/Teff below.
+    rot_pcntle: float | str | None = field(default=50.0, converter=none_if_none)
+    rot_period: float | str | None = field(default=None, converter=none_if_none)
     tracks: str = field(default='spada', validator=in_(('spada', 'baraffe')))
 
     spectrum_source: str = field(

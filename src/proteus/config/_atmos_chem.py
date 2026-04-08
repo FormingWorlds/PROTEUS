@@ -79,6 +79,9 @@ class AtmosChem:
     when: str = field(default='manually', validator=in_(('manually', 'offline', 'online')))
     photo_on: bool = field(default=True)
     Kzz_on: bool = field(default=True)
-    Kzz_const: float | None = field(default=None, converter=none_if_none)
+    # Include `str` in the union so cattrs accepts the literal "none"
+    # sentinel before the `none_if_none` converter maps it to Python None.
+    # Same pattern as Mors.rot_period and OutputParams.plot_mod.
+    Kzz_const: float | str | None = field(default=None, converter=none_if_none)
     moldiff_on: bool = field(default=True)
     updraft_const: float = field(default=0.0)
