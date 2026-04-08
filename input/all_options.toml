@@ -254,9 +254,10 @@ config_version = "3.0"
 [interior_energetics]
     module                    = "aragog"     # aragog | spider | dummy
 
-    # Grid and solver (shared by Aragog + SPIDER; ignored for dummy)
+    # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 80           # radial grid levels (energetics domain only)
-    num_tolerance             = 1.0e-10      # ODE solver tolerance
+    rtol                      = 1.0e-10      # relative ODE solver tolerance (was Spider.tolerance_rel / num_tolerance)
+    atol                      = 1.0e-10      # absolute ODE solver tolerance (new in Tier 4)
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
 
     # Transport physics
@@ -272,6 +273,7 @@ config_version = "3.0"
     grain_size                = 0.1          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
+    matprop_smooth_width      = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
 
     # Coupling limits (max T_magma change per PROTEUS step)
     tmagma_atol               = 20.0         # absolute limit [K]
@@ -290,17 +292,37 @@ config_version = "3.0"
     param_utbl                = false        # enable UTBL
     param_utbl_const          = 1e-7         # UTBL scaling constant [K-1]
 
+    # Hydrostatic EOS (Adams-Williamson). Used by SPIDER (-adams_williamson_*)
+    # and Aragog (_MeshParameters.surface_density / adiabatic_bulk_modulus).
+    adams_williamson_rhos     = 4078.95095544      # surface density [kg/m^3]
+    adams_williamson_beta     = 1.1115348931e-07   # density gradient [1/m]
+    adiabatic_bulk_modulus    = 260.0e9            # [Pa] (Aragog only; SPIDER derives internally)
+
+    # Phase material properties (previously hardcoded in Aragog and SPIDER wrappers).
+    melt_log10visc            = 2.0          # log10 molten-silicate viscosity [Pa s]
+    solid_log10visc           = 22.0         # log10 solid-silicate viscosity [Pa s]
+    melt_cond                 = 4.0          # molten-silicate thermal conductivity [W/m/K]
+    solid_cond                = 4.0          # solid-silicate thermal conductivity [W/m/K]
+    eddy_diffusivity_thermal  = 1.0          # scaling on MLT thermal kappa
+    eddy_diffusivity_chemical = 1.0          # scaling on MLT chemical kappa
+
+    # Phase transition thermodynamics (Aragog _PhaseMixedParameters)
+    latent_heat_of_fusion     = 4.0e6        # silicate latent heat of fusion [J/kg]
+    phase_transition_width    = 0.1          # width of the mushy-zone blend [melt fraction]
+
+    # Core thermal model (Bower+2018 Table 2)
+    core_tfac_avg             = 1.147        # T_avg/T_cmb ratio from adiabatic gradient
+
     # Aragog-only parameters
     [interior_energetics.aragog]
-        dilatation            = true         # dilatation source term
-        mass_coordinates      = true         # mass coordinate mesh spacing
-        jax                   = false        # JAX/diffrax solver (requires jax, equinox, diffrax)
+        dilatation                    = true    # dilatation source term
+        mass_coordinates              = true    # mass coordinate mesh spacing
+        jax                           = false   # JAX/diffrax solver (requires jax, equinox, diffrax)
+        atol_temperature_equivalent   = 0.01    # scipy BDF atol [K]; tight enough to resolve 0.3 K/yr cooling
 
     # SPIDER-only parameters
     [interior_energetics.spider]
-        tolerance_rel         = 1.0e-10      # SUNDIALS relative tolerance
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
-        matprop_smooth_width  = 1e-2         # material property smoothing (melt fraction)
 
     # Dummy module parameters
     [interior_energetics.dummy]

@@ -166,33 +166,38 @@ config_version = "3.0"
     melting_dir  = "Monteux-600"           # falls back to SPIDER-bundled A11_H13
     eos_dir      = "WolfBower2018_MgSiO3"  # falls back to SPIDER-bundled 1TPa-dK09
 
-# Interior energy transport: SPIDER with full physics
+# Interior energy transport: SPIDER with full physics.
+# Tier 4 schema (2026-04-08): rtol, atol, and matprop_smooth_width
+# were promoted from the [interior_energetics.spider] subsection to
+# the top-level [interior_energetics] so both SPIDER and Aragog read
+# them from a single source of truth. The spider subsection now
+# contains only the SUNDIALS-specific solver_type.
 [interior_energetics]
-    module           = "spider"
-    num_levels       = 80
-    flux_guess       = 1000.0   # W/m^2; matches CHILI F_initial
-    trans_conduction = true
-    trans_convection = true
-    trans_grav_sep   = true
-    trans_mixing     = true
-    heat_tidal       = false
-    heat_radiogenic  = true
-    radio_tref       = 4.55     # CHILI delivery.radio_tref
-    radio_K          = 310.0
-    radio_U          = 0.031
-    radio_Th         = 0.124
-    rfront_loc       = 0.5      # CHILI rheo_phi_loc
-    rfront_wid       = 0.2      # CHILI rheo_phi_wid
-    grain_size       = 0.1
-    mixing_length    = "constant"  # CHILI mixing_length = 2 (constant D/4)
-    kappah_floor     = 10.0
-    tmagma_atol      = 95.0     # ~ CHILI tsurf_poststep_change
-    tmagma_rtol      = 0.025
+    module               = "spider"
+    num_levels           = 80
+    rtol                 = 1.0e-8  # CHILI value; was spider.tolerance_rel
+    matprop_smooth_width = 1.0e-2  # was spider.matprop_smooth_width
+    flux_guess           = 1000.0  # W/m^2; matches CHILI F_initial
+    trans_conduction     = true
+    trans_convection     = true
+    trans_grav_sep       = true
+    trans_mixing         = true
+    heat_tidal           = false
+    heat_radiogenic      = true
+    radio_tref           = 4.55    # CHILI delivery.radio_tref
+    radio_K              = 310.0
+    radio_U              = 0.031
+    radio_Th             = 0.124
+    rfront_loc           = 0.5     # CHILI rheo_phi_loc
+    rfront_wid           = 0.2     # CHILI rheo_phi_wid
+    grain_size           = 0.1
+    mixing_length        = "constant"  # CHILI mixing_length = 2 (constant D/4)
+    kappah_floor         = 10.0
+    tmagma_atol          = 95.0    # ~ CHILI tsurf_poststep_change
+    tmagma_rtol          = 0.025
 
     [interior_energetics.spider]
-        tolerance_rel        = 1.0e-8
-        solver_type          = "bdf"
-        matprop_smooth_width = 1.0e-2
+        solver_type = "bdf"
 
 # Outgassing: CALLIOPE with all CHILI-relevant species, IW+4 redox
 [outgas]
