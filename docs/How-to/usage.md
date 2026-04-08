@@ -193,7 +193,7 @@ Before running the command, configure the post-processing options in your grid c
 To post-process a grid and generate ECDF plots for further analysis, run the following command:
 
 ```
-proteus grid-analyse --config input/ensembles/example.grid_analyse.toml
+proteus grid-analyse --config input/ensembles/example.grid.toml
 ```
 
 
