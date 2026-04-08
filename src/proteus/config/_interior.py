@@ -236,3 +236,92 @@ class Interior:
         default='flux',
         validator=in_(('flux', 'grey_body')),
     )
+
+    # -----------------------------------------------------------------
+    # Tier 3 parity fields (promoted from hardcoded values in
+    # aragog.py::setup_solver and spider.py::build_call_sequence, 2026-04-08).
+    # Defaults match the SPIDER-side values so existing SPIDER runs are
+    # bit-exact unchanged. Aragog users get the SPIDER-matching values by
+    # default for the first time — notably `solid_log10visc = 22.0` fixes
+    # the 10x discrepancy with SPIDER that had been latent in Aragog
+    # (it used hardcoded `1e21` = log10(21), SPIDER uses `-solid_log10visc 22.0`).
+    # -----------------------------------------------------------------
+
+    # Adams-Williamson mantle hydrostatic EOS parameters.
+    adams_williamson_rhos: float = field(
+        default=4078.95095544,
+        validator=gt(0),
+    )
+    """Adams-Williamson surface density [kg/m^3]. Matches SPIDER
+    -adams_williamson_rhos and Aragog _MeshParameters.surface_density.
+    Previously hardcoded: SPIDER 4078.95095544, Aragog 4090 (0.27% off)."""
+
+    adams_williamson_beta: float = field(
+        default=1.1115348931000002e-07,
+        validator=gt(0),
+    )
+    """Adams-Williamson density gradient [1/m]. Matches SPIDER
+    -adams_williamson_beta. Aragog derives its own via bulk modulus so
+    this value is SPIDER-only today."""
+
+    adiabatic_bulk_modulus: float = field(
+        default=260e9,
+        validator=gt(0),
+    )
+    """Adiabatic bulk modulus [Pa] used by Aragog's Adams-Williamson EOS
+    (_MeshParameters.adiabatic_bulk_modulus). SPIDER derives its own."""
+
+    # Phase viscosities (log10 Pa s).
+    melt_log10visc: float = field(default=2.0)
+    """log10 viscosity of molten silicate [Pa s]. Matches SPIDER
+    -melt_log10visc (2.0 = 1e2 Pa s)."""
+
+    solid_log10visc: float = field(default=22.0)
+    """log10 viscosity of solid silicate [Pa s]. Matches SPIDER
+    -solid_log10visc (22.0 = 1e22 Pa s). Aragog previously hardcoded
+    1e21 (log10=21), a 10x undervalue that made Aragog's solid-phase
+    rheology an order of magnitude softer than SPIDER's. Fixed here."""
+
+    # Phase thermal conductivity [W/m/K].
+    melt_cond: float = field(default=4.0, validator=gt(0))
+    """Thermal conductivity of molten silicate [W/m/K]. Matches SPIDER
+    -melt_cond."""
+
+    solid_cond: float = field(default=4.0, validator=gt(0))
+    """Thermal conductivity of solid silicate [W/m/K]. Matches SPIDER
+    -solid_cond."""
+
+    # Eddy diffusivity scaling (dimensionless multiplier on MLT-derived kappa).
+    eddy_diffusivity_thermal: float = field(default=1.0)
+    """Multiplier on the internally-computed thermal eddy diffusivity.
+    SPIDER: -eddy_diffusivity_thermal (1.0 default)."""
+
+    eddy_diffusivity_chemical: float = field(default=1.0)
+    """Multiplier on the internally-computed chemical eddy diffusivity.
+    SPIDER: -eddy_diffusivity_chemical (1.0 default)."""
+
+    # Phase transition thermodynamics.
+    latent_heat_of_fusion: float = field(default=4e6, validator=gt(0))
+    """Latent heat of fusion of silicate [J/kg]. Aragog uses this as a
+    scalar in _PhaseMixedParameters. SPIDER derives it per-(P,S) from
+    dS * T_fus via the EOS tables; the SPIDER derivation is more
+    physically correct but this scalar matches Aragog's historical
+    default (4e6) and is good to ~10% at Earth-mantle conditions. TODO:
+    switch Aragog to SPIDER's derivation once the EntropyEOS exposes a
+    dS_fus(P) method."""
+
+    phase_transition_width: float = field(
+        default=0.1,
+        validator=(gt(0), lt(1)),
+    )
+    """Width [fraction] of the mushy-zone transition in Aragog's
+    _PhaseMixedParameters. Distinct from SPIDER's matprop_smooth_width
+    (Tier 4): phase_transition_width sets the width of the phase
+    boundary in Aragog's mixed-phase blending, while matprop_smooth_width
+    is the melt-fraction smoothing window for material properties."""
+
+    # Core thermal model (Bower+2018 Table 2).
+    core_tfac_avg: float = field(default=1.147, validator=gt(0))
+    """Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018
+    Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
+    SPIDER derives its own internally."""

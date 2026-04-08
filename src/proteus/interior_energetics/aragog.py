@@ -161,7 +161,7 @@ class AragogRunner:
             # used if inner_boundary_condition = 1
             core_heat_capacity=get_core_heatcap(config, hf_row),
             # core T_avg/T_cmb ratio from adiabatic gradient (Bower+2018 Table 2)
-            tfac_core_avg=1.147,
+            tfac_core_avg=config.interior_energetics.core_tfac_avg,
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
             param_utbl=config.interior_energetics.param_utbl,
             param_utbl_const=config.interior_energetics.param_utbl_const,
@@ -193,9 +193,9 @@ class AragogRunner:
             ),
             core_density=get_core_density(config, hf_row),
             eos_method=1,  # 1: Adams-Williamson / 2: User defined
-            surface_density=4090,  # AdamsWilliamsonEOS parameter [kg/m3]
+            surface_density=config.interior_energetics.adams_williamson_rhos,
             gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
-            adiabatic_bulk_modulus=260e9,  # AW-EOS parameter [Pa]
+            adiabatic_bulk_modulus=config.interior_energetics.adiabatic_bulk_modulus,
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
             surface_pressure=0.0,  # TODO: wire to atmospheric overburden when available
         )
@@ -460,32 +460,32 @@ class AragogRunner:
 
         phase_liquid = _PhaseParameters(
             density=LOOK_UP_DIR / 'density_melt.dat',
-            viscosity=1e2,
+            viscosity=10.0 ** float(config.interior_energetics.melt_log10visc),
             heat_capacity=LOOK_UP_DIR / 'heat_capacity_melt.dat',
             melt_fraction=1,
-            thermal_conductivity=4,
+            thermal_conductivity=float(config.interior_energetics.melt_cond),
             thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_melt.dat',
             entropy=entropy_melt_arg,
         )
 
         phase_solid = _PhaseParameters(
             density=LOOK_UP_DIR / 'density_solid.dat',
-            viscosity=1e21,
+            viscosity=10.0 ** float(config.interior_energetics.solid_log10visc),
             heat_capacity=LOOK_UP_DIR / 'heat_capacity_solid.dat',
             melt_fraction=0,
-            thermal_conductivity=4,
+            thermal_conductivity=float(config.interior_energetics.solid_cond),
             thermal_expansivity=LOOK_UP_DIR / 'thermal_exp_solid.dat',
             entropy=entropy_solid_arg,
         )
 
         phase_mixed = _PhaseMixedParameters(
-            latent_heat_of_fusion=4e6,
+            latent_heat_of_fusion=float(config.interior_energetics.latent_heat_of_fusion),
             rheological_transition_melt_fraction=config.interior_energetics.rfront_loc,
             rheological_transition_width=config.interior_energetics.rfront_wid,
             solidus=solidus_path,
             liquidus=liquidus_path,
             phase='mixed',
-            phase_transition_width=0.1,
+            phase_transition_width=float(config.interior_energetics.phase_transition_width),
             grain_size=config.interior_energetics.grain_size,
         )
 

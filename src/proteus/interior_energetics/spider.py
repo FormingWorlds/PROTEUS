@@ -914,8 +914,12 @@ def _try_spider(
     call_sequence.extend(['-melt_rho_filename', os.path.join(eos_dir, 'density_melt.dat')])
     call_sequence.extend(['-melt_temp_filename', os.path.join(eos_dir, 'temperature_melt.dat')])
     call_sequence.extend(['-melt_phase_boundary_filename', liquidus_ps])
-    call_sequence.extend(['-melt_log10visc', '2.0'])
-    call_sequence.extend(['-melt_cond', '4.0'])  # conductivity of melt
+    call_sequence.extend(
+        ['-melt_log10visc', '%.6e' % float(config.interior_energetics.melt_log10visc)]
+    )
+    call_sequence.extend(
+        ['-melt_cond', '%.6e' % float(config.interior_energetics.melt_cond)]
+    )
 
     call_sequence.extend(['-solid_TYPE', '1'])
     call_sequence.extend(
@@ -932,8 +936,12 @@ def _try_spider(
         ['-solid_temp_filename', os.path.join(eos_dir, 'temperature_solid.dat')]
     )
     call_sequence.extend(['-solid_phase_boundary_filename', solidus_ps])
-    call_sequence.extend(['-solid_log10visc', '22.0'])
-    call_sequence.extend(['-solid_cond', '4.0'])  # conductivity of solid
+    call_sequence.extend(
+        ['-solid_log10visc', '%.6e' % float(config.interior_energetics.solid_log10visc)]
+    )
+    call_sequence.extend(
+        ['-solid_cond', '%.6e' % float(config.interior_energetics.solid_cond)]
+    )
 
     # Static pressure profile: external mesh from Zalmoxis, or Adams-Williamson
     if mesh_file and os.path.isfile(mesh_file):
@@ -955,14 +963,26 @@ def _try_spider(
                 pass  # non-critical check
     else:
         # Adams-Williamson EOS parameters from fitting PREM lower mantle (Earth)
-        call_sequence.extend(['-adams_williamson_rhos', '4078.95095544'])
-        call_sequence.extend(['-adams_williamson_beta', '1.1115348931000002e-07'])
+        call_sequence.extend(
+            ['-adams_williamson_rhos',
+             '%.12e' % float(config.interior_energetics.adams_williamson_rhos)]
+        )
+        call_sequence.extend(
+            ['-adams_williamson_beta',
+             '%.12e' % float(config.interior_energetics.adams_williamson_beta)]
+        )
 
     # eddy diffusivity
     # if negative, this value is adopted (units m^2/s)
     # if positive, this value is used to scale the internally calculated eddy diffusivity
-    call_sequence.extend(['-eddy_diffusivity_thermal', '1.0'])
-    call_sequence.extend(['-eddy_diffusivity_chemical', '1.0'])
+    call_sequence.extend(
+        ['-eddy_diffusivity_thermal',
+         '%.6e' % float(config.interior_energetics.eddy_diffusivity_thermal)]
+    )
+    call_sequence.extend(
+        ['-eddy_diffusivity_chemical',
+         '%.6e' % float(config.interior_energetics.eddy_diffusivity_chemical)]
+    )
 
     # Phase-dependent eddy diffusivity floor
     if config.interior_energetics.kappah_floor > 0:
