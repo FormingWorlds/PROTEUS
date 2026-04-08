@@ -26,7 +26,7 @@ class Zephyrus:
     Attributes
     ----------
     Pxuv: float
-        Pressure at which XUV radiation becomes opaque in the planetary atmosphere (should be within Pxuv > 0 bar) [bar]
+        Pressure at which XUV radiation becomes opaque in the planetary atmosphere (should be above Pxuv > 0 bar) [bar]
     efficiency: float
         Escape efficiency factor
     tidal: bool
