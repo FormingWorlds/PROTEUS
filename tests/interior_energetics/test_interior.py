@@ -168,7 +168,7 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
         patch('proteus.outgas.calliope.calc_target_masses') as mock_calc_masses,
     ):
         # Call the function under test
-        determine_interior_radius(dirs, config, hf_all, hf_row)
+        determine_interior_radius(dirs, config, hf_all, hf_row, str(tmp_path))
 
         # Ensure patched functions were called
         assert mock_run.called

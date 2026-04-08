@@ -99,7 +99,192 @@ def get_nlevb(config: Config):
     raise ValueError(f"Invalid interior module selected '{config.interior_energetics.module}'")
 
 
-def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict):
+# The 10 phase-property files Aragog's EntropyEOS and SPIDER's lookup
+# loader both expect, in SPIDER's canonical P-S header format.
+_SPIDER_EOS_PHASE_FILES = (
+    'temperature_melt.dat',
+    'temperature_solid.dat',
+    'density_melt.dat',
+    'density_solid.dat',
+    'heat_capacity_melt.dat',
+    'heat_capacity_solid.dat',
+    'adiabat_temp_grad_melt.dat',
+    'adiabat_temp_grad_solid.dat',
+    'thermal_exp_melt.dat',
+    'thermal_exp_solid.dat',
+)
+
+# P-S melting curves. Aragog's `_load_spider_phase_boundary` hardcodes
+# these filenames. SPIDER's bundled lookup_data ships them under the
+# legacy `{solidus,liquidus}_A11_H13.dat` names; we rename on copy so a
+# single canonical layout satisfies both solvers.
+_SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
+
+
+def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
+    """Ensure that Aragog and SPIDER can find a complete P-S lookup set.
+
+    Populates ``output/<case>/data/spider_eos/`` with the 12 files both
+    solvers need at runtime (10 phase-property files + 2 P-S melting
+    curves). This is the PROTEUS-side data-resolution layer that lets
+    ``interior_energetics.module = "aragog"`` work with
+    ``interior_struct.module = "spider"`` — the historical pattern used
+    by the R8 CHILI baseline, which previously hard-failed under Aragog
+    because no caller produced the P-S tables.
+
+    Resolution order (first available wins):
+
+    1. **Already populated** — if ``dirs['spider_eos_dir']`` is set and
+       the target directory already contains the 12 expected files, do
+       nothing. This keeps Zalmoxis's ``generate_spider_tables()``
+       output path and cache semantics untouched.
+
+    2. **FWL_DATA (Zenodo 19473625)** — if the canonical Zenodo download
+       target exists and is complete, copy the 12 files into the output
+       directory. This is the self-sufficient path: once the user runs
+       ``proteus get all`` (or any non-offline start), the Zenodo record
+       populates FWL_DATA and subsequent runs find the complete set
+       here.
+
+    3. **SPIDER submodule fallback** — if FWL_DATA is incomplete but the
+       SPIDER git submodule is cloned at ``dirs['spider']/lookup_data/``,
+       copy the 10 phase files verbatim and rename the legacy
+       ``{solidus,liquidus}_A11_H13.dat`` melting curves to
+       ``{solidus,liquidus}_P-S.dat``. This keeps the pre-Zenodo
+       workflow alive for users who have the submodule but haven't
+       refreshed their FWL_DATA tree.
+
+    4. **Hard failure** — if neither source yields a complete set, raise
+       ``FileNotFoundError`` with a clear message pointing the user at
+       ``proteus get all`` or the Zenodo record.
+
+    Side effects: sets ``dirs['spider_eos_dir']``,
+    ``dirs['spider_solidus_ps']``, ``dirs['spider_liquidus_ps']``.
+    """
+    target_dir = os.path.join(outdir, 'data', 'spider_eos')
+
+    # Case 1: already populated (e.g. by an earlier call this session or
+    # by Zalmoxis's generate_spider_tables in a prior structure solve).
+    existing = dirs.get('spider_eos_dir')
+    if existing and os.path.isdir(existing):
+        missing = [
+            f for f in (_SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES)
+            if not os.path.isfile(os.path.join(existing, f))
+        ]
+        if not missing:
+            log.debug('spider_eos_dir already populated at %s, reusing', existing)
+            dirs['spider_solidus_ps'] = os.path.join(existing, 'solidus_P-S.dat')
+            dirs['spider_liquidus_ps'] = os.path.join(existing, 'liquidus_P-S.dat')
+            return
+        log.debug(
+            'spider_eos_dir=%s exists but is missing %d file(s); repopulating',
+            existing,
+            len(missing),
+        )
+
+    os.makedirs(target_dir, exist_ok=True)
+
+    # Import lazily so the helper is usable outside of a full PROTEUS
+    # install (e.g. unit tests that stub out FWL_DATA).
+    from proteus.utils.data import GetFWLData
+
+    fwl_data = GetFWLData()
+    zenodo_root = (
+        fwl_data
+        / 'interior_lookup_tables'
+        / '1TPa-dK09-elec-free'
+        / 'MgSiO3_Wolf_Bower_2018_1TPa'
+    )
+
+    # Case 2: FWL_DATA (Zenodo 19473625) complete set.
+    zenodo_files = (
+        list(_SPIDER_EOS_PHASE_FILES) + list(_SPIDER_EOS_MELTING_CURVES)
+    )
+    zenodo_missing = [
+        f for f in zenodo_files if not (zenodo_root / f).is_file()
+    ]
+    if not zenodo_missing:
+        log.info(
+            'Providing P-S EOS tables to spider_eos_dir from FWL_DATA (Zenodo 19473625)'
+        )
+        for f in zenodo_files:
+            src = zenodo_root / f
+            dst = os.path.join(target_dir, f)
+            if not os.path.isfile(dst):
+                shutil.copy2(src, dst)
+        dirs['spider_eos_dir'] = target_dir
+        dirs['spider_solidus_ps'] = os.path.join(target_dir, 'solidus_P-S.dat')
+        dirs['spider_liquidus_ps'] = os.path.join(target_dir, 'liquidus_P-S.dat')
+        return
+
+    # Case 3: SPIDER submodule fallback. The 10 phase files have
+    # canonical names; the 2 melting curves need the _A11_H13 -> _P-S
+    # rename on copy.
+    spider_bundle = None
+    spider_root = dirs.get('spider')
+    if spider_root:
+        candidate = os.path.join(spider_root, 'lookup_data', '1TPa-dK09-elec-free')
+        if os.path.isdir(candidate):
+            spider_bundle = candidate
+
+    if spider_bundle is not None:
+        melt_map = {
+            'solidus_P-S.dat': 'solidus_A11_H13.dat',
+            'liquidus_P-S.dat': 'liquidus_A11_H13.dat',
+        }
+        phase_missing = [
+            f for f in _SPIDER_EOS_PHASE_FILES
+            if not os.path.isfile(os.path.join(spider_bundle, f))
+        ]
+        melt_missing = [
+            canonical for canonical, legacy in melt_map.items()
+            if not os.path.isfile(os.path.join(spider_bundle, legacy))
+        ]
+        if not phase_missing and not melt_missing:
+            log.info(
+                'Providing P-S EOS tables to spider_eos_dir from SPIDER submodule '
+                '(bundled lookup_data). FWL_DATA was incomplete: missing %d file(s).',
+                len(zenodo_missing),
+            )
+            for f in _SPIDER_EOS_PHASE_FILES:
+                src = os.path.join(spider_bundle, f)
+                dst = os.path.join(target_dir, f)
+                if not os.path.isfile(dst):
+                    shutil.copy2(src, dst)
+            for canonical, legacy in melt_map.items():
+                src = os.path.join(spider_bundle, legacy)
+                dst = os.path.join(target_dir, canonical)
+                if not os.path.isfile(dst):
+                    shutil.copy2(src, dst)
+            dirs['spider_eos_dir'] = target_dir
+            dirs['spider_solidus_ps'] = os.path.join(target_dir, 'solidus_P-S.dat')
+            dirs['spider_liquidus_ps'] = os.path.join(target_dir, 'liquidus_P-S.dat')
+            return
+        log.warning(
+            'SPIDER submodule lookup_data present at %s but incomplete '
+            '(phase missing=%d, melting curves missing=%d). Falling through.',
+            spider_bundle,
+            len(phase_missing),
+            len(melt_missing),
+        )
+
+    # Case 4: neither source yielded a complete set.
+    raise FileNotFoundError(
+        'Could not provide SPIDER/Aragog P-S EOS tables at '
+        f'{target_dir}. FWL_DATA source '
+        f'{zenodo_root} is missing {len(zenodo_missing)} of '
+        f'{len(zenodo_files)} required files '
+        f'({zenodo_missing[:3]}...), and the SPIDER submodule fallback '
+        f'was unavailable at {dirs.get("spider", "<no spider dir set>")}'
+        '/lookup_data/1TPa-dK09-elec-free/. Run `proteus get all` to '
+        'fetch Zenodo record 19473625, or ensure the SPIDER submodule '
+        'is cloned.'
+    )
+
+
+def determine_interior_radius(
+    dirs: dict, config: Config, hf_all: pd.DataFrame, hf_row: dict, outdir: str
+):
     """
     Determine the interior radius (R_int) of the planet.
 
@@ -109,6 +294,14 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     """
 
     log.info('Using %s interior module to solve structure' % config.interior_energetics.module)
+
+    # Provide P-S lookup tables for Aragog's entropy solver (and SPIDER
+    # when it runs under this structure path). Mirrors the
+    # generate_spider_tables() call at the top of the zalmoxis and dummy
+    # structure paths. The helper resolves from FWL_DATA/Zenodo first,
+    # then the SPIDER submodule as a fallback.
+    if config.interior_energetics.module in ('spider', 'aragog'):
+        _provide_spider_eos_tables(config, outdir, dirs)
 
     # Initial guess for interior radius and gravity
     if config.interior_energetics.module == 'spider':
@@ -447,7 +640,7 @@ def solve_structure(
                     dirs, config, hf_all, hf_row, outdir
                 )
             case 'spider':
-                return determine_interior_radius(dirs, config, hf_all, hf_row)
+                return determine_interior_radius(dirs, config, hf_all, hf_row, outdir)
             case 'zalmoxis':
                 # Zalmoxis computes its own radius; temporarily disable orbital
                 # feedback during structure solve (restored after return).
