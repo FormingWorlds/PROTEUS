@@ -843,7 +843,9 @@ def test_get_zenodo_from_osf():
     """Test reverse lookup: OSF project -> Zenodo IDs."""
     zenodo_ids = get_zenodo_from_osf('phsxf')
     assert len(zenodo_ids) > 0
-    assert '17417017' in zenodo_ids  # Should include ARAGOG data
+    # 19473625 is the complete P-S format record used by SPIDER + Aragog at
+    # runtime (supersedes the partial P-T record 17417017 from 2024).
+    assert '19473625' in zenodo_ids
 
     # Test unknown OSF project
     zenodo_ids = get_zenodo_from_osf('unknown')

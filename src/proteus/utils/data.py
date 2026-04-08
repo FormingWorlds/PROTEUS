@@ -439,7 +439,11 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
         'osf_project': 'phsxf',
     },
     '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': {
-        'zenodo_id': '17417017',
+        # Zenodo 19473625: complete P-S format tables (10 phase-property files
+        # + 2 P-S melting curves + README + md5sums). Used by BOTH SPIDER and
+        # Aragog at runtime. Supersedes the earlier partial P-T format record
+        # 17417017, which is kept alive for backwards compatibility only.
+        'zenodo_id': '19473625',
         'osf_id': 'phsxf',
         'osf_project': 'phsxf',
     },
