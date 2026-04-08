@@ -50,6 +50,15 @@ def test_get_grid_name_raises_for_nonexistent_path(tmp_path):
 
 
 @pytest.mark.unit
+def test_get_grid_name_raises_for_file_path(tmp_path):
+    """get_grid_name should raise ValueError when given a file path instead of a directory."""
+    file_path = tmp_path / 'not_a_dir.txt'
+    file_path.write_text('data')
+    with pytest.raises(ValueError, match='not a valid directory'):
+        get_grid_name(file_path)
+
+
+@pytest.mark.unit
 def test_get_grid_name_accepts_string(tmp_path):
     """get_grid_name should accept a plain string as well as a Path."""
     grid_dir = tmp_path / 'str_grid'
@@ -64,9 +73,10 @@ def test_get_grid_name_accepts_string(tmp_path):
 
 @pytest.mark.unit
 def test_get_label_known_quantity():
-    """Preset quantities should return their human-readable label."""
-    label = get_label('T_surf')
-    assert 'surf' in label.lower() or 'T' in label
+    """Preset quantities should return their human-readable label from _preset_labels."""
+    from proteus.utils.plot import _preset_labels
+
+    assert get_label('T_surf') == _preset_labels['T_surf']
 
 
 @pytest.mark.unit
@@ -109,12 +119,11 @@ def test_get_scale_unknown_returns_one():
 
 @pytest.mark.unit
 def test_get_log_scale_known_log_quantity():
-    """esc_rate_total should use log scale."""
-    # esc_rate_total is in preset_log_scales as True (escape rates span many orders)
+    """escape.zephyrus.efficiency is a known log-scale quantity."""
     from proteus.utils.plot import _preset_log_scales
 
-    if 'esc_rate_total' in _preset_log_scales:
-        assert get_log_scale('esc_rate_total') == _preset_log_scales['esc_rate_total']
+    assert 'escape.zephyrus.efficiency' in _preset_log_scales
+    assert get_log_scale('escape.zephyrus.efficiency') is True
 
 
 @pytest.mark.unit
@@ -206,7 +215,7 @@ def test_validate_output_variables_missing_excluded(capsys):
     valid = validate_output_variables(df, ['T_surf', 'not_a_column'])
     assert valid == ['T_surf']
     captured = capsys.readouterr()
-    assert 'WARNING' in captured.out or 'not_a_column' in captured.out
+    assert 'WARNING' in captured.out and 'not_a_column' in captured.out
 
 
 @pytest.mark.unit
