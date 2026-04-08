@@ -1598,19 +1598,28 @@ def download_eos_static():
 
 
 def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
-    """Download dynamic EOS files (P-T format).
+    """Download dynamic EOS files from Zenodo 19473625.
 
-    Downloads to the legacy location
+    Downloads into
     ``FWL_DATA/interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa/``.
-    Code in Aragog, SPIDER, and Zalmoxis falls back to this path when the
-    unified ``EOS/dynamic/<eos_dir>/P-T/`` and ``P-S/`` folders are not yet
-    populated.
+    The record provides the complete P-S set that both SPIDER and
+    Aragog consume at runtime: 10 phase-property files (temperature,
+    density, heat capacity, adiabatic gradient, thermal expansivity
+    for melt and solid) plus the two P-S melting curves
+    (``solidus_P-S.dat``, ``liquidus_P-S.dat``).
+
+    After download, the function verifies that all 12 expected files
+    landed in the target directory and raises a clear error if any are
+    missing. This prevents silent downstream failures where Aragog's
+    ``EntropyEOS`` would otherwise crash with a confusing
+    ``FileNotFoundError`` for a single missing file.
 
     Parameters
     ----------
     eos_dir : str
-        Name of the dynamic EOS folder (unused for now; reserved for when
-        upstream data is reorganised to match the new folder structure).
+        Name of the dynamic EOS folder. Reserved for future multi-EOS
+        support; currently always resolves to
+        ``1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa``.
     """
     folder = '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa'
     source_info = get_data_source_info(folder)
@@ -1623,8 +1632,50 @@ def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
         target='interior_lookup_tables',
         osf_id=source_info['osf_project'],
         zenodo_id=source_info['zenodo_id'],
-        desc=f'Dynamic EOS (P-T): {folder}',
+        desc=f'Dynamic EOS (P-S): {folder}',
     )
+
+    # Manifest validation: verify all 12 expected files are present.
+    # A partial download means the PROTEUS helpers will silently fall
+    # back to the SPIDER submodule at runtime, which is a warning sign
+    # that the user's FWL_DATA tree is stale or the Zenodo record
+    # contents have drifted.
+    expected_files = (
+        'temperature_melt.dat',
+        'temperature_solid.dat',
+        'density_melt.dat',
+        'density_solid.dat',
+        'heat_capacity_melt.dat',
+        'heat_capacity_solid.dat',
+        'adiabat_temp_grad_melt.dat',
+        'adiabat_temp_grad_solid.dat',
+        'thermal_exp_melt.dat',
+        'thermal_exp_solid.dat',
+        'solidus_P-S.dat',
+        'liquidus_P-S.dat',
+    )
+    target_dir = GetFWLData() / 'interior_lookup_tables' / folder
+    missing = [f for f in expected_files if not (target_dir / f).is_file()]
+    if missing:
+        log.warning(
+            'Zenodo record %s download landed at %s but is missing %d of '
+            '%d expected files: %s. Aragog will fall back to the SPIDER '
+            'submodule at runtime via _provide_spider_eos_tables. To '
+            'refresh, delete %s and rerun with clean=True.',
+            source_info['zenodo_id'],
+            target_dir,
+            len(missing),
+            len(expected_files),
+            missing[:5],
+            target_dir,
+        )
+    else:
+        log.debug(
+            'Zenodo record %s complete: all %d files present at %s',
+            source_info['zenodo_id'],
+            len(expected_files),
+            target_dir,
+        )
 
 
 def download_Seager_EOS():
