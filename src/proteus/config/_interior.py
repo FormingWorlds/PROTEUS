@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import logging
+import warnings
+
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
+
+log = logging.getLogger('fwl.' + __name__)
 
 
 def valid_spider(instance, attribute, value):
@@ -20,21 +25,40 @@ def valid_spider(instance, attribute, value):
 
 @define
 class Spider:
-    """Parameters for SPIDER module.
+    """SPIDER-specific parameters.
+
+    After the Tier 4 parity refactor (2026-04-08), only the one field
+    that is genuinely SUNDIALS-specific lives here. The relative
+    tolerance (``tolerance_rel`` -> top-level ``rtol``) and
+    material-property smoothing width (``matprop_smooth_width`` ->
+    top-level) have been promoted to ``[interior_energetics]`` so
+    SPIDER and Aragog read them from a single source of truth.
+
+    ``tolerance_rel`` and ``matprop_smooth_width`` are kept as
+    **deprecated aliases** on this subclass: old configs still load
+    but emit a ``DeprecationWarning`` when their values are copied to
+    the new top-level fields by ``Interior.__attrs_post_init__``.
 
     Attributes
     ----------
-    tolerance_rel: float
-        Relative solver tolerance (SUNDIALS-specific).
     solver_type: str
-        Numerical integrator. Choices: 'adams', 'bdf'.
+        SUNDIALS integrator choice. Choices: 'adams', 'bdf'.
+    tolerance_rel: float
+        Deprecated alias for ``Interior.rtol``. Set
+        ``interior_energetics.rtol`` at the top level instead.
     matprop_smooth_width: float
-        Window width, in melt-fraction, for smoothing properties across liquidus and solidus
+        Deprecated alias for ``Interior.matprop_smooth_width``. Set
+        ``interior_energetics.matprop_smooth_width`` at the top level
+        instead.
     """
 
-    tolerance_rel: float = field(default=1e-10, validator=gt(0))
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
-    matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
+
+    # Sentinel -1 means "not set"; old configs that set it will copy to
+    # the top-level field in Interior.__attrs_post_init__ and emit a
+    # DeprecationWarning. The validator allows -1 as a pass-through.
+    tolerance_rel: float = field(default=-1.0)
+    matprop_smooth_width: float = field(default=-1.0)
 
 
 def valid_aragog(instance, attribute, value):
@@ -53,20 +77,10 @@ def valid_aragog(instance, attribute, value):
 
 @define
 class Aragog:
-    """Parameters for Aragog module.
+    """Aragog-specific parameters.
 
     Attributes
     ----------
-    num_levels: int
-        Number of Aragog grid levels (basic mesh).
-    trans_conduction: bool
-        Whether to include conductive heat flux in the model. Default is True.
-    trans_convection: bool
-        Whether to include convective heat flux in the model. Default is True.
-    trans_grav_sep: bool
-        Whether to include gravitational separation flux in the model. Default is True (matches SPIDER).
-    trans_mixing: bool
-        Whether to include mixing flux in the model. Default is True (matches SPIDER).
     dilatation: bool
         Whether to include dilatation source term in the model. Default is True.
     mass_coordinates: bool
@@ -77,11 +91,19 @@ class Aragog:
         Use JAX/diffrax solver backend instead of scipy BDF. Default is False.
         When True, the entropy ODE is integrated with diffrax Tsit5 instead of
         scipy solve_ivp (BDF). Requires jax, equinox, and diffrax packages.
+    atol_temperature_equivalent: float
+        Effective temperature-scale absolute tolerance [K] for Aragog's
+        scipy BDF integrator. Aragog's state variable is entropy (J/kg/K),
+        but users think in Kelvin, so this is exposed as a temperature
+        equivalent that Aragog converts internally via Cp/T. Default is
+        0.01 K — tight enough that the solver resolves the ~0.3 K/yr
+        cooling rate of a magma ocean.
     """
 
     dilatation: bool = field(default=True)
     mass_coordinates: bool = field(default=True)
     jax: bool = field(default=False)
+    atol_temperature_equivalent: float = field(default=0.01, validator=gt(0))
 
 
 def valid_interiordummy(instance, attribute, value):
@@ -173,7 +195,41 @@ class Interior:
 
     module: str = field(default='aragog', validator=in_(('spider', 'aragog', 'dummy')))
     num_levels: int = field(default=80, validator=ge(40))
+
+    # Tier 4 (2026-04-08): rtol and matprop_smooth_width were promoted
+    # from the Spider subclass to the top level so both SPIDER and Aragog
+    # read numerical tolerances and phase smoothing from a single source
+    # of truth. num_tolerance is kept as a deprecated alias for rtol —
+    # old configs still load but emit a DeprecationWarning on the first
+    # Interior.__attrs_post_init__ call. Remove in a future release.
+    rtol: float = field(default=1e-10, validator=gt(0))
+    """Relative numerical tolerance for the interior ODE solver.
+    SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling).
+    Aragog: scipy solve_ivp rtol. Replaces the legacy Spider.tolerance_rel
+    and Interior.num_tolerance fields."""
+
+    atol: float = field(default=1e-10, validator=gt(0))
+    """Absolute numerical tolerance for the interior ODE solver.
+    SPIDER: -ts_sundials_atol (scaled by atol_sf at runtime). Aragog
+    uses [interior_energetics.aragog].atol_temperature_equivalent
+    instead because its state variable is entropy, not temperature, and
+    a direct entropy-scale atol would be unintuitive to tune."""
+
+    matprop_smooth_width: float = field(
+        default=1e-2,
+        validator=(gt(0), lt(1)),
+    )
+    """Melt-fraction window width for smoothing material properties
+    across the solidus-liquidus transition. Applied by SPIDER's
+    -matprop_smooth_width. Distinct from
+    [interior_energetics].phase_transition_width which sets the width
+    of Aragog's phase blend in _PhaseMixedParameters."""
+
+    # Deprecated alias for rtol. Kept for backwards compatibility with
+    # existing configs. Emits DeprecationWarning when set to any non-
+    # default value. Will be removed in a future release.
     num_tolerance: float = field(default=1e-10, validator=gt(0))
+
     trans_conduction: bool = field(default=True)
     trans_convection: bool = field(default=True)
     trans_grav_sep: bool = field(default=True)
@@ -325,3 +381,95 @@ class Interior:
     """Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018
     Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
     SPIDER derives its own internally."""
+
+    def __attrs_post_init__(self):
+        """Resolve Tier 4 deprecation aliases.
+
+        Three legacy fields are accepted as backwards-compat aliases:
+        ``num_tolerance`` (old name for ``rtol``),
+        ``[interior_energetics.spider].tolerance_rel`` (old per-solver
+        name for ``rtol``), and
+        ``[interior_energetics.spider].matprop_smooth_width`` (old
+        per-solver name for the top-level ``matprop_smooth_width``).
+
+        The resolution rules are:
+
+        - If only the alias is set, its value is copied to the new
+          field and a ``DeprecationWarning`` is emitted.
+        - If both are set to the same value, the alias is silently
+          ignored (the user is in a clean state).
+        - If both are set to DISTINCT non-default values, ``ValueError``
+          is raised because we cannot guess which one the user meant.
+
+        All aliases will be removed in a future release.
+        """
+        _default_rtol = 1e-10
+        _default_matprop = 1e-2
+
+        # --- num_tolerance (top-level) -> rtol ---
+        num_tol_set = self.num_tolerance != _default_rtol
+        rtol_set = self.rtol != _default_rtol
+        if num_tol_set and rtol_set and self.num_tolerance != self.rtol:
+            raise ValueError(
+                'interior_energetics.num_tolerance and .rtol are both '
+                'set to distinct non-default values '
+                f'(num_tolerance={self.num_tolerance}, rtol={self.rtol}). '
+                'num_tolerance is deprecated; set rtol only.'
+            )
+        if num_tol_set and not rtol_set:
+            warnings.warn(
+                'interior_energetics.num_tolerance is deprecated; use '
+                'interior_energetics.rtol instead. Value copied to rtol '
+                'for backwards compatibility. This alias will be removed '
+                'in a future release.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            object.__setattr__(self, 'rtol', float(self.num_tolerance))
+            rtol_set = True
+
+        # --- spider.tolerance_rel -> rtol ---
+        spider_tol = float(getattr(self.spider, 'tolerance_rel', -1.0))
+        if spider_tol > 0:
+            if rtol_set and spider_tol != self.rtol:
+                raise ValueError(
+                    'interior_energetics.spider.tolerance_rel is a '
+                    'deprecated alias for interior_energetics.rtol, but '
+                    f'both are set to distinct values ({spider_tol} vs '
+                    f'{self.rtol}). Remove the [interior_energetics.spider] '
+                    'section and set rtol at the top level.'
+                )
+            warnings.warn(
+                'interior_energetics.spider.tolerance_rel is deprecated; '
+                'use interior_energetics.rtol at the top level instead. '
+                'Value copied to rtol for backwards compatibility. This '
+                'alias will be removed in a future release.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            object.__setattr__(self, 'rtol', spider_tol)
+
+        # --- spider.matprop_smooth_width -> matprop_smooth_width ---
+        spider_smooth = float(getattr(self.spider, 'matprop_smooth_width', -1.0))
+        matprop_set = self.matprop_smooth_width != _default_matprop
+        if spider_smooth > 0:
+            if matprop_set and spider_smooth != self.matprop_smooth_width:
+                raise ValueError(
+                    'interior_energetics.spider.matprop_smooth_width is '
+                    'a deprecated alias for '
+                    'interior_energetics.matprop_smooth_width, but both '
+                    f'are set to distinct values ({spider_smooth} vs '
+                    f'{self.matprop_smooth_width}). Remove the alias.'
+                )
+            warnings.warn(
+                'interior_energetics.spider.matprop_smooth_width is '
+                'deprecated; use interior_energetics.matprop_smooth_width '
+                'at the top level instead. Value copied for backwards '
+                'compatibility. This alias will be removed in a future '
+                'release.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            object.__setattr__(
+                self, 'matprop_smooth_width', spider_smooth
+            )

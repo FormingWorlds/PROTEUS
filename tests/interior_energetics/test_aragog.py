@@ -37,12 +37,25 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.trans_grav_sep = False
     config.interior_energetics.trans_mixing = True
     config.interior_energetics.aragog.dilatation = False
+    config.interior_energetics.aragog.atol_temperature_equivalent = 0.01
     config.interior_energetics.heat_radiogenic = False
     config.interior_energetics.heat_tidal = False
     config.planet.tsurf_init = 4000.0
-    config.interior_energetics.num_tolerance = 1e-4
+    # Tier 4: num_tolerance -> rtol/atol
+    config.interior_energetics.rtol = 1e-4
+    config.interior_energetics.atol = 1e-4
     config.interior_energetics.tmagma_atol = 100.0
     config.interior_energetics.tmagma_rtol = 0.02
+    # Tier 3 parity fields (hardcoded values promoted to config)
+    config.interior_energetics.adams_williamson_rhos = 4078.95095544
+    config.interior_energetics.adiabatic_bulk_modulus = 260e9
+    config.interior_energetics.melt_log10visc = 2.0
+    config.interior_energetics.solid_log10visc = 22.0
+    config.interior_energetics.melt_cond = 4.0
+    config.interior_energetics.solid_cond = 4.0
+    config.interior_energetics.latent_heat_of_fusion = 4e6
+    config.interior_energetics.phase_transition_width = 0.1
+    config.interior_energetics.core_tfac_avg = 1.147
     config.params.out.logging = 'WARNING'
     config.interior_struct.eos_dir = 'WolfBower2018_MgSiO3'
     config.interior_struct.melting_dir = 'Wolf_Bower+2018'

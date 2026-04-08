@@ -184,16 +184,19 @@ def test_spider_defaults():
     """
     Test verification of Spider specific defaults.
 
-    Verifies SPIDER (C-based interior module) defaults:
-    - 190 grid levels (high resolution)
-    - Mixing length 2 (standard convection parameter)
-    - BDF solver (Backwards Differentiation Formula, stable for stiff systems)
+    After the Tier 4 parity refactor (2026-04-08), only ``solver_type``
+    remains on the Spider subclass. ``tolerance_rel`` and
+    ``matprop_smooth_width`` have been promoted to the top-level
+    ``Interior`` class (as ``rtol`` and ``matprop_smooth_width``) and
+    are kept on Spider only as deprecation-aliased sentinel fields
+    (default ``-1.0`` = "not set"; a positive value is copied to the
+    top level with a DeprecationWarning by Interior.__attrs_post_init__).
     """
     s = Spider()
-    # mixing_length moved to shared Interior level
-    assert s.tolerance_rel == 1e-10
     assert s.solver_type == 'bdf'
-    assert s.matprop_smooth_width == 1e-2
+    # Deprecated alias sentinels (not set)
+    assert s.tolerance_rel == -1.0
+    assert s.matprop_smooth_width == -1.0
 
 
 @pytest.mark.unit

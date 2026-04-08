@@ -469,9 +469,9 @@ def determine_interior_radius(
     # Set tolerance
     match config.interior_energetics.module:
         case 'aragog':
-            rtol = config.interior_energetics.num_tolerance
+            rtol = config.interior_energetics.rtol
         case 'spider':
-            rtol = config.interior_energetics.num_tolerance
+            rtol = config.interior_energetics.rtol
         case _:
             rtol = 1e-7
 

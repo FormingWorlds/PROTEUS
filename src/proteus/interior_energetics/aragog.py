@@ -125,13 +125,14 @@ class AragogRunner:
         solver = _SolverParameters(
             start_time=0,
             end_time=0,
-            # T is in K (O(1000-5000)). For a convecting magma ocean near
-            # adiabatic equilibrium, dT/dt ~ 0.1-1 K/yr. atol must be small
-            # enough that the BDF solver resolves this: atol = 0.01 K ensures
-            # ~0.01 K precision, well below the ~0.3 K/yr cooling rate.
-            # Too large (e.g. 1.0 K) makes the solver skip the evolution entirely.
-            atol=max(config.interior_energetics.num_tolerance, 0.01),
-            rtol=config.interior_energetics.num_tolerance,
+            # Tier 4: rtol and atol (temperature-equivalent) are now
+            # config-exposed. Aragog's state variable is entropy, but
+            # users specify a temperature-scale atol because dT/dt is
+            # easier to reason about than dS/dt. The default 0.01 K is
+            # tight enough to resolve the ~0.3 K/yr magma-ocean cooling
+            # rate without slowing the BDF solver excessively.
+            atol=float(config.interior_energetics.aragog.atol_temperature_equivalent),
+            rtol=float(config.interior_energetics.rtol),
         )
 
         # Surface boundary condition mode (matches SPIDER wrapper):

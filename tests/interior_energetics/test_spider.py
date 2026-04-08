@@ -899,6 +899,12 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     (mc_dir / 'solidus_P-S.dat').write_text('dummy')
 
     config = MagicMock()
+    # Tier 4 (2026-04-08): rtol/atol/matprop_smooth_width are now
+    # top-level interior_energetics fields. Keep the old spider.*
+    # names too so the deprecation-alias path is exercised.
+    config.interior_energetics.rtol = 1e-4
+    config.interior_energetics.atol = 1e-4
+    config.interior_energetics.matprop_smooth_width = 0.1
     config.interior_energetics.spider.tolerance_rel = 1e-4
     config.interior_energetics.tmagma_rtol = 0.02
     config.interior_energetics.tmagma_atol = 100.0
@@ -915,7 +921,15 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior_energetics.rfront_loc = 0.4
     config.interior_energetics.rfront_wid = 0.15
     config.interior_energetics.num_levels = 50
-    config.interior_energetics.num_tolerance = 1e-4
+    # Tier 3 parity fields (previously hardcoded in spider.py)
+    config.interior_energetics.melt_log10visc = 2.0
+    config.interior_energetics.solid_log10visc = 22.0
+    config.interior_energetics.melt_cond = 4.0
+    config.interior_energetics.solid_cond = 4.0
+    config.interior_energetics.adams_williamson_rhos = 4078.95095544
+    config.interior_energetics.adams_williamson_beta = 1.1115348931e-07
+    config.interior_energetics.eddy_diffusivity_thermal = 1.0
+    config.interior_energetics.eddy_diffusivity_chemical = 1.0
     config.planet.tsurf_init = 4000.0
     config.interior_energetics.kappah_floor = 0.0
     config.interior_energetics.flux_guess = -1

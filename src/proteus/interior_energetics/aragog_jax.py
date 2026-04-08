@@ -159,9 +159,10 @@ class AragogJAXRunner:
         heating = jnp.asarray(heating_np)
         self._last_heating = heating_np  # store for _extract_output
 
-        # Solve
-        atol = max(self._config.interior_energetics.num_tolerance, 0.01)
-        rtol = self._config.interior_energetics.num_tolerance
+        # Solve. Tier 4: rtol/atol come from the top-level
+        # interior_energetics fields (formerly num_tolerance alias).
+        atol = float(self._config.interior_energetics.aragog.atol_temperature_equivalent)
+        rtol = float(self._config.interior_energetics.rtol)
 
         logger.info(
             'JAX Aragog: integrating [%.2e, %.2e] yr, N=%d',

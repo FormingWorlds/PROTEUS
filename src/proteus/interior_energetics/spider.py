@@ -629,9 +629,12 @@ def _try_spider(
     step_sf = max(1.0e-10, step_sf)
     atol_sf = max(1.0e-10, atol_sf)
 
-    # Solver tolerances
-    spider_atol = atol_sf * config.interior_energetics.num_tolerance
-    spider_rtol = atol_sf * config.interior_energetics.spider.tolerance_rel
+    # Solver tolerances. Tier 4: rtol and atol are now top-level fields
+    # on interior_energetics, previously Spider.tolerance_rel and the
+    # aliased num_tolerance. atol_sf is the per-retry scaling used by
+    # _try_spider's fallback ladder.
+    spider_atol = atol_sf * config.interior_energetics.atol
+    spider_rtol = atol_sf * config.interior_energetics.rtol
 
     # Bounds on tolerances
     spider_rtol = min(spider_rtol, 1e-1)
@@ -989,11 +992,12 @@ def _try_spider(
         call_sequence.extend(['-kappah_floor', str(config.interior_energetics.kappah_floor)])
 
     # smoothing of material properties across liquidus and solidus
-    # units of melt fraction (non-dimensional)
+    # units of melt fraction (non-dimensional). Tier 4: promoted from
+    # Spider.matprop_smooth_width to the top-level Interior class.
     call_sequence.extend(
         [
             '-matprop_smooth_width',
-            '%.6e' % (config.interior_energetics.spider.matprop_smooth_width),
+            '%.6e' % float(config.interior_energetics.matprop_smooth_width),
         ]
     )
 
