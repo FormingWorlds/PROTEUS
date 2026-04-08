@@ -669,10 +669,12 @@ def load_ecdf_plot_settings(cfg, tested_params=None):
     return param_settings, output_settings, plot_format
 
 
-def clean_series(s):
+def clean_series(s, log_scale):
     """Cleans a pandas Series by replacing inf values with NaN and dropping NaN values."""
-    return s.replace([np.inf, -np.inf], np.nan).dropna().loc[lambda x: x > 0]
-
+    s_clean = s.replace([np.inf, -np.inf], np.nan).dropna()
+    if log_scale:
+        s_clean = s_clean.loc[lambda x: x > 0]
+    return s_clean
 
 def group_output_by_parameter(df, grid_parameters, outputs):
     """
@@ -702,7 +704,7 @@ def group_output_by_parameter(df, grid_parameters, outputs):
             value_dict = {}
             for param_value in df[param].dropna().unique():
                 subset = df[df[param] == param_value]
-                output_values = clean_series(subset[output]) * get_scale(output)
+                output_values = clean_series(subset[output], get_log_scale(output)) * get_scale(output)
 
                 value_dict[param_value] = output_values
 
