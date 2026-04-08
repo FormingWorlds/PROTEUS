@@ -930,7 +930,7 @@ def ecdf_grid_plot(
 
 
 def main(grid_analyse_toml_file: str | Path):
-    # Load configuration from grid_analyse.toml
+    # Load configuration from example.grid.toml
     with open(grid_analyse_toml_file, 'rb') as f:
         cfg = tomllib.load(f)
 
@@ -1003,6 +1003,6 @@ def main(grid_analyse_toml_file: str | Path):
         )
         print('ECDF grid plot is available.')
 
-
+# main() expects the TOML file from the CLI; no argument needed here.
 if __name__ == '__main__':
     main()
