@@ -54,6 +54,12 @@ config_version = "3.0"
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
         rtol                  = 0.10         # step size relative tolerance (adaptive method)
+        # Stiffness-aware adaptive extensions (2026-04-09). Both
+        # default to OFF here so existing configs are unchanged.
+        mushy_maximum         = 0.0          # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper; 0 = disabled
+        mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
+        hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
+        hysteresis_sfinc      = 1.1          # gentler speed-up factor while hysteresis active
 
     # Termination criteria (enabled=true/false per criterion)
     [params.stop]

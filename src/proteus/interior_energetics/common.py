@@ -386,6 +386,25 @@ class Interior_t:
         # SPIDER call.
         self._spider_cumulative_time = 0.0
 
+        # Stiffness-aware adaptive time-step state (2026-04-09).
+        #
+        # When the interior solver reports a "slow down" decision
+        # (or a solver retry), ``dt_hysteresis_remaining`` is set to
+        # ``config.params.dt.hysteresis_iters`` and counts down by
+        # one at every call to ``next_step``. While > 0, the
+        # speed-up scale factor is replaced with the milder
+        # ``config.params.dt.hysteresis_sfinc`` so the controller
+        # cannot ramp dt straight back into the stiff cliff it just
+        # escaped from.
+        self.dt_hysteresis_remaining = 0
+
+        # Solver-reported stiffness score, 0 = easy, 1 = saturated.
+        # Set by AragogRunner / AragogJAXRunner from the number of
+        # internal ODE substeps per coupling call, normalised to a
+        # "typical" baseline. Currently consumed only for logging;
+        # future work: feed into the hysteresis trigger condition.
+        self.solver_stiffness = 0.0
+
         # Lookup data for SPIDER (density of pure melt)
         self.lookup_rho_melt = None
         if spider_dir:

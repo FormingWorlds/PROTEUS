@@ -873,7 +873,9 @@ def run_interior(
             # the next attempt.
             from proteus.interior_energetics.timestep import next_step
 
-            dtswitch = next_step(config, dirs, hf_row, hf_all, 1.0)
+            dtswitch = next_step(
+                config, dirs, hf_row, hf_all, 1.0, interior_o=interior_o,
+            )
             interior_o._spider_cumulative_time += dtswitch
             interior_o.dt = dtswitch
             return
@@ -978,7 +980,9 @@ def run_interior(
     if config.interior_energetics.module == 'spider':
         from proteus.interior_energetics.timestep import next_step
 
-        dtswitch = next_step(config, dirs, hf_row, hf_all, 1.0)
+        dtswitch = next_step(
+            config, dirs, hf_row, hf_all, 1.0, interior_o=interior_o,
+        )
         interior_o._spider_cumulative_time += dtswitch
         interior_o.dt = dtswitch
     else:

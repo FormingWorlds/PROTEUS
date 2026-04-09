@@ -206,7 +206,13 @@ class AragogJAXRunner:
             heating,
             atol=atol,
             rtol=rtol,
-            max_steps=100_000,
+            # First crystallization step is extremely stiff: kvaerno3
+            # needs ~1e5-1e6 substeps to cover a ~4 kyr coupling step
+            # through the narrow mushy transition. The old 1e5 ceiling
+            # blew out on the very first phase change. 5e6 is large
+            # enough to absorb the worst transition and still fails
+            # visibly if the step-size PID controller saturates.
+            max_steps=5_000_000,
             method='kvaerno3',
         )
 

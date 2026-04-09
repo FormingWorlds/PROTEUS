@@ -127,7 +127,12 @@ def _estimate_escape(hf_all: pd.DataFrame, i1: int, i2: int) -> float:
 
 
 def next_step(
-    config: Config, dirs: dict, hf_row: dict, hf_all: pd.DataFrame, step_sf: float
+    config: Config,
+    dirs: dict,
+    hf_row: dict,
+    hf_all: pd.DataFrame,
+    step_sf: float,
+    interior_o=None,
 ) -> float:
     """
     Determine the size of the next interior time-step.
@@ -144,7 +149,13 @@ def next_step(
             Dataframe containing simulation variables (now and historic)
         step_sf : float
             Scale factor to apply to step size
-
+        interior_o : Interior_t, optional
+            Interior object used to persist stiffness-aware adaptive
+            state (hysteresis counter) across calls. When ``None``,
+            the hysteresis and stiffness logging features are
+            disabled and the controller reduces to its pre-2026-04-09
+            behaviour. All call sites should now pass ``interior_o``
+            when available.
 
     Returns
     -----------
@@ -197,12 +208,51 @@ def next_step(
             speed_up = speed_up and (F_atm_12 < dt_rtol * abs(F_atm_2) + dt_atol)
             speed_up = speed_up and (phi_12 < dt_rtol * abs(phi_2) + dt_atol)
 
+            # Hysteresis-aware speed-up factor.
+            #
+            # After a recent "slow down" decision, suppress the
+            # speed-up factor for ``hysteresis_iters`` iterations so
+            # the controller cannot ramp straight back into the stiff
+            # cliff. Counter lives on interior_o (persists across
+            # calls). Disabled when interior_o is None or when
+            # config.params.dt.hysteresis_iters is 0.
+            hyst_remaining = (
+                getattr(interior_o, 'dt_hysteresis_remaining', 0)
+                if interior_o is not None
+                else 0
+            )
+            sfinc_effective = SFINC
+            if hyst_remaining > 0:
+                sfinc_effective = min(
+                    float(config.params.dt.hysteresis_sfinc), SFINC
+                )
+                log.info(
+                    'Time-stepping: hysteresis active (%d iters remaining), '
+                    'using gentler sfinc=%.2f instead of %.2f',
+                    hyst_remaining, sfinc_effective, SFINC,
+                )
+
             if speed_up:
-                dtswitch = dtprev * SFINC
+                dtswitch = dtprev * sfinc_effective
                 log.info('Time-stepping intent: speed up')
             else:
                 dtswitch = dtprev * SFDEC
                 log.info('Time-stepping intent: slow down')
+                # Arm the hysteresis timer on every slow-down.
+                if interior_o is not None:
+                    interior_o.dt_hysteresis_remaining = int(
+                        config.params.dt.hysteresis_iters
+                    )
+
+            # Decrement hysteresis counter (applies to both speed_up
+            # and slow_down branches; the arming above would have
+            # already reset the counter on a slow-down).
+            if (
+                interior_o is not None
+                and interior_o.dt_hysteresis_remaining > 0
+                and speed_up
+            ):
+                interior_o.dt_hysteresis_remaining -= 1
 
             # Do not allow step size to exceed predicted point of termination
             if config.params.stop.solid.enabled:
@@ -238,6 +288,31 @@ def next_step(
 
     # Always enforce the absolute maximum
     dtswitch = min(dtswitch, config.params.dt.maximum)
+
+    # Mushy-regime dt cap (2026-04-09). Independently tightens dt
+    # when the interior is actively solidifying, because the
+    # phase-boundary Jgrav + rheology contrast creates stiffness
+    # cliffs the output-based adaptive controller above cannot
+    # detect in advance. Active when:
+    #   (1) mushy_maximum > 0 in the config (feature enabled),
+    #   (2) Phi_global is inside the mushy band
+    #       (stop.solid.phi_crit < Phi_global < mushy_upper).
+    # Read from hf_row so it reflects the freshly-updated interior
+    # state from the current iteration, not the previous one.
+    mushy_max = float(config.params.dt.mushy_maximum)
+    if mushy_max > 0.0:
+        phi_now = float(hf_row.get('Phi_global', 1.0))
+        phi_floor = float(config.params.stop.solid.phi_crit)
+        phi_ceiling = float(config.params.dt.mushy_upper)
+        if phi_floor < phi_now < phi_ceiling:
+            if dtswitch > mushy_max:
+                log.info(
+                    'Time-stepping: mushy cap active '
+                    '(Phi_global=%.4f in (%.3f, %.3f)), '
+                    'capping dt at %.2e yr (was %.2e yr)',
+                    phi_now, phi_floor, phi_ceiling, mushy_max, dtswitch,
+                )
+                dtswitch = mushy_max
 
     # On retries (step_sf < 1) in the static/initial branches we
     # deliberately allow dt to fall below dt.minimum — the whole point of

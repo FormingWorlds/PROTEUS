@@ -108,6 +108,24 @@ config_version = "3.0"
         initial     = 10.0
         atol        = 0.04
         rtol        = 0.11
+        # Stiffness-aware adaptive extensions (2026-04-09).
+        # Mushy-regime automatic dt cap: when
+        # stop.solid.phi_crit < Phi_global < mushy_upper, dt is
+        # capped at mushy_maximum rather than the global maximum.
+        # Aragog's scipy BDF + phase-boundary Jgrav hits a stiff
+        # cliff around dt ~ 5 kyr through the mushy transition
+        # that the output-based adaptive controller cannot see
+        # in advance. mushy_maximum = 4e3 empirically avoids that
+        # cliff at 1 M_E with grain_size = 0.1 m.
+        mushy_maximum    = 4.0e3
+        mushy_upper      = 0.99
+        # Post-slow-down hysteresis: after a "slow down" decision,
+        # suppress the speed-up factor for the next 3 iterations
+        # so the controller cannot ramp straight back into the
+        # stiffness cliff it just escaped from. hysteresis_sfinc
+        # 1.1 (vs default SFINC = 1.6) is a gentle ramp-up.
+        hysteresis_iters = 3
+        hysteresis_sfinc = 1.1
 
     [params.stop]
         strict = false

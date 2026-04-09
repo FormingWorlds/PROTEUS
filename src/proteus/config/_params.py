@@ -99,6 +99,31 @@ class TimeStepParams:
         Absolute tolerance on time-step size (adaptive method) [yr].
     rtol: float
         Relative tolerance on time-step size (adaptive method) [dimensionless].
+    mushy_maximum: float
+        Maximum time-step size [yr] during the mushy-zone transition
+        (``phi_crit < Phi_global < mushy_upper``). Tighter than
+        ``maximum`` because the interior solver hits stiffness
+        cliffs in this regime (phase-boundary Jgrav + rheology
+        contrast). Set to 0 (default) to disable the mushy-regime
+        cap, in which case ``maximum`` applies throughout. A
+        typical value for Aragog at 1 M_E is ~4e3 yr; see
+        ``input/chili/evolution-proteus-earth-aragog-config.toml``.
+    mushy_upper: float
+        Upper bound of the mushy regime [dimensionless melt
+        fraction]. When ``Phi_global < mushy_upper`` AND
+        ``Phi_global > stop.solid.phi_crit``, ``mushy_maximum``
+        takes over from ``maximum``. Default 0.99 so the cap kicks
+        in as soon as the first cell crystallises.
+    hysteresis_iters: int
+        Number of PROTEUS iterations after an adaptive "slow down"
+        decision during which the speed-up factor is suppressed.
+        Prevents the controller from ramping dt straight back into
+        the same stiffness cliff it just escaped from. Default 3;
+        set to 0 to disable.
+    hysteresis_sfinc: float
+        Replacement speed-up factor applied while the hysteresis
+        counter is active. Must be ``>= 1.0`` and ``<= SFINC``
+        (1.6). Default 1.1 (gentle ramp-up).
     """
 
     starspec: float = field(default=1e8, validator=ge(0))
@@ -116,6 +141,17 @@ class TimeStepParams:
     minimum_rel: float = field(default=1e-5, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
     initial: float = field(default=3e1, validator=gt(0))
+
+    # Stiffness-aware adaptive extensions (2026-04-09).
+    #
+    # Both defaults are OFF (mushy_maximum=0, hysteresis_iters=0)
+    # to preserve backwards compatibility with configs written
+    # before these fields existed. Enable via explicit positive
+    # values in the config.
+    mushy_maximum: float = field(default=0.0, validator=ge(0))
+    mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
+    hysteresis_iters: int = field(default=0, validator=ge(0))
+    hysteresis_sfinc: float = field(default=1.1, validator=ge(1.0))
 
 
 @define

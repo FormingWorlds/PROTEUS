@@ -98,7 +98,7 @@ def run_dummy_int(
         dt = 0.0
     else:
         # calculate new time-step [years]
-        dt = next_step(config, dirs, hf_row, hf_all, 1.0)
+        dt = next_step(config, dirs, hf_row, hf_all, 1.0, interior_o=interior_o)
 
         # limit time-step based on max change to T_magma
         dtmp_max = (
