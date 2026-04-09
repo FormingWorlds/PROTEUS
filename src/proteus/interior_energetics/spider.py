@@ -579,7 +579,7 @@ def get_all_output_times(odir: str):
     return time_a
 
 
-def interp_rho_melt(S: float, P: float, lookup: str) -> float:
+def interp_rho_melt(S: float, P: float, lookup: np.ndarray) -> float:
     """
     Return density of pure melt at given entropy and pressure.
 
@@ -587,20 +587,28 @@ def interp_rho_melt(S: float, P: float, lookup: str) -> float:
     ---------------
     - entropy: float     entropy of layer [J kg-1 K-1]
     - pressure: float    pressure of layer [Pa]
-    - lookup: str    directory of SPIDER installation
+    - lookup: ndarray    (nS, nP, 3) P-S table from Interior_t._load_ps_table
 
     Returns
     -----------------
     - density: float    density of pure melt [kg m-3]
     """
+    return _interp_ps_lookup(S, P, lookup)
 
-    Pvals, Svals, rho_grid = lookup[0, :, 0], lookup[:, 0, 1], lookup[:, :, 2]
+
+def _interp_ps_lookup(S: float, P: float, lookup: np.ndarray) -> float:
+    """Interpolate any SPIDER-format P-S table at scalar (S, P).
+
+    Used for both density_melt and the heat_capacity_solid /
+    heat_capacity_melt tables. The lookup array is the (nS, nP, 3)
+    layout returned by ``Interior_t._load_ps_table``.
+    """
+    Pvals, Svals, val_grid = lookup[0, :, 0], lookup[:, 0, 1], lookup[:, :, 2]
     interp = RegularGridInterpolator(
-        (Pvals, Svals), rho_grid.T, bounds_error=False, fill_value=None
+        (Pvals, Svals), val_grid.T, bounds_error=False, fill_value=None
     )
-
-    rho = interp(np.column_stack((np.atleast_1d(P), np.atleast_1d(S))))
-    return float(np.array(rho).item())
+    out = interp(np.column_stack((np.atleast_1d(P), np.atleast_1d(S))))
+    return float(np.array(out).item())
 
 
 # ====================================================================
@@ -1299,31 +1307,57 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     # Core (CMB) temperature: last staggered node (SPIDER ordering is surface-to-CMB)
     output['T_core'] = float(interior_o.temp[-1])
 
-    # Total thermal energy: E_th = sum(rho_i * Cp_i * T_i * V_i)
-    # SPIDER has Cp in its EOS tables. Use the lookup if available,
-    # else fall back to Cp = T * dS/dT estimated from entropy tables.
+    # Total thermal energy E_th = sum(mass_i * Cp_i * T_i).
+    #
+    # Mass: use ``interior_o.mass`` (SPIDER's own mass_s column from
+    # the JSON) rather than ``interior_o.density * vshell``. They
+    # differ by ~20% at t=0 because SPIDER's mass_s comes from
+    # integrating the structure mesh, while a simple density*volume
+    # product uses SPIDER's internal Adams-Williamson density which
+    # disagrees with the Wolf-Bower table by 4-17% at the surface
+    # nodes. Aragog reports E_th using mass_stag = rho*vol directly
+    # (self-consistent with its own finite-volume mesh).
+    #
+    # Cp: blend the SPIDER-format heat_capacity_solid.dat and
+    # heat_capacity_melt.dat tables (loaded by
+    # ``Interior_t._load_ps_table``) using the per-layer melt
+    # fraction. Without these tables we fall back to Cp=1200 J/kg/K
+    # and log a warning, since the helpfile E_th will then be
+    # offset from the physical value by ~30%.
+    #
+    # See the 2026-04-09 parity analysis in
+    # ``memory/aragog_jgrav_cmb_drain.md`` for the +17% helpfile
+    # offset that this fix removes.
     try:
         cp_est = np.full_like(interior_o.temp, 1200.0)
-        # Try to get Cp from the SPIDER EOS lookup (P-S tables)
-        if hasattr(interior_o, 'lookup_cp') and interior_o.lookup_cp is not None:
-            for i in range(len(interior_o.temp)):
-                try:
-                    cp_est[i] = float(interior_o.lookup_cp(entropy[i], interior_o.pres[i]))
-                except Exception:
-                    pass
-        elif hasattr(interior_o, 'lookup_cp_melt') and interior_o.lookup_cp_melt is not None:
-            for i in range(len(interior_o.temp)):
-                try:
-                    cp_est[i] = float(interior_o.lookup_cp_melt(entropy[i], interior_o.pres[i]))
-                except Exception:
-                    pass
-        E_th = float(np.sum(interior_o.density * cp_est * interior_o.temp * vshell))
-        output['E_th_mantle'] = E_th
-        Cp_eff = float(np.sum(interior_o.density * cp_est * vshell)) / max(
-            float(np.sum(mshell)), 1.0
+        have_cp_tables = (
+            getattr(interior_o, 'lookup_cp_solid', None) is not None
+            and getattr(interior_o, 'lookup_cp_melt', None) is not None
         )
+        if have_cp_tables:
+            for i in range(len(interior_o.temp)):
+                cp_solid = _interp_ps_lookup(
+                    entropy[i], interior_o.pres[i], interior_o.lookup_cp_solid
+                )
+                cp_melt = _interp_ps_lookup(
+                    entropy[i], interior_o.pres[i], interior_o.lookup_cp_melt
+                )
+                phi_i = float(np.clip(interior_o.phi[i], 0.0, 1.0))
+                cp_est[i] = (1.0 - phi_i) * cp_solid + phi_i * cp_melt
+        else:
+            log.warning(
+                'SPIDER E_th: no Cp(P,S) tables loaded, falling back to '
+                'Cp = 1200 J/kg/K. Helpfile E_th will be biased low by '
+                '~25-30 %.'
+            )
+        E_th = float(np.sum(interior_o.mass * cp_est * interior_o.temp))
+        output['E_th_mantle'] = E_th
+        # Effective Cp: mass-weighted average of per-shell Cp.
+        total_mass = float(np.sum(interior_o.mass))
+        Cp_eff = float(np.sum(interior_o.mass * cp_est)) / max(total_mass, 1.0)
         output['Cp_eff'] = Cp_eff
-    except Exception:
+    except Exception as e:
+        log.warning('SPIDER E_th computation failed: %s', e)
         output['E_th_mantle'] = 0.0
         output['Cp_eff'] = 1200.0
 

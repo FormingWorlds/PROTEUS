@@ -266,17 +266,22 @@ class AragogJAXRunner:
         R_outer = float(r_basic[-1])
         RF_depth = 1.0 - rf / R_outer if R_outer > 0 else 0.0
 
-        # Compute phase properties for stored arrays and Cp_eff
+        # Compute phase properties for stored arrays, Cp_eff, and E_th.
+        # Use the real EOS Cp(P, S) (was hardcoded 1200 J/kg/K until
+        # 2026-04-09; see the matching scipy fix in
+        # aragog/solver/entropy_solver.py and the parity analysis in
+        # memory/aragog_jgrav_cmb_drain.md).
         from aragog.jax.phase import evaluate_phase
 
         props = evaluate_phase(eos, self._params_jax, P, S)
         visc = np.asarray(props.viscosity)
-        cap = np.asarray(props.capacitance)  # rho * T
-        Cp_eff = float(np.sum(cap * vol)) / max(M_mantle, 1.0)
+        Cp_arr = np.asarray(props.heat_capacity)
+        # Mass-weighted mean Cp (used to be sum(rho*T*vol)/M, which
+        # silently reduced to mean(T) — fixed alongside the E_th fix.)
+        Cp_eff = float(np.sum(mass * Cp_arr)) / max(M_mantle, 1.0)
 
-        # Thermal energy (sensible, with reference Cp=1200 matching numpy)
-        CP_REF = 1200.0
-        E_th = float(np.sum(mass * CP_REF * T))
+        # Thermal energy: E_th = sum(mass_i * Cp_i * T_i)
+        E_th = float(np.sum(mass * Cp_arr * T))
 
         # Heating flux (radionuclide + tidal combined)
         heating_np = (

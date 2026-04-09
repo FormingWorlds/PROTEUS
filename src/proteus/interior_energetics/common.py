@@ -405,10 +405,23 @@ class Interior_t:
         # future work: feed into the hysteresis trigger condition.
         self.solver_stiffness = 0.0
 
-        # Lookup data for SPIDER (density of pure melt)
+        # Lookup data for SPIDER (P-S tables, used by E_th and
+        # melt-volume bookkeeping). Each is a (nS, nP, 3) array, the
+        # third channel being the SI value of the quantity.
         self.lookup_rho_melt = None
+        self.lookup_cp_solid = None
+        self.lookup_cp_melt = None
         if spider_dir:
-            self._load_rho_melt(spider_dir, eos_dir or 'WolfBower2018_MgSiO3')
+            resolved_eos = eos_dir or 'WolfBower2018_MgSiO3'
+            self.lookup_rho_melt = self._load_ps_table(
+                spider_dir, resolved_eos, 'density_melt.dat'
+            )
+            self.lookup_cp_solid = self._load_ps_table(
+                spider_dir, resolved_eos, 'heat_capacity_solid.dat'
+            )
+            self.lookup_cp_melt = self._load_ps_table(
+                spider_dir, resolved_eos, 'heat_capacity_melt.dat'
+            )
 
         self.aragog_solver = None
 
@@ -429,11 +442,18 @@ class Interior_t:
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
-    def _load_rho_melt(self, spider_dir: str, eos_dir: str):
-        """Load SPIDER's P-S density_melt lookup table.
+    def _load_ps_table(
+        self, spider_dir: str, eos_dir: str, filename: str
+    ) -> np.ndarray | None:
+        """Load a SPIDER-format P-S lookup table.
 
-        Tries FWL_DATA/interior_lookup_tables/EOS/dynamic/<eos_dir>/P-S/ first,
-        then falls back to SPIDER/lookup_data/1TPa-dK09-elec-free/.
+        Used for ``density_melt.dat`` (volumetric melt fraction) and
+        for ``heat_capacity_solid.dat`` / ``heat_capacity_melt.dat``
+        (E_th computation in :func:`spider.ReadSPIDER`). All three
+        files share the same on-disk layout.
+
+        Search order: FWL_DATA dynamic EOS directory first, then
+        SPIDER's bundled ``lookup_data/1TPa-dK09-elec-free``.
 
         Parameters
         ----------
@@ -441,6 +461,14 @@ class Interior_t:
             Path to SPIDER installation directory.
         eos_dir : str
             Name of the dynamic EOS folder (e.g. 'WolfBower2018_MgSiO3').
+        filename : str
+            Bare filename of the P-S table to load.
+
+        Returns
+        -------
+        np.ndarray or None
+            Array of shape (nS, nP, 3) with columns (P, S, value) in
+            SI units, or ``None`` if the file is not found.
         """
         fwl_data = os.environ.get('FWL_DATA', '')
         fwl_path = os.path.join(
@@ -450,10 +478,10 @@ class Interior_t:
             'dynamic',
             eos_dir,
             'P-S',
-            'density_melt.dat',
+            filename,
         )
         local_path = os.path.join(
-            spider_dir, 'lookup_data', '1TPa-dK09-elec-free', 'density_melt.dat'
+            spider_dir, 'lookup_data', '1TPa-dK09-elec-free', filename
         )
 
         if os.path.isfile(fwl_path):
@@ -461,8 +489,8 @@ class Interior_t:
         elif os.path.isfile(local_path):
             filepath = local_path
         else:
-            log.warning('density_melt.dat not found for melt fraction interpolation')
-            return
+            log.warning('%s not found for SPIDER P-S lookup', filename)
+            return None
 
         data = np.genfromtxt(filepath)
 
@@ -480,7 +508,7 @@ class Interior_t:
         sfact = np.array([float(scales[0]), float(scales[1]), float(scales[2])])
 
         scaled = data * sfact
-        self.lookup_rho_melt = scaled.reshape(nS, nP, 3)
+        return scaled.reshape(nS, nP, 3)
 
     def print(self):
         log.info('Printing interior arrays....')
