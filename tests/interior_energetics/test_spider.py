@@ -899,12 +899,12 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     (mc_dir / 'solidus_P-S.dat').write_text('dummy')
 
     config = MagicMock()
-    # Tier 4 (2026-04-08): rtol/atol/matprop_smooth_width are now
-    # top-level interior_energetics fields. Keep the old spider.*
-    # names too so the deprecation-alias path is exercised.
+    # Tier 4 (2026-04-08): rtol/atol are top-level interior_energetics
+    # fields. matprop_smooth_width was briefly top-level too but moved
+    # back to the spider subsection on 2026-04-09 after Aragog's Jgrav
+    # smoothing was made parameter-free.
     config.interior_energetics.rtol = 1e-4
     config.interior_energetics.atol = 1e-4
-    config.interior_energetics.matprop_smooth_width = 0.1
     config.interior_energetics.spider.tolerance_rel = 1e-4
     config.interior_energetics.tmagma_rtol = 0.02
     config.interior_energetics.tmagma_atol = 100.0

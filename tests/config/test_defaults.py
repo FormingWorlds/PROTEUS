@@ -184,19 +184,25 @@ def test_spider_defaults():
     """
     Test verification of Spider specific defaults.
 
-    After the Tier 4 parity refactor (2026-04-08), only ``solver_type``
-    remains on the Spider subclass. ``tolerance_rel`` and
-    ``matprop_smooth_width`` have been promoted to the top-level
-    ``Interior`` class (as ``rtol`` and ``matprop_smooth_width``) and
-    are kept on Spider only as deprecation-aliased sentinel fields
-    (default ``-1.0`` = "not set"; a positive value is copied to the
-    top level with a DeprecationWarning by Interior.__attrs_post_init__).
+    History:
+    - Tier 4 (2026-04-08) promoted ``tolerance_rel`` and
+      ``matprop_smooth_width`` from Spider to the top-level Interior
+      class, leaving only ``solver_type`` as SPIDER-specific.
+    - 2026-04-09 reverted ``matprop_smooth_width`` back to Spider as
+      a real field (default 1e-2) after Aragog's Jgrav smoothing was
+      replaced with a parameter-free cubic Hermite polynomial that
+      does not need a width knob.
+
+    ``tolerance_rel`` remains a deprecation-aliased sentinel field
+    (default -1.0 = "not set"; a positive value is copied to
+    ``Interior.rtol`` with a DeprecationWarning).
     """
     s = Spider()
     assert s.solver_type == 'bdf'
-    # Deprecated alias sentinels (not set)
+    # Deprecation alias sentinel (not set)
     assert s.tolerance_rel == -1.0
-    assert s.matprop_smooth_width == -1.0
+    # Real SPIDER-only field (post 2026-04-09)
+    assert s.matprop_smooth_width == pytest.approx(1e-2)
 
 
 @pytest.mark.unit

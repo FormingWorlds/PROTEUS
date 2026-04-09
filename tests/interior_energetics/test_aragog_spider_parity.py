@@ -7,8 +7,10 @@ parity commits `52138bc8` through `47711120` on `tl/interior-refactor`:
 - `interior_energetics.wrapper._rectangularize_spider_ps_file` -
   normalization of SPIDER's quasi-regular P-S tables
 - `config._interior.Interior.__attrs_post_init__` - Tier 4 deprecation
-  alias resolution (num_tolerance, spider.tolerance_rel,
-  spider.matprop_smooth_width)
+  alias resolution (num_tolerance, spider.tolerance_rel). The
+  matprop_smooth_width alias was removed on 2026-04-09 when the knob
+  reverted to SPIDER-only after Aragog's Jgrav smoothing was made
+  parameter-free.
 - `config._interior` - Tier 3 physics-constant fields default values
 
 All tests are pure-Python: no Julia, no SOCRATES, no SPIDER binary.
@@ -239,20 +241,31 @@ def test_tier4_spider_tolerance_rel_alias_copies_to_rtol():
     )
 
 
-def test_tier4_spider_matprop_smooth_width_alias():
-    """Setting the deprecated Spider.matprop_smooth_width alias copies
-    its value to the top-level field and warns."""
+def test_spider_matprop_smooth_width_is_real_field():
+    """Spider.matprop_smooth_width is a real SPIDER-only field after
+    the 2026-04-09 Aragog Jgrav fix. It was briefly a deprecation
+    alias under Tier 4 (copied to Interior.matprop_smooth_width),
+    but that top-level field no longer exists; the knob is SPIDER-
+    specific again and sets no alias.
+
+    A user who sets it should get the value they asked for with no
+    DeprecationWarning, and the Interior wrapper should NOT expose a
+    top-level `matprop_smooth_width` attribute.
+    """
     from proteus.config._interior import Interior, Spider
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         ie = Interior(spider=Spider(matprop_smooth_width=0.055))
-    assert ie.matprop_smooth_width == pytest.approx(0.055)
-    assert any(
+    assert ie.spider.matprop_smooth_width == pytest.approx(0.055)
+    # No deprecation warning specifically about matprop_smooth_width.
+    assert not any(
         issubclass(w.category, DeprecationWarning)
         and 'matprop_smooth_width' in str(w.message)
         for w in caught
     )
+    # The top-level alias is gone.
+    assert not hasattr(ie, 'matprop_smooth_width')
 
 
 def test_tier4_spider_tolerance_rel_conflict_raises():

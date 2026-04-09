@@ -991,13 +991,13 @@ def _try_spider(
     if config.interior_energetics.kappah_floor > 0:
         call_sequence.extend(['-kappah_floor', str(config.interior_energetics.kappah_floor)])
 
-    # smoothing of material properties across liquidus and solidus
-    # units of melt fraction (non-dimensional). Tier 4: promoted from
-    # Spider.matprop_smooth_width to the top-level Interior class.
+    # Smoothing of material properties across liquidus and solidus,
+    # in units of melt fraction (non-dimensional). SPIDER-only knob
+    # (Aragog's Jgrav smoothing is parameter-free as of 2026-04-09).
     call_sequence.extend(
         [
             '-matprop_smooth_width',
-            '%.6e' % float(config.interior_energetics.matprop_smooth_width),
+            '%.6e' % float(config.interior_energetics.spider.matprop_smooth_width),
         ]
     )
 

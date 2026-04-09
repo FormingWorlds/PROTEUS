@@ -273,7 +273,6 @@ config_version = "3.0"
     grain_size                = 0.1          # crystal grain size [m]
     mixing_length             = "nearest"    # MLT length scale: nearest (boundary) | constant (D/4)
     kappah_floor              = 10.0         # eddy diffusivity floor [m2/s]; prevents MLT freeze
-    matprop_smooth_width      = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
 
     # Coupling limits (max T_magma change per PROTEUS step)
     tmagma_atol               = 20.0         # absolute limit [K]
@@ -323,6 +322,7 @@ config_version = "3.0"
     # SPIDER-only parameters
     [interior_energetics.spider]
         solver_type           = "bdf"        # SUNDIALS method: adams | bdf
+        matprop_smooth_width  = 1.0e-2       # melt-fraction smoothing window across solidus/liquidus
 
     # Dummy module parameters
     [interior_energetics.dummy]
