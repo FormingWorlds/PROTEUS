@@ -71,22 +71,38 @@ class AragogJAXRunner:
             )
         interior_o._jax_eos = eos_jax
 
-        # Phase parameters from config
+        # Phase parameters from config.
+        # `bottom_up_grav_sep=True` enables the SPIDER-analogue cubic
+        # Hermite Jgrav smoothing (see aragog/jax/phase.py::compute_fluxes
+        # and aragog/solver/entropy_state.py for the scipy path
+        # equivalent). Without it, the JAX path reproduces the
+        # pre-fix CMB drain at first crystallisation. There is no
+        # PROTEUS config knob to turn this off in production; the
+        # flag exists only so regression tests can reproduce the bug.
         interior_o._jax_params = PhaseParams(
             phi_rheo=config.interior_energetics.rfront_loc,
             phi_width=config.interior_energetics.rfront_wid,
-            viscosity_solid=1e21,  # TODO: wire from config
-            viscosity_liquid=1e-1,
+            viscosity_solid=10.0 ** float(
+                config.interior_energetics.solid_log10visc
+            ),
+            viscosity_liquid=10.0 ** float(
+                config.interior_energetics.melt_log10visc
+            ),
             grain_size=config.interior_energetics.grain_size,
-            k_solid=4.0,
-            k_liquid=2.0,
+            k_solid=float(config.interior_energetics.solid_cond),
+            k_liquid=float(config.interior_energetics.melt_cond),
             conduction=config.interior_energetics.trans_conduction,
             convection=config.interior_energetics.trans_convection,
             grav_sep=config.interior_energetics.trans_grav_sep,
             mixing=config.interior_energetics.trans_mixing,
-            eddy_diff_thermal=1.0,
-            eddy_diff_chemical=1.0,
+            eddy_diff_thermal=float(
+                config.interior_energetics.eddy_diffusivity_thermal
+            ),
+            eddy_diff_chemical=float(
+                config.interior_energetics.eddy_diffusivity_chemical
+            ),
             kappah_floor=config.interior_energetics.kappah_floor,
+            bottom_up_grav_sep=True,
         )
 
         # Boundary conditions
@@ -171,6 +187,14 @@ class AragogJAXRunner:
             n_stag,
         )
 
+        # Solver choice: 'kvaerno3' (4-stage ESDIRK, A-L stable,
+        # implicit). Gives autodiff Jacobians via JAX rather than
+        # scipy BDF's finite-difference estimate, which is the whole
+        # point of taking the JAX path. The older 'tsit5' was
+        # explicit and got stuck on the mushy-zone stiffness the
+        # scipy BDF path hits (grinding on dt ~ 5 kyr). Kvaerno3's
+        # JIT compile is slower than Tsit5 (~a minute) but amortises
+        # across the coupling loop.
         result = solve_entropy(
             S0,
             t_start,
@@ -183,7 +207,7 @@ class AragogJAXRunner:
             atol=atol,
             rtol=rtol,
             max_steps=100_000,
-            method='tsit5',
+            method='kvaerno3',
         )
 
         if not result.success:
