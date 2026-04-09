@@ -106,9 +106,15 @@ class AragogRunner:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 # Preserve the evolved S field across equilibration resets.
+                # Use the solver's entropy_staggered accessor instead of
+                # reading sol.y directly: with the v4 Bower core BC the
+                # state vector is N+1 long (entropy followed by T_core),
+                # and the wrapper-side handover logic only wants the
+                # entropy block. The accessor strips T_core when present.
                 sol = interior_o.aragog_solver.solution
                 if sol is not None and sol.y.size > 0:
-                    S_last = sol.y[:, -1]
+                    S_block = interior_o.aragog_solver.entropy_staggered
+                    S_last = S_block[:, -1] if S_block.ndim > 1 else S_block
                     interior_o._last_entropy = S_last
             else:
                 AragogRunner.update_structure(config, hf_row, interior_o)
@@ -903,12 +909,20 @@ class AragogRunner:
         solver.parameters.solver.start_time = hf_row['Time']
         solver.parameters.solver.end_time = hf_row['Time'] + dt
 
-        # Get entropy field from previous run
+        # Get entropy field from previous run.
+        # With the v4 Bower core BC the solver state vector is N+1 long
+        # (entropy block followed by T_core); use entropy_staggered to
+        # strip T_core so the wrapper-side _last_entropy stays the
+        # entropy-only profile.
         if output_dir is not None:
             S_field = read_last_Sfield(output_dir, hf_row['Time'])
         else:
             sol = solver.solution
-            S_field = sol.y[:, -1] if sol is not None else None
+            if sol is not None and sol.y.size > 0:
+                S_block = solver.entropy_staggered
+                S_field = S_block[:, -1] if S_block.ndim > 1 else S_block
+            else:
+                S_field = None
 
         if S_field is not None:
             interior_o._last_entropy = S_field
