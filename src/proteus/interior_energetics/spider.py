@@ -1318,38 +1318,68 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     # nodes. Aragog reports E_th using mass_stag = rho*vol directly
     # (self-consistent with its own finite-volume mesh).
     #
-    # Cp: blend the SPIDER-format heat_capacity_solid.dat and
-    # heat_capacity_melt.dat tables (loaded by
-    # ``Interior_t._load_ps_table``) using the per-layer melt
-    # fraction. Without these tables we fall back to Cp=1200 J/kg/K
-    # and log a warning, since the helpfile E_th will then be
-    # offset from the physical value by ~30%.
+    # Cp (v4 latent-blend convention, 2026-04-09 evening): read
+    # SPIDER's own ``cp_s`` field directly from the JSON. SPIDER's
+    # C code computes the latent-blend formula in
+    # ``eos_composite.c:226-232``:
+    #     Cp_mix = (S_liq - S_sol) / (T_liq - T_sol) * T_mid
+    # which captures the latent-heat contribution to apparent heat
+    # capacity in the mushy zone (where the wrapper-side linear
+    # blend underestimates Cp by up to 6x). Reading cp_s directly
+    # makes the helpfile E_th match SPIDER's internal accounting.
+    #
+    # The wrapper still loads the P-S Cp tables (interior_o.lookup_cp_*)
+    # as a fallback for when cp_s is not in the JSON (older SPIDER
+    # builds before commit ctx.c:374-375 landed).
     #
     # See the 2026-04-09 parity analysis in
-    # ``memory/aragog_jgrav_cmb_drain.md`` for the +17% helpfile
-    # offset that this fix removes.
+    # ``memory/aragog_jgrav_cmb_drain.md`` and the Etot_b audit
+    # in the conversation log for the convention discussion.
     try:
         cp_est = np.full_like(interior_o.temp, 1200.0)
-        have_cp_tables = (
-            getattr(interior_o, 'lookup_cp_solid', None) is not None
-            and getattr(interior_o, 'lookup_cp_melt', None) is not None
-        )
-        if have_cp_tables:
-            for i in range(len(interior_o.temp)):
-                cp_solid = _interp_ps_lookup(
-                    entropy[i], interior_o.pres[i], interior_o.lookup_cp_solid
+
+        # Preferred path: read SPIDER's cp_s directly from JSON.
+        cp_s_arr = None
+        try:
+            cp_s_arr = np.array(json_file.get_dict_values(['data', 'cp_s']))
+            if cp_s_arr.shape != interior_o.temp.shape:
+                log.warning(
+                    'SPIDER cp_s shape %s != temp_s shape %s, ignoring',
+                    cp_s_arr.shape, interior_o.temp.shape,
                 )
-                cp_melt = _interp_ps_lookup(
-                    entropy[i], interior_o.pres[i], interior_o.lookup_cp_melt
-                )
-                phi_i = float(np.clip(interior_o.phi[i], 0.0, 1.0))
-                cp_est[i] = (1.0 - phi_i) * cp_solid + phi_i * cp_melt
+                cp_s_arr = None
+        except (KeyError, AttributeError, Exception):
+            cp_s_arr = None
+
+        if cp_s_arr is not None:
+            cp_est = cp_s_arr.astype(float)
         else:
-            log.warning(
-                'SPIDER E_th: no Cp(P,S) tables loaded, falling back to '
-                'Cp = 1200 J/kg/K. Helpfile E_th will be biased low by '
-                '~25-30 %.'
+            # Fallback: phase-blend the wrapper-side P-S Cp tables.
+            have_cp_tables = (
+                getattr(interior_o, 'lookup_cp_solid', None) is not None
+                and getattr(interior_o, 'lookup_cp_melt', None) is not None
             )
+            if have_cp_tables:
+                log.debug(
+                    'SPIDER cp_s not in JSON, falling back to wrapper-side '
+                    'linear blend of P-S Cp tables (v3 convention)'
+                )
+                for i in range(len(interior_o.temp)):
+                    cp_solid = _interp_ps_lookup(
+                        entropy[i], interior_o.pres[i], interior_o.lookup_cp_solid
+                    )
+                    cp_melt = _interp_ps_lookup(
+                        entropy[i], interior_o.pres[i], interior_o.lookup_cp_melt
+                    )
+                    phi_i = float(np.clip(interior_o.phi[i], 0.0, 1.0))
+                    cp_est[i] = (1.0 - phi_i) * cp_solid + phi_i * cp_melt
+            else:
+                log.warning(
+                    'SPIDER E_th: cp_s not in JSON and no wrapper Cp tables '
+                    'loaded, falling back to Cp = 1200 J/kg/K. Helpfile E_th '
+                    'will be biased low by ~25-30 %.'
+                )
+
         E_th = float(np.sum(interior_o.mass * cp_est * interior_o.temp))
         output['E_th_mantle'] = E_th
         # Effective Cp: mass-weighted average of per-shell Cp.
