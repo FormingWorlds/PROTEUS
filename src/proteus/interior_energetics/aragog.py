@@ -151,6 +151,20 @@ class AragogRunner:
         #   setting for parity runs, so both solvers follow the identical
         #   physical law.
         _aragog_outer_bc = 1 if config.interior_energetics.surface_bc_mode == 'grey_body' else 4
+        # Core BC mode: thread config.interior_energetics.aragog.core_bc
+        # through to the Aragog solver. Valid values:
+        #   'quasi_steady' (default, v3 alpha-factor)
+        #   'spider_bc'    (Path A SPIDER bit-parity, v5)
+        #   'bower2018'    (EXPERIMENTAL tombstone, do not use)
+        aragog_cfg = getattr(config.interior_energetics, 'aragog', None)
+        core_bc_str = getattr(aragog_cfg, 'core_bc', 'quasi_steady')
+        if core_bc_str not in ('quasi_steady', 'spider_bc', 'bower2018'):
+            logger.warning(
+                'Unknown core_bc=%r, falling back to quasi_steady',
+                core_bc_str,
+            )
+            core_bc_str = 'quasi_steady'
+
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
             # 1 = native grey-body (emissivity * sigma * (T^4 - T_eqm^4))
@@ -174,6 +188,8 @@ class AragogRunner:
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
             param_utbl=config.interior_energetics.param_utbl,
             param_utbl_const=config.interior_energetics.param_utbl_const,
+            # core BC mode (v5 Path A adds 'spider_bc')
+            core_bc=core_bc_str,
         )
 
         # Define the inner_radius for the mesh
