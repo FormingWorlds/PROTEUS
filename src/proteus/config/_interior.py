@@ -110,7 +110,7 @@ class Aragog:
         Core-mantle boundary condition mode. Default is 'quasi_steady'
         (v3 alpha-factor heat-flux partition). Valid values:
           - 'quasi_steady': legacy v3 BC, gives -19% T_core offset vs SPIDER
-          - 'spider_bc': v5 Path A SPIDER bit-parity BC with dSdr_cmb as
+          - 'energy_balance': v5 Path A SPIDER bit-parity BC with dSdr_cmb as
                           a new state variable (mirrors SPIDER bc.c:76-131)
           - 'bower2018': EXPERIMENTAL tombstone, do not use for production
     """

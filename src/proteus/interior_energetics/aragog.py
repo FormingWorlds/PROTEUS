@@ -154,11 +154,11 @@ class AragogRunner:
         # Core BC mode: thread config.interior_energetics.aragog.core_bc
         # through to the Aragog solver. Valid values:
         #   'quasi_steady' (default, v3 alpha-factor)
-        #   'spider_bc'    (Path A SPIDER bit-parity, v5)
+        #   'energy_balance'    (Path A SPIDER bit-parity, v5)
         #   'bower2018'    (EXPERIMENTAL tombstone, do not use)
         aragog_cfg = getattr(config.interior_energetics, 'aragog', None)
         core_bc_str = getattr(aragog_cfg, 'core_bc', 'quasi_steady')
-        if core_bc_str not in ('quasi_steady', 'spider_bc', 'bower2018'):
+        if core_bc_str not in ('quasi_steady', 'energy_balance', 'bower2018'):
             logger.warning(
                 'Unknown core_bc=%r, falling back to quasi_steady',
                 core_bc_str,
@@ -188,7 +188,7 @@ class AragogRunner:
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
             param_utbl=config.interior_energetics.param_utbl,
             param_utbl_const=config.interior_energetics.param_utbl_const,
-            # core BC mode (v5 Path A adds 'spider_bc')
+            # core BC mode (v5 Path A adds 'energy_balance')
             core_bc=core_bc_str,
         )
 
