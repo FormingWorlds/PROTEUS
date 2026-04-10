@@ -426,6 +426,36 @@ def determine_interior_radius(
     if config.interior_energetics.module in ('spider', 'aragog'):
         _provide_spider_eos_tables(config, outdir, dirs)
 
+    # R_int override: bypass the root finder and use a fixed radius.
+    # This is needed for SPIDER/Aragog parity runs where the two
+    # energetics modules have different Adams-Williamson density
+    # implementations and the root finder converges to different R_int
+    # for the same target mass.
+    R_int_override = getattr(config.planet, 'R_int_override', None)
+    if R_int_override is not None and R_int_override > 0:
+        log.info(
+            'R_int override active: using R_int = %.1f m = %.3f R_earth '
+            '(bypassing root finder)',
+            R_int_override, R_int_override / R_earth,
+        )
+        hf_row['R_int'] = float(R_int_override)
+        calculate_core_mass(hf_row, config)
+
+        if config.interior_energetics.module == 'spider':
+            spider_dir = dirs['spider']
+        else:
+            spider_dir = None
+        int_o = Interior_t(
+            get_nlevb(config), spider_dir=spider_dir,
+            eos_dir=config.interior_struct.eos_dir,
+        )
+        int_o.ic = 1
+        hf_row['gravity'] = 9.81
+        run_interior(dirs, config, hf_all, hf_row, int_o)
+        update_gravity(hf_row)
+        log.info('R_int: %.1e m  = %.3f R_earth', hf_row['R_int'], hf_row['R_int'] / R_earth)
+        return
+
     # Initial guess for interior radius and gravity
     if config.interior_energetics.module == 'spider':
         spider_dir = dirs['spider']

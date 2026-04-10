@@ -185,5 +185,12 @@ class Planet:
     elements: Elements = field(factory=Elements)
     gas_prs: GasPrs = field(factory=GasPrs)
 
+    # Structure override: bypass the root finder and use a fixed R_int.
+    # Needed for SPIDER/Aragog parity runs where the two energetics
+    # modules have different Adams-Williamson density implementations.
+    # Set to the SPIDER run's R_int (in meters) to force both codes
+    # onto the same mesh. Default None = use the root finder.
+    R_int_override = field(default='none', converter=none_if_none)
+
     # Cooling constraint
     prevent_warming: bool = field(default=False)
