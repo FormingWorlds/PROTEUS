@@ -221,6 +221,7 @@ class AragogRunner:
             surface_density=config.interior_energetics.adams_williamson_rhos,
             gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
             adiabatic_bulk_modulus=config.interior_energetics.adiabatic_bulk_modulus,
+            adams_williamson_beta=config.interior_energetics.adams_williamson_beta,
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
             surface_pressure=0.0,  # TODO: wire to atmospheric overburden when available
         )
