@@ -155,10 +155,11 @@ class AragogRunner:
         # through to the Aragog solver. Valid values:
         #   'quasi_steady' (default, v3 alpha-factor)
         #   'energy_balance'    (Path A SPIDER bit-parity, v5)
+        #   'gradient'     (gradient-based state, SPIDER formulation parity)
         #   'bower2018'    (EXPERIMENTAL tombstone, do not use)
         aragog_cfg = getattr(config.interior_energetics, 'aragog', None)
         core_bc_str = getattr(aragog_cfg, 'core_bc', 'quasi_steady')
-        if core_bc_str not in ('quasi_steady', 'energy_balance', 'bower2018'):
+        if core_bc_str not in ('quasi_steady', 'energy_balance', 'gradient', 'bower2018'):
             logger.warning(
                 'Unknown core_bc=%r, falling back to quasi_steady',
                 core_bc_str,
