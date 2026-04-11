@@ -76,6 +76,15 @@ config_version = "3.0"
         initial     = 10.0
         atol        = 0.04
         rtol        = 0.11
+        # Stiffness-aware adaptive extensions (2026-04-09).
+        # SPIDER has its own retry ladder inside _try_spider so
+        # hysteresis_iters is redundant, but the mushy cap applies
+        # via config and provides insurance at no cost. Matches the
+        # R8 CHILI Aragog config for apples-to-apples parity.
+        mushy_maximum    = 4.0e3
+        mushy_upper      = 0.99
+        hysteresis_iters = 3
+        hysteresis_sfinc = 1.1
 
     [params.stop]
         strict = false

@@ -32,6 +32,10 @@ CASES = {
         'output_files/chili_reference/outputs/evolution-proteus-earth-data.csv',
         'output/earth_spider',
     ),
+    'earth_aragog': (
+        'output_files/chili_reference/outputs/evolution-proteus-earth-data.csv',
+        'output/chili_earth_aragog',
+    ),
 }
 
 
