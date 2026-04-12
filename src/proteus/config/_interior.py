@@ -122,6 +122,8 @@ class Aragog:
     core_bc: str = field(default='energy_balance')
     phase_smoothing: str = field(default='cubic_hermite')
     """Phase-boundary smoothing for Jgrav and Jmix: 'cubic_hermite' or 'tanh'."""
+    solver_method: str = field(default='radau')
+    """ODE solver: 'radau' (scipy), 'cvode' (SUNDIALS via scikits.odes), 'bdf' (scipy)."""
 
 
 def valid_interiordummy(instance, attribute, value):

@@ -247,6 +247,9 @@ class AragogRunner:
             phase_smoothing=getattr(
                 config.interior_energetics.aragog, 'phase_smoothing', 'cubic_hermite'
             ),
+            solver_method=getattr(
+                config.interior_energetics.aragog, 'solver_method', 'radau'
+            ),
         )
 
         # Define initial conditions for prescribing temperature profile
