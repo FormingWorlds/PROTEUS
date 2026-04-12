@@ -119,7 +119,7 @@ class Aragog:
     mass_coordinates: bool = field(default=True)
     jax: bool = field(default=False)
     atol_temperature_equivalent: float = field(default=0.01, validator=gt(0))
-    core_bc: str = field(default='quasi_steady')
+    core_bc: str = field(default='energy_balance')
 
 
 def valid_interiordummy(instance, attribute, value):
