@@ -244,6 +244,9 @@ class AragogRunner:
             tidal=config.interior_energetics.heat_tidal,
             tidal_array=interior_o.tides,
             kappah_floor=config.interior_energetics.kappah_floor,
+            phase_smoothing=getattr(
+                config.interior_energetics.aragog, 'phase_smoothing', 'cubic_hermite'
+            ),
         )
 
         # Define initial conditions for prescribing temperature profile
