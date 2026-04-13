@@ -390,8 +390,9 @@ class Interior:
     """Constant log10 dynamic viscosity [Pa.s]."""
     const_T_ref: float = field(default=3500.0, validator=gt(0))
     """Reference temperature for T(S) = T_ref * exp((S-S_ref)/Cp) [K]."""
-    const_S_ref: float = field(default=3000.0, validator=gt(0))
-    """Reference entropy for T(S) [J/kg/K]."""
+    const_S_ref: float = field(default=3000.0)
+    """Reference entropy for T(S) [J/kg/K]. No positivity constraint
+    since entropy reference states can be zero or negative."""
 
     # Phase transition thermodynamics.
     latent_heat_of_fusion: float = field(default=4e6, validator=gt(0))

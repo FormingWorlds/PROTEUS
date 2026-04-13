@@ -835,7 +835,8 @@ def _try_spider(
     call_sequence.extend(['-pressure0', '10.0E5'])
 
     # Constant-properties mode (bypasses EOS tables)
-    if config.interior_energetics.const_properties:
+    _use_const = getattr(config.interior_energetics, 'const_properties', False) is True
+    if _use_const:
         call_sequence.extend(['-use_const_properties'])
         call_sequence.extend(['-const_rho', str(float(config.interior_energetics.const_rho))])
         call_sequence.extend(['-const_Cp', str(float(config.interior_energetics.const_Cp))])
@@ -923,47 +924,50 @@ def _try_spider(
                     f'or use a melting_dir that ships P-S files.'
                 )
 
-    call_sequence.extend(['-phase_names', 'melt,solid'])
+    # EOS table setup: skip entirely when const_properties is active
+    # (SPIDER creates a dummy single-phase EOS internally, no tables needed)
+    if not _use_const:
+        call_sequence.extend(['-phase_names', 'melt,solid'])
 
-    call_sequence.extend(['-melt_TYPE', '1'])
-    call_sequence.extend(
-        ['-melt_alpha_filename', os.path.join(eos_dir, 'thermal_exp_melt.dat')]
-    )
-    call_sequence.extend(['-melt_cp_filename', os.path.join(eos_dir, 'heat_capacity_melt.dat')])
-    call_sequence.extend(
-        ['-melt_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_melt.dat')]
-    )
-    call_sequence.extend(['-melt_rho_filename', os.path.join(eos_dir, 'density_melt.dat')])
-    call_sequence.extend(['-melt_temp_filename', os.path.join(eos_dir, 'temperature_melt.dat')])
-    call_sequence.extend(['-melt_phase_boundary_filename', liquidus_ps])
-    call_sequence.extend(
-        ['-melt_log10visc', '%.6e' % float(config.interior_energetics.melt_log10visc)]
-    )
-    call_sequence.extend(
-        ['-melt_cond', '%.6e' % float(config.interior_energetics.melt_cond)]
-    )
+        call_sequence.extend(['-melt_TYPE', '1'])
+        call_sequence.extend(
+            ['-melt_alpha_filename', os.path.join(eos_dir, 'thermal_exp_melt.dat')]
+        )
+        call_sequence.extend(['-melt_cp_filename', os.path.join(eos_dir, 'heat_capacity_melt.dat')])
+        call_sequence.extend(
+            ['-melt_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_melt.dat')]
+        )
+        call_sequence.extend(['-melt_rho_filename', os.path.join(eos_dir, 'density_melt.dat')])
+        call_sequence.extend(['-melt_temp_filename', os.path.join(eos_dir, 'temperature_melt.dat')])
+        call_sequence.extend(['-melt_phase_boundary_filename', liquidus_ps])
+        call_sequence.extend(
+            ['-melt_log10visc', '%.6e' % float(config.interior_energetics.melt_log10visc)]
+        )
+        call_sequence.extend(
+            ['-melt_cond', '%.6e' % float(config.interior_energetics.melt_cond)]
+        )
 
-    call_sequence.extend(['-solid_TYPE', '1'])
-    call_sequence.extend(
-        ['-solid_alpha_filename', os.path.join(eos_dir, 'thermal_exp_solid.dat')]
-    )
-    call_sequence.extend(
-        ['-solid_cp_filename', os.path.join(eos_dir, 'heat_capacity_solid.dat')]
-    )
-    call_sequence.extend(
-        ['-solid_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_solid.dat')]
-    )
-    call_sequence.extend(['-solid_rho_filename', os.path.join(eos_dir, 'density_solid.dat')])
-    call_sequence.extend(
-        ['-solid_temp_filename', os.path.join(eos_dir, 'temperature_solid.dat')]
-    )
-    call_sequence.extend(['-solid_phase_boundary_filename', solidus_ps])
-    call_sequence.extend(
-        ['-solid_log10visc', '%.6e' % float(config.interior_energetics.solid_log10visc)]
-    )
-    call_sequence.extend(
-        ['-solid_cond', '%.6e' % float(config.interior_energetics.solid_cond)]
-    )
+        call_sequence.extend(['-solid_TYPE', '1'])
+        call_sequence.extend(
+            ['-solid_alpha_filename', os.path.join(eos_dir, 'thermal_exp_solid.dat')]
+        )
+        call_sequence.extend(
+            ['-solid_cp_filename', os.path.join(eos_dir, 'heat_capacity_solid.dat')]
+        )
+        call_sequence.extend(
+            ['-solid_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_solid.dat')]
+        )
+        call_sequence.extend(['-solid_rho_filename', os.path.join(eos_dir, 'density_solid.dat')])
+        call_sequence.extend(
+            ['-solid_temp_filename', os.path.join(eos_dir, 'temperature_solid.dat')]
+        )
+        call_sequence.extend(['-solid_phase_boundary_filename', solidus_ps])
+        call_sequence.extend(
+            ['-solid_log10visc', '%.6e' % float(config.interior_energetics.solid_log10visc)]
+        )
+        call_sequence.extend(
+            ['-solid_cond', '%.6e' % float(config.interior_energetics.solid_cond)]
+        )
 
     # Static pressure profile: external mesh from Zalmoxis, or Adams-Williamson
     if mesh_file and os.path.isfile(mesh_file):
