@@ -235,8 +235,18 @@ class AragogRunner:
             surface_pressure=0.0,  # TODO: wire to atmospheric overburden when available
         )
 
-        # Update the mesh if the module is 'zalmoxis'
-        if config.interior_struct.module == 'zalmoxis':
+        # Use the external mesh file when available (dummy or Zalmoxis).
+        # The dummy structure writes spider_mesh.dat with uniform
+        # rho_mantle from Noack & Lasbleis 2020. SPIDER reads this file
+        # directly. Without eos_method=2, Aragog builds its own A-W
+        # exponential profile which gives 7.5% more mass (rho varies
+        # 4079-6044 vs uniform 4432). Using the same mesh file ensures
+        # identical cell masses, pressure, gravity, and domain geometry.
+        spider_mesh = os.path.join(outdir, 'data', 'spider_mesh.dat')
+        if config.interior_struct.module in ('spider', 'dummy') and os.path.isfile(spider_mesh):
+            mesh.eos_method = 2
+            mesh.eos_file = spider_mesh
+        elif config.interior_struct.module == 'zalmoxis':
             mesh.eos_method = 2  # User-defined EOS based on Zalmoxis
             mesh.eos_file = os.path.join(
                 outdir, 'data', 'zalmoxis_output.dat'
