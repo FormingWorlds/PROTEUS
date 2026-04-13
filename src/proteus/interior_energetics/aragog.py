@@ -193,9 +193,17 @@ class AragogRunner:
             core_bc=core_bc_str,
         )
 
-        # Define the inner_radius for the mesh
+        # Define the inner_radius for the mesh.
+        # Prefer hf_row['R_core'] (set by the structure module) over
+        # config.core_frac * R_int, because the dummy structure uses
+        # Noack & Lasbleis 2020 scaling that gives a different R_core/R_int
+        # ratio than the config core_frac. SPIDER reads R_core from the
+        # mesh file (which the dummy structure writes), so Aragog must use
+        # the same value to ensure both solvers operate on the same domain.
         if config.interior_struct.module in ('spider', 'dummy'):
-            inner_radius = config.interior_struct.core_frac * hf_row['R_int']
+            inner_radius = hf_row.get(
+                'R_core', config.interior_struct.core_frac * hf_row['R_int']
+            )
         elif config.interior_struct.module == 'zalmoxis':
             inner_radius = hf_row.get(
                 'R_core', config.interior_struct.core_frac * hf_row['R_int']
