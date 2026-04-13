@@ -44,19 +44,25 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 def _estimate_T_pot(out) -> float:
     """Estimate potential temperature from SolverOutput.
 
-    SPIDER uses the first node (surface-to-CMB) where Jconv > Jcond.
+    SPIDER uses the first node (surface-to-CMB) where Jconv > Jcond
+    (spider.py:1321-1327), indexing into staggered temp with a clamp.
     Aragog SolverOutput does not split fluxes, so approximate with the
     shallowest staggered node where eddy diffusivity is significant
     (indicates active convection). Falls back to T_magma.
+
+    Note: eddy_diff is on basic nodes (N+1), T_stag on staggered (N).
+    We clamp the index to len(T_stag)-1, matching SPIDER's
+    ``i = min(i, len(interior_o.temp) - 1)`` convention.
     """
     kh_threshold = 1.0  # m^2/s, minimal convective diffusivity
     eddy = np.asarray(out.eddy_diff).ravel()
     T_stag = np.asarray(out.T_stag).ravel()
+    n_stag = len(T_stag)
     # Aragog ordering: CMB (index 0) to surface (index -1)
-    # Scan from surface inward to find deepest convective node
+    # Scan from surface inward to find shallowest convective node
     for i in range(len(eddy) - 1, -1, -1):
-        if i < len(T_stag) and eddy[i] > kh_threshold:
-            return float(T_stag[i])
+        if eddy[i] > kh_threshold:
+            return float(T_stag[min(i, n_stag - 1)])
     return float(out.T_magma)
 
 
@@ -1133,7 +1139,7 @@ class AragogRunner:
             if tides.size > 0 and np.any(tides > 0):
                 area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
                 F_tidal = float(np.dot(tides[:len(out.mass_stag)], out.mass_stag)) / area_surf
-        F_radio = out.F_heat_total - F_tidal
+        F_radio = max(0.0, out.F_heat_total - F_tidal)
 
         return {
             'M_mantle': out.M_mantle,
