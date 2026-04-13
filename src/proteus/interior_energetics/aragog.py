@@ -201,9 +201,11 @@ class AragogRunner:
         # mesh file (which the dummy structure writes), so Aragog must use
         # the same value to ensure both solvers operate on the same domain.
         if config.interior_struct.module in ('spider', 'dummy'):
-            inner_radius = hf_row.get(
-                'R_core', config.interior_struct.core_frac * hf_row['R_int']
-            )
+            R_core_hf = hf_row.get('R_core', 0)
+            if R_core_hf and R_core_hf > 0:
+                inner_radius = R_core_hf
+            else:
+                inner_radius = config.interior_struct.core_frac * hf_row['R_int']
         elif config.interior_struct.module == 'zalmoxis':
             inner_radius = hf_row.get(
                 'R_core', config.interior_struct.core_frac * hf_row['R_int']
