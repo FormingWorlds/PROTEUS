@@ -520,6 +520,8 @@ class AragogRunner:
             phase='mixed',
             phase_transition_width=float(config.interior_energetics.phase_transition_width),
             grain_size=config.interior_energetics.grain_size,
+            matprop_smooth_width=float(
+                config.interior_energetics.spider.matprop_smooth_width),
         )
 
         radionuclides = []
