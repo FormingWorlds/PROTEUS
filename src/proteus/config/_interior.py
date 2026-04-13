@@ -91,7 +91,10 @@ class Aragog:
     Attributes
     ----------
     dilatation: bool
-        Whether to include dilatation source term in the model. Default is True.
+        Whether to include dilatation (PdV) heating from gravitational
+        separation. Default is False. SPIDER does not include this term,
+        so enabling it breaks parity. The implementation is available for
+        future physics work where both solvers should have it.
     mass_coordinates: bool
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
@@ -116,15 +119,16 @@ class Aragog:
           - 'bower2018': EXPERIMENTAL tombstone, do not use for production
     """
 
-    dilatation: bool = field(default=True)
+    dilatation: bool = field(default=False)
     mass_coordinates: bool = field(default=True)
     jax: bool = field(default=False)
-    atol_temperature_equivalent: float = field(default=0.01, validator=gt(0))
+    atol_temperature_equivalent: float = field(default=1.0e-6, validator=gt(0))
+    """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator."""
     core_bc: str = field(default='energy_balance')
     phase_smoothing: str = field(default='tanh')
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
-    solver_method: str = field(default='radau')
-    """ODE solver: 'radau' (scipy), 'cvode' (SUNDIALS via scikits.odes), 'bdf' (scipy)."""
+    solver_method: str = field(default='cvode')
+    """ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy)."""
 
 
 def valid_interiordummy(instance, attribute, value):

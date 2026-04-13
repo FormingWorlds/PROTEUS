@@ -332,7 +332,7 @@ config_version = "3.0"
 
     # Aragog-only parameters
     [interior_energetics.aragog]
-        dilatation                    = true    # dilatation source term
+        dilatation                    = false   # PdV heating from grav sep (off for SPIDER parity)
         mass_coordinates              = true    # mass coordinate mesh spacing
         jax                           = false   # JAX/diffrax solver (requires jax, equinox, diffrax)
         atol_temperature_equivalent   = 0.01    # scipy BDF atol [K]; tight enough to resolve 0.3 K/yr cooling

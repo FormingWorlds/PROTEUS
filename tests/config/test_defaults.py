@@ -213,6 +213,6 @@ def test_aragog_defaults():
     Verifies ARAGOG (Python-based interior module) defaults.
     """
     a = Aragog()
-    assert a.dilatation is True
+    assert a.dilatation is False
     assert a.mass_coordinates is True
     assert a.jax is False
