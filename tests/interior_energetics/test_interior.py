@@ -135,6 +135,7 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
     config.interior_energetics.module = 'dummy'
     config.interior_struct = MagicMock()
     config.planet.mass_tot = 1.0  # 1 Earth mass target
+    config.planet.R_int_override = None  # no manual radius override
     config.interior_energetics.spider = MagicMock()
 
     # Historical dataframe with one previous row (used by run_interior patch)
