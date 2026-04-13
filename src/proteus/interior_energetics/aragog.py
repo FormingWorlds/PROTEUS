@@ -522,6 +522,14 @@ class AragogRunner:
             grain_size=config.interior_energetics.grain_size,
             matprop_smooth_width=float(
                 config.interior_energetics.spider.matprop_smooth_width),
+            const_properties=bool(config.interior_energetics.const_properties),
+            const_rho=float(config.interior_energetics.const_rho),
+            const_Cp=float(config.interior_energetics.const_Cp),
+            const_alpha=float(config.interior_energetics.const_alpha),
+            const_cond=float(config.interior_energetics.const_cond),
+            const_log10visc=float(config.interior_energetics.const_log10visc),
+            const_T_ref=float(config.interior_energetics.const_T_ref),
+            const_S_ref=float(config.interior_energetics.const_S_ref),
         )
 
         radionuclides = []

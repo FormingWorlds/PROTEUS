@@ -266,6 +266,18 @@ config_version = "3.0"
     atol                      = 1.0e-10      # absolute ODE solver tolerance (new in Tier 4)
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
 
+    # Constant-properties mode: bypass EOS tables, use analytical T(S)
+    # T = T_ref * exp((S - S_ref) / Cp). Both SPIDER and Aragog.
+    # For controlled parity tests with dummy structure + atmosphere.
+    const_properties          = false
+    const_rho                 = 4000.0       # constant density [kg/m3]
+    const_Cp                  = 1000.0       # constant heat capacity [J/kg/K]
+    const_alpha               = 1.0e-5       # constant thermal expansivity [1/K]
+    const_cond                = 4.0          # constant thermal conductivity [W/m/K]
+    const_log10visc           = 2.0          # constant log10 viscosity [Pa.s]
+    const_T_ref               = 3500.0       # reference T for T(S) [K]
+    const_S_ref               = 3000.0       # reference S for T(S) [J/kg/K]
+
     # Transport physics
     trans_conduction          = true         # conductive heat transfer
     trans_convection          = true         # convective heat transfer (MLT)

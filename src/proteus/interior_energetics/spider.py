@@ -834,6 +834,17 @@ def _try_spider(
     call_sequence.extend(['-time0', '1.0E5'])
     call_sequence.extend(['-pressure0', '10.0E5'])
 
+    # Constant-properties mode (bypasses EOS tables)
+    if config.interior_energetics.const_properties:
+        call_sequence.extend(['-use_const_properties'])
+        call_sequence.extend(['-const_rho', str(float(config.interior_energetics.const_rho))])
+        call_sequence.extend(['-const_Cp', str(float(config.interior_energetics.const_Cp))])
+        call_sequence.extend(['-const_alpha', str(float(config.interior_energetics.const_alpha))])
+        call_sequence.extend(['-const_cond', str(float(config.interior_energetics.const_cond))])
+        call_sequence.extend(['-const_log10visc', str(float(config.interior_energetics.const_log10visc))])
+        call_sequence.extend(['-const_T_ref', str(float(config.interior_energetics.const_T_ref))])
+        call_sequence.extend(['-const_S_ref', str(float(config.interior_energetics.const_S_ref))])
+
     # Energy transport physics (true->'1', false->'0')
     call_sequence.extend(['-CONDUCTION', str(int(config.interior_energetics.trans_conduction))])
     call_sequence.extend(['-CONVECTION', str(int(config.interior_energetics.trans_convection))])

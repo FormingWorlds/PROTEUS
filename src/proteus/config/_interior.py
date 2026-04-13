@@ -372,6 +372,27 @@ class Interior:
     """Multiplier on the internally-computed chemical eddy diffusivity.
     SPIDER: -eddy_diffusivity_chemical (1.0 default)."""
 
+    # Constant-properties mode (SPIDER -use_const_properties parity).
+    # When True, both SPIDER and Aragog bypass EOS tables and use
+    # analytical T(S) = T_ref * exp((S - S_ref) / Cp) with constant
+    # rho, Cp, alpha, k, visc. phi=1 always (no phase transitions).
+    # For controlled parity comparisons with dummy structure + atmosphere.
+    const_properties: bool = field(default=False)
+    const_rho: float = field(default=4000.0, validator=gt(0))
+    """Constant density [kg/m3]."""
+    const_Cp: float = field(default=1000.0, validator=gt(0))
+    """Constant heat capacity [J/kg/K]."""
+    const_alpha: float = field(default=1e-5, validator=gt(0))
+    """Constant thermal expansivity [1/K]."""
+    const_cond: float = field(default=4.0, validator=gt(0))
+    """Constant thermal conductivity [W/m/K]."""
+    const_log10visc: float = field(default=2.0)
+    """Constant log10 dynamic viscosity [Pa.s]."""
+    const_T_ref: float = field(default=3500.0, validator=gt(0))
+    """Reference temperature for T(S) = T_ref * exp((S-S_ref)/Cp) [K]."""
+    const_S_ref: float = field(default=3000.0, validator=gt(0))
+    """Reference entropy for T(S) [J/kg/K]."""
+
     # Phase transition thermodynamics.
     latent_heat_of_fusion: float = field(default=4e6, validator=gt(0))
     """Latent heat of fusion of silicate [J/kg]. Aragog uses this as a
