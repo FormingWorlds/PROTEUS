@@ -1009,9 +1009,14 @@ def run_interior(
     # when the poststep change limit was hit every step.
     interior_o.dt = float(sim_time) - hf_row['Time']
     if interior_o.dt <= 0:
-        # Safety: if sim_time <= hf_row['Time'] (can happen during init
-        # when the JSON time rounds to 0), fall back to dtswitch so the
-        # main loop doesn't stall or go backwards.
+        # Safety fallback when sim_time <= hf_row['Time']. Known triggers:
+        # 1. Init phase: SPIDER JSON time rounds to 0 via llround.
+        # 2. Solver rollback: SPIDER rolls back to a state before the
+        #    current hf_row['Time'] (rare, implies a stale JSON directory).
+        # In both cases, fall back to dtswitch so the main loop doesn't
+        # stall or go backwards. This is a milder version of the original
+        # desync (one step of dtswitch instead of accumulating), but should
+        # not trigger in normal evolution.
         from proteus.interior_energetics.timestep import next_step
 
         dtswitch = next_step(

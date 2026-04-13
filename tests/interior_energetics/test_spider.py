@@ -1586,6 +1586,59 @@ def test_read_spider_basic(tmp_path):
 
 
 @pytest.mark.unit
+def test_read_spider_returns_precise_time_years(tmp_path):
+    """ReadSPIDER returns time_years from JSON, not the integer filename.
+
+    When tsurf_poststep_change terminates SPIDER early, the JSON filename
+    (llround of time) can differ from the precise time_years inside the
+    file. ReadSPIDER must return the precise value so that the coupling
+    loop advances hf_row['Time'] by the actual evolution interval, not
+    the requested dtswitch.
+
+    Regression test for the SPIDER time desync bug where PROTEUS's clock
+    raced ahead of SPIDER's internal state by thousands of years.
+    """
+    from proteus.interior_energetics.common import Interior_t
+    from proteus.interior_energetics.spider import ReadSPIDER
+
+    data_dir = tmp_path / 'data'
+    data_dir.mkdir()
+
+    # Simulate early termination: filename is 175.json (llround),
+    # but time_years inside is 100.7 (SPIDER stopped early).
+    _make_spider_json(
+        str(data_dir / '175.json'), step=10, sim_time=100.7,
+        num_stag=10, num_basic=11,
+    )
+
+    nP, nS = 3, 4
+    P_vals = np.linspace(0, 135e9, nP)
+    S_vals = np.linspace(2000, 3200, nS)
+    lookup = np.zeros((nS, nP, 3))
+    for j in range(nS):
+        for i in range(nP):
+            lookup[j, i, 0] = P_vals[i]
+            lookup[j, i, 1] = S_vals[j]
+            lookup[j, i, 2] = 4000.0
+
+    interior_o = Interior_t(11)
+    interior_o.lookup_rho_melt = lookup
+
+    config = MagicMock()
+    config.planet.prevent_warming = False
+
+    dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
+
+    sim_time, output = ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+
+    # sim_time must be the precise time_years (100.7), NOT the filename (175)
+    assert sim_time == pytest.approx(100.7), (
+        f'ReadSPIDER returned sim_time={sim_time}, expected 100.7 from time_years. '
+        f'If this is 175, the code is reading the filename instead of the JSON.'
+    )
+
+
+@pytest.mark.unit
 def test_read_spider_prevent_warming(tmp_path):
     """ReadSPIDER clamps F_int to 1e-8 when prevent_warming is True."""
     from proteus.interior_energetics.common import Interior_t
