@@ -121,8 +121,8 @@ class Aragog:
     jax: bool = field(default=False)
     atol_temperature_equivalent: float = field(default=0.01, validator=gt(0))
     core_bc: str = field(default='energy_balance')
-    phase_smoothing: str = field(default='cubic_hermite')
-    """Phase-boundary smoothing for Jgrav and Jmix: 'cubic_hermite' or 'tanh'."""
+    phase_smoothing: str = field(default='tanh')
+    """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
     solver_method: str = field(default='radau')
     """ODE solver: 'radau' (scipy), 'cvode' (SUNDIALS via scikits.odes), 'bdf' (scipy)."""
 
