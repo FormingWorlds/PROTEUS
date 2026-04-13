@@ -60,10 +60,11 @@ class Spider:
     # DeprecationWarning. The validator allows -1 as a pass-through.
     tolerance_rel: float = field(default=-1.0)
 
-    # SPIDER-specific material-property smoothing width, passed as
-    # ``-matprop_smooth_width`` at the SPIDER command line. Aragog
-    # does not read this; its Jgrav smoothing is parameter-free
-    # (see aragog/src/aragog/solver/entropy_state.py).
+    # Material-property smoothing width for the phase-boundary blend.
+    # Passed to SPIDER as ``-matprop_smooth_width`` and to Aragog's
+    # ``EntropyPhaseEvaluator`` via ``_PhaseMixedParameters``. Controls
+    # the tanh transition between two-phase (Lever Rule) and single-
+    # phase material properties near the solidus and liquidus.
     matprop_smooth_width: float = field(
         default=1.0e-2, validator=(gt(0), lt(1))
     )
