@@ -257,6 +257,19 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
     if mode == 'isothermal':
         return np.full(N, T_surf)
 
+    elif mode == 'isentropic':
+        # Entropy-based IC: T from the analytical formula T = T_ref * exp((S-S_ref)/Cp).
+        # When paired with const_properties, the interior solver uses this same formula.
+        # The structure module just needs a reasonable T profile for hf_row initialization.
+        # Use the adiabatic profile from T_surf as a proxy.
+        T = np.zeros(N)
+        T[-1] = T_surf
+        for i in range(N - 2, -1, -1):
+            dr = r_stag[i + 1] - r_stag[i]
+            dTdr = -alpha_m * T[i + 1] * g_m_av / Cp_m
+            T[i] = T[i + 1] - dTdr * dr
+        return T
+
     elif mode == 'linear':
         T_center = config.planet.tcenter_init
         return T_center + (T_surf - T_center) * (r_stag - R_c) / (R_p - R_c)

@@ -305,6 +305,17 @@ class AragogRunner:
             init_file=init_file_temperature_profile,
         )
 
+        # Constant-properties mode: skip all EOS table setup. The
+        # EntropyPhaseEvaluator._update_const() path uses analytical
+        # formulas only, but the EntropySolver still requires an EntropyEOS
+        # for mesh construction. Use the bundled SPIDER tables as a dummy.
+        if config.interior_energetics.const_properties:
+            spider_submod = Path(__file__).resolve().parent.parent.parent / 'SPIDER' / 'lookup_data' / '1TPa-dK09-elec-free'
+            if spider_submod.is_dir():
+                LOOK_UP_DIR = spider_submod
+            else:
+                LOOK_UP_DIR = Path(outdir) / 'data' / 'spider_eos'
+
         # EOS lookup directory for phase properties (Cp, alpha, density, entropy).
         # For PALEOS EOS: generate P-T tables from PALEOS data.
         # Prefer PALEOS-2phase (separate solid/liquid) over unified table:
@@ -312,7 +323,7 @@ class AragogRunner:
         # solidus/liquidus, enabling correct Delta_S for mixing flux and IC.
         # The unified table has interpolation artifacts across the melting
         # curve discontinuity.
-        if (
+        elif (
             config.interior_struct.module == 'zalmoxis'
             and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
         ):
