@@ -1000,23 +1000,29 @@ def run_interior(
             log.info('    F_radio    = %.2e W m-2' % float(hf_row['F_radio']))
 
     # Actual time step size.
-    # For SPIDER: use the coupling timestepper's dtswitch directly,
-    # tracked via interior_o._spider_cumulative_time. The old approach
-    # (sim_time - hf_row['Time']) fails because SPIDER's JSON filenames
-    # alias to 0 when tsurf_poststep_change terminates the BDF early
-    # and llround(time_years) rounds to 0.
-    # For Aragog/dummy: sim_time is returned directly from the solver
-    # and is reliable.
-    if config.interior_energetics.module == 'spider':
+    # Use SPIDER's actual sim_time (read from 'time_years' inside the JSON,
+    # not from the llround'd filename) to compute the true dt. This fixes
+    # the desync where PROTEUS advanced by dtswitch while SPIDER only
+    # evolved to a tsurf_poststep_change truncation point. The previous
+    # approach (always using dtswitch) caused PROTEUS's clock to race
+    # ahead of SPIDER's internal state by hundreds to thousands of years
+    # when the poststep change limit was hit every step.
+    interior_o.dt = float(sim_time) - hf_row['Time']
+    if interior_o.dt <= 0:
+        # Safety: if sim_time <= hf_row['Time'] (can happen during init
+        # when the JSON time rounds to 0), fall back to dtswitch so the
+        # main loop doesn't stall or go backwards.
         from proteus.interior_energetics.timestep import next_step
 
         dtswitch = next_step(
             config, dirs, hf_row, hf_all, 1.0, interior_o=interior_o,
         )
-        interior_o._spider_cumulative_time += dtswitch
+        log.warning(
+            'SPIDER sim_time (%.2f yr) <= hf_row[Time] (%.2f yr); '
+            'falling back to dtswitch=%.2f yr',
+            float(sim_time), hf_row['Time'], dtswitch,
+        )
         interior_o.dt = dtswitch
-    else:
-        interior_o.dt = float(sim_time) - hf_row['Time']
 
     # TODO: When config.interior_struct.module == 'zalmoxis', the Aragog mesh
     # is set up once during setup_solver and never refreshed during

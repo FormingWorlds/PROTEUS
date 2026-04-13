@@ -1243,6 +1243,13 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
         UpdateStatusfile(dirs, 21)
         raise ValueError("JSON file '%s' could not be loaded" % json_path)
 
+    # Use the precise time from inside the JSON (not the llround'd filename).
+    # SPIDER stores full-precision time as 'time_years'. The filename is
+    # llround(time_years), which loses sub-year precision and caused the
+    # desync bug where PROTEUS advanced by dtswitch while SPIDER only
+    # evolved to the poststep-change truncation point.
+    sim_time = float(json_file.get_dict(['time_years']))
+
     # read scalars
     json_keys = {
         'M_mantle_liquid': ('atmosphere', 'mass_liquid'),

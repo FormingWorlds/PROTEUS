@@ -1260,6 +1260,7 @@ def _make_spider_json(filepath, step=0, sim_time=0.0, num_stag=10, num_basic=11)
 
     data = {
         'step': step,
+        'time_years': sim_time,
         'atmosphere': {
             'mass_liquid': {'scaling': 1, 'units': 'kg', 'values': [1e23]},
             'mass_solid': {'scaling': 1, 'units': 'kg', 'values': [3e24]},
