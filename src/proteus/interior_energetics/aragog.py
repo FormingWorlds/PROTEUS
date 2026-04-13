@@ -41,6 +41,25 @@ if TYPE_CHECKING:
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 
+def _estimate_T_pot(out) -> float:
+    """Estimate potential temperature from SolverOutput.
+
+    SPIDER uses the first node (surface-to-CMB) where Jconv > Jcond.
+    Aragog SolverOutput does not split fluxes, so approximate with the
+    shallowest staggered node where eddy diffusivity is significant
+    (indicates active convection). Falls back to T_magma.
+    """
+    kh_threshold = 1.0  # m^2/s, minimal convective diffusivity
+    eddy = np.asarray(out.eddy_diff).ravel()
+    T_stag = np.asarray(out.T_stag).ravel()
+    # Aragog ordering: CMB (index 0) to surface (index -1)
+    # Scan from surface inward to find deepest convective node
+    for i in range(len(eddy) - 1, -1, -1):
+        if i < len(T_stag) and eddy[i] > kh_threshold:
+            return float(T_stag[i])
+    return float(out.T_magma)
+
+
 class AragogRunner:
     def __init__(
         self,
@@ -997,6 +1016,12 @@ class AragogRunner:
         # Update boundary conditions (F_atm from atmosphere module)
         solver.parameters.boundary_conditions.outer_boundary_value = hf_row['F_atm']
 
+        # Update equilibrium temperature (tracks stellar luminosity evolution).
+        # SPIDER receives fresh T_eqm at every call via -teqm (spider.py:748).
+        # Without this update, grey_body surface BC mode uses the initial T_eqm
+        # for the entire run while the star evolves.
+        solver.parameters.boundary_conditions.equilibrium_temperature = hf_row['T_eqm']
+
         # Update tidal heating
         solver.parameters.energy.tidal_array = interior_o.tides
 
@@ -1017,10 +1042,17 @@ class AragogRunner:
         solver.parameters.mesh.outer_radius = hf_row['R_int']
         solver.parameters.mesh.gravitational_acceleration = hf_row['gravity']
 
-        if config.interior_struct.module == 'spider':
-            solver.parameters.mesh.inner_radius = (
-                config.interior_struct.core_frac * hf_row['R_int']
-            )
+        if config.interior_struct.module in ('spider', 'dummy'):
+            # Use hf_row['R_core'] from the structure module when available,
+            # matching the setup_solver convention. Falls back to core_frac
+            # when R_core is unset (module='spider' without dummy structure).
+            R_core_hf = hf_row.get('R_core', 0)
+            if R_core_hf and R_core_hf > 0:
+                solver.parameters.mesh.inner_radius = R_core_hf
+            else:
+                solver.parameters.mesh.inner_radius = (
+                    config.interior_struct.core_frac * hf_row['R_int']
+                )
         # For Zalmoxis: inner_radius is set at setup_solver from Zalmoxis output.
         # The EOS file (zalmoxis_output.dat) is refreshed by the Zalmoxis solver
         # before the interior step, so Aragog.reset() will re-read it.
@@ -1037,7 +1069,7 @@ class AragogRunner:
         out = self.aragog_solver.get_state()
 
         # Build PROTEUS helpfile output from SolverOutput
-        output = self._build_helpfile_output(out, hf_row)
+        output = self._build_helpfile_output(out, hf_row, interior_o=interior_o)
 
         # Store arrays on interior object for inter-module access.
         # Radius is stored in metres (SI), matching SPIDER's convention
@@ -1054,7 +1086,11 @@ class AragogRunner:
         interior_o.temp = out.T_stag
         interior_o.pres = out.P_stag
 
-        sim_time = self.aragog_solver.parameters.solver.end_time
+        # Use the actual integration endpoint, not the requested end_time.
+        # If the solver exits early (status != 0), dt_actual < requested dt.
+        # Matches the SPIDER fix (reading time_years from JSON instead of
+        # using dtswitch) to prevent the same class of time desync.
+        sim_time = hf_row['Time'] + out.dt_actual
 
         # Write output to a file (skipped when dt_write suppresses this step)
         if write_data:
@@ -1063,8 +1099,22 @@ class AragogRunner:
         return sim_time, output
 
     @staticmethod
-    def _build_helpfile_output(out: SolverOutput, hf_row: dict) -> dict:
-        """Build the PROTEUS helpfile dict from SolverOutput."""
+    def _build_helpfile_output(
+        out: SolverOutput, hf_row: dict, interior_o=None,
+    ) -> dict:
+        """Build the PROTEUS helpfile dict from SolverOutput.
+
+        Parameters
+        ----------
+        out : SolverOutput
+            Aragog solver output.
+        hf_row : dict
+            Current helpfile row.
+        interior_o : Interior_t, optional
+            Interior object. When provided, tidal heating flux is
+            computed from the tidal array (matching SPIDER's
+            Htidal_s * mass_s / area convention).
+        """
         logger.info(
             'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, status=%d',
             out.T_magma,
@@ -1073,8 +1123,21 @@ class AragogRunner:
             out.status,
         )
 
+        # Split total heating into radiogenic and tidal components.
+        # SPIDER reports these separately (Hradio_s, Htidal_s integrated
+        # over cell masses). Aragog's F_heat_total is the combined flux.
+        # Recompute F_tidal from the tidal array so F_radio = total - tidal.
+        F_tidal = 0.0
+        if interior_o is not None and hasattr(interior_o, 'tides'):
+            tides = np.asarray(interior_o.tides)
+            if tides.size > 0 and np.any(tides > 0):
+                area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
+                F_tidal = float(np.dot(tides[:len(out.mass_stag)], out.mass_stag)) / area_surf
+        F_radio = out.F_heat_total - F_tidal
+
         return {
             'M_mantle': out.M_mantle,
+            'M_core': hf_row.get('M_core', 0.0),
             'T_magma': out.T_magma,
             'Phi_global': out.Phi_global,
             'RF_depth': out.RF_depth,
@@ -1082,12 +1145,17 @@ class AragogRunner:
             'M_mantle_liquid': out.M_mantle_liquid,
             'M_mantle_solid': out.M_mantle_solid,
             'Phi_global_vol': out.Phi_global_vol,
-            'T_pot': out.T_magma,
+            # T_pot estimate: SPIDER uses the first node where Jconv > Jcond
+            # (spider.py:1321-1327). Aragog SolverOutput doesn't split fluxes,
+            # so approximate with the shallowest node where eddy diffusivity
+            # exceeds a minimal threshold (indicates active convection). Falls
+            # back to T_magma when the entire mantle is convective.
+            'T_pot': _estimate_T_pot(out),
             'T_core': out.T_core,
             'E_th_mantle': out.E_th,
             'Cp_eff': out.Cp_eff,
-            'F_radio': out.F_heat_total,
-            'F_tidal': 0.0,
+            'F_radio': F_radio,
+            'F_tidal': F_tidal,
         }
 
     @staticmethod

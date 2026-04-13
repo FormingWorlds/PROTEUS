@@ -380,10 +380,11 @@ class Interior_t:
 
         # Cumulative SPIDER time [yr]. Tracked separately from
         # hf_row['Time'] because SPIDER's JSON filenames can alias
-        # (llround to the same integer) when tsurf_poststep_change
-        # terminates the BDF early. This counter always advances by
-        # the coupling timestepper's dtswitch after each successful
-        # SPIDER call.
+        # Legacy field: was used by the old dtswitch-based time advancement
+        # before the time_years JSON fix (commit b3c2a483). Now only
+        # advanced in the SPIDER CVode failure fallback path
+        # (wrapper.py:909) to keep bookkeeping consistent during retries.
+        # Not read on the normal success path.
         self._spider_cumulative_time = 0.0
 
         # Stiffness-aware adaptive time-step state (2026-04-09).

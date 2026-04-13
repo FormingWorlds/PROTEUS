@@ -623,6 +623,7 @@ def _try_spider(
     dT_max: float,
     timeout: float = 60 * 30,
     mesh_file: str | None = None,
+    interior_o=None,
 ):
     """
     Try to run spider with the current configuration.
@@ -665,8 +666,9 @@ def _try_spider(
             raise ValueError("JSON file '%s' could not be loaded" % json_path)
         step = json_file.get_dict(['step'])
 
-        # Get new time-step
-        dtswitch = next_step(config, dirs, hf_row, hf_all, step_sf)
+        # Get new time-step (pass interior_o for stiffness hysteresis parity
+        # with Aragog's compute_time_step, which always passes interior_o)
+        dtswitch = next_step(config, dirs, hf_row, hf_all, step_sf, interior_o=interior_o)
 
         # Number of total steps until currently desired switch/end time
         nsteps = 1
@@ -1188,6 +1190,7 @@ def RunSPIDER(
             atol_sf,
             dT_max,
             mesh_file=mesh_file,
+            interior_o=interior_o,
         )
 
         if spider_success:
