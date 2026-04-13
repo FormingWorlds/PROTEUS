@@ -465,6 +465,7 @@ config_version = "3.0"
     [atmos_clim.dummy]
         gamma                 = 0.5          # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
         height_factor         = 3.0          # observed height / scale height
+        fixed_flux            = -1.0         # if > 0: return this constant F_atm [W/m2], bypassing grey-body
 
 # Atmospheric escape
 [escape]

@@ -251,16 +251,25 @@ class Dummy:
     opaque atmosphere when 1. The height of the atmosphere equals the scale height times
     the `height_factor` variable.
 
+    When ``fixed_flux`` is set to a positive value, the dummy module bypasses the
+    grey-body calculation entirely and returns that constant flux as F_atm at every
+    coupling step. This is useful for controlled parity comparisons between interior
+    solvers where the surface BC must be identical.
+
     Attributes
     ----------
     gamma: float
         Atmosphere opacity factor between 0 and 1.
     height_factor: float
         A multiplying factor applied to the ideal-gas scale height.
+    fixed_flux: float
+        If > 0, return this constant flux [W/m2] instead of computing it.
+        Default -1 (disabled, use the grey-body calculation).
     """
 
     gamma: float = field(default=0.5, validator=(ge(0), le(1)))
     height_factor: float = field(default=3.0, validator=ge(0))
+    fixed_flux: float = field(default=-1.0)
 
 
 def valid_albedo(instance, attribute, value):
