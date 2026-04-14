@@ -330,6 +330,12 @@ config_version = "3.0"
     # Core thermal model (Bower+2018 Table 2)
     core_tfac_avg             = 1.147        # T_avg/T_cmb ratio from adiabatic gradient
 
+    # Diagnostic: save per-component flux decomposition (Jcond_b, Jconv_b,
+    # Jgrav_b, Jmix_b) and basic-node state (dSdr_b, eddy_diff_b,
+    # phi_basic_b, T/cp/rho_basic_b) to Aragog NetCDF output. Used for
+    # T_core CMB closure investigation (2026-04-14). Default off.
+    write_flux_diagnostics    = false
+
     # Aragog-only parameters
     [interior_energetics.aragog]
         dilatation                    = false   # PdV heating from grav sep (off for SPIDER parity)

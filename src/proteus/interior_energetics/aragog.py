@@ -44,24 +44,27 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 def _estimate_T_pot(out) -> float:
     """Estimate potential temperature from SolverOutput.
 
-    SPIDER uses the first node (surface-to-CMB) where Jconv > Jcond
-    (spider.py:1321-1327), indexing into staggered temp with a clamp.
-    Aragog SolverOutput does not split fluxes, so approximate with the
-    shallowest staggered node where eddy diffusivity is significant
-    (indicates active convection). Falls back to T_magma.
+    SPIDER criterion (spider.py:1323-1329): scan from surface toward
+    the CMB; the first basic node where ``Jconv > Jcond`` marks the
+    top of the well-mixed convecting interior (bottom of the
+    conductive boundary layer). Report ``T_pot`` as the staggered
+    temperature at that node, clamped to ``len(T_stag) - 1`` to match
+    SPIDER's ``i = min(i, len(interior_o.temp) - 1)``.
 
-    Note: eddy_diff is on basic nodes (N+1), T_stag on staggered (N).
-    We clamp the index to len(T_stag)-1, matching SPIDER's
-    ``i = min(i, len(interior_o.temp) - 1)`` convention.
+    Falls back to ``T_magma`` when no crossover exists (e.g. fully
+    stagnant or fully conductive profile).
+
+    Aragog orders nodes CMB -> surface; SPIDER orders surface -> CMB.
+    Same physical semantics, scan directions are reversed.
     """
-    kh_threshold = 1.0  # m^2/s, minimal convective diffusivity
-    eddy = np.asarray(out.eddy_diff).ravel()
+    jconv = np.asarray(out.jconv_b).ravel()
+    jcond = np.asarray(out.jcond_b).ravel()
     T_stag = np.asarray(out.T_stag).ravel()
     n_stag = len(T_stag)
-    # Aragog ordering: CMB (index 0) to surface (index -1)
-    # Scan from surface inward to find shallowest convective node
-    for i in range(len(eddy) - 1, -1, -1):
-        if eddy[i] > kh_threshold:
+    # Aragog ordering: CMB (index 0) to surface (index -1).
+    # Scan surface -> CMB for the shallowest node with Jconv > Jcond.
+    for i in range(len(jconv) - 1, -1, -1):
+        if jconv[i] > jcond[i]:
             return float(T_stag[min(i, n_stag - 1)])
     return float(out.T_magma)
 
@@ -1100,7 +1103,12 @@ class AragogRunner:
 
         # Write output to a file (skipped when dt_write suppresses this step)
         if write_data:
-            self._write_output_ncdf(dirs['output'], sim_time, out)
+            self._write_output_ncdf(
+                dirs['output'], sim_time, out,
+                write_diagnostics=getattr(
+                    self._config.interior_energetics, 'write_flux_diagnostics', False
+                ),
+            )
 
         return sim_time, output
 
@@ -1165,8 +1173,19 @@ class AragogRunner:
         }
 
     @staticmethod
-    def _write_output_ncdf(output_dir: str, time: float, out: SolverOutput):
-        """Write entropy solver output to NetCDF using SolverOutput."""
+    def _write_output_ncdf(
+        output_dir: str, time: float, out: SolverOutput,
+        write_diagnostics: bool = False,
+    ):
+        """Write entropy solver output to NetCDF using SolverOutput.
+
+        Parameters
+        ----------
+        write_diagnostics : bool
+            When True, append per-component flux decomposition and
+            basic-node state to the NetCDF. See
+            ``config.interior_energetics.write_flux_diagnostics``.
+        """
         fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
         ds = nc.Dataset(fpath, mode='w')
         ds.description = 'Aragog entropy solver output'
@@ -1192,6 +1211,20 @@ class AragogRunner:
         _add('Ftotal_b', out.heat_flux, 'basic', 'W m-2')
         _add('Htotal_s', out.heating, 'staggered', 'W kg-1')
         _add('mass_s', out.mass_stag, 'staggered', 'kg')
+        # Diagnostic: per-component fluxes and basic-node state
+        # (T_core phi=0 instability investigation, 2026-04-14).
+        # Gated by config.interior_energetics.write_flux_diagnostics.
+        if write_diagnostics:
+            _add('Jcond_b', out.jcond_b, 'basic', 'W m-2')
+            _add('Jconv_b', out.jconv_b, 'basic', 'W m-2')
+            _add('Jgrav_b', out.jgrav_b, 'basic', 'W m-2')
+            _add('Jmix_b', out.jmix_b, 'basic', 'W m-2')
+            _add('dSdr_b', out.dSdr_b, 'basic', 'J kg-1 K-1 m-1')
+            _add('eddy_diff_b', out.eddy_diff, 'basic', 'm2 s-1')
+            _add('phi_basic_b', out.phi_basic, 'basic', '')
+            _add('T_basic_b', out.T_basic, 'basic', 'K')
+            _add('cp_basic_b', out.cp_basic, 'basic', 'J kg-1 K-1')
+            _add('rho_basic_b', out.rho_basic, 'basic', 'kg m-3')
 
         ds.createVariable('time', np.float64)
         ds['time'][0] = float(time)

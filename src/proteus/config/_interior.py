@@ -424,6 +424,16 @@ class Interior:
     Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
     SPIDER derives its own internally."""
 
+    # Diagnostic flag for T_core investigations.
+    write_flux_diagnostics: bool = field(default=False)
+    """When True, Aragog's NetCDF output includes per-component flux
+    decomposition (Jcond_b, Jconv_b, Jgrav_b, Jmix_b) and basic-node
+    state variables (dSdr_b, eddy_diff_b, phi_basic_b, T/cp/rho_basic_b).
+    Adds ~10 fields per snapshot; default False keeps output compact.
+    Used for the T_core phi=0 CMB-closure instability investigation
+    (2026-04-14). SPIDER path ignores this flag (uses SPIDER's own JSON
+    output which already includes Jcond_b, Jconv_b, Jgrav_b, Jmix_b)."""
+
     def __attrs_post_init__(self):
         """Resolve Tier 4 deprecation aliases.
 
