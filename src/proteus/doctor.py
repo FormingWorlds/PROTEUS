@@ -101,6 +101,7 @@ def get_env_var_status_message(var: str) -> str:
 VARIABLES = (
     'FWL_DATA',
     'RAD_DIR',
+    'ZALMOXIS_ROOT',
 )
 
 

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <!-- EXTRAHEAD OVERRIDE LOADED -->
+
+  <link rel="icon" type="image/png"
+        href="{{ 'assets/PROTEUS_black_on_white_logo_only.png' | url }}"
+        media="(prefers-color-scheme: light)" />
+
+  <link rel="icon" type="image/png"
+        href="{{ 'assets/PROTEUS_white_on_black_logo_only.png' | url }}"
+        media="(prefers-color-scheme: dark)" />
+
+  <script>
+  (function () {
+    function setFavicon(href) {
+      document.querySelectorAll(
+      'link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]'
+      ).forEach(el => el.remove());
+
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/png';
+      link.href = href;
+      document.head.appendChild(link);
+
+      const link2 = document.createElement('link');
+      link2.rel = 'shortcut icon';
+      link2.type = 'image/png';
+      link2.href = href;
+      document.head.appendChild(link2);
+      }
+
+
+    const light = "{{ 'assets/PROTEUS_black_on_white_logo_only.png' | url }}";
+    const dark  = "{{ 'assets/PROTEUS_white_on_black_logo_only.png' | url }}";
+
+    const mql = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+
+    function apply() {
+      // cache-bust to defeat Safari favicon cache
+      const v = Date.now();
+      setFavicon((mql && mql.matches ? dark : light) + '?v=' + v);
+    }
+
+    apply();
+    if (mql) {
+      if (mql.addEventListener) mql.addEventListener('change', apply);
+      else if (mql.addListener) mql.addListener(apply);
+    }
+  })();
+  </script>
+{% endblock %}

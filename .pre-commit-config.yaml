@@ -28,6 +28,14 @@ repos:
     rev: 054bda51dbe278b3e86f27c890e3f3ac877d616c
     hooks:
       - id: validate-cff
+  - repo: local
+    hooks:
+      - id: check-file-sizes
+        name: Check copilot-instructions.md and copilot-memory.md line limits
+        entry: bash tools/check_file_sizes.sh
+        language: system
+        files: \.github/(copilot-instructions|copilot-memory)\.md$
+        pass_filenames: false
 
 exclude: 'examples/.*'
 exclude: |

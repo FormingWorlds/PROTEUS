@@ -172,7 +172,7 @@ function setup_atmos_from_nc!(output_dir::String, ncfile::String, spfile::String
                             input_inst, input_s0fact, input_albedo, input_zenith,
                             input_tsurf,
                             input_gravity, input_radius,
-                            nlev_c, input_pl[end], input_pl[1],
+                            nlev_c, input_pl[end]/1e5, input_pl[1]/1e5,
                             input_vmrs_scalar, "",
                             flag_gcontinuum=input_flag_continuum,
                             flag_rayleigh=input_flag_rayleigh,

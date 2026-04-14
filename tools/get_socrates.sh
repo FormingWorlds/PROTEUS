@@ -1,6 +1,39 @@
 #!/bin/bash
 # Download and compile socrates
-# Pass folder as argument to use that as the download path
+
+# Do we have NetCDF?
+if ! [ -x "$(command -v nc-config)" ]; then
+  echo 'ERROR: NetCDF is not installed.' >&2
+  exit 1
+fi
+if ! [ -x "$(command -v nf-config)" ]; then
+  echo 'ERROR: NetCDF-Fortran library is not installed.' >&2
+  exit 1
+fi
+
+# Do we have gfortran?
+if ! [ -x "$(command -v gfortran)" ]; then
+  echo 'ERROR: gfortran compiler is not installed.' >&2
+  exit 1
+fi
+
+# Already setup?
+if [ -n "$RAD_DIR" ]; then
+    echo "WARNING: You already have SOCRATES installed"
+    echo "         RAD_DIR=$RAD_DIR"
+    echo "Reinstalling SOCRATES..."
+    echo ""
+    sleep 5
+fi
+
+portable_realpath() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath "$1"
+    else
+        python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$1"
+    fi
+}
+
 
 # Check SSH access to GitHub
 ssh -T git@github.com
@@ -9,37 +42,53 @@ if [ $? -eq 1 ]; then
 else
     use_ssh=false
 fi
-set -e
 
-# Output path
-socpath="socrates"
+# Disable SSH (uncomment to allow SSH clone of SOCRATES)
+# use_ssh=false
+
+# Download
+root=$(dirname $(portable_realpath $0))
+root=$(portable_realpath "$root/..")
+
 if [ -n "$1" ]; then
-    socpath=$1
+    socpath="$(portable_realpath "$1")"
+else
+    socpath="$root/socrates"
 fi
 rm -rf "$socpath"
 
-# Download (using SSH if possible)
-echo "Cloning from GitHub"
-if [ "$use_ssh" = true ]; then
-    uri="git@github.com:nichollsh/SOCRATES.git"
-else
-    uri="https://github.com/nichollsh/SOCRATES.git"
-fi
-echo "    $uri -> $socpath"
-git clone "$uri" "$socpath"
+set -euo pipefail
 
-# Configure and build SOCRATES
-olddir=$(pwd)
+
+if [ "$use_ssh" = true ]; then
+    git clone git@github.com:FormingWorlds/SOCRATES.git "$socpath"
+else
+    git clone https://github.com/FormingWorlds/SOCRATES.git "$socpath"
+fi
+
+# Compile SOCRATES
 cd "$socpath"
 ./configure
 ./build_code
 
-# Inform user
-echo "SOCRATES has been downloaded and built in $socpath"
-echo "Now add the following to your ~/.bashrc file:"
-echo "    export RAD_DIR=$socpath"
-
 # Environment
-# source ./set_rad_env
-# export LD_LIBRARY_PATH=""
-cd $olddir
+export RAD_DIR=$socpath
+cd $root
+
+# Check radlib exists
+radlib="$socpath/bin/radlib.a"
+if [ -f "$radlib" ]; then
+    echo "SOCRATES has been installed"
+    echo ""
+else
+    echo "Could not find compiled SOCRATES binaries - failed to compile"
+    exit 1
+fi
+
+
+# Inform user
+echo "You must now run the following command:"
+echo "    export RAD_DIR='$socpath'"
+echo " "
+echo "You should also add this command to your shell rc file (e.g. ~/.bashrc)"
+exit 0

@@ -6,10 +6,20 @@ from pathlib import Path
 from PIL import Image
 
 PROTEUS_ROOT = Path(__file__).parents[2]
-NEGLECT = ["N2_mol_atm", "N2_mol_total", "N2_kg_atm", "N2_kg_total",
-           "CH4_mol_atm", "CH4_mol_total", "CH4_kg_atm", "CH4_kg_total", "CH4_bar",
-           "F_net",
-           "runtime"]
+NEGLECT = [
+    'N2_mol_atm',
+    'N2_mol_total',
+    'N2_kg_atm',
+    'N2_kg_total',
+    'CH4_mol_atm',
+    'CH4_mol_total',
+    'CH4_kg_atm',
+    'CH4_kg_total',
+    'CH4_bar',
+    'F_net',
+    'runtime',
+]
+
 
 def resize_to_match(image1_path, image2_path):
     img1 = Image.open(image1_path)
@@ -20,6 +30,7 @@ def resize_to_match(image1_path, image2_path):
         img2 = img2.resize(img1.size)
 
     return img1, img2
+
 
 def df_intersect(df1, df2):
     """

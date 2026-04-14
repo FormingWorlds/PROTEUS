@@ -12,11 +12,12 @@ from proteus.utils.helper import UpdateStatusfile
 if TYPE_CHECKING:
     from proteus.config import Config
 
-log = logging.getLogger("fwl."+__name__)
+log = logging.getLogger('fwl.' + __name__)
+
 
 # Run the dummy atmosphere module
-def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
-    log.debug("Running dummy atmosphere...")
+def RunDummyAtm(dirs: dict, config: Config, hf_row: dict):
+    log.debug('Running dummy atmosphere...')
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
     # It represents a measure of the radiating temperature of the atmosphere above the
@@ -25,104 +26,108 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     # Setting this to 1 will result in an OLR of zero
 
     # Parameters
-    gamma           = config.atmos_clim.dummy.gamma
-    zenith_angle    = config.orbit.zenith_angle
-    albedo_pl       = float(hf_row["albedo_pl"])
-    inst_sf         = config.orbit.s0_factor
-    albedo_s        = config.atmos_clim.surf_greyalbedo
-    skin_d          = config.atmos_clim.surface_d
-    skin_k          = config.atmos_clim.surface_k
+    gamma = config.atmos_clim.dummy.gamma
+    zenith_angle = config.orbit.zenith_angle
+    albedo_pl = float(hf_row['albedo_pl'])
+    inst_sf = config.orbit.s0_factor
+    albedo_s = config.atmos_clim.surf_greyalbedo
+    skin_d = config.atmos_clim.surface_d
+    skin_k = config.atmos_clim.surface_k
 
     # Copy variables
-    T_magma = float(hf_row["T_magma"])
+    T_magma = float(hf_row['T_magma'])
 
     # Simple rad trans
     def _calc_fluxes(x):
         # surface emission and stellar flux
-        fl_U_LW = const_sigma * (x - gamma * x)**4.0
-        fl_D_SW =  hf_row["F_ins"] * (1.0 - albedo_pl) * \
-                    inst_sf * np.cos(zenith_angle * np.pi / 180.0)
+        fl_U_LW = const_sigma * (x - gamma * x) ** 4.0
+        fl_D_SW = (
+            hf_row['F_ins'] * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
+        )
 
         # surface reflection
         fl_U_SW = fl_D_SW * albedo_s
-        fl_D_SW = fl_D_SW * (1.0-albedo_s)
+        fl_D_SW = fl_D_SW * (1.0 - albedo_s)
 
         # net flux at surface
         fl_N = fl_U_LW + fl_U_SW - fl_D_SW
 
-        return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
+        return {'fl_U_LW': fl_U_LW, 'fl_D_SW': fl_D_SW, 'fl_U_SW': fl_U_SW, 'fl_N': fl_N}
 
     # fixed T_Surf
     if config.atmos_clim.surf_state == 'fixed':
-        log.info("Calculating fluxes with dummy atmosphere")
+        log.info('Calculating fluxes with dummy atmosphere')
         T_surf_atm = T_magma
         fluxes = _calc_fluxes(T_surf_atm)
 
     # conductive lid
     elif config.atmos_clim.surf_state == 'skin':
-        log.info("Calculating fluxes with dummy atmosphere and CBL")
+        log.info('Calculating fluxes with dummy atmosphere and CBL')
         from scipy.optimize import root_scalar
 
         # We need to solve for the state where fl_N = f_skn
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
         def _resid(x):
-            F_skn = skin_k / skin_d * (hf_row["T_magma"] - x)
+            F_skn = skin_k / skin_d * (hf_row['T_magma'] - x)
             _f = _calc_fluxes(x)
-            return _f["fl_N"] - F_skn
+            return _f['fl_N'] - F_skn
 
-        r = root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0,
-                                        xtol=1.0e-7, maxiter=40)
+        r = root_scalar(
+            _resid, method='secant', x0=T_magma, x1=T_magma - 10.0, xtol=1.0e-7, maxiter=40
+        )
         T_surf_atm = float(r.root)
         fluxes = _calc_fluxes(T_surf_atm)
 
         if r.converged:
-            log.debug("    Found solution after %d iterations" % int(r.iterations))
+            log.debug('    Found solution after %d iterations' % int(r.iterations))
         else:
             UpdateStatusfile(dirs, 22)
-            raise RuntimeError("Could not find solution for T_surf with dummy_atmosphere")
+            raise RuntimeError('Could not find solution for T_surf with dummy_atmosphere')
 
     else:
         UpdateStatusfile(dirs, 20)
-        raise ValueError("Invalid surface state chosen for dummy_atmosphere")
+        raise ValueError('Invalid surface state chosen for dummy_atmosphere')
 
     # Require that the net flux must be upward
-    F_atm_lim = fluxes["fl_N"]
+    F_atm_lim = fluxes['fl_N']
     if config.atmos_clim.prevent_warming:
-        F_atm_lim = max( 1.0e-8 , F_atm_lim )
+        F_atm_lim = max(1.0e-8, F_atm_lim)
 
     # Print if a limit was applied
-    if not np.isclose(F_atm_lim , fluxes["fl_N"] ):
-        log.warning("Change in F_atm [W m-2] limited in this step!")
-        log.warning("    %g  ->  %g" % (fluxes["fl_N"] , F_atm_lim))
+    if not np.isclose(F_atm_lim, fluxes['fl_N']):
+        log.warning('Change in F_atm [W m-2] limited in this step!')
+        log.warning('    %g  ->  %g' % (fluxes['fl_N'], F_atm_lim))
 
     # Scale height used to calculate observed radius
-    atm_H = const_R * T_surf_atm / (hf_row["atm_kg_per_mol"] * hf_row["gravity"])
-    R_obs = hf_row["R_int"] + atm_H * config.atmos_clim.dummy.height_factor
+    atm_H = const_R * T_surf_atm / (hf_row['atm_kg_per_mol'] * hf_row['gravity'])
+    R_obs = hf_row['R_int'] + atm_H * config.atmos_clim.dummy.height_factor
 
     # Return result
-    log.info("    T_surf     =  %.3e  K"     % T_surf_atm)
-    log.info("    F_atm      =  %.3e  W m-2" % F_atm_lim)
-    log.info("    F_olr      =  %.3e  W m-2" % fluxes["fl_U_LW"])
-    log.info("    F_sct      =  %.3e  W m-2" % fluxes["fl_U_SW"])
+    log.info('    T_surf     =  %.3e  K' % T_surf_atm)
+    log.info('    F_atm      =  %.3e  W m-2' % F_atm_lim)
+    log.info('    F_olr      =  %.3e  W m-2' % fluxes['fl_U_LW'])
+    log.info('    F_sct      =  %.3e  W m-2' % fluxes['fl_U_SW'])
 
     # Pack output
     output = {}
-    output["T_surf"]  = T_surf_atm
-    output["F_atm"]   = F_atm_lim             # Net flux at TOA
-    output["F_olr"]   = fluxes["fl_U_LW"]     # OLR
-    output["F_sct"]   = fluxes["fl_U_SW"]     # Scattered SW flux
-    output["R_obs"]   = R_obs
-    output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
-    output["p_xuv"]   = hf_row["P_surf"]
-    output["R_xuv"]   = R_obs
-    output["p_obs"]   = hf_row["P_surf"]
-    output["T_obs"]   = hf_row["T_surf"]
-    output["ocean_areacov"] = 0.0
-    output["ocean_maxdepth"]= 0.0
-    output["P_surf_clim"] = hf_row["P_surf"]
+    output['T_surf'] = T_surf_atm
+    output['F_atm'] = F_atm_lim  # Net flux at TOA
+    output['F_olr'] = fluxes['fl_U_LW']  # OLR
+    output['F_sct'] = fluxes['fl_U_SW']  # Scattered SW flux
+    output['R_obs'] = R_obs
+    output['albedo'] = fluxes['fl_U_SW'] / fluxes['fl_D_SW']
+    output['p_xuv'] = hf_row['P_surf']
+    output['R_xuv'] = R_obs
+    output['p_obs'] = hf_row['P_surf']
+    # For the dummy climate model, the observed temperature is the surface temperature.
+    # Use the locally computed value to avoid requiring hf_row["T_surf"] in unit tests.
+    output['T_obs'] = T_surf_atm
+    output['ocean_areacov'] = 0.0
+    output['ocean_maxdepth'] = 0.0
+    output['P_surf_clim'] = hf_row['P_surf']
 
-    # gas composition for escape equal to surface composition
+    # Gas composition for escape equal to surface composition
     for g in gas_list:
-        hf_row[g+"_vmr_xuv"] = float(hf_row[g+"_vmr"])
+        hf_row[f'{g}_vmr_xuv'] = float(hf_row.get(f'{g}_vmr', 0.0))
 
     return output

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from difflib import get_close_matches
+from pathlib import Path
 
 # Prevent workers from using each other's CPUs to avoid
 #     oversubscription and improve performance
@@ -14,7 +16,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 
 import click
 
@@ -84,6 +85,15 @@ def plot(plots, config_path: Path):
     click.echo(f'Config: {config_path}')
 
     handler = Proteus(config_path=config_path)
+    setup_logger(
+        logpath=os.path.join(handler.directories['output'], 'plot.log'),
+        logterm=True,
+        level=handler.config.params.out.logging,
+    )
+
+    if plots[0] == 'list':
+        click.echo('Available plots: ' + ', '.join(plot_dispatch.keys()))
+        return
 
     if 'all' in plots:
         plots = list(plot_dispatch.keys())
@@ -168,8 +178,8 @@ def stellar():
     download_stellar_spectra()
 
 
-# muscles and solar star names available online (on zenodo)
-STARS_ONLINE = {
+# MUSCLES and solar star names available online (on Zenodo)
+STARS_ONLINE: dict[str, list[str]] = {
     'muscles': [
         'gj1132',
         'gj1214',
@@ -208,8 +218,51 @@ STARS_ONLINE = {
         'wasp-43',
         'wasp-77a',
     ],
-    'nrel': ['sun'],
+    'solar': [
+        'sun',
+        'sun0.6ga',
+        'sun1.8ga',
+        'sun2.4ga',
+        'sun2.7ga',
+        'sun3.8ga',
+        'sun4.4ga',
+        'sun5.6gyr',
+        'sunmodern',
+    ],
 }
+
+
+def normalize_star_name(star_name: str | None) -> str | None:
+    """Normalize user input to match our canonical star IDs."""
+    if not star_name:
+        return None
+    # Keep it conservative: lowercase + strip. (Add more rules later if desired.)
+    return star_name.lower().strip()
+
+
+def validate_star_name(star_name: str | None, *, catalog: str = 'muscles') -> str | None:
+    """Validate and return a normalized star name.
+
+    Raises a ClickException with "did you mean" suggestions if the star is unknown.
+    """
+    norm = normalize_star_name(star_name)
+    if not norm:
+        return None
+
+    if catalog not in STARS_ONLINE:
+        raise click.ClickException(
+            f"Unknown catalog '{catalog}'. Available: {', '.join(sorted(STARS_ONLINE))}."
+        )
+
+    choices = sorted(set(STARS_ONLINE[catalog]))
+    if norm not in choices:
+        suggestions = get_close_matches(norm, choices, n=8, cutoff=0.6)
+        hint = f' Did you mean: {", ".join(suggestions)}?' if suggestions else ''
+        raise click.ClickException(
+            f"Unknown {catalog.upper()} star '{star_name}'.{hint} "
+            f'Use --list to see all available names.'
+        )
+    return norm
 
 
 @click.command()
@@ -228,16 +281,31 @@ STARS_ONLINE = {
     default=False,
     help='Download all available MUSCLES spectra.',
 )
-def muscles(star_name: str | None, download_all: bool):
-    """Download MUSCLES stellar spectrum(s)."""
+@click.option(
+    '--list',
+    'list_stars',
+    is_flag=True,
+    default=False,
+    help='List available MUSCLES star names and exit.',
+)
+def muscles(star_name: str | None, download_all: bool, list_stars: bool):
+    """Download MUSCLES stellar spectrum(s). See https://proteus-framework.org/PROTEUS/data.html#using-a-mega-muscles-observed-spectrum for more information."""
     from .utils.data import download_muscles
 
+    if list_stars:
+        for s in STARS_ONLINE['muscles']:
+            click.echo(s)
+        return
+
     if download_all:
+        if star_name:
+            raise click.ClickException('Use either --all or --star NAME (not both).')
         targets = STARS_ONLINE['muscles']
     else:
         if not star_name:
             raise click.ClickException('Provide --star NAME or use --all.')
-        targets = [star_name]
+        star = validate_star_name(star_name, catalog='muscles')
+        targets = [star]
 
     ok, failed = 0, []
 
@@ -251,24 +319,34 @@ def muscles(star_name: str | None, download_all: bool):
     click.secho(f'Done. OK: {ok}/{len(targets)}', fg='green' if ok else 'red')
 
     if failed:
-        # Don’t hard-fail if some succeeded
         click.secho(f'Failed ({len(failed)}): {", ".join(failed)}', fg='yellow')
         if ok == 0:
             raise click.ClickException('All MUSCLES downloads failed.')
 
 
 @click.command()
-@click.option('--feh', 'FeH', required=True, type=float, help='Metallicity [Fe/H].')
-@click.option('--alpha', required=True, type=float, help='Alpha enhancement [alpha/M].')
+@click.option(
+    '--feh',
+    'FeH',
+    required=True,
+    type=float,
+    help='Stellar metallicity [Fe/H]. Solar is 0.0, subsolar is negative, supersolar is positive. Input will automatically be rounded to the nearest allowed grid value.',
+)
+@click.option(
+    '--alpha',
+    required=True,
+    type=float,
+    help='Stellar alpha enhancement [alpha/M]. Solar is 0.0, subsolar is negative, supersolar is positive. Input will automatically be rounded to the nearest allowed grid value for the given [Fe/H].',
+)
 @click.option(
     '--teff',
     required=False,
     type=float,
     default=None,
-    help='Optional Teff [K] to choose the correct PHOENIX alpha availability.',
+    help='Optional Teff [K] to choose the correct PHOENIX alpha availability. ',
 )
 def phoenix(FeH: float, alpha: float, teff: float | None):
-    """Download PHOENIX grid ZIP for the nearest allowed (FeH, alpha) point."""
+    """Download PHOENIX grid ZIP for the nearest allowed (FeH, alpha) point. See https://proteus-framework.org/PROTEUS/data.html#using-a-phoenix-synthetic-spectrum for more information."""
     from .utils.data import download_phoenix
     from .utils.phoenix_helper import phoenix_to_grid
 
@@ -289,12 +367,38 @@ def phoenix(FeH: float, alpha: float, teff: float | None):
 
 @click.command()
 def solar():
-    """Download the NREL modern solar spectrum."""
-    from .utils.data import download_solar_spectrum
+    """Download the available solar spectra."""
+    from .utils.data import GetFWLData, download_stellar_spectra
 
-    ok = download_solar_spectrum()
-    if not ok:
-        raise click.ClickException('Failed to download solar spectrum.')
+    # Where the data should end up
+    solar_dir = GetFWLData() / 'stellar_spectra' / 'solar'
+
+    try:
+        download_stellar_spectra(folders=('solar',))
+    except Exception as e:
+        raise click.ClickException(f'Failed to download solar spectra: {e}') from e
+
+    # Did we actually get files?
+    if solar_dir.exists():
+        files = sorted(p for p in solar_dir.rglob('*') if p.is_file())
+        if files:
+            click.secho('Solar spectra downloaded successfully.', fg='green')
+            click.echo(f'Location: {solar_dir}')
+            return
+
+    # If we get here, the downloader didn't raise but we can't find files.
+    log_dir = GetFWLData()
+    zenodo_log = log_dir / 'zenodo_download.log'
+    validate_log = log_dir / 'zenodo_validate.log'
+
+    msg = (
+        'Solar download finished without an exception, but no files were found where expected.\n'
+        f'Expected: {solar_dir}\n'
+        f'Check logs:\n'
+        f'  - {zenodo_log}\n'
+        f'  - {validate_log}'
+    )
+    raise click.ClickException(msg)
 
 
 @click.command()
@@ -303,6 +407,14 @@ def surfaces():
     from .utils.data import download_surface_albedos
 
     download_surface_albedos()
+
+
+@click.command()
+def scattering():
+    """Get scattering radiative properties"""
+    from .utils.data import download_scattering
+
+    download_scattering()
 
 
 @click.command()
@@ -358,6 +470,7 @@ def spider():
 cli.add_command(get)
 get.add_command(spectral)
 get.add_command(surfaces)
+get.add_command(scattering)
 get.add_command(muscles)
 get.add_command(phoenix)
 get.add_command(solar)
@@ -552,11 +665,11 @@ def _update_input_data(config_path: Path):
         # Only try data download if a config file is present.
         configuration = read_config_object(config_path)
         download_sufficient_data(configuration, clean=True)
-        click.secho('✅ Additional data has been downloaded.', fg='green')
+        click.secho('[+] Additional data has been downloaded.', fg='green')
         return True
 
     else:
-        click.echo(f'⚠️ No config file found at {config_path}, skipping data download.')
+        click.echo(f'[!] No config file found at {config_path}, skipping data download.')
         return False
 
 
@@ -577,7 +690,7 @@ def install_all(export_env: bool, config_path: Path):
     required_disk_space_in_GB = 5
     if not available_disk_space_in_GB > required_disk_space_in_GB:
         click.secho(
-            f'⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.',
+            f'[!] You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.',
             fg='yellow',
         )
         click.secho(
@@ -585,7 +698,7 @@ def install_all(export_env: bool, config_path: Path):
             fg='yellow',
         )
         click.secho(
-            "❌ Aborting installation — 'proteus install-all'.",
+            "[x] Aborting installation -- 'proteus install-all'.",
             fg='red',
         )
         raise SystemExit(1)
@@ -595,21 +708,21 @@ def install_all(export_env: bool, config_path: Path):
     # --- Step 1: FWL_DATA directory ---
     fwl_data = resolve_fwl_data_dir()
     fwl_data.mkdir(parents=True, exist_ok=True)
-    click.secho(f'✅ FWL_DATA directory: {fwl_data}', fg='green')
+    click.secho(f'[+] FWL_DATA directory: {fwl_data}', fg='green')
 
     # --- Step 2: Install SOCRATES ---
     root = Path.cwd()
     socrates_dir = root / 'socrates'
     if not socrates_dir.exists():
-        click.secho('🌤️ Installing SOCRATES...', fg='blue')
+        click.secho('[+] Installing SOCRATES...', fg='blue')
         try:
             subprocess.run(['bash', 'tools/get_socrates.sh'], check=True)
         except subprocess.CalledProcessError as e:
-            click.secho('❌ Failed to install SOCRATES', fg='red')
+            click.secho('[x] Failed to install SOCRATES', fg='red')
             click.echo(e)
             raise SystemExit(1)
     else:
-        click.secho('✅ SOCRATES already present', fg='green')
+        click.secho('[+] SOCRATES already present', fg='green')
 
     rad_dir = socrates_dir.resolve()
     os.environ.setdefault('RAD_DIR', str(rad_dir))
@@ -618,7 +731,7 @@ def install_all(export_env: bool, config_path: Path):
 
     # --- Step 3: Julia check ---
     if not is_julia_installed():
-        click.secho('⚠️ Julia not found in PATH.', fg='yellow')
+        click.secho('[!] Julia not found in PATH.', fg='yellow')
         click.secho(
             '   Proteus requires Julia for AGNI.',
             fg='yellow',
@@ -629,15 +742,16 @@ def install_all(export_env: bool, config_path: Path):
         )
         click.secho(f'   Current PATH: {os.environ["PATH"]}', fg='white')
         click.secho(
-            "❌ Aborting installation — 'proteus install-all' cannot proceed without Julia.",
+            "[x] Aborting installation -- 'proteus install-all' cannot proceed without Julia.",
             fg='red',
         )
         raise SystemExit(1)
+    julia_exec = shutil.which('julia')
 
     # --- Step 4: Install AGNI ---
     agni_dir = root / 'AGNI'
     if not agni_dir.exists():
-        click.secho('🧪 Installing AGNI...', fg='blue')
+        click.secho('[+] Installing AGNI...', fg='blue')
         try:
             subprocess.run(
                 ['git', 'clone', 'https://github.com/nichollsh/AGNI.git'],
@@ -645,30 +759,34 @@ def install_all(export_env: bool, config_path: Path):
             )
             subprocess.run(['bash', 'src/get_agni.sh', '0'], cwd=agni_dir, env=env, check=True)
         except subprocess.CalledProcessError as e:
-            click.secho('❌ Failed to install AGNI', fg='red')
+            click.secho('[x] Failed to install AGNI', fg='red')
             click.echo(e)
             raise SystemExit(1)
     else:
-        click.secho('✅ AGNI already present', fg='green')
+        click.secho('[+] AGNI already present', fg='green')
 
     # --- Step 5: Export environment variables ---
     if export_env:
-        for var, value in {'FWL_DATA': fwl_data, 'RAD_DIR': rad_dir}.items():
+        for var, value in {
+            'FWL_DATA': fwl_data,
+            'RAD_DIR': rad_dir,
+            'PYTHON_JULIAPKG_EXE': julia_exec,
+        }.items():
             rc_file = append_to_shell_rc(var, str(value))
             if rc_file:
-                click.secho(f'✅ Exported {var} to {rc_file}', fg='green')
+                click.secho(f'[+] Exported {var} to {rc_file}', fg='green')
             else:
                 click.secho(
-                    f'ℹ️ {var} already exported or shell not recognized',
+                    f'[i] {var} already exported or shell not recognized',
                     fg='cyan',
                 )
-        click.secho('🔁 Please run: source ~/.bashrc (or your shell rc)', fg='yellow')
+        click.secho('[i] Please run: source ~/.bashrc (or your shell rc)', fg='yellow')
 
     # --- Step 6: Update input data ---
     _update_input_data(config_path)
     (root / 'output').mkdir(exist_ok=True)
 
-    click.secho('🎉 PROTEUS installation completed!', fg='green')
+    click.secho('[+] PROTEUS installation completed!', fg='green')
 
 
 @cli.command()
@@ -692,7 +810,7 @@ def update_all(export_env: bool, config_path: Path):
     required_disk_space_in_GB = 5
     if not available_disk_space_in_GB > required_disk_space_in_GB:
         click.secho(
-            f'⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.',
+            f'[!] You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.',
             fg='yellow',
         )
         click.secho(
@@ -700,7 +818,7 @@ def update_all(export_env: bool, config_path: Path):
             fg='yellow',
         )
         click.secho(
-            "❌ Aborting installation — 'proteus update-all'.",
+            "[x] Aborting installation -- 'proteus update-all'.",
             fg='red',
         )
         raise SystemExit(1)
@@ -714,35 +832,35 @@ def update_all(export_env: bool, config_path: Path):
     try:
         fwl_data = resolve_fwl_data_dir()
     except EnvironmentError:
-        click.secho('❌ FWL_DATA not set. Run `proteus install-all` first.', fg='red')
+        click.secho('[x] FWL_DATA not set. Run `proteus install-all` first.', fg='red')
         raise SystemExit(1)
-    click.secho(f'📂 Using FWL_DATA: {fwl_data}', fg='green')
+    click.secho(f'[+] Using FWL_DATA: {fwl_data}', fg='green')
 
     # --- Step 3: Update SOCRATES ---
     socrates_dir = root / 'socrates'
     if socrates_dir.exists():
-        click.secho('🌤️ Updating SOCRATES...', fg='blue')
+        click.secho('[+] Updating SOCRATES...', fg='blue')
         try:
             subprocess.run(['bash', 'tools/get_socrates.sh'], check=True)
-            click.secho('✅ SOCRATES updated', fg='green')
+            click.secho('[+] SOCRATES updated', fg='green')
         except subprocess.CalledProcessError as e:
-            click.secho('❌ Failed to update SOCRATES', fg='red')
+            click.secho('[x] Failed to update SOCRATES', fg='red')
             click.echo(e)
     else:
-        click.secho('⚠️ SOCRATES not found. Run `proteus install-all`.', fg='yellow')
+        click.secho('[!] SOCRATES not found. Run `proteus install-all`.', fg='yellow')
 
     rad_dir = socrates_dir.resolve()
     os.environ.setdefault('RAD_DIR', str(rad_dir))
 
     # --- Step 4: Julia check ---
     if not is_julia_installed():
-        click.secho('⚠️ Julia not found in PATH.', fg='yellow')
+        click.secho('[!] Julia not found in PATH.', fg='yellow')
         click.secho('   Cannot update AGNI without Julia.', fg='yellow')
     else:
         # --- Step 5: Update AGNI ---
         agni_dir = root / 'AGNI'
         if agni_dir.exists():
-            click.secho('🧪 Updating AGNI...', fg='blue')
+            click.secho('[+] Updating AGNI...', fg='blue')
             try:
                 subprocess.run(['git', 'pull'], cwd=agni_dir, check=True)
                 subprocess.run(
@@ -751,30 +869,30 @@ def update_all(export_env: bool, config_path: Path):
                     env=os.environ,
                     check=True,
                 )
-                click.secho('✅ AGNI updated', fg='green')
+                click.secho('[+] AGNI updated', fg='green')
             except subprocess.CalledProcessError as e:
-                click.secho('❌ Failed to update AGNI', fg='red')
+                click.secho('[x] Failed to update AGNI', fg='red')
                 click.echo(e)
         else:
-            click.secho('⚠️ AGNI not found. Run `proteus install-all`.', fg='yellow')
+            click.secho('[!] AGNI not found. Run `proteus install-all`.', fg='yellow')
 
     # --- Step 6: Refresh environment exports ---
     if export_env:
         for var, value in {'FWL_DATA': fwl_data, 'RAD_DIR': rad_dir}.items():
             rc_file = append_to_shell_rc(var, str(value))
             if rc_file:
-                click.secho(f'✅ Exported {var} to {rc_file}', fg='green')
+                click.secho(f'[+] Exported {var} to {rc_file}', fg='green')
             else:
                 click.secho(
-                    f'ℹ️ {var} already exported or shell not recognized',
+                    f'[i] {var} already exported or shell not recognized',
                     fg='cyan',
                 )
-        click.secho('🔁 Please run: source ~/.bashrc (or your shell rc)', fg='yellow')
+        click.secho('[i] Please run: source ~/.bashrc (or your shell rc)', fg='yellow')
 
     # --- Step 7: Update input data ---
     _update_input_data(config_path)
 
-    click.secho('🎉 PROTEUS update completed!', fg='green')
+    click.secho('[+] PROTEUS update completed!', fg='green')
 
 
 if __name__ == '__main__':
