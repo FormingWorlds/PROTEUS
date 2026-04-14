@@ -125,12 +125,10 @@ class AragogRunner:
         else:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
-                # Preserve the evolved S field across equilibration resets.
-                # Use the solver's entropy_staggered accessor instead of
-                # reading sol.y directly: with the v4 Bower core BC the
-                # state vector is N+1 long (entropy followed by T_core),
-                # and the wrapper-side handover logic only wants the
-                # entropy block. The accessor strips T_core when present.
+                # Preserve the evolved S field across equilibration
+                # resets. Use entropy_staggered (not sol.y directly):
+                # extended-state modes carry an extra trailing element
+                # the wrapper handover does not want.
                 sol = interior_o.aragog_solver.solution
                 if sol is not None and sol.y.size > 0:
                     S_block = interior_o.aragog_solver.entropy_staggered
@@ -201,7 +199,7 @@ class AragogRunner:
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
             param_utbl=config.interior_energetics.param_utbl,
             param_utbl_const=config.interior_energetics.param_utbl_const,
-            # core BC mode (v5 Path A adds 'energy_balance')
+            # core BC mode: 'energy_balance' (default), 'quasi_steady', or 'gradient'
             core_bc=core_bc_str,
         )
 
@@ -987,11 +985,9 @@ class AragogRunner:
         solver.parameters.solver.start_time = hf_row['Time']
         solver.parameters.solver.end_time = hf_row['Time'] + dt
 
-        # Get entropy field from previous run.
-        # With the v4 Bower core BC the solver state vector is N+1 long
-        # (entropy block followed by T_core); use entropy_staggered to
-        # strip T_core so the wrapper-side _last_entropy stays the
-        # entropy-only profile.
+        # Get entropy field from previous run. Use entropy_staggered
+        # (not sol.y directly) so extended-state modes' trailing
+        # element is stripped before handover.
         if output_dir is not None:
             S_field = read_last_Sfield(output_dir, hf_row['Time'])
         else:

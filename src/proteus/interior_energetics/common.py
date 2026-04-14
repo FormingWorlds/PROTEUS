@@ -400,7 +400,7 @@ class Interior_t:
         self.dt_hysteresis_remaining = 0
 
         # Solver-reported stiffness score, 0 = easy, 1 = saturated.
-        # Set by AragogRunner / AragogJAXRunner from the number of
+        # Set by AragogRunner from the number of
         # internal ODE substeps per coupling call, normalised to a
         # "typical" baseline. Currently consumed only for logging;
         # future work: feed into the hysteresis trigger condition.
