@@ -5,9 +5,9 @@ version = "2.0"
 [params.out]
 path = "chili_base"
 logging = "INFO"
-plot_fmt = "png"
-write_mod = 1
-plot_mod = 20
+plot_fmt = "pdf"
+write_mod = 4
+plot_mod = 40
 archive_mod = "none"
 remove_sf = true
 
@@ -15,13 +15,14 @@ remove_sf = true
 starspec = 10000000.0
 starinst = 10.0
 method = "adaptive"
-minimum = 10000.0
-minimum_rel = 1e-05
+minimum = 100.0
+minimum_rel = 5e-3
 maximum = 10000000.0
-initial = 30.0
+initial = 10.0
+
 [params.dt.adaptive]
-atol = 0.03
-rtol = 0.10
+atol = 0.04
+rtol = 0.11
 
 [params.stop]
 strict = false
@@ -128,8 +129,9 @@ psurf_thresh = 0.1
 dx_max = 10.0
 max_steps = 70
 perturb_all = true
-mlt_criterion = "l"
-fastchem_floor = 100.0
+mlt_criterion = "s"
+fastchem_floor = 700.0
+ini_profile = "isothermal"
 
 [atmos_clim.dummy]
 gamma = 0.01
@@ -141,7 +143,7 @@ reservoir = "outgas"
 
 [escape.zephyrus]
 Pxuv = 5e-05
-efficiency = 0.1
+efficiency = 0.3
 tidal = true
 
 [interior]

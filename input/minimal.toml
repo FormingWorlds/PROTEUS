@@ -43,10 +43,10 @@ version = "2.0"
     module = "zephyrus"
 
 [interior]
-    module = "aragog"
+    module = "spider"
 
-    [interior.aragog]
-        ini_tmagma = 3300.0     # Initial magma surface temperature [K]
+    [interior.spider]
+        ini_entropy = 2900.0    # Surface entropy conditions [J K-1 kg-1]
 
 [outgas]
     fO2_shift_IW    = 4         # Atmosphere/interior boundary oxidation state [log10(ΔIW)]

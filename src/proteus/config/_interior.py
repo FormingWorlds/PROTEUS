@@ -5,17 +5,23 @@ from attrs.validators import ge, gt, in_, lt
 
 
 def valid_spider(instance, attribute, value):
-    if instance.module != "spider":
+    if instance.module != 'spider':
         return
 
     ini_entropy = instance.spider.ini_entropy
-    if (not ini_entropy) or (ini_entropy <= 200.0) :
-        raise ValueError("`interior.spider.ini_entropy` must be >200")
+    if (not ini_entropy) or (ini_entropy <= 200.0):
+        raise ValueError('`interior.spider.ini_entropy` must be >200')
 
     # at least one energy term enabled
     spider = instance.spider
-    if not (spider.conduction or spider.convection or spider.mixing or spider.gravitational_separation):
-        raise ValueError("Must enable at least one energy transport term in SPIDER")
+    if not (
+        spider.conduction
+        or spider.convection
+        or spider.mixing
+        or spider.gravitational_separation
+    ):
+        raise ValueError('Must enable at least one energy transport term in SPIDER')
+
 
 def valid_interiorboundary(instance, attribute, value):
     if instance.module != "boundary":
@@ -34,6 +40,7 @@ def valid_interiorboundary(instance, attribute, value):
 def valid_path(instance, attribute, value):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"'{attribute.name}' must be a non-empty string")
+
 
 @define
 class Spider:
@@ -70,34 +77,41 @@ class Spider:
     matprop_smooth_width: float
         Window width, in melt-fraction, for smoothing properties across liquidus and solidus
     """
-    ini_entropy                     = field(default=None)
-    ini_dsdr: float                 = field(default=-4.698e-6,  validator=lt(0))
-    num_levels: int                 = field(default=190,        validator=ge(40))
-    mixing_length: int              = field(default=2,          validator=in_((1,2)))
-    tolerance: float                = field(default=1e-10,      validator=gt(0))
-    tolerance_rel: float            = field(default=1e-10,      validator=gt(0))
-    solver_type: str                = field(default="bdf",      validator=in_(("adams", "bdf")))
-    tsurf_atol: float               = field(default=10.0,       validator=gt(0))
-    tsurf_rtol: float               = field(default=0.01,       validator=gt(0))
-    conduction: bool                = field(default=True)
-    convection: bool                = field(default=True)
-    gravitational_separation: bool  = field(default=True)
-    mixing: bool                    = field(default=True)
-    matprop_smooth_width: float     = field(default=1e-2,   validator=(gt(0),lt(1)))
+
+    ini_entropy = field(default=None)
+    ini_dsdr: float = field(default=-4.698e-6, validator=lt(0))
+    num_levels: int = field(default=190, validator=ge(40))
+    mixing_length: int = field(default=2, validator=in_((1, 2)))
+    tolerance: float = field(default=1e-10, validator=gt(0))
+    tolerance_rel: float = field(default=1e-10, validator=gt(0))
+    solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
+    tsurf_atol: float = field(default=10.0, validator=gt(0))
+    tsurf_rtol: float = field(default=0.01, validator=gt(0))
+    conduction: bool = field(default=True)
+    convection: bool = field(default=True)
+    gravitational_separation: bool = field(default=True)
+    mixing: bool = field(default=True)
+    matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
 
 
 def valid_aragog(instance, attribute, value):
-    if instance.module != "aragog":
+    if instance.module != 'aragog':
         return
 
     ini_tmagma = instance.aragog.ini_tmagma
-    if (not ini_tmagma) or (ini_tmagma <= 200.0) :
-        raise ValueError("`interior.aragog.ini_tmagma` must be >200")
+    if (not ini_tmagma) or (ini_tmagma <= 200.0):
+        raise ValueError('`interior.aragog.ini_tmagma` must be >200')
 
     # at least one energy term enabled
     aragog = instance.aragog
-    if not (aragog.conduction or aragog.convection or aragog.mixing or aragog.gravitational_separation):
-        raise ValueError("Must enable at least one energy transport term in Aragog")
+    if not (
+        aragog.conduction
+        or aragog.convection
+        or aragog.mixing
+        or aragog.gravitational_separation
+    ):
+        raise ValueError('Must enable at least one energy transport term in Aragog')
+
 
 @define
 class Aragog:
@@ -143,38 +157,48 @@ class Aragog:
         Adiabatic bulk modulus AW-EOS parameter [Pa].
     """
 
-    logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma                          = field(default=None)
-    basal_temperature: float            = field(default=7000)
-    init_file: str                      = field(default=None)
-    num_levels: int                     = field(default=100,    validator=ge(40))
-    initial_condition: int              = field(default=1, validator=in_((1,2,3,)))
-    tolerance: float                    = field(default=1e-10,  validator=gt(0))
-    inner_boundary_condition: int       = field(default=1, validator=ge(0))
-    inner_boundary_value:float          = field(default=4000, validator=ge(0))
-    conduction: bool                    = field(default=True)
-    convection: bool                    = field(default=True)
-    gravitational_separation: bool      = field(default=False)
-    mixing: bool                        = field(default=False)
-    dilatation: bool                    = field(default=False)
-    mass_coordinates: bool              = field(default=False)
-    tsurf_poststep_change: float        = field(default=30, validator=ge(0))
-    event_triggering:bool               = field(default=True)
-    bulk_modulus: float                 = field(default=260e9, validator=gt(0))
+    logging: str = field(default='ERROR', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
+    ini_tmagma = field(default=None)
+    basal_temperature: float = field(default=7000)
+    init_file: str = field(default=None)
+    num_levels: int = field(default=100, validator=ge(40))
+    initial_condition: int = field(
+        default=1,
+        validator=in_(
+            (
+                1,
+                2,
+                3,
+            )
+        ),
+    )
+    tolerance: float = field(default=1e-10, validator=gt(0))
+    inner_boundary_condition: int = field(default=1, validator=ge(0))
+    inner_boundary_value: float = field(default=4000, validator=ge(0))
+    conduction: bool = field(default=True)
+    convection: bool = field(default=True)
+    gravitational_separation: bool = field(default=False)
+    mixing: bool = field(default=False)
+    dilatation: bool = field(default=False)
+    mass_coordinates: bool = field(default=False)
+    tsurf_poststep_change: float = field(default=30, validator=ge(0))
+    event_triggering: bool = field(default=True)
+    bulk_modulus: float = field(default=260e9, validator=gt(0))
 
 
 def valid_interiordummy(instance, attribute, value):
-    if instance.module != "dummy":
+    if instance.module != 'dummy':
         return
 
     ini_tmagma = instance.dummy.ini_tmagma
-    if (not ini_tmagma) or (ini_tmagma <= 200.0) :
-        raise ValueError("`interior.dummy.ini_tmagma` must be >200")
+    if (not ini_tmagma) or (ini_tmagma <= 200.0):
+        raise ValueError('`interior.dummy.ini_tmagma` must be >200')
 
     tliq = instance.dummy.mantle_tliq
     tsol = instance.dummy.mantle_tsol
     if tliq <= tsol:
-        raise ValueError(f"Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)")
+        raise ValueError(f'Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
+
 
 @define
 class InteriorBoundary:
@@ -288,13 +312,14 @@ class InteriorDummy:
     """
 
     ini_tmagma = field(default=None)
-    tmagma_atol: float = field(default=30.0,   validator=ge(0))
-    tmagma_rtol: float = field(default=0.05,   validator=ge(0))
+    tmagma_atol: float = field(default=30.0, validator=ge(0))
+    tmagma_rtol: float = field(default=0.05, validator=ge(0))
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
-    mantle_rho: float  = field(default=4.55e3, validator=gt(0))
-    mantle_cp: float   = field(default=1792.0, validator=ge(0))
-    H_radio: float     = field(default=0.0,    validator=ge(0))
+    mantle_rho: float = field(default=4.55e3, validator=gt(0))
+    mantle_cp: float = field(default=1792.0, validator=ge(0))
+    H_radio: float = field(default=0.0, validator=ge(0))
+
 
 @define
 class Interior:
@@ -324,15 +349,23 @@ class Interior:
     dummy: Dummy
         Parameters for running the dummy module.
     melting_dir: str
-        Set of melting curves to use in the model.
-    lookup_dir: str
-        Set of lookup data files to use in the model (e.g. equations of state).
+        Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER).
+        Must correspond to a folder in FWL_DATA/interior_lookup_tables/Melting_curves/
+        containing solidus_P-T.dat and liquidus_P-T.dat (T(P) format). SPIDER additionally
+        requires pre-computed S(P) files in its lookup directory.
+    eos_dir: str
+        Equation of state used by SPIDER and Aragog. Must correspond to a
+        folder under FWL_DATA/interior_lookup_tables/EOS/dynamic/ containing
+        P-T/ (pressure-temperature format, used by Aragog) and P-S/
+        (pressure-entropy format, used by SPIDER) subdirectories.
+        Zalmoxis derives its EOS paths from struct.zalmoxis config instead.
     """
 
     module: str             = field(validator=in_(('spider', 'aragog', 'dummy', 'boundary')))
     melting_dir: str        = field(default="Monteux-600",validator=valid_path)
     lookup_dir: str         = field(default="1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa",
                                         validator=valid_path)
+    eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
     radiogenic_heat: bool   = field(default=True)
     tidal_heat: bool        = field(default=True)
 
@@ -341,7 +374,7 @@ class Interior:
     dummy: InteriorDummy       = field(factory=InteriorDummy,    validator=valid_interiordummy)
     boundary: InteriorBoundary = field(factory=InteriorBoundary, validator=valid_interiorboundary)
 
-    grain_size: float       = field(default=0.1,    validator=gt(0))
-    F_initial: float        = field(default=1e3,    validator=gt(0))
-    rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
-    rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
+    grain_size: float = field(default=0.1, validator=gt(0))
+    F_initial: float = field(default=1e3, validator=gt(0))
+    rheo_phi_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
+    rheo_phi_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
