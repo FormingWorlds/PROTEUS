@@ -85,13 +85,6 @@ class AragogRunner:
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
         self.aragog_solver = interior_o.aragog_solver
         self._config = config
-        self._use_jax = config.interior_energetics.aragog.jax
-
-        # Build JAX components if needed (cached on interior_o across steps)
-        if self._use_jax:
-            from proteus.interior_energetics.aragog_jax import AragogJAXRunner
-
-            self._jax_runner = AragogJAXRunner(config, dirs, hf_row, hf_all, interior_o)
 
     @staticmethod
     def setup_logger(config: Config, dirs: dict):
@@ -1067,11 +1060,6 @@ class AragogRunner:
         # before the interior step, so Aragog.reset() will re-read it.
 
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
-        # Dispatch to JAX solver if configured
-        if self._use_jax:
-            return self._jax_runner.run_solver(hf_row, interior_o, dirs, write_data=write_data)
-
-        # Run scipy BDF Aragog solver
         self.aragog_solver.solve()
 
         # Get clean output via the public API

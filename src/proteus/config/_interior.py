@@ -99,10 +99,6 @@ class Aragog:
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
         at the surface where density is lower, matching SPIDER's mesh.
-    jax: bool
-        Use JAX/diffrax solver backend instead of scipy BDF. Default is False.
-        When True, the entropy ODE is integrated with diffrax Tsit5 instead of
-        scipy solve_ivp (BDF). Requires jax, equinox, and diffrax packages.
     atol_temperature_equivalent: float
         Effective temperature-scale absolute tolerance [K] for Aragog's
         scipy BDF integrator. Aragog's state variable is entropy (J/kg/K),
@@ -121,7 +117,6 @@ class Aragog:
 
     dilatation: bool = field(default=False)
     mass_coordinates: bool = field(default=True)
-    jax: bool = field(default=False)
     atol_temperature_equivalent: float = field(default=1.0e-6, validator=gt(0))
     """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator."""
     core_bc: str = field(default='energy_balance')
