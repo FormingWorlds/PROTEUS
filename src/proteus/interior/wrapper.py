@@ -146,7 +146,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         update_gravity(hf_row)
 
     else:
-        #fill change this once interior module works with zalmoxis
+        # *** will change this once interior module works with zalmoxis ***
         hf_row["R_int"] = R_earth
         hf_row["M_tot"] = M_target
         calculate_core_mass(hf_row, config)

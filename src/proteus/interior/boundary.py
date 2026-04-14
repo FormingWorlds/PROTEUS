@@ -90,45 +90,30 @@ class BoundaryRunner():
         if self.T_surf_0 > self.T_p_0:
             self.T_surf_0 = self.T_p_0 - 1.0  # Ensure initial surface temperature does not exceed potential temperature
 
-        self.solidus_parameterisation = config.interior.boundary.solidus_parameterisation
         self.T_solidus                = config.interior.boundary.T_solidus
         self.T_liquidus               = config.interior.boundary.T_liquidus
         self.critical_melt_fraction   = config.interior.boundary.critical_melt_fraction
-        self.boundary_thickness       = config.atmos_clim.surface_d
 
         # Material constants
-        self.activation_energy = config.interior.boundary.activation_energy  # J/mol
         self.critical_rayleigh_number = config.interior.boundary.critical_rayleigh_number  # dimensionless
-        self.dynamic_viscosity = config.interior.boundary.dynamic_viscosity  # Pa s
-        self.heat_fusion_silicate = config.interior.boundary.heat_fusion_silicate  # J/kg
-        self.nusselt_exponent = config.interior.boundary.nusselt_exponent  # dimensionless
-        self.silicate_heat_capacity = config.interior.boundary.silicate_heat_capacity  # J/kg/K
-        self.thermal_conductivity = config.interior.boundary.thermal_conductivity  # W/m/K
-        self.thermal_diffusivity = config.interior.boundary.thermal_diffusivity  # m^2/s
-        self.thermal_expansivity = config.interior.boundary.thermal_expansivity  # 1/K
-        self.viscosity_activation_temp = config.interior.boundary.viscosity_activation_temp  # K
-        self.viscosity_prefactor = config.interior.boundary.viscosity_prefactor  # Pa s
-
-        #atm data
-        self.gamma           = config.atmos_clim.dummy.gamma
-        self.zenith_angle    = config.orbit.zenith_angle
-        self.albedo_pl       = float(hf_row["albedo_pl"])
-        self.inst_sf         = config.orbit.s0_factor
-        self.albedo_s        = config.atmos_clim.surf_greyalbedo
-        self.finst           = hf_row["F_ins"]
+        self.heat_fusion_silicate     = config.interior.boundary.heat_fusion_silicate  # J/kg
+        self.nusselt_exponent         = config.interior.boundary.nusselt_exponent  # dimensionless
+        self.silicate_heat_capacity   = config.interior.boundary.silicate_heat_capacity  # J/kg/K
+        self.thermal_conductivity     = config.interior.boundary.thermal_conductivity  # W/m/K
+        self.thermal_diffusivity      = config.interior.boundary.thermal_diffusivity  # m^2/s
+        self.thermal_expansivity      = config.interior.boundary.thermal_expansivity  # 1/K
 
         # Aggregate viscosity parameters
-        self.use_aggregate_viscosity = config.interior.boundary.use_aggregate_viscosity  # boolean
         self.transition_width = config.interior.boundary.transition_width  # dimensionless
-        self.eta_solid_const = config.interior.boundary.eta_solid_const  # Pa s
-        self.eta_melt_const = config.interior.boundary.eta_melt_const  # Pa s
+        self.eta_solid_const  = config.interior.boundary.eta_solid_const  # Pa s
+        self.eta_melt_const   = config.interior.boundary.eta_melt_const  # Pa s
 
         # Radioactive heating parameters
         self.use_radiogenic_heating = config.interior.radiogenic_heat
-        self.radio_tref = config.delivery.radio_tref
-        self.U_abun     = config.delivery.radio_U * 1e-6  # Convert ppm to kg/kg
-        self.Th_abun    = config.delivery.radio_Th * 1e-6  # Convert ppm to kg/kg
-        self.K_abun     = config.delivery.radio_K * 1e-6  # Convert ppm to kg/kg
+        self.radio_tref             = config.delivery.radio_tref
+        self.U_abun                 = config.delivery.radio_U * 1e-6  # Convert ppm to kg/kg
+        self.Th_abun                = config.delivery.radio_Th * 1e-6  # Convert ppm to kg/kg
+        self.K_abun                 = config.delivery.radio_K * 1e-6  # Convert ppm to kg/kg
 
     @staticmethod
     def compute_time_step(config: Config, dirs: dict, hf_row: dict,
@@ -191,14 +176,7 @@ class BoundaryRunner():
             Rayleigh number [dimensionless]
         """
         # Determine viscosity based on configuration
-        if self.use_aggregate_viscosity:
-            eta = self.viscosity_aggregate(phi)
-        else:
-            # Original behavior: use separate viscosities
-            if phi < self.critical_melt_fraction:
-                eta = self.viscosity_solid(T_p)
-            else:
-                eta = self.viscosity_magma_ocean(T_p, phi)
+        eta = self.viscosity_aggregate(phi)
 
         # Calculate Rayleigh number
         Ra = ((self.bulk_density * self.surface_gravity * self.thermal_expansivity *

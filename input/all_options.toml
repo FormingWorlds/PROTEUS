@@ -336,6 +336,25 @@ version = "2.0"
         mantle_cp   = 1792.0    # Mantle heat capacity [J K-1 kg-1]
         H_radio     = 0.0       # Radiogenic heating rate [W/kg]
 
+    [interior.boundary]
+        rtol = 0.0001                      # ODE solver relative tolerance.
+        atol = 1e-08                       # ODE solver absolute tolerance.
+        T_surf_0 = 3900.0                  # Initial surface temperature [K]
+        T_p_0 = 4000.0                     # Initial mantle potential temperature [K]
+        T_solidus = 1420.0                 # Mantle solidus temperature [K]
+        T_liquidus = 2020.0                # Mantle liquidus temperature [K]
+        critical_melt_fraction = 0.4       # Critical melt fraction for rheological transition.
+        critical_rayleigh_number = 1100.0  # Critical Rayleigh number for onset of convection
+        heat_fusion_silicate = 400000.0    # Latent heat of fusion for silicates [J/kg]
+        nusselt_exponent = 0.33            # Nusselt-Rayleigh scaling exponent
+        silicate_heat_capacity = 1200.0    # Silicate heat capacity [J/kg/K]
+        thermal_conductivity = 4.2         # Thermal conductivity [W/m/K]
+        thermal_diffusivity = 1e-06        # Thermal diffusivity [m^2/s]
+        thermal_expansivity = 2e-05        # Thermal expansivity [1/K]
+        transition_width = 0.15            # Width of viscosity transition in melt fraction space
+        eta_solid_const = 1e+21            # Constant solid viscosity for aggregate formulation [Pa s]
+        eta_melt_const = 100.0             # Constant melt viscosity for aggregate formulation [Pa s]
+
 # Outgassing - physics table
 [outgas]
     fO2_shift_IW    = 4         # atmosphere/interior boundary oxidation state [log10(ΔIW)]

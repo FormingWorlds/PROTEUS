@@ -220,14 +220,8 @@ class InteriorBoundary:
         Mantle liquidus temperature [K].
     critical_melt_fraction: float
         Critical melt fraction for rheological transition.
-    activation_energy: float
-        Activation energy for solid viscosity [J/mol].
-    solidus_parameterisation: str
-        Solidus parameterisation to use.
     critical_rayleigh_number: float
         Critical Rayleigh number for onset of convection [-].
-    dynamic_viscosity: float
-        Reference solid viscosity prefactor [Pa s].
     heat_fusion_silicate: float
         Latent heat of fusion for silicates [J/kg].
     nusselt_exponent: float
@@ -240,12 +234,6 @@ class InteriorBoundary:
         Thermal diffusivity [m^2/s].
     thermal_expansivity: float
         Thermal expansivity [1/K].
-    viscosity_activation_temp: float
-        VFT characteristic temperature for melt viscosity [K].
-    viscosity_prefactor: float
-        VFT prefactor for melt viscosity [Pa s].
-    use_aggregate_viscosity: bool
-        Use aggregate viscosity formulation instead of separate phase viscosities.
     transition_width: float
         Width of viscosity transition in melt fraction space [-].
     eta_solid_const: float
@@ -265,24 +253,15 @@ class InteriorBoundary:
 
     critical_melt_fraction: float = field(default=0.4, validator=(gt(0), lt(1)))
 
-    # Material constants (defaults match boundary.py)
-    solidus_parameterisation: str = field(default="Pierru_2022", validator=in_(("dry_peridotite", "ET08", "dry_delta",
-                                                                               "wet_Katz","Monteux2020","Pierru_2022")))
-
-    activation_energy: float      = field(default=3.5e5,   validator=gt(0))   # J/mol
     critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))   # -
-    dynamic_viscosity: float      = field(default=3.8e9,   validator=gt(0))   # Pa s
     heat_fusion_silicate: float   = field(default=4.0e5,   validator=gt(0))   # J/kg
     nusselt_exponent: float       = field(default=0.33,    validator=gt(0))   # -
     silicate_heat_capacity: float = field(default=1.2e3,   validator=gt(0))   # J/kg/K
     thermal_conductivity: float   = field(default=4.2,     validator=gt(0))   # W/m/K
     thermal_diffusivity: float    = field(default=1e-6,    validator=gt(0))   # m^2/s
     thermal_expansivity: float    = field(default=2e-5,    validator=gt(0))   # 1/K
-    viscosity_activation_temp: float = field(default=4600.0, validator=gt(0)) # K
-    viscosity_prefactor: float    = field(default=2.4e-4,  validator=gt(0))   # Pa s
 
     # Aggregate viscosity parameters
-    use_aggregate_viscosity: bool = field(default=True)
     transition_width: float       = field(default=0.15,     validator=(gt(0), lt(1)))  # -
     eta_solid_const: float        = field(default=1e21,    validator=gt(0))   # Pa s
     eta_melt_const: float         = field(default=1e2,     validator=gt(0))   # Pa s
@@ -363,8 +342,6 @@ class Interior:
 
     module: str             = field(validator=in_(('spider', 'aragog', 'dummy', 'boundary')))
     melting_dir: str        = field(default="Monteux-600",validator=valid_path)
-    lookup_dir: str         = field(default="1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa",
-                                        validator=valid_path)
     eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
     radiogenic_heat: bool   = field(default=True)
     tidal_heat: bool        = field(default=True)
