@@ -74,7 +74,11 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
         hf_row["albedo_pl"] = 0.0
 
     # Handle new surface temperature
-    if config.atmos_clim.surf_state == 'mixed_layer':
+    if config.interior.module=='boundary':
+        #surface temperature is already calculated by boundary interior module
+        pass
+
+    elif config.atmos_clim.surf_state == 'mixed_layer':
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
     elif config.atmos_clim.surf_state == 'fixed':
@@ -131,7 +135,8 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
             if no_atm:
                 activate_julia(dirs, config.atmos_clim.agni.verbosity)
                 # surface temperature guess
-                hf_row["T_surf"] = hf_row["T_magma"]
+                if config.interior.module != 'boundary':
+                    hf_row["T_surf"] = hf_row["T_magma"]
             else:
                 # Remove old spectral file if it exists
                 safe_rm(spfile_path)

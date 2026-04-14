@@ -14,6 +14,7 @@ from juliacall import Main as jl  # noqa
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
 from proteus.utils.constants import (
+    M_earth,
     vap_list,
     vol_list,
 )
@@ -359,12 +360,23 @@ class Proteus:
             )
 
             ############### INTERIOR
+            if self.config.interior.module == "boundary" and self.loops["total"] == 0:
+
+                self.hf_row["M_mantle"] = self.config.struct.mass_tot * M_earth - self.hf_row["M_core"]
+                self.hf_row["Phi_global"] = 1.0
+                self.hf_row["T_magma"] = self.config.interior.boundary.T_p_0
+
+                calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
+                run_outgassing(self.directories, self.config, self.hf_row)
+
             PrintHalfSeparator()
             run_interior(self.directories, self.config,
-                            self.hf_all, self.hf_row, self.interior_o)
+                            self.hf_all, self.hf_row, self.interior_o, self.atmos_o)
 
 
             # Advance current time in main loop according to interior step
+            log.info("Current time: %.2f years"%self.hf_row["Time"])
+            log.info("Advancing time by %.2f years"%self.interior_o.dt)
             self.hf_row["Time"]     += self.interior_o.dt    # in years
             self.hf_row["age_star"] += self.interior_o.dt    # in years
 

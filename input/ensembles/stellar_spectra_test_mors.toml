@@ -1,0 +1,29 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "stellar_spectra_test_mors/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/planets/nogit_fiducial_sub_Neptune_MORS.toml"
+
+# Use SLURM?
+use_slurm = false
+
+# Execution limits
+max_jobs = 10       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Planet mass set directly
+["star.mors.spec"]
+    method = "direct"
+    values = ["stellar_spectra/Named/gj849.txt","stellar_spectra/Named/hd97658.txt","stellar_spectra/Named/sun.txt"]

@@ -55,7 +55,10 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     # fixed T_Surf
     if config.atmos_clim.surf_state == 'fixed':
         log.info("Calculating fluxes with dummy atmosphere")
-        T_surf_atm = T_magma
+        if config.interior.module == 'boundary':
+            T_surf_atm = hf_row["T_surf"]
+        else:
+            T_surf_atm = T_magma
         fluxes = _calc_fluxes(T_surf_atm)
 
     # conductive lid
