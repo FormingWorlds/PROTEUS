@@ -174,7 +174,7 @@ proteus grid-pack -o output/grid_demo/
 ```
 ## Postprocessing of grid results
 
-Results from a PROTEUS grid can be post-processed using the `proteus grid-analyse` command. Running the analysis generates summary CSV files containing all tested input parameters and the final time-step outputs for each simulation, along with a status overview plot showing the distribution of simulation outcomes (e.g., completed, running, error) and empirical cumulative distribution function (ECDF) plots that summarize selected output variables across all completed simulations. (For more details on ECDF plots, see the [Seaborn `ecdfplot` documentation](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html).)
+Results from a PROTEUS grid can be post-processed using the `proteus grid-analyse` command. Running the analysis generates summary CSV files containing all tested input parameters and the final time-step outputs for each simulation, along with a status overview plot showing the distribution of simulation outcomes (e.g., completed, running, error, started) and empirical cumulative distribution function (ECDF) plots that summarize selected output variables across all completed simulations. (For more details on ECDF plots, see the [Seaborn `ecdfplot` documentation](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html).)
 
 Before running the command, configure the post-processing options in your grid configuration file:`input/ensembles/example.grid.toml`. The following options can be set:
 
@@ -202,7 +202,7 @@ After execution, a `post_processing/` directory is created inside the grid folde
 - `extracted_data/` This directory contains three CSV files:
     - `{grid_name}_final_extracted_data_all.csv` which includes every run in the grid
     - `{grid_name}_final_extracted_data_completed.csv` which contains only successful runs (used for ECDF plots)
-    - `{grid_name}_final_extracted_data_running_error.csv` for only failed simulations with status `Running` or `Error`.
+    - `{grid_name}_final_extracted_data_running_error_started.csv` for only failed simulations with status `Running`,`Error` or `Started`.
 
 - `grid_plots/` This directory contains a status summary plot and a ECDF plot
 

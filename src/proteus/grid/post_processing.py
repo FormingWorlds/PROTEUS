@@ -341,7 +341,7 @@ def generate_summary_csv(
     Generate CSV files summarizing simulation cases:
         - All cases
         - Completed cases only
-        - Running + Error cases only
+        - Running + Error + Started cases only
     """
 
     def include_case(status: str, mode: str) -> bool:
@@ -350,8 +350,8 @@ def generate_summary_csv(
             return True
         elif mode == 'completed':
             return status.startswith('completed')
-        elif mode == 'running_error':
-            return status.startswith('running') or status.startswith('error')
+        elif mode == 'running_error_started':
+            return status.startswith('running') or status.startswith('error') or status.startswith('started')
         else:
             raise ValueError(f'Unknown mode: {mode}')
 
@@ -361,7 +361,7 @@ def generate_summary_csv(
     output_dir = grid_dir / 'post_processing' / 'extracted_data'
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    modes = ['all', 'completed', 'running_error']
+    modes = ['all', 'completed', 'running_error_started']
 
     for mode in modes:
         summary_rows = []
@@ -948,8 +948,8 @@ def main(grid_analyse_toml_file: str | Path):
     summary_dir = grid_path / 'post_processing' / 'extracted_data'
     summary_csv_all = summary_dir / f'{grid_name}_final_extracted_data_all.csv'
     summary_csv_completed = summary_dir / f'{grid_name}_final_extracted_data_completed.csv'
-    summary_csv_running_error = (
-        summary_dir / f'{grid_name}_final_extracted_data_running_error.csv'
+    summary_csv_running_error_started = (
+        summary_dir / f'{grid_name}_final_extracted_data_running_error_started.csv'
     )
 
     if update_csv:
@@ -963,7 +963,7 @@ def main(grid_analyse_toml_file: str | Path):
         generate_summary_csv(data, input_param_grid_per_case, grid_path, grid_name)
     else:
         # Check that CSVs exist
-        for f in [summary_csv_all, summary_csv_completed, summary_csv_running_error]:
+        for f in [summary_csv_all, summary_csv_completed, summary_csv_running_error_started]:
             if not f.exists():
                 raise FileNotFoundError(
                     f'{f.name} not found in {summary_dir}, '
