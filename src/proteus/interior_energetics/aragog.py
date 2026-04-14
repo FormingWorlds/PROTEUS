@@ -172,20 +172,16 @@ class AragogRunner:
         #   setting for parity runs, so both solvers follow the identical
         #   physical law.
         _aragog_outer_bc = 1 if config.interior_energetics.surface_bc_mode == 'grey_body' else 4
-        # Core BC mode: thread config.interior_energetics.aragog.core_bc
-        # through to the Aragog solver. Valid values:
-        #   'energy_balance' (default since 2026-04-12, SPIDER-parity)
-        #   'quasi_steady'   (legacy v3 alpha-factor, -18% T_core gap)
-        #   'gradient'       (gradient-based state, SPIDER formulation parity)
-        #   'bower2018'      (EXPERIMENTAL tombstone, do not use)
+        # Core BC mode: 'energy_balance' (SPIDER parity), 'quasi_steady'
+        # (alpha-factor partition), or 'gradient' (full dS/dr state).
         aragog_cfg = getattr(config.interior_energetics, 'aragog', None)
         core_bc_str = getattr(aragog_cfg, 'core_bc', 'energy_balance')
-        if core_bc_str not in ('quasi_steady', 'energy_balance', 'gradient', 'bower2018'):
+        if core_bc_str not in ('quasi_steady', 'energy_balance', 'gradient'):
             logger.warning(
-                'Unknown core_bc=%r, falling back to quasi_steady',
+                'Unknown core_bc=%r, falling back to energy_balance',
                 core_bc_str,
             )
-            core_bc_str = 'quasi_steady'
+            core_bc_str = 'energy_balance'
 
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])

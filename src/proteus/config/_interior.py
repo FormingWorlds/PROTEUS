@@ -107,12 +107,10 @@ class Aragog:
         0.01 K — tight enough that the solver resolves the ~0.3 K/yr
         cooling rate of a magma ocean.
     core_bc: str
-        Core-mantle boundary condition mode. Default is 'quasi_steady'
-        (v3 alpha-factor heat-flux partition). Valid values:
-          - 'quasi_steady': legacy v3 BC, gives -19% T_core offset vs SPIDER
-          - 'energy_balance': v5 Path A SPIDER bit-parity BC with dSdr_cmb as
-                          a new state variable (mirrors SPIDER bc.c:76-131)
-          - 'bower2018': EXPERIMENTAL tombstone, do not use for production
+        Core-mantle boundary condition mode. Default 'energy_balance'.
+          - 'energy_balance': SPIDER-parity (dSdr_cmb as ODE state)
+          - 'quasi_steady':   alpha-factor heat-flux partition
+          - 'gradient':       full dS/dr state vector
     """
 
     dilatation: bool = field(default=False)
