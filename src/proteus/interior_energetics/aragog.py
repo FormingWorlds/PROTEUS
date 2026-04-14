@@ -219,6 +219,15 @@ class AragogRunner:
             param_utbl_const=config.interior_energetics.param_utbl_const,
             # core BC mode (v5 Path A adds 'energy_balance')
             core_bc=core_bc_str,
+            # dSdr_cmb damping for the marginally-stable phi=0 closure.
+            # gamma=0 disables (parity with pre-fix). See
+            # memory/tcore_phi0_instrumented_diagnostic.md.
+            dsdr_cmb_damping_gamma=getattr(
+                config.interior_energetics, 'dsdr_cmb_damping_gamma', 0.0
+            ),
+            dsdr_cmb_damping_target=getattr(
+                config.interior_energetics, 'dsdr_cmb_damping_target', 0.0
+            ),
         )
 
         # Define the inner_radius for the mesh.

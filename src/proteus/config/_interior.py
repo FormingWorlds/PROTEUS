@@ -424,6 +424,25 @@ class Interior:
     Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
     SPIDER derives its own internally."""
 
+    # dSdr_cmb damping for the marginally-stable phi=0 CMB closure
+    # (Aragog energy_balance BC only). Adds
+    #   -dsdr_cmb_damping_gamma * (dSdr_cmb - dsdr_cmb_damping_target)
+    # to the d(dSdr_cmb)/dt RHS. gamma=0 disables (default).
+    # See memory/tcore_phi0_instrumented_diagnostic.md.
+    dsdr_cmb_damping_gamma: float = field(default=0.0, validator=ge(0))
+    """Damping rate [1/yr] for dSdr_cmb in Aragog's energy_balance BC.
+    0 = no damping. From the diag3 eigenvalue analysis the loop
+    eigenvalue is +2.3e-5/yr, so gamma > 5e-5/yr is needed to push it
+    into the stable half-plane. Larger gamma stabilises faster but
+    biases the steady-state dSdr toward the target."""
+
+    dsdr_cmb_damping_target: float = field(default=0.0)
+    """Target dSdr_cmb [J/(kg*K*m)] toward which damping pulls the
+    state. 0 = pull toward zero (Aragog's current working point).
+    SPIDER's quasi-equilibrium in the CHILI Earth solid regime is
+    ~-6.3e-5 J/(kg*K*m), so setting this matches SPIDER's working
+    point if the equilibrium offset is the underlying issue."""
+
     # Diagnostic flag for T_core investigations.
     write_flux_diagnostics: bool = field(default=False)
     """When True, Aragog's NetCDF output includes per-component flux

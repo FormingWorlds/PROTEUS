@@ -330,6 +330,16 @@ config_version = "3.0"
     # Core thermal model (Bower+2018 Table 2)
     core_tfac_avg             = 1.147        # T_avg/T_cmb ratio from adiabatic gradient
 
+    # dSdr_cmb damping for Aragog's energy_balance BC. Adds
+    #   -gamma * (dSdr_cmb - target)
+    # to the d(dSdr_cmb)/dt RHS to stabilise the marginally-stable
+    # phi=0 closure. gamma=0 disables (parity with pre-fix).
+    # Diag3 eigenvalue analysis: loop eigenvalue ~+2.3e-5/yr, so
+    # gamma > 5e-5/yr is needed to push it stable. See
+    # tcore_phi0_instrumented_diagnostic.md.
+    dsdr_cmb_damping_gamma    = 0.0          # [1/yr], 0 = no damping
+    dsdr_cmb_damping_target   = 0.0          # [J/kg/K/m], SPIDER quasi-eq is ~-6.3e-5
+
     # Diagnostic: save per-component flux decomposition (Jcond_b, Jconv_b,
     # Jgrav_b, Jmix_b) and basic-node state (dSdr_b, eddy_diff_b,
     # phi_basic_b, T/cp/rho_basic_b) to Aragog NetCDF output. Used for
