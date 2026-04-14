@@ -45,7 +45,7 @@ version = "2.0"
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 5e8   # yr, maximum time-step # if higher like 1e9, will produce too few snapshots
         initial      = 1e3    # yr, inital step size
-        starspec     = 1e8    # yr, interval to re-calculate the stellar spectrum
+        starspec     = 1e6    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
@@ -73,7 +73,7 @@ version = "2.0"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1.1e10    # yr, model will terminate when t > maximum
+            maximum = 11e9    # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -144,7 +144,7 @@ version = "2.0"
     s0_factor       = 0.375     # dimensionless
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "lovepy"          # module used to calculate tidal heating
+    module  = "none"          # module used to calculate tidal heating
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -163,7 +163,7 @@ version = "2.0"
 [struct]
     mass_tot    = 2.24         # M_earth from Brinkman et al. 2023
     #radius_int  = 1.4195        # R_earth from Patel et al. 2023
-    corefrac    = 0.55          # non-dim., radius fraction 0.20 from Brinkman et al. 2023
+    corefrac    = 0.35          # non-dim., radius fraction 0.20 from Brinkman et al. 2023
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
 
@@ -214,7 +214,7 @@ version = "2.0"
 
     [atmos_clim.agni]
         verbosity       = 1             # output verbosity for agni (0:none, 1:info, 2:debug)
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
         p_obs           = 0.02          # bar, level probed in transmission
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
@@ -252,20 +252,6 @@ version = "2.0"
         ls_default      = 2             # Default linesearch method (0:none, 1:gs, 2:bt)
         fdo             = 2             # finite-difference order (options: 2, 4)
 
-    [atmos_clim.janus]
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        p_obs           = 1.0e-3        # bar, observed pressure level
-        spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 60            # Number of atmospheric grid levels
-        tropopause      = "none"        # none | skin | dynamic
-        overlap_method  = "ee"          # gas overlap method
-
-    [atmos_clim.dummy]
-        gamma           = 0.7           # atmosphere opacity between 0 and 1
-        height_factor   = 3.0           # observed height is this times the scale height
-
 # Volatile escape - physics table
 [escape]
 
@@ -274,7 +260,7 @@ version = "2.0"
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.1           # Escape efficiency factor
+        efficiency  = 0.001           # Escape efficiency factor
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
@@ -282,7 +268,7 @@ version = "2.0"
 
     [escape.boreas]
         fractionate  = true         # Include fractionation in outflow?
-        efficiency   = 0.1          # Escape efficiency factor
+        efficiency   = 0.001          # Escape efficiency factor
         sigma_H   = 1.89e-18        # H absorption cross-section in XUV [cm2]
         sigma_O   = 2.00e-18        # O absorption ^
         sigma_C   = 2.50e-18        # C absorption ^
@@ -412,8 +398,8 @@ version = "2.0"
         #C_ppmw      = 109.0       # Carbon inventory in ppmw relative to mantle mass
         # C_kg       = 1e20       # Carbon inventory in kg
 
-        # NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 20.1       # Nitrogen inventory in ppmw relative to mantle mass
+        NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
+        # N_ppmw      = 20.1       # Nitrogen inventory in ppmw relative to mantle mass
         # N_kg       = 1e20       # Nitrogen inventory in kg
 
         SH_ratio    = 2.16       # S/H mass ratio in mantle/atmosphere system
