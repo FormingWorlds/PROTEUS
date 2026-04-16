@@ -324,7 +324,7 @@ def next_step(
     # margin (e.g. the 10 yr -> 100 yr jump that occasionally wedges
     # CVODE in Aragog at the molten-to-mushy transition).
     max_growth = float(config.params.dt.max_growth_factor)
-    if max_growth > 0.0 and len(hf_all['Time']) >= 2:
+    if max_growth > 0.0 and hf_all is not None and len(hf_all['Time']) >= 2:
         dt_prev_actual = float(hf_all['Time'].iloc[-1] - hf_all['Time'].iloc[-2])
         if dt_prev_actual > 0.0:
             dt_capped = dt_prev_actual * max_growth
