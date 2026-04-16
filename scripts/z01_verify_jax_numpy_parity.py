@@ -175,7 +175,37 @@ def main():
         print(f'numpy phase_basic.temp[0]:   {float(solver.state.phase_basic.temperature().flat[0]):.2f} K')
         print(f'numpy phase_basic.cp[0]:     {float(solver.state.phase_basic.heat_capacity().flat[0]):.2f}')
         print(f'numpy capacitance_stag[0]:   {float(solver.state.capacitance_staggered().flat[0]):.3e}')
-        print(f'numpy area[0:3]: {solver.evaluator.mesh.basic.area.flatten()[:3]}')
+
+        # Compare heat_flux at the divergent indices 57-61 (mid-mantle)
+        from aragog.jax.phase import compute_fluxes as jax_cf
+        flux_jax = jax_cf(jnp.asarray(S0[:n_stag]), 0.0, eos_jax, params_jax, mesh_jax,
+                          heating, S_basic_cmb_override=S0[0], dSdr_cmb_override=S0[n_stag])
+        hf_jax = np.asarray(flux_jax.heat_flux)
+        hf_np = np.asarray(solver.state._heat_flux).ravel()
+        print(f'\n--- Mid-mantle heat_flux comparison (basic nodes 55-65) ---')
+        print(f'{"idx":>4} {"numpy F":>12} {"JAX F":>12} {"diff%":>8}')
+        for i in range(55, 66):
+            d = (hf_jax[i]-hf_np[i])/abs(hf_np[i])*100 if abs(hf_np[i]) > 1e-10 else 0
+            print(f'{i:>4} {hf_np[i]:>12.3e} {hf_jax[i]:>12.3e} {d:>+7.1f}%')
+
+        # Compare rho, T, kappa_h, dSdr at index 57
+        print(f'\n--- Component breakdown at basic node 57 ---')
+        rho_np = float(np.asarray(solver.state.phase_basic.density()).ravel()[57])
+        T_np = float(np.asarray(solver.state.phase_basic.temperature()).ravel()[57])
+        eddy_np = float(np.asarray(solver.state.eddy_diffusivity).ravel()[57]) if hasattr(solver.state, 'eddy_diffusivity') else 0
+        dSdr_np = float(solver.state._dSdr[57])
+        rho_jax = float(np.asarray(flux_jax.heat_flux)[57])  # placeholder
+        print(f'numpy: rho={rho_np:.2f}  T={T_np:.2f}  dSdr={dSdr_np:+.3e}')
+
+        from aragog.jax.phase import compute_mlt as jax_mlt
+        from aragog.jax.phase import evaluate_phase as jax_eval
+        S_basic_jax = mesh_jax.quantity_matrix @ jnp.asarray(S0[:n_stag])
+        S_basic_jax = S_basic_jax.at[0].set(S0[0])
+        phase_b_jax = jax_eval(eos_jax, params_jax, mesh_jax.P_basic, S_basic_jax)
+        dSdr_jax = mesh_jax.d_dr_matrix @ jnp.asarray(S0[:n_stag])
+        kappa_h_jax, _ = jax_mlt(dSdr_jax, phase_b_jax, mesh_jax, params_jax)
+        print(f'JAX:   rho={float(phase_b_jax.density[57]):.2f}  T={float(phase_b_jax.temperature[57]):.2f}  '
+              f'dSdr={float(dSdr_jax[57]):+.3e}  kappa_h={float(kappa_h_jax[57]):.3e}')
     else:
         # Quasi_steady or other N-state mode
         S_jax_input = jnp.asarray(S0[:n_stag] if solver._state_is_extended else S0)
