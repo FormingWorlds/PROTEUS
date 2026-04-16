@@ -24,7 +24,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
+# Force the JAX-augmented aragog-Z to take precedence over the installed
+# aragog (which is the PROTEUS submodule and lacks the new compute_phase_state
+# / dSdt_energy_balance code). aragog-Z must come BEFORE site-packages.
+ARAGOG_Z = Path('/Users/timlichtenberg/git/aragog-Z/src')
+if str(ARAGOG_Z) not in sys.path:
+    sys.path.insert(0, str(ARAGOG_Z))
+
+import numpy as np  # noqa: E402
 
 # Use the chili_repro_v2 config as test scenario
 PROTEUS_DIR = Path('/Users/timlichtenberg/git/PROTEUS-Z')
@@ -68,8 +75,6 @@ def main():
     interior_o.aragog_solver = None
     interior_o.tides = np.array([0.0])
     interior_o.ic = 1
-    import pandas as pd
-    hf_all = pd.DataFrame([hf_row])
 
     # We cannot easily call AragogRunner without all PROTEUS dirs
     # configured. Instead, manually invoke the solver setup pieces.
@@ -110,6 +115,8 @@ def main():
         grain_size=config.interior_energetics.grain_size,
         k_solid=float(config.interior_energetics.solid_cond),
         k_liquid=float(config.interior_energetics.melt_cond),
+        matprop_smooth_width=float(getattr(
+            config.interior_energetics.spider, 'matprop_smooth_width', 0.0)),
         conduction=config.interior_energetics.trans_conduction,
         convection=config.interior_energetics.trans_convection,
         grav_sep=config.interior_energetics.trans_grav_sep,
@@ -163,13 +170,13 @@ def main():
 
     if solver._state_is_extended and solver._core_bc == 'energy_balance':
         # Use the new dSdt_energy_balance for the full N+1 state
-        print(f'Using dSdt_energy_balance (N+1 state)')
+        print('Using dSdt_energy_balance (N+1 state)')
         S_jax_input = jnp.asarray(S0)
         f_jax_full = np.asarray(dSdt_energy_balance(0.0, S_jax_input, args))
         f_np_entropy = f_np  # full N+1 comparison
 
         # Diagnostic: compare key intermediates
-        print(f'\n--- Diagnostic intermediates at CMB ---')
+        print('\n--- Diagnostic intermediates at CMB ---')
         print(f'numpy state._heat_flux[0:3]: {solver.state._heat_flux[0]:.3e}, {solver.state._heat_flux[1]:.3e}, {solver.state._heat_flux[2]:.3e}')
         print(f'numpy entropy_basic[0]:      {solver.state._entropy_basic[0]:.3f}')
         print(f'numpy phase_basic.temp[0]:   {float(solver.state.phase_basic.temperature().flat[0]):.2f} K')
@@ -182,19 +189,84 @@ def main():
                           heating, S_basic_cmb_override=S0[0], dSdr_cmb_override=S0[n_stag])
         hf_jax = np.asarray(flux_jax.heat_flux)
         hf_np = np.asarray(solver.state._heat_flux).ravel()
-        print(f'\n--- Mid-mantle heat_flux comparison (basic nodes 55-65) ---')
+        print('\n--- CMB-region heat_flux (idx 0-3) ---')
+        print(f'{"idx":>4} {"numpy F":>12} {"JAX F":>12} {"diff%":>8}')
+        for i in range(0, 4):
+            d = (hf_jax[i]-hf_np[i])/abs(hf_np[i])*100 if abs(hf_np[i]) > 1e-10 else 0
+            print(f'{i:>4} {hf_np[i]:>12.3e} {hf_jax[i]:>12.3e} {d:>+7.1f}%')
+        print('\n--- Mid-mantle heat_flux comparison (basic nodes 55-65) ---')
         print(f'{"idx":>4} {"numpy F":>12} {"JAX F":>12} {"diff%":>8}')
         for i in range(55, 66):
             d = (hf_jax[i]-hf_np[i])/abs(hf_np[i])*100 if abs(hf_np[i]) > 1e-10 else 0
             print(f'{i:>4} {hf_np[i]:>12.3e} {hf_jax[i]:>12.3e} {d:>+7.1f}%')
 
+        # F[0] decomposition: F_cond[0] = -k * dT/dr; F_conv[0] = rho*T*kappa_h*(-dSdr)
+        from aragog.jax.phase import compute_mlt as _jax_mlt
+        from aragog.jax.phase import evaluate_phase as _jax_eval
+        S_stag_arr = jnp.asarray(S0[:n_stag])
+        # Replicate dSdt_energy_balance overrides exactly: S_basic[0] uses
+        # the boundary-state dSdr_cmb projected through dr_offset.
+        r_basic_arr = np.asarray(solver.evaluator.mesh.basic.radii).ravel()
+        r_stag0 = 0.5 * (r_basic_arr[0] + r_basic_arr[1])
+        dr_off = r_basic_arr[0] - r_stag0
+        S_basic_cmb_val = float(S0[0]) + float(S0[n_stag]) * dr_off
+        S_basic_jax_arr = mesh_jax.quantity_matrix @ S_stag_arr
+        S_basic_jax_arr = S_basic_jax_arr.at[0].set(S_basic_cmb_val)
+        dSdr_jax_arr = mesh_jax.d_dr_matrix @ S_stag_arr
+        dSdr_jax_arr = dSdr_jax_arr.at[0].set(S0[n_stag])
+        ph_b_jax = _jax_eval(eos_jax, params_jax, mesh_jax.P_basic, S_basic_jax_arr)
+        # phase_stag eval is unused in this diagnostic — kept for future
+        # dTdr-comparison if needed.
+        kh_jax_arr, _ = _jax_mlt(dSdr_jax_arr, ph_b_jax, mesh_jax, params_jax)
+
+        # numpy equivalents
+        dSdr_np = np.asarray(solver.state._dSdr).ravel()
+        kh_np = np.asarray(solver.state._eddy_diffusivity).ravel() if hasattr(solver.state, '_eddy_diffusivity') else None
+        rho_b_np = np.asarray(solver.state.phase_basic.density()).ravel()
+        T_b_np = np.asarray(solver.state.phase_basic.temperature()).ravel()
+        k_b_np = np.asarray(solver.state.phase_basic.thermal_conductivity()).ravel() if hasattr(solver.state.phase_basic, 'thermal_conductivity') else None
+
+        print('\n--- F[0] component decomposition ---')
+        print('                            numpy            JAX           diff%')
+        print(f'  S_basic[0]:           {float(solver.state._entropy_basic[0]):>12.4f}   {float(S_basic_jax_arr[0]):>12.4f}   {(float(S_basic_jax_arr[0])-float(solver.state._entropy_basic[0]))/abs(float(solver.state._entropy_basic[0]))*100:+7.4f}%')
+        print(f'  dSdr[0]:              {dSdr_np[0]:>12.3e}   {float(dSdr_jax_arr[0]):>12.3e}')
+        print(f'  rho_basic[0]:         {rho_b_np[0]:>12.3f}   {float(ph_b_jax.density[0]):>12.3f}')
+        print(f'  T_basic[0]:           {T_b_np[0]:>12.3f}   {float(ph_b_jax.temperature[0]):>12.3f}')
+        if k_b_np is not None:
+            print(f'  k_basic[0]:           {k_b_np[0]:>12.4f}   {float(ph_b_jax.thermal_conductivity[0]):>12.4f}')
+        if kh_np is not None:
+            print(f'  kappa_h[0]:           {kh_np[0]:>12.3e}   {float(kh_jax_arr[0]):>12.3e}')
+        # Cp, alpha, dTdPs at basic[0] (kappa_h diagnostic — MLT uses these)
+        Cp_b_np = np.asarray(solver.state.phase_basic.heat_capacity()).ravel()
+        alpha_b_np = np.asarray(solver.state.phase_basic.thermal_expansivity()).ravel()
+        dTdPs_b_np = np.asarray(solver.state.phase_basic.dTdPs()).ravel()
+        print(f'  Cp_basic[0]:          {Cp_b_np[0]:>12.4f}   {float(ph_b_jax.heat_capacity[0]):>12.4f}')
+        print(f'  alpha_basic[0]:       {alpha_b_np[0]:>12.3e}   {float(ph_b_jax.thermal_expansivity[0]):>12.3e}')
+        print(f'  dTdPs_basic[0]:       {dTdPs_b_np[0]:>12.3e}   {float(ph_b_jax.dTdPs[0]):>12.3e}')
+        # super-adiabatic (T/Cp)*dSdr at basic[0] — drives MLT and SPIDER conduction
+        sa_np = T_b_np[0]/max(Cp_b_np[0], 100.) * dSdr_np[0]
+        sa_jax = float(ph_b_jax.temperature[0])/max(float(ph_b_jax.heat_capacity[0]), 100.) * float(dSdr_jax_arr[0])
+        print(f'  superadiab[0]:        {sa_np:>12.3e}   {sa_jax:>12.3e}')
+
+        # CMB-region capacitance (rho * T at staggered nodes)
+        # — drives dS/dt at the bottom cells.
+        cap_np = np.asarray(solver.state.capacitance_staggered()).ravel()
+        # Replicate JAX capacitance_staggered: phase_stag.density * phase_stag.temperature
+        from aragog.jax.phase import evaluate_phase as _jax_eval
+        S_stag_jax = jnp.asarray(S0[:n_stag])
+        phase_stag_jax = _jax_eval(eos_jax, params_jax, mesh_jax.P_stag, S_stag_jax)
+        cap_jax = np.asarray(phase_stag_jax.density * phase_stag_jax.temperature)
+        print('\n--- CMB-region capacitance_stag (idx 0-3) ---')
+        print(f'{"idx":>4} {"numpy cap":>12} {"JAX cap":>12} {"diff%":>8}')
+        for i in range(0, 4):
+            d = (cap_jax[i]-cap_np[i])/abs(cap_np[i])*100 if abs(cap_np[i]) > 1e-10 else 0
+            print(f'{i:>4} {cap_np[i]:>12.3e} {cap_jax[i]:>12.3e} {d:>+7.1f}%')
+
         # Compare rho, T, kappa_h, dSdr at index 57
-        print(f'\n--- Component breakdown at basic node 57 ---')
+        print('\n--- Component breakdown at basic node 57 ---')
         rho_np = float(np.asarray(solver.state.phase_basic.density()).ravel()[57])
         T_np = float(np.asarray(solver.state.phase_basic.temperature()).ravel()[57])
-        eddy_np = float(np.asarray(solver.state.eddy_diffusivity).ravel()[57]) if hasattr(solver.state, 'eddy_diffusivity') else 0
         dSdr_np = float(solver.state._dSdr[57])
-        rho_jax = float(np.asarray(flux_jax.heat_flux)[57])  # placeholder
         print(f'numpy: rho={rho_np:.2f}  T={T_np:.2f}  dSdr={dSdr_np:+.3e}')
 
         from aragog.jax.phase import compute_mlt as jax_mlt
