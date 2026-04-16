@@ -134,11 +134,8 @@ class AragogRunner:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 # Preserve the evolved S field across equilibration resets.
-                # Use the solver's entropy_staggered accessor instead of
-                # reading sol.y directly: with the v4 Bower core BC the
-                # state vector is N+1 long (entropy followed by T_core),
-                # and the wrapper-side handover logic only wants the
-                # entropy block. The accessor strips T_core when present.
+                # Use entropy_staggered accessor (handles variable state
+                # vector sizes depending on core BC mode).
                 sol = interior_o.aragog_solver.solution
                 if sol is not None and sol.y.size > 0:
                     S_block = interior_o.aragog_solver.entropy_staggered
@@ -161,12 +158,10 @@ class AragogRunner:
         solver = _SolverParameters(
             start_time=0,
             end_time=0,
-            # Tier 4: rtol and atol (temperature-equivalent) are now
-            # config-exposed. Aragog's state variable is entropy, but
-            # users specify a temperature-scale atol because dT/dt is
-            # easier to reason about than dS/dt. The default 0.01 K is
-            # tight enough to resolve the ~0.3 K/yr magma-ocean cooling
-            # rate without slowing the BDF solver excessively.
+            # rtol and atol (temperature-equivalent) from config.
+            # Aragog's state is entropy, but users specify temperature-
+            # scale atol for intuitive tuning (default 0.01 K resolves
+            # typical magma-ocean cooling rates).
             atol=float(config.interior_energetics.aragog.atol_temperature_equivalent),
             rtol=float(config.interior_energetics.rtol),
         )
@@ -179,12 +174,11 @@ class AragogRunner:
         #   setting for parity runs, so both solvers follow the identical
         #   physical law.
         _aragog_outer_bc = 1 if config.interior_energetics.surface_bc_mode == 'grey_body' else 4
-        # Core BC mode: thread config.interior_energetics.aragog.core_bc
-        # through to the Aragog solver. Valid values:
-        #   'energy_balance' (default since 2026-04-12, SPIDER-parity)
-        #   'quasi_steady'   (legacy v3 alpha-factor, -18% T_core gap)
-        #   'gradient'       (gradient-based state, SPIDER formulation parity)
-        #   'bower2018'      (EXPERIMENTAL tombstone, do not use)
+        # Core BC mode from config. Valid values:
+        #   'energy_balance' (default, capacitance-weighted core cooling)
+        #   'quasi_steady'   (alpha-factor approximation)
+        #   'gradient'       (gradient-based state)
+        #   'bower2018'      (EXPERIMENTAL, not recommended)
         aragog_cfg = getattr(config.interior_energetics, 'aragog', None)
         core_bc_str = getattr(aragog_cfg, 'core_bc', 'energy_balance')
         if core_bc_str not in ('quasi_steady', 'energy_balance', 'gradient', 'bower2018'):
@@ -1004,11 +998,8 @@ class AragogRunner:
         solver.parameters.solver.start_time = hf_row['Time']
         solver.parameters.solver.end_time = hf_row['Time'] + dt
 
-        # Get entropy field from previous run.
-        # With the v4 Bower core BC the solver state vector is N+1 long
-        # (entropy block followed by T_core); use entropy_staggered to
-        # strip T_core so the wrapper-side _last_entropy stays the
-        # entropy-only profile.
+        # Get entropy field from previous run. Use entropy_staggered
+        # accessor to handle variable state vector sizes.
         if output_dir is not None:
             S_field = read_last_Sfield(output_dir, hf_row['Time'])
         else:
@@ -1297,8 +1288,7 @@ class AragogRunner:
         _add('Ftotal_b', out.heat_flux, 'basic', 'W m-2')
         _add('Htotal_s', out.heating, 'staggered', 'W kg-1')
         _add('mass_s', out.mass_stag, 'staggered', 'kg')
-        # Diagnostic: per-component fluxes and basic-node state
-        # (T_core phi=0 instability investigation, 2026-04-14).
+        # Diagnostic: per-component fluxes and basic-node state.
         # Gated by config.interior_energetics.write_flux_diagnostics.
         if write_diagnostics:
             _add('Jcond_b', out.jcond_b, 'basic', 'W m-2')

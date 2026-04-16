@@ -221,17 +221,9 @@ class Interior:
     module: str = field(default='aragog', validator=in_(('spider', 'aragog', 'dummy')))
     num_levels: int = field(default=80, validator=ge(40))
 
-    # Tier 4 (2026-04-08): rtol was promoted from the Spider subclass
-    # to the top level so both SPIDER and Aragog read numerical
-    # tolerances from a single source of truth. num_tolerance is kept
-    # as a deprecated alias for rtol — old configs still load but emit
-    # a DeprecationWarning on the first Interior.__attrs_post_init__
-    # call. Remove in a future release.
-    #
-    # matprop_smooth_width was also briefly promoted in Tier 4, but
-    # the 2026-04-09 Aragog Jgrav fix made it a SPIDER-only knob again.
-    # It now lives on the Spider subclass as a real field (no longer
-    # a deprecation alias).
+    # Unified ODE tolerance: both SPIDER and Aragog read from here.
+    # num_tolerance is a deprecated alias (emits DeprecationWarning).
+    # matprop_smooth_width is SPIDER-only (on the Spider subclass).
     rtol: float = field(default=1e-10, validator=gt(0))
     """Relative numerical tolerance for the interior ODE solver.
     SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling).
@@ -314,13 +306,8 @@ class Interior:
     )
 
     # -----------------------------------------------------------------
-    # Tier 3 parity fields (promoted from hardcoded values in
-    # aragog.py::setup_solver and spider.py::build_call_sequence, 2026-04-08).
-    # Defaults match the SPIDER-side values so existing SPIDER runs are
-    # bit-exact unchanged. Aragog users get the SPIDER-matching values by
-    # default for the first time — notably `solid_log10visc = 22.0` fixes
-    # the 10x discrepancy with SPIDER that had been latent in Aragog
-    # (it used hardcoded `1e21` = log10(21), SPIDER uses `-solid_log10visc 22.0`).
+    # EOS and rheology parameters exposed to config. Defaults match
+    # SPIDER values for cross-solver consistency.
     # -----------------------------------------------------------------
 
     # Adams-Williamson mantle hydrostatic EOS parameters.

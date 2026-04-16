@@ -638,10 +638,8 @@ def _try_spider(
     step_sf = max(1.0e-10, step_sf)
     atol_sf = max(1.0e-10, atol_sf)
 
-    # Solver tolerances. Tier 4: rtol and atol are now top-level fields
-    # on interior_energetics, previously Spider.tolerance_rel and the
-    # aliased num_tolerance. atol_sf is the per-retry scaling used by
-    # _try_spider's fallback ladder.
+    # Solver tolerances from config. atol_sf is the per-retry scaling
+    # used by _try_spider's adaptive fallback ladder.
     spider_atol = atol_sf * config.interior_energetics.atol
     spider_rtol = atol_sf * config.interior_energetics.rtol
 
@@ -1018,7 +1016,7 @@ def _try_spider(
 
     # Smoothing of material properties across liquidus and solidus,
     # in units of melt fraction (non-dimensional). SPIDER-only knob
-    # (Aragog's Jgrav smoothing is parameter-free as of 2026-04-09).
+    # (Aragog uses parameter-free Jgrav smoothing).
     call_sequence.extend(
         [
             '-matprop_smooth_width',
@@ -1313,13 +1311,6 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     # Global melt fraction by volume
     output['Phi_global_vol'] = min(1.0, max(0.0, np.sum(vmelt) / volume_mantle))
 
-    # Manually calculate heat flux at near-surface from energy gradient
-    # Etot        = json_file.get_dict_values(['data','Etot_b'])
-    # rad         = json_file.get_dict_values(['data','radius_b'])
-    # area        = json_file.get_dict_values(['data','area_b'])
-    # E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
-    # F_int2      = E0/area[0]
-
     # Get estimate of potential temperature
     Fconv = json_file.get_dict_values(['data', 'Jconv_b'])
     Fcond = json_file.get_dict_values(['data', 'Jcond_b'])
@@ -1334,32 +1325,15 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
 
     # Total thermal energy E_th = sum(mass_i * Cp_i * T_i).
     #
-    # Mass: use ``interior_o.mass`` (SPIDER's own mass_s column from
-    # the JSON) rather than ``interior_o.density * vshell``. They
-    # differ by ~20% at t=0 because SPIDER's mass_s comes from
-    # integrating the structure mesh, while a simple density*volume
-    # product uses SPIDER's internal Adams-Williamson density which
-    # disagrees with the Wolf-Bower table by 4-17% at the surface
-    # nodes. Aragog reports E_th using mass_stag = rho*vol directly
-    # (self-consistent with its own finite-volume mesh).
+    # Mass: use interior_o.mass (SPIDER's structure-integrated mass)
+    # rather than density*volume, which disagrees at surface nodes
+    # due to Adams-Williamson vs Wolf-Bower table density differences.
     #
-    # Cp (v4 latent-blend convention, 2026-04-09 evening): read
-    # SPIDER's own ``cp_s`` field directly from the JSON. SPIDER's
-    # C code computes the latent-blend formula in
-    # ``eos_composite.c:226-232``:
-    #     Cp_mix = (S_liq - S_sol) / (T_liq - T_sol) * T_mid
-    # which captures the latent-heat contribution to apparent heat
-    # capacity in the mushy zone (where the wrapper-side linear
-    # blend underestimates Cp by up to 6x). Reading cp_s directly
-    # makes the helpfile E_th match SPIDER's internal accounting.
-    #
-    # The wrapper still loads the P-S Cp tables (interior_o.lookup_cp_*)
-    # as a fallback for when cp_s is not in the JSON (older SPIDER
-    # builds before commit ctx.c:374-375 landed).
-    #
-    # See the 2026-04-09 parity analysis in
-    # ``memory/aragog_jgrav_cmb_drain.md`` and the Etot_b audit
-    # in the conversation log for the convention discussion.
+    # Cp: read SPIDER's cp_s field from JSON, which includes the
+    # latent-blend formula Cp_mix = (S_liq-S_sol)/(T_liq-T_sol)*T_mid,
+    # capturing the latent-heat contribution in the mushy zone.
+    # Falls back to P-S Cp tables or hardcoded 1200 J/kg/K if cp_s
+    # is unavailable.
     try:
         cp_est = np.full_like(interior_o.temp, 1200.0)
 

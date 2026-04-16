@@ -142,12 +142,9 @@ class TimeStepParams:
     maximum: float = field(default=1e7, validator=gt(0))
     initial: float = field(default=3e1, validator=gt(0))
 
-    # Stiffness-aware adaptive extensions (2026-04-09).
-    #
-    # Both defaults are OFF (mushy_maximum=0, hysteresis_iters=0)
-    # to preserve backwards compatibility with configs written
-    # before these fields existed. Enable via explicit positive
-    # values in the config.
+    # Stiffness-aware adaptive time-stepping extensions.
+    # Defaults OFF (mushy_maximum=0, hysteresis_iters=0) for
+    # backwards compatibility; enable via positive config values.
     mushy_maximum: float = field(default=0.0, validator=ge(0))
     mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
     hysteresis_iters: int = field(default=0, validator=ge(0))

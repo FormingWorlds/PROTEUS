@@ -289,11 +289,10 @@ def next_step(
     # Always enforce the absolute maximum
     dtswitch = min(dtswitch, config.params.dt.maximum)
 
-    # Mushy-regime dt cap (2026-04-09). Independently tightens dt
-    # when the interior is actively solidifying, because the
-    # phase-boundary Jgrav + rheology contrast creates stiffness
-    # cliffs the output-based adaptive controller above cannot
-    # detect in advance. Active when:
+    # Mushy-regime dt cap: tightens dt when actively solidifying
+    # because phase-boundary Jgrav + rheology contrast creates
+    # stiffness cliffs that the output-based adaptive controller
+    # cannot detect in advance. Active when:
     #   (1) mushy_maximum > 0 in the config (feature enabled),
     #   (2) Phi_global is inside the mushy band
     #       (stop.solid.phi_crit < Phi_global < mushy_upper).

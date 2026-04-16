@@ -378,13 +378,9 @@ class Interior_t:
         # Current time step length [yr]
         self.dt = 1.0
 
-        # Cumulative SPIDER time [yr]. Tracked separately from
-        # hf_row['Time'] because SPIDER's JSON filenames can alias
-        # Legacy field: was used by the old dtswitch-based time advancement
-        # before the time_years JSON fix (commit b3c2a483). Now only
-        # advanced in the SPIDER CVode failure fallback path
-        # (wrapper.py:909) to keep bookkeeping consistent during retries.
-        # Not read on the normal success path.
+        # Cumulative SPIDER time [yr]. Used by the CVode failure
+        # fallback path (wrapper.py) to keep bookkeeping consistent
+        # during retries.
         self._spider_cumulative_time = 0.0
 
         # Stiffness-aware adaptive time-step state (2026-04-09).
