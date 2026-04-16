@@ -1169,11 +1169,14 @@ class AragogRunner:
                 if attempt >= max_attempts:
                     logger.error(
                         'Aragog solver failed after %d attempts (final status=%d). '
-                        'Propagating partial result to helpfile.',
+                        'Raising RuntimeError so wrapper can apply skip-step fallback.',
                         attempt,
                         out.status,
                     )
-                    return out
+                    raise RuntimeError(
+                        f'Aragog retry ladder exhausted: status={out.status} '
+                        f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
+                    )
 
                 # Failure: halve dt AND relax atol, restore state, retry
                 dt_new = dt_requested * (0.5 ** attempt)

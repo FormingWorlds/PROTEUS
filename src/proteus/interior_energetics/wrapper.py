@@ -29,6 +29,12 @@ _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 5
 _spider_fail_count = 0
 _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 
+# Counter for consecutive Aragog retry-ladder exhaustions. Reset on
+# each successful Aragog call. Crash after max_consecutive. Mirrors
+# the SPIDER fallback pattern.
+_aragog_fail_count = 0
+_ARAGOG_MAX_CONSECUTIVE_FAILS = 3
+
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -912,10 +918,40 @@ def run_interior(
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior_energetics.module == 'aragog':
+        global _aragog_fail_count
         from proteus.interior_energetics.aragog import AragogRunner
 
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
-        sim_time, output = runner.run_solver(hf_row, interior_o, dirs, write_data=write_data)
+        try:
+            sim_time, output = runner.run_solver(
+                hf_row, interior_o, dirs, write_data=write_data,
+            )
+            _aragog_fail_count = 0
+        except RuntimeError as e:
+            _aragog_fail_count += 1
+            log.warning(
+                'Aragog retry-ladder exhaustion #%d/%d. '
+                'Keeping previous interior state for this step. Error: %s',
+                _aragog_fail_count,
+                _ARAGOG_MAX_CONSECUTIVE_FAILS,
+                str(e)[:200],
+            )
+            if _aragog_fail_count >= _ARAGOG_MAX_CONSECUTIVE_FAILS:
+                log.error(
+                    'Aragog failed %d consecutive times. Aborting.',
+                    _aragog_fail_count,
+                )
+                raise
+            # Skip output update; keep hf_row values from previous step.
+            # Atmosphere + outgassing still advance, pushing the planet
+            # past the stiff regime. Same pattern as SPIDER fallback above.
+            from proteus.interior_energetics.timestep import next_step
+
+            dtswitch = next_step(
+                config, dirs, hf_row, hf_all, 1.0, interior_o=interior_o,
+            )
+            interior_o.dt = dtswitch
+            return
 
     elif config.interior_energetics.module == 'dummy':
         # Import
