@@ -97,7 +97,7 @@ def main():
 
     from aragog.jax.eos import EntropyEOS_JAX
     from aragog.jax.phase import MeshArrays, PhaseParams
-    from aragog.jax.solver import BoundaryParams
+    from aragog.jax.solver import BoundaryParams, dSdt_energy_balance
     from aragog.jax.solver import dSdt as jax_dsdt
 
     eos_jax = EntropyEOS_JAX(dirs['spider_eos_dir'])
@@ -122,16 +122,31 @@ def main():
     mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
 
     bc_cfg = solver.parameters.boundary_conditions
+    # Energy_balance constants from the numpy solver's cached BC values
+    cmb_area = float(getattr(solver, '_cmb_area', 0.0))
+    core_M = float(getattr(solver, '_core_M', 0.0))
+    cmb_dr_cmb = float(getattr(solver, '_cmb_dr_cmb', 0.0))
+    print(f'energy_balance constants: cmb_area={cmb_area:.3e}, core_M={core_M:.3e}, cmb_dr_cmb={cmb_dr_cmb:.3e}')
+
+    # If we're in energy_balance mode, set inner_bc_type=5 to signal
+    # the new dSdt_energy_balance path. Otherwise use the existing BC type.
+    inner_bc_type_for_jax = (
+        5 if solver._core_bc == 'energy_balance' else bc_cfg.inner_boundary_condition
+    )
+
     bc_jax = BoundaryParams(
         outer_bc_type=bc_cfg.outer_boundary_condition,
         outer_bc_value=bc_cfg.outer_boundary_value,
         emissivity=bc_cfg.emissivity,
         T_eq=bc_cfg.equilibrium_temperature,
-        inner_bc_type=bc_cfg.inner_boundary_condition,
+        inner_bc_type=inner_bc_type_for_jax,
         inner_bc_value=bc_cfg.inner_boundary_value,
         core_density=solver.parameters.mesh.core_density,
         core_heat_capacity=bc_cfg.core_heat_capacity,
         tfac_core_avg=getattr(bc_cfg, 'tfac_core_avg', 1.147),
+        cmb_area=cmb_area,
+        core_M=core_M,
+        cmb_dr_cmb=cmb_dr_cmb,
     )
 
     # Heating: just use zeros for the parity test
@@ -143,18 +158,20 @@ def main():
     # ── Compare RHS at the IC ──
     print('\n--- Calling both RHS implementations at t=0, S=initial ---')
     S0 = solver._S0
-    if solver._state_is_extended:
-        # Take just the entropy block for the JAX call
-        S_jax_input = jnp.asarray(S0[:n_stag])
-        print(f'(numpy state has extended N+1 layout; JAX input is first N={n_stag} entropy values)')
-    else:
-        S_jax_input = jnp.asarray(S0)
-
     f_np = np.asarray(solver._dSdt_single(0.0, S0))
-    f_jax_full = np.asarray(jax_dsdt(0.0, S_jax_input, args))
+    print(f'numpy state vector: shape={S0.shape}; output shape={f_np.shape}')
 
-    # If numpy returned N+1, only the first N are entropy derivatives
-    f_np_entropy = f_np[:n_stag] if f_np.size == n_stag + 1 else f_np
+    if solver._state_is_extended and solver._core_bc == 'energy_balance':
+        # Use the new dSdt_energy_balance for the full N+1 state
+        print(f'Using dSdt_energy_balance (N+1 state)')
+        S_jax_input = jnp.asarray(S0)
+        f_jax_full = np.asarray(dSdt_energy_balance(0.0, S_jax_input, args))
+        f_np_entropy = f_np  # full N+1 comparison
+    else:
+        # Quasi_steady or other N-state mode
+        S_jax_input = jnp.asarray(S0[:n_stag] if solver._state_is_extended else S0)
+        f_jax_full = np.asarray(jax_dsdt(0.0, S_jax_input, args))
+        f_np_entropy = f_np[:n_stag] if f_np.size == n_stag + 1 else f_np
 
     abs_err = np.abs(f_np_entropy - f_jax_full)
     denom = np.maximum(np.abs(f_np_entropy), 1e-30)
