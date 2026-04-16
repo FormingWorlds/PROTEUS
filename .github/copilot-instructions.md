@@ -169,6 +169,15 @@ proteus install-all --export-env
 
 **Always run** `pip install -e ".[develop]"` after code changes to update installation.
 
+#### SOCRATES build flags (Aragog reproducibility)
+
+For bit-reproducibility (paper plots, CHILI, SPIDER-parity) edit
+`SOCRATES/make/Mk_cmd`: replace `FORTCOMP ... -Ofast -march=native` with
+`-O2 -fno-fast-math` and clear `OMPARG = -fopenmp`. The upstream flags
+produce ULP-level non-determinism that AGNI's Newton solver amplifies
+into 1-2 % F_atm variance, which the Aragog hardening stack absorbs but
+still leaves runs non-bit-identical. Rebuild with `cd socrates && ./build_code`.
+
 ### Test Commands
 
 **Run all tests**:
