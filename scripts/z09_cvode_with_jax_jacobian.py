@@ -67,15 +67,19 @@ def main():
     jac_fn(0.0, y0, None, J_warm)
     print(f'  warm RHS + Jac done; J range [{J_warm.min():.2e}, {J_warm.max():.2e}]')
 
-    # Common CVODE options
+    # Common CVODE options. Read tolerance from CLI for the
+    # tighten-tol experiment; default matches production atol=1e-8.
+    rtol = float(sys.argv[1]) if len(sys.argv) > 1 else 1e-6
+    atol = float(sys.argv[2]) if len(sys.argv) > 2 else 1e-8
     base_opts = dict(
         old_api=False,
-        rtol=1e-6,
-        atol=1e-8,
+        rtol=rtol,
+        atol=atol,
         lmm_type='BDF',
         nonlinsolver='newton',
-        max_steps=10000,
+        max_steps=100000,
     )
+    print(f'  using rtol={rtol}, atol={atol}')
 
     t_end = 1.0  # 1 yr integration
     t_span = [0.0, t_end]
