@@ -1129,10 +1129,12 @@ class AragogRunner:
             last attempt if all failed.
         """
         solver = self.aragog_solver
-        max_attempts = 4
-        atol_sf_step = 5.0  # multiplier per retry, mirrors SPIDER's atol_sf *= 5.0
+        max_attempts = 6
+        atol_sf_max = 5.0  # cap on atol scaling; tested 125x corrupted T_core
+        sanity_dT_core = 1500.0  # max plausible T_core change per retry [K]
 
-        # Capture IC for restoration on retry
+        # Capture IC for restoration on retry, and pre-call T_core for
+        # the sanity check on retry success.
         t_start = float(solver.parameters.solver.start_time)
         t_end = float(solver.parameters.solver.end_time)
         dt_requested = t_end - t_start
@@ -1142,6 +1144,7 @@ class AragogRunner:
             else None
         )
         dSdr_ic = getattr(solver, '_dSdr_cmb_init', None)
+        T_core_pre = float(hf_row.get('T_core', 0.0))
 
         # Reset atol scale to 1.0 at the start of each coupling step
         # (cleared regardless of retry outcome at end of method)
@@ -1153,18 +1156,35 @@ class AragogRunner:
                 solver.solve()
                 out = solver.get_state()
 
+                # Status check: did CVODE accept the step?
                 if out.status == 0:
-                    if attempt > 1:
-                        logger.info(
-                            'Aragog retry succeeded on attempt %d '
-                            '(dt=%.3e yr, atol_sf=%.1fx; '
-                            'was dt=%.3e yr, atol_sf=1.0x at attempt 1)',
-                            attempt,
-                            float(solver.parameters.solver.end_time) - t_start,
-                            float(solver._atol_sf),
-                            dt_requested,
+                    # Sanity check: reject suspiciously large T_core jumps
+                    # that indicate the solver "succeeded" with garbage
+                    # (observed when atol_sf grew too large near phase
+                    # boundaries; loose atol let a single step traverse
+                    # solidus unphysically).
+                    T_core_post = float(out.T_core)
+                    dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
+                    if dT > sanity_dT_core and attempt > 1:
+                        logger.warning(
+                            'Aragog attempt %d returned status=0 but T_core '
+                            'jumped %.1f K (>%.0f K threshold). Treating as '
+                            'failure and continuing retry ladder.',
+                            attempt, dT, sanity_dT_core,
                         )
-                    return out
+                        # Fall through to the retry/exhaustion branch below
+                    else:
+                        if attempt > 1:
+                            logger.info(
+                                'Aragog retry succeeded on attempt %d '
+                                '(dt=%.3e yr, atol_sf=%.1fx; '
+                                'was dt=%.3e yr, atol_sf=1.0x at attempt 1)',
+                                attempt,
+                                float(solver.parameters.solver.end_time) - t_start,
+                                float(solver._atol_sf),
+                                dt_requested,
+                            )
+                        return out
 
                 if attempt >= max_attempts:
                     logger.error(
@@ -1178,9 +1198,13 @@ class AragogRunner:
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
                     )
 
-                # Failure: halve dt AND relax atol, restore state, retry
+                # Failure: halve dt AND relax atol (capped), restore state, retry.
+                # atol_sf increases linearly to atol_sf_max over attempts 2-3,
+                # then stays at the cap for further attempts. dt continues
+                # halving so additional attempts gain resolution, not looser
+                # tolerance.
                 dt_new = dt_requested * (0.5 ** attempt)
-                atol_sf_new = atol_sf_step ** attempt
+                atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
                 logger.warning(
                     'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
                     'Retrying with dt=%.3e yr, atol_sf=%.1fx (was dt=%.3e yr).',
