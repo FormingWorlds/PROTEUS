@@ -105,11 +105,12 @@ class Aragog:
         scipy solve_ivp (BDF). Requires jax, equinox, and diffrax packages.
     atol_temperature_equivalent: float
         Effective temperature-scale absolute tolerance [K] for Aragog's
-        scipy BDF integrator. Aragog's state variable is entropy (J/kg/K),
+        CVODE integrator. Aragog's state variable is entropy (J/kg/K),
         but users think in Kelvin, so this is exposed as a temperature
         equivalent that Aragog converts internally via Cp/T. Default is
-        0.01 K — tight enough that the solver resolves the ~0.3 K/yr
-        cooling rate of a magma ocean.
+        1e-8 K, matching SPIDER's atol=rtol=1e-8 setting; this tight
+        tolerance eliminates the CVODE marginal-stability bifurcation
+        at the first dt jump after equilibration.
     core_bc: str
         Core-mantle boundary condition mode. Default is 'quasi_steady'
         (v3 alpha-factor heat-flux partition). Valid values:
@@ -122,8 +123,11 @@ class Aragog:
     dilatation: bool = field(default=False)
     mass_coordinates: bool = field(default=True)
     jax: bool = field(default=False)
-    atol_temperature_equivalent: float = field(default=1.0e-6, validator=gt(0))
-    """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator."""
+    atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))
+    """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator.
+    Default 1e-8 matches SPIDER's atol=rtol=1e-8 setting. Empirically (2026-04-16)
+    this tightening eliminates the marginal-stability bifurcation observed at the
+    iter-9 dt jump that affected runs with atol=3e-7."""
     core_bc: str = field(default='energy_balance')
     phase_smoothing: str = field(default='tanh')
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""

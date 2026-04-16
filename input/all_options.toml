@@ -341,7 +341,7 @@ config_version = "3.0"
         dilatation                    = false   # PdV heating from grav sep (off for SPIDER parity)
         mass_coordinates              = true    # mass coordinate mesh spacing
         jax                           = false   # JAX/diffrax solver (requires jax, equinox, diffrax)
-        atol_temperature_equivalent   = 0.01    # scipy BDF atol [K]; tight enough to resolve 0.3 K/yr cooling
+        atol_temperature_equivalent   = 1.0e-8  # CVODE atol [K]; matches SPIDER atol=rtol
 
     # SPIDER-only parameters
     [interior_energetics.spider]
