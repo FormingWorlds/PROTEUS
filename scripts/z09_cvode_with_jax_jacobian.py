@@ -69,8 +69,11 @@ def main():
 
     # Common CVODE options. Read tolerance from CLI for the
     # tighten-tol experiment; default matches production atol=1e-8.
+    # 4th CLI arg toggles the production W/X constraints (order=2,
+    # max_step=1 yr) — needed to avoid step-size collapse beyond ~1 yr.
     rtol = float(sys.argv[1]) if len(sys.argv) > 1 else 1e-6
     atol = float(sys.argv[2]) if len(sys.argv) > 2 else 1e-8
+    use_wx = (len(sys.argv) > 4 and sys.argv[4].lower() in ('1', 'true', 'yes'))
     base_opts = dict(
         old_api=False,
         rtol=rtol,
@@ -79,10 +82,15 @@ def main():
         nonlinsolver='newton',
         max_steps=100000,
     )
-    print(f'  using rtol={rtol}, atol={atol}')
+    if use_wx:
+        base_opts['order'] = 2          # W: cap BDF order at 2
+        base_opts['max_step_size'] = 1.0  # X: pre-emptive 1 yr step cap
+    print(f'  using rtol={rtol}, atol={atol}, W+X={"on" if use_wx else "off"}')
 
-    t_end = 1.0  # 1 yr integration
+    # 3rd CLI arg: t_end in years (default 1 yr).
+    t_end = float(sys.argv[3]) if len(sys.argv) > 3 else 1.0
     t_span = [0.0, t_end]
+    print(f'  integrating to t_end = {t_end:.1e} yr')
 
     # ── Run 1: JAX RHS + JAX Jacobian ──
     print('\n--- Run 1: JAX RHS + JAX analytic Jacobian ---')
