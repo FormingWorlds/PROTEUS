@@ -150,6 +150,14 @@ class TimeStepParams:
     hysteresis_iters: int = field(default=0, validator=ge(0))
     hysteresis_sfinc: float = field(default=1.1, validator=ge(1.0))
 
+    # Cap on dt growth ratio between consecutive steps. Bounds
+    # dtswitch / dtprev to at most max_growth_factor, preventing
+    # large dt jumps that can push stiff solvers past their error-test
+    # margin. Default 0.0 = disabled (preserves legacy behaviour).
+    # Typical value for stability-sensitive runs is 3.0; CHILI Aragog
+    # sets this to smooth the initial 10x dt jump that can wedge CVODE.
+    max_growth_factor: float = field(default=0.0, validator=ge(0))
+
 
 @define
 class StopIters:

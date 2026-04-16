@@ -319,5 +319,23 @@ def next_step(
     # In the adaptive branch, min has already been enforced before retry
     # scaling, so there is no additional floor to apply here.
 
+    # Growth-rate cap relative to previous successful step. Prevents
+    # large dt jumps that push stiff solvers past their error-test
+    # margin (e.g. the 10 yr -> 100 yr jump that occasionally wedges
+    # CVODE in Aragog at the molten-to-mushy transition).
+    max_growth = float(config.params.dt.max_growth_factor)
+    if max_growth > 0.0 and len(hf_all['Time']) >= 2:
+        dt_prev_actual = float(hf_all['Time'].iloc[-1] - hf_all['Time'].iloc[-2])
+        if dt_prev_actual > 0.0:
+            dt_capped = dt_prev_actual * max_growth
+            if dtswitch > dt_capped:
+                log.info(
+                    'Time-stepping: growth cap active '
+                    '(max_growth_factor=%.2f, dt_prev=%.2e yr), '
+                    'capping dt at %.2e yr (was %.2e yr)',
+                    max_growth, dt_prev_actual, dt_capped, dtswitch,
+                )
+                dtswitch = dt_capped
+
     log.info('New time-step target is %.2e years' % dtswitch)
     return dtswitch
