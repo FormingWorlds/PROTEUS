@@ -1130,6 +1130,7 @@ class AragogRunner:
         """
         solver = self.aragog_solver
         max_attempts = 4
+        atol_sf_step = 5.0  # multiplier per retry, mirrors SPIDER's atol_sf *= 5.0
 
         # Capture IC for restoration on retry
         t_start = float(solver.parameters.solver.start_time)
@@ -1142,50 +1143,63 @@ class AragogRunner:
         )
         dSdr_ic = getattr(solver, '_dSdr_cmb_init', None)
 
+        # Reset atol scale to 1.0 at the start of each coupling step
+        # (cleared regardless of retry outcome at end of method)
+        solver._atol_sf = 1.0
+
         out = None
-        for attempt in range(1, max_attempts + 1):
-            solver.solve()
-            out = solver.get_state()
+        try:
+            for attempt in range(1, max_attempts + 1):
+                solver.solve()
+                out = solver.get_state()
 
-            if out.status == 0:
-                if attempt > 1:
-                    logger.info(
-                        'Aragog retry succeeded on attempt %d (dt=%.3e yr, '
-                        'was %.3e yr at attempt 1)',
+                if out.status == 0:
+                    if attempt > 1:
+                        logger.info(
+                            'Aragog retry succeeded on attempt %d '
+                            '(dt=%.3e yr, atol_sf=%.1fx; '
+                            'was dt=%.3e yr, atol_sf=1.0x at attempt 1)',
+                            attempt,
+                            float(solver.parameters.solver.end_time) - t_start,
+                            float(solver._atol_sf),
+                            dt_requested,
+                        )
+                    return out
+
+                if attempt >= max_attempts:
+                    logger.error(
+                        'Aragog solver failed after %d attempts (final status=%d). '
+                        'Propagating partial result to helpfile.',
                         attempt,
-                        float(solver.parameters.solver.end_time) - t_start,
-                        dt_requested,
+                        out.status,
                     )
-                return out
+                    return out
 
-            if attempt >= max_attempts:
-                logger.error(
-                    'Aragog solver failed after %d attempts (final status=%d). '
-                    'Propagating partial result to helpfile.',
-                    attempt,
+                # Failure: halve dt AND relax atol, restore state, retry
+                dt_new = dt_requested * (0.5 ** attempt)
+                atol_sf_new = atol_sf_step ** attempt
+                logger.warning(
+                    'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
+                    'Retrying with dt=%.3e yr, atol_sf=%.1fx (was dt=%.3e yr).',
+                    hf_row.get('Time', 0.0),
                     out.status,
+                    attempt,
+                    max_attempts,
+                    dt_new,
+                    atol_sf_new,
+                    dt_requested,
                 )
-                return out
-
-            # Failure: halve dt, restore state, retry
-            dt_new = dt_requested * (0.5 ** attempt)
-            logger.warning(
-                'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
-                'Retrying with dt=%.3e yr (was %.3e yr).',
-                hf_row.get('Time', 0.0),
-                out.status,
-                attempt,
-                max_attempts,
-                dt_new,
-                dt_requested,
-            )
-            solver.parameters.solver.start_time = t_start
-            solver.parameters.solver.end_time = t_start + dt_new
-            if dSdr_ic is not None:
-                solver._dSdr_cmb_init = dSdr_ic
-            solver.reset()
-            if S_ic is not None:
-                solver.set_initial_entropy(S_ic)
+                solver.parameters.solver.start_time = t_start
+                solver.parameters.solver.end_time = t_start + dt_new
+                solver._atol_sf = atol_sf_new
+                if dSdr_ic is not None:
+                    solver._dSdr_cmb_init = dSdr_ic
+                solver.reset()
+                if S_ic is not None:
+                    solver.set_initial_entropy(S_ic)
+        finally:
+            # Always reset atol_sf so subsequent coupling steps start at 1.0x
+            solver._atol_sf = 1.0
 
         return out
 
