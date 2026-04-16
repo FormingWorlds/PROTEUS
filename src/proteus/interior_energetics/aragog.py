@@ -1071,11 +1071,14 @@ class AragogRunner:
         if self._use_jax:
             return self._jax_runner.run_solver(hf_row, interior_o, dirs, write_data=write_data)
 
-        # Run scipy BDF Aragog solver
-        self.aragog_solver.solve()
-
-        # Get clean output via the public API
-        out = self.aragog_solver.get_state()
+        # Run Aragog solver with retry ladder.
+        #
+        # CVODE can hit status=-1 ("Error test failures occurred too many
+        # times or minimum step size was reached") when a long coupling
+        # step lands in a stiff regime (e.g. the first crystallisation
+        # transition). Retry with a halved dt from the same start state.
+        # Mirrors SPIDER's _try_spider retry ladder in spider.py.
+        out = self._solve_with_retry(hf_row, interior_o)
 
         # Build PROTEUS helpfile output from SolverOutput
         output = self._build_helpfile_output(out, hf_row, interior_o=interior_o)
@@ -1111,6 +1114,89 @@ class AragogRunner:
             )
 
         return sim_time, output
+
+    def _solve_with_retry(self, hf_row, interior_o) -> SolverOutput:
+        """Run aragog_solver.solve() with a dt-halving retry ladder.
+
+        On CVODE failure (status != 0), restore the entropy IC and
+        dSdr_cmb_init from before the attempt, halve the integration
+        interval, and retry. Up to ``max_attempts`` attempts; on final
+        failure, returns the SolverOutput from the last attempt
+        (caller propagates status to the helpfile via dt_actual).
+
+        Parameters
+        ----------
+        hf_row : dict
+            Current helpfile row (for logging context).
+        interior_o : Interior_t
+            Interior state object holding _last_entropy.
+
+        Returns
+        -------
+        SolverOutput
+            Solver state from the first successful attempt, or from the
+            last attempt if all failed.
+        """
+        solver = self.aragog_solver
+        max_attempts = 4
+
+        # Capture IC for restoration on retry
+        t_start = float(solver.parameters.solver.start_time)
+        t_end = float(solver.parameters.solver.end_time)
+        dt_requested = t_end - t_start
+        S_ic = (
+            interior_o._last_entropy.copy()
+            if getattr(interior_o, '_last_entropy', None) is not None
+            else None
+        )
+        dSdr_ic = getattr(solver, '_dSdr_cmb_init', None)
+
+        out = None
+        for attempt in range(1, max_attempts + 1):
+            solver.solve()
+            out = solver.get_state()
+
+            if out.status == 0:
+                if attempt > 1:
+                    logger.info(
+                        'Aragog retry succeeded on attempt %d (dt=%.3e yr, '
+                        'was %.3e yr at attempt 1)',
+                        attempt,
+                        float(solver.parameters.solver.end_time) - t_start,
+                        dt_requested,
+                    )
+                return out
+
+            if attempt >= max_attempts:
+                logger.error(
+                    'Aragog solver failed after %d attempts (final status=%d). '
+                    'Propagating partial result to helpfile.',
+                    attempt,
+                    out.status,
+                )
+                return out
+
+            # Failure: halve dt, restore state, retry
+            dt_new = dt_requested * (0.5 ** attempt)
+            logger.warning(
+                'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
+                'Retrying with dt=%.3e yr (was %.3e yr).',
+                hf_row.get('Time', 0.0),
+                out.status,
+                attempt,
+                max_attempts,
+                dt_new,
+                dt_requested,
+            )
+            solver.parameters.solver.start_time = t_start
+            solver.parameters.solver.end_time = t_start + dt_new
+            if dSdr_ic is not None:
+                solver._dSdr_cmb_init = dSdr_ic
+            solver.reset()
+            if S_ic is not None:
+                solver.set_initial_entropy(S_ic)
+
+        return out
 
     @staticmethod
     def _build_helpfile_output(
