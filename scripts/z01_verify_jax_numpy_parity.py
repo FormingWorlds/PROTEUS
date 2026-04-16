@@ -167,6 +167,15 @@ def main():
         S_jax_input = jnp.asarray(S0)
         f_jax_full = np.asarray(dSdt_energy_balance(0.0, S_jax_input, args))
         f_np_entropy = f_np  # full N+1 comparison
+
+        # Diagnostic: compare key intermediates
+        print(f'\n--- Diagnostic intermediates at CMB ---')
+        print(f'numpy state._heat_flux[0:3]: {solver.state._heat_flux[0]:.3e}, {solver.state._heat_flux[1]:.3e}, {solver.state._heat_flux[2]:.3e}')
+        print(f'numpy entropy_basic[0]:      {solver.state._entropy_basic[0]:.3f}')
+        print(f'numpy phase_basic.temp[0]:   {float(solver.state.phase_basic.temperature().flat[0]):.2f} K')
+        print(f'numpy phase_basic.cp[0]:     {float(solver.state.phase_basic.heat_capacity().flat[0]):.2f}')
+        print(f'numpy capacitance_stag[0]:   {float(solver.state.capacitance_staggered().flat[0]):.3e}')
+        print(f'numpy area[0:3]: {solver.evaluator.mesh.basic.area.flatten()[:3]}')
     else:
         # Quasi_steady or other N-state mode
         S_jax_input = jnp.asarray(S0[:n_stag] if solver._state_is_extended else S0)
