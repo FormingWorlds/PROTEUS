@@ -1159,13 +1159,18 @@ class AragogRunner:
                 # Status check: did CVODE accept the step?
                 if out.status == 0:
                     # Sanity check: reject suspiciously large T_core jumps
-                    # that indicate the solver "succeeded" with garbage
-                    # (observed when atol_sf grew too large near phase
-                    # boundaries; loose atol let a single step traverse
-                    # solidus unphysically).
+                    # that indicate the solver "succeeded" with garbage.
+                    # Applies on ALL attempts (not just retries):
+                    #   - chili_atolrelax showed atol_sf=125x corruption on
+                    #     a retry attempt
+                    #   - chili_n_maxsteps500k showed corruption on attempt 1
+                    #     when more step budget allowed CVODE to traverse a
+                    #     phase boundary in one shot
+                    # Either way, we want to reject the result and retry
+                    # with a smaller dt.
                     T_core_post = float(out.T_core)
                     dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
-                    if dT > sanity_dT_core and attempt > 1:
+                    if dT > sanity_dT_core:
                         logger.warning(
                             'Aragog attempt %d returned status=0 but T_core '
                             'jumped %.1f K (>%.0f K threshold). Treating as '
