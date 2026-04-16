@@ -1,34 +1,20 @@
 """Z.2 multi-state Jacobian validation.
 
-KNOWN ISSUE (2026-04-17): JAX Jacobian returns all-NaN at the
-synthetic 'mid' (S=3300-3700) and 'near_solid' (S=3000-3300) states
-even though the JAX RHS itself produces correct finite values at
-those states (verified by z02). The IC state passes (max rel err
-9.82e-3 vs FD).
+RESOLVED (2026-04-17 ff350fd): the all-NaN Jacobian on mid /
+near_solid was traced via the z06 -> z07 -> z08 isolation chain
+to ``jnp.abs(dSdr)`` and ``jnp.sqrt(jnp.maximum(x, 0))`` in
+compute_mlt — both have singular gradients at zero that JAX's
+backward pass turns into NaN. Fix: numpy-style smooth-abs
+``0.5*(|x| + sqrt(x^2 + eps^2))`` and ``sqrt(x + eps^2)`` guards.
+After the fix, mid and near_solid Jacobians match FD to machine
+precision (1e-11 to 1e-12 rel err).
 
-Hypothesis: ``_lookup_phase_weighted`` and/or ``_table_lookup_blend``
-in ``aragog.jax.eos`` use ``jnp.where(cond, branch_a, branch_b)`` with
-both branches evaluated on the full input. ``jax.jacrev`` differentiates
-both branches even when ``cond`` selects one; if the unused branch hits
-a table-edge that produces NaN gradients in ``jax.scipy.interpolate``,
-the NaN propagates back through the multiply-by-zero. The IC state
-sits at S~3900 above the EOS table top S_max~3236 so both tables
-extrapolate consistently and the unused branch never hits an edge;
-the in-table mid/near_solid states do hit edges.
+Final pass result on chili_repro_v2:
 
-Fix path (next session):
-  1. Audit ``aragog/jax/eos.py`` for unguarded ``jnp.where``s that
-     evaluate both branches on potentially-edge-clipped inputs
-  2. Wrap the unused branch in ``lax.stop_gradient`` or use a
-     ``safe_where`` helper that masks the input before lookup
-  3. Validate by running this script and checking 'mid' and
-     'near_solid' Jacobians become finite
-
-The IC-only Jacobian (z03) is still useful as a CVODE preconditioner
-for the FIRST coupling step; the issue only matters once CVODE asks
-for a Jacobian at a mid-trajectory state.
-
-Original docstring follows.
+  state         max_rel    median_rel    cond_1
+  IC            9.82e-03   2.19e-03      6.90e+26    PASS  (above-table extrap)
+  mid           1.12e-11   3.64e-12      3.96e+26    PASS  (machine precision)
+  near_solid    8.09e-10   1.22e-11      6.36e+14    PASS  (machine precision)
 
 Extends z03 (IC-only Jacobian validation) to the same three states
 exercised in z02 (IC, mid-trajectory, near-solid). For each state we
