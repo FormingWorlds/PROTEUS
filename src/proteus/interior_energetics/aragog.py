@@ -727,6 +727,13 @@ class AragogRunner:
                 eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
                 kappah_floor=float(ie.kappah_floor),
                 bottom_up_grav_sep=True,
+                phase_smoothing=getattr(
+                    ie.aragog, 'phase_smoothing', 'cubic_hermite'
+                ),
+                # Width matches hardcoded 1e-2 in numpy entropy_state.py
+                # _spider_get_smoothing call sites (not matprop_smooth_width,
+                # which is a separate SPIDER material-property blend).
+                phase_smoothing_width=0.01,
             )
 
             mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
