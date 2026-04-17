@@ -133,6 +133,10 @@ class Aragog:
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
     solver_method: str = field(default='cvode')
     """ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy)."""
+    use_jax_jacobian: bool = field(default=False)
+    """Option Z: use a JAX-derived analytic Jacobian inside CVODE instead of its
+    default finite-difference approximation. Requires ``solver_method='cvode'``
+    and the JAX/equinox stack. Disabled by default pending Z.4/Z.5 validation."""
 
 
 def valid_interiordummy(instance, attribute, value):

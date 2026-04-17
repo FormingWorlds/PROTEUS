@@ -200,6 +200,53 @@ def main():
             d = (hf_jax[i]-hf_np[i])/abs(hf_np[i])*100 if abs(hf_np[i]) > 1e-10 else 0
             print(f'{i:>4} {hf_np[i]:>12.3e} {hf_jax[i]:>12.3e} {d:>+7.1f}%')
 
+        # Surface-region heat flux: idx 77 worst residual is at the second-
+        # to-last staggered cell (entropy block index 77 of 79). Print
+        # F[n_basic-3..n_basic-1] = F[78..80] in 81-basic-node mesh.
+        n_basic = hf_np.size
+        print('\n--- Surface-region heat_flux (last 4 basic nodes) ---')
+        print(f'{"idx":>4} {"numpy F":>12} {"JAX F":>12} {"diff%":>8}')
+        for i in range(n_basic - 4, n_basic):
+            d = (hf_jax[i]-hf_np[i])/abs(hf_np[i])*100 if abs(hf_np[i]) > 1e-10 else 0
+            print(f'{i:>4} {hf_np[i]:>12.3e} {hf_jax[i]:>12.3e} {d:>+7.4f}%')
+
+        # Surface-region inputs to flux: rho, T, k, Cp, alpha, dTdPs,
+        # dSdr, kappa_h. Identifies whether the residual is from the
+        # phase evaluation (compute_phase_state) or the MLT/conduction
+        # downstream of identical inputs.
+        print('\n--- Surface-region phase + MLT (last 3 basic nodes) ---')
+        from aragog.jax.phase import compute_mlt as _jax_mlt2
+        from aragog.jax.phase import evaluate_phase as _jax_eval2
+        S_stag_arr_surf = jnp.asarray(S0[:n_stag])
+        r_basic_arr_surf = np.asarray(solver.evaluator.mesh.basic.radii).ravel()
+        r_stag0_surf = 0.5 * (r_basic_arr_surf[0] + r_basic_arr_surf[1])
+        dr_off_surf = r_basic_arr_surf[0] - r_stag0_surf
+        S_basic_cmb_surf = float(S0[0]) + float(S0[n_stag]) * dr_off_surf
+        S_basic_jax2 = mesh_jax.quantity_matrix @ S_stag_arr_surf
+        S_basic_jax2 = S_basic_jax2.at[0].set(S_basic_cmb_surf)
+        dSdr_jax2 = mesh_jax.d_dr_matrix @ S_stag_arr_surf
+        dSdr_jax2 = dSdr_jax2.at[0].set(S0[n_stag])
+        ph_b_jax2 = _jax_eval2(eos_jax, params_jax, mesh_jax.P_basic, S_basic_jax2)
+        kh_jax2, _ = _jax_mlt2(dSdr_jax2, ph_b_jax2, mesh_jax, params_jax)
+        rho_b_np2 = np.asarray(solver.state.phase_basic.density()).ravel()
+        T_b_np2 = np.asarray(solver.state.phase_basic.temperature()).ravel()
+        Cp_b_np2 = np.asarray(solver.state.phase_basic.heat_capacity()).ravel()
+        alpha_b_np2 = np.asarray(solver.state.phase_basic.thermal_expansivity()).ravel()
+        dTdPs_b_np2 = np.asarray(solver.state.phase_basic.dTdPs()).ravel()
+        dSdr_np2 = np.asarray(solver.state._dSdr).ravel()
+        kh_np2 = np.asarray(solver.state._eddy_diffusivity).ravel()
+        Sb_np2 = np.asarray(solver.state._entropy_basic).ravel()
+        for i in range(n_basic - 3, n_basic):
+            print(f'  idx={i}:')
+            print(f'    S_basic:    np={Sb_np2[i]:.4f}  jax={float(S_basic_jax2[i]):.4f}  d={float(S_basic_jax2[i])-Sb_np2[i]:+.2e}')
+            print(f'    rho:        np={rho_b_np2[i]:.4f}  jax={float(ph_b_jax2.density[i]):.4f}  d%={(float(ph_b_jax2.density[i])-rho_b_np2[i])/rho_b_np2[i]*100:+.4f}')
+            print(f'    T:          np={T_b_np2[i]:.4f}  jax={float(ph_b_jax2.temperature[i]):.4f}  d%={(float(ph_b_jax2.temperature[i])-T_b_np2[i])/T_b_np2[i]*100:+.4f}')
+            print(f'    Cp:         np={Cp_b_np2[i]:.4f}  jax={float(ph_b_jax2.heat_capacity[i]):.4f}  d%={(float(ph_b_jax2.heat_capacity[i])-Cp_b_np2[i])/Cp_b_np2[i]*100:+.4f}')
+            print(f'    alpha:      np={alpha_b_np2[i]:.3e}  jax={float(ph_b_jax2.thermal_expansivity[i]):.3e}  d%={(float(ph_b_jax2.thermal_expansivity[i])-alpha_b_np2[i])/alpha_b_np2[i]*100:+.4f}')
+            print(f'    dTdPs:      np={dTdPs_b_np2[i]:.3e}  jax={float(ph_b_jax2.dTdPs[i]):.3e}  d%={(float(ph_b_jax2.dTdPs[i])-dTdPs_b_np2[i])/dTdPs_b_np2[i]*100:+.4f}')
+            print(f'    dSdr:       np={dSdr_np2[i]:.3e}  jax={float(dSdr_jax2[i]):.3e}')
+            print(f'    kappa_h:    np={kh_np2[i]:.3e}  jax={float(kh_jax2[i]):.3e}  d%={(float(kh_jax2[i])-kh_np2[i])/kh_np2[i]*100:+.4f}')
+
         # F[0] decomposition: F_cond[0] = -k * dT/dr; F_conv[0] = rho*T*kappa_h*(-dSdr)
         from aragog.jax.phase import compute_mlt as _jax_mlt
         from aragog.jax.phase import evaluate_phase as _jax_eval
