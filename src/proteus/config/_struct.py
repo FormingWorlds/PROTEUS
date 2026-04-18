@@ -148,6 +148,15 @@ class Zalmoxis:
     equilibrate_max_iter: int = field(default=15, validator=ge(1))
     equilibrate_tol: float = field(default=0.01, validator=gt(0))
 
+    # Structure solver assumes a dry mantle (no dissolved volatile components
+    # mixed into the mantle EOS via VolatileProfile). Stage 1 phase-aware
+    # coupling forces this to True so the structure surface depends only on
+    # the canonical PALEOS solid+liquid mantle tables and the core EOS.
+    # Volatile partitioning still happens in the outgassing module; this
+    # flag only controls whether dissolved volatile mass shifts the
+    # structure-side EOS density / mixing.
+    dry_mantle: bool = field(default=False)
+
     # SPIDER P-S table resolution (generated from PALEOS)
     lookup_nP: int = field(default=1350, validator=ge(100))
     lookup_nS: int = field(default=280, validator=ge(50))

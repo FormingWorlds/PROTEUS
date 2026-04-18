@@ -122,6 +122,15 @@ class Planet:
         'isothermal': T = tsurf_init everywhere.
         'linear': T from tsurf_init (surface) to tcenter_init (center).
         'adiabatic': integrate dT/dP|_S downward from tsurf_init.
+        'adiabatic_from_cmb': anchor the adiabat at the core-mantle
+            boundary (T = tcmb_init at P_cmb) and integrate upward to the
+            surface. Use this when the surface-anchored adiabat under the
+            current EOS would put the mantle into the mushy zone at IC
+            and you want to force a fully molten initial state by pinning
+            the CMB temperature instead. PROTEUS converts the (P_cmb,
+            tcmb_init) anchor into a target entropy via PALEOS-2phase
+            lookup, then hands that S to the interior solver as if it
+            were the isentropic IC.
         'accretion': White & Li (2025) parameterization.
         'isentropic': set the initial specific entropy directly via
             ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the
@@ -129,7 +138,11 @@ class Planet:
             entropy IC to T(P) via its own EOS table.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
-        Ignored when temperature_mode = 'isentropic'.
+        Ignored when temperature_mode = 'isentropic' or 'adiabatic_from_cmb'.
+    tcmb_init: float
+        Initial core-mantle boundary temperature [K] (adiabatic_from_cmb only).
+        The mantle adiabat is anchored at this temperature at P = P_cmb
+        and integrated outward to the surface.
     tcenter_init: float
         Center temperature [K] (linear only).
     f_accretion: float
@@ -166,9 +179,12 @@ class Planet:
     # Initial temperature profile
     temperature_mode: str = field(
         default='adiabatic',
-        validator=in_(('isothermal', 'linear', 'adiabatic', 'accretion', 'isentropic')),
+        validator=in_(
+            ('isothermal', 'linear', 'adiabatic', 'adiabatic_from_cmb', 'accretion', 'isentropic')
+        ),
     )
     tsurf_init: float = field(default=4000.0, validator=gt(0))
+    tcmb_init: float = field(default=6000.0, validator=gt(0))
     tcenter_init: float = field(default=6000.0, validator=gt(0))
     f_accretion: float = field(default=0.04, validator=ge(0))
     f_differentiation: float = field(default=0.50, validator=ge(0))

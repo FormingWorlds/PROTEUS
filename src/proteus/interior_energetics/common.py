@@ -248,6 +248,109 @@ def compute_initial_entropy(
         )
         return S
 
+    # CMB-anchored adiabat: invert (P_cmb, tcmb_init) -> S via the same
+    # entropy tables the interior solver integrates with. Because S is
+    # conserved along an adiabat, S(P_cmb, T_cmb) = S(P_surf, T_surf), so
+    # this returns exactly the entropy that produces T(P_cmb) = tcmb_init
+    # when the solver unpacks the IC. Use this mode when the surface-
+    # anchored adiabat under the current EOS would land in the mushy zone
+    # at IC and you want to force a fully molten initial state.
+    if config.planet.temperature_mode == 'adiabatic_from_cmb':
+        tcmb = float(config.planet.tcmb_init)
+        P_cmb = None
+        if hf_row is not None:
+            P_cmb = hf_row.get('P_cmb', None)
+        if not P_cmb or P_cmb <= 0:
+            log.warning(
+                'adiabatic_from_cmb: hf_row["P_cmb"] missing or non-positive, '
+                'falling back to Earth-like 135 GPa. The structure solve must '
+                'run before compute_initial_entropy for the proper P_cmb to '
+                'be available.',
+            )
+            P_cmb = 135e9
+
+        # Preferred path: invert via the Aragog entropy tables (the same
+        # tables the solver integrates with), so the resulting S yields
+        # exactly tcmb_init at P_cmb when the IC is unpacked.
+        if spider_eos_dir and os.path.isdir(spider_eos_dir):
+            try:
+                from aragog.eos.entropy import EntropyEOS
+
+                eos = EntropyEOS(spider_eos_dir)
+                S_target = float(eos.invert_temperature(P_cmb, tcmb))
+                log.info(
+                    'Initial entropy from CMB-anchored P-S inversion: '
+                    'P_cmb=%.2e Pa, tcmb=%.0f K -> S=%.1f J/kg/K',
+                    P_cmb,
+                    tcmb,
+                    S_target,
+                )
+                return S_target
+            except (ImportError, ValueError, FileNotFoundError) as e:
+                log.warning(
+                    'CMB-anchored P-S inversion failed (%s); '
+                    'falling back to PALEOS-2phase lookup.', e,
+                )
+
+        # Fallback: PALEOS-2phase phase-weighted entropy lookup at
+        # (P_cmb, tcmb_init). Same path as compute_surface_entropy,
+        # just at the CMB instead of the surface.
+        try:
+            from zalmoxis.eos_export import compute_surface_entropy
+
+            from proteus.interior_struct.zalmoxis import (
+                load_zalmoxis_material_dictionaries,
+                load_zalmoxis_solidus_liquidus_functions,
+            )
+        except (ImportError, ModuleNotFoundError):
+            log.warning(
+                'Zalmoxis not installed; using fallback S=%.1f J/kg/K for tcmb=%.0f K.',
+                fallback,
+                tcmb,
+            )
+            return fallback
+
+        zalmoxis_cfg = getattr(config.interior_struct, 'zalmoxis', None)
+        if zalmoxis_cfg is None:
+            log.warning(
+                'adiabatic_from_cmb requires interior_struct.module="zalmoxis"; '
+                'using fallback S=%.1f J/kg/K.', fallback,
+            )
+            return fallback
+
+        mat_dicts = load_zalmoxis_material_dictionaries()
+        eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
+        paleos_eos_file = eos_entry.get('eos_file', '')
+        twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
+        solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
+        liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
+        solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
+        liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+
+        melt_funcs = load_zalmoxis_solidus_liquidus_functions(zalmoxis_cfg.mantle_eos, config)
+        sol_func = liq_func = None
+        if melt_funcs is not None:
+            sol_func, liq_func = melt_funcs
+
+        result = compute_surface_entropy(
+            eos_file=paleos_eos_file,
+            T_surface=tcmb,
+            P_surface=P_cmb,
+            solidus_func=sol_func,
+            liquidus_func=liq_func,
+            solid_eos_file=solid_eos,
+            liquid_eos_file=liquid_eos,
+        )
+        S_target = float(result['S_target'])
+        log.info(
+            'Initial entropy from CMB-anchored PALEOS-2phase lookup: '
+            'P_cmb=%.2e Pa, tcmb=%.0f K -> S=%.1f J/kg/K',
+            P_cmb,
+            tcmb,
+            S_target,
+        )
+        return S_target
+
     # Determine effective surface temperature
     tsurf = config.planet.tsurf_init
     if hf_row is not None:

@@ -295,7 +295,7 @@ class AragogRunner:
             tidal_array=interior_o.tides,
             kappah_floor=config.interior_energetics.kappah_floor,
             phase_smoothing=getattr(
-                config.interior_energetics.aragog, 'phase_smoothing', 'cubic_hermite'
+                config.interior_energetics.aragog, 'phase_smoothing', 'tanh'
             ),
             solver_method=getattr(
                 config.interior_energetics.aragog, 'solver_method', 'radau'
@@ -737,7 +737,7 @@ class AragogRunner:
                 kappah_floor=float(ie.kappah_floor),
                 bottom_up_grav_sep=True,
                 phase_smoothing=getattr(
-                    ie.aragog, 'phase_smoothing', 'cubic_hermite'
+                    ie.aragog, 'phase_smoothing', 'tanh'
                 ),
                 # Width matches hardcoded 1e-2 in numpy entropy_state.py
                 # _spider_get_smoothing call sites (not matprop_smooth_width,

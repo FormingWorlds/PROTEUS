@@ -305,9 +305,13 @@ def load_zalmoxis_configuration(
         # delays White+Li T-profile until after structure converges;
         # 'isentropic' (CHILI protocol) means the energetics solver
         # consumes ini_entropy, not the Zalmoxis T-profile, so the choice
-        # of structure-solve T is decoupled from the IC. temperature_mode_override
-        # lets SPIDER coupling force adiabatic without mutating the shared
-        # Config object (see proteus rules §"Config mutability").
+        # of structure-solve T is decoupled from the IC. 'adiabatic_from_cmb'
+        # is passed through to Zalmoxis with the CMB-anchor temperature so
+        # the structure-side T(r) integrates upward from T_cmb at R_cmb,
+        # matching the entropy that the energetics solver receives via
+        # compute_initial_entropy. temperature_mode_override lets SPIDER
+        # coupling force adiabatic without mutating the shared Config
+        # object (see proteus rules §"Config mutability").
         'temperature_mode': (
             'adiabatic'
             if (temperature_mode_override or config.planet.temperature_mode)
@@ -315,6 +319,7 @@ def load_zalmoxis_configuration(
             else (temperature_mode_override or config.planet.temperature_mode)
         ),
         'surface_temperature': config.planet.tsurf_init,
+        'cmb_temperature': config.planet.tcmb_init,
         'center_temperature': config.planet.tcenter_init,
         'temp_profile_file': None,
         'layer_eos_config': layer_eos_config,
@@ -601,16 +606,27 @@ def write_spider_mesh_file(
 
 
 def generate_spider_tables(config: Config, outdir: str):
-    """Generate SPIDER P-S EOS tables and phase boundaries from PALEOS data.
+    """Generate P-S EOS tables and phase boundaries from PALEOS data.
 
-    Uses the PALEOS unified EOS table (P-T format) to produce SPIDER-format
-    P-S tables for density, temperature, heat capacity, thermal expansion,
-    and adiabatic gradient, plus solidus/liquidus phase boundaries in S(P)
-    format.
+    Produces P-S lookup tables for density, temperature, heat capacity,
+    thermal expansion, and adiabatic gradient, plus solidus/liquidus phase
+    boundaries in S(P) format. These are consumed by the entropy-IC verify
+    in Aragog (and by SPIDER if the structure module is SPIDER).
 
-    Only activated when the mantle EOS is a PALEOS unified type (e.g.
-    ``PALEOS:MgSiO3``). For other EOS types (WolfBower2018, RTPress100TPa),
-    SPIDER uses its pre-existing tables in FWL_DATA.
+    Supports two PALEOS layouts:
+
+    1. ``paleos_unified`` (e.g. ``PALEOS:MgSiO3``): single P-T table covering
+       both phases plus mushy zone. Solidus is derived from
+       ``mushy_zone_factor * liquidus``.
+    2. ``PALEOS-2phase:<solid>`` (e.g. ``PALEOS-2phase:MgSiO3``): separate
+       solid + liquid PALEOS tables. Phase boundaries are sampled at the
+       PALEOS-liquidus temperature from each phase table directly. The
+       ``mushy_zone_factor`` config value is ignored (no analytic mushy
+       zone exists for 2-phase; the gap between solid-table-top and
+       liquid-table-bottom defines the latent heat).
+
+    For non-PALEOS EOS types (WolfBower2018, RTPress100TPa), returns None
+    and the caller is expected to fall back on pre-existing SPIDER tables.
 
     Parameters
     ----------
@@ -623,7 +639,7 @@ def generate_spider_tables(config: Config, outdir: str):
     -------
     dict or None
         Keys ``'eos_dir'``, ``'solidus_path'``, ``'liquidus_path'`` with
-        absolute paths. Returns None if the mantle EOS is not PALEOS unified.
+        absolute paths. Returns None if the mantle EOS is not PALEOS.
     """
     from zalmoxis.eos_export import generate_spider_eos_tables, generate_spider_phase_boundaries
     from zalmoxis.melting_curves import get_solidus_liquidus_functions
@@ -634,41 +650,90 @@ def generate_spider_tables(config: Config, outdir: str):
     mat_dicts = load_zalmoxis_material_dictionaries()
     eos_entry = mat_dicts.get(mantle_eos)
 
-    # Only generate for PALEOS unified format. PALEOS-2phase entries
-    # are nested dicts (core/melted_mantle/solid_mantle) without a top-level
-    # 'format' key; they require separate table generation via
-    # generate_aragog_pt_tables_2phase, not this SPIDER path.
-    if eos_entry is None or eos_entry.get('format') != 'paleos_unified':
-        if eos_entry is not None and 'melted_mantle' in eos_entry:
-            logger.info(
-                'Mantle EOS %s is PALEOS-2phase (not unified); '
-                'SPIDER table generation not supported for this format.',
-                mantle_eos,
-            )
+    if eos_entry is None:
+        logger.info(
+            'Mantle EOS %s not found in material dictionary; '
+            'using pre-existing SPIDER tables.', mantle_eos,
+        )
+        return None
+
+    # Detect format: paleos_unified vs PALEOS-2phase (nested dict).
+    is_unified = eos_entry.get('format') == 'paleos_unified'
+    is_twophase = (
+        'melted_mantle' in eos_entry and 'solid_mantle' in eos_entry
+        and isinstance(eos_entry.get('melted_mantle'), dict)
+        and isinstance(eos_entry.get('solid_mantle'), dict)
+    )
+
+    if not (is_unified or is_twophase):
+        logger.info(
+            'Mantle EOS %s is neither PALEOS unified nor PALEOS-2phase; '
+            'using pre-existing SPIDER tables.', mantle_eos,
+        )
+        return None
+
+    # Resolve unified file (if present) and 2-phase files (if present).
+    eos_file = eos_entry.get('eos_file', '')
+    eos_file = eos_file if eos_file and os.path.isfile(eos_file) else None
+
+    if is_twophase:
+        solid_eos = eos_entry['solid_mantle'].get('eos_file', '')
+        liquid_eos = eos_entry['melted_mantle'].get('eos_file', '')
+    else:
+        # Unified mantle: also look for sibling 2-phase tables to harden
+        # the property surfaces (avoids interpolation across the melting
+        # curve discontinuity in the unified table).
+        twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
+        solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
+        liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
+
+    solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
+    liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+
+    # For the 2-phase path, the downstream Zalmoxis functions still require
+    # an `eos_file` positional (used only to seed default property
+    # interpolators that are immediately overridden by the 2-phase ones).
+    # Pass the solid table as a sentinel: any valid PALEOS table works.
+    if eos_file is None:
+        if solid_eos is not None:
+            eos_file = solid_eos
         else:
-            logger.info(
-                'Mantle EOS %s is not PALEOS unified; using pre-existing SPIDER tables.',
+            logger.warning(
+                'No PALEOS EOS file available for %s '
+                '(unified missing and 2-phase incomplete); skipping table gen.',
                 mantle_eos,
             )
+            return None
+
+    if is_twophase and not (solid_eos and liquid_eos):
+        logger.warning(
+            'PALEOS-2phase entry %s missing solid or liquid file; skipping.',
+            mantle_eos,
+        )
         return None
 
-    eos_file = eos_entry['eos_file']
-    if not os.path.isfile(eos_file):
-        logger.warning('PALEOS EOS file not found: %s', eos_file)
-        return None
-
-    # Derive solidus from liquidus * mushy_zone_factor for consistency
-    # with Zalmoxis density interpolation and phi-blending.
+    # Phase boundaries: PALEOS-liquidus is the analytic Belonoshko+2005 /
+    # Fei+2021 Simon-Glatzel curve. For PALEOS-2phase, mushy_zone_factor=1.0
+    # collapses solidus = liquidus and the latent-heat gap is supplied by
+    # the entropy difference between solid_table.s(P, T_liq) and
+    # liquid_table.s(P, T_liq).
     _, liquidus_func = get_solidus_liquidus_functions(
         solidus_id='Stixrude14-solidus',  # unused, but API requires it
         liquidus_id='PALEOS-liquidus',
     )
     mzf = config.interior_struct.zalmoxis.mushy_zone_factor
     solidus_func = _make_derived_solidus(liquidus_func, mzf)
-    logger.info(
-        'SPIDER phase boundaries: solidus = liquidus * %.2f (mushy_zone_factor)',
-        mzf,
-    )
+    if is_twophase:
+        logger.info(
+            'PALEOS-2phase phase boundaries: solidus T = liquidus T '
+            '(mushy_zone_factor=%.2f, latent heat from 2-phase tables)',
+            mzf,
+        )
+    else:
+        logger.info(
+            'PALEOS unified phase boundaries: solidus = liquidus * %.2f '
+            '(mushy_zone_factor)', mzf,
+        )
 
     spider_eos_dir = os.path.join(outdir, 'data', 'spider_eos')
 
@@ -676,16 +741,8 @@ def generate_spider_tables(config: Config, outdir: str):
     mass_tot = config.planet.mass_tot or 1.0
     P_max = min(200e9, 50e9 * mass_tot + 100e9)
 
-    # Check for 2-phase PALEOS tables (separate solid/liquid).
-    # When available, both SPIDER and Aragog use the same phase-specific
-    # entropy values, ensuring identical initial conditions.
-    twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
-    solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
-    liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
-    solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
-    liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
     if solid_eos and liquid_eos:
-        logger.info('Using PALEOS-2phase tables for SPIDER EOS generation')
+        logger.info('Using PALEOS-2phase tables for entropy-IC table generation')
 
     # Table resolution from config
     nP = config.interior_struct.zalmoxis.lookup_nP
@@ -694,7 +751,8 @@ def generate_spider_tables(config: Config, outdir: str):
     # Cache check: skip regeneration if tables exist and pressure range unchanged.
     # The pressure range depends on planet mass, which doesn't change during evolution.
     cache_marker = os.path.join(spider_eos_dir, '.cache_info.txt')
-    cache_key = f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}'
+    layout = '2phase' if is_twophase else 'unified'
+    cache_key = f'P_max={P_max:.6e}_nP={nP}_nS={nS}_mzf={mzf}_layout={layout}'
     if os.path.isfile(cache_marker):
         with open(cache_marker) as f:
             existing_key = f.read().strip()
@@ -704,7 +762,8 @@ def generate_spider_tables(config: Config, outdir: str):
             liquidus_path = os.path.join(spider_eos_dir, 'liquidus.dat')
             if os.path.isfile(solidus_path) and os.path.isfile(liquidus_path):
                 logger.info(
-                    'Reusing cached SPIDER P-S tables (P_max=%.2e, %dx%d)', P_max, nP, nS
+                    'Reusing cached PALEOS-derived P-S entropy tables '
+                    '(P_max=%.2e, %dx%d)', P_max, nP, nS,
                 )
                 return {
                     'eos_dir': spider_eos_dir,
@@ -713,7 +772,9 @@ def generate_spider_tables(config: Config, outdir: str):
                 }
 
     # Generate phase boundaries
-    logger.info('Generating SPIDER P-S phase boundaries from PALEOS (%d P points)...', nP)
+    logger.info(
+        'Generating PALEOS-derived P-S phase boundaries (%d P points)...', nP,
+    )
     pb_result = generate_spider_phase_boundaries(
         solidus_func=solidus_func,
         liquidus_func=liquidus_func,
@@ -726,7 +787,9 @@ def generate_spider_tables(config: Config, outdir: str):
     )
 
     # Generate full EOS tables
-    logger.info('Generating SPIDER P-S EOS tables from PALEOS (%d x %d)...', nP, nS)
+    logger.info(
+        'Generating PALEOS-derived P-S EOS tables (%d x %d)...', nP, nS,
+    )
     generate_spider_eos_tables(
         eos_file=eos_file,
         solidus_func=solidus_func,
@@ -801,8 +864,17 @@ def zalmoxis_solver(
 
     # Build volatile profile from dissolved volatile masses (if available).
     # This enables phi(r)-weighted volatile blending inside the Zalmoxis ODE.
+    # Skipped when dry_mantle=True (Stage 1 phase-aware coupling): the
+    # structure solver then uses only the canonical mantle EOS tables.
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
-    volatile_profile = build_volatile_profile(hf_row, mantle_eos)
+    if config.interior_struct.zalmoxis.dry_mantle:
+        volatile_profile = None
+        logger.info(
+            'Structure solver: dry_mantle=True, skipping VolatileProfile '
+            '(mantle EOS uses %s tables only).', mantle_eos,
+        )
+    else:
+        volatile_profile = build_volatile_profile(hf_row, mantle_eos)
 
     # Configure global miscibility if enabled
     if config.interior_struct.zalmoxis.global_miscibility and volatile_profile is not None:
@@ -1147,6 +1219,7 @@ def zalmoxis_solver(
     hf_row['M_core'] = mass_enclosed[cmb_index]
     hf_row['gravity'] = gravity[-1]
     hf_row['P_center'] = model_results.get('p_center')
+    hf_row['P_cmb'] = float(pressure[cmb_index])
 
     # Self-consistent core density from Zalmoxis structure
     if cmb_radius > 0:
