@@ -20,6 +20,7 @@ old/
 output/*
 output.link
 output
+output_files/*
 slurm*.out
 *.pkl
 
