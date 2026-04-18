@@ -379,7 +379,7 @@ class AragogRunner:
         elif (
             config.interior_struct.module == 'zalmoxis'
             and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:')
+                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
             )
         ):
             from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
@@ -394,8 +394,17 @@ class AragogRunner:
             P_max = min(200e9, 50e9 * mass_tot + 100e9)
             LOOK_UP_DIR = Path(outdir) / 'data' / 'aragog_pt'
 
-            # Try PALEOS-2phase first (separate solid/liquid tables)
-            twophase_entry = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
+            # Try PALEOS-2phase first (separate solid/liquid tables). Pick
+            # the 2-phase registry key that matches the requested EOS family
+            # so PALEOS-API runs consume API-generated tables (not the
+            # shipped-Zenodo ones that live under the PALEOS-2phase key).
+            _mantle_eos_sel = config.interior_struct.zalmoxis.mantle_eos
+            _twophase_key = (
+                'PALEOS-API-2phase:MgSiO3'
+                if _mantle_eos_sel.startswith(('PALEOS-API:', 'PALEOS-API-2phase:'))
+                else 'PALEOS-2phase:MgSiO3'
+            )
+            twophase_entry = mat_dicts.get(_twophase_key, {})
             solid_eos = twophase_entry.get('solid_mantle', {}).get('eos_file', '')
             liquid_eos = twophase_entry.get('melted_mantle', {}).get('eos_file', '')
             has_2phase = (
@@ -495,7 +504,7 @@ class AragogRunner:
         if (
             config.interior_struct.module == 'zalmoxis'
             and config.interior_struct.zalmoxis.mantle_eos.startswith(
-                ('PALEOS:', 'PALEOS-2phase:')
+                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
             )
         ):
             paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
