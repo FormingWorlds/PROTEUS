@@ -121,6 +121,9 @@ class AragogRunner:
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
             interior_o.aragog_solver.initialize()
+            # Option Z: register the JAX CVODE callback factory when
+            # the flag is on. No-op when the flag is off.
+            AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
             # Set entropy IC from Zalmoxis T(r) profile via PALEOS inversion
             AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
             # Verify and correct IC if table resolution causes > 1% T mismatch
@@ -291,6 +294,9 @@ class AragogRunner:
             ),
             solver_method=getattr(
                 config.interior_energetics.aragog, 'solver_method', 'radau'
+            ),
+            use_jax_jacobian=getattr(
+                config.interior_energetics.aragog, 'use_jax_jacobian', False
             ),
         )
 
@@ -652,6 +658,160 @@ class AragogRunner:
                         f'requires P-S tables. Checked: {spider_eos_dir}, {fallback_dir}'
                     )
         interior_o.aragog_solver = EntropySolver(param, entropy_eos)
+
+    @staticmethod
+    def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
+        """Install a JAX CVODE callback factory on the solver (option Z).
+
+        Activated only when ``config.interior_energetics.aragog.use_jax_jacobian``
+        is True. Builds the JAX pytrees (EOS, phase, mesh, boundary,
+        heating) from PROTEUS config + the initialized solver state
+        and registers a factory with the solver. The factory is called
+        once per ``solver.solve()`` with the solver's nondim scales and
+        returns the ``(rhs_fn, jac_fn)`` pair that CVODE consumes.
+
+        No-op (silent) when the flag is off. When the flag is on but
+        JAX import or pytree construction fails, logs a warning and
+        leaves the factory unset so the solver falls back to the
+        default finite-difference Jacobian path.
+        """
+        use_jax_jac = getattr(
+            config.interior_energetics.aragog, 'use_jax_jacobian', False
+        )
+        if not use_jax_jac:
+            return
+
+        solver = interior_o.aragog_solver
+        if solver is None:
+            logger.warning(
+                'use_jax_jacobian=True but aragog_solver is None; '
+                'skipping factory install.'
+            )
+            return
+
+        try:
+            import jax.numpy as jnp
+
+            from aragog.jax.eos import EntropyEOS_JAX
+            from aragog.jax.phase import MeshArrays, PhaseParams
+            from aragog.jax.solver import BoundaryParams
+            from aragog.solver.cvode_jax import build_jax_rhs_and_jacobian
+        except ImportError as exc:
+            logger.warning(
+                'Option Z requested but JAX stack is not importable '
+                '(%s); falling back to FD Jacobian.', exc,
+            )
+            return
+
+        try:
+            eos_dir = interior_o._spider_eos_dir
+            eos_jax = EntropyEOS_JAX(eos_dir)
+
+            ie = config.interior_energetics
+            params_jax = PhaseParams(
+                phi_rheo=ie.rfront_loc,
+                phi_width=ie.rfront_wid,
+                viscosity_solid=10.0 ** float(ie.solid_log10visc),
+                viscosity_liquid=10.0 ** float(ie.melt_log10visc),
+                grain_size=ie.grain_size,
+                k_solid=float(ie.solid_cond),
+                k_liquid=float(ie.melt_cond),
+                matprop_smooth_width=float(
+                    getattr(ie.spider, 'matprop_smooth_width', 0.0)
+                ),
+                conduction=ie.trans_conduction,
+                convection=ie.trans_convection,
+                grav_sep=ie.trans_grav_sep,
+                mixing=ie.trans_mixing,
+                eddy_diff_thermal=float(ie.eddy_diffusivity_thermal),
+                eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
+                kappah_floor=float(ie.kappah_floor),
+                bottom_up_grav_sep=True,
+                phase_smoothing=getattr(
+                    ie.aragog, 'phase_smoothing', 'cubic_hermite'
+                ),
+                # Width matches hardcoded 1e-2 in numpy entropy_state.py
+                # _spider_get_smoothing call sites (not matprop_smooth_width,
+                # which is a separate SPIDER material-property blend).
+                phase_smoothing_width=0.01,
+            )
+
+            mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
+            n_stag = solver._n_stag
+
+            def factory(state_scale, rhs_scale, t_ref, core_bc_mode):
+                # Rebuild BoundaryParams from live solver state every
+                # solve() call. PROTEUS updates outer_boundary_value
+                # (F_atm), equilibrium_temperature, and inner_boundary_value
+                # between coupling steps; capturing them once at factory-
+                # install time would freeze the interior to the initial
+                # F_atm and halt cooling (observed: Phi_global stuck at
+                # 1.0 for >1.7 Myr in chili_v_test).
+                bc_cfg = solver.parameters.boundary_conditions
+                bc_jax_live = BoundaryParams(
+                    outer_bc_type=bc_cfg.outer_boundary_condition,
+                    outer_bc_value=bc_cfg.outer_boundary_value,
+                    emissivity=bc_cfg.emissivity,
+                    T_eq=bc_cfg.equilibrium_temperature,
+                    inner_bc_type=(
+                        5 if solver._core_bc == 'energy_balance'
+                        else bc_cfg.inner_boundary_condition
+                    ),
+                    inner_bc_value=bc_cfg.inner_boundary_value,
+                    core_density=solver.parameters.mesh.core_density,
+                    core_heat_capacity=bc_cfg.core_heat_capacity,
+                    tfac_core_avg=getattr(bc_cfg, 'tfac_core_avg', 1.147),
+                    cmb_area=float(getattr(solver, '_cmb_area', 0.0)),
+                    core_M=float(getattr(solver, '_core_M', 0.0)),
+                    cmb_dr_cmb=float(getattr(solver, '_cmb_dr_cmb', 0.0)),
+                )
+                # Heating: sum radiogenic decay (uniform per-cell, frozen
+                # at the solve start_time) plus tidal_array. The numpy
+                # path (aragog entropy_state.update) recomputes radio at
+                # every internal CVODE step, but radionuclide half-lives
+                # (K40: 1.25 Gyr, Th232: 14 Gyr, U235: 0.7 Gyr,
+                # U238: 4.5 Gyr) are >> any coupling-interval length
+                # (≤ kyr), so freezing radio at t_start is accurate to
+                # O(dt/half_life) ~ 1e-6 to 1e-9 relative.
+                H_radio = 0.0
+                radionuclides = getattr(
+                    solver.parameters, 'radionuclides', []
+                )
+                if radionuclides:
+                    t_start_yr = float(solver.parameters.solver.start_time)
+                    for r in radionuclides:
+                        H_radio += float(r.get_heating(t_start_yr))
+                heating_live = jnp.full(n_stag, H_radio)
+                tidal_arr = np.asarray(
+                    getattr(solver.parameters.energy, 'tidal_array', [0.0])
+                )
+                if tidal_arr.size == n_stag:
+                    heating_live = heating_live + jnp.asarray(tidal_arr)
+                elif tidal_arr.size == 1 and tidal_arr[0] != 0.0:
+                    heating_live = heating_live + float(tidal_arr[0])
+                rhs_fn, jac_fn, _info = build_jax_rhs_and_jacobian(
+                    eos_jax,
+                    params_jax,
+                    mesh_jax,
+                    bc_jax_live,
+                    np.asarray(heating_live),
+                    np.asarray(state_scale),
+                    np.asarray(rhs_scale),
+                    float(t_ref),
+                    core_bc_mode=core_bc_mode,
+                )
+                return rhs_fn, jac_fn
+
+            solver.set_jax_cvode_factory(factory)
+            logger.info(
+                'Option Z: JAX CVODE factory installed on aragog solver '
+                '(core_bc=%s, n_stag=%d).', solver._core_bc, n_stag,
+            )
+        except Exception as exc:
+            logger.warning(
+                'Option Z factory install failed (%s); falling back to '
+                'FD Jacobian.', exc,
+            )
 
     @staticmethod
     def _set_entropy_ic(
