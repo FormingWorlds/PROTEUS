@@ -259,7 +259,12 @@ class AragogRunner:
             adiabatic_bulk_modulus=config.interior_energetics.adiabatic_bulk_modulus,
             adams_williamson_beta=config.interior_energetics.adams_williamson_beta,
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
-            surface_pressure=0.0,  # TODO: wire to atmospheric overburden when available
+            # Atmospheric overburden as the upper BC for the Adams-Williamson
+            # P(r) integration. hf_row['P_surf'] is in bar; Aragog wants Pa.
+            # Defaults to 0 at init when no atmosphere step has run yet
+            # (matches the previous hardcoded value, so init-only Stage 1a
+            # runs are bit-identical with respect to the mesh build).
+            surface_pressure=float(hf_row.get('P_surf', 0.0)) * 1e5,
         )
 
         # Use the external mesh file when available (dummy or Zalmoxis).
@@ -373,7 +378,9 @@ class AragogRunner:
         # curve discontinuity.
         elif (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(
+                ('PALEOS:', 'PALEOS-2phase:')
+            )
         ):
             from proteus.interior_struct.zalmoxis import load_zalmoxis_material_dictionaries
 
@@ -487,7 +494,9 @@ class AragogRunner:
         # making melt fractions incomparable.
         if (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(
+                ('PALEOS:', 'PALEOS-2phase:')
+            )
         ):
             paleos_melt_dir = Path(outdir) / 'data' / 'paleos_melting'
             paleos_melt_dir.mkdir(parents=True, exist_ok=True)

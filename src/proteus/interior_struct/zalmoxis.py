@@ -298,14 +298,20 @@ def load_zalmoxis_configuration(
         'core_mass_fraction': config.interior_struct.core_frac,
         'core_frac_mode': config.interior_struct.core_frac_mode,
         'mantle_mass_fraction': config.interior_struct.zalmoxis.mantle_mass_fraction,
-        # For the structure solve, 'accretion' mode uses 'adiabatic' internally
-        # (White+Li computes T after the structure converges).
-        # temperature_mode_override lets SPIDER coupling force adiabatic
-        # without mutating the shared Config object (see proteus rules
-        # §"Config mutability"). When absent, use the Config value.
+        # For the structure solve, 'accretion' and 'isentropic' both reduce
+        # to 'adiabatic' inside Zalmoxis. Zalmoxis only solves the structure
+        # (M-R via hydrostatic + EOS); the entropy IC for Aragog/SPIDER is
+        # set independently from config.planet.ini_entropy. 'accretion'
+        # delays White+Li T-profile until after structure converges;
+        # 'isentropic' (CHILI protocol) means the energetics solver
+        # consumes ini_entropy, not the Zalmoxis T-profile, so the choice
+        # of structure-solve T is decoupled from the IC. temperature_mode_override
+        # lets SPIDER coupling force adiabatic without mutating the shared
+        # Config object (see proteus rules §"Config mutability").
         'temperature_mode': (
             'adiabatic'
-            if (temperature_mode_override or config.planet.temperature_mode) == 'accretion'
+            if (temperature_mode_override or config.planet.temperature_mode)
+            in ('accretion', 'isentropic')
             else (temperature_mode_override or config.planet.temperature_mode)
         ),
         'surface_temperature': config.planet.tsurf_init,
@@ -438,15 +444,18 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     2. phi(r) blending in VolatileProfile (any EOS with dissolved volatiles).
 
     For WolfBower2018/RTPress100TPa, loads SPIDER-format P-T files from FWL_DATA.
-    For PALEOS unified, the liquidus comes from Zalmoxis internal curves
-    (PALEOS-liquidus) and the solidus is derived as T_sol = T_liq * mushy_zone_factor.
-    This ensures the melting curves used for phi-blending are consistent with the
-    mushy zone used in Zalmoxis density interpolation and SPIDER phase boundaries.
+    For PALEOS unified and PALEOS-2phase, the liquidus comes from the analytic
+    Belonoshko+2005 / Fei+2021 curve (Zalmoxis ``'PALEOS-liquidus'``) which is
+    the basis Zalmoxis uses for MgSiO3 phase separation, and the solidus is
+    derived as T_sol = T_liq * mushy_zone_factor. This keeps the curves used
+    for phi-blending and 2-phase nabla_ad consistent with the unified PALEOS
+    density-interpolation phase boundaries.
 
     Parameters
     ----------
     mantle_eos : str
-        Mantle EOS string (e.g. ``"WolfBower2018:MgSiO3"``, ``"PALEOS:MgSiO3"``).
+        Mantle EOS string (e.g. ``"WolfBower2018:MgSiO3"``, ``"PALEOS:MgSiO3"``,
+        ``"PALEOS-2phase:MgSiO3"``).
     config : Config
         PROTEUS configuration object.
 
@@ -459,11 +468,16 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     if mantle_eos.startswith(_TDEP_PREFIXES):
         return get_zalmoxis_melting_curves(config)
 
-    # For PALEOS unified EOS, derive solidus from liquidus * mushy_zone_factor.
-    # This is the same definition Zalmoxis uses internally for density
-    # interpolation in get_paleos_unified_density(). Without these curves,
-    # VolatileProfile phi-blending falls back to phi=0.5 everywhere.
-    if mantle_eos.startswith('PALEOS:'):
+    # PALEOS unified and PALEOS-2phase: both use the same analytic Belonoshko+2005 /
+    # Fei+2021 melting curve (`PALEOS-liquidus`) as the basis for MgSiO3 phase
+    # separation. The unified path uses it for in-table density interpolation;
+    # the 2-phase path uses it inside `_compute_paleos_dtdp` to weight nabla_ad
+    # across the solid/liquid blend (mixing.py:_compute_paleos_dtdp). The solidus
+    # is derived as `liquidus * mushy_zone_factor` so the mushy band lines up with
+    # the unified PALEOS density interpolation. Without these curves, the
+    # 2-phase nabla_ad call fails and Zalmoxis structure solve diverges; the
+    # unified path falls back to phi=0.5 everywhere in VolatileProfile.
+    if mantle_eos.startswith('PALEOS:') or mantle_eos.startswith('PALEOS-2phase:'):
         try:
             from zalmoxis.melting_curves import get_solidus_liquidus_functions
 
@@ -474,8 +488,9 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
             mzf = config.interior_struct.zalmoxis.mushy_zone_factor
             solidus_func = _make_derived_solidus(liquidus_func, mzf)
             logger.info(
-                'PALEOS melting curves: liquidus from PALEOS, '
+                'PALEOS melting curves (%s): liquidus from PALEOS, '
                 'solidus = liquidus * %.2f (mushy_zone_factor)',
+                mantle_eos,
                 mzf,
             )
             return solidus_func, liquidus_func

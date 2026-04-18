@@ -658,7 +658,12 @@ def determine_interior_radius_with_zalmoxis(
 
     # Generate SPIDER P-S EOS tables from PALEOS if applicable.
     # This converts Zalmoxis's P-T EOS data into the P-S format that both
-    # SPIDER and Aragog (entropy solver) need.
+    # SPIDER and Aragog (entropy solver) need. If Zalmoxis can't produce
+    # them (e.g. PALEOS-2phase has no unified table), fall back to the
+    # static FWL_DATA Zenodo P-S tables used by the SPIDER structure path
+    # (wrapper.py:_provide_spider_eos_tables). Aragog's entropy IC verify
+    # just needs *some* P-S surface to map S_init -> T; the time evolution
+    # uses the PALEOS-2phase P-T tables generated in aragog.py:setup_solver.
     if config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -667,6 +672,8 @@ def determine_interior_radius_with_zalmoxis(
             dirs['spider_eos_dir'] = spider_tables['eos_dir']
             dirs['spider_solidus_ps'] = spider_tables['solidus_path']
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
+        else:
+            _provide_spider_eos_tables(config, outdir, dirs)
 
     # NOTE: run_interior runs with the *original* temperature_mode (restored
     # by the finally block above), not the overridden 'adiabatic'.  This is
