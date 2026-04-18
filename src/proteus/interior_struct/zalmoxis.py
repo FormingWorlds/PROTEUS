@@ -657,6 +657,19 @@ def generate_spider_tables(config: Config, outdir: str):
         )
         return None
 
+    # PALEOS-API live tabulation: materialise cached .dat paths in place so the
+    # downstream format / eos_file lookups see concrete paths. No-op for
+    # non-PALEOS-API entries. First call on a cold cache triggers generation.
+    from zalmoxis.eos.dispatch import _is_paleos_api
+    if _is_paleos_api(eos_entry):
+        from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
+        logger.info(
+            'PALEOS-API live tabulation: resolving cached tables for %s '
+            '(cold-cache build may take up to ~1 h at 600 pts/decade)',
+            mantle_eos,
+        )
+        resolve_registry_entry(eos_entry)
+
     # Detect format: paleos_unified vs PALEOS-2phase (nested dict).
     is_unified = eos_entry.get('format') == 'paleos_unified'
     is_twophase = (
