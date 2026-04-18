@@ -409,6 +409,47 @@ def load_zalmoxis_material_dictionaries():
         'format': 'paleos_unified',
     }
 
+    # PALEOS-API live tabulation entries. These carry only a GridSpec at
+    # build time; the dispatch layer (``zalmoxis.eos.paleos_api_cache``)
+    # mutates them in place on first density query to populate ``eos_file``
+    # and rewrite ``format`` to the downstream value (``paleos_unified`` or
+    # ``paleos``). Cache keys are SHA+grid-hash under
+    # ``$ZALMOXIS_ROOT/data/EOS_PALEOS_API/``; cold-cache cost is a one-time
+    # generator run (see ``zalmoxis.eos.paleos_api``).
+    from zalmoxis.eos.paleos_api import (
+        make_default_grid_h2o,
+        make_default_grid_iron,
+        make_default_grid_mgsio3,
+    )
+    _paleos_api_iron = {
+        'format': 'paleos_api',
+        'material': 'iron',
+        'grid_spec': make_default_grid_iron(),
+    }
+    _paleos_api_mgsio3 = {
+        'format': 'paleos_api',
+        'material': 'mgsio3',
+        'grid_spec': make_default_grid_mgsio3(),
+    }
+    _paleos_api_h2o = {
+        'format': 'paleos_api',
+        'material': 'h2o',
+        'grid_spec': make_default_grid_h2o(),
+        'h2o_table_path': None,
+    }
+    _paleos_api_2ph_mgsio3_melted = {
+        'format': 'paleos_api_2phase',
+        'material': 'mgsio3',
+        'side': 'liquid',
+        'grid_spec': make_default_grid_mgsio3(),
+    }
+    _paleos_api_2ph_mgsio3_solid = {
+        'format': 'paleos_api_2phase',
+        'material': 'mgsio3',
+        'side': 'solid',
+        'grid_spec': make_default_grid_mgsio3(),
+    }
+
     return {
         # Seager2007 static
         'Seager2007:iron': {'core': _seager_iron},
@@ -436,6 +477,15 @@ def load_zalmoxis_material_dictionaries():
         'PALEOS:iron': _paleos_iron,
         'PALEOS:MgSiO3': _paleos_mgsio3,
         'PALEOS:H2O': _paleos_h2o,
+        # PALEOS-API live-tabulated (dispatch populates eos_file on demand)
+        'PALEOS-API:iron': _paleos_api_iron,
+        'PALEOS-API:MgSiO3': _paleos_api_mgsio3,
+        'PALEOS-API:H2O': _paleos_api_h2o,
+        'PALEOS-API-2phase:MgSiO3': {
+            'core': _seager_iron,
+            'melted_mantle': _paleos_api_2ph_mgsio3_melted,
+            'solid_mantle': _paleos_api_2ph_mgsio3_solid,
+        },
         # Chabrier H/He
         'Chabrier:H': _chabrier_h,
     }
@@ -482,7 +532,9 @@ def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     # the unified PALEOS density interpolation. Without these curves, the
     # 2-phase nabla_ad call fails and Zalmoxis structure solve diverges; the
     # unified path falls back to phi=0.5 everywhere in VolatileProfile.
-    if mantle_eos.startswith('PALEOS:') or mantle_eos.startswith('PALEOS-2phase:'):
+    if mantle_eos.startswith(
+        ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+    ):
         try:
             from zalmoxis.melting_curves import get_solidus_liquidus_functions
 
