@@ -977,7 +977,9 @@ class AragogRunner:
         """
         if not (
             config.interior_struct.module == 'zalmoxis'
-            and config.interior_struct.zalmoxis.mantle_eos.startswith('PALEOS:')
+            and config.interior_struct.zalmoxis.mantle_eos.startswith(
+                ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
+            )
         ):
             logger.debug(
                 'Entropy IC cross-check skipped: not zalmoxis+PALEOS '
@@ -996,11 +998,21 @@ class AragogRunner:
             from proteus.interior_struct.zalmoxis import (
                 load_zalmoxis_material_dictionaries,
                 load_zalmoxis_solidus_liquidus_functions,
+                resolve_2phase_mgsio3_paths,
             )
 
             mat_dicts = load_zalmoxis_material_dictionaries()
-            eos_entry = mat_dicts.get(config.interior_struct.zalmoxis.mantle_eos, {})
-            paleos_eos_file = eos_entry.get('eos_file', '')
+            mantle_eos = config.interior_struct.zalmoxis.mantle_eos
+
+            # Prefer 2-phase tables (clean phase-specific entropy at melting curve).
+            # API-aware so PALEOS-API runs use API 2-phase tables, not shipped.
+            solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
+
+            # `eos_file` arg for compute_entropy_adiabat is a sentinel: any
+            # valid PALEOS table works. Prefer unified eos_file when present
+            # (paleos_unified mantle), else fall back to solid 2-phase path.
+            eos_entry = mat_dicts.get(mantle_eos, {})
+            paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
             if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
                 logger.debug(
                     'Entropy IC cross-check skipped: PALEOS file not found (%s)',
@@ -1008,19 +1020,10 @@ class AragogRunner:
                 )
                 return
 
-            melt_funcs = load_zalmoxis_solidus_liquidus_functions(
-                config.interior_struct.zalmoxis.mantle_eos, config
-            )
+            melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
             sol_func = liq_func = None
             if melt_funcs is not None:
                 sol_func, liq_func = melt_funcs
-
-            # Prefer 2-phase tables (clean phase-specific entropy at melting curve)
-            twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
-            solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
-            liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
-            solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
-            liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
             # ---- Current Aragog IC (from the entropy profile just set) ----
             #
@@ -1030,12 +1033,20 @@ class AragogRunner:
             #   solver.entropy_eos   : EntropyEOS with temperature_scalar(P, S)
             #
             # Derive T(P) on Aragog's staggered mesh by looking up the EOS.
+            # Aragog stores _S0 as the full state vector. Under core_bc =
+            # 'energy_balance' (default) and 'bower2018', _S0 has length
+            # n_stag + 1, with _S0[n_stag] = dSdr_cmb (an entropy gradient
+            # boundary state, not an entropy). 'gradient' adds two boundary
+            # states (length n_stag + 2). Strip the trailing boundary states
+            # so we compare entropy-on-stag against pressure-on-stag.
             P_stag = np.asarray(solver._P_stag_flat, dtype=float)
-            S_stag = np.asarray(solver._S0, dtype=float)
-            if P_stag.shape != S_stag.shape:
+            S_full = np.asarray(solver._S0, dtype=float)
+            if S_full.size < P_stag.size:
                 raise RuntimeError(
-                    f'Entropy IC shape mismatch: P_stag={P_stag.shape}, S_stag={S_stag.shape}'
+                    f'Entropy IC shape mismatch: P_stag={P_stag.shape}, S_full={S_full.shape} '
+                    f'(expected S_full.size >= P_stag.size)'
                 )
+            S_stag = S_full[: P_stag.size]
             T_stag_aragog = np.array(
                 [
                     float(solver.entropy_eos.temperature_scalar(float(p), float(s)))

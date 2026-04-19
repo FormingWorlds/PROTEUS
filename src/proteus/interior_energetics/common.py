@@ -114,6 +114,7 @@ def _verify_initial_entropy(
         from proteus.interior_struct.zalmoxis import (
             load_zalmoxis_material_dictionaries,
             load_zalmoxis_solidus_liquidus_functions,
+            resolve_2phase_mgsio3_paths,
         )
     except (ImportError, ModuleNotFoundError) as e:
         log.debug('Entropy IC cross-check skipped: zalmoxis unavailable (%s)', e)
@@ -126,8 +127,11 @@ def _verify_initial_entropy(
 
     try:
         mat_dicts = load_zalmoxis_material_dictionaries()
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zalmoxis_cfg.mantle_eos, mat_dicts
+        )
         eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
-        paleos_eos_file = eos_entry.get('eos_file', '')
+        paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
             log.debug(
                 'Entropy IC cross-check skipped: PALEOS file not found (%s)',
@@ -139,12 +143,6 @@ def _verify_initial_entropy(
         sol_func = liq_func = None
         if melt_funcs is not None:
             sol_func, liq_func = melt_funcs
-
-        twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
-        solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
-        liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
-        solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
-        liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
         # Surface-only lookup. We do NOT integrate the full adiabat for the
         # cross-check because:
@@ -301,6 +299,7 @@ def compute_initial_entropy(
             from proteus.interior_struct.zalmoxis import (
                 load_zalmoxis_material_dictionaries,
                 load_zalmoxis_solidus_liquidus_functions,
+                resolve_2phase_mgsio3_paths,
             )
         except (ImportError, ModuleNotFoundError):
             log.warning(
@@ -319,13 +318,11 @@ def compute_initial_entropy(
             return fallback
 
         mat_dicts = load_zalmoxis_material_dictionaries()
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zalmoxis_cfg.mantle_eos, mat_dicts
+        )
         eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
-        paleos_eos_file = eos_entry.get('eos_file', '')
-        twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
-        solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
-        liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
-        solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
-        liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+        paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
 
         melt_funcs = load_zalmoxis_solidus_liquidus_functions(zalmoxis_cfg.mantle_eos, config)
         sol_func = liq_func = None
@@ -402,6 +399,7 @@ def compute_initial_entropy(
         from proteus.interior_struct.zalmoxis import (
             load_zalmoxis_material_dictionaries,
             load_zalmoxis_solidus_liquidus_functions,
+            resolve_2phase_mgsio3_paths,
         )
     except (ImportError, ModuleNotFoundError):
         log.warning(
@@ -418,8 +416,15 @@ def compute_initial_entropy(
             raise RuntimeError('Zalmoxis config not available')
 
         mat_dicts = load_zalmoxis_material_dictionaries()
+        # API-aware 2-phase table lookup. Required before the eos_file
+        # sentinel selection so 2-phase mantle EoS configs (no top-level
+        # eos_file) can use the solid sub-table as the sentinel.
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
+            zalmoxis_cfg.mantle_eos, mat_dicts
+        )
+
         eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
-        paleos_eos_file = eos_entry.get('eos_file', '')
+        paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
             raise FileNotFoundError(f'PALEOS table not found: {paleos_eos_file}')
 
@@ -427,13 +432,6 @@ def compute_initial_entropy(
         sol_func = liq_func = None
         if melt_funcs is not None:
             sol_func, liq_func = melt_funcs
-
-        # Check for 2-phase tables (cleaner entropy at melting curve)
-        twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
-        solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
-        liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
-        solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
-        liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
 
         # P_cmb only controls the diagnostic T(P) profile grid, not S_target.
         # S_target = S(P_surface, T_surface) is independent of P_cmb.

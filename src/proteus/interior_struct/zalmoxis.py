@@ -491,6 +491,53 @@ def load_zalmoxis_material_dictionaries():
     }
 
 
+def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
+    """Return (solid_eos_path, liquid_eos_path) for the 2-phase MgSiO3 tables.
+
+    Selects the API key (``PALEOS-API-2phase:MgSiO3``) when ``mantle_eos``
+    is from the PALEOS-API family, otherwise the shipped key
+    (``PALEOS-2phase:MgSiO3``). For API entries, calls
+    :func:`zalmoxis.eos.paleos_api_cache.resolve_registry_entry` to
+    materialise cached ``.dat`` paths in place; this is required because
+    :func:`load_zalmoxis_material_dictionaries` rebuilds a fresh registry
+    each call, so any earlier in-place mutation is lost.
+
+    Returns
+    -------
+    tuple[str | None, str | None]
+        Absolute filesystem paths if both tables exist, ``(None, None)``
+        otherwise. Caller is responsible for treating ``None`` as "no
+        2-phase tables available, fall back".
+    """
+    use_api = mantle_eos.startswith(('PALEOS-API:', 'PALEOS-API-2phase:'))
+    twophase_key = 'PALEOS-API-2phase:MgSiO3' if use_api else 'PALEOS-2phase:MgSiO3'
+    twophase = mat_dicts.get(twophase_key, {})
+    if not twophase:
+        logger.warning(
+            'resolve_2phase_mgsio3_paths: registry has no entry for %s '
+            '(mantle_eos=%s); 2-phase fallback disabled. This is a '
+            'silent-wrong landmine if the caller continues with empty paths.',
+            twophase_key,
+            mantle_eos,
+        )
+        return None, None
+    if use_api:
+        try:
+            from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
+            resolve_registry_entry(twophase)
+        except (ImportError, ModuleNotFoundError) as e:
+            logger.warning(
+                'resolve_2phase_mgsio3_paths: PALEOS-API resolver unavailable '
+                '(%s); cannot materialise %s tables.', e, twophase_key,
+            )
+            return None, None
+    solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
+    liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
+    solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
+    liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
+    return solid_eos, liquid_eos
+
+
 def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
     """Loads the solidus and liquidus functions for Zalmoxis based on the mantle EOS.
 
@@ -747,10 +794,10 @@ def generate_spider_tables(config: Config, outdir: str):
     else:
         # Unified mantle: also look for sibling 2-phase tables to harden
         # the property surfaces (avoids interpolation across the melting
-        # curve discontinuity in the unified table).
-        twophase = mat_dicts.get('PALEOS-2phase:MgSiO3', {})
-        solid_eos = twophase.get('solid_mantle', {}).get('eos_file', '')
-        liquid_eos = twophase.get('melted_mantle', {}).get('eos_file', '')
+        # curve discontinuity in the unified table). Use the API-aware
+        # helper so PALEOS-API unified runs pull API 2-phase tables
+        # rather than silently pulling shipped Zenodo ones.
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(mantle_eos, mat_dicts)
 
     solid_eos = solid_eos if solid_eos and os.path.isfile(solid_eos) else None
     liquid_eos = liquid_eos if liquid_eos and os.path.isfile(liquid_eos) else None
