@@ -1887,6 +1887,21 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     if any(c.startswith('Chabrier') for c in components):
         _download_zalmoxis_chabrier()
 
+    # Defensive warn for any component key that no handler above recognised.
+    # PALEOS-API:* and PALEOS-API-2phase:* are intentionally not downloaded
+    # (generated locally from upstream paleos at runtime) but are valid.
+    known_prefixes = ('Seager2007:', 'WolfBower2018:', 'RTPress100TPa:', 'Chabrier:',
+                      'PALEOS-API:', 'PALEOS-API-2phase:')
+    known_exact = {'PALEOS-2phase:MgSiO3', 'PALEOS:iron', 'PALEOS:MgSiO3', 'PALEOS:H2O'}
+    for c in components:
+        if c in known_exact:
+            continue
+        if any(c.startswith(p) for p in known_prefixes):
+            continue
+        log.warning(
+            'download_zalmoxis_eos: no handler for component %r '
+            '(typo or unsupported EOS family?); no data downloaded for it', c)
+
 
 def get_zalmoxis_eos_dir() -> Path:
     """Return the base directory for Zalmoxis EOS data in FWL_DATA.
