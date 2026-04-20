@@ -225,3 +225,90 @@ def test_setup_solver_eos_not_found(tmp_path):
         pytest.raises(FileNotFoundError, match='Aragog lookup data not found'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+
+@pytest.mark.unit
+class TestUpdateStructureZalmoxisRefresh:
+    """Regression guard for Stage 1b.2: when the structure module is
+    Zalmoxis and Zalmoxis re-solves mid-run, Aragog's inner_radius must
+    track R_core from hf_row on every coupling step. Prior to the Stage 1b.2
+    fix, update_structure only refreshed inner_radius on the spider / dummy
+    branches and left the Zalmoxis branch pinned at its init-time value.
+    """
+
+    def _make_solver(self, outer=6.4e6, inner=3.6e6, gravity=7.9):
+        solver = MagicMock()
+        solver.parameters.mesh.outer_radius = outer
+        solver.parameters.mesh.inner_radius = inner
+        solver.parameters.mesh.gravitational_acceleration = gravity
+        interior_o = MagicMock()
+        interior_o.aragog_solver = solver
+        return solver, interior_o
+
+    def test_zalmoxis_refreshes_inner_radius(self):
+        """R_core that shifts between two coupling steps must land in
+        solver.parameters.mesh.inner_radius."""
+        from proteus.interior_energetics.aragog import AragogRunner
+
+        solver, interior_o = self._make_solver(inner=3.4e6)
+        config = _make_aragog_config(struct_module='zalmoxis')
+        hf_row = {
+            'R_int': 6.4e6,
+            'R_core': 3.6e6,
+            'gravity': 8.1,
+            'Time': 1.0e5,
+        }
+        AragogRunner.update_structure(config, hf_row, interior_o)
+        assert solver.parameters.mesh.outer_radius == pytest.approx(6.4e6)
+        assert solver.parameters.mesh.inner_radius == pytest.approx(3.6e6)
+        assert solver.parameters.mesh.gravitational_acceleration == pytest.approx(8.1)
+
+    def test_zalmoxis_inner_radius_falls_back_to_core_frac(self):
+        """Missing or non-positive R_core falls back to
+        config.interior_struct.core_frac * R_int."""
+        from proteus.interior_energetics.aragog import AragogRunner
+
+        solver, interior_o = self._make_solver(inner=3.4e6)
+        config = _make_aragog_config(struct_module='zalmoxis')
+        config.interior_struct.core_frac = 0.50
+        hf_row = {
+            'R_int': 6.4e6,
+            'R_core': 0.0,  # unset / not populated yet
+            'gravity': 8.1,
+            'Time': 0.0,
+        }
+        AragogRunner.update_structure(config, hf_row, interior_o)
+        assert solver.parameters.mesh.inner_radius == pytest.approx(3.2e6)
+
+    def test_zalmoxis_rejects_negative_r_core(self):
+        """A negative R_core (corrupt / failed solve) triggers the
+        core_frac fallback rather than propagating a nonsensical mesh."""
+        from proteus.interior_energetics.aragog import AragogRunner
+
+        solver, interior_o = self._make_solver(inner=3.4e6)
+        config = _make_aragog_config(struct_module='zalmoxis')
+        config.interior_struct.core_frac = 0.40
+        hf_row = {
+            'R_int': 6.4e6,
+            'R_core': -1.0,
+            'gravity': 8.1,
+            'Time': 0.0,
+        }
+        AragogRunner.update_structure(config, hf_row, interior_o)
+        assert solver.parameters.mesh.inner_radius == pytest.approx(2.56e6)
+
+    def test_spider_branch_unchanged(self):
+        """The existing spider / dummy branch continues to refresh
+        inner_radius from hf_row['R_core'] — regression guard."""
+        from proteus.interior_energetics.aragog import AragogRunner
+
+        solver, interior_o = self._make_solver(inner=3.2e6)
+        config = _make_aragog_config(struct_module='spider')
+        hf_row = {
+            'R_int': 6.4e6,
+            'R_core': 3.5e6,
+            'gravity': 9.81,
+            'Time': 0.0,
+        }
+        AragogRunner.update_structure(config, hf_row, interior_o)
+        assert solver.parameters.mesh.inner_radius == pytest.approx(3.5e6)

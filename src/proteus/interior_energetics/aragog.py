@@ -1224,14 +1224,16 @@ class AragogRunner:
     def update_structure(config: Config, hf_row: dict, interior_o: Interior_t):
         """Refresh the Aragog mesh with current planet structure.
 
-        Called at every coupling timestep to keep the mesh consistent
-        with the evolving planet radius and gravity, matching SPIDER's
-        behavior of re-reading R_int and gravity at each call.
-
-        For 'self' mode: updates outer/inner radius and gravity directly.
-        For 'zalmoxis' mode: outer radius and gravity are updated from
-        hf_row; inner radius and EOS profile come from Zalmoxis output
-        which is refreshed by the structure solver before the interior step.
+        Called at every coupling timestep to keep the mesh consistent with
+        the evolving planet radius, core radius, and surface gravity,
+        matching SPIDER's behavior of re-reading R_int / R_core / gravity
+        at each call. The EOS file (zalmoxis_output.dat for Zalmoxis,
+        spider_mesh.dat for SPIDER/dummy) is re-read inside
+        solver.reset(), which is called by setup_or_update_solver
+        immediately after this update. Together this propagates any
+        mid-run structure update (e.g. a Zalmoxis re-solve inside
+        update_structure_from_interior) into Aragog before the next
+        integration call.
         """
         solver = interior_o.aragog_solver
         solver.parameters.mesh.outer_radius = hf_row['R_int']
@@ -1248,9 +1250,33 @@ class AragogRunner:
                 solver.parameters.mesh.inner_radius = (
                     config.interior_struct.core_frac * hf_row['R_int']
                 )
-        # For Zalmoxis: inner_radius is set at setup_solver from Zalmoxis output.
-        # The EOS file (zalmoxis_output.dat) is refreshed by the Zalmoxis solver
-        # before the interior step, so Aragog.reset() will re-read it.
+        elif config.interior_struct.module == 'zalmoxis':
+            # Stage 1b.2: refresh inner_radius from hf_row on every coupling
+            # step so Zalmoxis re-solves that shift R_core propagate into
+            # the Aragog mesh. Matches the setup_solver convention
+            # (aragog.py:234-237). Without this the mesh domain's inner
+            # boundary stays pinned at the init-time R_core while the EOS
+            # file (re-read inside solver.reset()) carries the updated
+            # radial grid, producing an inconsistent mesh interpolation.
+            R_core_hf = hf_row.get('R_core', 0)
+            if R_core_hf and R_core_hf > 0:
+                solver.parameters.mesh.inner_radius = R_core_hf
+            else:
+                solver.parameters.mesh.inner_radius = (
+                    config.interior_struct.core_frac * hf_row['R_int']
+                )
+
+        # Lightweight trace so Stage 1b three-way validation can check that
+        # the mesh scalars track the Zalmoxis re-solve cadence. Gated behind
+        # the module logger so it only appears at INFO+ and does not clutter
+        # other callers.
+        logger.info(
+            'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  g=%.4f m/s^2',
+            float(hf_row.get('Time', 0.0)),
+            float(solver.parameters.mesh.outer_radius),
+            float(solver.parameters.mesh.inner_radius),
+            float(solver.parameters.mesh.gravitational_acceleration),
+        )
 
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
         # Dispatch to JAX solver if configured

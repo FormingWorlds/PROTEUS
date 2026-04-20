@@ -1073,12 +1073,17 @@ def run_interior(
         )
         interior_o.dt = dtswitch
 
-    # TODO: When config.interior_struct.module == 'zalmoxis', the Aragog mesh
-    # is set up once during setup_solver and never refreshed during
-    # equilibration iterations. If Zalmoxis re-runs and produces a
-    # new zalmoxis_output.dat, Aragog uses the stale initial mesh.
-    # Fix: pass the refreshed mesh to Aragog after each Zalmoxis call
-    # during equilibration, or regenerate the Aragog mesh here.
+    # Note: Aragog mesh refresh after a Zalmoxis re-solve runs through the
+    # normal coupling path. update_structure_from_interior (below) writes a
+    # new zalmoxis_output.dat with current R_int / R_core / gravity. The
+    # next interior step reaches AragogRunner.setup_or_update_solver
+    # (aragog.py:116), which calls update_structure to copy the updated
+    # scalars into solver.parameters.mesh, then solver.reset(), which
+    # re-reads the external EOS file (entropy_solver.py:441 with
+    # eos_method=2). The init-time equilibrate_initial_state loop runs
+    # CALLIOPE + Zalmoxis before the Aragog solver exists, so no refresh
+    # is needed there: the first Aragog setup_solver call after
+    # equilibration sees the final zalmoxis_output.dat.
 
 
 def update_structure_from_interior(
