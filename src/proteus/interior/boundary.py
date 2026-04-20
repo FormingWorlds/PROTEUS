@@ -75,7 +75,6 @@ class BoundaryRunner():
         self.bulk_density  = self.mantle_mass / self.mantle_volume
 
         self.surface_gravity     = const_G * self.planet_mass / self.planet_radius**2
-        self.scale_length_mantle = self.mantle_radius / 3
 
         self.rtol = config.interior.boundary.rtol
         self.atol = config.interior.boundary.atol
@@ -84,8 +83,8 @@ class BoundaryRunner():
             self.T_p_0    = hf_row.get("T_magma", 0.0)
             self.T_surf_0 = hf_row.get("T_surf", 0.0)
         else:
-            self.T_p_0    = config.interior.boundary.T_p_0
             self.T_surf_0 = config.interior.boundary.T_surf_0
+            self.T_p_0    = self.T_surf_0
 
         if self.T_surf_0 > self.T_p_0:
             self.T_surf_0 = self.T_p_0 - 1.0  # Ensure initial surface temperature does not exceed potential temperature
@@ -93,6 +92,7 @@ class BoundaryRunner():
         self.T_solidus                = config.interior.boundary.T_solidus
         self.T_liquidus               = config.interior.boundary.T_liquidus
         self.critical_melt_fraction   = config.interior.boundary.critical_melt_fraction
+        self.Tsurf_event_change       = config.interior.boundary.Tsurf_event_change
 
         # Material constants
         self.critical_rayleigh_number = config.interior.boundary.critical_rayleigh_number  # dimensionless
@@ -110,6 +110,7 @@ class BoundaryRunner():
 
         # Radioactive heating parameters
         self.use_radiogenic_heating = config.interior.radiogenic_heat
+        self.age_ini                = config.star.age_ini
         self.radio_tref             = config.delivery.radio_tref
         self.U_abun                 = config.delivery.radio_U * 1e-6  # Convert ppm to kg/kg
         self.Th_abun                = config.delivery.radio_Th * 1e-6  # Convert ppm to kg/kg
@@ -180,7 +181,7 @@ class BoundaryRunner():
 
         # Calculate Rayleigh number
         Ra = ((self.bulk_density * self.surface_gravity * self.thermal_expansivity *
-               np.abs(T_p - T_surf) * self.scale_length_mantle**3) /
+               np.abs(T_p - T_surf) * self.mantle_radius**3) /
               (eta * self.thermal_diffusivity))
 
         return Ra
@@ -209,7 +210,7 @@ class BoundaryRunner():
         Nu = (Ra / self.critical_rayleigh_number)**self.nusselt_exponent
 
         # Calculate convective heat flux
-        q_m_val = Nu * self.thermal_conductivity * np.abs(T_p - T_surf) / self.scale_length_mantle
+        q_m_val = Nu * self.thermal_conductivity * np.abs(T_p - T_surf) / self.mantle_radius
 
         return q_m_val
 
@@ -225,10 +226,12 @@ class BoundaryRunner():
         Returns
         -------
         float
-            Radioactive heating rate per unit volume [W/m^3]
+            Radioactive heating rate per unit volume [W/kg]
         """
         # Get radioactive constants from radnuc_data
         secs_per_year = 3.154e7  # s
+
+        radio_t0 = (self.radio_tref-self.age_ini) * 1e9 * secs_per_year
 
         # Radioactive isotope properties from radnuc_data
         # Convert half-lives to decay constants: lambda = ln(2) / half-life
@@ -243,13 +246,13 @@ class BoundaryRunner():
 
         # Calculate heating contributions from each isotope
         K_term = self.K_abun * K_heat_production * np.exp(
-            K_decay_constant * (self.radio_tref * secs_per_year - t)
+            K_decay_constant * (radio_t0 - t)
         )
         Ur_term = self.U_abun * Ur_heat_production * np.exp(
-            Ur_decay_constant * (self.radio_tref * secs_per_year - t)
+            Ur_decay_constant * (radio_t0 - t)
         )
         Th_term = self.Th_abun * Th_heat_production * np.exp(
-            Th_decay_constant * (self.radio_tref * secs_per_year - t)
+            Th_decay_constant * (radio_t0 - t)
         )
         H_total = K_term + Ur_term + Th_term
 
@@ -393,7 +396,10 @@ class BoundaryRunner():
         phi = self.melt_fraction(T_p)
         q_m_val = self.q_m(T_p, T_surf, phi)
 
-        delta = self.thermal_conductivity * (T_p - T_surf) / q_m_val
+        if T_p==T_surf:
+            delta = 1e-3  # Small temperature difference to avoid division by zero
+        else:
+            delta = self.thermal_conductivity * (T_p - T_surf) / q_m_val
 
         numerator = 4 * np.pi * self.planet_radius**2 * (q_m_val - self.f_atm)
         denominator = self.atmosphere_heat_capacity * self.m_atm + \
@@ -475,9 +481,31 @@ class BoundaryRunner():
         ]
         csv_needs_header = not pd.io.common.file_exists(csv_log_file)
 
+        def tsurf_change_event(t: float, y: list) -> float:
+            """
+            Trigger when the surface temperature differs from the initial value
+            by the configured threshold.
+            """
+            _ = t
+            T_surf = y[1]
+            return np.abs(T_surf - self.T_surf_0) - self.Tsurf_event_change
+
+        tsurf_change_event.terminal = True
+        tsurf_change_event.direction = 1
+
         y0 = [self.T_p_0, self.T_surf_0]
         t_span = (self.curr_time, self.curr_time + self.dt)
-        sol = solve_ivp(self.thermal_rhs, t_span, y0, method='BDF', rtol=self.rtol, atol=self.atol, dense_output=True)
+
+        sol = solve_ivp(
+            self.thermal_rhs,
+            t_span,
+            y0,
+            method='BDF',
+            rtol=self.rtol,
+            atol=self.atol,
+            dense_output=True,
+            events=tsurf_change_event,
+        )
 
         with open(csv_log_file, mode='a', encoding='utf-8', newline='') as handle:
             writer = csv.DictWriter(handle, fieldnames=csv_columns)
@@ -515,11 +543,12 @@ class BoundaryRunner():
         # Extract results
         T_p_final     = sol.y[0, -1]
         T_surf_final  = sol.y[1, -1]
+        t_final       = sol.t[-1]
         r_s_final     = self.r_s(T_p_final)
-        sim_time      = (self.curr_time + self.dt)/secs_per_year  # convert back to years
+        sim_time      = t_final/secs_per_year  # convert back to years
         q_m_final     = self.q_m(T_p_final, T_surf_final, self.melt_fraction(T_p_final))
         phi_final     = self.melt_fraction(T_p_final)
-        f_radio_final = self.radioactive_heating(self.curr_time + self.dt)
+        f_radio_final = self.radioactive_heating(t_final) * self.mantle_volume * self.bulk_density
 
         m_liquid = (4/3) * np.pi * self.bulk_density * (self.planet_radius**3 - r_s_final**3)
         m_solid  = self.mantle_mass - m_liquid

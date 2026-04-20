@@ -289,7 +289,7 @@ version = "2.0"
     melting_dir     = "Monteux-600" # Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER)
     eos_dir         = "WolfBower2018_MgSiO3" # Dynamic EOS for SPIDER + Aragog (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
 
-    module = "spider"       # Which interior module to use
+    module = "boundary"       # Which interior module to use
 
     [interior.spider]
         num_levels               = 60       # Number of SPIDER grid levels
@@ -339,8 +339,7 @@ version = "2.0"
     [interior.boundary]
         rtol = 0.0001                      # ODE solver relative tolerance.
         atol = 1e-08                       # ODE solver absolute tolerance.
-        T_surf_0 = 3900.0                  # Initial surface temperature [K]
-        T_p_0 = 4000.0                     # Initial mantle potential temperature [K]
+        T_surf_0 = 4000.0                  # Initial surface temperature [K]
         T_solidus = 1420.0                 # Mantle solidus temperature [K]
         T_liquidus = 2020.0                # Mantle liquidus temperature [K]
         critical_melt_fraction = 0.4       # Critical melt fraction for rheological transition.

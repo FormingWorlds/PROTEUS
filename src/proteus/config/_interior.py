@@ -32,11 +32,6 @@ def valid_interiorboundary(instance, attribute, value):
     if tliq <= tsol:
         raise ValueError(f"Boundary liquidus ({tliq}K) must be greater than solidus ({tsol}K)")
 
-    t_surf_0 = instance.boundary.T_surf_0
-    t_p_0 = instance.boundary.T_p_0
-    if t_surf_0 > t_p_0:
-        raise ValueError(f"Initial surface temperature ({t_surf_0}K) must be less than or equal to initial potential temperature ({t_p_0}K)")
-
 def valid_path(instance, attribute, value):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"'{attribute.name}' must be a non-empty string")
@@ -212,14 +207,14 @@ class InteriorBoundary:
         ODE solver absolute tolerance.
     T_surf_0: float
         Initial surface temperature [K] for boundary solver.
-    T_p_0: float
-        Initial mantle potential temperature [K] for boundary solver.
     T_solidus: float
         Mantle solidus temperature [K].
     T_liquidus: float
         Mantle liquidus temperature [K].
     critical_melt_fraction: float
         Critical melt fraction for rheological transition.
+    Tsurf_event_change: float
+        Maximum change in surface temperature allowed during a single interior iteration [K] before triggering an event.
     critical_rayleigh_number: float
         Critical Rayleigh number for onset of convection [-].
     heat_fusion_silicate: float
@@ -245,13 +240,14 @@ class InteriorBoundary:
     rtol: float = field(default=1e-6,  validator=gt(0))
     atol: float = field(default=1e-9,  validator=gt(0))
 
-    T_surf_0: float = field(default=3999.0, validator=ge(0))
-    T_p_0: float    = field(default=4000.0, validator=ge(0))
+    T_surf_0: float = field(default=4000.0, validator=ge(0))
 
     T_solidus: float  = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
 
     critical_melt_fraction: float = field(default=0.4, validator=(gt(0), lt(1)))
+
+    Tsurf_event_change: float = field(default=20.0, validator=gt(0))  # K
 
     critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))   # -
     heat_fusion_silicate: float   = field(default=4.0e5,   validator=gt(0))   # J/kg
