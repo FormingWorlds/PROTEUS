@@ -259,11 +259,45 @@ def compute_initial_entropy(
         if hf_row is not None:
             P_cmb = hf_row.get('P_cmb', None)
         if not P_cmb or P_cmb <= 0:
+            # Adversarial-review finding 2026-04-20: the silent 135 GPa
+            # fallback produces a very wrong IC for any planet that
+            # isn't Earth-like. Current default temperature_mode is
+            # adiabatic_from_cmb (Stage 1a lock); any non-Zalmoxis
+            # stack (dummy, or spider with core_frac-based R_core) will
+            # hit this branch without a structure-derived P_cmb in
+            # hf_row. For a 3 M_Earth planet the real P_cmb is ~400 GPa
+            # so the 135 GPa fallback shifts the IC entropy by several
+            # percent. Raise by default for super-Earth masses; keep
+            # the 135 GPa fallback only when the planet is explicitly
+            # Earth-mass (0.5 < M/M_Earth < 2.0) where the error is
+            # acceptable for smoke tests. The interior_struct message
+            # should tell the user to switch to module='zalmoxis' or
+            # set tcmb_init + a stacked structure solve that populates
+            # P_cmb.
+            mtot = float(getattr(config.planet, 'mass_tot', 1.0))
+            struct_mod = getattr(config.interior_struct, 'module', 'unknown')
+            if not (0.5 <= mtot <= 2.0):
+                raise ValueError(
+                    f'adiabatic_from_cmb mode cannot use the Earth-like '
+                    f'135 GPa P_cmb fallback for mass_tot={mtot} M_Earth. '
+                    f'The real P_cmb scales strongly with mass and the '
+                    f'fallback would misplace the IC entropy by several '
+                    f'percent. Fix by (a) setting '
+                    f"interior_struct.module='zalmoxis' so a real "
+                    f'structure solve populates hf_row["P_cmb"] before '
+                    f'the interior step, or (b) switching to '
+                    f"temperature_mode='isentropic'/'adiabatic' and "
+                    f'setting ini_entropy or tsurf_init explicitly. '
+                    f'Current interior_struct.module={struct_mod!r}.'
+                )
             log.warning(
-                'adiabatic_from_cmb: hf_row["P_cmb"] missing or non-positive, '
-                'falling back to Earth-like 135 GPa. The structure solve must '
-                'run before compute_initial_entropy for the proper P_cmb to '
-                'be available.',
+                'adiabatic_from_cmb: hf_row["P_cmb"] missing or non-positive '
+                'and mass_tot=%.2f M_Earth falls in the Earth-like window; '
+                'using the 135 GPa fallback. interior_struct.module=%r does '
+                'not populate P_cmb before the IC is set. For robustness, '
+                'switch to module="zalmoxis" or a temperature_mode that '
+                'does not require P_cmb.',
+                mtot, struct_mod,
             )
             P_cmb = 135e9
 

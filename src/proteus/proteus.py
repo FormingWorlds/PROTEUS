@@ -134,10 +134,17 @@ class Proteus:
         from proteus.interior_energetics.common import Interior_t
         from proteus.interior_energetics.wrapper import (
             get_nlevb,
+            reset_run_state,
             run_interior,
             solve_structure,
             update_planet_mass,
         )
+
+        # Clear module-level consecutive-failure counters so a prior run
+        # in the same Python process (pytest session, `proteus grid`
+        # ensemble, Jupyter kernel) cannot leave a stale counter that
+        # trips this run's abort threshold on the first solver failure.
+        reset_run_state()
 
         #    synthetic observations
         from proteus.observe.wrapper import run_observe

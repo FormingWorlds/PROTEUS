@@ -21,6 +21,14 @@ if TYPE_CHECKING:
 
 # Counter for consecutive Zalmoxis convergence failures during time evolution.
 # Reset on each successful structure update. Crash after max_consecutive.
+#
+# NOTE (2026-04-20 adversarial review): this is a module-level global that
+# persists across runs in the same Python process (pytest session with
+# multiple integration tests, `proteus grid` ensembles spawning in one
+# process, Jupyter kernels). A prior run that hit N consecutive failures
+# leaves the counter at N; the next run's first failure could then trigger
+# the abort threshold. `reset_run_state()` below clears the counter; it
+# should be called from the PROTEUS run-init path.
 _zalmoxis_fail_count = 0
 _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 5
 
@@ -28,6 +36,20 @@ _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 5
 # Reset on each successful SPIDER call. Crash after max_consecutive.
 _spider_fail_count = 0
 _SPIDER_MAX_CONSECUTIVE_FAILS = 3
+
+def reset_run_state() -> None:
+    """Reset the module-level consecutive-failure counters.
+
+    Must be called by the PROTEUS run-init path on every new run
+    (fresh-start or resume-from-disk). Without this, a stale counter
+    left over from a prior run in the same Python process (pytest
+    session, `proteus grid` ensemble, Jupyter kernel) could trip the
+    abort threshold on the new run's first failure.
+    """
+    global _zalmoxis_fail_count, _spider_fail_count
+    _zalmoxis_fail_count = 0
+    _spider_fail_count = 0
+
 
 # Counter for consecutive Aragog retry-ladder exhaustions. Reset on
 # each successful Aragog call. Crash after max_consecutive. Mirrors
@@ -1295,8 +1317,13 @@ def update_structure_from_interior(
         # Restore previous structure values
         hf_row.update(_saved_structure)
         hf_row['_structure_stale'] = True
-        # Keep the previous mesh file and CMB radius
-        spider_mesh_file = dirs.get('spider_mesh')
+        # Prefer the .prev snapshot written before the failed Zalmoxis
+        # call (line ~1232) rather than dirs['spider_mesh'], which may
+        # point to the partial file Zalmoxis was writing when it
+        # raised. Falls back to dirs['spider_mesh'] only if no .prev
+        # exists (first Zalmoxis failure of the run before any
+        # snapshot was saved).
+        spider_mesh_file = prev_path or dirs.get('spider_mesh')
         _cmb_radius = float(hf_row.get('R_core', 0.0))
 
     if spider_mesh_file:
