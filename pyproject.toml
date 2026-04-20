@@ -71,6 +71,7 @@ dependencies = [
     "zenodo-get",
     "zenodo-client",
     "osfclient",
+    "packaging",
 ]
 
 [project.urls]

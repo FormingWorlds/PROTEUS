@@ -9,8 +9,13 @@ from typing import Callable
 import click
 import requests
 from attr import dataclass
+from packaging.version import InvalidVersion, Version
 
-from proteus.utils.coupler import _get_agni_version, get_proteus_directories
+from proteus.utils.coupler import (
+    _get_agni_version,
+    _get_socrates_version,
+    get_proteus_directories,
+)
 
 DIRS = get_proteus_directories()
 
@@ -30,14 +35,24 @@ class BasePackage:
 
     def get_status_message(self) -> str:
         try:
-            current_version = self.current_version()
-            latest_version = self.latest_version()
-        except BaseException as exc:
-            message = click.style(str(exc), **ERROR_STYLE)
+            current_version = Version(self.current_version())
+            latest_version = Version(self.latest_version())
+
+        except (BaseException, InvalidVersion) as exc:
+            message = click.style(f'{exc.__class__.__name__} - {exc}', **ERROR_STYLE)
+
         else:
-            if current_version != latest_version:
+            if latest_version > current_version:
                 message = click.style(
                     f'Update available {current_version} -> {latest_version}', fg='yellow'
+                )
+            elif latest_version < current_version:
+                message = click.style(
+                    (
+                        f'Local version {current_version} is newer than latest release '
+                        f'{latest_version}'
+                    ),
+                    **DEFAULT_STYLE,
                 )
             else:
                 message = click.style('ok', **OK_STYLE)
@@ -73,11 +88,16 @@ class GitPackage(BasePackage):
         response = requests.get(
             f'https://api.github.com/repos/{self.owner}/{self.name}/releases/latest'
         )
-        return response.json()['tag_name']
+        try:
+            return response.json()['tag_name']
+        except KeyError as exc:
+            raise InvalidVersion(
+                f'Could not retrieve latest version for {self.name} from GitHub.'
+            ) from exc
 
 
 PACKAGES = (
-    PythonPackage(name='aragog'),
+    PythonPackage(name='fwl-aragog'),
     PythonPackage(name='fwl-calliope'),
     PythonPackage(name='fwl-janus'),
     PythonPackage(name='fwl-proteus'),
@@ -85,6 +105,9 @@ PACKAGES = (
     PythonPackage(name='fwl-zephyrus'),
     PythonPackage(name='fwl-zalmoxis'),
     GitPackage(name='AGNI', owner='nichollsh', version_getter=partial(_get_agni_version, DIRS)),
+    GitPackage(
+        name='SOCRATES', owner='FormingWorlds', version_getter=partial(_get_socrates_version)
+    ),
 )
 
 
@@ -102,6 +125,8 @@ VARIABLES = (
     'FWL_DATA',
     'RAD_DIR',
     'ZALMOXIS_ROOT',
+    'FC_DIR',
+    'LA_DIR',
 )
 
 
