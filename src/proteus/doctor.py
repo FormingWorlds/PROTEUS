@@ -145,5 +145,3 @@ def doctor_entry():
     for package in PACKAGES:
         message = package.get_status_message()
         click.echo(message)
-
-
