@@ -235,7 +235,18 @@ config_version = "3.0"
         solver_max_iter_outer = 100          # max iterations for mass convergence
         solver_max_iter_inner = 100          # max iterations for density convergence
 
-        # Structure update triggers
+        # Structure update triggers. The defaults below disable live re-solves
+        # (update_interval = 1e9 yr never fires via the ceiling + dPhi = 0.05
+        # needs at least one Phi crossing). Stage 1a runs use this. For the
+        # Stage 1b live-coupled configuration, override with:
+        #   update_interval       = 5e4         # 50 kyr ceiling: one update per cooling decade at minimum
+        #   update_min_interval   = 1e2         # 100 yr floor: prevents thrashing when Phi crosses fast
+        #   update_dphi_abs       = 0.05        # primary trigger (default): ~18 updates over a CHILI run
+        #   update_dtmagma_frac   = 0.05        # secondary trigger (default)
+        # These numbers are the recommended Stage 1b cadence from the
+        # UnifyCoupling plan (~/.claude/plans/stage1-aragog-zalmoxis-coupling.md
+        # step 1b.1). Tune update_dphi_abs down (0.02-0.03) for higher
+        # structural fidelity at the cost of more Zalmoxis wall time.
         update_dphi_abs       = 0.05         # primary trigger: absolute melt fraction change
         update_dtmagma_frac   = 0.05         # secondary trigger: relative T_magma change
         update_interval       = 1e9          # max time between updates [yr]; 0 = init only
