@@ -44,7 +44,7 @@ def test_get_status_message_handles_unparseable_versions():
     message = package.get_status_message()
 
     assert 'Update available' not in message
-    assert 'Could not compare versions main and v25.11.19' in message
+    assert "InvalidVersion - Invalid version: 'main'" in message
 
 
 @pytest.mark.unit
