@@ -1380,12 +1380,24 @@ def update_structure_from_interior(
     del r_stag, r_ascending, T_ascending
     gc.collect()
 
-    # Regenerate SPIDER EOS tables when composition changed substantially.
-    # This ensures SPIDER's lookup tables reflect the updated volatile
-    # fractions in the mantle (e.g. after binodal H2 redistribution).
-    # TODO: Aragog P-T tables are not regenerated on composition change.
-    # Currently only SPIDER tables are refreshed. If Aragog runs with
-    # composition-dependent melting curves, stale tables may be used.
+    # Regenerate SPIDER-format P-S EOS tables when composition changed
+    # substantially. For dry 1 M_Earth CHILI (Stage 1a / 1b paper target)
+    # this never fires: pure MgSiO3 is a planet-state-invariant material
+    # EOS, so the pre-built tables are stable for the entire evolution.
+    # The comp_changed path is reached in wet runs where binodal redistribution
+    # or degassing shifts mantle volatile fractions by > 5% (SPIDER reads
+    # the fresh file on next call; Aragog's in-memory EntropyEOS, built
+    # once during AragogRunner.setup_solver, is NOT invalidated here, so
+    # Aragog would silently use the stale in-memory tables).
+    #
+    # KNOWN GAP (Stage 1b.3 audit, 2026-04-20): for Aragog + wet runs we
+    # would need to (i) reload EntropyEOS from the regenerated files,
+    # (ii) re-install the JAX CVODE factory so its captured eos_jax
+    # pytree matches the new tables, (iii) bounds-check the cached
+    # _last_entropy against the new [S_min, S_max] range. This is not
+    # required for the Stage 1b paper scope (dry). It is a precondition
+    # for wet-run quantitative work in Stage 5. See UnifyCoupling plan
+    # step 1b.3 for the full checklist.
     if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -1395,6 +1407,13 @@ def update_structure_from_interior(
             dirs['spider_solidus_ps'] = spider_tables['solidus_path']
             dirs['spider_liquidus_ps'] = spider_tables['liquidus_path']
             log.info('Regenerated SPIDER EOS tables (composition change)')
+            if config.interior_energetics.module == 'aragog':
+                log.warning(
+                    'Aragog: regenerated P-S tables on composition change, '
+                    'but Aragog in-memory EntropyEOS is not refreshed. '
+                    'Stage 1b.3 known gap; see UnifyCoupling plan 1b.3. '
+                    'Dry runs are not affected.'
+                )
 
     # Update composition sentinels for next trigger check
     M_mantle = float(hf_row.get('M_mantle', 0.0))
