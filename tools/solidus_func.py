@@ -158,22 +158,24 @@ def print_model_summary(
     """
     label = DISPLAY_NAMES.get(model_name, model_name)
 
-    log.info(f'{label}:')
+    log.info(f"{label}:")
     log.info(
-        f'  P-T solidus   : P_range = {_fmt_range(P_sol)} GPa, T_range = {_fmt_range(T_sol)} K'
+        f"  P-T solidus   : P_range = {_fmt_range(P_sol)} GPa, "
+        f"T_range = {_fmt_range(T_sol)} K"
     )
     log.info(
-        f'  P-T liquidus  : P_range = {_fmt_range(P_liq)} GPa, T_range = {_fmt_range(T_liq)} K'
+        f"  P-T liquidus  : P_range = {_fmt_range(P_liq)} GPa, "
+        f"T_range = {_fmt_range(T_liq)} K"
     )
     log.info(
-        f'  P-S solidus   : P_range = {_fmt_range(P_common)} GPa, '
-        f'S_range = {_fmt_range(S_sol_common)} J kg^-1 K^-1'
+        f"  P-S solidus   : P_range = {_fmt_range(P_common)} GPa, "
+        f"S_range = {_fmt_range(S_sol_common)} J kg^-1 K^-1"
     )
     log.info(
-        f'  P-S liquidus  : P_range = {_fmt_range(P_common)} GPa, '
-        f'S_range = {_fmt_range(S_liq_common)} J kg^-1 K^-1'
+        f"  P-S liquidus  : P_range = {_fmt_range(P_common)} GPa, "
+        f"S_range = {_fmt_range(S_liq_common)} J kg^-1 K^-1"
     )
-    log.info('')  # blank line for spacing
+    log.info("")  # blank line for spacing
 
 
 # =============================================================================
@@ -468,13 +470,14 @@ def truncate_to_physical_interval(func):
     return wrapped
 
 
+
+
 # =============================================================================
 # MODEL DISPATCHER
 # =============================================================================
 
 
 SUPPORTED_MODELS = list(DISPLAY_NAMES)
-
 
 def get_melting_curves(
     model_name: str, Pmin: float = 0.0, Pmax: float = 1000.0, n: int = 2000, **kwargs
@@ -518,6 +521,7 @@ def save_PT_table(path: Path, P_gpa: np.ndarray, T_k: np.ndarray):
     np.savetxt(path, data, fmt='%.18e %.18e', header='pressure temperature', comments='#')
 
 
+
 def make_entropy_header(
     n_rows: int,
     scale_p_out: float = 1_000_000_000.0,
@@ -553,7 +557,7 @@ def make_entropy_header(
 
 def get_default_spider_dir() -> Path:
     dirs = get_proteus_directories()
-    return Path(dirs['spider'])
+    return Path(dirs["spider"])
 
 
 def validate_entropy_export_arrays(
@@ -690,7 +694,6 @@ def load_eos_T_of_SP(
     )
     return S_axis, P_axis_GPa, T_interp
 
-
 def load_default_eos_interpolators(
     spider_dir: Path | str | None = None,
     *,
@@ -759,7 +762,6 @@ def load_default_eos_interpolators(
     )
 
     return S_axis_solid, T_of_SP_solid, S_axis_liquid, T_of_SP_liquid
-
 
 def invert_to_entropy_along_profile(
     P_gpa: np.ndarray, T_k: np.ndarray, S_axis: np.ndarray, T_of_SP
@@ -916,7 +918,6 @@ def save_entropy_table_with_header(
     )
     np.savetxt(path, data, fmt='%.18e %.18e', header=header, comments='')
 
-
 # =============================================================================
 # MAIN EXPORTER
 # =============================================================================
@@ -984,7 +985,7 @@ def export_model_curves(
         S_sol_common,
         S_liq_common,
     )
-    log.info(f'Saved to: {out_dir.resolve()}')
+    log.info(f"Saved to: {out_dir.resolve()}")
 
     return {
         'P_sol': P_sol,
@@ -1254,7 +1255,7 @@ def main():
 
     logging.basicConfig(
         level=logging.INFO,
-        format='%(message)s',
+        format="%(message)s",
     )
 
     args = parse_args()
@@ -1276,15 +1277,16 @@ def main():
     selected_models = [m for m in [explicit_model, shortcut_model] if m is not None]
 
     if len(selected_models) == 0:
-        models_list = '\n'.join(
-            f'  - --{key:<20} ({name})' for key, name in sorted(DISPLAY_NAMES.items())
+        models_list = "\n".join(
+            f"  - --{key:<20} ({name})"
+            for key, name in sorted(DISPLAY_NAMES.items())
         )
 
         raise SystemExit(
-            'Error: no model selected.\n\n'
-            'Use --all or choose one model with --model or a shortcut like --katz_2003.\n\n'
-            'Available models:\n'
-            f'{models_list}'
+            "Error: no model selected.\n\n"
+            "Use --all or choose one model with --model or a shortcut like --katz_2003.\n\n"
+            "Available models:\n"
+            f"{models_list}"
         )
 
     if len(selected_models) > 1:
