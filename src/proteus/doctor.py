@@ -38,7 +38,7 @@ class BasePackage:
             current_version = Version(self.current_version())
             latest_version = Version(self.latest_version())
 
-        except (BaseException, InvalidVersion) as exc:
+        except BaseException as exc:
             message = click.style(f'{exc.__class__.__name__} - {exc}', **ERROR_STYLE)
 
         else:
@@ -82,12 +82,16 @@ class GitPackage(BasePackage):
         try:
             return self.version_getter()
         except FileNotFoundError as exc:
-            raise PackageNotFoundError(f'{self.name} is not installed.') from exc
+            raise PackageNotFoundError(f'{self.name} could not be found.') from exc
 
     def latest_version(self) -> str:
         response = requests.get(
             f'https://api.github.com/repos/{self.owner}/{self.name}/releases/latest'
         )
+        if not response.ok:
+            response.raise_for_status()
+
+        # handle
         try:
             return response.json()['tag_name']
         except KeyError as exc:

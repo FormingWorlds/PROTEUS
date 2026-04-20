@@ -84,7 +84,11 @@ def _get_socrates_version():
     """
     Get the installed SOCRATES version.
     """
-    verpath = os.path.join(os.environ.get('RAD_DIR'), 'version')
+    RAD_DIR = os.environ.get('RAD_DIR')
+    if RAD_DIR is None:
+        raise EnvironmentError('RAD_DIR environment variable is not set.')
+
+    verpath = os.path.join(RAD_DIR, 'version')
     with open(verpath, 'r') as hdl:
         ver = hdl.read().replace('\n', '')
     return str(ver)
