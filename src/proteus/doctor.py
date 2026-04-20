@@ -130,17 +130,20 @@ VARIABLES = (
     'RAD_DIR',
     'ZALMOXIS_ROOT',
     'FC_DIR',
+    'PYTHON_JULIAPKG_EXE',
     'LA_DIR',
 )
 
 
 def doctor_entry():
-    click.secho('Packages', **HEADER_STYLE)
+    click.secho('Environment variables', **HEADER_STYLE)
+    for var in VARIABLES:
+        message = get_env_var_status_message(var)
+        click.echo(message)
+
+    click.secho('\nPackages', **HEADER_STYLE)
     for package in PACKAGES:
         message = package.get_status_message()
         click.echo(message)
 
-    click.secho('\nEnvironment variables', **HEADER_STYLE)
-    for var in VARIABLES:
-        message = get_env_var_status_message(var)
-        click.echo(message)
+
