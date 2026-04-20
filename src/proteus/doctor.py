@@ -82,7 +82,7 @@ class GitPackage(BasePackage):
         try:
             return self.version_getter()
         except FileNotFoundError as exc:
-            raise PackageNotFoundError(f'{self.name} could not be found.') from exc
+            raise PackageNotFoundError(f'{self.name} is not installed.') from exc
 
     def latest_version(self) -> str:
         response = requests.get(

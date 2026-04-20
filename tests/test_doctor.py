@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-import pytest
+from importlib.metadata import PackageNotFoundError
+from unittest.mock import Mock, patch
 
-from proteus.doctor import VARIABLES, BasePackage
+import pytest
+import requests
+from packaging.version import InvalidVersion
+
+from proteus.doctor import VARIABLES, BasePackage, GitPackage, PythonPackage, doctor_entry
 
 
 class DummyPackage(BasePackage):
@@ -49,4 +54,96 @@ def test_get_status_message_handles_unparseable_versions():
 
 @pytest.mark.unit
 def test_doctor_checks_expected_environment_variables():
-    assert set(VARIABLES) == {'FWL_DATA', 'RAD_DIR', 'ZALMOXIS_ROOT', 'FC_DIR', 'LA_DIR'}
+    assert set(VARIABLES) == {
+        'FWL_DATA',
+        'RAD_DIR',
+        'ZALMOXIS_ROOT',
+        'FC_DIR',
+        'PYTHON_JULIAPKG_EXE',
+        'LA_DIR',
+    }
+
+
+@pytest.mark.unit
+def test_python_package_latest_version_reads_json_response():
+    package = PythonPackage(name='fwl-proteus')
+    response = Mock(ok=True)
+    response.json.return_value = {'info': {'version': '25.11.19'}}
+
+    with patch('proteus.doctor.requests.get', return_value=response):
+        assert package.latest_version() == '25.11.19'
+
+
+@pytest.mark.unit
+def test_python_package_latest_version_raises_on_bad_http_status():
+    package = PythonPackage(name='fwl-proteus')
+    response = Mock(ok=False)
+    response.raise_for_status.side_effect = requests.HTTPError('boom')
+
+    with patch('proteus.doctor.requests.get', return_value=response):
+        with pytest.raises(requests.HTTPError, match='boom'):
+            package.latest_version()
+
+
+@pytest.mark.unit
+def test_git_package_current_version_converts_missing_repo_to_package_not_found():
+    package = GitPackage(
+        name='SOCRATES',
+        owner='FormingWorlds',
+        version_getter=Mock(side_effect=FileNotFoundError()),
+    )
+
+    with pytest.raises(PackageNotFoundError, match='SOCRATES is not installed'):
+        package.current_version()
+
+
+@pytest.mark.unit
+def test_git_package_latest_version_reads_tag_name_from_json_response():
+    package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
+    response = Mock(ok=True)
+    response.json.return_value = {'tag_name': 'v2026.01'}
+
+    with patch('proteus.doctor.requests.get', return_value=response):
+        assert package.latest_version() == 'v2026.01'
+
+
+@pytest.mark.unit
+def test_git_package_latest_version_raises_invalid_version_without_tag_name():
+    package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
+    response = Mock(ok=True)
+    response.json.return_value = {'name': 'latest'}
+
+    with patch('proteus.doctor.requests.get', return_value=response):
+        with pytest.raises(
+            InvalidVersion, match='Could not retrieve latest version for SOCRATES'
+        ):
+            package.latest_version()
+
+
+@pytest.mark.unit
+def test_git_package_latest_version_raises_on_bad_http_status():
+    package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
+    response = Mock(ok=False)
+    response.raise_for_status.side_effect = requests.HTTPError('nope')
+
+    with patch('proteus.doctor.requests.get', return_value=response):
+        with pytest.raises(requests.HTTPError, match='nope'):
+            package.latest_version()
+
+
+@pytest.mark.unit
+def test_doctor_entry_prints_environment_variables_before_packages():
+    fake_package = Mock()
+    fake_package.get_status_message.return_value = 'pkg: ok'
+    outputs: list[str] = []
+
+    with (
+        patch('proteus.doctor.VARIABLES', ('RAD_DIR',)),
+        patch('proteus.doctor.PACKAGES', (fake_package,)),
+        patch('proteus.doctor.get_env_var_status_message', return_value='RAD_DIR: ok'),
+        patch('click.secho', side_effect=lambda text, **_: outputs.append(text)),
+        patch('click.echo', side_effect=lambda text: outputs.append(text)),
+    ):
+        doctor_entry()
+
+    assert outputs == ['Environment variables', 'RAD_DIR: ok', '\nPackages', 'pkg: ok']
