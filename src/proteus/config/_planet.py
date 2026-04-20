@@ -177,8 +177,12 @@ class Planet:
     )
 
     # Initial temperature profile
+    # Default = 'adiabatic_from_cmb' (Stage 1a lock, 2026-04-20): CMB-anchored
+    # adiabatic IC is the canonical starting state for the UnifyCoupling paper.
+    # Deeper IC exploration (accretion-scaling, liquidus-offset, etc.) is
+    # deferred to the dedicated Stage 4 (see roadmap).
     temperature_mode: str = field(
-        default='adiabatic',
+        default='adiabatic_from_cmb',
         validator=in_(
             ('isothermal', 'linear', 'adiabatic', 'adiabatic_from_cmb', 'accretion', 'isentropic')
         ),

@@ -103,8 +103,9 @@ config_version = "3.0"
     mass_tot                  = 1.0          # total initial planet mass [M_earth]
 
     # Initial temperature profile
-    temperature_mode          = "adiabatic"  # isothermal | linear | adiabatic | accretion
+    temperature_mode          = "adiabatic_from_cmb"  # isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
     tsurf_init                = 4000         # surface temperature [K] (isothermal, linear, adiabatic)
+    tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
