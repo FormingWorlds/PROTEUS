@@ -1259,6 +1259,8 @@ def update_structure_from_interior(
     }
 
     try:
+        import time as _zalmoxis_time
+        _zalmoxis_wall_t0 = _zalmoxis_time.monotonic()
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config,
             outdir,
@@ -1266,7 +1268,15 @@ def update_structure_from_interior(
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
         )
+        _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         _zalmoxis_fail_count = 0  # Reset on success
+        # Stage 1b.5: per-re-solve wall-time trace for the convergence
+        # harness. Logged at INFO so the three-way validation can ingest
+        # the cadence cost from proteus_00.log.
+        log.info(
+            'Zalmoxis re-solve wall: %.2f s (trigger: %s)',
+            _zalmoxis_wall, reason,
+        )
     except RuntimeError as e:
         _zalmoxis_fail_count += 1
         log.warning(

@@ -1267,16 +1267,33 @@ class AragogRunner:
                 )
 
         # Lightweight trace so Stage 1b three-way validation can check that
-        # the mesh scalars track the Zalmoxis re-solve cadence. Gated behind
-        # the module logger so it only appears at INFO+ and does not clutter
-        # other callers.
-        logger.info(
-            'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  g=%.4f m/s^2',
-            float(hf_row.get('Time', 0.0)),
-            float(solver.parameters.mesh.outer_radius),
-            float(solver.parameters.mesh.inner_radius),
-            float(solver.parameters.mesh.gravitational_acceleration),
-        )
+        # the mesh scalars track the Zalmoxis re-solve cadence. The d*
+        # fields are the change since the previous update, computed from
+        # cached prior values stored on solver. Oscillation in dR_int
+        # across consecutive updates is the canonical signature of a
+        # Zalmoxis↔Aragog fixed-point loop going unstable (Stage 1b.5
+        # watch-for condition).
+        prev = getattr(solver, '_prev_struct_log', None)
+        R_int_new = float(solver.parameters.mesh.outer_radius)
+        R_core_new = float(solver.parameters.mesh.inner_radius)
+        g_new = float(solver.parameters.mesh.gravitational_acceleration)
+        t_new = float(hf_row.get('Time', 0.0))
+        if prev is not None:
+            dR_int = R_int_new - prev[1]
+            dR_core = R_core_new - prev[2]
+            dg = g_new - prev[3]
+            logger.info(
+                'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  '
+                'g=%.4f m/s^2  dR_int=%+.3e  dR_core=%+.3e  dg=%+.4f',
+                t_new, R_int_new, R_core_new, g_new, dR_int, dR_core, dg,
+            )
+        else:
+            logger.info(
+                'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  '
+                'g=%.4f m/s^2  (first call)',
+                t_new, R_int_new, R_core_new, g_new,
+            )
+        solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
 
     def run_solver(self, hf_row, interior_o, dirs, write_data: bool = True):
         # Dispatch to JAX solver if configured
