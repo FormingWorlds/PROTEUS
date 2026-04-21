@@ -147,7 +147,33 @@ class AragogRunner:
             else:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 AragogRunner.update_solver(dt, hf_row, interior_o)
-            interior_o.aragog_solver.reset()
+            # Stage 2 Tier A4: mesh-hash gated reset. `solver.reset()`
+            # rereads the external EOS file + rebuilds node arrays,
+            # phase evaluators, gravity profile; for dummy / frozen-mesh
+            # configs the mesh is static after iter 0 and the rebuild
+            # is ~1-2 % of the coupling-step overhead. Hash the mesh
+            # scalars + external EOS file mtime; skip reset when
+            # unchanged. For Zalmoxis live-coupling runs R_int / R_core
+            # change per step so the hash mismatches and reset fires
+            # (correct behaviour). For dummy / frozen runs the hash
+            # stays constant after iter 0.
+            mesh = interior_o.aragog_solver.parameters.mesh
+            eos_file = getattr(mesh, 'eos_file', None)
+            eos_mtime = (
+                os.path.getmtime(eos_file)
+                if eos_file and os.path.isfile(eos_file)
+                else 0.0
+            )
+            current_hash = (
+                float(mesh.outer_radius),
+                float(mesh.inner_radius),
+                float(mesh.gravitational_acceleration),
+                float(eos_mtime),
+            )
+            prev_hash = getattr(interior_o, '_aragog_reset_hash', None)
+            if current_hash != prev_hash:
+                interior_o.aragog_solver.reset()
+                interior_o._aragog_reset_hash = current_hash
             # Restore entropy IC from previous solve
             if hasattr(interior_o, '_last_entropy') and interior_o._last_entropy is not None:
                 interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
