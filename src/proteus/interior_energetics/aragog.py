@@ -391,7 +391,15 @@ class AragogRunner:
             paleos_eos_file = eos_entry.get('eos_file', '')
 
             mass_tot = config.planet.mass_tot or 1.0
-            P_max = min(200e9, 50e9 * mass_tot + 100e9)
+            # P_max for the Aragog phase-boundary + lookup table grid.
+            # Original formula was min(200 GPa, 50*mass_tot + 100 GPa), which
+            # hard-capped at 200 GPa regardless of mass. For 5 M_Earth the
+            # actual P_cmb is ~670 GPa (see stage1c_5me_super_earth_progress),
+            # so 70% of the mantle was reading an extrapolated phase boundary
+            # at the 200 GPa table edge. The Fei+2021 melting curve is
+            # defined up to ~1 TPa, so we raise the cap to 1.5 TPa and scale
+            # the in-mass term to cover P_cmb at 5 M_Earth plus margin.
+            P_max = min(1.5e12, 150e9 * mass_tot + 200e9)
             LOOK_UP_DIR = Path(outdir) / 'data' / 'aragog_pt'
 
             # Try PALEOS-2phase first (separate solid/liquid tables). Pick

@@ -851,7 +851,10 @@ def generate_spider_tables(config: Config, outdir: str):
 
     # Determine pressure range from planet mass (higher mass needs wider range)
     mass_tot = config.planet.mass_tot or 1.0
-    P_max = min(200e9, 50e9 * mass_tot + 100e9)
+    # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
+    # of the planet; original 200 GPa cap was too low for mass_tot > ~2.
+    # See interior_energetics/aragog.py for the matching bump.
+    P_max = min(1.5e12, 150e9 * mass_tot + 200e9)
 
     if solid_eos and liquid_eos:
         logger.info('Using PALEOS-2phase tables for entropy-IC table generation')
