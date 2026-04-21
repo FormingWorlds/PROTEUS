@@ -480,9 +480,11 @@ bash tools/coverage_analysis.sh
 pip install -e '.[docs]'
 zensical serve
 
-# Run simulation
-proteus start -c input/minimal.toml -o output/test
+# Run simulation (detached; add -r / --resume to continue a killed run)
+nohup proteus start -c <cfg.toml> --offline > output/<run>/launch.log 2>&1 & disown
 ```
+
+Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` snapshot under `data/`; see `src/proteus/proteus.py` ~395-430. Never foreground a multi-hour run — plain `&` alone dies on SIGHUP.
 
 **Remember**: Trust these instructions. Only search if information is incomplete or found to be in error.
 
