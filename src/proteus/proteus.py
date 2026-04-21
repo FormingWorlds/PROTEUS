@@ -399,6 +399,20 @@ class Proteus:
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
+            # Resume banner: since proteus_00.log is opened in append mode on
+            # resume, every prior session's banner + output stays in the file
+            # with no visible marker of where the new session picks up. A
+            # self-contained three-line resume banner makes log triage
+            # (grep, tail -f, monitor cron filters) tractable. This is
+            # cosmetic only; no state is changed.
+            log.info('=' * 60)
+            log.info(
+                '=== RESUME at helpfile row %d, t = %.3e yr, Phi = %.4f',
+                len(self.hf_all), float(self.hf_row.get('Time', 0.0)),
+                float(self.hf_row.get('Phi_global', float('nan'))),
+            )
+            log.info('=' * 60)
+
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
 
