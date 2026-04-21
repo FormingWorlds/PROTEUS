@@ -432,6 +432,29 @@ class Proteus:
                     self.directories['mesh_convergence_steps'] = 0
                     log.info('Restored Zalmoxis mesh file: %s', mesh_path)
 
+            # Restore spider_eos tables pointer for resumed SPIDER / Aragog
+            # runs. The initial-structure path (solve_structure +
+            # determine_interior_radius_with_zalmoxis -> generate_spider_tables)
+            # populates dirs['spider_eos_dir'] on a fresh run, but that path
+            # is skipped on resume. Without the rehydration, SPIDER's
+            # _try_spider raises
+            # `FileNotFoundError: interior_struct.eos_dir must be set when
+            # no Zalmoxis-generated EOS tables are available`. Same issue
+            # bites Aragog when it needs the P-S tables at re-init.
+            # Observed 2026-04-21 on SPIDER Run C resume.
+            eos_dir_restored = os.path.join(
+                self.directories['output'], 'data', 'spider_eos'
+            )
+            if os.path.isdir(eos_dir_restored):
+                self.directories['spider_eos_dir'] = eos_dir_restored
+                solidus_ps = os.path.join(eos_dir_restored, 'solidus_P-S.dat')
+                liquidus_ps = os.path.join(eos_dir_restored, 'liquidus_P-S.dat')
+                if os.path.isfile(solidus_ps):
+                    self.directories['spider_solidus_ps'] = solidus_ps
+                if os.path.isfile(liquidus_ps):
+                    self.directories['spider_liquidus_ps'] = liquidus_ps
+                log.info('Restored spider_eos_dir: %s', eos_dir_restored)
+
             # Initialize structure-update sentinels from last helpfile row
             self.last_struct_time = self.hf_row.get('Time', 0.0)
             self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
