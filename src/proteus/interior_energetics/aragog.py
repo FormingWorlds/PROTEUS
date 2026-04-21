@@ -1381,7 +1381,22 @@ class AragogRunner:
         solver = self.aragog_solver
         max_attempts = 6
         atol_sf_max = 5.0  # cap on atol scaling; tested 125x corrupted T_core
-        sanity_dT_core = 1500.0  # max plausible T_core change per retry [K]
+        # Scale the T_core-jump sanity threshold with planet mass. At 1 M_Earth
+        # the IC transient in T_core is O(100 K); at 5 M_Earth with per-node
+        # gravity the same transient is O(2-3 kK) because core heat extraction
+        # scales with CMB gravity and core-mantle area (g_cmb^2 * R_core^2).
+        # A flat 1500 K threshold was calibrated for 1 M_Earth Run A/B and
+        # wrongly rejects physical transients on super-Earth runs, driving the
+        # retry ladder to exhaustion. Linear-in-mass scaling is defensible:
+        # for rocky planets the product (g_cmb * M_core * C_p_core) rises
+        # approximately linearly with planet mass, and the first-step
+        # dT_core/dt scales with that product. At 5 M_Earth this gives a
+        # 7500 K ceiling, ~2.5x headroom above the observed 2700 K jump.
+        # Observed 2026-04-21 on chili_dry_coupled_v3f_1c_5me_full (per-node
+        # gravity) retry-ladder exhaustion at t=5 yr; see the project memory
+        # stage1c_5me_super_earth_progress for the diagnostic trail.
+        mass_tot = float(getattr(self._config.planet, 'mass_tot', 1.0) or 1.0)
+        sanity_dT_core = 1500.0 * max(1.0, mass_tot)  # max plausible T_core change per retry [K]
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
