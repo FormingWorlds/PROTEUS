@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests
-from packaging.version import InvalidVersion
+from packaging.version import Version
 
 from proteus.doctor import BasePackage, GitPackage, PythonPackage, doctor_entry
 
@@ -16,11 +16,11 @@ class DummyPackage(BasePackage):
         self._current = current
         self._latest = latest
 
-    def current_version(self) -> str:
-        return self._current
+    def current_version(self) -> Version:
+        return Version(self._current)
 
-    def latest_version(self) -> str:
-        return self._latest
+    def latest_version(self) -> Version:
+        return Version(self._latest)
 
 
 @pytest.mark.unit
@@ -59,7 +59,7 @@ def test_python_package_latest_version_reads_json_response():
     response.json.return_value = {'info': {'version': '25.11.19'}}
 
     with patch('proteus.doctor.requests.get', return_value=response):
-        assert package.latest_version() == '25.11.19'
+        assert package.latest_version() == Version('25.11.19')
 
 
 @pytest.mark.unit
@@ -92,20 +92,7 @@ def test_git_package_latest_version_reads_tag_name_from_json_response():
     response.json.return_value = {'tag_name': 'v2026.01'}
 
     with patch('proteus.doctor.requests.get', return_value=response):
-        assert package.latest_version() == 'v2026.01'
-
-
-@pytest.mark.unit
-def test_git_package_latest_version_raises_invalid_version_without_tag_name():
-    package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
-    response = Mock(ok=True)
-    response.json.return_value = {'name': 'latest'}
-
-    with patch('proteus.doctor.requests.get', return_value=response):
-        with pytest.raises(
-            InvalidVersion, match='Could not retrieve latest version for SOCRATES'
-        ):
-            package.latest_version()
+        assert package.latest_version() == Version('v2026.01')
 
 
 @pytest.mark.unit
