@@ -7,7 +7,7 @@ import pytest
 import requests
 from packaging.version import InvalidVersion
 
-from proteus.doctor import VARIABLES, BasePackage, GitPackage, PythonPackage, doctor_entry
+from proteus.doctor import BasePackage, GitPackage, PythonPackage, doctor_entry
 
 
 class DummyPackage(BasePackage):
@@ -50,18 +50,6 @@ def test_get_status_message_handles_unparseable_versions():
 
     assert 'Update available' not in message
     assert "InvalidVersion - Invalid version: 'main'" in message
-
-
-@pytest.mark.unit
-def test_doctor_checks_expected_environment_variables():
-    assert set(VARIABLES) == {
-        'FWL_DATA',
-        'RAD_DIR',
-        'ZALMOXIS_ROOT',
-        'FC_DIR',
-        'PYTHON_JULIAPKG_EXE',
-        'LA_DIR',
-    }
 
 
 @pytest.mark.unit

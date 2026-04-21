@@ -9,7 +9,7 @@ from typing import Callable
 import click
 import requests
 from attr import dataclass
-from packaging.version import InvalidVersion, Version
+from packaging.version import Version
 
 from proteus.utils.coupler import (
     _get_agni_version,
@@ -29,14 +29,14 @@ DEFAULT_STYLE = {'fg': 'yellow'}
 class BasePackage:
     name: str
 
-    def current_version(self) -> str: ...
+    def current_version(self) -> Version: ...
 
-    def latest_version(self) -> str: ...
+    def latest_version(self) -> Version: ...
 
     def get_status_message(self) -> str:
         try:
-            current_version = Version(self.current_version())
-            latest_version = Version(self.latest_version())
+            current_version = self.current_version()
+            latest_version = self.latest_version()
 
         except BaseException as exc:
             message = click.style(f'{exc.__class__.__name__} - {exc}', **ERROR_STYLE)
@@ -62,15 +62,13 @@ class BasePackage:
 
 
 class PythonPackage(BasePackage):
-    def current_version(self) -> str:
-        return importlib.metadata.version(self.name)
+    def current_version(self) -> Version:
+        return Version(importlib.metadata.version(self.name))
 
-    def latest_version(self) -> str:
+    def latest_version(self) -> Version:
         response = requests.get(f'https://pypi.org/pypi/{self.name}/json')
-        if not response.ok:
-            response.raise_for_status()
-
-        return response.json()['info']['version']
+        response.raise_for_status()
+        return Version(response.json()['info']['version'])
 
 
 @dataclass
@@ -78,26 +76,18 @@ class GitPackage(BasePackage):
     owner: str
     version_getter: Callable
 
-    def current_version(self) -> str:
+    def current_version(self) -> Version:
         try:
-            return self.version_getter()
+            return Version(self.version_getter())
         except FileNotFoundError as exc:
             raise PackageNotFoundError(f'{self.name} is not installed.') from exc
 
-    def latest_version(self) -> str:
+    def latest_version(self) -> Version:
         response = requests.get(
             f'https://api.github.com/repos/{self.owner}/{self.name}/releases/latest'
         )
-        if not response.ok:
-            response.raise_for_status()
-
-        # handle
-        try:
-            return response.json()['tag_name']
-        except KeyError as exc:
-            raise InvalidVersion(
-                f'Could not retrieve latest version for {self.name} from GitHub.'
-            ) from exc
+        response.raise_for_status()
+        return Version(response.json()['tag_name'])
 
 
 PACKAGES = (
