@@ -86,6 +86,41 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
 
     log.info('Using %s interior module to solve structure' % config.interior.module)
 
+    # Boundary module: determine radius analytically from target mass.
+    # We use a two-density analytic model:
+    #   - core radius from core density
+    #   - silicate shell using a fixed silicate density
+    # then run the boundary module once to populate thermodynamic outputs.
+    if config.interior.module == 'boundary':
+        M_target = config.struct.mass_tot * M_earth
+        rho_core = config.struct.core_density
+        rho_silicate_fixed = config.interior.boundary.silicate_density
+        corefrac_r = config.struct.corefrac
+
+        # Mixed bulk density implied by a core radius fraction corefrac_r.
+        rho_bulk = (
+            rho_core * corefrac_r**3
+            + rho_silicate_fixed * (1.0 - corefrac_r**3)
+        )
+        hf_row['R_int'] = float((3.0 * M_target / (4.0 * np.pi * rho_bulk)) ** (1.0 / 3.0))
+
+        # Core mass/radius from core density.
+        M_core = rho_core * (4.0 / 3.0) * np.pi * (corefrac_r * hf_row['R_int']) ** 3
+        hf_row['M_core'] = float(M_core)
+        hf_row['R_core'] = float((3.0 * M_core / (4.0 * np.pi * rho_core)) ** (1.0 / 3.0))
+
+        hf_row['M_int'] = M_target
+        hf_row['M_planet'] = M_target
+        update_gravity(hf_row)
+
+        log.info('Found analytical solution for interior structure (boundary module)')
+        log.info(
+            'M_planet: %.1e kg = %.3f M_earth' % (hf_row['M_planet'], hf_row['M_planet'] / M_earth)
+        )
+        log.info('R_int: %.1e m  = %.3f R_earth' % (hf_row['R_int'], hf_row['R_int'] / R_earth))
+        log.info(' ')
+        return
+
     # Initial guess for interior radius and gravity
     if config.interior.module == 'spider':
         spider_dir = dirs['spider']
@@ -135,22 +170,13 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         case _:
             rtol = 1e-7
 
-    if config.interior.module != "boundary":
-
-        # Find the radius
-        r = optimise.root_scalar(_resid, method='secant', xtol=1e3, rtol=rtol, maxiter=10,
-                                        x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
-        hf_row["R_int"] = float(r.root)
-        calculate_core_mass(hf_row, config)
-        run_interior(dirs, config, hf_all, hf_row, int_o)
-        update_gravity(hf_row)
-
-    else:
-        # *** will change this once interior module works with zalmoxis ***
-        hf_row["R_int"] = R_earth
-        hf_row["M_tot"] = M_target
-        calculate_core_mass(hf_row, config)
-        hf_row["gravity"] = 9.81
+    # Find the radius
+    r = optimise.root_scalar(_resid, method='secant', xtol=1e3, rtol=rtol, maxiter=10,
+                                    x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
+    hf_row["R_int"] = float(r.root)
+    calculate_core_mass(hf_row, config)
+    run_interior(dirs, config, hf_all, hf_row, int_o)
+    update_gravity(hf_row)
 
     # Result
     log.info('Found solution for interior structure')
@@ -206,6 +232,7 @@ def determine_interior_radius_with_zalmoxis(
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
+        hf_row['R_core'] = float(_cmb_radius)
     finally:
         config.struct.zalmoxis.temperature_mode = _orig_temp_mode
 
@@ -580,6 +607,7 @@ def update_structure_from_interior(
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
+        hf_row['R_core'] = float(_cmb_radius)
     finally:
         # Restore original config
         config.struct.zalmoxis.temperature_mode = orig_temp_mode

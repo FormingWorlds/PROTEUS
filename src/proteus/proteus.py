@@ -412,8 +412,9 @@ class Proteus:
             if self.config.interior.module == "boundary" and self.loops["total"] == 0:
 
                 self.hf_row["M_mantle"] = self.config.struct.mass_tot * M_earth - self.hf_row["M_core"]
-                self.hf_row["Phi_global"] = 1.0
-                self.hf_row["T_magma"] = self.config.interior.boundary.T_surf_0
+
+                if self.config.struct.module != "zalmoxis":
+                    self.hf_row["Phi_global"] = 1.0
 
                 calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
                 run_outgassing(self.directories, self.config, self.hf_row)

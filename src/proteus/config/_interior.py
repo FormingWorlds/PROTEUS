@@ -205,8 +205,8 @@ class InteriorBoundary:
         ODE solver relative tolerance.
     atol: float
         ODE solver absolute tolerance.
-    T_surf_0: float
-        Initial surface temperature [K] for boundary solver.
+    T_p_0: float
+        Initial potential temperature [K] for boundary solver if zalmoxis module is not used.
     T_solidus: float
         Mantle solidus temperature [K].
     T_liquidus: float
@@ -214,7 +214,7 @@ class InteriorBoundary:
     critical_melt_fraction: float
         Critical melt fraction for rheological transition.
     Tsurf_event_change: float
-        Maximum change in surface temperature allowed during a single interior iteration [K] before triggering an event.
+        Maximum change in surface temperature allowed during a single interior iteration before triggering an event [K].
     critical_rayleigh_number: float
         Critical Rayleigh number for onset of convection [-].
     heat_fusion_silicate: float
@@ -223,6 +223,8 @@ class InteriorBoundary:
         Nusselt-Rayleigh scaling exponent [-].
     silicate_heat_capacity: float
         Silicate heat capacity [J/kg/K].
+    silicate_density: float
+        Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
     thermal_conductivity: float
         Thermal conductivity [W/m/K].
     thermal_diffusivity: float
@@ -235,12 +237,14 @@ class InteriorBoundary:
         Constant solid viscosity for aggregate formulation [Pa s].
     eta_melt_const: float
         Constant melt viscosity for aggregate formulation [Pa s].
+    logging: bool
+        Whether to include interior logging in the output.
     """
 
     rtol: float = field(default=1e-6,  validator=gt(0))
     atol: float = field(default=1e-9,  validator=gt(0))
 
-    T_surf_0: float = field(default=4000.0, validator=ge(0))
+    T_p_0: float = field(default=3500.0, validator=ge(0))
 
     T_solidus: float  = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
@@ -253,6 +257,7 @@ class InteriorBoundary:
     heat_fusion_silicate: float   = field(default=4.0e5,   validator=gt(0))   # J/kg
     nusselt_exponent: float       = field(default=0.33,    validator=gt(0))   # -
     silicate_heat_capacity: float = field(default=1.2e3,   validator=gt(0))   # J/kg/K
+    silicate_density: float       = field(default=4103.0, validator=gt(0))    # kg/m^3
     thermal_conductivity: float   = field(default=4.2,     validator=gt(0))   # W/m/K
     thermal_diffusivity: float    = field(default=1e-6,    validator=gt(0))   # m^2/s
     thermal_expansivity: float    = field(default=2e-5,    validator=gt(0))   # 1/K
@@ -261,6 +266,8 @@ class InteriorBoundary:
     transition_width: float       = field(default=0.15,     validator=(gt(0), lt(1)))  # -
     eta_solid_const: float        = field(default=1e21,    validator=gt(0))   # Pa s
     eta_melt_const: float         = field(default=1e2,     validator=gt(0))   # Pa s
+
+    logging: bool = field(default=False)
 
 @define
 class InteriorDummy:

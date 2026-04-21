@@ -67,24 +67,25 @@ class BoundaryRunner():
         else:
             self.atmosphere_heat_capacity = 1.7e4 # J/kg/K for H2 at 2000K
 
-        self.core_radius   = config.struct.corefrac * self.planet_radius
+        # Prefer Zalmoxis-derived CMB radius when available.
+        # Fall back to corefrac-based radius for non-Zalmoxis runs.
+        self.core_radius = float(hf_row.get("R_core", config.struct.corefrac * self.planet_radius))
 
-        self.mantle_radius = self.planet_radius - self.core_radius
-        self.mantle_volume = (4/3) * np.pi * (self.planet_radius**3 - self.core_radius**3)
-        self.mantle_mass   = (self.planet_mass - self.core_mass)
-        self.bulk_density  = self.mantle_mass / self.mantle_volume
-
-        self.surface_gravity     = const_G * self.planet_mass / self.planet_radius**2
+        self.mantle_radius   = self.planet_radius - self.core_radius
+        self.mantle_volume   = (4/3) * np.pi * (self.planet_radius**3 - self.core_radius**3)
+        self.mantle_mass     = (self.planet_mass - self.core_mass)
+        self.bulk_density    = self.mantle_mass / self.mantle_volume
+        self.surface_gravity = const_G * self.planet_mass / self.planet_radius**2
 
         self.rtol = config.interior.boundary.rtol
         self.atol = config.interior.boundary.atol
 
-        if interior_o.ic == 2:
-            self.T_p_0    = hf_row.get("T_magma", 0.0)
-            self.T_surf_0 = hf_row.get("T_surf", 0.0)
+        if interior_o.ic == 2 or config.struct.module == "zalmoxis":
+            self.T_p_0    = hf_row.get("T_magma")
+            self.T_surf_0 = hf_row.get("T_surf")
         else:
-            self.T_surf_0 = config.interior.boundary.T_surf_0
-            self.T_p_0    = self.T_surf_0
+            self.T_p_0    = config.interior.boundary.T_p_0
+            self.T_surf_0 = self.T_p_0
 
         if self.T_surf_0 > self.T_p_0:
             self.T_surf_0 = self.T_p_0 - 1.0  # Ensure initial surface temperature does not exceed potential temperature
@@ -115,6 +116,9 @@ class BoundaryRunner():
         self.U_abun                 = config.delivery.radio_U * 1e-6  # Convert ppm to kg/kg
         self.Th_abun                = config.delivery.radio_Th * 1e-6  # Convert ppm to kg/kg
         self.K_abun                 = config.delivery.radio_K * 1e-6  # Convert ppm to kg/kg
+
+        # Logging setup
+        self.logging = config.interior.boundary.logging
 
     @staticmethod
     def compute_time_step(config: Config, dirs: dict, hf_row: dict,
@@ -357,8 +361,7 @@ class BoundaryRunner():
 
         # Energy balance numerator: heat loss - radiogenic heating
         numerator = (-4 * np.pi * self.planet_radius**2 * q_m_val +
-                     (4/3) * np.pi * self.bulk_density * Q_val *
-                     (self.planet_radius**3 - self.core_radius**3))
+                     self.mantle_volume * self.bulk_density * Q_val)
 
         r_s_val = self.r_s(T_p)  # Update r_s_val based on current T_p
 
@@ -461,25 +464,27 @@ class BoundaryRunner():
                 Dictionary containing thermal evolution results
         """
         # Set up CSV logging for step diagnostics.
-        output_dir = dirs.get('output', '.')
-        csv_log_file = f"{output_dir}/boundary_solver_debug.csv"
-        self._run_solver_call_count = self.iteration
+        if self.logging:
+            output_dir = dirs.get('output', '.')
+            csv_log_file = f"{output_dir}/boundary_solver_debug.csv"
+            self._run_solver_call_count = self.iteration
 
-        csv_columns = [
-            "call_index",
-            "step_index",
-            "n_steps",
-            "time_s",
-            "dt_s",
-            "T_p_K",
-            "T_surf_K",
-            "dT_p_dt_K_per_s",
-            "dT_surf_dt_K_per_s",
-            "convective_heat_loss_term_W",
-            "radiogenic_heating_term_W",
-            "F_atmosphere_W_per_m2",
-        ]
-        csv_needs_header = not pd.io.common.file_exists(csv_log_file)
+            csv_columns = [
+                "call_index",
+                "step_index",
+                "n_steps",
+                "time_s",
+                "dt_s",
+                "T_p_K",
+                "T_surf_K",
+                "dT_p_dt_K_per_s",
+                "dT_surf_dt_K_per_s",
+                "convective_heat_loss_term_W",
+                "radiogenic_heating_term_W",
+                "F_atmosphere_W_per_m2",
+                "r_core_m",
+            ]
+            csv_needs_header = not pd.io.common.file_exists(csv_log_file)
 
         def tsurf_change_event(t: float, y: list) -> float:
             """
@@ -507,38 +512,40 @@ class BoundaryRunner():
             events=tsurf_change_event,
         )
 
-        with open(csv_log_file, mode='a', encoding='utf-8', newline='') as handle:
-            writer = csv.DictWriter(handle, fieldnames=csv_columns)
-            if csv_needs_header:
-                writer.writeheader()
+        if self.logging:
+            with open(csv_log_file, mode='a', encoding='utf-8', newline='') as handle:
+                writer = csv.DictWriter(handle, fieldnames=csv_columns)
+                if csv_needs_header:
+                    writer.writeheader()
 
-            for i, t in enumerate(sol.t):
-                timestep = t - sol.t[i-1] if i > 0 else t - self.curr_time
-                T_p = sol.y[0, i]
-                T_surf = sol.y[1, i]
-                dT_pdt_val = self.dT_pdt(T_p, T_surf, t)
-                dT_surfdt_val = self.dT_surfdt(T_p, T_surf)
-                q_m_val = self.q_m(T_p, T_surf, self.melt_fraction(T_p))
-                q_m_term = 4 * np.pi * self.planet_radius**2 * q_m_val
-                q_rad = self.radioactive_heating(t)
-                q_rad_term = (4 / 3) * np.pi * self.bulk_density * q_rad * (self.planet_radius**3 - self.core_radius**3)
+                for i, t in enumerate(sol.t):
+                    timestep = t - sol.t[i-1] if i > 0 else t - self.curr_time
+                    T_p = sol.y[0, i]
+                    T_surf = sol.y[1, i]
+                    dT_pdt_val = self.dT_pdt(T_p, T_surf, t)
+                    dT_surfdt_val = self.dT_surfdt(T_p, T_surf)
+                    q_m_val = self.q_m(T_p, T_surf, self.melt_fraction(T_p))
+                    q_m_term = 4 * np.pi * self.planet_radius**2 * q_m_val
+                    q_rad = self.radioactive_heating(t)
+                    q_rad_term = self.mantle_volume * self.bulk_density * q_rad
 
-                writer.writerow(
-                    {
-                        "call_index": self._run_solver_call_count,
-                        "step_index": i + 1,
-                        "n_steps": len(sol.t),
-                        "time_s": t,
-                        "dt_s": timestep,
-                        "T_p_K": T_p,
-                        "T_surf_K": T_surf,
-                        "dT_p_dt_K_per_s": dT_pdt_val,
-                        "dT_surf_dt_K_per_s": dT_surfdt_val,
-                        "convective_heat_loss_term_W": q_m_term,
-                        "radiogenic_heating_term_W": q_rad_term,
-                        "F_atmosphere_W_per_m2": self.f_atm,
-                    }
-                )
+                    writer.writerow(
+                        {
+                            "call_index": self._run_solver_call_count,
+                            "step_index": i + 1,
+                            "n_steps": len(sol.t),
+                            "time_s": t,
+                            "dt_s": timestep,
+                            "T_p_K": T_p,
+                            "T_surf_K": T_surf,
+                            "dT_p_dt_K_per_s": dT_pdt_val,
+                            "dT_surf_dt_K_per_s": dT_surfdt_val,
+                            "convective_heat_loss_term_W": q_m_term,
+                            "radiogenic_heating_term_W": q_rad_term,
+                            "F_atmosphere_W_per_m2": self.f_atm,
+                            "r_core_m": self.core_radius,
+                        }
+                    )
 
         # Extract results
         T_p_final     = sol.y[0, -1]
@@ -569,7 +576,6 @@ class BoundaryRunner():
             "M_mantle_solid": m_solid,
             "F_tidal": 0.0,
             "M_mantle": self.mantle_mass,
-            "M_core": self.core_mass
         }
 
         return sim_time, output
