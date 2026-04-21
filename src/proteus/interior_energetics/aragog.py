@@ -396,10 +396,14 @@ class AragogRunner:
             # hard-capped at 200 GPa regardless of mass. For 5 M_Earth the
             # actual P_cmb is ~670 GPa (see stage1c_5me_super_earth_progress),
             # so 70% of the mantle was reading an extrapolated phase boundary
-            # at the 200 GPa table edge. The Fei+2021 melting curve is
-            # defined up to ~1 TPa, so we raise the cap to 1.5 TPa and scale
-            # the in-mass term to cover P_cmb at 5 M_Earth plus margin.
-            P_max = min(1.5e12, 150e9 * mass_tot + 200e9)
+            # at the 200 GPa table edge. The PALEOS-2phase EOS tables extend
+            # to 100 TPa (header, paleos_mgsio3_tables_pt_proteus_*.dat); the
+            # Fei+2021 melting curve is fit up to ~1 TPa but the functional
+            # form (Simon-Glatzel power law) extrapolates smoothly higher.
+            # Cap at 10 TPa so the grid can cover very massive rocky planets
+            # without hitting the table edge. Mass scaling keeps the table
+            # compact for sub-Earth / Earth-mass configs.
+            P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
             LOOK_UP_DIR = Path(outdir) / 'data' / 'aragog_pt'
 
             # Try PALEOS-2phase first (separate solid/liquid tables). Pick
