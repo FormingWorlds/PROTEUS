@@ -31,6 +31,61 @@ GASES_STANDARD = ("CO", "H2O", "N2", "O2", "O3", "OH", "H", "SO", "CH4",
                   "N2O", "NO", "NO2", "HNO3", "PH3", "Fe", "Si", "Ti", "K", "Mg",
                   "N", "O", "S", "SiO", "SiO2","TiO","FeO","MgO","Na","TiO2",)
 
+
+def sample_output(output_dir, extension:str = "_atm.nc", tmin:float = 1.0, nsamp:int=8):
+
+    """
+    Sample output files from a model run based on their time stamps.
+
+    This function searches the `<output_dir>/data` directory for files whose
+    names end with the given extension and whose base name is an integer
+    time stamp. It then selects up to `nsamp` representative output times
+    greater than or equal to `tmin`, using `sample_times`, and returns the
+    corresponding times and file paths.
+
+    If no matching files are found, the function returns empty lists. If an
+    archive exists in the data directory, an error is logged indicating that
+    the archive should be extracted first.
+
+    Parameters
+    ----------
+    output_dir : str
+        Path to the model output directory containing a `data/` subdirectory.
+    extension : str, optional
+        File extension used to identify output files (default: "_atm.nc").
+    tmin : float, optional
+        Minimum time to consider when sampling outputs (default: 1.0).
+    nsamp : int, optional
+        Number of output times to sample (default: 8).
+
+    Returns
+    -------
+    out_t : list
+        List of sampled output times.
+    out_f : list
+        List of file paths corresponding to the sampled times.
+    """
+
+    files = glob.glob(os.path.join(output_dir+"/data", "*"+extension))
+
+    # No files found?
+    if len(files) < 1:
+        log.error("No output files found, check if arxiv exists and Extract it.")
+
+        # Return empty
+        return [], []
+
+    # get times
+    times = [int(f.split("/")[-1].split(extension)[0]) for f in files]
+
+    out_t, out_i = sample_times(times, nsamp, tmin=tmin)
+    out_f = [files[i] for i in out_i]
+
+    # return times and file paths
+    return np.array(times), np.array(out_t), np.array(out_f)
+
+
+
 def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     """Read data from atmosphere NetCDF output file.
 
@@ -240,61 +295,6 @@ def read_2model_data(output_dir1:str, output_dir2:str, extension, tmin, nsamp, e
         return
 
     return final_times1,final_times2,profiles1, profiles2
-
-
-
-def sample_output(output_dir, extension:str = "_atm.nc", tmin:float = 1.0, nsamp:int=8):
-
-    """
-    Sample output files from a model run based on their time stamps.
-
-    This function searches the `<output_dir>/data` directory for files whose
-    names end with the given extension and whose base name is an integer
-    time stamp. It then selects up to `nsamp` representative output times
-    greater than or equal to `tmin`, using `sample_times`, and returns the
-    corresponding times and file paths.
-
-    If no matching files are found, the function returns empty lists. If an
-    archive exists in the data directory, an error is logged indicating that
-    the archive should be extracted first.
-
-    Parameters
-    ----------
-    output_dir : str
-        Path to the model output directory containing a `data/` subdirectory.
-    extension : str, optional
-        File extension used to identify output files (default: "_atm.nc").
-    tmin : float, optional
-        Minimum time to consider when sampling outputs (default: 1.0).
-    nsamp : int, optional
-        Number of output times to sample (default: 8).
-
-    Returns
-    -------
-    out_t : list
-        List of sampled output times.
-    out_f : list
-        List of file paths corresponding to the sampled times.
-    """
-
-    files = glob.glob(os.path.join(output_dir+"/data", "*"+extension))
-
-    # No files found?
-    if len(files) < 1:
-        log.error("No output files found, check if arxiv exists and Extract it.")
-
-        # Return empty
-        return [], []
-
-    # get times
-    times = [int(f.split("/")[-1].split(extension)[0]) for f in files]
-    #print(times)
-
-    out_t, out_i = sample_times(times, nsamp, tmin=tmin)
-    out_f = [files[i] for i in out_i]
-
-    # return times and file paths
-    return np.array(times), np.array(out_t), np.array(out_f)
 
 
 

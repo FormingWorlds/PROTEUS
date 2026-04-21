@@ -74,6 +74,7 @@ class container_lavatmos():
         self.volatile_comp = parameters['volatile_comp']
         self.run_name = parameters['run_name']
         self.melt_fraction = parameters['melt_fraction']
+        self.elementfile = parameters['elementfile']
 
         # Paths
         self.paths = paths_importer()
@@ -83,6 +84,7 @@ class container_lavatmos():
             comp_vol = pd.Series(parameters['volatile_comp'])
             comp_vol.to_csv(f'{self.paths.input_dir}volatile_comp.csv',\
                              header=['mole_fraction'])
+
 
     def run_lavatmos(self,T_boa):
 
@@ -109,7 +111,8 @@ class container_lavatmos():
                     {self.paths.output_dir}\
                     {self.silicate_abundances}\
                     {self.run_name}\
-                    {self.melt_fraction}')
+                    {self.melt_fraction}\
+                    {self.elementfile}')
 
         # Read LavAtmos output
         # partial_pressures = pd.read_csv(self.run_output_dir+'lavatmos/degassed_partial_pressure.csv',\
@@ -280,24 +283,66 @@ class FO2shift:
         """O'Neill and Eggins (2002) IW"""
         return 2 * (-244118 + 115.559 * T - 8.474 * T * np.log(T)) / (np.log(10) * 8.31441 * T)
 
-def read_in_element_fracs(input_path,time):
+def read_in_element_fracs(input_path,time,parameters):
 
 
     # read file (skip comment line, split on whitespace)
 
     df = pd.read_csv(
-        input_path + "element_abundances/element_abundances_output.dat",
+        input_path + parameters['elementfile'],
         comment="#",      # ignore lines starting with #
         sep=r"\s+",       # split on any whitespace
         header=None
     )
-    shutil.copy(input_path + "element_abundances/element_abundances_output.dat", "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
+    #shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
     # make first column the headers and second column the data row
     df = pd.DataFrame([df[1].values], columns=df[0].values)
 
     df_frac = (10**(df - 12)).where(df != 0, 0)
     #dataframe has been multiplied by 1e20, so need to renormalise to get real fractions
     return df_frac/1e20
+
+
+
+def read_in_element_fracs_normalized(input_path,time,parameters):
+
+
+    '''constructs a dataframe with number element fractions of each element as computed by lavatmos
+
+    input:
+    - inputpath: path to the directory where the elemnt_abundance folder which contains the lavatmos output elements is located
+        this file contains element abundances in fastchem format where ej=10^(xj-12)
+    - time: time of the ucrrent timestep wt ahich the outgassing is computed
+
+    output:
+    - dataframe with normalised element fractions ej/etot
+
+    '''
+    # read file (skip comment line, split on whitespace)
+
+    df = pd.read_csv(
+        input_path + parameters['elementfile'],
+        comment="#",      # ignore lines starting with #
+        sep=r"\s+",
+        header=None       # split on any whitespace
+    )
+
+    shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
+    # make first column the headers and second column the data row
+    abundance_dict = dict(zip(df[0], df[1]))
+    for key in  abundance_dict.keys():
+        if abundance_dict[key] != 0.0:
+            abundance_dict[key]= 10**(abundance_dict[key] - 12) / 1e20
+
+
+    total = sum(abundance_dict.values())
+
+    log.debug('sum of all elements: %.8f'%total)
+    norm_dict= {k: v / total for k, v in abundance_dict.items()}
+
+    log.debug('normalised dictionary %s'%norm_dict)
+
+    return norm_dict
 
 
 def compute_silicate_outgassing(config: Config, hf_row: dict):
@@ -351,6 +396,7 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         'oxygen_abundance': 'degassed',  # 'degassed', 'manual',
         'volatile_comp': nfrac,
         'melt_fraction': 1.0,
+        'elementfile': 'element_output_proteus.dat'
     }
 
 
@@ -360,15 +406,11 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     else:
         Toutgas = 1500
 
-    #print('melt fraction as given in parameters: ',parameters['melt_fraction'])
     lavatmos_instance = container_lavatmos(parameters)
     lavatmos_instance.run_lavatmos(Toutgas)
 
     #convert the element abundances from lavatmos file to element fractions, normalized to unity
-    element_fracs=read_in_element_fracs(config.outgas.elementfile,hf_row['Time'])
-
-
-    log.info('elements passed to fastchem runs from lavatmos output: %s',element_fracs)
+    element_fracs=read_in_element_fracs_normalized(config.outgas.elementfile,hf_row['Time'],parameters)
 
 
     # read in boa chemistry from last iteration of fastchem and lavatmos
@@ -378,6 +420,7 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     else:
         raise RuntimeError('cannot find fastchem output from lavatmos loop!')
 
+
     # update abundances in output file for next calliope run
     new_atmos_abundances = pd.read_csv(mmr_path, sep=r'\s+')
     mu_outgassed = new_atmos_abundances['mu'][0]
@@ -385,55 +428,61 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     # compute density for the previous run with calliope output from hf_row:
     kg_per_particle = hf_row['atm_kg_per_mol'] / particles_per_mol
 
-    #print('kg per particle before lavatmos:',kg_per_particle)
-
     # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
-    P_surf_Pa = hf_row['P_surf'] * 1.0e5
-    rho_old = kg_per_particle * P_surf_Pa / (kB * hf_row['T_magma'])
+    # 1bar = 100 kPa
+    P_surf_kPa = hf_row['P_surf'] * 100 #convert to kgPa
+    rho_old = kg_per_particle * P_surf_kPa / (kB * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
     log.info('old atmospheric mass:%.4f'%M_atmo_old)
-
+    log.info('old atmospheric density:%.4f'%rho_old)
     # rho of armosphere after lavatmos
     # n=rho/mu*mp
+    # 1bar = 100 kPa
     kg_pp_new =  mu_outgassed * mp
-    P_new_pa = new_atmos_abundances['Pbar'][0] * 1.0e5 #convert pressure to Pascals
-    rho_new = kg_pp_new * P_new_pa / (kB * hf_row['T_magma'])
-    M_atmo_new = M_atmo_old / rho_old * rho_new  # kg assuming volum does not change
+    P_new_kPa = new_atmos_abundances['Pbar'][0] * 100 #convert pressure to cgs
+    rho_new = kg_pp_new * P_new_kPa / (kB * hf_row['T_magma']) # convert pressur ein cgs to kg !
+    M_atmo_new = (M_atmo_old / rho_old) * rho_new  # kg assuming volume does not change but only pressure
 
     log.info('new atmospheric mass:%.4f'%M_atmo_new)
+    log.info('new atmospheric density:%.4f'%rho_new)
 
     gas_list = vol_list + config.outgas.vaplist
 
+    log.info('new surface pressure: %s'%new_atmos_abundances['Pbar'][0])
+
+    #update surface pressure:
+    hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
 
     for vol in gas_list:
         new_pp = new_atmos_abundances[vol][0] * new_atmos_abundances['Pbar'][0]
         hf_row[vol + '_bar'] = new_pp
-        # here need to update it in terms of pressure as well, since this is input for calliiope
         hf_row[vol + '_vmr'] = new_atmos_abundances[vol][0]
         hf_row[vol + '_kg_atm'] = (new_atmos_abundances[vol][0] * M_atmo_new * species_lib[vol].weight / mu_outgassed )  # kg
         hf_row[vol + '_kg_total'] = (hf_row[vol + '_kg_atm'] + hf_row[vol + '_kg_solid'] + hf_row[vol + '_kg_liquid'])
 
+        hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm']/hf_row['atm_kg_per_mol']
+        hf_row[vol + '_mol_total'] = hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
 
-    # elements are not considered as atomic species but just as inventory
-    #print('element fractions predicted by fastchem:',element_fracs)
 
     mmw_elements=0
-    #log.info('elements in element list: %s'%element_list)
-    #log.info('elements in lavatmos:%s'%element_fracs.columns.tolist())
-    for e in element_fracs.columns.tolist():
-        mmw_elements += element_fracs[e][0] * species_lib[e].weight
+    for e in element_fracs.keys():
+        mmw_elements += element_fracs[e] * species_lib[e].weight
 
     for e in element_list:
-        log.info('element: %s,  %s',e, element_fracs[e][0])
-        log.info('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
-        #if e in input_eles and e!='O':
-        hf_row[e + '_kg_atm'] = hf_row[e + '_kg_atm']
-        #else:
-        hf_row[e + '_kg_atm'] = element_fracs[e][0] * M_atmo_new * species_lib[e].weight / mmw_elements
+        log.info('element: %s,  %s',e, element_fracs[e])
+        log.debug('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
+        if e in input_eles and e != 'O':
+            log.debug('volatile species, no need to update from lavatmos')
+            continue
+        else:
+            hf_row[e + '_kg_atm'] = element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
 
         hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
-        log.info('total mass of element after updating with lavatmos: %s',hf_row[e + '_kg_atm'])
+
+        log.debug('total mass of element after updating with lavatmos: %s',hf_row[e + '_kg_atm']) #different than before
+        #BECUASE: very likely the different volatile species allowed by fastchem compared to PROTEUS which now allows a differnet mean molecular weigh tcomputation
+        #better to use volatile abuundances from before lavatmos !
 
 
     # saving new oxygen fugacity for calliope
@@ -443,3 +492,5 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     hf_row['fO2_shift_LavAtmos'] = fO2_shift(hf_row['T_magma'], log10_fO2)
 
     log.debug('shift compared to iron wustite buffer: %.6f'%hf_row['fO2_shift_LavAtmos'])
+
+    #update  hf_row['atm_kg_per_mol']

@@ -81,7 +81,6 @@ GASES_ARCiS=('CO',
 def get_element_abun(model,time):
 
     df=pd.read_csv('/data3/leoni/PROTEUS/output/%s/runtime_helpfile.csv'%model,sep='\t')
-    print(df)
     hf_row = df.loc[(df["Time"] - time).abs().idxmin()]
     molfracs={}
 
@@ -94,21 +93,23 @@ def get_element_abun(model,time):
     for e in element_list:
        molfracs[e]= hf_row[e + '_kg_atm']/species_lib[e].weight
        total_mols+= molfracs[e]
+    if total_mols==0.0:
+            total_mols+=1
     for e in element_list:
        nfrac[e]= molfracs[e]/total_mols
 
     element_folder='/data3/leoni/evolution_project/elements_ARCiS/{}/{}/'.format(model,time)
 
-    print(element_folder)
     os.makedirs(element_folder, exist_ok=True)
     with open(element_folder+'elements.dat', "w") as f:
         for key in nfrac:
             f.write(f"{key} {float(nfrac[key]):.3E} \n")
     print('elements in ARCiS format written to {}elements.dat'.format(element_folder))
+    print(nfrac)
 
 
 
-def config_ARCiS(input_file, tp_file_path, vmr_file_path, elementfile, species, mixratfile=False, mixrat_file_path='mixingratios.dat'):
+def config_ARCiS_input(input_file, tp_file_path, vmr_file_path, elementfile, species, mixratfile=False, mixrat_file_path='mixingratios.dat'):
 
     '''function which modifies the ARCiS input file by updating the elementfile from which the abundances are read
     Input Tsurf is not mandatory since then ARCiS will converge to s surface temperature itself'''
@@ -118,7 +119,6 @@ def config_ARCiS(input_file, tp_file_path, vmr_file_path, elementfile, species, 
 
     tp=pd.read_csv(tp_file_path,sep='\t')
     Psurf=tp['Pbar'][0]
-    print(tp_file_path)
     print('surface temperature output by PROTEUS:',tp['temperature[K]'][0])
     Tsurface=tp['temperature[K]'][0]
 
@@ -210,4 +210,4 @@ if __name__ == "__main__":
 
     elementpath='/data3/leoni/evolution_project/elements_ARCiS/{}/{}/elements.dat'.format(runname,time)
     get_element_abun(runname,time)
-    config_ARCiS(input_path+input_file, tp_file_path, vmr_file_path, elementpath, species,mixratfile=mixratfile,mixrat_file_path=mixrat_file_path)
+    config_ARCiS_input(input_path+input_file, tp_file_path, vmr_file_path, elementpath, species,mixratfile=mixratfile,mixrat_file_path=mixrat_file_path)
