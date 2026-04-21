@@ -1393,7 +1393,23 @@ class AragogRunner:
             if getattr(interior_o, '_last_entropy', None) is not None
             else None
         )
-        dSdr_ic = getattr(solver, '_dSdr_cmb_init', None)
+        # Snapshot dSdr_cmb BEFORE the first attempt so retries can
+        # restore the pre-solve value. Without this the hot-start at
+        # Aragog's set_initial_entropy (entropy_solver.py:604-616) reads
+        # the FAILED attempt's final dSdr_cmb from _solution.y[..., -1]
+        # and uses it as the IC for the next retry, producing a
+        # positive-feedback loop in which each retry drives dSdr_cmb
+        # further from the pre-solve value and T_core jumps grow
+        # unbounded. Observed in the 5 M_Earth dry CHILI super-Earth
+        # runs (proteus stage1c_5me_super_earth_progress memory, 2026-04-21).
+        # Prefer the Aragog getter; fall back to the private override
+        # attribute when present (e.g. when a previous call forced it).
+        dSdr_snapshot = None
+        if hasattr(solver, 'get_current_dSdr_cmb'):
+            dSdr_snapshot = solver.get_current_dSdr_cmb()
+        if dSdr_snapshot is None:
+            dSdr_snapshot = getattr(solver, '_dSdr_cmb_init', None)
+        dSdr_ic = dSdr_snapshot
         T_core_pre = float(hf_row.get('T_core', 0.0))
 
         # Reset atol scale to 1.0 at the start of each coupling step
@@ -1475,13 +1491,28 @@ class AragogRunner:
                 solver.parameters.solver.end_time = t_start + dt_new
                 solver._atol_sf = atol_sf_new
                 if dSdr_ic is not None:
-                    solver._dSdr_cmb_init = dSdr_ic
+                    # Force the next attempt's hot-start to use the pre-solve
+                    # snapshot instead of the failed attempt's final value.
+                    if hasattr(solver, 'set_initial_dSdr_cmb'):
+                        solver.set_initial_dSdr_cmb(dSdr_ic)
+                    else:
+                        solver._dSdr_cmb_init = dSdr_ic
                 solver.reset()
                 if S_ic is not None:
                     solver.set_initial_entropy(S_ic)
         finally:
             # Always reset atol_sf so subsequent coupling steps start at 1.0x
             solver._atol_sf = 1.0
+            # Release the dSdr_cmb override so the NEXT coupling step's
+            # set_initial_entropy can hot-start from its own _solution
+            # (which, after a successful retry, holds the accepted
+            # attempt's final dSdr_cmb, or after a full ladder exhaustion
+            # the wrapper will apply its own skip-step fallback before
+            # the next coupling step begins).
+            if hasattr(solver, 'set_initial_dSdr_cmb'):
+                solver.set_initial_dSdr_cmb(None)
+            else:
+                solver._dSdr_cmb_init = None
 
         return out
 
