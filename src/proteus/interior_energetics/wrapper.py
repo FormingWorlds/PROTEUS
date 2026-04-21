@@ -1369,11 +1369,18 @@ def update_structure_from_interior(
         dirs['mesh_shift_active'] = still_converging
         dirs['mesh_convergence_steps'] = n_conv
 
-        # Update .prev for next iteration
+        # Update .prev for next iteration. Skip the copy when src and dst
+        # already point to the same file, which happens on the
+        # Zalmoxis-failure fallback path: the fallback sets
+        # `spider_mesh_file = prev_path` at line ~1326 (introduced in
+        # bc5b7265), so the usual "save current to .prev" becomes a self
+        # copy and shutil.copy2 raises SameFileError (observed on SPIDER
+        # Run C, 2026-04-21, chili_dry_coupled_v3f_1b_spider_full).
         if not prev_path:
             prev_path = spider_mesh_file + '.prev'
             dirs['spider_mesh_prev'] = prev_path
-        shutil.copy2(spider_mesh_file, prev_path)
+        if os.path.abspath(spider_mesh_file) != os.path.abspath(prev_path):
+            shutil.copy2(spider_mesh_file, prev_path)
 
         # Remap entropy in the latest SPIDER JSON to match the new mesh.
         # Without this, the old dS/dxi applied on the new xi grid produces
