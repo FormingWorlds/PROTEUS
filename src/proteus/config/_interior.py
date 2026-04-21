@@ -137,6 +137,15 @@ class Aragog:
     """Option Z: use a JAX-derived analytic Jacobian inside CVODE instead of its
     default finite-difference approximation. Requires ``solver_method='cvode'``
     and the JAX/equinox stack. Disabled by default pending Z.4/Z.5 validation."""
+    scalar_gravity_override: bool = field(default=False)
+    """Stage 1c.4 comparison knob. When True, the external mesh file that
+    Zalmoxis writes has its gravity column overwritten with a uniform scalar
+    (the surface value from ``hf_row['gravity']``) before Aragog reads it.
+    Aragog's per-node gravity path then interpolates to that scalar everywhere,
+    which is functionally the same as the pre-1c.1 scalar-g code path. This is
+    the official way to produce a scalar-g control run on the live-coupling
+    branch without pinning the aragog submodule back to 8fc5072. False by
+    default; set True only when running a paired scalar-g comparison."""
 
 
 def valid_interiordummy(instance, attribute, value):

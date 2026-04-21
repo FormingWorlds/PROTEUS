@@ -1400,12 +1400,30 @@ def zalmoxis_solver(
     # Write SPIDER mesh file if requested
     spider_mesh_file = None
     if num_spider_nodes > 0:
+        # Stage 1c.4 scalar-g control knob: when
+        # ``interior_energetics.aragog.scalar_gravity_override`` is True,
+        # collapse the radial gravity array into a uniform scalar (the
+        # surface value from hf_row['gravity']). Aragog's per-node path
+        # at solver.reset() then reads a constant column, which is
+        # functionally identical to the pre-1c.1 scalar-g code path.
+        # This preserves the rest of the Zalmoxis -> Aragog pipeline
+        # intact and avoids submodule-pin gymnastics.
+        mesh_gravity = spider_gravity
+        if getattr(config.interior_energetics.aragog,
+                   'scalar_gravity_override', False):
+            g_scalar = float(hf_row.get('gravity', 9.81))
+            mesh_gravity = np.full_like(spider_gravity, g_scalar)
+            logger.info(
+                'scalar_gravity_override=True: collapsing mesh gravity '
+                'column to uniform %.4f m/s^2 (Stage 1c.4 control run)',
+                g_scalar,
+            )
         spider_mesh_file = write_spider_mesh_file(
             outdir,
             spider_radii,
             spider_pressure,
             spider_density,
-            spider_gravity,
+            mesh_gravity,
             num_spider_nodes,
         )
 
