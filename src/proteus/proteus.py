@@ -642,53 +642,82 @@ class Proteus:
 
             ############### REDOX (#57)
             # Static mode (default): pins hf_row['fO2_shift_IW'] to
-            # config.outgas.fO2_shift_IW. No-op on physics; the
-            # downstream run_outgassing call below picks up the
-            # pinned scalar exactly as pre-#57.
+            # config.outgas.fO2_shift_IW AND writes passive
+            # R_budget_* diagnostics. No-op on physics; the downstream
+            # run_outgassing call below picks up the pinned scalar
+            # exactly as pre-#57.
             # Evolving modes ('fO2_init' or 'composition'): the
-            # transactional Brent solver (plan v6 §3.3) finds ΔIW that
-            # closes the Evans/Hirschmann redox budget, using a
-            # deep-copied probe of hf_row per inner outgas call. Only
-            # the solved fO2_shift_IW scalar is written back to
+            # transactional Brent solver (plan v6 §3.3) finds ΔIW
+            # that closes the Evans/Hirschmann redox budget using
+            # deep-copied probes of hf_row per inner outgas call.
+            # Only the solved fO2_shift_IW scalar is committed to
             # hf_row; the authoritative outgas commit remains the
-            # run_outgassing call on line ~681 below.
+            # run_outgassing call below.
+            # Init-stage guard (Commit C.1): during init
+            # (loops['total'] <= init_loops + 2) evolving modes
+            # short-circuit to static. calc_target_elemental_inventories
+            # has not yet converged, so a Brent solve at that stage
+            # would commit a meaningless ΔIW.
             try:
-                from proteus.escape.wrapper import (
-                    atm_escape_fluxes_species_kg,
+                from proteus.redox.coupling import (
+                    _write_passive_diagnostics,
+                    run_redox_step,
                 )
-                from proteus.interior_energetics.aragog import (
-                    get_mesh_state_for_redox,
+                redox_mode = getattr(
+                    getattr(self.config, 'redox', None), 'mode', 'static',
                 )
-                from proteus.redox.coupling import run_redox_step
-                mesh_state = None
-                if self.config.interior_energetics.module == 'aragog':
-                    mesh_state = get_mesh_state_for_redox(self.interior_o)
-                escape_fluxes = None
-                if self.config.escape.module:
-                    escape_fluxes = atm_escape_fluxes_species_kg(
-                        self.hf_row, self.interior_o.dt,
+                in_init = self.loops['total'] <= (
+                    self.loops['init_loops'] + 2
+                )
+                if redox_mode != 'static' and in_init:
+                    # Early-iteration short-circuit.
+                    self.hf_row['fO2_shift_IW'] = float(
+                        self.config.outgas.fO2_shift_IW
                     )
-                hf_row_prev_dict = (
-                    self.hf_all.iloc[-1].to_dict()
-                    if (self.hf_all is not None and len(self.hf_all) > 0)
-                    else dict(self.hf_row)
-                )
-                run_redox_step(
-                    self.hf_row, hf_row_prev_dict,
-                    self.directories, self.config,
-                    mesh_state=mesh_state,
-                    escape_fluxes_species_kg=escape_fluxes,
-                )
-            except Exception as redox_exc:
-                # Redox-module failure must NOT kill a running
-                # simulation. Log and continue with the pinned
-                # fO2_shift_IW fallback (same as static-mode
-                # behaviour).
+                    _mc = getattr(
+                        self.config.interior_struct, 'mantle_comp', None,
+                    )
+                    _write_passive_diagnostics(self.hf_row, _mc)
+                else:
+                    from proteus.escape.wrapper import (
+                        atm_escape_fluxes_species_kg,
+                    )
+                    from proteus.interior_energetics.aragog import (
+                        get_mesh_state_for_redox,
+                    )
+                    mesh_state = None
+                    if getattr(
+                        self.config.interior_energetics, 'module', None,
+                    ) == 'aragog':
+                        mesh_state = get_mesh_state_for_redox(
+                            self.interior_o
+                        )
+                    escape_fluxes = None
+                    if self.config.escape.module:
+                        escape_fluxes = atm_escape_fluxes_species_kg(
+                            self.hf_row, self.interior_o.dt,
+                        )
+                    hf_row_prev_dict = (
+                        self.hf_all.iloc[-1].to_dict()
+                        if (self.hf_all is not None and len(self.hf_all) > 0)
+                        else dict(self.hf_row)
+                    )
+                    run_redox_step(
+                        self.hf_row, hf_row_prev_dict,
+                        self.directories, self.config,
+                        mesh_state=mesh_state,
+                        escape_fluxes_species_kg=escape_fluxes,
+                    )
+            except (ValueError, KeyError, RuntimeError,
+                    FloatingPointError) as redox_exc:
+                # Domain-specific failures fall back to static.
+                # AttributeError / TypeError / ImportError propagate
+                # intentionally — they indicate a real bug and should
+                # not be silently swallowed.
                 log.warning(
-                    'Redox step failed (%s); falling back to static '
-                    'fO2_shift_IW. This run loses redox-budget '
-                    'bookkeeping for the current step.',
-                    redox_exc,
+                    'Redox step raised %s (%s); falling back to static '
+                    'fO2_shift_IW for this step.',
+                    type(redox_exc).__name__, redox_exc,
                 )
                 self.hf_row['fO2_shift_IW'] = float(
                     self.config.outgas.fO2_shift_IW

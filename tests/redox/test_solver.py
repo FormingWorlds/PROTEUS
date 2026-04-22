@@ -78,8 +78,6 @@ def test_solver_is_transactional():
     row_before = copy.deepcopy(row)
     solve_fO2(
         row, row_prev, directories, config,
-        R_mantle_pre_frozen=0.0,
-        R_core_pre_frozen=0.0,
         outgas_callable=fake_outgas,
     )
 
@@ -128,8 +126,6 @@ def test_solver_converges_on_monotonic_residual():
     # Seed R_atm_prev = 0 via hf_row_prev so R_target = 0.
     result = solve_fO2(
         row, row_prev, directories, config,
-        R_mantle_pre_frozen=0.0,
-        R_core_pre_frozen=0.0,
         outgas_callable=fake_outgas,
     )
     assert isinstance(result, SolverResult)
@@ -156,8 +152,6 @@ def test_solver_falls_back_when_no_sign_change():
 
     result = solve_fO2(
         row, row_prev, {}, config,
-        R_mantle_pre_frozen=0.0,
-        R_core_pre_frozen=0.0,
         outgas_callable=always_positive_outgas,
     )
     assert result.fell_back_to_previous
@@ -185,8 +179,6 @@ def test_solver_widens_bracket_on_initial_failure():
 
     result = solve_fO2(
         row, row_prev, {}, config,
-        R_mantle_pre_frozen=0.0,
-        R_core_pre_frozen=0.0,
         outgas_callable=fake_outgas,
     )
     if not result.fell_back_to_previous:
@@ -217,8 +209,6 @@ def test_solver_warm_start_from_mariana():
 
     result = solve_fO2(
         row, row_prev, {}, config,
-        R_mantle_pre_frozen=0.0,
-        R_core_pre_frozen=0.0,
         outgas_callable=fake_outgas,
     )
     if not result.fell_back_to_previous:
@@ -242,8 +232,6 @@ def test_solver_nan_warm_start_falls_back_to_previous():
 
     result = solve_fO2(
         row, row_prev, {}, config,
-        R_mantle_pre_frozen=0.0,
-        R_core_pre_frozen=0.0,
         outgas_callable=fake_outgas,
     )
     # Convergence around 1.5 expected; the point is NO crash on NaN.

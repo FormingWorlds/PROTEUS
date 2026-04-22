@@ -117,57 +117,76 @@ def atm_escape_fluxes_species_kg(
 ) -> dict[str, float]:
     """
     Decompose the bulk ZEPHYRUS mass-loss rate into per-species kg
-    outflow over `dt` years, using the current atmospheric volume
-    mixing ratios as the apportionment (#57 Commit C, plan v6 §3.11).
+    outflow over `dt` years, weighted by species **mass fraction**
+    (#57 Commit C.1; round-5 review fixed the unit error in C).
 
-    This is a first-order approximation valid for hydrodynamic bulk
-    escape where atmospheric mixing is efficient (ZEPHYRUS's target
-    regime). Fractionating escape (Jeans / diffusion-limited) would
-    break this assumption; a correction is a follow-on issue.
+    Valid for hydrodynamic bulk escape where atmospheric mixing is
+    efficient (ZEPHYRUS's target regime). Under that assumption, the
+    escaping flux composition matches the bulk atmosphere by mass,
+    NOT by mole fraction. For a 50/50 H₂+CO₂ VMR atmosphere, the
+    correct mass decomposition gives ~96% CO₂ by mass (since
+    MW_CO₂ ≈ 22 × MW_H₂); the previous VMR-only weighting gave 50%
+    CO₂ by mass and would have driven R_atm debits wrong by the same
+    factor.
+
+    Fractionating escape (Jeans / diffusion-limited) is a follow-on
+    correction tracked as its own issue.
 
     Parameters
     ----------
     hf_row : dict
         Current helpfile row. Consumes `esc_rate_total` [kg/s] and
-        each `{species}_vmr`.
+        `{species}_vmr`.
     dt : float
         Step duration in years.
 
     Returns
     -------
     dict[species, kg_escaped]
-        Zero for species with VMR = 0 or missing. The dict keys are
-        species names as listed in `proteus.utils.constants.gas_list`
-        (restricted to species that have VMR entries in hf_row).
+        Zero for species with VMR = 0 or missing. Keys cover
+        `proteus.utils.constants.gas_list`.
     """
-    from proteus.utils.constants import gas_list
+    from proteus.utils.constants import element_mmw, gas_list
 
     rate_kg_s = float(hf_row.get('esc_rate_total', 0.0))
     dt_s = float(dt) * secs_per_year
     if rate_kg_s <= 0.0 or dt_s <= 0.0 or not np.isfinite(rate_kg_s * dt_s):
         return {s: 0.0 for s in gas_list}
 
-    # Bulk mass lost this step [kg].
     m_total_lost = rate_kg_s * dt_s
 
-    # Partition by VMR (mole fraction) weighted by molecular mass.
-    # For a thin atmosphere in hydrodynamic escape, the escaping flux
-    # composition ≈ bulk-atmosphere composition.
     vmrs = {
-        s: float(hf_row.get(f'{s}_vmr', 0.0))
+        s: max(0.0, float(hf_row.get(f'{s}_vmr', 0.0)))
         for s in gas_list
     }
-    sum_vmr = sum(v for v in vmrs.values() if np.isfinite(v))
-    if sum_vmr <= 0.0:
+    # Species molar masses [kg/mol].
+    mws = {s: _species_mass(s, element_mmw) for s in gas_list}
+
+    # Mass-fraction weights: w_s = VMR_s · MW_s / Σ(VMR_i · MW_i).
+    weighted = {s: vmrs[s] * mws[s] for s in gas_list}
+    total_weight = sum(
+        v for v in weighted.values() if np.isfinite(v) and v > 0.0
+    )
+    if total_weight <= 0.0:
         return {s: 0.0 for s in gas_list}
 
-    # Distribute by VMR. The resulting dict holds kg per species.
-    # (VMR-weighted apportionment neglects the molar-mass ordering of
-    # species under the bulk-flow assumption; OK for this scaffolding.)
-    return {
-        s: m_total_lost * (vmrs[s] / sum_vmr)
-        for s in gas_list
-    }
+    return {s: m_total_lost * (weighted[s] / total_weight) for s in gas_list}
+
+
+def _species_mass(species: str, element_mmw: dict) -> float:
+    """Parse a molecular formula (e.g. 'H2O', 'CO2') → kg/mol."""
+    import re
+
+    pattern = re.compile(r'([A-Z][a-z]?)(\d*)')
+    total = 0.0
+    for elem, count_str in pattern.findall(species):
+        if not elem:
+            continue
+        count = int(count_str) if count_str else 1
+        if elem not in element_mmw:
+            return 0.0  # unknown element → drop species from the budget
+        total += element_mmw[elem] * count
+    return total
 
 
 def run_dummy(config: Config, hf_row: dict):

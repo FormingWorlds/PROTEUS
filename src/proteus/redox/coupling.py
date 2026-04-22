@@ -1,23 +1,34 @@
 """
-Redox main-loop orchestration (#57 Commit C).
+Redox main-loop orchestration (#57 Commit C / C.1).
 
 Single entry point that `proteus.py`'s main loop calls once per step,
-between `run_escape` and `run_outgassing` (plan v6 §3.1). Static mode
-is a no-op on physics (only pins `fO2_shift_IW`); evolving modes run
-the full sequence:
+between `run_escape` and `run_outgassing` (plan v6 §3.1).
 
-1. Debit ZEPHYRUS per-species escape flux into `R_budget_atm`.
-2. Run Mariana's stateful Fe-reservoir evolution (stub-bulk today).
-3. Pre-freeze R_mantle and R_core for the Brent residual.
-4. Transactional Brent over ΔIW via `solve_fO2`.
+Static mode pins `fO2_shift_IW` to the config value and writes passive
+diagnostic columns (R_budget_atm / R_mantle / R_core / Fe3_frac) so
+that every run — even pre-plan-compatible ones — has visible redox
+state. Evolving modes run the full sequence:
+
+1. Bootstrap `R_budget_atm` from the current atmosphere inventory
+   (necessary on step 0 where the column would otherwise be zero).
+2. Debit ZEPHYRUS per-species escape flux into `R_budget_atm`.
+3. Run Mariana's stateful Fe-reservoir evolution (stub-bulk today).
+   Convert the stub's log10 fO2 suggestion to ΔIW at (T_surf, P_surf)
+   before storing as the solver warm-start.
+4. Transactional Brent over ΔIW via `solve_fO2`. Residual balances the
+   FULL R_atm + R_mantle + R_core against R_total_prev (NO partial
+   pre-freeze — CALLIOPE writes `_mol_liquid` keys that `redox_budget_mantle`
+   reads, so the mantle budget is not invariant across probes).
 5. Soft-assert redox-budget conservation.
 
-The downstream `run_outgassing` call (at `proteus.py:681`) runs AFTER
-`run_redox_step` and uses the ΔIW the solver wrote.
+The downstream `run_outgassing` call at `proteus.py:681` uses the ΔIW
+the solver wrote; the Brent solver itself does NOT commit a final
+outgas — its deep-copy probes are pure.
 """
 from __future__ import annotations
 
 import logging
+import math
 from typing import Optional
 
 log = logging.getLogger('fwl.' + __name__)
@@ -29,6 +40,26 @@ _MODE_ENUM = {'static': 0, 'fO2_init': 1, 'composition': 2}
 def record_mode_active(hf_row: dict, mode: str) -> None:
     """Stamp `hf_row['redox_mode_active']` with an integer enum."""
     hf_row['redox_mode_active'] = float(_MODE_ENUM.get(mode, 0))
+
+
+def _write_passive_diagnostics(hf_row: dict, mantle_comp) -> None:
+    """
+    Populate R_budget_* + Fe3_frac diagnostic columns in any mode
+    (plan v6 §3.6 specifies passive diagnostic writes in static mode).
+    """
+    from proteus.redox.budget import (
+        redox_budget_atm,
+        redox_budget_core,
+        redox_budget_mantle,
+    )
+    hf_row['R_budget_atm'] = redox_budget_atm(hf_row)
+    hf_row['R_budget_mantle'] = redox_budget_mantle(hf_row, mantle_comp)
+    hf_row['R_budget_core'] = redox_budget_core(hf_row)
+    hf_row['R_budget_total'] = (
+        hf_row['R_budget_atm']
+        + hf_row['R_budget_mantle']
+        + hf_row['R_budget_core']
+    )
 
 
 def run_redox_step(
@@ -54,23 +85,25 @@ def run_redox_step(
     mesh_state :
         Read-only Aragog mesh (from
         `interior_energetics.aragog.get_mesh_state_for_redox`). Consumed
-        by the Mariana stub and ignored by the Brent solver in Commit C.
+        by the Mariana stub; ignored by the Brent solver.
     escape_fluxes_species_kg : dict
-        Per-species kg outflow from ZEPHYRUS over the current step, as
-        computed by
-        `escape.wrapper.atm_escape_fluxes_species_kg`. Missing/None →
-        no escape debit this step.
+        Per-species kg outflow from ZEPHYRUS over the current step.
     """
     mode = getattr(config.redox, 'mode', 'static')
     record_mode_active(hf_row, mode)
 
-    # Static mode: pin fO2_shift_IW to the config value. No solver work.
+    mantle_comp = getattr(
+        getattr(config, 'interior_struct', None), 'mantle_comp', None,
+    )
+
+    # Static mode: pin fO2_shift_IW, write passive diagnostics, return.
     if mode == 'static':
         hf_row['fO2_shift_IW'] = float(config.outgas.fO2_shift_IW)
+        _write_passive_diagnostics(hf_row, mantle_comp)
         return
 
     # --- Evolving mode path ---
-    from proteus.redox.budget import redox_budget_core, redox_budget_mantle
+    from proteus.redox.buffers import log10_fO2_IW
     from proteus.redox.conservation import (
         assert_redox_conserved,
         debit_escape,
@@ -78,16 +111,21 @@ def run_redox_step(
     from proteus.redox.partitioning import advance_fe_reservoirs
     from proteus.redox.solver import solve_fO2
 
-    mantle_comp = getattr(config.interior_struct, 'mantle_comp', None)
+    # Step 1: bootstrap R_budget_atm from the atmosphere inventory if
+    # we have not already written it this step. This is critical on
+    # step 0 where the column would otherwise be zero and the solver
+    # would drive the post-outgas R_atm to zero regardless of true
+    # state.
+    _write_passive_diagnostics(hf_row, mantle_comp)
 
-    # Step 1: debit escape flux.
+    # Step 2: debit escape flux.
     if escape_fluxes_species_kg:
         try:
             debit_escape(hf_row, escape_fluxes_species_kg)
         except ValueError as exc:
             log.warning('debit_escape rejected flux: %s', exc)
 
-    # Step 2: Mariana's Fe-reservoir evolution (stub-bulk today).
+    # Step 3: Mariana's Fe-reservoir evolution (stub-bulk today).
     if mesh_state is not None:
         fe_result = advance_fe_reservoirs(
             pressure_profile=mesh_state.pressure_profile,
@@ -110,28 +148,36 @@ def run_redox_step(
             float(hf_row.get('dm_Fe0_to_core_cum', 0.0))
             + fe_result.dm_Fe0_to_core
         )
-        hf_row['redox_delta_IW_suggested_by_mariana'] = (
-            fe_result.log10_fO2_surface
-        )
+        # Convert Mariana's log10 fO2 to ΔIW at the melt surface so the
+        # solver's warm-start has the right units. The key name
+        # `redox_delta_IW_suggested_by_mariana` is intentionally ΔIW,
+        # not raw log10 fO2 (round-5 reviewer caught the unit
+        # mismatch; see plan §8 Commit C.1).
+        log10_fO2_raw = fe_result.log10_fO2_surface
+        if math.isnan(log10_fO2_raw) or mesh_state.pressure_profile.size == 0:
+            hf_row['redox_delta_IW_suggested_by_mariana'] = float('nan')
+        else:
+            T_surf = float(mesh_state.temperature_profile[0])
+            P_surf = float(mesh_state.pressure_profile[0])
+            iw_at_surf = log10_fO2_IW(T_surf, P_surf)
+            hf_row['redox_delta_IW_suggested_by_mariana'] = (
+                log10_fO2_raw - iw_at_surf
+            )
     else:
         log.debug(
             'run_redox_step: no mesh_state supplied; skipping '
-            'advance_fe_reservoirs (stub-bulk does nothing anyway).'
+            'advance_fe_reservoirs.'
         )
 
-    # Step 3: pre-freeze R_mantle, R_core for the Brent residual.
-    R_mantle_pre = redox_budget_mantle(hf_row, mantle_comp)
-    R_core_pre = redox_budget_core(hf_row)
-    hf_row['R_budget_mantle'] = R_mantle_pre
-    hf_row['R_budget_core'] = R_core_pre
+    # Step 4: transactional Brent over ΔIW. Residual balances the
+    # FULL R_atm + R_mantle + R_core against R_total_prev (plan v6
+    # §3.3 + round-5 physics review).
+    solve_fO2(hf_row, hf_row_prev, dirs, config, mesh_state=mesh_state)
 
-    # Step 4: transactional Brent.
-    solve_fO2(
-        hf_row, hf_row_prev, dirs, config,
-        mesh_state=mesh_state,
-        R_mantle_pre_frozen=R_mantle_pre,
-        R_core_pre_frozen=R_core_pre,
-    )
+    # Refresh the R_budget_* diagnostics after the solver writes the
+    # new fO2_shift_IW (downstream run_outgassing will be called with
+    # the new ΔIW; these diagnostics reflect pre-commit state).
+    _write_passive_diagnostics(hf_row, mantle_comp)
 
     # Step 5: soft-assert conservation.
     soft_tol = float(getattr(config.redox, 'soft_conservation_tol', 1e-3))

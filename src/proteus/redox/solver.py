@@ -58,34 +58,38 @@ def solve_fO2(
     config,
     *,
     mesh_state=None,
-    R_mantle_pre_frozen: float = 0.0,
-    R_core_pre_frozen: float = 0.0,
     outgas_callable: Optional[Callable] = None,
 ) -> SolverResult:
     """
     Drive `hf_row['fO2_shift_IW']` to satisfy the Evans/Hirschmann
     redox-budget closure.
 
+    Residual (Commit C.1, round-5 physics review fix): balances the
+    FULL conserved quantity R_atm + R_mantle + R_core on the post-
+    outgas probe against R_total_prev - ΔR_escape - ΔR_dispro. Earlier
+    C implementation pre-froze R_mantle / R_core and solved on R_atm
+    alone, but CALLIOPE + atmodeller write `{species}_mol_liquid` on
+    every probe, which changes R_mantle. Pre-freezing was therefore
+    wrong. The current form uses the same `redox_budget_*` functions
+    on each probe and is invariant to whichever keys the outgas step
+    writes.
+
     Parameters
     ----------
     hf_row, hf_row_prev : dict
         Current and previous helpfile rows. Only `hf_row['fO2_shift_IW']`
-        is mutated; nothing else.
+        (and the `redox_solver_fallback_count` counter on fallback) is
+        mutated by this function.
     dirs, config : objects
         Passed through to the inner outgas call via deep-copy probes.
     mesh_state :
-        Read-only Aragog mesh state (unused in the Commit-C solver
-        because R_mantle is pre-frozen by the caller; kept in the
-        signature for Commit D extensions).
-    R_mantle_pre_frozen, R_core_pre_frozen : float
-        Pre-computed R_mantle and R_core. Frozen by the caller so the
-        residual depends only on ΔIW via R_atm.
+        Read-only Aragog mesh state (unused in the Brent residual;
+        kept in the signature for Commit D extensions).
     outgas_callable :
         Inner solve. Defaults to
-        `proteus.outgas.wrapper.run_outgassing`. The desiccation /
-        crystallisation branches in the main loop are handled here by
-        checking hf_row state and calling `run_desiccated` in-line
-        when appropriate.
+        `proteus.outgas.wrapper.run_outgassing`. Desiccation branch is
+        handled in-line by calling `run_desiccated` when `check_desiccation`
+        returns True at entry (gate frozen for the whole Brent sweep).
 
     Returns
     -------
@@ -101,31 +105,47 @@ def solve_fO2(
         _check_desiccation_local = check_desiccation
         _run_desiccated_local = run_desiccated
 
-    from proteus.redox.budget import redox_budget_atm
+    from proteus.redox.budget import (
+        redox_budget_atm,
+        redox_budget_core,
+        redox_budget_mantle,
+    )
 
-    # ---- freeze targets at entry ----
+    # ---- freeze target at entry ----
     R_escape_this_step = (
         float(hf_row.get('R_escaped_cum', 0.0))
         - float(hf_row_prev.get('R_escaped_cum', 0.0))
     )
-    # R_target: the R_atm value the post-outgas atmosphere should have
-    # so that R_atm + R_mantle + R_core = R_atm_prev + R_mantle_pre +
-    # R_core_pre - (R_escape - R_dispro). Since mantle/core are frozen,
-    # the target simplifies.
-    R_atm_prev = float(hf_row_prev.get('R_budget_atm', 0.0))
+    # R_total_prev from the *previous committed* row. R_budget_total
+    # is a passive diagnostic written by _write_passive_diagnostics
+    # every step in both static and evolving modes (coupling.py), so
+    # it should always be present. Fall back to sum-from-components if
+    # not.
+    R_total_prev = float(hf_row_prev.get('R_budget_total', float('nan')))
+    if math.isnan(R_total_prev):
+        R_total_prev = (
+            float(hf_row_prev.get('R_budget_atm', 0.0))
+            + float(hf_row_prev.get('R_budget_mantle', 0.0))
+            + float(hf_row_prev.get('R_budget_core', 0.0))
+        )
     dR_dispro = float(hf_row.get('dm_Fe0_to_core_this_step_as_RB', 0.0))
-    R_target = R_atm_prev - R_escape_this_step - dR_dispro
+    R_target = R_total_prev - R_escape_this_step - dR_dispro
+
+    mantle_comp = getattr(
+        getattr(config, 'interior_struct', None), 'mantle_comp', None,
+    )
 
     # Freeze desiccation decision.
     desiccated_at_entry = _check_desiccation_local(config, hf_row)
 
-    # Warm start: Mariana's Schaefer Eq 13 suggestion if finite, else
-    # previous step's ΔIW, else config's IC.
+    # Warm start: Mariana's ΔIW suggestion if finite, else previous
+    # step's ΔIW, else config IC. `warm == 0.0` is a legitimate value
+    # (IW+0), so do NOT treat it as a sentinel; only NaN / None mean
+    # "unavailable".
     warm = hf_row.get('redox_delta_IW_suggested_by_mariana', None)
     if warm is None or (isinstance(warm, float) and math.isnan(warm)):
         warm = hf_row_prev.get('fO2_shift_IW', None)
-    if warm is None or (isinstance(warm, float) and (math.isnan(warm) or warm == 0.0)):
-        # Fall back to config IC.
+    if warm is None or (isinstance(warm, float) and math.isnan(warm)):
         warm = float(getattr(config.outgas, 'fO2_shift_IW', 0.0))
     warm = float(warm)
 
@@ -134,15 +154,30 @@ def solve_fO2(
     atol = float(getattr(config.redox, 'atol', 1e-4))
     max_iter = int(getattr(config.redox, 'max_iter', 20))
 
+    # Closure variable: record the most-recent residual value so we
+    # can return it without calling residual() a second time (round-5
+    # numerics review MAJOR-2 fix).
+    last_residual = [float('nan')]
+
     def residual(delta_IW: float) -> float:
-        """Post-outgas R_atm − R_atm_target on a deep-copy probe."""
+        """
+        Full-budget residual on a deep-copy probe:
+            [R_atm + R_mantle + R_core](post-outgas) - R_target
+        """
         hf_row_tx = copy.deepcopy(hf_row)
         hf_row_tx['fO2_shift_IW'] = float(delta_IW)
         if desiccated_at_entry:
             _run_desiccated_local(config, hf_row_tx)
         else:
             outgas_callable(dirs, config, hf_row_tx)
-        return redox_budget_atm(hf_row_tx) - R_target
+        r = (
+            redox_budget_atm(hf_row_tx)
+            + redox_budget_mantle(hf_row_tx, mantle_comp)
+            + redox_budget_core(hf_row_tx)
+            - R_target
+        )
+        last_residual[0] = r
+        return r
 
     # Brent with bracket-widening.
     from scipy.optimize import brentq
@@ -161,7 +196,7 @@ def solve_fO2(
                 rtol=rtol, xtol=atol, maxiter=max_iter,
                 full_output=True,
             )
-            iterations = result_obj.iterations
+            iterations = getattr(result_obj, 'iterations', 0)
             widened = attempt > 0
             log.debug(
                 'redox Brent converged in %d iter at ΔIW=%.4f (bracket '
@@ -172,8 +207,8 @@ def solve_fO2(
             break
         except (ValueError, RuntimeError) as exc:
             log.warning(
-                'redox Brent failed at halfwidth=%.1f: %s',
-                halfwidth * factor, exc,
+                'redox Brent %s at halfwidth=%.1f: %s',
+                type(exc).__name__, halfwidth * factor, exc,
             )
 
     if delta_solved is None:
@@ -191,7 +226,9 @@ def solve_fO2(
     # the real hf_row — the main loop's downstream run_outgassing
     # call at proteus.py:681 is the authoritative commit.
     hf_row['fO2_shift_IW'] = float(delta_solved)
-    final_residual = residual(delta_solved) if not fell_back else float('nan')
+    # Return the last residual Brent actually evaluated. No extra
+    # outgas call.
+    final_residual = last_residual[0] if not fell_back else float('nan')
     return SolverResult(
         delta_IW=float(delta_solved),
         converged=(delta_solved is not None and not fell_back),

@@ -666,6 +666,13 @@ def GetHelpfileKeys():
         'n_Fe0_solid_total',  # disproportionation metal still in mantle
         'dm_Fe0_to_core_cum',  # cumulative Fe⁰ drained to core [kg]
                               # (# 653 Mariana metal-saturation hook)
+        'redox_delta_IW_suggested_by_mariana',  # ΔIW warm-start from
+                              # Mariana's advance_fe_reservoirs (NaN when
+                              # Fe3_frac=0). Persisted for resume so the
+                              # Brent solver has a warm start after
+                              # `proteus start -r`. NOT log10 fO2 — the
+                              # coupling layer converts via log10_fO2_IW
+                              # at the melt surface before writing.
     ]
 
     # quantities for each gas, from outgassing

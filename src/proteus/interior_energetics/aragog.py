@@ -1684,50 +1684,54 @@ def get_mesh_state_for_redox(interior_o) -> 'AragogMeshState | None':
     """
     Expose the current Aragog mesh state to `proteus.redox` (#57).
 
-    Returns ``None`` if no Aragog solver is attached (e.g. SPIDER or
-    dummy interior module is active). Called by
+    Returns ``None`` when no Aragog solver is attached (SPIDER or dummy
+    active, or Aragog not yet initialised in the first-iteration
+    startup window). Called by
     :func:`proteus.redox.coupling.run_redox_step` once per main-loop
     step, just before the redox solver runs.
 
+    Sources the per-cell profiles via `EntropySolver.get_state()`, which
+    returns a `SolverOutput` dataclass — the public Aragog→PROTEUS
+    contract. Field names here mirror that contract:
+      - `P_stag` → pressure_profile [Pa, staggered nodes]
+      - `T_stag` → temperature_profile [K]
+      - `phi_stag` → melt_fraction_profile [-]
+      - `mass_stag` → cell_mass_profile [kg]
+
     Per-cell Fe³⁺/Fe²⁺ solid accumulations are placeholder zeros in
-    Commit C; Commit D wires them through the interior NetCDF so
+    Commit C/C.1; Commit D wires them through the interior NetCDF so
     Mariana's #653 implementation has real state history.
     """
     solver = getattr(interior_o, 'aragog_solver', None)
     if solver is None:
         return None
-    mesh = solver.evaluator.mesh
 
-    # Aragog mesh fields (staggered-node pressure, temperature from
-    # the current solution, melt fraction from phase evaluator, cell
-    # masses from the mesh geometry).
     try:
-        P = np.array(mesh.pressure_staggered)
-        T = np.array(mesh.temperature_staggered)
-    except AttributeError:
-        # Fallback: use the evaluator's snapshot output if the
-        # mesh object does not expose the staggered arrays directly.
-        out = solver.output
-        P = np.array(getattr(out, 'pressure_staggered', np.array([])))
-        T = np.array(getattr(out, 'temp_s', np.array([])))
+        out = solver.get_state()
+    except Exception as exc:  # pragma: no cover — diagnostic path
+        logger.warning(
+            'get_mesh_state_for_redox: solver.get_state() failed (%s); '
+            'returning None so the redox step skips cleanly.', exc,
+        )
+        return None
 
-    phi = np.array(solver.output.melt_fraction_staggered) if hasattr(
-        solver.output, 'melt_fraction_staggered'
-    ) else np.array(getattr(solver.output, 'phi', np.array([])))
+    P = np.asarray(out.P_stag)
+    T = np.asarray(out.T_stag)
+    phi = np.asarray(out.phi_stag)
+    cell_mass = np.asarray(out.mass_stag)
 
-    # Previous-step phi: Commit C uses current as placeholder; Commit D
-    # threads the previous-step value from hf_row_prev via the main
-    # loop. When equal, Mariana's Δφ is zero (no evolution), which is
-    # the correct scaffolding behaviour.
+    if P.size == 0 or T.size == 0 or phi.size == 0:
+        logger.warning(
+            'get_mesh_state_for_redox: empty mesh arrays from '
+            'solver.get_state() (P=%d, T=%d, phi=%d); returning None.',
+            P.size, T.size, phi.size,
+        )
+        return None
+
+    # Previous-step phi: Commit C/C.1 uses current as placeholder (Δφ=0
+    # is the stub contract). Commit D threads the previous-step phi
+    # via hf_row_prev + interior NetCDF.
     phi_prev = phi.copy()
-
-    # Cell mass from mesh geometry.
-    try:
-        cell_mass = np.array(mesh.cell_mass)
-    except AttributeError:
-        # Estimate from cell volumes × density if available.
-        n = phi.size
-        cell_mass = np.full(n, float('nan'))
 
     zero_like_phi = np.zeros_like(phi)
 
