@@ -33,10 +33,14 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     calc_target_masses(dirs, config, hf_row)
 
     # Update total mass of tracked elements.
-    # #57 Commit D: O is now a first-class element. `populate_O_kg`
-    # ran above and wrote O_kg_total from the species inventory, so
-    # this sum is now over all elements including O. Code that needs
-    # the pre-#57 semantics (non-O totals) should call
+    # #57 Commit D: O is now a first-class element. At this point
+    # (during init before any outgas call) `O_kg_total` is zero
+    # because the helpfile row was freshly zero-initialised and no
+    # outgas step has run yet. Downstream `run_outgassing` calls
+    # `populate_O_kg` which fills O_kg_total from the species
+    # inventory, and `update_planet_mass` then re-sums M_ele with
+    # the correct O contribution. Code that needs the pre-#57
+    # semantics (non-O totals) should call
     # `proteus.utils.coupler.M_ele_excl_O(hf_row)`.
     hf_row['M_ele'] = 0.0
     for e in element_list:
@@ -229,9 +233,14 @@ def run_crystallized(config: Config, hf_row: dict):
         Dictionary of helpfile variables, at this iteration only
     """
     log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
-    # No changes to hf_row: all reservoirs (atm, liquid, solid) stay as-is.
-    # The atmosphere module will still compute radiative transfer with
-    # the existing atmospheric composition, but no new outgassing occurs.
+    # No changes to species reservoirs (atm, liquid, solid) — they stay
+    # as-is from the last outgas step. The atmosphere module will still
+    # compute radiative transfer with the existing composition.
+    # Commit D.1 (#57): refresh O_kg_* so that if any external hook
+    # mutated species inventories between outgas steps, the O
+    # bookkeeping stays consistent.
+    from proteus.utils.coupler import populate_O_kg
+    populate_O_kg(hf_row)
 
 
 def run_desiccated(config: Config, hf_row: dict):
@@ -259,3 +268,11 @@ def run_desiccated(config: Config, hf_row: dict):
     for k in expected_keys():
         if k not in excepted_keys:
             hf_row[k] = 0.0
+
+    # Commit D.1 (#57): `expected_keys()` excludes `*_kg_total` columns
+    # so the zero-loop above leaves `O_kg_total` stale at its last
+    # outgas value. Re-populate all O_kg_* explicitly from the now-
+    # zeroed species inventory so the reservoir-sum invariant
+    # (O_kg_total == O_kg_atm + O_kg_liquid + O_kg_solid == 0) holds.
+    from proteus.utils.coupler import populate_O_kg
+    populate_O_kg(hf_row)

@@ -205,16 +205,78 @@ def test_populate_O_kg_sets_all_reservoirs_and_total():
     row = ZeroHelpfileRow()
     row['H2O_mol_atm'] = 1.0e20
     row['CO2_mol_liquid'] = 1.0e19
-    row['SiO2_mol_solid'] = 5.0e18
+    # NB: intentionally NOT setting SiO2_mol_solid — vap_list species
+    # must not count in liquid/solid (silicate-O double-count fix,
+    # round-7 review).
     populate_O_kg(row)
     assert row['O_kg_atm'] > 0
     assert row['O_kg_liquid'] > 0
-    assert row['O_kg_solid'] > 0
+    # Solid is zero because no vol-list species has _mol_solid set
+    # and vap-list species are scoped to atm only.
+    assert row['O_kg_solid'] == 0
     # O_kg_total must equal the sum of the three reservoirs.
     assert row['O_kg_total'] == pytest.approx(
         row['O_kg_atm'] + row['O_kg_liquid'] + row['O_kg_solid'],
         rel=1e-12,
     )
+
+
+@pytest.mark.unit
+def test_populate_O_kg_vap_list_atm_only_no_double_count():
+    """Vap-list species (SiO2, MgO, ...) in _mol_liquid/_mol_solid
+    must NOT contribute to O_kg_liquid/solid — that O is silicate-
+    bound and already in M_int (round-7 review showstopper fix)."""
+    row = ZeroHelpfileRow()
+    row['SiO2_mol_atm'] = 1.0e18       # vap_list, atm — counts
+    row['SiO2_mol_liquid'] = 1.0e24    # vap_list, liquid — ignored
+    row['SiO2_mol_solid'] = 1.0e24     # vap_list, solid — ignored
+    populate_O_kg(row)
+    from proteus.utils.constants import element_mmw
+    expected_atm = 1.0e18 * 2 * element_mmw['O']
+    assert row['O_kg_atm'] == pytest.approx(expected_atm, rel=1e-12)
+    assert row['O_kg_liquid'] == 0
+    assert row['O_kg_solid'] == 0
+
+
+@pytest.mark.unit
+def test_compute_O_kg_kg_fallback_when_mol_missing():
+    """atmodeller writes _kg_atm but not _mol_atm; the helper must
+    fall back to kg/MW so atmodeller-driven runs get O populated
+    (round-7 review showstopper fix)."""
+    from proteus.utils.constants import element_mmw
+    row = ZeroHelpfileRow()
+    # Simulate atmodeller: write only _kg_atm, no _mol_atm.
+    mw_H2O = 2 * element_mmw['H'] + element_mmw['O']
+    row['H2O_mol_atm'] = 0.0   # atmodeller leaves this at zero
+    row['H2O_kg_atm'] = 1.0e20 * mw_H2O   # kg equivalent of 1e20 mol H2O
+    from proteus.utils.coupler import compute_O_kg_from_species
+    O_kg = compute_O_kg_from_species(row, 'atm')
+    # Expected: 1e20 mol H2O × 1 O/H2O × MW_O = 1e20 × 0.016 kg.
+    expected = 1.0e20 * element_mmw['O']
+    assert O_kg == pytest.approx(expected, rel=1e-6)
+
+
+@pytest.mark.unit
+def test_compute_O_kg_nan_guard():
+    """NaN in a species mol/kg entry must not poison the sum."""
+    row = ZeroHelpfileRow()
+    row['H2O_mol_atm'] = 1.0e20
+    row['CO2_mol_atm'] = float('nan')    # corrupted
+    from proteus.utils.constants import element_mmw
+    from proteus.utils.coupler import compute_O_kg_from_species
+    O_kg = compute_O_kg_from_species(row, 'atm')
+    # Only H2O contribution should count; NaN CO2 skipped.
+    expected = 1.0e20 * element_mmw['O']
+    assert O_kg == pytest.approx(expected, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_compute_O_kg_invalid_reservoir_raises():
+    """`total` is not a valid reservoir for compute_O_kg_from_species."""
+    row = ZeroHelpfileRow()
+    from proteus.utils.coupler import compute_O_kg_from_species
+    with pytest.raises(ValueError, match='reservoir'):
+        compute_O_kg_from_species(row, 'total')
 
 
 @pytest.mark.unit
@@ -240,13 +302,15 @@ def test_oxygen_skip_sites_countinvariant():
     Lock the count of executable O-skip sites at 8 after Commit D.
 
     Commit D made oxygen a first-class element (O_kg_total populated
-    from species inventory by `populate_O_kg`). Three executable skip
-    sites were removed:
-      - `outgas/wrapper.py` M_ele update loop
-      - `outgas/common.py` copy-keys filter
-      - `interior_energetics/wrapper.py::update_planet_mass`
+    from species inventory by `populate_O_kg`). Commit D.1 fixed the
+    Zalmoxis M_volatiles consistency by INCLUDING mobile O there too.
+    Four executable skip sites removed across D + D.1:
+      - `outgas/wrapper.py` M_ele update loop (D)
+      - `outgas/common.py` copy-keys filter (D)
+      - `interior_energetics/wrapper.py::update_planet_mass` (D)
+      - `interior_struct/zalmoxis.py` M_volatiles (D.1)
 
-    Eight sites KEEP the O-skip intentionally. They are semantically
+    Seven sites KEEP the O-skip intentionally. They are semantically
     correct: these loops compute "volatile mass" or go through the
     CALLIOPE API, where O-in-silicates (part of M_int, not a mobile
     element) should NOT be counted. Specifically:
@@ -254,10 +318,9 @@ def test_oxygen_skip_sites_countinvariant():
       2. `outgas/wrapper.py` escape-balance cur_m_ele sum
       3. `outgas/calliope.py` construct_guess zero-check (CALLIOPE API)
       4. `outgas/calliope.py` target dict construction (CALLIOPE API)
-      5. `interior_struct/zalmoxis.py` M_volatiles computation
-      6. `escape/common.py` unfractionating flux ratios
-      7. `escape/wrapper.py` M_vol_initial baseline
-      8. `escape/wrapper.py` fractionating escape element loop
+      5. `escape/common.py` unfractionating flux ratios
+      6. `escape/wrapper.py` M_vol_initial baseline
+      7. `escape/wrapper.py` fractionating escape element loop
 
     Comment-only matches (no executable continue / filter) are
     excluded. The `M_ele_excl_O` helper in `coupler.py` is excluded
@@ -293,10 +356,10 @@ def test_oxygen_skip_sites_countinvariant():
                         continue
                     hits.append(f'{fpath}:{i}: {line.rstrip()}')
 
-    expected = 8
+    expected = 7
     assert len(hits) == expected, (
-        f'Expected {expected} O-skip sites after Commit D (O-as-first-class '
-        f'rework removed the 3 legacy skips), found {len(hits)}:\n'
+        f'Expected {expected} O-skip sites after Commit D.1 (O-as-first-class '
+        f'rework plus Zalmoxis M_volatiles consistency fix), found {len(hits)}:\n'
         + '\n'.join(hits)
     )
 

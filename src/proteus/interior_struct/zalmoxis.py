@@ -259,11 +259,20 @@ def load_zalmoxis_configuration(
         config.interior_struct.zalmoxis.ice_layer_eos or 'none',
     )
 
-    # Calculate the total mass of 'wet' elements in the planet
+    # Calculate the total mass of mobile/volatile elements in the
+    # planet. #57 Commit D made O a first-class element: mobile O
+    # (in H2O, CO2, SO2, etc.) must be INCLUDED in M_volatiles so
+    # that `planet_mass - M_volatiles` gives the correct dry-silicate
+    # target mass for Zalmoxis's structure solve. Pre-D, mobile O
+    # was never accounted for in either M_volatiles or the dry
+    # target, an inconsistency that was negligible for rocky planets
+    # but ~0.1-1% material for sub-Neptunes (round-7 review fix).
+    # Note: O in silicate oxides (FeO, SiO2, MgO) is NOT in
+    # `hf_row['O_kg_total']` (by construction — `populate_O_kg`
+    # only counts vap_list species in the `atm` reservoir), so
+    # including O_kg_total here does NOT double-count silicate O.
     M_volatiles = 0.0
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
         M_volatiles += hf_row[e + '_kg_total']
 
     logger.info(f'Volatile mass: {M_volatiles} kg')

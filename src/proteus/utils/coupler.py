@@ -871,68 +871,141 @@ def SeedRedoxDefaultsOnResume(hf_row: dict, config: 'Config') -> None:
 
 
 # O-atom count per supported gas species. Used by
-# :func:`compute_O_kg_from_species` to surface the atmospheric / melt /
-# solid O inventory that CALLIOPE & atmodeller compute implicitly via
-# the fO2 buffer (#57 Commit D).
-_SPECIES_O_COUNT: dict[str, int] = {
+# :func:`compute_O_kg_from_species` to surface the atmospheric /
+# melt / solid O inventory that CALLIOPE & atmodeller compute
+# implicitly via the fO2 buffer (#57 Commit D).
+#
+# SCOPING (Commit D.1, round-7 physics review):
+# - `vol_list` species (H2O, CO2, ...) are atmospheric volatiles.
+#   Their O inventory is 'mobile O' — moves between atmosphere,
+#   melt, and solid via outgassing/dissolution. We count these in
+#   every reservoir.
+# - `vap_list` species (SiO, SiO2, MgO, FeO2) are silicate vapours.
+#   Their `_mol_atm` entry represents genuine mobile O (silicate
+#   atoms in the atmosphere after vaporisation). Their `_mol_liquid`
+#   and `_mol_solid` entries, if a backend ever writes them, are
+#   silicate-bound O ALREADY INSIDE `M_int` (the interior mass from
+#   Aragog/SPIDER/Zalmoxis). Counting them there would double-count
+#   silicate O.
+# - We therefore count vap_list species in `atm` only.
+_SPECIES_O_COUNT_VOL: dict[str, int] = {
     'H2O': 1,
     'CO2': 2,
     'CO': 1,
     'SO2': 2,
-    'SO3': 3,
     'O2': 2,
+    # H2, CH4, N2, NH3, S2, H2S all contain zero oxygen atoms.
+}
+
+_SPECIES_O_COUNT_VAP_ATM_ONLY: dict[str, int] = {
     'SiO': 1,
     'SiO2': 2,
     'MgO': 1,
     'FeO2': 2,
-    # H2, CH4, N2, NH3, S2, H2S all contain zero oxygen atoms and are
-    # deliberately absent; `compute_O_kg_from_species` treats missing
-    # species as zero-O.
 }
+
+# Legacy alias kept for test backward-compat; the union dict still
+# includes vap_list, but `compute_O_kg_from_species` restricts their
+# inclusion to the `atm` reservoir.
+_SPECIES_O_COUNT = {**_SPECIES_O_COUNT_VOL, **_SPECIES_O_COUNT_VAP_ATM_ONLY}
 
 
 def compute_O_kg_from_species(hf_row: dict, reservoir: str) -> float:
     """
-    Sum O-atom mass across every supported O-bearing species in the
-    named reservoir (#57 Commit D).
+    Sum O-atom mass across supported O-bearing species in the named
+    reservoir (#57 Commit D / D.1).
 
-    Pre-#57 CALLIOPE / atmodeller computed O implicitly via the fO2
-    buffer and the H/C/N/S target-elemental-inventory constraints,
-    but never wrote an `O_kg_{reservoir}` column back to hf_row. This
-    helper surfaces that mass by summing `{species}_mol_{reservoir}`
-    over O-containing species.
+    Uses `{species}_mol_{reservoir}` when available; falls back to
+    `{species}_kg_{reservoir}` / MW_species when the mol column is
+    absent or zero. The fallback is needed because atmodeller's
+    `calc_surface_pressures_atmodeller` writes only `_kg_*` columns,
+    not `_mol_*` (round-7 review showstopper).
+
+    Vap-list species (SiO, SiO2, MgO, FeO2) contribute ONLY to the
+    `atm` reservoir. Their liquid/solid forms represent silicate-
+    bound O that is already inside `M_int`; counting them here
+    would double-count silicate O (round-7 review showstopper).
 
     Parameters
     ----------
     hf_row : dict
-        Live helpfile row with `{species}_mol_{reservoir}` populated
-        by the most recent outgas / climate step.
+        Live helpfile row with `{species}_mol_{reservoir}` OR
+        `{species}_kg_{reservoir}` populated by the most recent
+        outgas / climate step.
     reservoir : str
-        One of 'atm', 'liquid', 'solid', 'total'.
+        One of 'atm', 'liquid', 'solid'.
 
     Returns
     -------
     float
-        Mass of oxygen atoms [kg] in the reservoir.
+        Mass of oxygen atoms [kg] in the reservoir. NaN inputs are
+        skipped with a warning.
     """
+    import math
+
     from proteus.utils.constants import element_mmw
+
     O_mw = element_mmw['O']
+
+    # Pick the species scope for this reservoir.
+    if reservoir == 'atm':
+        species_counts = {**_SPECIES_O_COUNT_VOL, **_SPECIES_O_COUNT_VAP_ATM_ONLY}
+    elif reservoir in ('liquid', 'solid'):
+        species_counts = dict(_SPECIES_O_COUNT_VOL)
+    else:
+        raise ValueError(
+            f"compute_O_kg_from_species: reservoir must be one of "
+            f"'atm'|'liquid'|'solid'; got {reservoir!r}"
+        )
+
     total_mol_O = 0.0
-    for species, n_O in _SPECIES_O_COUNT.items():
-        key = f'{species}_mol_{reservoir}'
-        if key in hf_row:
-            total_mol_O += float(hf_row[key]) * n_O
+    for species, n_O in species_counts.items():
+        mol_key = f'{species}_mol_{reservoir}'
+        kg_key = f'{species}_kg_{reservoir}'
+
+        n_mol = 0.0
+        if mol_key in hf_row:
+            v = float(hf_row[mol_key])
+            if math.isfinite(v):
+                n_mol = v
+        if n_mol == 0.0 and kg_key in hf_row:
+            # Fallback: derive mol from kg via the species' molar mass.
+            # Required for the atmodeller backend which writes only kg_*.
+            kg = float(hf_row[kg_key])
+            if math.isfinite(kg):
+                mw = _species_mmw(species)
+                if mw > 0.0:
+                    n_mol = kg / mw
+
+        total_mol_O += n_mol * n_O
+
     return total_mol_O * O_mw
+
+
+def _species_mmw(species: str) -> float:
+    """Molar mass of a species formula in kg/mol (parsing helper)."""
+    import re
+
+    from proteus.utils.constants import element_mmw
+    pattern = re.compile(r'([A-Z][a-z]?)(\d*)')
+    total = 0.0
+    for elem, count_str in pattern.findall(species):
+        if not elem or elem not in element_mmw:
+            return 0.0
+        count = int(count_str) if count_str else 1
+        total += element_mmw[elem] * count
+    return total
 
 
 def populate_O_kg(hf_row: dict) -> None:
     """
     Populate `O_kg_atm`, `O_kg_liquid`, `O_kg_solid`, `O_kg_total` in
-    hf_row from the current species-mol inventory (#57 Commit D).
+    hf_row from the current species inventory (#57 Commit D / D.1).
 
-    Call after any outgas step that updates `{species}_mol_*` columns;
-    idempotent on repeat calls. Does nothing if hf_row has no
-    species-mol columns (pre-outgas state).
+    Call after any outgas step that updates `{species}_{mol|kg}_*`
+    columns; idempotent on repeat calls. Also call from
+    `run_desiccated` / `run_crystallized` so the O_kg_* columns are
+    not left stale when a step takes the non-outgas branch.
     """
     for reservoir in ('atm', 'liquid', 'solid'):
         hf_row[f'O_kg_{reservoir}'] = compute_O_kg_from_species(

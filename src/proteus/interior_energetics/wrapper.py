@@ -103,11 +103,12 @@ def update_planet_mass(hf_row: dict):
     """
 
     # Update total element mass.
-    # #57 Commit D: O is now first-class. `populate_O_kg` (called by
-    # `run_outgassing` and its dummy/desiccated/crystallised siblings)
-    # writes O_kg_total from the species inventory, so this sum runs
-    # over ALL elements including O. Legacy callers that need the
-    # pre-#57 semantics (non-O totals) should use
+    # #57 Commit D / D.1: O is now first-class. `populate_O_kg`
+    # (called by `run_outgassing`, `run_desiccated`, and
+    # `run_crystallized`) writes O_kg_total from the species
+    # inventory before this sum runs, so `M_ele` includes the
+    # mobile-O contribution. Legacy callers that need the pre-#57
+    # semantics (non-O totals) should use
     # `proteus.utils.coupler.M_ele_excl_O(hf_row)`.
     hf_row['M_ele'] = 0.0
     for e in element_list:
