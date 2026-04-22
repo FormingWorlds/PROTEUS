@@ -16,6 +16,7 @@ from ._orbit import Orbit
 from ._outgas import Outgas
 from ._params import Params
 from ._planet import Planet
+from ._redox import Redox
 from ._star import Star
 from ._struct import Struct
 
@@ -178,6 +179,7 @@ class Config:
     interior_struct: Struct = field(factory=Struct)
     interior_energetics: Interior = field(factory=Interior, validator=(tides_enabled_orbit,))
     outgas: Outgas = field(factory=Outgas)
+    redox: Redox = field(factory=Redox)
     atmos_clim: AtmosClim = field(factory=AtmosClim)
     atmos_chem: AtmosChem = field(factory=AtmosChem)
     escape: Escape = field(
