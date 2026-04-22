@@ -21,9 +21,12 @@ def expected_keys():
     # elements
     for e in element_list:
         for r in res_list:
-            # do not overwrite total inventory, since this will be modified by escape
-            # except oxygen, since we assume it's set by redox buffer (const_fO2)
-            if (r != 'total') or (e == 'O'):
+            # do not overwrite the total inventory, since this will be
+            # modified by escape. #57 Commit D: O is now a first-class
+            # element and O_kg_total IS persisted (set by
+            # `populate_O_kg` after each outgas step), so the
+            # pre-plan `(e == 'O')` carve-out has been removed.
+            if r != 'total':
                 copy_keys.append(f'{e}_kg_{r}')
 
     return copy_keys

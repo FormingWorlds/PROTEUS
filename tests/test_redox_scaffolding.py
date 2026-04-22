@@ -24,6 +24,8 @@ from proteus.utils.coupler import (
     M_ele_excl_O,
     ReadHelpfileFromCSV,
     ZeroHelpfileRow,
+    compute_O_kg_from_species,
+    populate_O_kg,
 )
 
 
@@ -173,14 +175,93 @@ def test_read_helpfile_csv_migrates_missing_columns(tmp_path):
 
 
 @pytest.mark.unit
+def test_compute_O_kg_pure_H2O_atmosphere():
+    """An atmosphere of pure H2O yields O_kg = n_H2O × MW_O."""
+    from proteus.utils.constants import element_mmw
+    row = ZeroHelpfileRow()
+    row['H2O_mol_atm'] = 1.0e20
+    O_kg = compute_O_kg_from_species(row, 'atm')
+    assert O_kg == pytest.approx(1.0e20 * element_mmw['O'], rel=1e-12)
+
+
+@pytest.mark.unit
+def test_compute_O_kg_mixed_atmosphere():
+    """Mixed species: H2O (1 O), CO2 (2 O), H2 (0 O)."""
+    from proteus.utils.constants import element_mmw
+    row = ZeroHelpfileRow()
+    row['H2O_mol_atm'] = 1.0e20   # 1 × 1e20 mol O
+    row['CO2_mol_atm'] = 2.0e19   # 2 × 2e19 mol O
+    row['H2_mol_atm'] = 5.0e20    # 0 mol O
+    O_kg = compute_O_kg_from_species(row, 'atm')
+    expected_mol_O = 1.0e20 + 4.0e19
+    assert O_kg == pytest.approx(
+        expected_mol_O * element_mmw['O'], rel=1e-12,
+    )
+
+
+@pytest.mark.unit
+def test_populate_O_kg_sets_all_reservoirs_and_total():
+    """populate_O_kg writes atm, liquid, solid, and total."""
+    row = ZeroHelpfileRow()
+    row['H2O_mol_atm'] = 1.0e20
+    row['CO2_mol_liquid'] = 1.0e19
+    row['SiO2_mol_solid'] = 5.0e18
+    populate_O_kg(row)
+    assert row['O_kg_atm'] > 0
+    assert row['O_kg_liquid'] > 0
+    assert row['O_kg_solid'] > 0
+    # O_kg_total must equal the sum of the three reservoirs.
+    assert row['O_kg_total'] == pytest.approx(
+        row['O_kg_atm'] + row['O_kg_liquid'] + row['O_kg_solid'],
+        rel=1e-12,
+    )
+
+
+@pytest.mark.unit
+def test_populate_O_kg_idempotent():
+    """Calling populate_O_kg twice gives the same result."""
+    row = ZeroHelpfileRow()
+    row['H2O_mol_atm'] = 1.0e20
+    row['CO2_mol_liquid'] = 1.0e19
+    populate_O_kg(row)
+    after_first = {
+        k: row[k] for k in (
+            'O_kg_atm', 'O_kg_liquid', 'O_kg_solid', 'O_kg_total',
+        )
+    }
+    populate_O_kg(row)
+    for k, v in after_first.items():
+        assert row[k] == v, f'{k} changed on second call: {v} → {row[k]}'
+
+
+@pytest.mark.unit
 def test_oxygen_skip_sites_countinvariant():
     """
-    Lock the count of executable O-skip sites at 11 (as of
-    tl/interior-refactor 2401e6d2). This test goes RED in Commit C when
-    the redox module populates O_kg_total and the sites are removed.
+    Lock the count of executable O-skip sites at 8 after Commit D.
 
-    When Commit C lands, update this test to assert count == 0 and
-    remove this docstring.
+    Commit D made oxygen a first-class element (O_kg_total populated
+    from species inventory by `populate_O_kg`). Three executable skip
+    sites were removed:
+      - `outgas/wrapper.py` M_ele update loop
+      - `outgas/common.py` copy-keys filter
+      - `interior_energetics/wrapper.py::update_planet_mass`
+
+    Eight sites KEEP the O-skip intentionally. They are semantically
+    correct: these loops compute "volatile mass" or go through the
+    CALLIOPE API, where O-in-silicates (part of M_int, not a mobile
+    element) should NOT be counted. Specifically:
+      1. `outgas/wrapper.py` desiccation threshold check
+      2. `outgas/wrapper.py` escape-balance cur_m_ele sum
+      3. `outgas/calliope.py` construct_guess zero-check (CALLIOPE API)
+      4. `outgas/calliope.py` target dict construction (CALLIOPE API)
+      5. `interior_struct/zalmoxis.py` M_volatiles computation
+      6. `escape/common.py` unfractionating flux ratios
+      7. `escape/wrapper.py` M_vol_initial baseline
+      8. `escape/wrapper.py` fractionating escape element loop
+
+    Comment-only matches (no executable continue / filter) are
+    excluded. The `M_ele_excl_O` helper in `coupler.py` is excluded
+    as a deliberate helper function.
     """
     import re
     repo_root = _find_repo_root()
@@ -196,15 +277,26 @@ def test_oxygen_skip_sites_countinvariant():
             fpath = os.path.join(dirpath, fname)
             with open(fpath, 'r') as fh:
                 for i, line in enumerate(fh, 1):
-                    if pattern.search(line):
-                        # Exclude the M_ele_excl_O helper in coupler.py
-                        # which deliberately contains `e != 'O'`.
-                        if fpath == coupler_path:
-                            continue
-                        hits.append(f'{fpath}:{i}: {line.rstrip()}')
+                    if not pattern.search(line):
+                        continue
+                    # Exclude the M_ele_excl_O helper in coupler.py
+                    # which deliberately contains `e != 'O'`.
+                    if fpath == coupler_path:
+                        continue
+                    # Exclude comment-only matches (no conditional /
+                    # filter). Simple heuristic: if the match is
+                    # preceded by '#' on the same line (i.e. the
+                    # match is inside a comment), skip it.
+                    match_pos = pattern.search(line).start()
+                    comment_pos = line.find('#')
+                    if 0 <= comment_pos < match_pos:
+                        continue
+                    hits.append(f'{fpath}:{i}: {line.rstrip()}')
 
-    assert len(hits) == 11, (
-        f'Expected 11 O-skip sites pre-Commit-C, found {len(hits)}:\n'
+    expected = 8
+    assert len(hits) == expected, (
+        f'Expected {expected} O-skip sites after Commit D (O-as-first-class '
+        f'rework removed the 3 legacy skips), found {len(hits)}:\n'
         + '\n'.join(hits)
     )
 

@@ -102,11 +102,15 @@ def update_planet_mass(hf_row: dict):
     Calculate total planet mass, as sum of dry+wet parts.
     """
 
-    # Update total element mass
+    # Update total element mass.
+    # #57 Commit D: O is now first-class. `populate_O_kg` (called by
+    # `run_outgassing` and its dummy/desiccated/crystallised siblings)
+    # writes O_kg_total from the species inventory, so this sum runs
+    # over ALL elements including O. Legacy callers that need the
+    # pre-#57 semantics (non-O totals) should use
+    # `proteus.utils.coupler.M_ele_excl_O(hf_row)`.
     hf_row['M_ele'] = 0.0
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
         hf_row['M_ele'] += hf_row[e + '_kg_total']
 
     # Add to total planet mass

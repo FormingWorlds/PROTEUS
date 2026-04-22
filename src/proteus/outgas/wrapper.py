@@ -32,11 +32,14 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
 
     calc_target_masses(dirs, config, hf_row)
 
-    # Update total mass of tracked elements
+    # Update total mass of tracked elements.
+    # #57 Commit D: O is now a first-class element. `populate_O_kg`
+    # ran above and wrote O_kg_total from the species inventory, so
+    # this sum is now over all elements including O. Code that needs
+    # the pre-#57 semantics (non-O totals) should call
+    # `proteus.utils.coupler.M_ele_excl_O(hf_row)`.
     hf_row['M_ele'] = 0.0
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
         hf_row['M_ele'] += hf_row[e + '_kg_total']
 
 
@@ -78,11 +81,15 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     behaviour.
     """
 
-    # Threshold check (unchanged): refuse desiccation while any element is
-    # still above the per-element mass threshold.
+    # Threshold check: refuse desiccation while any non-oxygen element
+    # is still above the per-element mass threshold. O is deliberately
+    # excluded from the desiccation criterion because a planet with a
+    # dry atmosphere (all H / C / N / S escaped) but an oxidised silicate
+    # mantle still contains ~O(1e24 kg) of O in silicate bonds — that
+    # is NOT "desiccation" in the volatile-inventory sense.
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
+        if e == 'O':
+            continue   # see rationale above; O is first-class but not a volatile
         if hf_row[e + '_kg_total'] > config.outgas.mass_thresh:
             log.info('Not desiccated, %s = %.2e kg' % (e, hf_row[e + '_kg_total']))
             return False  # return, and allow run_outgassing to proceed
@@ -171,6 +178,18 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     hf_row['M_atm'] = 0.0
     for s in gas_list:
         hf_row['M_atm'] += hf_row[s + '_kg_atm']
+
+    # Surface the implicit oxygen inventory computed by CALLIOPE /
+    # atmodeller via the fO2 buffer. Pre-#57 PROTEUS never wrote
+    # O_kg_{atm,liquid,solid,total} to hf_row, so downstream code had
+    # to treat O as a skipped element. After Commit D, O is
+    # first-class: this helper aggregates O mass from the
+    # {species}_mol_* columns and writes the O_kg_* columns,
+    # enabling the `if e == 'O': continue` branches elsewhere to be
+    # removed. Static-mode runs preserve physics because the sum
+    # follows from CALLIOPE's own internally-consistent partitioning.
+    from proteus.utils.coupler import populate_O_kg
+    populate_O_kg(hf_row)
 
     # print outgassed partial pressures (in order of descending abundance)
     mask = [hf_row[s + '_vmr'] for s in gas_list]

@@ -870,6 +870,81 @@ def SeedRedoxDefaultsOnResume(hf_row: dict, config: 'Config') -> None:
         hf_row['fO2_shift_IW'] = default_fO2
 
 
+# O-atom count per supported gas species. Used by
+# :func:`compute_O_kg_from_species` to surface the atmospheric / melt /
+# solid O inventory that CALLIOPE & atmodeller compute implicitly via
+# the fO2 buffer (#57 Commit D).
+_SPECIES_O_COUNT: dict[str, int] = {
+    'H2O': 1,
+    'CO2': 2,
+    'CO': 1,
+    'SO2': 2,
+    'SO3': 3,
+    'O2': 2,
+    'SiO': 1,
+    'SiO2': 2,
+    'MgO': 1,
+    'FeO2': 2,
+    # H2, CH4, N2, NH3, S2, H2S all contain zero oxygen atoms and are
+    # deliberately absent; `compute_O_kg_from_species` treats missing
+    # species as zero-O.
+}
+
+
+def compute_O_kg_from_species(hf_row: dict, reservoir: str) -> float:
+    """
+    Sum O-atom mass across every supported O-bearing species in the
+    named reservoir (#57 Commit D).
+
+    Pre-#57 CALLIOPE / atmodeller computed O implicitly via the fO2
+    buffer and the H/C/N/S target-elemental-inventory constraints,
+    but never wrote an `O_kg_{reservoir}` column back to hf_row. This
+    helper surfaces that mass by summing `{species}_mol_{reservoir}`
+    over O-containing species.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Live helpfile row with `{species}_mol_{reservoir}` populated
+        by the most recent outgas / climate step.
+    reservoir : str
+        One of 'atm', 'liquid', 'solid', 'total'.
+
+    Returns
+    -------
+    float
+        Mass of oxygen atoms [kg] in the reservoir.
+    """
+    from proteus.utils.constants import element_mmw
+    O_mw = element_mmw['O']
+    total_mol_O = 0.0
+    for species, n_O in _SPECIES_O_COUNT.items():
+        key = f'{species}_mol_{reservoir}'
+        if key in hf_row:
+            total_mol_O += float(hf_row[key]) * n_O
+    return total_mol_O * O_mw
+
+
+def populate_O_kg(hf_row: dict) -> None:
+    """
+    Populate `O_kg_atm`, `O_kg_liquid`, `O_kg_solid`, `O_kg_total` in
+    hf_row from the current species-mol inventory (#57 Commit D).
+
+    Call after any outgas step that updates `{species}_mol_*` columns;
+    idempotent on repeat calls. Does nothing if hf_row has no
+    species-mol columns (pre-outgas state).
+    """
+    for reservoir in ('atm', 'liquid', 'solid'):
+        hf_row[f'O_kg_{reservoir}'] = compute_O_kg_from_species(
+            hf_row, reservoir,
+        )
+    hf_row['O_kg_total'] = (
+        hf_row['O_kg_atm']
+        + hf_row['O_kg_liquid']
+        + hf_row['O_kg_solid']
+    )
+
+
 def M_ele_excl_O(hf_row: dict) -> float:
     """
     Sum of `{element}_kg_total` over every tracked element EXCEPT oxygen.
