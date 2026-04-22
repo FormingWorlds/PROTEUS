@@ -19,6 +19,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
 
 def _pyrolite_mantle_comp():
@@ -234,6 +235,58 @@ def test_seed_composition_fO2_pyrolite_at_mo_surface() -> None:
     assert hf_row['fO2_shift_IW'] == delta_iw, (
         'seed_composition_fO2 must write delta_iw into hf_row'
     )
+
+
+def test_populate_core_composition_from_coreComp() -> None:
+    """
+    populate_core_composition must fill {element}_kg_core from
+    config.interior_struct.core_comp wt% × M_core (#57 plan v6 §3.5).
+    Idempotent; missing CoreComp fields default to 0.
+    """
+    # Use a real dataclass-like object so MagicMock doesn't
+    # auto-provide MagicMock instances for non-configured wt fields.
+    from types import SimpleNamespace
+
+    from proteus.utils.coupler import populate_core_composition
+    core_comp = SimpleNamespace(
+        Fe_wt=100.0, H_wt=0.0, O_wt=0.0, Si_wt=0.0,
+    )
+    config = MagicMock()
+    config.interior_struct.core_comp = core_comp
+
+    hf_row = {'M_core': 1.87e24}
+    populate_core_composition(hf_row, config)
+
+    assert hf_row['Fe_kg_core'] == pytest.approx(1.87e24, rel=1e-12)
+    assert hf_row['O_kg_core'] == pytest.approx(0.0)
+    assert hf_row['H_kg_core'] == pytest.approx(0.0)
+    assert hf_row['Si_kg_core'] == pytest.approx(0.0)
+    # Other element_list entries (C, N, S, Mg, Na) default to 0 because
+    # getattr with a SimpleNamespace raises AttributeError and the
+    # helper falls back to 0.
+    assert hf_row['C_kg_core'] == 0.0
+    assert hf_row['N_kg_core'] == 0.0
+
+    # After populating, redox_budget_core should match the anchor.
+    from proteus.redox.budget import redox_budget_core
+
+    R_core = redox_budget_core(hf_row)
+    assert abs(R_core - (-6.4e25)) < 0.10 * 6.4e25
+
+
+def test_populate_core_composition_skips_without_M_core() -> None:
+    """With M_core = 0 (pre-struct-solve), no-op gracefully."""
+    from types import SimpleNamespace
+
+    from proteus.utils.coupler import populate_core_composition
+    config = MagicMock()
+    config.interior_struct.core_comp = SimpleNamespace(Fe_wt=100.0)
+
+    hf_row = {'M_core': 0.0, 'Fe_kg_core': 0.0}
+    populate_core_composition(hf_row, config)
+
+    # Fe_kg_core stays at 0 (no writes).
+    assert hf_row['Fe_kg_core'] == 0.0
 
 
 def test_seed_composition_fO2_returns_nan_without_mantle_comp() -> None:

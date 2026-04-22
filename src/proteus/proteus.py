@@ -663,6 +663,13 @@ class Proteus:
                     _write_passive_diagnostics,
                     run_redox_step,
                 )
+                from proteus.utils.coupler import populate_core_composition
+                # Populate {element}_kg_core from CoreComp × M_core
+                # (#57 plan v6 §3.5). Cheap; idempotent. Core mass
+                # and composition are both static in stub mode, so a
+                # re-call is a no-op, but a future #526 hook that
+                # mutates CoreComp will see consistent state.
+                populate_core_composition(self.hf_row, self.config)
                 redox_mode = getattr(
                     getattr(self.config, 'redox', None), 'mode', 'static',
                 )

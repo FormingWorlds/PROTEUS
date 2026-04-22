@@ -997,6 +997,48 @@ def _species_mmw(species: str) -> float:
     return total
 
 
+def populate_core_composition(hf_row: dict, config: 'Config') -> None:
+    """
+    Populate `{element}_kg_core` from `config.interior_struct.core_comp`
+    and `hf_row['M_core']` (#57 Commit E.3).
+
+    Call once at init after M_core has been computed, and on every
+    step the core composition could change (today, only #526 metal-
+    silicate partitioning can change it, and #526 is stubbed to
+    zero, so a one-shot init call is sufficient). Re-calling is
+    idempotent and cheap; safe to call per-step if a future hook
+    adds core evolution.
+
+    CoreComp wt% fields map to element_list names. Missing fields
+    (e.g. `Si_wt` when CoreComp defines only Fe/H/O) default to 0.
+
+    Parameters
+    ----------
+    hf_row
+        Helpfile row; `{element}_kg_core` columns are overwritten
+        for every element in `element_list`.
+    config
+        Config instance; reads `interior_struct.core_comp` (a
+        CoreComp dataclass with Fe_wt / H_wt / O_wt / Si_wt fields).
+    """
+    core_comp = getattr(
+        getattr(config, 'interior_struct', None), 'core_comp', None,
+    )
+    if core_comp is None:
+        return    # No CoreComp configured; leave *_kg_core at 0.
+
+    M_core = float(hf_row.get('M_core', 0.0))
+    if M_core <= 0.0:
+        return    # Structure not solved yet; skip.
+
+    # element_list is ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'].
+    # CoreComp today defines Fe_wt / H_wt / O_wt / Si_wt. Others 0.
+    for e in element_list:
+        wt_field = f'{e}_wt'
+        wt = float(getattr(core_comp, wt_field, 0.0))
+        hf_row[f'{e}_kg_core'] = M_core * (wt / 100.0)
+
+
 def populate_O_kg(hf_row: dict) -> None:
     """
     Populate `O_kg_atm`, `O_kg_liquid`, `O_kg_solid`, `O_kg_total` in
