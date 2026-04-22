@@ -182,8 +182,8 @@ visibility.
 
 ## Regression tier
 
-The redox module is backed by 103 unit tests and a live A/B
-regression script against the CHILI Earth baseline.
+The redox module is backed by 108 unit tests and a live A/B
+regression script.
 
 ### Unit tests
 
@@ -197,41 +197,78 @@ Covers: budget arithmetic (14 tests), buffer and oxybarometer values
 (13 tests), stub contracts (6 tests), conservation invariants
 (8 tests), solver transactional isolation (6 tests), NetCDF
 persistence (5 tests), static-mode contract (5 tests), O-first-class
-mass conservation (5 tests), modern-Earth anchors (6 tests),
-plus scaffolding and config-parity tests.
+mass conservation (5 tests), modern-Earth anchors (8 tests including
+the Evans-2012 Fe3_frac=0.035 target), plus scaffolding and
+config-parity tests.
+
+All tests carry `@pytest.mark.unit` so they are included in
+`pytest -m unit` CI runs.
 
 ### Live A/B static-mode regression
+
+Two regression configs with different goals:
+
+**`input/minimal.toml`** — the CI-grade check. Uses dummy atmosphere
+and dummy interior modules, so there is no AGNI Newton solver or
+Aragog CVode involvement. The run is deterministic at machine
+precision given `OPENBLAS_NUM_THREADS=1`. The target `1e-8 relative`
+on non-O shared columns is achievable here.
+
+**`input/chili/chili_aragog_redox_ab_200iter.toml`** — the coupled
+check. Runs the full AGNI + Aragog + CALLIOPE + Zephyrus stack
+to `Phi = 0.05`. Here the `1e-8 relative` target is **not
+achievable**: AGNI's Newton solver, Aragog's CVode, and the
+adaptive-dt controller form a chaotic feedback loop that amplifies
+the intended Commit D perturbation (M_ele now includes O,
+≈ 0.08 % change in M_planet) to O(10-50 %) divergence in trace
+species and atmospheric chemistry diagnostics after ~100 iterations.
+This is a known property of the CHILI stack (see
+`solver_marginal_stability_root_cause.md`) and is independent of
+the redox scaffolding: two unmodified main-branch runs of the same
+config diverge at the same scale. For CHILI, the defensible claims
+are:
+
+- **Iter 0 bit-identity**: `gravity` and `M_ele_excl_O` agree with
+  baseline exactly; `M_planet` differs only by the intentional
+  O_kg_total contribution.
+- **Convergent endpoint**: both runs reach `Phi = 0.05` within
+  one coupling step of each other.
+- **Conservation invariants**: `O_kg_total ==
+  O_kg_atm + O_kg_liquid + O_kg_solid` every step; other element
+  totals conserved under no-escape conditions.
+
+Invocation:
 
 ```bash
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 
-# Baseline: tl/interior-refactor @ 2401e6d2
+# Baseline
 conda activate proteus
 cd /path/to/PROTEUS
-proteus start --offline -c input/chili/chili_aragog_redox_ab_200iter.toml
+proteus start --offline -c input/minimal.toml    # CI-grade
+# OR
+proteus start --offline -c input/chili/chili_aragog_redox_ab_200iter.toml  # full stack
 
-# Branch: tl/redox-scaffolding with redox.mode='static'
+# Branch
 conda activate proteus-redox
 cd /path/to/PROTEUS-redox
-proteus start --offline -c input/chili/chili_aragog_redox_ab_200iter.toml
+# Same config
+proteus start --offline -c input/minimal.toml    # or the CHILI config
 
 # Diff
 python scripts/regression_static_mode.py \
-    /path/to/PROTEUS/output/chili_ab_200iter \
-    /path/to/PROTEUS-redox/output/chili_ab_200iter_branch
+    /path/to/PROTEUS/output/minimal \
+    /path/to/PROTEUS-redox/output/minimal
 ```
 
-`OPENBLAS_NUM_THREADS=1` is non-negotiable; without it the 1e-8
-relative tolerance is not achievable due to BLAS reduction-order
-non-determinism.
-
-The script asserts:
-
-- Row counts match.
-- `fO2_shift_IW` is bit-identical.
-- Non-O shared columns agree within 1e-8 relative.
-- Branch-only columns are in the allow-list.
+The diff script asserts row-count match, fO2_shift_IW constancy
+(branch vs baseline-lacks-column), non-O shared columns within
+1e-8 relative, and that branch-only columns are in the
+`REDOX_NEW_COLUMNS` allow-list. `OPENBLAS_NUM_THREADS=1` is
+non-negotiable even for `minimal.toml`; without it BLAS
+reduction-order non-determinism pushes the tolerance past 1e-12
+even on dummy modules.
 
 
 ## Main-loop integration
