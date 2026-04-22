@@ -62,6 +62,32 @@ def test_advance_fe_reservoirs_identity_on_trivial_input():
 
 
 @pytest.mark.unit
+def test_advance_fe_reservoirs_returns_nan_for_fully_reduced():
+    """Fe3_frac = 0 must yield NaN warm-start, not a silent 0.02 fallback."""
+    import math
+    n = 4
+    result = advance_fe_reservoirs(
+        pressure_profile=np.linspace(1e9, 1e11, n),
+        temperature_profile=np.linspace(2000, 4000, n),
+        melt_fraction_profile=np.full(n, 0.9),
+        melt_fraction_profile_prev=np.full(n, 0.9),
+        cell_mass_profile=np.full(n, 1e22),
+        n_Fe3_melt_prev=0.0,          # fully reduced
+        n_Fe2_melt_prev=1.0e21,
+        n_Fe3_solid_cell_prev=np.zeros(n),
+        n_Fe2_solid_cell_prev=np.zeros(n),
+        mantle_comp=MantleComp(),
+    )
+    assert math.isnan(result.log10_fO2_surface), (
+        f'Fully reduced mantle should return NaN warm-start; got '
+        f'{result.log10_fO2_surface}'
+    )
+    # Fe moles still preserved.
+    assert result.n_Fe3_melt == 0.0
+    assert result.n_Fe2_melt == 1.0e21
+
+
+@pytest.mark.unit
 def test_advance_fe_reservoirs_log10_fO2_surface_sensible():
     """Stub returns a finite warm-start fO2 from the dispatcher."""
     n = 4

@@ -47,6 +47,8 @@ def debit_escape(
         Mapping from supported species name (e.g. 'H2', 'H2O', 'CO2',
         …) to kg lost this step. Missing species treated as zero.
     """
+    import math
+
     from proteus.redox.budget import DEFERRED_SPECIES, RB_COEF
     from proteus.utils.constants import element_mmw
 
@@ -54,6 +56,15 @@ def debit_escape(
     for species, kg_escaped in escape_fluxes_species_kg.items():
         if kg_escaped == 0.0:
             continue
+        if not math.isfinite(kg_escaped):
+            # Refuse to propagate NaN/Inf from an upstream ZEPHYRUS
+            # divergence. Raising surfaces the issue to the caller
+            # instead of silently poisoning R_budget_atm.
+            raise ValueError(
+                f'debit_escape: non-finite kg_escaped for {species}: '
+                f'{kg_escaped}. Upstream escape flux is corrupt; '
+                f'do not propagate.'
+            )
         if species in DEFERRED_SPECIES:
             log.warning(
                 'debit_escape: %s is deferred; contribution to '
@@ -151,12 +162,24 @@ def assert_redox_conserved(
     )
     delta_dispro = 0.0  # Mariana / Schaefer §2.7 hook (Commit C+)
 
+    import math
+
     expected_delta = delta_escape + delta_dispro
     abs_r = max(abs(r_now), 1.0)  # avoid /0 at t=0
     residual = abs(delta_total - expected_delta) / abs_r
     hf_row['redox_conservation_residual'] = residual
 
-    if residual > soft_tol:
+    # NaN propagation check: `NaN > soft_tol` is False, which would
+    # silently pass a corrupted residual. Guard explicitly and warn
+    # instead.
+    if not math.isfinite(residual):
+        log.warning(
+            'redox conservation: non-finite residual=%s '
+            '(r_now=%s, r_prev=%s, ΔR_escape=%s). Upstream budget '
+            'is corrupt; failing soft-check.',
+            residual, r_now, r_prev, delta_escape,
+        )
+    elif residual > soft_tol:
         log.warning(
             'redox conservation soft-fail: residual=%.3e > tol=%.3e '
             '(ΔR_total=%.3e, ΔR_escape=%.3e, ΔR_dispro=%.3e)',

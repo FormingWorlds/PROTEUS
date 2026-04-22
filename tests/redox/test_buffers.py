@@ -56,6 +56,40 @@ def test_IW_more_reduced_than_QFM_than_NNO():
     assert iw < qfm < nno, (iw, qfm, nno)
 
 
+@pytest.mark.unit
+def test_IW_pressure_shift_at_10_GPa_is_physical():
+    """
+    Buffer P-dependence check (round-4 numerics blocker).
+
+    First principles: IW has ΔV ≈ +10 cm³/mol → d log10 fO2/dP ≈
+    +0.35 per GPa at 1500 K. A 10 GPa shift should therefore move
+    log fO2 by ≈ +3.5 log units. Earlier B.5 used P in GPa coefficients
+    which gave a shift of ~0.0004 log units at 10 GPa — 4 orders too
+    small. This test locks the corrected P-in-bar convention.
+    """
+    iw_1bar = log10_fO2_IW(1500.0, 1.0e5)
+    iw_10GPa = log10_fO2_IW(1500.0, 1.0e10)
+    delta = iw_10GPa - iw_1bar
+    # Expect +3 to +5 log units; accept a 2-log-unit window.
+    assert 2.0 < delta < 5.0, (
+        f'IW 10 GPa pressure shift at 1500 K = {delta:.3f} log units; '
+        f'expected +3.5 log units from first principles. Likely cause: '
+        f'wrong pressure units in log10_fO2_IW coefficient.'
+    )
+
+
+@pytest.mark.unit
+def test_IW_high_pressure_warns_but_returns(caplog):
+    """At P > 30 GPa the extrapolation is unreliable; warn but do not raise."""
+    import math
+    caplog.set_level('WARNING')
+    val = log10_fO2_IW(2000.0, 1.2e11)     # 120 GPa
+    assert math.isfinite(val), 'IW should return a finite value'
+    assert any('30 GPa' in rec.message for rec in caplog.records), (
+        'Expected high-P warning but none was emitted'
+    )
+
+
 # ------------------------------------------------------------------
 # Buffer-conversion round-trip
 # ------------------------------------------------------------------

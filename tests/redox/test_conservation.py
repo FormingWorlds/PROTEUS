@@ -70,6 +70,47 @@ def test_debit_escape_unknown_species_skipped_with_warning(caplog):
 
 
 @pytest.mark.unit
+def test_debit_escape_rejects_nan_flux():
+    """NaN in escape flux must raise, not silently poison R_budget."""
+    row = {'R_budget_atm': 0.0, 'R_escaped_cum': 0.0}
+    with pytest.raises(ValueError, match='non-finite'):
+        debit_escape(row, {'H2': float('nan')})
+
+
+@pytest.mark.unit
+def test_debit_escape_rejects_inf_flux():
+    row = {'R_budget_atm': 0.0, 'R_escaped_cum': 0.0}
+    with pytest.raises(ValueError, match='non-finite'):
+        debit_escape(row, {'H2O': float('inf')})
+
+
+@pytest.mark.unit
+def test_assert_redox_conserved_warns_on_nan_residual(caplog):
+    """NaN residual must log a soft-fail warning, not silently pass."""
+    from proteus.redox.budget import RB_COEF
+    caplog.set_level('WARNING')
+    base = {f'{s}_mol_atm': 0.0 for s in RB_COEF}
+    base.update({f'{s}_mol_liquid': 0.0 for s in RB_COEF})
+    base.update({
+        'n_Fe3_melt': 0.0, 'n_Fe2_melt': 0.0,
+        'n_Fe3_solid_total': 0.0, 'n_Fe2_solid_total': 0.0,
+        'n_Fe0_solid_total': 0.0,
+        'Fe_kg_core': 1.94e24, 'H_kg_core': 0.0,
+        'O_kg_core': 0.0, 'Si_kg_core': 0.0,
+    })
+    row_prev = dict(base)
+    row_prev['R_escaped_cum'] = 0.0
+    row_now = dict(base)
+    row_now['H2_mol_atm'] = float('nan')   # NaN poisons R_atm
+    row_now['R_escaped_cum'] = 0.0
+    assert_redox_conserved(row_now, row_prev, soft_tol=1e-6)
+    # Expect a non-finite-residual warning.
+    assert any(
+        'non-finite' in rec.message.lower() for rec in caplog.records
+    ), f'Expected NaN warning; got {[r.message for r in caplog.records]}'
+
+
+@pytest.mark.unit
 def test_debit_escape_multi_species_summed():
     """Multi-species debit is linear sum of contributions."""
     row = {'R_budget_atm': 0.0, 'R_escaped_cum': 0.0}

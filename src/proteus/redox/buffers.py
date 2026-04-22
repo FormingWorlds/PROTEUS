@@ -49,19 +49,34 @@ def log10_fO2_IW(temperature: float, pressure: float = 1.0e5) -> float:
     """
     Iron-Wüstite buffer: 2 Fe + O₂ ⇌ 2 FeO.
 
-    Parametrisation (Hirschmann 2021, Am Mineral 106, 555-563):
+    Parametrisation (Frost 1991; Hirschmann 2021 coefficients):
 
-        log10 fO2 = 6.54106 − 28163.6 / T + 0.055 · P_GPa / T
+        log10 fO2 = 6.54106 − 28163.6 / T + 0.055 · (P_bar − 1) / T
 
-    with T in K and **P in GPa**. Returns log10 fO2 in bar.
+    with T in K and **P in bar** (Frost convention). Input ``pressure``
+    is in Pa per the module convention; converted internally to bar.
+    Returns log10 fO2 in bar.
 
-    Input ``pressure`` is in Pa per the module convention; converted
-    internally to GPa. The pressure term is small (0.055 · P / T ≈ 3
-    per 120 GPa at 2000 K) and approximates the integrated ΔV of the
-    Fe + FeO ⇌ FeO₁.₅ equilibrium.
+    The 0.055 / T coefficient is calibrated for P in bar. First-principles
+    check: IW has ΔV ≈ +10 cm³/mol, giving d log fO2 / dP ≈ +0.35 per GPa
+    at 1500 K — consistent with 0.055 · 1e4 / 1500 ≈ 0.37 per GPa.
+
+    Domain of validity: P ≲ 30 GPa. The linear P-term extrapolation
+    overestimates the buffer at ultra-high pressure (e.g. the inner-core
+    limit P > 100 GPa), where a proper Komabayashi 2014 / Campbell 2009
+    Fe EOS is required. A warning is logged when pressure > 30 GPa to
+    alert the caller; the return value is still the naive extrapolation.
     """
-    P_GPa = pressure / 1e9
-    return 6.54106 - 28163.6 / temperature + 0.055 * P_GPa / temperature
+    P_bar = pressure / _PA_PER_BAR
+    if P_bar > 3e5:           # 30 GPa
+        log.warning(
+            'log10_fO2_IW called at P=%.1e GPa (> 30 GPa) — linear '
+            'extrapolation of Frost 1991 is unreliable at these '
+            'pressures; use a Komabayashi 2014 / Campbell 2009 Fe EOS '
+            'or accept the extrapolation error.',
+            P_bar / 1e4,
+        )
+    return 6.54106 - 28163.6 / temperature + 0.055 * (P_bar - 1.0) / temperature
 
 
 def log10_fO2_QFM(temperature: float, pressure: float = 1.0e5) -> float:
@@ -70,13 +85,18 @@ def log10_fO2_QFM(temperature: float, pressure: float = 1.0e5) -> float:
 
     Parametrisation (O'Neill 1987; Frost 1991 coefficients):
 
-        log10 fO2 = −25738 / T + 9.00 + 0.092 · P_GPa / T
+        log10 fO2 = −25738 / T + 9.00 + 0.092 · (P_bar − 1) / T
 
-    with T in K, P in GPa. Input ``pressure`` in Pa is converted
-    internally. Returns log10 fO2 in bar.
+    with T in K, **P in bar** (Frost convention). Returns log10 fO2 in bar.
+    Same high-P caveat as IW (see `log10_fO2_IW`).
     """
-    P_GPa = pressure / 1e9
-    return -25738.0 / temperature + 9.00 + 0.092 * P_GPa / temperature
+    P_bar = pressure / _PA_PER_BAR
+    if P_bar > 3e5:
+        log.warning(
+            'log10_fO2_QFM called at P=%.1e GPa (> 30 GPa); linear '
+            'extrapolation unreliable.', P_bar / 1e4,
+        )
+    return -25738.0 / temperature + 9.00 + 0.092 * (P_bar - 1.0) / temperature
 
 
 def log10_fO2_NNO(temperature: float, pressure: float = 1.0e5) -> float:
@@ -86,13 +106,18 @@ def log10_fO2_NNO(temperature: float, pressure: float = 1.0e5) -> float:
     Parametrisation (O'Neill + Pownceby 1993, Contrib Mineral Petrol
     114, 296-314):
 
-        log10 fO2 = 9.36 − 24930 / T + 0.046 · P_GPa / T
+        log10 fO2 = 9.36 − 24930 / T + 0.046 · (P_bar − 1) / T
 
-    with T in K, P in GPa. Input ``pressure`` in Pa is converted
-    internally. Returns log10 fO2 in bar.
+    with T in K, **P in bar** (Frost convention). Returns log10 fO2 in bar.
+    Same high-P caveat as IW (see `log10_fO2_IW`).
     """
-    P_GPa = pressure / 1e9
-    return 9.36 - 24930.0 / temperature + 0.046 * P_GPa / temperature
+    P_bar = pressure / _PA_PER_BAR
+    if P_bar > 3e5:
+        log.warning(
+            'log10_fO2_NNO called at P=%.1e GPa (> 30 GPa); linear '
+            'extrapolation unreliable.', P_bar / 1e4,
+        )
+    return 9.36 - 24930.0 / temperature + 0.046 * (P_bar - 1.0) / temperature
 
 
 # ------------------------------------------------------------------
