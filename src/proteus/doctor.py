@@ -115,3 +115,12 @@ def doctor_entry():
     for var in VARIABLES:
         message = get_env_var_status_message(var)
         click.echo(message)
+
+    # Redox module stub-vs-implementation status (#57, plan v6 §6.4).
+    click.secho('\nRedox module status', **HEADER_STYLE)
+    try:
+        from proteus.redox import print_status_line
+        click.echo(print_status_line())
+    except ImportError as exc:
+        click.echo(click.style(f'redox module not importable: {exc}',
+                                **ERROR_STYLE))

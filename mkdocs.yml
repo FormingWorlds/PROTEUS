@@ -36,6 +36,7 @@ nav:
   - Explanations:
       - Model description: Explanations/model.md
       - Docker CI architecture: Explanations/docker_ci_architecture.md
+      - Unified redox module: Explanations/redox.md
 
   - Reference:
       - Reference data: Reference/data.md
