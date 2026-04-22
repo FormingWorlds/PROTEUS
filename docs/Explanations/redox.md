@@ -242,17 +242,20 @@ Plan v6 §3.1 order:
 1. Interior solve (Aragog or SPIDER)         # writes NetCDF snapshot
 2. Escape                                    # hf_row['esc_kg_*']
 3. REDOX section (#57, when mode != static):
-     a. _write_passive_diagnostics           # R_budget_* bootstrap
-     b. debit_escape                         # R_atm -= Σ RB * n_escaped
-     c. advance_fe_reservoirs                # Mariana stub populates
-                                             #   hf_row['_redox_per_cell']
-                                             #   for next NetCDF write
-     d. solve_fO2                            # transactional Brent on ΔIW
-     e. _write_passive_diagnostics (total)   # R_total = R_atm+R_mantle+R_core
-     f. assert_redox_conserved               # warn on soft_tol violation
+     a. populate_core_composition            # Fe_kg_core from CoreComp × M_core
+     b. _write_passive_diagnostics           # R_budget_* bootstrap
+     c. debit_escape                         # R_atm -= Σ RB * n_escaped
+     d. advance_fe_reservoirs                # Mariana stub populates
+                                             #   interior_o.redox_per_cell
+                                             #   for next iter's NetCDF write
+     e. solve_fO2                            # transactional Brent on ΔIW
+     f. R_budget_total recomputed inline     # R_total = R_atm+R_mantle+R_core
+                                             #   (NOT via _write_passive_diagnostics
+                                             #    to avoid overwriting the
+                                             #    debited R_atm — round-6 fix)
+     g. assert_redox_conserved               # warn on soft_tol violation
 4. Outgassing                                # picks up the pinned fO2
 5. Atmosphere                                # AGNI / JANUS
-6. Interior energetics closure
 ```
 
 Redox runs AFTER the interior solve, so the NetCDF snapshot at iter N

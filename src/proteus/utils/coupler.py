@@ -1028,8 +1028,12 @@ def populate_core_composition(hf_row: dict, config: 'Config') -> None:
         return    # No CoreComp configured; leave *_kg_core at 0.
 
     M_core = float(hf_row.get('M_core', 0.0))
-    if M_core <= 0.0:
-        return    # Structure not solved yet; skip.
+    # Use `not (M_core > 0.0)` rather than `M_core <= 0.0` so NaN fails
+    # the guard (NaN comparisons are False, so `NaN <= 0` is False and
+    # would let garbage propagate into {element}_kg_core; round-8
+    # numerics review fix).
+    if not (M_core > 0.0):
+        return    # Structure not solved yet (or NaN); skip.
 
     # element_list is ['H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'].
     # CoreComp today defines Fe_wt / H_wt / O_wt / Si_wt. Others 0.

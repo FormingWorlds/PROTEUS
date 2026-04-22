@@ -98,7 +98,11 @@ def main() -> int:
     for col in shared_cols:
         b = base[col].values
         x = br[col].values
-        scale = np.maximum(np.abs(b), 1.0)
+        # Symmetric relative error with a floor at 1.0 so small-value
+        # columns aren't falsely flagged. Using max(|b|, |x|, 1.0) not
+        # just max(|b|, 1.0) catches the case where branch is large
+        # and baseline is near zero.
+        scale = np.maximum(np.maximum(np.abs(b), np.abs(x)), 1.0)
         rel = np.abs(b - x) / scale
         worst = float(np.max(rel))
         if worst > args.rtol:
@@ -110,8 +114,24 @@ def main() -> int:
     expected_branch_only = branch_only & REDOX_NEW_COLUMNS
     unexpected_branch_only = branch_only - REDOX_NEW_COLUMNS
     if unexpected_branch_only:
+        print(
+            'SCHEMA: branch has columns not in REDOX_NEW_COLUMNS allow-list. '
+            f'Add these to REDOX_NEW_COLUMNS in scripts/regression_static_mode.py: '
+            f'{sorted(unexpected_branch_only)}'
+        )
+        # Finitecheck the unknown columns so NaN/inf in them still
+        # shows up as a failure rather than getting lost behind the
+        # schema-mismatch message.
+        for col in unexpected_branch_only:
+            vals = br[col].values
+            if np.issubdtype(vals.dtype, np.number) and not np.all(np.isfinite(vals)):
+                failures.append(
+                    f'SCHEMA+NONFINITE: new column {col!r} has non-finite values '
+                    'on branch; add to allow-list AND investigate.'
+                )
         failures.append(
-            f'Branch has unexpected new columns: {sorted(unexpected_branch_only)}'
+            f'SCHEMA: branch has unexpected new columns '
+            f'(see SCHEMA line above): {sorted(unexpected_branch_only)}'
         )
 
     print(f'rows: baseline={len(base)} branch={len(br)}')

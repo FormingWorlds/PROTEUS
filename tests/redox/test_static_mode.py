@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 def _make_static_config(fO2_shift_IW: float = 4.0):
     """Config mock with redox.mode='static' and CHILI-canonical fO2."""
@@ -57,6 +59,7 @@ def _seed_hf_row(fO2_shift_IW: float = 4.0) -> dict:
     }
 
 
+@pytest.mark.unit
 def test_static_mode_pins_fO2_from_config() -> None:
     """Static mode overwrites fO2_shift_IW with config.outgas.fO2_shift_IW."""
     from proteus.redox.coupling import run_redox_step
@@ -79,6 +82,7 @@ def test_static_mode_pins_fO2_from_config() -> None:
     )
 
 
+@pytest.mark.unit
 def test_static_mode_does_not_call_solver() -> None:
     """Static path must not enter the Brent solver, period."""
     from proteus.redox import coupling
@@ -100,6 +104,7 @@ def test_static_mode_does_not_call_solver() -> None:
     mock_solver.assert_not_called()
 
 
+@pytest.mark.unit
 def test_static_mode_does_not_debit_escape() -> None:
     """Static path must not call debit_escape even if fluxes are present."""
     from proteus.redox import coupling
@@ -123,6 +128,7 @@ def test_static_mode_does_not_debit_escape() -> None:
     mock_debit.assert_not_called()
 
 
+@pytest.mark.unit
 def test_static_mode_does_not_populate_redox_per_cell() -> None:
     """
     `_redox_per_cell` is only written on the evolving path (`fO2_init` /
@@ -163,6 +169,7 @@ def test_static_mode_does_not_populate_redox_per_cell() -> None:
     )
 
 
+@pytest.mark.unit
 def test_static_mode_writes_passive_diagnostics() -> None:
     """
     Plan v6 §3.6: static mode must still populate the R_budget_* and

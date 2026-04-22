@@ -739,6 +739,7 @@ class Proteus:
                         self.directories, self.config,
                         mesh_state=mesh_state,
                         escape_fluxes_species_kg=escape_fluxes,
+                        interior_o=self.interior_o,
                     )
             except (ValueError, KeyError, RuntimeError,
                     FloatingPointError) as redox_exc:

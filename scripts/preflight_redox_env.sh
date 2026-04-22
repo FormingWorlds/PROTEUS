@@ -26,6 +26,17 @@ EXPECTED='/Users/timlichtenberg/git/PROTEUS-redox/src/proteus/__init__.py'
 # suppress stderr and take only the last stdout line.
 ACTUAL=$(python -c 'import proteus; print(proteus.__file__)' 2>/dev/null | tail -n 1)
 
+# Empty ACTUAL means `import proteus` produced no output — almost
+# always an ImportError or silent crash. Distinguish that from the
+# path-mismatch case so the user sees the right diagnostic.
+if [[ -z "$ACTUAL" ]]; then
+    echo "PREFLIGHT FAIL: 'import proteus' produced no output" >&2
+    echo "  (likely an ImportError or the interpreter crashed)" >&2
+    echo "  Re-run the import without suppression to see the error:" >&2
+    echo "    python -c 'import proteus; print(proteus.__file__)'" >&2
+    exit 1
+fi
+
 if [[ "$ACTUAL" != "$EXPECTED" ]]; then
     echo "PREFLIGHT FAIL: import proteus resolves to" >&2
     echo "  $ACTUAL" >&2

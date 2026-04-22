@@ -557,6 +557,17 @@ class Interior_t:
 
         self.aragog_solver = None
 
+        # Per-cell redox state from `redox.partitioning.advance_fe_reservoirs`.
+        # Stashed here (on Interior_t) rather than on hf_row because hf_row
+        # is reset from hf_all.iloc[-1].to_dict() at the top of every loop
+        # iteration (proteus.py ~524); non-helpfile keys do not survive.
+        # Interior_t persists across iterations for the full run, so a
+        # redox.coupling.run_redox_step call at iter N-1 can stash
+        # {n_Fe3_solid_cell, n_Fe2_solid_cell, log10_fO2_profile} here and
+        # the AragogRunner NetCDF write at iter N picks them up. Stub-mode
+        # default is None; first populated stub call writes zero arrays.
+        self.redox_per_cell: dict | None = None
+
         # Number of levels
         self.nlev_b = int(nlev_b)
         self.nlev_s = self.nlev_b - 1

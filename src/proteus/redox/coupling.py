@@ -90,6 +90,16 @@ def seed_composition_fO2(
         return float('nan')
 
     Fe3_frac = float(getattr(mantle_comp, 'Fe3_frac', 0.10))
+    if not (0.0 <= Fe3_frac <= 1.0):
+        # Negative or >1 Fe3_frac is a config error. Flag loudly
+        # rather than letting log10_fO2_mantle's generic ValueError
+        # silently cascade to a NaN seed.
+        log.error(
+            'seed_composition_fO2: invalid Fe3_frac=%.3e on mantle_comp '
+            '(expected [0, 1]); returning NaN, caller should fix config.',
+            Fe3_frac,
+        )
+        return float('nan')
     oxybarometer = getattr(config.redox, 'oxybarometer', 'schaefer2024')
     phi_crit = float(getattr(config.redox, 'phi_crit', 0.4))
 
@@ -165,6 +175,7 @@ def run_redox_step(
     *,
     mesh_state=None,
     escape_fluxes_species_kg: Optional[dict[str, float]] = None,
+    interior_o=None,
 ) -> None:
     """
     Per-step redox orchestration.
@@ -183,6 +194,13 @@ def run_redox_step(
         by the Mariana stub; ignored by the Brent solver.
     escape_fluxes_species_kg : dict
         Per-species kg outflow from ZEPHYRUS over the current step.
+    interior_o :
+        ``interior_energetics.common.Interior_t`` instance. Used to
+        stash the per-cell redox state (`redox_per_cell` dict) so the
+        NetCDF writer at the NEXT iter can pick it up — hf_row is
+        reset at loop top, so the dict must live on a longer-lived
+        object. Tests may omit this and pass None; the stash will
+        fall back to hf_row['_redox_per_cell'] in that case.
     """
     mode = getattr(config.redox, 'mode', 'static')
     record_mode_active(hf_row, mode)
@@ -249,15 +267,26 @@ def run_redox_step(
         # reservoir state computed at the end of iter N-1. Stub-bulk
         # today (zeros + NaN); wired through to real per-cell arrays
         # once #653 (Mariana) lands. Shape matches the mesh.
+        #
+        # CRITICAL: stash on `interior_o` (which persists across iters)
+        # rather than on `hf_row` (which gets reset from
+        # `hf_all.iloc[-1].to_dict()` at the top of every loop iter).
+        # Non-helpfile keys do not survive that reset. Commit E.6
+        # round-8 logic-review fix. Fallback to hf_row for test
+        # callers that omit `interior_o`.
         n_stag = mesh_state.pressure_profile.size
         log10_fO2_profile = fe_result.log10_fO2_profile
         if log10_fO2_profile is None:
             log10_fO2_profile = np.full(n_stag, np.nan)
-        hf_row['_redox_per_cell'] = {
+        per_cell = {
             'n_Fe3_solid_cell': np.asarray(fe_result.n_Fe3_solid_cell),
             'n_Fe2_solid_cell': np.asarray(fe_result.n_Fe2_solid_cell),
             'log10_fO2_profile': np.asarray(log10_fO2_profile),
         }
+        if interior_o is not None:
+            interior_o.redox_per_cell = per_cell
+        else:
+            hf_row['_redox_per_cell'] = per_cell
         # Convert Mariana's log10 fO2 to ΔIW at the melt surface so the
         # solver's warm-start has the right units. The key name
         # `redox_delta_IW_suggested_by_mariana` is intentionally ΔIW,

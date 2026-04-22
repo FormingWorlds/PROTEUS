@@ -1351,13 +1351,25 @@ class AragogRunner:
             # Per-cell redox state populated by redox.partitioning at the
             # previous main-loop step (plan v6 §3.1: run_redox_step runs
             # AFTER run_interior, so at iter N the NetCDF carries the
-            # Fe/fO2 profile from iter N-1). Missing on iter 0.
+            # Fe/fO2 profile from iter N-1). None on iter 0 before any
+            # redox step has run.
+            #
+            # Read from `interior_o.redox_per_cell` (persists across iters)
+            # rather than hf_row, because hf_row is reset at the top of
+            # every loop iter (proteus.py ~524) and non-helpfile keys
+            # don't survive. Commit E.6 fix for the round-8 logic review's
+            # CRITICAL finding that the old `hf_row.get('_redox_per_cell')`
+            # always returned None. Fallback to hf_row for legacy test
+            # callers that pre-populate the dict there.
+            redox_per_cell = getattr(interior_o, 'redox_per_cell', None)
+            if redox_per_cell is None:
+                redox_per_cell = hf_row.get('_redox_per_cell')
             self._write_output_ncdf(
                 dirs['output'], sim_time, out,
                 write_diagnostics=getattr(
                     self._config.interior_energetics, 'write_flux_diagnostics', False
                 ),
-                redox_per_cell=hf_row.get('_redox_per_cell'),
+                redox_per_cell=redox_per_cell,
             )
 
         return sim_time, output

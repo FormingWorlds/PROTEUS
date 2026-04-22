@@ -121,6 +121,9 @@ def doctor_entry():
     try:
         from proteus.redox import print_status_line
         click.echo(print_status_line())
-    except ImportError as exc:
+    except (ImportError, AttributeError) as exc:
+        # Broader catch handles a partial __init__.py rewrite where
+        # print_status_line is missing (AttributeError); keeps
+        # `proteus doctor` informative rather than crashing entirely.
         click.echo(click.style(f'redox module not importable: {exc}',
                                 **ERROR_STYLE))

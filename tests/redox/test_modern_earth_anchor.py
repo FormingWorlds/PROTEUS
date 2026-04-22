@@ -38,6 +38,7 @@ def _pyrolite_mantle_comp():
     return mc
 
 
+@pytest.mark.unit
 def test_modern_earth_core_anchor() -> None:
     """
     Pure Fe⁰ core ~ 1.87e24 kg → R_core ≈ -6.4e25 mol e⁻.
@@ -71,6 +72,7 @@ def test_modern_earth_core_anchor() -> None:
     )
 
 
+@pytest.mark.unit
 def test_modern_earth_mantle_anchor() -> None:
     """
     BSE pyrolite 4e24 kg mantle with Fe3_frac = 0.10 → R_mantle ~ +4e23.
@@ -133,6 +135,56 @@ def test_modern_earth_mantle_anchor() -> None:
     )
 
 
+@pytest.mark.unit
+def test_modern_earth_mantle_anchor_evans_2012() -> None:
+    """
+    Plan v6 §5.13 literature target: R_mantle ≈ +1.9e23 mol e⁻
+    using the Evans 2012 BSE estimate of Fe3_frac = 0.035.
+
+    Derivation:
+      Fe_kg   = 4e24 × 0.0782 × (55.845/71.844)  = 2.43e23 kg
+      n_Fe    = 2.43e23 / 55.845e-3              = 4.35e24 mol
+      n_Fe3   = 0.035 × 4.35e24                  = 1.52e23 mol
+      R_mant  = n_Fe3 × (+1)                     = +1.52e23 mol e⁻
+
+    Assert within Evans 2012 ±50% band: [0.95e23, 2.85e23].
+
+    This anchors the test to the plan-§5.13 literature target
+    (R_mantle ≈ +1.9e23). The MantleComp default Fe3_frac = 0.10 is
+    the Schaefer+24 sensitivity-sweep midpoint and gives 4.35e23
+    (tested separately in test_modern_earth_mantle_anchor above).
+    Complementing that test with this Evans-targeted one makes the
+    anchor genuine — either test failing would flag a wt%-to-mole
+    conversion bug.
+    """
+    from proteus.redox.budget import redox_budget_mantle
+    from proteus.utils.constants import element_mmw
+
+    mc = _pyrolite_mantle_comp()
+    mc.Fe3_frac = 0.035    # Evans 2012 BSE geochemical estimate
+    M_mantle = 4.0e24
+    mw_FeO = element_mmw['Fe'] + element_mmw['O']
+    Fe_kg = M_mantle * (mc.FeO_total_wt / 100.0) * (element_mmw['Fe'] / mw_FeO)
+    n_Fe = Fe_kg / element_mmw['Fe']
+    n_Fe3 = mc.Fe3_frac * n_Fe
+
+    hf_row = {
+        'n_Fe3_melt': n_Fe3,
+        'n_Fe2_melt': (1.0 - mc.Fe3_frac) * n_Fe,
+        'n_Fe3_solid_total': 0.0,
+        'n_Fe2_solid_total': 0.0,
+        'n_Fe0_solid_total': 0.0,
+    }
+    R_mantle = redox_budget_mantle(hf_row, mc)
+
+    # Plan §5.13 target = 1.9e23, ±50% band = [0.95e23, 2.85e23].
+    assert 0.95e23 <= R_mantle <= 2.85e23, (
+        f'R_mantle at Fe3_frac=0.035 = {R_mantle:.3e}, '
+        'outside Evans 2012 anchor band [0.95e23, 2.85e23]'
+    )
+
+
+@pytest.mark.unit
 def test_modern_earth_atm_anchor() -> None:
     """
     Earth atmosphere (N2: 78%, O2: 21% by vol; trace CO2).
@@ -176,20 +228,30 @@ def test_modern_earth_atm_anchor() -> None:
     )
 
 
+@pytest.mark.unit
 def test_chili_bse_atm_anchor() -> None:
     """
     The CHILI Earth BSE case (4.7e20 kg H + 2.73e20 kg C, fully
     outgassed at IW+4) has R_atm O(1e22). Sanity check with a
-    synthetic atm of 1.5e21 mol CO2 + H2O (from volatile-element
-    conservation).
+    synthetic atm of all-C-as-CO2 (which drives R_atm under Hirschmann's
+    RB_{CO2}=+4) plus a deliberately reduced synthetic H2O inventory
+    (H2O is redox-neutral so its exact amount does not affect R_atm;
+    only the C-budget term matters here).
     """
     from proteus.redox.budget import redox_budget_atm
 
     # CHILI C budget 2.73e20 kg -> n_C = 2.73e20 / 12e-3 = 2.3e22 mol.
     # If all C is in CO2, R_atm from CO2 = 2.3e22 × 4 = 9.1e22.
+    #
+    # H budget sanity (NOT asserted, kept for documentation):
+    #   CHILI H budget 4.7e20 kg -> n_H = 4.7e20 / 1.008e-3 = 4.66e23 mol H atoms
+    #   All-H-as-H2O -> n(H2O) = 4.66e23 / 2 = 2.33e23 mol H2O.
+    #   Because RB(H2O) = 0, any H2O_mol_atm choice is redox-neutral
+    #   and does not affect R_atm. Using 2.6e22 below (10x smaller
+    #   than full BSE) as a conservative illustration only.
     hf_row = {
-        'CO2_mol_atm': 2.3e22,   # all C as CO2
-        'H2O_mol_atm': 2.6e22,   # all H2 as H2O (4.7e20 kg H → 2.3e23 mol H → 1.15e23 mol H2O; cap lower)
+        'CO2_mol_atm': 2.3e22,   # all C as CO2 (2.73e20 kg C / 12e-3 kg/mol)
+        'H2O_mol_atm': 2.6e22,   # illustrative; exact value redox-neutral (RB=0)
         'N2_mol_atm': 0.0,
         'O2_mol_atm': 0.0,
         'H2_mol_atm': 0.0,
@@ -207,6 +269,7 @@ def test_chili_bse_atm_anchor() -> None:
     )
 
 
+@pytest.mark.unit
 def test_seed_composition_fO2_pyrolite_at_mo_surface() -> None:
     """
     Composition mode at MO surface (2000 K, 1 bar, phi=1.0, BSE
@@ -237,20 +300,18 @@ def test_seed_composition_fO2_pyrolite_at_mo_surface() -> None:
     )
 
 
+@pytest.mark.unit
 def test_populate_core_composition_from_coreComp() -> None:
     """
     populate_core_composition must fill {element}_kg_core from
     config.interior_struct.core_comp wt% × M_core (#57 plan v6 §3.5).
-    Idempotent; missing CoreComp fields default to 0.
+    Uses the real `CoreComp` attrs dataclass so the validator
+    (Fe+H+O+Si == 100 ± 0.1) is exercised.
     """
-    # Use a real dataclass-like object so MagicMock doesn't
-    # auto-provide MagicMock instances for non-configured wt fields.
-    from types import SimpleNamespace
-
+    from proteus.config._struct import CoreComp
     from proteus.utils.coupler import populate_core_composition
-    core_comp = SimpleNamespace(
-        Fe_wt=100.0, H_wt=0.0, O_wt=0.0, Si_wt=0.0,
-    )
+
+    core_comp = CoreComp(Fe_wt=100.0, H_wt=0.0, O_wt=0.0, Si_wt=0.0)
     config = MagicMock()
     config.interior_struct.core_comp = core_comp
 
@@ -261,9 +322,10 @@ def test_populate_core_composition_from_coreComp() -> None:
     assert hf_row['O_kg_core'] == pytest.approx(0.0)
     assert hf_row['H_kg_core'] == pytest.approx(0.0)
     assert hf_row['Si_kg_core'] == pytest.approx(0.0)
-    # Other element_list entries (C, N, S, Mg, Na) default to 0 because
-    # getattr with a SimpleNamespace raises AttributeError and the
-    # helper falls back to 0.
+    # Other element_list entries (C, N, S, Mg, Na) default to 0
+    # because getattr(core_comp, '<E>_wt', 0.0) returns the default
+    # for any element not exposed by CoreComp (CoreComp defines only
+    # Fe/H/O/Si wt fields).
     assert hf_row['C_kg_core'] == 0.0
     assert hf_row['N_kg_core'] == 0.0
 
@@ -274,13 +336,56 @@ def test_populate_core_composition_from_coreComp() -> None:
     assert abs(R_core - (-6.4e25)) < 0.10 * 6.4e25
 
 
+@pytest.mark.unit
+def test_populate_core_composition_realistic_non_pure_Fe() -> None:
+    """
+    Regression lock for E.3: CoreComp with Fe<100% and realistic
+    M_core must yield non-zero Fe_kg_core = M_core × Fe_wt / 100.
+    Round-8 numerics review flagged that this path was never pinned.
+    """
+    from proteus.config._struct import CoreComp
+    from proteus.utils.coupler import populate_core_composition
+
+    core_comp = CoreComp(Fe_wt=85.0, H_wt=5.0, O_wt=5.0, Si_wt=5.0)
+    config = MagicMock()
+    config.interior_struct.core_comp = core_comp
+
+    hf_row = {'M_core': 1.9e24}
+    populate_core_composition(hf_row, config)
+
+    assert hf_row['Fe_kg_core'] == pytest.approx(1.9e24 * 0.85, rel=1e-12)
+    assert hf_row['H_kg_core'] == pytest.approx(1.9e24 * 0.05, rel=1e-12)
+    assert hf_row['O_kg_core'] == pytest.approx(1.9e24 * 0.05, rel=1e-12)
+    assert hf_row['Si_kg_core'] == pytest.approx(1.9e24 * 0.05, rel=1e-12)
+    assert hf_row['Fe_kg_core'] > 0.0, 'E.3 regression lock: Fe_kg_core must be > 0'
+
+
+@pytest.mark.unit
+def test_populate_core_composition_nan_M_core() -> None:
+    """NaN M_core must not poison downstream budget — numerics review fix."""
+    from proteus.config._struct import CoreComp
+    from proteus.utils.coupler import populate_core_composition
+
+    core_comp = CoreComp(Fe_wt=100.0, H_wt=0.0, O_wt=0.0, Si_wt=0.0)
+    config = MagicMock()
+    config.interior_struct.core_comp = core_comp
+
+    hf_row = {'M_core': float('nan'), 'Fe_kg_core': 0.0}
+    populate_core_composition(hf_row, config)
+    # Guard `not (M_core > 0)` rejects NaN; Fe_kg_core stays at seed value.
+    assert hf_row['Fe_kg_core'] == 0.0
+
+
+@pytest.mark.unit
 def test_populate_core_composition_skips_without_M_core() -> None:
     """With M_core = 0 (pre-struct-solve), no-op gracefully."""
-    from types import SimpleNamespace
-
+    from proteus.config._struct import CoreComp
     from proteus.utils.coupler import populate_core_composition
+
     config = MagicMock()
-    config.interior_struct.core_comp = SimpleNamespace(Fe_wt=100.0)
+    config.interior_struct.core_comp = CoreComp(
+        Fe_wt=100.0, H_wt=0.0, O_wt=0.0, Si_wt=0.0,
+    )
 
     hf_row = {'M_core': 0.0, 'Fe_kg_core': 0.0}
     populate_core_composition(hf_row, config)
@@ -289,6 +394,7 @@ def test_populate_core_composition_skips_without_M_core() -> None:
     assert hf_row['Fe_kg_core'] == 0.0
 
 
+@pytest.mark.unit
 def test_seed_composition_fO2_returns_nan_without_mantle_comp() -> None:
     """Missing MantleComp → NaN, not a crash."""
     from proteus.redox.coupling import seed_composition_fO2

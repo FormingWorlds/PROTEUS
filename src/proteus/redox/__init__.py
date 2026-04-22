@@ -37,7 +37,7 @@ IMPLEMENTATION_STATUS = {
     'eos_correction': 'identity',       # #432 flips to 'dorfman24+hirose19'
     'schaefer_eq13': 'active',          # Commit B
     'stagno2013_peridotite': 'active',  # Commit B
-    'h2o_escape_rb': 'stub',            # Commit C
+    'h2o_escape_rb': 'active',          # Commit C / plan §2.7 — debit_escape applies RB(H2O)=0 via species-resolved flux
     'bridgmanite': 'off',               # out of scope
 }
 
