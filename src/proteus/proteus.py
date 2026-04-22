@@ -640,6 +640,61 @@ class Proteus:
 
             ############### / ESCAPE
 
+            ############### REDOX (#57)
+            # Static mode (default): pins hf_row['fO2_shift_IW'] to
+            # config.outgas.fO2_shift_IW. No-op on physics; the
+            # downstream run_outgassing call below picks up the
+            # pinned scalar exactly as pre-#57.
+            # Evolving modes ('fO2_init' or 'composition'): the
+            # transactional Brent solver (plan v6 §3.3) finds ΔIW that
+            # closes the Evans/Hirschmann redox budget, using a
+            # deep-copied probe of hf_row per inner outgas call. Only
+            # the solved fO2_shift_IW scalar is written back to
+            # hf_row; the authoritative outgas commit remains the
+            # run_outgassing call on line ~681 below.
+            try:
+                from proteus.escape.wrapper import (
+                    atm_escape_fluxes_species_kg,
+                )
+                from proteus.interior_energetics.aragog import (
+                    get_mesh_state_for_redox,
+                )
+                from proteus.redox.coupling import run_redox_step
+                mesh_state = None
+                if self.config.interior_energetics.module == 'aragog':
+                    mesh_state = get_mesh_state_for_redox(self.interior_o)
+                escape_fluxes = None
+                if self.config.escape.module:
+                    escape_fluxes = atm_escape_fluxes_species_kg(
+                        self.hf_row, self.interior_o.dt,
+                    )
+                hf_row_prev_dict = (
+                    self.hf_all.iloc[-1].to_dict()
+                    if (self.hf_all is not None and len(self.hf_all) > 0)
+                    else dict(self.hf_row)
+                )
+                run_redox_step(
+                    self.hf_row, hf_row_prev_dict,
+                    self.directories, self.config,
+                    mesh_state=mesh_state,
+                    escape_fluxes_species_kg=escape_fluxes,
+                )
+            except Exception as redox_exc:
+                # Redox-module failure must NOT kill a running
+                # simulation. Log and continue with the pinned
+                # fO2_shift_IW fallback (same as static-mode
+                # behaviour).
+                log.warning(
+                    'Redox step failed (%s); falling back to static '
+                    'fO2_shift_IW. This run loses redox-budget '
+                    'bookkeeping for the current step.',
+                    redox_exc,
+                )
+                self.hf_row['fO2_shift_IW'] = float(
+                    self.config.outgas.fO2_shift_IW
+                )
+            ############### / REDOX
+
             ############### OUTGASSING
             PrintHalfSeparator()
 

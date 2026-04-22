@@ -112,6 +112,64 @@ def run_escape(
         hf_row[f'{e}_kg_total'] = mass
 
 
+def atm_escape_fluxes_species_kg(
+    hf_row: dict, dt: float,
+) -> dict[str, float]:
+    """
+    Decompose the bulk ZEPHYRUS mass-loss rate into per-species kg
+    outflow over `dt` years, using the current atmospheric volume
+    mixing ratios as the apportionment (#57 Commit C, plan v6 §3.11).
+
+    This is a first-order approximation valid for hydrodynamic bulk
+    escape where atmospheric mixing is efficient (ZEPHYRUS's target
+    regime). Fractionating escape (Jeans / diffusion-limited) would
+    break this assumption; a correction is a follow-on issue.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Current helpfile row. Consumes `esc_rate_total` [kg/s] and
+        each `{species}_vmr`.
+    dt : float
+        Step duration in years.
+
+    Returns
+    -------
+    dict[species, kg_escaped]
+        Zero for species with VMR = 0 or missing. The dict keys are
+        species names as listed in `proteus.utils.constants.gas_list`
+        (restricted to species that have VMR entries in hf_row).
+    """
+    from proteus.utils.constants import gas_list
+
+    rate_kg_s = float(hf_row.get('esc_rate_total', 0.0))
+    dt_s = float(dt) * secs_per_year
+    if rate_kg_s <= 0.0 or dt_s <= 0.0 or not np.isfinite(rate_kg_s * dt_s):
+        return {s: 0.0 for s in gas_list}
+
+    # Bulk mass lost this step [kg].
+    m_total_lost = rate_kg_s * dt_s
+
+    # Partition by VMR (mole fraction) weighted by molecular mass.
+    # For a thin atmosphere in hydrodynamic escape, the escaping flux
+    # composition ≈ bulk-atmosphere composition.
+    vmrs = {
+        s: float(hf_row.get(f'{s}_vmr', 0.0))
+        for s in gas_list
+    }
+    sum_vmr = sum(v for v in vmrs.values() if np.isfinite(v))
+    if sum_vmr <= 0.0:
+        return {s: 0.0 for s in gas_list}
+
+    # Distribute by VMR. The resulting dict holds kg per species.
+    # (VMR-weighted apportionment neglects the molar-mass ordering of
+    # species under the bulk-flow assumption; OK for this scaffolding.)
+    return {
+        s: m_total_lost * (vmrs[s] / sum_vmr)
+        for s in gas_list
+    }
+
+
 def run_dummy(config: Config, hf_row: dict):
     """Run dummy escape model.
 

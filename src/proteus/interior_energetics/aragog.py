@@ -4,6 +4,7 @@ from __future__ import annotations  # noqa: I001
 import glob
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -1652,6 +1653,93 @@ class AragogRunner:
         ds['phi_global'][0] = out.Phi_global
 
         ds.close()
+
+
+@dataclass
+class AragogMeshState:
+    """
+    Read-only snapshot of the Aragog mesh state for the redox module
+    (#57, plan v6 §3.10).
+
+    All arrays are per-cell (N staggered nodes). Pressure in Pa,
+    temperature in K, melt_fraction dimensionless ∈ [0, 1], cell_mass
+    in kg.
+
+    Fields with ``_prev`` suffix are the previous-step values Mariana's
+    `advance_fe_reservoirs` needs to compute Δφ (plan v6 §3.9). In
+    stub-bulk mode (Commit C) they are populated from the same
+    snapshot (no actual timestep history is surfaced yet); Commit D /
+    #653 wire in real persistence via the interior NetCDF.
+    """
+    pressure_profile: 'np.ndarray'
+    temperature_profile: 'np.ndarray'
+    melt_fraction_profile: 'np.ndarray'
+    melt_fraction_profile_prev: 'np.ndarray'
+    cell_mass_profile: 'np.ndarray'
+    n_Fe3_solid_cell_prev: 'np.ndarray'
+    n_Fe2_solid_cell_prev: 'np.ndarray'
+
+
+def get_mesh_state_for_redox(interior_o) -> 'AragogMeshState | None':
+    """
+    Expose the current Aragog mesh state to `proteus.redox` (#57).
+
+    Returns ``None`` if no Aragog solver is attached (e.g. SPIDER or
+    dummy interior module is active). Called by
+    :func:`proteus.redox.coupling.run_redox_step` once per main-loop
+    step, just before the redox solver runs.
+
+    Per-cell Fe³⁺/Fe²⁺ solid accumulations are placeholder zeros in
+    Commit C; Commit D wires them through the interior NetCDF so
+    Mariana's #653 implementation has real state history.
+    """
+    solver = getattr(interior_o, 'aragog_solver', None)
+    if solver is None:
+        return None
+    mesh = solver.evaluator.mesh
+
+    # Aragog mesh fields (staggered-node pressure, temperature from
+    # the current solution, melt fraction from phase evaluator, cell
+    # masses from the mesh geometry).
+    try:
+        P = np.array(mesh.pressure_staggered)
+        T = np.array(mesh.temperature_staggered)
+    except AttributeError:
+        # Fallback: use the evaluator's snapshot output if the
+        # mesh object does not expose the staggered arrays directly.
+        out = solver.output
+        P = np.array(getattr(out, 'pressure_staggered', np.array([])))
+        T = np.array(getattr(out, 'temp_s', np.array([])))
+
+    phi = np.array(solver.output.melt_fraction_staggered) if hasattr(
+        solver.output, 'melt_fraction_staggered'
+    ) else np.array(getattr(solver.output, 'phi', np.array([])))
+
+    # Previous-step phi: Commit C uses current as placeholder; Commit D
+    # threads the previous-step value from hf_row_prev via the main
+    # loop. When equal, Mariana's Δφ is zero (no evolution), which is
+    # the correct scaffolding behaviour.
+    phi_prev = phi.copy()
+
+    # Cell mass from mesh geometry.
+    try:
+        cell_mass = np.array(mesh.cell_mass)
+    except AttributeError:
+        # Estimate from cell volumes × density if available.
+        n = phi.size
+        cell_mass = np.full(n, float('nan'))
+
+    zero_like_phi = np.zeros_like(phi)
+
+    return AragogMeshState(
+        pressure_profile=P,
+        temperature_profile=T,
+        melt_fraction_profile=phi,
+        melt_fraction_profile_prev=phi_prev,
+        cell_mass_profile=cell_mass,
+        n_Fe3_solid_cell_prev=zero_like_phi,
+        n_Fe2_solid_cell_prev=zero_like_phi,
+    )
 
 
 def read_last_Sfield(output_dir: str, time: float):
