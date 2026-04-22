@@ -136,6 +136,8 @@ This document captures the living context of PROTEUS—the "why" behind architec
 
 **Trade-off**: More complex setup, but essential for multi-repo development
 
+**Parallel track caveat (added 2026-04-22)**: When running multiple PROTEUS development tracks simultaneously (main + redox + future tracks), each track needs BOTH its own git worktree AND its own `proteus-<track>` conda env. `conda create --clone` hardlinks pip-editable install pointers, and a `pip install -e .` in one env can silently repoint the other env's `import proteus`. Failure mode: A/B regressions between main and a branch run the SAME code on both sides while `git rev-parse HEAD` still looks correct. Clean-split recipe + preflight-guard pattern in `.github/copilot-instructions.md` §"Parallel development tracks". Always verify BOTH envs resolve to their intended worktrees via `python -c "import proteus; print(proteus.__file__)"` after any clone/install operation.
+
 ---
 
 ### ADR-005: Test Structure Mirrors Source Structure (Established)
@@ -177,6 +179,13 @@ This document captures the living context of PROTEUS—the "why" behind architec
 ---
 
 ## 4. Known Debt & "Watch Outs"
+
+### Conda env / editable install drift across parallel worktrees
+- **Issue**: When developing on multiple parallel branches (e.g. redox scaffolding on `tl/redox-scaffolding` in a sibling worktree), `pip install -e .` in a `proteus-<track>` env cloned from `proteus` can silently repoint the base env's `import proteus` at the track worktree. Both envs end up resolving to the same source tree.
+- **Impact**: A/B regression runs (baseline vs branch) execute the same code on both sides. `git rev-parse HEAD` in the activated worktree still shows the correct commit; `python -c "import proteus; print(proteus.__file__)"` reveals the drift.
+- **Detection**: Before ANY A/B run, verify each env resolves to its intended worktree with the `import proteus; print(proteus.__file__)` canary.
+- **Mitigation**: Clean-split recipe + preflight-guard script in `.github/copilot-instructions.md` §"Parallel development tracks". Every track's `scripts/preflight_env.sh` should assert the expected resolution before any run.
+- **Incident**: 2026-04-22 E.2 A/B regression launched silently with both envs pointing at the redox worktree; caught by noticing the "baseline" run had no `proteus_00.log` in the right output dir.
 
 ### Documentation Drift
 - **Issue**: Some test documentation references old workflow names

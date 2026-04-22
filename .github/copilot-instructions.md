@@ -158,6 +158,7 @@ proteus install-all --export-env
 - All Python submodules should be installed as editable (`-e`) for development
 - After installation, reload shell: `source ~/.bashrc` or `conda activate proteus`
 - After each file change or edit, ruff format all changed files with `ruff check --fix ` and `ruff format --check`
+- **Parallel tracks**: one conda env per git worktree. `conda create --clone` hardlinks pip-editable pointers, so a subsequent `pip install -e .` in one env can silently repoint another env's `import proteus`. Canary before each A/B run: `python -c "import proteus; print(proteus.__file__)"`; recipe in `~/.claude/memory/conda_env_split_pattern.md`.
 
 ### Build Commands
 
@@ -484,9 +485,7 @@ zensical serve
 nohup proteus start -c <cfg.toml> --offline > output/<run>/launch.log 2>&1 & disown
 ```
 
-Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` snapshot under `data/`; see `src/proteus/proteus.py` ~395-430. Never foreground a multi-hour run — plain `&` alone dies on SIGHUP.
-
-**Remember**: Trust these instructions. Only search if information is incomplete or found to be in error.
+Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` snapshot under `data/`; see `src/proteus/proteus.py` ~395-430. Never foreground a multi-hour run — plain `&` alone dies on SIGHUP.  **Remember**: Trust these instructions. Only search if information is incomplete or found to be in error.
 
 ---
 
