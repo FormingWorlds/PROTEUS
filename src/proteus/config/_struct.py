@@ -176,6 +176,87 @@ class Zalmoxis:
 
 
 @define
+class MantleComp:
+    """
+    Bulk mantle oxide composition in wt% (#57). Defaults are Earth BSE
+    from Schaefer+24 Table 1 / McDonough 2003.
+
+    Nine oxides covered; inert residual (Cr2O3, NiO, MnO, water, CO2)
+    is implicit as 100 - sum(oxides). The validator enforces
+    sum ≤ 100 wt%. Fe3_frac splits total Fe into Fe2+ and Fe3+ at t=0
+    and evolves over the run via proteus.redox.partitioning
+    (`advance_fe_reservoirs`, #653).
+
+    Attributes
+    ----------
+    SiO2_wt, TiO2_wt, Al2O3_wt, MgO_wt, CaO_wt, Na2O_wt, K2O_wt, P2O5_wt : float
+        Oxide mass fractions in the bulk mantle [wt%].
+    FeO_total_wt : float
+        Total Fe expressed as FeO-equivalent [wt%]. Split into Fe2+ and
+        Fe3+ reservoirs via `Fe3_frac`.
+    Fe3_frac : float
+        Fe3+ / Sum(Fe) ratio in the bulk mantle melt at t=0. Evolves
+        over the run under `redox.mode = 'composition'`.
+    """
+    SiO2_wt:      float = field(default=45.5,  validator=ge(0.0))
+    TiO2_wt:      float = field(default=0.21,  validator=ge(0.0))
+    Al2O3_wt:     float = field(default=4.49,  validator=ge(0.0))
+    FeO_total_wt: float = field(default=7.82,  validator=ge(0.0))
+    MgO_wt:       float = field(default=38.3,  validator=ge(0.0))
+    CaO_wt:       float = field(default=3.58,  validator=ge(0.0))
+    Na2O_wt:      float = field(default=0.36,  validator=ge(0.0))
+    K2O_wt:       float = field(default=0.029, validator=ge(0.0))
+    P2O5_wt:      float = field(default=0.021, validator=ge(0.0))
+    Fe3_frac:     float = field(default=0.10,
+                                 validator=(ge(0.0), le(1.0)))
+
+    def __attrs_post_init__(self):
+        total = (self.SiO2_wt + self.TiO2_wt + self.Al2O3_wt
+                 + self.FeO_total_wt + self.MgO_wt + self.CaO_wt
+                 + self.Na2O_wt + self.K2O_wt + self.P2O5_wt)
+        # Schaefer+24 Table 1 BSE values sum to 100.31 wt% (minor
+        # oxides push marginally over). McDonough 2003 BSE analogously
+        # sums to ~100.3 wt%. Accept up to 101.0 wt% (~1% slack for
+        # published compositions); above that, the user has
+        # over-specified.
+        if total > 101.0:
+            raise ValueError(
+                f'MantleComp oxides sum to {total:.4f} > 101 wt%; '
+                f'over-specified (no negative inert residual possible).'
+            )
+        # 100 - total is carried implicitly as inert residual (Cr2O3,
+        # NiO, MnO, water, CO2, etc.).
+
+
+@define
+class CoreComp:
+    """
+    Bulk core composition in wt% (#57). Defaults are pure Fe (Earth
+    first-order); #526 metal-silicate partitioning populates H/O/Si
+    at runtime.
+
+    Attributes
+    ----------
+    Fe_wt : float
+        Iron mass fraction [wt%].
+    H_wt, O_wt, Si_wt : float
+        Light-element mass fractions [wt%]. Zero by default; will be
+        populated by the metal-silicate partitioning hook (#526).
+    """
+    Fe_wt: float = field(default=100.0, validator=ge(0.0))
+    H_wt:  float = field(default=0.0,   validator=ge(0.0))
+    O_wt:  float = field(default=0.0,   validator=ge(0.0))
+    Si_wt: float = field(default=0.0,   validator=ge(0.0))
+
+    def __attrs_post_init__(self):
+        total = self.Fe_wt + self.H_wt + self.O_wt + self.Si_wt
+        if abs(total - 100.0) > 0.1:
+            raise ValueError(
+                f'CoreComp wt% must sum to 100 (got {total:.4f}).'
+            )
+
+
+@define
 class Struct:
     """Planetary structure (mass, radius).
 
@@ -197,6 +278,12 @@ class Struct:
     core_heatcap: float or str
         Specific heat capacity of the planet's core [J kg-1 K-1]. Set to 'self'
         for self-consistent calculation by Zalmoxis (requires module = 'zalmoxis').
+    mantle_comp: MantleComp
+        Bulk mantle oxide composition (#57). Used by the redox module
+        to convert wt% → mole fractions for the Schaefer+24 oxybarometer.
+    core_comp: CoreComp
+        Bulk core composition (#57). Zero light-element content until
+        #526 metal-silicate partitioning populates it.
     """
 
     core_frac: float = field(default=0.325, validator=(gt(0), lt(1)))
@@ -216,6 +303,9 @@ class Struct:
 
     melting_dir = field(default=None, converter=none_if_none)
     eos_dir = field(default=None, converter=none_if_none)
+
+    mantle_comp: MantleComp = field(factory=MantleComp)
+    core_comp:   CoreComp   = field(factory=CoreComp)
 
     def __attrs_post_init__(self):
         # core_frac_mode = "mass" requires Zalmoxis

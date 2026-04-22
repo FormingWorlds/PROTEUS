@@ -51,13 +51,17 @@ def log10_fO2_IW(temperature: float, pressure: float = 1.0e5) -> float:
 
     Parametrisation (Hirschmann 2021, Am Mineral 106, 555-563):
 
-        log10 fO2 = 6.54106 - 28163.6 / T + 0.055 * (P − 1) / T
+        log10 fO2 = 6.54106 − 28163.6 / T + 0.055 · P_GPa / T
 
-    with T in K, P in bar (1 bar reference → 1e5 Pa). Returns log10 fO2
-    in bar.
+    with T in K and **P in GPa**. Returns log10 fO2 in bar.
+
+    Input ``pressure`` is in Pa per the module convention; converted
+    internally to GPa. The pressure term is small (0.055 · P / T ≈ 3
+    per 120 GPa at 2000 K) and approximates the integrated ΔV of the
+    Fe + FeO ⇌ FeO₁.₅ equilibrium.
     """
-    P_bar = pressure / _PA_PER_BAR
-    return 6.54106 - 28163.6 / temperature + 0.055 * (P_bar - 1.0) / temperature
+    P_GPa = pressure / 1e9
+    return 6.54106 - 28163.6 / temperature + 0.055 * P_GPa / temperature
 
 
 def log10_fO2_QFM(temperature: float, pressure: float = 1.0e5) -> float:
@@ -66,12 +70,13 @@ def log10_fO2_QFM(temperature: float, pressure: float = 1.0e5) -> float:
 
     Parametrisation (O'Neill 1987; Frost 1991 coefficients):
 
-        log10 fO2 = -25738 / T + 9.00 + 0.092 * (P − 1) / T
+        log10 fO2 = −25738 / T + 9.00 + 0.092 · P_GPa / T
 
-    with T in K, P in bar. Returns log10 fO2 in bar.
+    with T in K, P in GPa. Input ``pressure`` in Pa is converted
+    internally. Returns log10 fO2 in bar.
     """
-    P_bar = pressure / _PA_PER_BAR
-    return -25738.0 / temperature + 9.00 + 0.092 * (P_bar - 1.0) / temperature
+    P_GPa = pressure / 1e9
+    return -25738.0 / temperature + 9.00 + 0.092 * P_GPa / temperature
 
 
 def log10_fO2_NNO(temperature: float, pressure: float = 1.0e5) -> float:
@@ -81,36 +86,60 @@ def log10_fO2_NNO(temperature: float, pressure: float = 1.0e5) -> float:
     Parametrisation (O'Neill + Pownceby 1993, Contrib Mineral Petrol
     114, 296-314):
 
-        log10 fO2 = 9.36 - 24930 / T + 0.046 * (P − 1) / T
+        log10 fO2 = 9.36 − 24930 / T + 0.046 · P_GPa / T
 
-    with T in K, P in bar. Returns log10 fO2 in bar.
+    with T in K, P in GPa. Input ``pressure`` in Pa is converted
+    internally. Returns log10 fO2 in bar.
     """
-    P_bar = pressure / _PA_PER_BAR
-    return 9.36 - 24930.0 / temperature + 0.046 * (P_bar - 1.0) / temperature
+    P_GPa = pressure / 1e9
+    return 9.36 - 24930.0 / temperature + 0.046 * P_GPa / temperature
 
 
 # ------------------------------------------------------------------
 # Schaefer+24 Eq 13 — Fe³⁺/Fe²⁺ → log10 fO2 in silicate melt
 # ------------------------------------------------------------------
-
-# Fit parameters from Schaefer+24 Table 4 (reproduced from
-# Hirschmann 2022, Table 2).
-_SCHAEFER24_A = 0.1917
-_SCHAEFER24_B = -1.961
-_SCHAEFER24_C = 4158.1          # K
-_SCHAEFER24_DCP = 33.25         # J/K
-_SCHAEFER24_T0 = 1673.15        # K
-_SCHAEFER24_Y = (               # y1..y9 [K]
-    -520.46,
-    -185.37,
-    494.39,
-    1938.34,
-    2888.48,
-    3473.68,
-    -4473.6,
-    -1245.09,
-    -1156.86,
-)
+#
+# Implementation follows Mariana's formulation (her
+# redox_plan/Radially_resolved_fO2.pdf Eq 25), which is the natural-log
+# form of Schaefer+24 Eq 13 using the Hirschmann 2022 calibration.
+# Mariana's form is:
+#
+#   ln fO2 = (1/0.196) · [ ln(X_FeO1.5 / X_FeO)
+#                         - 1.1492e4 / T
+#                         + 6.675
+#                         + 2.243 X_Al2O3
+#                         + 1.828 X_FeO_T
+#                         - 3.201 X_CaO
+#                         - 5.854 X_Na2O
+#                         - 6.215 X_K2O
+#                         + 3.36 (1 - 1673/T - ln(T/1673))
+#                         + 7.01e-7 P/T
+#                         + 1.54e-10 (T - 1673) P/T
+#                         - 3.85e-17 P² / T ]
+#   fO2 = exp(ln fO2)
+#
+# with T in K and P in bar. Note that SiO2, TiO2, MgO, and P2O5 do NOT
+# appear in the Mariana formulation — the Hirschmann 2022 calibration
+# uses only five oxide couplings (Al2O3, FeO_T, CaO, Na2O, K2O).
+#
+# Earlier versions of this function (Commits A+B as originally shipped)
+# used a different ΔCp/R parametrisation derived from Schaefer Table 4,
+# which numerically disagreed with Mariana's Eq 25 by ~6 log units at
+# the Earth peridotite anchor. That version was replaced under Commit
+# B.5 after round-3 physics review flagged the mismatch.
+_MARIANA_A        = 0.196
+_MARIANA_C_OVER_T = 1.1492e4     # K
+_MARIANA_B        = 6.675        # dimensionless
+_MARIANA_AL2O3    = 2.243
+_MARIANA_FEO_T    = 1.828
+_MARIANA_CAO      = -3.201
+_MARIANA_NA2O     = -5.854
+_MARIANA_K2O      = -6.215
+_MARIANA_DCP      = 3.36         # already in ln form
+_MARIANA_T0       = 1673.0       # K
+_MARIANA_V1       = 7.01e-7
+_MARIANA_V2       = 1.54e-10
+_MARIANA_V3       = -3.85e-17
 
 
 def log10_fO2_schaefer2024(
@@ -119,17 +148,17 @@ def log10_fO2_schaefer2024(
     *,
     temperature: float,
     pressure: float,
-    X_SiO2: float,
-    X_TiO2: float,
-    X_MgO: float,
+    X_SiO2: float = 0.0,      # unused in Mariana Eq 25 but kept in
+    X_TiO2: float = 0.0,      #   signature for API stability with
+    X_MgO: float = 0.0,       #   Schaefer Table 4 callers that may
+    X_P2O5: float = 0.0,      #   compute and pass them.
     X_CaO: float,
     X_Na2O: float,
-    X_P2O5: float,
     X_Al2O3: float,
     X_K2O: float,
 ) -> float:
     """
-    Schaefer+24 Eq 13, reproducing Hirschmann 2022 silicate-melt fit.
+    Schaefer+24 Eq 13 via Mariana PDF Eq 25 (Hirschmann 2022 calibration).
 
     Returns log10 fO2 in bar.
 
@@ -138,21 +167,26 @@ def log10_fO2_schaefer2024(
     X_FeO_liq, X_FeO1_5 : float
         Mole fractions of FeO and FeO_1.5 in the silicate melt.
     temperature : float
-        Melt temperature [K].
+        Melt temperature [K]. Must be positive.
     pressure : float
-        Melt pressure [Pa]; converted to GPa internally for the
-        volumetric term. Must be ≥ 0.
-    X_SiO2, X_TiO2, X_MgO, X_CaO, X_Na2O, X_P2O5, X_Al2O3, X_K2O :
-        Mole fractions of the oxide components in the melt.
+        Melt pressure in Pa (converted internally to bar for the
+        volumetric term; Mariana Eq 25 parameters were calibrated
+        with P in bar).
+    X_CaO, X_Na2O, X_Al2O3, X_K2O : float
+        Mole fractions of these oxides in the melt.
+    X_SiO2, X_TiO2, X_MgO, X_P2O5 : float
+        Accepted for API stability but not used in Mariana Eq 25.
+        Callers that have computed these (e.g. for Schaefer Table 4
+        alternative calibrations) may pass them safely; they are
+        ignored.
 
     Notes
     -----
     Domain of validity: silicate melts at magma-ocean conditions,
-    T ~ 1200-4000 K, P up to ~120 GPa (Schaefer's whole-Earth BPLE).
-    At subsolidus (φ < φ_crit) or lower-temperature conditions the
-    linearised ΔCp / T₀ terms degrade. The dispatcher
-    `log10_fO2_mantle` falls back to `stagno2013_peridotite` when
-    `phi_max < phi_crit`.
+    T ~ 1200-4000 K, P up to ~120 GPa. At subsolidus conditions, the
+    linearised ΔCp term at T₀ = 1673 K becomes inaccurate. The
+    dispatcher `log10_fO2_mantle` falls back to
+    `stagno2013_peridotite` when `phi_max < phi_crit`.
     """
     if X_FeO_liq <= 0:
         raise ValueError(f'X_FeO_liq must be positive; got {X_FeO_liq}')
@@ -160,63 +194,34 @@ def log10_fO2_schaefer2024(
         raise ValueError(f'X_FeO1_5 must be positive; got {X_FeO1_5}')
     if temperature <= 0:
         raise ValueError(f'temperature must be positive; got {temperature}')
+    if pressure < 0:
+        raise ValueError(f'pressure must be non-negative; got {pressure}')
 
     T = float(temperature)
-    P_GPa = pressure / 1e9
+    P_bar = pressure / 1e5  # Pa → bar
+    X_FeO_T = X_FeO_liq + X_FeO1_5  # total Fe mole fraction
 
-    # Main term: ln(X_FeO1.5 / X_FeO) = a*ln(fO2) + b + c/T - ΔCp/R*(1 - T0/T - ln(T/T0))
-    #                                    + sum_k y_k * X_k / T + vol terms
-    # Rearranged for ln(fO2):
-    #   ln(fO2) = (1/a) * [ ln(X_FeO1.5/X_FeO) - b - c/T
-    #                       + ΔCp*(1 - T0/T - ln(T/T0))/R
-    #                       - sum_k y_k*X_k / T
-    #                       - VdP term ]
-    # NOTE: the exact sign structure in Schaefer+24 Table 4 is:
-    #   log10(X_FeO1.5/X_FeO) = a*log10 fO2 + b + c/T - ΔCp/R*[1 - T0/T - ln(T/T0)]
-    #                           + (1/T) * Σ y_k X_k
-    # (Hirschmann 2022 Eq 6). Here we work in natural log for internal
-    # math and convert at the end.
-    # Σ_k y_k X_k:
-    oxide_term = (
-        _SCHAEFER24_Y[0] * X_SiO2
-        + _SCHAEFER24_Y[1] * X_TiO2
-        + _SCHAEFER24_Y[2] * X_MgO
-        + _SCHAEFER24_Y[3] * X_CaO
-        + _SCHAEFER24_Y[4] * X_Na2O
-        + _SCHAEFER24_Y[5] * X_P2O5
-        + _SCHAEFER24_Y[6] * X_Al2O3
-        + _SCHAEFER24_Y[7] * X_K2O
-        # y8 would couple to an additional oxide (Schaefer+24 Table 4
-        # footnote); not used here.
+    ln_ratio = np.log(X_FeO1_5 / X_FeO_liq)
+    term_T = -_MARIANA_C_OVER_T / T + _MARIANA_B
+    term_oxides = (
+        _MARIANA_AL2O3 * X_Al2O3
+        + _MARIANA_FEO_T * X_FeO_T
+        + _MARIANA_CAO * X_CaO
+        + _MARIANA_NA2O * X_Na2O
+        + _MARIANA_K2O * X_K2O
+    )
+    term_cp = _MARIANA_DCP * (1.0 - _MARIANA_T0 / T - np.log(T / _MARIANA_T0))
+    term_V = (
+        _MARIANA_V1 * P_bar / T
+        + _MARIANA_V2 * (T - _MARIANA_T0) * P_bar / T
+        + _MARIANA_V3 * P_bar ** 2 / T
     )
 
-    # Volumetric term: see Schaefer+24 Eq 13 final two lines.
-    # Using -ΔV/(R T ln10) ≈ -(P − P0)·ΔV/(R T ln10); here the
-    # Schaefer fit absorbs this into a quadratic in P. Coefficients
-    # (from Schaefer Eq 13 written in log10 form) absorb the
-    # ΔV/R·ln10 factor.
-    vol_term = (
-        7.01e-7 * P_GPa / T
-        + 1.54e-10 * (T - _SCHAEFER24_T0) * P_GPa / T
-        - 3.85e-17 * (P_GPa ** 2) / T
+    ln_fO2 = (1.0 / _MARIANA_A) * (
+        ln_ratio + term_T + term_oxides + term_cp + term_V
     )
-
-    # Thermodynamic (T-only) terms.
-    dcp_term = (_SCHAEFER24_DCP / _R_GAS) * (
-        1.0 - _SCHAEFER24_T0 / T - np.log(T / _SCHAEFER24_T0)
-    )
-
-    # Rearrange to log10 fO2:
-    log_ratio = np.log10(X_FeO1_5 / X_FeO_liq)
-    lhs = (
-        log_ratio
-        - _SCHAEFER24_B
-        - _SCHAEFER24_C / T
-        + dcp_term / np.log(10)   # convert ΔCp natural-log term
-        - oxide_term / T
-        - vol_term
-    )
-    return float(lhs / _SCHAEFER24_A)
+    # Convert natural log → log10.
+    return float(ln_fO2 / np.log(10))
 
 
 # ------------------------------------------------------------------

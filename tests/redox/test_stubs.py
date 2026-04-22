@@ -12,6 +12,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from proteus.config._struct import MantleComp
 from proteus.redox import IMPLEMENTATION_STATUS
 from proteus.redox.partitioning import (
     EOSCorrection,
@@ -24,20 +25,6 @@ from proteus.redox.partitioning import (
     metal_silicate_KD,
     mineral_melt_KD_fe,
 )
-
-
-class _MockMantleComp:
-    SiO2_wt = 45.5
-    TiO2_wt = 0.21
-    Al2O3_wt = 4.49
-    FeO_total_wt = 7.82
-    MgO_wt = 38.3
-    CaO_wt = 3.58
-    Na2O_wt = 0.36
-    K2O_wt = 0.029
-    P2O5_wt = 0.021
-    Fe3_frac = 0.10
-
 
 # ==================================================================
 # #653 — advance_fe_reservoirs stub contract
@@ -63,7 +50,7 @@ def test_advance_fe_reservoirs_identity_on_trivial_input():
         n_Fe2_melt_prev=9.0e20,
         n_Fe3_solid_cell_prev=np.zeros(n),
         n_Fe2_solid_cell_prev=np.zeros(n),
-        mantle_comp=_MockMantleComp(),
+        mantle_comp=MantleComp(),
     )
     assert isinstance(result, Fe3EvolutionResult)
     assert result.n_Fe3_melt == 1.0e20
@@ -88,7 +75,7 @@ def test_advance_fe_reservoirs_log10_fO2_surface_sensible():
         n_Fe2_melt_prev=9.0e20,
         n_Fe3_solid_cell_prev=np.zeros(n),
         n_Fe2_solid_cell_prev=np.zeros(n),
-        mantle_comp=_MockMantleComp(),
+        mantle_comp=MantleComp(),
     )
     assert np.isfinite(result.log10_fO2_surface)
     assert -30 < result.log10_fO2_surface < 10

@@ -156,20 +156,37 @@ def advance_fe_reservoirs(
     phi_max = (
         float(np.max(melt_fraction_profile)) if n_nodes > 0 else 0.0
     )
-    try:
-        log10_fO2_surf = log10_fO2_mantle(
-            Fe3_frac=fe3_frac if fe3_frac > 0 else 0.02,
-            temperature=T_surf,
-            pressure=P_surf,
-            phi_max=phi_max,
-            mantle_comp=mantle_comp,
-            oxybarometer=oxybarometer,
-            phi_crit=phi_crit,
+    # Stub cannot resolve a Schaefer Eq 13 warm-start when the mantle
+    # is fully reduced (no Fe³⁺ in melt). Rather than silently
+    # oxidising to Fe3_frac=0.02 (which happens to be Earth BSE and
+    # would import ~5 log units of spurious fO2), we return
+    # NaN — downstream callers should treat NaN as "warm start
+    # undefined, solver must widen bracket" in Commit C.
+    if fe3_frac <= 0:
+        log.warning(
+            'advance_fe_reservoirs stub: Fe3_frac=%.3e; warm-start fO2 '
+            'is undefined for fully reduced mantle. Returning NaN; '
+            'caller (redox solver) should use previous ΔIW or widen '
+            'bracket.', fe3_frac,
         )
-    except (NotImplementedError, ValueError) as exc:
-        log.warning('advance_fe_reservoirs stub: log10_fO2_mantle failed (%s); '
-                    'defaulting to 0.0', exc)
-        log10_fO2_surf = 0.0
+        log10_fO2_surf = float('nan')
+    else:
+        try:
+            log10_fO2_surf = log10_fO2_mantle(
+                Fe3_frac=fe3_frac,
+                temperature=T_surf,
+                pressure=P_surf,
+                phi_max=phi_max,
+                mantle_comp=mantle_comp,
+                oxybarometer=oxybarometer,
+                phi_crit=phi_crit,
+            )
+        except (NotImplementedError, ValueError) as exc:
+            log.warning(
+                'advance_fe_reservoirs stub: log10_fO2_mantle failed '
+                '(%s); returning NaN.', exc,
+            )
+            log10_fO2_surf = float('nan')
 
     return Fe3EvolutionResult(
         n_Fe3_melt=n_Fe3_melt_prev,

@@ -644,7 +644,13 @@ def GetHelpfileKeys():
         'R_budget_mantle',  # mantle redox budget [mol e-]
         'R_budget_core',    # core redox budget [mol e-]
         'R_budget_total',   # sum over reservoirs; conserved quantity
-        'R_escaped_cum',    # cumulative mol e- removed via ZEPHYRUS
+        'R_escaped_cum',    # cumulative signed ΔR_atm impulse from
+                            # escape over the whole run [mol e-].
+                            # NOT the signed "mol e- removed" — the
+                            # sign follows the debit rule (+ for
+                            # reducing-species escape, - for
+                            # oxidising-species escape). See
+                            # redox/conservation.py::debit_escape.
         'redox_conservation_residual',  # |ΔR_total − ΔR_escape − ΔR_dispro|
                             # per step; soft-fail ceiling at redox.soft_tol
         'redox_solver_fallback_count',  # cumulative Brent failures

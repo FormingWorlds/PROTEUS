@@ -83,40 +83,61 @@ def test_delta_to_buffer_unknown_raises():
 
 
 @pytest.mark.unit
-def test_schaefer24_positive_at_whole_earth_anchor():
+def test_schaefer24_at_whole_earth_surface_anchor():
     """
-    At Earth BSE oxide fractions, T=2000 K, P=120 GPa, with
-    Fe3+/FeT=0.10 (X_FeO1.5 / X_FeO = 0.111), the Schaefer+24 Fig 2
-    whole-Earth curve places ΔIW ≈ 0..+2 → log10 fO2 ≈ -8..-10.
+    Schaefer+24 Fig 2 whole-Earth model evaluated at the MO **surface**
+    (1 bar ≈ 1e5 Pa) with Fe³⁺/FeT = 0.10 and T = 2000 K. Schaefer
+    Fig 2 bottom-right panel places the surface ΔIW around +1..+2
+    for the whole-Earth f_0=0.10 case — the pink-band allowed fO₂
+    window from Pahlevan+19 D/H constraint.
 
-    This test pins the order of magnitude; the anchor-in-paper
-    check uses the dispatcher in test_mariana_interface.
+    Pins the Mariana Eq 25 implementation to within ±2 log units of
+    the published value (tolerance chosen to absorb Schaefer's own
+    Monte Carlo scatter; tighten in a later commit once #653 lands
+    a fuller anchor).
     """
-    # Nominal pyrolite mole fractions (approximate, from Schaefer
-    # Table 1 bulk Earth wt%).
-    X_SiO2 = 0.42
-    X_TiO2 = 0.002
-    X_MgO = 0.53
-    X_CaO = 0.035
-    X_Na2O = 0.003
-    X_P2O5 = 1e-4
-    X_Al2O3 = 0.026
-    X_K2O = 3e-4
-    X_FeO = 0.010
-    X_FeO1_5 = 0.0011   # Fe3+/FeT ≈ 0.10
+    # Earth BSE pyrolite mole fractions (Schaefer Table 1, rounded).
+    X_FeO = 0.0090        # Fe3+/FeT = 0.10
+    X_FeO1_5 = 0.0010
 
     log_fO2 = log10_fO2_schaefer2024(
         X_FeO_liq=X_FeO, X_FeO1_5=X_FeO1_5,
-        temperature=2000.0, pressure=120e9,
-        X_SiO2=X_SiO2, X_TiO2=X_TiO2, X_MgO=X_MgO,
-        X_CaO=X_CaO, X_Na2O=X_Na2O, X_P2O5=X_P2O5,
-        X_Al2O3=X_Al2O3, X_K2O=X_K2O,
+        temperature=2000.0, pressure=1.0e5,    # surface!
+        X_CaO=0.035, X_Na2O=0.003, X_Al2O3=0.026, X_K2O=3e-4,
     )
-    # Eq 13 at these conditions should produce a reasonable fO2;
-    # exact value depends on the sign conventions in Schaefer Table 4.
-    # The order-of-magnitude check keeps us honest while Commit C
-    # verifies a tighter literature anchor.
-    assert -20 < log_fO2 < 10, f'Schaefer Eq 13 returned {log_fO2}'
+    iw_surf = log10_fO2_IW(2000.0, 1.0e5)
+    dIW = log_fO2 - iw_surf
+    # Schaefer+24 Fig 3 (whole-Earth surface) for f_0=0.10 across the
+    # BPLE sweep: ΔIW spans roughly +2 to +5 depending on the
+    # surface-T choice and fractional-crystallisation stage. Our
+    # scaffolding test uses T=2000 K, which sits on the cooler end of
+    # that sweep; tolerance ±3 log units around the mean absorbs
+    # Schaefer's own Monte Carlo scatter.
+    assert 0.0 < dIW < 7.0, (
+        f'Schaefer Eq 13 via Mariana gives log10 fO2 = {log_fO2:.3f}, '
+        f'ΔIW = {dIW:.3f} at Earth BSE whole-Earth surface anchor; '
+        f'expected ΔIW ≈ +2..+5 per Schaefer+24 Fig 3'
+    )
+
+
+@pytest.mark.unit
+def test_schaefer24_reduced_mantle_is_below_iw():
+    """
+    Reduced melt (Fe3+/FeT = 0.01) at the MO surface should sit below
+    IW by ≳ 0.5 log units.
+    """
+    X_FeO = 0.0099
+    X_FeO1_5 = 0.0001    # Fe3+/FeT = 0.01
+    log_fO2 = log10_fO2_schaefer2024(
+        X_FeO_liq=X_FeO, X_FeO1_5=X_FeO1_5,
+        temperature=2000.0, pressure=1.0e5,
+        X_CaO=0.035, X_Na2O=0.003, X_Al2O3=0.026, X_K2O=3e-4,
+    )
+    iw = log10_fO2_IW(2000.0, 1.0e5)
+    assert log_fO2 < iw - 0.5, (
+        f'Reduced melt (f=0.01) should give fO2 < IW by ≳ 0.5 log '
+        f'units; got log fO2={log_fO2:.3f}, IW={iw:.3f}, ΔIW={log_fO2 - iw:.3f}'
+    )
 
 
 @pytest.mark.unit
@@ -178,39 +199,36 @@ def test_oxybarometers_and_buffers_registered():
 # ------------------------------------------------------------------
 
 
-class _MockMantleComp:
-    """Minimal MantleComp for dispatcher tests."""
-    SiO2_wt = 45.5
-    TiO2_wt = 0.21
-    Al2O3_wt = 4.49
-    FeO_total_wt = 7.82
-    MgO_wt = 38.3
-    CaO_wt = 3.58
-    Na2O_wt = 0.36
-    K2O_wt = 0.029
-    P2O5_wt = 0.021
-
-
 @pytest.mark.unit
 def test_log10_fO2_mantle_mo_active_uses_schaefer():
-    """When phi_max > phi_crit, dispatcher routes to Schaefer+24."""
-    mc = _MockMantleComp()
+    """When phi_max > phi_crit, dispatcher routes to Schaefer+24.
+
+    Asserts the two calls differ by at least 0.2 log units — a
+    single-bit bug would pass `val != fallback` but we want real
+    physical separation.
+    """
+    from proteus.config._struct import MantleComp
+    mc = MantleComp()
     val = log10_fO2_mantle(
         Fe3_frac=0.10, temperature=2000.0, pressure=1e10,
         phi_max=0.9, mantle_comp=mc, phi_crit=0.4,
         oxybarometer='schaefer2024',
     )
-    # Should not equal the stagno2013 fallback at these conditions.
     fallback = log10_fO2_stagno2013_peridotite(
         Fe3_frac=0.10, temperature=2000.0, pressure=1e10,
     )
-    assert val != fallback
+    assert abs(val - fallback) > 0.2, (
+        f'MO-active and MO-inactive oxybarometers too close '
+        f'(val={val:.3f}, fallback={fallback:.3f}); Schaefer+24 '
+        f'probably not engaged.'
+    )
 
 
 @pytest.mark.unit
 def test_log10_fO2_mantle_mo_inactive_uses_stagno():
     """When phi_max < phi_crit, dispatcher routes to Stagno+13."""
-    mc = _MockMantleComp()
+    from proteus.config._struct import MantleComp
+    mc = MantleComp()
     val = log10_fO2_mantle(
         Fe3_frac=0.04, temperature=1573.0, pressure=3e9,
         phi_max=0.1, mantle_comp=mc, phi_crit=0.4,

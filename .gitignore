@@ -25,6 +25,7 @@ slurm*.out
 *.pkl
 
 # Development installations
+data
 fwl_data
 FWL_DATA
 socrates
