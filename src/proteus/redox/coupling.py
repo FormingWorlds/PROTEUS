@@ -44,6 +44,99 @@ def record_mode_active(hf_row: dict, mode: str) -> None:
     hf_row['redox_mode_active'] = float(_MODE_ENUM.get(mode, 0))
 
 
+def seed_composition_fO2(
+    hf_row: dict,
+    config,
+    mesh_state=None,
+) -> float:
+    """
+    Seed `hf_row['fO2_shift_IW']` from the mantle composition.
+
+    Plan v6 §3.6: in `redox.mode='composition'`, the initial ΔIW is
+    NOT taken from `config.outgas.fO2_shift_IW`; instead it is derived
+    from `config.interior_struct.mantle_comp` via the chosen
+    oxybarometer. After this one-shot seed, subsequent steps solve
+    self-consistently (same as `fO2_init`).
+
+    Parameters
+    ----------
+    hf_row
+        Helpfile row; `fO2_shift_IW` is overwritten.
+    config
+        Live Config instance; reads `redox.oxybarometer`,
+        `redox.phi_crit`, `interior_struct.mantle_comp`.
+    mesh_state
+        Optional Aragog mesh for (P_surf, T_surf, phi_max); when None,
+        fall back to (1 bar, 2000 K, phi_max=1.0) representative of a
+        fully-molten magma ocean surface.
+
+    Returns
+    -------
+    float
+        The ΔIW scalar that was committed to `hf_row['fO2_shift_IW']`.
+        NaN if the oxybarometer evaluation failed; callers should fall
+        back to the `config.outgas.fO2_shift_IW` seed in that case.
+    """
+    from proteus.redox.buffers import log10_fO2_IW, log10_fO2_mantle
+
+    mantle_comp = getattr(
+        getattr(config, 'interior_struct', None), 'mantle_comp', None,
+    )
+    if mantle_comp is None:
+        log.warning(
+            'seed_composition_fO2: no mantle_comp on config; '
+            'falling back to config.outgas.fO2_shift_IW seed',
+        )
+        return float('nan')
+
+    Fe3_frac = float(getattr(mantle_comp, 'Fe3_frac', 0.10))
+    oxybarometer = getattr(config.redox, 'oxybarometer', 'schaefer2024')
+    phi_crit = float(getattr(config.redox, 'phi_crit', 0.4))
+
+    if mesh_state is not None and mesh_state.pressure_profile.size > 0:
+        T_surf = float(mesh_state.temperature_profile[-1])
+        P_surf = float(mesh_state.pressure_profile[-1])
+        phi_max = float(mesh_state.melt_fraction_profile.max())
+    else:
+        # Representative MO surface: 1 bar, 2000 K, fully molten.
+        T_surf, P_surf, phi_max = 2000.0, 1.0e5, 1.0
+
+    try:
+        log10_fO2 = log10_fO2_mantle(
+            Fe3_frac=Fe3_frac,
+            temperature=T_surf,
+            pressure=P_surf,
+            phi_max=phi_max,
+            mantle_comp=mantle_comp,
+            oxybarometer=oxybarometer,
+            phi_crit=phi_crit,
+        )
+    except (NotImplementedError, ValueError) as exc:
+        log.warning(
+            'seed_composition_fO2: %s failed (%s); returning NaN',
+            oxybarometer, exc,
+        )
+        return float('nan')
+
+    iw_at_surf = log10_fO2_IW(T_surf, P_surf)
+    delta_IW = log10_fO2 - iw_at_surf
+
+    if not math.isfinite(delta_IW):
+        log.warning(
+            'seed_composition_fO2: non-finite ΔIW from %s; returning NaN',
+            oxybarometer,
+        )
+        return float('nan')
+
+    hf_row['fO2_shift_IW'] = float(delta_IW)
+    log.info(
+        'Redox composition-mode IC: ΔIW=%.3f from %s @ T=%.0f K P=%.2e Pa '
+        '(Fe3_frac=%.3f, phi_max=%.2f)',
+        delta_IW, oxybarometer, T_surf, P_surf, Fe3_frac, phi_max,
+    )
+    return float(delta_IW)
+
+
 def _write_passive_diagnostics(hf_row: dict, mantle_comp) -> None:
     """
     Populate R_budget_* + Fe3_frac diagnostic columns in any mode

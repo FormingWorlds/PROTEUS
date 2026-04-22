@@ -671,12 +671,37 @@ class Proteus:
                 )
                 if redox_mode != 'static' and in_init:
                     # Early-iteration short-circuit.
-                    self.hf_row['fO2_shift_IW'] = float(
-                        self.config.outgas.fO2_shift_IW
-                    )
+                    # In `composition` mode, try to seed fO2 from the
+                    # mantle composition via the chosen oxybarometer
+                    # (plan v6 §3.6). If the seed returns NaN (oxybaro
+                    # failure, missing MantleComp), fall back to the
+                    # pinned config.outgas.fO2_shift_IW.
                     _mc = getattr(
                         self.config.interior_struct, 'mantle_comp', None,
                     )
+                    if redox_mode == 'composition':
+                        from proteus.interior_energetics.aragog import (
+                            get_mesh_state_for_redox,
+                        )
+                        from proteus.redox.coupling import (
+                            seed_composition_fO2,
+                        )
+                        _ms = None
+                        if getattr(
+                            self.config.interior_energetics, 'module', None,
+                        ) == 'aragog':
+                            _ms = get_mesh_state_for_redox(self.interior_o)
+                        delta_iw = seed_composition_fO2(
+                            self.hf_row, self.config, mesh_state=_ms,
+                        )
+                        if not (delta_iw == delta_iw):    # NaN check
+                            self.hf_row['fO2_shift_IW'] = float(
+                                self.config.outgas.fO2_shift_IW
+                            )
+                    else:
+                        self.hf_row['fO2_shift_IW'] = float(
+                            self.config.outgas.fO2_shift_IW
+                        )
                     _write_passive_diagnostics(self.hf_row, _mc)
                 else:
                     from proteus.escape.wrapper import (
