@@ -57,6 +57,7 @@ def _canonical_hf_row() -> dict:
     }
 
 
+@pytest.mark.unit
 def test_populate_O_kg_reservoir_sum_invariant() -> None:
     """
     After populate_O_kg, the reservoir-sum invariant must hold:
@@ -77,6 +78,7 @@ def test_populate_O_kg_reservoir_sum_invariant() -> None:
     )
 
 
+@pytest.mark.unit
 def test_populate_O_kg_from_h2o_atm_only() -> None:
     """
     Sanity: 1e20 mol H2O -> 1e20 mol O in atm -> ~1.6e21 kg O.
@@ -104,6 +106,7 @@ def test_populate_O_kg_from_h2o_atm_only() -> None:
     assert abs(hf_row['O_kg_atm'] - expected_O_kg) < 1.0e-9 * expected_O_kg
 
 
+@pytest.mark.unit
 def test_M_ele_excl_O_helper() -> None:
     """M_ele_excl_O returns the pre-#57 non-O element sum."""
     from proteus.utils.coupler import M_ele_excl_O
@@ -116,6 +119,7 @@ def test_M_ele_excl_O_helper() -> None:
     assert non_O == pytest.approx(expected, rel=1e-12)
 
 
+@pytest.mark.unit
 def test_populate_O_kg_handles_kg_only_backend() -> None:
     """
     Atmodeller writes `{species}_kg_atm` (no `_mol_atm`). populate_O_kg
@@ -143,6 +147,7 @@ def test_populate_O_kg_handles_kg_only_backend() -> None:
     assert abs(hf_row['O_kg_atm'] - expected_O_kg) < 1.0e-6 * expected_O_kg
 
 
+@pytest.mark.unit
 def test_O_skip_site_count_locked() -> None:
     """
     Plan v6 §3.8 promised 8 O-skip sites removed (D + D.1 cumulative).

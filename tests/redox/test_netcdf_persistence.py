@@ -37,6 +37,7 @@ def _fake_solver_output(n_stag: int = 10, n_basic: int = 11):
     return out
 
 
+@pytest.mark.unit
 def test_write_ncdf_without_redox(tmp_path: Path) -> None:
     """Baseline: no redox_per_cell → NetCDF has core vars only."""
     from proteus.interior_energetics.aragog import AragogRunner
@@ -64,6 +65,7 @@ def test_write_ncdf_without_redox(tmp_path: Path) -> None:
         ds.close()
 
 
+@pytest.mark.unit
 def test_write_ncdf_with_redox(tmp_path: Path) -> None:
     """Redox_per_cell populates three new staggered-dim vars with right units."""
     from proteus.interior_energetics.aragog import AragogRunner
@@ -108,6 +110,7 @@ def test_write_ncdf_with_redox(tmp_path: Path) -> None:
         ds.close()
 
 
+@pytest.mark.unit
 def test_write_ncdf_shape_mismatch_raises(tmp_path: Path) -> None:
     """Wrong array length is a hard error, not silent truncation."""
     from proteus.interior_energetics.aragog import AragogRunner
@@ -130,6 +133,7 @@ def test_write_ncdf_shape_mismatch_raises(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.unit
 def test_write_ncdf_partial_redox_dict(tmp_path: Path) -> None:
     """Missing keys in redox_per_cell skip those vars without erroring."""
     from proteus.interior_energetics.aragog import AragogRunner
@@ -155,6 +159,7 @@ def test_write_ncdf_partial_redox_dict(tmp_path: Path) -> None:
         ds.close()
 
 
+@pytest.mark.unit
 def test_coupling_populates_redox_per_cell_in_fO2_init_mode(tmp_path: Path) -> None:
     """
     run_redox_step must stash `_redox_per_cell` on hf_row when the
