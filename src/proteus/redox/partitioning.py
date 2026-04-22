@@ -151,8 +151,10 @@ def advance_fe_reservoirs(
     # call with the proper dispatcher.
     from proteus.redox.buffers import log10_fO2_mantle
 
-    T_surf = float(temperature_profile[0]) if n_nodes > 0 else 0.0
-    P_surf = float(pressure_profile[0]) if n_nodes > 0 else 0.0
+    # Aragog staggered arrays are ordered CMB → surface; the surface
+    # is at index -1, not 0 (round-6 review N-2 fix).
+    T_surf = float(temperature_profile[-1]) if n_nodes > 0 else 0.0
+    P_surf = float(pressure_profile[-1]) if n_nodes > 0 else 0.0
     phi_max = (
         float(np.max(melt_fraction_profile)) if n_nodes > 0 else 0.0
     )

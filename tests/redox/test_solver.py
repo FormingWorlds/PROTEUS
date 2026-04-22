@@ -37,6 +37,17 @@ class _FakeOutgasConfig:
 
 
 def _base_hf_row() -> dict:
+    """
+    Synthetic hf_row for solver fixtures.
+
+    Populates R_budget_total consistent with the zero-core / zero-atm
+    / zero-mantle fixture so the solver's R_target matches the probe
+    residual at convergence. Round-6 review N-4: earlier fixtures
+    set `Fe_kg_core=1.94e24` but forgot `R_budget_total`; the solver's
+    fallback reads `R_total_prev=0` from the stored column but the
+    probe's `redox_budget_core` evaluates to ~-6.95e25, producing no
+    sign change in the bracket and silent fallback on every test.
+    """
     from proteus.redox.budget import RB_COEF
     row = {f'{s}_mol_atm': 0.0 for s in RB_COEF}
     row.update({f'{s}_mol_liquid': 0.0 for s in RB_COEF})
@@ -44,10 +55,13 @@ def _base_hf_row() -> dict:
         'n_Fe3_melt': 0.0, 'n_Fe2_melt': 0.0,
         'n_Fe3_solid_total': 0.0, 'n_Fe2_solid_total': 0.0,
         'n_Fe0_solid_total': 0.0,
-        'Fe_kg_core': 1.94e24, 'H_kg_core': 0.0,
+        # Zero-out the core so R_core = 0; consistent with
+        # R_budget_total = 0 below.
+        'Fe_kg_core': 0.0, 'H_kg_core': 0.0,
         'O_kg_core': 0.0, 'Si_kg_core': 0.0,
         'R_budget_atm': 0.0, 'R_escaped_cum': 0.0,
         'R_budget_mantle': 0.0, 'R_budget_core': 0.0,
+        'R_budget_total': 0.0,
         'H_kg_total': 1e20, 'C_kg_total': 1e19,
         'N_kg_total': 1e18, 'S_kg_total': 1e18,
         'redox_solver_fallback_count': 0.0,
@@ -129,10 +143,15 @@ def test_solver_converges_on_monotonic_residual():
         outgas_callable=fake_outgas,
     )
     assert isinstance(result, SolverResult)
-    if not result.fell_back_to_previous:
-        assert result.converged
-        assert result.delta_IW == pytest.approx(2.0, abs=1e-3)
-        assert row['fO2_shift_IW'] == pytest.approx(2.0, abs=1e-3)
+    # Round-6 fix: remove the fallback-guard that hid failures.
+    # Brent must converge on this synthetic monotonic residual.
+    assert not result.fell_back_to_previous, (
+        'Solver should converge on synthetic monotonic residual; '
+        'fallback indicates a residual-target bug.'
+    )
+    assert result.converged
+    assert result.delta_IW == pytest.approx(2.0, abs=1e-3)
+    assert row['fO2_shift_IW'] == pytest.approx(2.0, abs=1e-3)
 
 
 @pytest.mark.unit
@@ -181,12 +200,13 @@ def test_solver_widens_bracket_on_initial_failure():
         row, row_prev, {}, config,
         outgas_callable=fake_outgas,
     )
-    if not result.fell_back_to_previous:
-        assert result.converged
-        assert result.widened_bracket, (
-            'Expected bracket widening to engage for root outside '
-            '±halfwidth'
-        )
+    # Round-6 fix: remove the fallback-guard that hid test passes.
+    assert not result.fell_back_to_previous
+    assert result.converged
+    assert result.widened_bracket, (
+        'Expected bracket widening to engage for root outside '
+        '±halfwidth'
+    )
 
 
 @pytest.mark.unit
@@ -211,8 +231,9 @@ def test_solver_warm_start_from_mariana():
         row, row_prev, {}, config,
         outgas_callable=fake_outgas,
     )
-    if not result.fell_back_to_previous:
-        assert abs(result.delta_IW - 3.2) < 0.1
+    # Round-6 fix: remove fallback-guard that hid passes.
+    assert not result.fell_back_to_previous
+    assert abs(result.delta_IW - 3.2) < 0.1
 
 
 @pytest.mark.unit

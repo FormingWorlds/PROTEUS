@@ -157,8 +157,13 @@ def run_redox_step(
         if math.isnan(log10_fO2_raw) or mesh_state.pressure_profile.size == 0:
             hf_row['redox_delta_IW_suggested_by_mariana'] = float('nan')
         else:
-            T_surf = float(mesh_state.temperature_profile[0])
-            P_surf = float(mesh_state.pressure_profile[0])
+            # Aragog staggered nodes run CMB → surface; the surface is
+            # at index -1, not 0 (round-6 review N-2 fix). Using [0]
+            # would evaluate the IW buffer at ~130 GPa / ~4000 K
+            # instead of ~1 bar / ~2000 K, pushing ΔIW off by many
+            # log units.
+            T_surf = float(mesh_state.temperature_profile[-1])
+            P_surf = float(mesh_state.pressure_profile[-1])
             iw_at_surf = log10_fO2_IW(T_surf, P_surf)
             hf_row['redox_delta_IW_suggested_by_mariana'] = (
                 log10_fO2_raw - iw_at_surf
@@ -174,10 +179,20 @@ def run_redox_step(
     # §3.3 + round-5 physics review).
     solve_fO2(hf_row, hf_row_prev, dirs, config, mesh_state=mesh_state)
 
-    # Refresh the R_budget_* diagnostics after the solver writes the
-    # new fO2_shift_IW (downstream run_outgassing will be called with
-    # the new ΔIW; these diagnostics reflect pre-commit state).
-    _write_passive_diagnostics(hf_row, mantle_comp)
+    # NB: the previous C/C.1 implementation called
+    # _write_passive_diagnostics a second time here. Round-6 review
+    # caught that the second call recomputes R_budget_atm from
+    # `{species}_mol_atm` keys — which were NEVER modified by
+    # debit_escape (escape only touched `R_budget_atm` directly) —
+    # silently reverting the escape debit. The second call is removed.
+    # `R_budget_total` is recomputed below to stay in sync with the
+    # debited `R_budget_atm` and the frozen `R_budget_mantle` /
+    # `R_budget_core`.
+    hf_row['R_budget_total'] = (
+        float(hf_row.get('R_budget_atm', 0.0))
+        + float(hf_row.get('R_budget_mantle', 0.0))
+        + float(hf_row.get('R_budget_core', 0.0))
+    )
 
     # Step 5: soft-assert conservation.
     soft_tol = float(getattr(config.redox, 'soft_conservation_tol', 1e-3))

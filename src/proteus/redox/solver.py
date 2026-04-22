@@ -129,7 +129,17 @@ def solve_fO2(
             + float(hf_row_prev.get('R_budget_core', 0.0))
         )
     dR_dispro = float(hf_row.get('dm_Fe0_to_core_this_step_as_RB', 0.0))
-    R_target = R_total_prev - R_escape_this_step - dR_dispro
+    # Conservation: R_total_new = R_total_prev + ΔR_atm_escape - ΔR_dispro.
+    # `R_escape_this_step` is the cumulative delta in R_atm stored by
+    # `debit_escape` (positive for reducer-species escape since R_atm
+    # rises when reducers leave). `ΔR_dispro` is the RB transferred
+    # from mantle+atm to core by Fe disproportionation (positive =
+    # mantle loses reducing power to core). Both appear with opposite
+    # signs in the target. Round-6 review found earlier C/C.1
+    # implementations had a sign error (subtracting instead of adding
+    # R_escape_this_step), driving Brent to the wrong ΔIW by ~4·Δn
+    # every step with escape active.
+    R_target = R_total_prev + R_escape_this_step - dR_dispro
 
     mantle_comp = getattr(
         getattr(config, 'interior_struct', None), 'mantle_comp', None,
