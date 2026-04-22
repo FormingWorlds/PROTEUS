@@ -1348,11 +1348,16 @@ class AragogRunner:
 
         # Write output to a file (skipped when dt_write suppresses this step)
         if write_data:
+            # Per-cell redox state populated by redox.partitioning at the
+            # previous main-loop step (plan v6 §3.1: run_redox_step runs
+            # AFTER run_interior, so at iter N the NetCDF carries the
+            # Fe/fO2 profile from iter N-1). Missing on iter 0.
             self._write_output_ncdf(
                 dirs['output'], sim_time, out,
                 write_diagnostics=getattr(
                     self._config.interior_energetics, 'write_flux_diagnostics', False
                 ),
+                redox_per_cell=hf_row.get('_redox_per_cell'),
             )
 
         return sim_time, output
@@ -1596,6 +1601,7 @@ class AragogRunner:
     def _write_output_ncdf(
         output_dir: str, time: float, out: SolverOutput,
         write_diagnostics: bool = False,
+        redox_per_cell: 'dict | None' = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
 
@@ -1605,6 +1611,13 @@ class AragogRunner:
             When True, append per-component flux decomposition and
             basic-node state to the NetCDF. See
             ``config.interior_energetics.write_flux_diagnostics``.
+        redox_per_cell : dict | None
+            Per-staggered-cell redox state from `redox.partitioning`
+            (#57, plan v6 §3.7). Expected keys (each np.ndarray of length
+            n_stag): ``n_Fe3_solid_cell`` [mol], ``n_Fe2_solid_cell``
+            [mol], ``log10_fO2_profile`` [log10 bar]. When None or empty
+            (e.g. iter 0 before any redox step, or stub mode with all
+            reservoirs zero), no redox variables are written.
         """
         fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
         ds = nc.Dataset(fpath, mode='w')
@@ -1644,6 +1657,26 @@ class AragogRunner:
             _add('T_basic_b', out.T_basic, 'basic', 'K')
             _add('cp_basic_b', out.cp_basic, 'basic', 'J kg-1 K-1')
             _add('rho_basic_b', out.rho_basic, 'basic', 'kg m-3')
+
+        # Per-cell redox state (#57, plan v6 §3.7). Silently no-op when
+        # redox_per_cell is None (iter 0, or no redox step yet). Length
+        # mismatch with n_stag raises — better than silently truncating.
+        if redox_per_cell:
+            for key, units in (
+                ('n_Fe3_solid_cell', 'mol'),
+                ('n_Fe2_solid_cell', 'mol'),
+                ('log10_fO2_profile', 'log10 bar'),
+            ):
+                arr = redox_per_cell.get(key)
+                if arr is None:
+                    continue
+                arr = np.asarray(arr)
+                if arr.shape != (n_stag,):
+                    raise ValueError(
+                        f'redox_per_cell[{key!r}] has shape {arr.shape}, '
+                        f'expected ({n_stag},)'
+                    )
+                _add(key, arr, 'staggered', units)
 
         ds.createVariable('time', np.float64)
         ds['time'][0] = float(time)

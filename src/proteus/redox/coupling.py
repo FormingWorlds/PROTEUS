@@ -31,6 +31,8 @@ import logging
 import math
 from typing import Optional
 
+import numpy as np
+
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -148,6 +150,21 @@ def run_redox_step(
             float(hf_row.get('dm_Fe0_to_core_cum', 0.0))
             + fe_result.dm_Fe0_to_core
         )
+        # Stash per-cell Fe / fO2 arrays for the NEXT Aragog NetCDF
+        # write (plan v6 §3.7, E.1). Main-loop order is run_interior
+        # → run_redox_step, so the snapshot at iter N carries the
+        # reservoir state computed at the end of iter N-1. Stub-bulk
+        # today (zeros + NaN); wired through to real per-cell arrays
+        # once #653 (Mariana) lands. Shape matches the mesh.
+        n_stag = mesh_state.pressure_profile.size
+        log10_fO2_profile = fe_result.log10_fO2_profile
+        if log10_fO2_profile is None:
+            log10_fO2_profile = np.full(n_stag, np.nan)
+        hf_row['_redox_per_cell'] = {
+            'n_Fe3_solid_cell': np.asarray(fe_result.n_Fe3_solid_cell),
+            'n_Fe2_solid_cell': np.asarray(fe_result.n_Fe2_solid_cell),
+            'log10_fO2_profile': np.asarray(log10_fO2_profile),
+        }
         # Convert Mariana's log10 fO2 to ΔIW at the melt surface so the
         # solver's warm-start has the right units. The key name
         # `redox_delta_IW_suggested_by_mariana` is intentionally ΔIW,
