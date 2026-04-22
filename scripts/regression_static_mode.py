@@ -88,6 +88,24 @@ def main() -> int:
             failures.append(
                 f'fO2_shift_IW NOT bit-identical; max|delta| = {max_abs:.3e}'
             )
+    elif 'fO2_shift_IW' in br.columns:
+        # Baseline predates the fO2_shift_IW helpfile-column addition
+        # (it lives only in config on pre-redox PROTEUS). In that case
+        # assert branch fO2 is CONSTANT (= static-mode contract: the
+        # column should never move when mode='static'). This is the
+        # best we can check without re-reading config.
+        vals = br['fO2_shift_IW'].values
+        if len(set(vals)) > 1:
+            failures.append(
+                'fO2_shift_IW varies on branch under static mode; '
+                f'unique values = {sorted(set(vals))[:5]}'
+            )
+        else:
+            print(
+                f'fO2_shift_IW constant on branch: {vals[0]:.6f} '
+                '(baseline lacks this column; constancy is the '
+                'best static-mode check we can do here)'
+            )
 
     shared_cols = [c for c in base.columns
                    if c in br.columns
