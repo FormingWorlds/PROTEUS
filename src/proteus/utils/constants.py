@@ -138,6 +138,22 @@ element_mmw = {
     'U': 2.380280000e-01,
 }  # noqa
 
+# Oxide molar masses [kg mol-1], derived from element_mmw above.
+# Used by src/proteus/redox/* (#57) to convert MantleComp wt% into
+# mole quantities for redox-budget bookkeeping.
+oxide_mmw = {
+    'FeO':    element_mmw['Fe']       + element_mmw['O'],      # 71.844e-3
+    'Fe2O3':  2 * element_mmw['Fe']   + 3 * element_mmw['O'],  # 159.687e-3
+    'MgO':    element_mmw['Mg']       + element_mmw['O'],      # 40.304e-3
+    'SiO2':   element_mmw['Si']       + 2 * element_mmw['O'],  # 60.083e-3
+    'TiO2':   element_mmw['Ti']       + 2 * element_mmw['O'],  # 79.865e-3
+    'Al2O3':  2 * element_mmw['Al']   + 3 * element_mmw['O'],  # 101.959e-3
+    'CaO':    element_mmw['Ca']       + element_mmw['O'],      # 56.077e-3
+    'Na2O':   2 * element_mmw['Na']   + element_mmw['O'],      # 61.977e-3
+    'K2O':    2 * element_mmw['K']    + element_mmw['O'],      # 94.195e-3
+    'P2O5':   2 * element_mmw['P']    + 5 * element_mmw['O'],  # 141.940e-3
+}
+
 ## Constant from Zephyrus
 ergcm2stoWm2 = 1e-3  # convert [erg s-1 cm-2] to [W m-2]
 s2yr = 1 / (3600 * 24 * 365)  # convert [seconds]      to [years]

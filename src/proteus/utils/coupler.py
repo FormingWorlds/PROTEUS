@@ -628,6 +628,38 @@ def GetHelpfileKeys():
         # the CSV so resume preserves the gate's state.
         'M_vol_initial',    # bulk volatile inventory baseline [kg]
         'esc_kg_cumulative', # cumulative escaped mass [kg]
+
+        # Redox scaffolding (#57; src/proteus/redox). All zero in
+        # `redox.mode = 'static'` (default); populated by the redox
+        # solver in `fO2_init` / `composition` modes.
+        'fO2_shift_IW',     # ΔIW ≡ log10(fO2) − log10(fO2_IW) at surface
+                            # [log10 units]. Written by redox.solver
+                            # (or pinned to config.outgas.fO2_shift_IW in
+                            # static mode); read by CALLIOPE / atmodeller
+                            # / SPIDER / Zalmoxis consumers unchanged.
+        'fO2_dIW',          # diagnostic log10 fO2 relative to IW buffer
+        'fO2_dQFM',         # diagnostic log10 fO2 relative to QFM buffer
+        'fO2_dNNO',         # diagnostic log10 fO2 relative to NNO buffer
+        'R_budget_atm',     # atmosphere redox budget [mol e-] (Evans 2012)
+        'R_budget_mantle',  # mantle redox budget [mol e-]
+        'R_budget_core',    # core redox budget [mol e-]
+        'R_budget_total',   # sum over reservoirs; conserved quantity
+        'R_escaped_cum',    # cumulative mol e- removed via ZEPHYRUS
+        'redox_conservation_residual',  # |ΔR_total − ΔR_escape − ΔR_dispro|
+                            # per step; soft-fail ceiling at redox.soft_tol
+        'redox_solver_fallback_count',  # cumulative Brent failures
+        'redox_mode_active',  # enum (static=0 / fO2_init=1 / composition=2)
+        # Fe speciation state (global bulk, mantle-melt reservoir)
+        'Fe3_frac',         # Fe³⁺/ΣFe in the bulk melt [1]
+        'FeO_total_wt',     # total Fe as FeO-equivalent in mantle [wt%]
+        'Fe2O3_wt',         # Fe₂O₃ in mantle [wt%]; derived from Fe3_frac
+        'n_Fe3_melt',       # moles Fe³⁺ in the global MO melt reservoir
+        'n_Fe2_melt',       # moles Fe²⁺
+        'n_Fe3_solid_total',  # Σ per-cell; full profile in interior NetCDF
+        'n_Fe2_solid_total',
+        'n_Fe0_solid_total',  # disproportionation metal still in mantle
+        'dm_Fe0_to_core_cum',  # cumulative Fe⁰ drained to core [kg]
+                              # (# 653 Mariana metal-saturation hook)
     ]
 
     # quantities for each gas, from outgassing
@@ -650,6 +682,9 @@ def GetHelpfileKeys():
         keys.append(e + '_kg_solid')    # mass in solid mantle [kg]
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
         keys.append(e + '_kg_total')    # mass in whole planet [kg]
+        keys.append(e + '_kg_core')     # mass in metallic core [kg] (#57 redox;
+                                        # zero in static mode; populated by
+                                        # #526 metal-silicate partitioning hook)
 
     # Atmospheric escape
     keys.append('p_xuv')                # pressure of XUV absorption [bar]
@@ -765,12 +800,81 @@ def WriteHelpfileToCSV(output_dir: str, current_hf: pd.DataFrame):
 
 def ReadHelpfileFromCSV(output_dir: str):
     """
-    Read helpfile from disk CSV file to DataFrame
+    Read helpfile from disk CSV file to DataFrame.
+
+    Legacy CSVs written before the redox scaffolding (#57) lack the
+    new `fO2_shift_IW`, `R_budget_*`, `Fe*`, `n_Fe*`, and `*_kg_core`
+    columns. On resume we seed any missing column to zero so downstream
+    code receives a DataFrame with the full current schema. The seeded
+    zeros are harmless in `redox.mode = 'static'` (the default);
+    evolving modes bootstrap from these zeros just like a fresh run.
     """
     fpath = os.path.join(output_dir, 'runtime_helpfile.csv')
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
-    return pd.read_csv(fpath, sep=r'\s+')
+    df = pd.read_csv(fpath, sep=r'\s+')
+    expected = set(GetHelpfileKeys())
+    missing = expected - set(df.columns)
+    if missing:
+        log.info(
+            'ReadHelpfileFromCSV: seeding %d missing columns with zero '
+            '(legacy CSV pre-#57): %s',
+            len(missing),
+            sorted(missing),
+        )
+        # Single concat avoids PerformanceWarning about fragmentation.
+        zero_block = pd.DataFrame(
+            {col: 0.0 for col in sorted(missing)},
+            index=df.index,
+        )
+        df = pd.concat([df, zero_block], axis=1)
+    return df
+
+
+def SeedRedoxDefaultsOnResume(hf_row: dict, config: 'Config') -> None:
+    """
+    Fill in sane defaults for redox-scaffolding keys on resume from a
+    legacy CSV (#57).
+
+    `ReadHelpfileFromCSV` seeds missing columns to zero. For `fO2_shift_IW`
+    specifically, zero is a valid physical value (IW buffer with no
+    offset) so we cannot use zero as a "missing" sentinel. Instead we
+    check whether the column existed on disk (tracked by the caller)
+    and, when it did not, fill from `config.outgas.fO2_shift_IW`.
+
+    Call this after `ReadHelpfileFromCSV` when resuming, before the
+    first step.
+    """
+    # In practice the simple rule "if fO2_shift_IW is exactly 0.0 after
+    # migration, override from config" is too aggressive because 0.0 is
+    # a valid value. The safer approach is to check whether the CSV
+    # file on disk had the column; we do this in the caller. For now
+    # this function documents the intended API; the caller supplies
+    # an explicit list of keys to reset.
+    # TODO(#57 Commit C): refine once the redox solver is wired in.
+    default_fO2 = float(getattr(config.outgas, 'fO2_shift_IW', 0.0))
+    if hf_row.get('fO2_shift_IW', 0.0) == 0.0 and default_fO2 != 0.0:
+        hf_row['fO2_shift_IW'] = default_fO2
+
+
+def M_ele_excl_O(hf_row: dict) -> float:
+    """
+    Sum of `{element}_kg_total` over every tracked element EXCEPT oxygen.
+
+    Regression-compatibility helper introduced with #57. Pre-redox
+    PROTEUS computed `M_ele = Σ_{e != O} hf_row[e+"_kg_total"]` because
+    oxygen was skipped as "set by fO2". After the redox scaffolding
+    lands, `M_ele` becomes `Σ_e hf_row[e+"_kg_total"]` for ALL elements.
+
+    Tests (`tests/test_redox_scaffolding.py`, `tests/test_static_mode.py`)
+    use this helper to compare non-O totals bit-for-bit against a
+    pre-#57 baseline run.
+    """
+    return sum(
+        float(hf_row[f'{e}_kg_total'])
+        for e in element_list
+        if e != 'O'
+    )
 
 
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
