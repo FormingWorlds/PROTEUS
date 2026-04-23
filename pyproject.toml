@@ -11,7 +11,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 authors = [
     {name="Tim Lichtenberg",         email="tim.lichtenberg@rug.nl"},
-    {name="Harrison Nicholls",       email="harrison.nicholls@physics.ox.ac.uk"},
+    {name="Harrison Nicholls",       email="contact@h-nicholls.space"},
     {name="Laurent Soucasse",        email="l.soucasse@esciencecenter.nl"},
     {name="Mariana Sastre",          email="m.c.villamil.sastre@rug.nl"},
     {name="Emma Postolec",           email="e.n.postolec@rug.nl"},
@@ -70,7 +70,7 @@ dependencies = [
     "gpytorch",
     "toml",
     "zenodo-get",
-    "zenodo-client",
+    "zenodo-client>=0.4.1",
     "osfclient",
     "packaging",
 ]
