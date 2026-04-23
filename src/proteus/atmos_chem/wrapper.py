@@ -38,7 +38,6 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     log.info('Running atmospheric chemistry...')
 
     module = config.atmos_chem.module
-
     when = config.atmos_chem.when
 
     # Guard: no module configured
@@ -51,7 +50,7 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
         log.debug("Atmospheric chemistry set to 'manually'; skipping")
         return None
 
-    # Resolve the runner function (lazy imports)
+    # Resolve the runner function (lazy imports keep heavy backends optional)
     if module == 'vulcan':
         from proteus.atmos_chem.vulcan import run_vulcan as _run
     elif module == 'dummy':
@@ -59,7 +58,11 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     else:
         raise ValueError(f"Invalid atmos_chem module: '{module}'")
 
-    # Dispatch based on scheduling mode
+    log.info(f'    Using {module} module, {when}')
+
+    # Dispatch based on scheduling mode:
+    #   'offline' — run once after the simulation step, on the final state
+    #   'online'  — run at every snapshot during the main simulation loop
     filename = None
     if when == 'offline':
         log.debug('Running atmospheric chemistry in OFFLINE mode')
