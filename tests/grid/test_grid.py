@@ -9,9 +9,11 @@ from helpers import PROTEUS_ROOT
 
 from proteus.grid.manage import grid_from_config
 from proteus.grid.pack import pack as gpack
+from proteus.grid.post_processing import main as gpostprocess
 from proteus.grid.summarise import summarise as gsummarise
 
 OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_grid'
+GRID_NAME = 'dummy_grid'
 
 GRID_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'dummy.grid.toml'
 BASE_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml'
@@ -74,3 +76,27 @@ def test_grid_pack(grid_run):
 
     # check zip exists
     assert os.path.isfile(OUT_DIR / 'pack.zip')
+
+
+@pytest.mark.integration
+def test_grid_post_process(grid_run):
+    # Test running grid-post-process command
+    gpostprocess(GRID_CONFIG)
+
+    # check post-processed summary CSV file exists
+    assert os.path.isfile(
+        OUT_DIR
+        / 'post_processing'
+        / 'extracted_data'
+        / f'{GRID_NAME}_final_extracted_data_all.csv'
+    )
+
+    # check that status summary plot was generated
+    assert os.path.isfile(
+        OUT_DIR / 'post_processing' / 'grid_plots' / f'summary_grid_statuses_{GRID_NAME}.png'
+    )
+
+    # check that ECDF plot was generated
+    assert os.path.isfile(
+        OUT_DIR / 'post_processing' / 'grid_plots' / f'ecdf_grid_plot_{GRID_NAME}.png'
+    )

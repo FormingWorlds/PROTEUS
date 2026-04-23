@@ -6,6 +6,14 @@ output = "dummy_grid"
 # Make `output` a symbolic link to this absolute location. To disable: set to empty string.
 symlink = ""
 
+# Post-processing options
+update_csv  = true                 # Whether to update the summary CSV files before plotting
+plot_format = "png"                 # Format for saving plots ("png" or "pdf")
+plot_status = true                 # Generate status summary plot of the grid
+plot_ecdf   = true                  # Generate ECDF grid plot for input parameters tested in the grid and output_variables defined below
+colormap    = "viridis"             # Colormap for ECDF plot
+output_variables = ["solidification_time", "Phi_global", "T_surf", "P_surf", "atm_kg_per_mol", "esc_rate_total", "rho_obs", "H2_bar"]  # List of output variables to include in ECDF plot
+
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "tests/grid/base.toml"
 
