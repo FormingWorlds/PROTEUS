@@ -40,7 +40,7 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     # Which chemistry solver to use (currently only 'vulcan' is supported)
     module = config.atmos_chem.module
 
-    # When to run chemistry: 'manually' (skip), 'offline' (post-processing),
+    # When to run chemistry: 'manually' / 'offline' (post-processing),
     # or 'online' (every snapshot during simulation). Defaults to 'manually'
     # for backwards compatibility with configs that lack the 'when' field.
     when = getattr(config.atmos_chem, 'when', 'manually')
@@ -65,8 +65,8 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     #   'online'    — run at every snapshot during the main simulation loop
     filename = None  # default: read_result uses '{module}.csv'
     if when == 'manually':
-        log.debug("Atmospheric chemistry set to 'manually'; skipping")
-        return None
+        log.debug("Atmospheric chemistry set to 'manually'")
+        run_vulcan(dirs, config, hf_row)
     elif when == 'offline':
         log.debug('Running atmospheric chemistry in OFFLINE mode')
         run_vulcan(dirs, config, hf_row)
