@@ -300,7 +300,8 @@ ci-pr-checks.yml (3 parallel jobs + summary)
 1. Nightly at 02:00 UTC (scheduled)
 2. Changes to `pyproject.toml` (dependency updates)
 3. Changes to `Dockerfile` (build process)
-4. Changes to `tools/get_*.sh` (compilation scripts)
+4. Changes to `.github/workflows/docker-build.yml` (workflow build trigger changes)
+5. Changes to `tools/get_*.sh` (compilation scripts)
 
 ### Image Size Management
 - Cleanup layers remove apt cache, Python cache
