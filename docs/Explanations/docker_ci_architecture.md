@@ -56,6 +56,7 @@ PROTEUS_DIR=/opt/proteus
   - `pyproject.toml`
   - `Dockerfile`
   - `tools/get_*.sh` scripts
+  - `.github/workflows/docker-build.yml`
 
 **Output:** `ghcr.io/formingworlds/proteus:latest`
 
