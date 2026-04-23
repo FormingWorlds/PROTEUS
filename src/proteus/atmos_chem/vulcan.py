@@ -6,18 +6,17 @@ import logging
 import os
 import pickle
 import shutil
-import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+# Import VULCAN
+import vulcan
 
 # Import PROTEUS
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
 from proteus.utils.helper import find_nearest
-
-# Import VULCAN
-import vulcan
 
 if TYPE_CHECKING:
     from proteus.config import Config

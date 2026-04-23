@@ -55,7 +55,7 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
         raise ValueError(
             f"Invalid atmos_chem module: '{module}'. Currently only 'vulcan' is supported."
         )
-    log.info(f"    Using {module} module, {when}")
+    log.info(f'    Using {module} module, {when}')
 
     # Lazy import to avoid loading VULCAN (heavy dependency) unless needed
     from proteus.atmos_chem.vulcan import run_vulcan
