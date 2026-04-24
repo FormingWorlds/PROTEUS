@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,15 @@ from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
     setup_logger,
+)
+
+# Opt-in per-iter module wall-time breakdown. Emits one `[IT_TIMING]` log
+# line per main-loop iter with wall-time shares per module. Enable by
+# exporting `PROTEUS_TIMING=1` before launching `proteus start`.
+# Overhead when disabled: one os.environ lookup at import time, nothing
+# in the loop body.
+_IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in (
+    '1', 'true', 'yes', 'on'
 )
 
 # Set number of OpenMP threads used by the SciPy matrix solver
@@ -535,10 +545,17 @@ class Proteus:
                 )
             )
 
+            # Per-iter module wall-time breakdown (opt-in, see _IT_TIMING_ENABLED
+            # at module top). Populated as modules run; emitted as one
+            # `[IT_TIMING]` log line at the end of the iter.
+            _t_iter_start = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
+            _t_mod: dict[str, float] = {}
+
             ############### INTERIOR
             PrintHalfSeparator()
 
             # Evolve interior
+            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
             run_interior(
                 self.directories,
                 self.config,
@@ -547,6 +564,8 @@ class Proteus:
                 self.interior_o,
                 write_data=is_snapshot,
             )
+            if _IT_TIMING_ENABLED:
+                _t_mod['interior'] = time.perf_counter() - _t0
 
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
@@ -560,6 +579,7 @@ class Proteus:
             ):
                 from proteus.interior_energetics.wrapper import update_structure_from_interior
 
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 (
                     self.last_struct_time,
                     self.last_struct_Tmagma,
@@ -573,19 +593,25 @@ class Proteus:
                     self.last_struct_Tmagma,
                     self.last_struct_Phi,
                 )
+                if _IT_TIMING_ENABLED:
+                    _t_mod['structure'] = time.perf_counter() - _t0
                 # gc.collect() already called inside update_structure_from_interior()
 
             ############### / INTERIOR AND STRUCTURE
 
             ############### ORBIT AND TIDES
             PrintHalfSeparator()
+            _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
             run_orbit(self.hf_row, self.config, self.directories, self.interior_o)
+            if _IT_TIMING_ENABLED:
+                _t_mod['orbit'] = time.perf_counter() - _t0
 
             ############### / ORBIT AND TIDES
 
             ############### STELLAR FLUX MANAGEMENT
             PrintHalfSeparator()
             log.info('Stellar flux management...')
+            _t0_stellar = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
             update_stellar_spectrum = False
 
             # Calculate new instellation and radius
@@ -631,17 +657,24 @@ class Proteus:
             else:
                 log.info('Updated spectrum not required')
 
+            if _IT_TIMING_ENABLED:
+                _t_mod['stellar'] = time.perf_counter() - _t0_stellar
+
             ############### / STELLAR FLUX MANAGEMENT
 
             ############### ESCAPE
             if (self.loops['total'] > self.loops['init_loops'] + 2) and (not self.desiccated):
                 PrintHalfSeparator()
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 run_escape(self.config, self.hf_row, self.directories, self.interior_o.dt)
+                if _IT_TIMING_ENABLED:
+                    _t_mod['escape'] = time.perf_counter() - _t0
 
             ############### / ESCAPE
 
             ############### OUTGASSING
             PrintHalfSeparator()
+            _t0_outgas = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
 
             # Recalculate mass targets during init phase, since these will be adjusted
             #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
@@ -683,10 +716,14 @@ class Proteus:
             # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
 
+            if _IT_TIMING_ENABLED:
+                _t_mod['outgas'] = time.perf_counter() - _t0_outgas
+
             ############### / OUTGASSING
 
             ############### ATMOSPHERE CLIMATE
             PrintHalfSeparator()
+            _t0_atmos = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
 
             # When global_miscibility is enabled, the atmosphere lower
             # boundary is the solvus (binodal surface), not the magma
@@ -805,6 +842,9 @@ class Proteus:
                 # AGNI converged — clear the counter.
                 self.agni_deadlock_count = 0
 
+            if _IT_TIMING_ENABLED:
+                _t_mod['atmos'] = time.perf_counter() - _t0_atmos
+
             ############### / ATMOSPHERE CLIMATE
 
             ############### ONLINE ATMOSPHERIC CHEMISTRY
@@ -815,7 +855,10 @@ class Proteus:
                     is_snapshot and not self.desiccated
                 ):  # checking if the loop is a snapshot and runs VULCAN
                     if self.loops['total'] not in vulcan_completed_loops:
+                        _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                         run_chemistry(self.directories, self.config, self.hf_row)
+                        if _IT_TIMING_ENABLED:
+                            _t_mod['chem'] = time.perf_counter() - _t0
                         vulcan_completed_loops.add(
                             self.loops['total']
                         )  # adds it to the completed loops/snapshots
@@ -853,7 +896,10 @@ class Proteus:
             # Write helpfile to disk (gated by is_snapshot, which
             # combines write_mod iteration check and dt_write time check)
             if is_snapshot:
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 WriteHelpfileToCSV(self.directories['output'], self.hf_all)
+                if _IT_TIMING_ENABLED:
+                    _t_mod['write'] = time.perf_counter() - _t0
                 self.last_write_time = self.hf_row.get('Time', 0.0)
 
             # Print info to terminal and log file
@@ -871,7 +917,10 @@ class Proteus:
                 and not self.finished_both
             ):
                 log.info('Making plots')
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 UpdatePlots(self.hf_all, self.directories, self.config)
+                if _IT_TIMING_ENABLED:
+                    _t_mod['plots'] = time.perf_counter() - _t0
 
             # Update or create data archive
             if (
@@ -880,10 +929,24 @@ class Proteus:
                 and not self.finished_both
             ):
                 log.info('Updating archive of model output data')
+                _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
                 # do not remove ALL files
                 archive.update(self.directories['output/data'], remove_files=False)
                 # remove all files EXCEPT the latest ones
                 archive.remove_old(self.directories['output/data'], self.hf_row['Time'] * 0.99)
+                if _IT_TIMING_ENABLED:
+                    _t_mod['archive'] = time.perf_counter() - _t0
+
+            # Emit one line per iter with the module wall-time breakdown.
+            # The "other" bucket captures un-instrumented slices (helpfile
+            # bookkeeping, plot checks, logging, deadlock detection, etc.).
+            if _IT_TIMING_ENABLED:
+                _iter_wall = time.perf_counter() - _t_iter_start
+                _accounted = sum(_t_mod.values())
+                _t_mod['other'] = max(0.0, _iter_wall - _accounted)
+                _t_mod['total'] = _iter_wall
+                _modstr = ' '.join(f'{k}={v:.3f}' for k, v in _t_mod.items())
+                log.info('[IT_TIMING] iter=%d %s', self.loops['total'], _modstr)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 

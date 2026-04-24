@@ -166,6 +166,13 @@ class Zalmoxis:
     miscibility_max_iter: int = field(default=10, validator=ge(1))
     miscibility_tol: float = field(default=0.01, validator=gt(0))
 
+    # Zalmoxis JAX+diffrax structure path (Step 0-8 + Event, landed 2026-04-23).
+    # Defaults off for bit-identical behaviour with the numpy path.
+    use_jax: bool = field(default=False)
+    # Anderson Type-II Picard acceleration on the density loop
+    # (landed 2026-04-23). Defaults off; only effective when use_jax=True.
+    use_anderson: bool = field(default=False)
+
     def __attrs_post_init__(self):
         if self.update_interval > 0 and self.update_min_interval > self.update_interval:
             raise ValueError(

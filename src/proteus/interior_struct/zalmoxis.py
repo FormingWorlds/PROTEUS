@@ -332,6 +332,11 @@ def load_zalmoxis_configuration(
         'tolerance_inner': config.interior_struct.zalmoxis.solver_tol_inner,
         'max_iterations_outer': config.interior_struct.zalmoxis.solver_max_iter_outer,
         'max_iterations_inner': config.interior_struct.zalmoxis.solver_max_iter_inner,
+        # JAX+diffrax structure path and Anderson Picard acceleration,
+        # both opt-in and defaulting off. See `Zalmoxis.use_jax` /
+        # `Zalmoxis.use_anderson` in proteus.config._struct.
+        'use_jax': config.interior_struct.zalmoxis.use_jax,
+        'use_anderson': config.interior_struct.zalmoxis.use_anderson,
     }
 
 
@@ -941,6 +946,7 @@ def zalmoxis_solver(
     num_spider_nodes: int = 0,
     temperature_function=None,
     temperature_mode_override: str | None = None,
+    temperature_arrays=None,
 ):
     """Run the Zalmoxis solver to compute the interior structure of a planet.
 
@@ -959,6 +965,14 @@ def zalmoxis_solver(
         External temperature function ``f(r, P) -> T`` in (m, Pa, K).
         When provided, bypasses Zalmoxis's internal temperature mode
         dispatch. Used to pass SPIDER/Aragog T(r) profiles in memory.
+    temperature_arrays : tuple[ndarray, ndarray] or None, optional
+        Explicit r-indexed ``(r_arr, T_arr)`` for the Zalmoxis JAX path.
+        Consumed only when ``use_jax=True`` in the Zalmoxis config and the
+        caller has already flattened their T profile onto a radial grid
+        (the standard update_structure_from_interior path). The numpy path
+        uses ``temperature_function`` regardless. See Zalmoxis'
+        ``solve_structure_via_jax`` docstring for why both kwargs can be
+        passed together.
     temperature_mode_override : str or None, optional
         Local override for ``config.planet.temperature_mode``. Lets callers
         force a different structure-solve mode without mutating the shared
@@ -1022,6 +1036,38 @@ def zalmoxis_solver(
     output_zalmoxis = get_zalmoxis_output_filepath(outdir)
     open(output_zalmoxis, 'a').close()
 
+    # JAX-path wall_timeout: Zalmoxis' default is 300 s, which is a
+    # sanity cap. The bench (``bench_performance.py``) and the JAX
+    # parity fixture override it to 3600 s because the first JAX call
+    # on a cold JIT can incur compilation time on top of the solve.
+    # Mirror that here when the caller opted into JAX, so a cold first
+    # call does not fall into the best-solution branch and trip the
+    # downstream array-write path.
+    if config_params.get('use_jax') and 'wall_timeout' not in config_params:
+        config_params['wall_timeout'] = 3600.0
+
+    # JAX structure path gate: the JAX wrapper's P-indexed adiabat
+    # tabulation collapses for P-ignoring callables (see Zalmoxis
+    # commit aa3d0b8 and tools/benchmarks/bench_coupled_tempfunc.py).
+    # The fix is to pass ``temperature_arrays=(r_arr, T_arr)`` instead,
+    # which routes the RHS to the r-indexed branch. We have arrays from
+    # ``update_structure_from_interior`` but NOT from PROTEUS init or
+    # equilibration (Zalmoxis constructs its own internal linear/adiabat
+    # guess for those, and that guess also ignores P). For calls with
+    # neither arrays nor a caller-provided callable, keep the defensive
+    # downgrade to the numpy path; the one-time init/equilibration cost
+    # (~70 s each, ~2-4 calls) is negligible against a 3-4 h full run.
+    if temperature_function is None and temperature_arrays is None:
+        if config_params.get('use_jax') or config_params.get('use_anderson'):
+            logger.info(
+                'Zalmoxis call has no temperature_function or '
+                'temperature_arrays: disabling use_jax and use_anderson '
+                'for this call (internal T-dispatch still hits the '
+                'P-indexed collapse bug; see Zalmoxis aa3d0b8).'
+            )
+            config_params['use_jax'] = False
+            config_params['use_anderson'] = False
+
     # Run structure solve: use miscibility wrapper when enabled
     mat_dicts = load_zalmoxis_material_dictionaries()
     melt_funcs = load_zalmoxis_solidus_liquidus_functions(mantle_eos, config)
@@ -1049,6 +1095,7 @@ def zalmoxis_solver(
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
             temperature_function=temperature_function,
+            temperature_arrays=temperature_arrays,
             h2_mass_targets=h2_mass_targets,
             max_iterations=config.interior_struct.zalmoxis.miscibility_max_iter,
             mass_tolerance=config.interior_struct.zalmoxis.miscibility_tol,
@@ -1074,6 +1121,16 @@ def zalmoxis_solver(
             model_results.get('miscibility_iterations', 0),
         )
     else:
+        # Warm-starts from numpy init cause the JAX+Anderson Picard to
+        # diverge in the coupled regime (seen at iter 5 of the force-fire
+        # smoke: structure=871 s, converged=False, even with
+        # wall_timeout=3600). Standalone bench with the same T(r) but no
+        # warm-start converges in 3-6 s. Suspect: Anderson history seeded
+        # from a numpy-generated density hits an oscillatory regime on
+        # the JAX path. Deferring the root cause; today we skip the
+        # warm-start for JAX calls and rely on Zalmoxis' internal initial
+        # guesses (first outer iter uses the analytic density seed).
+        _use_jax_active = bool(config_params.get('use_jax'))
         model_results = main(
             config_params,
             material_dictionaries=mat_dicts,
@@ -1081,9 +1138,10 @@ def zalmoxis_solver(
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
             temperature_function=temperature_function,
-            p_center_hint=hf_row.get('P_center'),
-            initial_density=_density_cache.get('density'),
-            initial_radii=_density_cache.get('radii'),
+            temperature_arrays=temperature_arrays,
+            p_center_hint=None if _use_jax_active else hf_row.get('P_center'),
+            initial_density=None if _use_jax_active else _density_cache.get('density'),
+            initial_radii=None if _use_jax_active else _density_cache.get('radii'),
         )
 
     # Extract results from the model
@@ -1121,6 +1179,7 @@ def zalmoxis_solver(
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
             temperature_function=temperature_function,
+            temperature_arrays=temperature_arrays,
         )
 
         radii = model_results['radii']

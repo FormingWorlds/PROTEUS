@@ -1280,6 +1280,24 @@ def update_structure_from_interior(
         if k in hf_row
     }
 
+    # Also hand the (r, T) arrays to Zalmoxis explicitly. The JAX path
+    # needs them in r-indexed form because the default P-indexed
+    # tabulation in jax_eos/wrapper.py collapses for this closure
+    # (T_asc varies with r and ignores P); see Zalmoxis commit
+    # aa3d0b8 for the fix and the bench_coupled_tempfunc.py reproducer.
+    # The numpy path ignores temperature_arrays and uses the callable.
+    # Force strict ascending sort by r: jnp.interp requires monotonic
+    # increasing xp, and ``r_ascending = r_stag[::-1]`` above can end up
+    # descending depending on Aragog's per-call radius ordering. An
+    # explicit argsort is cheap (~150 elements) and removes the
+    # convention-dependence. 2026-04-24 smoke found the array arrived
+    # as [surface, ..., CMB], producing ``Final M=0`` failures in JAX.
+    _r_for_arrays = np.asarray(_r_asc, dtype=float)
+    _T_for_arrays = np.asarray(_T_asc, dtype=float)
+    _order = np.argsort(_r_for_arrays)
+    _r_for_arrays = np.ascontiguousarray(_r_for_arrays[_order])
+    _T_for_arrays = np.ascontiguousarray(_T_for_arrays[_order])
+
     try:
         import time as _zalmoxis_time
         _zalmoxis_wall_t0 = _zalmoxis_time.monotonic()
@@ -1289,6 +1307,7 @@ def update_structure_from_interior(
             hf_row,
             num_spider_nodes=num_spider_nodes,
             temperature_function=temperature_function,
+            temperature_arrays=(_r_for_arrays, _T_for_arrays),
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
         _zalmoxis_fail_count = 0  # Reset on success
