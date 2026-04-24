@@ -10,7 +10,7 @@ import torch
 from botorch.utils.transforms import unnormalize
 from numpy import log10
 
-from proteus.utils.constants import gas_list
+from proteus.utils.constants import gas_list, element_list
 from proteus.utils.coupler import get_proteus_directories
 
 dtype = torch.double
@@ -142,16 +142,37 @@ def run_proteus(
     update_toml(ref_config, parameters, out_cfg)
 
     # Read simulator output
-    df_row = pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1]
+    df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
 
     # Handle case where atmosphere has escaped
     #   Set VMRs and MMW to zero
-    if df_row['P_surf'] < 1e-30:
+    if bool(df_row['P_surf'] < 1e-30):
         df_row['atm_kg_per_mol'] = 0.0
         for g in gas_list:
             df_row[g + '_vmr'] = 0.0
+        for e in element_list:
+            df_row[f'{e}_kg_atm'] = 0.0
 
-    return df_row[observables].T
+    # Derive element mass ratios in atmosphere
+    for e1 in element_list:
+        for e2 in element_list:
+            if e1 == e2:
+                continue
+            key = f'{e1}/{e2}_atm'
+            if min(df_row[f'{e1}_kg_atm'], df_row[f'{e2}_kg_atm']) < 1e-30:
+                df_row[key] = 0.0
+            else:
+                df_row[key] = df_row[f'{e1}_kg_atm'] / df_row[f'{e2}_kg_atm']
+
+    # Make into dict
+    try:
+        observables_dict = {obs: df_row[obs] for obs in observables}
+    except KeyError as e:
+        raise KeyError(
+            f"Requested observable '{e.args[0]}' not found"
+        ) from e
+
+    return observables_dict
 
 
 def log_warp(sq_dist):

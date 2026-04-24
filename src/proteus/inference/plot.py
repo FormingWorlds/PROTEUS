@@ -10,6 +10,7 @@ Functions:
 
 from __future__ import annotations
 
+import logging
 import os
 from glob import glob
 
@@ -24,6 +25,8 @@ from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
 from proteus.utils.helper import recursive_get
+
+log = logging.getLogger('fwl.' + __name__)
 
 dtype = torch.double
 fmt = 'png'
@@ -44,7 +47,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     # Build DataFrame skipping initial entries
     df = pd.DataFrame(logs[n_init:])
     if df.empty:
-        print('No logs to display.')
+        log.debug('No logs to display.')
         return
 
     # Shift timestamps so earliest start_time is zero
@@ -545,35 +548,56 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs))
     for i in range(n_par):
         for j in range(n_obs):
+
+            # handle axis
+            if n_par == 1 and n_obs == 1:
+                ax = axs
+            elif n_par == 1:
+                ax = axs[j]
+            elif n_obs == 1:
+                ax = axs[i]
+            else:
+                ax = axs[j, i]
+
             # plot data
             xx = X[:, i]
             yy = Y[:, j]
-            axs[j, i].scatter(xx, yy, color='k', alpha=0.8, s=8, zorder=4)
+            ax.scatter(xx, yy, color='k', alpha=0.8, s=8, zorder=4)
 
             # axis grid
-            axs[j, i].grid(alpha=0.2, zorder=0)
+            ax.grid(alpha=0.2, zorder=0)
 
             # observables
-            axs[j, i].axhline(y=obs[obs_keys[j]], color='g', alpha=0.5, label='Observed')
+            ax.axhline(y=obs[obs_keys[j]], color='g', alpha=0.5, label='Observed')
 
             # these variables are more natural on a log-scale
             if ('vmr' in obs_keys[j]) or (obs_keys[j] == 'P_surf'):
-                axs[j, i].set_yscale('log')
+                ax.set_yscale('log')
 
             # hide tick labels
             if i >= 1:
-                axs[j, i].set_yticklabels([])
+                ax.set_yticklabels([])
             if j < n_obs - 1:
-                axs[j, i].set_xticklabels([])
+                ax.set_xticklabels([])
 
     # Legend
-    axs[0, 0].legend()
+    if n_obs == 1 or n_par == 1:
+        axs[0].legend()
+    else:
+        axs[0, 0].legend()
 
     # Axis labels
-    for i in range(n_par):
-        axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
-    for j in range(n_obs):
-        axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
+    if n_par == 1 or n_obs == 1:
+        axs[0].set_xlabel(par_keys[0], fontsize=10)
+    else:
+        for i in range(n_par):
+            axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
+
+    if n_obs == 1 or n_par == 1:
+        axs[0].set_ylabel(obs_keys[0], fontsize=10)
+    else:
+        for j in range(n_obs):
+            axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
 
     # Decorate
     fig.subplots_adjust(wspace=0.02, hspace=0.02)
