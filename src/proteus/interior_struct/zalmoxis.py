@@ -1238,12 +1238,68 @@ def zalmoxis_solver(
     planet_radius = radii[-1]
     cmb_radius = radii[cmb_index]
 
+    # Recompute density and temperature against the accurate T(r) when we
+    # took the fast JAX+temperature_arrays path. In that path we drop
+    # `temperature_function` before calling Zalmoxis so the numpy Picard
+    # converges quickly using Zalmoxis' internal linear-T fallback.
+    # The JAX integrator still uses `temperature_arrays` (Aragog's true
+    # T(r)) and produces correct P(r), M(r), g(r), but `model_results`
+    # returns `density = EOS(P, T_linear_fallback)` and `temperature =
+    # T_linear_fallback` because those come from the Picard helper. Aragog
+    # later reads `zalmoxis_output.dat` for mesh construction
+    # (`eos_method=2`), so a stale density column would feed the wrong
+    # cell masses into its energy evolution (~10% T-driven density
+    # error at the CMB in the PALEOS-2phase melt regime). Recompute
+    # both columns here from (P, T_aragog) using numpy EOS before any
+    # downstream consumer reads them.
+    if config_params.get('use_jax') and temperature_arrays is not None:
+        from zalmoxis.eos.dispatch import calculate_density as _calc_rho
+        _r_ref, _T_ref = temperature_arrays
+        _T_ref_cmb = float(_T_ref[0])
+        _core_eos = config.interior_struct.zalmoxis.core_eos
+        _mantle_eos = config.interior_struct.zalmoxis.mantle_eos
+        _mzf = config.interior_struct.zalmoxis.mushy_zone_factor
+        _sol_f, _liq_f = (
+            melt_funcs if isinstance(melt_funcs, tuple) and len(melt_funcs) == 2
+            else (None, None)
+        )
+        _interp_cache: dict = {}
+        _rho_fixed = np.zeros(len(radii))
+        _T_fixed = np.zeros(len(radii))
+        for _i in range(len(radii)):
+            _r = float(radii[_i])
+            _P = float(pressure[_i])
+            # r-indexed T: below r_ref[0] (= first Aragog staggered node
+            # near CMB), clamp to T_cmb; else interp along the Aragog grid.
+            if _r <= float(_r_ref[0]):
+                _T = _T_ref_cmb
+            else:
+                _T = float(np.interp(_r, _r_ref, _T_ref))
+            _T_fixed[_i] = _T
+            _eos_here = _core_eos if _i < cmb_index else _mantle_eos
+            _rho = _calc_rho(
+                _P, mat_dicts, _eos_here, _T, _sol_f, _liq_f,
+                interpolation_functions=_interp_cache,
+                mushy_zone_factor=_mzf,
+            )
+            _rho_fixed[_i] = float(_rho) if _rho is not None else float(density[_i])
+        density = _rho_fixed
+        temperature = _T_fixed
+        logger.info(
+            'Rebuilt density/temperature against T_aragog (JAX path). '
+            'density: CMB=%.1f kg/m^3, surface=%.1f kg/m^3. '
+            'T: CMB=%.1f K, surface=%.1f K.',
+            float(density[cmb_index]), float(density[-1]),
+            float(temperature[cmb_index]), float(temperature[-1]),
+        )
+
     # Calculate the average density of the planet using the calculated mass and radius
     average_density = mass_enclosed[-1] / (4 / 3 * np.pi * radii[-1] ** 3)
 
-    # Cache density for next call's Picard seeding
-    _density_cache['density'] = model_results['density'].copy()
-    _density_cache['radii'] = model_results['radii'].copy()
+    # Cache density for next call's Picard seeding (disabled on JAX path,
+    # see the skip-warm-start logic above — kept for the numpy path).
+    _density_cache['density'] = density.copy()
+    _density_cache['radii'] = np.asarray(radii).copy()
 
     # Final results of the Zalmoxis interior model
     logger.info('Found solution for interior structure with Zalmoxis')
