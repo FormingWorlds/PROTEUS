@@ -9,7 +9,8 @@ import numpy as np
 import pandas as pd
 from matplotlib.ticker import MultipleLocator
 
-from proteus.utils.constants import M_earth, M_jupiter, R_earth, R_jupiter
+from proteus.utils.constants import M_earth, R_earth
+from proteus.utils.planets import get_exoatlas_data
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -25,12 +26,6 @@ LEG_KWARGS = {
     'columnspacing': 1.1,
     'handletextpad': 0.7,
 }
-
-
-def _get_exo_data(fwl_dir: str):
-    popfile = os.path.join(fwl_dir, 'planet_reference', 'Exoplanets', 'DACE_PlanetS.csv')
-    return pd.read_csv(popfile, comment='#')
-
 
 def _get_mr_data(fwl_dir: str):
     z19 = os.path.join(fwl_dir, 'mass_radius', 'Zeng2019')
@@ -51,7 +46,6 @@ def _get_mr_data(fwl_dir: str):
         curves[k] = [data[0][mask], data[1][mask]]
 
     return curves
-
 
 def plot_population_mass_radius(
     hf_all: pd.DataFrame,
@@ -82,16 +76,11 @@ def plot_population_mass_radius(
     sim_mas = np.array(hf_crop['M_planet']) / M_earth
 
     # Get exoplanet values from database
-    exo = _get_exo_data(fwl_dir)
-    exo = exo.loc[exo['Planet Mass [Mjup]'] * M_jupiter / M_earth <= m_max * 1.1]
-
-    exo_mas_val = exo['Planet Mass [Mjup]'] * M_jupiter / M_earth
-    exo_mas_upp = exo['Planet Mass - Upper Unc [Mjup]'] * M_jupiter / M_earth
-    exo_mas_low = exo['Planet Mass - Lower Unc [Mjup]'] * M_jupiter / M_earth
-
-    exo_rad_val = exo['Planet Radius [Rjup]'] * R_jupiter / R_earth
-    exo_rad_upp = exo['Planet Radius - Upper Unc [Rjup]'] * R_jupiter / R_earth
-    exo_rad_low = exo['Planet Radius - Lower Unc [Rjup]'] * R_jupiter / R_earth
+    _, _,  exo = get_exoatlas_data(fwl_dir)
+    exo_mas_val = exo.mass().value
+    exo_mas_err = exo.mass_uncertainty().value
+    exo_rad_val = exo.radius().value
+    exo_rad_err = exo.radius_uncertainty().value
 
     # Get Mass-Radius curves from files
     mrdata = _get_mr_data(fwl_dir)
@@ -124,8 +113,8 @@ def plot_population_mass_radius(
         ax.errorbar(
             exo_mas_val,
             exo_rad_val,
-            xerr=[exo_mas_low, exo_mas_upp],
-            yerr=[exo_rad_low, exo_rad_upp],
+            xerr=exo_mas_err,
+            yerr=exo_rad_err,
             label=lbl,
             ls='none',
             ms=ms,
@@ -146,7 +135,7 @@ def plot_population_mass_radius(
 
     # Save figure
     ax.set_ylabel(r'Planet radius [$R_{\oplus}$]')
-    ax.set_ylim(bottom=0, top=max(np.amax(exo_rad_val), np.amax(sim_rad)))
+    ax.set_ylim(bottom=0, top=np.amax(sim_rad) * 1.1 + 1)
     ax.yaxis.set_major_locator(MultipleLocator(0.5))
     ax.yaxis.set_minor_locator(MultipleLocator(0.1))
 
@@ -188,9 +177,11 @@ def plot_population_time_density(
     sim_rho = 3 * sim_mas / (4 * np.pi * sim_rad**3) * 0.001
 
     # Get values from database
-    exo = _get_exo_data(fwl_dir)
-    exo_age_val = np.array(exo['Stellar Age [Gyr]']) * 1e9  # yr
-    exo_rho_val = np.array(exo['Planet Density [g/cm**3] - Computation'])  # g cm-3
+    _, _,  exo = get_exoatlas_data(fwl_dir)
+    exo_age_val = exo.stellar_age().value * 1e9 #
+    exo_mas_val = exo.mass().value * M_earth
+    exo_rad_val = exo.radius().value * R_earth
+    exo_rho_val = 3 * exo_mas_val / (4 * np.pi * exo_rad_val**3) * 0.001  # g cm-3
     xmax = max(np.nanmax(exo_age_val), np.amax(time))
 
     # Make sure that we actually plot the simulation data

@@ -73,6 +73,7 @@ dependencies = [
     "zenodo-client>=0.4.1",
     "osfclient",
     "packaging",
+    "exoatlas"
 ]
 
 [project.urls]
