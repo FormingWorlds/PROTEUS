@@ -4,10 +4,10 @@
 seed = 1
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "infer_toy/BO/"
+output = "bayesopt"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/demos/dummy.toml"
+ref_config = "input/ensembles/example.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 10        # Number of random samples if starting from scratch.
@@ -30,5 +30,3 @@ n_steps    = 50       # Total number of evaluations (i.e. BO steps)
 # Target observables to match by optimisation
 [observables]
 "R_obs" = 7965615.42040000017732382
-# "H2O_vmr" = 0.69457002234999998
-"P_surf" = 16333.19793399999980466
