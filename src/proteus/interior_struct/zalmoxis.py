@@ -1088,13 +1088,17 @@ def zalmoxis_solver(
         if H2O_kg_liquid > 0:
             h2_mass_targets['PALEOS:H2O'] = H2O_kg_liquid
 
+        _use_jax_active = bool(config_params.get('use_jax'))
+        _tf_effective = None if (
+            _use_jax_active and temperature_arrays is not None
+        ) else temperature_function
         model_results = solve_miscible_interior(
             config_params,
             material_dictionaries=mat_dicts,
             melting_curves_functions=melt_funcs,
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
-            temperature_function=temperature_function,
+            temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
             h2_mass_targets=h2_mass_targets,
             max_iterations=config.interior_struct.zalmoxis.miscibility_max_iter,
@@ -1121,23 +1125,34 @@ def zalmoxis_solver(
             model_results.get('miscibility_iterations', 0),
         )
     else:
-        # Warm-starts from numpy init cause the JAX+Anderson Picard to
-        # diverge in the coupled regime (seen at iter 5 of the force-fire
-        # smoke: structure=871 s, converged=False, even with
-        # wall_timeout=3600). Standalone bench with the same T(r) but no
-        # warm-start converges in 3-6 s. Suspect: Anderson history seeded
-        # from a numpy-generated density hits an oscillatory regime on
-        # the JAX path. Deferring the root cause; today we skip the
-        # warm-start for JAX calls and rely on Zalmoxis' internal initial
-        # guesses (first outer iter uses the analytic density seed).
+        # When temperature_arrays is supplied to the JAX path, do NOT
+        # also pass temperature_function. Zalmoxis' _solve uses the
+        # callable for the numpy Picard density update (building the
+        # per-node `temperatures` array for EOS lookups) even though
+        # the JAX RHS uses arrays for integration. Passing both creates
+        # a mismatch: PROTEUS' callable gives Aragog's adiabatic T(r)
+        # values that land Picard near PALEOS phase-boundary clamps
+        # and force ~75x more inner Picard iterations to converge.
+        # Dropping the callable makes Zalmoxis fall back to its
+        # internal linear T profile for Picard, which converges
+        # quickly while the JAX integration still uses the accurate
+        # array-based T(r). Verified 2026-04-24: bench-inside-proteus
+        # BENCH-config run = 5.9 s, PROTEUS-config-with-function = 156 s,
+        # PROTEUS-config-without-function = 2 s (all same JAX arrays).
+        # Warm-starts also disabled on the JAX path: they drove Anderson
+        # into oscillation (structure=871 s, converged=False at iter 5
+        # with warm-start).
         _use_jax_active = bool(config_params.get('use_jax'))
+        _tf_effective = None if (
+            _use_jax_active and temperature_arrays is not None
+        ) else temperature_function
         model_results = main(
             config_params,
             material_dictionaries=mat_dicts,
             melting_curves_functions=melt_funcs,
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
-            temperature_function=temperature_function,
+            temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
             p_center_hint=None if _use_jax_active else hf_row.get('P_center'),
             initial_density=None if _use_jax_active else _density_cache.get('density'),
@@ -1172,13 +1187,18 @@ def zalmoxis_solver(
         config_params_retry['tolerance_outer'] = retry_tol
         config_params_retry['max_iterations_outer'] = retry_iter
 
+        # Same temperature_function gate as the primary call path.
+        _use_jax_active = bool(config_params_retry.get('use_jax'))
+        _tf_effective = None if (
+            _use_jax_active and temperature_arrays is not None
+        ) else temperature_function
         model_results = main(
             config_params_retry,
             material_dictionaries=mat_dicts,
             melting_curves_functions=melt_funcs,
             input_dir=input_data_dir,
             volatile_profile=volatile_profile,
-            temperature_function=temperature_function,
+            temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
         )
 
