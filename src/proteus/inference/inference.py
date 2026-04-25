@@ -7,6 +7,7 @@ executes the optimization, and handles result printing and checkpointing.
 from __future__ import annotations
 
 # system libraries
+import logging
 import os
 import shutil
 import time
@@ -29,10 +30,25 @@ from proteus.utils.helper import safe_rm
 
 # Use double precision for all tensor computations
 dtype = torch.double
+log = logging.getLogger('fwl.' + __name__)
 
 
 # Entry point for inference scheme, providing infererence-config dict
 def run_inference(config):
+    """Run the full asynchronous Bayesian inference workflow.
+
+    This function prepares output directories, validates and snapshots the
+    reference configuration, creates initial samples, executes the asynchronous
+    BO loop, writes checkpoint outputs, and generates diagnostic/result plots.
+
+    Parameters
+    ----------
+    - config (dict): Parsed inference configuration dictionary.
+
+    Returns
+    ----------
+    - None
+    """
     # Ensure there are enough CPU cores for the specified number of workers
     if config['n_workers'] >= os.cpu_count():
         raise RuntimeError(f'Not enough CPU cores for {config["n_workers"]} workers')
@@ -69,11 +85,10 @@ def run_inference(config):
     # Maximum number of evaluations during inference (offset by initial evaluations)
     max_len = max(int(config['n_steps']), 1) + n_init
 
-    print(' ')
-    print(
+    log.info(
         f'Starting optimisation with {config["n_workers"]} workers and {n_init} initial samples'
     )
-    print(
+    log.info(
         f'Performing {config["n_steps"]} BO steps for a final total {n_init + config["n_steps"]} samples'
     )
     t_0 = time.perf_counter()
@@ -93,31 +108,38 @@ def run_inference(config):
     )
 
     t_1 = time.perf_counter()
-    print(f'This took: {(t_1 - t_0):.2f} seconds')
-    print('-----------------------------------')
-    print(' ')
+    log.info(f'This took: {t_1 - t_0:.2f} seconds')
+    log.info('-----------------------------------')
 
     # Print summary of true vs. simulated observables and inferred parameters
     print_results(D_final, logs, config, dirs['output'], n_init)
 
     # Save final data, logs, and timestamps for later analysis
-    print(f'Saving results in {dirs["output"]}')
+    log.info(f'Saving results in {dirs["output"]}')
     checkpoint(D_final, logs, Ts, dirs['output'])
 
     # Make plots
-    print('Making plots')
+    log.info('Making plots')
     plotBO.plots_perf_timeline(logs, dirs['output'], n_init)
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs['output'])
     plotBO.plot_result_objective(D_final, config['parameters'], n_init, dirs['output'])
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
 
     # Done
-    print(' ')
-    print(f'Inference completed at {datetime.now().astimezone().isoformat()}')
+    log.info(f'Inference completed at {datetime.now().astimezone().isoformat()}')
 
 
 def infer_from_config(config_fpath: str):
-    """Run inference scheme according to the configuration provided"""
+    """Load a TOML config file and run inference.
+
+    Parameters
+    ----------
+    - config_fpath (str): Path to an inference TOML configuration file.
+
+    Returns
+    ----------
+    - None
+    """
 
     # Load configuration from TOML file
     with open(config_fpath, 'r') as file:

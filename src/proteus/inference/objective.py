@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import os
+import logging
 import subprocess
 from functools import partial
+from pathlib import Path
 
 import pandas as pd
 import toml
@@ -10,11 +11,12 @@ import torch
 from botorch.utils.transforms import unnormalize
 from numpy import log10
 
-from proteus.utils.constants import gas_list, element_list
+from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import get_proteus_directories
 
 dtype = torch.double
 LOG_CLIP = 1e-30
+log = logging.getLogger('fwl.' + __name__)
 
 
 def variable_is_logarithmic(varname: str) -> bool:
@@ -22,11 +24,13 @@ def variable_is_logarithmic(varname: str) -> bool:
 
     This variable should also be positive-valued.
 
-    Args:
-        varname (str): Name of variable.
+    Parameters
+    ----------
+    - varname (str): Name of variable.
 
-    Returns:
-        out (bool): True if scales logarithmically.
+    Returns
+    ----------
+    - out (bool): True if scales logarithmically.
     """
 
     # Linear-scaling is default behaviour
@@ -61,13 +65,21 @@ def update_toml(config_file: str, updates: dict, output_file: str) -> None:
     `updates` dict (supporting nested keys via dot notation), and writes the
     modified configuration to `output_file`.
 
-    Args:
-        config_file (str): Path to the existing TOML file.
-        updates (dict): Mapping of keys to new values; nested keys via "section.key".
-        output_file (str): Destination path for the updated TOML file.
+    Parameters
+    ----------
+    - config_file (str): Path to the existing TOML file.
+    - updates (dict): Mapping of keys to new values; nested keys via "section.key".
+    - output_file (str): Destination path for the updated TOML file.
+
+    Returns
+    ----------
+    - None
     """
+    config_path = Path(config_file)
+    output_path = Path(output_file)
+
     # Load existing config
-    with open(config_file, 'r') as f:
+    with open(config_path, 'r') as f:
         config = toml.load(f)
 
     # Apply nested updates
@@ -79,9 +91,9 @@ def update_toml(config_file: str, updates: dict, output_file: str) -> None:
         d[parts[-1]] = value
 
     # Ensure destination directory exists
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     # Write updated config
-    with open(output_file, 'w') as f:
+    with open(output_path, 'w') as f:
         toml.dump(config, f)
 
 
@@ -97,49 +109,61 @@ def run_proteus(
 
     Builds a per-run TOML file, invokes the `proteus` CLI, and reads the resulting CSV.
 
-    Args:
-        parameters (dict): Parameter-value pairs to set in the simulation config.
-        worker (int): Worker identifier for directory organization.
-        iter (int): Iteration identifier for directory organization.
-        observables (list[str]): Names of output columns to return.
-        ref_config (str): Path to the reference TOML config template.
-        output (str): Path to output relative to PROTEUS output folder
+    Parameters
+    ----------
+    - parameters (dict): Parameter-value pairs to set in the simulation config.
+    - worker (int): Worker identifier for directory organization.
+    - iter (int): Iteration identifier for directory organization.
+    - observables (list[str]): Names of output columns to return.
+    - ref_config (str): Path to the reference TOML config template.
+    - output (str): Path to output relative to PROTEUS output folder.
 
-    Returns:
-        pd.Series: Last row of the simulator output containing requested observables.
+    Returns
+    ----------
+    - pd.Series: Last row of the simulator output containing requested observables.
     """
 
     # Construct run-specific paths
-    run_id = f'w_{worker}/i_{iter}/'
-    out_dir = os.path.join(output, 'workers', run_id)
+    run_id = Path('workers') / f'w_{worker}' / f'i_{iter}'
+    out_dir = Path(output) / run_id
 
-    out_abs = get_proteus_directories(out_dir)['output']
-    out_cfg = os.path.join(out_abs, 'input.toml')
-    out_csv = os.path.join(out_abs, 'runtime_helpfile.csv')
+    out_abs = Path(get_proteus_directories(str(out_dir))['output'])
+    out_cfg = out_abs / 'input.toml'
+    out_csv = out_abs / 'runtime_helpfile.csv'
 
     # Ensure output directory exists
-    os.makedirs(out_abs, exist_ok=True)
+    out_abs.mkdir(parents=True, exist_ok=True)
 
     # Inject output path into simulation parameters
-    parameters['params.out.path'] = out_dir
+    parameters['params.out.path'] = str(out_dir)
 
     # Don't allow workers to make plots
     parameters['params.out.plot_mod'] = 'none'
 
     # Generate config
-    update_toml(ref_config, parameters, out_cfg)
+    update_toml(ref_config, parameters, str(out_cfg))
 
     # Run PROTEUS
-    subprocess.run(
-        ['proteus', 'start', '-c', out_cfg, '--offline'],
-        check=True,
-        text=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT,
-    )
+    command = ['proteus', 'start', '-c', str(out_cfg), '--offline']
+    try:
+        subprocess.run(
+            command,
+            check=True,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
+        )
+    except FileNotFoundError as err:
+        log.error(f"Cannot execute '{command[0]}': command not found")
+        raise RuntimeError("Failed to run PROTEUS: 'proteus' command not found") from err
+    except subprocess.CalledProcessError as err:
+        log.error(f'PROTEUS run failed for worker={worker} iter={iter} config={out_cfg}')
+        raise RuntimeError(
+            f'Failed to run PROTEUS for worker={worker} iter={iter}; exit code {err.returncode}'
+        ) from err
 
     # Re-write config in case simulator mutates or removes it
-    update_toml(ref_config, parameters, out_cfg)
+    update_toml(ref_config, parameters, str(out_cfg))
 
     # Read simulator output
     df_row = dict(pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1])
@@ -168,20 +192,41 @@ def run_proteus(
     try:
         observables_dict = {obs: df_row[obs] for obs in observables}
     except KeyError as e:
-        raise KeyError(
-            f"Requested observable '{e.args[0]}' not found"
-        ) from e
+        raise KeyError(f"Requested observable '{e.args[0]}' not found") from e
 
     return observables_dict
 
 
 def log_warp(sq_dist):
+    """Map squared distances to the optimization objective scale.
+
+    Parameters
+    ----------
+    - sq_dist (torch.Tensor): Non-negative squared distance tensor.
+
+    Returns
+    ----------
+    - torch.Tensor: Warped score, larger for closer matches.
+    """
     warped_dist = -torch.log10(sq_dist + 1e-10)
     return warped_dist
 
 
 def eval_obj(sim_dict, tru_dict):
-    """Evaluate objective function, given simulated and true values of observables"""
+    """Evaluate objective value from simulated and target observables.
+
+    The metric compares each observable in either linear or log space,
+    accumulates squared normalized differences, and applies `log_warp`.
+
+    Parameters
+    ----------
+    - sim_dict (dict): Simulated observable values.
+    - tru_dict (dict): Target (reference) observable values.
+
+    Returns
+    ----------
+    - torch.Tensor: Objective tensor of shape (1, 1).
+    """
 
     sim_vals = []
     tru_vals = []
@@ -228,16 +273,19 @@ def J(
 
         J = log_10(sum((1 - sim/true)^2) + 1e-10)
 
-    Args:
-        x (torch.Tensor): Normalized input tensor of shape (1, d).
-        parameters (list[str]): Ordered list of parameter keys corresponding to x.
-        true_observables (dict): Mapping of observable names to target values.
-        worker (int): Worker identifier.
-        iter (int): Iteration number.
-        ref_config (str): Reference TOML config path.
+    Parameters
+    ----------
+    - x (torch.Tensor): Normalized input tensor of shape (1, d).
+    - parameters (list[str]): Ordered list of parameter keys corresponding to x.
+    - true_observables (dict): Mapping of observable names to target values.
+    - worker (int): Worker identifier.
+    - iter (int): Iteration number.
+    - output (str): Path to output folder relative to PROTEUS output folder.
+    - ref_config (str): Reference TOML config path.
 
-    Returns:
-        torch.Tensor: Objective value tensor of shape (1, 1).
+    Returns
+    ----------
+    - torch.Tensor: Objective value tensor of shape (1, 1).
     """
 
     # Map normalized x to raw parameter dict and run PROTEUS
@@ -267,16 +315,18 @@ def prot_builder(
 
     Precomputes bounds for unnormalization and embeds simulation context.
 
-    Args:
-        parameters (dict): Mapping of parameter keys to [low, high] bounds.
-        observables (dict): Target observable values.
-        worker (int): Worker identifier.
-        iter (int): Iteration number (seed) for reproducibility.
-        output (str): Path to output folder relative to PROTEUS output folder
-        ref_config (str): Reference TOML config path.
+    Parameters
+    ----------
+    - parameters (dict): Mapping of parameter keys to [low, high] bounds.
+    - observables (dict): Target observable values.
+    - worker (int): Worker identifier.
+    - iter (int): Iteration number (seed) for reproducibility.
+    - output (str): Path to output folder relative to PROTEUS output folder.
+    - ref_config (str): Reference TOML config path.
 
-    Returns:
-        callable: Function f(x_norm) -> y_objective.
+    Returns
+    ----------
+    - callable: Function f(x_norm) -> y_objective.
     """
     # Build bounds tensor for unnormalization
     d = len(parameters)
@@ -285,7 +335,16 @@ def prot_builder(
     )
 
     def f(x_norm: torch.Tensor) -> torch.Tensor:
-        """Inference objective function accepting normalized inputs."""
+        """Inference objective function accepting normalized inputs.
+
+        Parameters
+        ----------
+        - x_norm (torch.Tensor): Input tensor in normalized [0, 1]^d space.
+
+        Returns
+        ----------
+        - torch.Tensor: Objective value tensor of shape (1, 1).
+        """
         # Convert normalized to raw inputs
         x_raw = unnormalize(x_norm, bounds)
         # Partially apply J with fixed context

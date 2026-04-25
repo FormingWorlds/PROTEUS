@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-from glob import glob
+from pathlib import Path
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -38,11 +38,16 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
 
     This function makes multiple plots
 
-    Args:
-        logs (list of dict): Log entries containing timing and evaluation data.
-        directory (str): Base directory where plots will be saved ("plots/" appended).
-        n_init (int): Number of initial evaluations to skip when plotting.
-        min_text_width (float): Minimum bar width threshold for white text.
+    Parameters
+    ----------
+    - logs (list[dict]): Log entries containing timing and evaluation data.
+    - directory (str): Base directory where plots are saved ("plots/" appended).
+    - n_init (int): Number of initial evaluations to skip when plotting.
+    - min_text_width (float): Minimum bar width threshold for white text.
+
+    Returns
+    ----------
+    - None
     """
     # Build DataFrame skipping initial entries
     df = pd.DataFrame(logs[n_init:])
@@ -307,11 +312,16 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
 def plots_perf_converge(D, T, n_init, directory):
     """Plot regret and best observed value over time and iterations.
 
-    Args:
-        D (dict): Contains 'Y' list of objective values.
-        T (list): Elapsed times corresponding to each evaluation.
-        n_init (int): Number of initial evaluations to skip.
-        directory (str): Base dir where "plots/" subfolder will be created.
+    Parameters
+    ----------
+    - D (dict): Contains 'Y' list of objective values.
+    - T (list): Elapsed times corresponding to each evaluation.
+    - n_init (int): Number of initial evaluations to skip.
+    - directory (str): Base dir where "plots/" subfolder will be created.
+
+    Returns
+    ----------
+    - None
     """
 
     Y = np.array(D['Y'], copy=None, dtype=float).flatten()  # Flatten in case it's (N,1)
@@ -388,12 +398,17 @@ def plots_perf_converge(D, T, n_init, directory):
 def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     """Plot objective function at each sample that was created.
 
-    Args:
-        D (dict): Contains 'X' and 'Y' lists.
-        parameters (dict): Parameter names and bounds
-        n_init (int): Number of initial evaluations (to be highlighted).
-        directory (str): Base dir where "plots/" subfolder will be created.
-        yclip (float): minimum limit y-axis scale
+    Parameters
+    ----------
+    - D (dict): Contains 'X' and 'Y' lists.
+    - parameters (dict): Parameter names and bounds.
+    - n_init (int): Number of initial evaluations (to be highlighted).
+    - directory (str): Base dir where "plots/" subfolder will be created.
+    - yclip (float): Minimum limit on y-axis objective values.
+
+    Returns
+    ----------
+    - None
     """
 
     # Get objective function values
@@ -510,10 +525,15 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
 
     This requires reading output-data files from the disk.
 
-    Args:
-        par_keys (dict): Parameter names and bounds
-        obs_keys (dict): Observable names and target values
-        directory (str): Base dir where the inference was performed.
+    Parameters
+    ----------
+    - pars (dict): Parameter names and bounds.
+    - obs (dict): Observable names and target values.
+    - directory (str): Base dir where the inference was performed.
+
+    Returns
+    ----------
+    - None
     """
 
     # Convert to lists
@@ -521,14 +541,14 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     obs_keys = list(obs.keys())
 
     # Get directories for all cases of interest
-    cases = glob(directory + '/workers/w_*/i_*/')
+    cases = sorted((Path(directory) / 'workers').glob('w_*/i_*'))
 
     # Extract parameters and observables
     X, Y = [], []
     for c in cases:
         # Read data
-        conf = toml.load(c + 'init_coupler.toml')
-        help = pd.read_csv(c + 'runtime_helpfile.csv', delimiter=r'\s+')
+        conf = toml.load(c / 'init_coupler.toml')
+        help = pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+')
 
         # Get parameters and observables
         xx = [recursive_get(conf, k.split('.')) for k in par_keys]
@@ -548,7 +568,6 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs))
     for i in range(n_par):
         for j in range(n_obs):
-
             # handle axis
             if n_par == 1 and n_obs == 1:
                 ax = axs

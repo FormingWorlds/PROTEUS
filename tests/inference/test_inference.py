@@ -12,8 +12,8 @@ import multiprocessing as mp
 mp.set_start_method('spawn', force=True)
 
 import os
-import pickle
 
+import pandas as pd
 import pytest
 from helpers import PROTEUS_ROOT
 
@@ -48,26 +48,24 @@ def test_inference_config(inference_run):
 @pytest.mark.integration
 def test_inference_init(inference_run):
     # Check that init data was written
-    assert os.path.isfile(OUT_DIR / 'init.pkl')
+    assert os.path.isfile(OUT_DIR / 'init.csv')
 
-    # Chec init data format
-    with open(OUT_DIR / 'data.pkl', 'rb') as hdl:
-        data = pickle.load(hdl)
-    assert 'X' in data.keys()
-    assert 'Y' in data.keys()
+    # Check init data format
+    data = pd.read_csv(OUT_DIR / 'init.csv')
+    assert 'y' in data.columns
+    assert any(col.startswith('x_') for col in data.columns)
 
 
 @pytest.mark.integration
 def test_inference_output(inference_run):
     # Check that output results exist
-    assert os.path.isfile(OUT_DIR / 'data.pkl')
+    assert os.path.isfile(OUT_DIR / 'data.csv')
 
     # Check output result format
-    with open(OUT_DIR / 'data.pkl', 'rb') as hdl:
-        data = pickle.load(hdl)
-    assert 'X' in data.keys()
-    assert 'Y' in data.keys()
-    assert len(data['Y']) > 2
+    data = pd.read_csv(OUT_DIR / 'data.csv')
+    assert 'y' in data.columns
+    assert any(col.startswith('x_') for col in data.columns)
+    assert len(data['y']) > 2
 
     # Check plots exist
     assert os.path.isfile(OUT_DIR / 'plots' / 'result_correlation.png')

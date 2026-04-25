@@ -120,10 +120,10 @@ The optimization will run until `n_steps` evaluations are completed or manually 
 The system generates several outputs in:
 
 ### Data Files
-- `data.pkl`: Final dataset with all evaluated parameters and objectives
-- `logs.pkl`: Detailed logs of each BO step
-- `Ts.pkl`: Timestamps for performance analysis
-- `init.pkl`: Data used as an initial guess for starting the optimisation
+- `data.csv`: Final dataset with all evaluated parameters (`x_*`) and objective values (`y`)
+- `logs.csv`: Detailed logs of each BO step
+- `Ts.csv`: Timestamps for performance analysis
+- `init.csv`: Data used as an initial guess for starting the optimisation
 
 ### Plots
 The BO scheme will generate many plots upon completion.

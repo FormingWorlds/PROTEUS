@@ -16,47 +16,53 @@ Functions:
 
 from __future__ import annotations
 
+import logging
 import os
-import pickle
 import time
 from functools import partial
 from multiprocessing import Manager, Process
 
+import pandas as pd
 import torch
 
 from proteus.inference.BO import BO_step, init_locs
-from proteus.inference.utils import get_kernel_w_prior
+from proteus.inference.utils import get_kernel_w_prior, load_dataset_csv, save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 
 # Tensor dtype for all computations
 dtype = torch.double
+log = logging.getLogger('fwl.' + __name__)
 
 
 def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
     """Save the current state of the optimization to disk.
 
-    Creates the output directory if needed, and writes three pickle files:
-    * data.pkl: dictionary of observed inputs 'X' and outputs 'Y'
-    * logs.pkl: list of per-evaluation log dictionaries
-    * Ts.pkl: list of elapsed timestamps for each evaluation
+    Creates the output directory if needed, and writes:
+    * data.csv: observed inputs and objective values
+    * logs.csv: list of per-evaluation log dictionaries
+    * Ts.csv: elapsed timestamps for each evaluation
 
-    Args:
-        D (dict): Shared dict containing keys 'X' and 'Y'.
-        logs (list): Shared list of log dictionaries.
-        Ts (list): Shared list of elapsed times (floats).
-        output_dir (str): Directory path where pickle files will be saved.
+    Parameters
+    ----------
+    - D (dict): Shared dict containing keys 'X' and 'Y'.
+    - logs (list): Shared list of log dictionaries.
+    - Ts (list): Shared list of elapsed times (floats).
+    - output_dir (str): Directory path where checkpoint files will be saved.
+
+    Returns
+    ----------
+    - None
     """
-    # Persist the data dictionary
-    with open(os.path.join(output_dir, 'data.pkl'), 'wb') as f_data:
-        pickle.dump(dict(D), f_data)
+    # Persist BO data
+    save_dataset_csv(D['X'], D['Y'], os.path.join(output_dir, 'data.csv'))
 
     # Persist the log list
-    with open(os.path.join(output_dir, 'logs.pkl'), 'wb') as f_logs:
-        pickle.dump(list(logs), f_logs)
+    pd.DataFrame(list(logs)).to_csv(os.path.join(output_dir, 'logs.csv'), index=False)
 
     # Persist the timestamps
-    with open(os.path.join(output_dir, 'Ts.pkl'), 'wb') as f_ts:
-        pickle.dump(list(Ts), f_ts)
+    pd.DataFrame({'elapsed_s': list(Ts)}).to_csv(
+        os.path.join(output_dir, 'Ts.csv'), index=False
+    )
 
 
 def worker(
@@ -83,19 +89,24 @@ def worker(
       4. Updates shared data, busy points, and checkpoints.
     Runs until the total number of observations reaches max_len.
 
-    Args:
-        process_fun (callable): Partial of BO_step with fixed hyperparameters.
-        build_obj (callable): Partial returning a worker-specific objective f.
-        D_shared (Manager.dict): Shared dict with keys 'X', 'Y'.
-        B (Manager.dict): Shared dict of current busy points per worker.
-        T (Manager.list): Shared list for evaluation end times.
-        T0 (float): Reference start time (time.perf_counter()).
-        x_init (torch.Tensor): Initial query point for first iteration.
-        lock: Multiprocessing lock for synchronizing shared access.
-        max_len (int): Maximum total number of evaluations.
-        worker_id (int): Unique identifier of this worker.
-        log_list (Manager.list): Shared list to store per-eval log dicts.
-        output_dir (str): Output directory for the whole inference call (abspath).
+    Parameters
+    ----------
+    - process_fun (callable): Partial of BO_step with fixed hyperparameters.
+    - build_obj (callable): Partial returning a worker-specific objective f.
+    - D_shared (Manager.dict): Shared dict with keys 'X', 'Y'.
+    - B (Manager.dict): Shared dict of current busy points per worker.
+    - T (Manager.list): Shared list for evaluation end times.
+    - T0 (float): Reference start time (time.perf_counter()).
+    - x_init (torch.Tensor): Initial query point for first iteration.
+    - lock: Multiprocessing lock for synchronizing shared access.
+    - max_len (int): Maximum total number of evaluations.
+    - worker_id (int): Unique identifier of this worker.
+    - log_list (Manager.list): Shared list to store per-eval log dicts.
+    - output_dir (str): Output directory for the whole inference call (abspath).
+
+    Returns
+    ----------
+    - None
     """
     task_id = 0
 
@@ -104,7 +115,7 @@ def worker(
 
         current_X = D_shared['X']
         if len(current_X) >= max_len:
-            print(f'Worker {worker_id:03d} exiting')
+            log.info(f'Worker {worker_id} exiting')
             break
 
         # For the first iteration, use provided initial point
@@ -160,7 +171,7 @@ def worker(
 
         step = len(X) - n_init
         current_best = Y.max().item()
-        print(f'Step {step:4d}, best objective = {current_best:.5f}')
+        log.info(f'Step {step:4d}, best objective = {current_best:.5f}')
 
         task_id += 1
 
@@ -182,25 +193,25 @@ def parallel_process(
     Loads initial data, sets up shared memory, spawns worker processes,
     waits for completion, and generates diagnostic plots.
 
-    Args:
-        objective_builder (callable): Factory to build per-worker objective f.
-        kernel (str): Covariance kernel for the Gaussian process.
-        acqf (str): Acquisition function for BO step.
-        n_workers (int): Number of parallel worker processes.
-        max_len (int): Target total number of evaluations, including initial data.
-        output (str): Output directory for checkpoints and plots.
-        seed (int): Random seed for some degree of reproducibility
-        ref_config (str): Path to reference config to pass to objective_builder.
-        observables (dict): Target observables (keys) and values.
-        parameters (dict):  Parameters (keys) with bounds (values) for inference.
+    Parameters
+    ----------
+    - objective_builder (callable): Factory to build per-worker objective f.
+    - kernel (str): Covariance kernel for the Gaussian process.
+    - acqf (str): Acquisition function for BO step.
+    - n_workers (int): Number of parallel worker processes.
+    - max_len (int): Target total number of evaluations, including initial data.
+    - output (str): Output directory for checkpoints and plots.
+    - seed (int): Random seed for some degree of reproducibility
+    - ref_config (str): Path to reference config to pass to objective_builder.
+    - observables (dict): Target observables (keys) and values.
+    - parameters (dict):  Parameters (keys) with bounds (values) for inference.
 
-    Returns:
-        D_final (dict): Final 'X' and 'Y' data after all evaluations.
-        logs (list): List of per-evaluation log dicts.
-        T (list): List of elapsed times from the start of optimization.
+    Returns
+    ----------
+    - D_final (dict): Final 'X' and 'Y' data after all evaluations.
+    - logs (list): List of per-evaluation log dicts.
+    - T (list): List of elapsed times from the start of optimization.
     """
-
-    # torch.manual_seed(seed)
 
     # Partially apply builder and BO_step with fixed settings
     build_obj = partial(
@@ -236,11 +247,10 @@ def parallel_process(
     mgr = Manager()
 
     # Load initial dataset
-    D_init_path = os.path.join(output_abspath, 'init.pkl')
+    D_init_path = os.path.join(output_abspath, 'init.csv')
     if not os.path.isfile(D_init_path):
         raise FileNotFoundError('Cannot find D_init file: ' + D_init_path)
-    with open(D_init_path, 'rb') as f_init:
-        D_init = pickle.load(f_init)
+    D_init = load_dataset_csv(D_init_path)
 
     # Initialize shared data structures
     D_shared = mgr.dict({'X': D_init['X'], 'Y': D_init['Y']})
