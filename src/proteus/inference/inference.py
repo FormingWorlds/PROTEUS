@@ -27,6 +27,7 @@ from proteus.inference.utils import print_results
 # proteus libraries
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import safe_rm
+from proteus.utils.logs import setup_logger
 
 # Use double precision for all tensor computations
 dtype = torch.double
@@ -49,9 +50,6 @@ def run_inference(config):
     ----------
     - None
     """
-    # Ensure there are enough CPU cores for the specified number of workers
-    if config['n_workers'] >= os.cpu_count():
-        raise RuntimeError(f'Not enough CPU cores for {config["n_workers"]} workers')
 
     # dictionary of directories
     dirs = get_proteus_directories(config['output'])
@@ -60,11 +58,22 @@ def run_inference(config):
     safe_rm(dirs['output'])
     os.makedirs(dirs['output'])
 
+    # Setup logging
+    setup_logger(
+        logpath=os.path.join(dirs['output'], 'infer.log'),
+        logterm=True,
+        level=config['logging'],
+    )
+
     # Save a timestamped copy of the reference config
     with open(os.path.join(dirs['output'], 'copy.infer.toml'), 'w') as file:
         timestamp = datetime.now().astimezone().isoformat()
         file.write(f'# Created: {timestamp}\n\n')
         toml.dump(config, file)
+
+    # Ensure there are enough CPU cores for the specified number of workers
+    if config['n_workers'] >= os.cpu_count():
+        raise RuntimeError(f'Not enough CPU cores for {config["n_workers"]} workers')
 
     # Check path to reference config
     config['ref_config'] = os.path.join(dirs['proteus'], config['ref_config'])
@@ -142,6 +151,7 @@ def infer_from_config(config_fpath: str):
     """
 
     # Load configuration from TOML file
+    print(f'Loading inference config from {config_fpath}')
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
 
