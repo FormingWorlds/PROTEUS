@@ -349,14 +349,14 @@ def plots_perf_converge(D, T, n_init, directory):
     # Top: log regret vs t
     axes[0].plot(T, log_regret, marker='o')
     axes[0].set_ylabel('log10(Regret)')
-    axes[0].set_xlabel('t')
+    axes[0].set_xlabel('Time [seconds]')
     axes[0].set_title('Log Regret vs Time')
     axes[0].grid(True)
     # axes[0].legend()
 
     # Bottom: log regret vs n
     axes[1].plot(n, log_regret, marker='o', color='tab:orange')
-    axes[1].set_xlabel('n')
+    axes[1].set_xlabel('Step number')
     axes[1].set_ylabel('log10(Regret)')
     axes[1].set_title('Log Regret vs Step')
     axes[1].grid(True)
@@ -372,18 +372,23 @@ def plots_perf_converge(D, T, n_init, directory):
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=False)
 
+    ymax = max(1.0, np.amax(Y_best)) + 0.1
+    ymin = min(0.0, np.amin(Y_best)) - 0.1
+
     # Top: log regret vs t
     axes[0].plot(T, Y_best, marker='o')
-    axes[0].set_ylabel('y')
-    axes[0].set_xlabel('t')
+    axes[0].set_ylabel('Best value of objective')
+    axes[0].set_xlabel('Time [seconds]')
     axes[0].set_title('Best Value vs Time')
+    axes[0].set_ylim(ymin, ymax)
     axes[0].grid(True)
 
     # Bottom: log regret vs n
     axes[1].plot(n, Y_best, marker='o', color='tab:orange')
-    axes[1].set_xlabel('n')
-    axes[1].set_ylabel('y')
+    axes[1].set_xlabel('Step number')
+    axes[1].set_ylabel('Best value of objective')
     axes[1].set_title('Best Value vs Step')
+    axes[1].set_ylim(ymin, ymax)
     axes[1].grid(True)
     axes[1].xaxis.set_major_locator(MaxNLocator(integer=True))
 
@@ -444,8 +449,8 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     C[i_best] = 'm'
 
     # Limits
-    ymax = 1.0
-    ymin = np.amin(Y)
+    ymax = max(1.0, np.amax(Y)) + 0.1
+    ymin = min(0.0, np.amin(Y)) - 0.1
 
     # Plot
     fig, axs = plt.subplots(2, d, figsize=(2.7 * d, 3.2))

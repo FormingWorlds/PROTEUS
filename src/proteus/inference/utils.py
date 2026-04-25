@@ -194,6 +194,7 @@ def print_results(D, logs, config, output, n_init):
     # Log summary, account for python index vs step index and n_init
     log.info(f'Best case sampled at step {i_opt + 1 - n_init} has J={J_opt:+.4f}')
     log.info(f'With config at {in_path}')
+    log.info(' ')
     log.info(f'{"Observables":18s} | True        | Simulated   | Diff %')
     for i, k in enumerate(observables):
         tru = true_y[k]
@@ -201,6 +202,7 @@ def print_results(D, logs, config, output, n_init):
         dif = 100 * (obs - tru) / tru
         log.info(f'{k:18s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}')
     log.info(f'{"Parameters":28s} | Simulated val @ best J')
+    log.info(' ')
     for i, k in enumerate(list(params)):
         log.info(f'{k:28s}   {str(input[k]):20s}')
     log.info('-----------------------------------')

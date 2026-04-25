@@ -42,6 +42,9 @@ An example configuration file is shown below.
 # Set seed for reproducibility
 seed = 2
 
+# Logging level
+logging = 'INFO'
+
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
 output = "infer_demo/"
 
