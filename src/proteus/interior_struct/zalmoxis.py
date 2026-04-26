@@ -1141,7 +1141,12 @@ def zalmoxis_solver(
         # PROTEUS-config-without-function = 2 s (all same JAX arrays).
         # Warm-starts also disabled on the JAX path: they drove Anderson
         # into oscillation (structure=871 s, converged=False at iter 5
-        # with warm-start).
+        # with warm-start). 2026-04-25 bench probe: enabling warm-start
+        # for JAX+no-Anderson is empirically neutral on both easy
+        # (0.83-1.16x) and hard (0.98x) profiles. Inner Picard plateau
+        # at diff=0.1 is set by the lever-rule EOS kink, not by initial
+        # density quality, so warm-start cannot collapse the bail count.
+        # See session_2026_04_25_warm_start_negative.md.
         _use_jax_active = bool(config_params.get('use_jax'))
         _tf_effective = None if (
             _use_jax_active and temperature_arrays is not None
@@ -1173,13 +1178,25 @@ def zalmoxis_solver(
     converged_density = model_results['converged_density']
     converged_mass = model_results['converged_mass']
 
-    # Adaptive retry: if mass convergence failed, retry with relaxed tolerances
-    if not converged and converged_pressure and converged_density and not converged_mass:
+    # Adaptive retry: if the primary call did not converge, retry once with
+    # relaxed tolerances. The original guard limited retries to the case
+    # where pressure AND density converged but mass did not; the
+    # 2026-04-26 smoothstep crash showed that on hot-shifted re-solves the
+    # primary attempt can return all three flags False (e.g. timeout while
+    # the outer mass loop is still drifting), bypassing the retry entirely.
+    # Allowing retry on any non-converged result gives a clean second
+    # attempt from fresh initial conditions; the wall_timeout cap still
+    # bounds worst-case wall.
+    if not converged:
         retry_tol = config_params.get('tolerance_outer', 3e-3) * 3
         retry_iter = int(config_params.get('max_iterations_outer', 100) * 2)
         logger.warning(
-            'Zalmoxis mass convergence failed; retrying with relaxed tolerance '
-            '(tol_outer=%.1e, max_iter=%d)',
+            'Zalmoxis primary call did not converge '
+            '(pressure=%s, density=%s, mass=%s); retrying with relaxed '
+            'tolerance (tol_outer=%.1e, max_iter=%d)',
+            converged_pressure,
+            converged_density,
+            converged_mass,
             retry_tol,
             retry_iter,
         )
@@ -1229,6 +1246,52 @@ def zalmoxis_solver(
             f'mantle={config.interior_struct.zalmoxis.mantle_eos}.'
         )
         logger.error(diag)
+        # Dump the exact arguments and the final model_results for offline
+        # standalone replay. The pickle lands in <outdir>/data/, gitignored
+        # via PROTEUS' default .gitignore. Numbered so multiple failures
+        # within one run don't overwrite each other.
+        try:
+            import pickle
+            import time as _ftime
+            dump_dir = os.path.join(outdir, 'data')
+            os.makedirs(dump_dir, exist_ok=True)
+            stamp = int(_ftime.time())
+            dump_path = os.path.join(dump_dir, f'zalmoxis_failure_{stamp}.pkl')
+            r_arr_d, T_arr_d = (None, None)
+            if temperature_arrays is not None:
+                r_arr_d = np.asarray(temperature_arrays[0]).copy()
+                T_arr_d = np.asarray(temperature_arrays[1]).copy()
+            with open(dump_path, 'wb') as _fh:
+                pickle.dump(
+                    {
+                        'config_params': dict(config_params),
+                        'temperature_arrays': (r_arr_d, T_arr_d),
+                        'hf_row_subset': {
+                            k: hf_row[k]
+                            for k in (
+                                'P_center', 'M_int', 'R_int', 'T_magma',
+                                'Phi_global', 'T_surf',
+                            )
+                            if k in hf_row
+                        },
+                        'model_results_keys': sorted(model_results.keys()),
+                        'final_M': float(mass_enclosed[-1]),
+                        'final_R': float(radii[-1]),
+                        'best_mass_error': model_results.get('best_mass_error'),
+                        'flags': {
+                            'pressure': bool(converged_pressure),
+                            'density': bool(converged_density),
+                            'mass': bool(converged_mass),
+                        },
+                    },
+                    _fh,
+                    protocol=pickle.HIGHEST_PROTOCOL,
+                )
+            logger.warning('Failure args dumped to %s', dump_path)
+        except Exception as _dump_exc:
+            logger.warning(
+                'Failed to dump Zalmoxis failure args: %s', _dump_exc
+            )
         raise RuntimeError(diag)
 
     # Extract the index of the core-mantle boundary mass in the mass array
@@ -1296,8 +1359,9 @@ def zalmoxis_solver(
     # Calculate the average density of the planet using the calculated mass and radius
     average_density = mass_enclosed[-1] / (4 / 3 * np.pi * radii[-1] ** 3)
 
-    # Cache density for next call's Picard seeding (disabled on JAX path,
-    # see the skip-warm-start logic above — kept for the numpy path).
+    # Cache density for next call's Picard seeding. Used by both numpy
+    # and JAX paths when use_anderson=False (Anderson + warm-start
+    # oscillates, see the warm-start gate above).
     _density_cache['density'] = density.copy()
     _density_cache['radii'] = np.asarray(radii).copy()
 
