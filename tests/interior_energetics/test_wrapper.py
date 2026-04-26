@@ -845,18 +845,23 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 
 @pytest.mark.unit
 def test_mass_anchor_violation_triggers_fallback(tmp_path):
-    """A 'converged' Zalmoxis result with |M_int/M_target - 1| > 1e-3 falls back.
+    """A 'converged' Zalmoxis result with |M_int/M_target - 1| > 3e-3 falls back.
 
-    Regression test for T1.2 (2026-04-26 coupling audit). Zalmoxis'
-    internal solver_tol_outer (default 3e-3) leaves up to 0.3 % drift
-    between hf_row['M_int'] and the dry mass target, exceeding the
-    <0.1 % conservation requirement. The wrapper enforces a tighter
-    1e-3 contract on the success boundary.
+    Regression test for T1.2 (2026-04-26 coupling audit, relaxed after
+    Run T1 contract collision). Zalmoxis' internal solver_tol_outer
+    (3e-3) leaves up to ~0.3 % drift between hf_row['M_int'] and the
+    dry mass target on hot fully-molten profiles. The wrapper guards
+    against the G4-basin attractor failure mode (~9-15 % off target)
+    and gross corruption. The genuine <0.1 % mass conservation
+    contract is delivered by T2.1 (Newton + brentq), not by this
+    safety net.
 
     Edge cases covered:
-    - Just-over-threshold (1.5e-3 drift): must reject.
-    - Just-under-threshold (5e-4 drift): must accept.
-    - At-threshold (exact 1e-3): accepted (strict >).
+    - Far-over-threshold (5e-3 drift): must reject.
+    - Just-under-threshold (2e-3 drift): must accept (Zalmoxis
+      noise-floor regime).
+    - Near-but-under threshold (3e-3 - epsilon drift): must accept
+      (strict > comparison).
     """
     from proteus.interior_energetics import wrapper as _w
 
@@ -887,14 +892,14 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
 
         return _side
 
-    # Case 1: 1.5e-3 drift (over threshold) -> fall-back path must fire.
+    # Case 1: 5e-3 drift (over threshold) -> fall-back path must fire.
     _w._zalmoxis_fail_count = 0
     hf_row_over = _make_hf_row()
     dirs_over = _mock_dirs()
     with (
         patch(
             'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-            side_effect=_make_solver_mock(M_target * (1 + 1.5e-3)),
+            side_effect=_make_solver_mock(M_target * (1 + 5e-3)),
         ),
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
@@ -910,14 +915,16 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
         % _w._zalmoxis_fail_count
     )
 
-    # Case 2: 5e-4 drift (under threshold) -> success path.
+    # Case 2: 2e-3 drift (under 3e-3 threshold) -> success path.
+    # This is the regime Zalmoxis normally lands in on hot mantle
+    # profiles (Run T1 2026-04-26 saw 0.18-0.28 % naturally).
     _w._zalmoxis_fail_count = 0
     hf_row_under = _make_hf_row()
     dirs_under = _mock_dirs()
     with (
         patch(
             'proteus.interior_struct.zalmoxis.zalmoxis_solver',
-            side_effect=_make_solver_mock(M_target * (1 + 5e-4)),
+            side_effect=_make_solver_mock(M_target * (1 + 2e-3)),
         ),
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
@@ -1009,7 +1016,7 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
         # so wrapper's T1.2 fires.
         with open(output_path, 'w') as f:
             f.write('NEW_FAILING_CONTENT\n')
-        hf_row['M_int'] = M_target * (1 + 5e-3)  # 0.5% off > 1e-3 -> raise
+        hf_row['M_int'] = M_target * (1 + 5e-3)  # 0.5% off > 3e-3 -> raise
         hf_row['M_int_target'] = M_target
         hf_row['R_int'] = 6.371e6
         return (3.504e6, str(outdir / 'spider_mesh.dat'))

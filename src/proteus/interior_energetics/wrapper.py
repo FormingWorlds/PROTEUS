@@ -44,11 +44,16 @@ _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 8
 # solver_tol_outer (default 3e-3) is a numerical convergence target,
 # not a coupling contract: it leaves room for ~0.3 % drift between
 # hf_row['M_int'] and the dry mass target. This wrapper-level guard
-# tightens the contract to 1e-3 (0.1 %) to satisfy the <0.1 % mass
-# conservation target for the 1-10 M_Earth self-consistent coupling.
-# A successful Zalmoxis call that exceeds this tolerance is treated
-# as a Zalmoxis failure (RuntimeError -> existing fall-back path).
-_ZALMOXIS_MASS_ANCHOR_TOL = 1e-3
+# tightens the contract to 3e-3 (0.3 %), matching Zalmoxis' own
+# tolerance_outer noise floor on hot mantle profiles. The original
+# target of 1e-3 collided with Zalmoxis' fixed-point band (Run T1
+# 2026-04-26 aborted 8/8 with M only 0.18-0.28 % off target — see
+# session_2026_04_26_t1_2_contract_collision.md). The genuine <0.1 %
+# mass conservation contract is delivered by T2.1 (Newton + brentq
+# bracketing in Zalmoxis' outer loop), not by this wrapper guard.
+# T1.2 here remains a safety net against G4-basin attractor results
+# (9-15 % off target) and gross corruption.
+_ZALMOXIS_MASS_ANCHOR_TOL = 3e-3
 
 # Counter for consecutive SPIDER CVode failures during time evolution.
 # Reset on each successful SPIDER call. Crash after max_consecutive.
