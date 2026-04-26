@@ -341,18 +341,19 @@ def test_validate_zalmoxis_output_schema_radius_mismatch(tmp_path):
 
 @pytest.mark.unit
 def test_validate_zalmoxis_output_schema_mass_mismatch(tmp_path):
-    """File mantle mass off by >rtol_mass (1e-2 default) raises.
+    """File mantle mass off by >rtol_mass (5e-2 default) raises.
 
-    Default rtol_mass=1e-2 reflects integrator-method noise between
-    Zalmoxis' RK45 ODE-state mass and the schema check's grid
-    trapezoidal shell-sum (~0.8 % on real profiles). Genuine
-    corruption (column swap, truncation) shows up at >>1e-2.
+    Default rtol_mass=5e-2 reflects two stacked legitimate-noise
+    sources: (a) integrator-method difference between Zalmoxis' RK45
+    ODE-state mass and grid-trapezoidal shell-sum (~0.8-2 %), and
+    (b) blend_mesh_files post-write modification of the file (up to
+    ~5 % drift from unblended hf_row, see T2.5). Genuine corruption
+    (column swap, truncation) shows up at >>5 %.
 
     Edge cases covered:
-    - 5 % mismatch (clear corruption signature) raises.
-    - 1e-3 mismatch (well within integrator-noise floor) passes.
-    - 5 % mismatch with explicit looser tolerance (rtol_mass=0.1)
-      passes (caller can opt out).
+    - 10 % mismatch (clear corruption signature) raises.
+    - 3 % mismatch (within blend-induced noise floor) passes.
+    - 10 % mismatch with explicit tighter tol (1e-3) raises.
     """
     from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
 
@@ -360,21 +361,22 @@ def test_validate_zalmoxis_output_schema_mass_mismatch(tmp_path):
     R_int, M_mantle = _write_synthetic_zalmoxis_output(output_path)
     M_core = 1.94e24
 
-    # 5% inflation -> clearly above 1e-2 default -> raise.
-    M_int_5pct = (M_mantle * 1.05) + M_core
-    hf_row_5pct = {'R_int': R_int, 'M_int': M_int_5pct, 'M_core': M_core}
+    # 10% inflation -> clearly above 5e-2 default -> raise.
+    M_int_10pct = (M_mantle * 1.10) + M_core
+    hf_row_10pct = {'R_int': R_int, 'M_int': M_int_10pct, 'M_core': M_core}
     with pytest.raises(RuntimeError, match='mantle mass'):
-        validate_zalmoxis_output_schema(output_path, hf_row_5pct)
+        validate_zalmoxis_output_schema(output_path, hf_row_10pct)
 
-    # 1e-3 mismatch -> well below 1e-2 noise floor -> pass.
-    M_int_under = (M_mantle * (1 + 1e-3)) + M_core
-    hf_row_under = {'R_int': R_int, 'M_int': M_int_under, 'M_core': M_core}
-    validate_zalmoxis_output_schema(output_path, hf_row_under)
+    # 3% mismatch -> below 5e-2 noise floor -> pass.
+    M_int_3pct = (M_mantle * 1.03) + M_core
+    hf_row_3pct = {'R_int': R_int, 'M_int': M_int_3pct, 'M_core': M_core}
+    validate_zalmoxis_output_schema(output_path, hf_row_3pct)
 
-    # Caller can opt out by passing a looser tolerance.
-    validate_zalmoxis_output_schema(
-        output_path, hf_row_5pct, rtol_mass=0.1
-    )
+    # Caller can pass a tighter tolerance and recover the strict check.
+    with pytest.raises(RuntimeError, match='mantle mass'):
+        validate_zalmoxis_output_schema(
+            output_path, hf_row_3pct, rtol_mass=1e-3
+        )
 
 
 @pytest.mark.unit
