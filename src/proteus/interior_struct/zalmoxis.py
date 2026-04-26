@@ -68,6 +68,98 @@ def get_zalmoxis_output_filepath(outdir: str):
     return os.path.join(outdir, 'data', 'zalmoxis_output.dat')
 
 
+def validate_zalmoxis_output_schema(
+    output_path: str,
+    hf_row: dict,
+    rtol_radius: float = 1e-6,
+    rtol_mass: float = 1e-6,
+) -> None:
+    """Verify zalmoxis_output.dat is consistent with hf_row scalars.
+
+    The file is the contract Aragog reads inside ``solver.reset()``
+    (eos_method=2). Pre-T1.3 there was no consistency check that the
+    file's last r matched ``hf_row['R_int']``, or that the file's
+    integrated mantle mass matched ``hf_row['M_int'] - hf_row['M_core']``.
+    Catches file I/O corruption, column-order mistakes, truncation,
+    encoding drift, and Aragog/Zalmoxis schema desync at the file
+    handover boundary.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to the just-written ``zalmoxis_output.dat``.
+    hf_row : dict
+        PROTEUS hf_row holding the scalar truth (R_int, M_int, M_core).
+    rtol_radius : float
+        Relative tolerance for the top-of-mantle vs. R_int check.
+        Default 1e-6 -- much tighter than any physical noise source,
+        catches genuine I/O corruption (last-line-truncated, swapped
+        column order, byte-flip).
+    rtol_mass : float
+        Relative tolerance for the integrated mantle mass vs.
+        ``M_int - M_core``. Shell-sum matches Zalmoxis' internal
+        mass_enclosed accumulator algorithm to machine precision, so
+        1e-6 is comfortably generous.
+
+    Raises
+    ------
+    RuntimeError
+        On any violation (file unreadable, wrong shape, radius
+        mismatch, mass mismatch). Caller (the wrapper's except-block)
+        catches this and routes through the fall-back path.
+    """
+    try:
+        data = np.loadtxt(output_path)
+    except Exception as exc:
+        raise RuntimeError(
+            'zalmoxis_output.dat schema violation: could not reload '
+            f'the just-written file ({output_path}): {exc}'
+        )
+    if data.size == 0 or data.ndim != 2 or data.shape[1] != 5:
+        raise RuntimeError(
+            'zalmoxis_output.dat schema violation: unexpected shape '
+            f'{data.shape if data.size else "empty"} '
+            f'(expected (N, 5)) for {output_path}'
+        )
+
+    r_file = data[:, 0]
+    rho_file = data[:, 2]
+
+    # (a) top-of-mantle radius == hf_row['R_int']
+    r_top = float(r_file[-1])
+    r_int_hf = float(hf_row.get('R_int', 0.0))
+    if r_int_hf > 0:
+        r_rel = abs(r_top / r_int_hf - 1.0)
+        if r_rel > rtol_radius:
+            raise RuntimeError(
+                'zalmoxis_output.dat schema violation: top-of-mantle '
+                f'r={r_top:.6e} from file differs from '
+                f'hf_row[R_int]={r_int_hf:.6e} '
+                f'(rel={r_rel:.3e} > {rtol_radius:.1e})'
+            )
+
+    # (b) mantle integrated mass == hf_row['M_int'] - hf_row['M_core'].
+    # Shell-sum (4/3 pi (r2^3 - r1^3) * rho_avg) matches Zalmoxis'
+    # internal mass_enclosed accumulator algorithm.
+    shells = (4.0 / 3.0) * np.pi * (
+        r_file[1:] ** 3 - r_file[:-1] ** 3
+    ) * 0.5 * (rho_file[1:] + rho_file[:-1])
+    mantle_mass_file = float(np.sum(shells))
+    M_int_hf = float(hf_row.get('M_int', 0.0))
+    M_core_hf = float(hf_row.get('M_core', 0.0))
+    expected_mantle = M_int_hf - M_core_hf
+    if expected_mantle > 0:
+        m_rel = abs(mantle_mass_file / expected_mantle - 1.0)
+        if m_rel > rtol_mass:
+            raise RuntimeError(
+                'zalmoxis_output.dat schema violation: '
+                f'mantle mass from file={mantle_mass_file:.6e} kg '
+                'differs from hf_row[M_int - M_core]='
+                f'{expected_mantle:.6e} kg '
+                f'(rel={m_rel:.3e} > {rtol_mass:.1e})'
+            )
+
+
 def build_volatile_profile(hf_row: dict, mantle_eos: str):
     """Build a VolatileProfile from helpfile volatile masses.
 
@@ -1607,6 +1699,12 @@ def zalmoxis_solver(
             f.write(
                 f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity_out[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
+
+    # T1.3 (2026-04-26 coupling audit): schema check at the
+    # Zalmoxis -> Aragog file-handover boundary. On violation: raise
+    # RuntimeError, which the wrapper's except-block treats as a
+    # Zalmoxis failure -> fall-back path (restore _saved_structure).
+    validate_zalmoxis_output_schema(output_zalmoxis, hf_row)
 
     # Determine SPIDER domain: [R_cmb, R_solvus] when global_miscibility is
     # enabled, otherwise [R_cmb, R_surface] (standard).

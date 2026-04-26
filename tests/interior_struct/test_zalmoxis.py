@@ -269,3 +269,133 @@ def test_solidus_liquidus_rtpress():
 
     assert result == ('solidus_fn', 'liquidus_fn')
     mock_mc.assert_called_once()
+
+
+# ============================================================================
+# T1.3: zalmoxis_output.dat schema check at file handover boundary
+# ============================================================================
+
+
+def _write_synthetic_zalmoxis_output(
+    path,
+    r_cmb=3.48e6,
+    r_surf=6.371e6,
+    n_layers=80,
+    rho_const=4500.0,
+):
+    """Write a synthetic zalmoxis_output.dat with uniform-density mantle.
+
+    Returns (R_int_top, M_mantle_shellsum) where M_mantle_shellsum is the
+    integrated mantle mass matching the file's shell-sum
+    (4/3 pi (r2^3 - r1^3) * rho_avg). Uniform density makes the
+    shell-sum trivially exact.
+    """
+    r = np.linspace(r_cmb, r_surf, n_layers)
+    rho = np.full_like(r, rho_const)
+    P = np.linspace(140e9, 0.0, n_layers)  # placeholder; not validated
+    g = np.full_like(r, 9.81)
+    T = np.linspace(4000.0, 2000.0, n_layers)
+    with open(path, 'w') as f:
+        for i in range(n_layers):
+            f.write(
+                f'{r[i]:.17e} {P[i]:.17e} {rho[i]:.17e} {g[i]:.17e} {T[i]:.17e}\n'
+            )
+    shells = (4.0 / 3.0) * np.pi * (
+        r[1:] ** 3 - r[:-1] ** 3
+    ) * 0.5 * (rho[1:] + rho[:-1])
+    return float(r[-1]), float(np.sum(shells))
+
+
+@pytest.mark.unit
+def test_validate_zalmoxis_output_schema_consistent(tmp_path):
+    """A correctly-written file with matching hf_row scalars must NOT raise."""
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    output_path = str(tmp_path / 'zalmoxis_output.dat')
+    R_int, M_mantle = _write_synthetic_zalmoxis_output(output_path)
+    M_core = 1.94e24
+    M_int = M_mantle + M_core
+    hf_row = {'R_int': R_int, 'M_int': M_int, 'M_core': M_core}
+
+    validate_zalmoxis_output_schema(output_path, hf_row)
+
+
+@pytest.mark.unit
+def test_validate_zalmoxis_output_schema_radius_mismatch(tmp_path):
+    """File top-r off by >1e-6 from hf_row['R_int'] -> raise."""
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    output_path = str(tmp_path / 'zalmoxis_output.dat')
+    R_int, M_mantle = _write_synthetic_zalmoxis_output(output_path)
+    M_core = 1.94e24
+    M_int = M_mantle + M_core
+    # 1e-3 relative error in claimed R_int -> raise.
+    hf_row_over = {'R_int': R_int * 1.001, 'M_int': M_int, 'M_core': M_core}
+    with pytest.raises(RuntimeError, match='top-of-mantle'):
+        validate_zalmoxis_output_schema(output_path, hf_row_over)
+
+    # Edge: 5e-7 drift (sub-tolerance) must NOT raise.
+    hf_row_under = {'R_int': R_int * (1 + 5e-7), 'M_int': M_int, 'M_core': M_core}
+    validate_zalmoxis_output_schema(output_path, hf_row_under)
+
+
+@pytest.mark.unit
+def test_validate_zalmoxis_output_schema_mass_mismatch(tmp_path):
+    """File mantle mass off by >1e-6 from hf_row[M_int - M_core] -> raise."""
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    output_path = str(tmp_path / 'zalmoxis_output.dat')
+    R_int, M_mantle = _write_synthetic_zalmoxis_output(output_path)
+    M_core = 1.94e24
+    # 1% relative inflation in claimed mantle mass.
+    M_int_corrupt = (M_mantle * 1.01) + M_core
+    hf_row = {'R_int': R_int, 'M_int': M_int_corrupt, 'M_core': M_core}
+    with pytest.raises(RuntimeError, match='mantle mass'):
+        validate_zalmoxis_output_schema(output_path, hf_row)
+
+
+@pytest.mark.unit
+def test_validate_zalmoxis_output_schema_corrupt_file(tmp_path):
+    """File missing / wrong-shape -> raise.
+
+    Edge cases for genuine I/O corruption that the schema check
+    must catch before Aragog ingests garbage.
+    """
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    hf_row = {'R_int': 6.371e6, 'M_int': 5.972e24, 'M_core': 1.94e24}
+
+    # Case 1: file does not exist.
+    output_missing = str(tmp_path / 'missing.dat')
+    with pytest.raises(RuntimeError, match='could not reload'):
+        validate_zalmoxis_output_schema(output_missing, hf_row)
+
+    # Case 2: wrong number of columns (3 instead of 5).
+    output_3col = str(tmp_path / 'wrong_cols.dat')
+    with open(output_3col, 'w') as f:
+        f.write('1.0 2.0 3.0\n4.0 5.0 6.0\n')
+    with pytest.raises(RuntimeError, match='unexpected shape'):
+        validate_zalmoxis_output_schema(output_3col, hf_row)
+
+
+@pytest.mark.unit
+def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
+    """Degenerate hf_row inputs (zero scalars) must skip silently.
+
+    Matches the wrapper-level mass-anchor guard's degenerate-input
+    contract: callers without populated R_int / mass scalars
+    (e.g. very-early init paths) must not see spurious schema
+    raises. The file-shape check still runs.
+    """
+    from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
+
+    output_path = str(tmp_path / 'zalmoxis_output.dat')
+    R_int_top, _ = _write_synthetic_zalmoxis_output(output_path)
+
+    # All scalars zero: both checks skipped, file-shape passes.
+    hf_row_empty = {'R_int': 0.0, 'M_int': 0.0, 'M_core': 0.0}
+    validate_zalmoxis_output_schema(output_path, hf_row_empty)
+
+    # Only mass info missing: radius check still runs against R_int_top.
+    hf_row_no_mass = {'R_int': R_int_top, 'M_int': 0.0, 'M_core': 0.0}
+    validate_zalmoxis_output_schema(output_path, hf_row_no_mass)
