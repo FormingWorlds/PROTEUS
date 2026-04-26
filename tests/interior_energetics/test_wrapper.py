@@ -835,3 +835,135 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 
     # Reset for any downstream tests.
     _w._zalmoxis_fail_count = 0
+
+
+# ============================================================================
+# T1.2: post-acceptance mass-anchor guard
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_mass_anchor_violation_triggers_fallback(tmp_path):
+    """A 'converged' Zalmoxis result with |M_int/M_target - 1| > 1e-3 falls back.
+
+    Regression test for T1.2 (2026-04-26 coupling audit). Zalmoxis'
+    internal solver_tol_outer (default 3e-3) leaves up to 0.3 % drift
+    between hf_row['M_int'] and the dry mass target, exceeding the
+    <0.1 % conservation requirement. The wrapper enforces a tighter
+    1e-3 contract on the success boundary.
+
+    Edge cases covered:
+    - Just-over-threshold (1.5e-3 drift): must reject.
+    - Just-under-threshold (5e-4 drift): must accept.
+    - At-threshold (exact 1e-3): accepted (strict >).
+    """
+    from proteus.interior_energetics import wrapper as _w
+
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    interior_o = _mock_interior_o()
+
+    M_target = 5.972e24
+
+    def _make_hf_row():
+        return {
+            'Time': 1100.0,
+            'T_magma': 3000.0,
+            'Phi_global': 0.8,
+            'R_int': 6.371e6,
+            'gravity': 9.81,
+            'M_int': 5.972e24,
+        }
+
+    # Helper: mock zalmoxis_solver that mutates hf_row to set M_int and
+    # M_int_target. The test-side dict mutation mimics the real solver's
+    # writeback path (proteus/interior_struct/zalmoxis.py:~1533).
+    def _make_solver_mock(M_int_returned):
+        def _side(config, outdir, hf_row, **kwargs):
+            hf_row['M_int'] = M_int_returned
+            hf_row['M_int_target'] = M_target
+            hf_row['R_int'] = 6.371e6
+            return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+        return _side
+
+    # Case 1: 1.5e-3 drift (over threshold) -> fall-back path must fire.
+    _w._zalmoxis_fail_count = 0
+    hf_row_over = _make_hf_row()
+    dirs_over = _mock_dirs()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            side_effect=_make_solver_mock(M_target * (1 + 1.5e-3)),
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+    ):
+        update_structure_from_interior(
+            dirs_over, config, hf_row_over, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert hf_row_over.get('_structure_stale') is True, (
+        'mass-anchor violation must trigger fall-back (-> _structure_stale=True)'
+    )
+    assert _w._zalmoxis_fail_count == 1, (
+        'mass-anchor violation must increment _zalmoxis_fail_count (got %d)'
+        % _w._zalmoxis_fail_count
+    )
+
+    # Case 2: 5e-4 drift (under threshold) -> success path.
+    _w._zalmoxis_fail_count = 0
+    hf_row_under = _make_hf_row()
+    dirs_under = _mock_dirs()
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            side_effect=_make_solver_mock(M_target * (1 + 5e-4)),
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior_energetics.spider.blend_mesh_files',
+            return_value=0.0,
+        ),
+    ):
+        update_structure_from_interior(
+            dirs_under, config, hf_row_under, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert hf_row_under.get('_structure_stale') is False, (
+        'sub-tolerance drift must NOT trigger fall-back '
+        '(_structure_stale=%r)' % hf_row_under.get('_structure_stale')
+    )
+    assert _w._zalmoxis_fail_count == 0
+
+    # Case 3: target=0 (degenerate, e.g. zalmoxis didn't write target) -> skip
+    # the check (must not divide by zero or spuriously raise).
+    _w._zalmoxis_fail_count = 0
+    hf_row_no_target = _make_hf_row()
+    dirs_no = _mock_dirs()
+
+    def _no_target_side(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = M_target
+        hf_row['M_int_target'] = 0.0  # degenerate
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            side_effect=_no_target_side,
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior_energetics.spider.blend_mesh_files',
+            return_value=0.0,
+        ),
+    ):
+        update_structure_from_interior(
+            dirs_no, config, hf_row_no_target, interior_o, 0.0, 3000.0, 0.8
+        )
+    # Must not raise, must not fall-back (graceful degrade for legacy
+    # callers that haven't been updated to write M_int_target).
+    assert hf_row_no_target.get('_structure_stale') is False
+    assert _w._zalmoxis_fail_count == 0
+
+    _w._zalmoxis_fail_count = 0  # cleanup

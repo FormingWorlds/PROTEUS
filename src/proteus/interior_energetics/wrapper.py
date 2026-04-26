@@ -38,6 +38,18 @@ _zalmoxis_fail_count = 0
 # See session_2026_04_25_to_26_perf_summary.md.
 _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 8
 
+# T1.2 (2026-04-26 coupling audit): post-acceptance mass-anchor
+# tolerance enforced on every Zalmoxis-success boundary in
+# update_structure_from_interior. Zalmoxis' internal
+# solver_tol_outer (default 3e-3) is a numerical convergence target,
+# not a coupling contract: it leaves room for ~0.3 % drift between
+# hf_row['M_int'] and the dry mass target. This wrapper-level guard
+# tightens the contract to 1e-3 (0.1 %) to satisfy the <0.1 % mass
+# conservation target for the 1-10 M_Earth self-consistent coupling.
+# A successful Zalmoxis call that exceeds this tolerance is treated
+# as a Zalmoxis failure (RuntimeError -> existing fall-back path).
+_ZALMOXIS_MASS_ANCHOR_TOL = 1e-3
+
 # Counter for consecutive SPIDER CVode failures during time evolution.
 # Reset on each successful SPIDER call. Crash after max_consecutive.
 _spider_fail_count = 0
@@ -1316,6 +1328,27 @@ def update_structure_from_interior(
             temperature_arrays=(_r_for_arrays, _T_for_arrays),
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
+        # T1.2 mass-anchor check: enforce |M_int / M_int_target - 1| <
+        # _ZALMOXIS_MASS_ANCHOR_TOL after every successful Zalmoxis call.
+        # Raise RuntimeError on violation so the existing except-block
+        # fall-back path runs (restore _saved_structure, set
+        # _structure_stale=True, increment _zalmoxis_fail_count). This
+        # treats a too-loose-converged Zalmoxis result the same as a
+        # non-converged one.
+        _M_target = float(hf_row.get('M_int_target', 0.0) or 0.0)
+        _M_int = float(hf_row.get('M_int', 0.0) or 0.0)
+        if _M_target > 0.0:
+            _mass_rel_err = abs(_M_int / _M_target - 1.0)
+            if _mass_rel_err > _ZALMOXIS_MASS_ANCHOR_TOL:
+                raise RuntimeError(
+                    'Zalmoxis mass-anchor violation: '
+                    '|M_int / M_int_target - 1| = %.3e > tol=%.3e '
+                    '(M_int=%.4e kg, M_target=%.4e kg). '
+                    'Treating as non-converged.' % (
+                        _mass_rel_err, _ZALMOXIS_MASS_ANCHOR_TOL,
+                        _M_int, _M_target,
+                    )
+                )
         if _zalmoxis_fail_count > 0:
             # Quantify how often the relaxed budget actually saved a run: log
             # the streak length before zeroing so post-hoc analysis can grep
