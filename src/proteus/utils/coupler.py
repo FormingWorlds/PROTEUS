@@ -728,6 +728,45 @@ def ReadHelpfileFromCSV(output_dir: str):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
     return pd.read_csv(fpath, sep=r'\s+')
 
+def variable_is_logarithmic(varname: str) -> bool:
+    """Does this variable naturally vary across orders several of magnitude?
+
+    This variable should also be positive-valued.
+
+    Parameters
+    ----------
+    - varname (str): Name of variable.
+
+    Returns
+    ----------
+    - out (bool): True if scales logarithmically.
+    """
+
+    # Linear-scaling is default behaviour
+    out = False
+
+    # Check specific variables
+    if varname in (
+        'P_surf',
+        'P_surf_clim',
+        'rho_obs',
+        'p_obs',
+        'p_xuv',
+        'Time',
+        'semimajorax',
+        'eccentricity',
+        'params.stop.time.maximum',
+        'orbit.semimajoraxis',
+    ):
+        out = True
+
+    # Check compositional variables
+    elif '_vmr' in varname:
+        out = True
+    elif '_bar' in varname:
+        out = True
+
+    return out
 
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis

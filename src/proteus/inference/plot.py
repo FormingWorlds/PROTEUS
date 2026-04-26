@@ -25,6 +25,7 @@ from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
 from proteus.utils.helper import recursive_get
+from proteus.utils.coupler import variable_is_logarithmic
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -434,7 +435,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
 
     # Get bounds
     keys = list(parameters.keys())
-    d = len(keys)
+    d = len(keys) # number of parameters
     bounds = torch.tensor(
         [[list(parameters.values())[i][j] for i in range(d)] for j in range(2)]
     )
@@ -485,6 +486,8 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
 
         # configure axes
         axs[1, i].set_xlabel(keys[i], fontsize=10)
+        if variable_is_logarithmic(keys[i]):
+            axs[1, i].set_xscale('log')
         axs[1, i].grid(alpha=0.2, zorder=0)
         axs[1, i].set_ylim(ymin, ymax)
         if i >= 1:
@@ -503,7 +506,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
         # median and stddev
         x_med = np.median(x2)
         x_std = np.std(x2)
-        axs[0, i].set_title(f'{x_med:3f}' + r'$\pm$' + f'{x_std:3f}', fontsize=8, color='r')
+        axs[0, i].set_title(f'{x_med:g}' + r'$\pm$' + f'{x_std:g}', fontsize=8, color='r')
 
         # overplot median in both panels
         for j in (0, 1):
@@ -595,8 +598,10 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
             ax.axhline(y=obs[obs_keys[j]], color='g', alpha=0.5, label='Observed')
 
             # these variables are more natural on a log-scale
-            if ('vmr' in obs_keys[j]) or (obs_keys[j] == 'P_surf'):
+            if variable_is_logarithmic(obs_keys[j]):
                 ax.set_yscale('log')
+            if variable_is_logarithmic(par_keys[i]):
+                ax.set_xscale('log')
 
             # hide tick labels
             if i >= 1:

@@ -12,50 +12,11 @@ from botorch.utils.transforms import unnormalize
 from numpy import log10
 
 from proteus.utils.constants import element_list, gas_list
-from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
 
 dtype = torch.double
 LOG_CLIP = 1e-30
 log = logging.getLogger('fwl.' + __name__)
-
-
-def variable_is_logarithmic(varname: str) -> bool:
-    """Does this physical variable naturally vary across orders several of magnitude?
-
-    This variable should also be positive-valued.
-
-    Parameters
-    ----------
-    - varname (str): Name of variable.
-
-    Returns
-    ----------
-    - out (bool): True if scales logarithmically.
-    """
-
-    # Linear-scaling is default behaviour
-    out = False
-
-    # Check specific variables
-    if varname in (
-        'P_surf',
-        'P_surf_clim',
-        'rho_obs',
-        'p_obs',
-        'p_xuv',
-        'Time',
-        'semimajorax',
-        'eccentricity',
-    ):
-        out = True
-
-    # Check compositional variables
-    elif '_vmr' in varname:
-        out = True
-    elif '_bar' in varname:
-        out = True
-
-    return out
 
 
 def update_toml(config_file: str, updates: dict, output_file: str) -> None:
@@ -157,7 +118,7 @@ def run_proteus(
         log.error(f"Cannot execute '{command[0]}': command not found")
         raise RuntimeError("Failed to run PROTEUS: 'proteus' command not found") from err
     except subprocess.CalledProcessError as err:
-        log.error(f'PROTEUS run failed for worker={worker} iter={iter} config={out_cfg}')
+        log.error(f'PROTEUS run failed for worker={worker} iter={iter} outdir={str(out_dir)}')
         raise RuntimeError(
             f'Failed to run PROTEUS for worker={worker} iter={iter}; exit code {err.returncode}'
         ) from err
