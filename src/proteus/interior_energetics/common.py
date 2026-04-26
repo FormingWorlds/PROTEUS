@@ -557,6 +557,17 @@ class Interior_t:
 
         self.aragog_solver = None
 
+        # Counter for consecutive Aragog steps integrated on a stale
+        # Zalmoxis structure (i.e. with hf_row['_structure_stale']=True
+        # set by a Zalmoxis fall-back). Resets to 0 on every successful
+        # structure refresh. Used by setup_or_update_solver to log how
+        # long Aragog has been running on a frozen mesh, surfacing the
+        # silent-stale-mesh failure mode flagged in the 2026-04-26
+        # coupling audit. The hard-fail threshold lives separately in
+        # the wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS budget; this
+        # counter is for visibility, not enforcement.
+        self._stale_struct_steps = 0
+
         # Number of levels
         self.nlev_b = int(nlev_b)
         self.nlev_s = self.nlev_b - 1

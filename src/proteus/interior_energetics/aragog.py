@@ -134,6 +134,26 @@ class AragogRunner:
                 hf_row=hf_row,
             )
         else:
+            # T1.1 (2026-04-26 coupling audit): track how long Aragog has
+            # been integrating on a stale Zalmoxis structure. The
+            # _structure_stale flag is set by the wrapper's fall-back
+            # path on Zalmoxis non-convergence and cleared on the next
+            # successful Zalmoxis call. Surfacing this counter at INFO
+            # makes the silent-stale-mesh window visible in
+            # proteus_00.log; the hard-fail policy lives in the
+            # wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS budget.
+            if hf_row.get('_structure_stale', False):
+                interior_o._stale_struct_steps += 1
+                logger.info(
+                    'Aragog re-running on stale Zalmoxis structure '
+                    '(consecutive stale steps = %d, R_int=%.4e m, '
+                    'M_int=%.4e kg from last successful re-solve)',
+                    interior_o._stale_struct_steps,
+                    float(hf_row.get('R_int', 0.0)),
+                    float(hf_row.get('M_int', 0.0)),
+                )
+            else:
+                interior_o._stale_struct_steps = 0
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
                 # Preserve the evolved S field across equilibration resets.

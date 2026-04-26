@@ -246,3 +246,35 @@ def test_load_ps_table_invalid_filename(tmp_path):
             spider_dir, 'WolfBower2018_MgSiO3', 'this_file_does_not_exist.dat'
         )
     assert result is None
+
+
+def test_interior_t_stale_struct_steps_init():
+    """Interior_t initialises ``_stale_struct_steps`` to 0.
+
+    Regression test for T1.1 (2026-04-26 coupling audit). The counter
+    tracks consecutive Aragog steps integrated on a stale Zalmoxis
+    structure, surfacing the silent-stale-mesh failure mode.
+
+    Anti-happy-path: verifies the counter is mutable (not a property)
+    and an integer, guarding against the two most plausible typo
+    bugs (cached_property, wrong type).
+    """
+    interior_o = Interior_t(50)
+    assert hasattr(interior_o, '_stale_struct_steps'), (
+        'Interior_t must expose _stale_struct_steps for T1.1 visibility'
+    )
+    assert interior_o._stale_struct_steps == 0
+    assert isinstance(interior_o._stale_struct_steps, int)
+
+    # Mutability: increment / reset cycle (the actual contract of the
+    # counter).
+    interior_o._stale_struct_steps += 1
+    assert interior_o._stale_struct_steps == 1
+    interior_o._stale_struct_steps = 0
+    assert interior_o._stale_struct_steps == 0
+
+    # Counter init is independent of mesh size (different nlev_b).
+    interior_o_small = Interior_t(20)
+    interior_o_large = Interior_t(200)
+    assert interior_o_small._stale_struct_steps == 0
+    assert interior_o_large._stale_struct_steps == 0

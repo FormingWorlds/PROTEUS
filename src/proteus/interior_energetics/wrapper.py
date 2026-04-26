@@ -1328,6 +1328,13 @@ def update_structure_from_interior(
                 reason,
             )
         _zalmoxis_fail_count = 0  # Reset on success
+        # T1.1 (2026-04-26 coupling audit): clear the stale-structure
+        # flag so downstream consumers (Aragog setup_or_update_solver)
+        # can rely on it. Previously _structure_stale was set to True
+        # on fall-back but never cleared; the flag was effectively dead
+        # and Aragog had no way to know whether it was running on a
+        # fresh or stale mesh. Clearing here closes the contract.
+        hf_row['_structure_stale'] = False
         # Stage 1b.5: per-re-solve wall-time trace for the convergence
         # harness. Logged at INFO so the three-way validation can ingest
         # the cadence cost from proteus_00.log.

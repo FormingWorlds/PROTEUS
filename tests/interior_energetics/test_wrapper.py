@@ -698,3 +698,140 @@ def test_solve_structure_invalid_module():
 
     with pytest.raises(ValueError, match='Invalid structure interior module'):
         solve_structure({}, config, None, {}, '/tmp')
+
+
+# ============================================================================
+# T1.1: _structure_stale flag contract (set on fall-back, cleared on success)
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
+    """Successful zalmoxis_solver call clears hf_row['_structure_stale'].
+
+    Regression test for T1.1 (2026-04-26 coupling audit). Pre-fix the
+    flag was set on fall-back (wrapper.py:1355) but never cleared, so
+    Aragog had no way to distinguish a fresh from a stale structure.
+    Post-fix the flag is cleared in the success path.
+
+    Edge cases covered:
+    - Flag was True at entry (simulating prior fall-back) -> must be False after.
+    - Flag was missing at entry (legacy hf_row) -> must be False after (set,
+      not just not-True), so downstream consumers can rely on the key.
+    """
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+
+    # Case A: flag was True at entry (post-fall-back state)
+    hf_row_A = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+        '_structure_stale': True,
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, str(tmp_path / 'mesh.dat')),
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior_energetics.spider.blend_mesh_files',
+            return_value=0.0,
+        ),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row_A, interior_o, 0.0, 3000.0, 0.8
+        )
+    # Flag must be present and False after a successful call.
+    assert '_structure_stale' in hf_row_A, 'flag must be set, not absent'
+    assert hf_row_A['_structure_stale'] is False, (
+        'flag must be cleared (False) on Zalmoxis success — was %r'
+        % hf_row_A['_structure_stale']
+    )
+
+    # Case B: flag was missing at entry (legacy hf_row never touched by fall-back)
+    hf_row_B = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+        # No '_structure_stale' key at entry
+    }
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, str(tmp_path / 'mesh.dat')),
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior_energetics.spider.blend_mesh_files',
+            return_value=0.0,
+        ),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row_B, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert hf_row_B.get('_structure_stale') is False, (
+        'success path must set flag to False even if it was absent on entry'
+    )
+
+
+@pytest.mark.unit
+def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
+    """Zalmoxis RuntimeError sets hf_row['_structure_stale'] = True.
+
+    Documents the canonical fall-back contract that T1.1 makes honest.
+    Anti-happy-path: also checks that the failure does NOT clear the
+    flag if it was already True (i.e. consecutive failures keep it set).
+    """
+    from proteus.interior_energetics import wrapper as _w
+
+    # Reset module-level fail counter before test (prevents hard-abort
+    # at consecutive cap = 8 from leaking between test runs).
+    _w._zalmoxis_fail_count = 0
+
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    dirs = _mock_dirs()
+    interior_o = _mock_interior_o()
+
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+        # Flag absent at entry
+    }
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        side_effect=RuntimeError('mock convergence failure'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert hf_row.get('_structure_stale') is True, (
+        'fall-back path must set flag to True'
+    )
+
+    # Second consecutive failure: flag stays True (not toggled or cleared).
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        side_effect=RuntimeError('mock convergence failure 2'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert hf_row.get('_structure_stale') is True
+
+    # Reset for any downstream tests.
+    _w._zalmoxis_fail_count = 0
