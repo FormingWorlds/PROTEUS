@@ -30,7 +30,13 @@ if TYPE_CHECKING:
 # the abort threshold. `reset_run_state()` below clears the counter; it
 # should be called from the PROTEUS run-init path.
 _zalmoxis_fail_count = 0
-_ZALMOXIS_MAX_CONSECUTIVE_FAILS = 5
+# Raised from 5 to 8 on 2026-04-26 after the chili_dry_coupled_stage2_ab_smoothstep
+# crash at iter ~134 and the pre-fix run at iter ~135 both died on consecutive
+# `pressure=False, density=False, mass=False` streaks. The optimised B-side run
+# survived the same failure mode by luck of intermixing successes; raising the
+# cap gives recoverable streaks more room without hiding a genuine deadlock.
+# See session_2026_04_25_to_26_perf_summary.md.
+_ZALMOXIS_MAX_CONSECUTIVE_FAILS = 8
 
 # Counter for consecutive SPIDER CVode failures during time evolution.
 # Reset on each successful SPIDER call. Crash after max_consecutive.
@@ -1310,6 +1316,17 @@ def update_structure_from_interior(
             temperature_arrays=(_r_for_arrays, _T_for_arrays),
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
+        if _zalmoxis_fail_count > 0:
+            # Quantify how often the relaxed budget actually saved a run: log
+            # the streak length before zeroing so post-hoc analysis can grep
+            # "consecutive-failure streak reset" from proteus_00.log.
+            log.info(
+                'Zalmoxis consecutive-failure streak reset on success '
+                '(streak length = %d / %d, trigger: %s)',
+                _zalmoxis_fail_count,
+                _ZALMOXIS_MAX_CONSECUTIVE_FAILS,
+                reason,
+            )
         _zalmoxis_fail_count = 0  # Reset on success
         # Stage 1b.5: per-re-solve wall-time trace for the convergence
         # harness. Logged at INFO so the three-way validation can ingest
