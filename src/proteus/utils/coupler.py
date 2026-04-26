@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
-AGNI_MIN_VERSION = '1.8.0'
+AGNI_MIN_VERSION = '1.9.0'
 
 
 def _get_current_time():
