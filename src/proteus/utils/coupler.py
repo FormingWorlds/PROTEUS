@@ -728,6 +728,7 @@ def ReadHelpfileFromCSV(output_dir: str):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
     return pd.read_csv(fpath, sep=r'\s+')
 
+
 def variable_is_logarithmic(varname: str) -> bool:
     """Does this variable naturally vary across orders several of magnitude?
 
@@ -767,6 +768,7 @@ def variable_is_logarithmic(varname: str) -> bool:
         out = True
 
     return out
+
 
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis

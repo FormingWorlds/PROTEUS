@@ -39,7 +39,7 @@ version = "2.0"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 10      # Write CSV frequency, 0: wait until completion | n: every n iterations
-        archive_mod = 5      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
+        archive_mod = 50      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
         remove_sf = false    # Remove SOCRATES spectral file when simulation ends.
 
     # time-stepping
@@ -395,4 +395,3 @@ version = "2.0"
 # Calculate simulated observations
 [observe]
     synthesis = "none"
-

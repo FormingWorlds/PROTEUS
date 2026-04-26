@@ -161,7 +161,7 @@ def print_results(D, logs, config, output, n_init):
 
     Returns
     ----------
-    - None
+    - str: Path to the input TOML of the best fitting case.
     """
     # Convert list of objective values to tensor
     X = D['X']
@@ -197,20 +197,22 @@ def print_results(D, logs, config, output, n_init):
     params = config['parameters'].keys()
 
     # Log summary, account for python index vs step index and n_init
-    log.info(f'Best case sampled at step {i_opt + 1 - n_init} has J={J_opt:+.4f}')
-    log.info(f'With config at {in_path}')
+    log.info(f'Best case was step {i_opt + 1 - n_init}, with J={J_opt:+.4f}')
+    log.info(f'    config: {in_path}')
     log.info(' ')
-    log.info(f'{"Observables":18s} | True        | Simulated   | Diff %')
+
+    log.info(f'{"Observable":28s} |    True     |  Best fit   | Diff %')
     for i, k in enumerate(observables):
         tru = true_y[k]
         obs = sim_opt[i]
         dif = 100 * (obs - tru) / tru
-        log.info(f'{k:18s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}')
-    log.info(f'{"Parameters":28s} | Simulated val @ best J')
+        log.info(f'{k:28s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}')
     log.info(' ')
+
+    log.info(f'{"Parameter":28s} | Best fitting value')
     for i, k in enumerate(list(params)):
-        log.info(f'{k:28s}   {str(input[k]):20s}')
-    log.info('-----------------------------------')
+        log.info(f'{k:28s}   {input[k]:g}')
+    log.info(' ')
 
     # Log parameter statistics
     d = len(params)
@@ -220,12 +222,14 @@ def print_results(D, logs, config, output, n_init):
     # remove intial data
     X_samp = np.array(unnormalize(X, bounds), copy=None, dtype=float)[n_init:, :]
     log.info(f'Ensemble statistics (N={len(X_samp)})')
-    log.info(f'{"Parameters":28s} | Median ± stddev')
+    log.info(f'{"Parameter":28s} |   Median  ±  stderr')
     for i, k in enumerate(list(params)):
         x_med = np.median(X_samp[:, i])
-        x_std = np.std(X_samp[:, i])
-        log.info(f'{k:28s}   {x_med:.4f} ± {x_std:.4f}')
+        x_err = np.std(X_samp[:, i]) / len(X_samp) ** 0.5
+        log.info(f'{k:28s}   {x_med:g} ± {x_err:g}')
     log.info('-----------------------------------')
+
+    return in_path
 
 
 def get_kernel_w_prior(

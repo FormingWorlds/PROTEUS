@@ -171,7 +171,7 @@ def worker(
 
         step = len(X) - n_init
         current_best = Y.max().item()
-        log.info(f'Step {step:4d}, best objective = {current_best:.5f}')
+        log.info(f'Step {step:5d}, best objective = {current_best:+.5f}')
 
         task_id += 1
 

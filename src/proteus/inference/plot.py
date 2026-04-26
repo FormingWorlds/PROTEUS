@@ -24,8 +24,10 @@ from botorch.utils.transforms import unnormalize
 from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
-from proteus.utils.helper import recursive_get
+from proteus import Proteus
+from proteus.plot import plot_dispatch
 from proteus.utils.coupler import variable_is_logarithmic
+from proteus.utils.helper import recursive_get
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -435,7 +437,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
 
     # Get bounds
     keys = list(parameters.keys())
-    d = len(keys) # number of parameters
+    d = len(keys)  # number of parameters
     bounds = torch.tensor(
         [[list(parameters.values())[i][j] for i in range(d)] for j in range(2)]
     )
@@ -505,15 +507,27 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
 
         # median and stddev
         x_med = np.median(x2)
-        x_std = np.std(x2)
-        axs[0, i].set_title(f'{x_med:g}' + r'$\pm$' + f'{x_std:g}', fontsize=8, color='r')
+        x_err = np.std(x2) / len(x2) ** 0.5
 
         # overplot median in both panels
         for j in (0, 1):
             axs[j, i].axvline(x=x_med, zorder=4, color='r', alpha=0.8)
+            axs[j, i].axvline(
+                x=x_med + x_err, zorder=4, color='r', alpha=0.5, linestyle='dashed'
+            )
+            axs[j, i].axvline(
+                x=x_med - x_err, zorder=4, color='r', alpha=0.5, linestyle='dashed'
+            )
 
         # overplot best in both panels
-        axs[j, i].axvline(x=X[i_best, i], zorder=5, color='m', alpha=0.8)
+        x_best = X[i_best, i]
+        for j in (0, 1):
+            axs[j, i].axvline(x=x_best, zorder=5, color='m', alpha=0.8)
+
+        title = f'{x_best:g}'
+        if i == 0:
+            title = f'Best: {x_best:g}'
+        axs[0, i].set_title(title, fontsize=8, color='m', weight='bold')
 
         # grid
         axs[j, i].grid(alpha=0.2, zorder=0, axis='x')
@@ -636,3 +650,28 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
         bbox_inches='tight',
     )
     plt.close(fig)
+
+
+def plot_proteus(best_config: str):
+    """Make PROTEUS plots for the best fitting case.
+
+    This requires reading output-data files from the disk.
+
+    Parameters
+    ----------
+    - best_config (str): Path to the best fitting case's config TOML file.
+
+    Returns
+    ----------
+    - None
+    """
+
+    handler = Proteus(config_path=best_config)
+    handler.extract_archives()
+
+    plot_skip = ('anim_visual', 'visual')
+
+    for key in plot_dispatch.keys():
+        if key in plot_skip:
+            continue
+        plot_dispatch[key](handler)

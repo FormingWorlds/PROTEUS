@@ -64,6 +64,9 @@ def run_inference(config):
         level=config['logging'],
     )
 
+    # Starting message
+    log.info(f'Inference started at {str_time()}')
+
     # Save a timestamped copy of the reference config
     with open(os.path.join(dirs['output'], 'copy.infer.toml'), 'w') as file:
         file.write(f'# Created: {str_time()}\n\n')
@@ -86,17 +89,22 @@ def run_inference(config):
 
     # Create plots directory (will not already exist)
     os.mkdir(os.path.join(dirs['output'], 'plots'))
+    log.info(' ')
 
     # Create initial guess data through the requested method
     n_init = create_init(config)
+    log.info(' ')
 
     # Maximum number of evaluations during inference (offset by initial evaluations)
     max_len = max(int(config['n_steps']), 1) + n_init
 
-    log.info(f'Starting optimisation: {config["n_workers"]} workers, {n_init} initial samples')
-    log.info(
-        f'Performing {config["n_steps"]} BO steps, for total {n_init + config["n_steps"]} samples'
-    )
+    log.info('Optimisation config:')
+    log.info(f'    workers       = {config["n_workers"]}')
+    log.info(f'    init samples  = {n_init}')
+    log.info(f'    optim steps   = {config["n_steps"]}')
+    log.info(f'    kernel        = {config["kernel"]}')
+    log.info(f'    acquisition   = {config["acqf"]}')
+    log.info(' ')
     t_0 = time.perf_counter()
 
     # Execute the parallel BO process
@@ -118,7 +126,7 @@ def run_inference(config):
     log.info('-----------------------------------')
 
     # Print summary of true vs. simulated observables and inferred parameters
-    print_results(D_final, logs, config, dirs['output'], n_init)
+    best_config = print_results(D_final, logs, config, dirs['output'], n_init)
 
     # Save final data, logs, and timestamps for later analysis
     log.info(f'Saving results: {dirs["output"]}')
@@ -130,6 +138,9 @@ def run_inference(config):
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs['output'])
     plotBO.plot_result_objective(D_final, config['parameters'], n_init, dirs['output'])
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
+
+    # Make PROTEUS plots for best fitting case
+    plotBO.plot_proteus(best_config)
 
     # Done
     log.info(f'Inference completed at {str_time()}')
