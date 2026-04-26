@@ -568,6 +568,20 @@ class Interior_t:
         # counter is for visibility, not enforcement.
         self._stale_struct_steps = 0
 
+        # T1.5 (2026-04-26 coupling audit): simulation-time of the last
+        # SUCCESSFUL Zalmoxis structure refresh. Distinct from the
+        # main-loop's `last_struct_time` (which is reset on every
+        # call regardless of success). Drives the stale-aware ceiling
+        # trigger in update_structure_from_interior, which fires when
+        # Time - last_successful_struct_time >= update_stale_ceiling.
+        # Without this tracker, a fall-back keeps the trigger clock
+        # ticking past the next ceiling and Aragog can advance through
+        # an entire structure-update window with a frozen mesh (the 51
+        # kyr stretch observed in the 2026-04-26 Step D run). Set to
+        # -inf at __init__; updated to hf_row['Time'] on every Zalmoxis
+        # success (wrapper.py).
+        self.last_successful_struct_time = float('-inf')
+
         # Number of levels
         self.nlev_b = int(nlev_b)
         self.nlev_s = self.nlev_b - 1

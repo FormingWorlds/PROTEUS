@@ -1202,6 +1202,31 @@ def update_structure_from_interior(
         triggered = True
         reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
+    # T1.5 stale-aware ceiling: trigger if elapsed time since the LAST
+    # SUCCESSFUL structure refresh (not the last call) exceeds
+    # update_stale_ceiling. Without this, a sequence of failed
+    # re-solves resets `last_struct_time` to the failure time and
+    # the next ceiling waits a full update_interval, meaning Aragog
+    # can integrate through an entire window with a frozen mesh
+    # (51 kyr observed in the 2026-04-26 Step D run). Bypasses the
+    # update_min_interval floor for the same reason as the
+    # mesh-converging trigger: this is a recovery path, not a
+    # routine refresh.
+    if not triggered:
+        stale_ceiling = config.interior_struct.zalmoxis.update_stale_ceiling
+        if stale_ceiling > 0:
+            last_success = float(
+                getattr(interior_o, 'last_successful_struct_time', float('-inf'))
+            )
+            if last_success > float('-inf'):
+                stale_elapsed = current_time - last_success
+                if stale_elapsed >= stale_ceiling:
+                    triggered = True
+                    reason = (
+                        f'stale-aware ceiling ({stale_elapsed:.1f} yr since '
+                        f'last successful re-solve >= {stale_ceiling:.1f} yr)'
+                    )
+
     # Phi_global absolute change (primary trigger: directly reflects rheological state)
     if not triggered:
         dPhi = abs(hf_row['Phi_global'] - last_Phi)
@@ -1368,6 +1393,14 @@ def update_structure_from_interior(
         # and Aragog had no way to know whether it was running on a
         # fresh or stale mesh. Clearing here closes the contract.
         hf_row['_structure_stale'] = False
+        # T1.5: anchor the stale-aware ceiling on the last SUCCESSFUL
+        # re-solve (vs `last_struct_time` which is reset on every
+        # call regardless of success).
+        try:
+            interior_o.last_successful_struct_time = float(current_time)
+        except AttributeError:
+            # Legacy / mock callers without Interior_t: best-effort no-op.
+            pass
         # Stage 1b.5: per-re-solve wall-time trace for the convergence
         # harness. Logged at INFO so the three-way validation can ingest
         # the cadence cost from proteus_00.log.

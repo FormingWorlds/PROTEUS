@@ -138,6 +138,13 @@ class Zalmoxis:
     update_min_interval: float = field(default=0, validator=ge(0))
     update_dtmagma_frac: float = field(default=0.05, validator=(gt(0), lt(1)))
     update_dphi_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
+    # T1.5: stale-aware ceiling on time since the last *successful*
+    # Zalmoxis re-solve (vs `update_interval` which counts since the
+    # last call). Default 25 kyr at 1 M_E sized to be ~half the typical
+    # 50 kyr ceiling, so a fall-back stretch refires the trigger after
+    # half a normal interval rather than waiting a full one.
+    # Set to 0 to disable (legacy behavior). Set high to relax.
+    update_stale_ceiling: float = field(default=2.5e4, validator=ge(0))
 
     # Mesh smoothing
     mesh_max_shift: float = field(default=0.05, validator=(gt(0), lt(1)))

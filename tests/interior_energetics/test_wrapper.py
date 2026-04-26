@@ -967,3 +967,151 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
     assert _w._zalmoxis_fail_count == 0
 
     _w._zalmoxis_fail_count = 0  # cleanup
+
+
+# ============================================================================
+# T1.5: anti-stale-mesh re-trigger via last_successful_struct_time
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
+    """Stale-aware ceiling fires after update_stale_ceiling regardless of
+    intervening failed re-solves.
+
+    Pre-T1.5: the only ceiling trigger uses elapsed time since the last
+    *call*, which a fall-back re-anchors. This means a failed call
+    can keep the trigger silent for a full update_interval afterwards
+    (the 2026-04-26 Step D run showed 51 kyr of Aragog evolution on
+    a frozen mesh between failure #4 and the next trigger).
+
+    Post-T1.5: tracking last_successful_struct_time on Interior_t
+    drives a separate stale-aware ceiling that fires after
+    update_stale_ceiling has elapsed since the last *successful*
+    re-solve. Independent of last_struct_time, so it survives failures.
+    """
+    from proteus.interior_energetics import wrapper as _w
+
+    _w._zalmoxis_fail_count = 0
+
+    # Configure a 50 kyr normal ceiling and a 25 kyr stale ceiling.
+    # Test point: elapsed=30 kyr since LAST CALL (under normal ceiling)
+    # but 30 kyr since LAST SUCCESS (over stale ceiling).
+    config = _mock_config(update_interval=5e4, update_min_interval=0.0)
+    config.interior_struct.zalmoxis.update_stale_ceiling = 2.5e4
+    dirs = _mock_dirs()
+
+    # Real Interior_t so last_successful_struct_time attribute lookup works
+    interior_o = Interior_t(50)
+    interior_o.last_successful_struct_time = float('-inf')
+    # Decorate with the arrays the wrapper requires.
+    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
+    interior_o.temp = np.full(49, 3000.0)
+
+    # Simulate state: time has advanced 3e4 yr since the last call,
+    # but no successful re-solve yet.
+    last_struct_time = 7e4   # last call was at 7e4 yr (a failed one)
+    current_time = 1e5       # now at 1e5 yr; elapsed = 3e4 (< 5e4 ceiling)
+    hf_row = {
+        'Time': current_time,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,    # no Phi/T trigger (no change)
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+    }
+    # Last *success* is at -inf, so stale-aware ceiling should NOT fire
+    # for last_success=-inf (no anchor yet). Verify: trigger should NOT
+    # fire because elapsed=3e4 < normal ceiling=5e4 and no success anchor
+    # exists.
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        side_effect=AssertionError('zalmoxis_solver should not be called'),
+    ):
+        out = update_structure_from_interior(
+            dirs, config, hf_row, interior_o,
+            last_struct_time, hf_row['T_magma'], hf_row['Phi_global'],
+        )
+    # Returned tuple unchanged (no_update path).
+    assert out == (last_struct_time, hf_row['T_magma'], hf_row['Phi_global'])
+
+    # Now seed a successful past re-solve at t=7e4 (= 30 kyr ago).
+    interior_o.last_successful_struct_time = 7e4
+    # Same hf_row, same elapsed; this time stale-aware ceiling SHOULD
+    # fire (3e4 yr >= 2.5e4 yr).
+    def _success_side(config, outdir, hf_row, **kwargs):
+        hf_row['M_int'] = 5.972e24
+        hf_row['M_int_target'] = 5.972e24
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, str(tmp_path / 'mesh.dat'))
+
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            side_effect=_success_side,
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+        patch('proteus.interior_energetics.wrapper.shutil.copy2'),
+        patch(
+            'proteus.interior_energetics.spider.blend_mesh_files',
+            return_value=0.0,
+        ),
+    ):
+        out = update_structure_from_interior(
+            dirs, config, hf_row, interior_o,
+            last_struct_time, hf_row['T_magma'], hf_row['Phi_global'],
+        )
+    # Trigger fired and updated last_struct_time to current_time.
+    assert out[0] == current_time, (
+        'stale-aware ceiling must trigger; got last_struct_time=%r' % out[0]
+    )
+    # Successful tracker advanced.
+    assert interior_o.last_successful_struct_time == current_time, (
+        'last_successful_struct_time must advance on success'
+    )
+
+    _w._zalmoxis_fail_count = 0
+
+
+@pytest.mark.unit
+def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
+    """A Zalmoxis fall-back must NOT advance last_successful_struct_time.
+
+    Otherwise the stale-aware ceiling becomes equivalent to the normal
+    ceiling and T1.5 would have no effect.
+    """
+    from proteus.interior_energetics import wrapper as _w
+
+    _w._zalmoxis_fail_count = 0
+
+    config = _mock_config(update_interval=1e3, update_min_interval=0.0)
+    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0  # disable T1.5 here
+    dirs = _mock_dirs()
+
+    interior_o = Interior_t(50)
+    interior_o.last_successful_struct_time = 5e4
+    interior_o.radius = np.linspace(6.371e6, 3.504e6, 50)
+    interior_o.temp = np.full(49, 3000.0)
+
+    hf_row = {
+        'Time': 7e4,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+    }
+    # Call triggers ceiling, zalmoxis_solver raises -> fall-back.
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        side_effect=RuntimeError('mock failure'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8,
+        )
+    assert interior_o.last_successful_struct_time == 5e4, (
+        'fall-back must NOT advance last_successful_struct_time '
+        '(got %r, expected 5e4)' % interior_o.last_successful_struct_time
+    )
+
+    _w._zalmoxis_fail_count = 0
