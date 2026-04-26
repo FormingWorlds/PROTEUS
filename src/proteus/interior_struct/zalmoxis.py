@@ -453,12 +453,18 @@ def load_zalmoxis_configuration(
         # integrator tolerances; we auto-apply newton_relative_tolerance
         # / newton_absolute_tolerance when the Newton path is selected.
         'outer_solver': config.interior_struct.zalmoxis.outer_solver,
-        'newton_max_iter': config.interior_struct.zalmoxis.newton_max_iter,
-        'newton_tol': config.interior_struct.zalmoxis.newton_tol,
-        # Pass tightened integrator tols only when Newton is active.
-        # Default-Picard runs are byte-identical to before T2.1.
+        # Newton-specific knobs (newton_max_iter, newton_tol) AND
+        # tightened integrator tolerances are passed ONLY when the
+        # Newton path is selected. Default-Picard runs see the dict
+        # bit-identically to pre-T2.1 builds (no Newton keys, no
+        # tightened tolerances), so a future Zalmoxis guard against
+        # unknown keys would not break Picard callers.
         **(
             {
+                'newton_max_iter': (
+                    config.interior_struct.zalmoxis.newton_max_iter
+                ),
+                'newton_tol': config.interior_struct.zalmoxis.newton_tol,
                 'relative_tolerance': (
                     config.interior_struct.zalmoxis.newton_relative_tolerance
                 ),
