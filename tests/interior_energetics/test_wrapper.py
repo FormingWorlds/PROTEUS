@@ -19,6 +19,7 @@ Functions tested:
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -965,6 +966,88 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
     # callers that haven't been updated to write M_int_target).
     assert hf_row_no_target.get('_structure_stale') is False
     assert _w._zalmoxis_fail_count == 0
+
+    _w._zalmoxis_fail_count = 0  # cleanup
+
+
+@pytest.mark.unit
+def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
+    """Wrapper-level RuntimeError (e.g. T1.2 mass-anchor) restores
+    zalmoxis_output.dat from .prev backup.
+
+    The atomic-write path inside zalmoxis_solver (T1.3 fix-2) handles
+    schema-violation raises. But the wrapper's mass-anchor check raises
+    AFTER zalmoxis_solver returns successfully, so the rollback must
+    happen at the wrapper level too. Otherwise Aragog reads the new
+    failing file on the next iter with the OLD hf_row['R_int'] and
+    crashes on EOS-vs-mesh inconsistency.
+
+    Edge case covered: when no .prev exists (first call of a run), the
+    wrapper must NOT raise — it best-effort skips the restore.
+    """
+    from proteus.interior_energetics import wrapper as _w
+
+    _w._zalmoxis_fail_count = 0
+
+    # Set up an output dir with data/ subdirectory.
+    outdir = tmp_path
+    (outdir / 'data').mkdir(exist_ok=True)
+    output_path = str(outdir / 'data' / 'zalmoxis_output.dat')
+    prev_path = output_path + '.prev'
+
+    # Pre-existing .prev with KNOWN content (last-good).
+    with open(prev_path, 'w') as f:
+        f.write('PREV_KNOWN_CONTENT\n')
+
+    config = _mock_config(update_interval=1000.0, update_min_interval=100.0)
+    interior_o = _mock_interior_o()
+
+    M_target = 5.972e24
+
+    def _solver_writes_corrupt_then_succeeds(config, outdir_arg, hf_row, **kwargs):
+        # Mock zalmoxis_solver: write a NEW file, set hf_row M_int_target
+        # so wrapper's T1.2 fires.
+        with open(output_path, 'w') as f:
+            f.write('NEW_FAILING_CONTENT\n')
+        hf_row['M_int'] = M_target * (1 + 5e-3)  # 0.5% off > 1e-3 -> raise
+        hf_row['M_int_target'] = M_target
+        hf_row['R_int'] = 6.371e6
+        return (3.504e6, str(outdir / 'spider_mesh.dat'))
+
+    dirs = _mock_dirs()
+    dirs['output'] = str(outdir)
+    hf_row = {
+        'Time': 1100.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.8,
+        'R_int': 6.371e6,
+        'gravity': 9.81,
+        'M_int': 5.972e24,
+    }
+    # Don't patch shutil.copy2 here -- the rollback in the except-block
+    # calls it directly to restore from .prev, and we want that real copy
+    # to happen. Other tests that patch copy2 do so to avoid pre-call
+    # mesh-snapshot writes in tmp_path/spider that don't exist; this test
+    # has its own .prev set up so the restore works.
+    with (
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            side_effect=_solver_writes_corrupt_then_succeeds,
+        ),
+        patch('proteus.interior_energetics.wrapper.np.savetxt'),
+    ):
+        update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8,
+        )
+
+    # File on disk should have been restored to .prev content.
+    assert os.path.isfile(output_path), 'output file must exist after fall-back'
+    with open(output_path) as f:
+        content_after = f.read()
+    assert content_after == 'PREV_KNOWN_CONTENT\n', (
+        'wrapper-level fall-back must restore zalmoxis_output.dat from '
+        '.prev (got %r)' % content_after
+    )
 
     _w._zalmoxis_fail_count = 0  # cleanup
 

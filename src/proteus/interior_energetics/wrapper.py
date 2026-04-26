@@ -1434,6 +1434,30 @@ def update_structure_from_interior(
         # snapshot was saved).
         spider_mesh_file = prev_path or dirs.get('spider_mesh')
         _cmb_radius = float(hf_row.get('R_core', 0.0))
+        # T1.2 fix (2026-04-26): also restore zalmoxis_output.dat from
+        # its .prev backup when the wrapper-level mass-anchor check (or
+        # any other post-zalmoxis_solver wrapper RuntimeError) raises.
+        # zalmoxis_solver itself created the .prev backup atomically
+        # inside its T1.3 fix-2 path, but if the raise happens AFTER
+        # zalmoxis_solver returns successfully (e.g. T1.2 mass-anchor)
+        # the new file is on disk and Aragog will crash on the next
+        # iter with EOS-vs-mesh inconsistency unless we roll back here.
+        try:
+            _output_zalmoxis = os.path.join(
+                outdir, 'data', 'zalmoxis_output.dat'
+            )
+            _output_prev = _output_zalmoxis + '.prev'
+            if os.path.isfile(_output_prev):
+                shutil.copy2(_output_prev, _output_zalmoxis)
+                log.info(
+                    'T1.2/T1.3 fall-back: restored %s from %s',
+                    _output_zalmoxis, _output_prev,
+                )
+        except Exception as _exc:
+            log.warning(
+                'Could not restore zalmoxis_output.dat from .prev '
+                'on fall-back: %s', _exc,
+            )
 
     if spider_mesh_file:
         dirs['spider_mesh'] = spider_mesh_file
