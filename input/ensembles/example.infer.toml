@@ -7,7 +7,7 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_sn"
+output = "bayesopt_infer"
 
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "input/ensembles/example.toml"

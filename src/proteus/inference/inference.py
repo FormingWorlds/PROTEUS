@@ -77,6 +77,7 @@ def run_inference(config):
 
     # Check path to reference config
     config['ref_config'] = os.path.join(dirs['proteus'], config['ref_config'])
+    log.info(f'Using reference config: {config["ref_config"]}')
     if not os.path.isfile(config['ref_config']):
         raise FileNotFoundError('Cannot find reference config: ' + config['ref_config'])
 

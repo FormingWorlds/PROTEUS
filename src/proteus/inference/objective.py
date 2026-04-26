@@ -177,17 +177,6 @@ def run_proteus(
         for e in element_list:
             df_row[f'{e}_kg_atm'] = 0.0
 
-    # Derive element mass ratios in atmosphere
-    for e1 in element_list:
-        for e2 in element_list:
-            if e1 == e2:
-                continue
-            key = f'{e1}/{e2}_atm'
-            if min(df_row[f'{e1}_kg_atm'], df_row[f'{e2}_kg_atm']) < 1e-30:
-                df_row[key] = 0.0
-            else:
-                df_row[key] = df_row[f'{e1}_kg_atm'] / df_row[f'{e2}_kg_atm']
-
     # Make into dict
     try:
         observables_dict = {obs: df_row[obs] for obs in observables}
