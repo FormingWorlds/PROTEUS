@@ -341,17 +341,40 @@ def test_validate_zalmoxis_output_schema_radius_mismatch(tmp_path):
 
 @pytest.mark.unit
 def test_validate_zalmoxis_output_schema_mass_mismatch(tmp_path):
-    """File mantle mass off by >1e-6 from hf_row[M_int - M_core] -> raise."""
+    """File mantle mass off by >rtol_mass (1e-2 default) raises.
+
+    Default rtol_mass=1e-2 reflects integrator-method noise between
+    Zalmoxis' RK45 ODE-state mass and the schema check's grid
+    trapezoidal shell-sum (~0.8 % on real profiles). Genuine
+    corruption (column swap, truncation) shows up at >>1e-2.
+
+    Edge cases covered:
+    - 5 % mismatch (clear corruption signature) raises.
+    - 1e-3 mismatch (well within integrator-noise floor) passes.
+    - 5 % mismatch with explicit looser tolerance (rtol_mass=0.1)
+      passes (caller can opt out).
+    """
     from proteus.interior_struct.zalmoxis import validate_zalmoxis_output_schema
 
     output_path = str(tmp_path / 'zalmoxis_output.dat')
     R_int, M_mantle = _write_synthetic_zalmoxis_output(output_path)
     M_core = 1.94e24
-    # 1% relative inflation in claimed mantle mass.
-    M_int_corrupt = (M_mantle * 1.01) + M_core
-    hf_row = {'R_int': R_int, 'M_int': M_int_corrupt, 'M_core': M_core}
+
+    # 5% inflation -> clearly above 1e-2 default -> raise.
+    M_int_5pct = (M_mantle * 1.05) + M_core
+    hf_row_5pct = {'R_int': R_int, 'M_int': M_int_5pct, 'M_core': M_core}
     with pytest.raises(RuntimeError, match='mantle mass'):
-        validate_zalmoxis_output_schema(output_path, hf_row)
+        validate_zalmoxis_output_schema(output_path, hf_row_5pct)
+
+    # 1e-3 mismatch -> well below 1e-2 noise floor -> pass.
+    M_int_under = (M_mantle * (1 + 1e-3)) + M_core
+    hf_row_under = {'R_int': R_int, 'M_int': M_int_under, 'M_core': M_core}
+    validate_zalmoxis_output_schema(output_path, hf_row_under)
+
+    # Caller can opt out by passing a looser tolerance.
+    validate_zalmoxis_output_schema(
+        output_path, hf_row_5pct, rtol_mass=0.1
+    )
 
 
 @pytest.mark.unit

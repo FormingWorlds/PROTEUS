@@ -72,7 +72,7 @@ def validate_zalmoxis_output_schema(
     output_path: str,
     hf_row: dict,
     rtol_radius: float = 1e-6,
-    rtol_mass: float = 1e-6,
+    rtol_mass: float = 1e-2,
 ) -> None:
     """Verify zalmoxis_output.dat is consistent with hf_row scalars.
 
@@ -92,14 +92,26 @@ def validate_zalmoxis_output_schema(
         PROTEUS hf_row holding the scalar truth (R_int, M_int, M_core).
     rtol_radius : float
         Relative tolerance for the top-of-mantle vs. R_int check.
-        Default 1e-6 -- much tighter than any physical noise source,
-        catches genuine I/O corruption (last-line-truncated, swapped
-        column order, byte-flip).
+        Default 1e-6 -- the file's last r and ``hf_row['R_int']`` come
+        from the same variable in zalmoxis_solver, so equality is
+        exact modulo float-string round-trip noise. Tight tolerance
+        catches truncation, last-line corruption, and column-swap
+        bugs at the bit level.
     rtol_mass : float
         Relative tolerance for the integrated mantle mass vs.
-        ``M_int - M_core``. Shell-sum matches Zalmoxis' internal
-        mass_enclosed accumulator algorithm to machine precision, so
-        1e-6 is comfortably generous.
+        ``M_int - M_core``. Default 1e-2 (1%) reflects a genuine
+        integrator-method difference: Zalmoxis' ``mass_enclosed`` is
+        the ODE state from RK45 with sub-grid substepping, while
+        the schema check re-integrates via a grid-trapezoidal
+        shell-sum. On a real CHILI density profile (~150 layers,
+        steep mantle gradient) the two methods agree to ~0.8 %
+        rather than to bit precision. 1e-2 keeps a >10x margin over
+        that physical noise floor while still catching genuine
+        corruption (truncated rows, byte-flipped density column,
+        swapped P/rho columns) which manifest as much larger
+        deviations. **The tight mass-conservation contract
+        (<0.1 %) lives in T1.2's wrapper-level mass-anchor check
+        on hf_row['M_int'] / hf_row['M_int_target']**, not here.
 
     Raises
     ------
