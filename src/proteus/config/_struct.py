@@ -180,6 +180,32 @@ class Zalmoxis:
     # (landed 2026-04-23). Defaults off; only effective when use_jax=True.
     use_anderson: bool = field(default=False)
 
+    # Outer mass-radius solver: 'picard' (damped fixed-point, default,
+    # historically used) or 'newton' (Newton + brentq bracketing,
+    # T2.1, landed 2026-04-26). Newton was introduced to escape the
+    # basin attractor in damped Picard's R-search on hot fully-molten
+    # mantle profiles. The script-level prototype (T2.1a) and in-solver
+    # Newton (T2.1c-d) validated 12/12 G4 starts converging to dM/M
+    # < 1e-4 on the failure-dump T(r) including the 3 starts that fail
+    # with damped Picard's basin attractor. See
+    # session_2026_04_26_t2_1a_newton_prototype.md.
+    outer_solver: str = field(
+        default='picard',
+        validator=in_(('picard', 'newton')),
+    )
+
+    # Newton-specific knobs (only used when outer_solver='newton').
+    # Defaults validated in T2.1a/c.
+    newton_max_iter: int = field(default=30, validator=ge(5))
+    newton_tol: float = field(default=1.0e-4, validator=gt(0))
+    # Integrator tolerance overrides for Newton path. Newton requires
+    # tight integrator tolerances (rel <= 1e-7) so M(R) is smooth at
+    # the central-difference dM/dR scale. T2.1a measured ~1e-3 M(R)
+    # noise at default (1e-5/1e-6) which dominates Newton's derivative
+    # estimate. Auto-applied when outer_solver='newton'.
+    newton_relative_tolerance: float = field(default=1.0e-9, validator=gt(0))
+    newton_absolute_tolerance: float = field(default=1.0e-10, validator=gt(0))
+
     def __attrs_post_init__(self):
         if self.update_interval > 0 and self.update_min_interval > self.update_interval:
             raise ValueError(

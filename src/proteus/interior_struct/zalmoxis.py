@@ -446,6 +446,29 @@ def load_zalmoxis_configuration(
         # `Zalmoxis.use_anderson` in proteus.config._struct.
         'use_jax': config.interior_struct.zalmoxis.use_jax,
         'use_anderson': config.interior_struct.zalmoxis.use_anderson,
+        # T2.1: outer mass-radius solver dispatch ('picard' default |
+        # 'newton'). When 'newton', Zalmoxis uses Newton + brentq
+        # bracketing on f(R) = M(R) - M_target instead of the legacy
+        # damped-Picard fixed-point loop. Newton requires tight
+        # integrator tolerances; we auto-apply newton_relative_tolerance
+        # / newton_absolute_tolerance when the Newton path is selected.
+        'outer_solver': config.interior_struct.zalmoxis.outer_solver,
+        'newton_max_iter': config.interior_struct.zalmoxis.newton_max_iter,
+        'newton_tol': config.interior_struct.zalmoxis.newton_tol,
+        # Pass tightened integrator tols only when Newton is active.
+        # Default-Picard runs are byte-identical to before T2.1.
+        **(
+            {
+                'relative_tolerance': (
+                    config.interior_struct.zalmoxis.newton_relative_tolerance
+                ),
+                'absolute_tolerance': (
+                    config.interior_struct.zalmoxis.newton_absolute_tolerance
+                ),
+            }
+            if config.interior_struct.zalmoxis.outer_solver == 'newton'
+            else {}
+        ),
     }
 
 
