@@ -11,7 +11,6 @@ import logging
 import os
 import shutil
 import time
-from datetime import datetime
 
 import toml
 import torch
@@ -22,7 +21,7 @@ import proteus.inference.plot as plotBO
 from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.gen_D_init import create_init
 from proteus.inference.objective import prot_builder
-from proteus.inference.utils import print_results
+from proteus.inference.utils import print_results, str_time
 
 # proteus libraries
 from proteus.utils.coupler import get_proteus_directories
@@ -67,8 +66,7 @@ def run_inference(config):
 
     # Save a timestamped copy of the reference config
     with open(os.path.join(dirs['output'], 'copy.infer.toml'), 'w') as file:
-        timestamp = datetime.now().astimezone().isoformat()
-        file.write(f'# Created: {timestamp}\n\n')
+        file.write(f'# Created: {str_time()}\n\n')
         toml.dump(config, file)
 
     # Ensure there are enough CPU cores for the specified number of workers
@@ -77,7 +75,7 @@ def run_inference(config):
 
     # Check path to reference config
     config['ref_config'] = os.path.join(dirs['proteus'], config['ref_config'])
-    log.info(f'Using reference config: {config["ref_config"]}')
+    log.info(f'Reference config: {config["ref_config"]}')
     if not os.path.isfile(config['ref_config']):
         raise FileNotFoundError('Cannot find reference config: ' + config['ref_config'])
 
@@ -95,11 +93,9 @@ def run_inference(config):
     # Maximum number of evaluations during inference (offset by initial evaluations)
     max_len = max(int(config['n_steps']), 1) + n_init
 
+    log.info(f'Starting optimisation: {config["n_workers"]} workers, {n_init} initial samples')
     log.info(
-        f'Starting optimisation with {config["n_workers"]} workers and {n_init} initial samples'
-    )
-    log.info(
-        f'Performing {config["n_steps"]} BO steps for a final total {n_init + config["n_steps"]} samples'
+        f'Performing {config["n_steps"]} BO steps, for total {n_init + config["n_steps"]} samples'
     )
     t_0 = time.perf_counter()
 
@@ -125,7 +121,7 @@ def run_inference(config):
     print_results(D_final, logs, config, dirs['output'], n_init)
 
     # Save final data, logs, and timestamps for later analysis
-    log.info(f'Saving results in {dirs["output"]}')
+    log.info(f'Saving results: {dirs["output"]}')
     checkpoint(D_final, logs, Ts, dirs['output'])
 
     # Make plots
@@ -136,7 +132,7 @@ def run_inference(config):
     plotBO.plot_result_correlation(config['parameters'], config['observables'], dirs['output'])
 
     # Done
-    log.info(f'Inference completed at {datetime.now().astimezone().isoformat()}')
+    log.info(f'Inference completed at {str_time()}')
 
 
 def infer_from_config(config_fpath: str):
@@ -152,7 +148,7 @@ def infer_from_config(config_fpath: str):
     """
 
     # Load configuration from TOML file
-    print(f'Loading inference config from {config_fpath}')
+    print(f'Inference config: {config_fpath}')
     with open(config_fpath, 'r') as file:
         config = toml.load(file)
 

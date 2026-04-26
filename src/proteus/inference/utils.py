@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from datetime import datetime
 from functools import partial
 from math import log as math_log
 from math import sqrt
@@ -37,6 +38,10 @@ from proteus.utils.constants import gas_list
 # Use double precision for tensor computations
 dtype = torch.double
 log = logging.getLogger('fwl.' + __name__)
+
+
+def str_time():
+    return datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')
 
 
 def get_nested(config: dict, key: str, sep: str = '.'):
