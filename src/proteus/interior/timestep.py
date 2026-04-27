@@ -223,7 +223,9 @@ def next_step(
         dtswitch *= step_sf
 
         # Max step size
-        dtswitch = min(dtswitch, config.params.dt.maximum)
+        dtmaximum = config.params.dt.maximum  # absolute
+        dtmaximum += config.params.dt.maximum_rel * hf_row['Time']  # allow large
+        dtswitch = min(dtswitch, dtmaximum)
 
         # Min step size
         dtminimum = config.params.dt.minimum  # absolute

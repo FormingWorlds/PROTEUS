@@ -107,6 +107,8 @@ class TimeStepParams:
         Minimum relative time-step size [dimensionless].
     maximum: float
         Maximum time-step size [yr].
+    maximum_rel: float
+        Maximum relative time-step size [dimensionless].
     initial: float
         Initial time-step size [yr].
     starspec: float
@@ -134,6 +136,7 @@ class TimeStepParams:
     minimum: float = field(default=3e2, validator=gt(0))
     minimum_rel: float = field(default=1e-6, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
+    maximum_rel: float = field(default=1.0, validator=gt(0))
     initial: float = field(default=1e3, validator=gt(0))
 
 
