@@ -486,8 +486,11 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     'EOS_WolfBower2018_1TPa': {'zenodo_id': '17417017'},
     # Zalmoxis EOS: RTPress 100 TPa extended melt
     'EOS_RTPress_melt_100TPa': {'zenodo_id': '18819027'},
-    # Zalmoxis EOS: PALEOS 2-phase MgSiO3 (separate solid/liquid)
-    'EOS_PALEOS_MgSiO3': {'zenodo_id': '18924171'},
+    # Zalmoxis EOS: PALEOS 2-phase MgSiO3 (separate solid/liquid).
+    # Zenodo 19680050 (2026-04-27) supersedes 18924171 as the
+    # ecosystem-wide PALEOS reference; ships 150 + 600 pts/decade
+    # tables for both phases.
+    'EOS_PALEOS_MgSiO3': {'zenodo_id': '19680050'},
     # Zalmoxis EOS: PALEOS unified tables (iron, MgSiO3, H2O share Zenodo 19000316)
     'EOS_PALEOS_iron': {'zenodo_id': '19000316'},
     'EOS_PALEOS_MgSiO3_unified': {'zenodo_id': '19000316'},
@@ -1855,7 +1858,11 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
             file='adiabat_temp_grad_melt.dat',
         )
 
-    # PALEOS 2-phase MgSiO3 (separate solid/liquid)
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid). The default
+    # entry uses 150 pts/decade tables; the -highres entry (Zenodo
+    # 19680050) uses 600 pts/decade. Both ship in the same Zenodo
+    # record; we fetch only what's selected to keep first-time setup
+    # fast (the highres pair is ~1.3 GB).
     if 'PALEOS-2phase:MgSiO3' in components:
         _download_zalmoxis_folder(
             'EOS_PALEOS_MgSiO3',
@@ -1864,6 +1871,15 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
         _download_zalmoxis_folder(
             'EOS_PALEOS_MgSiO3',
             file='paleos_mgsio3_tables_pt_proteus_solid.dat',
+        )
+    if 'PALEOS-2phase:MgSiO3-highres' in components:
+        _download_zalmoxis_folder(
+            'EOS_PALEOS_MgSiO3',
+            file='paleos_mgsio3_tables_pt_proteus_liquid_highres.dat',
+        )
+        _download_zalmoxis_folder(
+            'EOS_PALEOS_MgSiO3',
+            file='paleos_mgsio3_tables_pt_proteus_solid_highres.dat',
         )
 
     # PALEOS unified tables
@@ -1892,7 +1908,8 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     # (generated locally from upstream paleos at runtime) but are valid.
     known_prefixes = ('Seager2007:', 'WolfBower2018:', 'RTPress100TPa:', 'Chabrier:',
                       'PALEOS-API:', 'PALEOS-API-2phase:')
-    known_exact = {'PALEOS-2phase:MgSiO3', 'PALEOS:iron', 'PALEOS:MgSiO3', 'PALEOS:H2O'}
+    known_exact = {'PALEOS-2phase:MgSiO3', 'PALEOS-2phase:MgSiO3-highres',
+                   'PALEOS:iron', 'PALEOS:MgSiO3', 'PALEOS:H2O'}
     for c in components:
         if c in known_exact:
             continue

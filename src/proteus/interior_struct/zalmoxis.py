@@ -519,7 +519,8 @@ def load_zalmoxis_material_dictionaries():
         'adiabat_grad_file': str(rt_dir / 'adiabat_temp_grad_melt.dat'),
     }
 
-    # PALEOS 2-phase MgSiO3 (separate solid/liquid)
+    # PALEOS 2-phase MgSiO3 (separate solid/liquid, Zenodo 19680050).
+    # 150 pts/decade (default) and 600 pts/decade (highres) variants.
     paleos2ph_dir = eos_base / 'EOS_PALEOS_MgSiO3'
     _paleos2ph_melted = {
         'eos_file': str(paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_liquid.dat'),
@@ -527,6 +528,18 @@ def load_zalmoxis_material_dictionaries():
     }
     _paleos2ph_solid = {
         'eos_file': str(paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_solid.dat'),
+        'format': 'paleos',
+    }
+    _paleos2ph_melted_highres = {
+        'eos_file': str(
+            paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_liquid_highres.dat'
+        ),
+        'format': 'paleos',
+    }
+    _paleos2ph_solid_highres = {
+        'eos_file': str(
+            paleos2ph_dir / 'paleos_mgsio3_tables_pt_proteus_solid_highres.dat'
+        ),
         'format': 'paleos',
     }
 
@@ -610,11 +623,17 @@ def load_zalmoxis_material_dictionaries():
             'melted_mantle': _rt_melted,
             'solid_mantle': _wb_solid,
         },
-        # PALEOS 2-phase MgSiO3
+        # PALEOS 2-phase MgSiO3 (Zenodo 19680050; 150 pts/decade default,
+        # 600 pts/decade as -highres variant for sensitivity tests).
         'PALEOS-2phase:MgSiO3': {
             'core': _seager_iron,
             'melted_mantle': _paleos2ph_melted,
             'solid_mantle': _paleos2ph_solid,
+        },
+        'PALEOS-2phase:MgSiO3-highres': {
+            'core': _seager_iron,
+            'melted_mantle': _paleos2ph_melted_highres,
+            'solid_mantle': _paleos2ph_solid_highres,
         },
         # PALEOS unified
         'PALEOS:iron': _paleos_iron,
@@ -653,7 +672,12 @@ def resolve_2phase_mgsio3_paths(mantle_eos: str, mat_dicts: dict):
         2-phase tables available, fall back".
     """
     use_api = mantle_eos.startswith(('PALEOS-API:', 'PALEOS-API-2phase:'))
-    twophase_key = 'PALEOS-API-2phase:MgSiO3' if use_api else 'PALEOS-2phase:MgSiO3'
+    if use_api:
+        twophase_key = 'PALEOS-API-2phase:MgSiO3'
+    elif mantle_eos == 'PALEOS-2phase:MgSiO3-highres':
+        twophase_key = 'PALEOS-2phase:MgSiO3-highres'
+    else:
+        twophase_key = 'PALEOS-2phase:MgSiO3'
     twophase = mat_dicts.get(twophase_key, {})
     if not twophase:
         logger.warning(

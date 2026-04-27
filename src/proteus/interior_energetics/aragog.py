@@ -430,12 +430,15 @@ class AragogRunner:
             # the 2-phase registry key that matches the requested EOS family
             # so PALEOS-API runs consume API-generated tables (not the
             # shipped-Zenodo ones that live under the PALEOS-2phase key).
+            # The -highres variant (Zenodo 19680050, 600 pts/decade) is
+            # opt-in; default is the 150-pts/decade tables.
             _mantle_eos_sel = config.interior_struct.zalmoxis.mantle_eos
-            _twophase_key = (
-                'PALEOS-API-2phase:MgSiO3'
-                if _mantle_eos_sel.startswith(('PALEOS-API:', 'PALEOS-API-2phase:'))
-                else 'PALEOS-2phase:MgSiO3'
-            )
+            if _mantle_eos_sel.startswith(('PALEOS-API:', 'PALEOS-API-2phase:')):
+                _twophase_key = 'PALEOS-API-2phase:MgSiO3'
+            elif _mantle_eos_sel == 'PALEOS-2phase:MgSiO3-highres':
+                _twophase_key = 'PALEOS-2phase:MgSiO3-highres'
+            else:
+                _twophase_key = 'PALEOS-2phase:MgSiO3'
             twophase_entry = mat_dicts.get(_twophase_key, {})
             # PALEOS-API entries carry grid metadata, not file paths. Materialise
             # cached .dat paths now so the `eos_file` lookups below find concrete
