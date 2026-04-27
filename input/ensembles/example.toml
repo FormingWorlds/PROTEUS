@@ -45,7 +45,7 @@ version = "2.0"
     # time-stepping
     [params.dt]
         minimum      = 1e4    # absolute minimum time-step [years]
-        minimum_rel  = 1e-2   # relative minimum time-step [dimensionless]
+        minimum_rel  = 5e-2   # relative minimum time-step [dimensionless]
         maximum      = 2e8    # maximum time-step [yr]
         maximum_rel  = 1e-1   # relative maximum time-step [dimensionless]
         initial      = 2e2    # inital step size [yr]
@@ -58,7 +58,7 @@ version = "2.0"
 
         [params.dt.adaptive]
             atol         = 0.05   # Step size atol
-            rtol         = 0.22   # Step size rtol
+            rtol         = 0.3   # Step size rtol
             scale_incr   = 1.7     # factor to increase time step by when adaptive method indicates speed up
             scale_decr   = 0.8     # factor to decrease time step by when adaptive method indicates slow down
             window       = 2       # number of previous steps to consider in adaptive method
@@ -83,8 +83,8 @@ version = "2.0"
             minimum = 1.0e3      # model will certainly run to t > minimum [yr]
 
             # maximum = 8e8   # SN
-            # maximum = 4e9   # SE
-            maximum = 2e9   # TR
+            # maximum = 2e9   # SE
+            maximum = 5e8   # TR
 
         # solidification
         [params.stop.solid]
@@ -120,7 +120,7 @@ version = "2.0"
     mass    = 0.2923       # stellar mass [M_sun]
     age_ini = 0.05     # model initialisation age [Gyr]
 
-    module  = "dummy"
+    module  = "mors"
 
     [star.mors]
         rot_pcntle  = 50.0          # rotation percentile
@@ -141,7 +141,7 @@ version = "2.0"
 
     # semimajoraxis = 0.10   # SN
     # semimajoraxis = 0.04   # SE
-    semimajoraxis = 0.01   # TR
+    semimajoraxis = 0.02   # TR
 
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
     zenith_angle    = 54.74     # degrees
@@ -216,15 +216,16 @@ version = "2.0"
     tmp_minimum     = 0.5       # temperature floor on solver
     tmp_maximum     = 5000.0    # temperature ceiling on solver
 
-    module  = "dummy"            # Which atmosphere module to use
+    module  = "agni"            # Which atmosphere module to use
 
     [atmos_clim.agni]
         verbosity       = 1             # output verbosity for agni (0:none, 1:info, 2:debug)
         p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
         p_obs           = 0.02          # bar, level probed in transmission
-        spectral_group  = "Dayspring"   # which gas opacities to include
-        spectral_bands  = "16"          # how many spectral bands?
-        num_levels      = 30            # Number of atmospheric grid levels
+        # spectral_group  = "Dayspring"   # which gas opacities to include
+        # spectral_bands  = "16"          # how many spectral bands?
+        spectral_file   = "runtime.sf"          # optional path to AGNI spectral file; if None, will use spectral_group and spectral_bands to find file in FWL data directory
+        num_levels      = 32            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = false          # solve for energy-conserving atmosphere profile
@@ -265,7 +266,7 @@ version = "2.0"
 # Volatile escape - physics table
 [escape]
 
-    module     = "dummy"         # Which escape module to use
+    module     = "zephyrus"         # Which escape module to use
     reservoir  = "outgas"           # Reservoir that sets escaping composition when fractionation disabled
 
     [escape.zephyrus]
@@ -299,7 +300,7 @@ version = "2.0"
         solver_type              = "bdf"     # SUNDIALS solver method
         tsurf_atol               = 100.0      # tsurf_poststep_change
         tsurf_rtol               = 0.1      # tsurf_poststep_change_frac
-        ini_entropy              = 2900.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy              = 3000.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr                 = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
         conduction               = true      # enable conductive heat transfer
         convection               = true      # enable convective heat transfer

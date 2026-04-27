@@ -179,7 +179,16 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     sflux_path = os.path.join(dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1]))
 
     # Spectral file path
-    try_spfile = os.path.join(dirs['output'], 'runtime.sf')
+    if config.atmos_clim.agni.spectral_file is not None:
+        try_spfile = os.path.abspath(config.atmos_clim.agni.spectral_file)
+        if not os.path.isfile(try_spfile):
+            UpdateStatusfile(dirs, 20)
+            raise FileNotFoundError(
+                f'AGNI spectral file not found at specified path: {try_spfile}'
+            )
+    else:
+        try_spfile = os.path.join(dirs['output'], 'runtime.sf')
+
     if os.path.exists(try_spfile):
         # exists => don't modify it
         input_sf = try_spfile

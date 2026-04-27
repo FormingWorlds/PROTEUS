@@ -49,10 +49,11 @@ def valid_agni(instance, attribute, value):
         )
 
     # set spectral files?
-    if not instance.agni.spectral_group:
-        raise ValueError('Must set atmos_clim.agni.spectral_group')
-    if not instance.agni.spectral_bands:
-        raise ValueError('Must set atmos_clim.agni.spectral_bands')
+    if not instance.agni.spectral_file:
+        if not instance.agni.spectral_group:
+            raise ValueError('Must set atmos_clim.agni.spectral_group')
+        if not instance.agni.spectral_bands:
+            raise ValueError('Must set atmos_clim.agni.spectral_bands')
 
     # fastchem installed?
     if instance.agni.chemistry == 'eq':
@@ -82,6 +83,8 @@ class Agni:
         Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
     spectral_bands: str
         Number of wavenumer bands in k-table. See documentation.
+    spectral_file: str | None
+        Optional path to AGNI spectral file. If None, will use spectral_group and spectral_bands to find file in FWL data directory.
     surf_material : str
         File name for material used to set surface single-scattering properties, relative to FWL data directory. Set to 'greybody' to use `surf_greyalbedo`. See [documentation](https://proteus-framework.org/proteus/data.html#surfaces) for potential options.
     num_levels: str
@@ -158,6 +161,7 @@ class Agni:
     )
     spectral_group: str = field(default=None)
     spectral_bands: str = field(default=None)
+    spectral_file: str | None = field(default=None, converter=none_if_none)
     p_top: float = field(default=1e-5, validator=gt(0))
     p_obs: float = field(default=20e-3, validator=gt(0))
     surf_material: str = field(default='surface_albedos/Hammond24/lunarmarebasalt.dat')
