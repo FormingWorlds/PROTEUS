@@ -1055,7 +1055,7 @@ def RunSPIDER(
             else:
                 # try again (change tolerance and step size)
                 log.warning('Trying again')
-                step_sf *= 0.1
+                step_sf *= 0.2
                 atol_sf *= 10.0
 
     # check status
