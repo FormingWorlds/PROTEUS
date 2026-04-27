@@ -7,7 +7,7 @@ output = "stellar_spectra_test_mors/"
 symlink = ""
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/planets/nogit_fiducial_sub_Neptune_MORS.toml"
+ref_config = "input/planets/fiducial_sub_Neptune_MORS.toml"
 
 # Use SLURM?
 use_slurm = false
