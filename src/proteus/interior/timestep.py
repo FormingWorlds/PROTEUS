@@ -16,8 +16,6 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Constants
 LBAVG = 3  # Number of steps to average over
-SFINC = 1.6  # Scale factor for step size increase
-SFDEC = 0.8  # Scale factor for step size decrease
 SMALL = 1e-8  # Small number
 
 
@@ -198,10 +196,10 @@ def next_step(
             speed_up = speed_up and (phi_12 < dt_rtol * abs(phi_2) + dt_atol)
 
             if speed_up:
-                dtswitch = dtprev * SFINC
+                dtswitch = dtprev * config.params.dt.adaptive.scale_incr
                 log.info('Time-stepping intent: speed up')
             else:
-                dtswitch = dtprev * SFDEC
+                dtswitch = dtprev * config.params.dt.adaptive.scale_decr
                 log.info('Time-stepping intent: slow down')
 
             # Do not allow step size to exceed predicted point of termination

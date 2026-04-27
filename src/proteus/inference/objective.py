@@ -98,8 +98,9 @@ def run_proteus(
     # Inject output path into simulation parameters
     parameters['params.out.path'] = str(out_dir)
 
-    # Don't allow workers to make plots
+    # Don't allow workers to make plots or logs
     parameters['params.out.plot_mod'] = 'none'
+    parameters['params.out.logging'] = 'WARNING'
 
     # Generate config
     update_toml(ref_config, parameters, str(out_cfg))

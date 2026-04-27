@@ -35,26 +35,26 @@ n_steps    = 10       # Total number of evaluations (i.e. BO steps)
 
 # Target observables to match by optimisation
 [observables]
-# "M_planet"       = 2.3885446605e+25  # SN
-"M_planet"       = 1.1931358028e+25  # SE
+"M_planet"       = 2.3885446605e+25  # SN
+# "M_planet"       = 1.1931358028e+25  # SE
 # "M_planet"       = 5.9656593339e+24  # TR
 
-# "R_obs"          = 1.0068775762e+07  # SN
-"R_obs"          = 8.4432487739e+06  # SE
+"R_obs"          = 1.0068775762e+07  # SN
+# "R_obs"          = 8.4432487739e+06  # SE
 # "R_obs"          = 6.0311561664e+06  # TR
 
-# "T_obs"          = 2.4356164276e+02 # SN
-"T_obs"          = 3.8510486212e+02 # SE
+"T_obs"          = 2.4356164276e+02 # SN
+# "T_obs"          = 3.8510486212e+02 # SE
 # "T_obs"          = 7.5261245983e+02 # TR
 
-# "atm_kg_per_mol" = 1.1510662518e-02  # SN
-"atm_kg_per_mol" = 1.8599980012e-02  # SE
+"atm_kg_per_mol" = 1.1510662518e-02  # SN
+# "atm_kg_per_mol" = 1.8599980012e-02  # SE
 # "atm_kg_per_mol" = 2.9627359320e-02  # TR
 
-# "C/O_atm"        = 1.9420040981089646   # SN
-"C/O_atm"        = 1.0579221525822065   # SE
+"C/O_atm"        = 1.9420040981089646   # SN
+# "C/O_atm"        = 1.0579221525822065   # SE
 # "C/O_atm"        = 0.22754965161883398   # TR
 
-# "S/O_atm"        = 3.884008205522587   # SN
-"S/O_atm"        = 0.5289610796935059   # SE
+"S/O_atm"        = 3.884008205522587   # SN
+# "S/O_atm"        = 0.5289610796935059   # SE
 # "S/O_atm"        = 0.11377483158360908   # TR

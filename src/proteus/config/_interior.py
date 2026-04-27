@@ -42,6 +42,8 @@ class Spider:
         Absolute solver tolerance.
     tolerance_rel: float
         Relative solver tolerance.
+    tolerance_struct: float
+        Tolerance on mass for planet initial structure convergence.
     tsurf_atol: float
         Absolute tolerance on change in T_mantle during a single interior iteration.
     tsurf_rtol: float
@@ -62,14 +64,17 @@ class Spider:
         Whether to include mixing flux in the model.
     matprop_smooth_width: float
         Window width, in melt-fraction, for smoothing properties across liquidus and solidus
+    log_output: bool
+        Whether to save SPIDER output to a log file in the output directory.
     """
 
     ini_entropy = field(default=None)
     ini_dsdr: float = field(default=-4.698e-6, validator=lt(0))
-    num_levels: int = field(default=190, validator=ge(40))
+    num_levels: int = field(default=190, validator=ge(30))
     mixing_length: int = field(default=2, validator=in_((1, 2)))
     tolerance: float = field(default=1e-10, validator=gt(0))
     tolerance_rel: float = field(default=1e-10, validator=gt(0))
+    tolerance_struct: float = field(default=1e7, validator=gt(0))
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
     tsurf_atol: float = field(default=10.0, validator=gt(0))
     tsurf_rtol: float = field(default=0.01, validator=gt(0))
@@ -78,6 +83,7 @@ class Spider:
     gravitational_separation: bool = field(default=True)
     mixing: bool = field(default=True)
     matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
+    log_output: bool = field(default=True)
 
 
 def valid_aragog(instance, attribute, value):
@@ -112,7 +118,11 @@ class Aragog:
     initial_condition: int
         How to define the intial temperature profile (1: linear, 2: user defined, 3: adiabat)
     tolerance: float
-        Solver tolerance.
+        Absolute solver tolerance.
+    tolerance_rel: float
+        Relative solver tolerance.
+    tolerance_struct: float
+        Tolerance on mass for planet initial structure convergence.
     ini_tmagma: float
         Initial magma surface temperature [K].
     basal_temperature: float
@@ -159,6 +169,8 @@ class Aragog:
         ),
     )
     tolerance: float = field(default=1e-10, validator=gt(0))
+    tolerance_rel: float = field(default=1e-10, validator=gt(0))
+    tolerance_struct: float = field(default=1e7, validator=gt(0))
     inner_boundary_condition: int = field(default=1, validator=ge(0))
     inner_boundary_value: float = field(default=4000, validator=ge(0))
     conduction: bool = field(default=True)

@@ -80,10 +80,16 @@ class DtAdaptive:
         Absolute tolerance on time-step size [yr].
     rtol: float
         Relative tolerance on time-step size [dimensionless].
+    scale_incr: float
+        Scale factor to increase time-step [dimensionless].
+    scale_decr: float
+        Scale factor to decrease time-step [dimensionless].
     """
 
     atol: float = field(default=0.02, validator=gt(0))
     rtol: float = field(default=0.10, validator=gt(0))
+    scale_incr: float = field(default=1.6, validator=gt(1))
+    scale_decr: float = field(default=0.8, validator=(gt(0), lt(1)))
 
 
 @define

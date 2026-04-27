@@ -96,7 +96,7 @@ class AragogRunner:
             start_time=0,
             end_time=0,
             atol=config.interior.aragog.tolerance,
-            rtol=config.interior.aragog.tolerance,
+            rtol=config.interior.aragog.tolerance_rel,
             tsurf_poststep_change=config.interior.aragog.tsurf_poststep_change,
             event_triggering=config.interior.aragog.event_triggering,
         )
