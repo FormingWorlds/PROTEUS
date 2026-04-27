@@ -1325,7 +1325,30 @@ def zalmoxis_solver(
     # Allowing retry on any non-converged result gives a clean second
     # attempt from fresh initial conditions; the wall_timeout cap still
     # bounds worst-case wall.
-    if not converged:
+    #
+    # P1.2 (2026-04-27): if the primary's best_mass_error already exceeds
+    # 5 % we skip the retry entirely. Live coupled validation (Run A + Run B,
+    # 2026-04-26) showed 0/4 retry successes when primary's best_mass_error
+    # was at the structural-Picard plateau (7-10 %); looser tolerance does
+    # not rescue a structurally-unsupported configuration. Retry remains
+    # useful for transient flickers near the original tolerance edge.
+    primary_best_mass_error = model_results.get('best_mass_error')
+    skip_retry_high_error = (
+        primary_best_mass_error is not None
+        and primary_best_mass_error > 0.05
+    )
+    if not converged and skip_retry_high_error:
+        logger.warning(
+            'Zalmoxis primary call did not converge '
+            '(pressure=%s, density=%s, mass=%s) AND best_mass_error=%.2e '
+            '> 0.05; skipping retry (looser tolerance cannot rescue a '
+            'structural-Picard plateau).',
+            converged_pressure,
+            converged_density,
+            converged_mass,
+            primary_best_mass_error,
+        )
+    if not converged and not skip_retry_high_error:
         retry_tol = config_params.get('tolerance_outer', 3e-3) * 3
         retry_iter = int(config_params.get('max_iterations_outer', 100) * 2)
         logger.warning(
@@ -1341,6 +1364,13 @@ def zalmoxis_solver(
         config_params_retry = dict(config_params)
         config_params_retry['tolerance_outer'] = retry_tol
         config_params_retry['max_iterations_outer'] = retry_iter
+        # P1.1 (2026-04-27): cap retry wall_timeout at 600 s. The JAX-path
+        # primary uses 3600 s (line ~1185) which is appropriate for a
+        # successful first solve, but the retry is a 2nd-chance attempt
+        # under relaxed tolerances; if it has not converged within 10 min
+        # of fresh outer iters it is unlikely to succeed at any wall.
+        # Saves up to 50 min wall per failure event vs the inherited 3600 s.
+        config_params_retry['wall_timeout'] = 600.0
 
         # Same temperature_function gate as the primary call path.
         _use_jax_active = bool(config_params_retry.get('use_jax'))
