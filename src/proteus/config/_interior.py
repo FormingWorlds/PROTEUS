@@ -231,12 +231,24 @@ class InteriorBoundary:
         Thermal diffusivity [m^2/s].
     thermal_expansivity: float
         Thermal expansivity [1/K].
+    viscosity_model: int
+        Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
+    eta_constant: float
+        Constant viscosity value [Pa s] for model 1.
     transition_width: float
-        Width of viscosity transition in melt fraction space [-].
+        Width of viscosity transition in melt fraction space [-] for aggregate model.
     eta_solid_const: float
         Constant solid viscosity for aggregate formulation [Pa s].
     eta_melt_const: float
         Constant melt viscosity for aggregate formulation [Pa s].
+    dynamic_viscosity: float
+        Reference dynamic viscosity [Pa s] for Arrhenius solid mantle model.
+    activation_energy: float
+        Activation energy [J/mol] for Arrhenius solid mantle model.
+    viscosity_prefactor: float
+        Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
+    viscosity_activation_temp: float
+        Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
     logging: bool
         Whether to include interior logging in the output.
     """
@@ -262,10 +274,23 @@ class InteriorBoundary:
     thermal_diffusivity: float    = field(default=1e-6,    validator=gt(0))   # m^2/s
     thermal_expansivity: float    = field(default=2e-5,    validator=gt(0))   # 1/K
 
+    # Viscosity parameterisation
+    viscosity_model: int = field(default=2, validator=in_((1, 2, 3)))  # 1=constant, 2=aggregate, 3=Arrhenius
+    eta_constant: float = field(default=1e2, validator=gt(0))  # Pa s, for model 1
+
     # Aggregate viscosity parameters
-    transition_width: float       = field(default=0.15,     validator=(gt(0), lt(1)))  # -
-    eta_solid_const: float        = field(default=1e21,    validator=gt(0))   # Pa s
+    transition_width: float       = field(default=0.2,     validator=(gt(0), lt(1)))  # -
+    eta_solid_const: float        = field(default=1e22,    validator=gt(0))   # Pa s
     eta_melt_const: float         = field(default=1e2,     validator=gt(0))   # Pa s
+
+    # Arrhenius solid mantle parameters
+    dynamic_viscosity: float = field(default=3.8e9, validator=gt(0))  # Pa s
+    activation_energy: float = field(default=3.5e5, validator=gt(0))  # J/mol
+    creep_parameter: float = field(default=26.0, validator=gt(0))
+
+    # Arrhenius magma ocean parameters (Vogel-Fulcher-Tammann)
+    viscosity_prefactor: float = field(default=2.4e-4, validator=gt(0))  # Pa s
+    viscosity_activation_temp: float = field(default=4600, validator=gt(0))  # K
 
     logging: bool = field(default=False)
 

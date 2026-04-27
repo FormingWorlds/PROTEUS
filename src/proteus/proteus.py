@@ -423,7 +423,7 @@ class Proteus:
 
             # Evolve interior
             run_interior(
-                self.directories, self.config, self.hf_all, self.hf_row, self.interior_o
+                self.directories, self.config, self.hf_all, self.hf_row, self.interior_o, self.atmos_o
             )
 
             # Advance current time in main loop according to interior step

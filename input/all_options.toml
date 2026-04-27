@@ -354,6 +354,12 @@ version = "2.0"
         transition_width = 0.15            # Width of viscosity transition in melt fraction space
         eta_solid_const = 1e+21            # Constant solid viscosity for aggregate formulation [Pa s]
         eta_melt_const = 100.0             # Constant melt viscosity for aggregate formulation [Pa s]
+        viscosity_model = 2                # Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
+        eta_constant = 1e2                 # Constant viscosity value [Pa s] for model 1.
+        dynamic_viscosity = 3.8e9          # Reference dynamic viscosity [Pa s] for Arrhenius solid mantle model.
+        activation_energy = 3.5e5          # Activation energy [J/mol] for Arrhenius solid mantle model.
+        viscosity_prefactor = 2.4e-4       # Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
+        viscosity_activation_temp = 4600   # Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
         logging = false                    # Whether to include interior logging in the output.
 
 # Outgassing - physics table

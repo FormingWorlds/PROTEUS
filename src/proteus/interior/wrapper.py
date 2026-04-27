@@ -311,7 +311,7 @@ def run_interior(
     hf_all: pd.DataFrame,
     hf_row: dict,
     interior_o: Interior_t,
-    atmos_o: Atmos_t=None,
+    atmos_o: Atmos_t,
     verbose: bool = True,
 ):
     """Run interior mantle evolution model.

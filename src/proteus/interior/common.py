@@ -209,3 +209,4 @@ class Interior_t:
             self.bulk[i] = eval_rheoparam(p, 'bulk')
             if visc:
                 self.visc[i] = eval_rheoparam(p, 'visc')
+                log.debug('Updated viscosity at level %d to %.3e Pa s' % (i, self.visc[i]))
