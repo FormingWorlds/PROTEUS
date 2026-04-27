@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 # Constants
-LBAVG = 3  # Number of steps to average over
 SMALL = 1e-8  # Small number
 
 
@@ -155,14 +154,14 @@ def next_step(
         dtswitch = 1.0
         log.info('Time-stepping intent: static')
 
-    elif LBAVG + 5 >= len(hf_all['Time']):
+    elif config.params.dt.adaptive.window + 5 >= len(hf_all['Time']):
         dtswitch = config.params.dt.initial
         log.info('Time-stepping intent: initial')
 
     else:
         i2 = -1
         i1 = -2
-        i0 = i1 - LBAVG
+        i0 = i1 - config.params.dt.adaptive.window
 
         # Proportional time-step calculation
         if config.params.dt.method == 'proportional':

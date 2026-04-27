@@ -45,21 +45,23 @@ version = "2.0"
     # time-stepping
     [params.dt]
         minimum      = 1e4    # absolute minimum time-step [years]
-        minimum_rel  = 1e-3   # relative minimum time-step [dimensionless]
+        minimum_rel  = 1e-2   # relative minimum time-step [dimensionless]
         maximum      = 1e8    # maximum time-step [yr]
-        initial      = 1e2    # inital step size [yr]
+        initial      = 2e2    # inital step size [yr]
         starspec     = 9e9    # interval to re-calculate the stellar spectrum [yr]
         starinst     = 1e2    # interval to re-calculate the instellation [yr]
         method       = "adaptive"  # proportional | adaptive | maximum
-        scale_incr   = 2.0     # factor to increase time step by when adaptive method indicates speed up
-        scale_decr   = 0.8     # factor to decrease time step by when adaptive method indicates slow down
 
         [params.dt.proportional]
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.03   # Step size atol
-            rtol         = 0.12   # Step size rtol
+            atol         = 0.05   # Step size atol
+            rtol         = 0.28   # Step size rtol
+            scale_incr   = 1.7     # factor to increase time step by when adaptive method indicates speed up
+            scale_decr   = 0.8     # factor to decrease time step by when adaptive method indicates slow down
+            window       = 2       # number of previous steps to consider in adaptive method
+
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -155,7 +157,7 @@ version = "2.0"
     # mass_tot     = 1.0   # TR
 
 
-    corefrac     = 0.7     # SN
+    corefrac     = 0.6     # SN
     # corefrac     = 0.3     # SE
     # corefrac     = 0.5     # TR
 
@@ -277,10 +279,10 @@ version = "2.0"
 # Interior - physics table
 [interior]
     grain_size      = 0.1           # crystal settling grain size [m]
-    F_initial       = 1e3           # Initial heat flux guess [W m-2]
+    F_initial       = 5e2           # Initial heat flux guess [W m-2]
     radiogenic_heat = true         # enable radiogenic heat production
     tidal_heat      = false         # enable tidal heat production
-    rheo_phi_loc    = 0.4           # Centre of rheological transition
+    rheo_phi_loc    = 0.3           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
     melting_dir     = "Monteux-600" # Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER)
     eos_dir         = "WolfBower2018_MgSiO3" # Dynamic EOS for SPIDER + Aragog (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
@@ -288,14 +290,15 @@ version = "2.0"
     module = "spider"       # Which interior module to use
 
     [interior.spider]
-        num_levels               = 40       # Number of SPIDER grid levels
+        num_levels               = 50       # Number of SPIDER grid levels
         mixing_length            = 2         # Mixing length parameterization
-        tolerance                = 1.0e-9    # absolute solver tolerance
-        tolerance_rel            = 1.0e-9    # relative solver tolerance
+        tolerance                = 1.0e-10    # absolute solver tolerance
+        tolerance_rel            = 1.0e-7    # relative solver tolerance
+        tolerance_struct         = 1.0e8     # structural convergence tolerance
         solver_type              = "bdf"     # SUNDIALS solver method
-        tsurf_atol               = 250.0      # tsurf_poststep_change
-        tsurf_rtol               = 0.02      # tsurf_poststep_change_frac
-        ini_entropy              = 3400.0    # Surface entropy conditions [J K-1 kg-1]
+        tsurf_atol               = 100.0      # tsurf_poststep_change
+        tsurf_rtol               = 0.1      # tsurf_poststep_change_frac
+        ini_entropy              = 2900.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr                 = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
         conduction               = true      # enable conductive heat transfer
         convection               = true      # enable convective heat transfer
