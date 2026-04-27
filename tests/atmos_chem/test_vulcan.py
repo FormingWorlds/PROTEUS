@@ -228,7 +228,7 @@ def test_run_vulcan_online_per_snapshot_filenames(
     # Mock VULCAN Config and solver
     mock_vulcan_package.Config.return_value = MagicMock()
     mock_vulcan_package.main.return_value = None
-    mock_vulcan_package.make_all.return_value = None
+    mock_vulcan_package.make_chem_funs.make_all.return_value = None
 
     # Create the expected per-snapshot result pickle
     result_file = offchem_dir / f'vulcan_{int(year)}.pkl'
@@ -291,7 +291,7 @@ def test_run_vulcan_online_make_funs_once(
 
     mock_vulcan_package.Config.return_value = MagicMock()
     mock_vulcan_package.main.return_value = None
-    mock_vulcan_package.make_all.reset_mock()
+    mock_vulcan_package.make_chem_funs.make_all.reset_mock()
 
     # Create result pickle for first call
     result_file = offchem_dir / 'vulcan_100.pkl'
@@ -305,11 +305,11 @@ def test_run_vulcan_online_make_funs_once(
 
     # First call — should compile network
     run_vulcan(dirs, config, hf_row, online=True)
-    assert mock_vulcan_package.make_all.call_count == 1
+    assert mock_vulcan_package.make_chem_funs.make_all.call_count == 1
     assert hasattr(run_vulcan, '_made')
 
     # Second call — should NOT recompile
-    mock_vulcan_package.make_all.reset_mock()
+    mock_vulcan_package.make_chem_funs.make_all.reset_mock()
 
     hf_row2 = _make_mock_hf_row(year=200.0)
     result_file2 = offchem_dir / 'vulcan_200.pkl'
@@ -317,7 +317,7 @@ def test_run_vulcan_online_make_funs_once(
         pickle.dump(vulcan_result, f)
 
     run_vulcan(dirs, config, hf_row2, online=True)
-    mock_vulcan_package.make_all.assert_not_called()
+    mock_vulcan_package.make_chem_funs.make_all.assert_not_called()
 
     # Cleanup _made for other tests
     if hasattr(run_vulcan, '_made'):

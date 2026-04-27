@@ -11,7 +11,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 authors = [
     {name="Tim Lichtenberg",         email="tim.lichtenberg@rug.nl"},
-    {name="Harrison Nicholls",       email="harrison.nicholls@physics.ox.ac.uk"},
+    {name="Harrison Nicholls",       email="contact@h-nicholls.space"},
     {name="Laurent Soucasse",        email="l.soucasse@esciencecenter.nl"},
     {name="Mariana Sastre",          email="m.c.villamil.sastre@rug.nl"},
     {name="Emma Postolec",           email="e.n.postolec@rug.nl"},
@@ -51,6 +51,7 @@ dependencies = [
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.01.06",
     "fwl-zalmoxis>=26.01.06",
+    "fwl-vulcan>=26.04.22",
     "boreas@git+https://github.com/ExoInteriors/BOREAS@0174edb",
     "cmcrameri",
     "juliacall",
@@ -69,8 +70,9 @@ dependencies = [
     "gpytorch",
     "toml",
     "zenodo-get",
-    "zenodo-client",
+    "zenodo-client>=0.4.1",
     "osfclient",
+    "packaging",
 ]
 
 [project.urls]
