@@ -13,7 +13,11 @@ from juliacall import Main as jl  # noqa
 
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
-from proteus.utils.constants import vap_list, vol_list
+from proteus.utils.constants import (
+    M_earth,
+    vap_list,
+    vol_list,
+)
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -405,11 +409,27 @@ class Proteus:
             )
 
             ############### INTERIOR
+            if self.config.interior.module == 'boundary' and self.loops['total'] == 0:
+                self.hf_row['M_mantle'] = (
+                    self.config.struct.mass_tot * M_earth - self.hf_row['M_core']
+                )
+
+                if self.config.struct.module != 'zalmoxis':
+                    self.hf_row['Phi_global'] = 1.0
+
+                calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
+                run_outgassing(self.directories, self.config, self.hf_row)
+
             PrintHalfSeparator()
 
             # Evolve interior
             run_interior(
-                self.directories, self.config, self.hf_all, self.hf_row, self.interior_o
+                self.directories,
+                self.config,
+                self.hf_all,
+                self.hf_row,
+                self.interior_o,
+                self.atmos_o,
             )
 
             # Advance current time in main loop according to interior step

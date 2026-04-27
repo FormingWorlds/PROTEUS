@@ -1,0 +1,36 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "GDPS_initial_grid_2/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/planets/GDSP_fiducial.toml"
+
+# Use SLURM?
+use_slurm = false
+
+# Execution limits
+max_jobs = 25       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+["delivery.elements.H_ppmw"]
+    method = "logspace"
+    start    = 709
+    stop     = 7090
+    count    = 5
+
+["orbit.instellationflux"]
+    method = "logspace"
+    start    = 1
+    stop     = 100
+    count    = 10

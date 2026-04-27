@@ -1,0 +1,31 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "GDPS_initial_grid/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/planets/GDSP_fiducial.toml"
+
+# Use SLURM?
+use_slurm = false
+
+# Execution limits
+max_jobs = 20       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Hydrogen inventory set by arange
+["delivery.elements.H_oceans"]
+    method = "arange"
+    start    = 1
+    stop     = 20
+    step     = 1

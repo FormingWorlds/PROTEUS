@@ -23,10 +23,7 @@ version = "2.0"
         rot_pcntle = 50.0       # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 0.414     # Gyr, current age of star used for scaling
-        star_name   = "sun"
-        spectrum_source = "solar"
-
-
+        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
 
 # Orbital system
 [orbit]
@@ -63,7 +60,7 @@ version = "2.0"
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 5e-2          # solver relative tolerance
         overlap_method    = "ee"          # gas overlap method
-        rainout   = true          # volatile condensation
+        condensation    = true          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
 # Volatile escape - physics table
