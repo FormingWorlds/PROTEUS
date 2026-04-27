@@ -3,8 +3,9 @@
 Covers two angles:
 
 (1) Config schema: ``proteus.config.interior_struct.zalmoxis.outer_solver``
-    accepts only 'picard' or 'newton'; defaults to 'picard' for
-    bit-identical behaviour with pre-T2.1 runs.
+    accepts only 'picard' or 'newton'; defaults to 'newton' as of
+    2026-04-27 (after T2.3 super-Earth sweep validation across
+    1, 3, 5, 10 M_E). 'picard' remains available for explicit opt-in.
 
 (2) Plumbing: ``load_zalmoxis_configuration`` propagates the knob into
     the ``config_params`` dict that ``zalmoxis.solver.main`` consumes,
@@ -29,10 +30,14 @@ pytestmark = pytest.mark.unit
 class TestOuterSolverSchema:
     """Config-class validation of outer_solver and Newton-specific knobs."""
 
-    def test_default_outer_solver_is_picard(self):
-        """Default behavior: pre-T2.1 callers get 'picard' transparently."""
+    def test_default_outer_solver_is_newton(self):
+        """Default flipped to 'newton' on 2026-04-27 after T2.3 sweep
+        validation. PROTEUS' plumbing also tightens integrator tols
+        when newton is selected, so the default path is end-to-end
+        consistent (see TestNewtonPathTightensIntegratorTolerances).
+        """
         z = Zalmoxis()
-        assert z.outer_solver == 'picard'
+        assert z.outer_solver == 'newton'
 
     def test_explicit_picard_accepted(self):
         z = Zalmoxis(outer_solver='picard')

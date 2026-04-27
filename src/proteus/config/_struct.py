@@ -187,10 +187,13 @@ class Zalmoxis:
     # mantle profiles. The script-level prototype (T2.1a) and in-solver
     # Newton (T2.1c-d) validated 12/12 G4 starts converging to dM/M
     # < 1e-4 on the failure-dump T(r) including the 3 starts that fail
-    # with damped Picard's basin attractor. See
-    # session_2026_04_26_t2_1a_newton_prototype.md.
+    # with damped Picard's basin attractor. Validated across the
+    # 1/3/5/10 M_Earth dry CHILI sweep on 2026-04-27 (T2.3); default
+    # flipped from 'picard' to 'newton' on 2026-04-27. See
+    # session_2026_04_26_t2_1a_newton_prototype.md and
+    # session_2026_04_27_t2_3_super_earth_sweep_results.md.
     outer_solver: str = field(
-        default='picard',
+        default='newton',
         validator=in_(('picard', 'newton')),
     )
 
