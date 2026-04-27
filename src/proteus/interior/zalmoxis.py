@@ -384,9 +384,11 @@ def zalmoxis_solver(config: Config, outdir: str, hf_row: dict, num_spider_nodes:
     hf_row['M_core'] = mass_enclosed[cmb_index]
     hf_row['gravity'] = gravity[-1]
 
-    if config.interior.module == "boundary":
+    if config.interior.module == 'boundary':
         # Update the potential temperature and surface temperature in the hf_row for the boundary module
-        hf_row['T_magma'] = temperature[-2]  # Temperature at the last mantle node (just below the surface)
+        hf_row['T_magma'] = temperature[
+            -2
+        ]  # Temperature at the last mantle node (just below the surface)
         hf_row['T_surf'] = temperature[-1]
 
     logger.info(f'Saving Zalmoxis output to {output_zalmoxis}')

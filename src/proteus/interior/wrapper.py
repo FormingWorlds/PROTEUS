@@ -68,9 +68,9 @@ def get_nlevb(config: Config):
             return int(config.interior.spider.num_levels)
         case 'aragog':
             return int(config.interior.aragog.num_levels)
-        case "boundary":
+        case 'boundary':
             return 2
-        case "dummy":
+        case 'dummy':
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
 
@@ -98,10 +98,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
         corefrac_r = config.struct.corefrac
 
         # Mixed bulk density implied by a core radius fraction corefrac_r.
-        rho_bulk = (
-            rho_core * corefrac_r**3
-            + rho_silicate_fixed * (1.0 - corefrac_r**3)
-        )
+        rho_bulk = rho_core * corefrac_r**3 + rho_silicate_fixed * (1.0 - corefrac_r**3)
         hf_row['R_int'] = float((3.0 * M_target / (4.0 * np.pi * rho_bulk)) ** (1.0 / 3.0))
 
         # Core mass/radius from core density.
@@ -115,7 +112,8 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
 
         log.info('Found analytical solution for interior structure (boundary module)')
         log.info(
-            'M_planet: %.1e kg = %.3f M_earth' % (hf_row['M_planet'], hf_row['M_planet'] / M_earth)
+            'M_planet: %.1e kg = %.3f M_earth'
+            % (hf_row['M_planet'], hf_row['M_planet'] / M_earth)
         )
         log.info('R_int: %.1e m  = %.3f R_earth' % (hf_row['R_int'], hf_row['R_int'] / R_earth))
         log.info(' ')
@@ -171,9 +169,16 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
             rtol = 1e-7
 
     # Find the radius
-    r = optimise.root_scalar(_resid, method='secant', xtol=1e3, rtol=rtol, maxiter=10,
-                                    x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
-    hf_row["R_int"] = float(r.root)
+    r = optimise.root_scalar(
+        _resid,
+        method='secant',
+        xtol=1e3,
+        rtol=rtol,
+        maxiter=10,
+        x0=hf_row['R_int'],
+        x1=hf_row['R_int'] * 1.02,
+    )
+    hf_row['R_int'] = float(r.root)
     calculate_core_mass(hf_row, config)
     run_interior(dirs, config, hf_all, hf_row, int_o)
     update_gravity(hf_row)
@@ -252,7 +257,7 @@ def determine_interior_radius_with_zalmoxis(
     # by the finally block above), not the overridden 'adiabatic'.  This is
     # correct: the Zalmoxis solver already used the adiabatic mode to compute
     # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
-    if config.interior.module!="boundary":
+    if config.interior.module != 'boundary':
         run_interior(dirs, config, hf_all, hf_row, int_o)
 
 
@@ -271,9 +276,11 @@ def solve_structure(
     # We might need here to setup a determine_interior_mass function as mass calculation depends on gravity
     if config.struct.set_by == 'radius_int':
         # radius defines interior structure
-        if config.interior.module=="boundary":
-            raise ValueError("Must set structure by 'mass_tot' if boundary interior module is used")
-        hf_row["R_int"] = config.struct.radius_int * R_earth
+        if config.interior.module == 'boundary':
+            raise ValueError(
+                "Must set structure by 'mass_tot' if boundary interior module is used"
+            )
+        hf_row['R_int'] = config.struct.radius_int * R_earth
         calculate_core_mass(hf_row, config)
         # initial guess for mass, which will be updated by the interior model
         hf_row['M_int'] = 1.2 * M_earth
@@ -304,6 +311,7 @@ def solve_structure(
     # Otherwise, error
     else:
         log.error('Invalid constraint on interior structure: %s' % config.struct.set_by)
+
 
 def run_interior(
     dirs: dict,
@@ -361,11 +369,12 @@ def run_interior(
 
     elif config.interior.module == 'boundary':
         from proteus.interior.boundary import BoundaryRunner
-        BoundaryRunnerInstance = BoundaryRunner(config, dirs, hf_row, hf_all,
-                                                interior_o, atmos_o)
+
+        BoundaryRunnerInstance = BoundaryRunner(
+            config, dirs, hf_row, hf_all, interior_o, atmos_o
+        )
         # Run the boundary interior module
-        sim_time, output = BoundaryRunnerInstance.run_solver(hf_row, interior_o,
-                                                           dirs)
+        sim_time, output = BoundaryRunnerInstance.run_solver(hf_row, interior_o, dirs)
 
     elif config.interior.module == 'dummy':
         # Import

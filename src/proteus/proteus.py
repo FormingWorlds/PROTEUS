@@ -409,12 +409,13 @@ class Proteus:
             )
 
             ############### INTERIOR
-            if self.config.interior.module == "boundary" and self.loops["total"] == 0:
+            if self.config.interior.module == 'boundary' and self.loops['total'] == 0:
+                self.hf_row['M_mantle'] = (
+                    self.config.struct.mass_tot * M_earth - self.hf_row['M_core']
+                )
 
-                self.hf_row["M_mantle"] = self.config.struct.mass_tot * M_earth - self.hf_row["M_core"]
-
-                if self.config.struct.module != "zalmoxis":
-                    self.hf_row["Phi_global"] = 1.0
+                if self.config.struct.module != 'zalmoxis':
+                    self.hf_row['Phi_global'] = 1.0
 
                 calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
                 run_outgassing(self.directories, self.config, self.hf_row)
@@ -423,7 +424,12 @@ class Proteus:
 
             # Evolve interior
             run_interior(
-                self.directories, self.config, self.hf_all, self.hf_row, self.interior_o, self.atmos_o
+                self.directories,
+                self.config,
+                self.hf_all,
+                self.hf_row,
+                self.interior_o,
+                self.atmos_o,
             )
 
             # Advance current time in main loop according to interior step

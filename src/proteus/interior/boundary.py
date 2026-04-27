@@ -24,22 +24,30 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
-class BoundaryRunner():
 
-    def __init__(self, config: Config, dirs: dict, hf_row: dict, hf_all:
-                 pd.DataFrame, interior_o: Interior_t, atmos_o: Atmos_t):
-
-        self.curr_time = hf_row["Time"] * secs_per_year
-        self.dt        = self.compute_time_step(config, dirs, hf_row, hf_all, interior_o) * secs_per_year
+class BoundaryRunner:
+    def __init__(
+        self,
+        config: Config,
+        dirs: dict,
+        hf_row: dict,
+        hf_all: pd.DataFrame,
+        interior_o: Interior_t,
+        atmos_o: Atmos_t,
+    ):
+        self.curr_time = hf_row['Time'] * secs_per_year
+        self.dt = (
+            self.compute_time_step(config, dirs, hf_row, hf_all, interior_o) * secs_per_year
+        )
         self.iteration = 1 if hf_all is None else len(hf_all)
 
-        self.planet_radius = hf_row["R_int"]
-        self.planet_mass   = config.struct.mass_tot * M_earth
-        self.core_mass     = hf_row["M_core"]
-        self.m_atm         = hf_row["M_atm"]
-        self.f_atm         = hf_row["F_atm"]
+        self.planet_radius = hf_row['R_int']
+        self.planet_mass = config.struct.mass_tot * M_earth
+        self.core_mass = hf_row['M_core']
+        self.m_atm = hf_row['M_atm']
+        self.f_atm = hf_row['F_atm']
 
-        cp_layer = getattr(getattr(atmos_o, "_atm", None), "layer_cp", None)
+        cp_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_cp', None)
         if cp_layer is not None:
             cp_arr = np.asarray(cp_layer, dtype=float).ravel()
             valid = np.isfinite(cp_arr)
@@ -53,42 +61,48 @@ class BoundaryRunner():
 
         # Prefer Zalmoxis-derived CMB radius when available.
         # Fall back to corefrac-based radius for non-Zalmoxis runs.
-        self.core_radius = float(hf_row.get("R_core", config.struct.corefrac * self.planet_radius))
-        self.core_frac   = self.core_radius / self.planet_radius
+        self.core_radius = float(
+            hf_row.get('R_core', config.struct.corefrac * self.planet_radius)
+        )
+        self.core_frac = self.core_radius / self.planet_radius
 
-        self.mantle_radius   = self.planet_radius - self.core_radius
-        self.mantle_volume   = (4/3) * np.pi * (self.planet_radius**3 - self.core_radius**3)
-        self.mantle_mass     = (self.planet_mass - self.core_mass)
-        self.bulk_density    = self.mantle_mass / self.mantle_volume
+        self.mantle_radius = self.planet_radius - self.core_radius
+        self.mantle_volume = (4 / 3) * np.pi * (self.planet_radius**3 - self.core_radius**3)
+        self.mantle_mass = self.planet_mass - self.core_mass
+        self.bulk_density = self.mantle_mass / self.mantle_volume
         self.surface_gravity = const_G * self.planet_mass / self.planet_radius**2
 
         self.rtol = config.interior.boundary.rtol
         self.atol = config.interior.boundary.atol
 
-        if interior_o.ic == 2 or config.struct.module == "zalmoxis":
-            self.T_p_0    = hf_row.get("T_magma")
-            self.T_surf_0 = hf_row.get("T_surf")
+        if interior_o.ic == 2 or config.struct.module == 'zalmoxis':
+            self.T_p_0 = hf_row.get('T_magma')
+            self.T_surf_0 = hf_row.get('T_surf')
         else:
-            self.T_p_0    = config.interior.boundary.T_p_0
+            self.T_p_0 = config.interior.boundary.T_p_0
             self.T_surf_0 = self.T_p_0
 
         if self.T_surf_0 > self.T_p_0:
-            self.T_surf_0 = self.T_p_0 - 1.0  # Ensure initial surface temperature does not exceed potential temperature
+            self.T_surf_0 = (
+                self.T_p_0 - 1.0
+            )  # Ensure initial surface temperature does not exceed potential temperature
 
-        self.T_solidus                = config.interior.boundary.T_solidus
-        self.T_liquidus               = config.interior.boundary.T_liquidus
-        self.critical_melt_fraction   = config.interior.boundary.critical_melt_fraction
-        self.Tsurf_event_change       = config.interior.boundary.Tsurf_event_change
+        self.T_solidus = config.interior.boundary.T_solidus
+        self.T_liquidus = config.interior.boundary.T_liquidus
+        self.critical_melt_fraction = config.interior.boundary.critical_melt_fraction
+        self.Tsurf_event_change = config.interior.boundary.Tsurf_event_change
 
         # Material constants
-        self.critical_rayleigh_number = config.interior.boundary.critical_rayleigh_number  # dimensionless
-        self.heat_fusion_silicate     = config.interior.boundary.heat_fusion_silicate  # J/kg
-        self.nusselt_exponent         = config.interior.boundary.nusselt_exponent  # dimensionless
-        self.silicate_heat_capacity   = config.interior.boundary.silicate_heat_capacity  # J/kg/K
-        self.thermal_conductivity     = config.interior.boundary.thermal_conductivity  # W/m/K
-        self.thermal_diffusivity      = config.interior.boundary.thermal_diffusivity  # m^2/s
-        self.thermal_expansivity      = config.interior.boundary.thermal_expansivity  # 1/K
-        self.const_R                  = const_R  # Gas constant [J/(mol·K)]
+        self.critical_rayleigh_number = (
+            config.interior.boundary.critical_rayleigh_number
+        )  # dimensionless
+        self.heat_fusion_silicate = config.interior.boundary.heat_fusion_silicate  # J/kg
+        self.nusselt_exponent = config.interior.boundary.nusselt_exponent  # dimensionless
+        self.silicate_heat_capacity = config.interior.boundary.silicate_heat_capacity  # J/kg/K
+        self.thermal_conductivity = config.interior.boundary.thermal_conductivity  # W/m/K
+        self.thermal_diffusivity = config.interior.boundary.thermal_diffusivity  # m^2/s
+        self.thermal_expansivity = config.interior.boundary.thermal_expansivity  # 1/K
+        self.const_R = const_R  # Gas constant [J/(mol·K)]
 
         # Viscosity parameterisation selection
         # 1 = constant viscosity
@@ -101,13 +115,15 @@ class BoundaryRunner():
 
         # Aggregate viscosity parameters
         self.transition_width = config.interior.boundary.transition_width  # dimensionless
-        self.eta_solid_const  = config.interior.boundary.eta_solid_const  # Pa s
-        self.eta_melt_const   = config.interior.boundary.eta_melt_const  # Pa s
+        self.eta_solid_const = config.interior.boundary.eta_solid_const  # Pa s
+        self.eta_melt_const = config.interior.boundary.eta_melt_const  # Pa s
 
         # Arrhenius solid mantle parameters
         self.dynamic_viscosity = config.interior.boundary.dynamic_viscosity  # Pa s
         self.activation_energy = config.interior.boundary.activation_energy  # J/mol
-        self.creep_parameter   = config.interior.boundary.creep_parameter  # dimensionless, for non-Arrhenius power-law creep (not currently used)
+        self.creep_parameter = (
+            config.interior.boundary.creep_parameter
+        )  # dimensionless, for non-Arrhenius power-law creep (not currently used)
 
         # Arrhenius magma ocean parameters (Vogel-Fulcher-Tammann)
         self.viscosity_prefactor = config.interior.boundary.viscosity_prefactor  # Pa s
@@ -115,22 +131,23 @@ class BoundaryRunner():
 
         # Radioactive heating parameters
         self.use_radiogenic_heating = config.interior.radiogenic_heat
-        self.age_ini                = config.star.age_ini
-        self.radio_tref             = config.delivery.radio_tref # in Gyr
-        self.U_abun                 = config.delivery.radio_U * 1e-6  # Convert ppm to kg/kg
-        self.Th_abun                = config.delivery.radio_Th * 1e-6  # Convert ppm to kg/kg
-        self.K_abun                 = config.delivery.radio_K * 1e-6  # Convert ppm to kg/kg
+        self.age_ini = config.star.age_ini
+        self.radio_tref = config.delivery.radio_tref  # in Gyr
+        self.U_abun = config.delivery.radio_U * 1e-6  # Convert ppm to kg/kg
+        self.Th_abun = config.delivery.radio_Th * 1e-6  # Convert ppm to kg/kg
+        self.K_abun = config.delivery.radio_K * 1e-6  # Convert ppm to kg/kg
 
         # use tidal heating from orbit module if enabled, otherwise zero
         self.use_tidal_heating = config.interior.tidal_heat
-        self.tidal_term        = interior_o.tides[0] if self.use_tidal_heating else 0.0
+        self.tidal_term = interior_o.tides[0] if self.use_tidal_heating else 0.0
 
         # Logging setup
         self.logging = config.interior.boundary.logging
 
     @staticmethod
-    def compute_time_step(config: Config, dirs: dict, hf_row: dict,
-                          hf_all: pd.DataFrame, interior_o: Interior_t) -> float:
+    def compute_time_step(
+        config: Config, dirs: dict, hf_row: dict, hf_all: pd.DataFrame, interior_o: Interior_t
+    ) -> float:
         if interior_o.ic == 1:
             return 0.0
         else:
@@ -191,11 +208,9 @@ class BoundaryRunner():
         """
         if phi < self.critical_melt_fraction:
             # Solid mantle: use Arrhenius equation
-            eta = self.dynamic_viscosity * np.exp(
-                self.activation_energy / (self.const_R * T_p)
-            )
+            eta = self.dynamic_viscosity * np.exp(self.activation_energy / (self.const_R * T_p))
 
-            eta = eta *np.exp(-self.creep_parameter * phi)  # Adjust for melt weakening
+            eta = eta * np.exp(-self.creep_parameter * phi)  # Adjust for melt weakening
 
         else:
             # Magma ocean: use Vogel-Fulcher-Tammann relation adjusted for crystal fraction
@@ -205,7 +220,7 @@ class BoundaryRunner():
             )
 
             # Adjust viscosity based on melt fraction
-            eta = eta_l / (1.0 - (1.0 - phi) / (1.0 - self.critical_melt_fraction))**2.5
+            eta = eta_l / (1.0 - (1.0 - phi) / (1.0 - self.critical_melt_fraction)) ** 2.5
 
         return eta
 
@@ -237,7 +252,9 @@ class BoundaryRunner():
         elif self.viscosity_model == 3:
             return self.viscosity_arrhenius(T_p, phi)
         else:
-            log.warning(f"Unknown viscosity model {self.viscosity_model}, defaulting to aggregate (2)")
+            log.warning(
+                f'Unknown viscosity model {self.viscosity_model}, defaulting to aggregate (2)'
+            )
             return self.viscosity_aggregate_model(phi)
 
     def rayleigh_number(self, T_p: float, T_surf: float, phi: float) -> float:
@@ -262,9 +279,13 @@ class BoundaryRunner():
         eta = self.viscosity(T_p, T_surf, phi)
 
         # Calculate Rayleigh number
-        Ra = ((self.bulk_density * self.surface_gravity * self.thermal_expansivity *
-               np.abs(T_p - T_surf) * self.mantle_radius**3) /
-              (eta * self.thermal_diffusivity))
+        Ra = (
+            self.bulk_density
+            * self.surface_gravity
+            * self.thermal_expansivity
+            * np.abs(T_p - T_surf)
+            * self.mantle_radius**3
+        ) / (eta * self.thermal_diffusivity)
 
         return Ra
 
@@ -289,7 +310,7 @@ class BoundaryRunner():
         Ra = self.rayleigh_number(T_p, T_surf, phi)
 
         # Nusselt number scaling relation
-        Nu = (Ra / self.critical_rayleigh_number)**self.nusselt_exponent
+        Nu = (Ra / self.critical_rayleigh_number) ** self.nusselt_exponent
 
         # Calculate convective heat flux
         q_m_val = Nu * self.thermal_conductivity * np.abs(T_p - T_surf) / self.mantle_radius
@@ -312,39 +333,41 @@ class BoundaryRunner():
         """
         # Get radioactive constants from radnuc_data
 
-        radio_t0 = (self.radio_tref-self.age_ini) * 1e9 * secs_per_year
+        radio_t0 = (self.radio_tref - self.age_ini) * 1e9 * secs_per_year
 
         # Radioactive isotope properties from radnuc_data
         # Convert half-lives to decay constants: lambda = ln(2) / half-life
-        K_decay_constant  = np.log(2) / (radnuc_data['k40']['halflife'] * secs_per_year)  # 1/s
+        K_decay_constant = np.log(2) / (radnuc_data['k40']['halflife'] * secs_per_year)  # 1/s
         K_heat_production = radnuc_data['k40']['heatprod']  # W/kg of K-40
         K40_abun = self.K_abun * radnuc_data['k40']['abundance']  # kg(K-40)/kg(mantle)
 
-        Th_decay_constant  = np.log(2) / (radnuc_data['th232']['halflife'] * secs_per_year)  # 1/s
+        Th_decay_constant = np.log(2) / (
+            radnuc_data['th232']['halflife'] * secs_per_year
+        )  # 1/s
         Th_heat_production = radnuc_data['th232']['heatprod']  # W/kg of Th-232
         Th232_abun = self.Th_abun * radnuc_data['th232']['abundance']  # kg(Th-232)/kg(mantle)
 
-        U238_decay_constant  = np.log(2) / (radnuc_data['u238']['halflife'] * secs_per_year)  # 1/s
+        U238_decay_constant = np.log(2) / (
+            radnuc_data['u238']['halflife'] * secs_per_year
+        )  # 1/s
         U238_heat_production = radnuc_data['u238']['heatprod']  # W/kg of U-238
         U238_abun = self.U_abun * radnuc_data['u238']['abundance']  # kg(U-238)/kg(mantle)
 
-        U235_decay_constant  = np.log(2) / (radnuc_data['u235']['halflife'] * secs_per_year)  # 1/s
+        U235_decay_constant = np.log(2) / (
+            radnuc_data['u235']['halflife'] * secs_per_year
+        )  # 1/s
         U235_heat_production = radnuc_data['u235']['heatprod']  # W/kg of U-235
         U235_abun = self.U_abun * radnuc_data['u235']['abundance']  # kg(U-235)/kg(mantle)
 
         # Calculate heating contributions from each isotope
-        K_term = K40_abun * K_heat_production * np.exp(
-            K_decay_constant * (radio_t0 - t)
+        K_term = K40_abun * K_heat_production * np.exp(K_decay_constant * (radio_t0 - t))
+        U238_term = (
+            U238_abun * U238_heat_production * np.exp(U238_decay_constant * (radio_t0 - t))
         )
-        U238_term = U238_abun * U238_heat_production * np.exp(
-            U238_decay_constant * (radio_t0 - t)
+        U235_term = (
+            U235_abun * U235_heat_production * np.exp(U235_decay_constant * (radio_t0 - t))
         )
-        U235_term = U235_abun * U235_heat_production * np.exp(
-            U235_decay_constant * (radio_t0 - t)
-        )
-        Th_term = Th232_abun * Th_heat_production * np.exp(
-            Th_decay_constant * (radio_t0 - t)
-        )
+        Th_term = Th232_abun * Th_heat_production * np.exp(Th_decay_constant * (radio_t0 - t))
         H_total = K_term + U238_term + U235_term + Th_term
 
         if self.use_radiogenic_heating:
@@ -386,12 +409,16 @@ class BoundaryRunner():
         phi = self.melt_fraction(T_p)
 
         if phi >= 1.0:
-            return self.core_radius  # Fully molten, solidification radius at core-mantle boundary
+            return (
+                self.core_radius
+            )  # Fully molten, solidification radius at core-mantle boundary
         elif phi <= 0.0:
             return self.planet_radius  # Fully solid, solidification radius at surface
         else:
             # Linear interpolation between core and surface based on melt fraction
-            return (self.planet_radius**3 - phi * (self.planet_radius**3 - self.core_radius**3))**(1/3)
+            return (
+                self.planet_radius**3 - phi * (self.planet_radius**3 - self.core_radius**3)
+            ) ** (1 / 3)
 
     def drs_dTp(self, T_p: float) -> float:
         """
@@ -447,8 +474,9 @@ class BoundaryRunner():
         Q_val = self.radioactive_heating(t)
 
         # Energy balance numerator: heat loss - radiogenic heating
-        numerator = (-4 * np.pi * self.planet_radius**2 * q_m_val +
-                     self.mantle_mass * (Q_val + self.tidal_term))
+        numerator = -4 * np.pi * self.planet_radius**2 * q_m_val + self.mantle_mass * (
+            Q_val + self.tidal_term
+        )
 
         r_s_val = self.r_s(T_p)  # Update r_s_val based on current T_p
 
@@ -457,9 +485,19 @@ class BoundaryRunner():
 
         # Energy balance denominator: sensible heat + latent heat
         if r_s_val < self.planet_radius:
-            denominator = ((4/3) * np.pi * self.bulk_density * self.silicate_heat_capacity *
-                           (self.planet_radius**3 - r_s_val**3) -
-                           4 * np.pi * r_s_val**2 * self.bulk_density * self.heat_fusion_silicate * dr_s_dT_p)
+            denominator = (
+                (4 / 3)
+                * np.pi
+                * self.bulk_density
+                * self.silicate_heat_capacity
+                * (self.planet_radius**3 - r_s_val**3)
+                - 4
+                * np.pi
+                * r_s_val** 2
+                * self.bulk_density
+                * self.heat_fusion_silicate
+                * dr_s_dT_p
+            )
         else:
             denominator = self.silicate_heat_capacity * self.mantle_mass
 
@@ -486,14 +524,17 @@ class BoundaryRunner():
         phi = self.melt_fraction(T_p)
         q_m_val = self.q_m(T_p, T_surf, phi)
 
-        if T_p==T_surf:
+        if T_p == T_surf:
             delta = 1e-3  # Small temperature difference to avoid division by zero
         else:
             delta = self.thermal_conductivity * (T_p - T_surf) / q_m_val
 
         numerator = 4 * np.pi * self.planet_radius**2 * (q_m_val - self.f_atm)
-        denominator = self.atmosphere_heat_capacity * self.m_atm + \
-            (4/3) * np.pi * self.silicate_heat_capacity * self.bulk_density * (self.planet_radius**3 - (self.planet_radius-delta)**3)
+        denominator = self.atmosphere_heat_capacity * self.m_atm + (
+            4 / 3
+        ) * np.pi * self.silicate_heat_capacity * self.bulk_density * (
+            self.planet_radius**3 - (self.planet_radius - delta) ** 3
+        )
 
         dT_surfdt_val = numerator / denominator
 
@@ -522,8 +563,10 @@ class BoundaryRunner():
         """
         T_p, T_surf = y
 
-        if T_surf>T_p:
-            T_surf = T_p-1.0  # Ensure surface temperature does not exceed potential temperature
+        if T_surf > T_p:
+            T_surf = (
+                T_p - 1.0
+            )  # Ensure surface temperature does not exceed potential temperature
 
         dTp = self.dT_pdt(T_p, T_surf, t)
         dTs = self.dT_surfdt(T_p, T_surf)
@@ -553,16 +596,16 @@ class BoundaryRunner():
         # Set up CSV logging for step diagnostics.
         if self.logging:
             output_dir = dirs.get('output', '.')
-            csv_log_file = f"{output_dir}/boundary_solver_debug.csv"
+            csv_log_file = f'{output_dir}/boundary_solver_debug.csv'
 
             csv_columns = [
-                "Time_years",
-                "T_p_K",
-                "T_surf_K",
-                "q_m_val_W/m2",
-                "viscosity_Pa_s",
-                "rayleigh_number",
-                "atm_heat_flux_W/m2",
+                'Time_years',
+                'T_p_K',
+                'T_surf_K',
+                'q_m_val_W/m2',
+                'viscosity_Pa_s',
+                'rayleigh_number',
+                'atm_heat_flux_W/m2',
             ]
             csv_needs_header = not pd.io.common.file_exists(csv_log_file)
 
@@ -593,14 +636,14 @@ class BoundaryRunner():
         )
 
         # Extract results
-        T_p_final     = sol.y[0, -1]
-        T_surf_final  = sol.y[1, -1]
-        t_final       = sol.t[-1]
-        phi_final     = self.melt_fraction(T_p_final)
-        r_s_final     = self.r_s(T_p_final)
-        sim_time      = t_final/secs_per_year  # convert back to years
-        phi_final     = self.melt_fraction(T_p_final)
-        visc_final    = self.viscosity(T_p_final, T_surf_final, phi_final)
+        T_p_final = sol.y[0, -1]
+        T_surf_final = sol.y[1, -1]
+        t_final = sol.t[-1]
+        phi_final = self.melt_fraction(T_p_final)
+        r_s_final = self.r_s(T_p_final)
+        sim_time = t_final / secs_per_year  # convert back to years
+        phi_final = self.melt_fraction(T_p_final)
+        visc_final = self.viscosity(T_p_final, T_surf_final, phi_final)
         f_radio_final = self.radioactive_heating(t_final) * self.mantle_mass
 
         # Log final timestep values to CSV
@@ -615,35 +658,39 @@ class BoundaryRunner():
 
                 writer.writerow(
                     {
-                        "Time_years": sim_time,
-                        "T_p_K": T_p_final,
-                        "T_surf_K": T_surf_final,
-                        "q_m_val_W/m2": q_m_val,
-                        "viscosity_Pa_s": visc_final,
-                        "rayleigh_number": ra_final,
-                        "atm_heat_flux_W/m2": self.f_atm,
+                        'Time_years': sim_time,
+                        'T_p_K': T_p_final,
+                        'T_surf_K': T_surf_final,
+                        'q_m_val_W/m2': q_m_val,
+                        'viscosity_Pa_s': visc_final,
+                        'rayleigh_number': ra_final,
+                        'atm_heat_flux_W/m2': self.f_atm,
                     }
                 )
 
-        m_liquid = (4/3) * np.pi * self.bulk_density * (self.planet_radius**3 - r_s_final**3)
-        m_solid  = self.mantle_mass - m_liquid
+        m_liquid = (4 / 3) * np.pi * self.bulk_density * (self.planet_radius**3 - r_s_final**3)
+        m_solid = self.mantle_mass - m_liquid
 
         if T_surf_final > T_p_final:
-            T_surf_final = T_p_final - 1.0  # Ensure surface temperature does not exceed potential temperature
+            T_surf_final = (
+                T_p_final - 1.0
+            )  # Ensure surface temperature does not exceed potential temperature
 
         output = {
-            "T_magma": T_p_final,
-            "T_pot": T_p_final,
-            "T_surf": T_surf_final,
-            "F_int": self.f_atm,
-            "Phi_global": phi_final,
-            "Phi_global_vol": phi_final,
-            "F_radio": f_radio_final/(4*np.pi*self.planet_radius**2),
-            "RF_depth": phi_final * (1.0 - self.core_frac),
-            "M_mantle_liquid": m_liquid,
-            "M_mantle_solid": m_solid,
-            "F_tidal": self.tidal_term*self.mantle_mass/(4*np.pi*self.planet_radius**2) if self.use_tidal_heating else 0.0,
-            "M_mantle": self.mantle_mass,
+            'T_magma': T_p_final,
+            'T_pot': T_p_final,
+            'T_surf': T_surf_final,
+            'F_int': self.f_atm,
+            'Phi_global': phi_final,
+            'Phi_global_vol': phi_final,
+            'F_radio': f_radio_final / (4 * np.pi * self.planet_radius**2),
+            'RF_depth': phi_final * (1.0 - self.core_frac),
+            'M_mantle_liquid': m_liquid,
+            'M_mantle_solid': m_solid,
+            'F_tidal': self.tidal_term * self.mantle_mass / (4 * np.pi * self.planet_radius**2)
+            if self.use_tidal_heating
+            else 0.0,
+            'M_mantle': self.mantle_mass,
         }
 
         # Store arrays

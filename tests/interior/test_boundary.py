@@ -89,7 +89,7 @@ def mock_config():
     # Structural parameters
     config.struct.mass_tot = 1.0  # Earth masses
     config.struct.corefrac = 0.55  # Core radius fraction
-    config.struct.module = "self"
+    config.struct.module = 'self'
 
     # Stellar parameters
     config.star.age_ini = 0.1  # Gyr
@@ -144,7 +144,7 @@ def mock_atmos():
 @pytest.fixture
 def mock_dirs():
     """Create mock directory dictionary for output paths."""
-    return {"output": "/tmp"}
+    return {'output': '/tmp'}
 
 
 @pytest.fixture
@@ -156,15 +156,15 @@ def mock_hf_row():
     of cooling from initial magma ocean (T_p = 3500 K → 2500 K).
     """
     return {
-        "Time": 0.01,  # Myr (convert to seconds via secs_per_year)
-        "R_int": 6.371e6,  # m (Earth radius)
-        "M_core": 0.55 * M_earth,  # kg (Earth-mass core)
-        "M_atm": 1e18,  # kg (thin H2 atmosphere)
-        "F_atm": 100.0,  # W/m² (atmospheric heat loss)
-        "T_magma": 3500.0,  # K (mantle potential temperature)
-        "T_surf": 1600.0,  # K (surface temperature)
-        "P_surf": 1e8,  # Pa (surface pressure)
-        "R_core": 0.55 * 6.371e6,  # m (core radius from corefrac)
+        'Time': 0.01,  # Myr (convert to seconds via secs_per_year)
+        'R_int': 6.371e6,  # m (Earth radius)
+        'M_core': 0.55 * M_earth,  # kg (Earth-mass core)
+        'M_atm': 1e18,  # kg (thin H2 atmosphere)
+        'F_atm': 100.0,  # W/m² (atmospheric heat loss)
+        'T_magma': 3500.0,  # K (mantle potential temperature)
+        'T_surf': 1600.0,  # K (surface temperature)
+        'P_surf': 1e8,  # Pa (surface pressure)
+        'R_core': 0.55 * 6.371e6,  # m (core radius from corefrac)
     }
 
 
@@ -175,8 +175,9 @@ def mock_hf_all():
 
 
 @pytest.fixture
-def boundary_runner(mock_config, mock_dirs, mock_hf_row, mock_hf_all,
-                    mock_interior, mock_atmos):
+def boundary_runner(
+    mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+):
     """
     Create a BoundaryRunner instance with sensible defaults.
 
@@ -201,6 +202,7 @@ def boundary_runner(mock_config, mock_dirs, mock_hf_row, mock_hf_all,
 # =============================================================================
 # Tests: Viscosity Models (unit, fast <100ms)
 # =============================================================================
+
 
 @pytest.mark.unit
 def test_viscosity_aggregate_model_limits(boundary_runner):
@@ -234,11 +236,14 @@ def test_viscosity_aggregate_model_limits(boundary_runner):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("phi,expected_eta_range", [
-    (0.1, (1e19, 1e21)),  # Mostly solid
-    (0.5, (1e2, 1e21)),   # Transition zone
-    (0.9, (1e2, 1e5)),    # Mostly liquid
-])
+@pytest.mark.parametrize(
+    'phi,expected_eta_range',
+    [
+        (0.1, (1e19, 1e21)),  # Mostly solid
+        (0.5, (1e2, 1e21)),  # Transition zone
+        (0.9, (1e2, 1e5)),  # Mostly liquid
+    ],
+)
 def test_viscosity_aggregate_parametrized(boundary_runner, phi, expected_eta_range):
     """
     Test aggregate viscosity model across melt fraction range via parametrization.
@@ -270,7 +275,7 @@ def test_viscosity_arrhenius_solid_mantle(boundary_runner):
     boundary_runner.creep_parameter = 0.1
 
     T_cold = 1500.0  # K (cool mantle)
-    T_hot = 2500.0   # K (hot mantle)
+    T_hot = 2500.0  # K (hot mantle)
     phi = 0.1  # Mostly solid
 
     eta_cold = boundary_runner.viscosity_arrhenius(T_cold, phi)
@@ -405,11 +410,14 @@ def test_rayleigh_number_physical_range(boundary_runner):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("T_p,T_surf,phi", [
-    (2500.0, 500.0, 0.2),    # Cool, mostly solid
-    (3500.0, 1500.0, 0.8),   # Hot, mostly molten
-    (3000.0, 1600.0, 0.5),   # Intermediate
-])
+@pytest.mark.parametrize(
+    'T_p,T_surf,phi',
+    [
+        (2500.0, 500.0, 0.2),  # Cool, mostly solid
+        (3500.0, 1500.0, 0.8),  # Hot, mostly molten
+        (3000.0, 1600.0, 0.5),  # Intermediate
+    ],
+)
 def test_rayleigh_number_parametrized(boundary_runner, T_p, T_surf, phi):
     """
     Test Rayleigh number calculation across multiple thermal scenarios.
@@ -613,11 +621,14 @@ def test_melt_fraction_clipping_above_liquidus(boundary_runner):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("T_p,expected_phi", [
-    (1600.0, 0.0),    # At solidus
-    (1800.0, 0.5),    # Midpoint
-    (2000.0, 1.0),    # At liquidus
-])
+@pytest.mark.parametrize(
+    'T_p,expected_phi',
+    [
+        (1600.0, 0.0),  # At solidus
+        (1800.0, 0.5),  # Midpoint
+        (2000.0, 1.0),  # At liquidus
+    ],
+)
 def test_melt_fraction_parametrized(boundary_runner, T_p, expected_phi):
     """
     Test melt fraction linearly interpolates between solidus and liquidus.
@@ -859,24 +870,26 @@ def test_run_solver_integration_success(mock_solve_ivp, boundary_runner, mock_in
     """
     # Mock solve_ivp output
     mock_solution = Mock()
-    mock_solution.y = np.array([
-        [3000.0, 2800.0],  # T_p: initial → final
-        [1600.0, 1550.0],  # T_surf: initial → final
-    ])
+    mock_solution.y = np.array(
+        [
+            [3000.0, 2800.0],  # T_p: initial → final
+            [1600.0, 1550.0],  # T_surf: initial → final
+        ]
+    )
     mock_solution.t = np.array([0.0, 1e7 * secs_per_year])
 
     mock_solve_ivp.return_value = mock_solution
 
     hf_row = {
-        "Time": 0.01,
-        "R_int": 6.371e6,
-        "M_core": 0.55 * M_earth,
-        "M_atm": 1e18,
-        "F_atm": 100.0,
-        "T_magma": 3000.0,
-        "T_surf": 1600.0,
-        "P_surf": 1e8,
-        "R_core": 0.55 * 6.371e6,
+        'Time': 0.01,
+        'R_int': 6.371e6,
+        'M_core': 0.55 * M_earth,
+        'M_atm': 1e18,
+        'F_atm': 100.0,
+        'T_magma': 3000.0,
+        'T_surf': 1600.0,
+        'P_surf': 1e8,
+        'R_core': 0.55 * 6.371e6,
     }
 
     sim_time, output = boundary_runner.run_solver(hf_row, mock_interior, {})
@@ -884,9 +897,9 @@ def test_run_solver_integration_success(mock_solve_ivp, boundary_runner, mock_in
     # Check outputs
     assert sim_time > 0
     assert isinstance(output, dict)
-    assert "T_magma" in output
-    assert "T_surf" in output
-    assert "Phi_global" in output
+    assert 'T_magma' in output
+    assert 'T_surf' in output
+    assert 'Phi_global' in output
 
 
 @pytest.mark.unit
@@ -905,21 +918,30 @@ def test_run_solver_output_keys(mock_solve_ivp, boundary_runner, mock_interior):
     mock_solve_ivp.return_value = mock_solution
 
     hf_row = {
-        "Time": 0.01,
-        "R_int": 6.371e6,
-        "M_core": 0.55 * M_earth,
-        "M_atm": 1e18,
-        "F_atm": 100.0,
-        "P_surf": 1e8,
-        "R_core": 0.55 * 6.371e6,
+        'Time': 0.01,
+        'R_int': 6.371e6,
+        'M_core': 0.55 * M_earth,
+        'M_atm': 1e18,
+        'F_atm': 100.0,
+        'P_surf': 1e8,
+        'R_core': 0.55 * 6.371e6,
     }
 
     sim_time, output = boundary_runner.run_solver(hf_row, mock_interior, {})
 
     required_keys = [
-        "T_magma", "T_pot", "T_surf", "F_int", "Phi_global",
-        "Phi_global_vol", "F_radio", "RF_depth", "M_mantle_liquid",
-        "M_mantle_solid", "F_tidal", "M_mantle",
+        'T_magma',
+        'T_pot',
+        'T_surf',
+        'F_int',
+        'Phi_global',
+        'Phi_global_vol',
+        'F_radio',
+        'RF_depth',
+        'M_mantle_liquid',
+        'M_mantle_solid',
+        'F_tidal',
+        'M_mantle',
     ]
 
     for key in required_keys:
@@ -928,8 +950,7 @@ def test_run_solver_output_keys(mock_solve_ivp, boundary_runner, mock_interior):
 
 @pytest.mark.unit
 @patch('proteus.interior.boundary.solve_ivp')
-def test_run_solver_interior_object_updated(mock_solve_ivp, boundary_runner,
-                                             mock_interior):
+def test_run_solver_interior_object_updated(mock_solve_ivp, boundary_runner, mock_interior):
     """
     Test run_solver updates Interior_t object arrays with results.
 
@@ -942,13 +963,13 @@ def test_run_solver_interior_object_updated(mock_solve_ivp, boundary_runner,
     mock_solve_ivp.return_value = mock_solution
 
     hf_row = {
-        "Time": 0.01,
-        "R_int": 6.371e6,
-        "M_core": 0.55 * M_earth,
-        "M_atm": 1e18,
-        "F_atm": 100.0,
-        "P_surf": 1e8,
-        "R_core": 0.55 * 6.371e6,
+        'Time': 0.01,
+        'R_int': 6.371e6,
+        'M_core': 0.55 * M_earth,
+        'M_atm': 1e18,
+        'F_atm': 100.0,
+        'P_surf': 1e8,
+        'R_core': 0.55 * 6.371e6,
     }
 
     boundary_runner.run_solver(hf_row, mock_interior, {})

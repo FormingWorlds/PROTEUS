@@ -87,12 +87,12 @@ def run_atmosphere(
         hf_row['albedo_pl'] = 0.0
 
     # Handle new surface temperature
-    if config.interior.module=='boundary':
-        #surface temperature is already calculated by boundary interior module
+    if config.interior.module == 'boundary':
+        # surface temperature is already calculated by boundary interior module
         pass
 
     elif config.atmos_clim.surf_state == 'mixed_layer':
-        hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+        hf_row['T_surf'] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
     elif config.atmos_clim.surf_state == 'fixed':
         hf_row['T_surf'] = hf_row['T_magma']
@@ -153,7 +153,7 @@ def run_atmosphere(
                 # surface temperature guess
 
                 if config.interior.module != 'boundary':
-                    hf_row["T_surf"] = hf_row["T_magma"]
+                    hf_row['T_surf'] = hf_row['T_magma']
             else:
                 # Remove old spectral file if it exists
                 safe_rm(spfile_path)

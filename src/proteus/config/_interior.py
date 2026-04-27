@@ -24,13 +24,14 @@ def valid_spider(instance, attribute, value):
 
 
 def valid_interiorboundary(instance, attribute, value):
-    if instance.module != "boundary":
+    if instance.module != 'boundary':
         return
 
     tsol = instance.boundary.T_solidus
     tliq = instance.boundary.T_liquidus
     if tliq <= tsol:
-        raise ValueError(f"Boundary liquidus ({tliq}K) must be greater than solidus ({tsol}K)")
+        raise ValueError(f'Boundary liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
+
 
 def valid_path(instance, attribute, value):
     if not isinstance(value, str) or not value.strip():
@@ -253,35 +254,37 @@ class InteriorBoundary:
         Whether to include interior logging in the output.
     """
 
-    rtol: float = field(default=1e-6,  validator=gt(0))
-    atol: float = field(default=1e-9,  validator=gt(0))
+    rtol: float = field(default=1e-6, validator=gt(0))
+    atol: float = field(default=1e-9, validator=gt(0))
 
     T_p_0: float = field(default=3500.0, validator=ge(0))
 
-    T_solidus: float  = field(default=1420.0, validator=ge(0))
+    T_solidus: float = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
 
     critical_melt_fraction: float = field(default=0.4, validator=(gt(0), lt(1)))
 
     Tsurf_event_change: float = field(default=20.0, validator=gt(0))  # K
 
-    critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))   # -
-    heat_fusion_silicate: float   = field(default=4.0e5,   validator=gt(0))   # J/kg
-    nusselt_exponent: float       = field(default=0.33,    validator=gt(0))   # -
-    silicate_heat_capacity: float = field(default=1.2e3,   validator=gt(0))   # J/kg/K
-    silicate_density: float       = field(default=4103.0, validator=gt(0))    # kg/m^3
-    thermal_conductivity: float   = field(default=4.2,     validator=gt(0))   # W/m/K
-    thermal_diffusivity: float    = field(default=1e-6,    validator=gt(0))   # m^2/s
-    thermal_expansivity: float    = field(default=2e-5,    validator=gt(0))   # 1/K
+    critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))  # -
+    heat_fusion_silicate: float = field(default=4.0e5, validator=gt(0))  # J/kg
+    nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
+    silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
+    silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
+    thermal_conductivity: float = field(default=4.2, validator=gt(0))  # W/m/K
+    thermal_diffusivity: float = field(default=1e-6, validator=gt(0))  # m^2/s
+    thermal_expansivity: float = field(default=2e-5, validator=gt(0))  # 1/K
 
     # Viscosity parameterisation
-    viscosity_model: int = field(default=2, validator=in_((1, 2, 3)))  # 1=constant, 2=aggregate, 3=Arrhenius
+    viscosity_model: int = field(
+        default=2, validator=in_((1, 2, 3))
+    )  # 1=constant, 2=aggregate, 3=Arrhenius
     eta_constant: float = field(default=1e2, validator=gt(0))  # Pa s, for model 1
 
     # Aggregate viscosity parameters
-    transition_width: float       = field(default=0.2,     validator=(gt(0), lt(1)))  # -
-    eta_solid_const: float        = field(default=1e22,    validator=gt(0))   # Pa s
-    eta_melt_const: float         = field(default=1e2,     validator=gt(0))   # Pa s
+    transition_width: float = field(default=0.2, validator=(gt(0), lt(1)))  # -
+    eta_solid_const: float = field(default=1e22, validator=gt(0))  # Pa s
+    eta_melt_const: float = field(default=1e2, validator=gt(0))  # Pa s
 
     # Arrhenius solid mantle parameters
     dynamic_viscosity: float = field(default=3.8e9, validator=gt(0))  # Pa s
@@ -293,6 +296,7 @@ class InteriorBoundary:
     viscosity_activation_temp: float = field(default=4600, validator=gt(0))  # K
 
     logging: bool = field(default=False)
+
 
 @define
 class InteriorDummy:
@@ -368,16 +372,18 @@ class Interior:
         Zalmoxis derives its EOS paths from struct.zalmoxis config instead.
     """
 
-    module: str             = field(validator=in_(('spider', 'aragog', 'dummy', 'boundary')))
-    melting_dir: str        = field(default="Monteux-600",validator=valid_path)
+    module: str = field(validator=in_(('spider', 'aragog', 'dummy', 'boundary')))
+    melting_dir: str = field(default='Monteux-600', validator=valid_path)
     eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
-    radiogenic_heat: bool   = field(default=True)
-    tidal_heat: bool        = field(default=True)
+    radiogenic_heat: bool = field(default=True)
+    tidal_heat: bool = field(default=True)
 
-    spider: Spider             = field(factory=Spider,           validator=valid_spider)
-    aragog: Aragog             = field(factory=Aragog,           validator=valid_aragog)
-    dummy: InteriorDummy       = field(factory=InteriorDummy,    validator=valid_interiordummy)
-    boundary: InteriorBoundary = field(factory=InteriorBoundary, validator=valid_interiorboundary)
+    spider: Spider = field(factory=Spider, validator=valid_spider)
+    aragog: Aragog = field(factory=Aragog, validator=valid_aragog)
+    dummy: InteriorDummy = field(factory=InteriorDummy, validator=valid_interiordummy)
+    boundary: InteriorBoundary = field(
+        factory=InteriorBoundary, validator=valid_interiorboundary
+    )
 
     grain_size: float = field(default=0.1, validator=gt(0))
     F_initial: float = field(default=1e3, validator=gt(0))
