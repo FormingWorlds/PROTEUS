@@ -29,7 +29,7 @@ from proteus.config._converters import none_if_none
 from proteus.config._interior import valid_aragog, valid_interiordummy, valid_spider
 from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
-from proteus.config._planet import GasPrs
+from proteus.config._planet import GasPrs, Planet
 
 PATHS = chain(
     (PROTEUS_ROOT / 'input').glob('*.toml'),
@@ -1639,3 +1639,124 @@ def test_config_janus_escape_atmosphere_non_janus_skip():
         params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
     janus_escape_atmosphere(instance, SimpleNamespace(), None)  # Should not raise
+
+
+# ----------------------------------------------------------------------
+# liquidus_super temperature_mode + delta_T_super (Stage 4 IC anchor)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_planet_temperature_mode_accepts_liquidus_super():
+    """Planet validator must accept the new 'liquidus_super' mode.
+
+    Discriminating: this test fails if the validator tuple is missing the
+    new entry, which is the most plausible regression after a refactor of
+    the temperature_mode list. We also confirm the mode does not silently
+    coerce to one of the existing six modes.
+    """
+    p = Planet(temperature_mode='liquidus_super')
+    assert p.temperature_mode == 'liquidus_super'
+    # negative discrimination: must not collapse to default
+    assert p.temperature_mode != 'adiabatic_from_cmb'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'mode',
+    [
+        'isothermal',
+        'linear',
+        'adiabatic',
+        'adiabatic_from_cmb',
+        'accretion',
+        'isentropic',
+        'liquidus_super',
+    ],
+)
+def test_planet_temperature_mode_full_enumeration(mode):
+    """Every documented temperature_mode value must construct successfully.
+
+    This pins the public surface so that adding new modes does not silently
+    drop existing ones from the validator.
+    """
+    p = Planet(temperature_mode=mode)
+    assert p.temperature_mode == mode
+
+
+@pytest.mark.unit
+def test_planet_temperature_mode_rejects_typos():
+    """Unknown temperature_mode values must raise (no silent fallback).
+
+    Anti-happy-path: tests three plausible typos (case error, plural, wrong
+    underscore) plus an empty string. A bug that downcases input or tries
+    fuzzy matching would fail one of these.
+    """
+    for bad in ('Liquidus_super', 'liquidussuper', 'liquidus-super', ''):
+        with pytest.raises(ValueError):
+            Planet(temperature_mode=bad)
+
+
+@pytest.mark.unit
+def test_planet_delta_T_super_default_is_500():
+    """delta_T_super default must match the documented 500 K, not 0 or
+    some unrelated leftover constant. A 500 K offset above the Fei+2021
+    liquidus at P_cmb ~ 135 GPa (T_liq ~ 5935 K) gives the canonical
+    fully-molten 1 M_E IC at T_cmb ~ 6435 K used in the paper rerun.
+    """
+    p = Planet()
+    assert p.delta_T_super == pytest.approx(500.0, rel=0, abs=0)
+
+
+@pytest.mark.unit
+def test_planet_delta_T_super_accepts_zero():
+    """delta_T_super = 0 K must be allowed (anchor exactly on the liquidus,
+    a meaningful physical limit, not just a numerical edge case).
+    """
+    p = Planet(delta_T_super=0.0)
+    assert p.delta_T_super == pytest.approx(0.0, abs=0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize('value', [-1.0, -0.001, -1e6])
+def test_planet_delta_T_super_rejects_negative(value):
+    """Negative delta_T_super (subliquidus IC by request) must raise.
+
+    Physically, a sub-liquidus anchor is supported by the existing
+    'adiabatic_from_cmb' mode with a chosen tcmb_init; the
+    'liquidus_super' mode is explicitly the super-liquidus side and a
+    negative value would silently become a sub-liquidus IC of unknown
+    melt fraction.
+    """
+    with pytest.raises(ValueError):
+        Planet(delta_T_super=value)
+
+
+@pytest.mark.unit
+def test_planet_delta_T_super_accepts_large_super_earth_value():
+    """A 5000 K super-liquidus offset must be allowed.
+
+    Discriminating: large offsets are physically meaningful for hot
+    super-Earth ICs, so the validator must not impose a hidden upper
+    bound. (If we ever add ge(0) AND a sanity ceiling, this test will
+    flag the change.)
+    """
+    p = Planet(delta_T_super=5000.0)
+    assert p.delta_T_super == pytest.approx(5000.0, abs=0)
+
+
+@pytest.mark.unit
+def test_planet_liquidus_super_does_not_disturb_other_defaults():
+    """Selecting liquidus_super must not collide with other IC scalars.
+
+    Verifies that ini_entropy, tsurf_init, tcmb_init keep their defaults
+    when liquidus_super is chosen; this is the regression test for the
+    case where a future refactor makes one mode mutually-exclusive with
+    another's parameters.
+    """
+    p = Planet(temperature_mode='liquidus_super', delta_T_super=750.0)
+    assert p.temperature_mode == 'liquidus_super'
+    assert p.delta_T_super == pytest.approx(750.0)
+    assert p.ini_entropy == pytest.approx(3900.0)
+    assert p.tsurf_init == pytest.approx(4000.0)
+    assert p.tcmb_init == pytest.approx(6000.0)

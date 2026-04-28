@@ -136,9 +136,21 @@ class Planet:
             ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the
             CHILI intercomparison protocol). The interior solver maps the
             entropy IC to T(P) via its own EOS table.
+        'liquidus_super': anchor the adiabat at T = T_liq(P_cmb) +
+            delta_T_super at the core-mantle boundary, where T_liq is
+            the Fei et al. (2021, PRL 127, 135701) MgSiO3 melting curve
+            (piecewise Simon-Glatzel, with the Belonoshko et al. 2005
+            low-pressure branch below 2.55 GPa, exactly matching the
+            PALEOS internal liquidus). The adiabat is then integrated
+            upward to the surface. Use this for EOS-agnostic IC
+            comparison: the anchor is set by a third-party melting
+            curve so it does not bake in either the WB17 or PALEOS
+            entropy convention. delta_T_super (in K) is the
+            user-controlled superliquidus offset.
     tsurf_init: float
         Initial magma surface temperature [K] (isothermal, linear, adiabatic).
-        Ignored when temperature_mode = 'isentropic' or 'adiabatic_from_cmb'.
+        Ignored when temperature_mode = 'isentropic', 'adiabatic_from_cmb',
+        or 'liquidus_super'.
     tcmb_init: float
         Initial core-mantle boundary temperature [K] (adiabatic_from_cmb only).
         The mantle adiabat is anchored at this temperature at P = P_cmb
@@ -156,6 +168,13 @@ class Planet:
         Initial entropy gradient with radius [J/kg/K/m] (isentropic mode).
         CHILI Earth-SPIDER reference: -4.698e-6 (small numerical
         perturbation needed for SPIDER's BDF stability on a uniform IC).
+    delta_T_super: float
+        Superliquidus offset [K] at the core-mantle boundary
+        (liquidus_super mode only). The CMB anchor temperature is
+        T_cmb = T_liq_Fei2021(P_cmb) + delta_T_super. Default 500 K
+        gives a fully molten initial state across the full mantle for
+        Earth-mass and super-Earth planets. Setting delta_T_super = 0
+        anchors the IC adiabat exactly at the liquidus.
     volatile_mode: str
         How to set the initial volatile inventory: 'elements' or 'gas_prs'.
     volatile_reservoir: str
@@ -184,7 +203,15 @@ class Planet:
     temperature_mode: str = field(
         default='adiabatic_from_cmb',
         validator=in_(
-            ('isothermal', 'linear', 'adiabatic', 'adiabatic_from_cmb', 'accretion', 'isentropic')
+            (
+                'isothermal',
+                'linear',
+                'adiabatic',
+                'adiabatic_from_cmb',
+                'accretion',
+                'isentropic',
+                'liquidus_super',
+            )
         ),
     )
     tsurf_init: float = field(default=4000.0, validator=gt(0))
@@ -198,6 +225,13 @@ class Planet:
     # maps S -> T(P) via its own EOS table; tsurf_init is ignored.
     ini_entropy: float = field(default=3900.0, validator=gt(0))
     ini_dsdr: float = field(default=-4.698e-6)
+
+    # Superliquidus offset at the CMB for temperature_mode = 'liquidus_super'.
+    # T_cmb anchor is T_liq_Fei2021(P_cmb) + delta_T_super; the adiabat is
+    # then integrated upward to the surface. Default 500 K guarantees a
+    # fully molten state across Earth-mass and super-Earth mantles. Setting
+    # delta_T_super = 0 places the IC adiabat exactly on the liquidus.
+    delta_T_super: float = field(default=500.0, validator=ge(0))
 
     # Initial volatile inventory
     volatile_mode: str = field(default='elements', validator=in_(('elements', 'gas_prs')))
