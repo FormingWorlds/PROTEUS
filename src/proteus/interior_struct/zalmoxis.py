@@ -338,6 +338,73 @@ def _get_target_surface_pressure(config: Config, hf_row: dict) -> float:
     return max(101325.0, min(p_init_pa, 1e9))
 
 
+def _resolve_zalmoxis_temperature_mode(mode: str) -> str:
+    """Map a PROTEUS temperature_mode to the Zalmoxis structure-solve mode.
+
+    PROTEUS supports more IC modes than Zalmoxis needs to know about for
+    its (M-R via hydrostatic + EOS) structure solve. The mapping here
+    decouples PROTEUS-side IC bookkeeping from the Zalmoxis-side T(r)
+    integration:
+
+    - 'accretion', 'isentropic'      -> 'adiabatic'   (surface-anchored)
+    - 'liquidus_super'               -> 'adiabatic_from_cmb'
+    - all other modes pass through unchanged.
+
+    The 'liquidus_super' mapping pairs with
+    :func:`_resolve_zalmoxis_cmb_temperature`, which computes the
+    Fei+2021-derived T_cmb anchor used by Zalmoxis for the upward
+    integration.
+    """
+    if mode in ('accretion', 'isentropic'):
+        return 'adiabatic'
+    if mode == 'liquidus_super':
+        return 'adiabatic_from_cmb'
+    return mode
+
+
+def _resolve_zalmoxis_cmb_temperature(config: Config, hf_row: dict, mode: str) -> float:
+    """Resolve cmb_temperature for the Zalmoxis structure call.
+
+    For 'liquidus_super', returns paleos_liquidus(P_cmb) + delta_T_super,
+    using hf_row['P_cmb'] when populated (subsequent timesteps) or a
+    135 GPa Earth-like fallback on the very first call. The energetics
+    IC step (compute_initial_entropy) re-derives the same anchor against
+    the converged Zalmoxis P_cmb, so any first-call P_cmb mismatch is
+    self-correcting after one round-trip.
+
+    For all other modes, returns config.planet.tcmb_init verbatim.
+    """
+    if mode != 'liquidus_super':
+        return config.planet.tcmb_init
+
+    from zalmoxis.melting_curves import paleos_liquidus
+
+    P_cmb = None
+    if isinstance(hf_row, dict):
+        P_cmb = hf_row.get('P_cmb', None)
+    if not P_cmb or P_cmb <= 0:
+        # First-call fallback. Mirrors the Earth-like 135 GPa fallback
+        # in compute_initial_entropy. Logged at info level so the value
+        # is traceable in the run log; the next timestep will pick up
+        # the converged hf_row['P_cmb'] from the structure solve.
+        P_cmb = 135e9
+        logger.info(
+            'liquidus_super: hf_row["P_cmb"] not yet populated for the '
+            'structure call; using 135 GPa fallback. Next iteration will '
+            'use the converged Zalmoxis P_cmb.'
+        )
+
+    T_liq = float(paleos_liquidus(P_cmb))
+    delta = float(config.planet.delta_T_super)
+    tcmb_anchor = T_liq + delta
+    logger.info(
+        'liquidus_super CMB anchor for Zalmoxis: P_cmb=%.2e Pa -> '
+        'T_liq_Fei2021=%.0f K + delta_T_super=%.0f K = T_cmb=%.0f K',
+        P_cmb, T_liq, delta, tcmb_anchor,
+    )
+    return tcmb_anchor
+
+
 def load_zalmoxis_configuration(
     config: Config,
     hf_row: dict,
@@ -418,17 +485,24 @@ def load_zalmoxis_configuration(
         # is passed through to Zalmoxis with the CMB-anchor temperature so
         # the structure-side T(r) integrates upward from T_cmb at R_cmb,
         # matching the entropy that the energetics solver receives via
-        # compute_initial_entropy. temperature_mode_override lets SPIDER
-        # coupling force adiabatic without mutating the shared Config
-        # object (see proteus rules §"Config mutability").
-        'temperature_mode': (
-            'adiabatic'
-            if (temperature_mode_override or config.planet.temperature_mode)
-            in ('accretion', 'isentropic')
-            else (temperature_mode_override or config.planet.temperature_mode)
+        # compute_initial_entropy. 'liquidus_super' maps to
+        # 'adiabatic_from_cmb' here, with cmb_temperature derived from the
+        # Fei+2021 liquidus at the converged P_cmb (or a 135 GPa fallback
+        # on the very first call before Zalmoxis has populated P_cmb)
+        # plus delta_T_super. The energetics IC step recomputes this
+        # exact same anchor against the converged P_cmb, so the structure
+        # solve and the entropy IC stay in agreement after the first
+        # round-trip. temperature_mode_override lets SPIDER coupling force
+        # adiabatic without mutating the shared Config object (see proteus
+        # rules §"Config mutability").
+        'temperature_mode': _resolve_zalmoxis_temperature_mode(
+            temperature_mode_override or config.planet.temperature_mode
         ),
         'surface_temperature': config.planet.tsurf_init,
-        'cmb_temperature': config.planet.tcmb_init,
+        'cmb_temperature': _resolve_zalmoxis_cmb_temperature(
+            config, hf_row,
+            temperature_mode_override or config.planet.temperature_mode,
+        ),
         'center_temperature': config.planet.tcenter_init,
         'temp_profile_file': None,
         'layer_eos_config': layer_eos_config,

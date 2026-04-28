@@ -287,6 +287,35 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
             T[i] = T[i + 1] - dTdr * dr  # subtract because dr > 0 and dT/dr < 0
         return T
 
+    elif mode == 'liquidus_super':
+        # CMB-anchored adiabat using the Fei+2021 MgSiO3 liquidus.
+        # T_cmb = T_liq_Fei2021(P_cmb) + delta_T_super, then integrate
+        # the adiabat upward to the surface. This is the EoS-agnostic
+        # IC anchor: the third-party Fei+2021 calibration is shared
+        # across PALEOS-internal use and external references, so
+        # neither the WB17 (S_0=0) nor the PALEOS (Stebbins-anchored)
+        # entropy convention biases the IC. The dummy module provides
+        # only a coarse adiabat from constant alpha/Cp/g; the
+        # production path (zalmoxis + Aragog) computes the same anchor
+        # against the converged structure-solve P_cmb.
+        from zalmoxis.melting_curves import paleos_liquidus
+        P_cmb = float(P_stag[0])
+        T_liq = float(paleos_liquidus(P_cmb))
+        delta = float(config.planet.delta_T_super)
+        T_cmb = T_liq + delta
+        logger.info(
+            'Dummy liquidus_super: P_cmb=%.2e Pa -> T_liq_Fei2021=%.0f K '
+            '+ delta_T_super=%.0f K = T_cmb=%.0f K',
+            P_cmb, T_liq, delta, T_cmb,
+        )
+        T = np.zeros(N)
+        T[0] = T_cmb
+        for i in range(1, N):
+            dr = r_stag[i] - r_stag[i - 1]
+            dTdr = -alpha_m * T[i - 1] * g_m_av / Cp_m
+            T[i] = T[i - 1] + dTdr * dr  # T decreases outward
+        return T
+
     elif mode == 'accretion':
         # White & Li (2025) computes T_surf from accretion energy.
         # For the dummy module, use a simplified version:

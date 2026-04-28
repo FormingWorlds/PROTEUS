@@ -253,8 +253,17 @@ def compute_initial_entropy(
     # when the solver unpacks the IC. Use this mode when the surface-
     # anchored adiabat under the current EOS would land in the mushy zone
     # at IC and you want to force a fully molten initial state.
-    if config.planet.temperature_mode == 'adiabatic_from_cmb':
-        tcmb = float(config.planet.tcmb_init)
+    #
+    # liquidus_super shares the (P_cmb, T_cmb) -> S inversion path with
+    # adiabatic_from_cmb, with one substitution: T_cmb is derived from
+    # the EoS-agnostic Fei et al. (2021) MgSiO3 liquidus at P_cmb plus
+    # the user-set delta_T_super offset, instead of being read directly
+    # from config.planet.tcmb_init. This makes the IC anchor independent
+    # of which silicate EoS bookkeeping convention (WB17 S_0=0 vs PALEOS
+    # Stebbins-anchored) is being compared.
+    if config.planet.temperature_mode in ('adiabatic_from_cmb', 'liquidus_super'):
+        mode = config.planet.temperature_mode
+        is_liquidus_super = mode == 'liquidus_super'
         P_cmb = None
         if hf_row is not None:
             P_cmb = hf_row.get('P_cmb', None)
@@ -278,7 +287,7 @@ def compute_initial_entropy(
             struct_mod = getattr(config.interior_struct, 'module', 'unknown')
             if not (0.5 <= mtot <= 2.0):
                 raise ValueError(
-                    f'adiabatic_from_cmb mode cannot use the Earth-like '
+                    f'{mode} mode cannot use the Earth-like '
                     f'135 GPa P_cmb fallback for mass_tot={mtot} M_Earth. '
                     f'The real P_cmb scales strongly with mass and the '
                     f'fallback would misplace the IC entropy by several '
@@ -291,15 +300,44 @@ def compute_initial_entropy(
                     f'Current interior_struct.module={struct_mod!r}.'
                 )
             log.warning(
-                'adiabatic_from_cmb: hf_row["P_cmb"] missing or non-positive '
+                '%s: hf_row["P_cmb"] missing or non-positive '
                 'and mass_tot=%.2f M_Earth falls in the Earth-like window; '
                 'using the 135 GPa fallback. interior_struct.module=%r does '
                 'not populate P_cmb before the IC is set. For robustness, '
                 'switch to module="zalmoxis" or a temperature_mode that '
                 'does not require P_cmb.',
-                mtot, struct_mod,
+                mode, mtot, struct_mod,
             )
             P_cmb = 135e9
+
+        # Compute the CMB anchor temperature.
+        #   adiabatic_from_cmb: tcmb_init is user-set absolute K.
+        #   liquidus_super:     T_liq_Fei2021(P_cmb) + delta_T_super.
+        # The Fei+2021 (PRL 127, 135701) MgSiO3 liquidus is a third-party
+        # calibration shared between PALEOS and external references, so
+        # neither the WB17 nor the PALEOS S_0 anchoring choice biases the
+        # IC. The piecewise Simon-Glatzel fit is implemented in Zalmoxis
+        # (zalmoxis.melting_curves.paleos_liquidus); we import lazily so
+        # users without Zalmoxis can still run adiabatic_from_cmb.
+        if is_liquidus_super:
+            try:
+                from zalmoxis.melting_curves import paleos_liquidus
+            except (ImportError, ModuleNotFoundError) as e:
+                raise RuntimeError(
+                    f'liquidus_super mode requires Zalmoxis '
+                    f'(zalmoxis.melting_curves.paleos_liquidus); '
+                    f'import failed: {e}'
+                )
+            T_liq = float(paleos_liquidus(P_cmb))
+            delta = float(config.planet.delta_T_super)
+            tcmb = T_liq + delta
+            log.info(
+                'liquidus_super CMB anchor: P_cmb=%.2e Pa -> '
+                'T_liq_Fei2021=%.0f K + delta_T_super=%.0f K = T_cmb=%.0f K',
+                P_cmb, T_liq, delta, tcmb,
+            )
+        else:
+            tcmb = float(config.planet.tcmb_init)
 
         # Preferred path: invert via the Aragog entropy tables (the same
         # tables the solver integrates with), so the resulting S yields
@@ -346,8 +384,8 @@ def compute_initial_entropy(
         zalmoxis_cfg = getattr(config.interior_struct, 'zalmoxis', None)
         if zalmoxis_cfg is None:
             log.warning(
-                'adiabatic_from_cmb requires interior_struct.module="zalmoxis"; '
-                'using fallback S=%.1f J/kg/K.', fallback,
+                '%s mode requires interior_struct.module="zalmoxis"; '
+                'using fallback S=%.1f J/kg/K.', mode, fallback,
             )
             return fallback
 
