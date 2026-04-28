@@ -12,7 +12,6 @@ from proteus.atmos_clim.common import Atmos_t
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import (
-    M_earth,
     const_G,
     const_R,
     radnuc_data,
@@ -42,9 +41,9 @@ class BoundaryRunner:
         self.iteration = 1 if hf_all is None else len(hf_all)
 
         self.planet_radius = hf_row['R_int']
-        self.planet_mass = config.struct.mass_tot * M_earth
+        self.planet_mass = hf_row.get('M_int', 0.0)  # Use M_planet if available, otherwise will be calculated from core and mantle masses
         self.core_mass = hf_row['M_core']
-        self.m_atm = hf_row['M_atm']
+        self.m_atm = hf_row.get('M_atm', 0.0)  # Atmospheric mass, default to 0 if not available
         self.f_atm = hf_row['F_atm']
 
         cp_layer = getattr(getattr(atmos_o, '_atm', None), 'layer_cp', None)
@@ -55,9 +54,9 @@ class BoundaryRunner:
                 # Use profile-mean atmospheric heat capacity across all valid layers.
                 self.atmosphere_heat_capacity = float(np.mean(cp_arr[valid]))  # J/kg/K
             else:
-                self.atmosphere_heat_capacity = 1.7e4  # J/kg/K for H2 at 2000K
+                self.atmosphere_heat_capacity = config.interior.boundary.const_heat_capacity
         else:
-            self.atmosphere_heat_capacity = 1.7e4  # J/kg/K for H2 at 2000K
+            self.atmosphere_heat_capacity = config.interior.boundary.atm_heat_capacity
 
         # Prefer Zalmoxis-derived CMB radius when available.
         # Fall back to corefrac-based radius for non-Zalmoxis runs.
@@ -68,8 +67,16 @@ class BoundaryRunner:
 
         self.mantle_radius = self.planet_radius - self.core_radius
         self.mantle_volume = (4 / 3) * np.pi * (self.planet_radius**3 - self.core_radius**3)
-        self.mantle_mass = self.planet_mass - self.core_mass
-        self.bulk_density = self.mantle_mass / self.mantle_volume
+
+        if config.struct.module == 'self':
+            self.mantle_mass         = self.mantle_volume * config.interior.boundary.silicate_density
+            self.mantle_bulk_density = config.interior.boundary.silicate_density
+            self.planet_mass         = self.core_mass + self.mantle_mass
+        else:
+            self.mantle_mass = self.planet_mass - self.core_mass
+            self.mantle_bulk_density = self.mantle_mass / self.mantle_volume
+
+        log.debug(f'Initialized BoundaryRunner with planet mass {self.planet_mass:.2e} kg, bulk density {self.mantle_bulk_density:.2f} kg/m^3, mantle mass {self.mantle_mass:.2e} kg')
         self.surface_gravity = const_G * self.planet_mass / self.planet_radius**2
 
         self.rtol = config.interior.boundary.rtol
@@ -89,7 +96,7 @@ class BoundaryRunner:
 
         self.T_solidus = config.interior.boundary.T_solidus
         self.T_liquidus = config.interior.boundary.T_liquidus
-        self.critical_melt_fraction = config.interior.boundary.critical_melt_fraction
+        self.critical_melt_fraction = config.interior.rheo_phi_loc
         self.Tsurf_event_change = config.interior.boundary.Tsurf_event_change
 
         # Material constants
@@ -280,7 +287,7 @@ class BoundaryRunner:
 
         # Calculate Rayleigh number
         Ra = (
-            self.bulk_density
+            self.mantle_bulk_density
             * self.surface_gravity
             * self.thermal_expansivity
             * np.abs(T_p - T_surf)
@@ -488,13 +495,13 @@ class BoundaryRunner:
             denominator = (
                 (4 / 3)
                 * np.pi
-                * self.bulk_density
+                * self.mantle_bulk_density
                 * self.silicate_heat_capacity
                 * (self.planet_radius**3 - r_s_val**3)
                 - 4
                 * np.pi
                 * r_s_val** 2
-                * self.bulk_density
+                * self.mantle_bulk_density
                 * self.heat_fusion_silicate
                 * dr_s_dT_p
             )
@@ -532,7 +539,7 @@ class BoundaryRunner:
         numerator = 4 * np.pi * self.planet_radius**2 * (q_m_val - self.f_atm)
         denominator = self.atmosphere_heat_capacity * self.m_atm + (
             4 / 3
-        ) * np.pi * self.silicate_heat_capacity * self.bulk_density * (
+        ) * np.pi * self.silicate_heat_capacity * self.mantle_bulk_density * (
             self.planet_radius**3 - (self.planet_radius - delta) ** 3
         )
 
@@ -562,11 +569,6 @@ class BoundaryRunner:
             - dT_surf/dt is the rate of change of surface temperature [K/s]
         """
         T_p, T_surf = y
-
-        if T_surf > T_p:
-            T_surf = (
-                T_p - 1.0
-            )  # Ensure surface temperature does not exceed potential temperature
 
         dTp = self.dT_pdt(T_p, T_surf, t)
         dTs = self.dT_surfdt(T_p, T_surf)
@@ -606,6 +608,7 @@ class BoundaryRunner:
                 'viscosity_Pa_s',
                 'rayleigh_number',
                 'atm_heat_flux_W/m2',
+                'atm_mass_kg',
             ]
             csv_needs_header = not pd.io.common.file_exists(csv_log_file)
 
@@ -665,10 +668,11 @@ class BoundaryRunner:
                         'viscosity_Pa_s': visc_final,
                         'rayleigh_number': ra_final,
                         'atm_heat_flux_W/m2': self.f_atm,
+                        'atm_mass_kg': self.m_atm,
                     }
                 )
 
-        m_liquid = (4 / 3) * np.pi * self.bulk_density * (self.planet_radius**3 - r_s_final**3)
+        m_liquid = (4 / 3) * np.pi * self.mantle_bulk_density * (self.planet_radius**3 - r_s_final**3)
         m_solid = self.mantle_mass - m_liquid
 
         if T_surf_final > T_p_final:
@@ -697,7 +701,7 @@ class BoundaryRunner:
         interior_o.phi = np.array([output['Phi_global']])
         interior_o.mass = np.array([output['M_mantle']])
         interior_o.visc = np.array([visc_final])
-        interior_o.density = np.array([self.bulk_density])
+        interior_o.density = np.array([self.mantle_bulk_density])
         interior_o.temp = np.array([output['T_magma']])
         interior_o.pres = np.array([hf_row['P_surf']])
         interior_o.radius = np.array([self.core_radius, hf_row['R_int']])

@@ -151,9 +151,7 @@ def run_atmosphere(
             if no_atm:
                 activate_julia(dirs, config.atmos_clim.agni.verbosity)
                 # surface temperature guess
-
-                if config.interior.module != 'boundary':
-                    hf_row['T_surf'] = hf_row['T_magma']
+                hf_row['T_surf'] = hf_row['T_magma']
             else:
                 # Remove old spectral file if it exists
                 safe_rm(spfile_path)

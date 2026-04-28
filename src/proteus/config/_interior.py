@@ -212,8 +212,6 @@ class InteriorBoundary:
         Mantle solidus temperature [K].
     T_liquidus: float
         Mantle liquidus temperature [K].
-    critical_melt_fraction: float
-        Critical melt fraction for rheological transition.
     Tsurf_event_change: float
         Maximum change in surface temperature allowed during a single interior iteration before triggering an event [K].
     critical_rayleigh_number: float
@@ -224,6 +222,8 @@ class InteriorBoundary:
         Nusselt-Rayleigh scaling exponent [-].
     silicate_heat_capacity: float
         Silicate heat capacity [J/kg/K].
+    atm_heat_capacity: float
+        Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
     silicate_density: float
         Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
     thermal_conductivity: float
@@ -251,7 +251,7 @@ class InteriorBoundary:
     viscosity_activation_temp: float
         Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
     logging: bool
-        Whether to include interior logging in the output.
+        Whether to create diagnostic CSV data files from boundary interior module.
     """
 
     rtol: float = field(default=1e-6, validator=gt(0))
@@ -262,14 +262,13 @@ class InteriorBoundary:
     T_solidus: float = field(default=1420.0, validator=ge(0))
     T_liquidus: float = field(default=2020.0, validator=gt(0))
 
-    critical_melt_fraction: float = field(default=0.4, validator=(gt(0), lt(1)))
-
     Tsurf_event_change: float = field(default=20.0, validator=gt(0))  # K
 
     critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))  # -
     heat_fusion_silicate: float = field(default=4.0e5, validator=gt(0))  # J/kg
     nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
     silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
+    atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
     silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
     thermal_conductivity: float = field(default=4.2, validator=gt(0))  # W/m/K
     thermal_diffusivity: float = field(default=1e-6, validator=gt(0))  # m^2/s
@@ -296,7 +295,6 @@ class InteriorBoundary:
     viscosity_activation_temp: float = field(default=4600, validator=gt(0))  # K
 
     logging: bool = field(default=False)
-
 
 @define
 class InteriorDummy:

@@ -94,7 +94,8 @@ version = "2.0"
         rot_pctle = 50.0    # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 2.4     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/gj849.txt" # stellar spectrum
+        star_name   = "gj849"
+        spectrum_source = "muscles"
 
     [star.dummy]
         calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
@@ -103,7 +104,7 @@ version = "2.0"
 # Orbital system
 [orbit]
     instellation_method = 'inst'        # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
-    instellationflux    = 1             # instellation flux received from the planet in Earth units.
+    instellationflux    = 100          # instellation flux received from the planet in Earth units.
     semimajoraxis       = 0.15          # AU
     eccentricity        = 0.0       	# dimensionless
     zenith_angle        = 54.74     	# degrees
@@ -153,7 +154,7 @@ version = "2.0"
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 1e-1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        rainout         = true          # volatile condensation
+        rainout   = true          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
@@ -203,7 +204,7 @@ version = "2.0"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 110       					# Number of Aragog grid levels
+        num_levels      = 100       					# Number of Aragog grid levels
         tolerance       = 1.0e-7    					# solver tolerance
         ini_tmagma      = 3000.0    					# Initial magma surface temperature [K]
 
@@ -251,7 +252,7 @@ version = "2.0"
         metallicity = 1000	 # metallicity relative to solar metallicity
 
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 3546.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 709.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.32       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass
