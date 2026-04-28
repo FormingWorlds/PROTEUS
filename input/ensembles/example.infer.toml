@@ -24,37 +24,46 @@ n_steps    = 10       # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
 [parameters]
-"params.stop.time.maximum"  = [1e7,     6e9]
+"params.stop.time.maximum"  = [1e7,     3e9]
 "orbit.semimajoraxis"       = [0.01,    0.5]
-"struct.mass_tot"           = [0.3,     5.0]
+"struct.mass_tot"           = [0.3,     4.0]
 "struct.corefrac"           = [0.2,     0.8]
 "outgas.fO2_shift_IW"       = [-4.0,    5.0]
 "delivery.elements.H_ppmw"  = [1e2,     20000.0]
 "delivery.elements.CH_ratio"= [0.1,     6.0]
 "delivery.elements.SH_ratio"= [0.1,     6.0]
 
-# Target observables to match by optimisation
+
+# Target observables to match by optimisation...
+
+# helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
+# extracted at index: 91, time: 4.705e+08 years
 [observables]
-"M_planet"       = 2.3885446605e+25  # SN
-# "M_planet"       = 1.1931358028e+25  # SE
-# "M_planet"       = 5.9656593339e+24  # TR
+    "M_planet" = 2.1885440062e+25
+    "R_obs" = 1.0647856810e+07
+    "T_obs" = 5.3921109314e+02
+    "atm_kg_per_mol" = 9.7110516465e-03
+    "C/O_atm" = 7.2789869068e-01
+    "S/O_atm" = 2.9116525549e+00
 
-"R_obs"          = 1.0068775762e+07  # SN
-# "R_obs"          = 8.4432487739e+06  # SE
-# "R_obs"          = 6.0311561664e+06  # TR
+# helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
+# extracted at index: 92, time: 2.489e+09 years
+# [observables]
+#     "M_planet" = 1.0569480216e+25
+#     "R_obs" = 8.6610702680e+06
+#     "T_obs" = 7.6548047142e+02
+#     "atm_kg_per_mol" = 2.0721849495e-02
+#     "C/O_atm" = 4.8390309982e-01
+#     "S/O_atm" = 2.4195943106e-01
 
-"T_obs"          = 2.4356164276e+02 # SN
-# "T_obs"          = 3.8510486212e+02 # SE
-# "T_obs"          = 7.5261245983e+02 # TR
 
-"atm_kg_per_mol" = 1.1510662518e-02  # SN
-# "atm_kg_per_mol" = 1.8599980012e-02  # SE
-# "atm_kg_per_mol" = 2.9627359320e-02  # TR
+# helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
+# extracted at index: 235, time: 7.998e+08 years
+# [observables]
+    # "M_planet" = 6.0737376907e+24
+    # "R_obs" = 6.2685296226e+06
+    # "T_obs" = 5.7746514093e+02
+    # "atm_kg_per_mol" = 2.9583452783e-02
+    # "C/O_atm" = 2.2682307919e-01
+    # "S/O_atm" = 1.1362542474e-01
 
-"C/O_atm"        = 1.9420040981089646   # SN
-# "C/O_atm"        = 1.0579221525822065   # SE
-# "C/O_atm"        = 0.22754965161883398   # TR
-
-"S/O_atm"        = 3.884008205522587   # SN
-# "S/O_atm"        = 0.5289610796935059   # SE
-# "S/O_atm"        = 0.11377483158360908   # TR
