@@ -961,11 +961,16 @@ def _try_spider(
         spider_env['PETSC_ARCH'] = 'arch-linux-c-opt'
     spider_env['PETSC_DIR'] = os.path.join(dirs['proteus'], 'petsc')
 
-    # Run SPIDER
+    # SPIDER logging
     log.debug('SPIDER output suppressed')
-    spider_print = open(dirs['output'] + 'spider_recent.log', 'w')
-    spider_print.write(call_string + '\n')
-    spider_print.flush()
+    if config.interior.spider.log_output:
+        spider_print = open(dirs['output'] + 'spider_recent.log', 'w')
+        spider_print.write(call_string + '\n')
+        spider_print.flush()
+    else:
+        spider_print = sp.DEVNULL
+
+    # Run SPIDER
     spider_succ = True
     try:
         proc = sp.run(
@@ -985,7 +990,9 @@ def _try_spider(
     else:
         spider_succ = bool(proc.returncode == 0)
 
-    spider_print.close()
+    if spider_print != sp.DEVNULL:
+        spider_print.close()
+
     return spider_succ
 
 
@@ -1048,7 +1055,7 @@ def RunSPIDER(
             else:
                 # try again (change tolerance and step size)
                 log.warning('Trying again')
-                step_sf *= 0.1
+                step_sf *= 0.2
                 atol_sf *= 10.0
 
     # check status

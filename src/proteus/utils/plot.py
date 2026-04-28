@@ -311,7 +311,7 @@ def sample_output(
     if len(files) < 1:
         # Maybe archived...
         if archive_exists(handler.directories['output/data']):
-            log.error('No output files found, but tar archive exists. Extract it first.')
+            log.warning('No output files found, but tar archive exists. Extract it first.')
             return [], []
 
         # Return empty

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import torch
@@ -38,11 +39,13 @@ dtype = torch.double
 def unit_bounds(d):
     """Generate unit hypercube bounds for d-dimensional input.
 
-    Args:
-        d (int): Dimensionality of the input space.
+    Parameters
+    ----------
+    - d (int): Dimensionality of the input space.
 
-    Returns:
-        torch.Tensor: Tensor of shape (2, d) where the first row is zeros and the second row is ones.
+    Returns
+    ----------
+    - torch.Tensor: Tensor of shape (2, d) where row 0 is zeros and row 1 is ones.
     """
     # Build bounds [[0,...,0], [1,...,1]]
     bounds = torch.tensor([[0] * d, [1] * d], dtype=dtype)
@@ -55,19 +58,20 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
     Fits a GP to current data, optimizes an acquisition function,
     updates busy points, evaluates the objective, and logs timing.
 
-    Args:
-        D (dict): Shared dict containing 'X' and 'Y' lists of data.
-        B (dict): Shared dict mapping worker IDs to busy input points.
-        f (callable): Objective function to evaluate.
-        k (Kernel): GPyTorch kernel for the GP covariance.
-        acqf (str): Acquisition function.
-        lock (multiprocessing.Lock): Lock for synchronizing shared state.
-        worker_id (int): ID of the calling worker.
-        x_in (torch.Tensor, optional): Initial input for the first iteration.
+    Parameters
+    ----------
+    - D (dict): Shared dict containing 'X' and 'Y' lists of data.
+    - B (dict): Shared dict mapping worker IDs to busy input points.
+    - f (callable): Objective function to evaluate.
+    - k (Kernel): GPyTorch kernel for the GP covariance.
+    - acqf (str): Acquisition function.
+    - lock (multiprocessing.Lock): Lock for synchronizing shared state.
+    - worker_id (int): ID of the calling worker.
+    - x_in (torch.Tensor, optional): Initial input for the first iteration.
 
-    Returns:
-        tuple: (x_next, y_next, bo_duration, eval_duration,
-                lock_duration, fit_duration, acq_duration, min_dist)
+    Returns
+    ----------
+    - tuple: (x_next, y_next, bo_duration, eval_duration, lock_duration, fit_duration, acq_duration, min_dist)
     """
 
     t_0_bo = time.perf_counter()
@@ -186,12 +190,14 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in=None):
 def init_locs(n_workers: int, D: dict) -> torch.Tensor:
     """Generate initial sample locations using batch acqf.
 
-    Args:
-        n_workers (int): Number of initial points to generate.
-        D (dict): Shared dict with key 'X' to infer problem dimension.
+    Parameters
+    ----------
+    - n_workers (int): Number of initial points to generate.
+    - D (dict): Shared dict with key 'X' to infer problem dimension.
 
-    Returns:
-        torch.Tensor: Tensor of shape (n_workers, d) in [0,1]^d for initial sampling.
+    Returns
+    ----------
+    - torch.Tensor: Tensor of shape (n_workers, d) in [0, 1]^d for initial sampling.
     """
 
     X, Y = D['X'], D['Y']
@@ -237,15 +243,20 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
 def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
     """Plot the GP posterior and acquisition function for the current iteration.
 
-    Args:
-        gp (SingleTaskGP): Fitted Gaussian Process model.
-        acqf (AcquisitionFunction): Acquisition function instance.
-        X (torch.Tensor): Observed inputs, shape (n, 1).
-        Y (torch.Tensor): Observed outputs, shape (n, 1).
-        next_x (torch.Tensor): Next query point, shape (1, 1).
-        busys (list of torch.Tensor): Busy points to overlay on acquisition plot.
-        dir (str): Directory to save the plot.
-        name (str): Filename for the saved plot.
+    Parameters
+    ----------
+    - gp (SingleTaskGP): Fitted Gaussian Process model.
+    - acqf (AcquisitionFunction): Acquisition function instance.
+    - X (torch.Tensor): Observed inputs, shape (n, 1).
+    - Y (torch.Tensor): Observed outputs, shape (n, 1).
+    - next_x (torch.Tensor): Next query point, shape (1, 1).
+    - busys (list[torch.Tensor]): Busy points to overlay on acquisition plot.
+    - dir (str): Directory to save the plot.
+    - name (str): Filename for the saved plot.
+
+    Returns
+    ----------
+    - None
     """
 
     fig, ax = plt.subplots(2, 1)
@@ -301,7 +312,8 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
         bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
     )
 
-    path = dir + name
-    os.makedirs(dir, exist_ok=True)
-    fig.savefig(path, dpi=300)
+    out_dir = Path(dir)
+    out_path = out_dir / name
+    os.makedirs(out_dir, exist_ok=True)
+    fig.savefig(out_path, dpi=300)
     plt.close(fig)

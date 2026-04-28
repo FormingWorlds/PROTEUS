@@ -91,6 +91,17 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     for s in gas_list:
         hf_row['M_atm'] += hf_row[s + '_kg_atm']
 
+    # Derive element mass ratios in atmosphere
+    for e1 in element_list:
+        for e2 in element_list:
+            key = f'{e1}/{e2}_atm'
+            if key not in hf_row:
+                continue
+            if min(hf_row[f'{e1}_kg_atm'], hf_row[f'{e2}_kg_atm']) < 1e-30:
+                hf_row[key] = 0.0
+            else:
+                hf_row[key] = hf_row[f'{e1}_kg_atm'] / hf_row[f'{e2}_kg_atm']
+
     # print outgassed partial pressures (in order of descending abundance)
     mask = [hf_row[s + '_vmr'] for s in gas_list]
     for i in np.argsort(mask)[::-1]:

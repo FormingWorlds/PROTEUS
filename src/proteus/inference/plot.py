@@ -10,8 +10,9 @@ Functions:
 
 from __future__ import annotations
 
+import logging
 import os
-from glob import glob
+from pathlib import Path
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -23,7 +24,12 @@ from botorch.utils.transforms import unnormalize
 from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
+from proteus import Proteus
+from proteus.plot import plot_dispatch
+from proteus.utils.coupler import variable_is_logarithmic
 from proteus.utils.helper import recursive_get
+
+log = logging.getLogger('fwl.' + __name__)
 
 dtype = torch.double
 fmt = 'png'
@@ -35,16 +41,21 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
 
     This function makes multiple plots
 
-    Args:
-        logs (list of dict): Log entries containing timing and evaluation data.
-        directory (str): Base directory where plots will be saved ("plots/" appended).
-        n_init (int): Number of initial evaluations to skip when plotting.
-        min_text_width (float): Minimum bar width threshold for white text.
+    Parameters
+    ----------
+    - logs (list[dict]): Log entries containing timing and evaluation data.
+    - directory (str): Base directory where plots are saved ("plots/" appended).
+    - n_init (int): Number of initial evaluations to skip when plotting.
+    - min_text_width (float): Minimum bar width threshold for white text.
+
+    Returns
+    ----------
+    - None
     """
     # Build DataFrame skipping initial entries
     df = pd.DataFrame(logs[n_init:])
     if df.empty:
-        print('No logs to display.')
+        log.debug('No logs to display.')
         return
 
     # Shift timestamps so earliest start_time is zero
@@ -304,11 +315,16 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
 def plots_perf_converge(D, T, n_init, directory):
     """Plot regret and best observed value over time and iterations.
 
-    Args:
-        D (dict): Contains 'Y' list of objective values.
-        T (list): Elapsed times corresponding to each evaluation.
-        n_init (int): Number of initial evaluations to skip.
-        directory (str): Base dir where "plots/" subfolder will be created.
+    Parameters
+    ----------
+    - D (dict): Contains 'Y' list of objective values.
+    - T (list): Elapsed times corresponding to each evaluation.
+    - n_init (int): Number of initial evaluations to skip.
+    - directory (str): Base dir where "plots/" subfolder will be created.
+
+    Returns
+    ----------
+    - None
     """
 
     Y = np.array(D['Y'], copy=None, dtype=float).flatten()  # Flatten in case it's (N,1)
@@ -336,14 +352,14 @@ def plots_perf_converge(D, T, n_init, directory):
     # Top: log regret vs t
     axes[0].plot(T, log_regret, marker='o')
     axes[0].set_ylabel('log10(Regret)')
-    axes[0].set_xlabel('t')
+    axes[0].set_xlabel('Time [seconds]')
     axes[0].set_title('Log Regret vs Time')
     axes[0].grid(True)
     # axes[0].legend()
 
     # Bottom: log regret vs n
     axes[1].plot(n, log_regret, marker='o', color='tab:orange')
-    axes[1].set_xlabel('n')
+    axes[1].set_xlabel('Step number')
     axes[1].set_ylabel('log10(Regret)')
     axes[1].set_title('Log Regret vs Step')
     axes[1].grid(True)
@@ -359,18 +375,23 @@ def plots_perf_converge(D, T, n_init, directory):
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=False)
 
+    ymax = max(1.0, np.amax(Y_best)) + 0.1
+    ymin = min(0.0, np.amin(Y_best)) - 0.1
+
     # Top: log regret vs t
     axes[0].plot(T, Y_best, marker='o')
-    axes[0].set_ylabel('y')
-    axes[0].set_xlabel('t')
+    axes[0].set_ylabel('Best value of objective')
+    axes[0].set_xlabel('Time [seconds]')
     axes[0].set_title('Best Value vs Time')
+    axes[0].set_ylim(ymin, ymax)
     axes[0].grid(True)
 
     # Bottom: log regret vs n
     axes[1].plot(n, Y_best, marker='o', color='tab:orange')
-    axes[1].set_xlabel('n')
-    axes[1].set_ylabel('y')
+    axes[1].set_xlabel('Step number')
+    axes[1].set_ylabel('Best value of objective')
     axes[1].set_title('Best Value vs Step')
+    axes[1].set_ylim(ymin, ymax)
     axes[1].grid(True)
     axes[1].xaxis.set_major_locator(MaxNLocator(integer=True))
 
@@ -385,12 +406,17 @@ def plots_perf_converge(D, T, n_init, directory):
 def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     """Plot objective function at each sample that was created.
 
-    Args:
-        D (dict): Contains 'X' and 'Y' lists.
-        parameters (dict): Parameter names and bounds
-        n_init (int): Number of initial evaluations (to be highlighted).
-        directory (str): Base dir where "plots/" subfolder will be created.
-        yclip (float): minimum limit y-axis scale
+    Parameters
+    ----------
+    - D (dict): Contains 'X' and 'Y' lists.
+    - parameters (dict): Parameter names and bounds.
+    - n_init (int): Number of initial evaluations (to be highlighted).
+    - directory (str): Base dir where "plots/" subfolder will be created.
+    - yclip (float): Minimum limit on y-axis objective values.
+
+    Returns
+    ----------
+    - None
     """
 
     # Get objective function values
@@ -411,7 +437,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
 
     # Get bounds
     keys = list(parameters.keys())
-    d = len(keys)
+    d = len(keys)  # number of parameters
     bounds = torch.tensor(
         [[list(parameters.values())[i][j] for i in range(d)] for j in range(2)]
     )
@@ -426,8 +452,8 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     C[i_best] = 'm'
 
     # Limits
-    ymax = 1.0
-    ymin = np.amin(Y)
+    ymax = max(1.0, np.amax(Y)) + 0.1
+    ymin = min(0.0, np.amin(Y)) - 0.1
 
     # Plot
     fig, axs = plt.subplots(2, d, figsize=(2.7 * d, 3.2))
@@ -462,6 +488,8 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
 
         # configure axes
         axs[1, i].set_xlabel(keys[i], fontsize=10)
+        if variable_is_logarithmic(keys[i]):
+            axs[1, i].set_xscale('log')
         axs[1, i].grid(alpha=0.2, zorder=0)
         axs[1, i].set_ylim(ymin, ymax)
         if i >= 1:
@@ -479,15 +507,27 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
 
         # median and stddev
         x_med = np.median(x2)
-        x_std = np.std(x2)
-        axs[0, i].set_title(f'{x_med:3f}' + r'$\pm$' + f'{x_std:3f}', fontsize=8, color='r')
+        x_err = np.std(x2) / len(x2) ** 0.5
 
         # overplot median in both panels
         for j in (0, 1):
             axs[j, i].axvline(x=x_med, zorder=4, color='r', alpha=0.8)
+            axs[j, i].axvline(
+                x=x_med + x_err, zorder=4, color='r', alpha=0.5, linestyle='dashed'
+            )
+            axs[j, i].axvline(
+                x=x_med - x_err, zorder=4, color='r', alpha=0.5, linestyle='dashed'
+            )
 
         # overplot best in both panels
-        axs[j, i].axvline(x=X[i_best, i], zorder=5, color='m', alpha=0.8)
+        x_best = X[i_best, i]
+        for j in (0, 1):
+            axs[j, i].axvline(x=x_best, zorder=5, color='m', alpha=0.8)
+
+        title = f'{x_best:g}'
+        if i == 0:
+            title = f'Best: {x_best:g}'
+        axs[0, i].set_title(title, fontsize=8, color='m', weight='bold')
 
         # grid
         axs[j, i].grid(alpha=0.2, zorder=0, axis='x')
@@ -507,10 +547,15 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
 
     This requires reading output-data files from the disk.
 
-    Args:
-        par_keys (dict): Parameter names and bounds
-        obs_keys (dict): Observable names and target values
-        directory (str): Base dir where the inference was performed.
+    Parameters
+    ----------
+    - pars (dict): Parameter names and bounds.
+    - obs (dict): Observable names and target values.
+    - directory (str): Base dir where the inference was performed.
+
+    Returns
+    ----------
+    - None
     """
 
     # Convert to lists
@@ -518,14 +563,14 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     obs_keys = list(obs.keys())
 
     # Get directories for all cases of interest
-    cases = glob(directory + '/workers/w_*/i_*/')
+    cases = sorted((Path(directory) / 'workers').glob('w_*/i_*'))
 
     # Extract parameters and observables
     X, Y = [], []
     for c in cases:
         # Read data
-        conf = toml.load(c + 'init_coupler.toml')
-        help = pd.read_csv(c + 'runtime_helpfile.csv', delimiter=r'\s+')
+        conf = toml.load(c / 'init_coupler.toml')
+        help = pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+')
 
         # Get parameters and observables
         xx = [recursive_get(conf, k.split('.')) for k in par_keys]
@@ -545,35 +590,57 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     fig, axs = plt.subplots(n_obs, n_par, figsize=(2.7 * n_par, 2.7 * n_obs))
     for i in range(n_par):
         for j in range(n_obs):
+            # handle axis
+            if n_par == 1 and n_obs == 1:
+                ax = axs
+            elif n_par == 1:
+                ax = axs[j]
+            elif n_obs == 1:
+                ax = axs[i]
+            else:
+                ax = axs[j, i]
+
             # plot data
             xx = X[:, i]
             yy = Y[:, j]
-            axs[j, i].scatter(xx, yy, color='k', alpha=0.8, s=8, zorder=4)
+            ax.scatter(xx, yy, color='k', alpha=0.8, s=8, zorder=4)
 
             # axis grid
-            axs[j, i].grid(alpha=0.2, zorder=0)
+            ax.grid(alpha=0.2, zorder=0)
 
             # observables
-            axs[j, i].axhline(y=obs[obs_keys[j]], color='g', alpha=0.5, label='Observed')
+            ax.axhline(y=obs[obs_keys[j]], color='g', alpha=0.5, label='Observed')
 
             # these variables are more natural on a log-scale
-            if ('vmr' in obs_keys[j]) or (obs_keys[j] == 'P_surf'):
-                axs[j, i].set_yscale('log')
+            if variable_is_logarithmic(obs_keys[j]):
+                ax.set_yscale('log')
+            if variable_is_logarithmic(par_keys[i]):
+                ax.set_xscale('log')
 
             # hide tick labels
             if i >= 1:
-                axs[j, i].set_yticklabels([])
+                ax.set_yticklabels([])
             if j < n_obs - 1:
-                axs[j, i].set_xticklabels([])
+                ax.set_xticklabels([])
 
     # Legend
-    axs[0, 0].legend()
+    if n_obs == 1 or n_par == 1:
+        axs[0].legend()
+    else:
+        axs[0, 0].legend()
 
     # Axis labels
-    for i in range(n_par):
-        axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
-    for j in range(n_obs):
-        axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
+    if n_par == 1 or n_obs == 1:
+        axs[0].set_xlabel(par_keys[0], fontsize=10)
+    else:
+        for i in range(n_par):
+            axs[-1, i].set_xlabel(par_keys[i], fontsize=10)
+
+    if n_obs == 1 or n_par == 1:
+        axs[0].set_ylabel(obs_keys[0], fontsize=10)
+    else:
+        for j in range(n_obs):
+            axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
 
     # Decorate
     fig.subplots_adjust(wspace=0.02, hspace=0.02)
@@ -583,3 +650,28 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
         bbox_inches='tight',
     )
     plt.close(fig)
+
+
+def plot_proteus(best_config: str):
+    """Make PROTEUS plots for the best fitting case.
+
+    This requires reading output-data files from the disk.
+
+    Parameters
+    ----------
+    - best_config (str): Path to the best fitting case's config TOML file.
+
+    Returns
+    ----------
+    - None
+    """
+
+    handler = Proteus(config_path=best_config)
+    handler.extract_archives()
+
+    plot_skip = ('anim_visual', 'visual')
+
+    for key in plot_dispatch.keys():
+        if key in plot_skip:
+            continue
+        plot_dispatch[key](handler)

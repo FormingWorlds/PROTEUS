@@ -126,21 +126,24 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     # Set tolerance
     match config.interior.module:
         case 'aragog':
-            rtol = config.interior.aragog.tolerance
+            rtol = config.interior.aragog.tolerance_rel
+            atol = config.interior.aragog.tolerance_struct
         case 'spider':
-            rtol = config.interior.spider.tolerance
+            rtol = config.interior.spider.tolerance_rel
+            atol = config.interior.spider.tolerance_struct
         case _:
             rtol = 1e-7
+            atol = rtol * M_earth
 
     # Find the radius
     r = optimise.root_scalar(
         _resid,
         method='secant',
-        xtol=1e3,
+        xtol=atol,
         rtol=rtol,
         maxiter=10,
         x0=hf_row['R_int'],
-        x1=hf_row['R_int'] * 1.02,
+        x1=hf_row['R_int'] * 1.5,
     )
     hf_row['R_int'] = float(r.root)
     calculate_core_mass(hf_row, config)

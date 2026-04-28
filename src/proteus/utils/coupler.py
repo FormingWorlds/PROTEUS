@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 LOCKFILE_NAME = 'keepalive'
-AGNI_MIN_VERSION = '1.8.0'
+AGNI_MIN_VERSION = '1.9.0'
 
 
 def _get_current_time():
@@ -627,6 +627,13 @@ def GetHelpfileKeys():
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
         keys.append(e + '_kg_total')    # mass in whole planet [kg]
 
+    # element mass ratios
+    for e1 in element_list:
+        for e2 in element_list:
+            if (e1 == e2) or (f'{e1}/{e2}_atm' in keys):
+                continue
+            keys.append(f'{e2}/{e1}_atm')
+
     # Atmospheric escape
     keys.append('p_xuv')                # pressure of XUV absorption [bar]
     keys.append('R_xuv')                # radius of XUV absorption [m]
@@ -720,6 +727,47 @@ def ReadHelpfileFromCSV(output_dir: str):
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'" % fpath)
     return pd.read_csv(fpath, sep=r'\s+')
+
+
+def variable_is_logarithmic(varname: str) -> bool:
+    """Does this variable naturally vary across orders several of magnitude?
+
+    This variable should also be positive-valued.
+
+    Parameters
+    ----------
+    - varname (str): Name of variable.
+
+    Returns
+    ----------
+    - out (bool): True if scales logarithmically.
+    """
+
+    # Linear-scaling is default behaviour
+    out = False
+
+    # Check specific variables
+    if varname in (
+        'P_surf',
+        'P_surf_clim',
+        'rho_obs',
+        'p_obs',
+        'p_xuv',
+        'Time',
+        'semimajorax',
+        'eccentricity',
+        'params.stop.time.maximum',
+        'orbit.semimajoraxis',
+    ):
+        out = True
+
+    # Check compositional variables
+    elif '_vmr' in varname:
+        out = True
+    elif '_bar' in varname:
+        out = True
+
+    return out
 
 
 def UpdatePlots(hf_all: pd.DataFrame, dirs: dict, config: Config, end=False, num_snapshots=7):
