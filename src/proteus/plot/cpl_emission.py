@@ -18,8 +18,25 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+FLUX_MIN = 1e-20
+
 
 def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=False, xmax=2e4):
+    """Plot emission spectrum at different times.
+
+    Parameters
+    ----------
+    - output_dir: str
+        Directory where output data is stored.
+    - times: list
+        List of times to plot (in years).
+    - plot_format: str
+        Format to save the plot (e.g., 'pdf', 'png').
+    - cumulative: bool
+        Whether to plot cumulative emission (integrated over wavelength).
+    - xmax: float
+        Maximum wavelength on x-axis (in nm).
+    """
     if len(np.unique(times)) < 3:
         log.warning('Insufficient data to make plot_emission')
         return
@@ -53,8 +70,13 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
         w_arr = []
         y_arr = np.array(ds['ba_U_LW'][atm_lvl, :]) + np.array(ds['ba_U_SW'][atm_lvl, :])
 
-        # reversed?
-        if ds['bandmin'][1] < ds['bandmin'][0]:
+        # grey gas
+        if len(ds['bandmin']) < 2:
+            bandmin = np.array([ds['bandmin'][0]])
+            bandmax = np.array([ds['bandmax'][0]])
+
+        # reversed
+        elif ds['bandmin'][1] < ds['bandmin'][0]:
             bandmin = np.array(ds['bandmin'][::-1])
             bandmax = np.array(ds['bandmax'][::-1])
             y_arr = y_arr[::-1]
@@ -89,6 +111,9 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
 
         ds.close()
 
+        # ensure positive values
+        y_arr = np.clip(y_arr, FLUX_MIN, None)
+
         # find maximum x value
         imax = np.argmin(np.abs(x_arr - xmax)) + 1
         imax = min(imax, len(x_arr))
@@ -112,7 +137,9 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
     ax.set_xlabel('Wavelength [nm]')
     ax.set_xscale('log')
 
-    ax.set_xlim(left=np.amin(x_arr), right=np.amax(x_arr))
+    xmax = min(xmax, np.amax(x_arr))
+    xmin = min(xmax - 2, np.amin(x_arr))
+    ax.set_xlim(xmin, xmax)
     ax.set_ylim(bottom=ymin / 2, top=ymax * 2)
 
     plt.close()
