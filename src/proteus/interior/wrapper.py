@@ -133,6 +133,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
             atol = config.interior.spider.tolerance_struct
         case _:
             rtol = 1e-7
+            atol = rtol * M_earth
 
     # Find the radius
     r = optimise.root_scalar(

@@ -178,23 +178,38 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
     sflux_path = os.path.join(dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1]))
 
-    # Spectral file path
+    # Spectral file path provided
     if config.atmos_clim.agni.spectral_file is not None:
-        try_spfile = os.path.abspath(config.atmos_clim.agni.spectral_file)
-        if not os.path.isfile(try_spfile):
-            UpdateStatusfile(dirs, 20)
-            raise FileNotFoundError(
-                f'AGNI spectral file not found at specified path: {try_spfile}'
-            )
+        # Grey gas?
+        if str(config.atmos_clim.agni.spectral_file).lower() == 'greygas':
+            try_spfile = 'greygas'
+        else:
+            try_spfile = os.path.abspath(config.atmos_clim.agni.spectral_file)
+            if not os.path.isfile(try_spfile):
+                UpdateStatusfile(dirs, 20)
+                raise FileNotFoundError(
+                    f'AGNI spectral file not found at specified path: {try_spfile}'
+                )
     else:
+        # No spectral file provided
+        #     will get from FWL_DATA folder, or use existing one in output if it exists
         try_spfile = os.path.join(dirs['output'], 'runtime.sf')
 
-    if os.path.exists(try_spfile):
-        # exists => don't modify it
+    # Obtain spectral file
+    if try_spfile == 'greygas':
+        # grey gas case
+        log.info('Requested grey-gas radiative transfer scheme')
+        input_sf = 'greygas'
+        input_star = ''
+
+    elif os.path.exists(try_spfile):
+        # exists in output folder => don't modify it
         input_sf = try_spfile
         input_star = ''
+        log.info('Using existing spectral file')
+
     else:
-        # doesn't exist => AGNI will copy it + modify as required
+        # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify
         input_sf = get_spfile_path(dirs['fwl'], config)
         input_star = sflux_path
 

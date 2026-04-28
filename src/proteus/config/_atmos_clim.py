@@ -21,6 +21,16 @@ def warn_if_dummy(instance, attribute, value):
         raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
+def valid_rayleigh(instance, attribute, value):
+    if not value:
+        return
+
+    if instance.module == 'dummy':
+        raise ValueError('Dummy atmos_clim is incompatible with Rayleigh scattering')
+    if instance.module == 'agni' and (instance.agni.spectral_file == 'greygas'):
+        raise ValueError('AGNI grey gas is incompatible with Rayleigh scattering')
+
+
 def check_overlap(instance, attribute, value):
     _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
@@ -49,7 +59,19 @@ def valid_agni(instance, attribute, value):
         )
 
     # set spectral files?
-    if not instance.agni.spectral_file:
+    if instance.agni.spectral_file == 'greygas':
+        # grey gas, no scattering
+        pass
+
+    elif instance.agni.spectral_file is not None:
+        # provided via path
+        if not os.path.isfile(instance.agni.spectral_file):
+            raise FileNotFoundError(
+                f'AGNI spectral file not found at specified path: {instance.agni.spectral_file}'
+            )
+
+    else:
+        # provided by group and bands
         if not instance.agni.spectral_group:
             raise ValueError('Must set atmos_clim.agni.spectral_group')
         if not instance.agni.spectral_bands:
@@ -84,7 +106,7 @@ class Agni:
     spectral_bands: str
         Number of wavenumer bands in k-table. See documentation.
     spectral_file: str | None
-        Optional path to AGNI spectral file. If None, will use spectral_group and spectral_bands to find file in FWL data directory.
+        Path to AGNI spectral file, or 'greygas'. If None, will use spectral_group and spectral_bands.
     surf_material : str
         File name for material used to set surface single-scattering properties, relative to FWL data directory. Set to 'greybody' to use `surf_greyalbedo`. See [documentation](https://proteus-framework.org/proteus/data.html#surfaces) for potential options.
     num_levels: str
@@ -159,8 +181,8 @@ class Agni:
             )
         ),
     )
-    spectral_group: str = field(default=None)
-    spectral_bands: str = field(default=None)
+    spectral_group: str = field(default=None, converter=none_if_none)
+    spectral_bands: str = field(default=None, converter=none_if_none)
     spectral_file: str | None = field(default=None, converter=none_if_none)
     p_top: float = field(default=1e-5, validator=gt(0))
     p_obs: float = field(default=20e-3, validator=gt(0))
@@ -357,7 +379,7 @@ class AtmosClim:
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.2, validator=(ge(0), le(1)))
     albedo_pl = field(default=0.0, validator=valid_albedo)
-    rayleigh: bool = field(default=True, validator=warn_if_dummy)
+    rayleigh: bool = field(default=True, validator=valid_rayleigh)
     tmp_minimum: float = field(default=0.5, validator=gt(0))
     tmp_maximum: float = field(default=5000.0, validator=tmp_max_bigger_than_tmp_min)
 
