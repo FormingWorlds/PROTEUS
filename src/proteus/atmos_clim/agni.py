@@ -302,6 +302,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         skin_k=config.atmos_clim.surface_k,
         tmp_magma=hf_row['T_surf'],
         tmp_floor=config.atmos_clim.tmp_minimum,
+        κ_grey_lw=config.atmos_clim.agni.grey_opacity_lw,
+        κ_grey_sw=config.atmos_clim.agni.grey_opacity_sw,
     )
 
     # Check setup! success

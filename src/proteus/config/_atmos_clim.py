@@ -169,6 +169,10 @@ class Agni:
         Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
     ls_default: int
         Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
+    grey_opacity_lw: float
+        Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
+    grey_opacity_sw: float
+        Grey shortwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
     """
 
     verbosity: int = field(
@@ -240,6 +244,8 @@ class Agni:
             ),
         },
     )
+    grey_opacity_lw: float = field(default=1e-2, validator=gt(0))
+    grey_opacity_sw: float = field(default=4e-3, validator=gt(0))
 
 
 def valid_janus(instance, attribute, value):
