@@ -244,8 +244,8 @@ class Agni:
             ),
         },
     )
-    grey_opacity_lw: float = field(default=1e0, validator=gt(0))
-    grey_opacity_sw: float = field(default=1e-6, validator=gt(0))
+    grey_opacity_lw: float = field(default=1e+1, validator=gt(0))
+    grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
 
 
 def valid_janus(instance, attribute, value):
