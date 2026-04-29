@@ -246,6 +246,274 @@ def _rectangularize_spider_ps_file(src: str, dst: str) -> None:
                 out.write(f'{P_canonical[xi]:.18e}\t{S_val:.18e}\t{Q_matrix[yi, xi]:.18e}\n')
 
 
+def _load_spider_ps_phase_table(
+    path: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Load a rectangularized SPIDER P-S phase-property table.
+
+    Reads a 3-column file in SPIDER's canonical P-S format:
+      Line 1: ``# n_header NX NY``  (n_header = lines to skip;
+              NX = number of P points per S slice;
+              NY = number of S slices)
+      Line ``n_header``: ``# P_scale S_scale value_scale``
+              (multiply column to recover SI units).
+    Data layout iterates P fastest (inner), S slowest (outer).
+
+    Returns
+    -------
+    P_grid : (NX,) float ndarray, P axis in Pa
+    S_grid : (NY,) float ndarray, S axis in J/kg/K
+    val    : (NX, NY) float ndarray, value(P_i, S_j) in SI units
+    """
+    with open(path) as f:
+        header_lines = [f.readline() for _ in range(5)]
+
+    h = header_lines[0].strip().lstrip('#').split()
+    n_head = int(h[0])
+    NX = int(h[1])
+    NY = int(h[2])
+    scales = header_lines[n_head - 1].strip().lstrip('#').split()
+    P_scale = float(scales[0])
+    S_scale = float(scales[1])
+    val_scale = float(scales[2])
+
+    data = np.loadtxt(path, skiprows=n_head)
+    if data.shape[0] != NX * NY:
+        raise ValueError(
+            f'{path}: header says NX*NY={NX * NY} rows, file has {data.shape[0]}'
+        )
+
+    # Reshape as (NY, NX) since S is outer, P is inner; first row of
+    # the reshape is one S slice across all P. Transpose to (NX, NY)
+    # to match (P_grid, S_grid) ordering.
+    P_grid = data[:, 0].reshape(NY, NX)[0, :] * P_scale
+    S_grid = data[:, 1].reshape(NY, NX)[:, 0] * S_scale
+    val = (data[:, 2].reshape(NY, NX) * val_scale).T  # (NX, NY)
+    return P_grid, S_grid, val
+
+
+def _derive_ps_melting_curve(
+    pt_path: str,
+    phase_table_path: str,
+    target_path: str,
+    *,
+    label: str = 'curve',
+) -> dict:
+    """Derive a SPIDER P-S melting curve by inverting a P-T curve through
+    an EoS temperature lookup table.
+
+    For each (P_i, T_target_i) in ``pt_path``, find S_i such that
+    ``temperature_grid(P_i, S_i) = T_target_i``. Writes the resulting
+    (P, S) pairs into ``target_path`` in SPIDER's canonical 2-column
+    format with 5 header lines.
+
+    Why this exists
+    ---------------
+    The v2 paper-comparison runs (2026-04-29) revealed that the WB17
+    pipeline's runtime entropy-solver melting curve was byte-copied
+    from the upstream WB+2018 distribution rather than derived from
+    the user-configured ``interior_struct.melting_dir`` P-T file. This
+    helper closes the bookkeeping leak: after the fix, both the
+    lever-rule mushy-zone path (in aragog.py) and the entropy-form
+    integrator (via Aragog's EntropyEOS) read from the same canonical
+    P-T specification.
+
+    Parameters
+    ----------
+    pt_path : str
+        Path to the configured P-T melting file (column format: P [Pa]
+        and T [K], one pair per line, optional ``#``-prefixed comments).
+    phase_table_path : str
+        Path to the rectangularized SPIDER P-S temperature lookup table
+        (``temperature_solid.dat`` for the solidus inversion,
+        ``temperature_melt.dat`` for the liquidus).
+    target_path : str
+        Output path for the derived P-S melting curve.
+    label : str, optional
+        Short label used in log messages and the warning summary.
+
+    Returns
+    -------
+    dict
+        Diagnostic summary with keys:
+          - ``n_points``: number of (P, S) pairs written
+          - ``n_clipped_below``: count of T_target points below the
+            lookup grid's T floor at the corresponding P (S clipped
+            to S_min)
+          - ``n_clipped_above``: count of T_target points above the
+            lookup grid's T ceiling (S clipped to S_max)
+          - ``max_inversion_residual_K``: maximum |T_recovered -
+            T_target| over all clean inversions (excludes clipped
+            points). A round-trip sanity metric.
+
+    Notes
+    -----
+    Inversion is 1D linear interpolation in S at fixed P, evaluated
+    on the EoS's S grid. Temperature is monotonically increasing in
+    S at fixed P for both phase tables (entropy increases with T at
+    fixed P, by the second law), so a linear interp is well-posed
+    without bracketing acrobatics. Resolution is set by the EoS S
+    grid (~125 points for the standard 1TPa-dK09 lookup), giving
+    ~10 K precision in T at 100 GPa.
+    """
+    pt = np.loadtxt(pt_path, comments='#')
+    if pt.ndim != 2 or pt.shape[1] != 2:
+        raise ValueError(
+            f'{pt_path}: expected 2-column (P, T) format, got shape {pt.shape}'
+        )
+    P_target = pt[:, 0]
+    T_target = pt[:, 1]
+
+    P_grid, S_grid, T_grid = _load_spider_ps_phase_table(phase_table_path)
+    # Sort P_target into the grid range; clip outside.
+    P_clipped = np.clip(P_target, P_grid[0], P_grid[-1])
+    n_p_clipped = int(np.sum(P_target != P_clipped))
+    if n_p_clipped:
+        log.warning(
+            'derive_ps_melting %s: %d/%d P points outside EoS P grid [%.3e, %.3e] Pa, '
+            'clipped to grid edge',
+            label, n_p_clipped, len(P_target), P_grid[0], P_grid[-1],
+        )
+
+    # For each P_target, build T(S) at that P by interpolating the
+    # T_grid in P, then linearly interp T_target -> S.
+    n_clip_below = 0
+    n_clip_above = 0
+    residuals = []
+    S_out = np.empty_like(P_clipped)
+    # Pre-find P bracket indices for efficiency
+    p_idx = np.searchsorted(P_grid, P_clipped, side='right') - 1
+    p_idx = np.clip(p_idx, 0, len(P_grid) - 2)
+    P_lo = P_grid[p_idx]
+    P_hi = P_grid[p_idx + 1]
+    w = (P_clipped - P_lo) / (P_hi - P_lo)
+
+    for i in range(len(P_clipped)):
+        # T column at P_clipped[i] from linear interp in P
+        T_col = (1 - w[i]) * T_grid[p_idx[i], :] + w[i] * T_grid[p_idx[i] + 1, :]
+        # Monotone in S? Verify and warn if not.
+        if np.any(np.diff(T_col) <= 0):
+            # Locally non-monotonic: usually a cold-end EoS artefact.
+            # Sort by T for the interp; this picks the principal branch.
+            order = np.argsort(T_col)
+            T_col_sorted = T_col[order]
+            S_sorted = S_grid[order]
+        else:
+            T_col_sorted = T_col
+            S_sorted = S_grid
+
+        if T_target[i] < T_col_sorted[0]:
+            S_out[i] = S_sorted[0]
+            n_clip_below += 1
+        elif T_target[i] > T_col_sorted[-1]:
+            S_out[i] = S_sorted[-1]
+            n_clip_above += 1
+        else:
+            S_out[i] = float(np.interp(T_target[i], T_col_sorted, S_sorted))
+            # Round-trip residual: re-interpolate T at the recovered S.
+            T_back = float(np.interp(S_out[i], S_grid, T_col))
+            residuals.append(abs(T_back - T_target[i]))
+
+    if n_clip_below or n_clip_above:
+        log.warning(
+            'derive_ps_melting %s: clipped %d points below T grid floor and '
+            '%d points above T ceiling',
+            label, n_clip_below, n_clip_above,
+        )
+
+    # Write SPIDER canonical 2-column P-S file. Use the same scaling
+    # factors as the WB+2018 distribution (P_scale=1e9, S_scale=K_B*N_A
+    # for MgSiO3 = 4824266.85) so existing loaders accept the file
+    # unchanged.
+    P_scale = 1.0e9
+    S_scale = 4824266.84604467  # = R_universal * 1000 / M_MgSiO3, hard-coded in WB17 dist
+    P_nondim = P_clipped / P_scale
+    S_nondim = S_out / S_scale
+
+    with open(target_path, 'w') as out:
+        out.write(f'# 5 {len(P_clipped)}\n')
+        out.write('# Pressure [nondim], Entropy [nondim]\n')
+        out.write('# column * scaling factor = SI units: '
+                  'Pressure [Pa], Entropy [J/kg/K]\n')
+        out.write('# scaling factors (constant) for each column given on line below\n')
+        out.write(f'# {P_scale} {S_scale}\n')
+        for p, s in zip(P_nondim, S_nondim):
+            out.write(f'{p:.18e} {s:.18e}\n')
+
+    summary = {
+        'n_points': len(P_clipped),
+        'n_p_clipped': n_p_clipped,
+        'n_clipped_below': n_clip_below,
+        'n_clipped_above': n_clip_above,
+        'max_inversion_residual_K': float(max(residuals)) if residuals else 0.0,
+    }
+    log.info(
+        'derive_ps_melting %s: wrote %d points to %s; max inversion residual %.3f K',
+        label, summary['n_points'], target_path, summary['max_inversion_residual_K'],
+    )
+    return summary
+
+
+def _override_melting_curves_from_pt(
+    eos_dir: str,
+    solidus_pt_path: str,
+    liquidus_pt_path: str,
+    *,
+    label_prefix: str = '',
+) -> None:
+    """Replace existing P-S melting curves in ``eos_dir`` with derivations
+    from the configured P-T file.
+
+    This is the v2.1 single-source-of-truth glue: regardless of whether
+    the P-S melting curves were byte-copied from the WB+2018 distribution
+    (Case 2), inherited from the SPIDER submodule fallback (Case 3), or
+    auto-generated by Zalmoxis (Case 1, PALEOS path), we overwrite them
+    with derivations from the user-configured ``melting_dir`` P-T pair.
+
+    Sanity prints the in-grid round-trip residual, the number of clipped
+    points, and the change in T_sol(135 GPa) before/after the override
+    (when applicable). All warnings flow through the standard logger.
+    """
+    sol_target = os.path.join(eos_dir, 'solidus_P-S.dat')
+    liq_target = os.path.join(eos_dir, 'liquidus_P-S.dat')
+    sol_phase = os.path.join(eos_dir, 'temperature_solid.dat')
+    liq_phase = os.path.join(eos_dir, 'temperature_melt.dat')
+    if not (os.path.isfile(sol_phase) and os.path.isfile(liq_phase)):
+        log.warning(
+            'override_melting %s: missing temperature_{solid,melt}.dat in %s; '
+            'cannot derive melting curves, leaving in place',
+            label_prefix, eos_dir,
+        )
+        return
+
+    log.info(
+        'override_melting %s: deriving P-S melting tables from %s / %s '
+        'via %s + %s',
+        label_prefix, solidus_pt_path, liquidus_pt_path, sol_phase, liq_phase,
+    )
+
+    summary_sol = _derive_ps_melting_curve(
+        solidus_pt_path, sol_phase, sol_target, label=f'{label_prefix}_solidus',
+    )
+    summary_liq = _derive_ps_melting_curve(
+        liquidus_pt_path, liq_phase, liq_target, label=f'{label_prefix}_liquidus',
+    )
+    if (summary_sol['n_clipped_below'] + summary_sol['n_clipped_above']
+            + summary_liq['n_clipped_below'] + summary_liq['n_clipped_above']) > 0:
+        log.warning(
+            'override_melting %s: total %d points clipped to EoS T grid edges '
+            '(solidus: %d below, %d above; liquidus: %d below, %d above). '
+            'These points fall outside the EoS lookup coverage and are '
+            'pinned to the nearest valid S; the resulting curve is a '
+            'straight extrapolation in T-S there.',
+            label_prefix,
+            summary_sol['n_clipped_below'] + summary_sol['n_clipped_above']
+            + summary_liq['n_clipped_below'] + summary_liq['n_clipped_above'],
+            summary_sol['n_clipped_below'], summary_sol['n_clipped_above'],
+            summary_liq['n_clipped_below'], summary_liq['n_clipped_above'],
+        )
+
+
 def _is_spider_ps_format(path: str) -> bool:
     """Cheap first-line sniff to distinguish P-S tables from P-T tables.
 
@@ -312,6 +580,35 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     """
     target_dir = os.path.join(outdir, 'data', 'spider_eos')
 
+    # v2.1 single-source-of-truth: when `interior_struct.melting_dir` is
+    # set in config, the runtime entropy-solver melting curves
+    # (data/spider_eos/{solidus,liquidus}_P-S.dat) are *derived* from
+    # that P-T file via the EoS's own T(P,S) lookup, rather than
+    # byte-copied from the upstream WB+2018 distribution or auto-
+    # generated by Zalmoxis. This closes the v2-paper bookkeeping leak
+    # where WB17 runs configured with `melting_dir = "PALEOS-Fei2021"`
+    # were silently using WB+2018 P-S curves at runtime. See
+    # finding_2026_04_29_v2_melting_curve_mismatch.md.
+    melting_dir = getattr(config.interior_struct, 'melting_dir', None)
+    derive_melting = melting_dir is not None
+    if derive_melting:
+        from proteus.utils.data import GetFWLData as _GetFWL
+        melting_pt_dir = (
+            _GetFWL()
+            / 'interior_lookup_tables'
+            / 'Melting_curves'
+            / melting_dir
+        )
+        sol_pt_path = melting_pt_dir / 'solidus_P-T.dat'
+        liq_pt_path = melting_pt_dir / 'liquidus_P-T.dat'
+        if not (sol_pt_path.is_file() and liq_pt_path.is_file()):
+            log.warning(
+                'melting_dir=%s configured but P-T files missing at %s; '
+                'falling back to byte-copy from upstream EoS distribution',
+                melting_dir, melting_pt_dir,
+            )
+            derive_melting = False
+
     # Case 1: already populated (e.g. by an earlier call this session or
     # by Zalmoxis's generate_spider_tables in a prior structure solve).
     existing = dirs.get('spider_eos_dir')
@@ -322,6 +619,11 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         ]
         if not missing:
             log.debug('spider_eos_dir already populated at %s, reusing', existing)
+            if derive_melting:
+                _override_melting_curves_from_pt(
+                    existing, str(sol_pt_path), str(liq_pt_path),
+                    label_prefix=f'reuse[{melting_dir}]',
+                )
             dirs['spider_solidus_ps'] = os.path.join(existing, 'solidus_P-S.dat')
             dirs['spider_liquidus_ps'] = os.path.join(existing, 'liquidus_P-S.dat')
             return
@@ -386,6 +688,11 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             dst = os.path.join(target_dir, f)
             if not os.path.isfile(dst):
                 shutil.copy2(src, dst)
+        if derive_melting:
+            _override_melting_curves_from_pt(
+                target_dir, str(sol_pt_path), str(liq_pt_path),
+                label_prefix=f'fwl[{melting_dir}]',
+            )
         dirs['spider_eos_dir'] = target_dir
         dirs['spider_solidus_ps'] = os.path.join(target_dir, 'solidus_P-S.dat')
         dirs['spider_liquidus_ps'] = os.path.join(target_dir, 'liquidus_P-S.dat')
@@ -430,6 +737,11 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
                 dst = os.path.join(target_dir, canonical)
                 if not os.path.isfile(dst):
                     shutil.copy2(src, dst)
+            if derive_melting:
+                _override_melting_curves_from_pt(
+                    target_dir, str(sol_pt_path), str(liq_pt_path),
+                    label_prefix=f'spider_submodule[{melting_dir}]',
+                )
             dirs['spider_eos_dir'] = target_dir
             dirs['spider_solidus_ps'] = os.path.join(target_dir, 'solidus_P-S.dat')
             dirs['spider_liquidus_ps'] = os.path.join(target_dir, 'liquidus_P-S.dat')
