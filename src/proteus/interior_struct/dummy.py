@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.constants import M_earth, const_G
+from proteus.utils.structure_estimate import iron_fractions as _iron_fractions
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -27,54 +28,6 @@ logger = logging.getLogger('fwl.' + __name__)
 
 # Earth mass in kg (for scaling law normalization)
 M_EARTH_KG = M_earth
-
-
-def _iron_fractions(core_frac: float, core_frac_mode: str, fe_mantle: float = 0.1):
-    """Compute iron fractions from core fraction and mantle iron number.
-
-    Parameters
-    ----------
-    core_frac : float
-        Core fraction (mass or radius, per core_frac_mode).
-    core_frac_mode : str
-        'mass' or 'radius'.
-    fe_mantle : float
-        Mantle iron number #Fe_M (fraction of iron-bearing minerals). Default 0.1.
-
-    Returns
-    -------
-    x_cmf : float
-        Core mass fraction.
-    x_fe : float
-        Total planet iron weight fraction.
-    x_fem : float
-        Iron mass fraction in the mantle.
-    """
-    # Molar masses [g/mol] (Noack & Lasbleis 2020, below Eq. 6)
-    m_fe = 55.845
-    m_mg = 24.305
-    m_si = 28.0855
-    m_o = 15.999
-
-    # Iron mass fraction in mantle minerals (Eq. 6)
-    x_fem = (2 * fe_mantle * m_fe) / (
-        2 * ((1 - fe_mantle) * m_mg + fe_mantle * m_fe) + m_si + 4 * m_o
-    )
-
-    if core_frac_mode == 'mass':
-        x_cmf = core_frac
-    else:
-        # For radius mode, approximate X_CMF from radius fraction.
-        # Invert Eq. 9 approximately: R_c ~ 4850 * X_CMF^0.328 * (M/M_E)^0.266
-        # For a rough estimate, use X_CMF ~ (R_c/R_p)^3 * rho_ratio
-        # Simple approximation: X_CMF ~ core_frac^2.5 (empirical fit)
-        x_cmf = core_frac ** 2.5
-        x_cmf = max(0.01, min(x_cmf, 0.80))
-
-    # Total iron fraction (Eq. 8 rearranged): X_Fe = X_FeM + X_CMF * (1 - X_FeM)
-    x_fe = x_fem + x_cmf * (1 - x_fem)
-
-    return x_cmf, x_fe, x_fem
 
 
 def solve_dummy_structure(

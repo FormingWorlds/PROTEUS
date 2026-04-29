@@ -383,15 +383,27 @@ def _resolve_zalmoxis_cmb_temperature(config: Config, hf_row: dict, mode: str) -
     if isinstance(hf_row, dict):
         P_cmb = hf_row.get('P_cmb', None)
     if not P_cmb or P_cmb <= 0:
-        # First-call fallback. Mirrors the Earth-like 135 GPa fallback
-        # in compute_initial_entropy. Logged at info level so the value
-        # is traceable in the run log; the next timestep will pick up
-        # the converged hf_row['P_cmb'] from the structure solve.
-        P_cmb = 135e9
+        # First-call fallback. Use a mass-aware Noack & Lasbleis (2020)
+        # estimate so super-Earth runs do not anchor to the Earth-like
+        # 135 GPa value. The previous hardcoded 135 GPa fallback biased
+        # the iter-0 T_cmb anchor by 1500-2000 K for 3-10 M_Earth and
+        # leaked into the converged Zalmoxis structure. Subsequent
+        # timesteps still use the converged hf_row['P_cmb'].
+        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+        P_cmb = estimate_P_cmb_NL20(
+            float(config.planet.mass_tot),
+            float(config.interior_struct.core_frac),
+            str(config.interior_struct.core_frac_mode),
+        )
         logger.info(
             'liquidus_super: hf_row["P_cmb"] not yet populated for the '
-            'structure call; using 135 GPa fallback. Next iteration will '
-            'use the converged Zalmoxis P_cmb.'
+            'structure call; using NL20 mass-aware fallback P_cmb=%.1f GPa '
+            '(mass_tot=%.2f M_Earth, core_frac=%.3f %s). Next iteration '
+            'will use the converged Zalmoxis P_cmb.',
+            P_cmb / 1e9,
+            float(config.planet.mass_tot),
+            float(config.interior_struct.core_frac),
+            str(config.interior_struct.core_frac_mode),
         )
 
     T_liq = float(paleos_liquidus(P_cmb))

@@ -189,21 +189,84 @@ class TestResolveZalmoxisCMBTemperature:
 
     @pytest.mark.parametrize('hf_row', [None, {}, {'P_cmb': None},
                                          {'P_cmb': 0.0}, {'P_cmb': -1e9}])
-    def test_liquidus_super_fallback_to_135_gpa(self, hf_row):
-        """When hf_row lacks a usable P_cmb, fall back to 135 GPa.
+    def test_liquidus_super_fallback_to_NL20_at_1me(self, hf_row):
+        """When hf_row lacks a usable P_cmb at 1 M_Earth, fall back to
+        the Noack & Lasbleis (2020) mass-aware estimate (~142 GPa for
+        CMF=0.325 mass-mode), NOT the legacy hardcoded 135 GPa.
 
         Anti-happy-path: tests four ways P_cmb can be missing/unusable
         (None, empty dict, explicit None, 0.0, negative). All must
-        collapse to the same fallback; otherwise an unset hf_row would
-        silently feed Zalmoxis a meaningless tcmb.
+        collapse to the same NL20 fallback; otherwise an unset hf_row
+        would silently feed Zalmoxis a meaningless tcmb.
         """
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
         )
+        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         cfg = _make_minimal_config(delta_T_super=500.0)
+        # Make config look like a 1 M_Earth Earth-like planet so
+        # the NL20 fallback matches the resolver path.
+        cfg.planet.mass_tot = 1.0
+        cfg.interior_struct.core_frac = 0.325
+        cfg.interior_struct.core_frac_mode = 'mass'
         T = _resolve_zalmoxis_cmb_temperature(cfg, hf_row, 'liquidus_super')
-        T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
+        P_expected = estimate_P_cmb_NL20(1.0, 0.325, 'mass')
+        T_liq_expected = 6000.0 * (P_expected / 1e9 / 140.0) ** 0.26
         assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
+        # Discriminating: NL20 at 1 M_E is ~142 GPa, distinguishable
+        # from the legacy 135 GPa fallback.
+        T_legacy = 6000.0 * (135.0 / 140.0) ** 0.26 + 500.0
+        assert abs(T - T_legacy) > 5.0, (
+            f'Resolver still uses the legacy 135 GPa fallback (T={T:.1f}); '
+            f'NL20 mass-aware T={T_liq_expected + 500.0:.1f}, legacy T={T_legacy:.1f}'
+        )
+
+    @pytest.mark.parametrize('mass_tot,low_GPa,high_GPa', [
+        (1.0, 130, 160),
+        (3.0, 350, 480),
+        (5.0, 550, 800),
+        (10.0, 900, 2000),
+    ])
+    def test_liquidus_super_fallback_scales_with_mass(
+        self, mass_tot, low_GPa, high_GPa,
+    ):
+        """Super-Earth check: when hf_row['P_cmb'] is missing, the
+        fallback P_cmb must scale with planet mass (3 M_E -> ~400 GPa,
+        5 M_E -> ~600 GPa, 10 M_E -> ~1000+ GPa) and the resulting T_cmb
+        anchor must reflect the higher pressure. The legacy hardcoded
+        135 GPa fallback failed this check by misplacing the 5 M_E
+        anchor by ~2700 K. Discriminating: a regression to the legacy
+        constant would put T_cmb under 6500 K for every mass.
+        """
+        from proteus.interior_struct.zalmoxis import (
+            _resolve_zalmoxis_cmb_temperature,
+        )
+        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
+        cfg = _make_minimal_config(delta_T_super=500.0)
+        cfg.planet.mass_tot = mass_tot
+        cfg.interior_struct.core_frac = 0.325
+        cfg.interior_struct.core_frac_mode = 'mass'
+        T = _resolve_zalmoxis_cmb_temperature(cfg, None, 'liquidus_super')
+        P_expected = estimate_P_cmb_NL20(mass_tot, 0.325, 'mass')
+        # The fallback P_cmb must land in the documented physical band.
+        assert low_GPa * 1e9 < P_expected < high_GPa * 1e9, (
+            f'NL20 P_cmb at {mass_tot} M_E is {P_expected/1e9:.1f} GPa, '
+            f'outside the expected [{low_GPa}, {high_GPa}] GPa band'
+        )
+        T_liq_expected = 6000.0 * (P_expected / 1e9 / 140.0) ** 0.26
+        assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
+        # Regression guard: must NOT be the legacy 135 GPa anchor for
+        # any super-Earth mass. The 1 M_E case is allowed to be close
+        # but for mass > 2 M_E the anchor must differ by > 1000 K.
+        if mass_tot > 2.0:
+            T_legacy = 6000.0 * (135.0 / 140.0) ** 0.26 + 500.0
+            assert T - T_legacy > 1000.0, (
+                f'Resolver regressed to the legacy 135 GPa fallback at '
+                f'{mass_tot} M_E (T={T:.0f}, legacy T={T_legacy:.0f}); '
+                f'expected NL20 anchor near {T_liq_expected + 500.0:.0f}'
+            )
 
 
 # ----------------------------------------------------------------------
@@ -321,21 +384,28 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         assert cp['cmb_temperature'] == pytest.approx(7199.0)
         assert cp['temperature_mode'] == 'adiabatic_from_cmb'
 
-    def test_first_call_uses_135gpa_fallback_when_p_cmb_missing(self, monkeypatch):
-        """First call (P_cmb not yet populated): use 135 GPa fallback.
-
-        The energetics IC step then re-derives the anchor against the
-        converged Zalmoxis P_cmb, so this only matters for the very
-        first structure call.
+    def test_first_call_uses_NL20_fallback_when_p_cmb_missing(self, monkeypatch):
+        """First call (P_cmb not yet populated) at 1 M_Earth: use the
+        NL20 mass-aware fallback (~142 GPa) instead of the legacy
+        hardcoded 135 GPa. The energetics IC step then re-derives the
+        anchor against the converged Zalmoxis P_cmb, so this only
+        matters for the very first structure call.
         """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+        from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         config = _make_full_mock_config(
             temperature_mode='liquidus_super',
             delta_T_super=500.0,
         )
+        # _make_full_mock_config sets mass_tot=1.0; explicitly stub
+        # the structure-side fields the NL20 fallback now reads.
+        config.interior_struct.core_frac = 0.325
+        config.interior_struct.core_frac_mode = 'mass'
         _stub_target_surface_pressure(monkeypatch)
         cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=None))
-        T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
+        P_expected = estimate_P_cmb_NL20(1.0, 0.325, 'mass')
+        T_liq_expected = 6000.0 * (P_expected / 1e9 / 140.0) ** 0.26
         assert cp['cmb_temperature'] == pytest.approx(
             T_liq_expected + 500.0, rel=1e-9,
         )

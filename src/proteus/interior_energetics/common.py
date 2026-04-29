@@ -268,47 +268,31 @@ def compute_initial_entropy(
         if hf_row is not None:
             P_cmb = hf_row.get('P_cmb', None)
         if not P_cmb or P_cmb <= 0:
-            # Adversarial-review finding 2026-04-20: the silent 135 GPa
-            # fallback produces a very wrong IC for any planet that
-            # isn't Earth-like. Current default temperature_mode is
-            # adiabatic_from_cmb (Stage 1a lock); any non-Zalmoxis
-            # stack (dummy, or spider with core_frac-based R_core) will
-            # hit this branch without a structure-derived P_cmb in
-            # hf_row. For a 3 M_Earth planet the real P_cmb is ~400 GPa
-            # so the 135 GPa fallback shifts the IC entropy by several
-            # percent. Raise by default for super-Earth masses; keep
-            # the 135 GPa fallback only when the planet is explicitly
-            # Earth-mass (0.5 < M/M_Earth < 2.0) where the error is
-            # acceptable for smoke tests. The interior_struct message
-            # should tell the user to switch to module='zalmoxis' or
-            # set tcmb_init + a stacked structure solve that populates
-            # P_cmb.
+            # First-call fallback: hf_row['P_cmb'] is not yet populated.
+            # Use a Noack & Lasbleis (2020) mass-aware estimate so super-
+            # Earth runs do not anchor to the Earth-like 135 GPa value.
+            # The previous hardcoded 135 GPa fallback misplaced the IC
+            # entropy by several percent for 3-10 M_Earth and was hard-
+            # rejected at the validator; the NL20 estimate is accurate
+            # to within ~5% across 0.5-10 M_Earth so this branch is now
+            # safe for the full mass range.
+            from proteus.utils.structure_estimate import estimate_P_cmb_NL20
             mtot = float(getattr(config.planet, 'mass_tot', 1.0))
             struct_mod = getattr(config.interior_struct, 'module', 'unknown')
-            if not (0.5 <= mtot <= 2.0):
-                raise ValueError(
-                    f'{mode} mode cannot use the Earth-like '
-                    f'135 GPa P_cmb fallback for mass_tot={mtot} M_Earth. '
-                    f'The real P_cmb scales strongly with mass and the '
-                    f'fallback would misplace the IC entropy by several '
-                    f'percent. Fix by (a) setting '
-                    f"interior_struct.module='zalmoxis' so a real "
-                    f'structure solve populates hf_row["P_cmb"] before '
-                    f'the interior step, or (b) switching to '
-                    f"temperature_mode='isentropic'/'adiabatic' and "
-                    f'setting ini_entropy or tsurf_init explicitly. '
-                    f'Current interior_struct.module={struct_mod!r}.'
-                )
-            log.warning(
-                '%s: hf_row["P_cmb"] missing or non-positive '
-                'and mass_tot=%.2f M_Earth falls in the Earth-like window; '
-                'using the 135 GPa fallback. interior_struct.module=%r does '
-                'not populate P_cmb before the IC is set. For robustness, '
-                'switch to module="zalmoxis" or a temperature_mode that '
-                'does not require P_cmb.',
-                mode, mtot, struct_mod,
+            P_cmb = estimate_P_cmb_NL20(
+                mtot,
+                float(config.interior_struct.core_frac),
+                str(config.interior_struct.core_frac_mode),
             )
-            P_cmb = 135e9
+            log.warning(
+                '%s: hf_row["P_cmb"] missing or non-positive; using NL20 '
+                'mass-aware fallback P_cmb=%.1f GPa (mass_tot=%.2f M_Earth). '
+                "interior_struct.module=%r does not populate P_cmb before "
+                'the IC is set. For best accuracy switch to '
+                "module='zalmoxis' so a real structure solve populates "
+                'P_cmb before the interior step.',
+                mode, P_cmb / 1e9, mtot, struct_mod,
+            )
 
         # Compute the CMB anchor temperature.
         #   adiabatic_from_cmb: tcmb_init is user-set absolute K.
