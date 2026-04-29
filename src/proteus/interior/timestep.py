@@ -222,15 +222,20 @@ def next_step(
         # Step scale factor (is always <= 1.0)
         dtswitch *= step_sf
 
-        # Max step size
-        dtmaximum = config.params.dt.maximum  # absolute
-        dtmaximum += config.params.dt.maximum_rel * hf_row['Time']  # allow large
-        dtswitch = min(dtswitch, dtmaximum)
-
         # Min step size
         dtminimum = config.params.dt.minimum  # absolute
         dtminimum += config.params.dt.minimum_rel * hf_row['Time']  # allow small steps
         dtswitch = max(dtswitch, dtminimum)
+
+        # Max step size
+        #   tolerances
+        dtmaximum = config.params.dt.maximum  # absolute
+        dtmaximum += config.params.dt.maximum_rel * hf_row['Time']  # allow large
+        #   prevent overshooting
+        if config.params.stop.time.enabled:
+            maxtime = config.params.stop.time.maximum
+            dtmaximum = min(dtmaximum, max(1, maxtime - hf_row['Time']))
+        dtswitch = min(dtswitch, dtmaximum)
 
     log.info('New time-step target is %.2e years' % dtswitch)
     return dtswitch
