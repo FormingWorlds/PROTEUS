@@ -96,6 +96,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # calculate total atmosphere mass from sum of gas species
     hf_row['M_atm'] = 0.0
     for s in gas_list:
+    #for s in vol_list:
         hf_row['M_atm'] += hf_row[s + '_kg_atm']
 
     # print outgassed partial pressures (in order of descending abundance)

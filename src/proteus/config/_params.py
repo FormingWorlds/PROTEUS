@@ -243,6 +243,20 @@ class StopDisint:
     spin_enabled: bool = field(default=True)
     offset_spin: float = field(default=0)
 
+@define
+class StopEvap:
+    """Parameters for evaporation stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable criteria if True
+    M_stop: float
+        Model will terminate when silicat emass in atmosphere is more than this value [kg].
+    """
+
+    enabled: bool = field(default=True)
+    M__stop: float = field(default=1e25, validator=(gt(0), lt(1e30)))
 
 @define
 class StopParams:

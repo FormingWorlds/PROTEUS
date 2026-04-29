@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -327,7 +326,7 @@ def read_in_element_fracs_normalized(input_path,time,parameters):
         header=None       # split on any whitespace
     )
 
-    shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
+    #shutil.copy(input_path + parameters['elementfile'], "/data3/leoni/PROTEUS/elementfiles/element_abundances_{}.dat".format(str(time)))
     # make first column the headers and second column the data row
     abundance_dict = dict(zip(df[0], df[1]))
     for key in  abundance_dict.keys():
@@ -472,20 +471,22 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     for e in element_list:
         log.info('element: %s,  %s',e, element_fracs[e])
         log.debug('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
-        if e in input_eles and e != 'O':
+        if e in input_eles: #and e != 'O':
             log.debug('volatile species, no need to update from lavatmos')
             continue
         else:
             hf_row[e + '_kg_atm'] = element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
 
-        hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
+            #don't update total element mass, other wise mass between mantle and atmosphere not conserved -> planet keeps increasing with time
+            hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
+            hf_row['M_silicates'] += hf_row[e + '_kg_total']
 
         log.debug('total mass of element after updating with lavatmos: %s',hf_row[e + '_kg_atm']) #different than before
-        #BECUASE: very likely the different volatile species allowed by fastchem compared to PROTEUS which now allows a differnet mean molecular weigh tcomputation
+        #BECAUSE: very likely the different volatile species allowed by fastchem compared to PROTEUS which now allows a differnet mean molecular weigh tcomputation
         #better to use volatile abuundances from before lavatmos !
+    log.info('total mass of silicates after updating with lavatmos: %s'%hf_row['M_silicates'])
 
-
-    # saving new oxygen fugacity for calliope
+    # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
     log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(new_atmos_abundances['Pbar'][0])  # is this really partical pressure ? Maybe this is actually abundances
 
     fO2_shift = FO2shift()

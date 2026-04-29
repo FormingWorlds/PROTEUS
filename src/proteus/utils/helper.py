@@ -185,6 +185,8 @@ def CommentFromStatus(status: int):
             desc = 'Error (Outgassing model)'
         case 28:
             desc = 'Error (Escape model)'
+        case 29:
+            desc = 'Completed (planet evaporated)'
         # Default case
         case _:
             desc = 'UNHANDLED STATUS (%d)' % status

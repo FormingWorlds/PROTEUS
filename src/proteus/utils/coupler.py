@@ -559,6 +559,7 @@ def GetHelpfileKeys(config: Config):
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
+        'M_silicates',      # outgassed rock vapour mass [kg]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]
@@ -605,7 +606,7 @@ def GetHelpfileKeys(config: Config):
         'bond_albedo',      # OUTPUT calculated bond albedo from radtrans: SW_UP/SW_DN, zero if no scattering [1]
 
         # Atmospheric composition from outgassing
-        'M_ele',            # total mass of tracked elements (utils.constants.element_list)
+        'M_ele',            # total mass of tracked elements (utils.constants.element_list) rock vapour and volatile
         'M_atm',            # total mass of atmosphere [kg]
         'P_surf',           # total surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]

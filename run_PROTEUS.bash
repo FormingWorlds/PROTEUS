@@ -1,9 +1,9 @@
 #bash script to run multiple proteus runs one after other
 MIXFILE=vertical_mix
 orb_dist=("0.01")
-fO2=("3" "-3" "-1" "1" "-5" "5")
-Hoceans=("1" "4")
-silicates=("true" "false")
+fO2=("3" "-3")
+Hoceans=("4")
+silicates=("true")
 CHratio=("1")
 input_file=input/run_silicates.toml
 
