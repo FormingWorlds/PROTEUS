@@ -481,11 +481,12 @@ bash tools/coverage_analysis.sh
 pip install -e '.[docs]'
 zensical serve
 
-# Run simulation (detached; add -r / --resume to continue a killed run)
+# Run simulation (detached; add -r / --resume to continue a killed run,
+# add --deterministic for numerically fragile coupled runs)
 nohup proteus start -c <cfg.toml> --offline > output/<run>/launch.log 2>&1 & disown
 ```
 
-Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` snapshot under `data/`; see `src/proteus/proteus.py` ~395-430. Never foreground a multi-hour run — plain `&` alone dies on SIGHUP.  **Remember**: Trust these instructions. Only search if information is incomplete or found to be in error.
+Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` snapshot under `data/`; see `src/proteus/proteus.py` ~395-430. Never foreground a multi-hour run — plain `&` alone dies on SIGHUP. `--deterministic` self-re-execs to pin `JAX_ENABLE_X64=1` + `XLA_FLAGS=--xla_cpu_enable_fast_math=false` before JAX import (on top of always-on `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB=1`); use when Aragog hits T_core-jump-guard exhaustion on tight-tol runs.  **Remember**: Trust these instructions. Only search if information is incomplete or found to be in error.
 
 ---
 

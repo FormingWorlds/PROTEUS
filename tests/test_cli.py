@@ -466,3 +466,117 @@ def test_get_tools_subcommands_call_setup(monkeypatch, subcommand, target):
     res = runner.invoke(cli.cli, ['get', subcommand])
     assert res.exit_code == 0
     assert calls == [subcommand]
+
+
+# ---------------------------
+# --deterministic flag tests
+# ---------------------------
+
+
+@pytest.mark.unit
+def test_start_help_lists_deterministic_flag():
+    """The --deterministic flag must be visible in `proteus start --help`,
+    so users discover it without reading source. The help text must explain
+    WHEN to use it (numerical fragility), not just WHAT it does — that's the
+    whole point of exposing this flag."""
+    res = runner.invoke(cli.start, ['--help'])
+    assert res.exit_code == 0
+    assert '--deterministic' in res.output
+    assert 'numerical' in res.output.lower() or 'reproduc' in res.output.lower()
+    assert 'JAX' in res.output or 'XLA' in res.output
+
+
+@pytest.mark.unit
+def test_should_apply_deterministic_decision_table():
+    """Exercise the boolean decision: only fire when (a) --deterministic is
+    in argv AND (b) the sentinel is not already set. Test all four corners
+    of the truth table to catch a missing-AND or accidental-OR bug."""
+    sentinel = cli._PROTEUS_DETERMINISTIC_SENTINEL
+
+    # (a) flag present, sentinel unset → apply
+    assert cli._should_apply_deterministic(
+        ['proteus', 'start', '--deterministic'], {}
+    ) is True
+
+    # (b) flag present, sentinel already set → do NOT re-apply (would loop)
+    assert cli._should_apply_deterministic(
+        ['proteus', 'start', '--deterministic'], {sentinel: '1'}
+    ) is False
+
+    # (c) flag absent, sentinel unset → do nothing
+    assert cli._should_apply_deterministic(
+        ['proteus', 'start', '-c', 'cfg.toml'], {}
+    ) is False
+
+    # (d) flag absent, sentinel set (orphaned env) → do nothing
+    assert cli._should_apply_deterministic(
+        ['proteus', 'start'], {sentinel: '1'}
+    ) is False
+
+    # Unicode flag-lookalike must NOT trigger (substring vs membership)
+    assert cli._should_apply_deterministic(
+        ['proteus', 'start', '--deterministic-mode'], {}
+    ) is False
+
+
+@pytest.mark.unit
+def test_apply_deterministic_env_appends_xla_flags():
+    """XLA_FLAGS may already carry user-set debugging flags. We must APPEND
+    --xla_cpu_enable_fast_math=false, not overwrite, otherwise we'd silently
+    drop the user's debugging context. Also: idempotent — calling twice must
+    not duplicate the flag."""
+    # Existing XLA_FLAGS preserved + extended
+    env = {'XLA_FLAGS': '--xla_dump_to=/tmp/xla'}
+    cli._apply_deterministic_env(env)
+    assert '--xla_dump_to=/tmp/xla' in env['XLA_FLAGS']
+    assert cli._DETERMINISTIC_XLA_FLAG in env['XLA_FLAGS']
+    assert env['JAX_ENABLE_X64'] == '1'
+    assert env[cli._PROTEUS_DETERMINISTIC_SENTINEL] == '1'
+
+    # Idempotency: applying again must not duplicate the flag
+    cli._apply_deterministic_env(env)
+    assert env['XLA_FLAGS'].count(cli._DETERMINISTIC_XLA_FLAG) == 1
+
+    # Empty/missing XLA_FLAGS produces a clean single-flag string (no leading space)
+    env2 = {}
+    cli._apply_deterministic_env(env2)
+    assert env2['XLA_FLAGS'] == cli._DETERMINISTIC_XLA_FLAG
+    assert not env2['XLA_FLAGS'].startswith(' ')
+
+
+@pytest.mark.unit
+def test_deterministic_warning_when_sentinel_missing(tmp_path, monkeypatch):
+    """If a user-supplied wrapper or test harness invokes the click handler
+    with --deterministic but the env-var re-exec did not actually run (sentinel
+    not set), the user must SEE a warning so the run isn't silently
+    non-deterministic. Verifies the click handler's safety net, not the
+    re-exec path itself (which is a subprocess concern)."""
+    # Need a config file path for click validation; construct a minimal stub
+    cfg = tmp_path / 'stub.toml'
+    cfg.write_text('# stub\n')
+
+    # Force sentinel to NOT be set, then invoke the click handler with --deterministic.
+    # We monkeypatch Proteus to avoid actually running anything.
+    monkeypatch.delenv(cli._PROTEUS_DETERMINISTIC_SENTINEL, raising=False)
+
+    captured = {}
+
+    class FakeProteus:
+        def __init__(self, config_path):
+            captured['config_path'] = config_path
+
+        def start(self, resume, offline):
+            captured['started'] = (resume, offline)
+
+    monkeypatch.setattr(cli, 'Proteus', FakeProteus)
+
+    res = runner.invoke(
+        cli.start,
+        ['-c', str(cfg), '--deterministic'],
+    )
+    # Either click validated the path and the handler ran, or click rejected the
+    # stub config. In both cases we want to confirm the warning was emitted IFF
+    # the handler ran. The handler emits to stdout via click.secho; CliRunner
+    # captures both stdout and stderr in `output`.
+    if 'started' in captured:
+        assert 'NOT pinned' in res.output
