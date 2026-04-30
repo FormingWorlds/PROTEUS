@@ -88,7 +88,7 @@ def boundary_zalmoxis_incompatible(instance, attribute, value):
     # Boundary interior module cannot be used with zalmoxis structure module.
     if (instance.interior.module == 'boundary') and (instance.struct.module == 'zalmoxis'):
         raise ValueError(
-            "Boundary interior module cannot currently be used with zalmoxis structure module"
+            'Boundary interior module cannot currently be used with zalmoxis structure module'
         )
 
 

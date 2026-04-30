@@ -296,6 +296,7 @@ class InteriorBoundary:
 
     logging: bool = field(default=False)
 
+
 @define
 class InteriorDummy:
     """Parameters for Dummy interior module.
