@@ -568,8 +568,16 @@ def plot_result_correlation(pars: dict, obs: dict, directory):
     # Extract parameters and observables
     X, Y = [], []
     for c in cases:
-        # Read data
+        # Read config
         conf = toml.load(c / 'init_coupler.toml')
+
+        # Check success
+        hf_path = c / 'runtime_helpfile.csv'
+        if not hf_path.is_file():
+            log.warning(f'Missing helpfile for {c}')
+            continue
+
+        # Read helpfile for observables
         help = pd.read_csv(c / 'runtime_helpfile.csv', delimiter=r'\s+')
 
         # Get parameters and observables

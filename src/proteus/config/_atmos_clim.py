@@ -27,7 +27,7 @@ def valid_rayleigh(instance, attribute, value):
 
     if instance.module == 'dummy':
         raise ValueError('Dummy atmos_clim is incompatible with Rayleigh scattering')
-    if instance.module == 'agni' and (instance.agni.spectral_file == 'greygas'):
+    if instance.module == 'agni' and (instance.agni.spectral_file.lower() == 'greygas'):
         raise ValueError('AGNI grey gas is incompatible with Rayleigh scattering')
 
 
@@ -59,7 +59,7 @@ def valid_agni(instance, attribute, value):
         )
 
     # set spectral files?
-    if instance.agni.spectral_file == 'greygas':
+    if instance.agni.spectral_file.lower() == 'greygas':
         # grey gas, no scattering
         pass
 
@@ -244,7 +244,7 @@ class Agni:
             ),
         },
     )
-    grey_opacity_lw: float = field(default=1e+1, validator=gt(0))
+    grey_opacity_lw: float = field(default=1e1, validator=gt(0))
     grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
 
 

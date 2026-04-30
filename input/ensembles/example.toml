@@ -31,8 +31,8 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        # path        = "bayesopt_sn"   # SN
-        path        = "bayesopt_se"   # SE
+        path        = "bayesopt_sn"   # SN
+        # path        = "bayesopt_se"   # SE
         # path        = "bayesopt_tr"  # TR
 
         logging     = "INFO"
