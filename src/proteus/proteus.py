@@ -552,6 +552,7 @@ class Proteus:
                 self.hf_all,
                 self.hf_row,
                 self.interior_o,
+                atmos_o=self.atmos_o,
                 write_data=is_snapshot,
             )
             if _IT_TIMING_ENABLED:

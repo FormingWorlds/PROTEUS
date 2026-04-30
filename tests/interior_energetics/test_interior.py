@@ -154,7 +154,9 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
     }
 
     # Patch run_interior to simply set some interior-related keys
-    def fake_run_interior(dirs_arg, config_arg, hf_all_arg, hf_row_arg, int_o, verbose=True):
+    def fake_run_interior(
+        dirs_arg, config_arg, hf_all_arg, hf_row_arg, int_o, atmos_o=None, verbose=True
+    ):
         # set mantle/core masses so update_planet_mass can compute
         hf_row_arg['M_mantle'] = 2.0e24
         hf_row_arg['M_core'] = 1.0e24

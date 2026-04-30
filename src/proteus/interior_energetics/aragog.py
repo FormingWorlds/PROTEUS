@@ -1520,7 +1520,12 @@ class AragogRunner:
         out = self._solve_with_retry(hf_row, interior_o)
 
         # Build PROTEUS helpfile output from SolverOutput
-        output = self._build_helpfile_output(out, hf_row, interior_o=interior_o)
+        output = self._build_helpfile_output(
+            out,
+            hf_row,
+            interior_o=interior_o,
+            surface_d=self._config.atmos_clim.surface_d,
+        )
 
         # Store arrays on interior object for inter-module access.
         # Radius is stored in metres (SI), matching SPIDER's convention
@@ -1740,6 +1745,7 @@ class AragogRunner:
         out: SolverOutput,
         hf_row: dict,
         interior_o=None,
+        surface_d: float = 0.0,
     ) -> dict:
         """Build the PROTEUS helpfile dict from SolverOutput.
 
@@ -1857,6 +1863,11 @@ class AragogRunner:
             # integrator; non-trivial values signal step rejection or
             # tolerance issues.
             'step_solver_residual_J': out.step_solver_residual_J,
+            # Boundary layer thickness, taken straight from the atmosphere
+            # config. Surfaced here so the helpfile carries a single
+            # backend-agnostic field for downstream tooling that has to
+            # compare Aragog and Boundary runs side by side.
+            'boundary_layer_thickness': surface_d,
         }
 
     @staticmethod

@@ -632,6 +632,7 @@ def _try_spider(
     # Check that SPIDER can be found
     spider_exec = os.path.join(dirs['spider'], 'spider')
     if not os.path.isfile(spider_exec):
+        UpdateStatusfile(dirs, 21)
         raise FileNotFoundError("SPIDER executable could not be found at '%s'" % spider_exec)
 
     # Scale factors for when SPIDER is failing to converge
@@ -1411,8 +1412,12 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     if config.planet.prevent_warming:
         output['F_int'] = max(1.0e-8, output['F_int'])
 
+    # Boundary layer thickness (constant value from config)
+    output['boundary_layer_thickness'] = config.atmos_clim.surface_d
+
     # Check NaNs
     if np.isnan(output['T_magma']):
-        raise Exception('Magma ocean temperature is NaN')
+        UpdateStatusfile(dirs, 21)
+        raise ValueError('Magma ocean temperature is NaN')
 
     return sim_time, output

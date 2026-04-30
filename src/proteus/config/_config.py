@@ -168,6 +168,27 @@ def planet_mass_valid(instance, attribute, value):
         raise ValueError('The total planet mass must be < 20 M_earth')
 
 
+def boundary_requires_fixed_surface_state(instance, attribute, value):
+    """Boundary backend assumes a fixed surface state coupling."""
+    if (instance.interior_energetics.module == 'boundary') and (
+        instance.atmos_clim.surf_state != 'fixed'
+    ):
+        raise ValueError(
+            "Must set atmos_clim.surf_state='fixed' when interior_energetics.module='boundary'"
+        )
+
+
+def boundary_zalmoxis_incompatible(instance, attribute, value):
+    """Boundary backend is not yet wired up to the Zalmoxis structure refresh."""
+    if (instance.interior_energetics.module == 'boundary') and (
+        instance.interior_struct.module == 'zalmoxis'
+    ):
+        raise ValueError(
+            'Boundary interior module cannot currently be used with the '
+            'zalmoxis structure module'
+        )
+
+
 @define
 class Config:
     """Root config parameters.
@@ -210,7 +231,13 @@ class Config:
     planet: Planet = field(factory=Planet, validator=(planet_mass_valid,))
     interior_struct: Struct = field(factory=Struct)
     interior_energetics: Interior = field(
-        factory=Interior, validator=(tides_enabled_orbit, prevent_warming_advisory)
+        factory=Interior,
+        validator=(
+            tides_enabled_orbit,
+            prevent_warming_advisory,
+            boundary_requires_fixed_surface_state,
+            boundary_zalmoxis_incompatible,
+        ),
     )
     outgas: Outgas = field(factory=Outgas)
     atmos_clim: AtmosClim = field(factory=AtmosClim)

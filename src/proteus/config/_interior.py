@@ -23,6 +23,21 @@ def valid_spider(instance, attribute, value):
         raise ValueError('Must enable at least one energy transport term in SPIDER')
 
 
+def valid_interiorboundary(instance, attribute, value):
+    """Validate Boundary backend's solidus/liquidus ordering.
+
+    Only fires when ``module == 'boundary'``; otherwise the subclass is
+    constructed with defaults and never exercised.
+    """
+    if instance.module != 'boundary':
+        return
+
+    tsol = instance.boundary.T_solidus
+    tliq = instance.boundary.T_liquidus
+    if tliq <= tsol:
+        raise ValueError(f'Boundary liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
+
+
 @define
 class Spider:
     """SPIDER-specific parameters.
@@ -177,6 +192,107 @@ def valid_interiordummy(instance, attribute, value):
 
 
 @define
+class InteriorBoundary:
+    """Parameters for Boundary interior module. Default values taken from Schaefer et al. 2016 (https://iopscience.iop.org/article/10.3847/0004-637X/829/2/63/pdf).
+
+    Attributes
+    ----------
+    rtol: float
+        ODE solver relative tolerance.
+    atol: float
+        ODE solver absolute tolerance.
+    T_p_0: float
+        Initial potential temperature [K] for boundary solver if zalmoxis module is not used.
+    T_solidus: float
+        Mantle solidus temperature [K].
+    T_liquidus: float
+        Mantle liquidus temperature [K].
+    Tsurf_event_change: float
+        Maximum change in surface temperature allowed during a single interior iteration before triggering an event [K].
+    critical_rayleigh_number: float
+        Critical Rayleigh number for onset of convection [-].
+    heat_fusion_silicate: float
+        Latent heat of fusion for silicates [J/kg].
+    nusselt_exponent: float
+        Nusselt-Rayleigh scaling exponent [-].
+    silicate_heat_capacity: float
+        Silicate heat capacity [J/kg/K].
+    atm_heat_capacity: float
+        Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
+    silicate_density: float
+        Silicate density [kg/m^3]. Default taken from Fei et. al. 2021 (https://ui.adsabs.harvard.edu/abs/2021NatCo..12..876F).
+    thermal_conductivity: float
+        Thermal conductivity [W/m/K].
+    thermal_diffusivity: float
+        Thermal diffusivity [m^2/s].
+    thermal_expansivity: float
+        Thermal expansivity [1/K].
+    viscosity_model: int
+        Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
+    eta_constant: float
+        Constant viscosity value [Pa s] for model 1.
+    transition_width: float
+        Width of viscosity transition in melt fraction space [-] for aggregate model.
+    eta_solid_const: float
+        Constant solid viscosity for aggregate formulation [Pa s].
+    eta_melt_const: float
+        Constant melt viscosity for aggregate formulation [Pa s].
+    dynamic_viscosity: float
+        Reference dynamic viscosity [Pa s] for Arrhenius solid mantle model.
+    activation_energy: float
+        Activation energy [J/mol] for Arrhenius solid mantle model.
+    viscosity_prefactor: float
+        Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
+    viscosity_activation_temp: float
+        Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
+    logging: bool
+        Whether to create diagnostic CSV data files from boundary interior module.
+    """
+
+    rtol: float = field(default=1e-6, validator=gt(0))
+    atol: float = field(default=1e-9, validator=gt(0))
+
+    T_p_0: float = field(default=3500.0, validator=ge(0))
+
+    T_solidus: float = field(default=1420.0, validator=ge(0))
+    T_liquidus: float = field(default=2020.0, validator=gt(0))
+
+    Tsurf_event_change: float = field(default=20.0, validator=gt(0))  # K
+
+    critical_rayleigh_number: float = field(default=1.1e3, validator=gt(0))  # -
+    heat_fusion_silicate: float = field(default=4.0e5, validator=gt(0))  # J/kg
+    nusselt_exponent: float = field(default=0.33, validator=gt(0))  # -
+    silicate_heat_capacity: float = field(default=1.2e3, validator=gt(0))  # J/kg/K
+    atm_heat_capacity: float = field(default=1.7e4, validator=gt(0))  # J/kg/K
+    silicate_density: float = field(default=4103.0, validator=gt(0))  # kg/m^3
+    thermal_conductivity: float = field(default=4.2, validator=gt(0))  # W/m/K
+    thermal_diffusivity: float = field(default=1e-6, validator=gt(0))  # m^2/s
+    thermal_expansivity: float = field(default=2e-5, validator=gt(0))  # 1/K
+
+    # Viscosity parameterisation
+    viscosity_model: int = field(
+        default=2, validator=in_((1, 2, 3))
+    )  # 1=constant, 2=aggregate, 3=Arrhenius
+    eta_constant: float = field(default=1e2, validator=gt(0))  # Pa s, for model 1
+
+    # Aggregate viscosity parameters
+    transition_width: float = field(default=0.2, validator=(gt(0), lt(1)))  # -
+    eta_solid_const: float = field(default=1e22, validator=gt(0))  # Pa s
+    eta_melt_const: float = field(default=1e2, validator=gt(0))  # Pa s
+
+    # Arrhenius solid mantle parameters
+    dynamic_viscosity: float = field(default=3.8e9, validator=gt(0))  # Pa s
+    activation_energy: float = field(default=3.5e5, validator=gt(0))  # J/mol
+    creep_parameter: float = field(default=26.0, validator=gt(0))
+
+    # Arrhenius magma ocean parameters (Vogel-Fulcher-Tammann)
+    viscosity_prefactor: float = field(default=2.4e-4, validator=gt(0))  # Pa s
+    viscosity_activation_temp: float = field(default=4600, validator=gt(0))  # K
+
+    logging: bool = field(default=False)
+
+
+@define
 class InteriorDummy:
     """Parameters for Dummy interior module.
 
@@ -251,7 +367,9 @@ class Interior:
         Zalmoxis derives its EOS paths from struct.zalmoxis config instead.
     """
 
-    module: str = field(default='aragog', validator=in_(('spider', 'aragog', 'dummy')))
+    module: str = field(
+        default='aragog', validator=in_(('spider', 'aragog', 'dummy', 'boundary'))
+    )
     num_levels: int = field(default=80, validator=ge(40))
 
     # Unified ODE tolerance: both SPIDER and Aragog read from here.
@@ -285,6 +403,9 @@ class Interior:
     spider: Spider = field(factory=Spider, validator=valid_spider)
     aragog: Aragog = field(factory=Aragog, validator=valid_aragog)
     dummy: InteriorDummy = field(factory=InteriorDummy, validator=valid_interiordummy)
+    boundary: InteriorBoundary = field(
+        factory=InteriorBoundary, validator=valid_interiorboundary
+    )
 
     mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
     grain_size: float = field(default=0.1, validator=gt(0))

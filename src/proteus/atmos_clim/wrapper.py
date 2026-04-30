@@ -87,11 +87,15 @@ def run_atmosphere(
         hf_row['albedo_pl'] = 0.0
 
     # Handle new surface temperature
-    if config.atmos_clim.surf_state == 'mixed_layer':
+    if config.interior_energetics.module == 'boundary':
+        # T_surf is already advanced by the Boundary backend's ODE, so the
+        # atmosphere wrapper must not overwrite it.
+        pass
+
+    elif config.atmos_clim.surf_state == 'mixed_layer':
         # Argument order: (current hf_row, previous committed row). The
         # function integrates forward from hf_pre['Time'] to hf_cur['Time']
-        # starting at hf_pre['T_surf']. The previous call site had the
-        # arguments reversed, which integrated backward in time.
+        # starting at hf_pre['T_surf'].
         hf_row['T_surf'] = ShallowMixedOceanLayer(hf_row, hf_all.iloc[-1].to_dict())
 
     elif config.atmos_clim.surf_state == 'fixed':

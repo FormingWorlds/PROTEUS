@@ -600,6 +600,7 @@ def GetHelpfileKeys():
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
+        'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
         # Energy-conservation columns (Aragog A1+A2 + per-call integrals).
         # ``E_state_cons_J`` is the canonical conservation-grade integrated

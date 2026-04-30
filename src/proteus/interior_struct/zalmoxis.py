@@ -1847,6 +1847,15 @@ def zalmoxis_solver(
     hf_row['M_int'] = mass_enclosed[-1]
     hf_row['M_core'] = mass_enclosed[cmb_index]
     hf_row['gravity'] = gravity[-1]
+
+    if config.interior_energetics.module == 'boundary':
+        # Boundary backend reads its initial potential and surface
+        # temperatures off the freshly solved structure rather than off
+        # the [interior_energetics.boundary] config block. Take the
+        # uppermost-mantle node for T_magma and the radial surface
+        # node for T_surf.
+        hf_row['T_magma'] = temperature[-2]
+        hf_row['T_surf'] = temperature[-1]
     hf_row['P_center'] = model_results.get('p_center')
     hf_row['P_cmb'] = float(pressure[cmb_index])
     # T1.2 (2026-04-26 coupling audit): expose the dry mass target Zalmoxis

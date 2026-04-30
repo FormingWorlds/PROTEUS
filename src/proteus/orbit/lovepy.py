@@ -69,7 +69,7 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
 
     # Get viscous region and check if fully liquid
     i_top = 0  # index of topmost cell which has visc>visc_thresh
-    if config.interior_energetics.module == 'dummy':
+    if config.interior_energetics.module in ('dummy', 'boundary'):
         if lov['visc'][0] < config.orbit.lovepy.visc_thresh:
             return 0.0
 
@@ -119,7 +119,7 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
         raise RuntimeError('Encountered problem when running lovepy module')
 
     # Extract result and store
-    if config.interior_energetics.module == 'dummy':
+    if config.interior_energetics.module in ('dummy', 'boundary'):
         interior_o.tides[0] = power_prf[1]
 
     else:

@@ -158,6 +158,8 @@ def get_nlevb(config: Config):
             return int(config.interior_energetics.num_levels)
         case 'aragog':
             return int(config.interior_energetics.num_levels)
+        case 'boundary':
+            return 2
         case 'dummy':
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior_energetics.module}'")
@@ -1227,6 +1229,7 @@ def run_interior(
     hf_all: pd.DataFrame,
     hf_row: dict,
     interior_o: Interior_t,
+    atmos_o=None,
     verbose: bool = True,
     write_data: bool = True,
 ):
@@ -1244,6 +1247,9 @@ def run_interior(
             Dictionary of current runtime variables
         interior_o : Interior_t
             Interior struct.
+        atmos_o : Atmos_t or None
+            Atmosphere struct. Required only for the boundary backend; the
+            other backends ignore it.
         verbose : bool
             Verbose printing enabled.
         write_data : bool
@@ -1360,6 +1366,19 @@ def run_interior(
             )
             interior_o.dt = dtswitch
             return
+
+    elif config.interior_energetics.module == 'boundary':
+        if atmos_o is None:
+            raise ValueError(
+                'Boundary interior backend requires the atmosphere struct '
+                '(`atmos_o`); the caller passed None.'
+            )
+        from proteus.interior_energetics.boundary import BoundaryRunner
+
+        BoundaryRunnerInstance = BoundaryRunner(
+            config, dirs, hf_row, hf_all, interior_o, atmos_o
+        )
+        sim_time, output = BoundaryRunnerInstance.run_solver(hf_row, interior_o, dirs)
 
     elif config.interior_energetics.module == 'dummy':
         # Import
