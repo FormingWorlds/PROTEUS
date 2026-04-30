@@ -114,33 +114,11 @@ def load_zalmoxis_material_dictionaries():
 
     Returns
     -------
-    dict
-        EOS registry keyed by EOS identifier string (e.g. ``"Seager2007:iron"``).
-        This function adapts legacy tuple output from ``get_zalmoxis_EOS()``
-        to the registry format expected by modern Zalmoxis.
+    tuple
+        Four dictionaries: iron/silicate, iron/T-dep silicate (WolfBower2018),
+        water planets, iron/RTPress100TPa silicate.
     """
-    eos_data = get_zalmoxis_EOS()
-
-    # New API path: already a registry dict.
-    if isinstance(eos_data, dict):
-        return eos_data
-
-    # Backward-compatible path: convert legacy 4-tuple to registry dict.
-    if isinstance(eos_data, tuple) and len(eos_data) == 4:
-        iron_silicate, iron_tdep, water_planets, iron_rtpress = eos_data
-
-        return {
-            'Seager2007:iron': {'core': iron_silicate['core']},
-            'Seager2007:MgSiO3': {'mantle': iron_silicate['mantle']},
-            'Seager2007:H2O': {'ice_layer': water_planets['ice_layer']},
-            'WolfBower2018:MgSiO3': iron_tdep,
-            'RTPress100TPa:MgSiO3': iron_rtpress,
-        }
-
-    raise TypeError(
-        'Unexpected EOS payload from get_zalmoxis_EOS(); expected dict or 4-tuple '
-        f'but got {type(eos_data)}.'
-    )
+    return get_zalmoxis_EOS()
 
 
 def load_zalmoxis_solidus_liquidus_functions(mantle_eos: str, config: Config):
