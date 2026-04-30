@@ -559,7 +559,7 @@ def GetHelpfileKeys(config: Config):
         'R_int',            # interior radius [m]
         'M_int',            # interior mass [kg]
         'M_planet',         # total planet wet+dry mass [kg]
-        'M_silicates',      # outgassed rock vapour mass [kg]
+        'M_silicates',      # outgassed rock vapour mass , w/o oxygen [kg]
 
         # Temperatures
         'T_surf',           # global surface temperature [K]

@@ -90,9 +90,8 @@ version = "2.0"
             enabled = false
             p_stop  = 0.01        # Stop surface pressure is less than this value
 
-          [params.stop.Evap]
-            enabled = true
-            p_stop  = 1e25        # Stop if M_silicate is more than that value
+          [params.stop.evap]
+            enabled = true       # Stop if M_silicate is larger than interior
 
         # disintegration
         [params.stop.disint]

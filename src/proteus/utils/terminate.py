@@ -96,6 +96,19 @@ def _check_escape(handler: Proteus) -> bool:
 
     return False
 
+def _check_evap(handler: Proteus) -> bool:
+    log.debug('Check evaporation of planet')
+
+    M_silicates = handler.hf_row['M_silicates']
+    M_interior = handler.hf_row['M_int']
+    log.debug('    val, req = %.3e, %.3e  kg' % (M_silicates, M_interior))
+
+    if M_silicates >= M_interior:
+        UpdateStatusfile(handler.directories, 29)
+        _msg_termination('The interior has fully evaporated')
+        return True
+
+    return False
 
 # Planet has disintegrated
 def _check_separation(handler: Proteus) -> bool:
@@ -239,6 +252,11 @@ def check_termination(handler: Proteus) -> bool:
 
         if handler.config.params.stop.disint.spin_enabled:
             finished = finished or _check_spinrate(handler)
+
+
+    if handler.config.params.stop.evap.enabled:
+        finished = finished or _check_evap(handler)
+
 
     # Maximum time reached
     if handler.config.params.stop.time.enabled:

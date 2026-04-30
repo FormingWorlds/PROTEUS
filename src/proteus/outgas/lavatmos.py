@@ -471,7 +471,7 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     for e in element_list:
         log.info('element: %s,  %s',e, element_fracs[e])
         log.debug('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
-        if e in input_eles: #and e != 'O':
+        if e in input_eles or e == 'O': # oxygen should not be added to M_silicates, since it is not counted in M_eles       #and e != 'O':
             log.debug('volatile species, no need to update from lavatmos')
             continue
         else:

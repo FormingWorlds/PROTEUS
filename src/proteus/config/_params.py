@@ -251,12 +251,9 @@ class StopEvap:
     ----------
     enabled: bool
         Enable criteria if True
-    M_stop: float
-        Model will terminate when silicat emass in atmosphere is more than this value [kg].
     """
 
     enabled: bool = field(default=True)
-    M__stop: float = field(default=1e25, validator=(gt(0), lt(1e30)))
 
 @define
 class StopParams:
@@ -286,7 +283,7 @@ class StopParams:
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
     disint: StopDisint = field(factory=StopDisint)
-
+    evap: StopEvap = field(factory=StopEvap)
     strict: bool = field(default=False)
 
 
