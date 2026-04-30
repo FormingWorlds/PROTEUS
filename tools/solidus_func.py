@@ -1251,6 +1251,7 @@ def export_one_model_from_cli(model_name: str, args):
 
 
 def main():
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(message)s',
