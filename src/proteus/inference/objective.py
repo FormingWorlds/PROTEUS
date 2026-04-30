@@ -4,6 +4,7 @@ import logging
 import subprocess
 from functools import partial
 from pathlib import Path
+import os
 
 import pandas as pd
 import toml
@@ -105,6 +106,10 @@ def run_proteus(
     # Generate config
     update_toml(ref_config, parameters, str(out_cfg))
 
+    # Generate environment
+    env = dict(**os.environ)
+    env['OMP_NUM_THREADS'] = '1'
+
     # Run PROTEUS
     command = ['proteus', 'start', '-c', str(out_cfg), '--offline']
     try:
@@ -112,6 +117,7 @@ def run_proteus(
             command,
             check=True,
             text=True,
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.STDOUT,
         )
