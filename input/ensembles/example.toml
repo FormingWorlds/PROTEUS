@@ -45,7 +45,7 @@ version = "2.0"
     # time-stepping
     [params.dt]
         minimum      = 1e3    # absolute minimum time-step [years]
-        minimum_rel  = 2e-2   # relative minimum time-step [dimensionless]
+        minimum_rel  = 0.5   # relative minimum time-step [dimensionless]
         maximum      = 2e8    # maximum time-step [yr]
         maximum_rel  = 0.7   # relative maximum time-step [dimensionless]
         initial      = 2e2    # inital step size [yr]
@@ -225,7 +225,7 @@ version = "2.0"
         # spectral_group  = "Dayspring"   # which gas opacities to include
         # spectral_bands  = "16"          # how many spectral bands?
         spectral_file   = "greygas"          # optional path to AGNI spectral file; if None, will use spectral_group and spectral_bands to find file in FWL data directory
-        num_levels      = 25            # Number of atmospheric grid levels
+        num_levels      = 20            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true          # solve for energy-conserving atmosphere profile
@@ -319,12 +319,12 @@ version = "2.0"
         H_radio     = 1e-9       # Radiogenic heating rate [W/kg]
 
     [interior.boundary]
-        rtol = 1e-4                      # ODE solver relative tolerance.
-        atol = 1e-07                       # ODE solver absolute tolerance.
+        rtol = 1e-3                      # ODE solver relative tolerance.
+        atol = 1e-06                       # ODE solver absolute tolerance.
         T_p_0 = 3000                       # Initial potential temperature if zalmoxis module is not used [K].
         T_solidus = 1420.0                 # Mantle solidus temperature [K]
         T_liquidus = 2020.0                # Mantle liquidus temperature [K]
-        Tsurf_event_change = 150.0    # Maximum allowed surface temperature change per step [K], used to prevent solver divergence.
+        Tsurf_event_change = 200.0    # Maximum allowed surface temperature change per step [K], used to prevent solver divergence.
         critical_rayleigh_number = 1100.0  # Critical Rayleigh number for onset of convection
         heat_fusion_silicate = 400000.0    # Latent heat of fusion for silicates [J/kg]
         nusselt_exponent = 0.33            # Nusselt-Rayleigh scaling exponent
@@ -334,7 +334,7 @@ version = "2.0"
         thermal_conductivity = 4.2         # Thermal conductivity [W/m/K]
         thermal_diffusivity = 1e-06        # Thermal diffusivity [m^2/s]
         thermal_expansivity = 2e-05        # Thermal expansivity [1/K]
-        transition_width = 0.15            # Width of viscosity transition in melt fraction space
+        transition_width = 0.1            # Width of viscosity transition in melt fraction space
         eta_solid_const = 1e+21            # Constant solid viscosity for aggregate formulation [Pa s]
         eta_melt_const = 100.0             # Constant melt viscosity for aggregate formulation [Pa s]
         viscosity_model = 2                # Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).

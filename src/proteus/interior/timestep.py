@@ -191,8 +191,8 @@ def next_step(
             dt_rtol = config.params.dt.adaptive.rtol
             dt_atol = config.params.dt.adaptive.atol
             speed_up = True
-            speed_up = speed_up and (F_atm_12 < dt_rtol * abs(F_atm_2) + dt_atol)
-            speed_up = speed_up and (phi_12 < dt_rtol * abs(phi_2) + dt_atol)
+            speed_up = speed_up and (F_atm_12 < dt_rtol * abs(F_atm_1) + dt_atol)
+            speed_up = speed_up and (phi_12 < dt_rtol * abs(phi_1) + dt_atol)
 
             if speed_up:
                 dtswitch = dtprev * config.params.dt.adaptive.scale_incr
