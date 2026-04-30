@@ -225,8 +225,7 @@ def determine_interior_radius_with_zalmoxis(
     # by the finally block above), not the overridden 'adiabatic'.  This is
     # correct: the Zalmoxis solver already used the adiabatic mode to compute
     # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
-    if config.interior.module != 'boundary':
-        run_interior(dirs, config, hf_all, hf_row, int_o)
+    run_interior(dirs, config, hf_all, hf_row, int_o)
 
 
 def solve_structure(
@@ -244,10 +243,6 @@ def solve_structure(
     # We might need here to setup a determine_interior_mass function as mass calculation depends on gravity
     if config.struct.set_by == 'radius_int':
         # radius defines interior structure
-        if config.interior.module == 'boundary':
-            raise ValueError(
-                "Must set structure by 'mass_tot' if boundary interior module is used"
-            )
         hf_row['R_int'] = config.struct.radius_int * R_earth
         calculate_core_mass(hf_row, config)
         # initial guess for mass, which will be updated by the interior model

@@ -52,6 +52,7 @@ def run_lovepy(hf_row: dict, dirs: dict, interior_o: Interior_t, config: Config)
     ----------
         Imk2_love: float
     """
+
     # Calculate angular frequency of rotation
     omega = _jlsca(2 * np.pi / hf_row['orbital_period'])
     ecc = _jlsca(hf_row['eccentricity'])

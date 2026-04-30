@@ -13,10 +13,7 @@ from juliacall import Main as jl  # noqa
 
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
-from proteus.utils.constants import (
-    vap_list,
-    vol_list,
-)
+from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -412,12 +409,7 @@ class Proteus:
 
             # Evolve interior
             run_interior(
-                self.directories,
-                self.config,
-                self.hf_all,
-                self.hf_row,
-                self.interior_o,
-                self.atmos_o,
+                self.directories, self.config, self.hf_all, self.hf_row, self.interior_o, self.atmos_o,
             )
 
             # Advance current time in main loop according to interior step
