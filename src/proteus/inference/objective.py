@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from functools import partial
 from pathlib import Path
-import os
 
 import pandas as pd
 import toml
