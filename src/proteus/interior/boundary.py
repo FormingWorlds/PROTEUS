@@ -328,6 +328,33 @@ class BoundaryRunner:
 
         return q_m_val
 
+    def boundary_layer_thickness(self, T_p: float, T_surf: float, phi: float) -> float:
+        """
+        Calculate the thermal boundary layer thickness.
+
+        Parameters
+        ----------
+        T_p : float
+            Potential temperature of the mantle [K]
+        T_surf : float
+            Surface temperature of the planet [K]
+        phi : float
+            Melt fraction [0-1]
+
+        Returns
+        -------
+        float
+            Thermal boundary layer thickness [m]
+        """
+        if T_p == T_surf:
+            # Small temperature difference to avoid division by zero
+            delta = 1e-3
+        else:
+            q_m_val = self.q_m(T_p, T_surf, phi)
+            delta = self.thermal_conductivity * (T_p - T_surf) / q_m_val
+
+        return delta
+
     def radioactive_heating(self, t: float) -> float:
         """
         Calculate the volumetric radioactive heating rate as a function of time.
@@ -681,10 +708,8 @@ class BoundaryRunner:
         )
         m_solid = self.mantle_mass - m_liquid
 
-        if T_surf_final > T_p_final:
-            T_surf_final = (
-                T_p_final - 1.0
-            )  # Ensure surface temperature does not exceed potential temperature
+        # Calculate boundary layer thickness
+        delta = self.boundary_layer_thickness(T_p_final, T_surf_final, phi_final)
 
         output = {
             'T_magma': T_p_final,
@@ -701,6 +726,7 @@ class BoundaryRunner:
             if self.use_tidal_heating
             else 0.0,
             'M_mantle': self.mantle_mass,
+            'boundary_layer_thickness': delta,
         }
 
         # Store arrays

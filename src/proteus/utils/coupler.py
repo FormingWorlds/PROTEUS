@@ -582,6 +582,7 @@ def GetHelpfileKeys():
         'M_mantle_solid',   # dry mass of solid-phase mantle [kg]
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
+        'boundary_layer_thickness',  # thermal boundary layer thickness [m]
 
         # Host star properties
         'M_star',           # mass of star [kg]
