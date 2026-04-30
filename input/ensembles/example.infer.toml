@@ -7,24 +7,24 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer"
+output = "bayesopt_infer_sn"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/ensembles/example.toml"
+ref_config = "output/bayesopt_sn/init_coupler.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 3        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
-n_workers  = 13        # Number of parallel workers
+n_workers  = 10        # Number of parallel workers
 kernel     = "MAT3/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
 acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "E-LogEI"
 n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
 [parameters]
-"params.stop.time.maximum"  = [1e7,     3e9]
+# "params.stop.time.maximum"  = [1e7,     3e9]
 "orbit.semimajoraxis"       = [0.01,    0.3]
 "struct.mass_tot"           = [0.5,     5.0]
 "struct.corefrac"           = [0.2,     0.8]
