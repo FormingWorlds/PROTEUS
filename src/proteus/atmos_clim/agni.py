@@ -111,7 +111,7 @@ def _determine_condensates(vol_list: list):
 
     # single-gas case must be dry
     if len(vol_list) == 1:
-        log.warning('Cannot include rainout condensation with only one gas!')
+        log.warning('Cannot include rainout with only one gas!')
         return []
 
     # all dry gases...

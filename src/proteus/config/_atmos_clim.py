@@ -27,7 +27,8 @@ def valid_rayleigh(instance, attribute, value):
 
     if instance.module == 'dummy':
         raise ValueError('Dummy atmos_clim is incompatible with Rayleigh scattering')
-    if instance.module == 'agni' and (instance.agni.spectral_file.lower() == 'greygas'):
+
+    if instance.module == 'agni' and (str(instance.agni.spectral_file).lower() == 'greygas'):
         raise ValueError('AGNI grey gas is incompatible with Rayleigh scattering')
 
 
@@ -59,13 +60,13 @@ def valid_agni(instance, attribute, value):
         )
 
     # set spectral files?
-    if instance.agni.spectral_file.lower() == 'greygas':
-        # grey gas, no scattering
-        pass
+    if instance.agni.spectral_file is not None:
+        if instance.agni.spectral_file.lower() == 'greygas':
+            # grey gas
+            pass
 
-    elif instance.agni.spectral_file is not None:
         # provided via path
-        if not os.path.isfile(instance.agni.spectral_file):
+        elif not os.path.isfile(instance.agni.spectral_file):
             raise FileNotFoundError(
                 f'AGNI spectral file not found at specified path: {instance.agni.spectral_file}'
             )
@@ -134,7 +135,7 @@ class Agni:
     oceans: bool
         Enable volatile ocean formation at the surface.
     latent_heat: bool
-        Account for latent heat from condense/evap when solving temperature profile. Requires `condensation=true`.
+        Account for latent heat from condense/evap when solving temperature profile. Requires `rainout=true`.
     convection: bool
         Account for convective heat transport, using MLT.
     conduction: bool
@@ -191,7 +192,7 @@ class Agni:
     p_top: float = field(default=1e-5, validator=gt(0))
     p_obs: float = field(default=20e-3, validator=gt(0))
     surf_material: str = field(default='surface_albedos/Hammond24/lunarmarebasalt.dat')
-    num_levels: int = field(default=40, validator=ge(25))
+    num_levels: int = field(default=40, validator=ge(15))
     chemistry: str = field(default='none', validator=in_((None, 'eq')), converter=none_if_none)
     solve_energy: bool = field(default=True)
     solution_atol: float = field(default=0.5, validator=gt(0))

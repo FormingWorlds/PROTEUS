@@ -1164,10 +1164,6 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     i = min(i, len(interior_o.temp) - 1)
     output['T_pot'] = float(interior_o.temp[i])
 
-    # Limit F_int to positive values
-    if config.atmos_clim.prevent_warming:
-        output['F_int'] = max(1.0e-8, output['F_int'])
-
     # Check NaNs
     if np.isnan(output['T_magma']):
         raise Exception('Magma ocean temperature is NaN')

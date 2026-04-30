@@ -41,7 +41,9 @@ class BoundaryRunner:
         self.iteration = 1 if hf_all is None else len(hf_all)
 
         self.planet_radius = hf_row['R_int']
-        self.planet_mass = hf_row.get('M_int', 0.0)  # Use M_planet if available, otherwise will be calculated from core and mantle masses
+        self.planet_mass = hf_row.get(
+            'M_int', 0.0
+        )  # Use M_planet if available, otherwise will be calculated from core and mantle masses
         self.core_mass = hf_row['M_core']
         self.m_atm = hf_row.get('M_atm', 0.0)  # Atmospheric mass, default to 0 if not available
         self.f_atm = hf_row['F_atm']
@@ -69,14 +71,16 @@ class BoundaryRunner:
         self.mantle_volume = (4 / 3) * np.pi * (self.planet_radius**3 - self.core_radius**3)
 
         if config.struct.module == 'self':
-            self.mantle_mass         = self.mantle_volume * config.interior.boundary.silicate_density
+            self.mantle_mass = self.mantle_volume * config.interior.boundary.silicate_density
             self.mantle_bulk_density = config.interior.boundary.silicate_density
-            self.planet_mass         = self.core_mass + self.mantle_mass
+            self.planet_mass = self.core_mass + self.mantle_mass
         else:
             self.mantle_mass = self.planet_mass - self.core_mass
             self.mantle_bulk_density = self.mantle_mass / self.mantle_volume
 
-        log.debug(f'Initialized BoundaryRunner with planet mass {self.planet_mass:.2e} kg, bulk density {self.mantle_bulk_density:.2f} kg/m^3, mantle mass {self.mantle_mass:.2e} kg')
+        log.debug(
+            f'Initialized BoundaryRunner with planet mass {self.planet_mass:.2e} kg, bulk density {self.mantle_bulk_density:.2f} kg/m^3, mantle mass {self.mantle_mass:.2e} kg'
+        )
         self.surface_gravity = const_G * self.planet_mass / self.planet_radius**2
 
         self.rtol = config.interior.boundary.rtol
@@ -672,7 +676,9 @@ class BoundaryRunner:
                     }
                 )
 
-        m_liquid = (4 / 3) * np.pi * self.mantle_bulk_density * (self.planet_radius**3 - r_s_final**3)
+        m_liquid = (
+            (4 / 3) * np.pi * self.mantle_bulk_density * (self.planet_radius**3 - r_s_final**3)
+        )
         m_solid = self.mantle_mass - m_liquid
 
         if T_surf_final > T_p_final:

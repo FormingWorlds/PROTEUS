@@ -25,7 +25,8 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 # Parameters to optimize (with bounds)
 [parameters]
 # "params.stop.time.maximum"  = [1e7,     3e9]
-"orbit.semimajoraxis"       = [0.01,    0.3]
+# "orbit.semimajoraxis"       = [0.01,    0.3]
+"interior.boundary.T_p_0"   = [1000.0,  4000.0]
 "struct.mass_tot"           = [0.5,     5.0]
 "struct.corefrac"           = [0.2,     0.8]
 "outgas.fO2_shift_IW"       = [-4.0,    5.0]
@@ -37,31 +38,31 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 # Target observables to match by optimisation...
 
 # helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
-# extracted at index: 97, time: 1.000e+09 years
+# extracted at index: 271, time: 1.000e+09 years
 # [observables]
-# "M_planet" = 2.0881254563e+25
-# "R_obs" = 1.0476812487e+07
-# "T_obs" = 4.5711914794e+02
-# "atm_kg_per_mol" = 9.7111792507e-03
-# "C/O_atm" = 7.2789778357e-01
-# "S/O_atm" = 2.9117629455e+00
+# "M_planet" = 2.0878869800e+25
+# "R_obs" = 1.0640217458e+07
+# "T_obs" = 4.2873423015e+02
+# "atm_kg_per_mol" = 6.5710221753e-03
+# "C/O_atm" = 2.8219534472e+00
+# "S/O_atm" = 5.7389474658e+00
 
 # helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
-# extracted at index: 94, time: 2.000e+09 years
+# extracted at index: 766, time: 2.000e+09 years
 # [observables]
-# "M_planet" = 1.1852624615e+25
-# "R_obs" = 8.8726951713e+06
-# "T_obs" = 6.0999077066e+02
-# "atm_kg_per_mol" = 1.8502713192e-02
-# "C/O_atm" = 1.0736805902e+00
-# "S/O_atm" = 5.3689132979e-01
+# "M_planet" = 1.1833696046e+25
+# "R_obs" = 8.7763100715e+06
+# "T_obs" = 5.9283421890e+02
+# "atm_kg_per_mol" = 2.2560664164e-02
+# "C/O_atm" = 1.5753953044e-01
+# "S/O_atm" = 8.8604229890e-02
 
 # helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
-# extracted at index: 101, time: 1.000e+08 years
+# extracted at index: 195, time: 1.000e+08 years
 [observables]
-"M_planet" = 5.9176828843e+24
-"R_obs" = 6.6848309190e+06
-"T_obs" = 9.6174793294e+02
-"atm_kg_per_mol" = 3.0839250864e-02
-"C/O_atm" = 2.4832589890e-01
-"S/O_atm" = 9.9388656966e-02
+"M_planet" = 5.9165678522e+24
+"R_obs" = 6.7013232579e+06
+"T_obs" = 8.9023420106e+02
+"atm_kg_per_mol" = 2.8759046520e-02
+"C/O_atm" = 2.1490786841e-01
+"S/O_atm" = 1.0514296155e-01
