@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
+from proteus.atmos_clim.common import Atmos_t
 from proteus.interior.common import Interior_t
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
@@ -67,6 +68,8 @@ def get_nlevb(config: Config):
             return int(config.interior.spider.num_levels)
         case 'aragog':
             return int(config.interior.aragog.num_levels)
+        case 'boundary':
+            return 2
         case 'dummy':
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
@@ -91,6 +94,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     int_o = Interior_t(
         get_nlevb(config), spider_dir=spider_dir, eos_dir=config.interior.eos_dir
     )
+    atmos_o = Atmos_t()
     int_o.ic = 1
     hf_row['R_int'] = R_earth
     calculate_core_mass(hf_row, config)
@@ -108,7 +112,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
 
         # Use interior model to get dry mass from radius
         calculate_core_mass(hf_row, config)
-        run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
+        run_interior(dirs, config, hf_all, hf_row, int_o, atmos_o, verbose=False)
         update_gravity(hf_row)
 
         # Get wet mass
@@ -147,7 +151,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     )
     hf_row['R_int'] = float(r.root)
     calculate_core_mass(hf_row, config)
-    run_interior(dirs, config, hf_all, hf_row, int_o)
+    run_interior(dirs, config, hf_all, hf_row, int_o, atmos_o)
     update_gravity(hf_row)
 
     # Result
@@ -204,6 +208,7 @@ def determine_interior_radius_with_zalmoxis(
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
+        hf_row['R_core'] = float(_cmb_radius)
     finally:
         config.struct.zalmoxis.temperature_mode = _orig_temp_mode
 
@@ -223,7 +228,8 @@ def determine_interior_radius_with_zalmoxis(
     # by the finally block above), not the overridden 'adiabatic'.  This is
     # correct: the Zalmoxis solver already used the adiabatic mode to compute
     # the structure, and run_interior (SPIDER/ARAGOG) manages its own T(r).
-    run_interior(dirs, config, hf_all, hf_row, int_o)
+    if config.interior.module != 'boundary':
+        run_interior(dirs, config, hf_all, hf_row, int_o)
 
 
 def solve_structure(
@@ -241,6 +247,10 @@ def solve_structure(
     # We might need here to setup a determine_interior_mass function as mass calculation depends on gravity
     if config.struct.set_by == 'radius_int':
         # radius defines interior structure
+        if config.interior.module == 'boundary':
+            raise ValueError(
+                "Must set structure by 'mass_tot' if boundary interior module is used"
+            )
         hf_row['R_int'] = config.struct.radius_int * R_earth
         calculate_core_mass(hf_row, config)
         # initial guess for mass, which will be updated by the interior model
@@ -280,6 +290,7 @@ def run_interior(
     hf_all: pd.DataFrame,
     hf_row: dict,
     interior_o: Interior_t,
+    atmos_o: Atmos_t,
     verbose: bool = True,
 ):
     """Run interior mantle evolution model.
@@ -296,6 +307,8 @@ def run_interior(
             Dictionary of current runtime variables
         interior_o : Interior_t
             Interior struct.
+        atmos_o : Atmos_t
+            Atmosphere struct (only required for boundary module).
         verbose : bool
             Verbose printing enabled.
     """
@@ -324,6 +337,15 @@ def run_interior(
         AragogRunnerInstance = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         # Run Aragog
         sim_time, output = AragogRunnerInstance.run_solver(hf_row, interior_o, dirs)
+
+    elif config.interior.module == 'boundary':
+        from proteus.interior.boundary import BoundaryRunner
+
+        BoundaryRunnerInstance = BoundaryRunner(
+            config, dirs, hf_row, hf_all, interior_o, atmos_o
+        )
+        # Run the boundary interior module
+        sim_time, output = BoundaryRunnerInstance.run_solver(hf_row, interior_o, dirs)
 
     elif config.interior.module == 'dummy':
         # Import
@@ -565,6 +587,7 @@ def update_structure_from_interior(
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
+        hf_row['R_core'] = float(_cmb_radius)
     finally:
         # Restore original config
         config.struct.zalmoxis.temperature_mode = orig_temp_mode
