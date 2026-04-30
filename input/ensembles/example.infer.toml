@@ -7,10 +7,10 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_tr"
+output = "bayesopt_infer_se"
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "output/bayesopt_tr/init_coupler.toml"
+ref_config = "output/bayesopt_se/init_coupler.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
 init_samps = 3        # Number of random samples if starting from scratch.
@@ -38,31 +38,35 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 # Target observables to match by optimisation...
 
 # helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
-# extracted at index: 271, time: 1.000e+09 years
+# extracted at index: 279, time: 1.000e+09 years
 # [observables]
-# "M_planet" = 2.0878869800e+25
-# "R_obs" = 1.0640217458e+07
-# "T_obs" = 4.2873423015e+02
-# "atm_kg_per_mol" = 6.5710221753e-03
-# "C/O_atm" = 2.8219534472e+00
-# "S/O_atm" = 5.7389474658e+00
+# "M_planet" = 2.0878751633e+25
+# "R_obs" = 1.0690343285e+07
+# "T_obs" = 4.4486323459e+02
+# "atm_kg_per_mol" = 6.5551133912e-03
+# "C/O_atm" = 2.8249145790e+00
+# "S/O_atm" = 5.7025016188e+00
+
 
 # helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
 # extracted at index: 766, time: 2.000e+09 years
-# [observables]
-# "M_planet" = 1.1833696046e+25
-# "R_obs" = 8.7763100715e+06
-# "T_obs" = 5.9283421890e+02
-# "atm_kg_per_mol" = 2.2560664164e-02
-# "C/O_atm" = 1.5753953044e-01
-# "S/O_atm" = 8.8604229890e-02
+# helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
+# extracted at index: 792, time: 2.000e+09 years
+[observables]
+"M_planet" = 1.1833489890e+25
+"R_obs" = 8.7761030877e+06
+"T_obs" = 5.9236054714e+02
+"atm_kg_per_mol" = 2.2542867268e-02
+"C/O_atm" = 1.5703609197e-01
+"S/O_atm" = 8.8591535007e-02
+
 
 # helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_tr/runtime_helpfile.csv
 # extracted at index: 195, time: 1.000e+08 years
-[observables]
-"M_planet" = 5.9165678522e+24
-"R_obs" = 6.7013232579e+06
-"T_obs" = 8.9023420106e+02
-"atm_kg_per_mol" = 2.8759046520e-02
-"C/O_atm" = 2.1490786841e-01
-"S/O_atm" = 1.0514296155e-01
+# [observables]
+# "M_planet" = 5.9165678522e+24
+# "R_obs" = 6.7013232579e+06
+# "T_obs" = 8.9023420106e+02
+# "atm_kg_per_mol" = 2.8759046520e-02
+# "C/O_atm" = 2.1490786841e-01
+# "S/O_atm" = 1.0514296155e-01
