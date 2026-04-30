@@ -405,6 +405,9 @@ class AragogRunner:
         Htidal_s = aragog_output.heating_tidal[:, -1]  # [W kg-1]
         output['F_tidal'] = float(np.dot(Htidal_s, mass_s)) / area
 
+        # Boundary layer thickness (placeholder - could be calculated from temperature profile)
+        output['boundary_layer_thickness'] = 0.0
+
         # Store arrays
         # FIX ME - Should extract values from staggered nodes rather than cropping
         # basic nodes.

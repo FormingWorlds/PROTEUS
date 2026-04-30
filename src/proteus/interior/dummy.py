@@ -116,6 +116,7 @@ def run_dummy_int(
     output['M_mantle_liquid'] = output['M_mantle'] * output['Phi_global']
     output['M_mantle_solid'] = output['M_mantle'] - output['M_mantle_liquid']
     output['RF_depth'] = output['Phi_global'] * (1 - config.struct.corefrac)
+    output['boundary_layer_thickness'] = 0.0  # Placeholder for dummy module
     R_core = config.struct.corefrac * hf_row['R_int']
 
     # Store arrays

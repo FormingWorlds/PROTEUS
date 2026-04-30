@@ -1161,6 +1161,9 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     if config.atmos_clim.prevent_warming:
         output['F_int'] = max(1.0e-8, output['F_int'])
 
+    # Boundary layer thickness (placeholder - could be calculated from temperature profile)
+    output['boundary_layer_thickness'] = 0.0
+
     # Check NaNs
     if np.isnan(output['T_magma']):
         raise Exception('Magma ocean temperature is NaN')
