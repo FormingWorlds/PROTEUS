@@ -633,6 +633,7 @@ def _try_spider(
     # Check that SPIDER can be found
     spider_exec = os.path.join(dirs['spider'], 'spider')
     if not os.path.isfile(spider_exec):
+        UpdateStatusfile(dirs, 21)
         raise FileNotFoundError("SPIDER executable could not be found at '%s'" % spider_exec)
 
     # Scale factors for when SPIDER is failing to converge
@@ -808,6 +809,7 @@ def _try_spider(
         # Fall back to SPIDER's local lookup_data (uses legacy directory name)
         eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
     if not os.path.isdir(eos_dir):
+        UpdateStatusfile(dirs, 21)
         raise FileNotFoundError(
             f'SPIDER EOS directory not found: {eos_dir}. '
             f"Check interior.eos_dir='{config.interior.eos_dir}'."
@@ -819,6 +821,7 @@ def _try_spider(
     solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
     for fpath in (liquidus_ps, solidus_ps):
         if not os.path.isfile(fpath):
+            UpdateStatusfile(dirs, 21)
             raise FileNotFoundError(
                 f'SPIDER phase boundary file not found: {fpath}. '
                 f"Run 'python tools/generate_spider_phase_boundaries.py "
@@ -1161,11 +1164,12 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     if config.atmos_clim.prevent_warming:
         output['F_int'] = max(1.0e-8, output['F_int'])
 
-    # Boundary layer thickness (placeholder - could be calculated from temperature profile)
-    output['boundary_layer_thickness'] = 0.0
+    # Boundary layer thickness (constant value from config)
+    output['boundary_layer_thickness'] = config.atmos_clim.surface_d
 
     # Check NaNs
     if np.isnan(output['T_magma']):
-        raise Exception('Magma ocean temperature is NaN')
+        UpdateStatusfile(dirs, 21)
+        raise ValueError('Magma ocean temperature is NaN')
 
     return sim_time, output
