@@ -89,7 +89,7 @@ def _make_hf_all(n_rows: int = 10, dt_prev: float = 1.0e3, phi: float = 1.0):
 def _make_interior_o():
     """Minimal stand-in for Interior_t that exposes the fields the
     controller reads/writes."""
-    return SimpleNamespace(dt_hysteresis_remaining=0, solver_stiffness=0.0)
+    return SimpleNamespace(dt_hysteresis_remaining=0)
 
 
 # ---------------------------------------------------------------------------

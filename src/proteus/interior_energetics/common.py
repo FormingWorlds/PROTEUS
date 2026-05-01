@@ -552,13 +552,6 @@ class Interior_t:
         # escaped from.
         self.dt_hysteresis_remaining = 0
 
-        # Solver-reported stiffness score, 0 = easy, 1 = saturated.
-        # Set by AragogRunner / AragogJAXRunner from the number of
-        # internal ODE substeps per coupling call, normalised to a
-        # "typical" baseline. Currently consumed only for logging;
-        # future work: feed into the hysteresis trigger condition.
-        self.solver_stiffness = 0.0
-
         # Lookup data for SPIDER (P-S tables, used by E_th and
         # melt-volume bookkeeping). Each is a (nS, nP, 3) array, the
         # third channel being the SI value of the quantity.
@@ -688,11 +681,6 @@ class Interior_t:
 
         scaled = data * sfact
         return scaled.reshape(nS, nP, 3)
-
-    def print(self):
-        log.info('Printing interior arrays....')
-        for attr in ('radius', 'tides', 'phi', 'visc', 'density', 'mass', 'shear', 'bulk'):
-            log.info('    %s = %s' % (attr, str(getattr(self, attr))))
 
     def resume_tides(self, outdir: str):
         # Read tidal heating array from file, when resuming from disk.
