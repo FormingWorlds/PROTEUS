@@ -40,6 +40,10 @@ nav:
   - Reference:
       - Reference data: Reference/data.md
       - Bibliography: Reference/bibliography.md
+      - API:
+          - Interior structure (Zalmoxis wrapper): Reference/api/interior_struct_zalmoxis.md
+          - Interior structure config: Reference/api/config_struct.md
+          - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
 
   - Community:
       - Contact: Community/contact.md
