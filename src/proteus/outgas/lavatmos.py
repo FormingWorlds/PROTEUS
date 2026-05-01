@@ -366,6 +366,8 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     sys.path.insert(1, '/data3/leoni/LavAtmos')
     from lavatmos_goot_runner import container_lavatmos
 
+
+    log.info('computing siicate outgassing with lavatmos')
     # set element fractions in atmosphere for lavatmos run
     input_eles = ['H', 'C', 'N', 'S', 'O']
 
@@ -380,7 +382,7 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     for e in input_eles:
        nfrac[e]= molfracs[e]/total_mols
     #log.info('volatile element carbon read in by lavatmos: %s',lavatmos_dict['C'])
-    log.debug('volatile element fractions : %s',nfrac)
+    log.info('volatile element fractions : %s',nfrac)
 
 
 
@@ -433,25 +435,32 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     rho_old = kg_per_particle * P_surf_kPa / (kB * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
-    log.info('old atmospheric mass:%.4f'%M_atmo_old)
+    log.info('old atmospheric mass:%.2e'%M_atmo_old)
     log.info('old atmospheric density:%.4f'%rho_old)
+    log.info('old atmospheric pressure:%.4f'%hf_row['P_surf'])
+    log.info('old mass per particle :%.4e'%kg_per_particle)
+
     # rho of armosphere after lavatmos
     # n=rho/mu*mp
     # 1bar = 100 kPa
     kg_pp_new =  mu_outgassed * mp
+    log.info('new mass per particle :%.4e'%kg_pp_new)
     P_new_kPa = new_atmos_abundances['Pbar'][0] * 100 #convert pressure to cgs
-    rho_new = kg_pp_new * P_new_kPa / (kB * hf_row['T_magma']) # convert pressur ein cgs to kg !
+    rho_new = kg_pp_new * P_new_kPa / (kB * hf_row['T_magma']) # convert pressure in cgs to kg !
     M_atmo_new = (M_atmo_old / rho_old) * rho_new  # kg assuming volume does not change but only pressure
 
-    log.info('new atmospheric mass:%.4f'%M_atmo_new)
+    log.info('new atmospheric mass:%.2e'%M_atmo_new)
     log.info('new atmospheric density:%.4f'%rho_new)
+    log.info('new SiO abundance:%.4f'%new_atmos_abundances['SiO'])
+    log.info('new O2 abundance :%.4f'%new_atmos_abundances['O2'])
+
 
     gas_list = vol_list + config.outgas.vaplist
 
-    log.info('new surface pressure: %s'%new_atmos_abundances['Pbar'][0])
-
     #update surface pressure:
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
+
+    log.info('new surface pressure :%.4f'%hf_row['P_surf'])
 
     for vol in gas_list:
         new_pp = new_atmos_abundances[vol][0] * new_atmos_abundances['Pbar'][0]
@@ -462,6 +471,8 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
         hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm']/hf_row['atm_kg_per_mol']
         hf_row[vol + '_mol_total'] = hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
+
+        log.info("coutious which species which are atomic species. there kg_total values will be overwritten by total element budget for now ...")
 
 
     mmw_elements=0

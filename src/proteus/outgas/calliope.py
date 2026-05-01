@@ -184,6 +184,7 @@ def calc_target_masses(dirs: dict, config: Config, hf_row: dict):
         solvevol_target = get_target_from_pressures(solvevol_inp)
 
     # store in hf_row as elements
+    log.info('elements in target dictionary of calliope %s'%solvevol_target.keys())
     for e in solvevol_target.keys():
         hf_row[e + '_kg_total'] = solvevol_target[e]
 

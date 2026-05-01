@@ -96,6 +96,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # calculate total atmosphere mass from sum of gas species
     hf_row['M_atm'] = 0.0
     for s in gas_list:
+        log.info('species %s'%s)
+        log.info('the mass o fthis species - if silicate should be zero: %s'%hf_row[s + '_kg_atm'])
     #for s in vol_list:
         hf_row['M_atm'] += hf_row[s + '_kg_atm']
 
@@ -135,7 +137,9 @@ def run_desiccated(config: Config, hf_row: dict):
 
     if config.outgas.silicates:
         gas_list = vol_list + config.outgas.vaplist
+        log.info('lavatmos should be running')
     else:
+        log.info('lavatmos should not be running')
         gas_list = vol_list + vap_list
 
     # Do not set these to zero - avoid divide by zero elsewhere in the code
@@ -147,6 +151,10 @@ def run_desiccated(config: Config, hf_row: dict):
     for k in expected_keys(config):
         if k not in excepted_keys:
             hf_row[k] = 0.0
+
+    if config.outgas.silicates:
+        compute_silicate_outgassing(config,hf_row)
+
 
 
 
@@ -162,6 +170,25 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
     """
+
+    gas_list = vol_list + config.outgas.vaplist
+
+    #reset all silicate masses to zero:
+    for s in gas_list:
+        if s in vol_list:
+            continue
+        else:
+            hf_row[s + '_bar'] =0.0
+            hf_row[s + '_vmr']=0.0
+            hf_row[s + '_kg_atm']=0.0
+            hf_row[s+ '_kg_tot']=0.0
+
+    for e in element_list:
+        if e in ['H','C','N','O','S','P']:
+            continue
+        else:
+            hf_row[e + '_kg_atm']=0.0
+            hf_row[e+ '_kg_tot']=0.0
     run_outgassing(dirs, config, hf_row)
     if config.outgas.silicates:
 

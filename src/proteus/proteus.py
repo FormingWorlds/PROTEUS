@@ -323,7 +323,13 @@ class Proteus:
                 raise RuntimeError('Simulation is too short to be resumed')
 
             # Get last row from helpfile dataframe
-            self.hf_row = self.hf_all.iloc[-1].to_dict()
+            self.hf_row = self.hf_all.iloc[-1].to_dict() #row is copied from last row so need to reset somehow all the silicate masses !
+
+            for s in gas_list:
+                if s not in vol_list:
+                    self.hf_row[s + '_bar'] = 0.0
+                    self.hf_row[s + '_kg_tot'] = 0.0
+                    self.hf_row[s + '_kg_atm'] = 0.0
 
             # Check if the planet is desiccated
             self.desiccated = check_desiccation(self.config, self.hf_row)
