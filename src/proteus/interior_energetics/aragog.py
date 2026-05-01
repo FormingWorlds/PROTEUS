@@ -1622,9 +1622,21 @@ class AragogRunner:
                 solver_obj.parameters, 'radionuclides', []
             )
             if radionuclides:
-                t_now_yr = float(hf_row.get('Time', 0.0))
+                # Sample radio heating at the END of the step. ``out.F_heat_total``
+                # reflects the surface flux at the post-step state (Aragog
+                # returns the integrated surface flux at t_end), and PROTEUS
+                # increments ``hf_row['Time']`` by the interior dt only AFTER
+                # this output assembly runs (see proteus.py: run_interior is
+                # called before ``hf_row['Time'] += interior_o.dt``). Using
+                # ``hf_row['Time'] + interior_o.dt`` keeps the F_radio sample
+                # aligned with the F_heat_total reference instead of trailing
+                # by one dt, which matters for any isotope whose half-life is
+                # of order a coupling step.
+                t_end_yr = float(hf_row.get('Time', 0.0))
+                if interior_o is not None:
+                    t_end_yr += float(getattr(interior_o, 'dt', 0.0))
                 H_radio_per_kg = sum(
-                    float(r.get_heating(t_now_yr))
+                    float(r.get_heating(t_end_yr))
                     for r in radionuclides
                 )
                 F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
