@@ -774,6 +774,13 @@ class AragogRunner:
                 convection=ie.trans_convection,
                 grav_sep=ie.trans_grav_sep,
                 mixing=ie.trans_mixing,
+                # Dilatation (PdV) heating from gravitational separation
+                # and convective mixing (B1, Soucasse §1.2). Sourced from
+                # ``ie.aragog.dilatation`` which the numpy path consumes
+                # at entropy_solver.py:419 via the same field. Without
+                # this, CHILI runs with ``dilatation=true`` would have
+                # the term silently dropped on the JAX RHS path.
+                dilatation=ie.aragog.dilatation,
                 eddy_diff_thermal=float(ie.eddy_diffusivity_thermal),
                 eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
                 kappah_floor=float(ie.kappah_floor),
