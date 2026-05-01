@@ -824,6 +824,14 @@ class AragogRunner:
                     cmb_area=float(getattr(solver, '_cmb_area', 0.0)),
                     core_M=float(getattr(solver, '_core_M', 0.0)),
                     cmb_dr_cmb=float(getattr(solver, '_cmb_dr_cmb', 0.0)),
+                    # U1: UTBL Cardano correction. Static-flag gated;
+                    # off in production CHILI configs, on for SPIDER-
+                    # parity tests. Without this the JAX surface BC
+                    # would diverge from the numpy/SPIDER path when
+                    # param_utbl=True is set.
+                    param_utbl=bool(getattr(bc_cfg, 'param_utbl', False)),
+                    param_utbl_const=float(getattr(
+                        bc_cfg, 'param_utbl_const', 0.0)),
                 )
                 # ── A2: per-step radio + frozen tidal ──
                 # The static heating array carries only the time-
