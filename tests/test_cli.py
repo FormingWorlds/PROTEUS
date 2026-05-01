@@ -39,8 +39,23 @@ def test_version():
 
 
 @pytest.mark.unit
-def test_get():
-    # run PROTEUS get command
+def test_get(monkeypatch):
+    # All `proteus get <subcommand>` paths must dispatch without error.
+    # The downloaders touch the network; replace each with a no-op so the
+    # test stays a pure CLI dispatch check rather than a network smoke test.
+    no_op = lambda *args, **kwargs: True  # noqa: E731
+    for target in (
+        'proteus.utils.data.download_exoplanet_data',
+        'proteus.utils.data.download_massradius_data',
+        'proteus.utils.data.download_surface_albedos',
+        'proteus.utils.data.download_spectral_file',
+        'proteus.utils.data.download_phoenix',
+        'proteus.utils.data.download_muscles',
+        'proteus.utils.data.download_stellar_spectra',
+        'proteus.utils.data.download_stellar_tracks',
+    ):
+        monkeypatch.setattr(target, no_op, raising=False)
+
     response = runner.invoke(cli.get, ['reference'])
     assert response.exit_code == 0
 

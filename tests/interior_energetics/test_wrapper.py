@@ -34,6 +34,7 @@ def _mock_config(
     update_min_interval=100.0,
     update_dtmagma_frac=0.03,
     update_dphi_abs=0.05,
+    update_stale_ceiling=0.0,
     mesh_max_shift=0.05,
     mesh_convergence_interval=10.0,
     num_levels=50,
@@ -44,6 +45,7 @@ def _mock_config(
     config.interior_struct.zalmoxis.update_min_interval = update_min_interval
     config.interior_struct.zalmoxis.update_dtmagma_frac = update_dtmagma_frac
     config.interior_struct.zalmoxis.update_dphi_abs = update_dphi_abs
+    config.interior_struct.zalmoxis.update_stale_ceiling = update_stale_ceiling
     config.interior_struct.zalmoxis.mesh_max_shift = mesh_max_shift
     config.interior_struct.zalmoxis.mesh_convergence_interval = mesh_convergence_interval
     config.planet.temperature_mode = 'isothermal'
@@ -600,6 +602,7 @@ def test_determine_zalmoxis_spider_mesh(tmp_path):
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
     config.planet.temperature_mode = 'isothermal'
+    config.planet.mass_tot = 1.0
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
@@ -613,6 +616,7 @@ def test_determine_zalmoxis_spider_mesh(tmp_path):
             return_value=(3.48e6, mesh_file),
         ),
         patch('proteus.interior_energetics.wrapper.run_interior'),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables'),
     ):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, str(tmp_path))
 
@@ -633,6 +637,7 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
     config.planet.temperature_mode = 'isothermal'
+    config.planet.mass_tot = 1.0
     config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
 
     dirs = {'spider': '/nonexistent/spider'}
@@ -646,6 +651,7 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
             return_value=(3.48e6, None),
         ),
         patch('proteus.interior_energetics.wrapper.run_interior'),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables'),
         caplog.at_level('INFO'),
     ):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')

@@ -984,6 +984,10 @@ def test_try_spider_init_with_mesh(tmp_path):
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
         patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1053,6 +1057,10 @@ def test_try_spider_rho_core_from_zalmoxis(tmp_path):
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
         patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1091,6 +1099,10 @@ def test_try_spider_init_aw(tmp_path):
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
         patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1124,6 +1136,10 @@ def test_try_spider_missing_eos_dir(tmp_path):
     with (
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
     ):
         with pytest.raises(FileNotFoundError, match='SPIDER EOS directory not found'):
             _try_spider(
@@ -1148,6 +1164,10 @@ def test_try_spider_missing_melting_curves(tmp_path):
     with (
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', '/nonexistent/mc'),
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
     ):
         with pytest.raises(FileNotFoundError, match='SPIDER phase boundary file'):
             _try_spider(
@@ -1179,6 +1199,10 @@ def test_try_spider_eos_fallback_to_local(tmp_path):
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
         patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = _try_spider(
@@ -1214,6 +1238,10 @@ def test_try_spider_subprocess_timeout(tmp_path):
         patch(
             'proteus.interior_energetics.spider.sp.run',
             side_effect=sub.TimeoutExpired(cmd='spider', timeout=60),
+        ),
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
         ),
     ):
         result = _try_spider(
@@ -1887,6 +1915,10 @@ def test_try_spider_heat_radiogen(tmp_path):
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
         patch('proteus.interior_energetics.spider.sp.run') as mock_run,
+        patch(
+            'proteus.interior_energetics.common.compute_initial_entropy',
+            return_value=3000.0,
+        ),
         patch(
             'proteus.interior_energetics.spider.radnuc_data',
             {

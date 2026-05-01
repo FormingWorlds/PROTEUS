@@ -87,14 +87,18 @@ def test_super_earth_no_longer_raises_earth_window_error(mass_tot, caplog):
         logger='fwl.proteus.interior_energetics.common',
     )
     _call_and_swallow_downstream(cfg)
-    # The NL20 fallback log must appear regardless of downstream success
+    # The Noack & Lasbleis (2020) fallback log must appear regardless
+    # of downstream success.
     text = '\n'.join(rec.message for rec in caplog.records)
     assert (
-        'NL20 mass-aware fallback' in text
-    ), f'NL20 log line missing for mass_tot={mass_tot} M_Earth: {text}'
+        'Noack & Lasbleis (2020) mass-aware fallback' in text
+    ), (
+        f'Noack & Lasbleis (2020) log line missing for '
+        f'mass_tot={mass_tot} M_Earth: {text}'
+    )
     assert (
         f'mass_tot={mass_tot:.2f} M_Earth' in text
-    ), f'Mass not echoed in NL20 log line: {text}'
+    ), f'Mass not echoed in Noack & Lasbleis (2020) log line: {text}'
 
 
 def test_NL20_log_lines_pcmb_scales_with_mass(caplog):

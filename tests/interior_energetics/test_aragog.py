@@ -38,6 +38,14 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.trans_mixing = True
     config.interior_energetics.aragog.dilatation = False
     config.interior_energetics.aragog.atol_temperature_equivalent = 0.01
+    config.interior_energetics.aragog.core_bc = 'energy_balance'
+    config.interior_energetics.aragog.phase_smoothing = 'tanh'
+    config.interior_energetics.aragog.solver_method = 'radau'
+    config.interior_energetics.aragog.use_jax_jacobian = False
+    config.interior_energetics.aragog.scalar_gravity_override = False
+    config.interior_energetics.aragog.jax = False
+    config.interior_energetics.spider.matprop_smooth_width = 0.0
+    config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False
     config.interior_energetics.heat_tidal = False
     config.planet.tsurf_init = 4000.0
