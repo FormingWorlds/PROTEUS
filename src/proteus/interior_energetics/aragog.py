@@ -202,8 +202,8 @@ class AragogRunner:
         #   'quasi_steady'   (alpha-factor approximation)
         #   'gradient'       (gradient-based state)
         #   'bower2018'      (EXPERIMENTAL, not recommended)
-        aragog_cfg = getattr(config.interior_energetics, 'aragog', None)
-        core_bc_str = getattr(aragog_cfg, 'core_bc', 'energy_balance')
+        # Validation lives on the attrs schema (config._interior.Aragog).
+        core_bc_str = config.interior_energetics.aragog.core_bc
         if core_bc_str not in ('quasi_steady', 'energy_balance', 'gradient', 'bower2018'):
             logger.warning(
                 'Unknown core_bc=%r, falling back to quasi_steady',
@@ -314,15 +314,9 @@ class AragogRunner:
             tidal=config.interior_energetics.heat_tidal,
             tidal_array=interior_o.tides,
             kappah_floor=config.interior_energetics.kappah_floor,
-            phase_smoothing=getattr(
-                config.interior_energetics.aragog, 'phase_smoothing', 'tanh'
-            ),
-            solver_method=getattr(
-                config.interior_energetics.aragog, 'solver_method', 'radau'
-            ),
-            use_jax_jacobian=getattr(
-                config.interior_energetics.aragog, 'use_jax_jacobian', False
-            ),
+            phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
+            solver_method=config.interior_energetics.aragog.solver_method,
+            use_jax_jacobian=config.interior_energetics.aragog.use_jax_jacobian,
         )
 
         # Define initial conditions for prescribing temperature profile
@@ -775,9 +769,7 @@ class AragogRunner:
                 grain_size=ie.grain_size,
                 k_solid=float(ie.solid_cond),
                 k_liquid=float(ie.melt_cond),
-                matprop_smooth_width=float(
-                    getattr(ie.spider, 'matprop_smooth_width', 0.0)
-                ),
+                matprop_smooth_width=float(ie.spider.matprop_smooth_width),
                 conduction=ie.trans_conduction,
                 convection=ie.trans_convection,
                 grav_sep=ie.trans_grav_sep,
@@ -786,9 +778,7 @@ class AragogRunner:
                 eddy_diff_chemical=float(ie.eddy_diffusivity_chemical),
                 kappah_floor=float(ie.kappah_floor),
                 bottom_up_grav_sep=True,
-                phase_smoothing=getattr(
-                    ie.aragog, 'phase_smoothing', 'tanh'
-                ),
+                phase_smoothing=ie.aragog.phase_smoothing,
                 # Width matches hardcoded 1e-2 in numpy entropy_state.py
                 # _spider_get_smoothing call sites (not matprop_smooth_width,
                 # which is a separate SPIDER material-property blend).

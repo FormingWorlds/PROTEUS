@@ -1864,9 +1864,7 @@ def zalmoxis_solver(
     # identical to the pre-1c.1 scalar-g code path. Avoids having to
     # pin the aragog submodule back to 8fc5072 for a scalar-g control
     # run.
-    scalar_g_override = getattr(
-        config.interior_energetics.aragog, 'scalar_gravity_override', False
-    )
+    scalar_g_override = config.interior_energetics.aragog.scalar_gravity_override
     if scalar_g_override:
         g_scalar = float(hf_row.get('gravity', 9.81))
         mantle_gravity_out = np.full_like(mantle_gravity, g_scalar)
