@@ -631,8 +631,10 @@ def GetHelpfileKeys():
     # element mass ratios
     for e1 in element_list:
         for e2 in element_list:
+            # do not add reversed ratios
             if (e1 == e2) or (f'{e1}/{e2}_atm' in keys):
                 continue
+            # add ratio of e2 to e1 (e.g. C/O, but not O/C)
             keys.append(f'{e2}/{e1}_atm')
 
     # Atmospheric escape
