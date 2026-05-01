@@ -271,11 +271,9 @@ def compute_initial_entropy(
             # First-call fallback: hf_row['P_cmb'] is not yet populated.
             # Use a Noack & Lasbleis (2020) mass-aware estimate so super-
             # Earth runs do not anchor to the Earth-like 135 GPa value.
-            # The previous hardcoded 135 GPa fallback misplaced the IC
-            # entropy by several percent for 3-10 M_Earth and was hard-
-            # rejected at the validator; the NL20 estimate is accurate
-            # to within ~5% across 0.5-10 M_Earth so this branch is now
-            # safe for the full mass range.
+            # The Noack & Lasbleis (2020) estimate is accurate to within
+            # ~5% across 0.5-10 M_Earth so this branch is safe for the
+            # full mass range.
             from proteus.utils.structure_estimate import estimate_P_cmb_NL20
             mtot = float(getattr(config.planet, 'mass_tot', 1.0))
             struct_mod = getattr(config.interior_struct, 'module', 'unknown')
@@ -285,8 +283,9 @@ def compute_initial_entropy(
                 str(config.interior_struct.core_frac_mode),
             )
             log.warning(
-                '%s: hf_row["P_cmb"] missing or non-positive; using NL20 '
-                'mass-aware fallback P_cmb=%.1f GPa (mass_tot=%.2f M_Earth). '
+                '%s: hf_row["P_cmb"] missing or non-positive; using '
+                'Noack & Lasbleis (2020) mass-aware fallback P_cmb=%.1f GPa '
+                '(mass_tot=%.2f M_Earth). '
                 "interior_struct.module=%r does not populate P_cmb before "
                 'the IC is set. For best accuracy switch to '
                 "module='zalmoxis' so a real structure solve populates "

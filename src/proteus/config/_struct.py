@@ -155,14 +155,15 @@ class Zalmoxis:
     equilibrate_max_iter: int = field(default=15, validator=ge(1))
     equilibrate_tol: float = field(default=0.01, validator=gt(0))
 
-    # Structure solver assumes a dry mantle (no dissolved volatile components
-    # mixed into the mantle EOS via VolatileProfile). Stage 1 phase-aware
-    # coupling forces this to True so the structure surface depends only on
-    # the canonical PALEOS solid+liquid mantle tables and the core EOS.
-    # Volatile partitioning still happens in the outgassing module; this
-    # flag only controls whether dissolved volatile mass shifts the
-    # structure-side EOS density / mixing.
-    dry_mantle: bool = field(default=False)
+    # Structure solver assumes a dry mantle (no dissolved volatile
+    # components mixed into the mantle EOS via VolatileProfile) by default.
+    # The structure surface then depends only on the canonical solid +
+    # liquid mantle tables and the core EOS. Volatile partitioning still
+    # happens in the outgassing module; this flag only controls whether
+    # dissolved volatile mass shifts the structure-side EOS density /
+    # mixing. Set to False to enable phi-aware volatile mixing in the
+    # mantle density.
+    dry_mantle: bool = field(default=True)
 
     # SPIDER P-S table resolution (generated from PALEOS)
     lookup_nP: int = field(default=1350, validator=ge(100))
@@ -173,11 +174,12 @@ class Zalmoxis:
     miscibility_max_iter: int = field(default=10, validator=ge(1))
     miscibility_tol: float = field(default=0.01, validator=gt(0))
 
-    # Zalmoxis JAX+diffrax structure path (Step 0-8 + Event, landed 2026-04-23).
-    # Defaults off for bit-identical behaviour with the numpy path.
-    use_jax: bool = field(default=False)
-    # Anderson Type-II Picard acceleration on the density loop
-    # (landed 2026-04-23). Defaults off; only effective when use_jax=True.
+    # Zalmoxis JAX + diffrax structure path. Default on; the numpy path
+    # is selectable for bit-identical reproduction of the legacy
+    # trajectory or for systems without a JAX-compatible backend.
+    use_jax: bool = field(default=True)
+    # Anderson Type-II Picard acceleration on the density loop.
+    # Default off; only effective when use_jax=True.
     use_anderson: bool = field(default=False)
 
     # Outer mass-radius solver: 'picard' (damped fixed-point, default,
