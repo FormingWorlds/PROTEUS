@@ -7,7 +7,7 @@ seed = 42
 logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "bayesopt_infer_sn_ucb_5"
+output = "bayesopt_infer_sn"
 
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "output/bayesopt_sn/init_coupler.toml"
@@ -17,9 +17,9 @@ init_samps = 3        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
-n_workers  = 5        # Number of parallel workers
+n_workers  = 10        # Number of parallel workers
 kernel     = "MAT3/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
-acqf       = "UCB"  # Acquisition function, "UCB" | "LogEI" | "E-LogEI"
+acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "E-LogEI"
 n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
@@ -38,14 +38,14 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 # Target observables to match by optimisation...
 
 # helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_sn/runtime_helpfile.csv
-# extracted at index: 279, time: 1.000e+09 years
+# extracted at index: 236, time: 1.000e+09 years
 [observables]
-"M_planet" = 2.0878751633e+25
-"R_obs" = 1.0690343285e+07
-"T_obs" = 4.4486323459e+02
-"atm_kg_per_mol" = 6.5551133912e-03
-"C/O_atm" = 2.8249145790e+00
-"S/O_atm" = 5.7025016188e+00
+"M_planet" = 2.0878022522e+25
+"R_obs" = 1.0756639644e+07
+"T_obs" = 4.5209427297e+02
+"atm_kg_per_mol" = 6.1910741906e-03
+"C/O_atm" = 2.9055513465e+00
+"S/O_atm" = 4.8701004187e+00
 
 
 # helpfile: /home/harrison/Projects/PROTEUS/output/bayesopt_se/runtime_helpfile.csv
