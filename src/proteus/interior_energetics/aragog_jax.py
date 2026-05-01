@@ -102,7 +102,12 @@ class AragogJAXRunner:
                 config.interior_energetics.eddy_diffusivity_chemical
             ),
             kappah_floor=config.interior_energetics.kappah_floor,
+            matprop_smooth_width=float(
+                config.interior_energetics.spider.matprop_smooth_width
+            ),
             bottom_up_grav_sep=True,
+            phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
+            phase_smoothing_width=0.01,
         )
 
         # Boundary conditions
