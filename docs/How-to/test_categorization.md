@@ -71,7 +71,7 @@ Tests mirror `src/proteus/`. Validation: `bash tools/validate_test_structure.sh`
 ```text
 tests/
 ├── integration/     # test_smoke_*.py, test_integration_*.py, test_aragog_*, test_std_config, etc.
-├── config/, utils/, plot/, star/, orbit/, interior/, escape/, outgas/, observe/, atmos_clim/, atmos_chem/
+├── config/, utils/, plot/, star/, orbit/, interior_struct/, interior_energetics/, escape/, outgas/, observe/, atmos_clim/, atmos_chem/
 ├── grid/, inference/, data/
 ├── test_cli.py, test_init.py
 └── conftest.py      # Shared fixtures (see Test Infrastructure)

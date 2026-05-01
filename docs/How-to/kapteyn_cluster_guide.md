@@ -230,7 +230,7 @@ To resolve this issue:
 3. Delete the `socrates/` directory using `rm -r socrates/`
 4. Run the `./tools/get_socrates.sh` command to download SOCRATES again, ensuring this is done OUTSIDE of any conda environment.
 5. Execute the `cat socrates/set_rad_env` command to verify that SOCRATES is pointing to the correct NetCDF version (i.e. the NetCDF version installed on the Kapteyn cluster system).
-6. Finally, run a PROTEUS simulation using the `default.toml` configuration file to confirm it is working correctly.
+6. Finally, run a PROTEUS simulation using the `dummy.toml` configuration file to confirm it is working correctly.
 
 ### Error reporting
 

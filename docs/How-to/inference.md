@@ -62,9 +62,9 @@ n_samples  = 1000     # Raw samples for acquisition optimization
 
 # Parameters to optimize (with bounds)
 [parameters]
-"struct.mass_tot" = [0.7, 3.0]
-"struct.corefrac" = [0.3, 0.9]
-"delivery.elements.H_ppmw" = [6e3, 2e4]
+"planet.mass_tot" = [0.7, 3.0]
+"interior_struct.core_frac" = [0.3, 0.9]
+"planet.elements.H_ppmw" = [6e3, 2e4]
 "outgas.fO2_shift_IW" = [-3.0, 5.0]
 
 # Target observables to match by optimisation

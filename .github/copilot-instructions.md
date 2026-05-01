@@ -263,7 +263,7 @@ pre-commit install -f
   - `proteus.py` - Core `Proteus` class
   - `doctor.py` - Environment diagnostics (`proteus doctor`)
   - `config/` - Configuration system (TOML parsing, validation)
-  - `atmos_clim/`, `atmos_chem/`, `escape/`, `interior/`, `outgas/`, `observe/`, `orbit/`, `star/` - Physics module wrappers
+  - `atmos_clim/`, `atmos_chem/`, `escape/`, `interior_struct/`, `interior_energetics/`, `outgas/`, `observe/`, `orbit/`, `star/` - Physics module wrappers
   - `utils/` - Utilities (data, logging, plotting, helpers)
   - `grid/`, `inference/`, `plot/` - Specialized functionality
 
