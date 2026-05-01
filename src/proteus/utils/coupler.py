@@ -583,6 +583,7 @@ def GetHelpfileKeys():
         'F_xuv',            # incoming XUV radiation flux [W m-2]
         'F_tidal',          # tidal heat flux arising at surface [W m-2]
         'F_radio',          # radiogenic heat flux arising at surface [W m-2]
+        'F_dil',            # dilatation (PdV) heat flux at surface [W m-2]
 
         # Planet interior properties
         'gravity',          # surface gravity [m s-2]

@@ -1584,17 +1584,43 @@ class AragogRunner:
             out.status,
         )
 
-        # Split total heating into radiogenic and tidal components.
-        # SPIDER reports these separately (Hradio_s, Htidal_s integrated
-        # over cell masses). Aragog's F_heat_total is the combined flux.
-        # Recompute F_tidal from the tidal array so F_radio = total - tidal.
+        # Split total heating into radiogenic, tidal, and dilatation
+        # components. SPIDER reports radio and tidal separately
+        # (Hradio_s, Htidal_s integrated over cell masses). Aragog's
+        # ``out.F_heat_total`` is the combined flux summed over ALL
+        # internal sources, which post-B1 (aragog 4d30b03) includes
+        # dilatation H_dil whenever
+        # ``ie.aragog.dilatation = true`` is set.
+        #
+        # The pre-audit code computed ``F_radio = F_heat_total - F_tidal``
+        # which silently bundled H_dil into the F_radio column at the
+        # crystallisation front. Compute F_radio analytically from the
+        # radionuclides at the current sim time and back out F_dil as
+        # the residual, so the helpfile column for each source is
+        # physically correct.
+        area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
         F_tidal = 0.0
         if interior_o is not None and hasattr(interior_o, 'tides'):
             tides = np.asarray(interior_o.tides)
             if tides.size > 0 and np.any(tides > 0):
-                area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
                 F_tidal = float(np.dot(tides[:len(out.mass_stag)], out.mass_stag)) / area_surf
-        F_radio = max(0.0, out.F_heat_total - F_tidal)
+        F_radio = 0.0
+        solver_obj = (
+            getattr(interior_o, 'aragog_solver', None)
+            if interior_o is not None else None
+        )
+        if solver_obj is not None:
+            radionuclides = getattr(
+                solver_obj.parameters, 'radionuclides', []
+            )
+            if radionuclides:
+                t_now_yr = float(hf_row.get('Time', 0.0))
+                H_radio_per_kg = sum(
+                    float(r.get_heating(t_now_yr))
+                    for r in radionuclides
+                )
+                F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
+        F_dil = max(0.0, out.F_heat_total - F_radio - F_tidal)
 
         return {
             'M_mantle': out.M_mantle,
@@ -1617,6 +1643,7 @@ class AragogRunner:
             'Cp_eff': out.Cp_eff,
             'F_radio': F_radio,
             'F_tidal': F_tidal,
+            'F_dil': F_dil,
         }
 
     @staticmethod
