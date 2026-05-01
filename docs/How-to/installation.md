@@ -368,6 +368,3 @@ VULCAN is not available as a standard Python package, so it is installed via a d
 ./tools/get_vulcan.sh
 ```
 
----
-
-*For the legacy user install method (deprecated), see the [User install](user_install.md) page.*

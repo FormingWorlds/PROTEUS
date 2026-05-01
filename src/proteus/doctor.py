@@ -9,8 +9,13 @@ from typing import Callable
 import click
 import requests
 from attr import dataclass
+from packaging.version import Version
 
-from proteus.utils.coupler import _get_agni_version, get_proteus_directories
+from proteus.utils.coupler import (
+    _get_agni_version,
+    _get_socrates_version,
+    get_proteus_directories,
+)
 
 DIRS = get_proteus_directories()
 
@@ -24,20 +29,30 @@ DEFAULT_STYLE = {'fg': 'yellow'}
 class BasePackage:
     name: str
 
-    def current_version(self) -> str: ...
+    def current_version(self) -> Version: ...
 
-    def latest_version(self) -> str: ...
+    def latest_version(self) -> Version: ...
 
     def get_status_message(self) -> str:
         try:
             current_version = self.current_version()
             latest_version = self.latest_version()
+
         except BaseException as exc:
-            message = click.style(str(exc), **ERROR_STYLE)
+            message = click.style(f'{exc.__class__.__name__} - {exc}', **ERROR_STYLE)
+
         else:
-            if current_version != latest_version:
+            if latest_version > current_version:
                 message = click.style(
                     f'Update available {current_version} -> {latest_version}', fg='yellow'
+                )
+            elif latest_version < current_version:
+                message = click.style(
+                    (
+                        f'Local version {current_version} is newer than latest release '
+                        f'{latest_version}'
+                    ),
+                    **DEFAULT_STYLE,
                 )
             else:
                 message = click.style('ok', **OK_STYLE)
@@ -47,15 +62,13 @@ class BasePackage:
 
 
 class PythonPackage(BasePackage):
-    def current_version(self) -> str:
-        return importlib.metadata.version(self.name)
+    def current_version(self) -> Version:
+        return Version(importlib.metadata.version(self.name))
 
-    def latest_version(self) -> str:
+    def latest_version(self) -> Version:
         response = requests.get(f'https://pypi.org/pypi/{self.name}/json')
-        if not response.ok:
-            response.raise_for_status()
-
-        return response.json()['info']['version']
+        response.raise_for_status()
+        return Version(response.json()['info']['version'])
 
 
 @dataclass
@@ -63,21 +76,22 @@ class GitPackage(BasePackage):
     owner: str
     version_getter: Callable
 
-    def current_version(self) -> str:
+    def current_version(self) -> Version:
         try:
-            return self.version_getter()
+            return Version(self.version_getter())
         except FileNotFoundError as exc:
             raise PackageNotFoundError(f'{self.name} is not installed.') from exc
 
-    def latest_version(self) -> str:
+    def latest_version(self) -> Version:
         response = requests.get(
             f'https://api.github.com/repos/{self.owner}/{self.name}/releases/latest'
         )
-        return response.json()['tag_name']
+        response.raise_for_status()
+        return Version(response.json()['tag_name'])
 
 
 PACKAGES = (
-    PythonPackage(name='aragog'),
+    PythonPackage(name='fwl-aragog'),
     PythonPackage(name='fwl-calliope'),
     PythonPackage(name='fwl-janus'),
     PythonPackage(name='fwl-proteus'),
@@ -85,6 +99,9 @@ PACKAGES = (
     PythonPackage(name='fwl-zephyrus'),
     PythonPackage(name='fwl-zalmoxis'),
     GitPackage(name='AGNI', owner='nichollsh', version_getter=partial(_get_agni_version, DIRS)),
+    GitPackage(
+        name='SOCRATES', owner='FormingWorlds', version_getter=partial(_get_socrates_version)
+    ),
 )
 
 
@@ -102,16 +119,19 @@ VARIABLES = (
     'FWL_DATA',
     'RAD_DIR',
     'ZALMOXIS_ROOT',
+    'FC_DIR',
+    'PYTHON_JULIAPKG_EXE',
+    'LA_DIR',
 )
 
 
 def doctor_entry():
-    click.secho('Packages', **HEADER_STYLE)
-    for package in PACKAGES:
-        message = package.get_status_message()
-        click.echo(message)
-
-    click.secho('\nEnvironment variables', **HEADER_STYLE)
+    click.secho('Environment variables', **HEADER_STYLE)
     for var in VARIABLES:
         message = get_env_var_status_message(var)
+        click.echo(message)
+
+    click.secho('\nPackages', **HEADER_STYLE)
+    for package in PACKAGES:
+        message = package.get_status_message()
         click.echo(message)

@@ -76,6 +76,22 @@ def janus_escape_atmosphere(instance, attribute, value):
         )
 
 
+def boundary_requires_fixed_surface_state(instance, attribute, value):
+    # Boundary interior assumes fixed surface state coupling.
+    if (instance.interior.module == 'boundary') and (instance.atmos_clim.surf_state != 'fixed'):
+        raise ValueError(
+            "Must set atmos_clim.surf_state='fixed' when interior.module='boundary'"
+        )
+
+
+def boundary_zalmoxis_incompatible(instance, attribute, value):
+    # Boundary interior module cannot be used with zalmoxis structure module.
+    if (instance.interior.module == 'boundary') and (instance.struct.module == 'zalmoxis'):
+        raise ValueError(
+            'Boundary interior module cannot currently be used with zalmoxis structure module'
+        )
+
+
 @define
 class Config:
     """Root config parameters.
@@ -117,7 +133,13 @@ class Config:
     atmos_clim: AtmosClim
     atmos_chem: AtmosChem
     escape: Escape = field(validator=(spada_zephyrus,))
-    interior: Interior = field(validator=(tides_enabled_orbit,))
+    interior: Interior = field(
+        validator=(
+            tides_enabled_orbit,
+            boundary_requires_fixed_surface_state,
+            boundary_zalmoxis_incompatible,
+        )
+    )
     outgas: Outgas
     delivery: Delivery
     observe: Observe
