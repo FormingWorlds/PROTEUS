@@ -821,40 +821,46 @@ class AragogRunner:
                     core_M=float(getattr(solver, '_core_M', 0.0)),
                     cmb_dr_cmb=float(getattr(solver, '_cmb_dr_cmb', 0.0)),
                 )
-                # Heating: sum radiogenic decay (uniform per-cell, frozen
-                # at the solve start_time) plus tidal_array. The numpy
-                # path (aragog entropy_state.update) recomputes radio at
-                # every internal CVODE step, but radionuclide half-lives
-                # (K40: 1.25 Gyr, Th232: 14 Gyr, U235: 0.7 Gyr,
-                # U238: 4.5 Gyr) are >> any coupling-interval length
-                # (≤ kyr), so freezing radio at t_start is accurate to
-                # O(dt/half_life) ~ 1e-6 to 1e-9 relative.
-                H_radio = 0.0
-                radionuclides = getattr(
-                    solver.parameters, 'radionuclides', []
-                )
-                if radionuclides:
-                    t_start_yr = float(solver.parameters.solver.start_time)
-                    for r in radionuclides:
-                        H_radio += float(r.get_heating(t_start_yr))
-                heating_live = jnp.full(n_stag, H_radio)
+                # ── A2: per-step radio + frozen tidal ──
+                # The static heating array carries only the time-
+                # independent contribution (tidal). Per-isotope radio
+                # params are passed separately and evaluated inside the
+                # JAX trace at the live integrator time, restoring
+                # verify_jax_vs_numpy_rhs parity at all mid-step times.
+                heating_static = jnp.zeros(n_stag)
                 tidal_arr = np.asarray(
                     getattr(solver.parameters.energy, 'tidal_array', [0.0])
                 )
                 if tidal_arr.size == n_stag:
-                    heating_live = heating_live + jnp.asarray(tidal_arr)
+                    heating_static = jnp.asarray(tidal_arr)
                 elif tidal_arr.size == 1 and tidal_arr[0] != 0.0:
-                    heating_live = heating_live + float(tidal_arr[0])
+                    heating_static = jnp.full(n_stag, float(tidal_arr[0]))
+
+                radionuclides = getattr(
+                    solver.parameters, 'radionuclides', []
+                )
+                if radionuclides:
+                    radio_isotope_params = (
+                        np.array([float(r.heat_production) for r in radionuclides]),
+                        np.array([float(r.abundance) for r in radionuclides]),
+                        np.array([float(r.concentration) for r in radionuclides]),
+                        np.array([float(r.t0_years) for r in radionuclides]),
+                        np.array([float(r.half_life_years) for r in radionuclides]),
+                    )
+                else:
+                    radio_isotope_params = ()
+
                 rhs_fn, jac_fn, _info = build_jax_rhs_and_jacobian(
                     eos_jax,
                     params_jax,
                     mesh_jax,
                     bc_jax_live,
-                    np.asarray(heating_live),
+                    np.asarray(heating_static),
                     np.asarray(state_scale),
                     np.asarray(rhs_scale),
                     float(t_ref),
                     core_bc_mode=core_bc_mode,
+                    radio_isotope_params=radio_isotope_params,
                 )
                 return rhs_fn, jac_fn
 
