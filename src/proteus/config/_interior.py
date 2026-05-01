@@ -112,12 +112,16 @@ class Aragog:
         tolerance eliminates the CVODE marginal-stability bifurcation
         at the first dt jump after equilibration.
     core_bc: str
-        Core-mantle boundary condition mode. Default is 'quasi_steady'
-        (v3 alpha-factor heat-flux partition). Valid values:
-          - 'quasi_steady': legacy v3 BC, gives -19% T_core offset vs SPIDER
-          - 'energy_balance': v5 Path A SPIDER bit-parity BC with dSdr_cmb as
-                          a new state variable (mirrors SPIDER bc.c:76-131)
-          - 'bower2018': EXPERIMENTAL tombstone, do not use for production
+        Core-mantle boundary condition mode. Default 'energy_balance'.
+        Valid values:
+          - 'quasi_steady': legacy v3 alpha-factor heat-flux partition;
+                            gives -19% T_core offset vs SPIDER.
+          - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a
+                              new state variable (mirrors SPIDER
+                              bc.c:76-131).
+          - 'gradient': gradient-based state with two boundary entropies
+                        as state variables.
+          - 'bower2018': experimental, do not use for production.
     """
 
     dilatation: bool = field(default=False)
@@ -128,10 +132,19 @@ class Aragog:
     Default 1e-8 matches SPIDER's atol=rtol=1e-8 setting. Empirically (2026-04-16)
     this tightening eliminates the marginal-stability bifurcation observed at the
     iter-9 dt jump that affected runs with atol=3e-7."""
-    core_bc: str = field(default='energy_balance')
-    phase_smoothing: str = field(default='tanh')
+    core_bc: str = field(
+        default='energy_balance',
+        validator=in_(('quasi_steady', 'energy_balance', 'gradient', 'bower2018')),
+    )
+    phase_smoothing: str = field(
+        default='tanh',
+        validator=in_(('tanh', 'cubic_hermite')),
+    )
     """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
-    solver_method: str = field(default='cvode')
+    solver_method: str = field(
+        default='cvode',
+        validator=in_(('cvode', 'radau', 'bdf')),
+    )
     """ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy)."""
     use_jax_jacobian: bool = field(default=False)
     """Option Z: use a JAX-derived analytic Jacobian inside CVODE instead of its
