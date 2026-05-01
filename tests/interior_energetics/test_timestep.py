@@ -35,6 +35,7 @@ def _make_config(
     hysteresis_sfinc: float = 1.1,
     dt_max: float = 1.0e7,
     phi_crit: float = 0.05,
+    max_growth_factor: float = 0.0,
 ):
     """Build a minimal duck-typed config that ``next_step`` reads from.
 
@@ -56,6 +57,7 @@ def _make_config(
         mushy_upper=mushy_upper,
         hysteresis_iters=hysteresis_iters,
         hysteresis_sfinc=hysteresis_sfinc,
+        max_growth_factor=max_growth_factor,
     )
     stop_solid = SimpleNamespace(enabled=True, phi_crit=phi_crit)
     stop_radeqm = SimpleNamespace(enabled=False)
