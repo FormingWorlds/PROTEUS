@@ -1100,12 +1100,6 @@ def _try_spider(
 
         call_sequence.extend(['-radionuclide_names', ','.join(radnuc_names)])
 
-    # Runtime info
-    flags = ''
-    for flag in call_sequence:
-        flags += ' ' + flag
-    # log.debug("SPIDER call sequence: '%s'" % flags)
-
     call_string = ' '.join(call_sequence)
 
     # Environment

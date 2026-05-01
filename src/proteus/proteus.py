@@ -10,7 +10,7 @@ import numpy as np
 
 # ensure juliacall is imported before torch
 # see issue here: https://github.com/pytorch/pytorch/issues/78829
-from juliacall import Main as jl  # noqa
+from juliacall import Main  # noqa: F401
 
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
@@ -36,14 +36,6 @@ from proteus.utils.logs import (
 _IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in (
     '1', 'true', 'yes', 'on'
 )
-
-# Set number of OpenMP threads used by the SciPy matrix solver
-#     This primarily affects VULCAN, but also Aragog.
-#     Not setting this variable will allow SciPy to use all available CPU cores,
-#     which can actually slow down performance. Choosing 4 is safe, as this is the limit
-#     on GitHub runners, and is reasonable for desktop PCs and interactive servers.
-# os.environ["OMP_NUM_THREADS"] = "4"
-
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
