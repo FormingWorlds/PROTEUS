@@ -217,7 +217,12 @@ class AragogJAXRunner:
         )
 
         if not result.success:
-            logger.error('JAX Aragog solver failed (steps=%d)', result.n_steps)
+            t_now = float(hf_row.get('Time', 0.0))
+            raise RuntimeError(
+                f'JAX Aragog solver failed: t_final={float(result.t_final):.3e} yr, '
+                f'steps={result.n_steps} at t={t_now:.3e} yr. Wrapper retry-ladder '
+                f'will engage.'
+            )
 
         # Save entropy for next step
         interior_o._last_entropy = np.asarray(result.S_final)
