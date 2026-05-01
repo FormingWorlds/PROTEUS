@@ -22,6 +22,7 @@ proteus start -c [cfgfile]
 ```
 Where `[cfgfile]` is the path to the required configuration file.
 Pass the flag `--resume` in to resume the simulation from the disk.
+Pass `--deterministic` to pin the JAX/XLA reduction order on top of the always-on BLAS thread pins; use this when a coupled run fails on noise-floor floating-point divergence between launches (see [troubleshooting](troubleshooting.md#numerically-fragile-coupled-runs)).
 
 A good first test is to run the `all_options.toml` config, which is located in the `input` folder:
 
