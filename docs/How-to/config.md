@@ -112,7 +112,7 @@ for ideas of how to set up your config in practice.
 
 ## Elemental delivery and accretion
 
-::: proteus.config._delivery
+::: proteus.config._accretion
     options:
       heading_level: 3
       show_root_heading: False
