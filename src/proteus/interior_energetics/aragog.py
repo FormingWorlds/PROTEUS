@@ -795,7 +795,11 @@ class AragogRunner:
             mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
             n_stag = solver._n_stag
 
-            def factory(state_scale, rhs_scale, t_ref, core_bc_mode):
+            def factory(scales, core_bc_mode):
+                # OQ3 option C: ``scales`` is now an
+                # aragog.jax.nondim.NonDimScales single source of truth.
+                # The legacy 4-arg (state_scale, rhs_scale, t_ref,
+                # core_bc_mode) positional triplet was retired.
                 # Rebuild BoundaryParams from live solver state every
                 # solve() call. PROTEUS updates outer_boundary_value
                 # (F_atm), equilibrium_temperature, and inner_boundary_value
@@ -856,9 +860,7 @@ class AragogRunner:
                     mesh_jax,
                     bc_jax_live,
                     np.asarray(heating_static),
-                    np.asarray(state_scale),
-                    np.asarray(rhs_scale),
-                    float(t_ref),
+                    scales,
                     core_bc_mode=core_bc_mode,
                     radio_isotope_params=radio_isotope_params,
                 )
