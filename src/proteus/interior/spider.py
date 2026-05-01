@@ -1164,7 +1164,6 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     if config.atmos_clim.prevent_warming:
         output['F_int'] = max(1.0e-8, output['F_int'])
 
-    # Boundary layer thickness (constant value from config)
     output['boundary_layer_thickness'] = config.atmos_clim.surface_d
 
     # Check NaNs

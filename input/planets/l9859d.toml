@@ -57,7 +57,8 @@ version = "2.0"
         rot_period = 77.5       # rotation period
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 2.5     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
+        star_name   = "l-98-59"
+        spectrum_source = "muscles"
 
 
 [orbit]
