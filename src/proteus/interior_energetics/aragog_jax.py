@@ -92,12 +92,8 @@ class AragogJAXRunner:
         interior_o._jax_params = PhaseParams(
             phi_rheo=config.interior_energetics.rfront_loc,
             phi_width=config.interior_energetics.rfront_wid,
-            viscosity_solid=10.0 ** float(
-                config.interior_energetics.solid_log10visc
-            ),
-            viscosity_liquid=10.0 ** float(
-                config.interior_energetics.melt_log10visc
-            ),
+            viscosity_solid=10.0 ** float(config.interior_energetics.solid_log10visc),
+            viscosity_liquid=10.0 ** float(config.interior_energetics.melt_log10visc),
             grain_size=config.interior_energetics.grain_size,
             k_solid=float(config.interior_energetics.solid_cond),
             k_liquid=float(config.interior_energetics.melt_cond),
@@ -105,16 +101,10 @@ class AragogJAXRunner:
             convection=config.interior_energetics.trans_convection,
             grav_sep=config.interior_energetics.trans_grav_sep,
             mixing=config.interior_energetics.trans_mixing,
-            eddy_diff_thermal=float(
-                config.interior_energetics.eddy_diffusivity_thermal
-            ),
-            eddy_diff_chemical=float(
-                config.interior_energetics.eddy_diffusivity_chemical
-            ),
+            eddy_diff_thermal=float(config.interior_energetics.eddy_diffusivity_thermal),
+            eddy_diff_chemical=float(config.interior_energetics.eddy_diffusivity_chemical),
             kappah_floor=config.interior_energetics.kappah_floor,
-            matprop_smooth_width=float(
-                config.interior_energetics.spider.matprop_smooth_width
-            ),
+            matprop_smooth_width=float(config.interior_energetics.spider.matprop_smooth_width),
             bottom_up_grav_sep=True,
             phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
             phase_smoothing_width=0.01,
@@ -270,7 +260,15 @@ class AragogJAXRunner:
         T_core = float(T[0])
         mass = rho * vol
         M_mantle = float(mass.sum())
-        Phi_global = float(np.dot(phi, vol) / vol.sum())
+        # Mass-weighted melt fraction = M_mantle_liquid / M_mantle.
+        # Matches the formulation in aragog/src/aragog/solver/
+        # entropy_solver.py:get_state(); volume-weighting silently
+        # froze Phi_global in mass-coordinate meshes (verified
+        # 2026-05-02 in output/verify_dilon_phicap005.v3_helpfile_
+        # frozen) and broke PROTEUS's stop / structure-update logic.
+        Phi_global = (
+            float(np.dot(phi, mass) / mass.sum()) if mass.sum() > 0.0 else float(phi.mean())
+        )
 
         # Rheological front
         r_basic = np.asarray(mesh.radii_basic)
