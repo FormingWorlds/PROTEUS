@@ -218,6 +218,14 @@ def test_aragog_defaults():
     assert a.backend == 'jax'
     assert not hasattr(a, 'jax')
     assert not hasattr(a, 'use_jax_jacobian')
-    import pytest
+    # Strategy B (per-call ΔΦ cap): default 0.0 keeps existing behaviour.
+    assert a.phi_step_cap == pytest.approx(0.0)
+    # Validator must reject negative values.
     with pytest.raises(ValueError):
+        Aragog(phi_step_cap=-0.01)
+    # Positive value persists.
+    assert Aragog(phi_step_cap=0.05).phi_step_cap == pytest.approx(0.05)
+    import pytest as _pt
+
+    with _pt.raises(ValueError):
         Aragog(backend='diffrax')

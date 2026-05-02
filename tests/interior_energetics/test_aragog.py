@@ -43,6 +43,7 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.aragog.solver_method = 'radau'
     config.interior_energetics.aragog.backend = 'numpy'
     config.interior_energetics.aragog.scalar_gravity_override = False
+    config.interior_energetics.aragog.phi_step_cap = 0.0
     config.interior_energetics.spider.matprop_smooth_width = 0.0
     config.interior_energetics.const_properties = False
     config.interior_energetics.heat_radiogenic = False

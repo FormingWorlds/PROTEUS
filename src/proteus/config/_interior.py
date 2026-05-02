@@ -65,9 +65,7 @@ class Spider:
     # ``EntropyPhaseEvaluator`` via ``_PhaseMixedParameters``. Controls
     # the tanh transition between two-phase (Lever Rule) and single-
     # phase material properties near the solidus and liquidus.
-    matprop_smooth_width: float = field(
-        default=1.0e-2, validator=(gt(0), lt(1))
-    )
+    matprop_smooth_width: float = field(default=1.0e-2, validator=(gt(0), lt(1)))
 
 
 def valid_aragog(instance, attribute, value):
@@ -162,6 +160,16 @@ class Aragog:
     the official way to produce a scalar-g control run on the live-coupling
     branch without pinning the aragog submodule back to 8fc5072. False by
     default; set True only when running a paired scalar-g comparison."""
+    phi_step_cap: float = field(default=0.0, validator=ge(0.0))
+    """Per-call ΔΦ cap (Strategy B). When > 0 and at least one staggered cell
+    sits in or near the mushy band at solve() entry, Aragog clamps the
+    integration end_time so the projected per-cell |ΔΦ| over the requested
+    window stays within this cap. The estimate uses |dΦ/dt| at t=start_time
+    scaled by a 0.5 safety factor, and the PROTEUS outer loop sees the
+    truncated achieved time via ``sol.t[-1]``. Default 0.0 (disabled, no
+    behavioural change). Recommended setting for production runs with
+    ``dilatation = true`` is 0.05; the H_dil heat-pump in the mushy zone
+    drives faster Φ-evolution than the static dt cap can contain otherwise."""
 
 
 def valid_interiordummy(instance, attribute, value):

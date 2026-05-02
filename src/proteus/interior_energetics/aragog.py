@@ -130,7 +130,12 @@ class AragogRunner:
         else:
             step_sf = 1.0  # dt scale factor
             return next_step(
-                config, dirs, hf_row, hf_all, step_sf, interior_o=interior_o,
+                config,
+                dirs,
+                hf_row,
+                hf_all,
+                step_sf,
+                interior_o=interior_o,
             )
 
     @staticmethod
@@ -338,6 +343,7 @@ class AragogRunner:
             phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
             solver_method=config.interior_energetics.aragog.solver_method,
             use_jax_jacobian=(config.interior_energetics.aragog.backend == 'jax'),
+            phi_step_cap=config.interior_energetics.aragog.phi_step_cap,
         )
 
         # Define initial conditions for prescribing temperature profile
@@ -398,7 +404,12 @@ class AragogRunner:
         # formulas only, but the EntropySolver still requires an EntropyEOS
         # for mesh construction. Use the bundled SPIDER tables as a dummy.
         if config.interior_energetics.const_properties:
-            spider_submod = Path(__file__).resolve().parent.parent.parent / 'SPIDER' / 'lookup_data' / '1TPa-dK09-elec-free'
+            spider_submod = (
+                Path(__file__).resolve().parent.parent.parent
+                / 'SPIDER'
+                / 'lookup_data'
+                / '1TPa-dK09-elec-free'
+            )
             if spider_submod.is_dir():
                 LOOK_UP_DIR = spider_submod
             else:
@@ -460,6 +471,7 @@ class AragogRunner:
             # files. No-op for shipped PALEOS-2phase entries.
             if twophase_entry and _twophase_key.startswith('PALEOS-API'):
                 from zalmoxis.eos.paleos_api_cache import resolve_registry_entry
+
                 resolve_registry_entry(twophase_entry)
             solid_eos = twophase_entry.get('solid_mantle', {}).get('eos_file', '')
             liquid_eos = twophase_entry.get('melted_mantle', {}).get('eos_file', '')
@@ -653,8 +665,7 @@ class AragogRunner:
             phase='mixed',
             phase_transition_width=float(config.interior_energetics.phase_transition_width),
             grain_size=config.interior_energetics.grain_size,
-            matprop_smooth_width=float(
-                config.interior_energetics.spider.matprop_smooth_width),
+            matprop_smooth_width=float(config.interior_energetics.spider.matprop_smooth_width),
             const_properties=bool(config.interior_energetics.const_properties),
             const_rho=float(config.interior_energetics.const_rho),
             const_Cp=float(config.interior_energetics.const_Cp),
@@ -755,10 +766,7 @@ class AragogRunner:
 
         solver = interior_o.aragog_solver
         if solver is None:
-            logger.warning(
-                "backend='jax' but aragog_solver is None; "
-                'skipping factory install.'
-            )
+            logger.warning("backend='jax' but aragog_solver is None; skipping factory install.")
             return
 
         try:
@@ -771,7 +779,8 @@ class AragogRunner:
         except ImportError as exc:
             logger.warning(
                 'Option Z requested but JAX stack is not importable '
-                '(%s); falling back to FD Jacobian.', exc,
+                '(%s); falling back to FD Jacobian.',
+                exc,
             )
             return
 
@@ -833,7 +842,8 @@ class AragogRunner:
                     emissivity=bc_cfg.emissivity,
                     T_eq=bc_cfg.equilibrium_temperature,
                     inner_bc_type=(
-                        5 if solver._core_bc == 'energy_balance'
+                        5
+                        if solver._core_bc == 'energy_balance'
                         else bc_cfg.inner_boundary_condition
                     ),
                     inner_bc_value=bc_cfg.inner_boundary_value,
@@ -849,8 +859,7 @@ class AragogRunner:
                     # would diverge from the numpy/SPIDER path when
                     # param_utbl=True is set.
                     param_utbl=bool(getattr(bc_cfg, 'param_utbl', False)),
-                    param_utbl_const=float(getattr(
-                        bc_cfg, 'param_utbl_const', 0.0)),
+                    param_utbl_const=float(getattr(bc_cfg, 'param_utbl_const', 0.0)),
                 )
                 # ── A2: per-step radio + frozen tidal ──
                 # The static heating array carries only the time-
@@ -859,17 +868,13 @@ class AragogRunner:
                 # JAX trace at the live integrator time, restoring
                 # verify_jax_vs_numpy_rhs parity at all mid-step times.
                 heating_static = jnp.zeros(n_stag)
-                tidal_arr = np.asarray(
-                    getattr(solver.parameters.energy, 'tidal_array', [0.0])
-                )
+                tidal_arr = np.asarray(getattr(solver.parameters.energy, 'tidal_array', [0.0]))
                 if tidal_arr.size == n_stag:
                     heating_static = jnp.asarray(tidal_arr)
                 elif tidal_arr.size == 1 and tidal_arr[0] != 0.0:
                     heating_static = jnp.full(n_stag, float(tidal_arr[0]))
 
-                radionuclides = getattr(
-                    solver.parameters, 'radionuclides', []
-                )
+                radionuclides = getattr(solver.parameters, 'radionuclides', [])
                 if radionuclides:
                     radio_isotope_params = (
                         np.array([float(r.heat_production) for r in radionuclides]),
@@ -896,12 +901,14 @@ class AragogRunner:
             solver.set_jax_cvode_factory(factory)
             logger.info(
                 'Option Z: JAX CVODE factory installed on aragog solver '
-                '(core_bc=%s, n_stag=%d).', solver._core_bc, n_stag,
+                '(core_bc=%s, n_stag=%d).',
+                solver._core_bc,
+                n_stag,
             )
         except Exception as exc:
             logger.warning(
-                'Option Z factory install failed (%s); falling back to '
-                'FD Jacobian.', exc,
+                'Option Z factory install failed (%s); falling back to FD Jacobian.',
+                exc,
             )
 
     @staticmethod
@@ -1352,13 +1359,22 @@ class AragogRunner:
             logger.info(
                 'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  '
                 'g=%.4f m/s^2  dR_int=%+.3e  dR_core=%+.3e  dg=%+.4f',
-                t_new, R_int_new, R_core_new, g_new, dR_int, dR_core, dg,
+                t_new,
+                R_int_new,
+                R_core_new,
+                g_new,
+                dR_int,
+                dR_core,
+                dg,
             )
         else:
             logger.info(
                 'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  '
                 'g=%.4f m/s^2  (first call)',
-                t_new, R_int_new, R_core_new, g_new,
+                t_new,
+                R_int_new,
+                R_core_new,
+                g_new,
             )
         solver._prev_struct_log = (t_new, R_int_new, R_core_new, g_new)
 
@@ -1403,7 +1419,9 @@ class AragogRunner:
         # Write output to a file (skipped when dt_write suppresses this step)
         if write_data:
             self._write_output_ncdf(
-                dirs['output'], sim_time, out,
+                dirs['output'],
+                sim_time,
+                out,
                 write_diagnostics=getattr(
                     self._config.interior_energetics, 'write_flux_diagnostics', False
                 ),
@@ -1451,7 +1469,9 @@ class AragogRunner:
         # gravity) retry-ladder exhaustion at t=5 yr; see the project memory
         # stage1c_5me_super_earth_progress for the diagnostic trail.
         mass_tot = float(getattr(self._config.planet, 'mass_tot', 1.0) or 1.0)
-        sanity_dT_core = 1500.0 * max(1.0, mass_tot)  # max plausible T_core change per retry [K]
+        sanity_dT_core = 1500.0 * max(
+            1.0, mass_tot
+        )  # max plausible T_core change per retry [K]
 
         # Capture IC for restoration on retry, and pre-call T_core for
         # the sanity check on retry success.
@@ -1511,7 +1531,9 @@ class AragogRunner:
                             'Aragog attempt %d returned status=0 but T_core '
                             'jumped %.1f K (>%.0f K threshold). Treating as '
                             'failure and continuing retry ladder.',
-                            attempt, dT, sanity_dT_core,
+                            attempt,
+                            dT,
+                            sanity_dT_core,
                         )
                         # Fall through to the retry/exhaustion branch below
                     else:
@@ -1544,7 +1566,7 @@ class AragogRunner:
                 # then stays at the cap for further attempts. dt continues
                 # halving so additional attempts gain resolution, not looser
                 # tolerance.
-                dt_new = dt_requested * (0.5 ** attempt)
+                dt_new = dt_requested * (0.5**attempt)
                 atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
                 logger.warning(
                     'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
@@ -1588,7 +1610,9 @@ class AragogRunner:
 
     @staticmethod
     def _build_helpfile_output(
-        out: SolverOutput, hf_row: dict, interior_o=None,
+        out: SolverOutput,
+        hf_row: dict,
+        interior_o=None,
     ) -> dict:
         """Build the PROTEUS helpfile dict from SolverOutput.
 
@@ -1630,16 +1654,13 @@ class AragogRunner:
         if interior_o is not None and hasattr(interior_o, 'tides'):
             tides = np.asarray(interior_o.tides)
             if tides.size > 0 and np.any(tides > 0):
-                F_tidal = float(np.dot(tides[:len(out.mass_stag)], out.mass_stag)) / area_surf
+                F_tidal = float(np.dot(tides[: len(out.mass_stag)], out.mass_stag)) / area_surf
         F_radio = 0.0
         solver_obj = (
-            getattr(interior_o, 'aragog_solver', None)
-            if interior_o is not None else None
+            getattr(interior_o, 'aragog_solver', None) if interior_o is not None else None
         )
         if solver_obj is not None:
-            radionuclides = getattr(
-                solver_obj.parameters, 'radionuclides', []
-            )
+            radionuclides = getattr(solver_obj.parameters, 'radionuclides', [])
             if radionuclides:
                 # Sample radio heating at the END of the step. ``out.F_heat_total``
                 # reflects the surface flux at the post-step state (Aragog
@@ -1654,10 +1675,7 @@ class AragogRunner:
                 t_end_yr = float(hf_row.get('Time', 0.0))
                 if interior_o is not None:
                     t_end_yr += float(getattr(interior_o, 'dt', 0.0))
-                H_radio_per_kg = sum(
-                    float(r.get_heating(t_end_yr))
-                    for r in radionuclides
-                )
+                H_radio_per_kg = sum(float(r.get_heating(t_end_yr)) for r in radionuclides)
                 F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
         F_dil = max(0.0, out.F_heat_total - F_radio - F_tidal)
 
@@ -1687,7 +1705,9 @@ class AragogRunner:
 
     @staticmethod
     def _write_output_ncdf(
-        output_dir: str, time: float, out: SolverOutput,
+        output_dir: str,
+        time: float,
+        out: SolverOutput,
         write_diagnostics: bool = False,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
