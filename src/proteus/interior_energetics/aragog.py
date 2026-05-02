@@ -40,6 +40,12 @@ if TYPE_CHECKING:
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
+# Research-only flag. Flip to True to enable the diffrax direct-JAX
+# integration path (`aragog_jax.AragogJAXRunner`). Not production-viable
+# on CHILI Earth runs as of 2026-04-09 (kvaerno3 stalls on first
+# crystallization step). Reserved for autodiff development.
+_DIFFRAX_RESEARCH_ONLY = False
+
 
 def _estimate_T_pot(out) -> float:
     """Estimate potential temperature from SolverOutput.
@@ -85,10 +91,25 @@ class AragogRunner:
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
         self.aragog_solver = interior_o.aragog_solver
         self._config = config
-        self._use_jax = config.interior_energetics.aragog.jax
+        # Diffrax direct-JAX integration is research-only (autodiff
+        # development). It is NOT exposed in the user-facing schema; flip
+        # the constant below to enable for development. The CHILI
+        # crystallization step still defeats kvaerno3 (see
+        # aragog_jax_status memory, 2026-04-09) so production runs must
+        # use the CVODE path via `[interior_energetics.aragog] backend`.
+        self._use_jax = _DIFFRAX_RESEARCH_ONLY
 
-        # Build JAX components if needed (cached on interior_o across steps)
         if self._use_jax:
+            import warnings
+
+            warnings.warn(
+                'Aragog diffrax path enabled via _DIFFRAX_RESEARCH_ONLY; '
+                'this path is not production-ready (kvaerno3 stalls on '
+                'first crystallization step). Use only for autodiff '
+                'development.',
+                RuntimeWarning,
+                stacklevel=2,
+            )
             from proteus.interior_energetics.aragog_jax import AragogJAXRunner
 
             self._jax_runner = AragogJAXRunner(config, dirs, hf_row, hf_all, interior_o)
@@ -316,7 +337,7 @@ class AragogRunner:
             kappah_floor=config.interior_energetics.kappah_floor,
             phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
             solver_method=config.interior_energetics.aragog.solver_method,
-            use_jax_jacobian=config.interior_energetics.aragog.use_jax_jacobian,
+            use_jax_jacobian=(config.interior_energetics.aragog.backend == 'jax'),
         )
 
         # Define initial conditions for prescribing temperature profile
@@ -716,28 +737,26 @@ class AragogRunner:
     def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
         """Install a JAX CVODE callback factory on the solver (option Z).
 
-        Activated only when ``config.interior_energetics.aragog.use_jax_jacobian``
-        is True. Builds the JAX pytrees (EOS, phase, mesh, boundary,
+        Activated only when ``config.interior_energetics.aragog.backend ==
+        'jax'``. Builds the JAX pytrees (EOS, phase, mesh, boundary,
         heating) from PROTEUS config + the initialized solver state
         and registers a factory with the solver. The factory is called
         once per ``solver.solve()`` with the solver's nondim scales and
         returns the ``(rhs_fn, jac_fn)`` pair that CVODE consumes.
 
-        No-op (silent) when the flag is off. When the flag is on but
+        No-op (silent) for backend='numpy'. When backend='jax' but
         JAX import or pytree construction fails, logs a warning and
         leaves the factory unset so the solver falls back to the
         default finite-difference Jacobian path.
         """
-        use_jax_jac = getattr(
-            config.interior_energetics.aragog, 'use_jax_jacobian', False
-        )
+        use_jax_jac = config.interior_energetics.aragog.backend == 'jax'
         if not use_jax_jac:
             return
 
         solver = interior_o.aragog_solver
         if solver is None:
             logger.warning(
-                'use_jax_jacobian=True but aragog_solver is None; '
+                "backend='jax' but aragog_solver is None; "
                 'skipping factory install.'
             )
             return

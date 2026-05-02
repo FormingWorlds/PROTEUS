@@ -215,4 +215,9 @@ def test_aragog_defaults():
     a = Aragog()
     assert a.dilatation is False
     assert a.mass_coordinates is True
-    assert a.jax is False
+    assert a.backend == 'jax'
+    assert not hasattr(a, 'jax')
+    assert not hasattr(a, 'use_jax_jacobian')
+    import pytest
+    with pytest.raises(ValueError):
+        Aragog(backend='diffrax')

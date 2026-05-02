@@ -99,10 +99,17 @@ class Aragog:
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
         at the surface where density is lower, matching SPIDER's mesh.
-    jax: bool
-        Use JAX/diffrax solver backend instead of scipy BDF. Default is False.
-        When True, the entropy ODE is integrated with diffrax Tsit5 instead of
-        scipy solve_ivp (BDF). Requires jax, equinox, and diffrax packages.
+    backend: str
+        ODE backend selector. Default 'jax'.
+          - 'jax'   : CVODE with JAX-derived RHS and JAX analytic Jacobian
+                     (`jax.jacrev`). Recommended for production.
+          - 'numpy' : CVODE with numpy RHS and CVODE finite-difference
+                     Jacobian. Available for development and SPIDER-parity
+                     comparisons; less robust than 'jax' at production
+                     resolution because the FD-Jacobian noise can trip
+                     Aragog's T_core-jump retry guard at tight tolerances.
+        The diffrax direct-JAX integration path is research-only and
+        gated on a code-level flag in `proteus.interior_energetics.aragog`.
     atol_temperature_equivalent: float
         Effective temperature-scale absolute tolerance [K] for Aragog's
         CVODE integrator. Aragog's state variable is entropy (J/kg/K),
@@ -126,7 +133,7 @@ class Aragog:
 
     dilatation: bool = field(default=False)
     mass_coordinates: bool = field(default=True)
-    jax: bool = field(default=False)
+    backend: str = field(default='jax', validator=in_(('numpy', 'jax')))
     atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))
     """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator.
     Default 1e-8 matches SPIDER's atol=rtol=1e-8 setting. Empirically (2026-04-16)
@@ -146,10 +153,6 @@ class Aragog:
         validator=in_(('cvode', 'radau', 'bdf')),
     )
     """ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy)."""
-    use_jax_jacobian: bool = field(default=False)
-    """Option Z: use a JAX-derived analytic Jacobian inside CVODE instead of its
-    default finite-difference approximation. Requires ``solver_method='cvode'``
-    and the JAX/equinox stack. Disabled by default pending Z.4/Z.5 validation."""
     scalar_gravity_override: bool = field(default=False)
     """Stage 1c.4 comparison knob. When True, the external mesh file that
     Zalmoxis writes has its gravity column overwritten with a uniform scalar

@@ -5,7 +5,7 @@ resume = false
 offline = true
 
 [params.out]
-path = "chili_paleos_v1_1_0_3me_150res"
+path = "verify_post_migration_jax_full"
 logging = "INFO"
 plot_fmt = "pdf"
 write_mod = 1
@@ -37,7 +37,7 @@ strict = false
 [params.stop.iters]
 enabled = true
 minimum = 1
-maximum = 1000000
+maximum = 5000
 
 [params.stop.time]
 enabled = true
@@ -114,11 +114,12 @@ visc_thresh = 1000000000.0
 ncalc = 1000
 
 [planet]
-mass_tot = 3.0
-temperature_mode = "adiabatic"
+mass_tot = 1.0
+temperature_mode = "liquidus_super"
+delta_T_super = 500.0
 tsurf_init = 3830.0
-tcmb_init = 9800.0
-tcenter_init = 11100.0
+tcmb_init = 7199.0
+tcenter_init = 6000.0
 f_accretion = 0.04
 f_differentiation = 0.5
 ini_entropy = 3900.0
@@ -253,7 +254,7 @@ tolerance_rel = -1.0
 matprop_smooth_width = 0.01
 
 [interior_energetics.aragog]
-dilatation = false
+dilatation = true
 mass_coordinates = true
 
 atol_temperature_equivalent = 1e-08

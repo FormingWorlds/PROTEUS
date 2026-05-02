@@ -1,8 +1,14 @@
-# JAX Aragog interior module
+# JAX Aragog interior module (research-only)
 #
-# Called by AragogRunner when config.interior_energetics.aragog.jax = True.
-# Delegates the ODE solve to aragog.jax.solver (diffrax). Output
-# uses the same helpfile dict contract as the scipy version.
+# Direct-JAX integration via diffrax. NOT production-ready: the kvaerno3
+# integrator stalls on the first crystallization step in CHILI Earth runs
+# (see aragog_jax_status memory, 2026-04-09). Reserved for autodiff
+# development.
+#
+# Not exposed in the user-facing TOML schema; gated on the module-level
+# `_DIFFRAX_RESEARCH_ONLY` flag in `proteus.interior_energetics.aragog`.
+# For production JAX use, set `[interior_energetics.aragog] backend = "jax"`
+# which selects the CVODE Option-Z path (JAX RHS + JAX analytic Jacobian).
 from __future__ import annotations
 
 import logging
@@ -25,11 +31,15 @@ if TYPE_CHECKING:
 
 
 class AragogJAXRunner:
-    """JAX-based Aragog entropy solver backend.
+    """JAX-based Aragog entropy solver backend (research-only, diffrax).
 
-    Called by AragogRunner when config.interior_energetics.aragog.jax is True.
-    All setup (config, EOS tables, mesh, IC) is done by AragogRunner;
-    this class only handles JAX-specific components and the diffrax solve.
+    Direct-JAX integration via diffrax. Activated only when the module-level
+    ``_DIFFRAX_RESEARCH_ONLY`` constant in ``aragog.py`` is True; not exposed
+    in the user-facing TOML schema. Not production-ready (kvaerno3 stalls on
+    first crystallization step in CHILI Earth runs).
+
+    For production JAX use, the entry point is the CVODE Option-Z path,
+    selected by ``[interior_energetics.aragog] backend = "jax"``.
     """
 
     def __init__(

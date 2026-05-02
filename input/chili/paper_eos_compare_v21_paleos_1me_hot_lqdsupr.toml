@@ -256,12 +256,12 @@ matprop_smooth_width = 0.01
 [interior_energetics.aragog]
 dilatation = false
 mass_coordinates = true
-jax = false
+
 atol_temperature_equivalent = 1e-08
 core_bc = "energy_balance"
 phase_smoothing = "tanh"
 solver_method = "cvode"
-use_jax_jacobian = true
+backend = "jax"
 scalar_gravity_override = false
 
 [interior_energetics.dummy]
