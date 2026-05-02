@@ -1373,11 +1373,14 @@ def run_interior(
 
     # Apply step limiters
     if hf_row['Time'] > 0:
-        # Prevent increasing melt fraction, if enabled
+        # Prevent increasing surface temperature, if enabled.
+        # Phi_global is mass-weighted (= M_liquid / M_mantle) and can transiently
+        # rise during dilatation heat-pump cycles, so a one-way ratchet on it would
+        # trap the helpfile reading below the true integrator state. T_magma is
+        # the strictly monotonic cooling metric.
         T_magma_prev = float(hf_all.iloc[-1]['T_magma'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
         if config.planet.prevent_warming and (interior_o.ic == 2):
-            hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
 
         # Do not allow massive increases to T_surf
