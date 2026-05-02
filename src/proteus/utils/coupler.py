@@ -554,6 +554,7 @@ def GetHelpfileKeys():
         'P_solvus',         # solvus pressure for global_miscibility mode [Pa]
         'T_solvus',         # solvus temperature for global_miscibility mode [K]
         'P_center',         # central pressure from Zalmoxis structure [Pa]
+        'P_cmb',            # core-mantle boundary pressure from Zalmoxis structure [Pa]
         'core_density',     # core density from structure solver [kg m-3]
         'core_heatcap',     # core heat capacity [J kg-1 K-1]
         'X_H2_int',         # H2 mass fraction in interior (sub-Neptune mode) [1]
