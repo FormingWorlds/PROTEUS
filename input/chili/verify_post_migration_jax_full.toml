@@ -164,7 +164,7 @@ eos_dir = "none"
 
 [interior_struct.zalmoxis]
 core_eos = "PALEOS:iron"
-mantle_eos = "PALEOS:MgSiO3"
+mantle_eos = "PALEOS-2phase:MgSiO3"
 ice_layer_eos = "none"
 mushy_zone_factor = 0.8
 mantle_mass_fraction = 0.0
