@@ -1619,6 +1619,26 @@ def update_structure_from_interior(
             dirs['spider_mesh_prev'] = prev_path
         shutil.copy2(current_mesh, prev_path)
 
+    # Atomically capture zalmoxis_output.dat -> .prev BEFORE the call.
+    # zalmoxis_solver also writes .prev (zalmoxis.py:1888) but only if
+    # the call advances past the pre-write checkpoint. When Zalmoxis fails
+    # earlier (e.g. Picard plateau), its in-solver .prev save is skipped and
+    # the on-disk .prev still reflects the call from one iter further back.
+    # The fallback at line ~1768 then restores from this stale .prev,
+    # producing an EOS-vs-mesh mismatch with hf_row's _saved_structure
+    # (which is consistent with the most-recent successful state).
+    # Capturing here unconditionally guarantees .prev == "state at start
+    # of this update_structure_from_interior call" == _saved_structure.
+    _output_zalmoxis_path = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+    if os.path.isfile(_output_zalmoxis_path):
+        try:
+            shutil.copy2(_output_zalmoxis_path, _output_zalmoxis_path + '.prev')
+        except OSError as _exc:
+            log.warning(
+                'Could not capture zalmoxis_output.dat -> .prev pre-call: %s',
+                _exc,
+            )
+
     global _zalmoxis_fail_count
 
     nlev_b = get_nlevb(config)
