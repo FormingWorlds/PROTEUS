@@ -1701,6 +1701,18 @@ class AragogRunner:
             'F_radio': F_radio,
             'F_tidal': F_tidal,
             'F_dil': F_dil,
+            # Energy-conservation diagnostic columns (Aragog A1+A2).
+            # E_state is the EOS-consistent integrated mantle enthalpy
+            # from the precomputed h(P,S) table; F_cmb is the CMB heat
+            # flux signed positive-out-of-core; Q_*_W are mantle-mass-
+            # integrated source powers in watts (not surface-equivalent
+            # fluxes). Cumulative dE_predicted / E_residual columns are
+            # filled later in coupler.ExtendHelpfile from these inputs.
+            'E_state_J': out.E_state,
+            'F_cmb': out.F_cmb,
+            'Q_radio_W': out.Q_radio_total,
+            'Q_dil_W': out.Q_dil_total,
+            'Q_tidal_W': out.Q_tidal_total,
         }
 
     @staticmethod

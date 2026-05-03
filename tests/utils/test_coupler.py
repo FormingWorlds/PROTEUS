@@ -33,6 +33,7 @@ import pytest
 
 from proteus.utils.constants import element_list
 from proteus.utils.coupler import (
+    _SECONDS_PER_YEAR,
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
@@ -42,6 +43,7 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
     _get_current_time,
+    _populate_energy_residual,
 )
 
 # =============================================================================
@@ -917,3 +919,267 @@ def test_helpfile_handles_negative_fluxes():
 
     assert hf['F_int'].iloc[0] == pytest.approx(-50.0)
     assert hf['F_atm'].iloc[0] == pytest.approx(-100.0)
+
+
+# =============================================================================
+# Test: Energy-conservation bookkeeping (_populate_energy_residual)
+# =============================================================================
+
+
+def _aragog_row(
+    *,
+    time_yr: float,
+    E_state_J: float,
+    F_int: float = 0.0,
+    F_cmb: float = 0.0,
+    Q_radio_W: float = 0.0,
+    Q_dil_W: float = 0.0,
+    Q_tidal_W: float = 0.0,
+    R_int: float = 6.371e6,
+    R_core: float = 3.481e6,
+    T_magma: float = 3000.0,
+) -> dict:
+    """Helper: build a ZeroHelpfileRow populated with the columns the
+    energy-residual helper reads. Uses Earth-like radii by default."""
+    row = ZeroHelpfileRow()
+    row['Time'] = time_yr
+    row['E_state_J'] = E_state_J
+    row['F_int'] = F_int
+    row['F_cmb'] = F_cmb
+    row['Q_radio_W'] = Q_radio_W
+    row['Q_dil_W'] = Q_dil_W
+    row['Q_tidal_W'] = Q_tidal_W
+    row['R_int'] = R_int
+    row['R_core'] = R_core
+    row['T_magma'] = T_magma
+    return row
+
+
+@pytest.mark.unit
+def test_helpfile_keys_include_energy_conservation_columns():
+    """The helpfile schema must expose the per-row energy-conservation
+    columns (anchor: E_state_J + per-source breakdown) and the cumulative
+    bookkeeping columns. Catches accidental drift if a future cleanup
+    removes one. F_cmb is a separate flux from F_int and must also be
+    present so the closed-mantle balance can subtract the bottom flux."""
+    keys = GetHelpfileKeys()
+    expected = {
+        'F_cmb',
+        'E_state_J',
+        'Q_radio_W',
+        'Q_dil_W',
+        'Q_tidal_W',
+        'dE_predicted_J',
+        'E_residual_J',
+        'E_residual_frac',
+    }
+    missing = expected - set(keys)
+    assert not missing, f'Energy-conservation keys missing from schema: {missing}'
+
+    # No duplicates: would silently shadow the column on CSV write.
+    assert len(keys) == len(set(keys)), 'Helpfile schema contains duplicate keys'
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_inactive_when_E_state_zero():
+    """Non-Aragog modules leave E_state_J at 0. The bookkeeping helper
+    must short-circuit: residual columns stay at 0.0, NEVER NaN, even
+    when other power columns happen to be populated. NaN would propagate
+    into cumulative sums and silently corrupt downstream rows."""
+    hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_J=0.0))
+    # Even with non-zero F_int, E_state_J=0 must trigger the inactive path.
+    new_row = _aragog_row(time_yr=1.0, E_state_J=0.0, F_int=100.0)
+
+    _populate_energy_residual(hf, new_row)
+
+    assert new_row['dE_predicted_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_frac'] == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_anchor_row_is_zero():
+    """Row 0 of an Aragog run is the anchor: by definition there is no
+    prior state to integrate against, so dE_predicted and the residual
+    must both be exactly 0 even though E_state_J itself is large
+    (~1e31 J for an Earth-mass mantle)."""
+    empty_hf = pd.DataFrame(columns=GetHelpfileKeys())
+    new_row = _aragog_row(time_yr=0.0, E_state_J=1.234e31, F_int=200.0)
+
+    _populate_energy_residual(empty_hf, new_row)
+
+    assert new_row['dE_predicted_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_frac'] == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_closes_for_pure_cooling():
+    """Synthetic closed-mantle physics: F_int = 100 W/m², no other
+    sources, constant area. Trapezoidal integral with constant power is
+    exact, so a self-consistent E_state trajectory (E0 + dE_pred) must
+    yield residual identically zero. The discriminating asymmetric
+    timestep (1 yr then 9 yr) catches off-by-one in which prev-row is
+    used for the trapezoid endpoint."""
+    R_int = 6.0e6
+    A_int = 4.0 * 3.141592653589793 * R_int * R_int
+    F_int = 100.0  # W/m^2, positive = heat loss
+    P = -F_int * A_int  # W, negative = mantle cools
+
+    E0 = 1.0e31
+    t1 = 1.0  # yr
+    t2 = 10.0  # yr (asymmetric step)
+    dt1_s = t1 * _SECONDS_PER_YEAR
+    dt2_s = (t2 - t1) * _SECONDS_PER_YEAR
+
+    E1 = E0 + P * dt1_s
+    E2 = E1 + P * dt2_s
+
+    # Anchor row.
+    row0 = _aragog_row(time_yr=0.0, E_state_J=E0, F_int=F_int, R_int=R_int)
+    hf = CreateHelpfileFromDict(row0)
+
+    # Step 1.
+    row1 = _aragog_row(time_yr=t1, E_state_J=E1, F_int=F_int, R_int=R_int)
+    _populate_energy_residual(hf, row1)
+    hf = ExtendHelpfile(hf, row1)
+
+    # Step 2.
+    row2 = _aragog_row(time_yr=t2, E_state_J=E2, F_int=F_int, R_int=R_int)
+    _populate_energy_residual(hf, row2)
+
+    # Cumulative dE_predicted must match analytic P*dt to FP precision.
+    assert row1['dE_predicted_J'] == pytest.approx(P * dt1_s, rel=1e-12)
+    assert row2['dE_predicted_J'] == pytest.approx(P * (dt1_s + dt2_s), rel=1e-12)
+
+    # Residual must be ~0 (relative to the large dE actual). Tolerance
+    # is FP-cancellation-dominated at this magnitude (E ~ 1e31, dE ~ 1e25),
+    # not bookkeeping-logic-dominated; 1e-10 is still ~5 orders of
+    # magnitude tighter than any physically interesting residual.
+    assert abs(row2['E_residual_J']) < 1e-3 * abs(E2 - E0)
+    assert abs(row2['E_residual_frac']) < 1e-10
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_detects_missing_source_term():
+    """Discriminating test: a 'real' planet receives a strong dilatation
+    heating Q_dil = +1e15 W on top of F_int cooling, so the recorded
+    E_state stays nearly constant (heating ≈ cooling). If the bookkeeping
+    integrand FORGOT to include Q_dil, the predicted dE would be the
+    cooling-only number, and the residual would equal +Q_dil*dt with the
+    correct sign. We assert the helper INCLUDES Q_dil so the residual is
+    near zero. Catches the omission bug directly."""
+    R_int = 6.0e6
+    A_int = 4.0 * 3.141592653589793 * R_int * R_int
+    F_int = 100.0
+    P_cool = -F_int * A_int  # W
+    Q_dil = -P_cool  # W, exactly cancels cooling
+
+    E0 = 5.0e30
+    t1 = 100.0  # yr
+    dt_s = t1 * _SECONDS_PER_YEAR
+    # E_state stays exactly constant because heating cancels cooling.
+    E1 = E0
+
+    row0 = _aragog_row(time_yr=0.0, E_state_J=E0, F_int=F_int, Q_dil_W=Q_dil, R_int=R_int)
+    hf = CreateHelpfileFromDict(row0)
+
+    row1 = _aragog_row(time_yr=t1, E_state_J=E1, F_int=F_int, Q_dil_W=Q_dil, R_int=R_int)
+    _populate_energy_residual(hf, row1)
+
+    # Trapezoidal with both endpoints = 0 power must give dE_pred = 0
+    # to FP precision (cancellation between P_cool and Q_dil is exact).
+    assert row1['dE_predicted_J'] == pytest.approx(0.0, abs=1.0)
+    # E_state is exactly constant, so dE_actual = 0 and residual = 0.
+    assert row1['E_residual_J'] == pytest.approx(0.0, abs=1.0)
+    # Disable Q_dil retroactively in the integrand to verify it would FAIL:
+    # if the helper had not included Q_dil_W, predicted dE would be
+    # P_cool*dt and residual would be +|P_cool|*dt = ~Q_dil*dt.
+    expected_residual_if_buggy = -P_cool * dt_s  # > 0
+    assert expected_residual_if_buggy > 1e25, 'Test setup too weak to discriminate'
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_handles_non_monotonic_time():
+    """PROTEUS dt fallback can produce a step where new Time <= prev Time.
+    In that case the helper must NOT emit a negative dE_predicted (which
+    would corrupt the cumulative sum); it should set this step's
+    increment to zero and leave the residual equal to dE_actual alone."""
+    E0 = 1.0e31
+    row0 = _aragog_row(time_yr=10.0, E_state_J=E0, F_int=200.0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # Non-monotonic step: same time, smaller energy (somehow).
+    E1 = E0 - 1.0e25  # dE_actual = -1e25 J
+    row1 = _aragog_row(time_yr=10.0, E_state_J=E1, F_int=200.0)
+    _populate_energy_residual(hf, row1)
+
+    # dE_pred must not advance (zero increment + zero prior).
+    assert row1['dE_predicted_J'] == pytest.approx(0.0)
+    # Residual = dE_actual - 0.
+    assert row1['E_residual_J'] == pytest.approx(-1.0e25)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
+    """At quiescent steady state, dE_actual can be much smaller than 1 J
+    in absolute value. Naive division would amplify bookkeeping noise to
+    arbitrarily large fractions. The helper floors the divisor at 1 J,
+    so for a tiny dE_actual the fractional residual stays bounded and
+    interpretable. We use E_state_J = 100 J (small but non-zero so the
+    inactive-path guard does NOT trigger) so the 0.5 J perturbation
+    survives float64 cancellation; the floor logic itself is the
+    quantity under test, not the realistic E magnitude."""
+    E0 = 100.0  # J (not realistic; chosen so 0.5 J survives FP)
+    row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
+    hf = CreateHelpfileFromDict(row0)
+
+    # dE_actual = +0.5 J, dE_pred = 0 (no fluxes set).
+    row1 = _aragog_row(time_yr=1.0, E_state_J=E0 + 0.5)
+    _populate_energy_residual(hf, row1)
+
+    # Without flooring this would be 0.5 / 0.5 = 1.0 (huge); with floor
+    # at 1 J the divisor stays >= 1 and the fraction stays within [-1, 1].
+    assert row1['E_residual_J'] == pytest.approx(0.5)
+    assert abs(row1['E_residual_frac']) <= 1.0
+    # Specifically: 0.5 / max(0.5, 1.0) = 0.5.
+    assert row1['E_residual_frac'] == pytest.approx(0.5)
+
+
+@pytest.mark.unit
+def test_populate_energy_residual_F_cmb_uses_core_area_not_int_area():
+    """Closed-mantle balance: F_int * A_int (top) vs F_cmb * A_cmb
+    (bottom). If the helper accidentally used A_int for both, an Earth-
+    like geometry (R_int=6.371e6, R_core=3.481e6) would over-credit the
+    CMB inflow by factor (R_int/R_core)^2 ≈ 3.35. We construct a case
+    where ONLY F_cmb is non-zero and confirm the predicted power matches
+    F_cmb * 4πR_core^2, NOT F_cmb * 4πR_int^2."""
+    R_int = 6.371e6
+    R_core = 3.481e6
+    A_int = 4.0 * 3.141592653589793 * R_int * R_int
+    A_core = 4.0 * 3.141592653589793 * R_core * R_core
+    F_cmb = 50.0  # W/m^2
+
+    E0 = 1.0e31
+    t1 = 100.0
+    dt_s = t1 * _SECONDS_PER_YEAR
+    # Self-consistent trajectory using A_core (the correct area).
+    E1 = E0 + F_cmb * A_core * dt_s
+
+    row0 = _aragog_row(time_yr=0.0, E_state_J=E0, F_cmb=F_cmb, R_int=R_int, R_core=R_core)
+    hf = CreateHelpfileFromDict(row0)
+
+    row1 = _aragog_row(time_yr=t1, E_state_J=E1, F_cmb=F_cmb, R_int=R_int, R_core=R_core)
+    _populate_energy_residual(hf, row1)
+
+    # Residual ~0 confirms helper uses A_core; if it used A_int instead,
+    # the residual would be (A_core - A_int) * F_cmb * dt ≈ -2.4e30 J,
+    # i.e. ~24% of E_state.
+    assert row1['dE_predicted_J'] == pytest.approx(F_cmb * A_core * dt_s, rel=1e-12)
+    assert abs(row1['E_residual_J']) < 1e-6 * abs(E1 - E0)
+    # Sanity check that the failure-mode residual would have been huge:
+    # if the helper had used A_int instead of A_core, residual would be
+    # (A_core - A_int) * F_cmb * dt ≈ -5.6e25 J, large enough to dwarf
+    # the actual residual (~1 J after FP cancellation).
+    bogus_residual = (A_core - A_int) * F_cmb * dt_s
+    assert abs(bogus_residual) > 1e25, 'Test geometry too symmetric to discriminate'
