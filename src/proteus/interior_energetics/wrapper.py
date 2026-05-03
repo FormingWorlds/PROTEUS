@@ -60,6 +60,7 @@ _ZALMOXIS_MASS_ANCHOR_TOL = 3e-3
 _spider_fail_count = 0
 _SPIDER_MAX_CONSECUTIVE_FAILS = 3
 
+
 def reset_run_state() -> None:
     """Reset the module-level consecutive-failure counters.
 
@@ -109,21 +110,13 @@ def update_gravity(hf_row: dict):
 def _prevent_warming_clamp_active(config: Config) -> bool:
     """Return True iff the early T_magma = min(new, prev) ratchet should fire.
 
-    The clamp is enabled by ``planet.prevent_warming`` but is gated off when
-    aragog dilatation heating is active: the heat-pump legitimately raises
-    T_magma during the warming half of each cycle, and a one-way clamp would
-    silently zero that energy and latch T_magma at its first local minimum
-    (see finding_2026_05_03_prevent_warming_clamp_energy_leak.md). The
-    runaway-T fallback elsewhere in run_interior remains active in all cases.
+    The clamp is enabled by ``planet.prevent_warming``. The runaway-T fallback
+    elsewhere in run_interior remains active regardless. The user-facing
+    advisory at config-load time and at run start (see config/_config.py and
+    utils/terminate.py) flags the energy-conservation caveats associated with
+    this clamp.
     """
-    if not config.planet.prevent_warming:
-        return False
-    if (
-        config.interior_energetics.module == 'aragog'
-        and config.interior_energetics.aragog.dilatation
-    ):
-        return False
-    return True
+    return bool(config.planet.prevent_warming)
 
 
 def calculate_core_mass(hf_row: dict, config: Config):
@@ -233,9 +226,7 @@ def _rectangularize_spider_ps_file(src: str, dst: str) -> None:
 
     data = np.genfromtxt(src, skip_header=n_head)
     if data.shape[0] != NX * NY:
-        raise ValueError(
-            f'{src}: header says NX*NY = {NX * NY} rows, file has {data.shape[0]}'
-        )
+        raise ValueError(f'{src}: header says NX*NY = {NX * NY} rows, file has {data.shape[0]}')
 
     # SPIDER convention: P varies fastest (inner), S varies slowest
     # (outer). First NX rows give the canonical P grid, first row of
@@ -299,9 +290,7 @@ def _load_spider_ps_phase_table(
 
     data = np.loadtxt(path, skiprows=n_head)
     if data.shape[0] != NX * NY:
-        raise ValueError(
-            f'{path}: header says NX*NY={NX * NY} rows, file has {data.shape[0]}'
-        )
+        raise ValueError(f'{path}: header says NX*NY={NX * NY} rows, file has {data.shape[0]}')
 
     # Reshape as (NY, NX) since S is outer, P is inner; first row of
     # the reshape is one S slice across all P. Transpose to (NX, NY)
@@ -378,9 +367,7 @@ def _derive_ps_melting_curve(
     """
     pt = np.loadtxt(pt_path, comments='#')
     if pt.ndim != 2 or pt.shape[1] != 2:
-        raise ValueError(
-            f'{pt_path}: expected 2-column (P, T) format, got shape {pt.shape}'
-        )
+        raise ValueError(f'{pt_path}: expected 2-column (P, T) format, got shape {pt.shape}')
     P_target = pt[:, 0]
     T_target = pt[:, 1]
 
@@ -392,7 +379,11 @@ def _derive_ps_melting_curve(
         log.warning(
             'derive_ps_melting %s: %d/%d P points outside EoS P grid [%.3e, %.3e] Pa, '
             'clipped to grid edge',
-            label, n_p_clipped, len(P_target), P_grid[0], P_grid[-1],
+            label,
+            n_p_clipped,
+            len(P_target),
+            P_grid[0],
+            P_grid[-1],
         )
 
     # For each P_target, build T(S) at that P by interpolating the
@@ -438,7 +429,9 @@ def _derive_ps_melting_curve(
         log.warning(
             'derive_ps_melting %s: clipped %d points below T grid floor and '
             '%d points above T ceiling',
-            label, n_clip_below, n_clip_above,
+            label,
+            n_clip_below,
+            n_clip_above,
         )
 
     # Write SPIDER canonical 2-column P-S file. Use the same scaling
@@ -453,8 +446,7 @@ def _derive_ps_melting_curve(
     with open(target_path, 'w') as out:
         out.write(f'# 5 {len(P_clipped)}\n')
         out.write('# Pressure [nondim], Entropy [nondim]\n')
-        out.write('# column * scaling factor = SI units: '
-                  'Pressure [Pa], Entropy [J/kg/K]\n')
+        out.write('# column * scaling factor = SI units: Pressure [Pa], Entropy [J/kg/K]\n')
         out.write('# scaling factors (constant) for each column given on line below\n')
         out.write(f'# {P_scale} {S_scale}\n')
         for p, s in zip(P_nondim, S_nondim):
@@ -469,7 +461,10 @@ def _derive_ps_melting_curve(
     }
     log.info(
         'derive_ps_melting %s: wrote %d points to %s; max inversion residual %.3f K',
-        label, summary['n_points'], target_path, summary['max_inversion_residual_K'],
+        label,
+        summary['n_points'],
+        target_path,
+        summary['max_inversion_residual_K'],
     )
     return summary
 
@@ -502,24 +497,38 @@ def _override_melting_curves_from_pt(
         log.warning(
             'override_melting %s: missing temperature_{solid,melt}.dat in %s; '
             'cannot derive melting curves, leaving in place',
-            label_prefix, eos_dir,
+            label_prefix,
+            eos_dir,
         )
         return
 
     log.info(
-        'override_melting %s: deriving P-S melting tables from %s / %s '
-        'via %s + %s',
-        label_prefix, solidus_pt_path, liquidus_pt_path, sol_phase, liq_phase,
+        'override_melting %s: deriving P-S melting tables from %s / %s via %s + %s',
+        label_prefix,
+        solidus_pt_path,
+        liquidus_pt_path,
+        sol_phase,
+        liq_phase,
     )
 
     summary_sol = _derive_ps_melting_curve(
-        solidus_pt_path, sol_phase, sol_target, label=f'{label_prefix}_solidus',
+        solidus_pt_path,
+        sol_phase,
+        sol_target,
+        label=f'{label_prefix}_solidus',
     )
     summary_liq = _derive_ps_melting_curve(
-        liquidus_pt_path, liq_phase, liq_target, label=f'{label_prefix}_liquidus',
+        liquidus_pt_path,
+        liq_phase,
+        liq_target,
+        label=f'{label_prefix}_liquidus',
     )
-    if (summary_sol['n_clipped_below'] + summary_sol['n_clipped_above']
-            + summary_liq['n_clipped_below'] + summary_liq['n_clipped_above']) > 0:
+    if (
+        summary_sol['n_clipped_below']
+        + summary_sol['n_clipped_above']
+        + summary_liq['n_clipped_below']
+        + summary_liq['n_clipped_above']
+    ) > 0:
         log.warning(
             'override_melting %s: total %d points clipped to EoS T grid edges '
             '(solidus: %d below, %d above; liquidus: %d below, %d above). '
@@ -527,10 +536,14 @@ def _override_melting_curves_from_pt(
             'pinned to the nearest valid S; the resulting curve is a '
             'straight extrapolation in T-S there.',
             label_prefix,
-            summary_sol['n_clipped_below'] + summary_sol['n_clipped_above']
-            + summary_liq['n_clipped_below'] + summary_liq['n_clipped_above'],
-            summary_sol['n_clipped_below'], summary_sol['n_clipped_above'],
-            summary_liq['n_clipped_below'], summary_liq['n_clipped_above'],
+            summary_sol['n_clipped_below']
+            + summary_sol['n_clipped_above']
+            + summary_liq['n_clipped_below']
+            + summary_liq['n_clipped_above'],
+            summary_sol['n_clipped_below'],
+            summary_sol['n_clipped_above'],
+            summary_liq['n_clipped_below'],
+            summary_liq['n_clipped_above'],
         )
 
 
@@ -551,11 +564,7 @@ def _is_spider_ps_format(path: str) -> bool:
         return False
     # P-S header is exactly "# 5 <int> <int>".
     parts = first.split()
-    return (
-        len(parts) >= 2
-        and parts[0] == '#'
-        and parts[1] == '5'
-    )
+    return len(parts) >= 2 and parts[0] == '#' and parts[1] == '5'
 
 
 def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
@@ -613,19 +622,16 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     derive_melting = melting_dir is not None
     if derive_melting:
         from proteus.utils.data import GetFWLData as _GetFWL
-        melting_pt_dir = (
-            _GetFWL()
-            / 'interior_lookup_tables'
-            / 'Melting_curves'
-            / melting_dir
-        )
+
+        melting_pt_dir = _GetFWL() / 'interior_lookup_tables' / 'Melting_curves' / melting_dir
         sol_pt_path = melting_pt_dir / 'solidus_P-T.dat'
         liq_pt_path = melting_pt_dir / 'liquidus_P-T.dat'
         if not (sol_pt_path.is_file() and liq_pt_path.is_file()):
             log.warning(
                 'melting_dir=%s configured but P-T files missing at %s; '
                 'falling back to byte-copy from upstream EoS distribution',
-                melting_dir, melting_pt_dir,
+                melting_dir,
+                melting_pt_dir,
             )
             derive_melting = False
 
@@ -634,14 +640,17 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     existing = dirs.get('spider_eos_dir')
     if existing and os.path.isdir(existing):
         missing = [
-            f for f in (_SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES)
+            f
+            for f in (_SPIDER_EOS_PHASE_FILES + _SPIDER_EOS_MELTING_CURVES)
             if not os.path.isfile(os.path.join(existing, f))
         ]
         if not missing:
             log.debug('spider_eos_dir already populated at %s, reusing', existing)
             if derive_melting:
                 _override_melting_curves_from_pt(
-                    existing, str(sol_pt_path), str(liq_pt_path),
+                    existing,
+                    str(sol_pt_path),
+                    str(liq_pt_path),
                     label_prefix=f'reuse[{melting_dir}]',
                 )
             dirs['spider_solidus_ps'] = os.path.join(existing, 'solidus_P-S.dat')
@@ -675,15 +684,10 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     # from before the Zenodo 19473625 release would be silently accepted
     # and Aragog's EntropyEOS would then crash trying to parse the P-T
     # file as a P-S table. See chili_earth_spider_sweep.md migration note.
-    zenodo_files = (
-        list(_SPIDER_EOS_PHASE_FILES) + list(_SPIDER_EOS_MELTING_CURVES)
-    )
-    zenodo_missing = [
-        f for f in zenodo_files if not (zenodo_root / f).is_file()
-    ]
-    zenodo_format_ok = (
-        not zenodo_missing
-        and _is_spider_ps_format(str(zenodo_root / 'density_melt.dat'))
+    zenodo_files = list(_SPIDER_EOS_PHASE_FILES) + list(_SPIDER_EOS_MELTING_CURVES)
+    zenodo_missing = [f for f in zenodo_files if not (zenodo_root / f).is_file()]
+    zenodo_format_ok = not zenodo_missing and _is_spider_ps_format(
+        str(zenodo_root / 'density_melt.dat')
     )
     if not zenodo_format_ok and not zenodo_missing:
         log.warning(
@@ -695,9 +699,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             zenodo_root,
         )
     if zenodo_format_ok:
-        log.info(
-            'Providing P-S EOS tables to spider_eos_dir from FWL_DATA (Zenodo 19473625)'
-        )
+        log.info('Providing P-S EOS tables to spider_eos_dir from FWL_DATA (Zenodo 19473625)')
         for f in _SPIDER_EOS_PHASE_FILES:
             src = str(zenodo_root / f)
             dst = os.path.join(target_dir, f)
@@ -710,7 +712,9 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
                 shutil.copy2(src, dst)
         if derive_melting:
             _override_melting_curves_from_pt(
-                target_dir, str(sol_pt_path), str(liq_pt_path),
+                target_dir,
+                str(sol_pt_path),
+                str(liq_pt_path),
                 label_prefix=f'fwl[{melting_dir}]',
             )
         dirs['spider_eos_dir'] = target_dir
@@ -734,11 +738,13 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
             'liquidus_P-S.dat': 'liquidus_A11_H13.dat',
         }
         phase_missing = [
-            f for f in _SPIDER_EOS_PHASE_FILES
+            f
+            for f in _SPIDER_EOS_PHASE_FILES
             if not os.path.isfile(os.path.join(spider_bundle, f))
         ]
         melt_missing = [
-            canonical for canonical, legacy in melt_map.items()
+            canonical
+            for canonical, legacy in melt_map.items()
             if not os.path.isfile(os.path.join(spider_bundle, legacy))
         ]
         if not phase_missing and not melt_missing:
@@ -759,7 +765,9 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
                     shutil.copy2(src, dst)
             if derive_melting:
                 _override_melting_curves_from_pt(
-                    target_dir, str(sol_pt_path), str(liq_pt_path),
+                    target_dir,
+                    str(sol_pt_path),
+                    str(liq_pt_path),
                     label_prefix=f'spider_submodule[{melting_dir}]',
                 )
             dirs['spider_eos_dir'] = target_dir
@@ -819,7 +827,8 @@ def determine_interior_radius(
         log.info(
             'R_int override active: using R_int = %.1f m = %.3f R_earth '
             '(bypassing root finder)',
-            R_int_override, R_int_override / R_earth,
+            R_int_override,
+            R_int_override / R_earth,
         )
         hf_row['R_int'] = float(R_int_override)
         calculate_core_mass(hf_row, config)
@@ -829,7 +838,8 @@ def determine_interior_radius(
         else:
             spider_dir = None
         int_o = Interior_t(
-            get_nlevb(config), spider_dir=spider_dir,
+            get_nlevb(config),
+            spider_dir=spider_dir,
             eos_dir=config.interior_struct.eos_dir,
         )
         int_o.ic = 1
@@ -1295,7 +1305,12 @@ def run_interior(
             from proteus.interior_energetics.timestep import next_step
 
             dtswitch = next_step(
-                config, dirs, hf_row, hf_all, 1.0, interior_o=interior_o,
+                config,
+                dirs,
+                hf_row,
+                hf_all,
+                1.0,
+                interior_o=interior_o,
             )
             interior_o._spider_cumulative_time += dtswitch
             interior_o.dt = dtswitch
@@ -1309,7 +1324,10 @@ def run_interior(
         runner = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         try:
             sim_time, output = runner.run_solver(
-                hf_row, interior_o, dirs, write_data=write_data,
+                hf_row,
+                interior_o,
+                dirs,
+                write_data=write_data,
             )
             _aragog_fail_count = 0
         except RuntimeError as e:
@@ -1333,7 +1351,12 @@ def run_interior(
             from proteus.interior_energetics.timestep import next_step
 
             dtswitch = next_step(
-                config, dirs, hf_row, hf_all, 1.0, interior_o=interior_o,
+                config,
+                dirs,
+                hf_row,
+                hf_all,
+                1.0,
+                interior_o=interior_o,
             )
             interior_o.dt = dtswitch
             return
@@ -1393,12 +1416,9 @@ def run_interior(
 
     # Apply step limiters
     if hf_row['Time'] > 0:
-        # Prevent increasing surface temperature, if enabled. The early
-        # T_magma = min(new, prev) ratchet is gated by
-        # _prevent_warming_clamp_active(): off whenever aragog dilatation
-        # heating is on, because the heat-pump legitimately raises T_magma
-        # during the warming half of each cycle. The runaway-T fallback
-        # below remains active regardless.
+        # Prevent increasing surface temperature, if enabled. Gated by
+        # _prevent_warming_clamp_active(); the runaway-T fallback below
+        # remains active regardless.
         T_magma_prev = float(hf_all.iloc[-1]['T_magma'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
         if _prevent_warming_clamp_active(config) and (interior_o.ic == 2):
@@ -1445,12 +1465,19 @@ def run_interior(
         from proteus.interior_energetics.timestep import next_step
 
         dtswitch = next_step(
-            config, dirs, hf_row, hf_all, 1.0, interior_o=interior_o,
+            config,
+            dirs,
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=interior_o,
         )
         log.warning(
             'SPIDER sim_time (%.2f yr) <= hf_row[Time] (%.2f yr); '
             'falling back to dtswitch=%.2f yr',
-            float(sim_time), hf_row['Time'], dtswitch,
+            float(sim_time),
+            hf_row['Time'],
+            dtswitch,
         )
         interior_o.dt = dtswitch
 
@@ -1704,6 +1731,7 @@ def update_structure_from_interior(
 
     try:
         import time as _zalmoxis_time
+
         _zalmoxis_wall_t0 = _zalmoxis_time.monotonic()
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config,
@@ -1730,9 +1758,12 @@ def update_structure_from_interior(
                     'Zalmoxis mass-anchor violation: '
                     '|M_int / M_int_target - 1| = %.3e > tol=%.3e '
                     '(M_int=%.4e kg, M_target=%.4e kg). '
-                    'Treating as non-converged.' % (
-                        _mass_rel_err, _ZALMOXIS_MASS_ANCHOR_TOL,
-                        _M_int, _M_target,
+                    'Treating as non-converged.'
+                    % (
+                        _mass_rel_err,
+                        _ZALMOXIS_MASS_ANCHOR_TOL,
+                        _M_int,
+                        _M_target,
                     )
                 )
         if _zalmoxis_fail_count > 0:
@@ -1767,7 +1798,8 @@ def update_structure_from_interior(
         # the cadence cost from proteus_00.log.
         log.info(
             'Zalmoxis re-solve wall: %.2f s (trigger: %s)',
-            _zalmoxis_wall, reason,
+            _zalmoxis_wall,
+            reason,
         )
     except RuntimeError as e:
         _zalmoxis_fail_count += 1
@@ -1804,20 +1836,19 @@ def update_structure_from_interior(
         # the new file is on disk and Aragog will crash on the next
         # iter with EOS-vs-mesh inconsistency unless we roll back here.
         try:
-            _output_zalmoxis = os.path.join(
-                outdir, 'data', 'zalmoxis_output.dat'
-            )
+            _output_zalmoxis = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
             _output_prev = _output_zalmoxis + '.prev'
             if os.path.isfile(_output_prev):
                 shutil.copy2(_output_prev, _output_zalmoxis)
                 log.info(
                     'T1.2/T1.3 fall-back: restored %s from %s',
-                    _output_zalmoxis, _output_prev,
+                    _output_zalmoxis,
+                    _output_prev,
                 )
         except Exception as _exc:
             log.warning(
-                'Could not restore zalmoxis_output.dat from .prev '
-                'on fall-back: %s', _exc,
+                'Could not restore zalmoxis_output.dat from .prev on fall-back: %s',
+                _exc,
             )
 
     if spider_mesh_file:

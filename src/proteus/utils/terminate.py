@@ -38,11 +38,7 @@ def print_termination_criteria(config: Config):
     # appears in stderr / launch logs), but the run logfile is opened
     # later by setup_logger and would otherwise miss it.
     if config.planet.prevent_warming:
-        dilatation_on = (
-            config.interior_energetics.module == 'aragog'
-            and config.interior_energetics.aragog.dilatation
-        )
-        base = (
+        log.warning(
             'planet.prevent_warming = true: T_magma is forced to monotonically '
             'decrease each iteration. This suppresses physical temperature '
             'oscillations and can hide energy non-conservation (T_magma '
@@ -50,16 +46,6 @@ def print_termination_criteria(config: Config):
             'consistency rather than radiative balance). Default is false; '
             'enable only for known strictly-cooling regimes.'
         )
-        if dilatation_on:
-            log.warning(
-                '%s STRONG WARNING: aragog.dilatation = true introduces a '
-                'heat-pump term that the clamp cannot accommodate. The '
-                'runtime gate in interior_energetics/wrapper.py disables the '
-                'clamp for this run; the runaway-T fallback remains active.',
-                base,
-            )
-        else:
-            log.warning(base)
 
 
 # Print message in common format

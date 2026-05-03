@@ -63,22 +63,15 @@ def prevent_warming_advisory(instance, attribute, value):
     """Warn when planet.prevent_warming is enabled.
 
     The clamp at interior_energetics/wrapper.py forces T_magma to monotonically
-    decrease each iteration. With aragog dilatation heating enabled the
-    integrator legitimately raises T_magma during the warming half of every
-    heat-pump cycle; the clamp silently zeros that energy and latches T_magma
-    at its first local minimum, suppressing physical thermal oscillations and
-    breaking energy conservation (see
-    finding_2026_05_03_prevent_warming_clamp_energy_leak.md). The runtime gate
-    in wrapper.py disables the clamp when dilatation is on; this validator
-    surfaces the choice at config-load time so it appears in proteus_00.log.
+    decrease each iteration. This suppresses physical temperature oscillations
+    and can hide energy non-conservation (T_magma latching, F_atm = F_int
+    reported as convergence by clamp consistency rather than radiative
+    balance). It is only safe in regimes that are known a priori to be
+    strictly cooling.
     """
     if not instance.planet.prevent_warming:
         return
-    dilatation_on = (
-        instance.interior_energetics.module == 'aragog'
-        and instance.interior_energetics.aragog.dilatation
-    )
-    base = (
+    log.warning(
         'planet.prevent_warming = true: T_magma is forced to monotonically '
         'decrease each iteration. This suppresses physical temperature '
         'oscillations and can hide energy non-conservation (T_magma latching, '
@@ -86,16 +79,6 @@ def prevent_warming_advisory(instance, attribute, value):
         'than radiative balance). Default is false; enable only for known '
         'strictly-cooling regimes.'
     )
-    if dilatation_on:
-        log.warning(
-            '%s STRONG WARNING: aragog.dilatation = true introduces a '
-            'heat-pump term that the clamp cannot accommodate. The runtime '
-            'gate in interior_energetics/wrapper.py will disable the clamp '
-            'for this run; the runaway-T fallback remains active.',
-            base,
-        )
-    else:
-        log.warning(base)
 
 
 CURRENT_CONFIG_VERSION = '3.0'
@@ -116,15 +99,24 @@ def check_module_dependencies(instance, attribute, value):
     import importlib
 
     checks = {
-        'calliope': (instance.outgas.module == 'calliope', 'calliope',
-                     'outgas.module = "calliope" requires the calliope package. '
-                     'Install with: git clone git@github.com:FormingWorlds/CALLIOPE && pip install -e CALLIOPE/.'),
-        'atmodeller': (instance.outgas.module == 'atmodeller', 'atmodeller',
-                       'outgas.module = "atmodeller" requires the atmodeller package. '
-                       'Install with: pip install atmodeller'),
-        'boreas': (instance.escape.module == 'boreas', 'boreas',
-                   'escape.module = "boreas" requires the boreas package. '
-                   'Install with: pip install boreas'),
+        'calliope': (
+            instance.outgas.module == 'calliope',
+            'calliope',
+            'outgas.module = "calliope" requires the calliope package. '
+            'Install with: git clone git@github.com:FormingWorlds/CALLIOPE && pip install -e CALLIOPE/.',
+        ),
+        'atmodeller': (
+            instance.outgas.module == 'atmodeller',
+            'atmodeller',
+            'outgas.module = "atmodeller" requires the atmodeller package. '
+            'Install with: pip install atmodeller',
+        ),
+        'boreas': (
+            instance.escape.module == 'boreas',
+            'boreas',
+            'escape.module = "boreas" requires the boreas package. '
+            'Install with: pip install boreas',
+        ),
     }
 
     for name, (needed, pkg, msg) in checks.items():
@@ -212,7 +204,9 @@ class Config:
 
     params: Params = field(factory=Params)
     star: Star = field(factory=Star)
-    orbit: Orbit = field(factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
+    orbit: Orbit = field(
+        factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
+    )
     planet: Planet = field(factory=Planet, validator=(planet_mass_valid,))
     interior_struct: Struct = field(factory=Struct)
     interior_energetics: Interior = field(

@@ -32,16 +32,17 @@ from proteus.interior_energetics.wrapper import (
 )
 
 
-def _ns_prevent_warming(prevent_warming: bool, module: str, dilatation: bool):
-    """Build the minimal config namespace _prevent_warming_clamp_active reads."""
+def _ns_prevent_warming(prevent_warming: bool, module: str = 'aragog'):
+    """Build the minimal config namespace _prevent_warming_clamp_active reads.
+
+    The ``module`` argument is preserved for callsite parity with the
+    pre-Φ_vol-deletion test suite, but the gate no longer branches on it.
+    """
     from types import SimpleNamespace
 
     return SimpleNamespace(
         planet=SimpleNamespace(prevent_warming=prevent_warming),
-        interior_energetics=SimpleNamespace(
-            module=module,
-            aragog=SimpleNamespace(dilatation=dilatation),
-        ),
+        interior_energetics=SimpleNamespace(module=module),
     )
 
 
@@ -768,9 +769,7 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
             return_value=0.0,
         ),
     ):
-        update_structure_from_interior(
-            dirs, config, hf_row_A, interior_o, 0.0, 3000.0, 0.8
-        )
+        update_structure_from_interior(dirs, config, hf_row_A, interior_o, 0.0, 3000.0, 0.8)
     # Flag must be present and False after a successful call.
     assert '_structure_stale' in hf_row_A, 'flag must be set, not absent'
     assert hf_row_A['_structure_stale'] is False, (
@@ -800,9 +799,7 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
             return_value=0.0,
         ),
     ):
-        update_structure_from_interior(
-            dirs, config, hf_row_B, interior_o, 0.0, 3000.0, 0.8
-        )
+        update_structure_from_interior(dirs, config, hf_row_B, interior_o, 0.0, 3000.0, 0.8)
     assert hf_row_B.get('_structure_stale') is False, (
         'success path must set flag to False even if it was absent on entry'
     )
@@ -839,21 +836,15 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock convergence failure'),
     ):
-        update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
-    assert hf_row.get('_structure_stale') is True, (
-        'fall-back path must set flag to True'
-    )
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+    assert hf_row.get('_structure_stale') is True, 'fall-back path must set flag to True'
 
     # Second consecutive failure: flag stays True (not toggled or cleared).
     with patch(
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock convergence failure 2'),
     ):
-        update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
-        )
+        update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
     assert hf_row.get('_structure_stale') is True
 
     # Reset for any downstream tests.
@@ -1066,7 +1057,13 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
     ):
         update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8,
+            dirs,
+            config,
+            hf_row,
+            interior_o,
+            0.0,
+            3000.0,
+            0.8,
         )
 
     # File on disk should have been restored to .prev content.
@@ -1122,12 +1119,12 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
 
     # Simulate state: time has advanced 3e4 yr since the last call,
     # but no successful re-solve yet.
-    last_struct_time = 7e4   # last call was at 7e4 yr (a failed one)
-    current_time = 1e5       # now at 1e5 yr; elapsed = 3e4 (< 5e4 ceiling)
+    last_struct_time = 7e4  # last call was at 7e4 yr (a failed one)
+    current_time = 1e5  # now at 1e5 yr; elapsed = 3e4 (< 5e4 ceiling)
     hf_row = {
         'Time': current_time,
         'T_magma': 3000.0,
-        'Phi_global': 0.8,    # no Phi/T trigger (no change)
+        'Phi_global': 0.8,  # no Phi/T trigger (no change)
         'R_int': 6.371e6,
         'gravity': 9.81,
         'M_int': 5.972e24,
@@ -1141,14 +1138,20 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
         side_effect=AssertionError('zalmoxis_solver should not be called'),
     ):
         out = update_structure_from_interior(
-            dirs, config, hf_row, interior_o,
-            last_struct_time, hf_row['T_magma'], hf_row['Phi_global'],
+            dirs,
+            config,
+            hf_row,
+            interior_o,
+            last_struct_time,
+            hf_row['T_magma'],
+            hf_row['Phi_global'],
         )
     # Returned tuple unchanged (no_update path).
     assert out == (last_struct_time, hf_row['T_magma'], hf_row['Phi_global'])
 
     # Now seed a successful past re-solve at t=7e4 (= 30 kyr ago).
     interior_o.last_successful_struct_time = 7e4
+
     # Same hf_row, same elapsed; this time stale-aware ceiling SHOULD
     # fire (3e4 yr >= 2.5e4 yr).
     def _success_side(config, outdir, hf_row, **kwargs):
@@ -1170,8 +1173,13 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
         ),
     ):
         out = update_structure_from_interior(
-            dirs, config, hf_row, interior_o,
-            last_struct_time, hf_row['T_magma'], hf_row['Phi_global'],
+            dirs,
+            config,
+            hf_row,
+            interior_o,
+            last_struct_time,
+            hf_row['T_magma'],
+            hf_row['Phi_global'],
         )
     # Trigger fired and updated last_struct_time to current_time.
     assert out[0] == current_time, (
@@ -1219,7 +1227,13 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
         side_effect=RuntimeError('mock failure'),
     ):
         update_structure_from_interior(
-            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8,
+            dirs,
+            config,
+            hf_row,
+            interior_o,
+            0.0,
+            3000.0,
+            0.8,
         )
     assert interior_o.last_successful_struct_time == 5e4, (
         'fall-back must NOT advance last_successful_struct_time '
@@ -1236,76 +1250,48 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
 
 @pytest.mark.unit
 def test_prevent_warming_clamp_off_when_disabled():
-    """prevent_warming = false: clamp must be inactive regardless of dilatation.
+    """prevent_warming = false: clamp must be inactive for every module.
 
     Default-path regression: with the user-facing flag off, the clamp helper
-    must return False even if dilatation is independently set.
+    must return False unconditionally.
     """
     for module in ('aragog', 'spider', 'dummy'):
-        for dilatation in (False, True):
-            cfg = _ns_prevent_warming(
-                prevent_warming=False, module=module, dilatation=dilatation
-            )
-            assert _prevent_warming_clamp_active(cfg) is False, (
-                f'clamp wrongly active for module={module} dilatation={dilatation} '
-                f'when prevent_warming=False'
-            )
-
-
-@pytest.mark.unit
-def test_prevent_warming_clamp_off_when_aragog_dilatation_on():
-    """prevent_warming = true + aragog.dilatation = true: clamp must be GATED OFF.
-
-    This is the core of the v3.5 fix: when the user opts into dilatation
-    heating, the heat-pump legitimately raises T_magma during the warming
-    half of each cycle. The one-way ratchet would silently throw away that
-    energy and latch T_magma at its first local minimum.
-    """
-    cfg = _ns_prevent_warming(
-        prevent_warming=True, module='aragog', dilatation=True
-    )
-    assert _prevent_warming_clamp_active(cfg) is False
-
-
-@pytest.mark.unit
-def test_prevent_warming_clamp_on_when_aragog_dilatation_off():
-    """prevent_warming = true + aragog.dilatation = false: clamp must remain ON.
-
-    Ensures the gate does not over-trigger. Dilatation must be the
-    discriminating field; just running the aragog module is not enough to
-    disable the clamp because aragog-without-dilatation is still a
-    strictly-cooling regime where the clamp is intended.
-    """
-    cfg = _ns_prevent_warming(
-        prevent_warming=True, module='aragog', dilatation=False
-    )
-    assert _prevent_warming_clamp_active(cfg) is True
-
-
-@pytest.mark.unit
-def test_prevent_warming_clamp_on_for_spider_regardless_of_dilatation():
-    """prevent_warming = true with module=spider: clamp ON, even if dilatation flag set.
-
-    SPIDER does not implement the dilatation heating term, so the
-    aragog.dilatation flag must be ignored when spider is the active
-    interior module. A stale dilatation = true in a SPIDER config must
-    not silently disable the clamp.
-    """
-    for dilatation in (False, True):
-        cfg = _ns_prevent_warming(
-            prevent_warming=True, module='spider', dilatation=dilatation
-        )
-        assert _prevent_warming_clamp_active(cfg) is True, (
-            f'spider config with dilatation={dilatation} unexpectedly disabled clamp'
+        cfg = _ns_prevent_warming(prevent_warming=False, module=module)
+        assert _prevent_warming_clamp_active(cfg) is False, (
+            f'clamp wrongly active for module={module} when prevent_warming=False'
         )
 
 
 @pytest.mark.unit
-def test_prevent_warming_clamp_on_for_dummy_module():
-    """prevent_warming = true with module=dummy: clamp ON.
+@pytest.mark.parametrize('module', ['aragog', 'spider', 'dummy'])
+def test_prevent_warming_clamp_on_when_enabled_regardless_of_module(module):
+    """prevent_warming = true: clamp must be ON for every interior module.
 
-    Dummy interior has no internal heating model at all; the clamp is the
-    only mechanism for enforcing monotonic cooling. Must remain active.
+    The earlier dilatation-on gate was removed together with the explicit
+    Φ_vol source term: that source was identified as a divergence
+    double-count (Bower 2018 §3, SPIDER energy.c) and deleted, so the
+    heat-pump motivation for the gate no longer applies. The clamp is now
+    purely a user opt-in for strictly-cooling regimes.
     """
-    cfg = _ns_prevent_warming(prevent_warming=True, module='dummy', dilatation=False)
+    cfg = _ns_prevent_warming(prevent_warming=True, module=module)
     assert _prevent_warming_clamp_active(cfg) is True
+
+
+@pytest.mark.unit
+def test_prevent_warming_clamp_returns_bool_not_truthy_object():
+    """Regression: the gate must return ``bool`` so callers can ``is True`` it.
+
+    Edge case: the helper's call sites use ``if _prevent_warming_clamp_active(cfg)``
+    pattern, but several upstream tests call ``assert ... is True``. A
+    ``return cfg.planet.prevent_warming`` (without the bool() wrap) would
+    return an attrs-defined attribute that is *truthy* but not the literal
+    ``True`` constant, silently breaking those assertions.
+    """
+    cfg = _ns_prevent_warming(prevent_warming=True)
+    out = _prevent_warming_clamp_active(cfg)
+    assert isinstance(out, bool)
+    assert out is True
+    cfg_off = _ns_prevent_warming(prevent_warming=False)
+    out_off = _prevent_warming_clamp_active(cfg_off)
+    assert isinstance(out_off, bool)
+    assert out_off is False
