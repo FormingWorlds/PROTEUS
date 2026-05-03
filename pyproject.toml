@@ -65,6 +65,7 @@ dependencies = [
     "ruff",
     "sympy",
     "astropy",
+    "seaborn",
     "torch",
     "botorch",
     "gpytorch",
