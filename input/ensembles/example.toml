@@ -31,9 +31,9 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "bayesopt_sn"   # SN
-        # path        = "bayesopt_se"   # SE
-        # path        = "bayesopt_tr"  # TR
+        # path        = "scratch/bayesopt_sn"   # SN
+        # path        = "scratch/bayesopt_se"   # SE
+        path        = "scratch/bayesopt_tr"  # TR
 
         logging     = "INFO"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
@@ -75,16 +75,16 @@ version = "2.0"
         [params.stop.iters]
             enabled = true
             minimum = 5
-            maximum = 9000
+            maximum = 3000
 
         # required time constraints
         [params.stop.time]
             enabled = true
             minimum = 1.0e3      # model will certainly run to t > minimum [yr]
 
-            maximum = 1e9   # SN
+            # maximum = 1e9   # SN
             # maximum = 2e9   # SE
-            # maximum = 1e8   # TR
+            maximum = 1e8   # TR
 
         # solidification
         [params.stop.solid]
@@ -139,9 +139,9 @@ version = "2.0"
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
     instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
 
-    semimajoraxis = 0.09   # SN
+    # semimajoraxis = 0.09   # SN
     # semimajoraxis = 0.05   # SE
-    # semimajoraxis = 0.02   # TR
+    semimajoraxis = 0.02   # TR
 
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
     zenith_angle    = 54.74     # degrees
@@ -153,14 +153,14 @@ version = "2.0"
 
 # Planetary structure - physics table
 [struct]
-    mass_tot     = 3.5   # SN
+    # mass_tot     = 3.5   # SN
     # mass_tot     = 2.0   # SE
-    # mass_tot     = 1.0   # TR
+    mass_tot     = 1.0   # TR
 
 
-    corefrac     = 0.4     # SN
+    # corefrac     = 0.4     # SN
     # corefrac     = 0.3     # SE
-    # corefrac     = 0.6     # TR
+    corefrac     = 0.6     # TR
 
 
     core_density = 10738.33     # Core density [kg m-3]
@@ -285,7 +285,7 @@ version = "2.0"
     radiogenic_heat = true         # enable radiogenic heat production
     tidal_heat      = false         # enable tidal heat production
     rheo_phi_loc    = 0.3           # Centre of rheological transition
-    rheo_phi_wid    = 0.1           # Width of rheological transition
+    rheo_phi_wid    = 0.15           # Width of rheological transition
     melting_dir     = "Monteux-600" # Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER)
     eos_dir         = "WolfBower2018_MgSiO3" # Dynamic EOS for SPIDER + Aragog (in FWL_DATA/interior_lookup_tables/EOS/dynamic/)
 
@@ -334,8 +334,8 @@ version = "2.0"
         thermal_conductivity = 4.2         # Thermal conductivity [W/m/K]
         thermal_diffusivity = 1e-06        # Thermal diffusivity [m^2/s]
         thermal_expansivity = 2e-05        # Thermal expansivity [1/K]
-        transition_width = 0.1            # Width of viscosity transition in melt fraction space
-        eta_solid_const = 1e+21            # Constant solid viscosity for aggregate formulation [Pa s]
+        transition_width = 0.15            # Width of viscosity transition in melt fraction space
+        eta_solid_const = 5e+22            # Constant solid viscosity for aggregate formulation [Pa s]
         eta_melt_const = 100.0             # Constant melt viscosity for aggregate formulation [Pa s]
         viscosity_model = 2                # Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
         eta_constant = 1e2                 # Constant viscosity value [Pa s] for model 1.
@@ -347,9 +347,9 @@ version = "2.0"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = -3.0    # SN
+    # fO2_shift_IW    = -3.0    # SN
     # fO2_shift_IW    = 2.0     # SE
-    # fO2_shift_IW    = 4.0     # TR
+    fO2_shift_IW    = 4.0     # TR
 
     module = "calliope"         # Which outgassing module to use
 
@@ -388,17 +388,17 @@ version = "2.0"
 
     # Set initial volatile inventory by planetary element abundances if [initial = 'elements']
     [delivery.elements]
-        H_oceans      = 800.0 # SN
+        # H_oceans      = 700.0 # SN
         # H_oceans      = 200.0  # SE
-        # H_oceans      = 50.0   # TR
+        H_oceans      = 50.0   # TR
 
-        CH_ratio    = 0.5       # SN
+        # CH_ratio    = 0.5       # SN
         # CH_ratio    = 2.0     # SE
-        # CH_ratio    = 5.0     # TR
+        CH_ratio    = 5.0     # TR
 
-        SH_ratio    = 2.0      # SN
+        # SH_ratio    = 2.0      # SN
         # SH_ratio    = 1.0    # SE
-        # SH_ratio    = 2.0    # TR
+        SH_ratio    = 2.0    # TR
 
         NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
 
