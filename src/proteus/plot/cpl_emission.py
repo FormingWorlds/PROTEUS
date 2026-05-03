@@ -137,7 +137,7 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
     ax.set_xlabel('Wavelength [nm]')
     ax.set_xscale('log')
 
-    xmax = min(xmax, np.amax(x_arr))
+    xmax = max(3, min(xmax, np.amax(x_arr)))
     xmin = min(xmax - 2, np.amin(x_arr))
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(bottom=ymin / 2, top=ymax * 2)

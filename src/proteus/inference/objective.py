@@ -66,7 +66,7 @@ def run_proteus(
     observables: list[str],
     ref_config: str,
     output: str,
-) -> pd.Series:
+) -> dict:
     """Run the PROTEUS simulator and return selected observables.
 
     Builds a per-run TOML file, invokes the `proteus` CLI, and reads the resulting CSV.
@@ -82,7 +82,7 @@ def run_proteus(
 
     Returns
     ----------
-    - pd.Series: Last row of the simulator output containing requested observables.
+    - observables_dict (dict): Mapping of observable names to their simulated values.
     """
 
     # Construct run-specific paths
