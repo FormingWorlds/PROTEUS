@@ -138,6 +138,12 @@ def test_proteus_init(path):
     if 'nogit' in str(path):
         # Skip configs that rely on git metadata when running offline.
         return
+    if path.name.startswith('example.'):
+        # Skip subcommand meta-configs: example.infer.toml drives `proteus infer`
+        # and example.grid.toml drives `proteus grid`. Their schema is intentionally
+        # different from the standard PROTEUS Config (no planet.mass_tot, etc.) and
+        # they are loaded by their own CLI handlers, not by Proteus(config_path=...).
+        return
     print(f'Testing config at {path}')
     runner = Proteus(config_path=path)
     assert isinstance(runner.config, Config)
