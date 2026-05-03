@@ -598,24 +598,37 @@ def GetHelpfileKeys():
         'M_mantle_liquid',  # dry mass of liquid-phase mantle [kg]
         'T_pot',            # characteristic mantle potential temperature [K]
 
-        # Energy-conservation columns (Aragog A1+A2, commits 9fffab6+d28f235).
+        # Energy-conservation columns (Aragog A1+A2 + per-call integrals).
         # E_state is EOS-consistent enthalpy from the precomputed h(P,S) table
         # and is the proper conservation-grade quantity. E_th_mantle is retained
         # for back-compat but is the legacy m*Cp_apparent*T proxy with phase-
         # dependent jumps in the mushy zone; do not use it for residual checks.
-        # Q_radio_W / Q_dil_W / Q_tidal_W are mantle-integrated source powers
-        # in watts, not surface-equivalent fluxes; they pair with E_state to
-        # close dE/dt = -F_int*A_int + F_cmb*A_cmb + Q_radio + Q_dil + Q_tidal.
-        # dE_predicted_J is the cumulative integral of the RHS over the run;
-        # E_residual_J = (E_state - E_state[0]) - dE_predicted_J is the running
-        # conservation residual; E_residual_frac normalises by the cumulative
-        # |E_state - E_state[0]|.
+        # Q_radio_W / Q_dil_W / Q_tidal_W are end-of-step instantaneous
+        # mantle-integrated source powers in watts (kept for instrumentation;
+        # do NOT integrate trapezoidally for conservation -- end-of-step
+        # values are spike-prone at CVODE phase-boundary moments).
+        # F_cmb is the analogous instantaneous CMB heat flux. The
+        # conservation primitive is the per-call integral set computed by
+        # Aragog over its CVODE sub-step trajectory:
+        #   step_dE_F_int_J  = -∫ F_int * A_int dt  over the call [J]
+        #   step_dE_F_cmb_J  = +∫ F_cmb * A_cmb dt  over the call [J]
+        #   step_dE_Q_*_J    = +∫ Q_* dt            over the call [J]
+        # PROTEUS just cumulatively sums these into dE_predicted_J. No
+        # PROTEUS-side trapezoidal interpolation between snapshots.
+        # E_residual_J = (E_state - E_state[0]) - dE_predicted_J is the
+        # running conservation residual; E_residual_frac normalises by
+        # max(|cumulative dE_state|, 1 J).
         'E_th_mantle',      # legacy thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # EOS-consistent integrated mantle enthalpy [J]
-        'Q_radio_W',         # mantle-integrated radiogenic power [W]
-        'Q_dil_W',           # mantle-integrated dilatation (PdV) power [W]
-        'Q_tidal_W',         # mantle-integrated tidal power [W]
-        'dE_predicted_J',    # cumulative integral of RHS power balance [J]
+        'Q_radio_W',         # instantaneous mantle-integrated radiogenic power [W]
+        'Q_dil_W',           # instantaneous mantle-integrated dilatation power [W]
+        'Q_tidal_W',         # instantaneous mantle-integrated tidal power [W]
+        'step_dE_F_int_J',   # per-call ∫ -F_int*A_int dt [J]
+        'step_dE_F_cmb_J',   # per-call ∫ +F_cmb*A_cmb dt [J]
+        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J]
+        'step_dE_Q_dil_J',   # per-call ∫ +Q_dil dt [J]
+        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J]
+        'dE_predicted_J',    # cumulative sum of step_dE_*_J across rows [J]
         'E_residual_J',      # (E_state-E_state[0]) - dE_predicted_J [J]
         'E_residual_frac',   # E_residual_J / max(|cumulative dE_state|, 1) [1]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
@@ -726,22 +739,25 @@ _SECONDS_PER_YEAR = 3.155814727e7
 def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     """Fill the cumulative energy-conservation columns of ``new_row`` in place.
 
-    Closed-mantle balance:
+    The conservation primitive is the per-call energy integral set
+    computed by Aragog over its CVODE sub-step trajectory:
 
-        dE_state/dt = -F_int * A_int + F_cmb * A_cmb
-                      + Q_radio + Q_dil + Q_tidal
+        step_dE_F_int_J  = -∫ F_int * A_int dt over the call [J]
+        step_dE_F_cmb_J  = +∫ F_cmb * A_cmb dt over the call [J]
+        step_dE_Q_*_J    = +∫ Q_*  dt          over the call [J]
 
-    All terms in watts; F_int/F_cmb in W/m^2; A_int = 4 pi R_int^2 and
-    A_cmb = 4 pi R_core^2 from the helpfile R_core column (top-of-core
-    radius = CMB radius), falling back to A_int when R_core is zero so
-    we never produce a NaN.
+    The cumulative ``dE_predicted_J`` is just the running sum of these
+    deltas across all helpfile rows. This eliminates the previous
+    helpfile-side trapezoidal interpolation between end-of-step
+    F_cmb/Q_dil snapshots, which was prone to phase-boundary spikes:
+    a single CVODE sub-step transient could blow up the integral by
+    orders of magnitude when used as a trapezoid endpoint over a
+    PROTEUS iteration's worth of time.
 
-    The integral is trapezoidal between the previous and current rows.
     Row 0 sets dE_predicted_J = 0 and E_residual_J = 0 by definition.
-    E_residual_frac normalises by the cumulative |dE_state| so the
-    residual remains interpretable as a fraction of the actual energy
-    change rather than blowing up when both numerator and denominator
-    are tiny.
+    E_residual_frac normalises by max(|dE_state|, 1 J) so the
+    residual stays bounded when both numerator and denominator are
+    tiny (quiescent steady state).
 
     Active only when ``E_state_J`` is finite and non-zero, signalling
     that an EOS-aware interior module populated it. Other modules
@@ -755,55 +771,25 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         new_row.setdefault('E_residual_frac', 0.0)
         return
 
-    # Power balance at the new row [W]
-    R_int_now = float(new_row.get('R_int', 0.0))
-    A_int_now = 4.0 * np.pi * R_int_now * R_int_now
-    R_cmb_now = float(new_row.get('R_core', 0.0))
-    A_cmb_now = 4.0 * np.pi * R_cmb_now * R_cmb_now if R_cmb_now > 0 else A_int_now
-    F_int_now = float(new_row.get('F_int', 0.0))
-    F_cmb_now = float(new_row.get('F_cmb', 0.0))
-    P_now = (
-        -F_int_now * A_int_now
-        + F_cmb_now * A_cmb_now
-        + float(new_row.get('Q_radio_W', 0.0))
-        + float(new_row.get('Q_dil_W', 0.0))
-        + float(new_row.get('Q_tidal_W', 0.0))
+    # Per-call energy increment from Aragog [J]. Sign is already baked
+    # into each step delta (positive = energy added to mantle).
+    dE_inc = (
+        float(new_row.get('step_dE_F_int_J', 0.0))
+        + float(new_row.get('step_dE_F_cmb_J', 0.0))
+        + float(new_row.get('step_dE_Q_radio_J', 0.0))
+        + float(new_row.get('step_dE_Q_dil_J', 0.0))
+        + float(new_row.get('step_dE_Q_tidal_J', 0.0))
     )
 
     n_prior = len(current_hf)
     if n_prior == 0:
+        # Anchor row: cumulative integrals start at zero by definition.
         new_row['dE_predicted_J'] = 0.0
         new_row['E_residual_J'] = 0.0
         new_row['E_residual_frac'] = 0.0
-        # First Aragog row: stash baseline E_state for subsequent residual
-        # computation. We don't need a separate column because we always
-        # read row 0 of the in-memory current_hf; this branch just records
-        # zero residuals at the anchor.
         return
 
     prev = current_hf.iloc[-1]
-    dt_s = (float(new_row['Time']) - float(prev['Time'])) * _SECONDS_PER_YEAR
-    if dt_s <= 0.0:
-        # PROTEUS dt fallback can produce a non-monotonic Time; treat as
-        # zero-power increment rather than emit a negative dE_pred.
-        dE_inc = 0.0
-    else:
-        # Reconstruct prior-row power. Use prev row's columns directly;
-        # if any are missing (e.g. legacy resume from before this commit),
-        # fall back to 0 for that contribution rather than crash.
-        R_int_prev = float(prev.get('R_int', 0.0))
-        A_int_prev = 4.0 * np.pi * R_int_prev * R_int_prev
-        R_cmb_prev = float(prev.get('R_core', 0.0))
-        A_cmb_prev = 4.0 * np.pi * R_cmb_prev * R_cmb_prev if R_cmb_prev > 0 else A_int_prev
-        P_prev = (
-            -float(prev.get('F_int', 0.0)) * A_int_prev
-            + float(prev.get('F_cmb', 0.0)) * A_cmb_prev
-            + float(prev.get('Q_radio_W', 0.0))
-            + float(prev.get('Q_dil_W', 0.0))
-            + float(prev.get('Q_tidal_W', 0.0))
-        )
-        dE_inc = 0.5 * (P_prev + P_now) * dt_s
-
     dE_pred_prev = float(prev.get('dE_predicted_J', 0.0))
     dE_pred_now = dE_pred_prev + dE_inc
 

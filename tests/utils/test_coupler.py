@@ -33,7 +33,6 @@ import pytest
 
 from proteus.utils.constants import element_list
 from proteus.utils.coupler import (
-    _SECONDS_PER_YEAR,
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
@@ -924,31 +923,44 @@ def test_helpfile_handles_negative_fluxes():
 # =============================================================================
 # Test: Energy-conservation bookkeeping (_populate_energy_residual)
 # =============================================================================
+#
+# The conservation primitive is the per-call energy integral set computed by
+# Aragog over its CVODE sub-step trajectory and exposed in helpfile columns
+# step_dE_F_int_J / step_dE_F_cmb_J / step_dE_Q_radio_J / step_dE_Q_dil_J /
+# step_dE_Q_tidal_J. PROTEUS just cumulatively sums these; no helpfile-side
+# trapezoidal interpolation between possibly-transient F_cmb / Q_dil snapshots.
 
 
 def _aragog_row(
     *,
     time_yr: float,
     E_state_J: float,
-    F_int: float = 0.0,
+    step_dE_F_int_J: float = 0.0,
+    step_dE_F_cmb_J: float = 0.0,
+    step_dE_Q_radio_J: float = 0.0,
+    step_dE_Q_dil_J: float = 0.0,
+    step_dE_Q_tidal_J: float = 0.0,
     F_cmb: float = 0.0,
-    Q_radio_W: float = 0.0,
     Q_dil_W: float = 0.0,
-    Q_tidal_W: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
     T_magma: float = 3000.0,
 ) -> dict:
     """Helper: build a ZeroHelpfileRow populated with the columns the
-    energy-residual helper reads. Uses Earth-like radii by default."""
+    energy-residual helper reads. Uses Earth-like radii by default. The
+    instantaneous F_cmb / Q_dil_W keyword arguments are supported only so
+    the discrimination test can prove they are IGNORED by the cumulative-
+    sum logic; they have no effect on dE_predicted_J."""
     row = ZeroHelpfileRow()
     row['Time'] = time_yr
     row['E_state_J'] = E_state_J
-    row['F_int'] = F_int
+    row['step_dE_F_int_J'] = step_dE_F_int_J
+    row['step_dE_F_cmb_J'] = step_dE_F_cmb_J
+    row['step_dE_Q_radio_J'] = step_dE_Q_radio_J
+    row['step_dE_Q_dil_J'] = step_dE_Q_dil_J
+    row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['F_cmb'] = F_cmb
-    row['Q_radio_W'] = Q_radio_W
     row['Q_dil_W'] = Q_dil_W
-    row['Q_tidal_W'] = Q_tidal_W
     row['R_int'] = R_int
     row['R_core'] = R_core
     row['T_magma'] = T_magma
@@ -957,26 +969,24 @@ def _aragog_row(
 
 @pytest.mark.unit
 def test_helpfile_keys_include_energy_conservation_columns():
-    """The helpfile schema must expose the per-row energy-conservation
-    columns (anchor: E_state_J + per-source breakdown) and the cumulative
+    """Schema must expose the per-call step-delta columns AND the cumulative
     bookkeeping columns. Catches accidental drift if a future cleanup
-    removes one. F_cmb is a separate flux from F_int and must also be
-    present so the closed-mantle balance can subtract the bottom flux."""
+    removes one. Each step delta is a separate source so the breakdown can
+    be reconstructed downstream."""
     keys = GetHelpfileKeys()
     expected = {
-        'F_cmb',
         'E_state_J',
-        'Q_radio_W',
-        'Q_dil_W',
-        'Q_tidal_W',
+        'step_dE_F_int_J',
+        'step_dE_F_cmb_J',
+        'step_dE_Q_radio_J',
+        'step_dE_Q_dil_J',
+        'step_dE_Q_tidal_J',
         'dE_predicted_J',
         'E_residual_J',
         'E_residual_frac',
     }
     missing = expected - set(keys)
     assert not missing, f'Energy-conservation keys missing from schema: {missing}'
-
-    # No duplicates: would silently shadow the column on CSV write.
     assert len(keys) == len(set(keys)), 'Helpfile schema contains duplicate keys'
 
 
@@ -984,11 +994,12 @@ def test_helpfile_keys_include_energy_conservation_columns():
 def test_populate_energy_residual_inactive_when_E_state_zero():
     """Non-Aragog modules leave E_state_J at 0. The bookkeeping helper
     must short-circuit: residual columns stay at 0.0, NEVER NaN, even
-    when other power columns happen to be populated. NaN would propagate
-    into cumulative sums and silently corrupt downstream rows."""
+    when step deltas happen to be non-zero. NaN would propagate into
+    cumulative sums and silently corrupt downstream rows."""
     hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_J=0.0))
-    # Even with non-zero F_int, E_state_J=0 must trigger the inactive path.
-    new_row = _aragog_row(time_yr=1.0, E_state_J=0.0, F_int=100.0)
+    new_row = _aragog_row(
+        time_yr=1.0, E_state_J=0.0, step_dE_F_int_J=-1.0e25, step_dE_Q_dil_J=+1.0e25
+    )
 
     _populate_energy_residual(hf, new_row)
 
@@ -1000,11 +1011,17 @@ def test_populate_energy_residual_inactive_when_E_state_zero():
 @pytest.mark.unit
 def test_populate_energy_residual_anchor_row_is_zero():
     """Row 0 of an Aragog run is the anchor: by definition there is no
-    prior state to integrate against, so dE_predicted and the residual
-    must both be exactly 0 even though E_state_J itself is large
-    (~1e31 J for an Earth-mass mantle)."""
+    prior state to integrate against. dE_predicted and the residual must
+    both be exactly 0 even when E_state_J is large (~1e31 J for Earth)
+    AND step deltas happen to be populated (Aragog reports them on the
+    first call too, but they are conventionally ignored at the anchor)."""
     empty_hf = pd.DataFrame(columns=GetHelpfileKeys())
-    new_row = _aragog_row(time_yr=0.0, E_state_J=1.234e31, F_int=200.0)
+    new_row = _aragog_row(
+        time_yr=0.0,
+        E_state_J=1.234e31,
+        step_dE_F_int_J=-9.99e30,  # large but must be ignored at anchor
+        step_dE_Q_dil_J=+5.55e30,
+    )
 
     _populate_energy_residual(empty_hf, new_row)
 
@@ -1014,110 +1031,101 @@ def test_populate_energy_residual_anchor_row_is_zero():
 
 
 @pytest.mark.unit
-def test_populate_energy_residual_closes_for_pure_cooling():
-    """Synthetic closed-mantle physics: F_int = 100 W/m², no other
-    sources, constant area. Trapezoidal integral with constant power is
-    exact, so a self-consistent E_state trajectory (E0 + dE_pred) must
-    yield residual identically zero. The discriminating asymmetric
-    timestep (1 yr then 9 yr) catches off-by-one in which prev-row is
-    used for the trapezoid endpoint."""
-    R_int = 6.0e6
-    A_int = 4.0 * 3.141592653589793 * R_int * R_int
-    F_int = 100.0  # W/m^2, positive = heat loss
-    P = -F_int * A_int  # W, negative = mantle cools
-
+def test_populate_energy_residual_cumulative_sum_across_three_rows():
+    """Synthetic 3-row trajectory with asymmetric step deltas. Cumulative
+    dE_predicted at row N must equal the sum of step deltas for rows 1..N.
+    The asymmetry (different magnitudes per row) catches an off-by-one in
+    which prior-row's dE_predicted_J is being used as the running total."""
     E0 = 1.0e31
-    t1 = 1.0  # yr
-    t2 = 10.0  # yr (asymmetric step)
-    dt1_s = t1 * _SECONDS_PER_YEAR
-    dt2_s = (t2 - t1) * _SECONDS_PER_YEAR
-
-    E1 = E0 + P * dt1_s
-    E2 = E1 + P * dt2_s
-
-    # Anchor row.
-    row0 = _aragog_row(time_yr=0.0, E_state_J=E0, F_int=F_int, R_int=R_int)
+    # Three asymmetric increments, all sources active.
+    row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # Step 1.
-    row1 = _aragog_row(time_yr=t1, E_state_J=E1, F_int=F_int, R_int=R_int)
+    # Step 1: cooling dominates.
+    delta_1_F_int = -3.0e29
+    delta_1_Q_radio = +1.0e29
+    expected_dE_pred_1 = delta_1_F_int + delta_1_Q_radio  # = -2.0e29
+    E1 = E0 + expected_dE_pred_1
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_J=E1,
+        step_dE_F_int_J=delta_1_F_int,
+        step_dE_Q_radio_J=delta_1_Q_radio,
+    )
     _populate_energy_residual(hf, row1)
     hf = ExtendHelpfile(hf, row1)
 
-    # Step 2.
-    row2 = _aragog_row(time_yr=t2, E_state_J=E2, F_int=F_int, R_int=R_int)
+    # Step 2: dilatation heating > cooling, net warming.
+    delta_2_F_int = -2.0e29
+    delta_2_Q_dil = +5.0e29
+    expected_dE_pred_2 = expected_dE_pred_1 + delta_2_F_int + delta_2_Q_dil  # = +1e29
+    E2 = E0 + expected_dE_pred_2
+    row2 = _aragog_row(
+        time_yr=25.0,
+        E_state_J=E2,
+        step_dE_F_int_J=delta_2_F_int,
+        step_dE_Q_dil_J=delta_2_Q_dil,
+    )
     _populate_energy_residual(hf, row2)
+    hf = ExtendHelpfile(hf, row2)
 
-    # Cumulative dE_predicted must match analytic P*dt to FP precision.
-    assert row1['dE_predicted_J'] == pytest.approx(P * dt1_s, rel=1e-12)
-    assert row2['dE_predicted_J'] == pytest.approx(P * (dt1_s + dt2_s), rel=1e-12)
+    # Step 3: F_cmb adds energy from below.
+    delta_3_F_cmb = +1.0e29
+    delta_3_F_int = -4.0e29
+    expected_dE_pred_3 = expected_dE_pred_2 + delta_3_F_cmb + delta_3_F_int  # = -2e29
+    E3 = E0 + expected_dE_pred_3
+    row3 = _aragog_row(
+        time_yr=50.0,
+        E_state_J=E3,
+        step_dE_F_cmb_J=delta_3_F_cmb,
+        step_dE_F_int_J=delta_3_F_int,
+    )
+    _populate_energy_residual(hf, row3)
 
-    # Residual must be ~0 (relative to the large dE actual). Tolerance
-    # is FP-cancellation-dominated at this magnitude (E ~ 1e31, dE ~ 1e25),
-    # not bookkeeping-logic-dominated; 1e-10 is still ~5 orders of
-    # magnitude tighter than any physically interesting residual.
-    assert abs(row2['E_residual_J']) < 1e-3 * abs(E2 - E0)
-    assert abs(row2['E_residual_frac']) < 1e-10
+    assert row1['dE_predicted_J'] == pytest.approx(expected_dE_pred_1, rel=1e-12)
+    assert row2['dE_predicted_J'] == pytest.approx(expected_dE_pred_2, rel=1e-12)
+    assert row3['dE_predicted_J'] == pytest.approx(expected_dE_pred_3, rel=1e-12)
 
-
-@pytest.mark.unit
-def test_populate_energy_residual_detects_missing_source_term():
-    """Discriminating test: a 'real' planet receives a strong dilatation
-    heating Q_dil = +1e15 W on top of F_int cooling, so the recorded
-    E_state stays nearly constant (heating ≈ cooling). If the bookkeeping
-    integrand FORGOT to include Q_dil, the predicted dE would be the
-    cooling-only number, and the residual would equal +Q_dil*dt with the
-    correct sign. We assert the helper INCLUDES Q_dil so the residual is
-    near zero. Catches the omission bug directly."""
-    R_int = 6.0e6
-    A_int = 4.0 * 3.141592653589793 * R_int * R_int
-    F_int = 100.0
-    P_cool = -F_int * A_int  # W
-    Q_dil = -P_cool  # W, exactly cancels cooling
-
-    E0 = 5.0e30
-    t1 = 100.0  # yr
-    dt_s = t1 * _SECONDS_PER_YEAR
-    # E_state stays exactly constant because heating cancels cooling.
-    E1 = E0
-
-    row0 = _aragog_row(time_yr=0.0, E_state_J=E0, F_int=F_int, Q_dil_W=Q_dil, R_int=R_int)
-    hf = CreateHelpfileFromDict(row0)
-
-    row1 = _aragog_row(time_yr=t1, E_state_J=E1, F_int=F_int, Q_dil_W=Q_dil, R_int=R_int)
-    _populate_energy_residual(hf, row1)
-
-    # Trapezoidal with both endpoints = 0 power must give dE_pred = 0
-    # to FP precision (cancellation between P_cool and Q_dil is exact).
-    assert row1['dE_predicted_J'] == pytest.approx(0.0, abs=1.0)
-    # E_state is exactly constant, so dE_actual = 0 and residual = 0.
-    assert row1['E_residual_J'] == pytest.approx(0.0, abs=1.0)
-    # Disable Q_dil retroactively in the integrand to verify it would FAIL:
-    # if the helper had not included Q_dil_W, predicted dE would be
-    # P_cool*dt and residual would be +|P_cool|*dt = ~Q_dil*dt.
-    expected_residual_if_buggy = -P_cool * dt_s  # > 0
-    assert expected_residual_if_buggy > 1e25, 'Test setup too weak to discriminate'
+    # Self-consistent trajectory => zero residual at every row.
+    assert abs(row1['E_residual_J']) < 1e-3 * abs(E1 - E0)
+    assert abs(row3['E_residual_frac']) < 1e-10
 
 
 @pytest.mark.unit
-def test_populate_energy_residual_handles_non_monotonic_time():
-    """PROTEUS dt fallback can produce a step where new Time <= prev Time.
-    In that case the helper must NOT emit a negative dE_predicted (which
-    would corrupt the cumulative sum); it should set this step's
-    increment to zero and leave the residual equal to dE_actual alone."""
+def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
+    """The discriminating test for the bug that motivated this rewrite:
+    a single transient spike in the instantaneous F_cmb / Q_dil_W columns
+    (which Aragog can report at a CVODE phase-boundary moment) must NOT
+    contaminate dE_predicted_J. Only step_dE_*_J contributes. We construct
+    a row where instantaneous F_cmb is set to an absurd 1e23 W/m² and
+    Q_dil_W to -1e30 W (the historical bug pattern) but step deltas are
+    physical; assert the cumulative is governed by the step deltas alone."""
     E0 = 1.0e31
-    row0 = _aragog_row(time_yr=10.0, E_state_J=E0, F_int=200.0)
+    row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # Non-monotonic step: same time, smaller energy (somehow).
-    E1 = E0 - 1.0e25  # dE_actual = -1e25 J
-    row1 = _aragog_row(time_yr=10.0, E_state_J=E1, F_int=200.0)
+    # Physical step delta: -1e29 J (mild cooling).
+    physical_delta = -1.0e29
+    row1 = _aragog_row(
+        time_yr=10.0,
+        E_state_J=E0 + physical_delta,
+        step_dE_F_int_J=physical_delta,
+        # Catastrophic instantaneous spikes — must be IGNORED.
+        F_cmb=1.0e23,
+        Q_dil_W=-1.0e30,
+    )
     _populate_energy_residual(hf, row1)
 
-    # dE_pred must not advance (zero increment + zero prior).
-    assert row1['dE_predicted_J'] == pytest.approx(0.0)
-    # Residual = dE_actual - 0.
-    assert row1['E_residual_J'] == pytest.approx(-1.0e25)
+    # If the helper used the instantaneous spikes, dE_predicted would be
+    # wildly different from -1e29 (the spike-driven trapezoid would give
+    # something like ~1e30 over a 10 yr step). With step-delta logic
+    # the result is exactly the physical delta to FP precision.
+    assert row1['dE_predicted_J'] == pytest.approx(physical_delta, rel=1e-12)
+    assert abs(row1['E_residual_J']) < 1e-3 * abs(physical_delta)
+    # Sanity: the spikes themselves are >= 10x larger than the physical
+    # delta, so any path that consulted them instead of step_dE_F_int_J
+    # would produce a visibly different number.
+    assert abs(1.0e30) >= 10.0 * abs(physical_delta), 'Spike too small to discriminate'
 
 
 @pytest.mark.unit
@@ -1134,12 +1142,12 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
     row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # dE_actual = +0.5 J, dE_pred = 0 (no fluxes set).
+    # dE_actual = +0.5 J, dE_pred = 0 (no step deltas set).
     row1 = _aragog_row(time_yr=1.0, E_state_J=E0 + 0.5)
     _populate_energy_residual(hf, row1)
 
-    # Without flooring this would be 0.5 / 0.5 = 1.0 (huge); with floor
-    # at 1 J the divisor stays >= 1 and the fraction stays within [-1, 1].
+    # Without flooring this would be 0.5 / 0.5 = 1.0; with floor at 1 J
+    # the divisor stays >= 1 and the fraction stays within [-1, 1].
     assert row1['E_residual_J'] == pytest.approx(0.5)
     assert abs(row1['E_residual_frac']) <= 1.0
     # Specifically: 0.5 / max(0.5, 1.0) = 0.5.
@@ -1147,39 +1155,29 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
 
 
 @pytest.mark.unit
-def test_populate_energy_residual_F_cmb_uses_core_area_not_int_area():
-    """Closed-mantle balance: F_int * A_int (top) vs F_cmb * A_cmb
-    (bottom). If the helper accidentally used A_int for both, an Earth-
-    like geometry (R_int=6.371e6, R_core=3.481e6) would over-credit the
-    CMB inflow by factor (R_int/R_core)^2 ≈ 3.35. We construct a case
-    where ONLY F_cmb is non-zero and confirm the predicted power matches
-    F_cmb * 4πR_core^2, NOT F_cmb * 4πR_int^2."""
-    R_int = 6.371e6
-    R_core = 3.481e6
-    A_int = 4.0 * 3.141592653589793 * R_int * R_int
-    A_core = 4.0 * 3.141592653589793 * R_core * R_core
-    F_cmb = 50.0  # W/m^2
-
+def test_populate_energy_residual_residual_detects_missing_source():
+    """Conservation residual must surface a missing source. We construct
+    a 'real' planet whose E_state actually ROSE by 5e29 J because of
+    dilatation heating, but Aragog (in this fictional bug scenario) only
+    reported the cooling step delta (-3e29 J). The residual should be
+    +8e29 J = (E_state-E_state[0]) - dE_predicted, sign and magnitude
+    both meaningful. Catches a regression where the helper would silently
+    zero residuals or apply the wrong sign convention."""
     E0 = 1.0e31
-    t1 = 100.0
-    dt_s = t1 * _SECONDS_PER_YEAR
-    # Self-consistent trajectory using A_core (the correct area).
-    E1 = E0 + F_cmb * A_core * dt_s
-
-    row0 = _aragog_row(time_yr=0.0, E_state_J=E0, F_cmb=F_cmb, R_int=R_int, R_core=R_core)
+    row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    row1 = _aragog_row(time_yr=t1, E_state_J=E1, F_cmb=F_cmb, R_int=R_int, R_core=R_core)
+    actual_dE = +5.0e29  # planet warmed (dilatation > cooling)
+    reported_step_delta = -3.0e29  # Aragog only reported the cooling
+    row1 = _aragog_row(
+        time_yr=100.0,
+        E_state_J=E0 + actual_dE,
+        step_dE_F_int_J=reported_step_delta,
+    )
     _populate_energy_residual(hf, row1)
 
-    # Residual ~0 confirms helper uses A_core; if it used A_int instead,
-    # the residual would be (A_core - A_int) * F_cmb * dt ≈ -2.4e30 J,
-    # i.e. ~24% of E_state.
-    assert row1['dE_predicted_J'] == pytest.approx(F_cmb * A_core * dt_s, rel=1e-12)
-    assert abs(row1['E_residual_J']) < 1e-6 * abs(E1 - E0)
-    # Sanity check that the failure-mode residual would have been huge:
-    # if the helper had used A_int instead of A_core, residual would be
-    # (A_core - A_int) * F_cmb * dt ≈ -5.6e25 J, large enough to dwarf
-    # the actual residual (~1 J after FP cancellation).
-    bogus_residual = (A_core - A_int) * F_cmb * dt_s
-    assert abs(bogus_residual) > 1e25, 'Test geometry too symmetric to discriminate'
+    expected_residual = actual_dE - reported_step_delta  # = +8e29 J
+    assert row1['dE_predicted_J'] == pytest.approx(reported_step_delta, rel=1e-12)
+    assert row1['E_residual_J'] == pytest.approx(expected_residual, rel=1e-12)
+    # E_residual_frac should be O(1) — residual is comparable to actual.
+    assert abs(row1['E_residual_frac']) > 0.5

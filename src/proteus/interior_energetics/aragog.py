@@ -1713,6 +1713,18 @@ class AragogRunner:
             'Q_radio_W': out.Q_radio_total,
             'Q_dil_W': out.Q_dil_total,
             'Q_tidal_W': out.Q_tidal_total,
+            # Per-call energy contributions [J] integrated over the
+            # CVODE sub-step trajectory. Replaces helpfile-side
+            # trapezoidal interpolation of end-of-step F_cmb/Q_dil
+            # snapshots (which were prone to phase-boundary spikes
+            # at single sub-step boundaries). The cumulative
+            # ``dE_predicted_J`` is now sum_n step_dE_*_J across
+            # all rows in the helpfile.
+            'step_dE_F_int_J': out.step_dE_F_int_J,
+            'step_dE_F_cmb_J': out.step_dE_F_cmb_J,
+            'step_dE_Q_radio_J': out.step_dE_Q_radio_J,
+            'step_dE_Q_dil_J': out.step_dE_Q_dil_J,
+            'step_dE_Q_tidal_J': out.step_dE_Q_tidal_J,
         }
 
     @staticmethod
