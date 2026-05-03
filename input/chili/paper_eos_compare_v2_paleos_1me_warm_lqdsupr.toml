@@ -127,7 +127,7 @@ ini_dsdr = -4.698e-06
 volatile_mode = "elements"
 volatile_reservoir = "mantle"
 R_int_override = "none"
-prevent_warming = true
+prevent_warming = false
 
 [planet.elements]
 H_mode = "kg"

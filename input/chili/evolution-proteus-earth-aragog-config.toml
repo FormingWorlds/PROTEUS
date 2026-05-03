@@ -305,7 +305,7 @@ config_version = "3.0"
     albedo_pl       = 0.1           # CHILI prescribed Bond albedo
     tmp_minimum     = 0.5
     tmp_maximum     = 5000.0
-    prevent_warming = true
+    prevent_warming = false
 
     spectral_group  = "Dayspring"
     spectral_bands  = "48"
