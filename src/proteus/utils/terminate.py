@@ -33,6 +33,34 @@ def print_termination_criteria(config: Config):
     # Always enabled:
     _print_criterion(True, 'Keepalive file')
 
+    # Re-emit the prevent_warming advisory in proteus_00.log. The same
+    # advisory fires from the config validator at config-load time (so it
+    # appears in stderr / launch logs), but the run logfile is opened
+    # later by setup_logger and would otherwise miss it.
+    if config.planet.prevent_warming:
+        dilatation_on = (
+            config.interior_energetics.module == 'aragog'
+            and config.interior_energetics.aragog.dilatation
+        )
+        base = (
+            'planet.prevent_warming = true: T_magma is forced to monotonically '
+            'decrease each iteration. This suppresses physical temperature '
+            'oscillations and can hide energy non-conservation (T_magma '
+            'latching, F_atm = F_int reported as convergence by clamp '
+            'consistency rather than radiative balance). Default is false; '
+            'enable only for known strictly-cooling regimes.'
+        )
+        if dilatation_on:
+            log.warning(
+                '%s STRONG WARNING: aragog.dilatation = true introduces a '
+                'heat-pump term that the clamp cannot accommodate. The '
+                'runtime gate in interior_energetics/wrapper.py disables the '
+                'clamp for this run; the runaway-T fallback remains active.',
+                base,
+            )
+        else:
+            log.warning(base)
+
 
 # Print message in common format
 def _msg_termination(msg: str):

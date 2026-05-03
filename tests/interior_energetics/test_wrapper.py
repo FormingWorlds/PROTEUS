@@ -26,7 +26,23 @@ import numpy as np
 import pytest
 
 from proteus.interior_energetics.common import Interior_t
-from proteus.interior_energetics.wrapper import update_structure_from_interior
+from proteus.interior_energetics.wrapper import (
+    _prevent_warming_clamp_active,
+    update_structure_from_interior,
+)
+
+
+def _ns_prevent_warming(prevent_warming: bool, module: str, dilatation: bool):
+    """Build the minimal config namespace _prevent_warming_clamp_active reads."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        planet=SimpleNamespace(prevent_warming=prevent_warming),
+        interior_energetics=SimpleNamespace(
+            module=module,
+            aragog=SimpleNamespace(dilatation=dilatation),
+        ),
+    )
 
 
 def _mock_config(
@@ -1211,3 +1227,85 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     )
 
     _w._zalmoxis_fail_count = 0
+
+
+# ============================================================================
+# _prevent_warming_clamp_active: gate for the T_magma one-way ratchet
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_prevent_warming_clamp_off_when_disabled():
+    """prevent_warming = false: clamp must be inactive regardless of dilatation.
+
+    Default-path regression: with the user-facing flag off, the clamp helper
+    must return False even if dilatation is independently set.
+    """
+    for module in ('aragog', 'spider', 'dummy'):
+        for dilatation in (False, True):
+            cfg = _ns_prevent_warming(
+                prevent_warming=False, module=module, dilatation=dilatation
+            )
+            assert _prevent_warming_clamp_active(cfg) is False, (
+                f'clamp wrongly active for module={module} dilatation={dilatation} '
+                f'when prevent_warming=False'
+            )
+
+
+@pytest.mark.unit
+def test_prevent_warming_clamp_off_when_aragog_dilatation_on():
+    """prevent_warming = true + aragog.dilatation = true: clamp must be GATED OFF.
+
+    This is the core of the v3.5 fix: when the user opts into dilatation
+    heating, the heat-pump legitimately raises T_magma during the warming
+    half of each cycle. The one-way ratchet would silently throw away that
+    energy and latch T_magma at its first local minimum.
+    """
+    cfg = _ns_prevent_warming(
+        prevent_warming=True, module='aragog', dilatation=True
+    )
+    assert _prevent_warming_clamp_active(cfg) is False
+
+
+@pytest.mark.unit
+def test_prevent_warming_clamp_on_when_aragog_dilatation_off():
+    """prevent_warming = true + aragog.dilatation = false: clamp must remain ON.
+
+    Ensures the gate does not over-trigger. Dilatation must be the
+    discriminating field; just running the aragog module is not enough to
+    disable the clamp because aragog-without-dilatation is still a
+    strictly-cooling regime where the clamp is intended.
+    """
+    cfg = _ns_prevent_warming(
+        prevent_warming=True, module='aragog', dilatation=False
+    )
+    assert _prevent_warming_clamp_active(cfg) is True
+
+
+@pytest.mark.unit
+def test_prevent_warming_clamp_on_for_spider_regardless_of_dilatation():
+    """prevent_warming = true with module=spider: clamp ON, even if dilatation flag set.
+
+    SPIDER does not implement the dilatation heating term, so the
+    aragog.dilatation flag must be ignored when spider is the active
+    interior module. A stale dilatation = true in a SPIDER config must
+    not silently disable the clamp.
+    """
+    for dilatation in (False, True):
+        cfg = _ns_prevent_warming(
+            prevent_warming=True, module='spider', dilatation=dilatation
+        )
+        assert _prevent_warming_clamp_active(cfg) is True, (
+            f'spider config with dilatation={dilatation} unexpectedly disabled clamp'
+        )
+
+
+@pytest.mark.unit
+def test_prevent_warming_clamp_on_for_dummy_module():
+    """prevent_warming = true with module=dummy: clamp ON.
+
+    Dummy interior has no internal heating model at all; the clamp is the
+    only mechanism for enforcing monotonic cooling. Must remain active.
+    """
+    cfg = _ns_prevent_warming(prevent_warming=True, module='dummy', dilatation=False)
+    assert _prevent_warming_clamp_active(cfg) is True

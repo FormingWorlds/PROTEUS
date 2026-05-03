@@ -106,6 +106,26 @@ def update_gravity(hf_row: dict):
     hf_row['gravity'] = const_G * hf_row['M_int'] / (hf_row['R_int'] * hf_row['R_int'])
 
 
+def _prevent_warming_clamp_active(config: Config) -> bool:
+    """Return True iff the early T_magma = min(new, prev) ratchet should fire.
+
+    The clamp is enabled by ``planet.prevent_warming`` but is gated off when
+    aragog dilatation heating is active: the heat-pump legitimately raises
+    T_magma during the warming half of each cycle, and a one-way clamp would
+    silently zero that energy and latch T_magma at its first local minimum
+    (see finding_2026_05_03_prevent_warming_clamp_energy_leak.md). The
+    runaway-T fallback elsewhere in run_interior remains active in all cases.
+    """
+    if not config.planet.prevent_warming:
+        return False
+    if (
+        config.interior_energetics.module == 'aragog'
+        and config.interior_energetics.aragog.dilatation
+    ):
+        return False
+    return True
+
+
 def calculate_core_mass(hf_row: dict, config: Config):
     """
     Calculate the core mass of the planet.
@@ -1373,14 +1393,15 @@ def run_interior(
 
     # Apply step limiters
     if hf_row['Time'] > 0:
-        # Prevent increasing surface temperature, if enabled.
-        # Phi_global is mass-weighted (= M_liquid / M_mantle) and can transiently
-        # rise during dilatation heat-pump cycles, so a one-way ratchet on it would
-        # trap the helpfile reading below the true integrator state. T_magma is
-        # the strictly monotonic cooling metric.
+        # Prevent increasing surface temperature, if enabled. The early
+        # T_magma = min(new, prev) ratchet is gated by
+        # _prevent_warming_clamp_active(): off whenever aragog dilatation
+        # heating is on, because the heat-pump legitimately raises T_magma
+        # during the warming half of each cycle. The runaway-T fallback
+        # below remains active regardless.
         T_magma_prev = float(hf_all.iloc[-1]['T_magma'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
-        if config.planet.prevent_warming and (interior_o.ic == 2):
+        if _prevent_warming_clamp_active(config) and (interior_o.ic == 2):
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
 
         # Do not allow massive increases to T_surf

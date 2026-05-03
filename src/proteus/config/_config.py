@@ -59,6 +59,45 @@ def tides_enabled_orbit(instance, attribute, value):
         raise ValueError('Interior tidal heating requires an orbit module to be enabled')
 
 
+def prevent_warming_advisory(instance, attribute, value):
+    """Warn when planet.prevent_warming is enabled.
+
+    The clamp at interior_energetics/wrapper.py forces T_magma to monotonically
+    decrease each iteration. With aragog dilatation heating enabled the
+    integrator legitimately raises T_magma during the warming half of every
+    heat-pump cycle; the clamp silently zeros that energy and latches T_magma
+    at its first local minimum, suppressing physical thermal oscillations and
+    breaking energy conservation (see
+    finding_2026_05_03_prevent_warming_clamp_energy_leak.md). The runtime gate
+    in wrapper.py disables the clamp when dilatation is on; this validator
+    surfaces the choice at config-load time so it appears in proteus_00.log.
+    """
+    if not instance.planet.prevent_warming:
+        return
+    dilatation_on = (
+        instance.interior_energetics.module == 'aragog'
+        and instance.interior_energetics.aragog.dilatation
+    )
+    base = (
+        'planet.prevent_warming = true: T_magma is forced to monotonically '
+        'decrease each iteration. This suppresses physical temperature '
+        'oscillations and can hide energy non-conservation (T_magma latching, '
+        'F_atm = F_int reported as convergence by clamp consistency rather '
+        'than radiative balance). Default is false; enable only for known '
+        'strictly-cooling regimes.'
+    )
+    if dilatation_on:
+        log.warning(
+            '%s STRONG WARNING: aragog.dilatation = true introduces a '
+            'heat-pump term that the clamp cannot accommodate. The runtime '
+            'gate in interior_energetics/wrapper.py will disable the clamp '
+            'for this run; the runaway-T fallback remains active.',
+            base,
+        )
+    else:
+        log.warning(base)
+
+
 CURRENT_CONFIG_VERSION = '3.0'
 
 
@@ -176,7 +215,9 @@ class Config:
     orbit: Orbit = field(factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
     planet: Planet = field(factory=Planet, validator=(planet_mass_valid,))
     interior_struct: Struct = field(factory=Struct)
-    interior_energetics: Interior = field(factory=Interior, validator=(tides_enabled_orbit,))
+    interior_energetics: Interior = field(
+        factory=Interior, validator=(tides_enabled_orbit, prevent_warming_advisory)
+    )
     outgas: Outgas = field(factory=Outgas)
     atmos_clim: AtmosClim = field(factory=AtmosClim)
     atmos_chem: AtmosChem = field(factory=AtmosChem)

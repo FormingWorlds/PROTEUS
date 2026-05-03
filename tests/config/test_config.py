@@ -21,6 +21,7 @@ from proteus.config._config import (
     instmethod_evolve,
     janus_escape_atmosphere,
     observe_resolved_atmosphere,
+    prevent_warming_advisory,
     satellite_evolve,
     spada_zephyrus,
     tides_enabled_orbit,
@@ -211,6 +212,115 @@ def test_tides_enabled_orbit_requires_orbit_module():
     )
     with pytest.raises(ValueError):
         tides_enabled_orbit(inst, None, None)
+
+
+def _ns_for_prevent_warming(prevent_warming: bool, module: str, dilatation: bool):
+    """Build the minimal SimpleNamespace shape that prevent_warming_advisory reads.
+
+    The validator only inspects ``planet.prevent_warming``,
+    ``interior_energetics.module``, and (for aragog) ``interior_energetics.aragog.dilatation``.
+    """
+    return SimpleNamespace(
+        planet=SimpleNamespace(prevent_warming=prevent_warming),
+        interior_energetics=SimpleNamespace(
+            module=module,
+            aragog=SimpleNamespace(dilatation=dilatation),
+        ),
+    )
+
+
+@pytest.mark.unit
+def test_prevent_warming_advisory_silent_when_disabled(caplog):
+    """prevent_warming = false: validator is a no-op (no log output, no exception).
+
+    Default-path regression: the advisory must not fire on the standard
+    configuration. Tests both aragog and dummy interior modules to confirm
+    the early-return is truly module-independent.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING, logger='fwl.proteus.config._config')
+    for module in ('aragog', 'dummy', 'spider'):
+        for dilatation in (False, True):
+            caplog.clear()
+            inst = _ns_for_prevent_warming(
+                prevent_warming=False, module=module, dilatation=dilatation
+            )
+            prevent_warming_advisory(inst, None, None)
+            assert caplog.records == [], (
+                f'unexpected warning emitted for module={module} dilatation={dilatation}'
+            )
+
+
+@pytest.mark.unit
+def test_prevent_warming_advisory_warns_without_dilatation(caplog):
+    """prevent_warming = true + dilatation = false: single base warning, no STRONG note.
+
+    Verifies the message wording references monotonic cooling and the
+    F_atm = F_int convergence pitfall, but does NOT include the
+    dilatation-specific STRONG WARNING.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING, logger='fwl.proteus.config._config')
+
+    inst = _ns_for_prevent_warming(
+        prevent_warming=True, module='aragog', dilatation=False
+    )
+    prevent_warming_advisory(inst, None, None)
+    assert len(caplog.records) == 1, 'expected exactly one warning record'
+    msg = caplog.records[0].getMessage()
+    assert 'monotonically decrease' in msg
+    assert 'F_atm = F_int' in msg
+    assert 'STRONG WARNING' not in msg, (
+        'STRONG WARNING must only fire when dilatation is also enabled'
+    )
+
+
+@pytest.mark.unit
+def test_prevent_warming_advisory_strong_warning_with_dilatation(caplog):
+    """prevent_warming = true + aragog.dilatation = true: STRONG warning + gate notice.
+
+    Verifies that the validator escalates wording when the user has opted
+    into both flags (the configuration that produced the v3.5 5.3 Myr
+    T_magma latch). The strong message must mention the runtime gate so
+    the user understands the clamp is silently disabled.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING, logger='fwl.proteus.config._config')
+
+    inst = _ns_for_prevent_warming(
+        prevent_warming=True, module='aragog', dilatation=True
+    )
+    prevent_warming_advisory(inst, None, None)
+    assert len(caplog.records) == 1
+    msg = caplog.records[0].getMessage()
+    assert 'STRONG WARNING' in msg
+    assert 'heat-pump' in msg
+    assert 'wrapper.py' in msg, 'message must point to the runtime gate location'
+
+
+@pytest.mark.unit
+def test_prevent_warming_advisory_no_strong_warning_for_spider(caplog):
+    """prevent_warming = true with module=spider: base warning only.
+
+    SPIDER has no dilatation term, so even if a stale aragog.dilatation = true
+    is set in the config, the strong warning must not fire. This is the
+    discriminator between the dilatation gate condition and the bare
+    prevent_warming flag.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING, logger='fwl.proteus.config._config')
+
+    inst = _ns_for_prevent_warming(
+        prevent_warming=True, module='spider', dilatation=True
+    )
+    prevent_warming_advisory(inst, None, None)
+    assert len(caplog.records) == 1
+    msg = caplog.records[0].getMessage()
+    assert 'STRONG WARNING' not in msg
 
 
 @pytest.mark.unit
