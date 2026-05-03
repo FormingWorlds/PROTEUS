@@ -229,3 +229,38 @@ def test_aragog_defaults():
 
     with _pt.raises(ValueError):
         Aragog(backend='diffrax')
+
+
+@pytest.mark.unit
+def test_aragog_dilatation_deprecation_warning(caplog):
+    """``aragog.dilatation = true`` emits a single deprecation warning at load.
+
+    Edge case: setting the value to ``False`` (the default) must NOT emit the
+    warning. Setting to ``True`` must emit exactly one log record at WARNING
+    level naming the field and pointing at the Bower 2018 / SPIDER references
+    so users can locate the physics rationale. This is the user-facing
+    surfacing of the Φ_vol deletion: the slot remains valid for one release
+    cycle so old TOMLs continue to load, but loud-on-True is the only signal
+    a long-running TOML will get.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING, logger='fwl.proteus.config._interior')
+
+    # False (default): no warning.
+    caplog.clear()
+    Aragog(dilatation=False)
+    assert caplog.records == [], 'default-False path must be silent'
+
+    # True: exactly one warning.
+    caplog.clear()
+    a = Aragog(dilatation=True)
+    assert a.dilatation is True, 'value must still round-trip even when deprecated'
+    assert len(caplog.records) == 1, (
+        f'expected exactly one warning, got {len(caplog.records)}: '
+        f'{[r.getMessage() for r in caplog.records]}'
+    )
+    msg = caplog.records[0].getMessage()
+    assert 'deprecated' in msg
+    assert 'Bower 2018' in msg, 'message must cite the physics reference'
+    assert caplog.records[0].levelno == logging.WARNING

@@ -82,6 +82,25 @@ def valid_aragog(instance, attribute, value):
         raise ValueError('Must enable at least one energy transport term in Aragog')
 
 
+def _warn_dilatation_deprecated(instance, attribute, value):
+    """Emit a deprecation notice when the legacy dilatation flag is set true.
+
+    See the Aragog ``dilatation`` field docstring for the physics context
+    (the explicit Φ_vol source was a divergence double-count and has been
+    deleted). The slot is kept for one release cycle so existing user TOMLs
+    still load; this validator surfaces the no-op at config-load time.
+    """
+    if value:
+        log.warning(
+            'interior_energetics.aragog.dilatation = true: this flag is '
+            'deprecated and has no effect. The explicit Φ_vol source term '
+            'it gated has been deleted from Aragog as a divergence '
+            'double-count (Bower 2018 §3, SPIDER energy.c). Remove the '
+            'line from your config to silence this warning; the slot will '
+            'be removed entirely in a future release.'
+        )
+
+
 @define
 class Aragog:
     """Aragog-specific parameters.
@@ -89,10 +108,14 @@ class Aragog:
     Attributes
     ----------
     dilatation: bool
-        Whether to include dilatation (PdV) heating from gravitational
-        separation. Default is False. SPIDER does not include this term,
-        so enabling it breaks parity. The implementation is available for
-        future physics work where both solvers should have it.
+        Deprecated, no-op. Accepted-and-ignored for one release cycle so
+        existing user TOMLs continue to load. The flag previously gated an
+        explicit Φ_vol source term in Aragog's energy equation. That term
+        was identified as a divergence double-count (the volumetric work
+        is already implicit in the divergence of the Δh-weighted mass-flux
+        contributions; see Bower 2018 §3 and SPIDER energy.c). The Aragog
+        implementation has been deleted, and a config-load-time warning is
+        emitted whenever ``dilatation = true`` is set.
     mass_coordinates: bool
         Whether to use mass coordinates in the model. Default is True.
         Uses uniform spacing in mass coordinate space, giving larger cells
@@ -129,7 +152,7 @@ class Aragog:
           - 'bower2018': experimental, do not use for production.
     """
 
-    dilatation: bool = field(default=False)
+    dilatation: bool = field(default=False, validator=_warn_dilatation_deprecated)
     mass_coordinates: bool = field(default=True)
     backend: str = field(default='jax', validator=in_(('numpy', 'jax')))
     atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))

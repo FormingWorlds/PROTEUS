@@ -254,7 +254,6 @@ tolerance_rel = -1.0
 matprop_smooth_width = 0.01
 
 [interior_energetics.aragog]
-dilatation = true
 mass_coordinates = true
 
 atol_temperature_equivalent = 1e-08

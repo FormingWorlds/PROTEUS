@@ -350,7 +350,6 @@ config_version = "3.0"
 
     # Aragog-only parameters
     [interior_energetics.aragog]
-        dilatation                    = false   # PdV heating from grav sep (off for SPIDER parity)
         mass_coordinates              = true    # mass coordinate mesh spacing
         jax                           = false   # JAX/diffrax solver (requires jax, equinox, diffrax)
         atol_temperature_equivalent   = 1.0e-8  # CVODE atol [K]; matches SPIDER atol=rtol
