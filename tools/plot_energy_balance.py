@@ -10,7 +10,7 @@ a 3-panel PDF (plus a per-source-power PDF) summarising:
 (b) The fractional residual ``E_residual_frac`` vs time. The 1 J floor
     on the divisor keeps this bounded at quiescent steady state.
 (c) Source-power decomposition: -F_int*A_int (top boundary loss),
-    +F_cmb*A_cmb (CMB inflow), Q_radio_W, Q_dil_W, Q_tidal_W in watts.
+    +F_cmb*A_cmb (CMB inflow), Q_radio_W, Q_tidal_W in watts.
 
 Usage
 -----
@@ -46,7 +46,6 @@ _REQUIRED = (
     'F_int',
     'F_cmb',
     'Q_radio_W',
-    'Q_dil_W',
     'Q_tidal_W',
     'R_int',
     'R_core',
@@ -90,7 +89,6 @@ def _powers(df: pd.DataFrame) -> dict[str, np.ndarray]:
         '-F_int * A_int (top loss)': -df['F_int'].to_numpy() * A_int,
         '+F_cmb * A_core (CMB inflow)': df['F_cmb'].to_numpy() * A_core,
         'Q_radio': df['Q_radio_W'].to_numpy(),
-        'Q_dil': df['Q_dil_W'].to_numpy(),
         'Q_tidal': df['Q_tidal_W'].to_numpy(),
     }
 
@@ -148,10 +146,9 @@ def _plot_balance(df: pd.DataFrame, out_path: str, label: str) -> None:
 
 def _plot_powers(df: pd.DataFrame, out_path: str, label: str) -> None:
     """Standalone log-log absolute-value power plot. Lets a reader see
-    decade-scale crossings between Q_dil and the surface losses on the
-    same log-log canvas where Q_radio sits in the same range. Uses
-    abs(P) so the plot is robust to sign flips on Q_dil during heating
-    pulses."""
+    decade-scale crossings between the boundary losses and the volumetric
+    sources on the same log-log canvas. Uses abs(P) so the plot is robust
+    to transient sign flips."""
     t = df['Time'].to_numpy()
     fig, ax = plt.subplots(1, 1, figsize=(7.0, 4.5))
     powers = _powers(df)

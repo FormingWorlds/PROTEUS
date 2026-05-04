@@ -926,9 +926,9 @@ def test_helpfile_handles_negative_fluxes():
 #
 # The conservation primitive is the per-call energy integral set computed by
 # Aragog over its CVODE sub-step trajectory and exposed in helpfile columns
-# step_dE_F_int_J / step_dE_F_cmb_J / step_dE_Q_radio_J / step_dE_Q_dil_J /
-# step_dE_Q_tidal_J. PROTEUS just cumulatively sums these; no helpfile-side
-# trapezoidal interpolation between possibly-transient F_cmb / Q_dil snapshots.
+# step_dE_F_int_J / step_dE_F_cmb_J / step_dE_Q_radio_J / step_dE_Q_tidal_J.
+# PROTEUS just cumulatively sums these; no helpfile-side trapezoidal
+# interpolation between possibly-transient F_cmb snapshots.
 
 
 def _aragog_row(
@@ -938,29 +938,25 @@ def _aragog_row(
     step_dE_F_int_J: float = 0.0,
     step_dE_F_cmb_J: float = 0.0,
     step_dE_Q_radio_J: float = 0.0,
-    step_dE_Q_dil_J: float = 0.0,
     step_dE_Q_tidal_J: float = 0.0,
     F_cmb: float = 0.0,
-    Q_dil_W: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
     T_magma: float = 3000.0,
 ) -> dict:
     """Helper: build a ZeroHelpfileRow populated with the columns the
     energy-residual helper reads. Uses Earth-like radii by default. The
-    instantaneous F_cmb / Q_dil_W keyword arguments are supported only so
-    the discrimination test can prove they are IGNORED by the cumulative-
-    sum logic; they have no effect on dE_predicted_J."""
+    instantaneous F_cmb keyword argument is supported only so the
+    discrimination test can prove it is IGNORED by the cumulative-sum
+    logic; it has no effect on dE_predicted_J."""
     row = ZeroHelpfileRow()
     row['Time'] = time_yr
     row['E_state_J'] = E_state_J
     row['step_dE_F_int_J'] = step_dE_F_int_J
     row['step_dE_F_cmb_J'] = step_dE_F_cmb_J
     row['step_dE_Q_radio_J'] = step_dE_Q_radio_J
-    row['step_dE_Q_dil_J'] = step_dE_Q_dil_J
     row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
     row['F_cmb'] = F_cmb
-    row['Q_dil_W'] = Q_dil_W
     row['R_int'] = R_int
     row['R_core'] = R_core
     row['T_magma'] = T_magma
@@ -979,7 +975,6 @@ def test_helpfile_keys_include_energy_conservation_columns():
         'step_dE_F_int_J',
         'step_dE_F_cmb_J',
         'step_dE_Q_radio_J',
-        'step_dE_Q_dil_J',
         'step_dE_Q_tidal_J',
         'dE_predicted_J',
         'E_residual_J',
@@ -988,6 +983,11 @@ def test_helpfile_keys_include_energy_conservation_columns():
     missing = expected - set(keys)
     assert not missing, f'Energy-conservation keys missing from schema: {missing}'
     assert len(keys) == len(set(keys)), 'Helpfile schema contains duplicate keys'
+    # Negative regression: the historical Q_dil/F_dil columns must stay
+    # deleted. If a future cleanup adds them back, this test fails loudly.
+    forbidden = {'F_dil', 'Q_dil_W', 'step_dE_Q_dil_J'}
+    leaked = forbidden & set(keys)
+    assert not leaked, f'Deleted dilatation columns reappeared in schema: {leaked}'
 
 
 @pytest.mark.unit
@@ -998,7 +998,10 @@ def test_populate_energy_residual_inactive_when_E_state_zero():
     cumulative sums and silently corrupt downstream rows."""
     hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_J=0.0))
     new_row = _aragog_row(
-        time_yr=1.0, E_state_J=0.0, step_dE_F_int_J=-1.0e25, step_dE_Q_dil_J=+1.0e25
+        time_yr=1.0,
+        E_state_J=0.0,
+        step_dE_F_int_J=-1.0e25,
+        step_dE_F_cmb_J=+1.0e25,
     )
 
     _populate_energy_residual(hf, new_row)
@@ -1020,7 +1023,7 @@ def test_populate_energy_residual_anchor_row_is_zero():
         time_yr=0.0,
         E_state_J=1.234e31,
         step_dE_F_int_J=-9.99e30,  # large but must be ignored at anchor
-        step_dE_Q_dil_J=+5.55e30,
+        step_dE_F_cmb_J=+5.55e30,
     )
 
     _populate_energy_residual(empty_hf, new_row)
@@ -1055,16 +1058,16 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     _populate_energy_residual(hf, row1)
     hf = ExtendHelpfile(hf, row1)
 
-    # Step 2: dilatation heating > cooling, net warming.
+    # Step 2: F_cmb heat input > cooling, net warming.
     delta_2_F_int = -2.0e29
-    delta_2_Q_dil = +5.0e29
-    expected_dE_pred_2 = expected_dE_pred_1 + delta_2_F_int + delta_2_Q_dil  # = +1e29
+    delta_2_F_cmb = +5.0e29
+    expected_dE_pred_2 = expected_dE_pred_1 + delta_2_F_int + delta_2_F_cmb  # = +1e29
     E2 = E0 + expected_dE_pred_2
     row2 = _aragog_row(
         time_yr=25.0,
         E_state_J=E2,
         step_dE_F_int_J=delta_2_F_int,
-        step_dE_Q_dil_J=delta_2_Q_dil,
+        step_dE_F_cmb_J=delta_2_F_cmb,
     )
     _populate_energy_residual(hf, row2)
     hf = ExtendHelpfile(hf, row2)
@@ -1094,12 +1097,13 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
 @pytest.mark.unit
 def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
     """The discriminating test for the bug that motivated this rewrite:
-    a single transient spike in the instantaneous F_cmb / Q_dil_W columns
-    (which Aragog can report at a CVODE phase-boundary moment) must NOT
-    contaminate dE_predicted_J. Only step_dE_*_J contributes. We construct
-    a row where instantaneous F_cmb is set to an absurd 1e23 W/m² and
-    Q_dil_W to -1e30 W (the historical bug pattern) but step deltas are
-    physical; assert the cumulative is governed by the step deltas alone."""
+    a single transient spike in the instantaneous F_cmb column (which
+    Aragog can report at a CVODE phase-boundary moment) must NOT
+    contaminate dE_predicted_J. Only step_dE_*_J contributes. We
+    construct a row where instantaneous F_cmb is set to an absurd
+    1e23 W/m² (the historical bug pattern) but the step delta is
+    physical; assert the cumulative is governed by the step delta alone.
+    """
     E0 = 1.0e31
     row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
     hf = CreateHelpfileFromDict(row0)
@@ -1110,22 +1114,17 @@ def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
         time_yr=10.0,
         E_state_J=E0 + physical_delta,
         step_dE_F_int_J=physical_delta,
-        # Catastrophic instantaneous spikes — must be IGNORED.
+        # Catastrophic instantaneous spike — must be IGNORED.
         F_cmb=1.0e23,
-        Q_dil_W=-1.0e30,
     )
     _populate_energy_residual(hf, row1)
 
-    # If the helper used the instantaneous spikes, dE_predicted would be
+    # If the helper used the instantaneous spike, dE_predicted would be
     # wildly different from -1e29 (the spike-driven trapezoid would give
     # something like ~1e30 over a 10 yr step). With step-delta logic
     # the result is exactly the physical delta to FP precision.
     assert row1['dE_predicted_J'] == pytest.approx(physical_delta, rel=1e-12)
     assert abs(row1['E_residual_J']) < 1e-3 * abs(physical_delta)
-    # Sanity: the spikes themselves are >= 10x larger than the physical
-    # delta, so any path that consulted them instead of step_dE_F_int_J
-    # would produce a visibly different number.
-    assert abs(1.0e30) >= 10.0 * abs(physical_delta), 'Spike too small to discriminate'
 
 
 @pytest.mark.unit
@@ -1158,7 +1157,7 @@ def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
 def test_populate_energy_residual_residual_detects_missing_source():
     """Conservation residual must surface a missing source. We construct
     a 'real' planet whose E_state actually ROSE by 5e29 J because of
-    dilatation heating, but Aragog (in this fictional bug scenario) only
+    a fictional unreported source, but Aragog (in this scenario) only
     reported the cooling step delta (-3e29 J). The residual should be
     +8e29 J = (E_state-E_state[0]) - dE_predicted, sign and magnitude
     both meaningful. Catches a regression where the helper would silently
@@ -1167,7 +1166,7 @@ def test_populate_energy_residual_residual_detects_missing_source():
     row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    actual_dE = +5.0e29  # planet warmed (dilatation > cooling)
+    actual_dE = +5.0e29  # planet warmed
     reported_step_delta = -3.0e29  # Aragog only reported the cooling
     row1 = _aragog_row(
         time_yr=100.0,

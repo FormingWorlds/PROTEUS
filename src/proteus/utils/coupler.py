@@ -584,7 +584,6 @@ def GetHelpfileKeys():
         'F_xuv',            # incoming XUV radiation flux [W m-2]
         'F_tidal',          # tidal heat flux arising at surface [W m-2]
         'F_radio',          # radiogenic heat flux arising at surface [W m-2]
-        'F_dil',             # dilatation (PdV) heat flux at surface [W m-2]
         'F_cmb',             # heat flux at the CMB (signed, +out-of-core) [W m-2]
 
         # Planet interior properties
@@ -603,10 +602,10 @@ def GetHelpfileKeys():
         # and is the proper conservation-grade quantity. E_th_mantle is retained
         # for back-compat but is the legacy m*Cp_apparent*T proxy with phase-
         # dependent jumps in the mushy zone; do not use it for residual checks.
-        # Q_radio_W / Q_dil_W / Q_tidal_W are end-of-step instantaneous
-        # mantle-integrated source powers in watts (kept for instrumentation;
-        # do NOT integrate trapezoidally for conservation -- end-of-step
-        # values are spike-prone at CVODE phase-boundary moments).
+        # Q_radio_W / Q_tidal_W are end-of-step instantaneous mantle-integrated
+        # source powers in watts (kept for instrumentation; do NOT integrate
+        # trapezoidally for conservation -- end-of-step values are spike-prone
+        # at CVODE phase-boundary moments).
         # F_cmb is the analogous instantaneous CMB heat flux. The
         # conservation primitive is the per-call integral set computed by
         # Aragog over its CVODE sub-step trajectory:
@@ -621,12 +620,10 @@ def GetHelpfileKeys():
         'E_th_mantle',      # legacy thermal-energy proxy [J] (do not use for conservation)
         'E_state_J',         # EOS-consistent integrated mantle enthalpy [J]
         'Q_radio_W',         # instantaneous mantle-integrated radiogenic power [W]
-        'Q_dil_W',           # instantaneous mantle-integrated dilatation power [W]
         'Q_tidal_W',         # instantaneous mantle-integrated tidal power [W]
         'step_dE_F_int_J',   # per-call ∫ -F_int*A_int dt [J]
         'step_dE_F_cmb_J',   # per-call ∫ +F_cmb*A_cmb dt [J]
         'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J]
-        'step_dE_Q_dil_J',   # per-call ∫ +Q_dil dt [J]
         'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J]
         'dE_predicted_J',    # cumulative sum of step_dE_*_J across rows [J]
         'E_residual_J',      # (E_state-E_state[0]) - dE_predicted_J [J]
@@ -749,7 +746,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     The cumulative ``dE_predicted_J`` is just the running sum of these
     deltas across all helpfile rows. This eliminates the previous
     helpfile-side trapezoidal interpolation between end-of-step
-    F_cmb/Q_dil snapshots, which was prone to phase-boundary spikes:
+    F_cmb snapshots, which was prone to phase-boundary spikes:
     a single CVODE sub-step transient could blow up the integral by
     orders of magnitude when used as a trapezoid endpoint over a
     PROTEUS iteration's worth of time.
@@ -777,7 +774,6 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
         float(new_row.get('step_dE_F_int_J', 0.0))
         + float(new_row.get('step_dE_F_cmb_J', 0.0))
         + float(new_row.get('step_dE_Q_radio_J', 0.0))
-        + float(new_row.get('step_dE_Q_dil_J', 0.0))
         + float(new_row.get('step_dE_Q_tidal_J', 0.0))
     )
 
@@ -811,8 +807,8 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     # ── Energy-conservation cumulative bookkeeping ─────────────────────
     # Compute dE_predicted_J / E_residual_J / E_residual_frac for the
     # new row from the prior-row state stored in current_hf and the
-    # instantaneous Q_radio_W / Q_dil_W / Q_tidal_W / F_cmb / F_int /
-    # E_state_J populated by the active interior module. Active only
+    # instantaneous Q_radio_W / Q_tidal_W / F_cmb / F_int / E_state_J
+    # populated by the active interior module. Active only
     # when E_state_J is finite and non-zero (Aragog with the entropy
     # EOS path); other interior modules leave the new column at 0.0
     # via ZeroHelpfileRow and the residual columns stay at 0.0 too,

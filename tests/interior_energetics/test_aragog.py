@@ -36,7 +36,6 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.trans_convection = True
     config.interior_energetics.trans_grav_sep = False
     config.interior_energetics.trans_mixing = True
-    config.interior_energetics.aragog.dilatation = False
     config.interior_energetics.aragog.atol_temperature_equivalent = 0.01
     config.interior_energetics.aragog.core_bc = 'energy_balance'
     config.interior_energetics.aragog.phase_smoothing = 'tanh'

@@ -1627,20 +1627,13 @@ class AragogRunner:
             out.status,
         )
 
-        # Split total heating into radiogenic, tidal, and dilatation
-        # components. SPIDER reports radio and tidal separately
-        # (Hradio_s, Htidal_s integrated over cell masses). Aragog's
-        # ``out.F_heat_total`` is the combined flux summed over ALL
-        # internal sources, which post-B1 (aragog 4d30b03) includes
-        # dilatation H_dil whenever
-        # ``ie.aragog.dilatation = true`` is set.
-        #
-        # The pre-audit code computed ``F_radio = F_heat_total - F_tidal``
-        # which silently bundled H_dil into the F_radio column at the
-        # crystallisation front. Compute F_radio analytically from the
-        # radionuclides at the current sim time and back out F_dil as
-        # the residual, so the helpfile column for each source is
-        # physically correct.
+        # Split total heating into radiogenic and tidal components.
+        # SPIDER reports radio and tidal separately (Hradio_s, Htidal_s
+        # integrated over cell masses). Aragog's ``out.F_heat_total`` is
+        # the combined flux summed over the source terms (radio + tidal).
+        # Compute F_radio analytically from the radionuclides at the
+        # current sim time so the helpfile column for each source is
+        # physically correct rather than recovered by subtraction.
         area_surf = 4.0 * np.pi * float(out.r_basic[-1]) ** 2
         F_tidal = 0.0
         if interior_o is not None and hasattr(interior_o, 'tides'):
@@ -1669,7 +1662,6 @@ class AragogRunner:
                     t_end_yr += float(getattr(interior_o, 'dt', 0.0))
                 H_radio_per_kg = sum(float(r.get_heating(t_end_yr)) for r in radionuclides)
                 F_radio = H_radio_per_kg * float(out.M_mantle) / area_surf
-        F_dil = max(0.0, out.F_heat_total - F_radio - F_tidal)
 
         return {
             'M_mantle': out.M_mantle,
@@ -1692,7 +1684,6 @@ class AragogRunner:
             'Cp_eff': out.Cp_eff,
             'F_radio': F_radio,
             'F_tidal': F_tidal,
-            'F_dil': F_dil,
             # Energy-conservation diagnostic columns (Aragog A1+A2).
             # E_state is the EOS-consistent integrated mantle enthalpy
             # from the precomputed h(P,S) table; F_cmb is the CMB heat
@@ -1703,19 +1694,16 @@ class AragogRunner:
             'E_state_J': out.E_state,
             'F_cmb': out.F_cmb,
             'Q_radio_W': out.Q_radio_total,
-            'Q_dil_W': out.Q_dil_total,
             'Q_tidal_W': out.Q_tidal_total,
             # Per-call energy contributions [J] integrated over the
             # CVODE sub-step trajectory. Replaces helpfile-side
-            # trapezoidal interpolation of end-of-step F_cmb/Q_dil
-            # snapshots (which were prone to phase-boundary spikes
-            # at single sub-step boundaries). The cumulative
-            # ``dE_predicted_J`` is now sum_n step_dE_*_J across
-            # all rows in the helpfile.
+            # trapezoidal interpolation of end-of-step F_cmb snapshots
+            # (which were prone to phase-boundary spikes at single
+            # sub-step boundaries). The cumulative ``dE_predicted_J``
+            # is now sum_n step_dE_*_J across all rows in the helpfile.
             'step_dE_F_int_J': out.step_dE_F_int_J,
             'step_dE_F_cmb_J': out.step_dE_F_cmb_J,
             'step_dE_Q_radio_J': out.step_dE_Q_radio_J,
-            'step_dE_Q_dil_J': out.step_dE_Q_dil_J,
             'step_dE_Q_tidal_J': out.step_dE_Q_tidal_J,
         }
 
