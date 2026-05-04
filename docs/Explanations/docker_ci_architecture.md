@@ -54,9 +54,9 @@ PROTEUS_DIR=/opt/proteus
 - Schedule: Nightly at 02:00 UTC
 - Push to `main` when dependencies change:
   - `pyproject.toml`
-  - `environment.yml`
   - `Dockerfile`
   - `tools/get_*.sh` scripts
+  - `.github/workflows/docker-build.yml`
 
 **Output:** `ghcr.io/formingworlds/proteus:latest`
 
@@ -299,8 +299,8 @@ ci-pr-checks.yml (3 parallel jobs + summary)
 ### When Docker Image Rebuilds
 1. Nightly at 02:00 UTC (scheduled)
 2. Changes to `pyproject.toml` (dependency updates)
-3. Changes to `environment.yml` (conda dependencies)
-4. Changes to `Dockerfile` (build process)
+3. Changes to `Dockerfile` (build process)
+4. Changes to `.github/workflows/docker-build.yml` (workflow build trigger changes)
 5. Changes to `tools/get_*.sh` (compilation scripts)
 
 ### Image Size Management

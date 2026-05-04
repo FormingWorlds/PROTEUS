@@ -672,6 +672,16 @@ def test_get_socrates_version_with_mock():
 
 
 @pytest.mark.unit
+def test_get_socrates_version_raises_without_rad_dir():
+    """Test that _get_socrates_version errors when RAD_DIR is missing."""
+    from proteus.utils.coupler import _get_socrates_version
+
+    with patch.dict(os.environ, {}, clear=True):
+        with pytest.raises(EnvironmentError, match='RAD_DIR environment variable is not set'):
+            _get_socrates_version()
+
+
+@pytest.mark.unit
 def test_get_agni_version_with_mock():
     """Test that _get_agni_version reads TOML file."""
     from proteus.utils.coupler import _get_agni_version

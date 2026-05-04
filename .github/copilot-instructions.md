@@ -139,17 +139,6 @@ pre-commit install -f
 ./tools/get_vulcan.sh
 ```
 
-**User Install** (simpler, non-editable):
-
-```bash
-git clone https://github.com/FormingWorlds/PROTEUS.git
-cd PROTEUS
-conda env create -f environment.yml
-conda activate proteus
-pip install -e .
-proteus install-all --export-env
-```
-
 **Important Notes**:
 
 - **FWL_DATA** and **RAD_DIR** must be set before running PROTEUS
@@ -270,7 +259,6 @@ pre-commit install -f
 ### Configuration Files
 
 - `pyproject.toml` - Package metadata, pytest config, coverage thresholds, ruff rules
-- `environment.yml` - Conda environment (user install)
 - `mkdocs.yml` - Documentation configuration (used by Zensical)
 - `.github/workflows/` - CI/CD pipelines
   - `ci-pr-checks.yml` - Fast PR validation (unit + smoke + lint)

@@ -574,7 +574,7 @@ def test_phi_crit_warning(caplog):
     config.struct.module = 'zalmoxis'
     config.params.stop.solid.phi_crit = 0.005
 
-    with caplog.at_level('WARNING'):
+    with caplog.at_level('WARNING', logger='fwl.proteus.interior.wrapper'):
         with patch('proteus.interior.wrapper.determine_interior_radius_with_zalmoxis'):
             solve_structure({}, config, None, {}, '/tmp')
 
@@ -647,7 +647,7 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
             return_value=(3.48e6, None),
         ),
         patch('proteus.interior.wrapper.run_interior'),
-        caplog.at_level('INFO'),
+        caplog.at_level('INFO', logger='fwl.proteus.interior.wrapper'),
     ):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
 

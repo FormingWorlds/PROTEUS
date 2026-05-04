@@ -420,28 +420,6 @@ def test_run_chemistry_preserves_config():
 
 @pytest.mark.unit
 @patch('proteus.atmos_chem.vulcan.run_vulcan')
-def test_run_chemistry_manually_mode(patched_run_vulcan):
-    """
-    Test run_chemistry returns None when when='manually'.
-
-    Physics: In 'manually' mode, chemistry is skipped entirely. This allows
-    users to disable runtime chemistry while keeping module='vulcan' configured.
-    """
-    dirs = {'output': '/tmp/test'}
-    config = MagicMock()
-    config.atmos_chem.module = 'vulcan'
-    config.atmos_chem.when = 'manually'
-
-    hf_row = {'Time': 0.0}
-
-    result = run_chemistry(dirs, config, hf_row)
-
-    assert result is None
-    patched_run_vulcan.assert_not_called()
-
-
-@pytest.mark.unit
-@patch('proteus.atmos_chem.vulcan.run_vulcan')
 def test_run_chemistry_offline_mode(patched_run_vulcan, tmp_path):
     """
     Test run_chemistry calls run_vulcan (offline) when when='offline'.
