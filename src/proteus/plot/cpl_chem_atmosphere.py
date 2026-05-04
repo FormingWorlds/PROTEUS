@@ -91,9 +91,12 @@ def plot_chem_atmosphere(
         log.warning('No atmosphere NetCDF files found in output folder')
         return
     nc_fpath = natural_sort(files)[-1]
-    atm_profile = read_ncdf_profile(nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas'])
+    atm_profile = read_ncdf_profile(
+        nc_fpath, extra_keys=['pl', 'tmpl', 'x_gas', 'cloud_mmr', 'aer_mmr', 'aerosols']
+    )
 
     parr = atm_profile['pl'] * 1e-5  # convert to bar
+    tarr = atm_profile['tmpl']  # temperature profile
 
     # Get year
     year = float(nc_fpath.split('/')[-1].split('_atm')[0])
@@ -107,10 +110,13 @@ def plot_chem_atmosphere(
     else:
         has_offchem = False
 
-    # init plot
-    scale = 1.2
-    fig, ax = plt.subplots(1, 1, figsize=(6 * scale, 5 * scale))
+    # init plot with two panels
+    scale = 1.15
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(5 * scale, 6 * scale))
 
+    # ====================
+    # Panel 1: Gas Species
+    # ====================
     # plot species profiles
     lw = 0.9
     al = 0.8
@@ -131,46 +137,127 @@ def plot_chem_atmosphere(
             xarr = [xarr[0]] + xarr
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])
-                ax.plot(xarr, parr, ls='dashed', color=col, lw=_lw, alpha=al)
+                ax1.plot(xarr, parr, ls='dashed', color=col, lw=_lw, alpha=al)
 
         # plot from offline chemistry, if available (solid lines)
         if has_offchem and (gas in atm_offchem.keys()):
             xarr = list(atm_offchem[gas].values)
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])  # prefer vmr from offline chemistry
-                ax.plot(xarr, parr, ls='solid', color=col, lw=_lw, alpha=al)
+                ax1.plot(xarr, parr, ls='solid', color=col, lw=_lw, alpha=al)
 
         # create legend entry and store surface vmr
         if vmr > 0.0:
-            ax.plot(1e30, 1e30, ls='solid', color=col, lw=_lw, alpha=al, label=lbl)
+            ax1.plot([], [], ls='solid', color=col, lw=_lw, alpha=al, label=lbl)
             vmr_surf.append(vmr)
 
-    # Decorate
-    ax.set_xscale('log')
-    ax.set_xlim(left=xmin, right=1.1)
-    ax.set_xlabel('Volume mixing ratio, at t=%.2e yr' % year)
-    ax.xaxis.set_major_locator(LogLocator(numticks=1000))
+    # Add temperature profile to Panel 1 (secondary x-axis at top)
+    ax1_temp = ax1.twiny()
+    ax1_temp.plot(tarr, parr, 'k', lw=1.5, alpha=0.6, label='Temperature')
+    ax1_temp.set_xlabel('Temperature [K]')
+    ax1_temp.set_xlim(left=0)
 
-    ax.set_ylabel('Pressure [bar]')
-    ax.set_yscale('log')
-    ax.set_ylim(bottom=np.amax(parr), top=np.amin(parr))
-    ax.yaxis.set_major_locator(LogLocator(numticks=1000))
+    # Decorate Panel 1
+    ax1.set_xscale('symlog', linthresh=xmin)
+    ax1.set_xlim(left=0, right=1.1)
+    ax1.set_xlabel('Gas volume mixing ratio')
+
+    ax1.set_ylabel('Pressure [bar]')
+    ax1.set_yscale('log')
+    ax1.set_ylim(bottom=np.amax(parr), top=np.amin(parr))
+    ax1.yaxis.set_major_locator(LogLocator(numticks=1000))
 
     # Legend (handles sorted by surface vmr)
-    handles, labels = ax.get_legend_handles_labels()
+    handles, labels = ax1.get_legend_handles_labels()
     order = np.argsort(vmr_surf)[::-1]
-    ax.legend(
+    ax1.legend(
         [handles[idx] for idx in order],
         [labels[idx] for idx in order],
-        loc='lower center',
-        bbox_to_anchor=(0.5, 1),
-        ncols=11,
-        fontsize=9,
-        borderpad=0.4,
+        loc='center left',
+        bbox_to_anchor=(1.00, 0.5),
+        ncols=max(1, len(order) // 18 + 1),
+        fontsize=8,
+        borderpad=0.0,
         labelspacing=0.3,
         columnspacing=1.0,
-        handlelength=1.5,
+        handlelength=0.9,
         handletextpad=0.3,
+        frameon=False,
+    )
+
+    # =============================
+    # Panel 2: Aerosols and Clouds
+    # =============================
+    # Cloud profiles
+    if 'cloud_mmr' in atm_profile.keys():
+        cloud_mmr = atm_profile['cloud_mmr']
+        ax2.plot(
+            [cloud_mmr[0]] + list(cloud_mmr),
+            parr,
+            ls='solid',
+            color=get_colour('cloud'),
+            lw=1.5,
+            alpha=0.7,
+            label='cloud',
+        )
+
+    # Aerosol profiles
+    # Check for individual aerosol species
+    num_aerosols = 0
+    if 'aerosols' in atm_profile.keys():
+        for aer_name in atm_profile['aerosols']:
+            num_aerosols += 1
+            aer_mmr = atm_profile[f'{aer_name}_mmr']
+            ax2.plot(
+                [aer_mmr[0]] + list(aer_mmr),
+                parr,
+                ls='solid',
+                lw=1.5,
+                alpha=0.7,
+                color=get_colour(aer_name),
+                label=aer_name,
+            )
+
+    # Add temperature profile to Panel 2 (secondary x-axis at top)
+    ax2_temp = ax2.twiny()
+    ax2_temp.plot(tarr, parr, 'k', lw=1.5, alpha=0.6)
+    ax2_temp.set_xticks([])  # hide x-tick labels on secondary axis
+    ax2_temp.set_xlim(left=0)
+
+    # Decorate Panel 2
+    ax2.set_xscale('symlog', linthresh=xmin)
+    ax2.set_xlim(left=0, right=1.1)
+    ax2.set_xlabel('Aerosol mass mixing ratio')
+
+    ax2.set_ylabel('Pressure [bar]')
+    ax2.set_yscale('log')
+    ax2.set_ylim(bottom=np.amax(parr), top=np.amin(parr))
+    ax2.yaxis.set_major_locator(LogLocator(numticks=1000))
+
+    ax2.legend(
+        loc='center left',
+        bbox_to_anchor=(1.00, 0.5),
+        ncols=max(1, num_aerosols // 18 + 1),
+        fontsize=8,
+        borderpad=0.0,
+        labelspacing=0.3,
+        columnspacing=1.0,
+        handlelength=0.9,
+        handletextpad=0.3,
+        frameon=False,
+    )
+
+    # Add time annotation
+    ax1.text(
+        0.02,
+        0.98,
+        f't = {year:.2e} yr',
+        transform=ax1.transAxes,
+        ha='left',
+        va='top',
+        fontsize=11,
+        weight='bold',
+        zorder=999,
     )
 
     # Save file

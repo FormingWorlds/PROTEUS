@@ -230,7 +230,7 @@ def next_step(
 
         # Min step size
         dtminimum = config.params.dt.minimum  # absolute
-        dtminimum += config.params.dt.minimum_rel * hf_row['Time'] * 0.01  # allow small steps
+        dtminimum += config.params.dt.minimum_rel * hf_row['Time']  # allow small steps
         dtswitch = max(dtswitch, dtminimum)
 
     log.info('New time-step target is %.2e years' % dtswitch)

@@ -6,23 +6,17 @@ import logging
 import os
 import pickle
 import shutil
-import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+# Import VULCAN
+import vulcan
 
 # Import PROTEUS
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
 from proteus.utils.helper import find_nearest
-
-# Import VULCAN
-# This is horrible, and should be changed when VULCAN is converted into a Python package
-VULCAN_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..', '..', '..', 'VULCAN')
-)
-sys.path.append(VULCAN_PATH)
-import vulcan  # noqa
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -328,9 +322,9 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     vcfg.runtime = 1.0e22
     vcfg.use_print_prog = True
     vcfg.use_print_delta = False
-    vcfg.print_prog_num = 1  # print the progress every x steps
-    vcfg.dttry = 1.0e-8
-    vcfg.dt_min = 1.0e-9
+    vcfg.print_prog_num = 100  # print the progress every x steps
+    vcfg.dttry = 1.0e-6
+    vcfg.dt_min = 1.0e-8
     vcfg.dt_max = vcfg.runtime * 1e-4
     vcfg.dt_var_max = 2.0
     vcfg.dt_var_min = 0.5
@@ -368,19 +362,20 @@ def run_vulcan(dirs: dict, config: Config, hf_row: dict, *, online: bool = False
     # ------------------------------------------------------------
 
     # Make chemical network
+    has_made = hasattr(run_vulcan, '_made')
     if config.atmos_chem.vulcan.make_funs:
-        if online and hasattr(run_vulcan, '_made'):
+        if online and has_made:
             # Online: already compiled on a previous snapshot, skip
             pass
         else:
             log.debug('Performing `make_chem_funs` step...')
-            vulcan.make_all(vcfg)
+            vulcan.make_chem_funs.make_all(vcfg)
             if online:
                 run_vulcan._made = True
             log.debug('    done')
 
     # Call the solver
-    vulcan.main(vcfg)
+    vulcan.run_vulcan(vcfg, not has_made)
 
     # ------------------------------------------------------------
     # READ AND PARSE OUTPUT FILES

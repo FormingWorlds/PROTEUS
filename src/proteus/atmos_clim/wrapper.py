@@ -87,7 +87,11 @@ def run_atmosphere(
         hf_row['albedo_pl'] = 0.0
 
     # Handle new surface temperature
-    if config.atmos_clim.surf_state == 'mixed_layer':
+    if config.interior.module == 'boundary':
+        # surface temperature is already calculated by boundary interior module
+        pass
+
+    elif config.atmos_clim.surf_state == 'mixed_layer':
         hf_row['T_surf'] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
     elif config.atmos_clim.surf_state == 'fixed':

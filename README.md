@@ -32,11 +32,11 @@
 
 More information can be found on the [documentation](https://proteus-framework.org/PROTEUS/) pages:
 
-* [model description](https://proteus-framework.org/PROTEUS/model.html)
-* [installation guide](https://proteus-framework.org/PROTEUS/installation.html)
-* [usage guide](https://proteus-framework.org/PROTEUS/usage.html)
-* [contributing guide](https://proteus-framework.org/PROTEUS/CONTRIBUTING.html)
+* [model description](https://proteus-framework.org/PROTEUS/Explanations/model.html)
+* [installation guide](https://proteus-framework.org/PROTEUS/How-to/installation.html)
+* [usage guide](https://proteus-framework.org/PROTEUS/How-to/usage.html)
+* [contributing guide](https://proteus-framework.org/PROTEUS/Community/CONTRIBUTING.html)
 
-You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or by [contacting the developers](https://proteus-framework.org/PROTEUS/contact.html) directly.
+You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or by [contacting the developers](https://proteus-framework.org/PROTEUS/Community/contact.html) directly.
 
-If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://proteus-framework.org/PROTEUS/bibliography.html).
+If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://proteus-framework.org/PROTEUS/Reference/bibliography.html).
