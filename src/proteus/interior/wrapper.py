@@ -405,7 +405,7 @@ def run_interior(
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
             hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
-            hf_row['F_int'] = min(hf_row['F_int'], hf_all.iloc[-1]['F_int'])
+            hf_row['F_int'] = max(1.0e-8, min(hf_row['F_int'], hf_all.iloc[-1]['F_int']))
 
         # Do not allow massive increases to T_surf, always
         # Use module-appropriate tolerances for the T_magma limiter
