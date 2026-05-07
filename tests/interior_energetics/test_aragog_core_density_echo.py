@@ -4,8 +4,14 @@ The echo-back recomputes :math:`\\rho_\\mathrm{core} = M_\\mathrm{core} /
 (\\tfrac{4}{3} \\pi R_\\mathrm{cmb}^3)` from the on-disk Zalmoxis mantle
 mesh file and the live ``hf_row['M_core']``, then writes the corrected
 value back to ``hf_row['core_density']`` and into the live solver's
-``MeshParameters.core_density``. This mirrors what SPIDER does via
-``-rho_core`` re-derivation in ``proteus/interior_energetics/spider.py``.
+``MeshParameters.core_density``. The motivation mirrors SPIDER's
+``-rho_core`` re-derivation in ``proteus/interior_energetics/spider.py``,
+but the file format is different: SPIDER reads its own non-dimensional
+``spider_mesh.dat`` (header + surface-first ratios) and multiplies the
+fractional coresize by ``hf_row['R_int']``; the Aragog path here reads
+absolute SI radii from ``zalmoxis_output.dat`` (CMB-first) directly.
+The two paths give the same numerical answer when both files are in
+sync with the same planet state, which is the production case.
 
 Tests cover:
 - ``resolve_core_density`` baseline + echo-back paths.
@@ -26,6 +32,8 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.unit
 
 
 def _write_mantle_mesh(target: Path, R_cmb: float = 3.480e6) -> Path:
@@ -485,17 +493,101 @@ def test_two_consecutive_resolves_track_R_cmb_drift(tmp_path):
     assert rho_1 > rho_2
 
 
-# -- SPIDER-parity sanity check ---------------------------------------------
+# -- File-write race / plausibility tests -----------------------------------
 
 
 @pytest.mark.unit
-def test_aragog_echo_back_matches_spider_pattern(tmp_path):
-    """Aragog's echo-back uses the same M / (4/3 pi R^3) formula as SPIDER.
+def test_resolve_falls_back_when_derived_density_too_low(tmp_path):
+    """Mesh corrupted to give R_cmb >> R_int -> rho_core would be < 1000 kg/m^3.
 
-    SPIDER's wrapper (interior_energetics/spider.py:706-708) computes
-    rho_core = M_core / (4/3 pi R_cmb^3) where R_cmb is derived from
-    the mesh file's coresize. Aragog's resolve_core_density must
-    produce the same numerical value for the same (M_core, R_cmb).
+    Simulates a partial-write race on a network filesystem where the
+    first row is readable but the radius column has been truncated /
+    re-padded to a non-physical value (here, R_cmb = 9.0e6 m for an
+    Earth-mass planet, giving rho_core ~ 600 kg/m^3 — physically
+    impossible for any iron-bearing core).
+    """
+    from proteus.interior_energetics.aragog import resolve_core_density
+
+    data_dir = tmp_path / 'data'
+    # R_cmb = 9.0e6 m is larger than Earth's planet radius; rho_core
+    # at 1.94e24 kg / (4/3 pi (9.0e6)^3) ~ 635 kg/m^3 (less than water).
+    _write_mantle_mesh(data_dir / 'zalmoxis_output.dat', R_cmb=9.0e6)
+
+    config = _make_minimal_config()
+    hf_row = {'core_density': 11000.0, 'M_core': 1.94e24}
+
+    result = resolve_core_density(config, hf_row, str(tmp_path))
+
+    # Plausibility check fires; cached baseline preserved.
+    assert result == pytest.approx(11000.0)
+    assert hf_row['core_density'] == pytest.approx(11000.0)
+
+
+@pytest.mark.unit
+def test_resolve_falls_back_when_derived_density_too_high(tmp_path):
+    """Pathologically tiny R_cmb -> rho_core would exceed 30000 kg/m^3.
+
+    Simulates a write-race where the radius column is truncated to a
+    sub-thousand-km value, producing an unphysically dense core.
+    """
+    from proteus.interior_energetics.aragog import resolve_core_density
+
+    data_dir = tmp_path / 'data'
+    # R_cmb = 1.0e6 m at M_core = 1.94e24 kg gives rho_core ~ 4.6e8 kg/m^3.
+    _write_mantle_mesh(data_dir / 'zalmoxis_output.dat', R_cmb=1.0e6)
+
+    config = _make_minimal_config()
+    hf_row = {'core_density': 11000.0, 'M_core': 1.94e24}
+
+    result = resolve_core_density(config, hf_row, str(tmp_path))
+
+    assert result == pytest.approx(11000.0)
+    assert hf_row['core_density'] == pytest.approx(11000.0)
+
+
+@pytest.mark.unit
+def test_resolve_accepts_super_earth_core_density(tmp_path):
+    """Compressed super-Earth core (~ 17000 kg/m^3) is inside the bracket.
+
+    Plausibility bounds [1000, 30000] must accept the upper end of
+    the realistic super-Earth regime (10 M_E core, deeply compressed).
+    A regression that tightened the upper bound to 12000 would reject
+    legitimate super-Earth runs.
+    """
+    from proteus.interior_energetics.aragog import resolve_core_density
+
+    data_dir = tmp_path / 'data'
+    # 10 M_E with core_frac=0.32 by mass; compressed core radius ~ 5.5e6 m
+    R_cmb = 5.50e6
+    _write_mantle_mesh(data_dir / 'zalmoxis_output.dat', R_cmb=R_cmb)
+
+    M_core = 0.32 * 10.0 * 5.972e24
+    expected = M_core / (4.0 / 3.0 * math.pi * R_cmb**3)
+    assert 14000.0 < expected < 30000.0  # sanity: in super-Earth range
+
+    config = _make_minimal_config()
+    hf_row = {'core_density': 9000.0, 'M_core': M_core}
+
+    result = resolve_core_density(config, hf_row, str(tmp_path))
+
+    # Echo-back fires; super-Earth density is accepted.
+    assert result == pytest.approx(expected, rel=1e-12)
+    assert hf_row['core_density'] == pytest.approx(expected, rel=1e-12)
+
+
+# -- Formula correctness sanity check ---------------------------------------
+
+
+@pytest.mark.unit
+def test_echo_back_formula_correct(tmp_path):
+    """Aragog's echo-back returns ``M_core / (4/3 pi R_cmb^3)`` exactly.
+
+    The numerical formula matches what SPIDER computes at
+    ``interior_energetics/spider.py:706-708`` for the same
+    ``(M_core, R_cmb)`` inputs. Note that the *file format* the two
+    wrappers read from differs (SPIDER: surface-first non-dimensional
+    coresize; Aragog: CMB-first absolute SI radii), so this test pins
+    only the formula, not the parsing path.
     """
     from proteus.interior_energetics.aragog import resolve_core_density
 
@@ -511,5 +603,5 @@ def test_aragog_echo_back_matches_spider_pattern(tmp_path):
 
     aragog_rho = resolve_core_density(config, hf_row, str(tmp_path))
 
-    # Both formulas should agree to floating-point precision.
+    # Same formula, same inputs -> floating-point parity.
     assert aragog_rho == pytest.approx(spider_rho, rel=1e-15)

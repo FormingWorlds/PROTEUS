@@ -47,6 +47,21 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 # crystallization step). Reserved for autodiff development.
 _DIFFRAX_RESEARCH_ONLY = False
 
+# Physically plausible bulk-core density bounds [kg m^-3] used as a
+# sanity check on the mesh-derived rho_core. Earth's outer core is
+# ~9900 to 12100 (PREM); a 10 M_E super-Earth core can compress to
+# ~16000 to 18000. Anything outside [1000, 30000] is unphysical and
+# almost certainly indicates a corrupt or partially-written mesh file
+# (the most likely cause is a write race during a Zalmoxis re-solve
+# on a network filesystem).
+_RHO_CORE_MIN = 1000.0
+_RHO_CORE_MAX = 30000.0
+
+
+def _is_plausible_core_density(rho_core: float) -> bool:
+    """Return True iff ``rho_core`` falls inside the physical-bounds bracket."""
+    return _RHO_CORE_MIN <= float(rho_core) <= _RHO_CORE_MAX
+
 
 def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
     """Resolve self-consistent core density for the Aragog energy-balance BC.
@@ -95,16 +110,30 @@ def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
         except (ValueError, FileNotFoundError, OSError) as exc:
             logger.debug('Aragog core_density echo-back skipped: %s', exc)
             return rho_core
-        if rho_core_mesh > 0.0:
-            logger.debug(
-                'Aragog core_density echo-back: %.2f -> %.2f kg/m^3 '
-                '(M_core=%.4e kg, mesh-derived R_cmb)',
-                rho_core,
+        if not _is_plausible_core_density(rho_core_mesh):
+            # Likely cause: file-write race during a Zalmoxis re-solve on a
+            # network filesystem. The first row was readable but truncated
+            # to a non-physical R_cmb. Fall back rather than feed a junk
+            # density into the energy-balance core BC.
+            logger.warning(
+                'Aragog core_density echo-back skipped: mesh-derived '
+                'rho_core=%.2f kg/m^3 outside plausible range '
+                '[%.0f, %.0f]; cached hf_row[core_density]=%.2f kept.',
                 rho_core_mesh,
-                M_core,
+                _RHO_CORE_MIN,
+                _RHO_CORE_MAX,
+                rho_core,
             )
-            hf_row['core_density'] = rho_core_mesh
-            return rho_core_mesh
+            return rho_core
+        logger.debug(
+            'Aragog core_density echo-back: %.2f -> %.2f kg/m^3 '
+            '(M_core=%.4e kg, mesh-derived R_cmb)',
+            rho_core,
+            rho_core_mesh,
+            M_core,
+        )
+        hf_row['core_density'] = rho_core_mesh
+        return rho_core_mesh
 
     return rho_core
 
@@ -1414,7 +1443,19 @@ class AragogRunner:
             except (ValueError, FileNotFoundError, OSError) as exc:
                 logger.debug('Aragog core_density echo-back skipped at update: %s', exc)
             else:
-                if rho_core_mesh > 0.0:
+                if not _is_plausible_core_density(rho_core_mesh):
+                    # File-write race during a Zalmoxis re-solve. Keep the
+                    # previous live core_density and warn so the symptom
+                    # is observable in proteus_00.log.
+                    logger.warning(
+                        'Aragog core_density echo-back skipped at update: '
+                        'mesh-derived rho_core=%.2f kg/m^3 outside '
+                        '[%.0f, %.0f]; live solver value preserved.',
+                        rho_core_mesh,
+                        _RHO_CORE_MIN,
+                        _RHO_CORE_MAX,
+                    )
+                else:
                     prev_rho = float(solver.parameters.mesh.core_density)
                     solver.parameters.mesh.core_density = rho_core_mesh
                     hf_row['core_density'] = rho_core_mesh
