@@ -90,6 +90,9 @@ def _construct_voldict(hf_row: dict, dirs: dict, config: Config):
         UpdateStatusfile(dirs, 20)
         raise ValueError('All volatiles have a volume mixing ratio of zero')
 
+    log.info('vmr h2O: %.3e' % vol_dict['H2O'])
+    log.info('vmr ch4: %.3e' % vol_dict['CH4'])
+    log.info('vmr h2: %.3e' % vol_dict['H2'])
     return vol_dict
 
 
@@ -170,6 +173,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     # composition
     vol_dict = _construct_voldict(hf_row, dirs, config)
+
 
     # set condensation
     condensates = []

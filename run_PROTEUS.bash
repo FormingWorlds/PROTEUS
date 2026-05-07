@@ -1,7 +1,7 @@
 #bash script to run multiple proteus runs one after other
 MIXFILE=vertical_mix
 orb_dist=("0.01")
-fO2=("3" "-3")
+fO2=("-3")
 Hoceans=("4")
 silicates=("true")
 CHratio=("1")

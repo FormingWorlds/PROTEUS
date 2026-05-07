@@ -96,8 +96,8 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # calculate total atmosphere mass from sum of gas species
     hf_row['M_atm'] = 0.0
     for s in gas_list:
-        log.info('species %s'%s)
-        log.info('the mass o fthis species - if silicate should be zero: %s'%hf_row[s + '_kg_atm'])
+        #log.info('species %s'%s)
+        #log.info('the mass of this species - if silicate should be zero: %s'%hf_row[s + '_kg_atm'])
     #for s in vol_list:
         hf_row['M_atm'] += hf_row[s + '_kg_atm']
 
@@ -113,6 +113,7 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         else:
             # don't spam log with species of negligible abundance
             log.debug(_s)
+        #log.info('mass of this species: %s %4e'%s % hf_row[s + '_kg_atm'])
 
     # print total pressure and mmw
     log.info('    total      = %-9.2f bar' % hf_row['P_surf'])
@@ -190,6 +191,7 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
             hf_row[e + '_kg_atm']=0.0
             hf_row[e+ '_kg_tot']=0.0
     run_outgassing(dirs, config, hf_row)
+
     if config.outgas.silicates:
 
         #this needs to be commented out for runninglavatmos with the installation from github

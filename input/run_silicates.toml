@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "nomasstop_-3IW_0.01AU_4Hocean_1CH_True"
+        path        = "small_grid_-3IW_0.01AU_4Hocean_1CH_True"
         logging     = "INFO"
         plot_mod    = 3     # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -310,7 +310,7 @@ version = "2.0"
         bulk_modulus             = 260e9    # Adiabatic bulk modulus AW-EOS parameter [Pa].
 
     [interior.dummy]
-        ini_tmagma  = 3300.0    # Initial magma surface temperature [K]
+        ini_tmagma  = 4000.0    # Initial magma surface temperature [K]
         tmagma_atol = 30.0      # Max absolute Tsurf change in each step
         tmagma_rtol = 0.05      # Max relative Tsurf change in each step
         mantle_tliq = 2700.0    # Liquidus temperature
