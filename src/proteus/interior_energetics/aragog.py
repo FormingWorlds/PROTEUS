@@ -14,6 +14,7 @@ import platformdirs
 
 from aragog import aragog_file_logger
 from aragog.eos.entropy import EntropyEOS
+from aragog.mesh import derive_core_density_from_mesh
 from aragog.solver import EntropySolver, SolverOutput
 from aragog.parser import (
     Parameters,
@@ -45,6 +46,67 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 # on CHILI Earth runs as of 2026-04-09 (kvaerno3 stalls on first
 # crystallization step). Reserved for autodiff development.
 _DIFFRAX_RESEARCH_ONLY = False
+
+
+def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
+    """Resolve self-consistent core density for the Aragog energy-balance BC.
+
+    Echo-back semantics: when a Zalmoxis mantle mesh file is present at
+    ``<outdir>/data/zalmoxis_output.dat`` and ``hf_row['M_core'] > 0``,
+    recompute :math:`\\rho_\\mathrm{core} = M_\\mathrm{core} / (\\tfrac{4}{3} \\pi R_\\mathrm{cmb}^3)`
+    from the mesh's first-row radius and the live core mass, and write
+    the corrected value back to ``hf_row['core_density']`` so downstream
+    modules see the actually-used density. Falls back to
+    :func:`get_core_density` (config or stale ``hf_row['core_density']``)
+    otherwise.
+
+    This mirrors the SPIDER wrapper's ``-rho_core`` re-derivation in
+    ``proteus/interior_energetics/spider.py``: it survives mesh-blending
+    fall-backs and stale-cache cases where ``hf_row['core_density']`` has
+    drifted from the on-disk mesh state. Without this, an Aragog run
+    using ``core_bc = "energy_balance"`` would silently use a stale core
+    density in the basal-cell flux balance whenever a Zalmoxis re-solve
+    shifts :math:`R_\\mathrm{cmb}`.
+
+    Parameters
+    ----------
+    config : Config
+        PROTEUS configuration object.
+    hf_row : dict
+        Live helpfile row. Read: ``M_core``, possibly ``core_density``.
+        Written: ``core_density`` when echo-back fires.
+    outdir : str
+        PROTEUS output directory; the mesh file is read from
+        ``<outdir>/data/zalmoxis_output.dat``.
+
+    Returns
+    -------
+    float
+        Resolved core density [kg m^-3].
+    """
+    rho_core = get_core_density(config, hf_row)
+
+    M_core = float(hf_row.get('M_core', 0.0))
+    mesh_file = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
+
+    if M_core > 0.0 and os.path.isfile(mesh_file):
+        try:
+            rho_core_mesh = derive_core_density_from_mesh(mesh_file, M_core)
+        except (ValueError, FileNotFoundError, OSError) as exc:
+            logger.debug('Aragog core_density echo-back skipped: %s', exc)
+            return rho_core
+        if rho_core_mesh > 0.0:
+            logger.debug(
+                'Aragog core_density echo-back: %.2f -> %.2f kg/m^3 '
+                '(M_core=%.4e kg, mesh-derived R_cmb)',
+                rho_core,
+                rho_core_mesh,
+                M_core,
+            )
+            hf_row['core_density'] = rho_core_mesh
+            return rho_core_mesh
+
+    return rho_core
 
 
 def _estimate_T_pot(out) -> float:
@@ -298,7 +360,7 @@ class AragogRunner:
                 if config.interior_energetics.mixing_length == 'nearest'
                 else 'constant'
             ),
-            core_density=get_core_density(config, hf_row),
+            core_density=resolve_core_density(config, hf_row, outdir),
             eos_method=1,  # 1: Adams-Williamson / 2: User defined
             surface_density=config.interior_energetics.adams_williamson_rhos,
             gravitational_acceleration=hf_row['gravity'],  # [m/s-2]
@@ -1331,6 +1393,39 @@ class AragogRunner:
                 solver.parameters.mesh.inner_radius = (
                     config.interior_struct.core_frac * hf_row['R_int']
                 )
+
+        # Echo-back: refresh core_density from the on-disk Zalmoxis mesh
+        # plus the live hf_row['M_core'] so a Zalmoxis re-solve that
+        # shifts R_cmb propagates into the energy_balance core BC. The
+        # cached solver.parameters.mesh.core_density would otherwise stay
+        # pinned at the init-time value, silently using a stale density
+        # in the basal-cell flux balance after every Zalmoxis update.
+        # See proteus.interior_energetics.aragog.resolve_core_density.
+        eos_file = getattr(solver.parameters.mesh, 'eos_file', '') or ''
+        M_core = float(hf_row.get('M_core', 0.0))
+        if (
+            config.interior_struct.module == 'zalmoxis'
+            and M_core > 0.0
+            and eos_file
+            and os.path.isfile(eos_file)
+        ):
+            try:
+                rho_core_mesh = derive_core_density_from_mesh(eos_file, M_core)
+            except (ValueError, FileNotFoundError, OSError) as exc:
+                logger.debug('Aragog core_density echo-back skipped at update: %s', exc)
+            else:
+                if rho_core_mesh > 0.0:
+                    prev_rho = float(solver.parameters.mesh.core_density)
+                    solver.parameters.mesh.core_density = rho_core_mesh
+                    hf_row['core_density'] = rho_core_mesh
+                    if abs(rho_core_mesh - prev_rho) > 1e-6 * max(prev_rho, 1.0):
+                        logger.debug(
+                            'Aragog core_density echo-back at update: '
+                            '%.2f -> %.2f kg/m^3 (M_core=%.4e kg)',
+                            prev_rho,
+                            rho_core_mesh,
+                            M_core,
+                        )
 
         # Lightweight trace so Stage 1b three-way validation can check that
         # the mesh scalars track the Zalmoxis re-solve cadence. The d*
