@@ -272,3 +272,6 @@ tests/validation/
 CLAUDE.md
 .claude/
 .mcp.json
+
+# Editor / IDE
+.vscode/
