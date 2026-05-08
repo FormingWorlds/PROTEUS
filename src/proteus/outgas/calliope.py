@@ -50,7 +50,6 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
 
     solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
-    log.debug('fO2 shift used by calliope:%.6f', solvevol_inp['fO2_shift_IW'])
 
     # Volatile inventory
     for s in vol_list:
@@ -241,6 +240,8 @@ def construct_guess(hf_row: dict, target: dict, mass_thresh: float) -> dict | No
             p_guess[s] = 0.0
             log.debug('    %s: guess set to zero' % s)
 
+        #log.info('    %s: guess = %.2e bar' % (s, p_guess[s]))
+    #log.info('target elemental inventories for guess: %s' % target)
     return p_guess
 
 
@@ -333,6 +334,15 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         raise e
 
     # Get result
+    H_total_vmr=0.0
     for k in expected_keys(config):
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
+            if k in ['H2O_vmr', 'H2_vmr', 'NH3_vmr', 'CH4_vmr']: #artificaially add some H2 in VMRs so fastchem doesn not break in AGNI if all H escaped
+                H_total_vmr+=solvevol_result[k]
+            log.info('    %s = %.4e' % (k, solvevol_result[k]))
+    log.info('    total H in VMRs = %.4e' % H_total_vmr)
+    if H_total_vmr < 1e-15:
+        hf_row['H2_vmr']=1e-15
+        log.info('    No hydrogen in atmosphere, setting H2_vmr to 1e-15 to avoid issues with AGNI')
+        log.info('    %s = %.4e' % ('H2_vmr', hf_row['H2_vmr']))

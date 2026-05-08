@@ -333,17 +333,15 @@ def read_in_element_fracs_normalized(input_path,parameters):
         if abundance_dict[key] != 0.0:
             abundance_dict[key]= 10**(abundance_dict[key] - 12) / 1e20
         else:
-            if key=='H':
-                abundance_dict[key]= 1e-8 #avoid that hydrogen has 0 abundance
-            else:
-                abundance_dict[key]= 0.0
+            abundance_dict[key]= 0.0
 
     total = sum(abundance_dict.values())
 
-    log.info('sum of all elements: %.8f'%total)
+    #log.info('sum of all elements: %.8f'%total)
     norm_dict= {k: v / total for k, v in abundance_dict.items()}
-
-    log.info('normalised dictionary %s'%norm_dict)
+    #if 'H' in norm_dict:
+        #norm_dict['H'] = max(norm_dict['H'],1e-20) #avoid that hydrogen has 0 abundance
+    #log.info('normalised dictionary %s'%norm_dict)
 
     return norm_dict
 
@@ -382,19 +380,20 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     total_mols=0.0
     for e in input_eles:
        molfracs[e]= hf_row[e + '_kg_atm']/species_lib[e].weight
-       print(e,molfracs[e])
        total_mols+= molfracs[e]
     for e in input_eles:
-        print(e)
         if total_mols > 0:
-            nfrac[e]= molfracs[e]/total_mols
+            if e=='H':
+                nfrac[e] = max(molfracs[e],1e-6) #avoid that hydrogen has 0 abundance
+            else:
+                nfrac[e]= molfracs[e]/total_mols
         else:
             if e=='H':
-                nfrac[e] = 1e-8
+                nfrac[e] = 1e-6
             else:
                 nfrac[e] = 0.0
-    #log.info('volatile element carbon read in by lavatmos: %s',lavatmos_dict['C'])
-    log.info('volatile element fractions : %s',nfrac)
+    log.info('volatile element fractions going as input to lavatmos : %s',nfrac)
+    log.info('volatile pressure given to lavatmos : %.2e',hf_row['P_surf'])
 
 
 
@@ -418,6 +417,10 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         Toutgas = hf_row['T_magma']
     else:
         Toutgas = 1500
+
+    #create a tiuny fake atmosphere for lavatmos to run ? - not sure if this is necessary
+    #if parameters['P_volatile']<1e-6:
+       #parameters['P_volatile'] = 1e-6
 
     lavatmos_instance = container_lavatmos(parameters)
     lavatmos_instance.run_lavatmos(Toutgas)
@@ -448,20 +451,20 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     rho_old = kg_per_particle * P_surf_kPa / (kB * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
-    log.info('old atmospheric mass:%.2e'%M_atmo_old)
-    log.debug('old atmospheric density:%.4f'%rho_old)
-    log.info('old atmospheric pressure:%.4f'%hf_row['P_surf'])
-    log.debug('old mass per particle :%.4e'%kg_per_particle)
+    #log.info('old atmospheric mass:%.2e'%M_atmo_old)
+    #log.debug('old atmospheric density:%.4f'%rho_old)
+    #log.info('old atmospheric pressure:%.4f'%hf_row['P_surf'])
+    #log.debug('old mass per particle :%.4e'%kg_per_particle)
 
     # rho of armosphere after lavatmos
     # n=rho/mu*mp
     # 1bar = 100 kPa
     kg_pp_new =  mu_outgassed * mp
-    log.debug('new mass per particle :%.4e'%kg_pp_new)
+   # log.debug('new mass per particle :%.4e'%kg_pp_new)
     P_new_kPa = new_atmos_abundances['Pbar'][0] * 100 #convert pressure to cgs
-    log.info('atmospheric pressure :%.2e'%new_atmos_abundances['Pbar'][0])
+    #log.info('atmospheric pressure :%.2e'%new_atmos_abundances['Pbar'][0])
     rho_new = kg_pp_new * P_new_kPa / (kB * hf_row['T_magma']) # convert pressure in cgs to kg !
-    log.debug('new atmospheric density:%.4f'%rho_new)
+    #log.debug('new atmospheric density:%.4f'%rho_new)
 
     if (M_atmo_old > 0.0):
         M_atmo_new = (M_atmo_old / rho_old) * rho_new  # kg assuming volume does not change but only pressure
@@ -471,22 +474,24 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
 
     log.info('new atmospheric mass:%.2e'%M_atmo_new)
-    log.info('new atmospheric density:%.4f'%rho_new)
+    #log.info('new atmospheric density:%.4f'%rho_new)
 
 
     gas_list = vol_list + config.outgas.vaplist
-    log.info('gaslist:%s'%gas_list)
+    #log.info('gaslist:%s'%gas_list)
 
     #update surface pressure:
     hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
 
-    log.info('new surface pressure :%.4f'%hf_row['P_surf'])
-    log.info('H2 abundance:%.3e',new_atmos_abundances['H2'][0])
-    log.info('H2O abundance:%.3e',new_atmos_abundances['H2O'][0])
-    log.info('H abundance:%.3e',new_atmos_abundances['H'][0])
-    log.info('SiH abundance:%.3e',new_atmos_abundances['SiH'][0])
-    log.info('OH abundance:%.3e',new_atmos_abundances['SiH'][0])
+    #log.info('new surface pressure :%.4f'%hf_row['P_surf'])
+    #log.info('H2 abundance:%.3e',new_atmos_abundances['H2'][0])
+    #log.info('H2O abundance:%.3e',new_atmos_abundances['H2O'][0])
+    #log.info('H abundance:%.3e',new_atmos_abundances['H'][0])
+    #log.info('SiH abundance:%.3e',new_atmos_abundances['SiH'][0])
+    #log.info('H2S abundance:%.3e',new_atmos_abundances['H2S'][0])
 
+    H_budget=0.0
+    Hlist=['H2','H2S','H2O','CH4','NH3','SiH','HS','OH']
     for vol in gas_list:
         new_pp = new_atmos_abundances[vol][0] * new_atmos_abundances['Pbar'][0]
         hf_row[vol + '_bar'] = new_pp
@@ -497,7 +502,15 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         hf_row[vol + '_mol_atm'] = hf_row[vol + '_kg_atm']/hf_row['atm_kg_per_mol']
         hf_row[vol + '_mol_total'] = hf_row[vol + '_mol_atm'] + hf_row[vol + '_mol_solid'] + hf_row[vol + '_mol_liquid']
 
-        log.debug("coutious which species which are atomic species. there kg_total values will be overwritten by total element budget for now ...")
+        if vol in Hlist:
+            H_budget += hf_row[vol + '_vmr']
+
+    if H_budget<1e-15:
+        hf_row['H2_vmr']=1e-15
+        log.info('small H2 abundance!!! Needs to be adapted for agni')
+
+    log.info('H2 abundance now:%.3e', hf_row['H2_vmr'])
+
 
 
     mmw_elements=0
@@ -508,12 +521,12 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         log.info('element: %s,  %s',e, element_fracs[e])
         log.debug('total mass of element before updating with lavatmos: %s',hf_row[e + '_kg_atm'])
         if e in input_eles or e == 'O': # oxygen should not be added to M_silicates, since it is not counted in M_eles       #and e != 'O':
-            if (e=='H' and hf_row[e + '_kg_atm'] <100 ) :
-                log.info('too little hydrogen, need to be updated after lavatmos run')
-                hf_row[e + '_kg_atm'] = element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
-            else:
-                log.debug('volatile species, no need to update from lavatmos')
-                continue
+            #if (e=='H' and hf_row[e + '_kg_atm'] < 1e4 ) :
+               # log.info('too little hydrogen, need to be updated after lavatmos run')
+                #hf_row[e + '_kg_atm'] = element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
+            #else:
+            log.debug('volatile species, no need to update from lavatmos')
+            continue
         else:
             hf_row[e + '_kg_atm'] = element_fracs[e] * M_atmo_new * species_lib[e].weight / mmw_elements
 
@@ -521,10 +534,6 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
             hf_row[e + '_kg_total'] = (hf_row[e + '_kg_atm'] + hf_row[e + '_kg_solid'] + hf_row[e + '_kg_liquid'])
             hf_row['M_silicates'] += hf_row[e + '_kg_total']
 
-        log.debug('total mass of element after updating with lavatmos: %s',hf_row[e + '_kg_atm']) #different than before
-        #BECAUSE: very likely the different volatile species allowed by fastchem compared to PROTEUS which now allows a differnet mean molecular weigh tcomputation
-        #better to use volatile abuundances from before lavatmos !
-    log.info('total mass of silicates after updating with lavatmos: %s'%hf_row['M_silicates'])
 
     # saving new oxygen fugacity from lavatmos run, which is computed as log10 of the partial pressure of O2, to compare with the iron wustite buffer
     log10_fO2 = np.log10(new_atmos_abundances['O2'][0]) + np.log10(new_atmos_abundances['Pbar'][0])  # is this really partical pressure ? Maybe this is actually abundances

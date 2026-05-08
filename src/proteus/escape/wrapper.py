@@ -195,6 +195,9 @@ def calc_new_elements(
             Volatile element whole-planet inventories [kg]
     """
     # which reservoir?
+
+    log.info(f'Calculating new elemental inventories from escape, reservoir = {reservoir}')
+
     match reservoir:
         case 'bulk':
             key = '_kg_total'
@@ -211,6 +214,11 @@ def calc_new_elements(
         if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
+
+    log.info('Elemental masses in escape reservoir before escape:%s'%res)
+    log.info('Total mass of hydrogen in atmosphere before escape: %e kg'%hf_row.get('H_kg_atm', 0.0))
+    log.info('Total mass of hydrogen in interior before escape: %e kg'%hf_row.get('H_kg_liquid', 0.0))
+
     M_vols = float(sum(res.values()))
 
     # check if we just desiccated the planet...
@@ -224,12 +232,16 @@ def calc_new_elements(
     # total escaped mass over dt [kg]
     esc_mass = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
 
+
     # compute new TOTAL inventories
     tgt: dict[str, float] = {}
     for e in res:
         lost = esc_mass * emr[e]
         old_total = float(hf_row.get(f'{e}_kg_total', 0.0))
+        log.info(e)
+        log.info('element total before escape: %s'%old_total)
         new_total = old_total - lost
+        log.info('element total after escape: %s'%new_total)
         if new_total < min_thresh:
             new_total = 0.0
         tgt[e] = max(0.0, new_total)

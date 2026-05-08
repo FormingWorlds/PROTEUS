@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "small_grid_-3IW_0.01AU_4Hocean_1CH_True"
+        path        = "check_forceH2vmr_-3IW_0.01AU_4Hocean_1CH_True"
         logging     = "INFO"
         plot_mod    = 3     # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -250,7 +250,7 @@ version = "2.0"
 # Volatile escape - physics table
 [escape]
 
-    module     = "zephyrus"         # Which escape module to use
+    module     = "zephyrus"        # Which escape module to use
     reservoir  = "outgas"           # Reservoir that sets escaping gas composition
 
     [escape.zephyrus]

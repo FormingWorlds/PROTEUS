@@ -93,6 +93,10 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
 
+    log.debug('Outgassing complete, calculating atmospheric composition...')
+    log.debug('comparison to H2S output by iterating over gas list')
+    log.debug('    %-6s     = %-9.2f bar (%.2e VMR)' % ('H2S', hf_row['H2S_bar'], hf_row['H2S_vmr']))
+
     # calculate total atmosphere mass from sum of gas species
     hf_row['M_atm'] = 0.0
     for s in gas_list:
@@ -190,6 +194,8 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
         else:
             hf_row[e + '_kg_atm']=0.0
             hf_row[e+ '_kg_tot']=0.0
+
+
     run_outgassing(dirs, config, hf_row)
 
     if config.outgas.silicates:
