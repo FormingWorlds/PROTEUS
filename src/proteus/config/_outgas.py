@@ -37,6 +37,10 @@ class Calliope:
         Absolute tolerance on solver for mass conservation.
     solubility: bool
         Enable solubility of volatiles into melt.
+    nguess: int
+        Number of initial guesses for solver.
+    nsolve: int
+        Maximum number of iterations for solver.
     """
 
     T_floor: float = field(default=700.0, validator=validators.gt(0.0))
@@ -53,6 +57,8 @@ class Calliope:
     rtol: float = field(default=1e-4, validator=validators.gt(0.0))
     xtol: float = field(default=1e-6, validator=validators.gt(0.0))
     solubility: bool = True
+    nguess: int = field(default=int(1e3), validator=validators.gt(0))
+    nsolve: int = field(default=int(3e3), validator=validators.gt(0))
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""

@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+FLUX_MIN = 1e-20
+
 
 def plot_visual(
     hf_all: pd.DataFrame,
@@ -113,24 +115,31 @@ def plot_visual(
     scale = 1.7
     fig, ax = plt.subplots(1, 1, figsize=(4 * scale, 4 * scale))
 
-    # read fluxes
-    sw_arr = np.array(ds['ba_U_SW'][:, 1:])
-    lw_arr = np.array(ds['ba_U_LW'][:, 1:])
-    st_arr = np.array(ds['ba_D_SW'][0, 1:])
-
-    # reversed?
-    reversed = bool(ds['bandmin'][1] < ds['bandmin'][0])
-    if reversed:
-        bandmin = np.array(ds['bandmin'][::-1])
-        bandmax = np.array(ds['bandmax'][::-1])
-        sw_arr = sw_arr[:, ::-1]
-        lw_arr = lw_arr[:, ::-1]
-        st_arr = st_arr[::-1]
-    else:
+    # grey gas?
+    if len(ds['bandmin']) < 2:
         bandmin = np.array(ds['bandmin'][:])
         bandmax = np.array(ds['bandmax'][:])
-    bandmin = bandmin[:-1]
-    bandmax = bandmax[:-1]
+        sw_arr = np.array(ds['ba_U_SW'][:, :])
+        lw_arr = np.array(ds['ba_U_LW'][:, :])
+        st_arr = np.array(ds['ba_D_SW'][0, :])
+
+    else:
+        # read fluxes
+        sw_arr = np.array(ds['ba_U_SW'][:, 1:])
+        lw_arr = np.array(ds['ba_U_LW'][:, 1:])
+        st_arr = np.array(ds['ba_D_SW'][0, 1:])
+
+        if ds['bandmin'][1] < ds['bandmin'][0]:
+            bandmin = np.array(ds['bandmin'][::-1])
+            bandmax = np.array(ds['bandmax'][::-1])
+            sw_arr = sw_arr[:, ::-1]
+            lw_arr = lw_arr[:, ::-1]
+            st_arr = st_arr[::-1]
+        else:
+            bandmin = np.array(ds['bandmin'][:])
+            bandmax = np.array(ds['bandmax'][:])
+        bandmin = bandmin[:-1]
+        bandmax = bandmax[:-1]
 
     # get spectrum
     wl = 0.5 * (bandmin + bandmax) * 1e9  # nm
@@ -138,6 +147,11 @@ def plot_visual(
     st = st_arr / wd
     sw = sw_arr / wd
     lw = lw_arr / wd
+
+    # ensure that all values are finite
+    sw = np.clip(sw, FLUX_MIN, None)
+    lw = np.clip(lw, FLUX_MIN, None)
+    st = np.clip(st, FLUX_MIN, None)
 
     # radii
     r_arr = ds['rl'] / obs

@@ -1,8 +1,9 @@
 """Unit tests for ``proteus.plot.cpl_visual``.
 
 Covers ``plot_visual``, ``anim_visual``, and their entry-point wrappers.
-All matplotlib rendering, file I/O, NetCDF reads, and subprocess calls are
-mocked so these tests run in < 100 ms without any external binaries.
+
+These plots depend on how the planet RT is calculated, and how the atmosphere structure
+is represented in the NetCDF files.
 
 Testing standards:
   - docs/test_infrastructure.md
@@ -87,7 +88,10 @@ def _make_ncdf_dict(n_lev: int = 4, n_band: int = 6) -> dict:
 @pytest.mark.unit
 @pytest.mark.parametrize('fmt', ['pdf', 'svg', 'eps'])
 def test_plot_visual_rejects_non_raster_format(fmt):
-    """Format guard must reject non-raster output formats (pdf, svg, eps)."""
+    """Format guard must reject non-raster output formats (pdf, svg, eps).
+
+    Raster format is required for making animations with ffmpeg.
+    """
     hf = _make_hf_all()
     result = plot_visual(hf, '/tmp/unused', plot_format=fmt)
     assert result is False
@@ -218,6 +222,87 @@ def test_plot_visual_renders_frame(tmp_path):
     mock_fig.savefig.assert_called_once()
     mock_plt.close.assert_called_once()
     mock_plt.ioff.assert_called_once()
+
+
+@pytest.mark.unit
+def test_plot_visual_renders_greygas_dataset(tmp_path):
+    """Covers grey-gas branch where only one spectral band edge exists."""
+    output_dir = str(tmp_path)
+    data_dir = os.path.join(output_dir, 'data')
+    plots_dir = os.path.join(output_dir, 'plots')
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(plots_dir, exist_ok=True)
+
+    hf = _make_hf_all()
+    time = hf['Time'].iloc[-1]
+    nc_name = '%.0f_atm.nc' % time
+    open(os.path.join(data_dir, nc_name), 'w').close()
+
+    ds = {
+        'ba_U_LW': np.ones((4, 1)),
+        'ba_U_SW': np.ones((4, 1)),
+        'ba_D_SW': np.ones((1, 1)),
+        'bandmin': np.array([3e-7]),
+        'bandmax': np.array([4e-7]),
+        'pl': np.logspace(5, 1, 4),
+        'tmpl': np.linspace(3000, 300, 4),
+        'rl': np.linspace(6.5e6, 6.371e6, 4),
+    }
+
+    mock_fig = MagicMock()
+    mock_ax = MagicMock()
+    mock_axr = MagicMock()
+    mock_ax.inset_axes.return_value = mock_axr
+
+    with (
+        patch('proteus.plot.cpl_visual.read_ncdf_profile', return_value=ds),
+        patch('proteus.plot.cpl_visual.plt') as mock_plt,
+        patch('proteus.plot.cpl_visual.cs_srgb.spec_to_rgb', return_value=(0.9, 0.5, 0.1)),
+        patch('proteus.plot.cpl_visual.interp_spec', return_value=np.ones(100)),
+        patch('proteus.plot.cpl_visual.patches'),
+    ):
+        mock_plt.subplots.return_value = (mock_fig, mock_ax)
+        result = plot_visual(hf, output_dir, plot_format='png')
+
+    assert result == os.path.join(plots_dir, 'plot_visual.png')
+    mock_fig.savefig.assert_called_once()
+
+
+@pytest.mark.unit
+def test_plot_visual_renders_reversed_bands(tmp_path):
+    """Covers reversed-band branch where band edges are descending."""
+    output_dir = str(tmp_path)
+    data_dir = os.path.join(output_dir, 'data')
+    plots_dir = os.path.join(output_dir, 'plots')
+    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(plots_dir, exist_ok=True)
+
+    hf = _make_hf_all()
+    time = hf['Time'].iloc[-1]
+    nc_name = '%.0f_atm.nc' % time
+    open(os.path.join(data_dir, nc_name), 'w').close()
+
+    ds = _make_ncdf_dict()
+    ds['bandmin'] = np.array([4e-5, 3e-5, 2e-5, 1e-5, 9e-6, 8e-6, 7e-6])
+    ds['bandmax'] = np.array([4.1e-5, 3.1e-5, 2.1e-5, 1.1e-5, 1.0e-5, 9e-6, 8e-6])
+
+    mock_fig = MagicMock()
+    mock_ax = MagicMock()
+    mock_axr = MagicMock()
+    mock_ax.inset_axes.return_value = mock_axr
+
+    with (
+        patch('proteus.plot.cpl_visual.read_ncdf_profile', return_value=ds),
+        patch('proteus.plot.cpl_visual.plt') as mock_plt,
+        patch('proteus.plot.cpl_visual.cs_srgb.spec_to_rgb', return_value=(0.8, 0.4, 0.2)),
+        patch('proteus.plot.cpl_visual.interp_spec', return_value=np.ones(100)),
+        patch('proteus.plot.cpl_visual.patches'),
+    ):
+        mock_plt.subplots.return_value = (mock_fig, mock_ax)
+        result = plot_visual(hf, output_dir, plot_format='png')
+
+    assert result == os.path.join(plots_dir, 'plot_visual.png')
+    mock_fig.savefig.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
