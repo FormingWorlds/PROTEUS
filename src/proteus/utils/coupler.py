@@ -598,36 +598,54 @@ def GetHelpfileKeys():
         'T_pot',            # characteristic mantle potential temperature [K]
 
         # Energy-conservation columns (Aragog A1+A2 + per-call integrals).
-        # E_state is EOS-consistent enthalpy from the precomputed h(P,S) table
-        # and is the proper conservation-grade quantity. E_th_mantle is retained
-        # for back-compat but is the legacy m*Cp_apparent*T proxy with phase-
-        # dependent jumps in the mushy zone; do not use it for residual checks.
-        # Q_radio_W / Q_tidal_W are end-of-step instantaneous mantle-integrated
-        # source powers in watts (kept for instrumentation; do NOT integrate
-        # trapezoidally for conservation -- end-of-step values are spike-prone
-        # at CVODE phase-boundary moments).
-        # F_cmb is the analogous instantaneous CMB heat flux. The
+        # ``E_state_cons_J`` is the canonical conservation-grade integrated
+        # mantle enthalpy: ``Σ h(P,S) × ρ_struct × V`` with the FROZEN
+        # structural mass weighting from ``mesh.staggered_effective_density
+        # × volume``. Pairs with ``dE_predicted_cons_J`` (cumulative sum
+        # of ``step_dE_F_int_J + step_dE_F_cmb_J + step_dE_Q_radio_cons_J
+        # + step_dE_Q_tidal_cons_J``) for the running residual:
+        #   E_residual_cons_J  = (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J
+        #   E_residual_cons_frac = E_residual_cons_J / max(|ΔE_state_cons|, 1 J)
+        # Closes to ~5 % of total cooling and ~2 % of initial reservoir
+        # over multi-Myr trajectories. The legacy state-mass residual
+        # columns ``dE_predicted_J``, ``E_residual_J``, ``E_residual_frac``
+        # were removed on 2026-05-08: state-dependent ``ρ(P,S) × V`` mass
+        # weighting introduced a non-conservation-related cross term that
+        # grew with mantle cooling (~50 % at 100 kyr), masking real signal.
+        # ``E_state_J`` (state-mass enthalpy) is kept as a diagnostic
+        # snapshot only; do NOT use it for residual checks.
+        # ``solver_residual_J`` is the cumulative entropy-ODE LHS-RHS
+        # residual over the trajectory and closes to machine precision
+        # (~1e-7 of total cooling); it is the rigorous solver-correctness
+        # check. ``E_th_mantle`` is the legacy ``m × Cp_apparent × T``
+        # proxy with phase-dependent jumps in the mushy zone -- not for
+        # conservation use. ``Q_radio_W`` / ``Q_tidal_W`` are instantaneous
+        # mantle-integrated source powers in watts (do NOT integrate
+        # trapezoidally; spike-prone at CVODE phase-boundary moments).
+        # ``F_cmb`` is the analogous instantaneous CMB heat flux. The
         # conservation primitive is the per-call integral set computed by
         # Aragog over its CVODE sub-step trajectory:
-        #   step_dE_F_int_J  = -∫ F_int * A_int dt  over the call [J]
-        #   step_dE_F_cmb_J  = +∫ F_cmb * A_cmb dt  over the call [J]
-        #   step_dE_Q_*_J    = +∫ Q_* dt            over the call [J]
-        # PROTEUS just cumulatively sums these into dE_predicted_J. No
-        # PROTEUS-side trapezoidal interpolation between snapshots.
-        # E_residual_J = (E_state - E_state[0]) - dE_predicted_J is the
-        # running conservation residual; E_residual_frac normalises by
-        # max(|cumulative dE_state|, 1 J).
+        #   step_dE_F_int_J        = -∫ F_int * A_int dt   [J]
+        #   step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   [J]
+        #   step_dE_Q_*_J          = +∫ Q_* dt             [J] (state-mass)
+        #   step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
+        #   step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
         'E_th_mantle',      # legacy thermal-energy proxy [J] (do not use for conservation)
-        'E_state_J',         # EOS-consistent integrated mantle enthalpy [J]
+        'E_state_J',         # state-mass integrated mantle enthalpy [J] (diagnostic only)
+        'E_state_cons_J',    # frozen-mass conservation-grade enthalpy [J]
         'Q_radio_W',         # instantaneous mantle-integrated radiogenic power [W]
         'Q_tidal_W',         # instantaneous mantle-integrated tidal power [W]
         'step_dE_F_int_J',   # per-call ∫ -F_int*A_int dt [J]
         'step_dE_F_cmb_J',   # per-call ∫ +F_cmb*A_cmb dt [J]
-        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J]
-        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J]
-        'dE_predicted_J',    # cumulative sum of step_dE_*_J across rows [J]
-        'E_residual_J',      # (E_state-E_state[0]) - dE_predicted_J [J]
-        'E_residual_frac',   # E_residual_J / max(|cumulative dE_state|, 1) [1]
+        'step_dE_Q_radio_J', # per-call ∫ +Q_radio dt [J] (state-mass, instrumentation)
+        'step_dE_Q_tidal_J', # per-call ∫ +Q_tidal dt [J] (state-mass, instrumentation)
+        'step_dE_Q_radio_cons_J',  # per-call ∫ +Q_radio dt [J] (frozen-mass)
+        'step_dE_Q_tidal_cons_J',  # per-call ∫ +Q_tidal dt [J] (frozen-mass)
+        'step_solver_residual_J',  # per-call entropy-ODE LHS-RHS [J]
+        'dE_predicted_cons_J',  # cumulative sum of step_dE_*_cons_J across rows [J]
+        'E_residual_cons_J',    # (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J [J]
+        'E_residual_cons_frac', # E_residual_cons_J / max(|ΔE_state_cons|, 1 J) [1]
+        'solver_residual_J',    # cumulative entropy-ODE LHS-RHS residual [J]
         'Cp_eff',           # effective mantle heat capacity [J kg-1 K-1]
 
         # Host star properties
@@ -739,63 +757,88 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     The conservation primitive is the per-call energy integral set
     computed by Aragog over its CVODE sub-step trajectory:
 
-        step_dE_F_int_J  = -∫ F_int * A_int dt over the call [J]
-        step_dE_F_cmb_J  = +∫ F_cmb * A_cmb dt over the call [J]
-        step_dE_Q_*_J    = +∫ Q_*  dt          over the call [J]
+        step_dE_F_int_J        = -∫ F_int * A_int dt   over the call [J]
+        step_dE_F_cmb_J        = +∫ F_cmb * A_cmb dt   over the call [J]
+        step_dE_Q_*_cons_J     = +∫ Q_* dt             [J] (frozen-mass)
+        step_solver_residual_J = ∫ (LHS - RHS) dt      [J]
 
-    The cumulative ``dE_predicted_J`` is just the running sum of these
-    deltas across all helpfile rows. This eliminates the previous
-    helpfile-side trapezoidal interpolation between end-of-step
-    F_cmb snapshots, which was prone to phase-boundary spikes:
-    a single CVODE sub-step transient could blow up the integral by
-    orders of magnitude when used as a trapezoid endpoint over a
-    PROTEUS iteration's worth of time.
+    The cumulative ``dE_predicted_cons_J`` is the running sum of the
+    flux+source integrals across all helpfile rows. This eliminates the
+    previous helpfile-side trapezoidal interpolation between
+    end-of-step F_cmb snapshots, which was prone to phase-boundary
+    spikes: a single CVODE sub-step transient could blow up the
+    integral by orders of magnitude when used as a trapezoid endpoint
+    over a PROTEUS iteration's worth of time.
 
-    Row 0 sets dE_predicted_J = 0 and E_residual_J = 0 by definition.
-    E_residual_frac normalises by max(|dE_state|, 1 J) so the
-    residual stays bounded when both numerator and denominator are
-    tiny (quiescent steady state).
+    Row 0 sets all cumulative columns to zero by definition.
+    ``E_residual_cons_frac`` normalises by ``max(|ΔE_state_cons|, 1 J)``
+    so the residual stays bounded when both numerator and denominator
+    are tiny (quiescent steady state). Closes to ~5 % of total cooling
+    over multi-Myr trajectories.
 
-    Active only when ``E_state_J`` is finite and non-zero, signalling
-    that an EOS-aware interior module populated it. Other modules
-    leave the column at 0.0 (from ZeroHelpfileRow) and the residual
-    columns stay at 0.0 too.
+    ``solver_residual_J`` is the running entropy-ODE LHS-RHS check;
+    closes to machine precision (~1e-7 of total cooling) and flags
+    real CVODE step rejection or atol/rtol issues if it drifts.
+
+    Active only when ``E_state_cons_J`` is finite and non-zero,
+    signalling that an EOS-aware interior module populated it. Other
+    modules leave the column at 0.0 (from ZeroHelpfileRow) and the
+    residual columns stay at 0.0 too.
+
+    The legacy state-mass columns (``dE_predicted_J``, ``E_residual_J``,
+    ``E_residual_frac``) were removed on 2026-05-08 verification:
+    state-dependent ``ρ(P,S) × V`` mass weighting introduced a
+    non-conservation-related cross term that grew with mantle cooling
+    (~50 % at 100 kyr), masking real signal.
     """
-    e_state_now = float(new_row.get('E_state_J', 0.0))
-    if not np.isfinite(e_state_now) or e_state_now == 0.0:
-        new_row.setdefault('dE_predicted_J', 0.0)
-        new_row.setdefault('E_residual_J', 0.0)
-        new_row.setdefault('E_residual_frac', 0.0)
+    e_state_cons_now = float(new_row.get('E_state_cons_J', 0.0))
+    if not np.isfinite(e_state_cons_now) or e_state_cons_now == 0.0:
+        for k in (
+            'dE_predicted_cons_J',
+            'E_residual_cons_J',
+            'E_residual_cons_frac',
+            'solver_residual_J',
+        ):
+            new_row.setdefault(k, 0.0)
         return
 
     # Per-call energy increment from Aragog [J]. Sign is already baked
-    # into each step delta (positive = energy added to mantle).
-    dE_inc = (
+    # into each step delta (positive = energy added to mantle). Uses
+    # frozen-mass Q_*_cons to pair with the frozen-mass E_state_cons_J.
+    dE_inc_cons = (
         float(new_row.get('step_dE_F_int_J', 0.0))
         + float(new_row.get('step_dE_F_cmb_J', 0.0))
-        + float(new_row.get('step_dE_Q_radio_J', 0.0))
-        + float(new_row.get('step_dE_Q_tidal_J', 0.0))
+        + float(new_row.get('step_dE_Q_radio_cons_J', 0.0))
+        + float(new_row.get('step_dE_Q_tidal_cons_J', 0.0))
     )
+    solver_inc = float(new_row.get('step_solver_residual_J', 0.0))
 
     n_prior = len(current_hf)
     if n_prior == 0:
         # Anchor row: cumulative integrals start at zero by definition.
-        new_row['dE_predicted_J'] = 0.0
-        new_row['E_residual_J'] = 0.0
-        new_row['E_residual_frac'] = 0.0
+        new_row['dE_predicted_cons_J'] = 0.0
+        new_row['E_residual_cons_J'] = 0.0
+        new_row['E_residual_cons_frac'] = 0.0
+        new_row['solver_residual_J'] = 0.0
         return
 
     prev = current_hf.iloc[-1]
-    dE_pred_prev = float(prev.get('dE_predicted_J', 0.0))
-    dE_pred_now = dE_pred_prev + dE_inc
+    dE_pred_cons_prev = float(prev.get('dE_predicted_cons_J', 0.0))
+    dE_pred_cons_now = dE_pred_cons_prev + dE_inc_cons
 
-    e_state_anchor = float(current_hf['E_state_J'].iloc[0])
-    dE_actual_now = e_state_now - e_state_anchor
-    residual_now = dE_actual_now - dE_pred_now
+    e_state_cons_anchor = float(current_hf['E_state_cons_J'].iloc[0])
+    dE_actual_cons_now = e_state_cons_now - e_state_cons_anchor
+    residual_cons_now = dE_actual_cons_now - dE_pred_cons_now
 
-    new_row['dE_predicted_J'] = dE_pred_now
-    new_row['E_residual_J'] = residual_now
-    new_row['E_residual_frac'] = residual_now / max(abs(dE_actual_now), 1.0)
+    new_row['dE_predicted_cons_J'] = dE_pred_cons_now
+    new_row['E_residual_cons_J'] = residual_cons_now
+    new_row['E_residual_cons_frac'] = residual_cons_now / max(
+        abs(dE_actual_cons_now), 1.0
+    )
+
+    # Cumulative entropy-ODE solver residual.
+    solver_resid_prev = float(prev.get('solver_residual_J', 0.0))
+    new_row['solver_residual_J'] = solver_resid_prev + solver_inc
 
 
 def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
@@ -805,15 +848,14 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     log.debug('Extending helpfile with new row')
 
     # ── Energy-conservation cumulative bookkeeping ─────────────────────
-    # Compute dE_predicted_J / E_residual_J / E_residual_frac for the
-    # new row from the prior-row state stored in current_hf and the
-    # instantaneous Q_radio_W / Q_tidal_W / F_cmb / F_int / E_state_J
-    # populated by the active interior module. Active only
-    # when E_state_J is finite and non-zero (Aragog with the entropy
-    # EOS path); other interior modules leave the new column at 0.0
-    # via ZeroHelpfileRow and the residual columns stay at 0.0 too,
-    # signalling "diagnostic not available for this run" to downstream
-    # plotting.
+    # Compute dE_predicted_cons_J / E_residual_cons_J / E_residual_cons_frac
+    # / solver_residual_J for the new row from the prior-row state stored
+    # in current_hf and the per-call integrals populated by the active
+    # interior module. Active only when E_state_cons_J is finite and
+    # non-zero (Aragog with the entropy EOS path); other interior modules
+    # leave the column at 0.0 via ZeroHelpfileRow and the residual
+    # columns stay at 0.0 too, signalling "diagnostic not available for
+    # this run" to downstream plotting.
     _populate_energy_residual(current_hf, new_row)
 
     # Validate keys. We guard in both directions:

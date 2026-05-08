@@ -1828,6 +1828,7 @@ class AragogRunner:
             # fluxes). Cumulative dE_predicted / E_residual columns are
             # filled later in coupler.ExtendHelpfile from these inputs.
             'E_state_J': out.E_state,
+            'E_state_cons_J': out.E_state_cons,
             'F_cmb': out.F_cmb,
             'Q_radio_W': out.Q_radio_total,
             'Q_tidal_W': out.Q_tidal_total,
@@ -1835,12 +1836,28 @@ class AragogRunner:
             # CVODE sub-step trajectory. Replaces helpfile-side
             # trapezoidal interpolation of end-of-step F_cmb snapshots
             # (which were prone to phase-boundary spikes at single
-            # sub-step boundaries). The cumulative ``dE_predicted_J``
+            # sub-step boundaries). The cumulative ``dE_predicted_cons_J``
             # is now sum_n step_dE_*_J across all rows in the helpfile.
+            # The state-mass ``step_dE_Q_*_J`` are kept as instrumentation
+            # diagnostics; the residual itself uses ``step_dE_Q_*_cons_J``.
             'step_dE_F_int_J': out.step_dE_F_int_J,
             'step_dE_F_cmb_J': out.step_dE_F_cmb_J,
             'step_dE_Q_radio_J': out.step_dE_Q_radio_J,
             'step_dE_Q_tidal_J': out.step_dE_Q_tidal_J,
+            # Conservation-grade variants: same per-call integrals but
+            # with frozen-mass weighting on the volumetric source
+            # terms (Q_radio, Q_tidal). Together with E_state_cons_J
+            # they give a Lagrangian-frame budget that closes against
+            # the entropy ODE to numerical precision.
+            'step_dE_Q_radio_cons_J': out.step_dE_Q_radio_cons_J,
+            'step_dE_Q_tidal_cons_J': out.step_dE_Q_tidal_cons_J,
+            # Per-call entropy-ODE solver residual [J]. Sums to a
+            # cumulative ``solver_residual_J`` in the coupler that
+            # quantifies trapezoidal-vs-CVODE-internal integration
+            # mismatch. Should remain near zero for a well-converged
+            # integrator; non-trivial values signal step rejection or
+            # tolerance issues.
+            'step_solver_residual_J': out.step_solver_residual_J,
         }
 
     @staticmethod

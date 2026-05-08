@@ -5,10 +5,11 @@ Plot the EOS-consistent energy-conservation diagnostic for a PROTEUS run.
 Reads ``runtime_helpfile.csv`` from a single output directory and writes
 a 3-panel PDF (plus a per-source-power PDF) summarising:
 
-(a) E_state(t) and E_state(0) + cumulative integral of the RHS power
-    balance. A perfectly-conserving run has the two curves overlap.
-(b) The fractional residual ``E_residual_frac`` vs time. The 1 J floor
-    on the divisor keeps this bounded at quiescent steady state.
+(a) ``E_state_cons``(t) (frozen-mass integrated mantle enthalpy) and
+    ``E_state_cons``(0) + cumulative integral of the RHS power balance.
+    A perfectly-conserving run has the two curves overlap.
+(b) The fractional residual ``E_residual_cons_frac`` vs time. The 1 J
+    floor on the divisor keeps this bounded at quiescent steady state.
 (c) Source-power decomposition: -F_int*A_int (top boundary loss),
     +F_cmb*A_cmb (CMB inflow), Q_radio_W, Q_tidal_W in watts.
 
@@ -42,16 +43,16 @@ import pandas as pd  # noqa: E402
 
 _REQUIRED = (
     'Time',
-    'E_state_J',
+    'E_state_cons_J',
     'F_int',
     'F_cmb',
     'Q_radio_W',
     'Q_tidal_W',
     'R_int',
     'R_core',
-    'dE_predicted_J',
-    'E_residual_J',
-    'E_residual_frac',
+    'dE_predicted_cons_J',
+    'E_residual_cons_J',
+    'E_residual_cons_frac',
 )
 
 
@@ -69,9 +70,9 @@ def _load(simdir: str) -> pd.DataFrame:
             f'Helpfile missing energy-conservation columns: {missing}. '
             'Run was launched before the diagnostic was added.'
         )
-    if not np.any(df['E_state_J'] != 0.0):
+    if not np.any(df['E_state_cons_J'] != 0.0):
         raise ValueError(
-            f'E_state_J is identically zero across {len(df)} rows. '
+            f'E_state_cons_J is identically zero across {len(df)} rows. '
             'The active interior module did not populate the diagnostic '
             '(non-Aragog or Aragog without entropy formulation).'
         )
@@ -96,14 +97,14 @@ def _powers(df: pd.DataFrame) -> dict[str, np.ndarray]:
 def _plot_balance(df: pd.DataFrame, out_path: str, label: str) -> None:
     """Three-panel balance figure."""
     t = df['Time'].to_numpy()
-    E_state = df['E_state_J'].to_numpy()
+    E_state = df['E_state_cons_J'].to_numpy()
     E_anchor = E_state[0]
-    E_predicted = E_anchor + df['dE_predicted_J'].to_numpy()
+    E_predicted = E_anchor + df['dE_predicted_cons_J'].to_numpy()
 
     fig, axes = plt.subplots(3, 1, figsize=(7.0, 9.0), sharex=True)
 
     ax = axes[0]
-    ax.plot(t, E_state, label=r'$E_{\rm state}$ (EOS-integrated)', lw=1.5)
+    ax.plot(t, E_state, label=r'$E_{\rm state\_cons}$ (EOS-integrated, frozen mass)', lw=1.5)
     ax.plot(
         t,
         E_predicted,
@@ -117,7 +118,7 @@ def _plot_balance(df: pd.DataFrame, out_path: str, label: str) -> None:
     ax.grid(alpha=0.3)
 
     ax = axes[1]
-    frac = df['E_residual_frac'].to_numpy()
+    frac = df['E_residual_cons_frac'].to_numpy()
     ax.plot(t, frac, lw=1.0, color='C3')
     ax.axhline(0.0, color='k', lw=0.5, alpha=0.5)
     ax.set_ylabel(r'$E_{\rm residual} / \max(|\Delta E_{\rm state}|, 1\,{\rm J})$')
