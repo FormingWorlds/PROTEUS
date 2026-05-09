@@ -24,22 +24,30 @@ pytestmark = pytest.mark.unit
 def test_aragog_wrapper_module_imports():
     """``AragogRunner`` must load without any ImportError.
 
-    Discriminator: a removed/renamed symbol on the
-    ``aragog.parser`` import block (e.g. ``_ScalingsParameters``,
+    Discriminator: a removed or renamed symbol on the
+    ``aragog.parser`` import block (e.g. ``_EnergyParameters``,
     ``_PhaseMixedParameters``) raises here before any test body
     runs. A pure import test catches that without paying for the
     fixture chain of the heavier wrapper tests.
     """
     from proteus.interior_energetics.aragog import AragogRunner
 
-    # Both public entry points the PROTEUS main loop dispatches to
-    # must still be present and callable. A wrapper-side rename of
-    # either method would let the import succeed but silently break
-    # the coupling at first call; assert both exist.
+    # The PROTEUS main loop calls into AragogRunner at three sites:
+    # the constructor (which dispatches into ``setup_or_update_solver``
+    # → ``setup_solver`` for the initial build), ``runner.run_solver``
+    # for the per-iteration step, and ``AragogRunner._write_output_ncdf``
+    # called as a static method from ``proteus.proteus`` for the
+    # NetCDF snapshot. A wrapper-side rename of any of these would
+    # let the import succeed but silently break the coupling at the
+    # next dispatch; assert all four are present.
+    assert callable(AragogRunner.__init__), 'AragogRunner.__init__ missing or non-callable'
     assert callable(AragogRunner.setup_solver), (
         'AragogRunner.setup_solver missing or non-callable'
     )
     assert callable(AragogRunner.run_solver), 'AragogRunner.run_solver missing or non-callable'
+    assert callable(AragogRunner._write_output_ncdf), (
+        'AragogRunner._write_output_ncdf missing or non-callable'
+    )
 
 
 def test_aragog_parser_symbols_used_by_wrapper_exist():

@@ -425,6 +425,12 @@ class AragogRunner:
             tidal=config.interior_energetics.heat_tidal,
             tidal_array=interior_o.tides,
             kappah_floor=config.interior_energetics.kappah_floor,
+            # Bridge the PROTEUS schema knob onto the numpy/scipy RHS
+            # path. The JAX path consumes the same value via PhaseParams
+            # (see `aragog_jax.py`); without this passthrough, a non-
+            # default user value would apply on JAX and silently default
+            # to 1.0 on the numpy/scipy fallback, breaking bit-parity.
+            eddy_diffusivity_thermal=float(config.interior_energetics.eddy_diffusivity_thermal),
             phase_smoothing=config.interior_energetics.aragog.phase_smoothing,
             solver_method=config.interior_energetics.aragog.solver_method,
             use_jax_jacobian=(config.interior_energetics.aragog.backend == 'jax'),
