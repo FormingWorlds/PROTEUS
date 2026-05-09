@@ -607,13 +607,13 @@ def GetHelpfileKeys():
         #   E_residual_cons_J  = (E_state_cons - E_state_cons[0]) - dE_predicted_cons_J
         #   E_residual_cons_frac = E_residual_cons_J / max(|ΔE_state_cons|, 1 J)
         # Closes to ~5 % of total cooling and ~2 % of initial reservoir
-        # over multi-Myr trajectories. The legacy state-mass residual
-        # columns ``dE_predicted_J``, ``E_residual_J``, ``E_residual_frac``
-        # were removed on 2026-05-08: state-dependent ``ρ(P,S) × V`` mass
-        # weighting introduced a non-conservation-related cross term that
-        # grew with mantle cooling (~50 % at 100 kyr), masking real signal.
-        # ``E_state_J`` (state-mass enthalpy) is kept as a diagnostic
-        # snapshot only; do NOT use it for residual checks.
+        # over multi-Myr trajectories. The state-mass enthalpy
+        # ``E_state_J`` is reported as a diagnostic snapshot only; do
+        # NOT use it for residual checks. State-dependent ``ρ(P,S) × V``
+        # mass weighting introduces a non-conservation cross term that
+        # grows with mantle cooling, so a residual built on
+        # ``E_state_J`` would conflate that frame artefact with real
+        # numerical drift.
         # ``solver_residual_J`` is the cumulative entropy-ODE LHS-RHS
         # residual over the trajectory and closes to machine precision
         # (~1e-7 of total cooling); it is the rigorous solver-correctness
@@ -785,11 +785,10 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     modules leave the column at 0.0 (from ZeroHelpfileRow) and the
     residual columns stay at 0.0 too.
 
-    The legacy state-mass columns (``dE_predicted_J``, ``E_residual_J``,
-    ``E_residual_frac``) were removed on 2026-05-08 verification:
-    state-dependent ``ρ(P,S) × V`` mass weighting introduced a
-    non-conservation-related cross term that grew with mantle cooling
-    (~50 % at 100 kyr), masking real signal.
+    The frozen-mass framing is required for the residual to close.
+    A state-mass alternative (``ρ(P,S) × V`` re-evaluated each step)
+    would carry a non-conservation cross term that grows with mantle
+    cooling and masks real numerical drift.
     """
     e_state_cons_now = float(new_row.get('E_state_cons_J', 0.0))
     if not np.isfinite(e_state_cons_now) or e_state_cons_now == 0.0:
@@ -832,9 +831,7 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
 
     new_row['dE_predicted_cons_J'] = dE_pred_cons_now
     new_row['E_residual_cons_J'] = residual_cons_now
-    new_row['E_residual_cons_frac'] = residual_cons_now / max(
-        abs(dE_actual_cons_now), 1.0
-    )
+    new_row['E_residual_cons_frac'] = residual_cons_now / max(abs(dE_actual_cons_now), 1.0)
 
     # Cumulative entropy-ODE solver residual.
     solver_resid_prev = float(prev.get('solver_residual_J', 0.0))
