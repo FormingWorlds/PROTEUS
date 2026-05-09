@@ -926,36 +926,42 @@ def test_helpfile_handles_negative_fluxes():
 #
 # The conservation primitive is the per-call energy integral set computed by
 # Aragog over its CVODE sub-step trajectory and exposed in helpfile columns
-# step_dE_F_int_J / step_dE_F_cmb_J / step_dE_Q_radio_J / step_dE_Q_tidal_J.
-# PROTEUS just cumulatively sums these; no helpfile-side trapezoidal
-# interpolation between possibly-transient F_cmb snapshots.
+# step_dE_F_int_J / step_dE_F_cmb_J / step_dE_Q_radio_cons_J /
+# step_dE_Q_tidal_cons_J / step_solver_residual_J. PROTEUS just cumulatively
+# sums these; no helpfile-side trapezoidal interpolation between
+# possibly-transient F_cmb snapshots. The cons (frozen-mass) variants of the
+# Q sources pair with the frozen-mass E_state_cons_J state variable; the
+# legacy state-mass step_dE_Q_radio_J / step_dE_Q_tidal_J columns are kept
+# in the schema as instrumentation only and are NOT read by the residual.
 
 
 def _aragog_row(
     *,
     time_yr: float,
-    E_state_J: float,
+    E_state_cons_J: float,
     step_dE_F_int_J: float = 0.0,
     step_dE_F_cmb_J: float = 0.0,
-    step_dE_Q_radio_J: float = 0.0,
-    step_dE_Q_tidal_J: float = 0.0,
+    step_dE_Q_radio_cons_J: float = 0.0,
+    step_dE_Q_tidal_cons_J: float = 0.0,
+    step_solver_residual_J: float = 0.0,
     F_cmb: float = 0.0,
     R_int: float = 6.371e6,
     R_core: float = 3.481e6,
     T_magma: float = 3000.0,
 ) -> dict:
-    """Helper: build a ZeroHelpfileRow populated with the columns the
-    energy-residual helper reads. Uses Earth-like radii by default. The
-    instantaneous F_cmb keyword argument is supported only so the
-    discrimination test can prove it is IGNORED by the cumulative-sum
-    logic; it has no effect on dE_predicted_J."""
+    """Helper: build a ZeroHelpfileRow populated with the cons (frozen-mass)
+    columns the energy-residual helper reads. Uses Earth-like radii by
+    default. The instantaneous F_cmb keyword argument is supported only so
+    the discrimination test can prove it is IGNORED by the cumulative-sum
+    logic; it has no effect on dE_predicted_cons_J."""
     row = ZeroHelpfileRow()
     row['Time'] = time_yr
-    row['E_state_J'] = E_state_J
+    row['E_state_cons_J'] = E_state_cons_J
     row['step_dE_F_int_J'] = step_dE_F_int_J
     row['step_dE_F_cmb_J'] = step_dE_F_cmb_J
-    row['step_dE_Q_radio_J'] = step_dE_Q_radio_J
-    row['step_dE_Q_tidal_J'] = step_dE_Q_tidal_J
+    row['step_dE_Q_radio_cons_J'] = step_dE_Q_radio_cons_J
+    row['step_dE_Q_tidal_cons_J'] = step_dE_Q_tidal_cons_J
+    row['step_solver_residual_J'] = step_solver_residual_J
     row['F_cmb'] = F_cmb
     row['R_int'] = R_int
     row['R_core'] = R_core
@@ -971,18 +977,35 @@ def test_helpfile_keys_include_energy_conservation_columns():
     be reconstructed downstream."""
     keys = GetHelpfileKeys()
     expected = {
-        'E_state_J',
+        # Frozen-mass conservation primitives (consumed by the residual).
+        'E_state_cons_J',
         'step_dE_F_int_J',
         'step_dE_F_cmb_J',
+        'step_dE_Q_radio_cons_J',
+        'step_dE_Q_tidal_cons_J',
+        'step_solver_residual_J',
+        # Cumulative columns derived from the primitives above.
+        'dE_predicted_cons_J',
+        'E_residual_cons_J',
+        'E_residual_cons_frac',
+        'solver_residual_J',
+        # State-mass columns kept as diagnostics (NOT used for residuals).
+        'E_state_J',
         'step_dE_Q_radio_J',
         'step_dE_Q_tidal_J',
-        'dE_predicted_J',
-        'E_residual_J',
-        'E_residual_frac',
     }
     missing = expected - set(keys)
     assert not missing, f'Energy-conservation keys missing from schema: {missing}'
     assert len(keys) == len(set(keys)), 'Helpfile schema contains duplicate keys'
+    # Negative regression: the deprecated state-mass residual columns must
+    # stay removed. They masked real signal because the state-dependent
+    # rho(P,S)*V mass weighting introduced a non-conservation cross term
+    # that grew with mantle cooling.
+    deprecated_state_mass = {'dE_predicted_J', 'E_residual_J', 'E_residual_frac'}
+    leaked_dep = deprecated_state_mass & set(keys)
+    assert not leaked_dep, (
+        f'Deprecated state-mass residual columns reappeared in schema: {leaked_dep}'
+    )
     # Negative regression: the historical Q_dil/F_dil columns must stay
     # deleted. If a future cleanup adds them back, this test fails loudly.
     forbidden = {'F_dil', 'Q_dil_W', 'step_dE_Q_dil_J'}
@@ -991,57 +1014,69 @@ def test_helpfile_keys_include_energy_conservation_columns():
 
 
 @pytest.mark.unit
-def test_populate_energy_residual_inactive_when_E_state_zero():
-    """Non-Aragog modules leave E_state_J at 0. The bookkeeping helper
-    must short-circuit: residual columns stay at 0.0, NEVER NaN, even
-    when step deltas happen to be non-zero. NaN would propagate into
-    cumulative sums and silently corrupt downstream rows."""
-    hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_J=0.0))
+def test_populate_energy_residual_inactive_when_E_state_cons_zero():
+    """Non-Aragog modules leave E_state_cons_J at 0. The bookkeeping
+    helper must short-circuit: cons residual + solver_residual columns
+    stay at 0.0, NEVER NaN, even when step deltas happen to be non-zero.
+    NaN would propagate into cumulative sums and silently corrupt
+    downstream rows."""
+    hf = CreateHelpfileFromDict(_aragog_row(time_yr=0.0, E_state_cons_J=0.0))
     new_row = _aragog_row(
         time_yr=1.0,
-        E_state_J=0.0,
+        E_state_cons_J=0.0,
         step_dE_F_int_J=-1.0e25,
         step_dE_F_cmb_J=+1.0e25,
+        step_solver_residual_J=+1.0e10,
     )
 
     _populate_energy_residual(hf, new_row)
 
-    assert new_row['dE_predicted_J'] == pytest.approx(0.0)
-    assert new_row['E_residual_J'] == pytest.approx(0.0)
-    assert new_row['E_residual_frac'] == pytest.approx(0.0)
+    assert new_row['dE_predicted_cons_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_cons_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_cons_frac'] == pytest.approx(0.0)
+    assert new_row['solver_residual_J'] == pytest.approx(0.0)
 
 
 @pytest.mark.unit
 def test_populate_energy_residual_anchor_row_is_zero():
     """Row 0 of an Aragog run is the anchor: by definition there is no
-    prior state to integrate against. dE_predicted and the residual must
-    both be exactly 0 even when E_state_J is large (~1e31 J for Earth)
-    AND step deltas happen to be populated (Aragog reports them on the
-    first call too, but they are conventionally ignored at the anchor)."""
+    prior state to integrate against. dE_predicted_cons, the cons
+    residual, AND solver_residual_J must all be exactly 0 even when
+    E_state_cons_J is large (~1e31 J for Earth) AND the per-call step
+    deltas + step_solver_residual_J happen to be populated (Aragog
+    reports them on the first call too, but they are conventionally
+    ignored at the anchor)."""
     empty_hf = pd.DataFrame(columns=GetHelpfileKeys())
     new_row = _aragog_row(
         time_yr=0.0,
-        E_state_J=1.234e31,
+        E_state_cons_J=1.234e31,
         step_dE_F_int_J=-9.99e30,  # large but must be ignored at anchor
         step_dE_F_cmb_J=+5.55e30,
+        step_solver_residual_J=+1.0e15,  # also ignored at anchor
     )
 
     _populate_energy_residual(empty_hf, new_row)
 
-    assert new_row['dE_predicted_J'] == pytest.approx(0.0)
-    assert new_row['E_residual_J'] == pytest.approx(0.0)
-    assert new_row['E_residual_frac'] == pytest.approx(0.0)
+    assert new_row['dE_predicted_cons_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_cons_J'] == pytest.approx(0.0)
+    assert new_row['E_residual_cons_frac'] == pytest.approx(0.0)
+    assert new_row['solver_residual_J'] == pytest.approx(0.0)
 
 
 @pytest.mark.unit
 def test_populate_energy_residual_cumulative_sum_across_three_rows():
     """Synthetic 3-row trajectory with asymmetric step deltas. Cumulative
-    dE_predicted at row N must equal the sum of step deltas for rows 1..N.
-    The asymmetry (different magnitudes per row) catches an off-by-one in
-    which prior-row's dE_predicted_J is being used as the running total."""
+    dE_predicted_cons at row N must equal the sum of step deltas for
+    rows 1..N (using the cons sources). The asymmetry (different
+    magnitudes per row) catches an off-by-one in which the prior row's
+    dE_predicted_cons_J is being used as the running total. Also
+    asserts solver_residual_J accumulates linearly: a regression that
+    used the prior-row value as the starting point would miss the
+    fact that step_solver_residual_J is itself the per-call increment.
+    """
     E0 = 1.0e31
     # Three asymmetric increments, all sources active.
-    row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
     # Step 1: cooling dominates.
@@ -1049,11 +1084,13 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     delta_1_Q_radio = +1.0e29
     expected_dE_pred_1 = delta_1_F_int + delta_1_Q_radio  # = -2.0e29
     E1 = E0 + expected_dE_pred_1
+    solver_inc_1 = +2.0e22  # tiny solver residual increment, machine-precision-like
     row1 = _aragog_row(
         time_yr=10.0,
-        E_state_J=E1,
+        E_state_cons_J=E1,
         step_dE_F_int_J=delta_1_F_int,
-        step_dE_Q_radio_J=delta_1_Q_radio,
+        step_dE_Q_radio_cons_J=delta_1_Q_radio,
+        step_solver_residual_J=solver_inc_1,
     )
     _populate_energy_residual(hf, row1)
     hf = ExtendHelpfile(hf, row1)
@@ -1063,11 +1100,13 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     delta_2_F_cmb = +5.0e29
     expected_dE_pred_2 = expected_dE_pred_1 + delta_2_F_int + delta_2_F_cmb  # = +1e29
     E2 = E0 + expected_dE_pred_2
+    solver_inc_2 = -3.0e22  # negative increment to discriminate sum-vs-overwrite
     row2 = _aragog_row(
         time_yr=25.0,
-        E_state_J=E2,
+        E_state_cons_J=E2,
         step_dE_F_int_J=delta_2_F_int,
         step_dE_F_cmb_J=delta_2_F_cmb,
+        step_solver_residual_J=solver_inc_2,
     )
     _populate_energy_residual(hf, row2)
     hf = ExtendHelpfile(hf, row2)
@@ -1077,106 +1116,121 @@ def test_populate_energy_residual_cumulative_sum_across_three_rows():
     delta_3_F_int = -4.0e29
     expected_dE_pred_3 = expected_dE_pred_2 + delta_3_F_cmb + delta_3_F_int  # = -2e29
     E3 = E0 + expected_dE_pred_3
+    solver_inc_3 = +5.0e22
     row3 = _aragog_row(
         time_yr=50.0,
-        E_state_J=E3,
+        E_state_cons_J=E3,
         step_dE_F_cmb_J=delta_3_F_cmb,
         step_dE_F_int_J=delta_3_F_int,
+        step_solver_residual_J=solver_inc_3,
     )
     _populate_energy_residual(hf, row3)
 
-    assert row1['dE_predicted_J'] == pytest.approx(expected_dE_pred_1, rel=1e-12)
-    assert row2['dE_predicted_J'] == pytest.approx(expected_dE_pred_2, rel=1e-12)
-    assert row3['dE_predicted_J'] == pytest.approx(expected_dE_pred_3, rel=1e-12)
+    assert row1['dE_predicted_cons_J'] == pytest.approx(expected_dE_pred_1, rel=1e-12)
+    assert row2['dE_predicted_cons_J'] == pytest.approx(expected_dE_pred_2, rel=1e-12)
+    assert row3['dE_predicted_cons_J'] == pytest.approx(expected_dE_pred_3, rel=1e-12)
 
-    # Self-consistent trajectory => zero residual at every row.
-    assert abs(row1['E_residual_J']) < 1e-3 * abs(E1 - E0)
-    assert abs(row3['E_residual_frac']) < 1e-10
+    # Self-consistent trajectory => zero cons residual at every row.
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(E1 - E0)
+    assert abs(row3['E_residual_cons_frac']) < 1e-10
+
+    # solver_residual_J is the running sum of step_solver_residual_J;
+    # ExtendHelpfile only persists row1 and row2 to hf at this point
+    # (row3 is still in flight), so row3's value is row2-cumulative
+    # plus its own increment.
+    assert row1['solver_residual_J'] == pytest.approx(solver_inc_1, rel=1e-12)
+    assert row2['solver_residual_J'] == pytest.approx(solver_inc_1 + solver_inc_2, rel=1e-12)
+    assert row3['solver_residual_J'] == pytest.approx(
+        solver_inc_1 + solver_inc_2 + solver_inc_3, rel=1e-12
+    )
 
 
 @pytest.mark.unit
 def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
-    """The discriminating test for the bug that motivated this rewrite:
-    a single transient spike in the instantaneous F_cmb column (which
-    Aragog can report at a CVODE phase-boundary moment) must NOT
-    contaminate dE_predicted_J. Only step_dE_*_J contributes. We
-    construct a row where instantaneous F_cmb is set to an absurd
-    1e23 W/m² (the historical bug pattern) but the step delta is
-    physical; assert the cumulative is governed by the step delta alone.
-    """
+    """Discriminating test for the bug that motivated the per-call
+    integral rewrite: a single transient spike in the instantaneous
+    F_cmb column (which Aragog can report at a CVODE phase-boundary
+    moment) must NOT contaminate dE_predicted_cons_J. Only the
+    integrated step deltas contribute. We construct a row where
+    instantaneous F_cmb is set to an absurd 1e23 W/m^2 (the historical
+    bug pattern) but the per-call step delta is physical; assert the
+    cumulative is governed by the step delta alone."""
     E0 = 1.0e31
-    row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
     # Physical step delta: -1e29 J (mild cooling).
     physical_delta = -1.0e29
     row1 = _aragog_row(
         time_yr=10.0,
-        E_state_J=E0 + physical_delta,
+        E_state_cons_J=E0 + physical_delta,
         step_dE_F_int_J=physical_delta,
         # Catastrophic instantaneous spike — must be IGNORED.
         F_cmb=1.0e23,
     )
     _populate_energy_residual(hf, row1)
 
-    # If the helper used the instantaneous spike, dE_predicted would be
-    # wildly different from -1e29 (the spike-driven trapezoid would give
-    # something like ~1e30 over a 10 yr step). With step-delta logic
-    # the result is exactly the physical delta to FP precision.
-    assert row1['dE_predicted_J'] == pytest.approx(physical_delta, rel=1e-12)
-    assert abs(row1['E_residual_J']) < 1e-3 * abs(physical_delta)
+    # If the helper used the instantaneous spike, dE_predicted_cons
+    # would be wildly different from -1e29 (the spike-driven
+    # trapezoid would give something like ~1e30 over a 10 yr step).
+    # With step-delta logic the result is exactly the physical delta
+    # to FP precision.
+    assert row1['dE_predicted_cons_J'] == pytest.approx(physical_delta, rel=1e-12)
+    assert abs(row1['E_residual_cons_J']) < 1e-3 * abs(physical_delta)
 
 
 @pytest.mark.unit
 def test_populate_energy_residual_frac_normalises_safely_when_dE_tiny():
-    """At quiescent steady state, dE_actual can be much smaller than 1 J
-    in absolute value. Naive division would amplify bookkeeping noise to
-    arbitrarily large fractions. The helper floors the divisor at 1 J,
-    so for a tiny dE_actual the fractional residual stays bounded and
-    interpretable. We use E_state_J = 100 J (small but non-zero so the
-    inactive-path guard does NOT trigger) so the 0.5 J perturbation
-    survives float64 cancellation; the floor logic itself is the
-    quantity under test, not the realistic E magnitude."""
+    """At quiescent steady state, dE_actual_cons can be much smaller
+    than 1 J in absolute value. Naive division would amplify
+    bookkeeping noise to arbitrarily large fractions. The helper
+    floors the divisor at 1 J, so for a tiny dE_actual_cons the
+    fractional residual stays bounded and interpretable. We use
+    E_state_cons_J = 100 J (small but non-zero so the inactive-path
+    guard does NOT trigger) so the 0.5 J perturbation survives
+    float64 cancellation; the floor logic itself is the quantity
+    under test, not the realistic E magnitude."""
     E0 = 100.0  # J (not realistic; chosen so 0.5 J survives FP)
-    row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
-    # dE_actual = +0.5 J, dE_pred = 0 (no step deltas set).
-    row1 = _aragog_row(time_yr=1.0, E_state_J=E0 + 0.5)
+    # dE_actual_cons = +0.5 J, dE_pred_cons = 0 (no step deltas set).
+    row1 = _aragog_row(time_yr=1.0, E_state_cons_J=E0 + 0.5)
     _populate_energy_residual(hf, row1)
 
     # Without flooring this would be 0.5 / 0.5 = 1.0; with floor at 1 J
     # the divisor stays >= 1 and the fraction stays within [-1, 1].
-    assert row1['E_residual_J'] == pytest.approx(0.5)
-    assert abs(row1['E_residual_frac']) <= 1.0
+    assert row1['E_residual_cons_J'] == pytest.approx(0.5)
+    assert abs(row1['E_residual_cons_frac']) <= 1.0
     # Specifically: 0.5 / max(0.5, 1.0) = 0.5.
-    assert row1['E_residual_frac'] == pytest.approx(0.5)
+    assert row1['E_residual_cons_frac'] == pytest.approx(0.5)
 
 
 @pytest.mark.unit
 def test_populate_energy_residual_residual_detects_missing_source():
-    """Conservation residual must surface a missing source. We construct
-    a 'real' planet whose E_state actually ROSE by 5e29 J because of
-    a fictional unreported source, but Aragog (in this scenario) only
-    reported the cooling step delta (-3e29 J). The residual should be
-    +8e29 J = (E_state-E_state[0]) - dE_predicted, sign and magnitude
-    both meaningful. Catches a regression where the helper would silently
-    zero residuals or apply the wrong sign convention."""
+    """Conservation residual must surface a missing source. We
+    construct a 'real' planet whose E_state_cons actually ROSE by
+    5e29 J because of a fictional unreported source, but Aragog (in
+    this scenario) only reported the cooling step delta (-3e29 J).
+    The residual should be +8e29 J = (E_state_cons-E_state_cons[0])
+    - dE_predicted_cons, sign and magnitude both meaningful. Catches
+    a regression where the helper would silently zero residuals or
+    apply the wrong sign convention."""
     E0 = 1.0e31
-    row0 = _aragog_row(time_yr=0.0, E_state_J=E0)
+    row0 = _aragog_row(time_yr=0.0, E_state_cons_J=E0)
     hf = CreateHelpfileFromDict(row0)
 
     actual_dE = +5.0e29  # planet warmed
     reported_step_delta = -3.0e29  # Aragog only reported the cooling
     row1 = _aragog_row(
         time_yr=100.0,
-        E_state_J=E0 + actual_dE,
+        E_state_cons_J=E0 + actual_dE,
         step_dE_F_int_J=reported_step_delta,
     )
     _populate_energy_residual(hf, row1)
 
     expected_residual = actual_dE - reported_step_delta  # = +8e29 J
-    assert row1['dE_predicted_J'] == pytest.approx(reported_step_delta, rel=1e-12)
-    assert row1['E_residual_J'] == pytest.approx(expected_residual, rel=1e-12)
-    # E_residual_frac should be O(1) — residual is comparable to actual.
-    assert abs(row1['E_residual_frac']) > 0.5
+    assert row1['dE_predicted_cons_J'] == pytest.approx(reported_step_delta, rel=1e-12)
+    assert row1['E_residual_cons_J'] == pytest.approx(expected_residual, rel=1e-12)
+    # E_residual_cons_frac should be O(1) — residual is comparable to actual.
+    assert abs(row1['E_residual_cons_frac']) > 0.5
