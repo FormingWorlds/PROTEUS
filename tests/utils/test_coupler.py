@@ -45,6 +45,8 @@ from proteus.utils.coupler import (
     _populate_energy_residual,
 )
 
+pytestmark = pytest.mark.unit
+
 # =============================================================================
 # Test: Helpfile Key Generation
 # =============================================================================
