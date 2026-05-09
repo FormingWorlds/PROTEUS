@@ -167,7 +167,7 @@ version = "2.0"
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
 
-    module           = "zalmoxis"   # self | zalmoxis
+    module           = "self"   # self | zalmoxis
     update_interval      = 0        # max interval (ceiling) between structure updates [yr]; 0 = only at init
     update_min_interval  = 0        # min interval (floor) between updates [yr]; prevents thrashing
     update_dtmagma_frac  = 0.03     # trigger on relative T_magma change (3%)
@@ -207,6 +207,7 @@ version = "2.0"
     prevent_warming = true      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
+    aerosols_enabled = false    # enable aerosol radiative effects
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
@@ -233,6 +234,9 @@ version = "2.0"
         overlap_method  = "ee"          # gas overlap method
         surf_roughness  = 1e-3          # characteristic surface roughness [m]
         surf_windspeed  = 2.0           # characteristic surface wind speed [m/s].
+        cloud_enabled   = false         # include water cloud radiative effects?
+        cloud_alpha     = 0.5           # water condensate retention fraction
+        aerosols_enabled = false        # include aerosol radiative effects?
         rainout         = true          # include volatile condensation/evaporation aloft
         latent_heat     = false         # include latent heat release when `rainout=true`?
         oceans          = true          # form liquid oceans at planet surface?
@@ -361,6 +365,33 @@ version = "2.0"
         mantle_rho  = 4550.0    # Mantle density [kg m-3]
         mantle_cp   = 1792.0    # Mantle heat capacity [J K-1 kg-1]
         H_radio     = 0.0       # Radiogenic heating rate [W/kg]
+
+    [interior.boundary]
+        rtol = 0.0001                      # ODE solver relative tolerance.
+        atol = 1e-08                       # ODE solver absolute tolerance.
+        T_p_0 = 3500                       # Initial potential temperature if zalmoxis module is not used [K].
+        T_solidus = 1420.0                 # Mantle solidus temperature [K]
+        T_liquidus = 2020.0                # Mantle liquidus temperature [K]
+        Tsurf_event_change = 20            # Maximum change in surface temperature allowed during a single interior iteration before triggering an event [K].
+        critical_rayleigh_number = 1100.0  # Critical Rayleigh number for onset of convection
+        heat_fusion_silicate = 400000.0    # Latent heat of fusion for silicates [J/kg]
+        nusselt_exponent = 0.33            # Nusselt-Rayleigh scaling exponent
+        silicate_heat_capacity = 1200.0    # Silicate heat capacity [J/kg/K]
+        atm_heat_capacity = 1.7e4          # Used as fallback for atmosphere heat capacity when layer-specific value is not available [J/kg/K].
+        silicate_density = 4500            # Silicate density [kg/m^3].
+        thermal_conductivity = 4.2         # Thermal conductivity [W/m/K]
+        thermal_diffusivity = 1e-06        # Thermal diffusivity [m^2/s]
+        thermal_expansivity = 2e-05        # Thermal expansivity [1/K]
+        viscosity_model = 2                # Viscosity parameterisation model. Choices: 1 (constant), 2 (aggregate smooth transition), 3 (Arrhenius temperature-dependent).
+        eta_constant = 1e2                 # Constant viscosity value [Pa s] for model 1.
+        transition_width = 0.15            # Width of viscosity transition in melt fraction space
+        eta_solid_const = 1e+21            # Constant solid viscosity for aggregate formulation [Pa s]
+        eta_melt_const = 100.0             # Constant melt viscosity for aggregate formulation [Pa s]
+        dynamic_viscosity = 3.8e9          # Reference dynamic viscosity [Pa s] for Arrhenius solid mantle model.
+        activation_energy = 3.5e5          # Activation energy [J/mol] for Arrhenius solid mantle model.
+        viscosity_prefactor = 2.4e-4       # Viscosity prefactor [Pa s] for Vogel-Fulcher-Tammann magma ocean model.
+        viscosity_activation_temp = 4600   # Activation temperature [K] for Vogel-Fulcher-Tammann magma ocean model.
+        logging = false                    # Whether to include interior logging in the output.
 
 # Outgassing - physics table
 [outgas]

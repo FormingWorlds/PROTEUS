@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
+from proteus.atmos_clim.common import Atmos_t
 from proteus.interior.common import Interior_t
 from proteus.outgas.wrapper import calc_target_elemental_inventories
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
@@ -67,6 +68,8 @@ def get_nlevb(config: Config):
             return int(config.interior.spider.num_levels)
         case 'aragog':
             return int(config.interior.aragog.num_levels)
+        case 'boundary':
+            return 2
         case 'dummy':
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
@@ -91,6 +94,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     int_o = Interior_t(
         get_nlevb(config), spider_dir=spider_dir, eos_dir=config.interior.eos_dir
     )
+    atmos_o = Atmos_t()
     int_o.ic = 1
     hf_row['R_int'] = R_earth
     calculate_core_mass(hf_row, config)
@@ -108,7 +112,7 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
 
         # Use interior model to get dry mass from radius
         calculate_core_mass(hf_row, config)
-        run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
+        run_interior(dirs, config, hf_all, hf_row, int_o, atmos_o, verbose=False)
         update_gravity(hf_row)
 
         # Get wet mass
@@ -126,25 +130,28 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     # Set tolerance
     match config.interior.module:
         case 'aragog':
-            rtol = config.interior.aragog.tolerance
+            rtol = config.interior.aragog.tolerance_rel
+            atol = config.interior.aragog.tolerance_struct
         case 'spider':
-            rtol = config.interior.spider.tolerance
+            rtol = config.interior.spider.tolerance_rel
+            atol = config.interior.spider.tolerance_struct
         case _:
             rtol = 1e-7
+            atol = 1e2
 
     # Find the radius
     r = optimise.root_scalar(
         _resid,
         method='secant',
-        xtol=1e3,
+        xtol=atol,
         rtol=rtol,
-        maxiter=10,
+        maxiter=20,
         x0=hf_row['R_int'],
-        x1=hf_row['R_int'] * 1.02,
+        x1=hf_row['R_int'] * 1.5,
     )
     hf_row['R_int'] = float(r.root)
     calculate_core_mass(hf_row, config)
-    run_interior(dirs, config, hf_all, hf_row, int_o)
+    run_interior(dirs, config, hf_all, hf_row, int_o, atmos_o)
     update_gravity(hf_row)
 
     # Result
@@ -201,6 +208,7 @@ def determine_interior_radius_with_zalmoxis(
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
+        hf_row['R_core'] = float(_cmb_radius)
     finally:
         config.struct.zalmoxis.temperature_mode = _orig_temp_mode
 
@@ -277,6 +285,7 @@ def run_interior(
     hf_all: pd.DataFrame,
     hf_row: dict,
     interior_o: Interior_t,
+    atmos_o: Atmos_t,
     verbose: bool = True,
 ):
     """Run interior mantle evolution model.
@@ -293,6 +302,8 @@ def run_interior(
             Dictionary of current runtime variables
         interior_o : Interior_t
             Interior struct.
+        atmos_o : Atmos_t
+            Atmosphere struct (only required for boundary module).
         verbose : bool
             Verbose printing enabled.
     """
@@ -321,6 +332,15 @@ def run_interior(
         AragogRunnerInstance = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         # Run Aragog
         sim_time, output = AragogRunnerInstance.run_solver(hf_row, interior_o, dirs)
+
+    elif config.interior.module == 'boundary':
+        from proteus.interior.boundary import BoundaryRunner
+
+        BoundaryRunnerInstance = BoundaryRunner(
+            config, dirs, hf_row, hf_all, interior_o, atmos_o
+        )
+        # Run the boundary interior module
+        sim_time, output = BoundaryRunnerInstance.run_solver(hf_row, interior_o, dirs)
 
     elif config.interior.module == 'dummy':
         # Import
@@ -379,10 +399,13 @@ def run_interior(
     if hf_row['Time'] > 0:
         # Prevent increasing melt fraction, if enabled
         T_magma_prev = float(hf_all.iloc[-1]['T_magma'])
+        T_surf_prev = float(hf_all.iloc[-1]['T_surf'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
         if config.atmos_clim.prevent_warming and (interior_o.ic == 2):
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
+            hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
+            hf_row['F_int'] = max(1.0e-8, min(hf_row['F_int'], hf_all.iloc[-1]['F_int']))
 
         # Do not allow massive increases to T_surf, always
         # Use module-appropriate tolerances for the T_magma limiter
@@ -391,14 +414,22 @@ def run_interior(
             dT_delta += config.interior.spider.tsurf_rtol * T_magma_prev
         elif config.interior.module == 'aragog':
             dT_delta = float(config.interior.aragog.tsurf_poststep_change)
+        elif config.interior.module == 'boundary':
+            dT_delta = float(config.interior.boundary.Tsurf_event_change)
         else:
             dT_delta = config.interior.dummy.tmagma_atol
             dT_delta += config.interior.dummy.tmagma_rtol * T_magma_prev
+
         if hf_row['T_magma'] > T_magma_prev + dT_delta:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
             hf_row['T_magma'] = T_magma_prev + dT_delta
             hf_row['Phi_global'] = Phi_global_prev
+
+        if hf_row['T_surf'] > T_surf_prev + dT_delta:
+            log.warning('Prevented large increase to T_surf!')
+            log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
+            hf_row['T_surf'] = T_surf_prev + dT_delta
 
     # Print result of interior module
     if verbose:
@@ -562,6 +593,7 @@ def update_structure_from_interior(
         _cmb_radius, spider_mesh_file = zalmoxis_solver(
             config, outdir, hf_row, num_spider_nodes=num_spider_nodes
         )
+        hf_row['R_core'] = float(_cmb_radius)
     finally:
         # Restore original config
         config.struct.zalmoxis.temperature_mode = orig_temp_mode

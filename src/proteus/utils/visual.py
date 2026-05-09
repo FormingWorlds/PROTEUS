@@ -177,8 +177,11 @@ class ColourSystem:
 
 # Interpolate input spectrum (nanometre) to required wavelength axis
 def interp_spec(wl, fl):
-    itp = PchipInterpolator(wl, fl)
-    return itp(cmf[:, 0])
+    if len(wl) < 2:
+        return np.full_like(cmf[:, 0], fl[0])
+    else:
+        itp = PchipInterpolator(wl, fl)
+        return itp(cmf[:, 0])
 
 
 # set whitepoint

@@ -751,7 +751,8 @@ def test_atmos_clim_warn_if_dummy_rayleigh_compatible():
 
     # Valid: AGNI module with rayleigh enabled
     instance = SimpleNamespace(module='agni')
-    warn_if_dummy(instance, SimpleNamespace(), True)  # Should not raise
+    attribute = SimpleNamespace(name='rayleigh')
+    warn_if_dummy(instance, attribute, True)  # Should not raise
 
 
 @pytest.mark.unit
@@ -761,10 +762,11 @@ def test_atmos_clim_warn_if_dummy_rayleigh_incompatible():
 
     # Invalid: dummy module with rayleigh enabled
     instance = SimpleNamespace(module='dummy')
+    attribute = SimpleNamespace(name='rayleigh')
     with pytest.raises(
-        ValueError, match='Dummy atmos_clim module is incompatible with Rayleigh scattering'
+        ValueError, match='Dummy atmos_clim module is incompatible with rayleigh=True'
     ):
-        warn_if_dummy(instance, SimpleNamespace(), True)
+        warn_if_dummy(instance, attribute, True)
 
 
 @pytest.mark.unit

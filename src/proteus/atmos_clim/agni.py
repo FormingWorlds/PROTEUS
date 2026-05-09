@@ -111,11 +111,41 @@ def _determine_condensates(vol_list: list):
 
     # single-gas case must be dry
     if len(vol_list) == 1:
-        log.warning('Cannot include rainout condensation with only one gas!')
+        log.warning('Cannot include rainout with only one gas!')
         return []
 
     # all dry gases...
     return [v for v in vol_list if v not in ALWAYS_DRY]
+
+
+def _determine_aerosols(dirs: dict) -> list:
+    """
+    Determine which aerosols are available.
+
+    Parameters
+    ----------
+        dirs : dict
+            Dictionary containing paths to directories
+
+    Returns
+    ----------
+        aerosols : list
+            List of available aerosols
+    """
+
+    scattering_dir = os.path.join(dirs['fwl'], 'scattering', 'scattering')
+    if not os.path.isdir(scattering_dir):
+        log.warning(f'Scattering data directory not found: {scattering_dir}')
+        return []
+
+    aerosols = []
+    for f in os.listdir(scattering_dir):
+        if f.endswith('.mon'):
+            aerosols.append(f.replace('.mon', ''))
+    aerosols = sorted(aerosols)
+
+    log.debug(f'Available aerosols: {aerosols}')
+    return aerosols
 
 
 def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
@@ -148,14 +178,38 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
     sflux_path = os.path.join(dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1]))
 
-    # Spectral file path
-    try_spfile = os.path.join(dirs['output'], 'runtime.sf')
-    if os.path.exists(try_spfile):
-        # exists => don't modify it
+    # Spectral file path provided
+    if config.atmos_clim.agni.spectral_file is not None:
+        # Grey gas?
+        if str(config.atmos_clim.agni.spectral_file).lower() == 'greygas':
+            try_spfile = 'greygas'
+        else:
+            try_spfile = os.path.abspath(config.atmos_clim.agni.spectral_file)
+            if not os.path.isfile(try_spfile):
+                UpdateStatusfile(dirs, 20)
+                raise FileNotFoundError(
+                    f'AGNI spectral file not found at specified path: {try_spfile}'
+                )
+    else:
+        # No spectral file provided
+        #     will get from FWL_DATA folder, or use existing one in output if it exists
+        try_spfile = os.path.join(dirs['output'], 'runtime.sf')
+
+    # Obtain spectral file
+    if try_spfile == 'greygas':
+        # grey gas case
+        log.info('Requested grey-gas radiative transfer scheme')
+        input_sf = 'greygas'
+        input_star = ''
+
+    elif os.path.exists(try_spfile):
+        # exists in output folder => don't modify it
         input_sf = try_spfile
         input_star = ''
+        log.info('Using existing spectral file')
+
     else:
-        # doesn't exist => AGNI will copy it + modify as required
+        # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify
         input_sf = get_spfile_path(dirs['fwl'], config)
         input_star = sflux_path
 
@@ -197,6 +251,13 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     p_top = config.atmos_clim.agni.p_top
     p_surf = max(p_surf, p_top * 1.1)  # this will happen if the atmosphere is stripped
 
+    # Aerosol species dictionary (set MMR to zero initially)
+    aerosol_species = {}
+    if config.atmos_clim.aerosols_enabled:
+        aerosol_species = {a: 0.0 for a in _determine_aerosols(dirs)}
+        if len(aerosol_species) == 0:
+            log.warning('No data found for aerosol species')
+
     # Setup struct
     succ = jl.AGNI.atmosphere.setup_b(
         atmos,
@@ -218,6 +279,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         IO_DIR=io_dir,
         flag_rayleigh=config.atmos_clim.rayleigh,
         flag_cloud=config.atmos_clim.cloud_enabled,
+        flag_aerosol=config.atmos_clim.aerosols_enabled,
+        aerosol_species=convert(jl.Dict, aerosol_species),
         overlap_method=config.atmos_clim.agni.overlap_method,
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,
@@ -239,6 +302,8 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         skin_k=config.atmos_clim.surface_k,
         tmp_magma=hf_row['T_surf'],
         tmp_floor=config.atmos_clim.tmp_minimum,
+        κ_grey_lw=config.atmos_clim.agni.grey_opacity_lw,
+        κ_grey_sw=config.atmos_clim.agni.grey_opacity_sw,
     )
 
     # Check setup! success

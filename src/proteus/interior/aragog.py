@@ -49,6 +49,7 @@ class AragogRunner:
         dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
         self.aragog_solver = interior_o.aragog_solver
+        self.proteus_config = config
 
     @staticmethod
     def setup_logger(config: Config, dirs: dict):
@@ -96,7 +97,7 @@ class AragogRunner:
             start_time=0,
             end_time=0,
             atol=config.interior.aragog.tolerance,
-            rtol=config.interior.aragog.tolerance,
+            rtol=config.interior.aragog.tolerance_rel,
             tsurf_poststep_change=config.interior.aragog.tsurf_poststep_change,
             event_triggering=config.interior.aragog.event_triggering,
         )
@@ -404,6 +405,9 @@ class AragogRunner:
         # Tidal heating flux
         Htidal_s = aragog_output.heating_tidal[:, -1]  # [W kg-1]
         output['F_tidal'] = float(np.dot(Htidal_s, mass_s)) / area
+
+        # Boundary layer thickness (constant value from config)
+        output['boundary_layer_thickness'] = self.proteus_config.atmos_clim.surface_d
 
         # Store arrays
         # FIX ME - Should extract values from staggered nodes rather than cropping

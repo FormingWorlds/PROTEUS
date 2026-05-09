@@ -633,6 +633,7 @@ def _try_spider(
     # Check that SPIDER can be found
     spider_exec = os.path.join(dirs['spider'], 'spider')
     if not os.path.isfile(spider_exec):
+        UpdateStatusfile(dirs, 21)
         raise FileNotFoundError("SPIDER executable could not be found at '%s'" % spider_exec)
 
     # Scale factors for when SPIDER is failing to converge
@@ -808,6 +809,7 @@ def _try_spider(
         # Fall back to SPIDER's local lookup_data (uses legacy directory name)
         eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
     if not os.path.isdir(eos_dir):
+        UpdateStatusfile(dirs, 21)
         raise FileNotFoundError(
             f'SPIDER EOS directory not found: {eos_dir}. '
             f"Check interior.eos_dir='{config.interior.eos_dir}'."
@@ -819,6 +821,7 @@ def _try_spider(
     solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
     for fpath in (liquidus_ps, solidus_ps):
         if not os.path.isfile(fpath):
+            UpdateStatusfile(dirs, 21)
             raise FileNotFoundError(
                 f'SPIDER phase boundary file not found: {fpath}. '
                 f"Run 'python tools/generate_spider_phase_boundaries.py "
@@ -961,11 +964,16 @@ def _try_spider(
         spider_env['PETSC_ARCH'] = 'arch-linux-c-opt'
     spider_env['PETSC_DIR'] = os.path.join(dirs['proteus'], 'petsc')
 
-    # Run SPIDER
+    # SPIDER logging
     log.debug('SPIDER output suppressed')
-    spider_print = open(dirs['output'] + 'spider_recent.log', 'w')
-    spider_print.write(call_string + '\n')
-    spider_print.flush()
+    if config.interior.spider.log_output:
+        spider_print = open(dirs['output'] + 'spider_recent.log', 'w')
+        spider_print.write(call_string + '\n')
+        spider_print.flush()
+    else:
+        spider_print = sp.DEVNULL
+
+    # Run SPIDER
     spider_succ = True
     try:
         proc = sp.run(
@@ -985,7 +993,9 @@ def _try_spider(
     else:
         spider_succ = bool(proc.returncode == 0)
 
-    spider_print.close()
+    if spider_print != sp.DEVNULL:
+        spider_print.close()
+
     return spider_succ
 
 
@@ -1048,7 +1058,7 @@ def RunSPIDER(
             else:
                 # try again (change tolerance and step size)
                 log.warning('Trying again')
-                step_sf *= 0.1
+                step_sf *= 0.2
                 atol_sf *= 10.0
 
     # check status
@@ -1157,12 +1167,12 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
     i = min(i, len(interior_o.temp) - 1)
     output['T_pot'] = float(interior_o.temp[i])
 
-    # Limit F_int to positive values
-    if config.atmos_clim.prevent_warming:
-        output['F_int'] = max(1.0e-8, output['F_int'])
+    # Boundary layer thickness (constant value from config)
+    output['boundary_layer_thickness'] = config.atmos_clim.surface_d
 
     # Check NaNs
     if np.isnan(output['T_magma']):
-        raise Exception('Magma ocean temperature is NaN')
+        UpdateStatusfile(dirs, 21)
+        raise ValueError('Magma ocean temperature is NaN')
 
     return sim_time, output

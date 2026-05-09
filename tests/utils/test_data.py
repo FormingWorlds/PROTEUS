@@ -1960,6 +1960,23 @@ def test_download_surface_albedos_no_mapping(mock_get_info):
 
 @pytest.mark.unit
 @patch('proteus.utils.data.get_data_source_info')
+def test_download_scattering_no_mapping(mock_get_info):
+    """
+    Test scattering download raises error when no mapping found.
+
+    Physical scenario: if the DATA_SOURCE_MAP is misconfigured, fail fast
+    with a clear error rather than silently skipping the download.
+    """
+    from proteus.utils.data import download_scattering
+
+    mock_get_info.return_value = None
+
+    with pytest.raises(ValueError, match='No data source mapping found'):
+        download_scattering()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.get_data_source_info')
 def test_download_massradius_data_no_mapping(mock_get_info):
     """Test mass-radius data download raises error when no mapping found."""
     from proteus.utils.data import download_massradius_data
@@ -2297,6 +2314,99 @@ def test_get_sufficient_zalmoxis_seager_only(
     mock_dyn.assert_not_called()
 
 
+@pytest.mark.unit
+def test_get_sufficient_agni_skips_group_band_lookup_when_spectral_file_set(monkeypatch):
+    """AGNI custom spectral_file should bypass group/bands lookup download.
+
+    This represents a case when the user provides the path to a spectral file directly.
+    """
+    from types import SimpleNamespace
+
+    import proteus.atmos_clim.common as atmos_common
+    import proteus.utils.data as data_mod
+
+    spectral_calls = []
+    lookup_calls = []
+
+    monkeypatch.setattr(
+        data_mod,
+        'download_spectral_file',
+        lambda group, bands: spectral_calls.append((group, bands)),
+    )
+    monkeypatch.setattr(data_mod, 'download_stellar_spectra', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_scattering', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_exoplanet_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_massradius_data', lambda: None)
+    monkeypatch.setattr(
+        data_mod, 'download_interior_lookuptables', lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(data_mod, 'download_melting_curves', lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        atmos_common, 'get_spfile_name_and_bands', lambda *_args: lookup_calls.append(1)
+    )
+
+    config = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            aerosols_enabled=False,
+            agni=SimpleNamespace(spectral_file='/tmp/custom.spc'),
+        ),
+        interior=SimpleNamespace(module='dummy'),
+    )
+
+    data_mod._get_sufficient(config, clean=False)
+
+    assert spectral_calls == [('Honeyside', '4096')]
+    assert lookup_calls == []
+
+
+@pytest.mark.unit
+def test_get_sufficient_agni_downloads_group_and_bands_when_no_spectral_file(monkeypatch):
+    """AGNI with no custom spectral file should resolve and download group/bands file."""
+    from types import SimpleNamespace
+
+    import proteus.atmos_clim.common as atmos_common
+    import proteus.utils.data as data_mod
+
+    spectral_calls = []
+
+    monkeypatch.setattr(
+        data_mod,
+        'download_spectral_file',
+        lambda group, bands: spectral_calls.append((group, bands)),
+    )
+    monkeypatch.setattr(data_mod, 'download_stellar_spectra', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_scattering', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_exoplanet_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_massradius_data', lambda: None)
+    monkeypatch.setattr(
+        data_mod, 'download_interior_lookuptables', lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(data_mod, 'download_melting_curves', lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        atmos_common, 'get_spfile_name_and_bands', lambda *_args: ('Frostflow', '128')
+    )
+
+    config = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            aerosols_enabled=False,
+            agni=SimpleNamespace(spectral_file=None),
+        ),
+        interior=SimpleNamespace(module='dummy'),
+    )
+
+    data_mod._get_sufficient(config, clean=False)
+
+    assert spectral_calls == [('Honeyside', '4096'), ('Frostflow', '128')]
+
+
 # ============================================================================
 # test download_eos_dynamic / download_eos_static
 # ============================================================================
@@ -2338,3 +2448,30 @@ def test_download_eos_static_delegates(mock_seager):
 
     download_eos_static()
     mock_seager.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_melting_curves_skips_when_canonical_files_exist(
+    mock_getfwl, mock_download, tmp_path
+):
+    """download_melting_curves should return early when all canonical files already exist."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.data import download_melting_curves
+
+    mock_getfwl.return_value = tmp_path
+
+    mc_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    mc_dir.mkdir(parents=True, exist_ok=True)
+
+    for name in ['solidus_P-T.dat', 'liquidus_P-T.dat', 'solidus_P-S.dat', 'liquidus_P-S.dat']:
+        (mc_dir / name).write_text('dummy\n')
+
+    mock_config = MagicMock()
+    mock_config.interior.melting_dir = 'Wolf_Bower+2018'
+
+    download_melting_curves(mock_config, clean=False)
+
+    mock_download.assert_not_called()
