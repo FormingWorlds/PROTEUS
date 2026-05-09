@@ -25,7 +25,6 @@ from aragog.parser import (
     _PhaseMixedParameters,
     _PhaseParameters,
     _Radionuclide,
-    _ScalingsParameters,
     _SolverParameters,
 )
 from proteus.interior_energetics.common import Interior_t
@@ -291,10 +290,6 @@ class AragogRunner:
 
     @staticmethod
     def setup_solver(config: Config, hf_row: dict, interior_o: Interior_t, outdir: str):
-        # Non-dimensionalization removed: all quantities in SI, time in years.
-        # ScalingsParameters is vestigial (all scales = 1.0).
-        scalings = _ScalingsParameters()
-
         solver = _SolverParameters(
             start_time=0,
             end_time=0,
@@ -810,7 +805,6 @@ class AragogRunner:
             phase_liquid=phase_liquid,
             phase_mixed=phase_mixed,
             radionuclides=radionuclides,
-            scalings=scalings,
             solver=solver,
         )
 
