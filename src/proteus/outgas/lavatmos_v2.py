@@ -1,18 +1,27 @@
 # Function used to run LavAtmos 2.0
 from __future__ import annotations
 
+import csv
 import logging
 import os
+import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-if TYPE_CHECKING:
-    from proteus.config import Config
-
+# Local packages and paths
+#sys.path.insert(1,'wkdir')
+sys.path.append('/data3/leoni/PROTEUS/LavAtmos/')
+import lavatmos3
 
 from proteus.utils.constants import element_list, vol_list
+
+sys.path.append(os.getcwd())
+wkdir = '/data3/leoni/PROTEUS/LavAtmos/'
+os.chdir(wkdir)
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -32,15 +41,12 @@ class paths_importer:
         '''
 
         # General directory structure
-        self.wkdir = os.environ.get("LAVATMOS_DIR")
+        self.wkdir = '/data3/leoni/PROTEUS/LavAtmos/'
         self.output_dir = self.wkdir+'output/'
         self.input_dir = self.wkdir+'input/'
 
         # Inputs
         self.lava_comps = self.input_dir+'lava_compositions/'
-
-        # LavAtmos
-        self.lavatmos_run = self.wkdir+'ThermoEngine/LavAtmos/lavatmos_run.py'
 
         # FastChem 3
         self.fastchem3_dir = os.environ.get("FC_DIR")
@@ -49,75 +55,36 @@ class paths_importer:
         self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
         self.element_abundances3 = self.fastchem3_input+'element_abundances/'
 
-        # Singularity
-        self.singularity_cache = self.wkdir+'singularity/'
 
+class set_magmaproperties:
 
-
-class container_lavatmos():
-
-    def __init__(self, parameters):
+    def __init__(self, config: Config, hf_row: dict, volatile_comp):
 
         '''
 
-        Imports parameters and paths needed for the LavAtmos run.
-
-        - Parameters are passed in dictionary format.
+        reading in properties from the output file
 
         '''
 
-        # Parameters
-        self.silicate_abundances = parameters['silicate_abundances']
-        self.P_volatile = parameters['P_volatile']
-        self.comp_melt_name = parameters['lava_comp']
-        self.volatile_comp = parameters['volatile_comp']
-        self.run_name = parameters['run_name']
-        self.melt_fraction = parameters['melt_fraction']
-        self.elementfile = parameters['elementfile']
-
-        # Paths
-        self.paths = paths_importer()
-
+        # General directory structure
+        paths = paths_importer()
+        # Import input
+        if hf_row['T_magma'] > 1500:
+            self.T_surf = hf_row['T_magma']
+        else:
+            self.T_surf = 1500
+        self.P_volatile = hf_row['P_surf']
+        self.melt_comp_name = 'BSE_palm'
+        self.output_dir = paths.output_dir
+        self.lavatmos_version = 'lavatmos3'
+        self.run_name = 'proteus_run'
+        self.melt_fraction = 1.0
+        self.elementfile = 'element_output_proteus.dat'
+        self.volatile_comp = volatile_comp
         # Saving volatile comp to csv for so that LavAtmos can read it later
-        if parameters['volatile_comp'] != 'None':
-            comp_vol = pd.Series(parameters['volatile_comp'])
-            comp_vol.to_csv(f'{self.paths.input_dir}volatile_comp.csv',\
-                             header=['mole_fraction'])
+        #need to find better way to read in volatile composition that from a parameter dictionary maybe ?
 
 
-    def run_lavatmos(self,T_boa):
-
-        '''
-
-        This function effectively runs a bash command which calls
-        singularity. Singularity opens the ThermoEngine docker and within
-        this runs lavatmos_run.py. When LavAtmos is done, it writes the results
-        to a csv file. This csv file is read by this function and returned.
-
-        - T_boa: T at the "bottom of atmosphere" for which to run LavAtmos [K].
-
-        '''
-
-        T_boa = int(T_boa)
-
-        os.system(f'export APPTAINER_CACHEDIR="{self.paths.singularity_cache}"')
-        os.system(f'singularity exec --bind {self.paths.wkdir} \
-                    {self.paths.wkdir}thermoengine_master.sif \
-                    python {self.paths.lavatmos_run} \
-                    {T_boa}\
-                    {self.P_volatile}\
-                    {self.comp_melt_name}\
-                    {self.paths.output_dir}\
-                    {self.silicate_abundances}\
-                    {self.run_name}\
-                    {self.melt_fraction}\
-                    {self.elementfile}')
-
-        # Read LavAtmos output
-        # partial_pressures = pd.read_csv(self.run_output_dir+'lavatmos/degassed_partial_pressure.csv',\
-        #                                 index_col=0)
-
-        # return partial_pressures
 
 
 class Species_db(object):
@@ -303,7 +270,7 @@ def read_in_element_fracs(input_path,time,parameters):
 
 
 
-def read_in_element_fracs_normalized(input_path,parameters):
+def read_in_element_fracs_normalized(input_path):
 
 
     '''constructs a dataframe with number element fractions of each element as computed by lavatmos
@@ -320,7 +287,7 @@ def read_in_element_fracs_normalized(input_path,parameters):
     # read file (skip comment line, split on whitespace)
 
     df = pd.read_csv(
-        input_path + parameters['elementfile'],
+        input_path + 'element_output_proteus.dat',
         comment="#",      # ignore lines starting with #
         sep=r"\s+",
         header=None       # split on any whitespace
@@ -346,6 +313,45 @@ def read_in_element_fracs_normalized(input_path,parameters):
     return norm_dict
 
 
+def run_lavatmos(config: Config, hf_row: dict, volatile_fracs):
+
+    '''
+
+    This function effectively runs a bash command which calls
+    singularity. Singularity opens the ThermoEngine docker and within
+    this runs lavatmos_run.py. When LavAtmos is done, it writes the results
+    to a csv file. This csv file is read by this function and returned.
+
+
+    '''
+    paths = paths_importer()
+    melt_comp_path = paths.lava_comps
+    Magma = set_magmaproperties(config, hf_row, volatile_fracs)
+
+    # Import melt composition
+    melt_comp_fname = melt_comp_path + Magma.melt_comp_name +'.csv'
+    print(f'Magma composition read from: {melt_comp_fname}')
+    melt_comp_df = pd.read_csv(melt_comp_fname,names=['spec','abund'])
+    melt_comp = {}
+    for i in melt_comp_df.index:
+        melt_comp[melt_comp_df['spec'].loc[i]] = melt_comp_df['abund'].loc[i]
+
+    volatile_comp_fname = paths.input_dir+'volatile_comp.csv'
+    print(f'Volatile composition read from: {volatile_comp_fname}')
+    volatile_comp = {}
+    with open(volatile_comp_fname, 'r') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            volatile_comp[row['']] = float(row['mole_fraction'])
+
+    system = lavatmos3.melt_vapor_system(paths)
+    lavatmos_output = system.vaporise(Magma.T_surf, Magma.P_volatile, Magma.melt_comp, volatile_comp, Magma.elementfile, Magma.melt_fraction)
+
+    # Save results
+    output_name = f'{Magma.run_name}.csv'
+    lavatmos_output.to_csv(paths.output_dir+output_name)
+
+
 def compute_silicate_outgassing(config: Config, hf_row: dict):
     """
 
@@ -361,12 +367,8 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
     """
     import os
-    import sys
 
     import numpy as np
-
-    sys.path.insert(1, '/data3/leoni/LavAtmos')
-    from lavatmos_goot_runner import container_lavatmos
 
 
     log.info('computing siicate outgassing with lavatmos')
@@ -396,42 +398,11 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     log.info('volatile pressure given to lavatmos : %.2e',hf_row['P_surf'])
 
 
-
-    parameters = {
-        # General parameters
-        'run_name': 'proteus_run',
-        # Melt parameters
-        'lava_comp': 'BSE_palm',
-        'silicate_abundances': 'lavatmos3',  # 'lavatmos1', 'lavatmos2', 'manual'
-        # Volatile parameters
-        'P_volatile': hf_row['P_surf'] + hf_row['P_silicates'],  # bar
-        'oxygen_abundance': 'degassed',  # 'degassed', 'manual',
-        'volatile_comp': nfrac,
-        'melt_fraction': 1.0,
-        'elementfile': 'element_output_proteus.dat',
-        'P_silicates': hf_row['P_silicates']
-    }
-
-
-    # make sure that surface temperature is at least 1500K, otherwise lavatmos crashes
-    if hf_row['T_magma'] > 1500:
-        Toutgas = hf_row['T_magma']
-    else:
-        Toutgas = 1500
-
-    #create a tiuny fake atmosphere for lavatmos to run ? - not sure if this is necessary
-    if parameters['P_volatile']<1e-3:  #when lavatmos1 results start to become surface pressure dependent
-       parameters['silicate_abundances'] = 'lavatmos1'
-       log.info('volatile pressure below 1e-3bar, run lavatmos1')
-
-
-
-    lavatmos_instance = container_lavatmos(parameters)
-    lavatmos_instance.run_lavatmos(Toutgas)
-
+    #running lavatmos
+    run_lavatmos(config, hf_row, nfrac)
 
     #convert the element abundances from lavatmos file to element fractions, normalized to unity
-    element_fracs=read_in_element_fracs_normalized(config.outgas.elementfile,parameters)
+    element_fracs=read_in_element_fracs_normalized(config.outgas.elementfile)
 
     log.info('element fraction after running lavatmos: %s'%element_fracs)
     # read in boa chemistry from last iteration of fastchem and lavatmos
@@ -451,32 +422,22 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
     # hf_row['P_surf'] is in bar; convert to Pascals for use in the ideal gas law
     # 1bar = 100 kPa
-    P_vol_kPa = hf_row['P_surf'] * 100 - hf_row['P_silicates']  #make sure that surface pressure is reset to only volatile  P_surf in helpfile is only Pvolatile
-    #before outgassed pressure is updated
-    rho_old = kg_per_particle * P_vol_kPa / (kB * hf_row['T_magma'])
+    P_surf_kPa = hf_row['P_surf'] * 100 #convert to kgPa
+    rho_old = kg_per_particle * P_surf_kPa / (kB * hf_row['T_magma'])
     M_atmo_old = hf_row['M_atm']
 
+    #log.info('old atmospheric mass:%.2e'%M_atmo_old)
+    #log.debug('old atmospheric density:%.4f'%rho_old)
+    #log.info('old atmospheric pressure:%.4f'%hf_row['P_surf'])
+    #log.debug('old mass per particle :%.4e'%kg_per_particle)
 
     # rho of armosphere after lavatmos
     # n=rho/mu*mp
     # 1bar = 100 kPa
     kg_pp_new =  mu_outgassed * mp
-
+   # log.debug('new mass per particle :%.4e'%kg_pp_new)
     P_new_kPa = new_atmos_abundances['Pbar'][0] * 100 #convert pressure to cgs
-    Poutgas =  new_atmos_abundances['Pbar'][0] - hf_row['P_surf'] #comput ehow much silicates are outgassed
-
-    # update outgassed preessure to use as input for next alvatmos run
-
-    log.info('pressure of outgassed species before updating, i.e. from last iteration: %.4f'%hf_row['P_silicates'])
-    hf_row['P_silicates'] = Poutgas
-    #update volatile surface pressure as well:
-    #hf_row['P_surf'] = new_atmos_abundances['Pbar'][0] don't update P_surf !!!
-
-
-    log.info('volatile surface pressure should stay the same: %.4f'%hf_row['P_surf'])
-    log.info('new pressure of outgassed species after updating :%.4f'%hf_row['P_silicates'])
-
-
+    #log.info('atmospheric pressure :%.2e'%new_atmos_abundances['Pbar'][0])
     rho_new = kg_pp_new * P_new_kPa / (kB * hf_row['T_magma']) # convert pressure in cgs to kg !
     #log.debug('new atmospheric density:%.4f'%rho_new)
 
@@ -487,7 +448,15 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         M_atmo_new = rho_new * Vshell
 
 
+    log.info('new atmospheric mass:%.2e'%M_atmo_new)
+    #log.info('new atmospheric density:%.4f'%rho_new)
+
+
     gas_list = vol_list + config.outgas.vaplist
+
+    #update surface pressure:
+    hf_row['P_surf'] = new_atmos_abundances['Pbar'][0]
+    log.info('new surface pressure :%.4f'%hf_row['P_surf'])
 
 
     H_budget=0.0
