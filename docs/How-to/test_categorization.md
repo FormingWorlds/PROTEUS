@@ -132,7 +132,7 @@ For fast gate check: `pytest -m "unit and not skip" --cov=src --cov-fail-under=<
 - **`integration`** — Covers cross-module coupling paths (e.g., ARAGOG + JANUS handoff).
 - **`slow`** — Full scientific validation. Contributes to coverage but primarily validates physics, not code paths.
 
-All thresholds auto-increase ("ratchet") and never decrease. Check coverage locally with `pytest --cov=src --cov-report=html`.
+All thresholds auto-increase ("ratchet") and never decrease, capped at the 90% PROTEUS-ecosystem ceiling. Check coverage locally with `pytest --cov=src --cov-report=html`.
 
 For details on how coverage is collected across workflows and how the estimated total is computed, see [Coverage Collection & Reporting](test_infrastructure.md#coverage-collection-reporting).
 

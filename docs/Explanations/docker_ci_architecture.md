@@ -179,6 +179,7 @@ Since the container already has compiled binaries:
 **Coverage ratcheting:**
 - Full threshold from `[tool.coverage.report] fail_under` (see `pyproject.toml`)
 - Auto-commits threshold increase on successful main runs
+- Capped at the 90% PROTEUS-ecosystem ceiling; the ratchet does not raise the gate above 90%
 
 See [Test Infrastructure](../How-to/test_infrastructure.md) for coverage coordination details.
 

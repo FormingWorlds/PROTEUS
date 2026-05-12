@@ -209,7 +209,7 @@ coverage report
 coverage html
 ```
 
-**Coverage thresholds** (in `pyproject.toml`):
+**Coverage thresholds** (in `pyproject.toml`; ratchet capped at the 90% PROTEUS-ecosystem ceiling):
 
 - Fast gate: `[tool.proteus.coverage_fast] fail_under = 44.45`
 - Full suite: `[tool.coverage.report] fail_under = 59`
@@ -407,7 +407,7 @@ pytest --pdb                        # Drop into debugger on failure
 ## Important Notes
 
 - **Docker CI**: Uses pre-built image `ghcr.io/formingworlds/proteus:latest`. PR code is overlaid, only changed files recompiled.
-- **Coverage ratcheting**: Thresholds auto-increase when coverage improves (committed by `github-actions[bot]`). Never manually decrease.
+- **Coverage ratcheting**: Thresholds auto-increase when coverage improves (committed by `github-actions[bot]`), capped at the 90% PROTEUS-ecosystem ceiling. Never manually decrease.
 - **Test placeholders**: Some tests marked `@pytest.mark.skip` are placeholders. Excluded from CI.
 - **Windows**: Not supported. Linux/macOS only.
 - **Python version**: Must be 3.12 (PETSc/SPIDER require Python <= 3.12).

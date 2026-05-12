@@ -75,7 +75,7 @@ When you open a pull request, CI automatically:
 
 - **Grace period**: PRs can merge with ≤0.3% coverage drop (warning posted)
 - **Diff-cover**: 80% coverage required on changed lines
-- **Auto-ratcheting**: Thresholds only increase, never decrease
+- **Auto-ratcheting**: Thresholds only increase, never decrease, capped at the 90% PROTEUS-ecosystem ceiling
 
 ---
 
@@ -135,7 +135,7 @@ coverage report --show-missing --skip-covered  # Only uncovered files
 - `[tool.proteus.coverage_fast] fail_under` — Fast gate (PRs)
 - `[tool.coverage.report] fail_under` — Full gate (nightly)
 
-Thresholds auto-ratchet upward; never decrease manually.
+Thresholds auto-ratchet upward, capped at the 90% PROTEUS-ecosystem ceiling; never decrease manually.
 
 ---
 

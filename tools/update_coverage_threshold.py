@@ -45,6 +45,11 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreter
 
 import tomlkit
 
+# PROTEUS-ecosystem coverage ceiling. The ratchet may raise either gate
+# toward this value but never above it; above 90% the gate tracks pragma
+# usage and style rather than bug-finding signal.
+ECOSYSTEM_CEILING = 90.0
+
 
 def read_current_coverage(coverage_file: Path) -> float:
     """Read the current test coverage percentage from a coverage JSON file.
@@ -174,7 +179,7 @@ def main() -> int:
         print(f'Current coverage: {current_coverage:.2f}%')
         print(f'Current threshold: {current_threshold:.2f}%')
 
-        new_threshold = round(current_coverage, 2)
+        new_threshold = min(round(current_coverage, 2), ECOSYSTEM_CEILING)
 
         if new_threshold > current_threshold:
             print(

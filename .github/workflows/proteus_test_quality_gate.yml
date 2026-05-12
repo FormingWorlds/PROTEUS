@@ -5,6 +5,9 @@ name: Reusable Test Quality Gate for PROTEUS Ecosystem
 #   - Nightly CI (ci-nightly.yml): Runs all tests, establishes coverage baseline, ratchets threshold
 #   - PR Checks (ci-pr-checks.yml): Runs fast tests, validates against nightly baseline with 0.3% grace period
 # Ecosystem modules can adopt similar patterns or use this simpler threshold-based approach.
+#
+# Ecosystem-wide ceiling: 90%. The ratchet may rise toward this value but never above
+# it; above 90% the gate tracks pragma usage and style rather than bug-finding signal.
 
 on:
   workflow_call:
