@@ -87,6 +87,12 @@ jobs:
           base_text = subprocess.check_output(["git", "show", f"{base}:pyproject.toml"], text=True)
           base_data = tomllib.loads(base_text)
 
+          # ECOSYSTEM_CEILING is the maximum allowed value for any
+          # coverage gate across the PROTEUS ecosystem. Single source
+          # of truth lives in tools/update_coverage_threshold.py;
+          # duplicated here to keep this workflow self-contained.
+          ECOSYSTEM_CEILING = 90.0
+
           paths = {
               "full": ["tool", "coverage", "report", "fail_under"],
               "fast": ["tool", "proteus", "coverage_fast", "fail_under"],
@@ -111,7 +117,16 @@ jobs:
               if cur < base_val:
                   raise SystemExit(f"{label} fail_under decreased: {cur} < {base_val}")
 
-          print("Coverage thresholds have not decreased vs main.")
+              if cur > ECOSYSTEM_CEILING:
+                  raise SystemExit(
+                      f"{label} fail_under {cur} exceeds the "
+                      f"{ECOSYSTEM_CEILING}% ecosystem ceiling"
+                  )
+
+          print(
+              f"Coverage thresholds have not decreased vs main and stay "
+              f"within the {ECOSYSTEM_CEILING}% ecosystem ceiling."
+          )
           PY
 
       - name: Overlay PR code onto container
