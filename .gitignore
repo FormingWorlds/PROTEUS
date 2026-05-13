@@ -52,6 +52,9 @@ SPIDER
 aragog
 Aragog
 ARAGOG
+zalmoxis
+Zalmoxis
+ZALMOXIS
 atmodeller
 ATMODELLER
 Atmodeller
@@ -80,6 +83,7 @@ Boreas
 __pycache__
 !output/.gitkeep
 nogit*
+data/
 tools/*.csv
 tools/grid_proteus_SNS*
 
