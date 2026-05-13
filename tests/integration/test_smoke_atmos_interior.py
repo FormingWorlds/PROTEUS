@@ -68,7 +68,8 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
         runner.init_directories()
 
         # Fix: Lower tsurf_init to prevent runaway heating (T_magma > 1e6 K issue)
-        runner.config.interior_energetics.dummy.tsurf_init = 2000.0
+        runner.config.planet.tsurf_init = 2000.0
+        runner.config.planet.temperature_mode = 'adiabatic'
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr, minimum time
