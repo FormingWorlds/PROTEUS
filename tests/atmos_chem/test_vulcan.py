@@ -492,6 +492,89 @@ def test_run_vulcan_online_network_selection(
 @patch('proteus.atmos_chem.vulcan.np.loadtxt')
 @patch('proteus.atmos_chem.vulcan.np.savetxt')
 @patch('proteus.atmos_chem.vulcan.os.makedirs')
+def test_run_vulcan_boundary_pressures_use_level_edges(
+    mock_makedirs,
+    mock_savetxt,
+    mock_loadtxt,
+    mock_glob,
+    mock_read_atmos,
+    tmp_path,
+):
+    """vcfg.P_b and vcfg.P_t read from level edges (atmos['pl']), not centres.
+
+    Physics: ``atmos['p']`` are cell-centre pressures (length nz); ``atmos['pl']``
+    are level-edge pressures (length nz+1) that bracket every cell. The
+    bottom (surface) and top (TOA) boundary pressures sit on the edges,
+    not the centres; using ``p`` truncates the column by a half-cell at
+    each end.
+
+    The mock atmosphere here puts ``pl`` one order of magnitude wider
+    than ``p`` at each end so the formula difference is unambiguous:
+    correct fix uses ``pl[-1] * 10 = 1e7`` barye; the old bug would
+    produce ``p[-1] * 10 = 1e6`` barye.
+    """
+    config = _make_mock_config()
+    config.atmos_chem.vulcan.make_funs = False
+    hf_row = _make_mock_hf_row(year=700.0)
+
+    offchem_dir = tmp_path / 'offchem'
+    offchem_dir.mkdir(parents=True, exist_ok=True)
+    dirs = {
+        'output': str(tmp_path),
+        'output/offchem': str(offchem_dir),
+    }
+
+    # p (cell centres) and pl (level edges) have a distinct max and a
+    # distinct min so the formula change is unambiguous. Lengths match
+    # the lengths the production code already assumes for tmpl/Kzz/p
+    # in this test harness; the physically-correct fix only touches
+    # which array P_b and P_t are computed from, not which one drives
+    # the savetxt rows.
+    nlevels = 5
+    atmos = {
+        'p': np.logspace(5, 1, nlevels),  # 1e5..1e1 Pa (centres)
+        'pl': np.logspace(6, 0, nlevels),  # 1e6..1e0 Pa (edges, wider)
+        'tmpl': np.linspace(500.0, 200.0, nlevels),
+        'Kzz': np.full(nlevels, 1e6),
+    }
+    for gas in ['H2O', 'CO2', 'H2', 'CO', 'N2']:
+        atmos[gas + '_vmr'] = np.full(nlevels - 1, 1e-4)
+    mock_read_atmos.return_value = [atmos]
+
+    mock_glob.return_value = [str(tmp_path / 'data' / '700.sflux')]
+    (tmp_path / 'data').mkdir(parents=True, exist_ok=True)
+    mock_loadtxt.return_value = np.array([[200.0, 1e-5], [300.0, 1e-4], [400.0, 1e-3]])
+
+    mock_vcfg = MagicMock()
+    mock_vulcan_package.Config.return_value = mock_vcfg
+    mock_vulcan_package.main.return_value = None
+
+    result_file = offchem_dir / 'vulcan_700.pkl'
+    vulcan_result = _make_mock_vulcan_result()
+    with open(result_file, 'wb') as f:
+        pickle.dump(vulcan_result, f)
+
+    if hasattr(run_vulcan, '_made'):
+        del run_vulcan._made
+
+    run_vulcan(dirs, config, hf_row, online=True)
+
+    # Expected: P_b = max(pl) * 10 = 1e6 * 10 = 1e7 barye;
+    #           P_t = min(pl) * 10 = 1e0 * 10 = 1e1 barye.
+    # Old bug would have produced 1e6 and 1e2 respectively.
+    assert mock_vcfg.P_b == pytest.approx(1.0e7)
+    assert mock_vcfg.P_t == pytest.approx(1.0e1)
+    # Sanity: not the buggy values from atmos['p'].
+    assert mock_vcfg.P_b != pytest.approx(1.0e6)
+    assert mock_vcfg.P_t != pytest.approx(1.0e2)
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.vulcan.read_atmosphere_data')
+@patch('proteus.atmos_chem.vulcan.glob.glob')
+@patch('proteus.atmos_chem.vulcan.np.loadtxt')
+@patch('proteus.atmos_chem.vulcan.np.savetxt')
+@patch('proteus.atmos_chem.vulcan.os.makedirs')
 def test_run_vulcan_online_uses_exist_ok(
     mock_makedirs,
     mock_savetxt,
