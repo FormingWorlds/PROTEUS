@@ -504,6 +504,78 @@ def test_run_chemistry_online_mode(patched_run_vulcan, tmp_path):
 
 
 @pytest.mark.unit
+@patch('proteus.atmos_chem.wrapper.read_result')
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_returns_none_when_backend_fails_offline(
+    patched_run_vulcan, patched_read_result, tmp_path
+):
+    """run_chemistry must short-circuit when offline run_vulcan returns False.
+
+    A False return from the backend signals "no output pickle / unrecognised
+    network / wrong atmos module". The wrapper must surface that to the
+    caller as None, not silently masquerade as a successful but empty run
+    by hitting read_result on a file that was never written.
+    """
+    patched_run_vulcan.return_value = False
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
+    hf_row = {'Time': 1000.0}
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    assert result is None
+    # Verify the wrapper actually short-circuited rather than falling
+    # through to read_result; otherwise a future regression that drops
+    # the success-check would still pass this test trivially.
+    patched_read_result.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.wrapper.read_result')
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_returns_none_when_backend_fails_online(
+    patched_run_vulcan, patched_read_result, tmp_path
+):
+    """Same short-circuit applies in online mode."""
+    patched_run_vulcan.return_value = False
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'online'
+    hf_row = {'Time': 750.0}
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    assert result is None
+    patched_read_result.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.atmos_chem.wrapper.read_result')
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_proceeds_when_backend_succeeds(
+    patched_run_vulcan, patched_read_result, tmp_path
+):
+    """Sanity check: a truthy backend return must still reach read_result."""
+    patched_run_vulcan.return_value = True
+    sentinel = pd.DataFrame({'tmp': [300.0]})
+    patched_read_result.return_value = sentinel
+
+    dirs = {'output': str(tmp_path)}
+    config = MagicMock()
+    config.atmos_chem.module = 'vulcan'
+    config.atmos_chem.when = 'offline'
+    hf_row = {'Time': 1000.0}
+
+    result = run_chemistry(dirs, config, hf_row)
+
+    patched_read_result.assert_called_once()
+    assert result is sentinel
+
+
+@pytest.mark.unit
 def test_run_chemistry_invalid_when():
     """
     Test run_chemistry raises ValueError for invalid 'when' value.

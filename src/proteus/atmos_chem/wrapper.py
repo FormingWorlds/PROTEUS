@@ -66,13 +66,20 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     filename = None
     if when == 'offline':
         log.debug('Running atmospheric chemistry in OFFLINE mode')
-        _run(dirs, config, hf_row)
+        success = _run(dirs, config, hf_row)
     elif when == 'online':
         log.debug('Running atmospheric chemistry in ONLINE mode')
-        _run(dirs, config, hf_row, online=True)
+        success = _run(dirs, config, hf_row, online=True)
         filename = f'{module}_{int(hf_row["Time"])}.csv'
     else:
         raise ValueError(f"Invalid atmos_chem.when value: '{when}'")
+
+    # Surface solver failure to the caller (e.g. wrong atmos module,
+    # missing output pickle, unrecognised network) so it isn't silently
+    # masked by a None DataFrame downstream.
+    if not success:
+        log.warning(f'{module} chemistry run did not produce output; skipping read')
+        return None
 
     # Read the CSV output and return as DataFrame
     return read_result(dirs['output'], module, filename=filename)
