@@ -27,6 +27,32 @@ def valid_rayleigh(instance, attribute, value):
         raise ValueError('AGNI grey gas is incompatible with Rayleigh scattering')
 
 
+def valid_aerosols_enabled(instance, attribute, value):
+    """Aerosol scattering needs band-resolved RT.
+
+    Reuses the dummy guard from ``warn_if_dummy`` and rejects the
+    AGNI grey-gas combination: grey gas has no spectral bands, so a
+    Mie-scattering aerosol library is either silently ignored or
+    crashes on the Julia side. The check fires only when aerosols
+    are enabled (``value is True``).
+    """
+    if not value:
+        return
+
+    if instance.module == 'dummy':
+        raise ValueError(
+            f'Dummy atmos_clim module is incompatible with {attribute.name}=True'
+        )
+
+    if instance.module == 'agni' and (
+        str(instance.agni.spectral_file).lower() == 'greygas'
+    ):
+        raise ValueError(
+            'AGNI grey gas is incompatible with aerosols (band-resolved Mie '
+            'scattering requires a real spectral file)'
+        )
+
+
 def check_overlap(instance, attribute, value):
     _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
@@ -383,7 +409,7 @@ class AtmosClim:
     surf_state: str = field(default='skin', validator=(in_(('mixed_layer', 'fixed', 'skin')),))
     surface_d: float = field(default=0.01, validator=gt(0))
     surface_k: float = field(default=2.0, validator=gt(0))
-    aerosols_enabled: bool = field(default=False, validator=warn_if_dummy)
+    aerosols_enabled: bool = field(default=False, validator=valid_aerosols_enabled)
     cloud_enabled: bool = field(default=False, validator=warn_if_dummy)
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.1, validator=(ge(0), le(1)))

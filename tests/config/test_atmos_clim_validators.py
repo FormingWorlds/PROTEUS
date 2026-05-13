@@ -84,3 +84,53 @@ def test_valid_agni_requires_spectral_bands_when_no_file():
     instance = _make_agni_instance(spectral_file=None, spectral_bands='')
     with pytest.raises(ValueError, match='Must set atmos_clim.spectral_bands'):
         valid_agni(instance, attribute=None, value=None)
+
+
+# ============================================================================
+# Regression: aerosols + grey gas / dummy must raise
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_valid_aerosols_enabled_rejects_agni_greygas():
+    """Regression: AGNI grey-gas RT has no spectral bands, so aerosol
+    Mie data is either silently ignored or crashes Julia-side. The
+    validator must catch this at config-load time."""
+    from proteus.config._atmos_clim import valid_aerosols_enabled
+
+    instance = SimpleNamespace(module='agni', agni=SimpleNamespace(spectral_file='greygas'))
+    with pytest.raises(ValueError, match='aerosols'):
+        valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), True)
+
+
+@pytest.mark.unit
+def test_valid_aerosols_enabled_rejects_dummy_module():
+    """Aerosols also incompatible with the dummy atmos_clim module
+    (the dummy uses analytic grey-body opacity; no aerosols loop)."""
+    from proteus.config._atmos_clim import valid_aerosols_enabled
+
+    instance = SimpleNamespace(module='dummy', agni=SimpleNamespace(spectral_file=None))
+    with pytest.raises(ValueError, match='Dummy atmos_clim'):
+        valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), True)
+
+
+@pytest.mark.unit
+def test_valid_aerosols_enabled_passes_for_agni_with_path():
+    """AGNI with a real band-resolved spectral file is the canonical
+    aerosols-enabled configuration. Must NOT raise."""
+    from proteus.config._atmos_clim import valid_aerosols_enabled
+
+    instance = SimpleNamespace(
+        module='agni', agni=SimpleNamespace(spectral_file='/path/to/sw_lw.spc')
+    )
+    # No raise.
+    valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), True)
+
+
+@pytest.mark.unit
+def test_valid_aerosols_enabled_no_op_when_disabled():
+    """A False value bypasses every guard, regardless of module."""
+    from proteus.config._atmos_clim import valid_aerosols_enabled
+
+    instance = SimpleNamespace(module='dummy', agni=SimpleNamespace(spectral_file='greygas'))
+    valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), False)
