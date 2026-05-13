@@ -2521,3 +2521,162 @@ def test_download_melting_curves_skips_when_canonical_files_exist(
     download_melting_curves(mock_config, clean=False)
 
     mock_download.assert_not_called()
+
+
+# ============================================================================
+# AGNI spectral_file dispatch: skip group/bands download when user-provided
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_get_sufficient_agni_skips_group_band_lookup_when_spectral_file_set(monkeypatch):
+    """When AGNI receives a user-supplied spectral_file (either a custom
+    path or 'greygas'), _get_sufficient must NOT call
+    get_spfile_name_and_bands or queue a second download_spectral_file
+    call. The Honeyside post-processing file is always downloaded.
+    """
+    from types import SimpleNamespace
+
+    import proteus.atmos_clim.common as atmos_common
+    import proteus.utils.data as data_mod
+
+    spectral_calls = []
+    lookup_calls = []
+
+    monkeypatch.setattr(
+        data_mod,
+        'download_spectral_file',
+        lambda group, bands: spectral_calls.append((group, bands)),
+    )
+    monkeypatch.setattr(data_mod, 'download_stellar_spectra', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_scattering', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_exoplanet_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_massradius_data', lambda: None)
+    monkeypatch.setattr(
+        data_mod, 'download_interior_lookuptables', lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(data_mod, 'download_melting_curves', lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        atmos_common,
+        'get_spfile_name_and_bands',
+        lambda *_args: lookup_calls.append(1),
+    )
+
+    config = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            aerosols_enabled=False,
+            agni=SimpleNamespace(spectral_file='/tmp/custom.spc'),
+        ),
+        interior_energetics=SimpleNamespace(module='dummy'),
+        interior_struct=SimpleNamespace(module='dummy'),
+    )
+
+    data_mod._get_sufficient(config, clean=False)
+
+    # Only the Honeyside high-res post-processing file gets downloaded.
+    assert spectral_calls == [('Honeyside', '4096')]
+    # The group/bands lookup was bypassed.
+    assert lookup_calls == []
+
+
+@pytest.mark.unit
+def test_get_sufficient_agni_downloads_group_and_bands_when_no_spectral_file(monkeypatch):
+    """When spectral_file is None (the default), _get_sufficient must
+    resolve group/bands via get_spfile_name_and_bands and queue the
+    matching spectral-file download."""
+    from types import SimpleNamespace
+
+    import proteus.atmos_clim.common as atmos_common
+    import proteus.utils.data as data_mod
+
+    spectral_calls = []
+
+    monkeypatch.setattr(
+        data_mod,
+        'download_spectral_file',
+        lambda group, bands: spectral_calls.append((group, bands)),
+    )
+    monkeypatch.setattr(data_mod, 'download_stellar_spectra', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_scattering', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_exoplanet_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_massradius_data', lambda: None)
+    monkeypatch.setattr(
+        data_mod, 'download_interior_lookuptables', lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(data_mod, 'download_melting_curves', lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        atmos_common,
+        'get_spfile_name_and_bands',
+        lambda *_args: ('Frostflow', '128'),
+    )
+
+    config = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            aerosols_enabled=False,
+            agni=SimpleNamespace(spectral_file=None),
+        ),
+        interior_energetics=SimpleNamespace(module='dummy'),
+        interior_struct=SimpleNamespace(module='dummy'),
+    )
+
+    data_mod._get_sufficient(config, clean=False)
+
+    # Honeyside post-processing file + the resolved group/bands file.
+    assert spectral_calls == [('Honeyside', '4096'), ('Frostflow', '128')]
+
+
+@pytest.mark.unit
+def test_get_sufficient_janus_always_downloads_group_and_bands(monkeypatch):
+    """JANUS does not have a custom-spectral-file branch (it predates the
+    grey-gas feature). The new conditional must NOT bypass the lookup
+    for module='janus' even if the test config happens to expose a
+    spectral_file attribute somewhere."""
+    from types import SimpleNamespace
+
+    import proteus.atmos_clim.common as atmos_common
+    import proteus.utils.data as data_mod
+
+    spectral_calls = []
+    lookup_calls = []
+
+    monkeypatch.setattr(
+        data_mod,
+        'download_spectral_file',
+        lambda group, bands: spectral_calls.append((group, bands)),
+    )
+    monkeypatch.setattr(data_mod, 'download_stellar_spectra', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_scattering', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_exoplanet_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_massradius_data', lambda: None)
+    monkeypatch.setattr(
+        data_mod, 'download_interior_lookuptables', lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(data_mod, 'download_melting_curves', lambda *args, **kwargs: None)
+
+    def _record_lookup(*_args):
+        lookup_calls.append(1)
+        return ('Frostflow', '256')
+
+    monkeypatch.setattr(atmos_common, 'get_spfile_name_and_bands', _record_lookup)
+
+    config = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(module='janus', aerosols_enabled=False),
+        interior_energetics=SimpleNamespace(module='dummy'),
+        interior_struct=SimpleNamespace(module='dummy'),
+    )
+
+    data_mod._get_sufficient(config, clean=False)
+
+    assert ('Frostflow', '256') in spectral_calls
+    assert lookup_calls == [1]
