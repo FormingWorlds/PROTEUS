@@ -277,10 +277,11 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
 
     atmos = jl.AGNI.atmosphere.Atmos_t()
 
-    # Stellar spectrum path
-    sflux_files = glob.glob(os.path.join(dirs['output'], 'data', '*.sflux'))
-    sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
-    sflux_path = os.path.join(dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1]))
+    # Decide the spectral-file path first; the stellar-flux glob only runs
+    # when we actually need a stellar spectrum (i.e. AGNI will copy + modify
+    # the spectral file from FWL_DATA). Grey-gas and user-provided paths
+    # bypass the glob entirely so a missing or empty `data/*.sflux` directory
+    # is not a precondition for those modes.
 
     # Spectral file path provided?
     if config.atmos_clim.agni.spectral_file is not None:
@@ -309,7 +310,19 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         input_sf = try_spfile
         input_star = ''
     else:
-        # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify
+        # doesn't exist in output folder => AGNI will copy from FWL_DATA + modify.
+        # Resolve the stellar spectrum path here, where it is actually needed.
+        sflux_files = glob.glob(os.path.join(dirs['output'], 'data', '*.sflux'))
+        if not sflux_files:
+            UpdateStatusfile(dirs, 20)
+            raise FileNotFoundError(
+                f'No stellar spectrum (*.sflux) found in {dirs["output"]}/data; '
+                'AGNI cannot construct a fresh spectral file without it'
+            )
+        sflux_times = [int(s.split('/')[-1].split('.')[0]) for s in sflux_files]
+        sflux_path = os.path.join(
+            dirs['output'], 'data', '%d.sflux' % int(sorted(sflux_times)[-1])
+        )
         input_sf = get_spfile_path(dirs['fwl'], config)
         input_star = sflux_path
 

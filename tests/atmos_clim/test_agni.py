@@ -307,3 +307,89 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
     # grey_opacity_lw/sw should be forwarded as the Greek-named AGNI kwargs.
     assert fake_agni.last_setup_kwargs['κ_grey_lw'] == pytest.approx(0.1)
     assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
+    """Regression: in grey-gas mode, init_agni_atmos must not require any
+    *.sflux file to exist. Before this fix, an unconditional
+    `glob.glob('*.sflux'); sorted(...)[-1]` at the top of the function
+    would crash with IndexError on a fresh output dir before reaching the
+    grey-gas dispatch.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    # NOTE: no *.sflux file written. Pre-fix this would have crashed.
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        agni_mod,
+        'get_spfile_path',
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError('get_spfile_path should not be called for greygas')
+        ),
+    )
+
+    # Must not raise.
+    atmos = init_agni_atmos(dirs, config, hf_row)
+
+    assert atmos is not None
+    assert fake_agni.last_setup_args[2] == 'greygas'
+    assert fake_agni.last_allocate_input_star == ''
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, tmp_path):
+    """When AGNI needs a fresh spectral file (no runtime.sf, no
+    user-provided path), it must have a stellar spectrum to seed from.
+    A missing *.sflux in that branch should raise FileNotFoundError
+    instead of IndexError, so the caller sees a clear diagnostic."""
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    # No *.sflux; no runtime.sf either.
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    # Use the same scaffold as greygas test but flip spectral_file to None
+    # so the function takes the "AGNI copy from FWL_DATA" branch.
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = None
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, 'UpdateStatusfile', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, 'get_spfile_path', lambda *_a, **_k: '/fake/spfile')
+
+    with pytest.raises(FileNotFoundError, match='No stellar spectrum'):
+        init_agni_atmos(dirs, config, hf_row)
