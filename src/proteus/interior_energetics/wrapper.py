@@ -895,20 +895,23 @@ def determine_interior_radius(
     match config.interior_energetics.module:
         case 'aragog':
             rtol = config.interior_energetics.rtol
+            atol = config.interior_energetics.aragog.tolerance_struct
         case 'spider':
             rtol = config.interior_energetics.rtol
+            atol = config.interior_energetics.spider.tolerance_struct
         case _:
             rtol = 1e-7
+            atol = 1e2
 
     # Find the radius
     r = optimise.root_scalar(
         _resid,
         method='secant',
-        xtol=1e3,
+        xtol=atol,
         rtol=rtol,
-        maxiter=10,
+        maxiter=20,
         x0=hf_row['R_int'],
-        x1=hf_row['R_int'] * 1.02,
+        x1=hf_row['R_int'] * 1.5,
     )
     hf_row['R_int'] = float(r.root)
     calculate_core_mass(hf_row, config)
@@ -1439,18 +1442,31 @@ def run_interior(
         # _prevent_warming_clamp_active(); the runaway-T fallback below
         # remains active regardless.
         T_magma_prev = float(hf_all.iloc[-1]['T_magma'])
+        T_surf_prev = float(hf_all.iloc[-1]['T_surf'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
+        F_int_prev = float(hf_all.iloc[-1]['F_int'])
         if _prevent_warming_clamp_active(config) and (interior_o.ic == 2):
+            hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
+            hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
+            hf_row['F_int'] = max(1.0e-8, min(hf_row['F_int'], F_int_prev))
 
-        # Do not allow massive increases to T_surf
-        dT_delta = config.interior_energetics.tmagma_atol
-        dT_delta += config.interior_energetics.tmagma_rtol * T_magma_prev
+        # Do not allow massive increases to T_surf or T_magma
+        if config.interior_energetics.module == 'boundary':
+            dT_delta = float(config.interior_energetics.boundary.Tsurf_event_change)
+        else:
+            dT_delta = config.interior_energetics.tmagma_atol
+            dT_delta += config.interior_energetics.tmagma_rtol * T_magma_prev
         if hf_row['T_magma'] > T_magma_prev + dT_delta:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
             hf_row['T_magma'] = T_magma_prev + dT_delta
             hf_row['Phi_global'] = Phi_global_prev
+
+        if hf_row['T_surf'] > T_surf_prev + dT_delta:
+            log.warning('Prevented large increase to T_surf!')
+            log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
+            hf_row['T_surf'] = T_surf_prev + dT_delta
 
     # Print result of interior module
     if verbose:

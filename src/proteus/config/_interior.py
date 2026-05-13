@@ -82,6 +82,18 @@ class Spider:
     # phase material properties near the solidus and liquidus.
     matprop_smooth_width: float = field(default=1.0e-2, validator=(gt(0), lt(1)))
 
+    # Absolute mass tolerance [kg] for the secant solver in
+    # determine_interior_radius. Tightens with mass scale; the default
+    # 100 kg is below SPIDER's own internal mass-balance error on a 1
+    # M_E planet.
+    tolerance_struct: float = field(default=1e2, validator=gt(0))
+
+    # When True (default), the SPIDER subprocess writes stdout/stderr
+    # to ``<output>/spider_recent.log``. Set False to discard the
+    # subprocess output entirely (sp.DEVNULL); useful for batch runs
+    # where the log files accumulate disk pressure.
+    log_output: bool = field(default=True)
+
 
 def valid_aragog(instance, attribute, value):
     if instance.module != 'aragog':
@@ -177,6 +189,12 @@ class Aragog:
     scaled by a 0.5 safety factor, and the PROTEUS outer loop sees the
     truncated achieved time via ``sol.t[-1]``. Default 0.0 (disabled, no
     behavioural change)."""
+
+    tolerance_struct: float = field(default=1e2, validator=gt(0))
+    """Absolute mass tolerance [kg] for the secant solver in
+    determine_interior_radius. Default 100 kg; pairs with Spider's
+    matching field so both backends drive the same outer-loop convergence
+    criterion."""
 
 
 def valid_interiordummy(instance, attribute, value):

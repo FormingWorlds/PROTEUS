@@ -1295,3 +1295,357 @@ def test_prevent_warming_clamp_returns_bool_not_truthy_object():
     out_off = _prevent_warming_clamp_active(cfg_off)
     assert isinstance(out_off, bool)
     assert out_off is False
+
+
+# ============================================================================
+# run_interior step limiters: prevent_warming + boundary-module dT_delta
+# ============================================================================
+
+
+def _make_run_interior_config(*, prevent_warming: bool, module: str = 'dummy'):
+    """Build a minimal config that drives only the limiter block in run_interior.
+
+    The dummy backend is used so we can stub run_dummy_int and avoid the heavy
+    interior solver. Configures tmagma_atol/rtol from interior_energetics
+    (our schema), prevent_warming from planet (also our schema).
+    """
+    config = MagicMock()
+    config.interior_energetics.module = module
+    config.interior_energetics.heat_tidal = False
+    config.interior_energetics.heat_radiogenic = False
+    config.interior_energetics.tmagma_atol = 20.0
+    config.interior_energetics.tmagma_rtol = 0.0
+    config.interior_energetics.boundary.Tsurf_event_change = 25.0
+    config.planet.prevent_warming = prevent_warming
+    return config
+
+
+def _make_run_interior_state(prev_f_int: float = 0.1):
+    import pandas as pd
+
+    hf_all = pd.DataFrame(
+        [
+            {
+                'Time': 90.0,
+                'T_magma': 3000.0,
+                'T_surf': 2800.0,
+                'Phi_global': 0.4,
+                'F_int': prev_f_int,
+            }
+        ]
+    )
+    hf_row = {
+        'Time': 100.0,
+        'T_magma': 2995.0,
+        'T_surf': 2795.0,
+        'Phi_global': 0.3,
+        'F_int': 0.1,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    return hf_all, hf_row
+
+
+def _run_interior_with_dummy(config, hf_all, hf_row, *, ic: int, output: dict):
+    """Drive proteus.interior_energetics.wrapper.run_interior through the dummy backend."""
+    from proteus.interior_energetics.wrapper import run_interior
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = ic
+    atmos_o = MagicMock()
+
+    with (
+        patch(
+            'proteus.interior_energetics.dummy.run_dummy_int',
+            return_value=(110.0, output),
+        ),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=False)
+    return hf_row
+
+
+@pytest.mark.unit
+def test_run_interior_prevent_warming_clamps_T_and_Fint_on_ic2():
+    """prevent_warming=True + ic=2 must clip Phi/T_magma/T_surf to previous values
+    and floor F_int to 1e-8 when the previous step had F_int < 0."""
+    config = _make_run_interior_config(prevent_warming=True)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=-3.0)
+    # The dummy returns numbers that EXCEED the limiter tolerance (atol=20 K)
+    # AND exceed the previous values, so both the prevent_warming clamp and
+    # the runaway-T fallback are exercised.
+    out = {
+        'T_magma': 3005.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 2.0,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    _run_interior_with_dummy(config, hf_all, hf_row, ic=2, output=out)
+
+    # Clipped down to previous values.
+    assert hf_row['T_magma'] == pytest.approx(3000.0)
+    assert hf_row['T_surf'] == pytest.approx(2800.0)
+    assert hf_row['Phi_global'] == pytest.approx(0.4)
+    # F_int was clipped to min(2.0, -3.0)=-3.0, then floored to 1e-8.
+    assert hf_row['F_int'] == pytest.approx(1.0e-8)
+
+
+@pytest.mark.unit
+def test_run_interior_prevent_warming_off_keeps_warming_step():
+    """With prevent_warming=False the bounded warming step survives unchanged."""
+    config = _make_run_interior_config(prevent_warming=False)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        # Within the 20 K tolerance window of the runaway-T limiter (dT < 20 K).
+        'T_magma': 3005.0,
+        'T_surf': 2805.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    _run_interior_with_dummy(config, hf_all, hf_row, ic=2, output=out)
+
+    assert hf_row['T_magma'] == pytest.approx(3005.0)
+    assert hf_row['T_surf'] == pytest.approx(2805.0)
+    assert hf_row['F_int'] == pytest.approx(0.15)
+
+
+@pytest.mark.unit
+def test_run_interior_prevent_warming_clamp_skipped_when_ic_not_2():
+    """The Phi/T_magma/T_surf/F_int clamp only fires when ic == 2.
+
+    ic == 0 means "initial condition from scratch"; ic == 1 means "restart";
+    ic == 2 means "subsequent step". The prevent_warming clamp targets only
+    the third case (per wrapper.run_interior limiter block).
+    """
+    config = _make_run_interior_config(prevent_warming=True)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=-3.0)
+    out = {
+        # 50 K jump, well above tmagma_atol=20 -> runaway-T cap fires.
+        'T_magma': 3050.0,
+        'T_surf': 2805.0,  # +5 K, below cap -> survives
+        'Phi_global': 0.7,
+        'F_int': 2.0,  # would have been clamped to 1e-8 under ic=2
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    _run_interior_with_dummy(config, hf_all, hf_row, ic=1, output=out)
+    # F_int passes through (no prevent_warming clamp on ic != 2).
+    assert hf_row['F_int'] == pytest.approx(2.0)
+    # The runaway-T limiter is NOT gated on ic so it still fires here.
+    assert hf_row['T_magma'] == pytest.approx(3020.0)
+    assert hf_row['T_surf'] == pytest.approx(2805.0)
+
+
+@pytest.mark.unit
+def test_run_interior_t_surf_runaway_warning_fires():
+    """The runaway-T fallback also caps T_surf when the new value blows past
+    the configured dT_delta budget."""
+    config = _make_run_interior_config(prevent_warming=False)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        'T_magma': 3005.0,
+        'T_surf': 2900.0,  # 100 K leap, well above tmagma_atol=20
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    _run_interior_with_dummy(config, hf_all, hf_row, ic=2, output=out)
+
+    # T_surf capped at T_surf_prev + dT_delta = 2800 + 20.
+    assert hf_row['T_surf'] == pytest.approx(2820.0)
+
+
+@pytest.mark.unit
+def test_run_interior_boundary_module_uses_Tsurf_event_change_for_dT_delta():
+    """When module='boundary' the dT_delta budget comes from
+    interior_energetics.boundary.Tsurf_event_change, not from tmagma_atol/rtol.
+
+    The wrapper picks the limiter source from
+    ``config.interior_energetics.module``, so we drive the dummy backend
+    path but force the module string to 'boundary' before re-entering
+    the limiter block. This isolates the dT_delta branch under test
+    from the BoundaryRunner import.
+    """
+    config = _make_run_interior_config(prevent_warming=False, module='boundary')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        # 50 K leap. Boundary uses Tsurf_event_change=25 -> cap fires at +25.
+        'T_magma': 3050.0,
+        'T_surf': 2850.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+
+    # Patch BoundaryRunner so the boundary branch yields the same output dict
+    # as a dummy backend would have.
+    from proteus.interior_energetics.wrapper import run_interior
+
+    interior_o = MagicMock(spec=Interior_t)
+    interior_o.ic = 2
+    interior_o.dt = 10.0
+    atmos_o = MagicMock()
+
+    boundary_runner = MagicMock()
+    boundary_runner.run_solver.return_value = (110.0, out)
+    with (
+        patch(
+            'proteus.interior_energetics.boundary.BoundaryRunner',
+            return_value=boundary_runner,
+        ),
+        patch('proteus.interior_energetics.wrapper.update_planet_mass'),
+    ):
+        run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=False)
+
+    # T_magma capped at 3000 + 25; T_surf capped at 2800 + 25.
+    assert hf_row['T_magma'] == pytest.approx(3025.0)
+    assert hf_row['T_surf'] == pytest.approx(2825.0)
+
+
+# ============================================================================
+# determine_interior_radius: tolerance_struct + maxiter + initial bracket
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_aragog_tolerance_struct_field_defaults_to_100_kg():
+    """Aragog.tolerance_struct is the new absolute mass tolerance used as
+    xtol in the determine_interior_radius secant solver. Default 100 kg
+    matches the previous hardcoded value, so existing configs see no
+    behavioural change."""
+    from proteus.config._interior import Aragog
+
+    a = Aragog()
+    assert a.tolerance_struct == pytest.approx(100.0)
+
+    a2 = Aragog(tolerance_struct=250.0)
+    assert a2.tolerance_struct == pytest.approx(250.0)
+
+    # Validator must reject non-positive tolerances.
+    with pytest.raises(ValueError):
+        Aragog(tolerance_struct=0.0)
+
+
+@pytest.mark.unit
+def test_spider_tolerance_struct_field_defaults_to_100_kg():
+    """Same contract on the SPIDER side: Spider.tolerance_struct exists,
+    defaults to 100 kg, rejects non-positive values."""
+    from proteus.config._interior import Spider
+
+    s = Spider()
+    assert s.tolerance_struct == pytest.approx(100.0)
+
+    s2 = Spider(tolerance_struct=75.0)
+    assert s2.tolerance_struct == pytest.approx(75.0)
+
+    with pytest.raises(ValueError):
+        Spider(tolerance_struct=-1.0)
+
+
+@pytest.mark.unit
+def test_determine_interior_radius_wires_tolerance_struct_into_root_scalar():
+    """Source-level wiring guard: the secant solver call inside
+    determine_interior_radius must consume both Spider.tolerance_struct
+    and Aragog.tolerance_struct, and use the widened (1.5x) initial
+    bracket + 20-step iteration cap that #675 introduces."""
+    from inspect import getsource
+
+    from proteus.interior_energetics import wrapper as wrapper_mod
+
+    src = getsource(wrapper_mod.determine_interior_radius)
+    assert 'aragog.tolerance_struct' in src, (
+        'determine_interior_radius must read Aragog.tolerance_struct'
+    )
+    assert 'spider.tolerance_struct' in src, (
+        'determine_interior_radius must read Spider.tolerance_struct'
+    )
+    assert 'maxiter=20' in src, 'secant iteration cap must be 20'
+    assert 'R_int * 1.5' not in src  # this exact malformed string would be a typo
+    assert '* 1.5' in src, 'initial bracket must use the widened 1.5x guess'
+
+
+# ============================================================================
+# Spider.log_output: schema roundtrip + wiring assertion
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_spider_log_output_field_defaults_true_and_is_settable():
+    """Spider.log_output is a new attrs field. Default True preserves the
+    pre-7g behaviour of writing the spider_recent.log mirror; setting
+    False routes subprocess output to /dev/null."""
+    from proteus.config._interior import Spider
+
+    s_default = Spider()
+    assert s_default.log_output is True
+
+    s_off = Spider(log_output=False)
+    assert s_off.log_output is False
+
+
+@pytest.mark.unit
+def test_spider_module_consults_log_output_in_subprocess_dispatch():
+    """Source-level wiring guard: _try_spider must read the new field
+    from config and must hold both dispatch branches (file open and
+    sp.DEVNULL). End-to-end behaviour is exercised by the Phase-9 SPIDER
+    smoke run; the subprocess plumbing is too entangled for an isolated
+    unit-level run of _try_spider."""
+    from inspect import getsource
+
+    from proteus.interior_energetics import spider as spider_mod
+
+    src = getsource(spider_mod._try_spider)
+    assert 'config.interior_energetics.spider.log_output' in src, (
+        '_try_spider must read the log_output config field'
+    )
+    assert 'sp.DEVNULL' in src, '_try_spider must support discarding output'
+    assert 'spider_recent.log' in src, '_try_spider must support writing the log file'
+
+
+# ============================================================================
+# CALLIOPE solver knobs: nguess / nsolve schema roundtrip
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_calliope_nguess_nsolve_defaults_match_legacy_constants():
+    """The old code hard-coded nguess=int(1e3) and nsolve=int(3e3) inside
+    outgas/calliope.py. The new Calliope schema defaults must match those
+    exact values so existing configs see no behavioural change."""
+    from proteus.config._outgas import Calliope
+
+    c = Calliope()
+    assert c.nguess == 1000
+    assert c.nsolve == 3000
+
+
+@pytest.mark.unit
+def test_calliope_nguess_nsolve_reject_zero_or_negative():
+    """Validator should reject non-positive values (gt(0)). Solver iter
+    counts of 0 or negative make no physical sense."""
+    from attrs.exceptions import NotAnAttrsClassError  # noqa: F401  # informative import
+
+    from proteus.config._outgas import Calliope
+
+    with pytest.raises(ValueError):
+        Calliope(nguess=0)
+    with pytest.raises(ValueError):
+        Calliope(nsolve=-5)

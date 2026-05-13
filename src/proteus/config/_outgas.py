@@ -33,6 +33,12 @@ class Calliope:
         If True, include CO.
     solubility: bool
         Enable solubility of volatiles into melt.
+    nguess: int
+        Maximum number of initial-guess samples for the CALLIOPE
+        equilibrium solver. Default 1000.
+    nsolve: int
+        Maximum number of iterations of the CALLIOPE equilibrium
+        solver per call. Default 3000.
     """
 
     include_H2O: bool = field(default=True)
@@ -46,6 +52,8 @@ class Calliope:
     include_CH4: bool = field(default=True)
     include_CO: bool = field(default=True)
     solubility: bool = field(default=True)
+    nguess: int = field(default=int(1e3), validator=validators.gt(0))
+    nsolve: int = field(default=int(3e3), validator=validators.gt(0))
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""
