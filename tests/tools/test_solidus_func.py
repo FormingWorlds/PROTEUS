@@ -17,31 +17,52 @@ References:
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import numpy as np
 import pytest
 
-from tools.solidus_func import (
-    _fmt_range,
-    andrault_2011,
-    belonoshko_2005,
-    build_common_entropy_grid,
-    fei_2021,
-    fiquet_2010,
-    get_melting_curves,
-    hirschmann_2000,
-    invert_to_entropy_along_profile,
-    katz_2003,
-    lin_2024,
-    liquidus_from_solidus_stixrude,
-    make_entropy_header,
-    make_pressure_grid,
-    monteux_2016,
-    solidus_from_liquidus_stixrude,
-    stixrude_2014,
-    truncate_to_physical_interval,
-    validate_entropy_export_arrays,
-    wolf_bower_2018,
-)
+
+def _load_solidus_func_module():
+    """Load ``tools/solidus_func.py`` as a module without sys.path manipulation.
+
+    The ``tools/`` directory is not a Python package, and adding the repo root
+    to ``sys.path`` would shadow the installed ``aragog`` package with the
+    local development checkout. ``importlib.util`` loads the script directly.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    script_path = repo_root / 'tools' / 'solidus_func.py'
+    spec = importlib.util.spec_from_file_location('solidus_func_under_test', script_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+_solidus_func = _load_solidus_func_module()
+
+_fmt_range = _solidus_func._fmt_range
+andrault_2011 = _solidus_func.andrault_2011
+belonoshko_2005 = _solidus_func.belonoshko_2005
+build_common_entropy_grid = _solidus_func.build_common_entropy_grid
+fei_2021 = _solidus_func.fei_2021
+fiquet_2010 = _solidus_func.fiquet_2010
+get_melting_curves = _solidus_func.get_melting_curves
+hirschmann_2000 = _solidus_func.hirschmann_2000
+invert_to_entropy_along_profile = _solidus_func.invert_to_entropy_along_profile
+katz_2003 = _solidus_func.katz_2003
+lin_2024 = _solidus_func.lin_2024
+liquidus_from_solidus_stixrude = _solidus_func.liquidus_from_solidus_stixrude
+make_entropy_header = _solidus_func.make_entropy_header
+make_pressure_grid = _solidus_func.make_pressure_grid
+monteux_2016 = _solidus_func.monteux_2016
+solidus_from_liquidus_stixrude = _solidus_func.solidus_from_liquidus_stixrude
+stixrude_2014 = _solidus_func.stixrude_2014
+truncate_to_physical_interval = _solidus_func.truncate_to_physical_interval
+validate_entropy_export_arrays = _solidus_func.validate_entropy_export_arrays
+wolf_bower_2018 = _solidus_func.wolf_bower_2018
 
 # =============================================================================
 # FIXTURES & HELPERS

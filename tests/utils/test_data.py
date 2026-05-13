@@ -2499,7 +2499,7 @@ def test_download_melting_curves_skips_when_canonical_files_exist(
         (mc_dir / name).write_text('dummy\n')
 
     mock_config = MagicMock()
-    mock_config.interior.melting_dir = 'Wolf_Bower+2018'
+    mock_config.interior_struct.melting_dir = 'Wolf_Bower+2018'
 
     download_melting_curves(mock_config, clean=False)
 
