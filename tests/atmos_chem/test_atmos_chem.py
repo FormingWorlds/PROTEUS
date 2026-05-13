@@ -198,13 +198,19 @@ def test_run_chemistry_disabled_module():
 
 
 @pytest.mark.unit
-def test_run_chemistry_vulcan():
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_vulcan(patched_run_vulcan):
     """
     Test run_chemistry calls VULCAN when module='vulcan'.
 
     Physics: VULCAN performs kinetic chemistry calculations to determine
     final atmospheric composition after chemical reactions reach equilibrium.
     """
+    # The patch keeps the mock in place regardless of test_vulcan.py's
+    # sys.modules manipulation. A True return means the wrapper will
+    # proceed to read_result rather than short-circuiting.
+    patched_run_vulcan.return_value = True
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
@@ -212,13 +218,9 @@ def test_run_chemistry_vulcan():
 
     hf_row = {'Time': 1000.0, 'P_surf': 100.0}
 
-    # Mock VULCAN function and create expected output file for read_result
     import os
     import tempfile
 
-    # Use the mock that's already in sys.modules
-    mock_vulcan = mock_run_vulcan
-    mock_vulcan.reset_mock()  # Reset call history for this test
     # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
@@ -269,13 +271,16 @@ def test_run_chemistry_invalid_module():
 
 
 @pytest.mark.unit
-def test_run_chemistry_returns_dataframe():
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_returns_dataframe(patched_run_vulcan):
     """
     Test run_chemistry returns proper DataFrame from result reading.
 
     Physics: Chemistry model output must be DataFrame with species,
     VMR, and abundance columns for postprocessing.
     """
+    patched_run_vulcan.return_value = True
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
@@ -299,13 +304,9 @@ def test_run_chemistry_returns_dataframe():
         }
     )
 
-    # Mock VULCAN function and create expected output file for read_result
     import os
     import tempfile
 
-    # Use the mock that's already in sys.modules
-    mock_run_vulcan.reset_mock()  # Reset call history for this test
-    # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
         offchem_dir = os.path.join(tmpdir, 'offchem')
@@ -323,13 +324,16 @@ def test_run_chemistry_returns_dataframe():
 
 
 @pytest.mark.unit
-def test_run_chemistry_vulcan_with_realistic_hf_row():
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_vulcan_with_realistic_hf_row(patched_run_vulcan):
     """
     Test run_chemistry with realistic helpfile row from atmosphere calculation.
 
     Physics: Typical atmospheric state includes surface pressure, temperature,
     mass fractions, and composition from previous modules (outgassing, interior).
     """
+    patched_run_vulcan.return_value = True
+
     dirs = {'output': '/tmp/test', 'input': '/tmp/input'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
@@ -347,7 +351,6 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
         'H2_bar': 0.0,
     }
 
-    # Mock VULCAN function and create expected output file for read_result
     import os
     import tempfile
 
@@ -362,10 +365,6 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
             'N2': [3.5e-2, 3.5e-2, 3.5e-2, 3.5e-2, 3.5e-2],
         }
     )
-    # Use the mock that's already in sys.modules
-    mock_v = mock_run_vulcan
-    mock_v.reset_mock()  # Reset call history for this test
-    # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
         offchem_dir = os.path.join(tmpdir, 'offchem')
@@ -381,13 +380,16 @@ def test_run_chemistry_vulcan_with_realistic_hf_row():
 
 
 @pytest.mark.unit
-def test_run_chemistry_preserves_config():
+@patch('proteus.atmos_chem.vulcan.run_vulcan')
+def test_run_chemistry_preserves_config(patched_run_vulcan):
     """
     Test run_chemistry passes config unchanged to chemistry solver.
 
     Physics: Config must be fully preserved during delegation to VULCAN
     to maintain physical constraints (temperature, pressure, mixing ratios).
     """
+    patched_run_vulcan.return_value = True
+
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.atmos_chem.module = 'vulcan'
@@ -397,14 +399,9 @@ def test_run_chemistry_preserves_config():
 
     hf_row = {'Time': 1000.0}
 
-    # Mock VULCAN function and create expected output file for read_result
     import os
     import tempfile
 
-    # Use the mock that's already in sys.modules
-    mock_v = mock_run_vulcan
-    mock_v.reset_mock()  # Reset call history for this test
-    # Create the expected output file that read_result will read
     with tempfile.TemporaryDirectory() as tmpdir:
         dirs['output'] = tmpdir
         offchem_dir = os.path.join(tmpdir, 'offchem')
@@ -417,8 +414,9 @@ def test_run_chemistry_preserves_config():
 
         run_chemistry(dirs, config, hf_row)
 
-        # Verify function completed without error
-        # (Config verification skipped as mock may not be called if real module is imported)
+        # The wrapper must pass the config through verbatim to the backend.
+        patched_run_vulcan.assert_called_once_with(dirs, config, hf_row)
+        assert patched_run_vulcan.call_args.args[1] is config
 
 
 @pytest.mark.unit
