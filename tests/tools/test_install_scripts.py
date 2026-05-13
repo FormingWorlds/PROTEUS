@@ -470,3 +470,52 @@ def test_spider_lib_check_fails_on_empty_dir(tmp_path):
     )
     assert result.returncode != 0
     assert 'NOT_FOUND' in result.stdout
+
+
+# ============================================================================
+# Regression: installation.md does not promote editable installs of PyPI deps
+# ============================================================================
+
+
+import re  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.unit
+def test_installation_md_does_not_clone_aragog_or_zalmoxis():
+    """Regression for PR #673 follow-up: installation.md must not tell
+    users to ``git clone`` and ``pip install -e`` Aragog or Zalmoxis.
+    These are PyPI deps (``fwl-aragog``, ``fwl-zalmoxis``) declared in
+    pyproject.toml and installed automatically by
+    ``pip install -e ".[develop]"``. Re-introducing editable-install
+    instructions silently shadows the PyPI versions and breaks the
+    documented dependency pinning.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / 'docs' / 'How-to' / 'installation.md').read_text(
+        encoding='utf-8'
+    )
+    # Match `git clone <url>/<aragog|Zalmoxis>` or `pip install -e <aragog|Zalmoxis>`.
+    forbidden = re.compile(
+        r'(git\s+clone[^\n]*?(aragog|Zalmoxis))'
+        r'|(pip\s+install\s+-e\s+(aragog|Zalmoxis))',
+        re.IGNORECASE,
+    )
+    matches = forbidden.findall(text)
+    assert not matches, (
+        f'installation.md re-introduced editable-install of Aragog/Zalmoxis: {matches!r}'
+    )
+
+
+@pytest.mark.unit
+def test_pyproject_pins_aragog_and_zalmoxis_pypi_packages():
+    """Companion guarantee: pyproject.toml must continue pinning the
+    PyPI distributions ``fwl-aragog`` and ``fwl-zalmoxis``. If either
+    pin is removed, the rationale for not editable-installing them
+    breaks and installation.md must be rewritten."""
+    repo_root = Path(__file__).resolve().parents[2]
+    text = (repo_root / 'pyproject.toml').read_text(encoding='utf-8')
+    assert 'fwl-aragog' in text, 'pyproject.toml must pin fwl-aragog'
+    assert 'fwl-zalmoxis' in text, 'pyproject.toml must pin fwl-zalmoxis'

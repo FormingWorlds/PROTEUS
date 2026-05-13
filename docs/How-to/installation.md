@@ -248,13 +248,6 @@ git clone git@github.com:FormingWorlds/CALLIOPE
 python -m pip install -e CALLIOPE/.
 ```
 
-**ARAGOG** (interior thermal evolution):
-
-```console
-git clone git@github.com:FormingWorlds/aragog.git
-python -m pip install -e aragog/.
-```
-
 **ZEPHYRUS** (atmospheric escape):
 
 ```console
@@ -262,36 +255,8 @@ git clone git@github.com:FormingWorlds/ZEPHYRUS
 python -m pip install -e ZEPHYRUS/.
 ```
 
-**Zalmoxis** (planetary interior structure):
-
-```console
-git clone git@github.com:FormingWorlds/Zalmoxis
-python -m pip install -e Zalmoxis/.
-```
-
-The environment variable `ZALMOXIS_ROOT` must point to the Zalmoxis installation directory. Add it to your shell config file:
-
-=== "bash"
-
-    ```console
-    echo "export ZALMOXIS_ROOT=$PWD/Zalmoxis/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    ```
-
-=== "zsh"
-
-    ```console
-    echo "export ZALMOXIS_ROOT=$PWD/Zalmoxis/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-    ```
-
-Download the required data files:
-
-```console
-cd Zalmoxis
-bash src/get_zalmoxis.sh
-cd ../
-```
+!!! info "Aragog and Zalmoxis"
+    Aragog (interior thermal evolution) and Zalmoxis (planetary interior structure) are PyPI dependencies of PROTEUS. They install automatically from `fwl-aragog` and `fwl-zalmoxis` during step 13 (`pip install -e ".[develop]"`); no separate clone or editable install is needed. Their data files are managed centrally via `FWL_DATA` (set in step 4).
 
 ## 11. Setup PETSc (numerical computing library)
 
