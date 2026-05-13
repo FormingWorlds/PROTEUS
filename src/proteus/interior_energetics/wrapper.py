@@ -1461,22 +1461,33 @@ def run_interior(
         if _prevent_warming_clamp_active(config):
             hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
-        # Do not allow massive increases to T_surf or T_magma
+        # Do not allow massive increases to T_magma or T_surf.
+        #
+        # T_magma uses the SPIDER/Aragog/dummy tolerance formula for
+        # every backend. T_surf uses Tsurf_event_change ONLY in the
+        # boundary backend (Calder's BL model has a terminal ODE event
+        # at |T_surf - T_surf_0| = Tsurf_event_change, so reusing that
+        # threshold here keeps the outer-loop cap consistent with the
+        # inner-loop event). For all other backends T_surf shares the
+        # T_magma budget.
+        dT_delta_magma = config.interior_energetics.tmagma_atol
+        dT_delta_magma += config.interior_energetics.tmagma_rtol * T_magma_prev
+
         if config.interior_energetics.module == 'boundary':
-            dT_delta = float(config.interior_energetics.boundary.Tsurf_event_change)
+            dT_delta_surf = float(config.interior_energetics.boundary.Tsurf_event_change)
         else:
-            dT_delta = config.interior_energetics.tmagma_atol
-            dT_delta += config.interior_energetics.tmagma_rtol * T_magma_prev
-        if hf_row['T_magma'] > T_magma_prev + dT_delta:
+            dT_delta_surf = dT_delta_magma
+
+        if hf_row['T_magma'] > T_magma_prev + dT_delta_magma:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
-            hf_row['T_magma'] = T_magma_prev + dT_delta
+            hf_row['T_magma'] = T_magma_prev + dT_delta_magma
             hf_row['Phi_global'] = Phi_global_prev
 
-        if hf_row['T_surf'] > T_surf_prev + dT_delta:
+        if hf_row['T_surf'] > T_surf_prev + dT_delta_surf:
             log.warning('Prevented large increase to T_surf!')
             log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
-            hf_row['T_surf'] = T_surf_prev + dT_delta
+            hf_row['T_surf'] = T_surf_prev + dT_delta_surf
 
     # Print result of interior module
     if verbose:

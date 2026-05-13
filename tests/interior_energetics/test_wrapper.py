@@ -1471,20 +1471,24 @@ def test_run_interior_t_surf_runaway_warning_fires():
 
 
 @pytest.mark.unit
-def test_run_interior_boundary_module_uses_Tsurf_event_change_for_dT_delta():
-    """When module='boundary' the dT_delta budget comes from
-    interior_energetics.boundary.Tsurf_event_change, not from tmagma_atol/rtol.
+def test_run_interior_boundary_module_splits_dT_delta_per_field():
+    """The Boundary backend uses Tsurf_event_change ONLY for the T_surf
+    cap. T_magma keeps the tmagma_atol/rtol budget shared with the
+    other backends.
 
-    The wrapper picks the limiter source from
-    ``config.interior_energetics.module``, so we drive the dummy backend
-    path but force the module string to 'boundary' before re-entering
-    the limiter block. This isolates the dT_delta branch under test
-    from the BoundaryRunner import.
+    This pins down the semantic distinction: Tsurf_event_change is the
+    threshold of Calder's BL terminal ODE event on |T_surf - T_surf_0|;
+    reusing it for the T_magma cap (as the original 7g did) was a
+    naming collision, since T_p (T_magma) evolves on a different
+    timescale than T_surf in the boundary-layer model.
     """
+    from proteus.interior_energetics.wrapper import run_interior
+
     config = _make_run_interior_config(prevent_warming=False, module='boundary')
+    # tmagma_atol = 20 (from _make_run_interior_config); Tsurf_event_change = 25.
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
     out = {
-        # 50 K leap. Boundary uses Tsurf_event_change=25 -> cap fires at +25.
+        # T_magma jump = 50 K, T_surf jump = 50 K.
         'T_magma': 3050.0,
         'T_surf': 2850.0,
         'Phi_global': 0.7,
@@ -1494,10 +1498,6 @@ def test_run_interior_boundary_module_uses_Tsurf_event_change_for_dT_delta():
         'M_mantle_solid': 3.0e24,
         'M_core': 2.0e24,
     }
-
-    # Patch BoundaryRunner so the boundary branch yields the same output dict
-    # as a dummy backend would have.
-    from proteus.interior_energetics.wrapper import run_interior
 
     interior_o = MagicMock(spec=Interior_t)
     interior_o.ic = 2
@@ -1515,9 +1515,36 @@ def test_run_interior_boundary_module_uses_Tsurf_event_change_for_dT_delta():
     ):
         run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=False)
 
-    # T_magma capped at 3000 + 25; T_surf capped at 2800 + 25.
-    assert hf_row['T_magma'] == pytest.approx(3025.0)
+    # T_magma uses tmagma_atol = 20 -> capped at 3000 + 20 = 3020.
+    assert hf_row['T_magma'] == pytest.approx(3020.0)
+    # T_surf uses Tsurf_event_change = 25 -> capped at 2800 + 25 = 2825.
     assert hf_row['T_surf'] == pytest.approx(2825.0)
+
+
+@pytest.mark.unit
+def test_run_interior_non_boundary_module_shares_dT_delta_between_caps():
+    """For the non-boundary backends, T_magma and T_surf share the same
+    tmagma_atol/rtol-derived budget. Pinned by this test to make sure
+    a future refactor doesn't accidentally introduce a per-field split
+    for spider/aragog/dummy."""
+    config = _make_run_interior_config(prevent_warming=False, module='dummy')
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    # tmagma_atol = 20. Both T_magma and T_surf leap 50 K.
+    out = {
+        'T_magma': 3050.0,
+        'T_surf': 2850.0,
+        'Phi_global': 0.7,
+        'F_int': 0.15,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    _run_interior_with_dummy(config, hf_all, hf_row, ic=2, output=out)
+
+    # Both caps fire at +20.
+    assert hf_row['T_magma'] == pytest.approx(3020.0)
+    assert hf_row['T_surf'] == pytest.approx(2820.0)
 
 
 # ============================================================================

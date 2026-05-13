@@ -197,6 +197,4 @@ def test_get_nested_docstring_uses_current_schema_example():
     assert 'struct.mass_tot' not in doc, (
         'docstring example must not reference the deprecated struct.* schema'
     )
-    assert 'planet.mass_tot' in doc, (
-        'docstring example must use the current planet.* schema'
-    )
+    assert 'planet.mass_tot' in doc, 'docstring example must use the current planet.* schema'
