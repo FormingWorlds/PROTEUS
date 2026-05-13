@@ -1,8 +1,10 @@
 # Config file for inference scheme
 
 # Set seed for reproducibility
-config_version = "3.0"
 seed = 1
+
+# Logging level ("DEBUG", "INFO", "WARNING", "ERROR")
+logging = "INFO"
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
 output = "dummy_inference"
@@ -22,8 +24,8 @@ n_steps    = 5      # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
 [parameters]
-"struct.mass_tot" = [0.7, 3.0]
-"struct.core_frac" = [0.3, 0.9]
+"planet.mass_tot" = [0.7, 3.0]
+"interior_struct.core_frac" = [0.3, 0.9]
 # "outgas.fO2_shift_IW" = [-3.0, 5.0]
 # "escape.dummy.rate" = [1e5, 1e7]
 
