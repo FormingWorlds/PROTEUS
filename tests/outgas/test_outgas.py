@@ -587,3 +587,70 @@ def test_run_outgassing_mixed_species_dominance():
 
         # M_atm should be dominated by N2+O2
         assert hf_row['M_atm'] > 4.9e18  # Mostly N2+O2 mass
+
+
+# ============================================================================
+# Regression: desiccation must zero the new element mass ratio columns
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_expected_keys_includes_element_mass_ratios():
+    """The helpfile schema in outgas.common.expected_keys must include the
+    same 36 unordered element-pair ratio columns that
+    utils.coupler.GetHelpfileKeys registers, so run_desiccated zeros them
+    instead of leaving stale ratios from the last outgassing step."""
+    from proteus.outgas.common import expected_keys
+    from proteus.utils.constants import element_list
+
+    keys = expected_keys()
+    ratio_keys = [k for k in keys if '/' in k and k.endswith('_atm')]
+
+    # 9 elements -> C(9, 2) = 36 unordered pairs.
+    n_elem = len(element_list)
+    expected_count = n_elem * (n_elem - 1) // 2
+    assert len(ratio_keys) == expected_count, (
+        f'expected {expected_count} ratio keys, got {len(ratio_keys)}: {ratio_keys}'
+    )
+
+    # Each (e1, e2) appears exactly once, in either order.
+    for e1 in element_list:
+        for e2 in element_list:
+            if e1 == e2:
+                continue
+            forward = f'{e2}/{e1}_atm'
+            backward = f'{e1}/{e2}_atm'
+            assert (forward in keys) ^ (backward in keys), (
+                f'pair ({e1}, {e2}) must appear exactly once, not zero or twice'
+            )
+
+
+@pytest.mark.unit
+def test_run_desiccated_zeros_element_mass_ratios():
+    """Regression: when a planet desiccates, the {e2}/{e1}_atm helpfile
+    columns must be reset to 0.0. Before this fix, the keys were absent
+    from expected_keys() so run_desiccated left them at their last
+    non-zero value, producing physically misleading helpfile rows."""
+    from proteus.outgas.wrapper import run_desiccated
+
+    # Pre-populate ratios with non-zero values, as if the previous
+    # outgassing step had a CO2-rich atmosphere.
+    hf_row = {
+        'C/H_atm': 12.0,
+        'O/H_atm': 8.0,
+        'N/H_atm': 0.7,
+        'S/H_atm': 0.05,
+        'C/O_atm': 1.5,
+        'atm_kg_per_mol': 0.044,
+        'H2O_vmr': 0.0,
+    }
+
+    config = MagicMock()
+    run_desiccated(config, hf_row)
+
+    # All ratio columns must be zero after desiccation.
+    for key in ('C/H_atm', 'O/H_atm', 'N/H_atm', 'S/H_atm', 'C/O_atm'):
+        assert hf_row[key] == 0.0, f'{key} not zeroed after desiccation: {hf_row[key]}'
+
+    # atm_kg_per_mol is in the excepted_keys list and must survive.
+    assert hf_row['atm_kg_per_mol'] == pytest.approx(0.044)

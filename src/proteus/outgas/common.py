@@ -26,4 +26,13 @@ def expected_keys():
             if (r != 'total') or (e == 'O'):
                 copy_keys.append(f'{e}_kg_{r}')
 
+    # element mass ratios in atmosphere (must mirror the unordered-pair
+    # registration in coupler.GetHelpfileKeys so run_desiccated zeros
+    # them on desiccation instead of leaving stale ratios in hf_row).
+    for e1 in element_list:
+        for e2 in element_list:
+            if (e1 == e2) or (f'{e1}/{e2}_atm' in copy_keys):
+                continue
+            copy_keys.append(f'{e2}/{e1}_atm')
+
     return copy_keys
