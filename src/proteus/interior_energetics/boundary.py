@@ -56,8 +56,11 @@ class BoundaryRunner:
                 # Use profile-mean atmospheric heat capacity across all valid layers.
                 self.atmosphere_heat_capacity = float(np.mean(cp_arr[valid]))  # J/kg/K
             else:
+                # All-NaN layer_cp: fall back to the configured constant.
+                # InteriorBoundary defines atm_heat_capacity (not the
+                # non-existent const_heat_capacity that was previously read here).
                 self.atmosphere_heat_capacity = (
-                    config.interior_energetics.boundary.const_heat_capacity
+                    config.interior_energetics.boundary.atm_heat_capacity
                 )
         else:
             self.atmosphere_heat_capacity = (

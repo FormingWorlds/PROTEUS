@@ -1120,3 +1120,64 @@ def test_extreme_melt_fraction_bounds(boundary_runner):
 
         assert np.isfinite(eta_solid)
         assert np.isfinite(eta_melt)
+
+
+# ============================================================================
+# Regression: all-NaN layer_cp must fall back to atm_heat_capacity
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_boundary_runner_all_nan_layer_cp_falls_back_to_atm_heat_capacity(
+    mock_config, mock_atmos, mock_hf_row, mock_hf_all, mock_interior, mock_dirs
+):
+    """Regression for the const_heat_capacity AttributeError audit.
+
+    Before the fix, an all-NaN ``atmos_o._atm.layer_cp`` array would
+    fall through to ``config.interior_energetics.boundary.const_heat_capacity``,
+    which is not a field of ``InteriorBoundary``. The only configured
+    field is ``atm_heat_capacity``. Reading the wrong attribute name
+    raised AttributeError at __init__, breaking the boundary backend
+    on any first-call-after-restart where AGNI's layer_cp had not yet
+    been populated to finite values.
+
+    This test mutates the fixture's ``layer_cp`` to all-NaN before
+    constructing the runner and confirms (a) no AttributeError, and
+    (b) the configured atm_heat_capacity is used as the fallback.
+    """
+    mock_config.interior_energetics.boundary.atm_heat_capacity = 1234.5
+
+    # Force the all-NaN branch.
+    mock_atmos._atm.layer_cp = np.array([np.nan, np.nan, np.nan])
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+        )
+
+    assert runner.atmosphere_heat_capacity == pytest.approx(1234.5), (
+        'all-NaN layer_cp must fall back to config.interior_energetics.boundary.'
+        'atm_heat_capacity, not the non-existent const_heat_capacity'
+    )
+
+
+@pytest.mark.unit
+def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
+    mock_config, mock_atmos, mock_hf_row, mock_hf_all, mock_interior, mock_dirs
+):
+    """When ``layer_cp`` has both NaN and finite entries, the runner
+    must use the mean of the finite ones. This is the most common
+    realistic case: a few layers fail Cp evaluation but most succeed."""
+    mock_config.interior_energetics.boundary.atm_heat_capacity = 9999.9
+
+    mock_atmos._atm.layer_cp = np.array([1.0e4, np.nan, 2.0e4, np.nan, 3.0e4])
+
+    with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
+        runner = BoundaryRunner(
+            mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
+        )
+
+    # Mean of [1e4, 2e4, 3e4] = 2e4. The atm_heat_capacity fallback
+    # value (9999.9) must NOT be used because at least one finite
+    # layer exists.
+    assert runner.atmosphere_heat_capacity == pytest.approx(2.0e4)
