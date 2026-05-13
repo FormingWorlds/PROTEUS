@@ -144,3 +144,59 @@ def test_infer_from_config_loads_toml_and_dispatches(monkeypatch, tmp_path):
     inference_mod.infer_from_config(str(config_path))
 
     assert observed['config'] == expected
+
+
+# ============================================================================
+# Regression: no stray prints + docstring uses current schema
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_infer_from_config_uses_logger_not_print(caplog, tmp_path, monkeypatch):
+    """Regression: infer_from_config must route its startup message through
+    the module logger, not print(). The original PR #675 BayesOpt rewrite
+    migrated every other print() in the inference src to log.info; this
+    one was missed and is corrected here."""
+    import io
+    from contextlib import redirect_stdout
+
+    import proteus.inference.inference as inference_mod
+
+    # Stub the heavy run path; we only want the early log statement.
+    monkeypatch.setattr(inference_mod, 'run_inference', lambda _cfg: None)
+
+    cfg_path = tmp_path / 'dummy.infer.toml'
+    cfg_path.write_text('seed = 1\noutput = "x"\nlogging = "INFO"\n', encoding='utf-8')
+
+    buf = io.StringIO()
+    with caplog.at_level('INFO', logger='fwl.proteus.inference.inference'):
+        with redirect_stdout(buf):
+            inference_mod.infer_from_config(str(cfg_path))
+
+    # Logger captured the message...
+    assert any('Inference config:' in rec.message for rec in caplog.records), (
+        'infer_from_config must emit Inference config via log.info'
+    )
+    # ...and stdout did not.
+    assert 'Inference config:' not in buf.getvalue(), (
+        'infer_from_config must not write to stdout via print()'
+    )
+
+
+@pytest.mark.unit
+def test_get_nested_docstring_uses_current_schema_example():
+    """Regression: utils.get_nested docstring example must use a
+    parameter path that is valid on the current branch schema
+    (planet.mass_tot), not the pre-Phase-5 schema (struct.mass_tot)."""
+    from inspect import getdoc
+
+    from proteus.inference.utils import get_nested
+
+    doc = getdoc(get_nested)
+    assert doc is not None
+    assert 'struct.mass_tot' not in doc, (
+        'docstring example must not reference the deprecated struct.* schema'
+    )
+    assert 'planet.mass_tot' in doc, (
+        'docstring example must use the current planet.* schema'
+    )
