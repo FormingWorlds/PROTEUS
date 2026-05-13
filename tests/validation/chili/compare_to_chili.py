@@ -46,7 +46,15 @@ def load_chili(path: Path) -> pd.DataFrame:
 
 
 def load_proteus(output_dir: Path) -> pd.DataFrame:
-    """Load the PROTEUS runtime helpfile from the case output directory."""
+    """Load the PROTEUS runtime helpfile from the case output directory.
+
+    Derives an ``F_asr`` column (absorbed stellar radiation, W/m^2) in
+    place, since the helpfile only stores raw instellation ``F_ins`` and
+    the comparison against CHILI's ``flux_ASR(W/m2)`` needs the absorbed
+    quantity. The conversion uses
+    ``F_asr = F_ins * s0_factor * (1 - albedo_pl)``, with ``s0_factor``
+    read from the run's ``init_coupler.toml``.
+    """
     hf = output_dir / 'runtime_helpfile.csv'
     if not hf.exists():
         raise FileNotFoundError(
@@ -55,18 +63,35 @@ def load_proteus(output_dir: Path) -> pd.DataFrame:
             'the config file path.'
         )
     df = pd.read_csv(hf, sep='\t')
+
+    # Derive F_asr from F_ins, s0_factor (from init_coupler.toml), and albedo_pl.
+    s0_factor = 0.25  # safe default if the config can't be read
+    cfg_path = output_dir / 'init_coupler.toml'
+    if cfg_path.exists():
+        import tomllib
+        with open(cfg_path, 'rb') as fh:
+            cfg = tomllib.load(fh)
+        s0_factor = float(cfg.get('orbit', {}).get('s0_factor', s0_factor))
+    if 'F_ins' in df.columns and 'albedo_pl' in df.columns:
+        df['F_asr'] = df['F_ins'] * s0_factor * (1.0 - df['albedo_pl'])
     return df
 
 
-# Mapping from CHILI column name -> (PROTEUS column name, units note)
-# Both are scalars per row.
+# Mapping from CHILI column name -> PROTEUS column name. The CHILI
+# columns ``T_pot(K)`` and ``phi(vol_frac)`` are the mantle potential
+# temperature and the volume-weighted melt fraction respectively, NOT
+# the outgassing temperature or the mass-weighted melt fraction; they
+# must map to PROTEUS's ``T_pot`` and ``Phi_global_vol`` (not
+# ``T_magma`` and ``Phi_global``). ``flux_ASR(W/m2)`` is the absorbed
+# stellar radiation, which is derived in :func:`load_proteus` as
+# ``F_asr``; CHILI stores it directly.
 CHILI_TO_PROTEUS = {
     't(yr)': 'Time',
     'T_surf(K)': 'T_surf',
-    'T_pot(K)': 'T_magma',
+    'T_pot(K)': 'T_pot',
     'flux_OLR(W/m2)': 'F_olr',
-    'flux_ASR(W/m2)': 'F_ins',
-    'phi(vol_frac)': 'Phi_global',
+    'flux_ASR(W/m2)': 'F_asr',
+    'phi(vol_frac)': 'Phi_global_vol',
     'p_surf(bar)': 'P_surf',
     'p_H2O(bar)': 'H2O_bar',
     'p_CO2(bar)': 'CO2_bar',
@@ -99,7 +124,7 @@ def quick_table(chili: pd.DataFrame, prot: pd.DataFrame) -> None:
     print()
     print('=== Phi=0.5 crossing (rheological front) ===')
     cr_c = crossing(chili, 'phi(vol_frac)', 0.5)
-    cr_p = crossing(prot, 'Phi_global', 0.5)
+    cr_p = crossing(prot, 'Phi_global_vol', 0.5)
     print(f'  CHILI:   t={cr_c["t(yr)"]:.3e} yr, T_surf={cr_c["T_surf(K)"]:.0f} K, '
           f'p_H2O={cr_c["p_H2O(bar)"]:.1f} bar')
     print(f'  PROTEUS: t={cr_p["Time"]:.3e} yr, T_surf={cr_p["T_surf"]:.0f} K, '
@@ -109,7 +134,7 @@ def quick_table(chili: pd.DataFrame, prot: pd.DataFrame) -> None:
     print('=== Final iteration in PROTEUS run ===')
     print(f'  PROTEUS: t={prot["Time"].iloc[-1]:.3e} yr, '
           f'T_surf={prot["T_surf"].iloc[-1]:.0f} K, '
-          f'Phi={prot["Phi_global"].iloc[-1]:.4f}, '
+          f'Phi={prot["Phi_global_vol"].iloc[-1]:.4f}, '
           f'p_H2O={prot["H2O_bar"].iloc[-1]:.1f} bar')
     print(f'  CHILI final: t={chili["t(yr)"].iloc[-1]:.3e} yr, '
           f'T_surf={chili["T_surf(K)"].iloc[-1]:.0f} K, '
@@ -123,10 +148,10 @@ def overlay_plot(chili: pd.DataFrame, prot: pd.DataFrame, case: str,
     fig, axes = plt.subplots(3, 3, figsize=(15, 11), sharex=True)
     panels = [
         ('T_surf(K)', 'T_surf', r'$T_\mathrm{surf}$ [K]', False),
-        ('T_pot(K)', 'T_magma', r'$T_\mathrm{pot}$ [K]', False),
-        ('phi(vol_frac)', 'Phi_global', r'$\Phi_\mathrm{global}$', False),
+        ('T_pot(K)', 'T_pot', r'$T_\mathrm{pot}$ [K]', False),
+        ('phi(vol_frac)', 'Phi_global_vol', r'$\Phi_\mathrm{global,vol}$', False),
         ('flux_OLR(W/m2)', 'F_olr', r'$F_\mathrm{OLR}$ [W m$^{-2}$]', True),
-        ('flux_ASR(W/m2)', 'F_ins', r'$F_\mathrm{ASR}$ [W m$^{-2}$]', True),
+        ('flux_ASR(W/m2)', 'F_asr', r'$F_\mathrm{ASR}$ [W m$^{-2}$]', True),
         ('p_surf(bar)', 'P_surf', r'$P_\mathrm{surf}$ [bar]', True),
         ('p_H2O(bar)', 'H2O_bar', r'$P_{\mathrm{H_2O}}$ [bar]', True),
         ('p_CO2(bar)', 'CO2_bar', r'$P_{\mathrm{CO_2}}$ [bar]', True),
