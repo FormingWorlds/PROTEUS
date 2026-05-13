@@ -1233,7 +1233,6 @@ def get_proteus_directories(outdir='_unset') -> dict[str, str]:
         'spider': os.path.join(root_dir, 'SPIDER'),
         'aragog': os.path.join(root_dir, 'aragog'),
         'tools': os.path.join(root_dir, 'tools'),
-        'vulcan': os.path.join(root_dir, 'VULCAN'),
         'utils': os.path.join(root_dir, 'src', 'proteus', 'utils'),
         'output': os.path.join(root_dir, 'output', outdir),
         'output/data': os.path.join(root_dir, 'output', outdir, 'data'),

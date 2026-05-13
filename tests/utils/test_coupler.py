@@ -43,6 +43,7 @@ from proteus.utils.coupler import (
     ZeroHelpfileRow,
     _get_current_time,
     _populate_energy_residual,
+    get_proteus_directories,
 )
 
 pytestmark = pytest.mark.unit
@@ -1246,3 +1247,36 @@ def test_populate_energy_residual_residual_detects_missing_source():
     assert row1['E_residual_cons_J'] == pytest.approx(expected_residual, rel=1e-12)
     # E_residual_cons_frac should be O(1) — residual is comparable to actual.
     assert abs(row1['E_residual_cons_frac']) > 0.5
+
+
+@pytest.mark.unit
+def test_get_proteus_directories_has_required_keys():
+    """Sanity: the directory dict exposes the keys the runtime depends on."""
+    dirs = get_proteus_directories(outdir='unit-test')
+    # Module-source paths still referenced at runtime.
+    for required in ('proteus', 'agni', 'spider', 'aragog', 'tools', 'utils', 'input'):
+        assert required in dirs, f"missing required directory key '{required}'"
+    # Per-run output subtree.
+    for required in (
+        'output',
+        'output/data',
+        'output/offchem',
+        'output/observe',
+        'output/plots',
+    ):
+        assert required in dirs
+
+
+@pytest.mark.unit
+def test_get_proteus_directories_omits_dead_vulcan_key():
+    """``dirs['vulcan']`` is a stale gitlink reference.
+
+    VULCAN now ships as fwl-vulcan on PyPI; no in-repo VULCAN directory
+    is required, and no callsite reads ``dirs['vulcan']``. Pin the
+    absence here so the dead entry cannot quietly reappear during a
+    future merge from main.
+    """
+    dirs = get_proteus_directories(outdir='unit-test')
+    assert 'vulcan' not in dirs, (
+        "dirs['vulcan'] is dead; VULCAN is a PyPI dependency, not a gitlink"
+    )
