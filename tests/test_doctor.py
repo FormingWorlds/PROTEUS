@@ -107,6 +107,71 @@ def test_git_package_latest_version_raises_on_bad_http_status():
 
 
 @pytest.mark.unit
+def test_git_package_falls_back_to_tags_when_releases_latest_404():
+    """SOCRATES has no formal GitHub releases, only tags.
+
+    The /releases/latest endpoint returns 404 for repos without
+    formal releases. The doctor must then read /tags and pick the
+    most recent tag rather than reporting SOCRATES as broken on
+    every health check.
+    """
+    package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
+
+    releases_response = Mock(status_code=404)
+    tags_response = Mock(status_code=200)
+    tags_response.json.return_value = [
+        {'name': '25.05'},  # /tags returns most-recent-first
+        {'name': '25.04'},
+        {'name': '25.03'},
+    ]
+
+    with patch(
+        'proteus.doctor.requests.get',
+        side_effect=[releases_response, tags_response],
+    ):
+        assert package.latest_version() == Version('25.05')
+
+
+@pytest.mark.unit
+def test_git_package_fallback_raises_when_no_tags_either():
+    """A repo with no releases AND no tags must surface an explicit error.
+
+    Without this, an empty list from /tags would IndexError out of
+    ``tags[0]['name']`` with a stack trace that obscures the real
+    diagnosis (the upstream repo has no version metadata).
+    """
+    package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
+
+    releases_response = Mock(status_code=404)
+    tags_response = Mock(status_code=200)
+    tags_response.json.return_value = []
+
+    with patch(
+        'proteus.doctor.requests.get',
+        side_effect=[releases_response, tags_response],
+    ):
+        with pytest.raises(RuntimeError, match='no releases or tags found'):
+            package.latest_version()
+
+
+@pytest.mark.unit
+def test_git_package_fallback_propagates_tags_http_error():
+    """If /tags itself fails the doctor must not swallow the HTTPError."""
+    package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
+
+    releases_response = Mock(status_code=404)
+    tags_response = Mock(status_code=500)
+    tags_response.raise_for_status.side_effect = requests.HTTPError('tags 500')
+
+    with patch(
+        'proteus.doctor.requests.get',
+        side_effect=[releases_response, tags_response],
+    ):
+        with pytest.raises(requests.HTTPError, match='tags 500'):
+            package.latest_version()
+
+
+@pytest.mark.unit
 def test_doctor_entry_prints_environment_variables_before_packages():
     fake_package = Mock()
     fake_package.get_status_message.return_value = 'pkg: ok'

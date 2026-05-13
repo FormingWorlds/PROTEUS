@@ -83,9 +83,22 @@ class GitPackage(BasePackage):
             raise PackageNotFoundError(f'{self.name} is not installed.') from exc
 
     def latest_version(self) -> Version:
-        response = requests.get(
-            f'https://api.github.com/repos/{self.owner}/{self.name}/releases/latest'
-        )
+        # Prefer GitHub's "latest formal release" endpoint, but some
+        # FWL repos (e.g. SOCRATES) only ship tags. Fall back to the
+        # tags list when releases/latest returns 404.
+        base = f'https://api.github.com/repos/{self.owner}/{self.name}'
+        response = requests.get(f'{base}/releases/latest')
+        if response.status_code == 404:
+            tags_response = requests.get(f'{base}/tags')
+            tags_response.raise_for_status()
+            tags = tags_response.json()
+            if not tags:
+                raise RuntimeError(
+                    f'{self.name}: no releases or tags found on GitHub'
+                )
+            # /tags returns most-recent-first; first entry's name is the
+            # latest tag string.
+            return Version(tags[0]['name'])
         response.raise_for_status()
         return Version(response.json()['tag_name'])
 
