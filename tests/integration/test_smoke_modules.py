@@ -24,6 +24,8 @@ from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
+pytestmark = pytest.mark.smoke
+
 
 @pytest.mark.smoke
 def test_smoke_escape_dummy_atmos():

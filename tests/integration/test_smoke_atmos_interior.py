@@ -27,6 +27,8 @@ from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
+pytestmark = pytest.mark.smoke
+
 # Run JANUS/AGNI smoke tests only in nightly CI (requires compiled binaries)
 RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
