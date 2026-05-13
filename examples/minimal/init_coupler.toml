@@ -89,6 +89,7 @@ volatile_mode = "elements"
 core_frac = 0.55
 core_density = 10738.33
 core_heatcap = 880.0
+melting_dir = "Monteux-600"
 
 [atmos_clim]
 module = "agni"
@@ -149,7 +150,6 @@ radio_K = 310.0
 radio_U = 0.031
 radio_Th = 0.124
 module = "spider"
-melting_dir = "Monteux-600"
 radiogenic_heat = true
 tidal_heat = true
 grain_size = 0.1

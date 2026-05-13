@@ -1820,3 +1820,88 @@ def test_planet_liquidus_super_does_not_disturb_other_defaults():
     assert p.ini_entropy == pytest.approx(3900.0)
     assert p.tsurf_init == pytest.approx(4000.0)
     assert p.tcmb_init == pytest.approx(6000.0)
+
+
+# ============================================================================
+# Regression: melting_dir / eos_dir belong on [interior_struct], not [interior_energetics]
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_melting_dir_is_field_of_Struct_not_Interior():
+    """Regression: ``melting_dir`` and ``eos_dir`` are fields of
+    ``Struct`` (which maps to TOML section ``[interior_struct]``),
+    not ``Interior`` (``[interior_energetics]``). Putting them on
+    ``Interior`` makes cattrs silently drop the values from the TOML,
+    then the Struct validator raises a confusing
+    ``melting_dir must be set`` error.
+
+    This pins down the schema location so a future refactor that
+    moves them back to ``Interior`` fails this test rather than
+    silently breaking every example config that follows the docstring.
+    """
+    import attrs
+
+    from proteus.config._interior import Interior
+    from proteus.config._struct import Struct
+
+    interior_fields = {f.name for f in attrs.fields(Interior)}
+    struct_fields = {f.name for f in attrs.fields(Struct)}
+
+    assert 'melting_dir' in struct_fields, (
+        'melting_dir must live on Struct (the [interior_struct] section)'
+    )
+    assert 'melting_dir' not in interior_fields, (
+        'melting_dir must NOT live on Interior; cattrs would silently drop it'
+    )
+    assert 'eos_dir' in struct_fields, 'eos_dir must live on Struct'
+    assert 'eos_dir' not in interior_fields, 'eos_dir must NOT live on Interior'
+
+
+@pytest.mark.unit
+def test_Interior_docstring_does_not_advertise_struct_fields():
+    """Companion guarantee: the ``Interior`` class docstring must not
+    document ``melting_dir`` or ``eos_dir`` as if they were its own
+    fields. That docstring is what caused the example
+    ``init_coupler.toml`` to place ``melting_dir`` in the wrong section."""
+    from inspect import getdoc
+
+    from proteus.config._interior import Interior
+
+    doc = getdoc(Interior)
+    assert doc is not None
+    # The docstring may mention these names in passing, but must not
+    # list them as `<name>: <type>` attributes the way attrs docstring
+    # conventions document fields.
+    forbidden_lines = ('melting_dir: str', 'eos_dir: str')
+    for marker in forbidden_lines:
+        assert marker not in doc, (
+            f'Interior docstring still advertises a non-existent field: {marker!r}'
+        )
+
+
+@pytest.mark.unit
+def test_example_init_coupler_places_melting_dir_under_interior_struct():
+    """Regression: the canonical ``examples/minimal/init_coupler.toml``
+    must place ``melting_dir`` inside the ``[interior_struct]`` section.
+    Otherwise cattrs silently drops the value at parse time."""
+    text = (PROTEUS_ROOT / 'examples' / 'minimal' / 'init_coupler.toml').read_text(
+        encoding='utf-8'
+    )
+
+    # Find every section header and the index of the melting_dir line.
+    lines = text.splitlines()
+    section = None
+    melting_dir_section = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('[') and stripped.endswith(']'):
+            section = stripped[1:-1]
+        if stripped.startswith('melting_dir'):
+            melting_dir_section = section
+            break
+
+    assert melting_dir_section == 'interior_struct', (
+        f'melting_dir is under [{melting_dir_section}] but must be under '
+        '[interior_struct]; otherwise cattrs silently drops it'
+    )
