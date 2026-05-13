@@ -84,6 +84,18 @@ __pycache__
 !output/.gitkeep
 nogit*
 data/
+
+# Experimental CHILI configs (dev-session debris, never tracked)
+input/chili/chili_aragog_*.toml
+input/chili/energy_*.toml
+input/chili/exp*.toml
+input/chili/nightly_*.toml
+input/chili/smoke_*_jax.toml
+input/chili/stage_*.toml
+input/chili/verify_dil*.toml
+
+# Local dev-session launch scripts (never tracked)
+scripts/*.sh
 tools/*.csv
 tools/grid_proteus_SNS*
 
