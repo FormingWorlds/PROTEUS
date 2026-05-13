@@ -15,9 +15,6 @@ if TYPE_CHECKING:
 log = logging.getLogger('fwl.' + __name__)
 
 # Constants
-LBAVG = 3  # Number of steps to average over
-SFINC = 1.6  # Scale factor for step size increase
-SFDEC = 0.8  # Scale factor for step size decrease
 SMALL = 1e-8  # Small number
 
 
@@ -163,19 +160,25 @@ def next_step(
             Optimal step size [years].
     """
 
+    # Adaptive-controller knobs (config-driven; defaults match the legacy
+    # hardcoded values LBAVG=3, SFINC=1.6, SFDEC=0.8).
+    dt_window = int(config.params.dt.window)
+    dt_sfinc = float(config.params.dt.scale_incr)
+    dt_sfdec = float(config.params.dt.scale_decr)
+
     # First years, use small step
     if hf_row['Time'] < 2.0:
         dtswitch = 1.0
         log.info('Time-stepping intent: static')
 
-    elif LBAVG + 5 >= len(hf_all['Time']):
+    elif dt_window + 5 >= len(hf_all['Time']):
         dtswitch = config.params.dt.initial
         log.info('Time-stepping intent: initial')
 
     else:
         i2 = -1
         i1 = -2
-        i0 = i1 - LBAVG
+        i0 = i1 - dt_window
 
         # Proportional time-step calculation
         if config.params.dt.method == 'proportional':
@@ -221,22 +224,22 @@ def next_step(
                 if interior_o is not None
                 else 0
             )
-            sfinc_effective = SFINC
+            sfinc_effective = dt_sfinc
             if hyst_remaining > 0:
-                sfinc_effective = min(float(config.params.dt.hysteresis_sfinc), SFINC)
+                sfinc_effective = min(float(config.params.dt.hysteresis_sfinc), dt_sfinc)
                 log.info(
                     'Time-stepping: hysteresis active (%d iters remaining), '
                     'using gentler sfinc=%.2f instead of %.2f',
                     hyst_remaining,
                     sfinc_effective,
-                    SFINC,
+                    dt_sfinc,
                 )
 
             if speed_up:
                 dtswitch = dtprev * sfinc_effective
                 log.info('Time-stepping intent: speed up')
             else:
-                dtswitch = dtprev * SFDEC
+                dtswitch = dtprev * dt_sfdec
                 log.info('Time-stepping intent: slow down')
                 # Arm the hysteresis timer on every slow-down.
                 if interior_o is not None:
@@ -280,8 +283,19 @@ def next_step(
     # next_step_retry notes in spider.py (max_attempts = 8).
     dtswitch *= step_sf
 
-    # Always enforce the absolute maximum
-    dtswitch = min(dtswitch, config.params.dt.maximum)
+    # Always enforce the absolute maximum (with optional time-fraction allowance)
+    dtmaximum = config.params.dt.maximum
+    dtmaximum += config.params.dt.maximum_rel * hf_row['Time']
+
+    # Prevent overshooting the configured final time (#676): when
+    # stop.time is active, the next step cannot push Time past
+    # stop.time.maximum. The 1 yr floor keeps tiny end-of-run remainders
+    # from collapsing dt to zero (and then to dt.minimum on the next line).
+    if config.params.stop.time.enabled:
+        maxtime = config.params.stop.time.maximum
+        dtmaximum = min(dtmaximum, max(1, maxtime - hf_row['Time']))
+
+    dtswitch = min(dtswitch, dtmaximum)
 
     # Mushy-regime dt cap: tightens dt when actively solidifying
     # because phase-boundary Jgrav + rheology contrast creates

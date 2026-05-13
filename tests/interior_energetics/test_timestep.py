@@ -49,9 +49,13 @@ def _make_config(
         propconst=52.0,
         atol=0.02,
         rtol=0.10,
+        scale_incr=1.6,
+        scale_decr=0.8,
+        window=3,
         minimum=100.0,
         minimum_rel=0.005,
         maximum=dt_max,
+        maximum_rel=0.0,
         initial=10.0,
         mushy_maximum=mushy_maximum,
         mushy_upper=mushy_upper,
@@ -62,10 +66,12 @@ def _make_config(
     stop_solid = SimpleNamespace(enabled=True, phi_crit=phi_crit)
     stop_radeqm = SimpleNamespace(enabled=False)
     stop_escape = SimpleNamespace(enabled=False)
+    stop_time = SimpleNamespace(enabled=False, maximum=1.0e18)
     stop = SimpleNamespace(
         solid=stop_solid,
         radeqm=stop_radeqm,
         escape=stop_escape,
+        time=stop_time,
     )
     params = SimpleNamespace(dt=dt, stop=stop)
     return SimpleNamespace(params=params)
@@ -362,3 +368,120 @@ class TestHysteresis:
         dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=None)
         # Without interior_o the hysteresis machinery is fully skipped.
         assert dt == pytest.approx(1.6e3, rel=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# stop.time.maximum overshoot prevention (#676)
+# ---------------------------------------------------------------------------
+
+
+def _make_overshoot_config(*, dt_maximum, stop_time_enabled, stop_time_maximum):
+    """Minimal config for the stop.time.maximum overshoot tests.
+
+    Uses dt.method='maximum' so dtswitch starts at dt.maximum, the
+    ceiling clamps trigger predictably, and we don't need to populate
+    the F_atm / Phi_global history that the adaptive branch reads.
+    """
+    dt = SimpleNamespace(
+        method='maximum',
+        propconst=52.0,
+        atol=0.02,
+        rtol=0.10,
+        scale_incr=1.6,
+        scale_decr=0.8,
+        window=3,
+        minimum=0.1,
+        minimum_rel=0.0,
+        maximum=dt_maximum,
+        maximum_rel=0.0,
+        initial=1.0,
+        mushy_maximum=0.0,
+        mushy_upper=0.99,
+        hysteresis_iters=0,
+        hysteresis_sfinc=1.1,
+        max_growth_factor=0.0,
+    )
+    stop = SimpleNamespace(
+        solid=SimpleNamespace(enabled=False, phi_crit=0.05),
+        radeqm=SimpleNamespace(enabled=False),
+        escape=SimpleNamespace(enabled=False),
+        time=SimpleNamespace(enabled=stop_time_enabled, maximum=stop_time_maximum),
+    )
+    return SimpleNamespace(params=SimpleNamespace(dt=dt, stop=stop))
+
+
+def _make_overshoot_hf_all():
+    """hf_all long enough that next_step exits the "initial" branch.
+
+    With dt.window=3 the controller requires len(Time) > 3+5 = 8; pad to
+    12 rows so the dt.method='maximum' branch is actually reached.
+    """
+    return pd.DataFrame(
+        {'Time': [10.0, 20.0, 30.0, 40.0, 42.0, 44.0, 45.0, 46.0, 47.0, 48.0, 49.0, 49.5]}
+    )
+
+
+@pytest.mark.unit
+def test_next_step_caps_dt_to_remaining_final_time():
+    """Timestep must be clipped so Time + dt does not exceed stop.time.maximum."""
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_overshoot_config(
+        dt_maximum=20.0, stop_time_enabled=True, stop_time_maximum=55.0
+    )
+    hf_row = {'Time': 50.0}
+
+    dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
+
+    assert dt == pytest.approx(5.0)
+    assert hf_row['Time'] + dt <= config.params.stop.time.maximum
+
+
+@pytest.mark.unit
+def test_next_step_handles_subyear_remaining_time_without_overshoot():
+    """When remaining integration time is <1 year, the 1 yr floor still applies."""
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_overshoot_config(
+        dt_maximum=10.0, stop_time_enabled=True, stop_time_maximum=52.0
+    )
+    hf_row = {'Time': 50.0}
+
+    dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
+
+    # Remaining = 2 yr, which is above the 1 yr floor so the cap returns 2.
+    assert dt == pytest.approx(2.0)
+    assert hf_row['Time'] + dt <= config.params.stop.time.maximum
+
+
+@pytest.mark.unit
+def test_next_step_not_capped_by_stop_time_when_disabled():
+    """If stop.time is disabled, dt should follow dt.maximum without overshoot cap."""
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_overshoot_config(
+        dt_maximum=7.5, stop_time_enabled=False, stop_time_maximum=50.2
+    )
+    hf_row = {'Time': 50.0}
+
+    dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
+
+    assert dt == pytest.approx(7.5)
+
+
+@pytest.mark.unit
+def test_next_step_maximum_rel_widens_the_cap():
+    """dt.maximum_rel adds a Time-proportional allowance on top of dt.maximum."""
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_overshoot_config(
+        dt_maximum=100.0, stop_time_enabled=False, stop_time_maximum=1.0e18
+    )
+    # Override maximum_rel: dtmaximum becomes 100 + 0.1*Time = 100 + 5 = 105
+    config.params.dt.maximum_rel = 0.1
+    hf_row = {'Time': 50.0}
+
+    # dt.method='maximum' so dtswitch starts at 100, then min(100, 105) = 100.
+    # The point of this test is that maximum_rel does not lower the cap.
+    dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
+    assert dt == pytest.approx(100.0)
