@@ -140,11 +140,10 @@ addopts = [
     "--strict-config",
     "-ra",
     "--showlocals",
-    # importlib mode prevents the top-level ``./aragog/`` directory
-    # from shadowing the editable ``fwl-aragog`` install as a
-    # namespace package. Without this, every test that imports from
-    # ``proteus.interior_energetics.aragog`` fails locally with
-    # ``ImportError: cannot import name 'aragog_file_logger'``.
+    # importlib mode keeps test collection robust against namespace
+    # collisions between ``proteus.interior_energetics.aragog`` and the
+    # third-party ``aragog`` PyPI package. Without it, pytest's default
+    # rootdir-based import can shadow the installed package.
     "--import-mode=importlib",
 ]
 testpaths = ["tests"]
