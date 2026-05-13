@@ -308,6 +308,21 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
         )
         return T
 
+    elif mode == 'adiabatic_from_cmb':
+        # Adiabat anchored at the user-specified CMB temperature, integrated
+        # upward from the CMB to the surface. Used when the planet IC is
+        # parameterised by a known T_cmb rather than by T_surf (adiabatic)
+        # or by an accretion / liquidus calibration. Same gradient form as
+        # the other CMB-anchored modes; only the anchor differs.
+        T_cmb = config.planet.tcmb_init
+        T = np.zeros(N)
+        T[0] = T_cmb
+        for i in range(1, N):
+            dr = r_stag[i] - r_stag[i - 1]
+            dTdr = -alpha_m * T[i - 1] * g_m_av / Cp_m
+            T[i] = T[i - 1] + dTdr * dr  # T decreases outward
+        return T
+
     else:
         raise ValueError(f"Unknown temperature_mode: '{mode}'")
 
