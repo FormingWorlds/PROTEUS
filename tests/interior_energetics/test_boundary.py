@@ -42,6 +42,8 @@ from proteus.utils.constants import (
     secs_per_year,
 )
 
+pytestmark = pytest.mark.unit
+
 # =============================================================================
 # Fixtures for BoundaryRunner Configuration & Setup
 # =============================================================================

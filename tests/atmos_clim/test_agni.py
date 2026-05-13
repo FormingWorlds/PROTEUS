@@ -22,6 +22,8 @@ import pytest
 import proteus.atmos_clim.agni as agni_mod
 from proteus.atmos_clim.agni import _determine_aerosols, _determine_condensates, init_agni_atmos
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')

@@ -19,6 +19,8 @@ import pytest
 
 from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.unit
 @patch('proteus.plot.cpl_chem_atmosphere.glob.glob')
