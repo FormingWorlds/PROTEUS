@@ -40,10 +40,7 @@ def _apply_deterministic_env(environ) -> None:
 
 def _should_apply_deterministic(argv, environ) -> bool:
     """Return True iff --deterministic is in argv and sentinel is not set."""
-    return (
-        '--deterministic' in argv
-        and environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1'
-    )
+    return '--deterministic' in argv and environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1'
 
 
 if _should_apply_deterministic(sys.argv, os.environ):

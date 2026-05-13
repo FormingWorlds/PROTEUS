@@ -1451,11 +1451,17 @@ def _get_sufficient(config: Config, clean: bool = False):
         download_melting_curves(config, clean=clean)
 
     # Dynamic EOS for SPIDER and Aragog (uses struct.eos_dir, skip if None/PALEOS)
-    if config.interior_energetics.module in ('spider', 'aragog') and config.interior_struct.eos_dir is not None:
+    if (
+        config.interior_energetics.module in ('spider', 'aragog')
+        and config.interior_struct.eos_dir is not None
+    ):
         download_eos_dynamic(config.interior_struct.eos_dir)
 
     # EOS for Zalmoxis (derived from struct.zalmoxis config, not struct.eos_dir)
-    if hasattr(config, 'interior_struct') and getattr(config.interior_struct, 'module', None) == 'zalmoxis':
+    if (
+        hasattr(config, 'interior_struct')
+        and getattr(config.interior_struct, 'module', None) == 'zalmoxis'
+    ):
         zconf = config.interior_struct.zalmoxis
         download_zalmoxis_eos(
             mantle_eos=getattr(zconf, 'mantle_eos', ''),
@@ -1794,8 +1800,7 @@ def _download_zalmoxis_chabrier():
     expected_file = folder_dir / 'chabrier2021_H.dat'
     if not expected_file.exists():
         log.warning(
-            'Post-extraction validation failed: %s not found in %s. '
-            'Available files: %s',
+            'Post-extraction validation failed: %s not found in %s. Available files: %s',
             expected_file.name,
             folder_dir,
             [f.name for f in folder_dir.iterdir()],
@@ -1906,10 +1911,21 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
     # Defensive warn for any component key that no handler above recognised.
     # PALEOS-API:* and PALEOS-API-2phase:* are intentionally not downloaded
     # (generated locally from upstream paleos at runtime) but are valid.
-    known_prefixes = ('Seager2007:', 'WolfBower2018:', 'RTPress100TPa:', 'Chabrier:',
-                      'PALEOS-API:', 'PALEOS-API-2phase:')
-    known_exact = {'PALEOS-2phase:MgSiO3', 'PALEOS-2phase:MgSiO3-highres',
-                   'PALEOS:iron', 'PALEOS:MgSiO3', 'PALEOS:H2O'}
+    known_prefixes = (
+        'Seager2007:',
+        'WolfBower2018:',
+        'RTPress100TPa:',
+        'Chabrier:',
+        'PALEOS-API:',
+        'PALEOS-API-2phase:',
+    )
+    known_exact = {
+        'PALEOS-2phase:MgSiO3',
+        'PALEOS-2phase:MgSiO3-highres',
+        'PALEOS:iron',
+        'PALEOS:MgSiO3',
+        'PALEOS:H2O',
+    }
     for c in components:
         if c in known_exact:
             continue
@@ -1917,7 +1933,9 @@ def download_zalmoxis_eos(mantle_eos: str, core_eos: str = '', ice_layer_eos: st
             continue
         log.warning(
             'download_zalmoxis_eos: no handler for component %r '
-            '(typo or unsupported EOS family?); no data downloaded for it', c)
+            '(typo or unsupported EOS family?); no data downloaded for it',
+            c,
+        )
 
 
 def get_zalmoxis_eos_dir() -> Path:
@@ -1971,7 +1989,10 @@ def get_zalmoxis_melting_curves(config: Config):
     if config.interior_struct.melting_dir is None:
         return None
     melting_curves_folder = (
-        FWL_DATA_DIR / 'interior_lookup_tables' / 'Melting_curves' / config.interior_struct.melting_dir
+        FWL_DATA_DIR
+        / 'interior_lookup_tables'
+        / 'Melting_curves'
+        / config.interior_struct.melting_dir
     )
     if not melting_curves_folder.is_dir():
         raise FileNotFoundError(

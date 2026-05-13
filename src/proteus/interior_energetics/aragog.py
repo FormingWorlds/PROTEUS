@@ -861,7 +861,6 @@ class AragogRunner:
 
         try:
             import jax.numpy as jnp
-
             from aragog.jax.eos import EntropyEOS_JAX
             from aragog.jax.phase import MeshArrays, PhaseParams
             from aragog.jax.solver import BoundaryParams

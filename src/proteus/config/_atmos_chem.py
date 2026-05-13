@@ -72,7 +72,9 @@ class AtmosChem:
 
     """
 
-    module: str | None = field(default='none', validator=in_((None, 'vulcan', 'dummy')), converter=none_if_none)
+    module: str | None = field(
+        default='none', validator=in_((None, 'vulcan', 'dummy')), converter=none_if_none
+    )
 
     vulcan: Vulcan = field(factory=Vulcan)
 

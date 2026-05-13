@@ -40,10 +40,10 @@ _PHOTO_PRODUCTS = {
 _ALL_SPECIES = _PARENT_SPECIES + list(_PHOTO_PRODUCTS.keys())
 
 # Clausius-Clapeyron parameters for H2O saturation pressure
-_L_H2O = 2.5e6      # latent heat [J/kg]
-_RV_H2O = 461.5     # specific gas constant for H2O [J/kg/K]
-_PSAT_REF = 611.0    # saturation pressure at 273.15 K [Pa]
-_TSAT_REF = 273.15   # reference temperature [K]
+_L_H2O = 2.5e6  # latent heat [J/kg]
+_RV_H2O = 461.5  # specific gas constant for H2O [J/kg/K]
+_PSAT_REF = 611.0  # saturation pressure at 273.15 K [Pa]
+_TSAT_REF = 273.15  # reference temperature [K]
 
 # Pressure where photolysis products start appearing [Pa]
 _P_PHOTO = 100.0  # ~1 mbar
@@ -51,7 +51,9 @@ _P_PHOTO = 100.0  # ~1 mbar
 
 def _saturation_vmr(T, P_total_Pa):
     """H2O saturation VMR from Clausius-Clapeyron."""
-    P_sat = _PSAT_REF * np.exp(_L_H2O / _RV_H2O * (1.0 / _TSAT_REF - 1.0 / np.maximum(T, 100.0)))
+    P_sat = _PSAT_REF * np.exp(
+        _L_H2O / _RV_H2O * (1.0 / _TSAT_REF - 1.0 / np.maximum(T, 100.0))
+    )
     return np.minimum(P_sat / P_total_Pa, 1.0)
 
 
@@ -159,9 +161,7 @@ def _build_profiles(hf_row, config, num_levels=50):
     return result
 
 
-def run_dummy_chem(
-    dirs: dict, config: Config, hf_row: dict, *, online: bool = False
-) -> bool:
+def run_dummy_chem(dirs: dict, config: Config, hf_row: dict, *, online: bool = False) -> bool:
     """Run dummy atmospheric chemistry and write CSV output.
 
     Parameters
@@ -206,6 +206,11 @@ def run_dummy_chem(
     data = np.array(arrays).T
     np.savetxt(csv_path, data, delimiter='\t', fmt='%.8e', header=header, comments='')
 
-    log.info('Dummy chemistry: wrote %d levels x %d species to %s', data.shape[0], len(result) - 4, csv_name)
+    log.info(
+        'Dummy chemistry: wrote %d levels x %d species to %s',
+        data.shape[0],
+        len(result) - 4,
+        csv_name,
+    )
 
     return True

@@ -223,13 +223,13 @@ def next_step(
             )
             sfinc_effective = SFINC
             if hyst_remaining > 0:
-                sfinc_effective = min(
-                    float(config.params.dt.hysteresis_sfinc), SFINC
-                )
+                sfinc_effective = min(float(config.params.dt.hysteresis_sfinc), SFINC)
                 log.info(
                     'Time-stepping: hysteresis active (%d iters remaining), '
                     'using gentler sfinc=%.2f instead of %.2f',
-                    hyst_remaining, sfinc_effective, SFINC,
+                    hyst_remaining,
+                    sfinc_effective,
+                    SFINC,
                 )
 
             if speed_up:
@@ -240,18 +240,12 @@ def next_step(
                 log.info('Time-stepping intent: slow down')
                 # Arm the hysteresis timer on every slow-down.
                 if interior_o is not None:
-                    interior_o.dt_hysteresis_remaining = int(
-                        config.params.dt.hysteresis_iters
-                    )
+                    interior_o.dt_hysteresis_remaining = int(config.params.dt.hysteresis_iters)
 
             # Decrement hysteresis counter (applies to both speed_up
             # and slow_down branches; the arming above would have
             # already reset the counter on a slow-down).
-            if (
-                interior_o is not None
-                and interior_o.dt_hysteresis_remaining > 0
-                and speed_up
-            ):
+            if interior_o is not None and interior_o.dt_hysteresis_remaining > 0 and speed_up:
                 interior_o.dt_hysteresis_remaining -= 1
 
             # Do not allow step size to exceed predicted point of termination
@@ -309,7 +303,11 @@ def next_step(
                     'Time-stepping: mushy cap active '
                     '(Phi_global=%.4f in (%.3f, %.3f)), '
                     'capping dt at %.2e yr (was %.2e yr)',
-                    phi_now, phi_floor, phi_ceiling, mushy_max, dtswitch,
+                    phi_now,
+                    phi_floor,
+                    phi_ceiling,
+                    mushy_max,
+                    dtswitch,
                 )
                 dtswitch = mushy_max
 
@@ -333,7 +331,10 @@ def next_step(
                     'Time-stepping: growth cap active '
                     '(max_growth_factor=%.2f, dt_prev=%.2e yr), '
                     'capping dt at %.2e yr (was %.2e yr)',
-                    max_growth, dt_prev_actual, dt_capped, dtswitch,
+                    max_growth,
+                    dt_prev_actual,
+                    dt_capped,
+                    dtswitch,
                 )
                 dtswitch = dt_capped
 

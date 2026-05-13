@@ -157,7 +157,8 @@ class Escape:
 
     module: str | None = field(
         default='zephyrus',
-        validator=in_((None, 'dummy', 'zephyrus', 'boreas')), converter=none_if_none
+        validator=in_((None, 'dummy', 'zephyrus', 'boreas')),
+        converter=none_if_none,
     )
 
     zephyrus: Zephyrus = field(factory=Zephyrus, validator=valid_zephyrus)

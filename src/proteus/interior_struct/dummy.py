@@ -66,11 +66,11 @@ def solve_dummy_structure(
     # --- Noack & Lasbleis (2020) scaling laws ---
 
     # Eq. 5: Planet radius [km]
-    R_p_km = (7030.0 - 1840.0 * x_fe) * m_ratio ** 0.282
+    R_p_km = (7030.0 - 1840.0 * x_fe) * m_ratio**0.282
     R_p = R_p_km * 1e3  # [m]
 
     # Eq. 9: Core radius (hot profile) [km]
-    R_c_km = 4850.0 * x_cmf ** 0.328 * m_ratio ** 0.266
+    R_c_km = 4850.0 * x_cmf**0.328 * m_ratio**0.266
     R_c = R_c_km * 1e3  # [m]
 
     # Clamp core radius to be smaller than planet radius
@@ -112,12 +112,18 @@ def solve_dummy_structure(
     logger.info(
         'Dummy structure (Noack & Lasbleis 2020): '
         'R_p=%.0f km, R_c=%.0f km, M_p=%.2e kg, X_CMF=%.3f, X_Fe=%.3f',
-        R_p_km, R_c_km, M_p, x_cmf, x_fe,
+        R_p_km,
+        R_c_km,
+        M_p,
+        x_cmf,
+        x_fe,
     )
     logger.info(
-        '  rho_core=%.0f kg/m^3, rho_mantle=%.0f kg/m^3, '
-        'g_surf=%.2f m/s^2, P_cmb=%.1f GPa',
-        rho_c, rho_m, g_surf, P_cmb * 1e-9,
+        '  rho_core=%.0f kg/m^3, rho_mantle=%.0f kg/m^3, g_surf=%.2f m/s^2, P_cmb=%.1f GPa',
+        rho_c,
+        rho_m,
+        g_surf,
+        P_cmb * 1e-9,
     )
 
     # --- Build radial profiles on a mesh ---
@@ -140,7 +146,9 @@ def solve_dummy_structure(
     g_stag = g_cmb + (g_surf - g_cmb) * (r_stag - R_c) / (R_p - R_c)
 
     # Temperature profile from planet.temperature_mode
-    T_stag = _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, rho_m, g_m_av)
+    T_stag = _build_temperature_profile(
+        config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, rho_m, g_m_av
+    )
 
     # --- Update hf_row ---
 
@@ -160,8 +168,7 @@ def solve_dummy_structure(
     # zalmoxis_output.dat: mantle profiles (CMB to surface, ascending r)
     output_file = os.path.join(data_dir, 'zalmoxis_output.dat')
     data = np.column_stack([r_stag, P_stag, rho_stag, g_stag, T_stag])
-    np.savetxt(output_file, data, fmt='%.17e',
-               header='r[m] P[Pa] rho[kg/m3] g[m/s2] T[K]')
+    np.savetxt(output_file, data, fmt='%.17e', header='r[m] P[Pa] rho[kg/m3] g[m/s2] T[K]')
     logger.info('Dummy structure output: %s', output_file)
 
     # zalmoxis_output_temp.txt: temperature on Aragog mesh
@@ -172,8 +179,14 @@ def solve_dummy_structure(
     spider_mesh_file = None
     if num_spider_nodes > 0:
         spider_mesh_file = _write_spider_mesh(
-            data_dir, r_stag, P_stag, rho_stag, g_stag,
-            R_c, R_p, num_spider_nodes,
+            data_dir,
+            r_stag,
+            P_stag,
+            rho_stag,
+            g_stag,
+            R_c,
+            R_p,
+            num_spider_nodes,
         )
 
     return spider_mesh_file
@@ -252,6 +265,7 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
         # production path (zalmoxis + Aragog) computes the same anchor
         # against the converged structure-solve P_cmb.
         from zalmoxis.melting_curves import paleos_liquidus
+
         P_cmb = float(P_stag[0])
         T_liq = float(paleos_liquidus(P_cmb))
         delta = float(config.planet.delta_T_super)
@@ -259,7 +273,10 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
         logger.info(
             'Dummy liquidus_super: P_cmb=%.2e Pa -> T_liq_Fei2021=%.0f K '
             '+ delta_T_super=%.0f K = T_cmb=%.0f K',
-            P_cmb, T_liq, delta, T_cmb,
+            P_cmb,
+            T_liq,
+            delta,
+            T_cmb,
         )
         T = np.zeros(N)
         T[0] = T_cmb
@@ -275,7 +292,7 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
         # T_cmb from Noack & Lasbleis Eq. 20 (hot silicate melting)
         fe_m = 0.1  # Earth-like mantle iron number
         P_cmb_GPa = P_stag[0] * 1e-9
-        T_cmb = 5400.0 * (P_cmb_GPa / 140.0)**0.48 / (1.0 - np.log(1.0 - fe_m))
+        T_cmb = 5400.0 * (P_cmb_GPa / 140.0) ** 0.48 / (1.0 - np.log(1.0 - fe_m))
         # Adiabat from CMB to surface
         T = np.zeros(N)
         T[0] = T_cmb
@@ -286,7 +303,8 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
         # Store computed T_surf for downstream use
         logger.info(
             'Dummy accretion mode: T_cmb=%.0f K, T_surf=%.0f K (from CMB melting curve)',
-            T_cmb, T[-1],
+            T_cmb,
+            T[-1],
         )
         return T
 
@@ -318,11 +336,14 @@ def _write_spider_mesh(data_dir, r_stag, P_stag, rho_stag, g_stag, R_c, R_p, num
     with open(mesh_file, 'w') as f:
         f.write(f'# {N} {N - 1}\n')
         for i in range(N):
-            f.write(f'{r_basic[i]:.17e} {P_basic[i]:.17e} '
-                    f'{rho_basic[i]:.17e} {g_basic[i]:.17e}\n')
+            f.write(
+                f'{r_basic[i]:.17e} {P_basic[i]:.17e} {rho_basic[i]:.17e} {g_basic[i]:.17e}\n'
+            )
         for i in range(N - 1):
-            f.write(f'{r_stag_spider[i]:.17e} {P_stag_spider[i]:.17e} '
-                    f'{rho_stag_spider[i]:.17e} {g_stag_spider[i]:.17e}\n')
+            f.write(
+                f'{r_stag_spider[i]:.17e} {P_stag_spider[i]:.17e} '
+                f'{rho_stag_spider[i]:.17e} {g_stag_spider[i]:.17e}\n'
+            )
 
     logger.info('Dummy SPIDER mesh: %s (%d basic + %d staggered nodes)', mesh_file, N, N - 1)
     return mesh_file

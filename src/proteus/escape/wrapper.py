@@ -59,9 +59,7 @@ def run_escape(
         m_init_prev_f = 0.0
     if not np.isfinite(m_init_prev_f) or m_init_prev_f <= 0.0:
         m_vol_baseline = sum(
-            float(hf_row.get(f'{e}_kg_total', 0.0))
-            for e in element_list
-            if e != 'O'
+            float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list if e != 'O'
         )
         hf_row['M_vol_initial'] = m_vol_baseline
         # Reset the cumulative escape counter alongside the baseline so the
@@ -95,9 +93,7 @@ def run_escape(
     # persisted to the helpfile so it survives resume.
     esc_step_kg = float(hf_row.get('esc_rate_total', 0.0)) * secs_per_year * float(dt)
     if np.isfinite(esc_step_kg) and esc_step_kg > 0.0:
-        hf_row['esc_kg_cumulative'] = (
-            float(hf_row.get('esc_kg_cumulative', 0.0)) + esc_step_kg
-        )
+        hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + esc_step_kg
 
     # calculate new elemental inventories from loss over duration `dt`
     solvevol_target = calc_new_elements(

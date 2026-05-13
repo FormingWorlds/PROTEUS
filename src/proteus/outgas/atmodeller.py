@@ -115,9 +115,17 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             active_species.add(sp)
 
     _atm_gas_species = {
-        'H2O': 'H2O', 'H2': 'H2', 'CO2': 'CO2', 'CO': 'CO',
-        'CH4': 'CH4', 'N2': 'N2', 'NH3': 'H3N', 'S2': 'S2',
-        'SO2': 'SO2', 'H2S': 'H2S', 'O2': 'O2',
+        'H2O': 'H2O',
+        'H2': 'H2',
+        'CO2': 'CO2',
+        'CO': 'CO',
+        'CH4': 'CH4',
+        'N2': 'N2',
+        'NH3': 'H3N',
+        'S2': 'S2',
+        'SO2': 'SO2',
+        'H2S': 'H2S',
+        'O2': 'O2',
     }
 
     for proteus_name, atm_name in _atm_gas_species.items():
@@ -133,7 +141,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             if sol_key in solubility_models:
                 kwargs['solubility'] = solubility_models[sol_key]
             else:
-                log.warning('Solubility model %r not found for %s; using no solubility', sol_key, proteus_name)
+                log.warning(
+                    'Solubility model %r not found for %s; using no solubility',
+                    sol_key,
+                    proteus_name,
+                )
 
         # Real gas EOS (if configured)
         eos_key = _eos_map.get(proteus_name)
@@ -141,7 +153,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             if eos_key in eos_models:
                 kwargs['activity'] = eos_models[eos_key]
             else:
-                log.warning('EOS model %r not found for %s; using ideal gas', eos_key, proteus_name)
+                log.warning(
+                    'EOS model %r not found for %s; using ideal gas', eos_key, proteus_name
+                )
 
         species_list.append(ChemicalSpecies.create_gas(atm_name, **kwargs))
 
@@ -200,7 +214,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     if T_magma < config.outgas.T_floor:
         log.warning(
             'T_magma=%.0f K below T_floor=%.0f K; skipping atmodeller',
-            T_magma, config.outgas.T_floor,
+            T_magma,
+            config.outgas.T_floor,
         )
         return
 
@@ -288,7 +303,9 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             continue
         species_key = f'{atm_name}_g'
         species_data = output_dict.get(species_key, {})
-        dissolved_val = species_data.get('dissolved_mass', None) if isinstance(species_data, dict) else None
+        dissolved_val = (
+            species_data.get('dissolved_mass', None) if isinstance(species_data, dict) else None
+        )
 
         if dissolved_val is not None:
             try:
@@ -308,15 +325,19 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
     # Mean molecular weight (approximate from VMRs)
     _mmw = {
-        'H2O': 18.015e-3, 'CO2': 44.01e-3, 'H2': 2.016e-3,
-        'CO': 28.01e-3, 'CH4': 16.04e-3, 'N2': 28.01e-3,
-        'S2': 64.13e-3, 'SO2': 64.07e-3, 'O2': 32.0e-3,
-        'H2S': 34.08e-3, 'NH3': 17.03e-3,
+        'H2O': 18.015e-3,
+        'CO2': 44.01e-3,
+        'H2': 2.016e-3,
+        'CO': 28.01e-3,
+        'CH4': 16.04e-3,
+        'N2': 28.01e-3,
+        'S2': 64.13e-3,
+        'SO2': 64.07e-3,
+        'O2': 32.0e-3,
+        'H2S': 34.08e-3,
+        'NH3': 17.03e-3,
     }
-    mmw = sum(
-        float(hf_row.get(f'{s}_vmr', 0.0)) * _mmw.get(s, 28.0e-3)
-        for s in gas_list
-    )
+    mmw = sum(float(hf_row.get(f'{s}_vmr', 0.0)) * _mmw.get(s, 28.0e-3) for s in gas_list)
     if mmw > 0:
         hf_row['atm_kg_per_mol'] = mmw
 

@@ -628,7 +628,8 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
             # False so the main loop's deadlock counter handles it.
             log.warning(
                 'AGNI solve_energy_b raised a Julia-side exception; '
-                'treating as a non-converged attempt. Exception: %s', e
+                'treating as a non-converged attempt. Exception: %s',
+                e,
             )
             agni_success = False
 

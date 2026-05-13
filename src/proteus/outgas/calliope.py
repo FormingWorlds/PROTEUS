@@ -13,6 +13,7 @@ from calliope.solve import (
     get_target_from_params,
     get_target_from_pressures,
 )
+
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import C_solar, N_solar, S_solar, element_list, vol_list
 from proteus.utils.helper import UpdateStatusfile
@@ -27,7 +28,6 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     """
     Construct CALLIOPE options dictionary
     """
-
 
     solvevol_inp = {}
 
@@ -86,8 +86,11 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
             H_kg = float(elem.H_budget)
 
     if H_kg < 1.0:
-        log.error('Hydrogen inventory is zero or unspecified (H_mode=%s, H_budget=%g)',
-                  elem.H_mode, elem.H_budget)
+        log.error(
+            'Hydrogen inventory is zero or unspecified (H_mode=%s, H_budget=%g)',
+            elem.H_mode,
+            elem.H_budget,
+        )
         UpdateStatusfile(dirs, 20)
         raise ValueError('Hydrogen inventory must be > 0')
 
@@ -120,7 +123,9 @@ def construct_options(dirs: dict, config: Config, hf_row: dict):
     return solvevol_inp
 
 
-def _resolve_element(mode: str, budget: float, H_kg: float, M_reservoir: float, name: str) -> float:
+def _resolve_element(
+    mode: str, budget: float, H_kg: float, M_reservoir: float, name: str
+) -> float:
     """Convert element mode+budget to absolute mass [kg].
 
     Parameters
@@ -150,7 +155,9 @@ def _resolve_element(mode: str, budget: float, H_kg: float, M_reservoir: float, 
         case 'kg':
             return float(budget)
         case _:
-            raise ValueError(f"Unknown {name}_mode: '{mode}'. Expected '{ratio_key}', 'ppmw', or 'kg'")
+            raise ValueError(
+                f"Unknown {name}_mode: '{mode}'. Expected '{ratio_key}', 'ppmw', or 'kg'"
+            )
 
 
 def calc_target_masses(dirs: dict, config: Config, hf_row: dict):

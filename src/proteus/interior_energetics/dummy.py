@@ -50,7 +50,9 @@ def run_dummy_int(
 
     # Interior structure
     output['M_mantle'] = calculate_simple_mantle_mass(
-        hf_row['R_int'], config.interior_struct.core_frac, config.interior_energetics.dummy.mantle_rho
+        hf_row['R_int'],
+        config.interior_struct.core_frac,
+        config.interior_energetics.dummy.mantle_rho,
     )
 
     # Physical parameters
@@ -84,7 +86,9 @@ def run_dummy_int(
     output['F_tidal'] = tidal_flux
 
     # Radiogenic heating constant with time
-    output['F_radio'] = config.interior_energetics.dummy.heat_internal * output['M_mantle'] / area
+    output['F_radio'] = (
+        config.interior_energetics.dummy.heat_internal * output['M_mantle'] / area
+    )
 
     # Total flux loss
     F_loss = output['F_int'] - output['F_tidal'] - output['F_radio']

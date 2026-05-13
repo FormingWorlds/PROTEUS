@@ -108,7 +108,9 @@ class Atmodeller:
     solubility_CO2: str | None = field(default='CO2_basalt_dixon95', converter=none_if_none)
     solubility_H2: str | None = field(default='H2_basalt_hirschmann12', converter=none_if_none)
     solubility_N2: str | None = field(default='N2_basalt_dasgupta22', converter=none_if_none)
-    solubility_S2: str | None = field(default='S2_sulfide_basalt_boulliung23', converter=none_if_none)
+    solubility_S2: str | None = field(
+        default='S2_sulfide_basalt_boulliung23', converter=none_if_none
+    )
     solubility_CO: str | None = field(default='CO_basalt_yoshioka19', converter=none_if_none)
     solubility_CH4: str | None = field(default='CH4_basalt_ardia13', converter=none_if_none)
     eos_H2O: str | None = field(default=None, converter=none_if_none)
@@ -145,7 +147,9 @@ class Outgas:
         Parameters for atmodeller module.
     """
 
-    module: str = field(default='atmodeller', validator=validators.in_(('calliope', 'atmodeller', 'dummy')))
+    module: str = field(
+        default='atmodeller', validator=validators.in_(('calliope', 'atmodeller', 'dummy'))
+    )
     fO2_shift_IW: float = field(default=4.0)
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))

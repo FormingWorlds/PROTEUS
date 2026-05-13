@@ -127,9 +127,7 @@ def _verify_initial_entropy(
 
     try:
         mat_dicts = load_zalmoxis_material_dictionaries()
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
-            zalmoxis_cfg.mantle_eos, mat_dicts
-        )
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
         eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
         if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
@@ -275,6 +273,7 @@ def compute_initial_entropy(
             # ~5% across 0.5-10 M_Earth so this branch is safe for the
             # full mass range.
             from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
             mtot = float(getattr(config.planet, 'mass_tot', 1.0))
             struct_mod = getattr(config.interior_struct, 'module', 'unknown')
             P_cmb = estimate_P_cmb_NL20(
@@ -286,11 +285,14 @@ def compute_initial_entropy(
                 '%s: hf_row["P_cmb"] missing or non-positive; using '
                 'Noack & Lasbleis (2020) mass-aware fallback P_cmb=%.1f GPa '
                 '(mass_tot=%.2f M_Earth). '
-                "interior_struct.module=%r does not populate P_cmb before "
+                'interior_struct.module=%r does not populate P_cmb before '
                 'the IC is set. For best accuracy switch to '
                 "module='zalmoxis' so a real structure solve populates "
                 'P_cmb before the interior step.',
-                mode, P_cmb / 1e9, mtot, struct_mod,
+                mode,
+                P_cmb / 1e9,
+                mtot,
+                struct_mod,
             )
 
         # Compute the CMB anchor temperature.
@@ -317,7 +319,10 @@ def compute_initial_entropy(
             log.info(
                 'liquidus_super CMB anchor: P_cmb=%.2e Pa -> '
                 'T_liq_Fei2021=%.0f K + delta_T_super=%.0f K = T_cmb=%.0f K',
-                P_cmb, T_liq, delta, tcmb,
+                P_cmb,
+                T_liq,
+                delta,
+                tcmb,
             )
         else:
             tcmb = float(config.planet.tcmb_init)
@@ -342,7 +347,8 @@ def compute_initial_entropy(
             except (ImportError, ValueError, FileNotFoundError) as e:
                 log.warning(
                     'CMB-anchored P-S inversion failed (%s); '
-                    'falling back to PALEOS-2phase lookup.', e,
+                    'falling back to PALEOS-2phase lookup.',
+                    e,
                 )
 
         # Fallback: PALEOS-2phase phase-weighted entropy lookup at
@@ -368,14 +374,14 @@ def compute_initial_entropy(
         if zalmoxis_cfg is None:
             log.warning(
                 '%s mode requires interior_struct.module="zalmoxis"; '
-                'using fallback S=%.1f J/kg/K.', mode, fallback,
+                'using fallback S=%.1f J/kg/K.',
+                mode,
+                fallback,
             )
             return fallback
 
         mat_dicts = load_zalmoxis_material_dictionaries()
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
-            zalmoxis_cfg.mantle_eos, mat_dicts
-        )
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
         eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
 
@@ -474,9 +480,7 @@ def compute_initial_entropy(
         # API-aware 2-phase table lookup. Required before the eos_file
         # sentinel selection so 2-phase mantle EoS configs (no top-level
         # eos_file) can use the solid sub-table as the sentinel.
-        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(
-            zalmoxis_cfg.mantle_eos, mat_dicts
-        )
+        solid_eos, liquid_eos = resolve_2phase_mgsio3_paths(zalmoxis_cfg.mantle_eos, mat_dicts)
 
         eos_entry = mat_dicts.get(zalmoxis_cfg.mantle_eos, {})
         paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
@@ -613,9 +617,7 @@ class Interior_t:
         self.pres = np.zeros(self.nlev_s)  # Pressure [Pa]
         self.temp = np.zeros(self.nlev_s)  # Temperature [K]
 
-    def _load_ps_table(
-        self, spider_dir: str, eos_dir: str, filename: str
-    ) -> np.ndarray | None:
+    def _load_ps_table(self, spider_dir: str, eos_dir: str, filename: str) -> np.ndarray | None:
         """Load a SPIDER-format P-S lookup table.
 
         Used for ``density_melt.dat`` (volumetric melt fraction) and
@@ -651,9 +653,7 @@ class Interior_t:
             'P-S',
             filename,
         )
-        local_path = os.path.join(
-            spider_dir, 'lookup_data', '1TPa-dK09-elec-free', filename
-        )
+        local_path = os.path.join(spider_dir, 'lookup_data', '1TPa-dK09-elec-free', filename)
 
         if os.path.isfile(fwl_path):
             filepath = fwl_path

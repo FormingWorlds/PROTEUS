@@ -98,11 +98,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
         # No baseline -> fall back to old threshold-only behaviour.
         return True
 
-    cur_m_ele = sum(
-        float(hf_row.get(f'{e}_kg_total', 0.0))
-        for e in element_list
-        if e != 'O'
-    )
+    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list if e != 'O')
     lost = m_init - cur_m_ele
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 

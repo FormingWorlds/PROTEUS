@@ -77,7 +77,11 @@ def plot_interior_cmesh(
                 y_tmp = ds['temp_s'][:]
                 y_phi = ds['phi_s'][:]
                 y_vis = 10 ** ds['log10visc_s'][:] if 'log10visc_s' in ds else np.ones(nlev_b)
-                y_flx = 0.5 * (ds['Ftotal_b'][:-1] + ds['Ftotal_b'][1:]) if 'Ftotal_b' in ds else np.zeros(nlev_b)
+                y_flx = (
+                    0.5 * (ds['Ftotal_b'][:-1] + ds['Ftotal_b'][1:])
+                    if 'Ftotal_b' in ds
+                    else np.zeros(nlev_b)
+                )
             else:
                 y_tmp = ds['temp_b'][:]
                 y_phi = ds['phi_b'][:]

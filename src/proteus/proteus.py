@@ -33,9 +33,8 @@ from proteus.utils.logs import (
 # exporting `PROTEUS_TIMING=1` before launching `proteus start`.
 # Overhead when disabled: one os.environ lookup at import time, nothing
 # in the loop body.
-_IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in (
-    '1', 'true', 'yes', 'on'
-)
+_IT_TIMING_ENABLED = os.environ.get('PROTEUS_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -410,7 +409,8 @@ class Proteus:
             log.info('=' * 60)
             log.info(
                 '=== RESUME at helpfile row %d, t = %.3e yr, Phi = %.4f',
-                len(self.hf_all), float(self.hf_row.get('Time', 0.0)),
+                len(self.hf_all),
+                float(self.hf_row.get('Time', 0.0)),
                 float(self.hf_row.get('Phi_global', float('nan'))),
             )
             log.info('=' * 60)
@@ -458,9 +458,7 @@ class Proteus:
             # no Zalmoxis-generated EOS tables are available`. Same issue
             # bites Aragog when it needs the P-S tables at re-init.
             # Observed 2026-04-21 on SPIDER Run C resume.
-            eos_dir_restored = os.path.join(
-                self.directories['output'], 'data', 'spider_eos'
-            )
+            eos_dir_restored = os.path.join(self.directories['output'], 'data', 'spider_eos')
             if os.path.isdir(eos_dir_restored):
                 self.directories['spider_eos_dir'] = eos_dir_restored
                 solidus_ps = os.path.join(eos_dir_restored, 'solidus_P-S.dat')
@@ -789,9 +787,9 @@ class Proteus:
                     F_rel_change = abs(cur_F - prev_F) / max(abs(prev_F), 1.0)
                     interior_frozen = (
                         float(prev.get('T_magma', 0.0))
-                            == float(self.hf_row.get('T_magma', 0.0))
+                        == float(self.hf_row.get('T_magma', 0.0))
                         and float(prev.get('Phi_global', 0.0))
-                            == float(self.hf_row.get('Phi_global', 0.0))
+                        == float(self.hf_row.get('Phi_global', 0.0))
                         and F_rel_change < 1.0e-6
                     )
                 else:

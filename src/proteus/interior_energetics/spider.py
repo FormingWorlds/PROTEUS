@@ -840,11 +840,19 @@ def _try_spider(
         call_sequence.extend(['-use_const_properties'])
         call_sequence.extend(['-const_rho', str(float(config.interior_energetics.const_rho))])
         call_sequence.extend(['-const_Cp', str(float(config.interior_energetics.const_Cp))])
-        call_sequence.extend(['-const_alpha', str(float(config.interior_energetics.const_alpha))])
+        call_sequence.extend(
+            ['-const_alpha', str(float(config.interior_energetics.const_alpha))]
+        )
         call_sequence.extend(['-const_cond', str(float(config.interior_energetics.const_cond))])
-        call_sequence.extend(['-const_log10visc', str(float(config.interior_energetics.const_log10visc))])
-        call_sequence.extend(['-const_T_ref', str(float(config.interior_energetics.const_T_ref))])
-        call_sequence.extend(['-const_S_ref', str(float(config.interior_energetics.const_S_ref))])
+        call_sequence.extend(
+            ['-const_log10visc', str(float(config.interior_energetics.const_log10visc))]
+        )
+        call_sequence.extend(
+            ['-const_T_ref', str(float(config.interior_energetics.const_T_ref))]
+        )
+        call_sequence.extend(
+            ['-const_S_ref', str(float(config.interior_energetics.const_S_ref))]
+        )
 
     # Energy transport physics (true->'1', false->'0')
     call_sequence.extend(['-CONDUCTION', str(int(config.interior_energetics.trans_conduction))])
@@ -933,12 +941,16 @@ def _try_spider(
         call_sequence.extend(
             ['-melt_alpha_filename', os.path.join(eos_dir, 'thermal_exp_melt.dat')]
         )
-        call_sequence.extend(['-melt_cp_filename', os.path.join(eos_dir, 'heat_capacity_melt.dat')])
+        call_sequence.extend(
+            ['-melt_cp_filename', os.path.join(eos_dir, 'heat_capacity_melt.dat')]
+        )
         call_sequence.extend(
             ['-melt_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_melt.dat')]
         )
         call_sequence.extend(['-melt_rho_filename', os.path.join(eos_dir, 'density_melt.dat')])
-        call_sequence.extend(['-melt_temp_filename', os.path.join(eos_dir, 'temperature_melt.dat')])
+        call_sequence.extend(
+            ['-melt_temp_filename', os.path.join(eos_dir, 'temperature_melt.dat')]
+        )
         call_sequence.extend(['-melt_phase_boundary_filename', liquidus_ps])
         call_sequence.extend(
             ['-melt_log10visc', '%.6e' % float(config.interior_energetics.melt_log10visc)]
@@ -957,7 +969,9 @@ def _try_spider(
         call_sequence.extend(
             ['-solid_dTdPs_filename', os.path.join(eos_dir, 'adiabat_temp_grad_solid.dat')]
         )
-        call_sequence.extend(['-solid_rho_filename', os.path.join(eos_dir, 'density_solid.dat')])
+        call_sequence.extend(
+            ['-solid_rho_filename', os.path.join(eos_dir, 'density_solid.dat')]
+        )
         call_sequence.extend(
             ['-solid_temp_filename', os.path.join(eos_dir, 'temperature_solid.dat')]
         )
@@ -990,24 +1004,32 @@ def _try_spider(
     else:
         # Adams-Williamson EOS parameters from fitting PREM lower mantle (Earth)
         call_sequence.extend(
-            ['-adams_williamson_rhos',
-             '%.12e' % float(config.interior_energetics.adams_williamson_rhos)]
+            [
+                '-adams_williamson_rhos',
+                '%.12e' % float(config.interior_energetics.adams_williamson_rhos),
+            ]
         )
         call_sequence.extend(
-            ['-adams_williamson_beta',
-             '%.12e' % float(config.interior_energetics.adams_williamson_beta)]
+            [
+                '-adams_williamson_beta',
+                '%.12e' % float(config.interior_energetics.adams_williamson_beta),
+            ]
         )
 
     # eddy diffusivity
     # if negative, this value is adopted (units m^2/s)
     # if positive, this value is used to scale the internally calculated eddy diffusivity
     call_sequence.extend(
-        ['-eddy_diffusivity_thermal',
-         '%.6e' % float(config.interior_energetics.eddy_diffusivity_thermal)]
+        [
+            '-eddy_diffusivity_thermal',
+            '%.6e' % float(config.interior_energetics.eddy_diffusivity_thermal),
+        ]
     )
     call_sequence.extend(
-        ['-eddy_diffusivity_chemical',
-         '%.6e' % float(config.interior_energetics.eddy_diffusivity_chemical)]
+        [
+            '-eddy_diffusivity_chemical',
+            '%.6e' % float(config.interior_energetics.eddy_diffusivity_chemical),
+        ]
     )
 
     # Phase-dependent eddy diffusivity floor
@@ -1338,7 +1360,8 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
             if cp_s_arr.shape != interior_o.temp.shape:
                 log.warning(
                     'SPIDER cp_s shape %s != temp_s shape %s, ignoring',
-                    cp_s_arr.shape, interior_o.temp.shape,
+                    cp_s_arr.shape,
+                    interior_o.temp.shape,
                 )
                 cp_s_arr = None
         except (KeyError, AttributeError, Exception):

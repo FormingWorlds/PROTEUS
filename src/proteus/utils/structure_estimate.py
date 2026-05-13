@@ -13,6 +13,7 @@ Only the P_cmb estimate is exposed here; the full radial profiles still
 live in ``proteus.interior_struct.dummy`` because they're only consumed
 by the dummy structure module.
 """
+
 from __future__ import annotations
 
 import logging
@@ -60,13 +61,9 @@ def iron_fractions(
         If ``core_frac`` is not in (0, 1) or ``core_frac_mode`` is unknown.
     """
     if not 0.0 < core_frac < 1.0:
-        raise ValueError(
-            f'core_frac must be in (0, 1); got {core_frac!r}'
-        )
+        raise ValueError(f'core_frac must be in (0, 1); got {core_frac!r}')
     if core_frac_mode not in ('mass', 'radius'):
-        raise ValueError(
-            f"core_frac_mode must be 'mass' or 'radius'; got {core_frac_mode!r}"
-        )
+        raise ValueError(f"core_frac_mode must be 'mass' or 'radius'; got {core_frac_mode!r}")
 
     m_fe = 55.845
     m_mg = 24.305
@@ -127,9 +124,7 @@ def estimate_P_cmb_NL20(
         On non-positive mass or invalid ``core_frac`` / ``core_frac_mode``.
     """
     if mass_tot_M_earth <= 0:
-        raise ValueError(
-            f'mass_tot_M_earth must be > 0; got {mass_tot_M_earth!r}'
-        )
+        raise ValueError(f'mass_tot_M_earth must be > 0; got {mass_tot_M_earth!r}')
 
     x_cmf, x_fe, _ = iron_fractions(core_frac, core_frac_mode, fe_mantle)
     M_p = mass_tot_M_earth * M_earth

@@ -102,7 +102,9 @@ class Orbit:
     """
 
     # Tidal heating modules
-    module: str | None = field(default='none', validator=in_((None, 'dummy', 'lovepy')), converter=none_if_none)
+    module: str | None = field(
+        default='none', validator=in_((None, 'dummy', 'lovepy')), converter=none_if_none
+    )
 
     # Planet initial orbital parameter
     semimajoraxis: float = field(default=1.0, validator=gt(0))
@@ -111,7 +113,7 @@ class Orbit:
         validator=(
             ge(0),
             lt(1),
-        )
+        ),
     )
 
     # Climate parameters set by rotation of planet
@@ -120,7 +122,7 @@ class Orbit:
         validator=(
             ge(0),
             lt(90),
-        )
+        ),
     )
     s0_factor: float = field(default=0.375, validator=gt(0))
 
