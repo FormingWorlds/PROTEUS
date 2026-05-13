@@ -707,6 +707,15 @@ def GetHelpfileKeys():
         keys.append(e + '_kg_liquid')   # mass in liquid mantle [kg]
         keys.append(e + '_kg_total')    # mass in whole planet [kg]
 
+    # element mass ratios in atmosphere
+    for e1 in element_list:
+        for e2 in element_list:
+            # do not add reversed ratios
+            if (e1 == e2) or (f'{e1}/{e2}_atm' in keys):
+                continue
+            # add ratio of e2 to e1 (e.g. C/O, but not O/C)
+            keys.append(f'{e2}/{e1}_atm')
+
     # Atmospheric escape
     keys.append('p_xuv')                # pressure of XUV absorption [bar]
     keys.append('R_xuv')                # radius of XUV absorption [m]
