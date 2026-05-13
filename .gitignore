@@ -23,6 +23,7 @@ output
 output_files/*
 slurm*.out
 *.pkl
+new.log
 
 # Development installations
 fwl_data
