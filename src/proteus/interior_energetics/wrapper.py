@@ -1449,7 +1449,17 @@ def run_interior(
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
             hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
-            hf_row['F_int'] = max(1.0e-8, min(hf_row['F_int'], F_int_prev))
+            hf_row['F_int'] = min(hf_row['F_int'], F_int_prev)
+
+        # F_int positivity floor under prevent_warming, applied for all
+        # ic values (not just ic == 2). SPIDER's JSON output can produce
+        # a slightly-negative F_int on the first post-restart step (ic
+        # = 1) because the thermal state is read from the previous
+        # solver epoch; the floor is what stopped a negative flux from
+        # propagating to the helpfile + atmosphere BC before this floor
+        # was relocated out of ReadSPIDER in the 7g commit.
+        if _prevent_warming_clamp_active(config):
+            hf_row['F_int'] = max(1.0e-8, hf_row['F_int'])
 
         # Do not allow massive increases to T_surf or T_magma
         if config.interior_energetics.module == 'boundary':

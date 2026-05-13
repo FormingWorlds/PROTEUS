@@ -1649,3 +1649,63 @@ def test_calliope_nguess_nsolve_reject_zero_or_negative():
         Calliope(nguess=0)
     with pytest.raises(ValueError):
         Calliope(nsolve=-5)
+
+
+@pytest.mark.unit
+def test_run_interior_F_int_floor_fires_on_ic1_restart_when_prevent_warming():
+    """Regression for the F_int floor relocation (7g audit).
+
+    Before the 7g commit, ReadSPIDER applied F_int = max(1e-8, F_int)
+    whenever planet.prevent_warming was True, with no ic gate. The 7g
+    relocation placed the floor inside the ``prevent_warming AND ic==2``
+    block, so a SPIDER restart (ic = 1) that returned a slightly-
+    negative F_int would silently propagate the negative flux to the
+    helpfile and the atmosphere boundary condition.
+
+    The fix splits the limiter into two stages: the previous-value
+    clamp stays gated on ic == 2 (it requires hf_all.iloc[-1] to be a
+    meaningful "previous" row), but the positivity floor applies for
+    any ic >= 0 when prevent_warming is enabled.
+    """
+    config = _make_run_interior_config(prevent_warming=True)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    # Dummy backend returns a tiny negative F_int (simulates the
+    # SPIDER post-restart heat-pump artefact).
+    out = {
+        'T_magma': 3000.0,
+        'T_surf': 2800.0,
+        'Phi_global': 0.4,
+        'F_int': -1.0e-3,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    _run_interior_with_dummy(config, hf_all, hf_row, ic=1, output=out)
+
+    # Floor fires even on ic == 1 because prevent_warming is enabled.
+    assert hf_row['F_int'] == pytest.approx(1.0e-8)
+
+
+@pytest.mark.unit
+def test_run_interior_F_int_floor_skipped_when_prevent_warming_off():
+    """The floor is gated on prevent_warming. When that flag is False
+    a slightly-negative F_int must pass through (so the user sees the
+    raw solver output and can diagnose it, instead of seeing a silent
+    1e-8 floor)."""
+    config = _make_run_interior_config(prevent_warming=False)
+    hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    out = {
+        'T_magma': 3000.0,
+        'T_surf': 2800.0,
+        'Phi_global': 0.4,
+        'F_int': -1.0e-3,
+        'M_mantle': 4.0e24,
+        'M_mantle_liquid': 1.0e24,
+        'M_mantle_solid': 3.0e24,
+        'M_core': 2.0e24,
+    }
+    _run_interior_with_dummy(config, hf_all, hf_row, ic=2, output=out)
+
+    # Floor does NOT fire; negative F_int survives.
+    assert hf_row['F_int'] == pytest.approx(-1.0e-3)
