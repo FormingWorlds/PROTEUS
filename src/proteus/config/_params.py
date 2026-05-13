@@ -99,6 +99,19 @@ class TimeStepParams:
         Absolute tolerance on time-step size (adaptive method) [yr].
     rtol: float
         Relative tolerance on time-step size (adaptive method) [dimensionless].
+    scale_incr: float
+        Scale factor to grow time-step on a successful adaptive step
+        [dimensionless, must be >1].
+    scale_decr: float
+        Scale factor to shrink time-step on a rejected adaptive step
+        [dimensionless, in (0, 1)].
+    window: int
+        Number of previous steps to consider for adaptive-method comparison
+        [dimensionless].
+    maximum_rel: float
+        Maximum time-step size as a fraction of the current simulation time
+        [dimensionless]. The effective per-step cap is
+        ``min(maximum, maximum_rel * Time)``; default 1.0 disables the cap.
     mushy_maximum: float
         Maximum time-step size [yr] during the mushy-zone transition
         (``phi_crit < Phi_global < mushy_upper``). Tighter than
@@ -136,10 +149,14 @@ class TimeStepParams:
     propconst: float = field(default=52.0, validator=gt(0))
     atol: float = field(default=0.02, validator=gt(0))
     rtol: float = field(default=0.10, validator=gt(0))
+    scale_incr: float = field(default=1.6, validator=gt(1))
+    scale_decr: float = field(default=0.8, validator=(gt(0), lt(1)))
+    window: int = field(default=3, validator=ge(1))
 
     minimum: float = field(default=1e4, validator=gt(0))
     minimum_rel: float = field(default=1e-5, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
+    maximum_rel: float = field(default=1.0, validator=gt(0))
     initial: float = field(default=3e1, validator=gt(0))
 
     # Stiffness-aware adaptive time-stepping extensions.
