@@ -22,7 +22,7 @@ import pandas as pd
 from proteus import Proteus
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.config import read_config_object
-from proteus.interior.spider import read_jsons
+from proteus.interior_energetics.spider import read_jsons
 from proteus.utils.constants import R_earth, vol_list
 from proteus.utils.plot import get_colour, latexify
 
