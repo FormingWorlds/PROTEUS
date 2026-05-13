@@ -16,6 +16,17 @@ def warn_if_dummy(instance, attribute, value):
         raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
 
+def valid_rayleigh(instance, attribute, value):
+    if not value:
+        return
+
+    if instance.module == 'dummy':
+        raise ValueError('Dummy atmos_clim is incompatible with Rayleigh scattering')
+
+    if instance.module == 'agni' and (str(instance.agni.spectral_file).lower() == 'greygas'):
+        raise ValueError('AGNI grey gas is incompatible with Rayleigh scattering')
+
+
 def check_overlap(instance, attribute, value):
     _overlaps = ('ro', 'ee', 'rorr')
     if value not in _overlaps:
@@ -50,10 +61,20 @@ def valid_agni(instance, attribute, value):
         )
 
     # set spectral files?
-    if not instance.spectral_group:
-        raise ValueError('Must set atmos_clim.spectral_group')
-    if not instance.spectral_bands:
-        raise ValueError('Must set atmos_clim.spectral_bands')
+    if instance.agni.spectral_file is not None:
+        if instance.agni.spectral_file.lower() == 'greygas':
+            # grey gas: no SOCRATES spectral file needed
+            pass
+        elif not os.path.isfile(instance.agni.spectral_file):
+            raise FileNotFoundError(
+                f'AGNI spectral file not found at specified path: {instance.agni.spectral_file}'
+            )
+    else:
+        # provided by group and bands at parent level
+        if not instance.spectral_group:
+            raise ValueError('Must set atmos_clim.spectral_group')
+        if not instance.spectral_bands:
+            raise ValueError('Must set atmos_clim.spectral_bands')
 
     # fastchem installed?
     if instance.agni.chemistry == 'eq':
@@ -136,6 +157,13 @@ class Agni:
         Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
     ls_default: int
         Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
+    spectral_file: str | None
+        Path to AGNI spectral file, or 'greygas' to enable the grey-gas RT scheme.
+        If None, will use atmos_clim.spectral_group and atmos_clim.spectral_bands.
+    grey_opacity_lw: float
+        Grey longwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
+    grey_opacity_sw: float
+        Grey shortwave opacity [m2 kg-1], used when `spectral_file='greygas'`.
     """
 
     verbosity: int = field(
@@ -200,6 +228,9 @@ class Agni:
             ),
         },
     )
+    spectral_file: str | None = field(default=None, converter=none_if_none)
+    grey_opacity_lw: float = field(default=1e1, validator=gt(0))
+    grey_opacity_sw: float = field(default=1e-4, validator=gt(0))
 
 
 def valid_janus(instance, attribute, value):
@@ -357,7 +388,7 @@ class AtmosClim:
     cloud_alpha: float = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo: float = field(default=0.1, validator=(ge(0), le(1)))
     albedo_pl = field(default=0.0, validator=valid_albedo)
-    rayleigh: bool = field(default=True, validator=warn_if_dummy)
+    rayleigh: bool = field(default=True, validator=valid_rayleigh)
     tmp_minimum: float = field(default=0.5, validator=gt(0))
 
     @property

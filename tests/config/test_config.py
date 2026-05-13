@@ -1145,6 +1145,7 @@ def test_atmos_clim_agni_spectral_group_required():
             latent_heat=False,
             rainout=True,
             chemistry='none',
+            spectral_file=None,
         ),
         surf_state='skin',
     )
@@ -1169,6 +1170,7 @@ def test_atmos_clim_agni_spectral_bands_required():
             latent_heat=False,
             rainout=True,
             chemistry='none',
+            spectral_file=None,
         ),
         surf_state='skin',
     )
@@ -1193,6 +1195,7 @@ def test_atmos_clim_agni_valid_complete_config():
             latent_heat=False,
             rainout=True,
             chemistry='none',
+            spectral_file=None,
         ),
         surf_state='skin',
     )
