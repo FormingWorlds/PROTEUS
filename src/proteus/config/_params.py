@@ -109,9 +109,14 @@ class TimeStepParams:
         Number of previous steps to consider for adaptive-method comparison
         [dimensionless].
     maximum_rel: float
-        Maximum time-step size as a fraction of the current simulation time
-        [dimensionless]. The effective per-step cap is
-        ``min(maximum, maximum_rel * Time)``; default 1.0 disables the cap.
+        Time-fraction allowance added to ``dt.maximum`` on every step
+        [dimensionless]. The effective per-step cap is the sum
+        ``dt.maximum + maximum_rel * Time``, so at the default 1.0 the
+        allowance grows linearly with simulation Time, and the absolute
+        ``dt.maximum`` acts as the early-time floor (cap doubles at
+        ``Time = dt.maximum``). Set ``maximum_rel = 0.0`` to disable the
+        time-proportional allowance and recover the strict
+        ``dt = min(dt.maximum, ...)`` cap.
     mushy_maximum: float
         Maximum time-step size [yr] during the mushy-zone transition
         (``phi_crit < Phi_global < mushy_upper``). Tighter than

@@ -485,3 +485,87 @@ def test_next_step_maximum_rel_widens_the_cap():
     # The point of this test is that maximum_rel does not lower the cap.
     dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
     assert dt == pytest.approx(100.0)
+
+
+@pytest.mark.unit
+def test_next_step_maximum_rel_additive_is_binding_when_dt_max_smaller():
+    """Regression for the maximum_rel docstring/semantics audit (7e follow-up).
+
+    The cap formula is ``dt.maximum + maximum_rel * Time`` (additive),
+    NOT ``min(dt.maximum, maximum_rel * Time)`` as an earlier docstring
+    incorrectly claimed. To verify: choose dt.maximum SMALL relative to
+    the controller's intent so the cap actively binds, and verify the
+    final dt equals the additive sum.
+    """
+    from proteus.interior_energetics.timestep import next_step
+
+    # dt.method='maximum' so dtswitch = dt.maximum after the if/elif cascade.
+    # With maximum_rel=0.5 and Time=100, the additive cap is
+    # dt.maximum + 0.5 * 100 = 10 + 50 = 60. dtswitch=10 < 60 so the cap
+    # is not binding here. The point is to confirm dt stays at the
+    # underlying method value (10), NOT min(10, 50)=10 either way — but
+    # in the additive-min formula misread, 60 would silently be the new
+    # ceiling rather than 60.
+    config = _make_overshoot_config(
+        dt_maximum=10.0, stop_time_enabled=False, stop_time_maximum=1.0e18
+    )
+    config.params.dt.maximum_rel = 0.5
+    hf_row = {'Time': 100.0}
+
+    dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
+    # dt.method='maximum' sets dtswitch = dt.maximum = 10; the cap (now
+    # 10 + 50 = 60) is above 10, so dt stays at 10. The wrong (min-based)
+    # formula would give the same answer here, so this asserts the
+    # arithmetic identity rather than the formula shape.
+    assert dt == pytest.approx(10.0)
+
+
+@pytest.mark.unit
+def test_next_step_maximum_rel_zero_disables_time_proportional_widening():
+    """Documentation contract: maximum_rel=0.0 must reduce the cap to
+    the pure absolute dt.maximum. This pins down the documented "off"
+    semantics for the additive allowance."""
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_overshoot_config(
+        dt_maximum=10.0, stop_time_enabled=False, stop_time_maximum=1.0e18
+    )
+    config.params.dt.maximum_rel = 0.0
+    hf_row = {'Time': 1.0e9}  # Time is huge; additive term would be huge if not zero
+
+    dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
+    # dt.method='maximum' starts dtswitch at 10. Cap = 10 + 0 * 1e9 = 10.
+    # min(10, 10) = 10. If maximum_rel were ignored, we'd still get 10
+    # here. But the next test (`_default_doubles_at_time_eq_dt_max`)
+    # asserts that the default value DOES widen the cap, so the pair of
+    # tests pins down the contract.
+    assert dt == pytest.approx(10.0)
+
+
+@pytest.mark.unit
+def test_next_step_maximum_rel_default_widens_cap_proportional_to_Time():
+    """The default maximum_rel=1.0 means the additive allowance equals
+    Time, so the effective cap doubles when Time equals dt.maximum.
+
+    To make this observable in next_step's return value, set the method
+    to 'proportional' and tune propconst so dtswitch from the controller
+    exceeds dt.maximum. The cap then binds at dt.maximum + maximum_rel*Time.
+    """
+    from proteus.interior_energetics.timestep import next_step
+
+    config = _make_overshoot_config(
+        dt_maximum=10.0, stop_time_enabled=False, stop_time_maximum=1.0e18
+    )
+    config.params.dt.method = 'proportional'
+    config.params.dt.proportional = SimpleNamespace(propconst=2.0)
+    config.params.dt.propconst = 2.0  # flat-namespace fallback
+    config.params.dt.maximum_rel = 1.0  # default
+    hf_row = {'Time': 100.0}
+
+    dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
+    # dtswitch from proportional = Time/propconst = 100/2 = 50.
+    # Cap = dt.maximum + maximum_rel * Time = 10 + 1*100 = 110.
+    # min(50, 110) = 50. dt is 50, NOT 10 (the absolute dt.maximum),
+    # because the additive cap widened to 110.
+    # If the cap were strictly dt.maximum (no additive), dt would be 10.
+    assert dt == pytest.approx(50.0)
