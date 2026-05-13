@@ -297,12 +297,8 @@ def _write_synthetic_zalmoxis_output(
     T = np.linspace(4000.0, 2000.0, n_layers)
     with open(path, 'w') as f:
         for i in range(n_layers):
-            f.write(
-                f'{r[i]:.17e} {P[i]:.17e} {rho[i]:.17e} {g[i]:.17e} {T[i]:.17e}\n'
-            )
-    shells = (4.0 / 3.0) * np.pi * (
-        r[1:] ** 3 - r[:-1] ** 3
-    ) * 0.5 * (rho[1:] + rho[:-1])
+            f.write(f'{r[i]:.17e} {P[i]:.17e} {rho[i]:.17e} {g[i]:.17e} {T[i]:.17e}\n')
+    shells = (4.0 / 3.0) * np.pi * (r[1:] ** 3 - r[:-1] ** 3) * 0.5 * (rho[1:] + rho[:-1])
     return float(r[-1]), float(np.sum(shells))
 
 
@@ -374,9 +370,7 @@ def test_validate_zalmoxis_output_schema_mass_mismatch(tmp_path):
 
     # Caller can pass a tighter tolerance and recover the strict check.
     with pytest.raises(RuntimeError, match='mantle mass'):
-        validate_zalmoxis_output_schema(
-            output_path, hf_row_3pct, rtol_mass=1e-3
-        )
+        validate_zalmoxis_output_schema(output_path, hf_row_3pct, rtol_mass=1e-3)
 
 
 @pytest.mark.unit

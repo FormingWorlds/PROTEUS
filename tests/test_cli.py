@@ -509,29 +509,27 @@ def test_should_apply_deterministic_decision_table():
     sentinel = cli._PROTEUS_DETERMINISTIC_SENTINEL
 
     # (a) flag present, sentinel unset → apply
-    assert cli._should_apply_deterministic(
-        ['proteus', 'start', '--deterministic'], {}
-    ) is True
+    assert cli._should_apply_deterministic(['proteus', 'start', '--deterministic'], {}) is True
 
     # (b) flag present, sentinel already set → do NOT re-apply (would loop)
-    assert cli._should_apply_deterministic(
-        ['proteus', 'start', '--deterministic'], {sentinel: '1'}
-    ) is False
+    assert (
+        cli._should_apply_deterministic(
+            ['proteus', 'start', '--deterministic'], {sentinel: '1'}
+        )
+        is False
+    )
 
     # (c) flag absent, sentinel unset → do nothing
-    assert cli._should_apply_deterministic(
-        ['proteus', 'start', '-c', 'cfg.toml'], {}
-    ) is False
+    assert cli._should_apply_deterministic(['proteus', 'start', '-c', 'cfg.toml'], {}) is False
 
     # (d) flag absent, sentinel set (orphaned env) → do nothing
-    assert cli._should_apply_deterministic(
-        ['proteus', 'start'], {sentinel: '1'}
-    ) is False
+    assert cli._should_apply_deterministic(['proteus', 'start'], {sentinel: '1'}) is False
 
     # Unicode flag-lookalike must NOT trigger (substring vs membership)
-    assert cli._should_apply_deterministic(
-        ['proteus', 'start', '--deterministic-mode'], {}
-    ) is False
+    assert (
+        cli._should_apply_deterministic(['proteus', 'start', '--deterministic-mode'], {})
+        is False
+    )
 
 
 @pytest.mark.unit

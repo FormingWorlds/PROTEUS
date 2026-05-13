@@ -276,8 +276,9 @@ def test_dummy_outgas_species_mass_conservation():
         for elem, (species, mass_frac) in _ELEMENT_TO_SPECIES.items():
             if species == s:
                 expected_total = float(hf_row.get(f'{elem}_kg_total', 0.0)) / mass_frac
-                assert total == pytest.approx(expected_total, rel=1e-10), \
+                assert total == pytest.approx(expected_total, rel=1e-10), (
                     f'{s} total does not match element budget'
+                )
 
 
 @pytest.mark.unit
@@ -290,8 +291,9 @@ def test_dummy_outgas_element_reservoir_consistency():
         e_atm = hf_row[f'{elem}_kg_atm']
         e_liquid = hf_row[f'{elem}_kg_liquid']
         e_total = hf_row[f'{elem}_kg_total']
-        assert e_atm + e_liquid == pytest.approx(e_total, rel=1e-10), \
+        assert e_atm + e_liquid == pytest.approx(e_total, rel=1e-10), (
             f'{elem} element reservoir not conserved'
+        )
         assert e_atm > 0.0
         assert e_liquid > 0.0
 

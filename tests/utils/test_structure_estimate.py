@@ -13,6 +13,7 @@ differences.
 The reference values used here come from a NumPy reproduction of the
 NL20 algebra; if those constants ever change the assertions fail loudly.
 """
+
 from __future__ import annotations
 
 import math
@@ -32,6 +33,7 @@ class TestIronFractions:
 
     def test_mass_mode_returns_input_cmf(self):
         from proteus.utils.structure_estimate import iron_fractions
+
         x_cmf, x_fe, x_fem = iron_fractions(0.325, 'mass')
         assert x_cmf == pytest.approx(0.325, rel=1e-12)
         assert 0.0 < x_fem < 1.0
@@ -39,11 +41,13 @@ class TestIronFractions:
 
     def test_radius_mode_collapses_via_power_law(self):
         from proteus.utils.structure_estimate import iron_fractions
+
         x_cmf, _, _ = iron_fractions(0.55, 'radius')
         assert x_cmf == pytest.approx(0.55**2.5, rel=1e-12)
 
     def test_radius_mode_clamps_to_window(self):
         from proteus.utils.structure_estimate import iron_fractions
+
         x_cmf_lo, _, _ = iron_fractions(0.05, 'radius')
         x_cmf_hi, _, _ = iron_fractions(0.99, 'radius')
         assert x_cmf_lo == pytest.approx(0.01, rel=1e-12)
@@ -52,11 +56,13 @@ class TestIronFractions:
     @pytest.mark.parametrize('bad_cf', [-0.1, 0.0, 1.0, 1.5])
     def test_invalid_core_frac_raises(self, bad_cf):
         from proteus.utils.structure_estimate import iron_fractions
+
         with pytest.raises(ValueError):
             iron_fractions(bad_cf, 'mass')
 
     def test_unknown_mode_raises(self):
         from proteus.utils.structure_estimate import iron_fractions
+
         with pytest.raises(ValueError):
             iron_fractions(0.325, 'volume')
 
@@ -65,6 +71,7 @@ class TestIronFractions:
         else equal. If x_fe collapses to a constant the formula is wrong.
         """
         from proteus.utils.structure_estimate import iron_fractions
+
         _, x_fe_low, _ = iron_fractions(0.20, 'mass')
         _, x_fe_high, _ = iron_fractions(0.50, 'mass')
         assert x_fe_high > x_fe_low + 0.20
@@ -86,6 +93,7 @@ class TestEstimatePCMB:
         between the analytical fit and the seismic reference.
         """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         P_cmb = estimate_P_cmb_NL20(1.0, 0.325, 'mass')
         # Discriminating: must be close to Earth's CMB pressure, not 0
         # and not stratospherically high.
@@ -102,11 +110,13 @@ class TestEstimatePCMB:
         should land in the 350-450 GPa band.
         """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         P_cmb = estimate_P_cmb_NL20(3.0, 0.325, 'mass')
         assert 300e9 < P_cmb < 500e9
 
     def test_super_earth_5me_continues_scaling(self):
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         P_cmb = estimate_P_cmb_NL20(5.0, 0.325, 'mass')
         assert 500e9 < P_cmb < 800e9
 
@@ -117,6 +127,7 @@ class TestEstimatePCMB:
         smooth here.
         """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         P_cmb = estimate_P_cmb_NL20(10.0, 0.325, 'mass')
         assert 0.8e12 < P_cmb < 2.0e12
 
@@ -126,13 +137,14 @@ class TestEstimatePCMB:
         exact NL20 fit constants.
         """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         masses = [0.5, 1.0, 2.0, 3.0, 5.0, 10.0]
         Ps = [estimate_P_cmb_NL20(m, 0.325, 'mass') for m in masses]
         for i in range(1, len(Ps)):
             assert Ps[i] > Ps[i - 1], (
                 f'NL20 P_cmb not monotonic in mass: '
-                f'M={masses[i-1]} -> {Ps[i-1]/1e9:.1f} GPa, '
-                f'M={masses[i]} -> {Ps[i]/1e9:.1f} GPa'
+                f'M={masses[i - 1]} -> {Ps[i - 1] / 1e9:.1f} GPa, '
+                f'M={masses[i]} -> {Ps[i] / 1e9:.1f} GPa'
             )
 
     def test_p_cmb_monotonic_decreasing_in_cmf_at_fixed_mass(self):
@@ -145,17 +157,19 @@ class TestEstimatePCMB:
         this trend.
         """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         cmfs = [0.20, 0.30, 0.40, 0.50]
         Ps = [estimate_P_cmb_NL20(1.0, c, 'mass') for c in cmfs]
         for i in range(1, len(Ps)):
             assert Ps[i] < Ps[i - 1], (
                 f'NL20 P_cmb not monotonically decreasing in CMF at '
-                f'fixed mass: CMF={cmfs[i-1]} -> {Ps[i-1]/1e9:.1f} GPa, '
-                f'CMF={cmfs[i]} -> {Ps[i]/1e9:.1f} GPa'
+                f'fixed mass: CMF={cmfs[i - 1]} -> {Ps[i - 1] / 1e9:.1f} GPa, '
+                f'CMF={cmfs[i]} -> {Ps[i] / 1e9:.1f} GPa'
             )
 
     def test_zero_or_negative_mass_raises(self):
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         with pytest.raises(ValueError):
             estimate_P_cmb_NL20(0.0, 0.325, 'mass')
         with pytest.raises(ValueError):
@@ -163,6 +177,7 @@ class TestEstimatePCMB:
 
     def test_invalid_core_frac_raises(self):
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         with pytest.raises(ValueError):
             estimate_P_cmb_NL20(1.0, 1.0, 'mass')
 
@@ -171,6 +186,7 @@ class TestEstimatePCMB:
         for the entire calibrated band.
         """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
+
         for m in (0.5, 1.0, 3.0, 10.0):
             P = estimate_P_cmb_NL20(m, 0.325, 'mass')
             assert isinstance(P, float)

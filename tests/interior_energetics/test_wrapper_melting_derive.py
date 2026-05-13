@@ -9,6 +9,7 @@ silently using WB+2018 P-S curves at runtime.
 
 See finding_2026_04_29_v2_melting_curve_mismatch.md.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -47,8 +48,7 @@ def _write_synthetic_ps_phase_table(
         for s in S_grid:
             for p in P_grid:
                 T_val = T_func(p, s)
-                f.write(f'{p / P_scale:.18e}\t{s / S_scale:.18e}\t'
-                        f'{T_val / val_scale:.18e}\n')
+                f.write(f'{p / P_scale:.18e}\t{s / S_scale:.18e}\t{T_val / val_scale:.18e}\n')
 
 
 def _write_pt_curve(path: Path, P: np.ndarray, T: np.ndarray) -> None:
@@ -101,7 +101,10 @@ def test_derive_ps_melting_curve_recovers_target_temperature(tmp_path):
 
     out_path = tmp_path / 'solidus_P-S.dat'
     summary = _derive_ps_melting_curve(
-        str(pt_path), str(phase_path), str(out_path), label='test_solidus',
+        str(pt_path),
+        str(phase_path),
+        str(out_path),
+        label='test_solidus',
     )
 
     assert summary['n_points'] == len(P_target)
@@ -130,6 +133,7 @@ def test_derive_ps_melting_curve_clips_above_grid(tmp_path, caplog):
 
     def T_func(p, s):
         return 1500.0 + 1.5 * s + 2e-9 * p
+
     # T_max(P) = 1500 + 1.5*3000 + 2e-9*P = 6000 + small. Pick T_target > 6500 K.
 
     phase_path = tmp_path / 'temperature_melt.dat'
@@ -144,9 +148,13 @@ def test_derive_ps_melting_curve_clips_above_grid(tmp_path, caplog):
 
     out_path = tmp_path / 'liquidus_P-S.dat'
     import logging
+
     with caplog.at_level(logging.WARNING):
         summary = _derive_ps_melting_curve(
-            str(pt_path), str(phase_path), str(out_path), label='test_clipped',
+            str(pt_path),
+            str(phase_path),
+            str(out_path),
+            label='test_clipped',
         )
     assert summary['n_clipped_above'] == len(P_target)
     assert summary['n_clipped_below'] == 0
@@ -173,10 +181,12 @@ def test_override_melting_curves_writes_files(tmp_path):
 
     eos_dir = tmp_path / 'spider_eos'
     eos_dir.mkdir()
-    _write_synthetic_ps_phase_table(eos_dir / 'temperature_solid.dat',
-                                      P_grid, S_grid, T_sol_func)
-    _write_synthetic_ps_phase_table(eos_dir / 'temperature_melt.dat',
-                                      P_grid, S_grid, T_liq_func)
+    _write_synthetic_ps_phase_table(
+        eos_dir / 'temperature_solid.dat', P_grid, S_grid, T_sol_func
+    )
+    _write_synthetic_ps_phase_table(
+        eos_dir / 'temperature_melt.dat', P_grid, S_grid, T_liq_func
+    )
 
     P_target = np.linspace(1e9, 9e11, 20)
     sol_pt = tmp_path / 'solidus_PT.dat'
@@ -185,7 +195,10 @@ def test_override_melting_curves_writes_files(tmp_path):
     _write_pt_curve(liq_pt, P_target, np.full_like(P_target, 4000.0))
 
     _override_melting_curves_from_pt(
-        str(eos_dir), str(sol_pt), str(liq_pt), label_prefix='unittest',
+        str(eos_dir),
+        str(sol_pt),
+        str(liq_pt),
+        label_prefix='unittest',
     )
 
     assert (eos_dir / 'solidus_P-S.dat').is_file()
@@ -201,8 +214,7 @@ def test_override_melting_curves_writes_files(tmp_path):
 
 
 @pytest.mark.unit
-def test_override_melting_curves_skips_when_phase_tables_missing(
-        tmp_path, caplog):
+def test_override_melting_curves_skips_when_phase_tables_missing(tmp_path, caplog):
     """If temperature_{solid,melt}.dat are absent, override is a no-op + warns."""
     eos_dir = tmp_path / 'spider_eos_empty'
     eos_dir.mkdir()
@@ -212,9 +224,13 @@ def test_override_melting_curves_skips_when_phase_tables_missing(
     _write_pt_curve(liq_pt, np.array([1e10, 1e11]), np.array([4000.0, 5000.0]))
 
     import logging
+
     with caplog.at_level(logging.WARNING):
         _override_melting_curves_from_pt(
-            str(eos_dir), str(sol_pt), str(liq_pt), label_prefix='nofiles',
+            str(eos_dir),
+            str(sol_pt),
+            str(liq_pt),
+            label_prefix='nofiles',
         )
 
     assert not (eos_dir / 'solidus_P-S.dat').is_file()

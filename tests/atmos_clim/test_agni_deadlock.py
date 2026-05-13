@@ -109,8 +109,7 @@ def test_atmos_t_converged_resets_on_success():
     assert atmos_o.converged is True
 
 
-def _frozen_step(converged, prev_state, new_state, counter, threshold,
-                 hf_all_is_none=False):
+def _frozen_step(converged, prev_state, new_state, counter, threshold, hf_all_is_none=False):
     """Replicate the deadlock counter logic from proteus.py.
 
     Mirrors the production code at proteus.py::start() (right after
@@ -207,18 +206,14 @@ def test_deadlock_counter_resets_on_phi_change_only():
     assert counter == 2
 
     # Phi changed — must reset (intentional bit-exact comparison)
-    counter, _ = _frozen_step(
-        False, base, {**base, 'Phi_global': 0.7649}, counter, threshold
-    )
+    counter, _ = _frozen_step(False, base, {**base, 'Phi_global': 0.7649}, counter, threshold)
     assert counter == 0
 
     # Same exercise with F_atm changing meaningfully (5% relative)
     counter, _ = _frozen_step(False, base, base, counter, threshold)
     counter, _ = _frozen_step(False, base, base, counter, threshold)
     assert counter == 2
-    counter, _ = _frozen_step(
-        False, base, {**base, 'F_atm': 8418.97}, counter, threshold
-    )
+    counter, _ = _frozen_step(False, base, {**base, 'F_atm': 8418.97}, counter, threshold)
     assert counter == 0
 
 
@@ -281,9 +276,7 @@ def test_deadlock_counter_first_iteration_no_prev_row():
     base = {'T_magma': 4000.0, 'Phi_global': 1.0, 'F_atm': 5e3}
 
     # AGNI fails on the first iteration but hf_all is still None
-    counter, aborted = _frozen_step(
-        False, base, base, counter, threshold, hf_all_is_none=True
-    )
+    counter, aborted = _frozen_step(False, base, base, counter, threshold, hf_all_is_none=True)
     assert counter == 0
     assert not aborted
 
@@ -464,9 +457,7 @@ def test_extract_agni_failure_reason_picks_last_attempt():
         '[error]     failure (NaN values)\n',  # attempt 2 (the latest)
     ]
     reason = _extract_agni_failure_reason(log_lines)
-    assert reason == 'nan_flux', (
-        'parser must report the latest failure marker, not the first'
-    )
+    assert reason == 'nan_flux', 'parser must report the latest failure marker, not the first'
 
 
 def test_extract_agni_failure_reason_unparsed_when_missing():

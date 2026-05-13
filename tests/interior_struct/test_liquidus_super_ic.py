@@ -25,6 +25,7 @@ Anchor values used in the tests below (from Zalmoxis melting_curves.py):
     P =   600 GPa -> T_liq ~ 8417 K   (super-Earth)
     P =     1 GPa -> T_liq ~ 1942 K   (low-pressure Belonoshko branch)
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -46,14 +47,15 @@ class TestResolveZalmoxisTemperatureMode:
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_temperature_mode,
         )
-        assert _resolve_zalmoxis_temperature_mode('liquidus_super') == \
-            'adiabatic_from_cmb'
+
+        assert _resolve_zalmoxis_temperature_mode('liquidus_super') == 'adiabatic_from_cmb'
 
     @pytest.mark.parametrize('mode', ['accretion', 'isentropic'])
     def test_accretion_isentropic_collapse_to_adiabatic(self, mode):
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_temperature_mode,
         )
+
         assert _resolve_zalmoxis_temperature_mode(mode) == 'adiabatic'
 
     @pytest.mark.parametrize(
@@ -64,6 +66,7 @@ class TestResolveZalmoxisTemperatureMode:
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_temperature_mode,
         )
+
         assert _resolve_zalmoxis_temperature_mode(mode) == mode
 
     def test_unknown_mode_passes_through_unchanged(self):
@@ -75,8 +78,11 @@ class TestResolveZalmoxisTemperatureMode:
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_temperature_mode,
         )
-        assert _resolve_zalmoxis_temperature_mode('hypothetical_future_mode') \
+
+        assert (
+            _resolve_zalmoxis_temperature_mode('hypothetical_future_mode')
             == 'hypothetical_future_mode'
+        )
 
 
 # ----------------------------------------------------------------------
@@ -104,12 +110,14 @@ class TestResolveZalmoxisCMBTemperature:
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
         )
-        cfg = _make_minimal_config(tcmb_init=7199.0,
-                                    temperature_mode='adiabatic_from_cmb')
+
+        cfg = _make_minimal_config(tcmb_init=7199.0, temperature_mode='adiabatic_from_cmb')
         # hf_row carries a P_cmb value but it must NOT be consulted in
         # non-liquidus_super modes.
         T = _resolve_zalmoxis_cmb_temperature(
-            cfg, {'P_cmb': 135e9}, 'adiabatic_from_cmb',
+            cfg,
+            {'P_cmb': 135e9},
+            'adiabatic_from_cmb',
         )
         assert T == pytest.approx(7199.0)
 
@@ -123,9 +131,12 @@ class TestResolveZalmoxisCMBTemperature:
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
         )
+
         cfg = _make_minimal_config(delta_T_super=500.0)
         T = _resolve_zalmoxis_cmb_temperature(
-            cfg, {'P_cmb': 135e9}, 'liquidus_super',
+            cfg,
+            {'P_cmb': 135e9},
+            'liquidus_super',
         )
         # Fei+2021: 6000 * (135/140)**0.26 ~ 5935 K
         T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
@@ -138,9 +149,12 @@ class TestResolveZalmoxisCMBTemperature:
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
         )
+
         cfg = _make_minimal_config(delta_T_super=0.0)
         T = _resolve_zalmoxis_cmb_temperature(
-            cfg, {'P_cmb': 135e9}, 'liquidus_super',
+            cfg,
+            {'P_cmb': 135e9},
+            'liquidus_super',
         )
         T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
         assert T == pytest.approx(T_liq_expected, rel=1e-9)
@@ -153,15 +167,20 @@ class TestResolveZalmoxisCMBTemperature:
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
         )
+
         cfg = _make_minimal_config(delta_T_super=500.0)
         T = _resolve_zalmoxis_cmb_temperature(
-            cfg, {'P_cmb': 400e9}, 'liquidus_super',
+            cfg,
+            {'P_cmb': 400e9},
+            'liquidus_super',
         )
         T_liq_expected = 6000.0 * (400.0 / 140.0) ** 0.26
         assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
         # Discriminator: 400 GPa branch must be strictly hotter than 135 GPa.
         T_135 = _resolve_zalmoxis_cmb_temperature(
-            cfg, {'P_cmb': 135e9}, 'liquidus_super',
+            cfg,
+            {'P_cmb': 135e9},
+            'liquidus_super',
         )
         assert T > T_135
 
@@ -177,9 +196,12 @@ class TestResolveZalmoxisCMBTemperature:
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
         )
+
         cfg = _make_minimal_config(delta_T_super=500.0)
         T = _resolve_zalmoxis_cmb_temperature(
-            cfg, {'P_cmb': 1e9}, 'liquidus_super',
+            cfg,
+            {'P_cmb': 1e9},
+            'liquidus_super',
         )
         T_liq_expected = 1831.0 * (1.0 + 1.0 / 4.6) ** 0.33
         assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
@@ -187,8 +209,9 @@ class TestResolveZalmoxisCMBTemperature:
         T_fei_branch = 6000.0 * (1.0 / 140.0) ** 0.26 + 500.0
         assert abs(T - T_fei_branch) > 100.0
 
-    @pytest.mark.parametrize('hf_row', [None, {}, {'P_cmb': None},
-                                         {'P_cmb': 0.0}, {'P_cmb': -1e9}])
+    @pytest.mark.parametrize(
+        'hf_row', [None, {}, {'P_cmb': None}, {'P_cmb': 0.0}, {'P_cmb': -1e9}]
+    )
     def test_liquidus_super_fallback_to_NL20_at_1me(self, hf_row):
         """When hf_row lacks a usable P_cmb at 1 M_Earth, fall back to
         the Noack & Lasbleis (2020) mass-aware estimate (~142 GPa for
@@ -222,14 +245,20 @@ class TestResolveZalmoxisCMBTemperature:
             f'NL20 mass-aware T={T_liq_expected + 500.0:.1f}, legacy T={T_legacy:.1f}'
         )
 
-    @pytest.mark.parametrize('mass_tot,low_GPa,high_GPa', [
-        (1.0, 130, 160),
-        (3.0, 350, 480),
-        (5.0, 550, 800),
-        (10.0, 900, 2000),
-    ])
+    @pytest.mark.parametrize(
+        'mass_tot,low_GPa,high_GPa',
+        [
+            (1.0, 130, 160),
+            (3.0, 350, 480),
+            (5.0, 550, 800),
+            (10.0, 900, 2000),
+        ],
+    )
     def test_liquidus_super_fallback_scales_with_mass(
-        self, mass_tot, low_GPa, high_GPa,
+        self,
+        mass_tot,
+        low_GPa,
+        high_GPa,
     ):
         """Super-Earth check: when hf_row['P_cmb'] is missing, the
         fallback P_cmb must scale with planet mass (3 M_E -> ~400 GPa,
@@ -252,7 +281,7 @@ class TestResolveZalmoxisCMBTemperature:
         P_expected = estimate_P_cmb_NL20(mass_tot, 0.325, 'mass')
         # The fallback P_cmb must land in the documented physical band.
         assert low_GPa * 1e9 < P_expected < high_GPa * 1e9, (
-            f'NL20 P_cmb at {mass_tot} M_E is {P_expected/1e9:.1f} GPa, '
+            f'NL20 P_cmb at {mass_tot} M_E is {P_expected / 1e9:.1f} GPa, '
             f'outside the expected [{low_GPa}, {high_GPa}] GPa band'
         )
         T_liq_expected = 6000.0 * (P_expected / 1e9 / 140.0) ** 0.26
@@ -329,8 +358,8 @@ def _make_hf_row(P_cmb=None):
 
 def _stub_target_surface_pressure(monkeypatch):
     import proteus.interior_struct.zalmoxis as _mod
-    monkeypatch.setattr(_mod, '_get_target_surface_pressure',
-                        lambda *a, **kw: 1.0e5)
+
+    monkeypatch.setattr(_mod, '_get_target_surface_pressure', lambda *a, **kw: 1.0e5)
 
 
 class TestLoadZalmoxisConfigurationLiquidusSuper:
@@ -339,6 +368,7 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
     def test_temperature_mode_remapped_for_zalmoxis(self, monkeypatch):
         """PROTEUS liquidus_super -> Zalmoxis adiabatic_from_cmb."""
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
         config = _make_full_mock_config(temperature_mode='liquidus_super')
         _stub_target_surface_pressure(monkeypatch)
         cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=135e9))
@@ -357,6 +387,7 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         tcmb_init verbatim would fail this test.
         """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
         config = _make_full_mock_config(
             temperature_mode='liquidus_super',
             delta_T_super=500.0,
@@ -366,7 +397,8 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         cp = load_zalmoxis_configuration(config, _make_hf_row(P_cmb=135e9))
         T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
         assert cp['cmb_temperature'] == pytest.approx(
-            T_liq_expected + 500.0, rel=1e-9,
+            T_liq_expected + 500.0,
+            rel=1e-9,
         )
         assert cp['cmb_temperature'] != pytest.approx(6000.0)
 
@@ -375,6 +407,7 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         config.planet.tcmb_init unchanged.
         """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
         config = _make_full_mock_config(
             temperature_mode='adiabatic_from_cmb',
             tcmb_init=7199.0,
@@ -407,7 +440,8 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         P_expected = estimate_P_cmb_NL20(1.0, 0.325, 'mass')
         T_liq_expected = 6000.0 * (P_expected / 1e9 / 140.0) ** 0.26
         assert cp['cmb_temperature'] == pytest.approx(
-            T_liq_expected + 500.0, rel=1e-9,
+            T_liq_expected + 500.0,
+            rel=1e-9,
         )
 
     def test_isentropic_unaffected_by_delta_T_super(self, monkeypatch):
@@ -416,6 +450,7 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
         the new field doesn't leak into other modes.
         """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
+
         config = _make_full_mock_config(
             temperature_mode='isentropic',
             delta_T_super=12345.0,  # absurd value to highlight any leak
@@ -447,12 +482,14 @@ class TestPaleosLiquidusSourceOfTruth:
         constants (6000, 0.26, 140 GPa reference) is caught immediately.
         """
         from zalmoxis.melting_curves import paleos_liquidus
+
         T = float(paleos_liquidus(135e9))
         assert T == pytest.approx(5943.53, abs=1.0)
 
     def test_paleos_liquidus_continuous_at_crossover(self):
         """Crossover at 2.5517 GPa: Belonoshko and Fei branches must meet."""
         from zalmoxis.melting_curves import paleos_liquidus
+
         T_below = float(paleos_liquidus(2.55e9))
         T_above = float(paleos_liquidus(2.56e9))
         # Both branches at the crossover should give ~1972 K (within 5 K).
@@ -461,6 +498,7 @@ class TestPaleosLiquidusSourceOfTruth:
     def test_paleos_liquidus_monotonic(self):
         """Liquidus must increase with pressure across the magma-ocean range."""
         from zalmoxis.melting_curves import paleos_liquidus
+
         Ps = [1e9, 10e9, 50e9, 100e9, 135e9, 200e9, 400e9, 600e9]
         Ts = [float(paleos_liquidus(P)) for P in Ps]
         for i in range(1, len(Ts)):

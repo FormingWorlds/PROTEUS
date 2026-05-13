@@ -150,9 +150,7 @@ def test_check_desiccation_refused_when_loss_unexplained():
     hf_row['esc_kg_cumulative'] = 1e15  # only 0.1% of inventory could be lost
 
     result = check_desiccation(config, hf_row)
-    assert result is False, (
-        'Loss of ~1e21 kg with only 1e15 kg escape budget MUST be refused'
-    )
+    assert result is False, 'Loss of ~1e21 kg with only 1e15 kg escape budget MUST be refused'
 
 
 @pytest.mark.unit
@@ -204,6 +202,7 @@ def test_check_desiccation_gate_inactive_without_baseline():
 
     # Case C: key present but NaN (e.g. cast from missing pandas column)
     import math
+
     case_c = dict(hf_row, M_vol_initial=math.nan, esc_kg_cumulative=0.0)
     assert check_desiccation(config, case_c) is True
 

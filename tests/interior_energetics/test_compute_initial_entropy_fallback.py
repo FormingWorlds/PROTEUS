@@ -13,6 +13,7 @@ real EOS data files we don't want to mock, so we let it raise its
 own (non-ValueError) failure mode and confirm only the *guard*
 behaviour at the top of the function.
 """
+
 from __future__ import annotations
 
 import logging
@@ -56,7 +57,9 @@ def _call_and_swallow_downstream(config):
 
     try:
         common.compute_initial_entropy(
-            config, hf_row=None, spider_eos_dir=None,
+            config,
+            hf_row=None,
+            spider_eos_dir=None,
         )
     except ValueError as e:
         msg = str(e)
@@ -90,15 +93,12 @@ def test_super_earth_no_longer_raises_earth_window_error(mass_tot, caplog):
     # The Noack & Lasbleis (2020) fallback log must appear regardless
     # of downstream success.
     text = '\n'.join(rec.message for rec in caplog.records)
-    assert (
-        'Noack & Lasbleis (2020) mass-aware fallback' in text
-    ), (
-        f'Noack & Lasbleis (2020) log line missing for '
-        f'mass_tot={mass_tot} M_Earth: {text}'
+    assert 'Noack & Lasbleis (2020) mass-aware fallback' in text, (
+        f'Noack & Lasbleis (2020) log line missing for mass_tot={mass_tot} M_Earth: {text}'
     )
-    assert (
-        f'mass_tot={mass_tot:.2f} M_Earth' in text
-    ), f'Mass not echoed in Noack & Lasbleis (2020) log line: {text}'
+    assert f'mass_tot={mass_tot:.2f} M_Earth' in text, (
+        f'Mass not echoed in Noack & Lasbleis (2020) log line: {text}'
+    )
 
 
 def test_NL20_log_lines_pcmb_scales_with_mass(caplog):
@@ -119,6 +119,7 @@ def test_NL20_log_lines_pcmb_scales_with_mass(caplog):
         text = '\n'.join(rec.message for rec in caplog.records)
         # Extract "P_cmb=NNN.N GPa" from the log
         import re
+
         m = re.search(r'P_cmb=(\d+\.\d+)\s+GPa', text)
         assert m is not None, f'P_cmb not present in log: {text}'
         p_cmb_logged[mass_tot] = float(m.group(1))

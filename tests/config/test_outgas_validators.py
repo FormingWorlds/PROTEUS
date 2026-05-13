@@ -49,7 +49,9 @@ def test_outgas_custom_solver_params():
     """Test Outgas accepts custom shared solver parameters."""
     from proteus.config._outgas import Outgas
 
-    o = Outgas(module='calliope', fO2_shift_IW=4.0, T_floor=500.0, solver_rtol=1e-5, solver_atol=1e-7)
+    o = Outgas(
+        module='calliope', fO2_shift_IW=4.0, T_floor=500.0, solver_rtol=1e-5, solver_atol=1e-7
+    )
     assert o.T_floor == 500.0
     assert o.solver_rtol == 1e-5
     assert o.solver_atol == 1e-7

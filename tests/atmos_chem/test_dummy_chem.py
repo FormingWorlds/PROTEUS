@@ -100,7 +100,15 @@ def test_dummy_chem_h2o_cold_trap():
     much smaller than P_total at intermediate pressures, and the
     cold trap suppresses H2O by orders of magnitude.
     """
-    hf_row = _make_hf_row(T_magma=300.0, P_surf=1.0, H2O_vmr=0.5, CO2_vmr=0.3, N2_vmr=0.1, H2_vmr=0.05, CH4_vmr=0.05)
+    hf_row = _make_hf_row(
+        T_magma=300.0,
+        P_surf=1.0,
+        H2O_vmr=0.5,
+        CO2_vmr=0.3,
+        N2_vmr=0.1,
+        H2_vmr=0.05,
+        CH4_vmr=0.05,
+    )
     config = _make_config()
     result = _build_profiles(hf_row, config, num_levels=50)
 
@@ -109,8 +117,9 @@ def test_dummy_chem_h2o_cold_trap():
     h2o_min = np.min(h2o)
     h2o_surf = h2o[-1]
     # Cold trap should suppress H2O by at least 10x relative to surface
-    assert h2o_min < 0.1 * h2o_surf, \
+    assert h2o_min < 0.1 * h2o_surf, (
         f'Cold trap should suppress H2O: min={h2o_min:.4e} vs surface={h2o_surf:.4e}'
+    )
 
 
 @pytest.mark.unit

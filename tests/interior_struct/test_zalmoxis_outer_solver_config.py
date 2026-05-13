@@ -11,6 +11,7 @@ Covers two angles:
     the ``config_params`` dict that ``zalmoxis.solver.main`` consumes,
     AND auto-tightens integrator tolerances when 'newton' is selected.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -89,9 +90,13 @@ class TestOuterSolverSchema:
 # ----------------------------------------------------------------------
 
 
-def _make_mock_config(outer_solver='picard',
-                      newton_max_iter=30, newton_tol=1.0e-4,
-                      newton_rel_tol=1.0e-9, newton_abs_tol=1.0e-10):
+def _make_mock_config(
+    outer_solver='picard',
+    newton_max_iter=30,
+    newton_tol=1.0e-4,
+    newton_rel_tol=1.0e-9,
+    newton_abs_tol=1.0e-10,
+):
     """Build a mock proteus Config that exercises the Zalmoxis-config builder."""
     config = MagicMock()
     config.planet.mass_tot = 1.0  # 1 M_earth
@@ -124,6 +129,7 @@ def _make_mock_config(outer_solver='picard',
 def _stub_get_target_surface_pressure(monkeypatch, value=1.0e5):
     """Patch the surface-pressure helper so the builder doesn't probe outgassing."""
     import proteus.interior_struct.zalmoxis as _mod
+
     monkeypatch.setattr(_mod, '_get_target_surface_pressure', lambda *a, **kw: value)
 
 

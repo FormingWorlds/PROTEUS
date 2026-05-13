@@ -96,9 +96,7 @@ def test_load_ps_table_fwl_data_path(tmp_path):
     spider_dir = str(tmp_path / 'spider')
     eos_subdir = os.path.join(spider_dir, 'lookup_data', '1TPa-dK09-elec-free')
     os.makedirs(eos_subdir)
-    _make_ps_table_file(
-        os.path.join(eos_subdir, 'heat_capacity_melt.dat'), nP=2, nS=2
-    )
+    _make_ps_table_file(os.path.join(eos_subdir, 'heat_capacity_melt.dat'), nP=2, nS=2)
 
     interior_o = Interior_t(50)
     with pytest.MonkeyPatch.context() as mp:
@@ -191,9 +189,7 @@ def test_interior_t_init_loads_all_three_tables(tmp_path):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
-        interior_o = Interior_t(
-            50, spider_dir=spider_dir, eos_dir='WolfBower2018_MgSiO3'
-        )
+        interior_o = Interior_t(50, spider_dir=spider_dir, eos_dir='WolfBower2018_MgSiO3')
 
     assert interior_o.lookup_rho_melt is not None
     assert interior_o.lookup_cp_solid is not None
@@ -226,9 +222,7 @@ def test_interior_t_init_partial_table_set(tmp_path):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
-        interior_o = Interior_t(
-            50, spider_dir=spider_dir, eos_dir='WolfBower2018_MgSiO3'
-        )
+        interior_o = Interior_t(50, spider_dir=spider_dir, eos_dir='WolfBower2018_MgSiO3')
 
     assert interior_o.lookup_rho_melt is not None
     assert interior_o.lookup_cp_solid is None

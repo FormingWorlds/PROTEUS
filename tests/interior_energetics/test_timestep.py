@@ -114,32 +114,38 @@ class TestMushyCap:
             'Phi_global': 0.5,  # inside mushy band
         }
         dt = next_step(
-            config, {}, hf_row, hf_all, 1.0,
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
             interior_o=_make_interior_o(),
         )
         # SFINC * dt_prev = 1.6 * 5e3 = 8e3. No cap applied since
         # mushy_maximum = 0 disables the feature.
-        assert dt == pytest.approx(8.0e3, rel=1e-6), (
-            f'Expected 8e3, got {dt}'
-        )
+        assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
 
     def test_cap_active_when_phi_in_band(self, tmp_path):
         """Cap kicks in when Phi_global is inside (phi_crit, mushy_upper)."""
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config(
-            mushy_maximum=4.0e3, mushy_upper=0.99, phi_crit=0.05,
+            mushy_maximum=4.0e3,
+            mushy_upper=0.99,
+            phi_crit=0.05,
         )
         hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=0.5)
         hf_row = {'Time': 1e5, 'F_atm': 1.0e4, 'Phi_global': 0.5}
         dt = next_step(
-            config, {}, hf_row, hf_all, 1.0,
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
             interior_o=_make_interior_o(),
         )
         # 1.6 * 5e3 = 8e3 would be chosen; cap to 4e3.
-        assert dt == pytest.approx(4.0e3, rel=1e-6), (
-            f'Expected 4e3 (mushy cap), got {dt}'
-        )
+        assert dt == pytest.approx(4.0e3, rel=1e-6), f'Expected 4e3 (mushy cap), got {dt}'
 
     def test_cap_inactive_when_phi_above_upper(self):
         """Pure-liquid (Phi > mushy_upper) must NOT trigger the cap."""
@@ -149,42 +155,55 @@ class TestMushyCap:
         hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=1.0)
         hf_row = {'Time': 1e5, 'F_atm': 1.0e4, 'Phi_global': 1.0}
         dt = next_step(
-            config, {}, hf_row, hf_all, 1.0,
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
             interior_o=_make_interior_o(),
         )
         # Cap not active because Phi = 1.0 >= mushy_upper = 0.99.
-        assert dt > 4.0e3, (
-            f'Expected dt > 4e3 (cap inactive), got {dt}'
-        )
+        assert dt > 4.0e3, f'Expected dt > 4e3 (cap inactive), got {dt}'
 
     def test_cap_inactive_when_phi_below_phi_crit(self):
         """Solidified (Phi < phi_crit) must NOT trigger the cap."""
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config(
-            mushy_maximum=4.0e3, mushy_upper=0.99, phi_crit=0.05,
+            mushy_maximum=4.0e3,
+            mushy_upper=0.99,
+            phi_crit=0.05,
         )
         hf_all = _make_hf_all(n_rows=12, dt_prev=5.0e3, phi=0.02)
         hf_row = {'Time': 1e5, 'F_atm': 1.0e4, 'Phi_global': 0.02}
         dt = next_step(
-            config, {}, hf_row, hf_all, 1.0,
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
             interior_o=_make_interior_o(),
         )
         # Cap not active because Phi = 0.02 <= phi_crit = 0.05.
         # But dt is still limited by the termination estimator — grab
         # its contribution by running with cap disabled for comparison.
         config_no_cap = _make_config(
-            mushy_maximum=0.0, mushy_upper=0.99, phi_crit=0.05,
+            mushy_maximum=0.0,
+            mushy_upper=0.99,
+            phi_crit=0.05,
         )
         dt_no_cap = next_step(
-            config_no_cap, {}, hf_row, hf_all, 1.0,
+            config_no_cap,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
             interior_o=_make_interior_o(),
         )
         # The cap must NOT have made dt smaller than the un-capped
         # version; they should be identical.
         assert dt == pytest.approx(dt_no_cap, rel=1e-6), (
-            f'Cap should be inactive below phi_crit, but dt={dt} vs '
-            f'dt_no_cap={dt_no_cap}'
+            f'Cap should be inactive below phi_crit, but dt={dt} vs dt_no_cap={dt_no_cap}'
         )
 
 
@@ -220,8 +239,7 @@ class TestHysteresis:
         assert interior_o.dt_hysteresis_remaining == 0
         next_step(config, {}, hf_row, hf_all, 1.0, interior_o=interior_o)
         assert interior_o.dt_hysteresis_remaining == 3, (
-            f'Expected counter=3 after slow-down, got '
-            f'{interior_o.dt_hysteresis_remaining}'
+            f'Expected counter=3 after slow-down, got {interior_o.dt_hysteresis_remaining}'
         )
 
     def test_active_hysteresis_replaces_sfinc(self):
@@ -229,7 +247,8 @@ class TestHysteresis:
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config(
-            hysteresis_iters=3, hysteresis_sfinc=1.1,
+            hysteresis_iters=3,
+            hysteresis_sfinc=1.1,
             mushy_maximum=0.0,  # disable mushy cap for this test
         )
         hf_all = self._hf_forcing_speed_up(dt_prev=1.0e3)
@@ -238,19 +257,22 @@ class TestHysteresis:
         interior_o.dt_hysteresis_remaining = 2  # simulate mid-window
 
         dt = next_step(
-            config, {}, hf_row, hf_all, 1.0, interior_o=interior_o,
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=interior_o,
         )
         # With hysteresis_sfinc = 1.1 and dt_prev = 1e3, expect dt =
         # 1.1 * 1e3 = 1.1e3. Without hysteresis it would be
         # SFINC * 1e3 = 1.6e3.
         assert dt == pytest.approx(1.1e3, rel=1e-6), (
-            f'Expected gentler dt = 1.1e3 while hysteresis active, '
-            f'got {dt}'
+            f'Expected gentler dt = 1.1e3 while hysteresis active, got {dt}'
         )
         # Counter was 2, should now be 1 after this speed-up call.
         assert interior_o.dt_hysteresis_remaining == 1, (
-            f'Expected counter decremented to 1, got '
-            f'{interior_o.dt_hysteresis_remaining}'
+            f'Expected counter decremented to 1, got {interior_o.dt_hysteresis_remaining}'
         )
 
     def test_zero_hysteresis_preserves_legacy_sfinc(self):
@@ -258,7 +280,8 @@ class TestHysteresis:
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config(
-            hysteresis_iters=0, hysteresis_sfinc=1.1,
+            hysteresis_iters=0,
+            hysteresis_sfinc=1.1,
             mushy_maximum=0.0,
         )
         hf_all = self._hf_forcing_speed_up(dt_prev=1.0e3)
@@ -269,12 +292,15 @@ class TestHysteresis:
         # branch is still protected by hysteresis_iters > 0; here it
         # should be SFINC.
         dt = next_step(
-            config, {}, hf_row, hf_all, 1.0, interior_o=interior_o,
+            config,
+            {},
+            hf_row,
+            hf_all,
+            1.0,
+            interior_o=interior_o,
         )
         # 1.6 * 1e3 = 1.6e3.
-        assert dt == pytest.approx(1.6e3, rel=1e-6), (
-            f'Expected full SFINC dt = 1.6e3, got {dt}'
-        )
+        assert dt == pytest.approx(1.6e3, rel=1e-6), f'Expected full SFINC dt = 1.6e3, got {dt}'
 
     def test_counter_decrements_to_zero(self):
         """After enough speed-ups the counter returns to 0 and SFINC
@@ -282,7 +308,8 @@ class TestHysteresis:
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config(
-            hysteresis_iters=2, hysteresis_sfinc=1.1,
+            hysteresis_iters=2,
+            hysteresis_sfinc=1.1,
             mushy_maximum=0.0,
         )
         hf_all = self._hf_forcing_speed_up(dt_prev=1.0e3)
@@ -293,7 +320,12 @@ class TestHysteresis:
         dts = []
         for _ in range(4):
             dt = next_step(
-                config, {}, hf_row, hf_all, 1.0, interior_o=interior_o,
+                config,
+                {},
+                hf_row,
+                hf_all,
+                1.0,
+                interior_o=interior_o,
             )
             dts.append(dt)
             # Simulate PROTEUS advancing: next dtprev would be the
@@ -301,7 +333,8 @@ class TestHysteresis:
             last = hf_all.iloc[-1].copy()
             last['Time'] = float(last['Time']) + dt
             hf_all = pd.concat(
-                [hf_all, pd.DataFrame([last])], ignore_index=True,
+                [hf_all, pd.DataFrame([last])],
+                ignore_index=True,
             )
 
         # First two calls use hysteresis_sfinc, last two use SFINC.
@@ -320,7 +353,8 @@ class TestHysteresis:
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config(
-            hysteresis_iters=3, hysteresis_sfinc=1.1,
+            hysteresis_iters=3,
+            hysteresis_sfinc=1.1,
             mushy_maximum=0.0,
         )
         hf_all = self._hf_forcing_speed_up(dt_prev=1.0e3)

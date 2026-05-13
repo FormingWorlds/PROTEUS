@@ -1635,8 +1635,11 @@ def test_read_spider_returns_precise_time_years(tmp_path):
     # Simulate early termination: filename is 175.json (llround),
     # but time_years inside is 100.7 (SPIDER stopped early).
     _make_spider_json(
-        str(data_dir / '175.json'), step=10, sim_time=100.7,
-        num_stag=10, num_basic=11,
+        str(data_dir / '175.json'),
+        step=10,
+        sim_time=100.7,
+        num_stag=10,
+        num_basic=11,
     )
 
     nP, nS = 3, 4

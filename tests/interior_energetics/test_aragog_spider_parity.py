@@ -118,7 +118,7 @@ def test_rectangularize_clean_file_round_trip(tmp_path):
     # Canonical ordering: P varies fastest, S slowest, Q = i + 10*j
     for row_idx in range(12):
         j = row_idx // 4  # S slice
-        i = row_idx % 4   # P index
+        i = row_idx % 4  # P index
         assert out[row_idx, 0] == pytest.approx(float(i) * 10.0)
         assert out[row_idx, 1] == pytest.approx(float(j) * 100.0)
         assert out[row_idx, 2] == pytest.approx(float(i + 10 * j))
@@ -144,7 +144,7 @@ def test_rectangularize_quasi_regular_drift_snapped(tmp_path):
 
     # Every subsequent S slice must have EXACTLY the same P values
     for j in range(1, n_S):
-        P_slice = out[j * n_P:(j + 1) * n_P, 0]
+        P_slice = out[j * n_P : (j + 1) * n_P, 0]
         np.testing.assert_array_equal(P_slice, P_canonical)
 
 
@@ -199,8 +199,7 @@ def test_tier4_num_tolerance_alias_copies_to_rtol():
         ie = Interior(num_tolerance=3.14e-7)
     assert ie.rtol == pytest.approx(3.14e-7)
     assert any(
-        issubclass(w.category, DeprecationWarning)
-        and 'num_tolerance' in str(w.message)
+        issubclass(w.category, DeprecationWarning) and 'num_tolerance' in str(w.message)
         for w in caught
     )
 
@@ -235,8 +234,7 @@ def test_tier4_spider_tolerance_rel_alias_copies_to_rtol():
         ie = Interior(spider=Spider(tolerance_rel=5.5e-9))
     assert ie.rtol == pytest.approx(5.5e-9)
     assert any(
-        issubclass(w.category, DeprecationWarning)
-        and 'tolerance_rel' in str(w.message)
+        issubclass(w.category, DeprecationWarning) and 'tolerance_rel' in str(w.message)
         for w in caught
     )
 
@@ -260,8 +258,7 @@ def test_spider_matprop_smooth_width_is_real_field():
     assert ie.spider.matprop_smooth_width == pytest.approx(0.055)
     # No deprecation warning specifically about matprop_smooth_width.
     assert not any(
-        issubclass(w.category, DeprecationWarning)
-        and 'matprop_smooth_width' in str(w.message)
+        issubclass(w.category, DeprecationWarning) and 'matprop_smooth_width' in str(w.message)
         for w in caught
     )
     # The top-level alias is gone.
@@ -294,7 +291,7 @@ def test_tier3_solid_log10visc_default_matches_spider():
         'Aragog must use the same solid viscosity as SPIDER. Previous '
         'hardcoded value was 1e21 (log10=21); SPIDER uses 22.0.'
     )
-    assert 10.0 ** ie.solid_log10visc == 1e22
+    assert 10.0**ie.solid_log10visc == 1e22
 
 
 def test_tier3_adams_williamson_rhos_default_matches_spider():
