@@ -1905,3 +1905,31 @@ def test_example_init_coupler_places_melting_dir_under_interior_struct():
         f'melting_dir is under [{melting_dir_section}] but must be under '
         '[interior_struct]; otherwise cattrs silently drops it'
     )
+
+
+@pytest.mark.unit
+def test_no_input_toml_uses_bare_interior_section():
+    """Regression: no TOML under input/ may use the bare
+    ``[interior]`` section name. The current schema places interior
+    physics under ``[interior_energetics]``; cattrs silently drops
+    unknown top-level sections, so a stale ``[interior]`` header
+    silently demotes module=spider runs to the factory default
+    (aragog) without any error.
+
+    This bit ``input/chili/intercomp/_base.toml`` after PR #659:
+    every CHILI sweep launched from that config ran Aragog
+    regardless of the configured backend.
+    """
+    import re
+
+    repo_root = PROTEUS_ROOT
+    pattern = re.compile(r'^\[interior\](?:\.|$)', re.MULTILINE)
+    offenders = []
+    for toml_path in (repo_root / 'input').rglob('*.toml'):
+        text = toml_path.read_text(encoding='utf-8')
+        if pattern.search(text):
+            offenders.append(str(toml_path.relative_to(repo_root)))
+    assert not offenders, (
+        f'These input TOMLs still use the bare [interior] section '
+        f'(should be [interior_energetics]): {offenders}'
+    )

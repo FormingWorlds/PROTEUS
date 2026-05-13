@@ -149,7 +149,7 @@ Pxuv = 5e-05
 efficiency = 0.3
 tidal = true
 
-[interior]
+[interior_energetics]
 module = "spider"
 radiogenic_heat = true
 tidal_heat = false
@@ -158,7 +158,7 @@ F_initial = 1000.0
 rheo_phi_loc = 0.5
 rheo_phi_wid = 0.2
 
-[interior.spider]
+[interior_energetics.spider]
 ini_entropy = 3900.0
 ini_dsdr = -4.698e-06
 num_levels = 150
@@ -169,7 +169,7 @@ solver_type = "bdf"
 tsurf_atol = 10.0
 tsurf_rtol = 0.02
 
-[interior.dummy]
+[interior_energetics.dummy]
 ini_tmagma = 3300.0
 tmagma_atol = 30.0
 tmagma_rtol = 0.05
