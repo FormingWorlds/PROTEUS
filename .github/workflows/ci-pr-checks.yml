@@ -132,7 +132,7 @@ jobs:
       - name: Overlay PR code onto container
         run: |
           echo "Copying PR code over container base..."
-          rsync -av --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
+          rsync -av --delete --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
           cd /opt/proteus
           pip install -e ".[develop]" --no-deps
 
