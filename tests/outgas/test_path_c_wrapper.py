@@ -238,7 +238,9 @@ def test_legacy_dispatches_to_legacy_entry_point():
     fake = _make_solvevol_result()
 
     with (
-        patch('proteus.outgas.calliope.equilibrium_atmosphere', return_value=fake) as mock_legacy,
+        patch(
+            'proteus.outgas.calliope.equilibrium_atmosphere', return_value=fake
+        ) as mock_legacy,
         patch(
             'proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O',
         ) as mock_new,

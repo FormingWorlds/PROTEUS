@@ -107,8 +107,8 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     # the IW buffer constrains O and we exclude it from the mass
     # constraint here.
     fO2_source = config.planet.fO2_source
-    constrained_elements = ('H', 'C', 'N', 'S', 'O') if fO2_source == 'from_O_budget' else (
-        'H', 'C', 'N', 'S'
+    constrained_elements = (
+        ('H', 'C', 'N', 'S', 'O') if fO2_source == 'from_O_budget' else ('H', 'C', 'N', 'S')
     )
     active_elements = set()
     for element in constrained_elements:

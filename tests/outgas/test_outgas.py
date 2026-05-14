@@ -966,9 +966,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_atmodeller():
     hf_row['P_surf'] = 0.0
     hf_row['atm_kg_per_mol'] = 0.018
 
-    with patch(
-        'proteus.outgas.atmodeller.calc_surface_pressures_atmodeller'
-    ) as mock_calc:
+    with patch('proteus.outgas.atmodeller.calc_surface_pressures_atmodeller') as mock_calc:
         run_outgassing(dirs, config, hf_row)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
 
