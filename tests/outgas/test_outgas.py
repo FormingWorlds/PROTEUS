@@ -460,6 +460,38 @@ def test_run_desiccated_zeros_outgassing_keys():
 
 
 @pytest.mark.unit
+def test_run_desiccated_zeros_derived_fO2_and_O_residual():
+    """run_desiccated must zero fO2_shift_IW_derived and O_res alongside
+    the rest of the outgas-managed columns. Leaving them at their last
+    non-zero values would carry stale chemistry diagnostics through every
+    post-desiccation iteration, misleading any post-processing script
+    that reads the helpfile expecting outgas state to be defined or
+    zero, not stale.
+
+    Discriminating: the test seeds non-zero values (a finite derived
+    offset and a non-trivial residual). A regression that removed these
+    keys from expected_keys() would leave the seeded values untouched.
+    """
+    config = MagicMock()
+
+    hf_row = {}
+    for s in gas_list:
+        hf_row[s + '_kg_atm'] = 1e18
+        hf_row[s + '_vmr'] = 0.1
+        hf_row[s + '_bar'] = 10.0
+    hf_row['P_surf'] = 90.0
+    hf_row['atm_kg_per_mol'] = 0.029
+    hf_row['M_atm'] = 1e20
+    hf_row['fO2_shift_IW_derived'] = -3.7  # finite, non-default
+    hf_row['O_res'] = 1.2e9  # non-trivial residual
+
+    run_desiccated(config, hf_row)
+
+    assert hf_row['fO2_shift_IW_derived'] == 0.0
+    assert hf_row['O_res'] == 0.0
+
+
+@pytest.mark.unit
 def test_run_desiccated_preserves_critical_keys():
     """
     Test that run_desiccated preserves atm_kg_per_mol and VMRs to avoid crashes.

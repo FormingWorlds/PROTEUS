@@ -316,10 +316,12 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     # planet.fO2_source dispatch. Two runtime paths are wired today:
     # 'user_constant' (legacy buffered-fO2 chemistry) for both backends,
     # and 'from_O_budget' (authoritative-O chemistry) for the CALLIOPE
-    # backend only. 'from_mantle_redox' is reserved for issue #653 and
-    # the Config-level validator rejects it at config-load, so any value
-    # reaching this branch is a runtime invariant violation worth
-    # surfacing.
+    # backend only. The Config-level validators (planet_fO2_source_compat)
+    # reject any other value AND the from_O_budget + non-calliope combo
+    # at config-load, so the two guards below are unreachable under a
+    # normally-loaded Config. They remain as defence in depth for
+    # programmatic Config construction (tests, scripted runs) that
+    # bypasses the validators.
     fO2_source = config.planet.fO2_source
     if fO2_source not in ('user_constant', 'from_O_budget'):
         raise NotImplementedError(

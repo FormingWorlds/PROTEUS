@@ -5,7 +5,13 @@ from proteus.utils.constants import element_list, gas_list
 
 
 def expected_keys():
-    copy_keys = ['P_surf', 'M_atm', 'atm_kg_per_mol']
+    copy_keys = [
+        'P_surf',
+        'M_atm',
+        'atm_kg_per_mol',
+        'fO2_shift_IW_derived',
+        'O_res',
+    ]
 
     # reservoirs
     res_list = ('atm', 'liquid', 'solid', 'total')
