@@ -95,6 +95,7 @@ develop = [
     "pytest-cov",
     "pytest-dependency",
     "pytest-timeout",
+    "pytest-xdist",  # parallel test execution via `-n auto` in CI
 ]
 
 docs = [

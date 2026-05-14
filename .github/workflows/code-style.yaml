@@ -17,12 +17,13 @@ on:
       - ready_for_review
   workflow_dispatch:
 
-# Deduplicate runs when a single commit fires both push (via the
-# tl/** filter) and pull_request:synchronize (the moment the PR comes
-# out of draft). The commit SHA is the same in both events; keying
-# concurrency on it cancels the older run when the newer one fires.
+# Deduplicate runs along two axes: same commit two events (push +
+# pull_request:synchronize on the same SHA) and older-commit
+# superseded by a newer push to the same branch. Keying on the branch
+# name (head_ref for PR events, ref_name for push events) groups all
+# events on the same branch under one concurrency cell.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:

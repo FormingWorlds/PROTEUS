@@ -33,12 +33,19 @@ on:
                 # default, so an explicit push trigger keeps CI live).
   workflow_dispatch:  # Allow manual triggering for testing
 
-# Deduplicate runs when a single commit fires both push (via the
-# tl/** filter) and pull_request:synchronize (the moment the PR comes
-# out of draft). The commit SHA is the same in both events; keying
-# concurrency on it cancels the older run when the newer one fires.
+# Deduplicate runs along two axes:
+#   1. Same commit, two events: a push to tl/** fires the push event
+#      AND, once the PR is ready for review, pull_request:synchronize
+#      fires on the same commit. Without dedup, both run the full matrix.
+#   2. Older commit superseded by a newer push to the same branch:
+#      no point spending 15 min on the old commit when the new one is
+#      already queued.
+# github.head_ref is set for pull_request events (PR source branch);
+# github.ref_name is set for push events (branch name). Both resolve
+# to the same string for the same branch, so all events on a branch
+# share a concurrency group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -177,18 +184,42 @@ jobs:
           cd /opt/proteus
           bash tools/validate_test_structure.sh
 
-      - name: Run unit tests with coverage
+      - name: Decide whether to collect coverage
+        run: |
+          # Coverage instrumentation (pytest-cov + JAX tracing) inflates
+          # Linux unit tests from ~4 min to ~15 min. Coverage only feeds
+          # the diff-cover gate, codecov upload, and the ratchet, all of
+          # which only matter when a PR is genuinely up for review. On
+          # draft PRs and on direct branch pushes (via the tl/** filter
+          # in the trigger block), skip coverage entirely and keep CI
+          # fast.
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.draft }}" != "true" ]; then
+            echo "RUN_COVERAGE=true" >> $GITHUB_ENV
+            echo "Coverage instrumentation: ON (ready-for-review PR)"
+          else
+            echo "RUN_COVERAGE=false" >> $GITHUB_ENV
+            echo "Coverage instrumentation: OFF (draft PR or branch push)"
+          fi
+
+      - name: Run unit tests
         id: unit-tests
         continue-on-error: true
         run: |
           cd /opt/proteus
-          # Run unit tests, excluding placeholder tests and examples
+          if [ "$RUN_COVERAGE" = "true" ]; then
+            COV_ARGS="--cov=src --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=${FAST_COV_FAIL_UNDER}"
+          else
+            COV_ARGS=""
+          fi
+          # -n auto runs across all available cores via pytest-xdist.
+          # --durations=25 prints the slowest 25 tests for diagnostics
+          # without flooding the log like --durations=0 does (1200+
+          # rows).
           pytest -m "unit and not skip" \
             --ignore=tests/examples \
-            --cov=src --cov-report=term-missing --cov-report=xml --cov-report=html \
-            --cov-fail-under=${FAST_COV_FAIL_UNDER} \
-            --durations=0 \
-            --durations-min=0 | tee pytest-unit.log
+            $COV_ARGS \
+            -n auto \
+            --durations=25 | tee pytest-unit.log
 
       - name: Smart rebuild of physics modules
         run: |
@@ -217,19 +248,23 @@ jobs:
             cd /opt/proteus
           fi
 
-      - name: Run smoke tests (append to coverage)
+      - name: Run smoke tests
         id: smoke-tests
         continue-on-error: true
         run: |
           cd /opt/proteus
+          if [ "$RUN_COVERAGE" = "true" ]; then
+            COV_ARGS="--cov=src --cov-append --cov-report=term-missing --cov-report=xml --cov-report=html"
+          else
+            COV_ARGS=""
+          fi
           pytest -m "smoke and not skip" \
             --ignore=tests/examples \
-            --cov=src --cov-append \
-            --cov-report=term-missing --cov-report=xml --cov-report=html \
-            --durations=0 \
-            --durations-min=0 -v --tb=short | tee pytest-smoke.log
+            $COV_ARGS \
+            --durations=25 -v --tb=short | tee pytest-smoke.log
 
       - name: Generate coverage JSON
+        if: env.RUN_COVERAGE == 'true'
         run: |
           cd /opt/proteus
           # Use --fail-under=0 to prevent failure when fast coverage < full threshold
@@ -237,7 +272,7 @@ jobs:
 
       - name: Download last nightly coverage (for estimated total)
         id: download-nightly
-        if: always()
+        if: always() && env.RUN_COVERAGE == 'true'
         continue-on-error: true  # Do not fail job when no nightly artifact exists yet
         uses: dawidd6/action-download-artifact@v6
         with:
@@ -249,7 +284,7 @@ jobs:
 
       - name: Copy nightly coverage into container and check staleness
         id: check-nightly
-        if: always()
+        if: always() && env.RUN_COVERAGE == 'true'
         run: |
           cd /opt/proteus
           STALE_HOURS=48
@@ -294,7 +329,7 @@ jobs:
 
       - name: Validate coverage and write outputs
         id: coverage-validation
-        if: always()
+        if: always() && env.RUN_COVERAGE == 'true'
         env:
           NIGHTLY_STALE: ${{ env.NIGHTLY_STALE }}
           NIGHTLY_MISSING: ${{ env.NIGHTLY_MISSING }}
@@ -420,6 +455,7 @@ jobs:
 
       - name: Diff coverage on changed lines (fast suite)
         id: diff-cover
+        if: env.RUN_COVERAGE == 'true'
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
@@ -432,7 +468,7 @@ jobs:
           diff-cover /opt/proteus/coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
 
       - name: Post coverage warning comment on PR
-        if: github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'
+        if: env.RUN_COVERAGE == 'true' && github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
@@ -447,7 +483,7 @@ jobs:
             See [test_building.md](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md) for guidance.
 
       - name: Fail job if nightly is stale
-        if: always() && steps.check-nightly.outcome == 'success'
+        if: always() && env.RUN_COVERAGE == 'true' && steps.check-nightly.outcome == 'success'
         run: |
           if [ "$NIGHTLY_STALE" = "true" ]; then
             echo "❌ Nightly baseline is stale (>48 hours old). Cannot validate coverage."
@@ -456,7 +492,7 @@ jobs:
           fi
 
       - name: Fail job if coverage dropped beyond grace period
-        if: always() && steps.coverage-validation.outputs.coverage_status == 'fail'
+        if: always() && env.RUN_COVERAGE == 'true' && steps.coverage-validation.outputs.coverage_status == 'fail'
         run: |
           echo "❌ Coverage dropped by ${{ steps.coverage-validation.outputs.coverage_drop }}% (exceeds 0.3% grace margin)"
           echo "Add tests to restore coverage above ${{ steps.coverage-validation.outputs.threshold }}%"
@@ -467,6 +503,7 @@ jobs:
         run: exit 1
 
       - name: Ratchet fast coverage threshold
+        if: env.RUN_COVERAGE == 'true'
         run: |
           cd /opt/proteus
           # Exit codes: 0=updated, 1=no update needed, 2=error
@@ -474,7 +511,7 @@ jobs:
           python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast || [ $? -eq 1 ]
 
       - name: Commit ratcheted threshold (if changed)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: env.RUN_COVERAGE == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: |
           cd /__w/PROTEUS/PROTEUS
@@ -496,14 +533,14 @@ jobs:
           fi
 
       - name: Install gpg for Codecov verification
-        if: always()
+        if: always() && env.RUN_COVERAGE == 'true'
         run: |
           apt-get update
           apt-get install -y gnupg
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v4
-        if: always()
+        if: always() && env.RUN_COVERAGE == 'true'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: /opt/proteus/coverage.xml
@@ -513,7 +550,7 @@ jobs:
 
       - name: Upload HTML coverage
         uses: actions/upload-artifact@v6
-        if: always()
+        if: always() && env.RUN_COVERAGE == 'true'
         with:
           name: unit-coverage-html
           path: /opt/proteus/htmlcov/
