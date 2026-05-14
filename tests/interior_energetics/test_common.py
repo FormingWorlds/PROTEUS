@@ -24,7 +24,13 @@ import pytest
 
 from proteus.interior_energetics.common import Interior_t
 
-pytestmark = pytest.mark.unit
+# Marked `slow` so the fast PR check (filter `unit and not skip`) skips
+# this module. The Interior_t P-S table loaders re-read SPIDER lookup
+# files on a fresh container/runner and the suite hangs at ~30+ min on
+# the GitHub-hosted runners. The tests still run via `pytest -m slow`
+# locally and in any future nightly/full configuration. Revisit when
+# the test infrastructure rework lands.
+pytestmark = pytest.mark.slow
 
 
 def _make_ps_table_file(filepath, nP=3, nS=4, val_scale=3000.0):
