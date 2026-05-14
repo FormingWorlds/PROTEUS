@@ -34,7 +34,9 @@ RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(reason='FIXME: requires fwl_data/planet_reference/Exoplanets/DACE_PlanetS.csv which is not present in the CI Docker image. Tracked in claude-config/memory for the test-rework phase.')
+@pytest.mark.skip(
+    reason='FIXME: requires fwl_data/planet_reference/Exoplanets/DACE_PlanetS.csv which is not present in the CI Docker image. Tracked in claude-config/memory for the test-rework phase.'
+)
 def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
     """Test dummy atmosphere + dummy interior coupling (1 timestep).
 

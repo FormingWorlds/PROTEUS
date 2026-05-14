@@ -39,7 +39,9 @@ def test_version():
 
 
 @pytest.mark.unit
-@pytest.mark.skip(reason='FIXME: assertion failure `assert 1 == 0` in CI container; reproduces only in CI. Tracked in claude-config/memory for the test-rework phase.')
+@pytest.mark.skip(
+    reason='FIXME: assertion failure `assert 1 == 0` in CI container; reproduces only in CI. Tracked in claude-config/memory for the test-rework phase.'
+)
 def test_get(monkeypatch):
     # All `proteus get <subcommand>` paths must dispatch without error.
     # The downloaders touch the network; replace each with a no-op so the

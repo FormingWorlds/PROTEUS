@@ -97,7 +97,9 @@ def test_auto_output_path_resolved():
 
 
 @pytest.mark.unit
-@pytest.mark.skip(reason='FIXME: ValueError raised against input/minimal.toml in CI container; the file needs a refresh for the post-merge config schema. Tracked in claude-config/memory for the test-rework phase.')
+@pytest.mark.skip(
+    reason='FIXME: ValueError raised against input/minimal.toml in CI container; the file needs a refresh for the post-merge config schema. Tracked in claude-config/memory for the test-rework phase.'
+)
 def test_factory_defaults_from_minimal_config():
     """Config sections omitted from TOML use factory defaults."""
     from proteus.config import read_config_object
