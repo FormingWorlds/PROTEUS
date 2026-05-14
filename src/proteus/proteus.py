@@ -182,6 +182,7 @@ class Proteus:
             UpdatePlots,
             WriteHelpfileToCSV,
             ZeroHelpfileRow,
+            assert_mass_conservation,
             print_citation,
             print_header,
             print_module_configuration,
@@ -704,8 +705,24 @@ class Proteus:
             else:
                 run_outgassing(self.directories, self.config, self.hf_row)
 
+                # Issue #677 IC consistency check. Fires once at the first
+                # outgas call (subsequent init_stage calls find the sentinel
+                # set to -1 and skip). Compares the user-supplied O_budget
+                # against CALLIOPE's equilibrium-derived O_kg_total; hard-
+                # fails on >50% divergence. Skipped when O_mode='ic_chemistry'.
+                from proteus.outgas.wrapper import check_ic_oxygen_budget
+
+                check_ic_oxygen_budget(self.hf_row)
+
             # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
+
+            # Issue #677 mass-conservation invariant: M_atm <= M_planet
+            # and sum(s_kg_atm) == M_atm. Cheap end-of-outgas guardrail
+            # that hard-fails if any future change re-introduces the
+            # O-skipping asymmetry that originally let M_atm exceed
+            # M_planet at high H_ppmw.
+            assert_mass_conservation(self.hf_row)
 
             if _IT_TIMING_ENABLED:
                 _t_mod['outgas'] = time.perf_counter() - _t0_outgas

@@ -136,14 +136,26 @@ def calculate_core_mass(hf_row: dict, config: Config):
 def update_planet_mass(hf_row: dict):
     """
     Calculate total planet mass, as sum of dry+wet parts.
+
+    Whole-planet oxygen accounting (issue #677): M_ele sums over ALL
+    elements in ``element_list``, including O. The atmospheric and
+    dissolved O mass produced by CALLIOPE (under the fO2 buffer) is
+    therefore counted in M_planet = M_int + M_ele, closing the
+    bookkeeping asymmetry that previously let M_atm > M_planet at
+    high H budgets.
+
+    Mantle FeO-bound oxygen remains implicit in the PALEOS density
+    tables that drive ``M_int``; we don't double-count it here.
     """
 
-    # Update total element mass
+    # Update total element mass. O is included alongside H/C/N/S since
+    # issue #677 (it was previously skipped because PROTEUS treated it
+    # as an infinite-reservoir buffered element). .get() default of 0.0
+    # makes the sum safe for pre-IC hf_row states where some element
+    # columns may not have been initialised yet.
     hf_row['M_ele'] = 0.0
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
-        hf_row['M_ele'] += hf_row[e + '_kg_total']
+        hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
 
     # Add to total planet mass
     hf_row['M_planet'] = hf_row['M_int'] + hf_row['M_ele']

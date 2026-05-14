@@ -455,12 +455,17 @@ def load_zalmoxis_configuration(
         config.interior_struct.zalmoxis.ice_layer_eos or 'none',
     )
 
-    # Calculate the total mass of 'wet' elements in the planet
+    # Calculate the total mass of 'wet' elements in the planet. Whole-planet
+    # oxygen accounting (issue #677): atmospheric+dissolved O is summed
+    # alongside H/C/N/S so the dry-mass target passed to Zalmoxis correctly
+    # reserves space for the O that CALLIOPE places in atmospheric H2O,
+    # CO2, SO2, etc. Mantle FeO-bound O remains in M_int implicitly via
+    # the PALEOS density tables; we do not double-count it.
+    # Defensive .get(): some pre-IC paths invoke Zalmoxis before
+    # calc_target_elemental_inventories has populated all element columns.
     M_volatiles = 0.0
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
-        M_volatiles += hf_row[e + '_kg_total']
+        M_volatiles += float(hf_row.get(e + '_kg_total', 0.0))
 
     logger.info(f'Volatile mass: {M_volatiles} kg')
 

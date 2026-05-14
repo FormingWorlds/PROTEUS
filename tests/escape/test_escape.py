@@ -199,9 +199,17 @@ def test_run_escape_snapshots_baseline_on_first_call():
     `outgas.wrapper.check_desiccation` to detect unexplained mass loss
     cascades (CHILI sweep R7/R21).
 
-    Physical scenario: Earth-like planet with mixed H/C/N/S inventory.
-    Validates that M_vol_initial = sum(*_kg_total) excluding O, and that
-    esc_kg_cumulative is initialised to zero alongside the baseline.
+    Physical scenario: Earth-like planet with mixed H/C/N/S/O inventory.
+    Issue #677 fix: O is now included in the baseline alongside H/C/N/S
+    so the desiccation gate's (M_vol_initial - cur_m_ele) versus
+    1.5*esc_kg_cumulative arithmetic stays consistent now that escape
+    proportionally debits O via the new calc_new_elements.
+
+    Validates that M_vol_initial = sum(*_kg_total) over ALL elements,
+    and that esc_kg_cumulative is initialised to zero alongside the
+    baseline. O is set to ~14x the H+C inventory here to make the
+    O-inclusion observable: if O were silently dropped from the
+    baseline the expected value would be off by O(1).
     """
     from proteus.escape.wrapper import run_escape
 
@@ -220,15 +228,16 @@ def test_run_escape_snapshots_baseline_on_first_call():
         'Mg_kg_total': 0.0,
         'Fe_kg_total': 0.0,
         'Na_kg_total': 0.0,
-        'O_kg_total': 1e22,  # excluded from baseline
+        'O_kg_total': 1e22,  # included in baseline since issue #677 fix
     }
 
     run_escape(config, hf_row, dt=1000.0, stellar_track=None)
 
-    expected_baseline = 4.7e20 + 2.7e20  # H + C only (others zero, O excluded)
+    expected_baseline = 4.7e20 + 2.7e20 + 1e22  # H + C + O (others zero)
     assert 'M_vol_initial' in hf_row
     assert hf_row['M_vol_initial'] == pytest.approx(expected_baseline, rel=1e-10), (
-        'M_vol_initial must equal sum of *_kg_total over non-O elements'
+        'M_vol_initial must equal sum of *_kg_total over ALL elements '
+        '(issue #677 fix: O is no longer excluded)'
     )
     assert 'esc_kg_cumulative' in hf_row
     # Cumulative escape after one step at 1e3 kg/s for 1000 yr:
@@ -420,14 +429,23 @@ def test_calc_new_elements_bulk_reservoir():
     """Test elemental inventory update using bulk reservoir.
 
     Physical scenario: Unfractionated escape from entire planet (bulk).
-    Validates that elemental mass ratios are preserved during escape.
+    Issue #677 fix: O is now included in the partitioning and
+    debited proportionally with the other elements. Validates that:
+      (a) elemental mass ratios across ALL elements (incl. O) are
+          approximately preserved (the unfractionated property)
+      (b) sum of per-element losses equals the bulk mass loss
+      (c) O is in the output dict and gets debited
     """
     from proteus.escape.wrapper import calc_new_elements
+    from proteus.utils.constants import secs_per_year
 
-    # Initial hf_row with bulk inventories
+    # Initial hf_row with bulk inventories, including a significant O budget.
+    # O is set to ~14x the H reservoir so the "is O being debited?" check
+    # has discriminating signal: without the fix, tgt['O'] would equal the
+    # initial O_kg_total exactly.
     hf_row = {
         'esc_rate_total': 1e5,  # kg/s
-        'H_kg_total': 1e21,  # Dominant H reservoir
+        'H_kg_total': 1e21,
         'C_kg_total': 1e18,
         'N_kg_total': 1e19,
         'S_kg_total': 1e17,
@@ -435,45 +453,52 @@ def test_calc_new_elements_bulk_reservoir():
         'Mg_kg_total': 1e18,
         'Fe_kg_total': 1e20,
         'Na_kg_total': 1e16,
-        # Oxygen not included (set by fO2)
+        'O_kg_total': 1.4e22,  # Issue #677: O is now budgeted and escape-able
     }
 
     dt = 1000.0  # years
     reservoir = 'bulk'
     min_thresh = 1e10  # kg
 
-    # Calculate initial mass ratios
-    M_vols_initial = (
-        hf_row['H_kg_total']
-        + hf_row['C_kg_total']
-        + hf_row['N_kg_total']
-        + hf_row['S_kg_total']
-    )
+    # Calculate initial mass ratios over ALL elements (incl. O)
+    M_vols_initial = sum(hf_row[k] for k in hf_row if k.endswith('_kg_total'))
     emr_H_initial = hf_row['H_kg_total'] / M_vols_initial
-    emr_C_initial = hf_row['C_kg_total'] / M_vols_initial
+    emr_O_initial = hf_row['O_kg_total'] / M_vols_initial
 
     # Call calc_new_elements
     tgt = calc_new_elements(hf_row, dt, reservoir, min_thresh)
 
-    # Verify all elements are in output
+    # Verify all elements are in output, including O (issue #677 fix)
     assert 'H' in tgt
     assert 'C' in tgt
     assert 'N' in tgt
     assert 'S' in tgt
-    assert 'O' not in tgt  # Oxygen excluded
+    assert 'O' in tgt, 'Issue #677: O must now be included in calc_new_elements output'
 
-    # Verify masses decreased (escape occurred)
+    # Verify masses decreased (escape occurred). O must also decrease since
+    # it is now part of the proportional partitioning.
     assert tgt['H'] < hf_row['H_kg_total']
     assert tgt['C'] < hf_row['C_kg_total']
     assert tgt['N'] < hf_row['N_kg_total']
     assert tgt['S'] < hf_row['S_kg_total']
+    assert tgt['O'] < hf_row['O_kg_total'], (
+        'O_kg_total must decrease under escape now that O is in the partitioning'
+    )
 
-    # Verify elemental mass ratios are approximately preserved (unfractionated)
-    M_vols_final = tgt['H'] + tgt['C'] + tgt['N'] + tgt['S']
+    # Verify elemental mass ratios across ALL elements are preserved
+    # (unfractionated property). At asymmetric inputs (O dominates by 14x),
+    # this would fail loudly if O were dropped from the denominator.
+    M_vols_final = sum(tgt.values())
     emr_H_final = tgt['H'] / M_vols_final
-    emr_C_final = tgt['C'] / M_vols_final
+    emr_O_final = tgt['O'] / M_vols_final
     assert emr_H_final == pytest.approx(emr_H_initial, rel=1e-5)
-    assert emr_C_final == pytest.approx(emr_C_initial, rel=1e-5)
+    assert emr_O_final == pytest.approx(emr_O_initial, rel=1e-5)
+
+    # Conservation property: sum of per-element loss equals bulk MLR * dt.
+    # This is the test that would catch any future "skip O" regression.
+    esc_mass_expected = hf_row['esc_rate_total'] * secs_per_year * dt
+    total_loss = M_vols_initial - M_vols_final
+    assert total_loss == pytest.approx(esc_mass_expected, rel=1e-5)
 
     # Verify no negative masses
     for e in tgt:

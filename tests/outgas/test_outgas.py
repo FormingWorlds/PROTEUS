@@ -32,8 +32,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from proteus.outgas.wrapper import (
+    _resolve_oxygen_budget,
     calc_target_elemental_inventories,
     check_desiccation,
+    check_ic_oxygen_budget,
     run_desiccated,
     run_outgassing,
 )
@@ -51,6 +53,11 @@ def test_calc_target_elemental_inventories_calliope_enabled():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'calliope'
+    # Issue #677: O_mode must be a real string under the new schema.
+    # 'ic_chemistry' defers O_kg_total to CALLIOPE so the test remains
+    # focused on the calc_target_masses dispatch behaviour.
+    config.planet.elements.O_mode = 'ic_chemistry'
+    config.planet.volatile_reservoir = 'mantle'
     hf_row = {'Time': 0.0}
 
     with patch('proteus.outgas.calliope.calc_target_masses') as mock_calc:
@@ -70,6 +77,8 @@ def test_calc_target_elemental_inventories_always_calls_calc_target_masses():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'none'
+    config.planet.elements.O_mode = 'ic_chemistry'
+    config.planet.volatile_reservoir = 'mantle'
     hf_row = {'Time': 0.0}
 
     with patch('proteus.outgas.calliope.calc_target_masses') as mock_calc:
@@ -236,12 +245,19 @@ def test_check_desiccation_gate_with_one_t_floor():
 
 
 @pytest.mark.unit
-def test_check_desiccation_oxygen_ignored():
+def test_check_desiccation_oxygen_prevents_under_d1a():
     """
-    Test that check_desiccation ignores oxygen (abundant in silicate rocks).
+    Test that O above mass_thresh prevents desiccation (issue #677 fix).
 
-    Physics: Oxygen is not a volatile tracer (locked in mantle oxides MgO, FeO, SiO2).
-    Only H, C, N, S, Na define volatile inventory for desiccation check.
+    Pre-fix behaviour: O was ignored on the grounds that mantle FeO/MgO
+    buffered an "infinite" atmospheric O reservoir, so an O-rich
+    atmosphere was treated as desiccated when H/C/N/S vanished. Under
+    D1A whole-planet O accounting, O is a tracked element and an
+    atmosphere holding substantial O is not meaningfully desiccated.
+
+    Discriminating: O = 1e22 kg vs threshold 1e16 kg (six orders of
+    magnitude over). If the threshold loop silently dropped O the
+    result would be True (the old behaviour).
     """
     config = MagicMock()
     config.outgas.mass_thresh = 1e16
@@ -250,12 +266,21 @@ def test_check_desiccation_oxygen_ignored():
     hf_row = {}
     for e in element_list:
         if e == 'O':
-            hf_row[e + '_kg_total'] = 1e22  # Huge amount (mantle oxygen)
+            hf_row[e + '_kg_total'] = 1e22  # Above threshold
         else:
             hf_row[e + '_kg_total'] = 1e12  # Below threshold
 
     result = check_desiccation(config, hf_row)
-    assert result is True  # Still desiccated (O doesn't count)
+    # Under D1A, O above threshold blocks desiccation.
+    assert result is False, (
+        'Issue #677 fix: O_kg_total > mass_thresh must prevent desiccation. '
+        'If this assertion fails, check whether the O skip was re-introduced '
+        'in check_desiccation per-element threshold loop.'
+    )
+
+    # Edge case: with O also below threshold, the gate now allows desiccation.
+    hf_row['O_kg_total'] = 1e12  # Below threshold
+    assert check_desiccation(config, hf_row) is True
 
 
 @pytest.mark.unit
@@ -654,3 +679,202 @@ def test_run_desiccated_zeros_element_mass_ratios():
 
     # atm_kg_per_mol is in the excepted_keys list and must survive.
     assert hf_row['atm_kg_per_mol'] == pytest.approx(0.044)
+
+
+# ============================================================================
+# Issue #677 whole-planet oxygen accounting tests
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_resolve_oxygen_budget_ppmw_mode():
+    """_resolve_oxygen_budget('ppmw') mirrors the H ppmw conversion.
+
+    Physics: 1e5 ppmw = 10 percent by mass relative to the reservoir.
+    Discriminating value: M_mantle = 4.04e24 kg (Earth mantle), so the
+    expected O_kg is 4.04e23. Off-by-one in the 1e-6 factor would yield
+    4.04e17 or 4.04e29 — both visibly wrong.
+    """
+    config = MagicMock()
+    config.planet.elements.O_mode = 'ppmw'
+    config.planet.elements.O_budget = 1e5  # ppmw
+    config.planet.volatile_reservoir = 'mantle'
+    hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
+
+    o_kg = _resolve_oxygen_budget(config, hf_row)
+    assert o_kg == pytest.approx(4.04e23, rel=1e-10)
+
+
+@pytest.mark.unit
+def test_resolve_oxygen_budget_kg_mode_pass_through():
+    """O_mode='kg' returns O_budget unchanged."""
+    config = MagicMock()
+    config.planet.elements.O_mode = 'kg'
+    config.planet.elements.O_budget = 3.7e23
+    config.planet.volatile_reservoir = 'mantle'
+    hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
+    assert _resolve_oxygen_budget(config, hf_row) == pytest.approx(3.7e23)
+
+
+@pytest.mark.unit
+def test_resolve_oxygen_budget_FeO_mantle_wt_pct_mode():
+    """FeO_mantle_wt_pct mode: O_kg = M_mantle * wt% * (M_O/M_FeO).
+
+    For Earth mantle (4.04e24 kg) at 10 wt% FeO, the expected O_kg is
+    4.04e24 * 0.10 * 0.2227 ≈ 8.998e22 kg. Discriminating: if the M_O/M_FeO
+    factor were forgotten the result would be 4.04e23 kg (5x too large).
+    """
+    config = MagicMock()
+    config.planet.elements.O_mode = 'FeO_mantle_wt_pct'
+    config.planet.elements.O_budget = 10.0  # wt%
+    config.planet.volatile_reservoir = 'mantle'
+    hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
+
+    o_kg = _resolve_oxygen_budget(config, hf_row)
+    # M_O = 15.999, M_FeO = 71.844, so M_O/M_FeO = 0.22269...
+    expected = 4.04e24 * 0.10 * (15.999 / 71.844)
+    assert o_kg == pytest.approx(expected, rel=1e-4)
+
+
+@pytest.mark.unit
+def test_resolve_oxygen_budget_ic_chemistry_mode_returns_none():
+    """ic_chemistry mode defers to CALLIOPE; returns None."""
+    config = MagicMock()
+    config.planet.elements.O_mode = 'ic_chemistry'
+    config.planet.elements.O_budget = 0.0
+    config.planet.volatile_reservoir = 'mantle'
+    hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
+    assert _resolve_oxygen_budget(config, hf_row) is None
+
+
+@pytest.mark.unit
+def test_resolve_oxygen_budget_unknown_mode_raises():
+    """Unknown O_mode falls through to ValueError.
+
+    Edge case: the in_() validator on Elements.O_mode normally prevents
+    this, but the helper has a defensive fallback so that future mode
+    additions surface clearly if a wrapper path is forgotten.
+    """
+    config = MagicMock()
+    config.planet.elements.O_mode = 'not_a_real_mode'
+    config.planet.elements.O_budget = 1.0
+    config.planet.volatile_reservoir = 'mantle'
+    hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
+    with pytest.raises(ValueError, match='Unknown O_mode'):
+        _resolve_oxygen_budget(config, hf_row)
+
+
+@pytest.mark.unit
+def test_resolve_oxygen_budget_mantle_plus_core_reservoir():
+    """volatile_reservoir='mantle+core' uses M_int (not M_mantle) for ppmw.
+
+    Discriminating: M_int is 1.5x M_mantle for Earth-like core fraction,
+    so the O_kg result differs by exactly that factor between the two
+    reservoir choices.
+    """
+    config = MagicMock()
+    config.planet.elements.O_mode = 'ppmw'
+    config.planet.elements.O_budget = 1e5
+    config.planet.volatile_reservoir = 'mantle+core'
+    hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
+    # ppmw against M_int now, not M_mantle
+    assert _resolve_oxygen_budget(config, hf_row) == pytest.approx(5.97e23, rel=1e-10)
+
+
+@pytest.mark.unit
+def test_check_ic_oxygen_budget_passes_within_tolerance():
+    """IC consistency check accepts user budget within 50% of CALLIOPE's.
+
+    Discriminating: user budget 1.0e23 vs chem 1.4e23 has rel divergence
+    (1.4 - 1.0) / 1.4 = 0.286 < 0.5, so it passes. The sentinel must be
+    flipped to -1 so subsequent calls do not re-fire.
+    """
+    hf_row = {
+        'O_kg_user_ic': 1.0e23,
+        'O_kg_total': 1.4e23,  # CALLIOPE's value
+    }
+    # Should not raise
+    check_ic_oxygen_budget(hf_row, threshold_frac=0.5)
+    # Sentinel flipped so re-call is a no-op
+    assert hf_row['O_kg_user_ic'] == pytest.approx(-1.0)
+
+
+@pytest.mark.unit
+def test_check_ic_oxygen_budget_hard_fails_above_threshold():
+    """IC consistency check raises ValueError when divergence > 50%.
+
+    Discriminating: user 1e23, chem 1e24 has rel divergence
+    (1e24 - 1e23) / 1e24 = 0.9 > 0.5, must hard-fail. Error message
+    should name the divergence percentage and the threshold.
+    """
+    hf_row = {
+        'O_kg_user_ic': 1.0e23,
+        'O_kg_total': 1.0e24,
+    }
+    with pytest.raises(ValueError, match='IC oxygen budget mismatch'):
+        check_ic_oxygen_budget(hf_row, threshold_frac=0.5)
+
+
+@pytest.mark.unit
+def test_check_ic_oxygen_budget_skipped_under_ic_chemistry_sentinel():
+    """Sentinel value -1 (ic_chemistry mode) skips the check."""
+    hf_row = {
+        'O_kg_user_ic': -1.0,
+        'O_kg_total': 1.0e30,  # absurdly large, but check is skipped
+    }
+    # Must not raise
+    check_ic_oxygen_budget(hf_row, threshold_frac=0.5)
+    # Sentinel preserved
+    assert hf_row['O_kg_user_ic'] == pytest.approx(-1.0)
+
+
+@pytest.mark.unit
+def test_check_ic_oxygen_budget_skipped_when_chem_zero():
+    """Degenerate case: chem O_kg_total = 0 → check skipped.
+
+    Edge case: this can happen if CALLIOPE failed silently or if the
+    atmosphere is fully desiccated. We don't want a false divergence
+    alarm in those regimes.
+    """
+    hf_row = {
+        'O_kg_user_ic': 1.0e23,
+        'O_kg_total': 0.0,
+    }
+    check_ic_oxygen_budget(hf_row, threshold_frac=0.5)
+    # Sentinel unchanged (check did nothing)
+    assert hf_row['O_kg_user_ic'] == pytest.approx(1.0e23)
+
+
+@pytest.mark.unit
+def test_config_load_rejects_missing_O_mode(tmp_path):
+    """Configs without explicit O_mode fail at load (issue #677 hard cutover).
+
+    Regression test for the migration discipline: a TOML that has
+    [planet.elements] but no O_mode line must raise a ValueError with
+    a clear migration hint. Discriminating: error message must mention
+    the four valid modes so users can self-correct without external docs.
+    """
+    from proteus.config import read_config_object
+
+    # Minimal valid config except for O_mode missing entirely.
+    toml_text = """
+config_version = "3.0"
+
+[orbit]
+    semimajoraxis = 1.0
+
+[planet]
+    mass_tot = 1.0
+    volatile_mode = "elements"
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 0.5
+
+[outgas]
+    fO2_shift_IW = 4
+"""
+    cfg_path = tmp_path / 'missing_O_mode.toml'
+    cfg_path.write_text(toml_text)
+
+    with pytest.raises(ValueError, match='O_mode is required'):
+        read_config_object(str(cfg_path))

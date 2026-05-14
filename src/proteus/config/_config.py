@@ -168,6 +168,37 @@ def planet_mass_valid(instance, attribute, value):
         raise ValueError('The total planet mass must be < 20 M_earth')
 
 
+def planet_oxygen_mode_explicit(instance, attribute, value):
+    """Require explicit O_mode in planet.elements (issue #677 hard cutover).
+
+    Whole-planet oxygen accounting (issue #677) requires every config to
+    declare how the IC O budget is interpreted. The 'REQUIRED' sentinel
+    default in Elements.O_mode means the user did not set it in the TOML;
+    we reject that with a migration hint listing the four valid modes.
+
+    Configs that pre-date the issue #677 fix can be migrated in one step
+    by adding to their `[planet.elements]` block:
+
+        O_mode   = "ic_chemistry"  # use CALLIOPE IC equilibrium
+        O_budget = 0.0             # ignored under ic_chemistry
+
+    This preserves the legacy "buffered fO2 + CALLIOPE-derived O" behaviour.
+    Petrologists who prefer to specify the inventory directly can use
+    O_mode = "ppmw" / "kg" / "FeO_mantle_wt_pct" instead.
+    """
+    if instance.planet.elements.O_mode == 'REQUIRED':
+        raise ValueError(
+            'planet.elements.O_mode is required (issue #677 hard cutover). '
+            'Add to [planet.elements] one of: '
+            'O_mode = "ic_chemistry" (defer to CALLIOPE equilibrium at IC, '
+            'legacy-compatible), '
+            'O_mode = "ppmw" with O_budget in ppmw of M_mantle (or M_int '
+            'depending on planet.volatile_reservoir), '
+            'O_mode = "kg" with O_budget in kg, or '
+            'O_mode = "FeO_mantle_wt_pct" with O_budget in mantle FeO wt%.'
+        )
+
+
 def boundary_requires_fixed_surface_state(instance, attribute, value):
     """Boundary backend assumes a fixed surface state coupling."""
     if (instance.interior_energetics.module == 'boundary') and (
@@ -228,7 +259,9 @@ class Config:
     orbit: Orbit = field(
         factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
     )
-    planet: Planet = field(factory=Planet, validator=(planet_mass_valid,))
+    planet: Planet = field(
+        factory=Planet, validator=(planet_mass_valid, planet_oxygen_mode_explicit)
+    )
     interior_struct: Struct = field(factory=Struct)
     interior_energetics: Interior = field(
         factory=Interior,

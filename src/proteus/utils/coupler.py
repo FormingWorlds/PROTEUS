@@ -491,6 +491,70 @@ def print_stoptime(start_time):
     log.info(' ')
 
 
+def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
+    """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
+    matches M_atm.
+
+    Issue #677 fix guardrail. The diagnosis showed that the pre-fix code
+    let M_atm exceed M_planet at high H_ppmw because atmospheric oxygen
+    contributed to M_atm (sum over gas_list of *_kg_atm, includes H2O /
+    CO2 / SO2 O atoms) but never to M_planet = M_int + M_ele (M_ele
+    explicitly skipped O). With whole-planet O accounting in place,
+    M_atm <= M_planet must hold by construction; this assertion catches
+    any future regression that re-introduces the asymmetry.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row at the end of an iteration, after run_outgassing
+        and update_planet_mass have written M_atm and M_planet.
+    atol_frac : float
+        Relative tolerance for the two invariants. Default 1e-6 admits
+        accumulated float-rounding from the per-species sum but not
+        any physically meaningful drift.
+
+    Raises
+    ------
+    RuntimeError
+        If M_atm > M_planet (by more than ``atol_frac`` of M_planet) or
+        the per-species sum disagrees with M_atm by more than that.
+    """
+    M_atm = float(hf_row.get('M_atm', 0.0))
+    M_planet = float(hf_row.get('M_planet', 0.0))
+
+    # Pre-IC short-circuit: M_planet == 0 means the structure solve has
+    # not yet populated the hf_row. The invariants are not meaningful
+    # before update_planet_mass has run, so we skip silently. The runtime
+    # call site fires this AFTER update_planet_mass so M_planet > 0 in
+    # normal operation; this branch only protects against direct invocation
+    # in tests or in odd resume paths.
+    if M_planet <= 0.0:
+        return
+
+    # Invariant 1: atmosphere mass <= total planet mass.
+    if M_atm > M_planet * (1.0 + atol_frac):
+        raise RuntimeError(
+            f'Mass conservation violation (issue #677 regression?): '
+            f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
+            f'(relative excess {(M_atm / M_planet - 1) * 100:.3f}%). '
+            f'Likely cause: an aggregation site re-introduced the '
+            f'"if e == \'O\': continue" skip. Check update_planet_mass, '
+            f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
+        )
+
+    # Invariant 2: per-species kg_atm sum equals M_atm.
+    summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
+    if M_atm > 0.0:
+        rel = abs(summed - M_atm) / M_atm
+        if rel > atol_frac:
+            raise RuntimeError(
+                f'M_atm bookkeeping inconsistency: M_atm={M_atm:.3e} kg but '
+                f'sum_s(s_kg_atm)={summed:.3e} kg (relative difference '
+                f'{rel * 100:.3f}%). One of the gas-species kg_atm fields '
+                f'is stale or the M_atm sum loop is missing a species.'
+            )
+
+
 def PrintCurrentState(hf_row: dict):
     """
     Print the current state of the model to the logger

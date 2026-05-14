@@ -58,9 +58,13 @@ def run_escape(
     except (TypeError, ValueError):
         m_init_prev_f = 0.0
     if not np.isfinite(m_init_prev_f) or m_init_prev_f <= 0.0:
-        m_vol_baseline = sum(
-            float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list if e != 'O'
-        )
+        # Issue #677 fix: include O in the baseline. The desiccation gate
+        # compares (M_vol_initial - cur_m_ele) against 1.5 * esc_kg_cumulative;
+        # for the comparison to be consistent, the baseline and cur_m_ele
+        # must both account for O loss (calc_new_elements now debits
+        # O_kg_total, escape/common.py now produces esc_rate_O, so esc_kg_cum
+        # implicitly carries the O contribution).
+        m_vol_baseline = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
         hf_row['M_vol_initial'] = m_vol_baseline
         # Reset the cumulative escape counter alongside the baseline so the
         # ratio (lost vs escaped) starts from a consistent zero.
@@ -233,11 +237,13 @@ def calc_new_elements(
         case _:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
-    # calculate mass of elements in the reservoir
+    # Calculate mass of elements in the reservoir. Issue #677 fix:
+    # include O so the per-element subtraction sums to esc_mass and
+    # the planetary O budget responds to escape (CALLIOPE's next call
+    # may overwrite O_kg_total, but the bulk MLR is now attributed to
+    # all elements proportionally rather than concentrated on H+C+N+S).
     res: dict[str, float] = {}
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
     M_vols = float(sum(res.values()))
 

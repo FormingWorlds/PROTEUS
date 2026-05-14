@@ -22,6 +22,22 @@ class Elements:
         'ppmw': budget in ppmw relative to volatile_reservoir mass.
         'kg': budget in kg (absolute).
 
+    O_mode options (whole-planet oxygen accounting, see issue #677):
+        'ppmw': O_budget in ppmw relative to volatile_reservoir mass.
+        'kg': O_budget in kg (absolute).
+        'FeO_mantle_wt_pct': O_budget interpreted as mantle FeO weight
+            percent; converted to kg-of-O via M_O/M_FeO = 0.2227.
+            Unit-of-convenience for petrologists. Does NOT change the
+            mantle EOS density (PALEOS still assumes its built-in FeO
+            content); the user-supplied wt% only sets the atmospheric
+            and dissolved O budget that PROTEUS carries through the
+            mass-balance bookkeeping.
+        'ic_chemistry': do not pre-populate O_kg_total; let the first
+            outgas call (CALLIOPE / atmodeller) populate it from the
+            fO2-buffered equilibrium given the H/C/N/S budgets at IC.
+            This mode preserves legacy behaviour for configs that
+            predate the issue #677 fix.
+
     use_metallicity: when True, C/N/S are scaled from solar metallicity
     relative to H, overriding C_mode/N_mode/S_mode settings.
 
@@ -43,6 +59,12 @@ class Elements:
         How S_budget is interpreted: 'S/H', 'ppmw', 'kg'.
     S_budget: float
         Sulfur inventory value (units depend on S_mode).
+    O_mode: str
+        How O_budget is interpreted: 'ppmw', 'kg', 'FeO_mantle_wt_pct',
+        'ic_chemistry'.
+    O_budget: float
+        Oxygen inventory value (units depend on O_mode). Ignored when
+        O_mode = 'ic_chemistry'.
     use_metallicity: bool
         Scale C/N/S from solar metallicity (overrides C/N/S mode+budget).
     metallicity: float
@@ -60,6 +82,17 @@ class Elements:
 
     S_mode: str = field(default='S/H', validator=in_(('S/H', 'ppmw', 'kg')))
     S_budget: float = field(default=0.0, validator=ge(0))
+
+    # Default 'REQUIRED' is a sentinel that the Config-level validator
+    # planet_oxygen_mode_explicit (in _config.py) rejects with a migration
+    # hint. The hard-cutover policy (issue #677) means a user must set
+    # O_mode in every config; the default exists only so attrs can
+    # construct an Elements instance during validation.
+    O_mode: str = field(
+        default='REQUIRED',
+        validator=in_(('REQUIRED', 'ppmw', 'kg', 'FeO_mantle_wt_pct', 'ic_chemistry')),
+    )
+    O_budget: float = field(default=0.0, validator=ge(0))
 
     use_metallicity: bool = field(default=False)
     metallicity: float = field(default=1000.0, validator=ge(0))

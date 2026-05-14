@@ -91,32 +91,63 @@ def test_calculate_simple_mantle_mass_scales_with_radius_cubed():
 
 
 @pytest.mark.unit
-def test_update_planet_mass_sums_elements():
+def test_update_planet_mass_includes_oxygen():
     """
-    Test that `update_planet_mass` sums element inventories (excluding O)
-    and sets `M_planet = M_int + M_ele`.
+    `update_planet_mass` must sum ALL elements (issue #677 fix).
+
+    Verifies the whole-planet O accounting: M_ele includes the
+    atmospheric+dissolved O alongside H/C/N/S so M_planet = M_int +
+    M_ele correctly bounds M_atm. Pre-fix behaviour skipped O on the
+    grounds that fO2 buffered it from an "infinite" mantle reservoir;
+    that asymmetry let M_atm exceed M_planet at high H budgets when
+    the atmosphere went H2O-dominated (88.8 percent O by mass).
+
+    Uses asymmetric per-element values so an off-by-one element bug
+    or a wrong-element-skipped bug would surface in the M_ele total.
+    Includes O = 4.0e23 kg — comparable in magnitude to the H/C
+    inventory under the issue #677 reproduction regime — to ensure
+    the assertion fails loudly if O is silently dropped.
     """
-    # Create hf_row with a dry interior mass and element totals
     hf_row = {}
     hf_row['M_int'] = 4.0e24
-    # assign distinct values for each element total
+
+    # Asymmetric per-element values. O is set to a magnitude comparable
+    # to the H/C inventory at H_ppmw=2e5 reproduction (~4e23 kg) so that
+    # silently dropping O would shift M_ele by O(1), not by epsilon.
+    elem_masses = {
+        'H': 7.27e23,
+        'O': 4.09e24,
+        'C': 2.47e20,
+        'N': 4.00e19,
+        'S': 8.00e20,
+        'Si': 0.0,
+        'Mg': 0.0,
+        'Fe': 0.0,
+        'Na': 0.0,
+    }
     expected_ele = 0.0
-    for i, e in enumerate(element_list):
-        key = e + '_kg_total'
-        # oxygen should be ignored
-        if e == 'O':
-            hf_row[key] = 9.99e30
-            continue
-        val = 1.0e20 * (i + 1)
-        hf_row[key] = val
+    for e in element_list:
+        val = elem_masses.get(e, 0.0)
+        hf_row[e + '_kg_total'] = val
         expected_ele += val
 
-    # run function
     update_planet_mass(hf_row)
 
-    assert 'M_ele' in hf_row
+    # Point value: M_ele matches the sum across ALL elements.
     assert hf_row['M_ele'] == pytest.approx(expected_ele)
+    # Property: O contribution is included (would be hidden if test used
+    # symmetric values or if O were tiny).
+    assert hf_row['M_ele'] > elem_masses['O'], (
+        'M_ele must include the O contribution. If this assertion fails, '
+        'check whether the if e == "O": continue skip has been '
+        'reintroduced in update_planet_mass.'
+    )
+    # Point value: M_planet identity.
     assert hf_row['M_planet'] == pytest.approx(hf_row['M_int'] + expected_ele)
+    # Edge case: re-running with O cleared must reduce M_ele by exactly O.
+    hf_row['O_kg_total'] = 0.0
+    update_planet_mass(hf_row)
+    assert hf_row['M_ele'] == pytest.approx(expected_ele - elem_masses['O'])
 
 
 @pytest.mark.unit
@@ -137,6 +168,13 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
     config.planet.mass_tot = 1.0  # 1 Earth mass target
     config.planet.R_int_override = None  # no manual radius override
     config.interior_energetics.spider = MagicMock()
+    # Issue #677: O_mode must be a real string under the new schema; the
+    # MagicMock default returns another MagicMock, which the match statement
+    # in _resolve_oxygen_budget rejects. 'ic_chemistry' defers to CALLIOPE
+    # so the test stays a pure structure-solve check (no O pre-population).
+    config.planet.elements.O_mode = 'ic_chemistry'
+    config.planet.elements.O_budget = 0.0
+    config.planet.volatile_reservoir = 'mantle'
 
     # Historical dataframe with one previous row (used by run_interior patch)
     import pandas as pd

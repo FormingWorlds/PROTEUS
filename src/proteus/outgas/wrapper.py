@@ -7,17 +7,82 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, element_mmw, gas_list
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Molar mass of FeO [kg/mol] for the FeO_mantle_wt_pct conversion. Atomic
+# masses come from utils.constants.element_mmw (IUPAC); FeO = Fe + O.
+_M_FeO = element_mmw['Fe'] + element_mmw['O']
+# Mass fraction of O in FeO. Approximately 0.2227.
+_O_FRAC_OF_FeO = element_mmw['O'] / _M_FeO
+
+
+def _resolve_oxygen_budget(config: Config, hf_row: dict) -> float | None:
+    """Resolve user-supplied IC oxygen budget [kg] under the issue #677 fix.
+
+    Returns the atmospheric+dissolved O mass implied by the user's
+    ``planet.elements.O_mode`` and ``O_budget`` settings. This value
+    becomes ``hf_row['O_kg_total']`` at IC, before the first outgas call
+    runs and equilibrates the gas-phase O against the fO2 buffer.
+
+    Returns ``None`` when ``O_mode == 'ic_chemistry'``, signalling that
+    PROTEUS should NOT pre-populate O_kg_total and instead let CALLIOPE
+    (or atmodeller) supply the equilibrium-derived value on the first
+    outgas call. This preserves legacy behaviour for configs that pre-date
+    the whole-planet O accounting.
+
+    Modes:
+        'ppmw' : O_kg = O_budget * 1e-6 * M_reservoir, where M_reservoir
+            is ``hf_row['M_mantle']`` or ``hf_row['M_int']`` per
+            ``config.planet.volatile_reservoir`` (mirrors H/C/N/S ppmw).
+        'kg' : O_kg = O_budget.
+        'FeO_mantle_wt_pct' : O_kg = M_mantle * (O_budget / 100) *
+            (M_O / M_FeO). The user-facing number is interpreted as an
+            alternative unit for the volatile O budget, NOT as a change
+            to the mantle composition (PALEOS density tables still assume
+            their built-in FeO content). This lets petrologists set the
+            O inventory in familiar mantle-FeO wt% terms while keeping
+            the EOS untouched.
+        'ic_chemistry' : returns None (defer to first outgas call).
+    """
+    elem = config.planet.elements
+    M_mantle = float(hf_row.get('M_mantle', 0.0))
+    if config.planet.volatile_reservoir == 'mantle+core':
+        M_reservoir = float(hf_row.get('M_int', 0.0))
+    else:
+        M_reservoir = M_mantle
+
+    match elem.O_mode:
+        case 'ppmw':
+            return float(elem.O_budget) * 1e-6 * M_reservoir
+        case 'kg':
+            return float(elem.O_budget)
+        case 'FeO_mantle_wt_pct':
+            return M_mantle * (float(elem.O_budget) / 100.0) * _O_FRAC_OF_FeO
+        case 'ic_chemistry':
+            return None
+        case _:
+            # Unreachable; the in_() validator on Elements.O_mode rejects
+            # anything else at config-load time. Guard kept so future
+            # additions to the mode set raise a clear error if a wrapper
+            # path is forgotten.
+            raise ValueError(f"Unknown O_mode '{elem.O_mode}'")
+
 
 def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     """
-    Calculate total amount of volatile elements in the planet
+    Calculate total amount of volatile elements in the planet.
+
+    Under the issue #677 fix (whole-planet O accounting), this function
+    also pre-populates ``hf_row['O_kg_total']`` from the user's O_mode/
+    O_budget settings (unless O_mode == 'ic_chemistry', in which case the
+    first outgas call sets it). The atmosphere+dissolved O thus enters
+    the M_ele aggregation and the Zalmoxis dry-mass subtraction, closing
+    the bookkeeping asymmetry that previously let M_atm > M_planet.
     """
 
     # zero by default, in case not included
@@ -32,12 +97,103 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
 
     calc_target_masses(dirs, config, hf_row)
 
-    # Update total mass of tracked elements
+    # Pre-populate O_kg_total from user budget (whole-planet O accounting,
+    # issue #677). Stashes the user-supplied value as O_kg_user so the IC
+    # consistency check can compare it against CALLIOPE's first-call
+    # equilibrium output and flag a >50% divergence (see check_ic_oxygen_budget).
+    o_kg_user = _resolve_oxygen_budget(config, hf_row)
+    if o_kg_user is not None:
+        hf_row['O_kg_total'] = o_kg_user
+        hf_row['O_kg_user_ic'] = o_kg_user
+    else:
+        # ic_chemistry mode: leave O_kg_total at 0; first CALLIOPE call writes it.
+        hf_row['O_kg_user_ic'] = -1.0  # sentinel: no user budget supplied
+
+    # Update total mass of tracked elements. Issue #677 fix: O is now
+    # included in M_ele (no longer skipped). M_planet = M_int + M_ele
+    # therefore reflects the atmospheric+dissolved O mass that CALLIOPE
+    # produces from the fO2 buffer, closing the asymmetry. Defensive
+    # .get() default lets the sum survive pre-IC hf_row states.
     hf_row['M_ele'] = 0.0
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
-        hf_row['M_ele'] += hf_row[e + '_kg_total']
+        hf_row['M_ele'] += float(hf_row.get(e + '_kg_total', 0.0))
+
+
+def check_ic_oxygen_budget(
+    hf_row: dict,
+    threshold_frac: float = 0.5,
+) -> None:
+    """Verify the user-supplied IC oxygen budget against CALLIOPE's chemistry.
+
+    Issue #677 fix. After the first ``run_outgassing`` call at IC, CALLIOPE
+    (or atmodeller) has written ``hf_row['O_kg_total']`` from the fO2-
+    buffered equilibrium. We compare that against the user-supplied
+    O_budget that ``calc_target_elemental_inventories`` stashed earlier
+    in ``hf_row['O_kg_user_ic']``. A large divergence usually means
+    either:
+
+    1. The user under-specified O_budget so the planet cannot actually
+       support the equilibrium atmosphere CALLIOPE wants. The implied
+       mantle FeO reservoir is being over-drawn.
+    2. The user over-specified O_budget so M_planet now carries phantom
+       oxygen mass that has no physical home (not in the atmosphere,
+       not in the mantle FeO that PALEOS density accounts for).
+
+    Both cases are best caught loudly at IC rather than silently
+    corrupting the trajectory.
+
+    Skipped when ``O_kg_user_ic`` is the sentinel (-1.0), which marks
+    ``O_mode == 'ic_chemistry'`` (the user opted into chemistry-derived
+    O so any discrepancy is, by definition, accepted).
+
+    Parameters
+    ----------
+    hf_row : dict
+        Helpfile row after the first outgas call at IC.
+    threshold_frac : float
+        Maximum allowed relative divergence between user O_budget and
+        CALLIOPE's IC equilibrium value. Default 0.5 (50 percent).
+
+    Raises
+    ------
+    ValueError
+        If divergence exceeds ``threshold_frac``.
+    """
+    user_O = float(hf_row.get('O_kg_user_ic', -1.0))
+    if user_O < 0.0:
+        # Sentinel: O_mode == 'ic_chemistry' or check already fired.
+        return
+
+    chem_O = float(hf_row.get('O_kg_total', 0.0))
+    if chem_O <= 0.0:
+        # Degenerate state; nothing to compare against. Skip.
+        return
+
+    rel_div = abs(user_O - chem_O) / chem_O
+    log.info(
+        'IC oxygen budget check: user=%.3e kg, CALLIOPE-equilibrium=%.3e kg, '
+        'relative divergence=%.1f%% (threshold %.0f%%)',
+        user_O,
+        chem_O,
+        rel_div * 100,
+        threshold_frac * 100,
+    )
+
+    if rel_div > threshold_frac:
+        raise ValueError(
+            f'IC oxygen budget mismatch (issue #677 consistency check): '
+            f'user O_budget implies {user_O:.3e} kg, CALLIOPE equilibrium at IC '
+            f'gives {chem_O:.3e} kg (relative divergence {rel_div * 100:.1f}%, '
+            f'threshold {threshold_frac * 100:.0f}%). Either: '
+            f'(a) adjust planet.elements.O_budget closer to the chemistry value; '
+            f'(b) switch to O_mode="ic_chemistry" to defer to CALLIOPE; '
+            f'(c) change outgas.fO2_shift_IW to bring chemistry into line with '
+            f'the budget. Persistent disagreement usually indicates the implied '
+            f'mantle FeO reservoir is being over- or under-drawn.'
+        )
+
+    # Mark check as done so subsequent outgas calls in init_stage don't re-fire.
+    hf_row['O_kg_user_ic'] = -1.0
 
 
 def check_desiccation(config: Config, hf_row: dict) -> bool:
@@ -78,13 +234,19 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     behaviour.
     """
 
-    # Threshold check (unchanged): refuse desiccation while any element is
-    # still above the per-element mass threshold.
+    # Threshold check: refuse desiccation while ANY element is still above
+    # the per-element mass threshold. Issue #677 fix: O is included now.
+    # Under D1A the user's choice was to require O_kg_total below threshold
+    # as well, on the grounds that an atmosphere with substantial O is not
+    # meaningfully "desiccated" even if H/C/N/S are depleted. In practice
+    # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
+    # change rarely affects the desiccation timing — but it keeps the
+    # semantics honest under whole-planet O accounting.
     for e in element_list:
-        if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
-            continue
-        if hf_row[e + '_kg_total'] > config.outgas.mass_thresh:
-            log.info('Not desiccated, %s = %.2e kg' % (e, hf_row[e + '_kg_total']))
+        if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:
+            log.info(
+                'Not desiccated, %s = %.2e kg' % (e, float(hf_row.get(e + '_kg_total', 0.0)))
+            )
             return False  # return, and allow run_outgassing to proceed
 
     # Escape-balance gate. Only enforced when a baseline has been
@@ -98,7 +260,9 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
         # No baseline -> fall back to old threshold-only behaviour.
         return True
 
-    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list if e != 'O')
+    # Issue #677 fix: include O in cur_m_ele to match the M_vol_initial
+    # baseline (which is now also summed over the full element_list).
+    cur_m_ele = sum(float(hf_row.get(f'{e}_kg_total', 0.0)) for e in element_list)
     lost = m_init - cur_m_ele
     esc_cum = float(hf_row.get('esc_kg_cumulative', 0.0))
 
