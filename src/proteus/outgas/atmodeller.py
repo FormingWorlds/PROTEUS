@@ -341,16 +341,29 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                 dissolved_kg = float(np.squeeze(dissolved_val))
                 hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, dissolved_kg)
             except (TypeError, ValueError):
-                # JAX array conversion failed; fallback
-                kg_total = float(hf_row.get(f'{proteus_name}_kg_total', 0.0))
-                kg_atm = float(hf_row.get(f'{proteus_name}_kg_atm', 0.0))
-                hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, kg_total - kg_atm)
+                # JAX-array conversion failed: no honest fallback exists
+                # for this iteration's dissolved mass, so set to zero
+                # (the species's atmospheric mass remains valid). A
+                # subtraction fallback against a prior iteration's
+                # _kg_total would propagate stale partitioning forward.
+                hf_row[f'{proteus_name}_kg_liquid'] = 0.0
         else:
-            # Species without solubility or not in solve; subtraction fallback
-            kg_total = float(hf_row.get(f'{proteus_name}_kg_total', 0.0))
-            kg_atm = float(hf_row.get(f'{proteus_name}_kg_atm', 0.0))
-            hf_row[f'{proteus_name}_kg_liquid'] = max(0.0, kg_total - kg_atm)
+            # Species without a solubility law and no atmodeller-reported
+            # dissolved mass; treated as gas-only.
+            hf_row[f'{proteus_name}_kg_liquid'] = 0.0
         hf_row[f'{proteus_name}_kg_solid'] = 0.0
+
+        # Maintain the per-species kg_total = kg_atm + kg_liquid invariant
+        # that CALLIOPE provides natively via its solver output dict. The
+        # downstream code (and the helpfile schema) expects this slot to
+        # be populated each iteration; leaving it stale from a prior
+        # iteration would produce systematically wrong totals if a future
+        # consumer reads {sp}_kg_total instead of summing the parts.
+        hf_row[f'{proteus_name}_kg_total'] = (
+            float(hf_row.get(f'{proteus_name}_kg_atm', 0.0))
+            + float(hf_row[f'{proteus_name}_kg_liquid'])
+            + float(hf_row[f'{proteus_name}_kg_solid'])
+        )
 
     # Mean molecular weight (approximate from VMRs)
     _mmw = {
@@ -376,29 +389,38 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         mmw * 1e3,
     )
 
-    # Plumb the derived IW-buffer offset and the O mass-balance residual
-    # into hf_row. atmodeller's asdict() back-computes log10dIW_1_bar from
-    # the converged fO2 against its Hirschmann buffer in both modes:
-    #   - user_constant: equals (numerically) the configured shift since
-    #     the fugacity constraint set it, modulo solver tolerance.
-    #   - from_O_budget: the solver's derived value, which is the Path C
-    #     scientific output.
-    # The buffer choice differs from CALLIOPE's O'Neill & Eggins 2002
-    # (Stage 4 punch list P1-1, ~0.95 dex at 3000 K). Cross-backend
-    # comparison work in Stage 5 will quantify the offset; for now the
-    # column is backend-faithful (each wrapper reports its own buffer).
-    o2_dict = output_dict.get('O2_g', {})
-    log10dIW = o2_dict.get('log10dIW_1_bar') if isinstance(o2_dict, dict) else None
-    if log10dIW is not None:
-        try:
-            hf_row['fO2_shift_IW_derived'] = float(np.squeeze(log10dIW))
-        except (TypeError, ValueError):
-            # JAX-array conversion failed; fall back to the wrapper-level
-            # default the wrapper sets pre-dispatch
-            # (config.outgas.fO2_shift_IW).
-            pass
-
+    # Plumb the derived IW-buffer offset only under Path C. Under
+    # user_constant the wrapper's pre-dispatch echo of
+    # config.outgas.fO2_shift_IW IS the offset the chemistry equilibrated
+    # to (the fugacity constraint set it), so overwriting with
+    # atmodeller's back-computed log10dIW_1_bar would lose bit-for-bit
+    # echo of the user input and introduce a small Hirschmann-buffer
+    # 1-bar-vs-P reconstruction drift. The IW buffer atmodeller uses
+    # under Path C is Hirschmann combined; CALLIOPE uses O'Neill & Eggins
+    # 2002 (~0.95 dex offset at 3000 K). Cross-backend comparison work
+    # later in the framework will quantify this; for now the column is
+    # backend-faithful (each wrapper reports its own buffer).
     if fO2_source == 'from_O_budget':
+        o2_dict = output_dict.get('O2_g', {})
+        log10dIW = o2_dict.get('log10dIW_1_bar') if isinstance(o2_dict, dict) else None
+        if log10dIW is None:
+            log.warning(
+                "atmodeller output missing 'O2_g.log10dIW_1_bar' under Path C; "
+                'fO2_shift_IW_derived left at pre-dispatch default '
+                '(%.3f) which is meaningless when O was a mass constraint.',
+                hf_row.get('fO2_shift_IW_derived', float('nan')),
+            )
+        else:
+            try:
+                hf_row['fO2_shift_IW_derived'] = float(np.squeeze(log10dIW))
+            except (TypeError, ValueError) as e:
+                log.warning(
+                    'atmodeller log10dIW_1_bar JAX conversion failed (%s); '
+                    'fO2_shift_IW_derived left at pre-dispatch default '
+                    '(%.3f) which is meaningless when O was a mass constraint.',
+                    e,
+                    hf_row.get('fO2_shift_IW_derived', float('nan')),
+                )
         # O mass-balance residual: target - (atmospheric O + dissolved O).
         # atmodeller's element_residual output is per-element relative
         # error; we report kg here to match CALLIOPE's H/C/N/S/O_res

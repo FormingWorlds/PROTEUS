@@ -230,6 +230,112 @@ def test_path_c_writes_solver_derived_fO2_to_helpfile():
     assert hf_row['fO2_shift_IW_derived'] == pytest.approx(-2.7)
 
 
+@pytest.mark.unit
+def test_legacy_path_preserves_pre_dispatch_fO2_echo():
+    """Under user_constant the wrapper must NOT overwrite
+    fO2_shift_IW_derived with atmodeller's back-computed value, because
+    the fugacity constraint already set the offset to exactly
+    config.outgas.fO2_shift_IW. Letting atmodeller's Hirschmann-buffer
+    reconstruction overwrite the echo would introduce a small drift
+    (buffer-formula and 1-bar-vs-P-evaluation differences) that breaks
+    bit-for-bit echo of the user input.
+
+    Discriminating: the fake output reports a perturbed log10dIW of
+    -2.7, but config.outgas.fO2_shift_IW is 4.0. A regression that
+    unconditionally writes the solver value would record -2.7 instead
+    of 4.0.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_path_c_config()
+    config.planet.fO2_source = 'user_constant'
+    hf_row = _earth_hf_row()
+    hf_row['fO2_shift_IW_derived'] = config.outgas.fO2_shift_IW  # pre-seed
+
+    fake_model = MagicMock()
+    fake_model.output = _fake_atmodeller_output(log10dIW=-2.7)
+
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+
+    assert hf_row['fO2_shift_IW_derived'] == pytest.approx(config.outgas.fO2_shift_IW)
+
+
+# ---------------------------------------------------------------------------
+# Per-species kg_total invariant
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_atmodeller_maintains_per_species_kg_total_invariant():
+    """The CALLIOPE wrapper provides ``{species}_kg_total = kg_atm +
+    kg_liquid + kg_solid`` natively via its solver output. The
+    atmodeller wrapper used to leave the column at its previous
+    iteration's value, which produced systematically wrong totals when a
+    downstream subtraction-fallback read a stale kg_total. The wrapper
+    must now write the invariant explicitly per species.
+
+    Discriminating: the fake output sets H2O atmospheric mass via the
+    pressure-mass conversion and dissolved mass via output.asdict.
+    A regression that skipped the kg_total write would leave the column
+    at 0.0 (the fixture seeds zero) while kg_atm + kg_liquid is
+    non-zero.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_path_c_config()
+    hf_row = _earth_hf_row()
+
+    fake_model = MagicMock()
+    fake_model.output = _fake_atmodeller_output()
+
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+
+    for sp in ('H2O', 'CO2', 'N2', 'S2'):
+        kg_atm = hf_row[f'{sp}_kg_atm']
+        kg_liq = hf_row[f'{sp}_kg_liquid']
+        kg_sol = hf_row[f'{sp}_kg_solid']
+        kg_total = hf_row[f'{sp}_kg_total']
+        assert kg_total == pytest.approx(kg_atm + kg_liq + kg_sol, rel=1e-12)
+
+
+@pytest.mark.unit
+def test_atmodeller_kg_total_not_stale_after_call():
+    """A regression that read stale ``_kg_total`` from a prior
+    iteration would silently propagate a wrong value forward. Pre-load
+    the fixture with absurd ``_kg_total`` values and verify the wrapper
+    overwrites them with the correct ``kg_atm + kg_liquid + kg_solid``.
+
+    Discriminating: H2O pre-loaded at 1e30 kg; if the wrapper left that
+    untouched, the kg_total invariant would fail by ~10 orders of
+    magnitude.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_path_c_config()
+    hf_row = _earth_hf_row()
+    for sp in ('H2O', 'CO2', 'N2', 'S2'):
+        hf_row[f'{sp}_kg_total'] = 1.0e30  # impossible value
+
+    fake_model = MagicMock()
+    fake_model.output = _fake_atmodeller_output()
+
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+
+    for sp in ('H2O', 'CO2', 'N2', 'S2'):
+        kg_atm = hf_row[f'{sp}_kg_atm']
+        kg_liq = hf_row[f'{sp}_kg_liquid']
+        kg_sol = hf_row[f'{sp}_kg_solid']
+        # The total must be the post-solve sum, not the pre-loaded 1e30.
+        assert hf_row[f'{sp}_kg_total'] == pytest.approx(kg_atm + kg_liq + kg_sol)
+        assert hf_row[f'{sp}_kg_total'] < 1.0e25  # nowhere near the pre-load
+
+
 # ---------------------------------------------------------------------------
 # Authoritative-O preservation across the call
 # ---------------------------------------------------------------------------

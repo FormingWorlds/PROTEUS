@@ -339,13 +339,16 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     log.info('Solving outgassing...')
 
     # Default the derived-fO2 helpfile columns to the user-configured
-    # buffer offset before the backend dispatch. CALLIOPE overrides these
-    # explicitly inside its wrapper (echo of fO2_shift_IW under legacy
-    # mode; solver output under Path C). The atmodeller and dummy
-    # backends have no Path C implementation, so the configured buffer
-    # IS the offset the chemistry equilibrates to; echoing it here keeps
-    # the helpfile column populated with the correct value rather than
-    # the ZeroHelpfileRow default 0.0 that downstream consumers would
+    # buffer offset before the backend dispatch. Each backend overrides
+    # the default as appropriate for its chemistry. Under fO2_source =
+    # "user_constant" the pre-seeded value is the offset the chemistry
+    # equilibrated to (because the fugacity constraint set it); leaving
+    # it untouched is the right behaviour. Under fO2_source =
+    # "from_O_budget" CALLIOPE and atmodeller overwrite the pre-seed
+    # with their solver-derived value. The pre-seed exists primarily so
+    # the dummy backend and any solve-skipped path land at the
+    # physically meaningful configured value rather than the
+    # ZeroHelpfileRow default 0.0, which downstream consumers would
     # otherwise mis-interpret as "the chemistry ran at exactly IW".
     hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
     hf_row['O_res'] = 0.0
