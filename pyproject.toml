@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=61.2"]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "fwl-proteus"
-version = "25.11.19"
+dynamic = ["version"]
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -84,7 +84,6 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 
 [project.optional-dependencies]
 develop = [
-    "bump-my-version",
     # coverage[toml] enables standalone coverage tool with TOML config support (used by ratcheting script)
     # pytest-cov provides pytest integration for "pytest --cov" convenience (slightly different from CI)
     # Note: Both work independently; CI uses "coverage run -m pytest", developers can use either approach
@@ -212,33 +211,15 @@ required-imports = ["from __future__ import annotations"]
 quote-style = "single"
 indent-style = "space"
 
-[tool.bumpversion]
-# https://callowayproject.github.io/bump-my-version/howtos/calver/
-current_version = "25.11.19"
-parse = """(?x)                      # Verbose mode
-    (?P<release>                     # The release part
-        (?:[1-9][0-9])\\.            # YY.
-        (?:1[0-2]|0[1-9])\\.         # MM.
-        (?:3[0-1]|[1-2][0-9]|0[1-9]) # DD
-    )
-    (?:\\.(?P<patch>\\d+))?         # .patch, optional
-"""
-serialize = ["{release}.{patch}", "{release}"]
-
-[tool.bumpversion.parts.release]
-calver_format = "{YY}.{0M}.{0D}"
-
-[[tool.bumpversion.files]]
-filename = "src/proteus/__init__.py"
-search = "__version__ = '{current_version}'"
-replace = "__version__ = '{new_version}'"
-
-[[tool.bumpversion.files]]
-filename = "pyproject.toml"
-search = "version = \"{current_version}\""
-replace = "version = \"{new_version}\""
-
-[[tool.bumpversion.files]]
-filename = "CITATION.cff"
-search = "version: {current_version}"
-replace = "version: {new_version}"
+[tool.setuptools_scm]
+# CalVer: tags are bare YY.MM.DD dates (no leading 'v', e.g. 26.05.13).
+# setuptools-scm derives the version from the latest git tag.
+# version_scheme = "no-guess-dev" is required for CalVer: the default
+# "guess-next-dev" would produce 26.5.14.devN+gHASH for commits after
+# the 26.05.13 tag, claiming a future calendar date that will collide
+# with the next daily release tag. "no-guess-dev" produces
+# 26.05.13.post1.devN+gHASH instead, which is honest about the build
+# being a post-tag development commit rather than a pre-release of
+# the next version.
+version_scheme = "no-guess-dev"
+version_file = "src/proteus/_version.py"
