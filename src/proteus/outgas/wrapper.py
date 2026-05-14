@@ -337,6 +337,18 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
 
     log.info('Solving outgassing...')
 
+    # Default the derived-fO2 helpfile columns to the user-configured
+    # buffer offset before the backend dispatch. CALLIOPE overrides these
+    # explicitly inside its wrapper (echo of fO2_shift_IW under legacy
+    # mode; solver output under Path C). The atmodeller and dummy
+    # backends have no Path C implementation, so the configured buffer
+    # IS the offset the chemistry equilibrates to; echoing it here keeps
+    # the helpfile column populated with the correct value rather than
+    # the ZeroHelpfileRow default 0.0 that downstream consumers would
+    # otherwise mis-interpret as "the chemistry ran at exactly IW".
+    hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
+    hf_row['O_res'] = 0.0
+
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
         from proteus.outgas.calliope import calc_surface_pressures

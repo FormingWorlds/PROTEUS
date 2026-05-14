@@ -18,11 +18,17 @@ def expected_keys():
             copy_keys.append(f'{s}_kg_{r}')
             copy_keys.append(f'{s}_mol_{r}')
 
-    # elements
+    # elements. The `_kg_total` slot is owned by escape (which debits
+    # the running budget after the wrapper writes) for every element
+    # EXCEPT oxygen. For O, the chemistry solver's output partitions
+    # atm+liquid+solid into a fresh total each iteration; the calliope
+    # wrapper restores hf_row['O_kg_total'] to the authoritative input
+    # immediately after this copy under Path C (fO2_source =
+    # "from_O_budget"), so the escape debit chain is preserved across
+    # iterations. Under user_constant the solver's O_kg_total IS the
+    # authoritative value, so the copy is the correct write.
     for e in element_list:
         for r in res_list:
-            # do not overwrite total inventory, since this will be modified by escape
-            # except oxygen, since we assume it's set by redox buffer (const_fO2)
             if (r != 'total') or (e == 'O'):
                 copy_keys.append(f'{e}_kg_{r}')
 

@@ -1137,6 +1137,7 @@ config_version = "3.0"
         O_budget = {o_budget}
 
 [outgas]
+    module = "calliope"
     fO2_shift_IW = 0
 """
     cfg_path = _write_toml(tmp_path, f'from_O_budget_{o_mode}.toml', toml_text)
@@ -1144,6 +1145,47 @@ config_version = "3.0"
     assert cfg.planet.fO2_source == 'from_O_budget'
     assert cfg.planet.elements.O_mode == o_mode
     assert cfg.planet.elements.O_budget == pytest.approx(o_budget)
+
+
+@pytest.mark.unit
+def test_config_rejects_from_O_budget_with_atmodeller_module(tmp_path):
+    """planet.fO2_source = 'from_O_budget' requires outgas.module = 'calliope'.
+    The authoritative-O entry point exists only for CALLIOPE; pairing
+    Path C with the atmodeller (or dummy) backend would silently fall
+    back to buffered-fO2 chemistry, contradicting Path C.
+
+    Failing at config-load (not at the first outgas call) saves the user
+    from burning interior IC and structure setup before hitting the wall.
+
+    Discriminating: error message names both fields so the user can
+    self-correct without external docs.
+    """
+    from proteus.config import read_config_object
+
+    toml_text = """
+config_version = "3.0"
+
+[orbit]
+    semimajoraxis = 1.0
+
+[planet]
+    mass_tot = 1.0
+    volatile_mode = "elements"
+    fO2_source = "from_O_budget"
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 0.5
+        O_mode   = "kg"
+        O_budget = 1.0e21
+
+[outgas]
+    module = "atmodeller"
+    fO2_shift_IW = 0
+"""
+    cfg_path = _write_toml(tmp_path, 'from_O_budget_atmodeller.toml', toml_text)
+
+    with pytest.raises(ValueError, match='from_O_budget'):
+        read_config_object(str(cfg_path))
 
 
 @pytest.mark.unit
@@ -1222,6 +1264,7 @@ config_version = "3.0"
         O_budget = 1.0e21
 
 [outgas]
+    module = "calliope"
     fO2_shift_IW = 4.0
 """
     cfg_path = _write_toml(tmp_path, 'redundant_fO2.toml', toml_text)

@@ -962,6 +962,13 @@ def ExtendHelpfile(current_hf: pd.DataFrame, new_row: dict):
     _ALLOWED_NON_SCHEMA_KEYS = frozenset(
         {
             'core_state_initial',  # string: 'liquid'/'mixed'/'solid'
+            # IC consistency sentinel for the issue #677 oxygen-budget
+            # check. Set by calc_target_elemental_inventories, consumed
+            # and reset to -1.0 by check_ic_oxygen_budget on the first
+            # outgas call. Intentionally not persisted to the CSV
+            # because subsequent runs (or resumed runs) re-derive it
+            # from the config on the next IC pass.
+            'O_kg_user_ic',
         }
     )
     missing_keys = schema - row_keys

@@ -222,6 +222,14 @@ def planet_fO2_source_compat(instance, attribute, value):
        inoperative; Path C has nothing to invert against. Switch
        ``volatile_mode`` to ``"elements"`` or pick a different fO2_source.
 
+    4. ``fO2_source = "from_O_budget"`` requires the CALLIOPE outgassing
+       backend. The authoritative-O entry point is implemented only for
+       CALLIOPE today; the atmodeller and dummy backends would silently
+       fall back to buffered-fO2 chemistry, contradicting Path C. The
+       runtime dispatch refuses this combination too, but failing at
+       config-load saves the user from burning interior IC and structure
+       setup before hitting the wall.
+
     ``fO2_source = "user_constant"`` (default) accepts every O_mode and
     every volatile_mode (legacy behaviour, no change).
 
@@ -266,6 +274,19 @@ def planet_fO2_source_compat(instance, attribute, value):
             'volatile_mode to "elements" or set fO2_source back to '
             '"user_constant".'
         )
+
+    if fO2_source == 'from_O_budget':
+        outgas_module = getattr(instance.outgas, 'module', None)
+        if outgas_module is not None and outgas_module != 'calliope':
+            raise ValueError(
+                'planet.fO2_source = "from_O_budget" currently requires '
+                'outgas.module = "calliope". The authoritative-O entry '
+                'point is implemented only for CALLIOPE; '
+                f'outgas.module = "{outgas_module}" has no Path C '
+                'wrapper and would silently fall back to buffered-fO2 '
+                'chemistry. Switch outgas.module to "calliope" or set '
+                'fO2_source back to "user_constant".'
+            )
 
     if fO2_source == 'from_O_budget':
         import warnings
