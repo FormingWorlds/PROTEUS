@@ -218,6 +218,27 @@ class Planet:
         Element abundance parameters (used when volatile_mode = 'elements').
     gas_prs: GasPrs
         Partial pressure parameters (used when volatile_mode = 'gas_prs').
+    fO2_source: str
+        How the chemistry solver treats atmospheric fO2.
+
+        'user_constant' (default, legacy-compatible): fO2 is buffered to
+            the iron-wustite offset set by ``outgas.fO2_shift_IW``;
+            atmospheric and dissolved O are derived from the equilibrium
+            chemistry at that fO2. This is the behaviour PROTEUS has
+            shipped to date.
+        'from_O_budget' (Path C): the user O budget (from
+            ``planet.elements.O_mode``/``O_budget``) is authoritative;
+            fO2 is *derived* by the chemistry solver as the IW-buffer
+            offset that produces the supplied O inventory. Use this when
+            you want whole-planet O accounting to drive the redox state
+            instead of buffering to a fixed dIW. Requires
+            ``O_mode != 'ic_chemistry'`` (the chemistry needs an O
+            target to invert against).
+        'from_mantle_redox' (reserved): fO2 is derived from a tracked
+            Fe3+/Fe2+ ratio in the silicate melt (Schaefer et al. 2024
+            / issue #653). NOT YET IMPLEMENTED; the config-level
+            validator rejects this value until the radial fO2
+            framework lands.
     prevent_warming: bool
         When True, require the planet to monotonically cool over time.
         Enforced in all atmosphere modules and termination checks.
@@ -271,6 +292,16 @@ class Planet:
     volatile_reservoir: str = field(default='mantle', validator=in_(('mantle', 'mantle+core')))
     elements: Elements = field(factory=Elements)
     gas_prs: GasPrs = field(factory=GasPrs)
+
+    # fO2 source. Default 'user_constant' preserves the legacy behaviour
+    # where outgas.fO2_shift_IW buffers atmospheric fO2 and the chemistry
+    # solver returns the implied O inventory. 'from_O_budget' inverts the
+    # roles (Path C); 'from_mantle_redox' is reserved for issue #653 and
+    # rejected by the config-level validator below until that work lands.
+    fO2_source: str = field(
+        default='user_constant',
+        validator=in_(('user_constant', 'from_O_budget', 'from_mantle_redox')),
+    )
 
     # Structure override: bypass the root finder and use a fixed R_int.
     # Needed for SPIDER/Aragog parity runs where the two energetics

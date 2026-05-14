@@ -317,6 +317,7 @@ def test_run_outgassing_calliope_calculation():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'calliope'
+    config.planet.fO2_source = 'user_constant'
 
     # Setup hf_row with gas masses and VMR (typical early Earth steam atmosphere)
     hf_row = {}
@@ -350,6 +351,7 @@ def test_run_outgassing_atmosphere_mass_conservation():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'calliope'
+    config.planet.fO2_source = 'user_constant'
 
     # Setup with known gas masses for all gases in gas_list
     hf_row = {}
@@ -398,6 +400,7 @@ def test_run_outgassing_disabled_module():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'none'  # Disabled
+    config.planet.fO2_source = 'user_constant'
 
     # Setup with fixed gas masses
     hf_row = {}
@@ -508,6 +511,7 @@ def test_run_outgassing_zero_atmosphere_mass():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'calliope'
+    config.planet.fO2_source = 'user_constant'
 
     # All gases have zero mass
     hf_row = {}
@@ -565,6 +569,7 @@ def test_run_outgassing_mixed_species_dominance():
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'calliope'
+    config.planet.fO2_source = 'user_constant'
 
     # Earth-like composition (simplified to available gases)
     # Assume: N2 dominant, O2 secondary, H2O/CO2 trace, rest negligible
@@ -789,12 +794,14 @@ def test_check_ic_oxygen_budget_passes_within_tolerance():
     (1.4 - 1.0) / 1.4 = 0.286 < 0.5, so it passes. The sentinel must be
     flipped to -1 so subsequent calls do not re-fire.
     """
+    config = MagicMock()
+    config.planet.fO2_source = 'user_constant'
     hf_row = {
         'O_kg_user_ic': 1.0e23,
         'O_kg_total': 1.4e23,  # CALLIOPE's value
     }
     # Should not raise
-    check_ic_oxygen_budget(hf_row, threshold_frac=0.5)
+    check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
     # Sentinel flipped so re-call is a no-op
     assert hf_row['O_kg_user_ic'] == pytest.approx(-1.0)
 
@@ -807,23 +814,27 @@ def test_check_ic_oxygen_budget_hard_fails_above_threshold():
     (1e24 - 1e23) / 1e24 = 0.9 > 0.5, must hard-fail. Error message
     should name the divergence percentage and the threshold.
     """
+    config = MagicMock()
+    config.planet.fO2_source = 'user_constant'
     hf_row = {
         'O_kg_user_ic': 1.0e23,
         'O_kg_total': 1.0e24,
     }
     with pytest.raises(ValueError, match='IC oxygen budget mismatch'):
-        check_ic_oxygen_budget(hf_row, threshold_frac=0.5)
+        check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
 
 
 @pytest.mark.unit
 def test_check_ic_oxygen_budget_skipped_under_ic_chemistry_sentinel():
     """Sentinel value -1 (ic_chemistry mode) skips the check."""
+    config = MagicMock()
+    config.planet.fO2_source = 'user_constant'
     hf_row = {
         'O_kg_user_ic': -1.0,
         'O_kg_total': 1.0e30,  # absurdly large, but check is skipped
     }
     # Must not raise
-    check_ic_oxygen_budget(hf_row, threshold_frac=0.5)
+    check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
     # Sentinel preserved
     assert hf_row['O_kg_user_ic'] == pytest.approx(-1.0)
 
@@ -836,13 +847,57 @@ def test_check_ic_oxygen_budget_skipped_when_chem_zero():
     atmosphere is fully desiccated. We don't want a false divergence
     alarm in those regimes.
     """
+    config = MagicMock()
+    config.planet.fO2_source = 'user_constant'
     hf_row = {
         'O_kg_user_ic': 1.0e23,
         'O_kg_total': 0.0,
     }
-    check_ic_oxygen_budget(hf_row, threshold_frac=0.5)
+    check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
     # Sentinel unchanged (check did nothing)
     assert hf_row['O_kg_user_ic'] == pytest.approx(1.0e23)
+
+
+@pytest.mark.unit
+def test_check_ic_oxygen_budget_skipped_under_path_C():
+    """Under planet.fO2_source != 'user_constant' the user O is the
+    authoritative input that drives chemistry, so the check is skipped.
+
+    Discriminating: a divergence that would normally hard-fail under
+    user_constant must pass cleanly under from_O_budget — and crucially
+    must NOT flip the sentinel (the user O is still authoritative and
+    re-readable for subsequent diagnostic purposes).
+    """
+    config = MagicMock()
+    config.planet.fO2_source = 'from_O_budget'
+    hf_row = {
+        'O_kg_user_ic': 1.0e23,
+        'O_kg_total': 1.0e24,  # 90% divergence — would fail under user_constant
+    }
+    check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
+    # Sentinel must remain intact; we did not run the check at all.
+    assert hf_row['O_kg_user_ic'] == pytest.approx(1.0e23)
+
+
+@pytest.mark.unit
+def test_run_outgassing_rejects_from_O_budget_until_wrapper_lands():
+    """planet.fO2_source = 'from_O_budget' is accepted by the config
+    schema but the runtime path is not yet wired up. run_outgassing
+    must refuse with NotImplementedError rather than silently fall
+    through to the legacy buffered-fO2 chemistry, which would produce
+    different output from what the user requested.
+
+    Discriminating: the error message names the actual fO2_source
+    value the user set so the failure is self-explanatory.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.outgas.module = 'calliope'
+    config.planet.fO2_source = 'from_O_budget'
+    hf_row = {}
+
+    with pytest.raises(NotImplementedError, match='from_O_budget'):
+        run_outgassing(dirs, config, hf_row)
 
 
 @pytest.mark.unit
@@ -878,3 +933,180 @@ config_version = "3.0"
 
     with pytest.raises(ValueError, match='O_mode is required'):
         read_config_object(str(cfg_path))
+
+
+def _minimal_valid_toml(extra_planet: str = '', extra_elements: str = '') -> str:
+    """Build a minimal TOML that passes all other validators; only the
+    planet/elements blocks are perturbed by the caller."""
+    return f"""
+config_version = "3.0"
+
+[orbit]
+    semimajoraxis = 1.0
+
+[planet]
+    mass_tot = 1.0
+    volatile_mode = "elements"
+{extra_planet}
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 0.5
+        O_mode   = "ic_chemistry"
+        O_budget = 0.0
+{extra_elements}
+
+[outgas]
+    fO2_shift_IW = 4
+"""
+
+
+@pytest.mark.unit
+def test_config_rejects_from_mantle_redox_reserved():
+    """planet.fO2_source = 'from_mantle_redox' is a reserved enum value
+    for the radial Fe3+/Fe2+ framework (issue #653). The runtime is not
+    wired so the config-level validator must reject it at load time;
+    otherwise users would silently fall through to legacy behaviour
+    that doesn't match what they asked for.
+
+    Discriminating: error message must mention issue #653 so users can
+    find the upstream tracking.
+    """
+    from proteus.config import read_config_object
+
+    toml_text = _minimal_valid_toml(
+        extra_planet='    fO2_source = "from_mantle_redox"\n',
+    )
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
+        f.write(toml_text)
+        cfg_path = Path(f.name)
+
+    try:
+        with pytest.raises(ValueError, match='issue #653'):
+            read_config_object(str(cfg_path))
+    finally:
+        cfg_path.unlink()
+
+
+@pytest.mark.unit
+def test_config_rejects_from_O_budget_with_ic_chemistry():
+    """planet.fO2_source = 'from_O_budget' requires an authoritative O
+    budget. O_mode = 'ic_chemistry' defers O to the chemistry solver,
+    which contradicts Path C — there is nothing to invert against.
+
+    Discriminating: error message names both fields so the user knows
+    which one to change.
+    """
+    from proteus.config import read_config_object
+
+    # Note _minimal_valid_toml's default O_mode is ic_chemistry
+    toml_text = _minimal_valid_toml(
+        extra_planet='    fO2_source = "from_O_budget"\n',
+    )
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
+        f.write(toml_text)
+        cfg_path = Path(f.name)
+
+    try:
+        with pytest.raises(ValueError, match='ic_chemistry'):
+            read_config_object(str(cfg_path))
+    finally:
+        cfg_path.unlink()
+
+
+@pytest.mark.unit
+def test_config_accepts_from_O_budget_with_concrete_O_mode():
+    """The (fO2_source='from_O_budget', O_mode='ppmw') combination is
+    the canonical Path C config. Schema must accept it (runtime gate
+    in run_outgassing will refuse for now, but the validator must not)."""
+    from proteus.config import read_config_object
+
+    toml_text = """
+config_version = "3.0"
+
+[orbit]
+    semimajoraxis = 1.0
+
+[planet]
+    mass_tot = 1.0
+    volatile_mode = "elements"
+    fO2_source = "from_O_budget"
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 0.5
+        O_mode   = "ppmw"
+        O_budget = 500.0
+
+[outgas]
+    fO2_shift_IW = 4
+"""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
+        f.write(toml_text)
+        cfg_path = Path(f.name)
+
+    try:
+        # Must not raise at config-load (only at run_outgassing).
+        cfg = read_config_object(str(cfg_path))
+        assert cfg.planet.fO2_source == 'from_O_budget'
+        assert cfg.planet.elements.O_mode == 'ppmw'
+    finally:
+        cfg_path.unlink()
+
+
+@pytest.mark.unit
+def test_config_fO2_source_default_is_user_constant():
+    """Configs that omit fO2_source default to 'user_constant', preserving
+    the legacy behaviour for the 108 already-migrated TOMLs without
+    requiring a second migration pass."""
+    from proteus.config import read_config_object
+
+    # No fO2_source line in the TOML
+    toml_text = _minimal_valid_toml()
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
+        f.write(toml_text)
+        cfg_path = Path(f.name)
+
+    try:
+        cfg = read_config_object(str(cfg_path))
+        assert cfg.planet.fO2_source == 'user_constant'
+    finally:
+        cfg_path.unlink()
+
+
+@pytest.mark.unit
+def test_config_rejects_unknown_fO2_source_value():
+    """The in_() validator rejects any value not in the three-element
+    enum, so a typo (e.g., 'user_const') produces a clear error rather
+    than silent fallback."""
+    from proteus.config import read_config_object
+
+    toml_text = _minimal_valid_toml(
+        extra_planet='    fO2_source = "user_const"\n',  # typo
+    )
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
+        f.write(toml_text)
+        cfg_path = Path(f.name)
+
+    try:
+        with pytest.raises(ValueError):
+            read_config_object(str(cfg_path))
+    finally:
+        cfg_path.unlink()

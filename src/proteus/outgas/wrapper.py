@@ -120,13 +120,14 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
 
 
 def check_ic_oxygen_budget(
+    config: Config,
     hf_row: dict,
     threshold_frac: float = 0.5,
 ) -> None:
     """Verify the user-supplied IC oxygen budget against CALLIOPE's chemistry.
 
-    Issue #677 fix. After the first ``run_outgassing`` call at IC, CALLIOPE
-    (or atmodeller) has written ``hf_row['O_kg_total']`` from the fO2-
+    After the first ``run_outgassing`` call at IC, CALLIOPE (or
+    atmodeller) has written ``hf_row['O_kg_total']`` from the fO2-
     buffered equilibrium. We compare that against the user-supplied
     O_budget that ``calc_target_elemental_inventories`` stashed earlier
     in ``hf_row['O_kg_user_ic']``. A large divergence usually means
@@ -142,12 +143,21 @@ def check_ic_oxygen_budget(
     Both cases are best caught loudly at IC rather than silently
     corrupting the trajectory.
 
-    Skipped when ``O_kg_user_ic`` is the sentinel (-1.0), which marks
-    ``O_mode == 'ic_chemistry'`` (the user opted into chemistry-derived
-    O so any discrepancy is, by definition, accepted).
+    Skipped when:
+      - ``planet.fO2_source != "user_constant"``. Under Path C the user
+        O budget is the *authoritative* input that drives the chemistry,
+        so any "divergence" between it and the derived O inventory is
+        zero by construction. The check is meaningful only when fO2 is
+        the input and O is the output.
+      - ``O_kg_user_ic`` is the sentinel (-1.0), which marks
+        ``O_mode == 'ic_chemistry'`` (the user opted into chemistry-
+        derived O so any discrepancy is, by definition, accepted).
 
     Parameters
     ----------
+    config : Config
+        Configuration object. Reads ``config.planet.fO2_source`` to
+        decide whether the check applies.
     hf_row : dict
         Helpfile row after the first outgas call at IC.
     threshold_frac : float
@@ -159,6 +169,11 @@ def check_ic_oxygen_budget(
     ValueError
         If divergence exceeds ``threshold_frac``.
     """
+    # Gate on fO2_source. Path C makes user O authoritative so there is
+    # no divergence to flag.
+    if config.planet.fO2_source != 'user_constant':
+        return
+
     user_O = float(hf_row.get('O_kg_user_ic', -1.0))
     if user_O < 0.0:
         # Sentinel: O_mode == 'ic_chemistry' or check already fired.
@@ -297,6 +312,20 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
     """
+
+    # planet.fO2_source enum gate. The enum is accepted by the config
+    # schema, but only 'user_constant' has a runtime path today. The
+    # validator above already rejects 'from_mantle_redox' at config-
+    # load. 'from_O_budget' is accepted by the schema (so the framework
+    # can be developed against TOML configs) but raises here until the
+    # CALLIOPE / atmodeller authoritative-O wrappers land.
+    if config.planet.fO2_source != 'user_constant':
+        raise NotImplementedError(
+            f'planet.fO2_source = "{config.planet.fO2_source}" is recognised '
+            'by the config schema but its runtime path is not yet wired '
+            "into run_outgassing. Use 'user_constant' until the "
+            'authoritative-O wrapper lands.'
+        )
 
     log.info('Solving outgassing...')
 

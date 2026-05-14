@@ -199,6 +199,47 @@ def planet_oxygen_mode_explicit(instance, attribute, value):
         )
 
 
+def planet_fO2_source_compat(instance, attribute, value):
+    """Validate planet.fO2_source against O_mode and against availability.
+
+    Three rules:
+
+    1. ``fO2_source = "from_mantle_redox"`` is a reserved enum value for
+       the radial Fe3+/Fe2+ fO2 framework (issue #653, Schaefer et al.
+       2024). The runtime path for it does not exist yet; reject the
+       config so users don't silently fall through to legacy behaviour.
+
+    2. ``fO2_source = "from_O_budget"`` requires the O budget to be
+       authoritative. ``O_mode = "ic_chemistry"`` defers the O inventory
+       to the chemistry solver, which contradicts Path C — there is
+       nothing to invert against. Require a concrete O budget
+       ("ppmw" / "kg" / "FeO_mantle_wt_pct") instead.
+
+    3. ``fO2_source = "user_constant"`` (default) accepts any O_mode
+       including ``ic_chemistry`` (legacy behaviour, no change).
+    """
+    fO2_source = instance.planet.fO2_source
+    O_mode = instance.planet.elements.O_mode
+
+    if fO2_source == 'from_mantle_redox':
+        raise ValueError(
+            'planet.fO2_source = "from_mantle_redox" is reserved for the '
+            'radial Fe3+/Fe2+ tracking framework (issue #653) and is not '
+            'yet wired into the runtime. Use "user_constant" (legacy '
+            'fO2 buffered by outgas.fO2_shift_IW) or "from_O_budget" '
+            '(authoritative O budget, fO2 derived) instead.'
+        )
+
+    if fO2_source == 'from_O_budget' and O_mode == 'ic_chemistry':
+        raise ValueError(
+            'planet.fO2_source = "from_O_budget" requires an authoritative '
+            'O budget but planet.elements.O_mode = "ic_chemistry" defers '
+            'the O inventory to the chemistry solver. Pick an explicit O '
+            'budget mode ("ppmw", "kg", or "FeO_mantle_wt_pct") or switch '
+            'fO2_source back to "user_constant".'
+        )
+
+
 def boundary_requires_fixed_surface_state(instance, attribute, value):
     """Boundary backend assumes a fixed surface state coupling."""
     if (instance.interior_energetics.module == 'boundary') and (
@@ -260,7 +301,12 @@ class Config:
         factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
     )
     planet: Planet = field(
-        factory=Planet, validator=(planet_mass_valid, planet_oxygen_mode_explicit)
+        factory=Planet,
+        validator=(
+            planet_mass_valid,
+            planet_oxygen_mode_explicit,
+            planet_fO2_source_compat,
+        ),
     )
     interior_struct: Struct = field(factory=Struct)
     interior_energetics: Interior = field(

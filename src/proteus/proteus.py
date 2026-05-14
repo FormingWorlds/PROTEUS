@@ -709,10 +709,12 @@ class Proteus:
                 # outgas call (subsequent init_stage calls find the sentinel
                 # set to -1 and skip). Compares the user-supplied O_budget
                 # against CALLIOPE's equilibrium-derived O_kg_total; hard-
-                # fails on >50% divergence. Skipped when O_mode='ic_chemistry'.
+                # fails on >50% divergence. Skipped when O_mode='ic_chemistry'
+                # or when planet.fO2_source != 'user_constant' (Path C
+                # makes user O authoritative so there is no divergence).
                 from proteus.outgas.wrapper import check_ic_oxygen_budget
 
-                check_ic_oxygen_budget(self.hf_row)
+                check_ic_oxygen_budget(self.config, self.hf_row)
 
             # Add mass of total volatile element mass (M_ele) to total mass of mantle+core
             update_planet_mass(self.hf_row)
