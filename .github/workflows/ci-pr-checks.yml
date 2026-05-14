@@ -588,11 +588,75 @@ jobs:
       - name: Run ruff format check
         run: ruff format --check src/ tests/
 
+  editable-install-check:
+    name: Editable Aragog/Zalmoxis Install
+    runs-on: ubuntu-latest
+    outputs:
+      outcome: ${{ steps.verify.outcome }}
+
+    # Verifies that the get_aragog.sh / get_zalmoxis.sh scripts install
+    # the sibling checkouts editable and that the editable copies take
+    # precedence over the fwl-aragog / fwl-zalmoxis PyPI fall-back pins
+    # listed in pyproject.toml. Without this gate, a regression that
+    # broke the setup scripts (e.g. wrong upstream URL casing, missing
+    # pip flag) would only surface for end users.
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PROTEUS (PyPI fall-back path)
+        # This first install resolves the fwl-aragog / fwl-zalmoxis PyPI
+        # pins from pyproject.toml. The next step then overrides those
+        # wheels with editable sibling checkouts; the verification step
+        # asserts the override took effect.
+        run: pip install -e ".[develop]"
+
+      - name: Run editable setup scripts
+        # The setup scripts probe SSH and fall back to HTTPS when the
+        # runner has no SSH key (the default on hosted runners). The
+        # fall-back is what gets exercised here.
+        run: |
+          bash tools/get_aragog.sh
+          bash tools/get_zalmoxis.sh
+
+      - name: Verify editable install took precedence
+        id: verify
+        run: |
+          python - <<'PY'
+          import aragog
+          import zalmoxis
+          import os
+          import sys
+
+          # The editable checkouts live inside the PROTEUS root.
+          proteus_root = os.getcwd()
+          expected_aragog = os.path.join(proteus_root, 'aragog')
+          expected_zalmoxis = os.path.join(proteus_root, 'Zalmoxis')
+
+          # importlib resolution must land in the sibling checkout, not
+          # the site-packages wheel. Compare via os.path.commonpath to
+          # tolerate src/ layouts inside each package.
+          if os.path.commonpath([aragog.__file__, expected_aragog]) != expected_aragog:
+              print(f'FAIL: aragog loaded from {aragog.__file__}, expected under {expected_aragog}')
+              sys.exit(1)
+          if os.path.commonpath([zalmoxis.__file__, expected_zalmoxis]) != expected_zalmoxis:
+              print(f'FAIL: zalmoxis loaded from {zalmoxis.__file__}, expected under {expected_zalmoxis}')
+              sys.exit(1)
+          print(f'OK: aragog -> {aragog.__file__}')
+          print(f'OK: zalmoxis -> {zalmoxis.__file__}')
+          PY
+
   summary:
     name: PR Summary
     runs-on: ubuntu-latest
     if: always()
-    needs: [unit-tests, macos-unit-tests, lint]
+    needs: [unit-tests, macos-unit-tests, lint, editable-install-check]
 
     steps:
       - name: Write combined summary
@@ -731,7 +795,8 @@ jobs:
         if: >-
           needs.unit-tests.result == 'failure' ||
           needs.macos-unit-tests.result == 'failure' ||
-          needs.lint.result == 'failure'
+          needs.lint.result == 'failure' ||
+          needs.editable-install-check.result == 'failure'
         run: |
           echo "❌ One or more required checks failed. See summary above for details."
           exit 1
