@@ -222,13 +222,13 @@ def planet_fO2_source_compat(instance, attribute, value):
        inoperative; Path C has nothing to invert against. Switch
        ``volatile_mode`` to ``"elements"`` or pick a different fO2_source.
 
-    4. ``fO2_source = "from_O_budget"`` requires the CALLIOPE outgassing
-       backend. The authoritative-O entry point is implemented only for
-       CALLIOPE today; the atmodeller and dummy backends would silently
-       fall back to buffered-fO2 chemistry, contradicting Path C. The
-       runtime dispatch refuses this combination too, but failing at
-       config-load saves the user from burning interior IC and structure
-       setup before hitting the wall.
+    4. ``fO2_source = "from_O_budget"`` requires an outgassing backend
+       with an authoritative-O implementation: CALLIOPE
+       (``equilibrium_atmosphere_authoritative_O``) and atmodeller
+       (native mass-constraint API) both qualify; the ``dummy`` backend
+       does not. The runtime dispatch echoes this rejection too, but
+       failing at config-load saves the user from burning interior IC
+       and structure setup before hitting the wall.
 
     ``fO2_source = "user_constant"`` (default) accepts every O_mode and
     every volatile_mode (legacy behaviour, no change).
@@ -277,15 +277,15 @@ def planet_fO2_source_compat(instance, attribute, value):
 
     if fO2_source == 'from_O_budget':
         outgas_module = getattr(instance.outgas, 'module', None)
-        if outgas_module is not None and outgas_module != 'calliope':
+        if outgas_module == 'dummy':
             raise ValueError(
-                'planet.fO2_source = "from_O_budget" currently requires '
-                'outgas.module = "calliope". The authoritative-O entry '
-                'point is implemented only for CALLIOPE; '
-                f'outgas.module = "{outgas_module}" has no Path C '
-                'wrapper and would silently fall back to buffered-fO2 '
-                'chemistry. Switch outgas.module to "calliope" or set '
-                'fO2_source back to "user_constant".'
+                'planet.fO2_source = "from_O_budget" requires an '
+                'outgassing backend with an authoritative-O '
+                'implementation. outgas.module = "dummy" has no '
+                'chemistry to invert against, so Path C has nothing '
+                'to compute. Switch outgas.module to "calliope" or '
+                '"atmodeller", or set fO2_source back to '
+                '"user_constant".'
             )
 
     if fO2_source == 'from_O_budget':

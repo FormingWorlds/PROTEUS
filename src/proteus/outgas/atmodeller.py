@@ -101,9 +101,17 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         'O2': set(),  # always included for fO2
     }
 
-    # Determine which elements have budgets above threshold
+    # Determine which elements have budgets above threshold. Under
+    # planet.fO2_source = "from_O_budget" (Path C) the user O budget
+    # is authoritative, so O joins the active set; under user_constant
+    # the IW buffer constrains O and we exclude it from the mass
+    # constraint here.
+    fO2_source = config.planet.fO2_source
+    constrained_elements = ('H', 'C', 'N', 'S', 'O') if fO2_source == 'from_O_budget' else (
+        'H', 'C', 'N', 'S'
+    )
     active_elements = set()
-    for element in ('H', 'C', 'N', 'S'):
+    for element in constrained_elements:
         key = f'{element}_kg_total'
         if float(hf_row.get(key, 0.0)) > config.outgas.mass_thresh:
             active_elements.add(element)
@@ -193,22 +201,43 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         pressure=np.nan,  # Thin-atmosphere approximation
     )
 
-    # Fugacity constraint: oxygen via IW buffer
-    fugacity_constraints = {
-        'O2_g': IronWustiteBuffer(config.outgas.fO2_shift_IW),
-    }
-
-    # Mass constraints from elemental budgets
-    mass_constraints = {}
-    for element in ('H', 'C', 'N', 'S'):
+    # Fugacity and mass constraints. The two paths split here:
+    #
+    # - user_constant (legacy): fO2 is buffered to the configured IW
+    #   offset and atmodeller derives the resulting O distribution.
+    #   Mass constraints cover H/C/N/S only.
+    # - from_O_budget (Path C): the user O budget is authoritative and
+    #   atmodeller back-solves for the IW offset. Mass constraints cover
+    #   all five elements; no fugacity constraint on O2_g.
+    fugacity_constraints: dict = {}
+    mass_constraints: dict = {}
+    for element in constrained_elements:
         key = f'{element}_kg_total'
         mass_kg = float(hf_row.get(key, 0.0))
         if mass_kg > config.outgas.mass_thresh:
             mass_constraints[element] = mass_kg
 
+    if fO2_source == 'user_constant':
+        fugacity_constraints['O2_g'] = IronWustiteBuffer(config.outgas.fO2_shift_IW)
+
+    # Stash the authoritative O target for Path C: atmodeller's output
+    # element_density / dissolved_mass arithmetic equals target['O'] only
+    # up to the solver's element residual, and we must not let that
+    # residual drift hf_row['O_kg_total'] across iterations (the escape
+    # pipeline reads this column to compute each iteration's debit).
+    target_O_kg = mass_constraints.get('O') if fO2_source == 'from_O_budget' else None
+
     if not mass_constraints:
         log.warning('No volatile element budgets above threshold; skipping atmodeller')
         return
+
+    if fO2_source == 'from_O_budget' and 'O' not in mass_constraints:
+        raise ValueError(
+            'planet.fO2_source = "from_O_budget" requires '
+            'hf_row["O_kg_total"] > outgas.mass_thresh, but the O '
+            'budget is below threshold. Increase planet.elements.O_budget '
+            'or switch to fO2_source = "user_constant".'
+        )
 
     # Temperature floor guard
     if T_magma < config.outgas.T_floor:
@@ -346,3 +375,51 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         P_total,
         mmw * 1e3,
     )
+
+    # Plumb the derived IW-buffer offset and the O mass-balance residual
+    # into hf_row. atmodeller's asdict() back-computes log10dIW_1_bar from
+    # the converged fO2 against its Hirschmann buffer in both modes:
+    #   - user_constant: equals (numerically) the configured shift since
+    #     the fugacity constraint set it, modulo solver tolerance.
+    #   - from_O_budget: the solver's derived value, which is the Path C
+    #     scientific output.
+    # The buffer choice differs from CALLIOPE's O'Neill & Eggins 2002
+    # (Stage 4 punch list P1-1, ~0.95 dex at 3000 K). Cross-backend
+    # comparison work in Stage 5 will quantify the offset; for now the
+    # column is backend-faithful (each wrapper reports its own buffer).
+    o2_dict = output_dict.get('O2_g', {})
+    log10dIW = o2_dict.get('log10dIW_1_bar') if isinstance(o2_dict, dict) else None
+    if log10dIW is not None:
+        try:
+            hf_row['fO2_shift_IW_derived'] = float(np.squeeze(log10dIW))
+        except (TypeError, ValueError):
+            # JAX-array conversion failed; fall back to the wrapper-level
+            # default the wrapper sets pre-dispatch
+            # (config.outgas.fO2_shift_IW).
+            pass
+
+    if fO2_source == 'from_O_budget':
+        # O mass-balance residual: target - (atmospheric O + dissolved O).
+        # atmodeller's element_residual output is per-element relative
+        # error; we report kg here to match CALLIOPE's H/C/N/S/O_res
+        # convention.
+        o_atoms_per_kg = {
+            'H2O': 16.0 / 18.015,
+            'CO2': 32.0 / 44.01,
+            'CO': 16.0 / 28.01,
+            'SO2': 32.0 / 64.07,
+            'O2': 1.0,
+        }
+        atm_O = 0.0
+        liq_O = 0.0
+        for sp, frac in o_atoms_per_kg.items():
+            atm_O += float(hf_row.get(f'{sp}_kg_atm', 0.0)) * frac
+            liq_O += float(hf_row.get(f'{sp}_kg_liquid', 0.0)) * frac
+        hf_row['O_res'] = float(target_O_kg) - (atm_O + liq_O)
+
+        # Restore the authoritative user O budget. atmodeller's solver
+        # may have converged to atom_O + liq_O slightly off from
+        # target_O_kg (within its atol/rtol); the per-iteration drift
+        # would otherwise accumulate in the escape pipeline that reads
+        # hf_row['O_kg_total'] to compute the next debit.
+        hf_row['O_kg_total'] = float(target_O_kg)

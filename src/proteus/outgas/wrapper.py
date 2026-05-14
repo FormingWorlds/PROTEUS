@@ -314,14 +314,14 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     """
 
     # planet.fO2_source dispatch. Two runtime paths are wired today:
-    # 'user_constant' (legacy buffered-fO2 chemistry) for both backends,
+    # 'user_constant' (legacy buffered-fO2 chemistry) for every backend,
     # and 'from_O_budget' (authoritative-O chemistry) for the CALLIOPE
-    # backend only. The Config-level validators (planet_fO2_source_compat)
-    # reject any other value AND the from_O_budget + non-calliope combo
-    # at config-load, so the two guards below are unreachable under a
-    # normally-loaded Config. They remain as defence in depth for
-    # programmatic Config construction (tests, scripted runs) that
-    # bypasses the validators.
+    # and atmodeller backends. The Config-level validator
+    # (planet_fO2_source_compat) rejects 'from_mantle_redox' and the
+    # from_O_budget + dummy combo at config-load, so this guard is
+    # unreachable under a normally-loaded Config. It remains as defence
+    # in depth for programmatic Config construction (tests, scripted
+    # runs) that bypasses the validators.
     fO2_source = config.planet.fO2_source
     if fO2_source not in ('user_constant', 'from_O_budget'):
         raise NotImplementedError(
@@ -330,11 +330,10 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
             'run_outgassing.'
         )
 
-    if fO2_source == 'from_O_budget' and config.outgas.module != 'calliope':
+    if fO2_source == 'from_O_budget' and config.outgas.module == 'dummy':
         raise NotImplementedError(
-            'planet.fO2_source = "from_O_budget" currently has a runtime '
-            f'path only for the CALLIOPE backend (outgas.module = "{config.outgas.module}" '
-            'lacks an authoritative-O wrapper).'
+            'planet.fO2_source = "from_O_budget" requires chemistry to '
+            'invert against; outgas.module = "dummy" has none.'
         )
 
     log.info('Solving outgassing...')

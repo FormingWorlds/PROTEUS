@@ -943,23 +943,52 @@ def test_run_outgassing_from_O_budget_dispatches_to_calliope():
 
 
 @pytest.mark.unit
-def test_run_outgassing_from_O_budget_rejects_atmodeller_backend():
-    """Path C currently has a runtime path only for CALLIOPE. Pairing
-    fO2_source = 'from_O_budget' with outgas.module = 'atmodeller' must
-    fail with NotImplementedError, not silently fall through to the
-    legacy atmodeller chemistry (which would silently ignore the user
-    O budget).
+def test_run_outgassing_from_O_budget_dispatches_to_atmodeller():
+    """Path C now has a runtime path for atmodeller too. The wrapper
+    must forward to ``calc_surface_pressures_atmodeller`` without
+    raising, matching the calliope-backend dispatch behaviour.
 
-    Discriminating: error message names both fO2_source and the offending
-    backend so the user can self-correct.
+    Discriminating: the mock confirms the call shape; a regression that
+    re-introduced the runtime rejection would raise NotImplementedError
+    instead of completing.
     """
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'atmodeller'
     config.planet.fO2_source = 'from_O_budget'
+    config.interior_struct.zalmoxis.global_miscibility = False
+    config.outgas.h2_binodal = False
+    hf_row = {}
+    for s in gas_list:
+        hf_row[s + '_kg_atm'] = 0.0
+        hf_row[s + '_vmr'] = 0.0
+        hf_row[s + '_bar'] = 0.0
+    hf_row['P_surf'] = 0.0
+    hf_row['atm_kg_per_mol'] = 0.018
+
+    with patch(
+        'proteus.outgas.atmodeller.calc_surface_pressures_atmodeller'
+    ) as mock_calc:
+        run_outgassing(dirs, config, hf_row)
+        mock_calc.assert_called_once_with(dirs, config, hf_row)
+
+
+@pytest.mark.unit
+def test_run_outgassing_from_O_budget_rejects_dummy_backend():
+    """The dummy backend has no chemistry to invert against, so
+    ``fO2_source = 'from_O_budget'`` cannot work with it. The wrapper
+    must refuse rather than silently producing meaningless output.
+
+    Discriminating: error message names "dummy" so the user can
+    self-correct.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.outgas.module = 'dummy'
+    config.planet.fO2_source = 'from_O_budget'
     hf_row = {}
 
-    with pytest.raises(NotImplementedError, match='from_O_budget'):
+    with pytest.raises(NotImplementedError, match='dummy'):
         run_outgassing(dirs, config, hf_row)
 
 
@@ -1180,17 +1209,13 @@ config_version = "3.0"
 
 
 @pytest.mark.unit
-def test_config_rejects_from_O_budget_with_atmodeller_module(tmp_path):
-    """planet.fO2_source = 'from_O_budget' requires outgas.module = 'calliope'.
-    The authoritative-O entry point exists only for CALLIOPE; pairing
-    Path C with the atmodeller (or dummy) backend would silently fall
-    back to buffered-fO2 chemistry, contradicting Path C.
+def test_config_accepts_from_O_budget_with_atmodeller_module(tmp_path):
+    """planet.fO2_source = 'from_O_budget' is supported by both CALLIOPE
+    and atmodeller backends. The atmodeller path uses its native
+    mass-constraint API instead of fugacity-buffering O2.
 
-    Failing at config-load (not at the first outgas call) saves the user
-    from burning interior IC and structure setup before hitting the wall.
-
-    Discriminating: error message names both fields so the user can
-    self-correct without external docs.
+    Discriminating: the config loads without raising, and the loaded
+    object preserves both fields as set in the TOML.
     """
     from proteus.config import read_config_object
 
@@ -1215,8 +1240,45 @@ config_version = "3.0"
     fO2_shift_IW = 0
 """
     cfg_path = _write_toml(tmp_path, 'from_O_budget_atmodeller.toml', toml_text)
+    cfg = read_config_object(str(cfg_path))
+    assert cfg.planet.fO2_source == 'from_O_budget'
+    assert cfg.outgas.module == 'atmodeller'
 
-    with pytest.raises(ValueError, match='from_O_budget'):
+
+@pytest.mark.unit
+def test_config_rejects_from_O_budget_with_dummy_module(tmp_path):
+    """The dummy backend has no chemistry to invert against, so
+    ``fO2_source = 'from_O_budget'`` is meaningless and must be
+    rejected at config-load.
+
+    Discriminating: error message names "dummy" and points the user at
+    a working backend so the failure is self-explanatory.
+    """
+    from proteus.config import read_config_object
+
+    toml_text = """
+config_version = "3.0"
+
+[orbit]
+    semimajoraxis = 1.0
+
+[planet]
+    mass_tot = 1.0
+    volatile_mode = "elements"
+    fO2_source = "from_O_budget"
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 0.5
+        O_mode   = "kg"
+        O_budget = 1.0e21
+
+[outgas]
+    module = "dummy"
+    fO2_shift_IW = 0
+"""
+    cfg_path = _write_toml(tmp_path, 'from_O_budget_dummy.toml', toml_text)
+
+    with pytest.raises(ValueError, match='dummy'):
         read_config_object(str(cfg_path))
 
 
