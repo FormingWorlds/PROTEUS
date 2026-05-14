@@ -1254,7 +1254,18 @@ def test_get_proteus_directories_has_required_keys():
     """Sanity: the directory dict exposes the keys the runtime depends on."""
     dirs = get_proteus_directories(outdir='unit-test')
     # Module-source paths still referenced at runtime.
-    for required in ('proteus', 'agni', 'spider', 'aragog', 'tools', 'utils', 'input'):
+    required_keys = (
+        'proteus',
+        'agni',
+        'spider',
+        'aragog',
+        'zalmoxis',
+        'vulcan',
+        'tools',
+        'utils',
+        'input',
+    )
+    for required in required_keys:
         assert required in dirs, f"missing required directory key '{required}'"
     # Per-run output subtree.
     for required in (
@@ -1268,15 +1279,23 @@ def test_get_proteus_directories_has_required_keys():
 
 
 @pytest.mark.unit
-def test_get_proteus_directories_omits_dead_vulcan_key():
-    """``dirs['vulcan']`` is a stale gitlink reference.
+def test_get_proteus_directories_editable_submodule_paths():
+    """Each editable FWL submodule maps to its on-disk sibling directory.
 
-    VULCAN now ships as fwl-vulcan on PyPI; no in-repo VULCAN directory
-    is required, and no callsite reads ``dirs['vulcan']``. Pin the
-    absence here so the dead entry cannot quietly reappear during a
-    future merge from main.
+    Aragog / Zalmoxis / VULCAN are installed via the ``tools/get_*.sh``
+    scripts as editable sibling checkouts inside the PROTEUS root. The
+    paths are case-sensitive on Linux: Aragog clones to ``aragog/``,
+    Zalmoxis to ``Zalmoxis/``, VULCAN to ``VULCAN/``. Pin the case here
+    so a doctor command or runtime path-resolver does not silently look
+    in the wrong directory.
     """
     dirs = get_proteus_directories(outdir='unit-test')
-    assert 'vulcan' not in dirs, (
-        "dirs['vulcan'] is dead; VULCAN is a PyPI dependency, not a gitlink"
-    )
+    # Path basename must match the on-disk casing the get_*.sh scripts use.
+    assert os.path.basename(dirs['aragog']) == 'aragog'
+    assert os.path.basename(dirs['zalmoxis']) == 'Zalmoxis'
+    assert os.path.basename(dirs['vulcan']) == 'VULCAN'
+    # Each path is anchored at the PROTEUS root (the parent of the
+    # editable checkout), not somewhere else like /tmp or site-packages.
+    assert os.path.dirname(dirs['aragog']) == dirs['proteus']
+    assert os.path.dirname(dirs['zalmoxis']) == dirs['proteus']
+    assert os.path.dirname(dirs['vulcan']) == dirs['proteus']
