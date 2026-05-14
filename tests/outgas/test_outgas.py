@@ -93,17 +93,17 @@ def test_check_desiccation_not_desiccated():
 
     Physics: Planet still has volatile inventory (H_kg_total > 1e16 kg).
     Typical for early Earth with ~1 ocean mass (1.4e21 kg H2O ≈ 1.6e20 kg H).
+    Whole-planet O accounting (issue #677): O is now one of the five
+    tracked elements; every element_list entry (including O) is summed
+    into the desiccation check, so the test must keep them all above the
+    threshold to expect a "not desiccated" verdict.
     """
     config = MagicMock()
     config.outgas.mass_thresh = 1e16  # 10 petagrams threshold
 
-    # Construct hf_row with all elements above threshold (except O, which is ignored)
-    hf_row = {}
-    for e in element_list:
-        if e == 'O':
-            hf_row[e + '_kg_total'] = 1e15  # Below threshold, but ignored
-        else:
-            hf_row[e + '_kg_total'] = 1e18  # Well above threshold
+    # All elements (including O) above threshold so the planet is not
+    # desiccated under the symmetric H/C/N/S/O check.
+    hf_row = {e + '_kg_total': 1e18 for e in element_list}
 
     result = check_desiccation(config, hf_row)
     assert result is False
@@ -112,12 +112,13 @@ def test_check_desiccation_not_desiccated():
 @pytest.mark.unit
 def test_check_desiccation_fully_desiccated():
     """
-    Test check_desiccation returns True when all volatiles (except O) below threshold.
+    Test check_desiccation returns True when every tracked element is
+    below threshold.
 
     Physics: Complete desiccation after long-term escape (Mars-like scenario).
-    All H, C, N, S depleted to negligible amounts. With no escape baseline
-    tracked (M_vol_initial absent or zero), the function falls back to the
-    threshold-only behaviour.
+    All five tracked elements (H, C, N, S, O) depleted to negligible amounts.
+    With no escape baseline tracked (M_vol_initial absent or zero), the
+    function falls back to the threshold-only behaviour.
     """
     config = MagicMock()
     config.outgas.mass_thresh = 1e16  # 10 petagrams
@@ -142,19 +143,18 @@ def test_check_desiccation_refused_when_loss_unexplained():
     + desiccated" exit.
 
     Discriminating values: initial inventory = 1e21 kg, escaped = 1e15 kg,
-    current = 1e10 kg. Loss = 1e21 - 1e10 ≈ 1e21 kg, which is 1e6x larger
-    than the cumulative escape can explain. The 1.5x slack and 1e3 floor
-    do not save it.
+    current = 1e10 kg per element. With every tracked element below the
+    desiccation threshold, the threshold check passes; the escape-balance
+    gate then sees ~1e21 kg loss against a 1e15 kg escape budget (1e6x
+    larger than escape can explain) and must refuse the verdict. The 1.5x
+    slack and 1e3 floor do not save it.
     """
     config = MagicMock()
     config.outgas.mass_thresh = 1e16
 
-    hf_row = {}
-    for e in element_list:
-        if e == 'O':
-            hf_row[e + '_kg_total'] = 1e22
-        else:
-            hf_row[e + '_kg_total'] = 1e10  # well below threshold
+    # Every element below threshold so the gate, not the threshold check,
+    # is what flips the verdict.
+    hf_row = {e + '_kg_total': 1e10 for e in element_list}
     hf_row['M_vol_initial'] = 1e21  # 1 EO H equivalent
     hf_row['esc_kg_cumulative'] = 1e15  # only 0.1% of inventory could be lost
 
@@ -542,12 +542,12 @@ def test_check_desiccation_at_exact_threshold():
     config = MagicMock()
     config.outgas.mass_thresh = 1e16
 
-    # All elements AT or below threshold (none strictly above)
+    # All elements (including O) at or below threshold (none strictly
+    # above). The check uses strict >, so an exact-threshold value still
+    # counts as desiccated.
     hf_row = {}
     for e in element_list:
-        if e == 'O':
-            hf_row[e + '_kg_total'] = 0.0  # Ignored (never checked)
-        elif e == 'H':
+        if e == 'H':
             hf_row[e + '_kg_total'] = 1e16  # Exactly at threshold (not > threshold)
         else:
             hf_row[e + '_kg_total'] = 5e15  # Below threshold

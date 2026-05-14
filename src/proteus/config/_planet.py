@@ -249,11 +249,12 @@ class Planet:
         converter=none_if_none,
     )
 
-    # Initial temperature profile
-    # Default = 'adiabatic_from_cmb' (Stage 1a lock, 2026-04-20): CMB-anchored
-    # adiabatic IC is the canonical starting state for the UnifyCoupling paper.
-    # Deeper IC exploration (accretion-scaling, liquidus-offset, etc.) is
-    # deferred to the dedicated Stage 4 (see roadmap).
+    # Initial temperature profile. Default 'adiabatic_from_cmb' anchors
+    # the adiabat at T = tcmb_init at the core-mantle boundary and
+    # integrates upward to the surface; this is the canonical starting
+    # state across the codebase. The other six modes cover isothermal,
+    # linear, surface-anchored adiabatic, accretion (White & Li 2025),
+    # isentropic (CHILI protocol), and liquidus-anchored ICs.
     temperature_mode: str = field(
         default='adiabatic_from_cmb',
         validator=in_(
