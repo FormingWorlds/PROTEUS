@@ -173,13 +173,6 @@ jobs:
           rm -rf /opt/proteus/.git
           cd /opt/proteus
           pip install -e ".[develop]" --no-deps
-          # pytest-xdist enables parallel test execution via `-n auto`
-          # in the test steps. It is in [project.optional-dependencies]
-          # develop but `--no-deps` above skips it. Install explicitly
-          # here so the container has it on every CI run, regardless of
-          # whether the Docker base image has been rebuilt with the
-          # latest pyproject.toml.
-          pip install pytest-xdist
 
       - name: Install CI helper tools
         run: |
@@ -231,14 +224,17 @@ jobs:
           else
             COV_ARGS=""
           fi
-          # -n auto runs across all available cores via pytest-xdist.
+          # -p no:faulthandler disables pytest's faulthandler plugin.
+          # GitHub macOS runners deny faulthandler.enable() with
+          # PermissionError; the same plugin is harmless on Linux but
+          # disabling it on both matches the local invocation and
+          # keeps behaviour consistent across the matrix.
           # --durations=25 prints the slowest 25 tests for diagnostics
-          # without flooding the log like --durations=0 does (1200+
-          # rows).
+          # without flooding the log like --durations=0 does.
           pytest -m "unit and not skip" \
             --ignore=tests/examples \
             $COV_ARGS \
-            -n auto \
+            -p no:faulthandler \
             --durations=25 | tee pytest-unit.log
 
       - name: Smart rebuild of physics modules
@@ -282,6 +278,7 @@ jobs:
           pytest -m "smoke and not skip" \
             --ignore=tests/examples \
             $COV_ARGS \
+            -p no:faulthandler \
             --durations=25 -v --tb=short | tee pytest-smoke.log
 
       - name: Generate coverage JSON
@@ -626,10 +623,14 @@ jobs:
         id: unit-tests
         continue-on-error: true
         run: |
+          # -p no:faulthandler disables pytest's faulthandler plugin.
+          # macOS GitHub runners deny faulthandler.enable() with
+          # PermissionError, which aborts pytest at configure time
+          # (exit code 3) before any test runs.
           pytest -m "unit and not skip" \
             --ignore=tests/examples \
-            --durations=0 \
-            --durations-min=0 | tee pytest-unit-macos.log
+            -p no:faulthandler \
+            --durations=25 | tee pytest-unit-macos.log
 
       - name: Upload macOS pytest log
         uses: actions/upload-artifact@v6
