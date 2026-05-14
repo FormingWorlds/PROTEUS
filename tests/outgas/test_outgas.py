@@ -880,23 +880,74 @@ def test_check_ic_oxygen_budget_skipped_under_path_C():
 
 
 @pytest.mark.unit
-def test_run_outgassing_rejects_from_O_budget_until_wrapper_lands():
-    """planet.fO2_source = 'from_O_budget' is accepted by the config
-    schema but the runtime path is not yet wired up. run_outgassing
-    must refuse with NotImplementedError rather than silently fall
-    through to the legacy buffered-fO2 chemistry, which would produce
-    different output from what the user requested.
+def test_run_outgassing_from_O_budget_dispatches_to_calliope():
+    """planet.fO2_source = 'from_O_budget' with the calliope backend
+    routes to proteus.outgas.calliope.calc_surface_pressures (which in
+    turn calls CALLIOPE's authoritative-O entry point). The wrapper
+    must NOT raise; the legacy NotImplementedError is gone now that the
+    runtime path exists.
 
-    Discriminating: the error message names the actual fO2_source
-    value the user set so the failure is self-explanatory.
+    Discriminating: the call is forwarded with the same (dirs, config,
+    hf_row) tuple — if dispatch were broken, the mock would not see the
+    invocation.
     """
     dirs = {'output': '/tmp/test'}
     config = MagicMock()
     config.outgas.module = 'calliope'
     config.planet.fO2_source = 'from_O_budget'
+    config.interior_struct.zalmoxis.global_miscibility = False
+    config.outgas.h2_binodal = False
+    hf_row = {}
+    for s in gas_list:
+        hf_row[s + '_kg_atm'] = 0.0
+        hf_row[s + '_vmr'] = 0.0
+        hf_row[s + '_bar'] = 0.0
+    hf_row['P_surf'] = 0.0
+    hf_row['atm_kg_per_mol'] = 0.018
+
+    with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
+        run_outgassing(dirs, config, hf_row)
+        mock_calc.assert_called_once_with(dirs, config, hf_row)
+
+
+@pytest.mark.unit
+def test_run_outgassing_from_O_budget_rejects_atmodeller_backend():
+    """Path C currently has a runtime path only for CALLIOPE. Pairing
+    fO2_source = 'from_O_budget' with outgas.module = 'atmodeller' must
+    fail with NotImplementedError, not silently fall through to the
+    legacy atmodeller chemistry (which would silently ignore the user
+    O budget).
+
+    Discriminating: error message names both fO2_source and the offending
+    backend so the user can self-correct.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.outgas.module = 'atmodeller'
+    config.planet.fO2_source = 'from_O_budget'
     hf_row = {}
 
     with pytest.raises(NotImplementedError, match='from_O_budget'):
+        run_outgassing(dirs, config, hf_row)
+
+
+@pytest.mark.unit
+def test_run_outgassing_rejects_unknown_fO2_source():
+    """An unrecognised fO2_source must raise NotImplementedError rather
+    than silently falling through to legacy chemistry. The Config-level
+    validator already filters at config-load, so reaching this branch is
+    a runtime invariant violation worth surfacing loudly.
+
+    Discriminating: the error message names the offending value, not a
+    generic "unsupported mode" string.
+    """
+    dirs = {'output': '/tmp/test'}
+    config = MagicMock()
+    config.outgas.module = 'calliope'
+    config.planet.fO2_source = 'something_unexpected'
+    hf_row = {}
+
+    with pytest.raises(NotImplementedError, match='something_unexpected'):
         run_outgassing(dirs, config, hf_row)
 
 

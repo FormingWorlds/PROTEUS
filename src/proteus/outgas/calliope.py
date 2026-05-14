@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 from calliope.constants import molar_mass, ocean_moles
 from calliope.solve import (
     equilibrium_atmosphere,
+    equilibrium_atmosphere_authoritative_O,
     get_target_from_params,
     get_target_from_pressures,
 )
@@ -274,11 +275,20 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # make solvevol options
     opts = construct_options(dirs, config, hf_row)
 
-    # convert masses to dict for calliope
+    # convert masses to dict for calliope. Under planet.fO2_source =
+    # "from_O_budget" (Path C) we additionally pass the running O budget
+    # so the authoritative-O entry point can invert against it. Path C
+    # requires hf_row['O_kg_total'] to be populated by
+    # calc_target_elemental_inventories (IC) and maintained by the escape
+    # debits (subsequent iterations); the Config-level validator already
+    # forbids the combination with O_mode = "ic_chemistry", where this
+    # value would not be available.
     target = {}
     for e in element_list:
         if e != 'O':
             target[e] = hf_row[e + '_kg_total']
+    if config.planet.fO2_source == 'from_O_budget':
+        target['O'] = hf_row['O_kg_total']
 
     # construct guess for CALLIOPE
     p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
@@ -295,20 +305,39 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         opts['T_magma'] = config.outgas.T_floor
         log.warning('Outgassing temperature clipped to %.1f K' % opts['T_magma'])
 
-    # get atmospheric compositison
+    # Dispatch on planet.fO2_source. The two entry points share the
+    # output-dict schema (volatile partial pressures, per-species reservoir
+    # masses, elemental totals, atmospheric diagnostics) so downstream
+    # consumers are agnostic; Path C adds two extra keys
+    # (fO2_shift_derived, O_res) that we plumb into hf_row below.
     try:
-        solvevol_result = equilibrium_atmosphere(
-            target,
-            opts,
-            xtol=config.outgas.solver_atol,
-            rtol=config.outgas.solver_rtol,
-            atol=config.outgas.mass_thresh,
-            nguess=config.outgas.calliope.nguess,
-            nsolve=config.outgas.calliope.nsolve,
-            p_guess=p_guess,
-            print_result=False,
-            opt_solver=False,
-        )
+        if config.planet.fO2_source == 'from_O_budget':
+            solvevol_result = equilibrium_atmosphere_authoritative_O(
+                target,
+                opts,
+                fO2_hint=config.outgas.fO2_shift_IW,
+                xtol=config.outgas.solver_atol,
+                rtol=config.outgas.solver_rtol,
+                atol=config.outgas.mass_thresh,
+                nguess=config.outgas.calliope.nguess,
+                nsolve=config.outgas.calliope.nsolve,
+                p_guess=p_guess,
+                print_result=False,
+                opt_solver=False,
+            )
+        else:
+            solvevol_result = equilibrium_atmosphere(
+                target,
+                opts,
+                xtol=config.outgas.solver_atol,
+                rtol=config.outgas.solver_rtol,
+                atol=config.outgas.mass_thresh,
+                nguess=config.outgas.calliope.nguess,
+                nsolve=config.outgas.calliope.nsolve,
+                p_guess=p_guess,
+                print_result=False,
+                opt_solver=False,
+            )
     except RuntimeError as e:
         log.error('Outgassing calculation with CALLIOPE failed')
         UpdateStatusfile(dirs, 27)
@@ -318,3 +347,25 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     for k in expected_keys():
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
+
+    # Path C invariant: the user-supplied O budget is the authoritative
+    # input, not an output for the solver to perturb. The solver's
+    # output O_kg_total is mass_atm['O'] + mass_int['O'] which equals
+    # target['O'] only up to the solver residual; letting that contaminate
+    # hf_row['O_kg_total'] would propagate a tiny non-conservation across
+    # iterations and into the escape pipeline that reads this column to
+    # compute the next debit. Restore the authoritative value.
+    if config.planet.fO2_source == 'from_O_budget':
+        hf_row['O_kg_total'] = float(target['O'])
+
+    # Plumb the derived IW-buffer offset and O-mass residual into hf_row.
+    # Under Path C the solver returns these as part of solvevol_result;
+    # under the legacy path the buffer offset is the user-supplied
+    # config.outgas.fO2_shift_IW (echoed for column uniformity) and there
+    # is no O residual (O is an output, not a constraint).
+    if config.planet.fO2_source == 'from_O_budget':
+        hf_row['fO2_shift_IW_derived'] = float(solvevol_result['fO2_shift_derived'])
+        hf_row['O_res'] = float(solvevol_result['O_res'])
+    else:
+        hf_row['fO2_shift_IW_derived'] = float(config.outgas.fO2_shift_IW)
+        hf_row['O_res'] = 0.0

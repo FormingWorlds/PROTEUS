@@ -313,18 +313,26 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
             Dictionary of helpfile variables, at this iteration only
     """
 
-    # planet.fO2_source enum gate. The enum is accepted by the config
-    # schema, but only 'user_constant' has a runtime path today. The
-    # validator above already rejects 'from_mantle_redox' at config-
-    # load. 'from_O_budget' is accepted by the schema (so the framework
-    # can be developed against TOML configs) but raises here until the
-    # CALLIOPE / atmodeller authoritative-O wrappers land.
-    if config.planet.fO2_source != 'user_constant':
+    # planet.fO2_source dispatch. Two runtime paths are wired today:
+    # 'user_constant' (legacy buffered-fO2 chemistry) for both backends,
+    # and 'from_O_budget' (authoritative-O chemistry) for the CALLIOPE
+    # backend only. 'from_mantle_redox' is reserved for issue #653 and
+    # the Config-level validator rejects it at config-load, so any value
+    # reaching this branch is a runtime invariant violation worth
+    # surfacing.
+    fO2_source = config.planet.fO2_source
+    if fO2_source not in ('user_constant', 'from_O_budget'):
         raise NotImplementedError(
-            f'planet.fO2_source = "{config.planet.fO2_source}" is recognised '
-            'by the config schema but its runtime path is not yet wired '
-            "into run_outgassing. Use 'user_constant' until the "
-            'authoritative-O wrapper lands.'
+            f'planet.fO2_source = "{fO2_source}" is recognised by the '
+            'config schema but its runtime path is not yet wired into '
+            'run_outgassing.'
+        )
+
+    if fO2_source == 'from_O_budget' and config.outgas.module != 'calliope':
+        raise NotImplementedError(
+            'planet.fO2_source = "from_O_budget" currently has a runtime '
+            f'path only for the CALLIOPE backend (outgas.module = "{config.outgas.module}" '
+            'lacks an authoritative-O wrapper).'
         )
 
     log.info('Solving outgassing...')

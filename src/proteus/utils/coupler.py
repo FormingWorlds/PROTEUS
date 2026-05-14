@@ -739,6 +739,18 @@ def GetHelpfileKeys():
         'P_surf',           # total surface pressure [bar]
         'atm_kg_per_mol',   # outgassed atmosphere MMW [kg mol-1]
 
+        # Iron-wustite buffer offset that the chemistry solver actually
+        # equilibrated to, and the O mass-balance residual of that
+        # equilibrium. Under planet.fO2_source = "user_constant" the
+        # offset echoes the configured outgas.fO2_shift_IW (so the column
+        # is single-source-of-truth for downstream analysis) and the
+        # residual is zero (O is an output, not a constraint). Under
+        # planet.fO2_source = "from_O_budget" the offset is the solver
+        # output and the residual is the 5th element-mass residual paired
+        # with the H/C/N/S residuals reported by CALLIOPE.
+        'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10]
+        'O_res',                 # O mass-balance residual [kg]
+
         # Desiccation escape-balance gate. M_vol_initial is the sum of
         # non-oxygen *_kg_total captured on the first escape call, used
         # as the reference point for `outgas.wrapper.check_desiccation`'s
