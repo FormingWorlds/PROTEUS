@@ -255,8 +255,20 @@ git clone git@github.com:FormingWorlds/ZEPHYRUS
 python -m pip install -e ZEPHYRUS/.
 ```
 
-!!! info "Aragog and Zalmoxis"
-    Aragog (interior thermal evolution) and Zalmoxis (planetary interior structure) are PyPI dependencies of PROTEUS. They install automatically from `fwl-aragog` and `fwl-zalmoxis` during step 13 (`pip install -e ".[develop]"`); no separate clone or editable install is needed. Their data files are managed centrally via `FWL_DATA` (set in step 4).
+**Aragog** (interior thermal evolution):
+
+```console
+./tools/get_aragog.sh
+```
+
+**Zalmoxis** (planetary interior structure):
+
+```console
+./tools/get_zalmoxis.sh
+```
+
+!!! info "Editable checkout overrides the PyPI version"
+    `fwl-aragog`, `fwl-zalmoxis`, and `fwl-vulcan` are listed in `pyproject.toml` as PyPI dependencies (a fall-back for users who install PROTEUS from a tarball without cloning). When the editable sibling checkouts are present, they take precedence over the PyPI versions on `sys.path`, so `import aragog` resolves to your local working tree. Run `proteus doctor` to confirm which version is active.
 
 ## 11. Setup PETSc (numerical computing library)
 
@@ -327,7 +339,7 @@ LovePy is written in Julia. You can use the same environment as AGNI if you wish
 
 ### Chemical kinetics atmosphere model (VULCAN)
 
-VULCAN is not available as a standard Python package, so it is installed via a dedicated script:
+VULCAN is available on PyPI as `fwl-vulcan` (installed automatically in step 13). For local development, install it as an editable sibling checkout via the dedicated script; the editable install takes precedence over the PyPI version on `sys.path`:
 
 ```console
 ./tools/get_vulcan.sh
