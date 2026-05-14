@@ -184,12 +184,16 @@ jobs:
           # --no-deps so we re-resolve the CALLIOPE dependency here
           # without touching the rest of the dependency tree.
           cd /opt/proteus
-          python -c "import tomllib, pathlib, re, sys
-                     deps = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']
-                     for d in deps:
-                         if 'fwl-calliope' in d:
-                             print(d); sys.exit(0)
-                     sys.exit(0)" > calliope_dep.txt
+          python - <<'PY' > calliope_dep.txt
+          import pathlib
+          import tomllib
+
+          deps = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']
+          for d in deps:
+              if 'fwl-calliope' in d:
+                  print(d)
+                  break
+          PY
           dep=$(cat calliope_dep.txt)
           if [ -n "$dep" ]; then
             echo "Resolved CALLIOPE dependency: $dep"
