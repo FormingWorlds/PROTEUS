@@ -1036,6 +1036,7 @@ config_version = "3.0"
         H_budget = 0.5
 
 [outgas]
+    module = "calliope"
     fO2_shift_IW = 4
 """
     cfg_path = tmp_path / 'missing_O_mode.toml'
@@ -1047,7 +1048,15 @@ config_version = "3.0"
 
 def _minimal_valid_toml(extra_planet: str = '', extra_elements: str = '') -> str:
     """Build a minimal TOML that passes all other validators; only the
-    planet/elements blocks are perturbed by the caller."""
+    planet/elements blocks are perturbed by the caller.
+
+    ``outgas.module`` is set to "calliope" so that
+    ``check_module_dependencies`` doesn't fire on CI runners that lack
+    atmodeller (the schema default would otherwise trigger an ImportError
+    before the test can exercise the validator under test). Every caller
+    cares about planet/elements validators, not about the outgas
+    backend, so pinning the module here keeps the fixture portable.
+    """
     return f"""
 config_version = "3.0"
 
@@ -1066,6 +1075,7 @@ config_version = "3.0"
 {extra_elements}
 
 [outgas]
+    module = "calliope"
     fO2_shift_IW = 4
 """
 
@@ -1157,6 +1167,7 @@ config_version = "3.0"
         S2  = 0.1
 
 [outgas]
+    module = "calliope"
     fO2_shift_IW = 0
 """
     cfg_path = _write_toml(tmp_path, 'from_O_budget_gas_prs.toml', toml_text)
