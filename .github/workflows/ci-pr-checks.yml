@@ -28,7 +28,18 @@ on:
   push:
     branches:
       - main
+      - 'tl/**'  # Tim's long-running feature branches (often draft PRs;
+                # draft PRs do not fire pull_request:synchronize by
+                # default, so an explicit push trigger keeps CI live).
   workflow_dispatch:  # Allow manual triggering for testing
+
+# Deduplicate runs when a single commit fires both push (via the
+# tl/** filter) and pull_request:synchronize (the moment the PR comes
+# out of draft). The commit SHA is the same in both events; keying
+# concurrency on it cancels the older run when the newer one fires.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
 
 permissions:
   contents: write  # Allow auto-commit of ratcheted coverage thresholds
