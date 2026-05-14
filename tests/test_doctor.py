@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import Mock, patch
 
@@ -7,7 +8,14 @@ import pytest
 import requests
 from packaging.version import Version
 
-from proteus.doctor import BasePackage, GitPackage, PythonPackage, doctor_entry
+from proteus.doctor import (
+    BasePackage,
+    GitPackage,
+    PythonPackage,
+    _editable_checkout_path,
+    _git_checkout_state,
+    doctor_entry,
+)
 
 
 class DummyPackage(BasePackage):
@@ -169,6 +177,191 @@ def test_git_package_fallback_propagates_tags_http_error():
     ):
         with pytest.raises(requests.HTTPError, match='tags 500'):
             package.latest_version()
+
+
+def _make_editable_distribution(file_url: str) -> Mock:
+    """Build a Mock importlib.metadata.Distribution for an editable install.
+
+    ``direct_url.json`` (PEP 610) is the only stable signal pip records
+    for editable installs. ``dir_info.editable = True`` plus a
+    ``file://`` URL is what ``pip install -e <path>`` writes.
+    """
+    dist = Mock()
+    dist.read_text.return_value = f'{{"url": "{file_url}", "dir_info": {{"editable": true}}}}'
+    return dist
+
+
+@pytest.mark.unit
+def test_editable_checkout_path_returns_none_for_missing_package():
+    """Packages that are not installed must not crash the doctor."""
+    with patch(
+        'proteus.doctor.importlib.metadata.distribution',
+        side_effect=PackageNotFoundError('fwl-aragog'),
+    ):
+        assert _editable_checkout_path('fwl-aragog') is None
+
+
+@pytest.mark.unit
+def test_editable_checkout_path_returns_none_for_wheel_install():
+    """A package installed from a wheel has no ``direct_url.json``."""
+    dist = Mock()
+    dist.read_text.return_value = None
+    with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
+        assert _editable_checkout_path('fwl-aragog') is None
+
+
+@pytest.mark.unit
+def test_editable_checkout_path_rejects_non_editable_vcs_install():
+    """A VCS install pinned to a tag is not editable and must not be reported.
+
+    pip writes ``direct_url.json`` for ``pip install git+https://.../@tag`` too,
+    but ``dir_info.editable`` is False. Reporting it as editable would
+    mislead users into thinking a sibling checkout exists when none does.
+    """
+    dist = Mock()
+    dist.read_text.return_value = (
+        '{"url": "https://github.com/FormingWorlds/aragog.git",'
+        ' "vcs_info": {"vcs": "git", "commit_id": "abc123"}}'
+    )
+    with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
+        assert _editable_checkout_path('fwl-aragog') is None
+
+
+@pytest.mark.unit
+def test_editable_checkout_path_returns_unquoted_filesystem_path():
+    """File URLs with percent-encoded spaces must round-trip to a real path."""
+    dist = _make_editable_distribution('file:///Users/Tim%20L/git/aragog')
+    with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
+        path = _editable_checkout_path('fwl-aragog')
+    assert path == '/Users/Tim L/git/aragog'
+
+
+@pytest.mark.unit
+def test_editable_checkout_path_returns_none_for_malformed_json():
+    """A corrupted ``direct_url.json`` must not raise out of doctor."""
+    dist = Mock()
+    dist.read_text.return_value = '{not valid json'
+    with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
+        assert _editable_checkout_path('fwl-aragog') is None
+
+
+@pytest.mark.unit
+def test_git_checkout_state_reports_clean_tree():
+    """A clean working tree returns ``(short_hash, False)``."""
+
+    def fake_check_output(cmd, **_kwargs):
+        if cmd[-1] == 'HEAD':
+            return 'd051902\n'
+        if 'status' in cmd:
+            return ''
+        raise AssertionError(f'unexpected git invocation: {cmd}')
+
+    with patch('proteus.doctor.subprocess.check_output', side_effect=fake_check_output):
+        state = _git_checkout_state('/tmp/aragog')
+    assert state == ('d051902', False)
+
+
+@pytest.mark.unit
+def test_git_checkout_state_reports_dirty_tree():
+    """Any non-whitespace porcelain output marks the tree dirty."""
+
+    def fake_check_output(cmd, **_kwargs):
+        if cmd[-1] == 'HEAD':
+            return 'd051902\n'
+        if 'status' in cmd:
+            return ' M src/aragog/solver/entropy_solver.py\n?? scratch.py\n'
+        raise AssertionError(f'unexpected git invocation: {cmd}')
+
+    with patch('proteus.doctor.subprocess.check_output', side_effect=fake_check_output):
+        state = _git_checkout_state('/tmp/aragog')
+    assert state == ('d051902', True)
+
+
+@pytest.mark.unit
+def test_git_checkout_state_returns_none_when_git_unavailable():
+    """A missing ``git`` binary or a non-repo path must not crash doctor."""
+    with patch(
+        'proteus.doctor.subprocess.check_output',
+        side_effect=FileNotFoundError('git'),
+    ):
+        assert _git_checkout_state('/tmp/not-a-repo') is None
+
+
+@pytest.mark.unit
+def test_git_checkout_state_returns_none_when_not_a_git_repo():
+    """``git rev-parse`` exits non-zero outside a working tree."""
+    with patch(
+        'proteus.doctor.subprocess.check_output',
+        side_effect=subprocess.CalledProcessError(128, 'git'),
+    ):
+        assert _git_checkout_state('/tmp/not-a-repo') is None
+
+
+@pytest.mark.unit
+def test_python_package_status_unannotated_for_wheel_install():
+    """Wheel installs render the plain ``name: ok`` form (no annotation)."""
+    package = PythonPackage(name='fwl-aragog')
+    with (
+        patch.object(package, 'current_version', return_value=Version('26.5.13')),
+        patch.object(package, 'latest_version', return_value=Version('26.5.13')),
+        patch('proteus.doctor._editable_checkout_path', return_value=None),
+    ):
+        message = package.get_status_message()
+    assert 'editable' not in message
+    assert 'ok' in message
+
+
+@pytest.mark.unit
+def test_python_package_status_annotates_clean_editable_install():
+    """An editable install adds ``[editable @ basename -> hash]``."""
+    package = PythonPackage(name='fwl-aragog')
+    with (
+        patch.object(package, 'current_version', return_value=Version('26.5.13')),
+        patch.object(package, 'latest_version', return_value=Version('26.5.13')),
+        patch(
+            'proteus.doctor._editable_checkout_path',
+            return_value='/Users/tim/git/PROTEUS/aragog',
+        ),
+        patch('proteus.doctor._git_checkout_state', return_value=('d051902', False)),
+    ):
+        message = package.get_status_message()
+    assert 'editable @ aragog -> d051902' in message
+    assert '(dirty)' not in message
+
+
+@pytest.mark.unit
+def test_python_package_status_marks_dirty_editable_install():
+    """A dirty editable install appends ``(dirty)`` so users see uncommitted work."""
+    package = PythonPackage(name='fwl-zalmoxis')
+    with (
+        patch.object(package, 'current_version', return_value=Version('26.5.13')),
+        patch.object(package, 'latest_version', return_value=Version('26.5.13')),
+        patch(
+            'proteus.doctor._editable_checkout_path',
+            return_value='/Users/tim/git/PROTEUS/Zalmoxis',
+        ),
+        patch('proteus.doctor._git_checkout_state', return_value=('39308df', True)),
+    ):
+        message = package.get_status_message()
+    assert 'editable @ Zalmoxis -> 39308df (dirty)' in message
+
+
+@pytest.mark.unit
+def test_python_package_status_handles_editable_without_git_metadata():
+    """An editable checkout outside any git repo still gets a partial annotation."""
+    package = PythonPackage(name='fwl-vulcan')
+    with (
+        patch.object(package, 'current_version', return_value=Version('26.4.22')),
+        patch.object(package, 'latest_version', return_value=Version('26.4.22')),
+        patch(
+            'proteus.doctor._editable_checkout_path',
+            return_value='/tmp/VULCAN',
+        ),
+        patch('proteus.doctor._git_checkout_state', return_value=None),
+    ):
+        message = package.get_status_message()
+    assert 'editable @ VULCAN' in message
+    assert '->' not in message.split('editable @ VULCAN', 1)[1]
 
 
 @pytest.mark.unit
