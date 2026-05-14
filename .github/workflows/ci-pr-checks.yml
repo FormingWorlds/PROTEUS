@@ -608,17 +608,17 @@ jobs:
         run: ruff format --check src/ tests/
 
   editable-install-check:
-    name: Editable Aragog/Zalmoxis Install
+    name: Editable submodule install
     runs-on: ubuntu-latest
     outputs:
       outcome: ${{ steps.verify.outcome }}
 
-    # Verifies that the get_aragog.sh / get_zalmoxis.sh scripts install
-    # the sibling checkouts editable and that the editable copies take
-    # precedence over the fwl-aragog / fwl-zalmoxis PyPI fall-back pins
-    # listed in pyproject.toml. Without this gate, a regression that
-    # broke the setup scripts (e.g. wrong upstream URL casing, missing
-    # pip flag) would only surface for end users.
+    # Verifies that the tools/get_*.sh setup scripts install the FWL
+    # Python submodule sibling checkouts editable and that the editable
+    # copies take precedence over the corresponding PyPI fall-back pins
+    # listed in pyproject.toml [project] dependencies. Without this
+    # gate, a regression in a setup script (wrong upstream URL casing,
+    # missing pip flag, etc.) would only surface for end users.
 
     steps:
       - name: Checkout code
