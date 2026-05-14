@@ -144,6 +144,14 @@ jobs:
         run: |
           echo "Copying PR code over container base..."
           rsync -av --delete --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
+          # The Docker image carries a stale .git/ from its build that
+          # rsync's --exclude protected from --delete. setuptools-scm
+          # would try to read it for version derivation, git would
+          # refuse with "dubious ownership", and the build_editable
+          # step would abort before pip can even install. Removing the
+          # stale .git/ lets setuptools-scm fall back to the
+          # fallback_version configured in pyproject.toml.
+          rm -rf /opt/proteus/.git
           cd /opt/proteus
           pip install -e ".[develop]" --no-deps
 
