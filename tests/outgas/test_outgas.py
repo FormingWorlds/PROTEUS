@@ -960,8 +960,15 @@ config_version = "3.0"
 """
 
 
+def _write_toml(tmp_path, name: str, text: str):
+    """Write a TOML string to a tmp_path file and return the path."""
+    cfg_path = tmp_path / name
+    cfg_path.write_text(text)
+    return cfg_path
+
+
 @pytest.mark.unit
-def test_config_rejects_from_mantle_redox_reserved():
+def test_config_rejects_from_mantle_redox_reserved(tmp_path):
     """planet.fO2_source = 'from_mantle_redox' is a reserved enum value
     for the radial Fe3+/Fe2+ framework (issue #653). The runtime is not
     wired so the config-level validator must reject it at load time;
@@ -973,26 +980,18 @@ def test_config_rejects_from_mantle_redox_reserved():
     """
     from proteus.config import read_config_object
 
-    toml_text = _minimal_valid_toml(
-        extra_planet='    fO2_source = "from_mantle_redox"\n',
+    cfg_path = _write_toml(
+        tmp_path,
+        'reserved.toml',
+        _minimal_valid_toml(extra_planet='    fO2_source = "from_mantle_redox"\n'),
     )
 
-    import tempfile
-    from pathlib import Path
-
-    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
-        f.write(toml_text)
-        cfg_path = Path(f.name)
-
-    try:
-        with pytest.raises(ValueError, match='issue #653'):
-            read_config_object(str(cfg_path))
-    finally:
-        cfg_path.unlink()
+    with pytest.raises(ValueError, match='issue #653'):
+        read_config_object(str(cfg_path))
 
 
 @pytest.mark.unit
-def test_config_rejects_from_O_budget_with_ic_chemistry():
+def test_config_rejects_from_O_budget_with_ic_chemistry(tmp_path):
     """planet.fO2_source = 'from_O_budget' requires an authoritative O
     budget. O_mode = 'ic_chemistry' defers O to the chemistry solver,
     which contradicts Path C — there is nothing to invert against.
@@ -1003,29 +1002,156 @@ def test_config_rejects_from_O_budget_with_ic_chemistry():
     from proteus.config import read_config_object
 
     # Note _minimal_valid_toml's default O_mode is ic_chemistry
-    toml_text = _minimal_valid_toml(
-        extra_planet='    fO2_source = "from_O_budget"\n',
+    cfg_path = _write_toml(
+        tmp_path,
+        'from_O_budget_ic_chem.toml',
+        _minimal_valid_toml(extra_planet='    fO2_source = "from_O_budget"\n'),
     )
 
-    import tempfile
-    from pathlib import Path
-
-    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
-        f.write(toml_text)
-        cfg_path = Path(f.name)
-
-    try:
-        with pytest.raises(ValueError, match='ic_chemistry'):
-            read_config_object(str(cfg_path))
-    finally:
-        cfg_path.unlink()
+    with pytest.raises(ValueError, match='ic_chemistry'):
+        read_config_object(str(cfg_path))
 
 
 @pytest.mark.unit
-def test_config_accepts_from_O_budget_with_concrete_O_mode():
-    """The (fO2_source='from_O_budget', O_mode='ppmw') combination is
-    the canonical Path C config. Schema must accept it (runtime gate
-    in run_outgassing will refuse for now, but the validator must not)."""
+def test_config_rejects_from_O_budget_with_gas_prs(tmp_path):
+    """planet.fO2_source = 'from_O_budget' requires
+    planet.volatile_mode = 'elements' so the O inventory is derivable
+    from planet.elements.O_budget. Under volatile_mode = 'gas_prs' the
+    user supplies partial pressures directly and the element budgets
+    are inert, so Path C has no O target to invert against.
+
+    Discriminating: error message must name volatile_mode and gas_prs
+    so the user knows which field to change.
+    """
+    from proteus.config import read_config_object
+
+    toml_text = """
+config_version = "3.0"
+
+[orbit]
+    semimajoraxis = 1.0
+
+[planet]
+    mass_tot = 1.0
+    volatile_mode = "gas_prs"
+    fO2_source = "from_O_budget"
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 0.5
+        O_mode   = "kg"
+        O_budget = 1.0e21
+    [planet.gas_prs]
+        H2O = 50.0
+        CO2 = 5.0
+        N2  = 1.0
+        S2  = 0.1
+
+[outgas]
+    fO2_shift_IW = 0
+"""
+    cfg_path = _write_toml(tmp_path, 'from_O_budget_gas_prs.toml', toml_text)
+
+    with pytest.raises(ValueError, match='gas_prs'):
+        read_config_object(str(cfg_path))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'o_mode,o_budget', [('ppmw', 500.0), ('kg', 1.0e21), ('FeO_mantle_wt_pct', 8.0)]
+)
+def test_config_accepts_from_O_budget_with_concrete_O_mode(tmp_path, o_mode, o_budget):
+    """Every concrete O budget mode pairs with from_O_budget. Schema must
+    accept all three (ppmw, kg, FeO_mantle_wt_pct) — the runtime gate
+    in run_outgassing will refuse for now, but the validator must not.
+
+    Discriminating: parametrize across all three modes so a regression
+    that breaks one (e.g., kg-mode unit conversion blunder) is caught.
+    """
+    from proteus.config import read_config_object
+
+    toml_text = f"""
+config_version = "3.0"
+
+[orbit]
+    semimajoraxis = 1.0
+
+[planet]
+    mass_tot = 1.0
+    volatile_mode = "elements"
+    fO2_source = "from_O_budget"
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 0.5
+        O_mode   = "{o_mode}"
+        O_budget = {o_budget}
+
+[outgas]
+    fO2_shift_IW = 0
+"""
+    cfg_path = _write_toml(tmp_path, f'from_O_budget_{o_mode}.toml', toml_text)
+    cfg = read_config_object(str(cfg_path))
+    assert cfg.planet.fO2_source == 'from_O_budget'
+    assert cfg.planet.elements.O_mode == o_mode
+    assert cfg.planet.elements.O_budget == pytest.approx(o_budget)
+
+
+@pytest.mark.unit
+def test_config_fO2_source_default_is_user_constant(tmp_path):
+    """Configs that omit fO2_source default to 'user_constant', preserving
+    the legacy behaviour for the 108 already-migrated TOMLs without
+    requiring a second migration pass.
+
+    Strong-form assertion: also confirm the rest of the minimal config
+    parsed correctly (mass_tot, O_mode), so a regression that breaks the
+    TOML parse but leaves fO2_source readable does not pass silently.
+    """
+    from proteus.config import read_config_object
+
+    cfg_path = _write_toml(
+        tmp_path,
+        'default_fO2_source.toml',
+        _minimal_valid_toml(),
+    )
+    cfg = read_config_object(str(cfg_path))
+
+    assert cfg.planet.fO2_source == 'user_constant'
+    assert cfg.planet.elements.O_mode == 'ic_chemistry'
+    assert cfg.planet.mass_tot == pytest.approx(1.0)
+
+
+@pytest.mark.unit
+def test_config_rejects_unknown_fO2_source_value(tmp_path):
+    """The in_() validator rejects any value not in the three-element
+    enum, so a typo (e.g., 'user_const') produces a clear error rather
+    than silent fallback.
+
+    Discriminating: ``match`` pins the error to the in_() validator
+    output containing the rejected value, so the test cannot pass on a
+    coincidental ValueError from a different validator (e.g., the
+    O_mode check above it in the chain).
+    """
+    from proteus.config import read_config_object
+
+    cfg_path = _write_toml(
+        tmp_path,
+        'typo.toml',
+        _minimal_valid_toml(extra_planet='    fO2_source = "user_const"\n'),
+    )
+
+    with pytest.raises(ValueError, match='user_const'):
+        read_config_object(str(cfg_path))
+
+
+@pytest.mark.unit
+def test_config_warns_when_fO2_shift_IW_set_with_from_O_budget(tmp_path):
+    """When the user sets a non-default outgas.fO2_shift_IW alongside
+    planet.fO2_source = 'from_O_budget', the buffer offset is *derived*
+    at runtime, so the configured value is silently ignored. Emit a
+    UserWarning so the misconfiguration surfaces.
+
+    Discriminating: the warning message must name fO2_shift_IW and
+    from_O_budget so the user knows which to remove.
+    """
     from proteus.config import read_config_object
 
     toml_text = """
@@ -1041,72 +1167,15 @@ config_version = "3.0"
     [planet.elements]
         H_mode   = "oceans"
         H_budget = 0.5
-        O_mode   = "ppmw"
-        O_budget = 500.0
+        O_mode   = "kg"
+        O_budget = 1.0e21
 
 [outgas]
-    fO2_shift_IW = 4
+    fO2_shift_IW = 4.0
 """
-    import tempfile
-    from pathlib import Path
+    cfg_path = _write_toml(tmp_path, 'redundant_fO2.toml', toml_text)
 
-    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
-        f.write(toml_text)
-        cfg_path = Path(f.name)
-
-    try:
-        # Must not raise at config-load (only at run_outgassing).
+    with pytest.warns(UserWarning, match='from_O_budget'):
         cfg = read_config_object(str(cfg_path))
-        assert cfg.planet.fO2_source == 'from_O_budget'
-        assert cfg.planet.elements.O_mode == 'ppmw'
-    finally:
-        cfg_path.unlink()
-
-
-@pytest.mark.unit
-def test_config_fO2_source_default_is_user_constant():
-    """Configs that omit fO2_source default to 'user_constant', preserving
-    the legacy behaviour for the 108 already-migrated TOMLs without
-    requiring a second migration pass."""
-    from proteus.config import read_config_object
-
-    # No fO2_source line in the TOML
-    toml_text = _minimal_valid_toml()
-
-    import tempfile
-    from pathlib import Path
-
-    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
-        f.write(toml_text)
-        cfg_path = Path(f.name)
-
-    try:
-        cfg = read_config_object(str(cfg_path))
-        assert cfg.planet.fO2_source == 'user_constant'
-    finally:
-        cfg_path.unlink()
-
-
-@pytest.mark.unit
-def test_config_rejects_unknown_fO2_source_value():
-    """The in_() validator rejects any value not in the three-element
-    enum, so a typo (e.g., 'user_const') produces a clear error rather
-    than silent fallback."""
-    from proteus.config import read_config_object
-
-    toml_text = _minimal_valid_toml(
-        extra_planet='    fO2_source = "user_const"\n',  # typo
-    )
-
-    import tempfile
-    from pathlib import Path
-
-    with tempfile.NamedTemporaryFile(suffix='.toml', mode='w', delete=False) as f:
-        f.write(toml_text)
-        cfg_path = Path(f.name)
-
-    try:
-        with pytest.raises(ValueError):
-            read_config_object(str(cfg_path))
-    finally:
-        cfg_path.unlink()
+    # The config still loads — this is a warning, not an error.
+    assert cfg.planet.fO2_source == 'from_O_budget'

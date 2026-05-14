@@ -200,9 +200,10 @@ def planet_oxygen_mode_explicit(instance, attribute, value):
 
 
 def planet_fO2_source_compat(instance, attribute, value):
-    """Validate planet.fO2_source against O_mode and against availability.
+    """Validate planet.fO2_source against O_mode, volatile_mode, and
+    against availability.
 
-    Three rules:
+    Rejection rules:
 
     1. ``fO2_source = "from_mantle_redox"`` is a reserved enum value for
        the radial Fe3+/Fe2+ fO2 framework (issue #653, Schaefer et al.
@@ -215,11 +216,26 @@ def planet_fO2_source_compat(instance, attribute, value):
        nothing to invert against. Require a concrete O budget
        ("ppmw" / "kg" / "FeO_mantle_wt_pct") instead.
 
-    3. ``fO2_source = "user_constant"`` (default) accepts any O_mode
-       including ``ic_chemistry`` (legacy behaviour, no change).
+    3. ``fO2_source = "from_O_budget"`` requires the volatile budget to
+       be set element-wise. ``volatile_mode = "gas_prs"`` supplies
+       partial pressures directly and makes ``planet.elements.O_mode``
+       inoperative; Path C has nothing to invert against. Switch
+       ``volatile_mode`` to ``"elements"`` or pick a different fO2_source.
+
+    ``fO2_source = "user_constant"`` (default) accepts every O_mode and
+    every volatile_mode (legacy behaviour, no change).
+
+    Warning rule:
+
+    - ``fO2_source = "from_O_budget"`` with a non-default
+      ``outgas.fO2_shift_IW`` emits a UserWarning. Under Path C the
+      buffer offset is *derived*, so a user-supplied value is silently
+      ignored. The warning surfaces the misconfiguration without
+      blocking the run.
     """
     fO2_source = instance.planet.fO2_source
     O_mode = instance.planet.elements.O_mode
+    volatile_mode = instance.planet.volatile_mode
 
     if fO2_source == 'from_mantle_redox':
         raise ValueError(
@@ -238,6 +254,32 @@ def planet_fO2_source_compat(instance, attribute, value):
             'budget mode ("ppmw", "kg", or "FeO_mantle_wt_pct") or switch '
             'fO2_source back to "user_constant".'
         )
+
+    if fO2_source == 'from_O_budget' and volatile_mode == 'gas_prs':
+        raise ValueError(
+            'planet.fO2_source = "from_O_budget" requires '
+            'planet.volatile_mode = "elements" so the O inventory is '
+            'derived from planet.elements.O_budget. Under '
+            'volatile_mode = "gas_prs" the user supplies partial '
+            'pressures directly and the element budgets are inert, so '
+            'Path C has no O target to invert against. Either switch '
+            'volatile_mode to "elements" or set fO2_source back to '
+            '"user_constant".'
+        )
+
+    if fO2_source == 'from_O_budget':
+        import warnings
+
+        fO2_shift_IW = getattr(instance.outgas, 'fO2_shift_IW', None)
+        if fO2_shift_IW is not None and fO2_shift_IW != 0.0:
+            warnings.warn(
+                'outgas.fO2_shift_IW = %.3f is set but '
+                'planet.fO2_source = "from_O_budget" derives the buffer '
+                'offset from the O budget; the configured value will be '
+                'ignored at runtime.' % fO2_shift_IW,
+                UserWarning,
+                stacklevel=2,
+            )
 
 
 def boundary_requires_fixed_surface_state(instance, attribute, value):
