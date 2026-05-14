@@ -22,7 +22,18 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from proteus.utils.constants import element_list, gas_list
+# Skip the whole module if atmodeller isn't installed. The macOS CI
+# runner doesn't pull atmodeller (it isn't a hard dependency in
+# pyproject.toml); Docker-based runners have it pre-installed in the
+# image. Skipping at module scope is cleaner than guarding every test,
+# and avoids leaking config-load failures from check_module_dependencies
+# when a test builds a Config with outgas.module = "atmodeller".
+pytest.importorskip(
+    'atmodeller',
+    reason='atmodeller package not installed; Path C atmodeller wrapper tests skipped',
+)
+
+from proteus.utils.constants import element_list, gas_list  # noqa: E402
 
 logging.getLogger('atmodeller').setLevel(logging.WARNING)
 

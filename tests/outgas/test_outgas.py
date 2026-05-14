@@ -1215,6 +1215,11 @@ def test_config_accepts_from_O_budget_with_atmodeller_module(tmp_path):
     Discriminating: the config loads without raising, and the loaded
     object preserves both fields as set in the TOML.
     """
+    pytest.importorskip(
+        'atmodeller',
+        reason='atmodeller package not installed; Config.check_module_dependencies '
+        'rejects outgas.module = "atmodeller" before this test can exercise the validator',
+    )
     from proteus.config import read_config_object
 
     toml_text = """
