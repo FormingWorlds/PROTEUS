@@ -53,6 +53,8 @@ config_version = "3.0"
     prevent_warming  = true
     volatile_mode    = "elements"
     [planet.elements]
+        O_mode   = "ic_chemistry"  # Issue #677: use CALLIOPE IC equilibrium to derive O budget
+        O_budget = 0.0           # ignored for ic_chemistry mode
         H_mode   = "ppmw"
         H_budget = 1.0
         C_mode   = "C/H"

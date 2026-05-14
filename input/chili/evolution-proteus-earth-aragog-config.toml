@@ -191,6 +191,8 @@ config_version = "3.0"
     volatile_mode    = "elements"
 
     [planet.elements]
+        O_mode   = "ic_chemistry"  # Issue #677: use CALLIOPE IC equilibrium to derive O budget
+        O_budget = 0.0           # ignored for ic_chemistry mode
         # CHILI Earth case (Table 2):
         # H = 4.7e20 kg (= 3 Earth oceans of H2O = 4.2e21 kg H2O)
         # C = 2.73e20 kg (= 1e21 kg CO2 equivalent)

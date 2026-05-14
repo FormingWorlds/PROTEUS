@@ -119,6 +119,8 @@ config_version = "3.0"
 
     # Element abundances (used when volatile_mode = 'elements')
     [planet.elements]
+        O_mode   = "ic_chemistry"  # Issue #677: use CALLIOPE IC equilibrium to derive O budget
+        O_budget = 0.0           # ignored for ic_chemistry mode
         H_mode                = "oceans"     # oceans | ppmw | kg
         H_budget              = 1.0          # unit defined by H_mode
         C_mode                = "C/H"        # C/H mass ratio | ppmw | kg

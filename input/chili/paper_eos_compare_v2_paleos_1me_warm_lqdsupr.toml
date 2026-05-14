@@ -130,6 +130,8 @@ R_int_override = "none"
 prevent_warming = false
 
 [planet.elements]
+        O_mode   = "ic_chemistry"  # Issue #677: use CALLIOPE IC equilibrium to derive O budget
+        O_budget = 0.0           # ignored for ic_chemistry mode
 H_mode = "kg"
 H_budget = 4.7e+20
 C_mode = "kg"
