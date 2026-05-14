@@ -47,7 +47,12 @@ dependencies = [
     "cattrs",
     "fwl-janus>=24.11.05",
     "fwl-mors>=26.01.02",
-    "fwl-calliope>=26.05.13",
+    # Temporary git pin to the CALLIOPE branch that adds
+    # equilibrium_atmosphere_authoritative_O (the Path C entry point that
+    # src/proteus/outgas/calliope.py imports). Revert to a normal
+    # 'fwl-calliope>=26.05.14' pin once the CALLIOPE PR merges and the
+    # next release is published to PyPI.
+    "fwl-calliope @ git+https://github.com/FormingWorlds/CALLIOPE.git@tl/fo2-source-framework",
     "fwl-zephyrus>=25.03.11",
     "fwl-aragog>=26.05.13",
     "fwl-zalmoxis>=26.05.13",
