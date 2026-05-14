@@ -48,6 +48,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
+# Pin the shell explicitly. Inside the proteus Docker container, the
+# default `run:` shell selection is non-deterministic: some runs use
+# /usr/bin/bash, others use /bin/sh (dash). dash does not support
+# `set -o pipefail`, so any step that relies on pipefail (to capture
+# pytest's exit code through a tee pipe, for example) breaks when sh
+# is picked. Forcing bash everywhere keeps the test-failure
+# propagation contract reliable.
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: write  # Allow auto-commit of ratcheted coverage thresholds
   packages: read
