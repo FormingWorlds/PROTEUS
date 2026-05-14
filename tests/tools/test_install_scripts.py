@@ -494,9 +494,7 @@ def test_installation_md_does_not_clone_aragog_or_zalmoxis():
     documented dependency pinning.
     """
     repo_root = Path(__file__).resolve().parents[2]
-    text = (repo_root / 'docs' / 'How-to' / 'installation.md').read_text(
-        encoding='utf-8'
-    )
+    text = (repo_root / 'docs' / 'How-to' / 'installation.md').read_text(encoding='utf-8')
     # Match `git clone <url>/<aragog|Zalmoxis>` or `pip install -e <aragog|Zalmoxis>`.
     forbidden = re.compile(
         r'(git\s+clone[^\n]*?(aragog|Zalmoxis))'

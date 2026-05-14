@@ -40,13 +40,9 @@ def valid_aerosols_enabled(instance, attribute, value):
         return
 
     if instance.module == 'dummy':
-        raise ValueError(
-            f'Dummy atmos_clim module is incompatible with {attribute.name}=True'
-        )
+        raise ValueError(f'Dummy atmos_clim module is incompatible with {attribute.name}=True')
 
-    if instance.module == 'agni' and (
-        str(instance.agni.spectral_file).lower() == 'greygas'
-    ):
+    if instance.module == 'agni' and (str(instance.agni.spectral_file).lower() == 'greygas'):
         raise ValueError(
             'AGNI grey gas is incompatible with aerosols (band-resolved Mie '
             'scattering requires a real spectral file)'

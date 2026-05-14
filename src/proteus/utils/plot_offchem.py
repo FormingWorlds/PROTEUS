@@ -63,8 +63,7 @@ def offchem_read_year(
     handle_path = next((p for p in candidates if os.path.isfile(p)), None)
     if handle_path is None:
         raise FileNotFoundError(
-            f'No VULCAN snapshot found under {output_dir}/offchem/ '
-            f'(looked for: {candidates})'
+            f'No VULCAN snapshot found under {output_dir}/offchem/ (looked for: {candidates})'
         )
     with open(handle_path, 'rb') as handle:
         vul_data = pkl.load(handle)

@@ -221,5 +221,12 @@ indent-style = "space"
 # 26.05.13.post1.devN+gHASH instead, which is honest about the build
 # being a post-tag development commit rather than a pre-release of
 # the next version.
+#
+# fallback_version is used whenever git introspection fails (e.g.
+# inside the CI Docker container where the rsync overlay leaves a
+# stale .git that fails "safe.directory" checks, source-tarball
+# installs, or builds from a shallow clone without tags). Without
+# this, build_editable raises and the install aborts.
 version_scheme = "no-guess-dev"
 version_file = "src/proteus/_version.py"
+fallback_version = "0.0.0.dev0"

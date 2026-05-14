@@ -650,17 +650,24 @@ jobs:
           expected_aragog = os.path.join(proteus_root, 'aragog')
           expected_zalmoxis = os.path.join(proteus_root, 'Zalmoxis')
 
-          # importlib resolution must land in the sibling checkout, not
-          # the site-packages wheel. Compare via os.path.commonpath to
-          # tolerate src/ layouts inside each package.
-          if os.path.commonpath([aragog.__file__, expected_aragog]) != expected_aragog:
-              print(f'FAIL: aragog loaded from {aragog.__file__}, expected under {expected_aragog}')
+          # Use __path__[0] (always populated for regular packages),
+          # not __file__ (None for some editable backends that resolve
+          # the package through a .pth shim rather than a real
+          # __init__.py in site-packages).
+          aragog_path = aragog.__path__[0]
+          zalmoxis_path = zalmoxis.__path__[0]
+
+          # importlib resolution must land in the sibling checkout,
+          # not the site-packages wheel. Compare via os.path.commonpath
+          # to tolerate src/ layouts inside each package.
+          if os.path.commonpath([aragog_path, expected_aragog]) != expected_aragog:
+              print(f'FAIL: aragog loaded from {aragog_path}, expected under {expected_aragog}')
               sys.exit(1)
-          if os.path.commonpath([zalmoxis.__file__, expected_zalmoxis]) != expected_zalmoxis:
-              print(f'FAIL: zalmoxis loaded from {zalmoxis.__file__}, expected under {expected_zalmoxis}')
+          if os.path.commonpath([zalmoxis_path, expected_zalmoxis]) != expected_zalmoxis:
+              print(f'FAIL: zalmoxis loaded from {zalmoxis_path}, expected under {expected_zalmoxis}')
               sys.exit(1)
-          print(f'OK: aragog -> {aragog.__file__}')
-          print(f'OK: zalmoxis -> {zalmoxis.__file__}')
+          print(f'OK: aragog -> {aragog_path}')
+          print(f'OK: zalmoxis -> {zalmoxis_path}')
           PY
 
   summary:
