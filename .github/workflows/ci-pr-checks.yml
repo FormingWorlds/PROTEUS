@@ -149,6 +149,7 @@ jobs:
 
       - name: Overlay PR code onto container
         run: |
+          set -euo pipefail
           echo "Copying PR code over container base..."
           rsync -av --delete --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
           # The Docker image carries a stale .git/ from its build that
@@ -161,6 +162,13 @@ jobs:
           rm -rf /opt/proteus/.git
           cd /opt/proteus
           pip install -e ".[develop]" --no-deps
+          # pytest-xdist enables parallel test execution via `-n auto`
+          # in the test steps. It is in [project.optional-dependencies]
+          # develop but `--no-deps` above skips it. Install explicitly
+          # here so the container has it on every CI run, regardless of
+          # whether the Docker base image has been rebuilt with the
+          # latest pyproject.toml.
+          pip install pytest-xdist
 
       - name: Install CI helper tools
         run: |
@@ -205,6 +213,7 @@ jobs:
         id: unit-tests
         continue-on-error: true
         run: |
+          set -euo pipefail  # propagate pytest's exit code through the tee pipe
           cd /opt/proteus
           if [ "$RUN_COVERAGE" = "true" ]; then
             COV_ARGS="--cov=src --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=${FAST_COV_FAIL_UNDER}"
@@ -252,6 +261,7 @@ jobs:
         id: smoke-tests
         continue-on-error: true
         run: |
+          set -euo pipefail  # propagate pytest's exit code through the tee pipe
           cd /opt/proteus
           if [ "$RUN_COVERAGE" = "true" ]; then
             COV_ARGS="--cov=src --cov-append --cov-report=term-missing --cov-report=xml --cov-report=html"
