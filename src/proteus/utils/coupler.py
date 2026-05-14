@@ -747,7 +747,13 @@ def GetHelpfileKeys():
         # residual is zero (O is an output, not a constraint). Under
         # planet.fO2_source = "from_O_budget" the offset is the solver
         # output and the residual is the 5th element-mass residual paired
-        # with the H/C/N/S residuals reported by CALLIOPE.
+        # with the H/C/N/S residuals reported by CALLIOPE. The IW buffer
+        # convention is backend-specific: CALLIOPE uses O'Neill & Eggins
+        # (2002), atmodeller uses the Hirschmann combined buffer. The
+        # two disagree by roughly 0.95 dex at 3000 K, so direct
+        # cross-backend comparison of this column requires converting
+        # one of the conventions; an independent comparison harness will
+        # eventually pick a single canonical convention.
         'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10]
         'O_res',                 # O mass-balance residual [kg]
 

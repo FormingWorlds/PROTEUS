@@ -48,7 +48,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
     from atmodeller.solubility import get_solubility_models
     from atmodeller.thermodata import IronWustiteBuffer
 
-    from proteus.utils.constants import M_earth, gas_list
+    from proteus.utils.constants import M_earth, element_mmw, gas_list
 
     atm_config = config.outgas.atmodeller
     solubility_models = get_solubility_models()
@@ -424,17 +424,24 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         # O mass-balance residual: target - (atmospheric O + dissolved O).
         # atmodeller's element_residual output is per-element relative
         # error; we report kg here to match CALLIOPE's H/C/N/S/O_res
-        # convention.
-        o_atoms_per_kg = {
-            'H2O': 16.0 / 18.015,
-            'CO2': 32.0 / 44.01,
-            'CO': 16.0 / 28.01,
-            'SO2': 32.0 / 64.07,
+        # convention. Atomic-O mass fractions are derived from the
+        # canonical element_mmw table (proteus.utils.constants) rather
+        # than hand-rounded values, so a future correction to atomic
+        # masses propagates here automatically.
+        _m_O = element_mmw['O']
+        _m_C = element_mmw['C']
+        _m_H = element_mmw['H']
+        _m_S = element_mmw['S']
+        o_mass_frac = {
+            'H2O': _m_O / (2 * _m_H + _m_O),
+            'CO2': 2 * _m_O / (_m_C + 2 * _m_O),
+            'CO': _m_O / (_m_C + _m_O),
+            'SO2': 2 * _m_O / (_m_S + 2 * _m_O),
             'O2': 1.0,
         }
         atm_O = 0.0
         liq_O = 0.0
-        for sp, frac in o_atoms_per_kg.items():
+        for sp, frac in o_mass_frac.items():
             atm_O += float(hf_row.get(f'{sp}_kg_atm', 0.0)) * frac
             liq_O += float(hf_row.get(f'{sp}_kg_liquid', 0.0)) * frac
         hf_row['O_res'] = float(target_O_kg) - (atm_O + liq_O)
