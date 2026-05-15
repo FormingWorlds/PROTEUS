@@ -28,9 +28,6 @@ pytestmark = pytest.mark.smoke
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: requires fwl_data/planet_reference/Exoplanets/DACE_PlanetS.csv which is not present in the CI Docker image. Tracked in claude-config/memory for the test-rework phase.'
-)
 def test_smoke_escape_dummy_atmos():
     """Test escape module + dummy atmosphere coupling (1 timestep).
 
@@ -130,9 +127,6 @@ def test_smoke_escape_dummy_atmos():
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: requires fwl_data/planet_reference/Exoplanets/DACE_PlanetS.csv. Same root cause as test_smoke_escape_dummy_atmos.'
-)
 def test_smoke_star_instellation():
     """Test star module + dummy atmosphere coupling (1 timestep).
 
@@ -235,9 +229,6 @@ def test_smoke_star_instellation():
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: requires fwl_data/planet_reference/Exoplanets/DACE_PlanetS.csv. Same root cause as test_smoke_escape_dummy_atmos.'
-)
 def test_smoke_orbit_heat_tidaling():
     """Test orbit module + dummy interior coupling (1 timestep).
 
@@ -335,9 +326,6 @@ def test_smoke_orbit_heat_tidaling():
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: requires fwl_data/planet_reference/Exoplanets/DACE_PlanetS.csv. Same root cause as test_smoke_escape_dummy_atmos.'
-)
 def test_smoke_outgas_atmos_volatiles():
     """Test outgas module + dummy atmosphere coupling (1 timestep).
 
@@ -443,9 +431,6 @@ def test_smoke_outgas_atmos_volatiles():
 
 
 @pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: requires fwl_data/planet_reference/Exoplanets/DACE_PlanetS.csv. Same root cause as test_smoke_escape_dummy_atmos.'
-)
 def test_smoke_dummy_full_chain():
     """Test all dummy modules in sequence (star → orbit → interior → atmos → escape).
 
