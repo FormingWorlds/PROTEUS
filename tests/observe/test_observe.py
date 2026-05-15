@@ -129,7 +129,7 @@ def test_read_transit_success(tmp_path):
     assert 'Wavelength/um' in result.columns
     assert 'None/ppm' in result.columns
     assert 'H2O/ppm' in result.columns
-    assert pytest.approx(result['Wavelength/um'].iloc[0], rel=1e-5) == 0.5
+    assert result['Wavelength/um'].iloc[0] == pytest.approx(0.5, rel=1e-5)
 
 
 @pytest.mark.unit

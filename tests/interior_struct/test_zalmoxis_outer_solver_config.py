@@ -83,7 +83,7 @@ class TestOuterSolverSchema:
         loudly at attrs validation time.
         """
         z = Zalmoxis()
-        assert z.newton_tol == 1.0e-4
+        assert z.newton_tol == pytest.approx(1.0e-4, rel=1e-12)
         # gt(0) validator
         with pytest.raises(ValueError):
             Zalmoxis(newton_tol=0)
@@ -96,8 +96,8 @@ class TestOuterSolverSchema:
         ``relative_tolerance <= 1e-7``.
         """
         z = Zalmoxis()
-        assert z.newton_relative_tolerance == 1.0e-9
-        assert z.newton_absolute_tolerance == 1.0e-10
+        assert z.newton_relative_tolerance == pytest.approx(1.0e-9, rel=1e-12)
+        assert z.newton_absolute_tolerance == pytest.approx(1.0e-10, rel=1e-12)
 
 
 # ----------------------------------------------------------------------
@@ -216,10 +216,10 @@ class TestNewtonPathTightensIntegratorTolerances:
         cp = load_zalmoxis_configuration(config, _make_hf_row())
 
         assert cp['outer_solver'] == 'newton'
-        assert cp['relative_tolerance'] == 1.0e-9
-        assert cp['absolute_tolerance'] == 1.0e-10
+        assert cp['relative_tolerance'] == pytest.approx(1.0e-9, rel=1e-12)
+        assert cp['absolute_tolerance'] == pytest.approx(1.0e-10, rel=1e-12)
         assert cp['newton_max_iter'] == 30
-        assert cp['newton_tol'] == 1.0e-4
+        assert cp['newton_tol'] == pytest.approx(1.0e-4, rel=1e-12)
 
     def test_newton_propagates_custom_knobs(self, monkeypatch):
         """Non-default Newton knobs flow through unchanged."""
@@ -236,9 +236,9 @@ class TestNewtonPathTightensIntegratorTolerances:
         cp = load_zalmoxis_configuration(config, _make_hf_row())
 
         assert cp['newton_max_iter'] == 50
-        assert cp['newton_tol'] == 5.0e-5
-        assert cp['relative_tolerance'] == 1.0e-10
-        assert cp['absolute_tolerance'] == 1.0e-11
+        assert cp['newton_tol'] == pytest.approx(5.0e-5, rel=1e-12)
+        assert cp['relative_tolerance'] == pytest.approx(1.0e-10, rel=1e-12)
+        assert cp['absolute_tolerance'] == pytest.approx(1.0e-11, rel=1e-12)
 
     def test_newton_tols_satisfy_zalmoxis_precondition(self, monkeypatch):
         """The default tols must satisfy Zalmoxis' Newton precondition.

@@ -46,7 +46,7 @@ class TestNoackScalingLaws:
         from proteus.interior_struct.dummy import _iron_fractions
 
         x_cmf, x_fe, x_fem = _iron_fractions(0.325, 'mass')
-        assert x_cmf == 0.325
+        assert x_cmf == pytest.approx(0.325, rel=1e-12)
         assert 0.0 < x_fem < 0.15  # mantle iron fraction
         assert 0.30 < x_fe < 0.40  # total iron fraction
 

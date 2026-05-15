@@ -176,9 +176,9 @@ def test_create_helpfile_from_dict_preserves_values():
 
     hf = CreateHelpfileFromDict(row)
 
-    assert hf['Time'].iloc[0] == 1.5e9
-    assert hf['T_surf'].iloc[0] == 350.0
-    assert hf['P_surf'].iloc[0] == 100.0
+    assert hf['Time'].iloc[0] == pytest.approx(1.5e9, rel=1e-12)
+    assert hf['T_surf'].iloc[0] == pytest.approx(350.0, rel=1e-12)
+    assert hf['P_surf'].iloc[0] == pytest.approx(100.0, rel=1e-12)
 
 
 @pytest.mark.unit

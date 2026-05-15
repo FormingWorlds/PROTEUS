@@ -129,16 +129,16 @@ class TestMakePressureGrid:
         """Creates a 500-point grid from 0 to 1000 GPa (default)."""
         P = make_pressure_grid()
         assert len(P) == 500
-        assert pytest.approx(P[0], rel=1e-10) == 0.0
-        assert pytest.approx(P[-1], rel=1e-10) == 1000.0
+        assert P[0] == 0.0
+        assert P[-1] == pytest.approx(1000.0, rel=1e-10)
         assert np.all(np.diff(P) > 0), 'Pressure grid must be monotonically increasing'
 
     def test_custom_range_and_count(self):
         """Custom Pmin, Pmax, n parameters."""
         P = make_pressure_grid(Pmin=10.0, Pmax=100.0, n=20)
         assert len(P) == 20
-        assert pytest.approx(P[0], rel=1e-10) == 10.0
-        assert pytest.approx(P[-1], rel=1e-10) == 100.0
+        assert P[0] == pytest.approx(10.0, rel=1e-10)
+        assert P[-1] == pytest.approx(100.0, rel=1e-10)
 
     def test_uniform_spacing(self):
         """Pressure grid is uniformly spaced."""
@@ -150,7 +150,7 @@ class TestMakePressureGrid:
         """Single-point grid returns array of length 1."""
         P = make_pressure_grid(Pmin=50.0, Pmax=50.0, n=1)
         assert len(P) == 1
-        assert pytest.approx(P[0], rel=1e-10) == 50.0
+        assert P[0] == pytest.approx(50.0, rel=1e-10)
 
 
 # =============================================================================

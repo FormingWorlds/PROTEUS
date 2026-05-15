@@ -217,12 +217,12 @@ def test_blend_mesh_large_shift(spider_json_dir):
     _make_mesh_file(new_path, r_b_new, r_s_new)
 
     actual_shift = blend_mesh_files(old_path, new_path, max_shift=0.05)
-    assert pytest.approx(actual_shift, rel=1e-3) == 0.39
+    assert actual_shift == pytest.approx(0.39, rel=1e-3)
 
     # Read blended mesh and verify shift is clamped
     r_b_blended = _read_mesh_file(new_path)[0]
     blended_shift = np.max(np.abs(r_b_blended - r_b_old) / np.abs(r_b_old))
-    assert pytest.approx(blended_shift, rel=1e-3) == 0.05
+    assert blended_shift == pytest.approx(0.05, rel=1e-3)
 
 
 @pytest.mark.unit
@@ -247,7 +247,7 @@ def test_blend_mesh_small_shift(spider_json_dir):
         content_before = f.read()
 
     actual_shift = blend_mesh_files(old_path, new_path, max_shift=0.05)
-    assert pytest.approx(actual_shift, rel=1e-3) == 0.02
+    assert actual_shift == pytest.approx(0.02, rel=1e-3)
 
     # File should be untouched
     with open(new_path) as f:
@@ -388,7 +388,7 @@ def test_mesh_convergence_trigger():
             dirs, config, hf_row, interior_o, last_struct_time, last_Tmagma, last_Phi
         )
     # Should have triggered (returned updated values)
-    assert result[0] == 50.0  # last_struct_time updated to current
+    assert result[0] == pytest.approx(50.0, rel=1e-12)  # last_struct_time updated to current
 
     # Case 2: mesh_shift_active=False, elapsed=15 yr (< floor 100 yr)
     # Should NOT trigger (floor blocks)
@@ -637,7 +637,7 @@ def test_coresize_from_mesh_earth_like(spider_json_dir):
     _make_mesh_file(mesh_path, r_b, r_s)
 
     coresize = _coresize_from_mesh(mesh_path)
-    assert pytest.approx(coresize, rel=1e-6) == 0.55
+    assert coresize == pytest.approx(0.55, rel=1e-6)
 
 
 @pytest.mark.unit
@@ -650,7 +650,7 @@ def test_coresize_from_mesh_small_core(spider_json_dir):
     _make_mesh_file(mesh_path, r_b, r_s)
 
     coresize = _coresize_from_mesh(mesh_path)
-    assert pytest.approx(coresize, rel=1e-6) == 0.46
+    assert coresize == pytest.approx(0.46, rel=1e-6)
 
 
 @pytest.mark.unit
@@ -662,7 +662,7 @@ def test_coresize_from_mesh_minimal(spider_json_dir):
     _make_mesh_file(mesh_path, r_b, r_s)
 
     coresize = _coresize_from_mesh(mesh_path)
-    assert pytest.approx(coresize, rel=1e-6) == 0.5
+    assert coresize == pytest.approx(0.5, rel=1e-6)
 
 
 # ============================================================================
@@ -1033,12 +1033,12 @@ def test_try_spider_init_with_mesh(tmp_path):
     # Verify coresize extracted from mesh (0.55)
     idx = call_args.index('-coresize')
     coresize_val = float(call_args[idx + 1])
-    assert pytest.approx(coresize_val, rel=1e-3) == 0.55
+    assert coresize_val == pytest.approx(0.55, rel=1e-3)
 
     # Without M_core in hf_row, rho_core should fall back to config value
     idx = call_args.index('-rho_core')
     rho_val = float(call_args[idx + 1])
-    assert pytest.approx(rho_val, rel=1e-3) == config.interior_struct.core_density
+    assert rho_val == pytest.approx(config.interior_struct.core_density, rel=1e-3)
 
 
 @pytest.mark.unit

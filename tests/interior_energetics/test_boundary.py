@@ -1010,7 +1010,7 @@ def test_compute_time_step_normal_iteration(mock_next_step, mock_config, mock_di
 
     # Should call next_step
     mock_next_step.assert_called_once()
-    assert dt == 1e-5
+    assert dt == pytest.approx(1e-5, rel=1e-12)
 
 
 # =============================================================================

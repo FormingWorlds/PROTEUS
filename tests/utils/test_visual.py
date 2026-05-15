@@ -19,7 +19,7 @@ def test_interp_spec_single_point_returns_constant():
     wl = np.array([500.0])
     fl = np.array([42.0])
     out = interp_spec(wl, fl)
-    assert np.all(out == 42.0)
+    np.testing.assert_allclose(out, 42.0, rtol=1e-12)
     assert out.shape == cmf[:, 0].shape
 
 

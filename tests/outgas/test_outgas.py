@@ -456,9 +456,9 @@ def test_run_desiccated_zeros_outgassing_keys():
         assert hf_row[s + '_bar'] == 0.0
 
     # Check that excepted keys are NOT zeroed (prevent divide-by-zero downstream)
-    assert hf_row['atm_kg_per_mol'] == 0.029  # Preserved
+    assert hf_row['atm_kg_per_mol'] == pytest.approx(0.029, rel=1e-12)  # Preserved
     for s in gas_list:
-        assert hf_row[s + '_vmr'] == 0.1  # Preserved
+        assert hf_row[s + '_vmr'] == pytest.approx(0.1, rel=1e-12)  # Preserved
 
 
 @pytest.mark.unit

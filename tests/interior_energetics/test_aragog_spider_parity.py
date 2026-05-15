@@ -287,11 +287,11 @@ def test_tier3_solid_log10visc_default_matches_spider():
     from proteus.config._interior import Interior
 
     ie = Interior()
-    assert ie.solid_log10visc == 22.0, (
+    assert ie.solid_log10visc == pytest.approx(22.0, rel=1e-12), (
         'Aragog must use the same solid viscosity as SPIDER. Previous '
         'hardcoded value was 1e21 (log10=21); SPIDER uses 22.0.'
     )
-    assert 10.0**ie.solid_log10visc == 1e22
+    assert 10.0**ie.solid_log10visc == pytest.approx(1e22, rel=1e-12)
 
 
 def test_tier3_adams_williamson_rhos_default_matches_spider():
@@ -312,13 +312,13 @@ def test_tier3_physics_constants_all_set_to_spider_defaults():
     ie = Interior()
     assert ie.adams_williamson_rhos == pytest.approx(4078.95095544)
     assert ie.adams_williamson_beta == pytest.approx(1.1115348931000002e-07)
-    assert ie.adiabatic_bulk_modulus == 260e9
-    assert ie.melt_log10visc == 2.0
-    assert ie.solid_log10visc == 22.0
-    assert ie.melt_cond == 4.0
-    assert ie.solid_cond == 4.0
-    assert ie.eddy_diffusivity_thermal == 1.0
-    assert ie.eddy_diffusivity_chemical == 1.0
-    assert ie.latent_heat_of_fusion == 4e6
-    assert ie.phase_transition_width == 0.1
-    assert ie.core_tfac_avg == 1.147
+    assert ie.adiabatic_bulk_modulus == pytest.approx(260e9, rel=1e-12)
+    assert ie.melt_log10visc == pytest.approx(2.0, rel=1e-12)
+    assert ie.solid_log10visc == pytest.approx(22.0, rel=1e-12)
+    assert ie.melt_cond == pytest.approx(4.0, rel=1e-12)
+    assert ie.solid_cond == pytest.approx(4.0, rel=1e-12)
+    assert ie.eddy_diffusivity_thermal == pytest.approx(1.0, rel=1e-12)
+    assert ie.eddy_diffusivity_chemical == pytest.approx(1.0, rel=1e-12)
+    assert ie.latent_heat_of_fusion == pytest.approx(4e6, rel=1e-12)
+    assert ie.phase_transition_width == pytest.approx(0.1, rel=1e-12)
+    assert ie.core_tfac_avg == pytest.approx(1.147, rel=1e-12)

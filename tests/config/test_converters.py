@@ -118,7 +118,7 @@ class TestDictReplaceNone:
         }
         result = dict_replace_none(data)
         assert result['star']['module'] == 'none'
-        assert result['star']['mass'] == 1.0
+        assert result['star']['mass'] == pytest.approx(1.0, rel=1e-12)
         assert result['planet']['radius'] == 'none'
         assert result['planet']['name'] == 'test'
 
@@ -165,7 +165,7 @@ class TestDictReplaceNone:
         }
         result = dict_replace_none(data)
         assert result['int_val'] == 42
-        assert result['float_val'] == 3.14
+        assert result['float_val'] == pytest.approx(3.14, rel=1e-12)
         assert result['str_val'] == 'proteus'
         assert result['bool_val'] is True
         assert result['list_val'] == [1, 2, 3]

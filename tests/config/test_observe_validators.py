@@ -32,7 +32,7 @@ def test_observe_platon_clip_vmr_valid():
 
     # Default VMR value should be valid
     p_default = Platon()
-    assert p_default.clip_vmr == 1e-8
+    assert p_default.clip_vmr == pytest.approx(1e-8, rel=1e-12)
 
     # Validator enforces 0 < vmr < 1
 

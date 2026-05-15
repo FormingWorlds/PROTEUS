@@ -648,7 +648,7 @@ def test_interior_t_initialization():
     assert interior.nlev_b == 5
     assert interior.nlev_s == 4  # One less layer
     assert interior.ic == -1  # Initial condition flag
-    assert interior.dt == 1.0  # Default time step [yr]
+    assert interior.dt == pytest.approx(1.0, rel=1e-12)  # Default time step [yr]
     assert len(interior.radius) == 5
     assert len(interior.tides) == 4
     assert len(interior.phi) == 4

@@ -104,19 +104,19 @@ def test_read_ncdf_profile(mock_ds, mock_isfile):
     )
 
     # Verify values are correctly extracted
-    assert result['p'][0] == 110.0  # Should match first element of pl
-    assert result['p'][1] == 100.0  # Should match first element of p
-    assert result['p'][2] == 90.0  # Should match second element of pl
-    assert result['t'][1] == 300.0  # Temperature
+    assert result['p'][0] == pytest.approx(110.0, rel=1e-12)  # first element of pl
+    assert result['p'][1] == pytest.approx(100.0, rel=1e-12)  # first element of p
+    assert result['p'][2] == pytest.approx(90.0, rel=1e-12)  # second element of pl
+    assert result['t'][1] == pytest.approx(300.0, rel=1e-12)  # Temperature
 
     # The function converts all outputs to float arrays, even booleans
-    assert result['transparent'] == 1.0
+    assert result['transparent'] == pytest.approx(1.0, rel=1e-12)
 
     # Verify AGNI-style radius/height logic (default path in function)
     # r = z + rp => z = r - rp
     # rp = 6.0e6
     # r[0] = 6.4e6 => z[0]Approx 4.0e5
-    assert result['r'][1] == 6.4e6
+    assert result['r'][1] == pytest.approx(6.4e6, rel=1e-12)
     assert result['z'][1] == pytest.approx(4.0e5)
 
     mock_ds.assert_called_with('dummy.nc')
@@ -459,12 +459,12 @@ def test_get_oarr_from_parr():
 
     # Exact match
     p_close, o_close = get_oarr_from_parr(p_arr, o_arr, 10.0)
-    assert p_close == 10.0
-    assert o_close == 20.0
+    assert p_close == pytest.approx(10.0, rel=1e-12)
+    assert o_close == pytest.approx(20.0, rel=1e-12)
 
     # Nearest neighbor
     p_close, o_close = get_oarr_from_parr(p_arr, o_arr, 50.0)
-    assert p_close == 10.0
+    assert p_close == pytest.approx(10.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -480,13 +480,13 @@ def test_get_radius_from_pressure():
 
     # Exact match: Target 10 Pa => expect 20 m
     p_close, r_close = get_radius_from_pressure(p_arr, r_arr, 10.0)
-    assert p_close == 10.0
-    assert r_close == 20.0
+    assert p_close == pytest.approx(10.0, rel=1e-12)
+    assert r_close == pytest.approx(20.0, rel=1e-12)
 
     # Nearest neighbor: Target 50 Pa
     # In linear space: |100-50|=50, |10-50|=40. So 10 Pa is closer.
     p_close, r_close = get_radius_from_pressure(p_arr, r_arr, 50.0)
-    assert p_close == 10.0
+    assert p_close == pytest.approx(10.0, rel=1e-12)
 
 
 @pytest.mark.unit

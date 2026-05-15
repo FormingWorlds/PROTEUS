@@ -181,7 +181,7 @@ def test_read_result_preserves_whitespace_format(tmp_path):
     assert 'tmp' in result.columns
     assert 'CO' in result.columns
     # Check that pressure column has correct first value
-    assert pytest.approx(result['p'].iloc[0], rel=1e-3) == 1.0
+    assert result['p'].iloc[0] == pytest.approx(1.0, rel=1e-3)
 
 
 @pytest.mark.unit

@@ -41,9 +41,9 @@ def test_outgas_shared_solver_defaults():
     from proteus.config._outgas import Outgas
 
     o = Outgas(module='calliope', fO2_shift_IW=4.0)
-    assert o.T_floor == 700.0
-    assert o.solver_rtol == 1e-4
-    assert o.solver_atol == 1e-6
+    assert o.T_floor == pytest.approx(700.0, rel=1e-12)
+    assert o.solver_rtol == pytest.approx(1e-4, rel=1e-12)
+    assert o.solver_atol == pytest.approx(1e-6, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -54,6 +54,6 @@ def test_outgas_custom_solver_params():
     o = Outgas(
         module='calliope', fO2_shift_IW=4.0, T_floor=500.0, solver_rtol=1e-5, solver_atol=1e-7
     )
-    assert o.T_floor == 500.0
-    assert o.solver_rtol == 1e-5
-    assert o.solver_atol == 1e-7
+    assert o.T_floor == pytest.approx(500.0, rel=1e-12)
+    assert o.solver_rtol == pytest.approx(1e-5, rel=1e-12)
+    assert o.solver_atol == pytest.approx(1e-7, rel=1e-12)

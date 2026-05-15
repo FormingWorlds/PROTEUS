@@ -174,8 +174,8 @@ def test_phoenix_to_grid_snaps_to_nearest():
     grid = phoenix_to_grid(FeH=-0.12, alpha=0.33, Teff=5873, logg=4.62)
     assert grid['FeH'] == 0.0
     assert grid['alpha'] == pytest.approx(0.4)
-    assert grid['Teff'] == 5900.0
-    assert grid['logg'] == 4.5
+    assert grid['Teff'] == pytest.approx(5900.0, rel=1e-12)
+    assert grid['logg'] == pytest.approx(4.5, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -189,7 +189,7 @@ def test_phoenix_to_grid_disallows_alpha_when_feh_positive(caplog):
     caplog.set_level('WARNING')
     grid = phoenix_to_grid(FeH=+0.4, alpha=0.6, Teff=5800, logg=4.5)
 
-    assert grid['FeH'] == 0.5
+    assert grid['FeH'] == pytest.approx(0.5, rel=1e-12)
     assert grid['alpha'] == 0.0
     assert any('using [alpha/M]=0.0' in rec.message for rec in caplog.records)
 

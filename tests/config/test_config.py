@@ -201,7 +201,7 @@ def test_calliope_is_included():
 def test_delivery_get_pressure():
     """Volatile partial pressure lookup succeeds for known keys and errors otherwise."""
     conf = GasPrs(N2=123.0)
-    assert conf.get_pressure('N2') == 123.0
+    assert conf.get_pressure('N2') == pytest.approx(123.0, rel=1e-12)
     with pytest.raises(AttributeError):
         conf.get_pressure('fails')
 

@@ -65,15 +65,15 @@ def test_dt_params_defaults():
     """
     dt = TimeStepParams()
     assert dt.method == 'adaptive'
-    assert dt.minimum == 1e4  # Minimum step 300 years
-    assert dt.minimum_rel == 1e-5  # Relative minimum precision
-    assert dt.maximum == 1e7  # Maximum step 10 Myr
-    assert dt.initial == 3e1  # Start with 1000 years
+    assert dt.minimum == pytest.approx(1e4, rel=1e-12)  # Minimum step 300 years
+    assert dt.minimum_rel == pytest.approx(1e-5, rel=1e-12)  # Relative minimum precision
+    assert dt.maximum == pytest.approx(1e7, rel=1e-12)  # Maximum step 10 Myr
+    assert dt.initial == pytest.approx(3e1, rel=1e-12)  # Start with 1000 years
 
     # Proportional and adaptive parameters (flattened)
-    assert dt.propconst == 52.0
-    assert dt.atol == 0.02
-    assert dt.rtol == 0.10
+    assert dt.propconst == pytest.approx(52.0, rel=1e-12)
+    assert dt.atol == pytest.approx(0.02, rel=1e-12)
+    assert dt.rtol == pytest.approx(0.10, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -98,22 +98,22 @@ def test_stop_params_defaults():
     # Time
     assert isinstance(stop.time, StopTime)
     assert stop.time.enabled is True
-    assert stop.time.maximum == 6e9
+    assert stop.time.maximum == pytest.approx(6e9, rel=1e-12)
 
     # Solid
     assert isinstance(stop.solid, StopSolid)
     assert stop.solid.enabled is True
-    assert stop.solid.phi_crit == 0.01
+    assert stop.solid.phi_crit == pytest.approx(0.01, rel=1e-12)
 
     # Radeqm
     assert isinstance(stop.radeqm, StopRadeqm)
     assert stop.radeqm.enabled is True
-    assert stop.radeqm.atol == 1.0
+    assert stop.radeqm.atol == pytest.approx(1.0, rel=1e-12)
 
     # Escape
     assert isinstance(stop.escape, StopEscape)
     assert stop.escape.enabled is True
-    assert stop.escape.p_stop == 3.0
+    assert stop.escape.p_stop == pytest.approx(3.0, rel=1e-12)
 
     # Disint (defaults to disabled)
     assert isinstance(stop.disint, StopDisint)
@@ -159,7 +159,7 @@ def test_interior_defaults():
     assert i.spider == spider_cfg
     assert i.heat_radiogenic is True  # Heating terms on
     assert i.heat_tidal is False
-    assert i.grain_size == 0.1  # 10 cm crystals
+    assert i.grain_size == pytest.approx(0.1, rel=1e-12)  # 10 cm crystals
     assert i.flux_guess == -1  # Auto-detect
 
     # Sub-modules defaults

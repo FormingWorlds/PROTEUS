@@ -144,7 +144,7 @@ def test_ceiling_trigger():
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
         )
     # Should have triggered: last_struct_time updated to current
-    assert result[0] == 1100.0
+    assert result[0] == pytest.approx(1100.0, rel=1e-12)
 
 
 # ============================================================================
@@ -179,7 +179,7 @@ def test_tmagma_trigger():
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
         )
-    assert result[0] == 200.0
+    assert result[0] == pytest.approx(200.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -235,7 +235,7 @@ def test_phi_trigger():
         result = update_structure_from_interior(
             dirs, config, hf_row, interior_o, 0.0, 2990.0, 0.80
         )
-    assert result[0] == 200.0
+    assert result[0] == pytest.approx(200.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -366,7 +366,7 @@ def test_full_update_with_mesh_blending(tmp_path):
         )
 
     # Should have triggered (ceiling) and updated
-    assert result[0] == 1100.0
+    assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # Mesh blending returned 15% shift > 5% max → convergence active
     assert dirs['mesh_shift_active'] is True
     assert dirs['mesh_convergence_steps'] == 1
@@ -415,7 +415,7 @@ def test_convergence_max_exceeded(tmp_path):
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
         )
 
-    assert result[0] == 1100.0
+    assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # Exceeded max convergence steps → reset
     assert dirs['mesh_shift_active'] is False
     assert dirs['mesh_convergence_steps'] == 0
@@ -469,7 +469,7 @@ def test_update_with_entropy_remap(tmp_path):
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
         )
 
-    assert result[0] == 1100.0
+    assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # Remap should have been called with latest JSON
     mock_remap.assert_called_once()
     call_args = mock_remap.call_args
@@ -524,7 +524,7 @@ def test_entropy_remap_exception(tmp_path):
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
         )
 
-    assert result[0] == 1100.0
+    assert result[0] == pytest.approx(1100.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -573,7 +573,7 @@ def test_update_creates_prev_file(tmp_path):
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
         )
 
-    assert result[0] == 1100.0
+    assert result[0] == pytest.approx(1100.0, rel=1e-12)
     # spider_mesh_prev should now be set
     assert 'spider_mesh_prev' in dirs
     assert dirs['spider_mesh_prev'].endswith('.prev')
@@ -1416,7 +1416,7 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
             3000.0,
             0.8,
         )
-    assert interior_o.last_successful_struct_time == 5e4, (
+    assert interior_o.last_successful_struct_time == pytest.approx(5e4, rel=1e-12), (
         'fall-back must NOT advance last_successful_struct_time '
         '(got %r, expected 5e4)' % interior_o.last_successful_struct_time
     )
