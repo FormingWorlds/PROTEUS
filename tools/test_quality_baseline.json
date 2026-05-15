@@ -1,8 +1,8 @@
 {
-  "float_eq_literal": 48,
+  "float_eq_literal": 47,
   "missing_docstring": 157,
   "no_assertions": 90,
-  "single_assert": 667,
+  "single_assert": 665,
   "weak_assert_gt_zero": 4,
   "weak_assert_is_none_or_not_none": 21,
   "weak_assert_only_isinstance": 5

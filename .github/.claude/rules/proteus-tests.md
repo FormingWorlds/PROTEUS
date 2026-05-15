@@ -188,7 +188,7 @@ pytest.importorskip('boreas')
 
 Optional deps that have hit this trap on `tl/interior-refactor`: `hypothesis` (three times), `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, `zalmoxis` (when not installed via editable).
 
-The lint script flags `import <optional_dep>` statements at module top not paired with `importorskip`.
+The lint script (`tools/check_test_quality.py`) enforces this. Rule key `missing_importorskip`: any module-top `import <optional_dep>` or `from <optional_dep> import ...` that is not preceded by a module-scope `pytest.importorskip('<optional_dep>')` is flagged. The check covers `hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, `zalmoxis`.
 
 ---
 
@@ -212,7 +212,7 @@ monkeypatch.setenv('FWL_DATA', str(tmp_path))   # for downstream code that re-re
 monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
 ```
 
-When in doubt, do both. The lint script flags `monkeypatch.setenv` calls in test files that touch source modules with module-level env-derived constants.
+When in doubt, do both. The lint script does NOT currently flag this pattern (it would require source-side analysis to know which constants are env-derived); this is a discipline rule enforced via the >50 LOC review trigger and the recurring-trap table in section 14.
 
 ---
 
@@ -321,7 +321,7 @@ Write the OUTCOME (what the test verifies; what the PR achieves) never the PROCE
 
 ## 13. Adversarial review trigger
 
-A pull request that adds or substantially modifies **> 50 lines of test code across all its commits** triggers an independent review pass before merge. The denominator is PR-level, not per-commit: `git diff origin/main...HEAD -- 'tests/**'` is the source of truth. Splitting one large change into 49 + 49 + 49 line commits does NOT dodge the trigger.
+A pull request that adds or substantially modifies **> 50 lines of test code across all its commits** triggers an independent review pass before merge. This is a discipline rule, not CI-automated: the author runs the review pass via a `code-reviewer` agent before pushing the final test-touching commit. The denominator is PR-level, not per-commit: `git diff origin/main...HEAD -- 'tests/**'` is the source of truth. Splitting one large change into 49 + 49 + 49 line commits does NOT dodge the trigger.
 
 The reviewer's mandate:
 
@@ -347,7 +347,7 @@ The repo provides:
 - `bash tools/coverage_analysis.sh` -- coverage by module, sorted by gap.
 - `ruff check src/ tests/` and `ruff format src/ tests/` -- run before commit.
 
-The lint script is wired into PR CI as a non-blocking warning step initially; once the legacy violations are swept and the baseline is reset to zero, the step becomes blocking.
+The lint script is wired into PR CI (`ci-pr-checks.yml`). The step currently runs with `continue-on-error: true` while the legacy baseline is being swept; the gate becomes blocking by removing that flag once the baseline approaches zero. Even today the script writes a regression-status table to the workflow log, so a contributor adding a new violation sees the failure inline.
 
 ---
 

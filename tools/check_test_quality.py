@@ -17,6 +17,10 @@ Enforces the rules in `.github/.claude/rules/proteus-tests.md` (sections 1 + 7):
 - Every test function must have a docstring.
 - ``==`` adjacent to a numeric literal in a test body is a likely float-comparison
   bug (use ``pytest.approx`` instead).
+- Optional dependencies (``hypothesis``, ``boreas``, ``atmodeller``, ``lovepy``,
+  ``mors``, ``vulcan``, ``zalmoxis``) imported at module top without a preceding
+  ``pytest.importorskip('<name>')`` (the PR Docker image is built with
+  ``pip install --no-deps``; an unguarded import fails collection).
 
 Two modes:
 
@@ -56,6 +60,20 @@ TESTS_DIR = REPO_ROOT / 'tests'
 BASELINE_PATH = REPO_ROOT / 'tools' / 'test_quality_baseline.json'
 
 TIER_MARKERS = {'unit', 'smoke', 'integration', 'slow'}
+
+# Optional dependencies. Any test module that imports one of these MUST
+# precede the import with ``pytest.importorskip('<name>')`` at module
+# scope, otherwise CI's `pip install --no-deps` build fails collection.
+# Source rule: proteus-tests.md section 6.
+OPTIONAL_DEPS = {
+    'hypothesis',
+    'boreas',
+    'atmodeller',
+    'lovepy',
+    'mors',
+    'vulcan',
+    'zalmoxis',  # only optional when not installed as editable submodule
+}
 
 # Test directories that contain at least one physics-required source file.
 # Each directory must contain at least one @pytest.mark.reference_pinned
@@ -304,6 +322,59 @@ def _count_implicit_assertions(node: ast.AST) -> int:
     return count
 
 
+def _importorskip_targets(tree: ast.Module) -> set[str]:
+    """Set of dependency names protected by a module-scope ``pytest.importorskip``."""
+    out: set[str] = set()
+    for node in tree.body:
+        # Handles both ``pytest.importorskip('x')`` as a bare statement
+        # and ``x = pytest.importorskip('x')`` assignment.
+        call = None
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            call = node.value
+        elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+            call = node.value
+        if call is None or not isinstance(call.func, ast.Attribute):
+            continue
+        if (
+            isinstance(call.func.value, ast.Name)
+            and call.func.value.id == 'pytest'
+            and call.func.attr == 'importorskip'
+            and call.args
+            and isinstance(call.args[0], ast.Constant)
+            and isinstance(call.args[0].value, str)
+        ):
+            out.add(call.args[0].value)
+    return out
+
+
+def _missing_importorskip(tree: ast.Module) -> list[str]:
+    """Return optional-dep names imported at module top without a matching importorskip.
+
+    The check is scoped to module-level imports (the failure mode the rule
+    targets, since module-level imports run at collection time and fail the
+    whole file). Imports inside functions or guarded by ``try``/``except``
+    are not flagged.
+    """
+    protected = _importorskip_targets(tree)
+    missing: list[str] = []
+    seen: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split('.', 1)[0]
+                if root in OPTIONAL_DEPS and root not in protected and root not in seen:
+                    missing.append(root)
+                    seen.add(root)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module is None:
+                continue
+            root = node.module.split('.', 1)[0]
+            if root in OPTIONAL_DEPS and root not in protected and root not in seen:
+                missing.append(root)
+                seen.add(root)
+    return missing
+
+
 def check_file(path: Path) -> Violations:
     v = Violations()
     try:
@@ -322,6 +393,9 @@ def check_file(path: Path) -> Violations:
     module_tier = _module_pytestmark_tier(tree)
     if module_tier is None:
         v.add('missing_module_pytestmark', rel)
+
+    for dep in _missing_importorskip(tree):
+        v.add('missing_importorskip', f'{rel}: {dep}')
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef):
