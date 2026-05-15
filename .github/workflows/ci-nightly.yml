@@ -108,7 +108,21 @@ jobs:
       - name: Overlay code onto container
         run: |
           echo "Copying code over container base..."
-          rsync -av --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
+          # --delete removes files in /opt/proteus that no longer exist in
+          # the branch source. Without it, the Docker image's stale test
+          # files (e.g. tests/interior/test_zalmoxis.py from a prior path
+          # layout) persist through the overlay and break pytest collection
+          # with ModuleNotFoundError. The PR-check workflow already uses
+          # --delete; this is the matching fix on the nightly side.
+          rsync -av --delete --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
+          # The Docker image carries a stale .git/ from its build that
+          # rsync's --exclude protected from --delete. setuptools-scm
+          # would try to read it for version derivation, git would
+          # refuse with "dubious ownership", and the build_editable
+          # step would abort before pip can even install. Removing the
+          # stale .git/ lets setuptools-scm fall back to the
+          # fallback_version configured in pyproject.toml.
+          rm -rf /opt/proteus/.git
           cd /opt/proteus
           git config --global --add safe.directory /opt/proteus
           # Set Julia depot to /opt where there's more disk space
