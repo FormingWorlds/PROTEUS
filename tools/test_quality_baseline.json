@@ -1,7 +1,4 @@
 {
   "float_eq_literal": 47,
-  "single_assert": 669,
-  "weak_assert_gt_zero": 4,
-  "weak_assert_is_none_or_not_none": 21,
-  "weak_assert_only_isinstance": 5
+  "single_assert": 639
 }

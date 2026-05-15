@@ -192,3 +192,8 @@ def test_aragog_janus_plot(aragog_janus_run, image):
     assert result is None, (
         f'The two PNG files {image} differ more than the allowed tolerance: {result}'
     )
+    # Discriminating check: both image files were actually written; a regression
+    # in the resize_to_match path that swallowed the I/O would have let
+    # compare_images return None on missing files too.
+    assert actual.is_file()
+    assert expected.is_file()

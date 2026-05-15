@@ -114,6 +114,7 @@ class TestHasZenodoToken:
 
     def test_no_token(self, monkeypatch):
         """Test when no token is available."""
+        import os
         from pathlib import Path as PathClass
 
         from proteus.utils.data import _has_zenodo_token
@@ -129,6 +130,11 @@ class TestHasZenodoToken:
         # Should return False if no token
         result = _has_zenodo_token()
         assert isinstance(result, bool)
+        # Discriminating check: with both the env var and the config-file
+        # source removed, the lookup must return False; an isinstance-only
+        # check would have passed even if the function returned True spuriously.
+        assert result is False
+        assert 'ZENODO_API_TOKEN' not in os.environ
 
 
 class TestDownloadZenodoFolderClient:
@@ -280,10 +286,14 @@ class TestGetDataSourceInfo:
 
     def test_invalid_folder(self):
         """Test lookup of invalid folder."""
-        from proteus.utils.data import get_data_source_info
+        from proteus.utils.data import DATA_SOURCE_MAP, get_data_source_info
 
         result = get_data_source_info('INVALID_FOLDER')
         assert result is None
+        # Discriminating check: 'INVALID_FOLDER' is genuinely absent from the
+        # source-of-truth map. Only the unknown-key branch can produce a None
+        # return on this row.
+        assert 'INVALID_FOLDER' not in DATA_SOURCE_MAP
 
     def test_all_categories(self):
         """Test that all categories in DATA_SOURCE_MAP are accessible."""

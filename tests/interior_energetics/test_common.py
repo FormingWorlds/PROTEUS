@@ -126,7 +126,11 @@ def test_load_ps_table_both_missing(tmp_path):
             'SomeEOS',
             'density_melt.dat',
         )
-    assert result is None
+    assert result is None  # both-missing branch must yield None silently
+    # Discriminating check: neither candidate path exists on disk; only the
+    # both-missing branch can have produced the None return on this row.
+    assert not (tmp_path / 'nonexistent').exists()
+    assert not (tmp_path / 'also_nonexistent').exists()
 
 
 def test_load_ps_table_scaling(tmp_path):
@@ -238,14 +242,20 @@ def test_interior_t_init_partial_table_set(tmp_path):
 def test_load_ps_table_invalid_filename(tmp_path):
     """Reading a nonexistent filename returns None, not raises."""
     spider_dir = str(tmp_path / 'spider')
-    os.makedirs(os.path.join(spider_dir, 'lookup_data', '1TPa-dK09-elec-free'))
+    eos_subdir = os.path.join(spider_dir, 'lookup_data', '1TPa-dK09-elec-free')
+    os.makedirs(eos_subdir)
     interior_o = Interior_t(50)
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
         result = interior_o._load_ps_table(
             spider_dir, 'WolfBower2018_MgSiO3', 'this_file_does_not_exist.dat'
         )
-    assert result is None
+    assert result is None  # missing-filename branch must yield None silently
+    # Discriminating check: the EOS subdirectory exists but the requested
+    # filename is genuinely absent, so the silent pass came from the
+    # filename-not-found branch (not a missing-directory short-circuit).
+    assert os.path.isdir(eos_subdir)
+    assert not os.path.exists(os.path.join(eos_subdir, 'this_file_does_not_exist.dat'))
 
 
 def test_interior_t_stale_struct_steps_init():

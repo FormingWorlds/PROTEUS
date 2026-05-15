@@ -92,7 +92,11 @@ class TestBuildVolatileProfile:
 
         hf_row = self._make_hf_row(M_liq=0, M_sol=0)
         result = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
-        assert result is None
+        assert result is None  # zero-mantle-mass branch must yield None silently
+        # Discriminating check: both mantle reservoirs are genuinely zero, so
+        # the mass-floor branch is the only one that can have produced a None
+        # return on this row.
+        assert hf_row['M_mantle_liquid'] + hf_row['M_mantle_solid'] == 0
 
     def test_returns_none_when_no_volatiles(self):
         """Returns None when all volatile masses are zero."""
@@ -100,7 +104,12 @@ class TestBuildVolatileProfile:
 
         hf_row = self._make_hf_row(H2O_liq=0, H2_liq=0)
         result = build_volatile_profile(hf_row, 'PALEOS:MgSiO3')
-        assert result is None
+        assert result is None  # zero-volatiles branch must yield None silently
+        # Discriminating check: mantle reservoirs are non-zero (so the
+        # mantle-mass branch above did not fire), and every volatile reservoir
+        # is zero; only the volatile-floor branch can produce a None here.
+        assert hf_row['M_mantle_liquid'] + hf_row['M_mantle_solid'] > 0
+        assert hf_row['H2O_kg_liquid'] + hf_row['H2_kg_liquid'] == 0
 
     def test_returns_profile_with_volatiles(self):
         """Returns VolatileProfile when volatiles are present."""

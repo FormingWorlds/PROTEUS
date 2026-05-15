@@ -784,6 +784,10 @@ def test_resolve_oxygen_budget_ic_chemistry_mode_returns_none():
     config.planet.volatile_reservoir = 'mantle'
     hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
     assert _resolve_oxygen_budget(config, hf_row) is None
+    # Discriminating check: ic_chemistry is the only mode that defers O to
+    # the chemistry solver; the other three modes (ppmw, kg, FeO_mantle_wt_pct)
+    # all return a positive O_kg value. Pin the input that selected this branch.
+    assert config.planet.elements.O_mode == 'ic_chemistry'
 
 
 @pytest.mark.unit

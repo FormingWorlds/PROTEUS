@@ -737,6 +737,11 @@ class TestTruncateToPhysicalInterval:
         # Should not raise
         P_sol, T_sol = wrapped_wolf(kind='solidus', Pmin=0.0, Pmax=1000.0, n=200)
         assert len(P_sol) > 0
+        # Discriminating physics check: solidus temperature is strictly
+        # positive everywhere (Kelvin), and the returned profile arrays have
+        # matching lengths (P_sol[i] aligns with T_sol[i]).
+        assert len(P_sol) == len(T_sol)
+        assert np.all(T_sol > 0)
 
 
 # =============================================================================

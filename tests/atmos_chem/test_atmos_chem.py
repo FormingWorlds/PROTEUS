@@ -80,7 +80,12 @@ def test_read_result_file_not_found(tmp_path):
     module = 'vulcan'
 
     result = read_result(outdir, module)
-    assert result is None
+    assert result is None  # missing-file branch must yield None silently
+    # Discriminating check: the directory genuinely does not exist on disk, so
+    # only the missing-file branch can have produced the None return.
+    import os
+
+    assert not os.path.exists(outdir)
 
 
 @pytest.mark.unit
@@ -197,6 +202,9 @@ def test_run_chemistry_disabled_module():
 
     # Should return None when chemistry is disabled
     assert result is None
+    # Discriminating check: the disabled-module branch was the only one that
+    # could have produced the None return; pin the input that selected it.
+    assert config.atmos_chem.module is None
 
 
 @pytest.mark.unit

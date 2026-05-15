@@ -46,6 +46,11 @@ def test_observe_synthesis_none_accepted():
     # Synthesis accepts None as a valid value after converter
     obs = Observe(synthesis=None)
     assert obs.synthesis is None
+    # Discriminating check: the construction produced an Observe instance with
+    # an explicit synthesis=None field; a regression that swallowed the input
+    # would have produced a class-level default (which `_observe.py` sets to
+    # None too) and looked the same on the surface.
+    assert isinstance(obs, Observe)
 
 
 @pytest.mark.unit

@@ -226,8 +226,13 @@ def test_editable_checkout_path_returns_none_for_missing_package():
     with patch(
         'proteus.doctor.importlib.metadata.distribution',
         side_effect=PackageNotFoundError('fwl-aragog'),
-    ):
-        assert _editable_checkout_path('fwl-aragog') is None
+    ) as mock_dist:
+        result = _editable_checkout_path('fwl-aragog')
+    assert result is None  # missing-package branch must yield None, not raise
+    # Discriminating check: the distribution lookup was actually attempted with
+    # the requested package name; a regression that short-circuited before the
+    # lookup would have left the mock uncalled.
+    mock_dist.assert_called_once_with('fwl-aragog')
 
 
 @pytest.mark.unit
@@ -236,7 +241,11 @@ def test_editable_checkout_path_returns_none_for_wheel_install():
     dist = Mock()
     dist.read_text.return_value = None
     with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
-        assert _editable_checkout_path('fwl-aragog') is None
+        result = _editable_checkout_path('fwl-aragog')
+    assert result is None  # wheel-install branch (no direct_url.json) must yield None
+    # Discriminating check: read_text was called with the expected filename so we
+    # know the wheel-install branch was exercised, not some earlier short-circuit.
+    dist.read_text.assert_called_once_with('direct_url.json')
 
 
 @pytest.mark.unit
@@ -253,7 +262,12 @@ def test_editable_checkout_path_rejects_non_editable_vcs_install():
         ' "vcs_info": {"vcs": "git", "commit_id": "abc123"}}'
     )
     with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
-        assert _editable_checkout_path('fwl-aragog') is None
+        result = _editable_checkout_path('fwl-aragog')
+    assert result is None  # VCS-pinned non-editable install must yield None
+    # Discriminating check: direct_url.json was read but lacked the editable flag,
+    # so the explicit non-editable rejection branch is the only one that can
+    # produce a None on this row.
+    dist.read_text.assert_called_once_with('direct_url.json')
 
 
 @pytest.mark.unit
@@ -271,7 +285,11 @@ def test_editable_checkout_path_returns_none_for_malformed_json():
     dist = Mock()
     dist.read_text.return_value = '{not valid json'
     with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
-        assert _editable_checkout_path('fwl-aragog') is None
+        result = _editable_checkout_path('fwl-aragog')
+    assert result is None  # malformed JSON branch must swallow the parse error
+    # Discriminating check: the JSON parse was attempted (read_text was called),
+    # so the silent pass came from the except branch, not an earlier no-op.
+    dist.read_text.assert_called_once_with('direct_url.json')
 
 
 @pytest.mark.unit
@@ -312,8 +330,13 @@ def test_git_checkout_state_returns_none_when_git_unavailable():
     with patch(
         'proteus.doctor.subprocess.check_output',
         side_effect=FileNotFoundError('git'),
-    ):
-        assert _git_checkout_state('/tmp/not-a-repo') is None
+    ) as mock_check:
+        result = _git_checkout_state('/tmp/not-a-repo')
+    assert result is None  # FileNotFoundError branch must swallow the missing-git error
+    # Discriminating check: subprocess was actually invoked; a regression that
+    # short-circuited the dispatch before exec'ing git would have left the mock
+    # uncalled (and any cached early-exit None would slip past without this guard).
+    mock_check.assert_called()
 
 
 @pytest.mark.unit
@@ -322,8 +345,12 @@ def test_git_checkout_state_returns_none_when_not_a_git_repo():
     with patch(
         'proteus.doctor.subprocess.check_output',
         side_effect=subprocess.CalledProcessError(128, 'git'),
-    ):
-        assert _git_checkout_state('/tmp/not-a-repo') is None
+    ) as mock_check:
+        result = _git_checkout_state('/tmp/not-a-repo')
+    assert result is None  # non-repo branch must yield None on non-zero git exit
+    # Discriminating check: subprocess was actually invoked; a no-op that returned
+    # None without ever calling git would otherwise look identical from outside.
+    mock_check.assert_called()
 
 
 @pytest.mark.unit

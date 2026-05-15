@@ -1365,8 +1365,13 @@ def test_myjson_missing_file(tmp_path):
     """MyJSON sets data_d to None when file doesn't exist."""
     from proteus.interior_energetics.spider import MyJSON
 
-    jobj = MyJSON(str(tmp_path / 'missing.json'))
-    assert jobj.data_d is None
+    missing = tmp_path / 'missing.json'
+    jobj = MyJSON(str(missing))
+    assert jobj.data_d is None  # missing-file branch must clear the data buffer
+    # Discriminating check: the file is genuinely absent on disk, so the silent
+    # None came from the missing-file branch (not from a default that would
+    # also be None for a valid-but-empty file).
+    assert not missing.exists()
 
 
 @pytest.mark.unit

@@ -26,6 +26,10 @@ class TestNoneIfNone:
     def test_converts_none_string_to_none(self):
         """'none' string converts to None literal for optional config values."""
         assert none_if_none('none') is None
+        # Discriminating check: the converter is strictly case-sensitive; a
+        # regression that called `.lower()` first would have collapsed 'None'
+        # to None too and corrupted any module name a user spelled in CamelCase.
+        assert none_if_none('None') == 'None'
 
     @pytest.mark.unit
     def test_preserves_non_none_strings(self):

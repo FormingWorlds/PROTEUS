@@ -367,6 +367,11 @@ class TestSetupLogger:
             # Check for StreamHandler (or similar terminal output handler)
             handlers = [h for h in logger.handlers if not isinstance(h, logging.FileHandler)]
             assert len(handlers) > 0
+            # Discriminating check: at least one of the non-file handlers is a
+            # StreamHandler (the contract that logterm=True must add). A
+            # regression that attached a NullHandler instead would still pass
+            # the bare ``len > 0`` check.
+            assert any(isinstance(h, logging.StreamHandler) for h in handlers)
 
     @pytest.mark.unit
     def test_setup_logger_without_terminal_output(self):

@@ -100,6 +100,12 @@ def test_expected_badges_present(readme_content, badge_marker):
     img_urls = re.findall(r'<img\s+src="([^"]+)"', readme_content)
     matching = [url for url in img_urls if badge_marker in url]
     assert len(matching) > 0, f"Expected badge with '{badge_marker}' not found in README"
+    # Discriminating check: each badge marker should appear exactly once; a
+    # duplicate is a copy-paste regression that a `len > 0` check would miss.
+    assert len(matching) == 1, (
+        f"Badge with '{badge_marker}' appears {len(matching)} times in README; "
+        f'expected exactly one occurrence.'
+    )
 
 
 @pytest.mark.unit

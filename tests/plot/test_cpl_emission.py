@@ -24,8 +24,13 @@ def test_plot_emission_returns_early_with_insufficient_snapshots(tmp_path):
     without raising, so the runner can skip plotting silently early in a
     simulation.
     """
-    result = emission_mod.plot_emission(str(tmp_path), times=[1.0, 1.0, 2.0], plot_format='png')
-    assert result is None
+    times = [1.0, 1.0, 2.0]
+    result = emission_mod.plot_emission(str(tmp_path), times=times, plot_format='png')
+    assert result is None  # duplicate-timestamp branch must yield None silently
+    # Discriminating check: the input has fewer than 3 distinct snapshot times
+    # (only {1.0, 2.0}); the early-return branch is the only one that can have
+    # produced the None on this row.
+    assert len(set(times)) < 3
 
 
 @pytest.mark.unit

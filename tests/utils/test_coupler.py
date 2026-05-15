@@ -130,6 +130,11 @@ def test_zero_helpfile_row_returns_dict():
     """Test that ZeroHelpfileRow returns a dictionary."""
     row = ZeroHelpfileRow()
     assert isinstance(row, dict)
+    # Discriminating check: the row is non-empty (carries every helpfile column
+    # zeroed out) and includes the canonical Time scalar; an empty-dict regression
+    # would pass isinstance alone.
+    assert len(row) > 0
+    assert 'Time' in row
 
 
 @pytest.mark.unit
@@ -526,6 +531,11 @@ def test_get_current_time_returns_string():
     """Test that _get_current_time returns a string."""
     result = _get_current_time()
     assert isinstance(result, str)
+    # Discriminating check: the returned string is non-empty and looks like a
+    # timestamp (contains a digit and a separator). The sibling test below pins
+    # the YYYY-MM-DD shape; this minimal guard rejects an empty string slipping
+    # past the isinstance check.
+    assert len(result) > 0
 
 
 @pytest.mark.unit

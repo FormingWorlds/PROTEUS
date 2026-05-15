@@ -552,6 +552,11 @@ def test_radioactive_heating_enabled_positive(boundary_runner):
 
     # Should be positive at t=0 (maximum heating)
     assert h_radio > 0
+    # Discriminating scale check: H_radio at formation is ~1e-11 W/kg for
+    # Earth-like crustal abundances (Turcotte & Schubert 2014, ch. 4.5). A
+    # regression that returned a kg/g unit-mismatched value would land outside
+    # the 1e-13 to 1e-9 W/kg envelope and fail this pin.
+    assert 1e-13 < h_radio < 1e-9
 
 
 def test_radioactive_heating_decay_with_time(boundary_runner):

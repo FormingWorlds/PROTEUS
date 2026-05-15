@@ -146,6 +146,12 @@ def test_read_config_object_returns_config():
     path = PROTEUS_ROOT / 'input' / 'dummy.toml'
     obj = read_config_object(path)
     assert isinstance(obj, Config)
+    # Discriminating check: dummy.toml uses the dummy backend stack across
+    # every coupled module (atmos_clim, outgas, escape, etc.). A regression
+    # that returned a stale or partially populated Config would have left at
+    # least one of these fields empty or wrong.
+    assert obj.atmos_clim.module == 'dummy'
+    assert obj.outgas.module == 'dummy'
 
 
 @pytest.mark.unit
@@ -172,6 +178,10 @@ def test_proteus_init(path):
     print(f'Testing config at {path}')
     runner = Proteus(config_path=path)
     assert isinstance(runner.config, Config)
+    # Discriminating check: the runner's config_path attribute round-trips the
+    # input. A regression that returned a default-constructed Proteus runner
+    # without ingesting the TOML would still pass the isinstance check alone.
+    assert runner.config_path == path
 
 
 @pytest.mark.unit

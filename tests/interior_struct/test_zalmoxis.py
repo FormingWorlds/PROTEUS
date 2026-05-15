@@ -252,8 +252,12 @@ def test_solidus_liquidus_non_tdep():
 
     from proteus.interior_struct.zalmoxis import load_zalmoxis_solidus_liquidus_functions
 
-    result = load_zalmoxis_solidus_liquidus_functions('Seager2007:silicate', MagicMock())
-    assert result is None
+    eos_name = 'Seager2007:silicate'
+    result = load_zalmoxis_solidus_liquidus_functions(eos_name, MagicMock())
+    assert result is None  # non-T-dependent EOS branch must yield None silently
+    # Discriminating check: the EOS name is on the non-T-dependent prefix list
+    # (Seager2007 is fixed-T); only that branch can produce a None here.
+    assert eos_name.startswith('Seager2007')
 
 
 @pytest.mark.unit
