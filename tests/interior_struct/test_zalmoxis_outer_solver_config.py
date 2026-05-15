@@ -1,15 +1,14 @@
-"""PROTEUS-side tests for the Zalmoxis outer_solver config knob (T2.1g).
+"""PROTEUS-side tests for the Zalmoxis ``outer_solver`` config knob.
 
 Covers two angles:
 
 (1) Config schema: ``proteus.config.interior_struct.zalmoxis.outer_solver``
-    accepts only 'picard' or 'newton'; defaults to 'newton' as of
-    2026-04-27 (after T2.3 super-Earth sweep validation across
-    1, 3, 5, 10 M_E). 'picard' remains available for explicit opt-in.
+    accepts only 'picard' or 'newton' and defaults to 'newton'. 'picard'
+    remains available for explicit opt-in.
 
 (2) Plumbing: ``load_zalmoxis_configuration`` propagates the knob into
     the ``config_params`` dict that ``zalmoxis.solver.main`` consumes,
-    AND auto-tightens integrator tolerances when 'newton' is selected.
+    and auto-tightens integrator tolerances when 'newton' is selected.
 """
 
 from __future__ import annotations
@@ -32,10 +31,10 @@ class TestOuterSolverSchema:
     """Config-class validation of outer_solver and Newton-specific knobs."""
 
     def test_default_outer_solver_is_newton(self):
-        """Default flipped to 'newton' on 2026-04-27 after T2.3 sweep
-        validation. PROTEUS' plumbing also tightens integrator tols
-        when newton is selected, so the default path is end-to-end
-        consistent (see TestNewtonPathTightensIntegratorTolerances).
+        """Default ``outer_solver`` is 'newton'. PROTEUS' plumbing also
+        tightens integrator tolerances when 'newton' is selected, so the
+        default path is end-to-end consistent (see
+        ``TestNewtonPathTightensIntegratorTolerances``).
         """
         z = Zalmoxis()
         assert z.outer_solver == 'newton'
@@ -79,7 +78,10 @@ class TestOuterSolverSchema:
             Zalmoxis(newton_tol=-1.0e-3)
 
     def test_newton_integrator_tolerance_defaults(self):
-        """T2.1a-validated defaults: 1e-9 / 1e-10."""
+        """Default integrator tolerances are 1e-9 (relative) and 1e-10
+        (absolute), which satisfy Zalmoxis' Newton-path precondition
+        ``relative_tolerance <= 1e-7``.
+        """
         z = Zalmoxis()
         assert z.newton_relative_tolerance == 1.0e-9
         assert z.newton_absolute_tolerance == 1.0e-10
@@ -151,13 +153,13 @@ def _make_hf_row():
 
 
 class TestPicardPathDoesNotChangeIntegratorTolerances:
-    """Default outer_solver='picard' must not pass relative/absolute_tolerance.
+    """``outer_solver='picard'`` must not pass ``relative_tolerance`` or
+    ``absolute_tolerance`` in ``config_params``.
 
-    This is the bit-identical-pre-T2.1 contract: a Picard run with the
-    new schema must build the same config_params dict (modulo the new
-    'outer_solver' key) as a pre-T2.1 build. In particular,
-    relative_tolerance / absolute_tolerance must not be in the dict
-    so Zalmoxis falls back to its mass-adaptive defaults (1e-5/1e-6).
+    Contract: a Picard run must build a ``config_params`` dict that omits
+    the integrator-tolerance keys so Zalmoxis falls back to its
+    mass-adaptive defaults (1e-5 / 1e-6). The 'outer_solver' key itself
+    is present (=='picard'); only the tolerance overrides must be absent.
     """
 
     def test_picard_omits_integrator_tolerance_keys(self, monkeypatch):

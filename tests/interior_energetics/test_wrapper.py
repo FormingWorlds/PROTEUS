@@ -909,7 +909,7 @@ def test_solve_structure_invalid_module():
 
 
 # ============================================================================
-# T1.1: _structure_stale flag contract (set on fall-back, cleared on success)
+# _structure_stale flag contract (set on fall-back, cleared on success)
 # ============================================================================
 
 
@@ -917,10 +917,10 @@ def test_solve_structure_invalid_module():
 def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
     """Successful zalmoxis_solver call clears hf_row['_structure_stale'].
 
-    Regression test for T1.1 (2026-04-26 coupling audit). Pre-fix the
-    flag was set on fall-back (wrapper.py:1355) but never cleared, so
-    Aragog had no way to distinguish a fresh from a stale structure.
-    Post-fix the flag is cleared in the success path.
+    Contract: ``hf_row['_structure_stale']`` is the signal that downstream
+    consumers (notably Aragog) use to distinguish a fresh structure from
+    a stale one carried over from a prior fall-back. A successful
+    re-solve must set the key to False so consumers can rely on it.
 
     Edge cases covered:
     - Flag was True at entry (simulating prior fall-back) -> must be False after.
@@ -993,9 +993,9 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
 def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
     """Zalmoxis RuntimeError sets hf_row['_structure_stale'] = True.
 
-    Documents the canonical fall-back contract that T1.1 makes honest.
-    Anti-happy-path: also checks that the failure does NOT clear the
-    flag if it was already True (i.e. consecutive failures keep it set).
+    Documents the canonical fall-back contract. Anti-happy-path: also
+    checks that the failure does NOT clear the flag if it was already
+    True (i.e. consecutive failures keep it set).
     """
     from proteus.interior_energetics import wrapper as _w
 
@@ -1036,7 +1036,7 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 
 
 # ============================================================================
-# T1.2: post-acceptance mass-anchor guard
+# Post-acceptance mass-anchor guard
 # ============================================================================
 
 
@@ -1044,14 +1044,13 @@ def test_structure_stale_flag_set_on_zalmoxis_failure(tmp_path):
 def test_mass_anchor_violation_triggers_fallback(tmp_path):
     """A 'converged' Zalmoxis result with |M_int/M_target - 1| > 3e-3 falls back.
 
-    Regression test for T1.2 (2026-04-26 coupling audit, relaxed after
-    Run T1 contract collision). Zalmoxis' internal solver_tol_outer
-    (3e-3) leaves up to ~0.3 % drift between hf_row['M_int'] and the
-    dry mass target on hot fully-molten profiles. The wrapper guards
-    against the G4-basin attractor failure mode (~9-15 % off target)
-    and gross corruption. The genuine <0.1 % mass conservation
-    contract is delivered by T2.1 (Newton + brentq), not by this
-    safety net.
+    Contract: Zalmoxis' internal ``solver_tol_outer`` (3e-3) leaves up to
+    ~0.3 % drift between ``hf_row['M_int']`` and the dry mass target on
+    hot fully-molten profiles, which is acceptable. The wrapper's
+    mass-anchor guard rejects results with drift above 3e-3 to catch
+    attractor-basin failure modes (~9-15 % off target) and gross
+    corruption. The tight <0.1 % mass-conservation contract is delivered
+    by the Newton + brentq inner path, not by this safety net.
 
     Edge cases covered:
     - Far-over-threshold (5e-3 drift): must reject.
@@ -1114,7 +1113,7 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
 
     # Case 2: 2e-3 drift (under 3e-3 threshold) -> success path.
     # This is the regime Zalmoxis normally lands in on hot mantle
-    # profiles (Run T1 2026-04-26 saw 0.18-0.28 % naturally).
+    # profiles (~0.18-0.28 % drift in production).
     _w._zalmoxis_fail_count = 0
     hf_row_under = _make_hf_row()
     dirs_under = _mock_dirs()
@@ -1176,18 +1175,18 @@ def test_mass_anchor_violation_triggers_fallback(tmp_path):
 
 @pytest.mark.unit
 def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
-    """Wrapper-level RuntimeError (e.g. T1.2 mass-anchor) restores
+    """Wrapper-level RuntimeError (e.g. mass-anchor violation) restores
     zalmoxis_output.dat from .prev backup.
 
-    The atomic-write path inside zalmoxis_solver (T1.3 fix-2) handles
+    The atomic-write path inside ``zalmoxis_solver`` handles
     schema-violation raises. But the wrapper's mass-anchor check raises
-    AFTER zalmoxis_solver returns successfully, so the rollback must
+    AFTER ``zalmoxis_solver`` returns successfully, so the rollback must
     happen at the wrapper level too. Otherwise Aragog reads the new
-    failing file on the next iter with the OLD hf_row['R_int'] and
+    failing file on the next iter with the old ``hf_row['R_int']`` and
     crashes on EOS-vs-mesh inconsistency.
 
     Edge case covered: when no .prev exists (first call of a run), the
-    wrapper must NOT raise — it best-effort skips the restore.
+    wrapper must NOT raise; it best-effort skips the restore.
     """
     from proteus.interior_energetics import wrapper as _w
 
@@ -1210,7 +1209,7 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
 
     def _solver_writes_corrupt_then_succeeds(config, outdir_arg, hf_row, **kwargs):
         # Mock zalmoxis_solver: write a NEW file, set hf_row M_int_target
-        # so wrapper's T1.2 fires.
+        # so wrapper's mass-anchor check fires.
         with open(output_path, 'w') as f:
             f.write('NEW_FAILING_CONTENT\n')
         hf_row['M_int'] = M_target * (1 + 5e-3)  # 0.5% off > 3e-3 -> raise
@@ -1263,7 +1262,7 @@ def test_zalmoxis_output_restored_from_prev_on_wrapper_raise(tmp_path):
 
 
 # ============================================================================
-# T1.5: anti-stale-mesh re-trigger via last_successful_struct_time
+# Stale-aware re-trigger via last_successful_struct_time
 # ============================================================================
 
 
@@ -1272,16 +1271,14 @@ def test_stale_aware_ceiling_fires_after_failure_window(tmp_path):
     """Stale-aware ceiling fires after update_stale_ceiling regardless of
     intervening failed re-solves.
 
-    Pre-T1.5: the only ceiling trigger uses elapsed time since the last
-    *call*, which a fall-back re-anchors. This means a failed call
-    can keep the trigger silent for a full update_interval afterwards
-    (the 2026-04-26 Step D run showed 51 kyr of Aragog evolution on
-    a frozen mesh between failure #4 and the next trigger).
-
-    Post-T1.5: tracking last_successful_struct_time on Interior_t
-    drives a separate stale-aware ceiling that fires after
-    update_stale_ceiling has elapsed since the last *successful*
-    re-solve. Independent of last_struct_time, so it survives failures.
+    Contract: the standard ceiling trigger uses elapsed time since the
+    last *call*, which a fall-back re-anchors; a failed call therefore
+    keeps the trigger silent for a full ``update_interval`` afterwards
+    and lets Aragog evolve on a frozen mesh. The stale-aware ceiling
+    fires after ``update_stale_ceiling`` has elapsed since the last
+    *successful* re-solve, tracked on ``Interior_t`` via
+    ``last_successful_struct_time``. It is independent of
+    ``last_struct_time`` and so survives failures.
     """
     from proteus.interior_energetics import wrapper as _w
 
@@ -1382,14 +1379,14 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     """A Zalmoxis fall-back must NOT advance last_successful_struct_time.
 
     Otherwise the stale-aware ceiling becomes equivalent to the normal
-    ceiling and T1.5 would have no effect.
+    ceiling and the stale-aware path would have no effect.
     """
     from proteus.interior_energetics import wrapper as _w
 
     _w._zalmoxis_fail_count = 0
 
     config = _mock_config(update_interval=1e3, update_min_interval=0.0)
-    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0  # disable T1.5 here
+    config.interior_struct.zalmoxis.update_stale_ceiling = 0.0  # disable stale-aware ceiling
     dirs = _mock_dirs()
 
     interior_o = Interior_t(50)
@@ -1661,10 +1658,10 @@ def test_run_interior_boundary_module_splits_dT_delta_per_field():
     other backends.
 
     This pins down the semantic distinction: Tsurf_event_change is the
-    threshold of Calder's BL terminal ODE event on |T_surf - T_surf_0|;
-    reusing it for the T_magma cap (as the original 7g did) was a
-    naming collision, since T_p (T_magma) evolves on a different
-    timescale than T_surf in the boundary-layer model.
+    threshold of Calder's BL terminal ODE event on |T_surf - T_surf_0|.
+    T_magma (T_p) evolves on a different timescale than T_surf in the
+    boundary-layer model and is governed by the shared
+    tmagma_atol/rtol budget.
     """
     from proteus.interior_energetics.wrapper import run_interior
 
@@ -1800,9 +1797,10 @@ def test_determine_interior_radius_wires_tolerance_struct_into_root_scalar():
 
 @pytest.mark.unit
 def test_spider_log_output_field_defaults_true_and_is_settable():
-    """Spider.log_output is a new attrs field. Default True preserves the
-    pre-7g behaviour of writing the spider_recent.log mirror; setting
-    False routes subprocess output to /dev/null."""
+    """``Spider.log_output`` defaults to True, which writes the
+    ``spider_recent.log`` mirror; setting False routes subprocess
+    output to /dev/null.
+    """
     from proteus.config._interior import Spider
 
     s_default = Spider()
@@ -1864,19 +1862,17 @@ def test_calliope_nguess_nsolve_reject_zero_or_negative():
 
 @pytest.mark.unit
 def test_run_interior_F_int_floor_fires_on_ic1_restart_when_prevent_warming():
-    """Regression for the F_int floor relocation (7g audit).
+    """F_int positivity floor fires on SPIDER restart (ic == 1) when
+    ``planet.prevent_warming`` is True.
 
-    Before the 7g commit, ReadSPIDER applied F_int = max(1e-8, F_int)
-    whenever planet.prevent_warming was True, with no ic gate. The 7g
-    relocation placed the floor inside the ``prevent_warming AND ic==2``
-    block, so a SPIDER restart (ic = 1) that returned a slightly-
-    negative F_int would silently propagate the negative flux to the
-    helpfile and the atmosphere boundary condition.
-
-    The fix splits the limiter into two stages: the previous-value
-    clamp stays gated on ic == 2 (it requires hf_all.iloc[-1] to be a
-    meaningful "previous" row), but the positivity floor applies for
-    any ic >= 0 when prevent_warming is enabled.
+    Contract: ``ReadSPIDER`` applies a two-stage limiter when
+    ``planet.prevent_warming`` is enabled. The previous-value clamp is
+    gated on ``ic == 2`` (it requires ``hf_all.iloc[-1]`` to be a
+    meaningful "previous" row). The positivity floor
+    ``F_int = max(1e-8, F_int)`` applies for any ``ic >= 0``, so a
+    SPIDER restart (ic == 1) that returns a slightly negative F_int does
+    not propagate the negative flux to the helpfile or the atmospheric
+    boundary condition.
     """
     config = _make_run_interior_config(prevent_warming=True)
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
