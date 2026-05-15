@@ -796,6 +796,11 @@ def test_determine_zalmoxis_no_override_when_module_is_aragog(caplog):
     The override is gated on `interior_energetics.module == 'spider'`. A
     regression that drops that gate would corrupt Aragog runs by re-routing
     Zalmoxis through an adiabatic-mode initial guess Aragog never asked for.
+
+    Two assertions: (1) the override log line did not appear, (2) the call
+    to `zalmoxis_solver` passed `temperature_mode_override=None`. The
+    second is the behavioural check: a regression that suppressed only
+    the log line but kept passing the override would still fail (2).
     """
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
 
@@ -815,7 +820,7 @@ def test_determine_zalmoxis_no_override_when_module_is_aragog(caplog):
         patch(
             'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.48e6, None),
-        ),
+        ) as mock_zalmoxis_solver,
         patch('proteus.interior_energetics.wrapper.run_interior'),
         patch('proteus.interior_struct.zalmoxis.generate_spider_tables'),
         caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
@@ -825,6 +830,14 @@ def test_determine_zalmoxis_no_override_when_module_is_aragog(caplog):
     assert not any(
         'Overriding Zalmoxis temperature_mode' in r.message for r in caplog.records
     ), 'Override fired under Aragog; module-gate is broken.'
+    # Behavioural check: zalmoxis_solver received `temperature_mode_override=None`.
+    assert mock_zalmoxis_solver.call_count == 1
+    call = mock_zalmoxis_solver.call_args
+    assert call.kwargs.get('temperature_mode_override') is None, (
+        f'zalmoxis_solver received temperature_mode_override='
+        f'{call.kwargs.get("temperature_mode_override")!r} under Aragog; '
+        f'the module gate is broken.'
+    )
 
 
 @pytest.mark.unit
@@ -836,6 +849,10 @@ def test_determine_zalmoxis_no_override_when_temperature_mode_already_adiabatic(
     The override only flips isothermal to adiabatic. A regression that
     drops the `temperature_mode == 'isothermal'` clause would re-fire the
     log line spuriously when the user already asked for adiabatic.
+
+    Two assertions: log line absent AND zalmoxis_solver received
+    `temperature_mode_override=None` (because the user-set adiabatic
+    needs no override; the runtime simply uses the config value).
     """
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
 
@@ -855,15 +872,21 @@ def test_determine_zalmoxis_no_override_when_temperature_mode_already_adiabatic(
         patch(
             'proteus.interior_struct.zalmoxis.zalmoxis_solver',
             return_value=(3.48e6, None),
-        ),
+        ) as mock_zalmoxis_solver,
         patch('proteus.interior_energetics.wrapper.run_interior'),
         patch('proteus.interior_struct.zalmoxis.generate_spider_tables'),
         caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
     ):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
 
-    # User-set adiabatic stays untouched
+    # User-set adiabatic stays untouched (config object is not mutated)
     assert config.planet.temperature_mode == 'adiabatic'
+    # Behavioural check: zalmoxis_solver received no override.
+    assert mock_zalmoxis_solver.call_count == 1
+    assert mock_zalmoxis_solver.call_args.kwargs.get('temperature_mode_override') is None, (
+        'zalmoxis_solver received a non-None temperature_mode_override despite '
+        'the user already requesting adiabatic; the isothermal-clause is broken.'
+    )
     assert not any(
         'Overriding Zalmoxis temperature_mode' in r.message for r in caplog.records
     ), 'Override fired when user already requested adiabatic; isothermal-clause broken.'

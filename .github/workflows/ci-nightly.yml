@@ -472,12 +472,24 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/proteus
-          # TEMPORARILY SKIPPED: Slow tests disabled while stabilizing CI
-          # These tests require 30-60 minutes each and are causing CI instability
-          # TODO: Re-enable once MORS/AGNI/LovePy issues are resolved
-          echo "Slow integration tests temporarily skipped for CI stabilization"
-          echo "<?xml version=\"1.0\" encoding=\"utf-8\"?><testsuites><testsuite name=\"slow\" tests=\"0\" errors=\"0\" failures=\"0\" skipped=\"0\"></testsuite></testsuites>" > /tmp/junit-slow.xml
-          echo "Slow tests skipped" > /tmp/slow-output.txt
+          # The full slow integration suite (MORS/AGNI/LovePy 30-60 min runs)
+          # is still excluded while those backends are stabilised. The
+          # targeted slow scope below covers the test files that are known
+          # to run reliably under dummy modules in <5 min total: schema
+          # cross-product invariants, hypothesis-driven smoke fuzz,
+          # Bayesian-optimization convergence, helper-self tests, and the
+          # inference subprocess pipeline. Add new slow files here as
+          # they land and prove themselves.
+          set -euo pipefail
+          pytest -m slow \
+            tests/config/test_config_schema_invariants.py \
+            tests/integration/test_smoke_hypothesis.py \
+            tests/inference/test_bo_convergence.py \
+            tests/inference/test_inference.py \
+            tests/helpers/test_smoke_invariants.py \
+            -p no:faulthandler \
+            --junit-xml=/tmp/junit-slow.xml \
+            -v --tb=short 2>&1 | tee /tmp/slow-output.txt
 
       - name: Generate coverage JSON
         if: always()

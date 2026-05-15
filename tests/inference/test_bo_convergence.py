@@ -18,8 +18,10 @@ Typical wall cost: ~5-15 s per test (one BO loop with N <= 12 steps).
 
 from __future__ import annotations
 
+import random
 import threading
 
+import numpy as np
 import pytest
 import torch
 from botorch.exceptions.warnings import OptimizationWarning
@@ -70,7 +72,13 @@ def _run_bo_loop(
     """
     assert d >= 2, 'use d >= 2 to avoid the d==1 plot side effect inside BO_step'
 
+    # Seed every RNG that botorch / scipy / Python could touch. torch alone
+    # is not enough: scipy.optimize internals and any numpy fall-back path
+    # in the acquisition optimiser would otherwise leave residual non-
+    # determinism that flakes the seed-determinism tests across hosts.
     torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
     # Initial sample of n_init random points in [0, 1]^d
     X = torch.rand((n_init, d), dtype=torch.double)
@@ -118,14 +126,28 @@ def _run_bo_loop(
 # ---------------------------------------------------------------------------
 # Convergence on a known-optimum problem
 # ---------------------------------------------------------------------------
-def test_bo_converges_on_centered_quadratic():
-    """BO must improve the best observed Y over the initial random sample
-    on a centered quadratic in 2D. The optimum is Y = 0 at x = (0.5, 0.5).
+def _initial_max_distance(X_init: torch.Tensor, target: torch.Tensor) -> float:
+    """Smallest distance from the initial X sample to the target.
 
-    Anti-happy-path: the assertion bound is meaningful (Y_best must
-    improve by at least 50% of the initial gap) rather than just
-    "Y_best > Y_init". A regression that rendered the BO loop a no-op
-    (e.g., always returning the same x) would not pass this bound.
+    The convergence proximity check below requires that the BO loop close
+    a meaningful fraction of this initial distance. Computing it this way
+    keeps the assertion bound tied to the actual seed-dependent starting
+    geometry rather than a hard-coded magic number.
+    """
+    return torch.min(torch.norm(X_init - target, dim=1)).item()
+
+
+def test_bo_converges_on_centered_quadratic():
+    """BO must reduce both the gap to the optimum value AND the distance
+    from the best-x to the target on a centered quadratic in 2D. Optimum
+    is Y = 0 at x = (0.5, 0.5).
+
+    Two independent assertions guard against distinct regression classes:
+    - Gap reduction (Y improvement) catches a BO that returns wrong values.
+    - Proximity reduction (||x_best - target|| shrinks) catches a BO that
+      returns a constant x (e.g., always (0.5, 0.5) coincidentally near
+      the centered target). Without the proximity check, the constant-
+      output regression would pass the gap check on the centered target.
     """
     target = torch.tensor([0.5, 0.5], dtype=torch.double)
     objective = make_quadratic_objective(target)
@@ -134,20 +156,29 @@ def test_bo_converges_on_centered_quadratic():
 
     Y_init_best = Y[:4].max().item()
     Y_final_best = Y.max().item()
-    # The closed-form optimum is Y = 0; Y_init_best is negative.
-    initial_gap = -Y_init_best  # > 0
-    final_gap = -Y_final_best  # >= 0
+    initial_gap = -Y_init_best
+    final_gap = -Y_final_best
     assert final_gap < 0.5 * initial_gap, (
         f'BO did not improve the best Y by 50% of the initial gap. '
         f'Y_init_best={Y_init_best:.4f}, Y_final_best={Y_final_best:.4f}, '
         f'initial gap={initial_gap:.4f}, final gap={final_gap:.4f}.'
     )
 
+    initial_min_dist = _initial_max_distance(X[:4], target)
+    final_min_dist = torch.min(torch.norm(X - target, dim=1)).item()
+    assert final_min_dist < 0.5 * initial_min_dist, (
+        f'BO best-x did not approach target. Initial min ||x - target|| = '
+        f'{initial_min_dist:.4f}, final = {final_min_dist:.4f}. A regression '
+        f'that returned a constant x would fire here.'
+    )
+
 
 def test_bo_converges_on_off_center_quadratic():
     """Same convergence test but with the optimum off-center to catch
     any hard-coded centering bias in the acquisition optimisation.
-    Optimum at x = (0.2, 0.8).
+    Optimum at x = (0.2, 0.8). The proximity check is essential here:
+    if BO always returned (0.5, 0.5), the gap to the off-center target
+    would NOT improve, and the proximity bound would catch it directly.
     """
     target = torch.tensor([0.2, 0.8], dtype=torch.double)
     objective = make_quadratic_objective(target)
@@ -163,17 +194,23 @@ def test_bo_converges_on_off_center_quadratic():
         f'Y_init_best={Y_init_best:.4f}, Y_final_best={Y_final_best:.4f}.'
     )
 
+    initial_min_dist = _initial_max_distance(X[:4], target)
+    final_min_dist = torch.min(torch.norm(X - target, dim=1)).item()
+    assert final_min_dist < 0.5 * initial_min_dist, (
+        f'BO best-x did not approach off-center target. Initial min '
+        f'||x - target|| = {initial_min_dist:.4f}, final = {final_min_dist:.4f}.'
+    )
+
 
 # ---------------------------------------------------------------------------
 # Acquisition-function selection
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize('acqf', ['LogEI', 'UCB'])
+@pytest.mark.parametrize('acqf', ['LogEI', 'UCB', 'E-LogEI'])
 def test_bo_converges_with_each_acquisition_function(acqf):
-    """LogEI and UCB must both converge on the centered quadratic.
-
-    The third option E-LogEI requires a multi-worker `busys` shape that
-    the single-worker test loop here does not provide; covered separately
-    by the existing async-BO tests in test_async_bo.py.
+    """All three documented acquisition functions must converge on the
+    centered quadratic. The two-worker B emulation in `_run_bo_loop`
+    supports the X_pending shape that E-LogEI's `qLogExpectedImprovement`
+    expects (worker 1 acts as a static pending point).
     """
     target = torch.tensor([0.5, 0.5], dtype=torch.double)
     objective = make_quadratic_objective(target)
@@ -236,7 +273,7 @@ def test_bo_different_seeds_produce_different_trajectories():
 
 
 # ---------------------------------------------------------------------------
-# Adversarial inputs
+# Invalid and degenerate inputs
 # ---------------------------------------------------------------------------
 def test_bo_step_rejects_unknown_acquisition():
     """An unknown acquisition function name must raise ValueError, not
@@ -271,14 +308,20 @@ def test_bo_handles_constant_objective_without_crashing():
 # ---------------------------------------------------------------------------
 # Sanity: the helper objective itself is correct
 # ---------------------------------------------------------------------------
+# This test deliberately carries TWO tier markers: the module-level
+# `pytestmark = pytest.mark.slow` plus a function-level `@pytest.mark.unit`.
+# Pytest applies both, so the test matches BOTH the `unit` PR-CI filter
+# AND the `slow` nightly filter. The unit-tier inclusion is intentional:
+# the convergence tests above all rely on this synthetic objective being
+# correct, so a bug here would invalidate the whole file silently in
+# nightly. Running it in PR CI keeps the helper honest at fast tier.
 @pytest.mark.unit
 def test_quadratic_objective_returns_zero_at_target():
     """The synthetic objective evaluates to exactly 0 at its target point.
 
-    Anti-happy-path against off-by-one in the test infrastructure: if the
-    helper itself were buggy, the convergence assertions above would test
-    nothing meaningful. Marked `unit` so it runs in PR CI; the
-    convergence tests above are slow-tier.
+    If the helper itself were buggy, the convergence tests above would
+    test nothing meaningful, so this sanity check is the gate at PR CI
+    that prevents a silent helper-level regression.
     """
     target = torch.tensor([0.3, 0.7], dtype=torch.double)
     objective = make_quadratic_objective(target)

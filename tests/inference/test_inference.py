@@ -35,17 +35,17 @@ def inference_run():
     infer_from_config(INFER_CONFIG)
 
 
-# The four tests below run the full inference pipeline as a child PROTEUS
+# The three tests below run the full inference pipeline as a child PROTEUS
 # subprocess. Each evaluation takes ~75 s wall (~5 min for 4 evaluations),
 # which exceeds the smoke tier's per-test budget. Tagged `slow` so they
-# run in nightly and on-demand but do not gate PR CI; the unit-tier test
-# below (test_run_inference_rejects_too_many_workers) covers the
-# fast-feedback portion of the inference contract.
-
-
-@pytest.mark.slow
-def test_inference_smoke_run(inference_run):
-    assert inference_run is None
+# run on-demand without gating PR CI; the unit-tier test below
+# (test_run_inference_rejects_too_many_workers) covers the fast-feedback
+# portion of the inference contract.
+#
+# The earlier `test_inference_smoke_run` was removed: its only assertion
+# was `assert inference_run is None`, which is trivially true because the
+# fixture returns None implicitly. The three remaining tests check actual
+# output files, which is the meaningful evidence that the run completed.
 
 
 @pytest.mark.slow
@@ -195,7 +195,9 @@ def test_infer_from_config_uses_logger_not_print(caplog, tmp_path, monkeypatch):
 def test_get_nested_docstring_uses_current_schema_example():
     """Regression: utils.get_nested docstring example must use a
     parameter path that is valid on the current branch schema
-    (planet.mass_tot), not the pre-Phase-5 schema (struct.mass_tot)."""
+    (planet.mass_tot). The deprecated struct.mass_tot path must not
+    appear; it would mislead any reader who copies the docstring example
+    into a working config."""
     from inspect import getdoc
 
     from proteus.inference.utils import get_nested
