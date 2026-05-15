@@ -101,6 +101,7 @@ develop = [
     "pytest-dependency",
     "pytest-timeout",
     "pytest-xdist",  # parallel test execution via `-n auto` in CI
+    "hypothesis",    # property-based / fuzz tests at slow tier
 ]
 
 docs = [
