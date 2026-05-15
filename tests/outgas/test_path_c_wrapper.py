@@ -28,6 +28,11 @@ from proteus.utils.coupler import GetHelpfileKeys
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+# Mixed-tier file: 8 unit tests + 3 smoke tests. The smoke tests carry
+# @pytest.mark.smoke per-function and run alongside other smoke tests in
+# the smoke surface of PR CI; the unit filter excludes them. New tests
+# in this file default to unit unless they exercise a real binary call.
+
 
 logging.getLogger('calliope').setLevel(logging.WARNING)
 

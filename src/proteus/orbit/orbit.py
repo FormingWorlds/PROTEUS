@@ -16,7 +16,19 @@ log = logging.getLogger('fwl.' + __name__)
 
 def de_dt(a, e, params):
     """
-    ODE describing evolution of orbital eccentricity based on Eq. 16 from Driscoll & Barnes (2015).
+    ODE describing evolution of orbital eccentricity based on Eq. 16 of
+    Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325).
+
+    Sign convention note: in the paper, Im(k2) is negative for tidal
+    dissipation (Eq. 4 expresses -Im(k2) as the positive dissipation
+    efficiency). The current PROTEUS callers (dummy and lovepy backends)
+    feed a positive Imk2, which under the formula below produces a
+    positive de/dt and so EXPANDS the orbit rather than circularizing it.
+    The paper convention would require Imk2 < 0 to obtain the physical
+    circularization direction. Treat the sign as a known science item;
+    do not invert it without an ecosystem-wide audit of every Imk2
+    producer (proteus.orbit.dummy, proteus.orbit.lovepy, and any
+    Imk2-dependent test).
     """
     Imk2, Mst, G, Rpl, Mpl = params
     return (21 / 2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5 / (Mpl * a**6.5) * e
@@ -24,7 +36,8 @@ def de_dt(a, e, params):
 
 def da_dt(a, e, params):
     """
-    ODE describing evolution of semimajor axis based on Eq. 15 from Driscoll & Barnes (2015).
+    ODE describing evolution of semimajor axis based on Eq. 15 of
+    Driscoll and Barnes (2015), Astrobiology 15, 739.
     """
     return 2 * a * e * de_dt(a, e, params)
 

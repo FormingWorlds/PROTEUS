@@ -30,7 +30,7 @@ import pytest
 from proteus.orbit.orbit import da_dt, de_dt, evolve_orbital, orbitals
 from proteus.utils.constants import AU
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_invariant]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # Reusable parameter tuple (Imk2, Mst, G, Rpl, Mpl) with unit scales so
 # that algebra is easy to verify by hand.
@@ -42,11 +42,13 @@ _UNIT_PARAMS = (1.0, 1.0, 1.0, 1.0, 1.0)
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_de_dt_vanishes_at_zero_eccentricity():
     """A circular orbit (e=0) is a fixed point of the tidal evolution."""
     assert de_dt(a=1.0, e=0.0, params=_UNIT_PARAMS) == 0.0
 
 
+@pytest.mark.physics_invariant
 def test_de_dt_is_linear_in_eccentricity():
     """``de_dt`` scales linearly in ``e`` per Driscoll & Barnes (2015) Eq. 16."""
     base = de_dt(a=1.0, e=0.01, params=_UNIT_PARAMS)
@@ -56,35 +58,52 @@ def test_de_dt_is_linear_in_eccentricity():
 
 
 @pytest.mark.reference_pinned
+@pytest.mark.physics_invariant
 def test_de_dt_matches_driscoll_barnes_2015_eq16():
-    """Pin de_dt against Driscoll and Barnes (2015) ApJ 815, 1, Eq. 16.
+    """Pin de_dt against Driscoll and Barnes (2015) Astrobiology 15, 739,
+    DOI 10.1089/ast.2015.1325, Eq. 16. (arXiv:1509.07452.)
 
-    The source formula is
+    The paper writes the formula as
 
-        de/dt = (21/2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5
-                / (Mpl * a**6.5) * e
+        de/dt = (21/2) Im(k2) M_*^(3/2) G^(1/2) R_p^5 / M_p * e / a^(13/2)
 
-    With Imk2 = Mst = G = Rpl = Mpl = 1, a = 2, e = 0.5:
+    with the paper convention Im(k2) < 0 for tidal dissipation (the
+    paper's Eq. 4 makes -Im(k2) the positive dissipation efficiency).
+    The PROTEUS source uses positive Imk2 in its calling convention, so
+    the formula evaluated with Imk2 = +1 here returns a positive de/dt;
+    documented as a known-sign-convention item in the source docstring.
 
-        de/dt = (21/2) * 0.5 / 2**6.5 = 10.5 / 90.50966 / 2 = 5.7996e-2
+    Discriminating evaluation point: Imk2 = Mst = G = Rpl = Mpl = 1,
+    a = 2, e = 0.5 gives
+
+        de/dt = (21/2) * 0.5 / 2**6.5 = 5.7996e-2
     """
     val = de_dt(a=2.0, e=0.5, params=_UNIT_PARAMS)
     expected = (21.0 / 2.0) * 0.5 / (2.0**6.5)
     assert val == pytest.approx(expected, rel=1e-12)
     # Exponent-error guard: an off-by-one in the semi-major-axis
-    # exponent (a**5 instead of a**6.5) lands at 0.164 rather than
-    # 5.8e-2. The chosen test point makes that error visible.
+    # exponent puts the result far outside the rel=1e-12 main assertion.
+    # Check a**5 (way too big at 0.164) AND a**7 (way too small at 0.041
+    # but only 0.017 away from 0.058, hence a tighter threshold). The
+    # main pytest.approx(expected, rel=1e-12) above is the primary
+    # guard; these are explicit demonstrations that the chosen test
+    # point discriminates against the two closest neighbouring
+    # exponents.
     wrong_a5 = (21.0 / 2.0) * 0.5 / (2.0**5)
+    wrong_a7 = (21.0 / 2.0) * 0.5 / (2.0**7)
     assert abs(val - wrong_a5) > 0.05
-    # Sign guard: positive Imk2 produces a positive RHS under the
-    # current sign convention. A sign-flip regression would fail this.
+    assert abs(val - wrong_a7) > 0.01
+    # Sign guard: under the PROTEUS calling convention (positive Imk2)
+    # the RHS is positive. A flip would fail this. Note: this does NOT
+    # certify the convention matches Driscoll and Barnes; see source
+    # docstring.
     assert val > 0.0
-    # Scale guard: order of magnitude is ~6e-2 (dimensionless rate per
-    # unit time). A scale-conversion bug (e.g. kg vs g, AU vs m) would
-    # land outside the [1e-3, 1.0] bracket.
+    # Scale guard: order of magnitude is ~6e-2. A unit-conversion bug
+    # (kg vs g, AU vs m) would land outside the [1e-3, 1.0] bracket.
     assert 1e-3 < val < 1.0
 
 
+@pytest.mark.physics_invariant
 def test_de_dt_scales_as_radius_to_the_fifth_power():
     """Doubling ``Rpl`` should multiply ``de_dt`` by 32, not 16 or 64."""
     p_small = (1.0, 1.0, 1.0, 1.0, 1.0)
@@ -93,6 +112,7 @@ def test_de_dt_scales_as_radius_to_the_fifth_power():
     assert ratio == pytest.approx(32.0, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_de_dt_inverse_planet_mass_dependence():
     """``de_dt`` is inversely proportional to planet mass ``Mpl``."""
     p_light = (1.0, 1.0, 1.0, 1.0, 1.0)
@@ -106,6 +126,7 @@ def test_de_dt_inverse_planet_mass_dependence():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_da_dt_is_zero_for_circular_orbit():
     """At ``e=0``, ``da_dt = 2 a e de_dt = 0`` regardless of ``a`` or params.
 
@@ -115,6 +136,7 @@ def test_da_dt_is_zero_for_circular_orbit():
     assert da_dt(a=10.0, e=0.0, params=_UNIT_PARAMS) == 0.0
 
 
+@pytest.mark.physics_invariant
 def test_da_dt_obeys_kinematic_identity():
     """``da_dt = 2 a e * de_dt`` must hold exactly (mathematical identity)."""
     a, e = 1.5, 0.3
@@ -123,6 +145,7 @@ def test_da_dt_obeys_kinematic_identity():
     assert lhs == pytest.approx(rhs, rel=1e-14)
 
 
+@pytest.mark.physics_invariant
 def test_da_dt_quadratic_in_eccentricity():
     """Together with the de_dt linearity, ``da_dt`` is quadratic in ``e``."""
     base = da_dt(a=1.0, e=0.01, params=_UNIT_PARAMS)
@@ -218,6 +241,7 @@ def test_evolve_orbital_first_call_boundary_inclusive(time):
     assert hf_row['semimajorax'] == pytest.approx(0.3 * AU)
 
 
+@pytest.mark.physics_invariant
 def test_evolve_orbital_zero_imk2_preserves_sma_and_eccentricity():
     """With ``Imk2 = 0`` the right-hand sides vanish identically; the
     integrator must leave ``sma`` and ``ecc`` unchanged regardless of
@@ -230,6 +254,7 @@ def test_evolve_orbital_zero_imk2_preserves_sma_and_eccentricity():
     assert hf_row['eccentricity'] == pytest.approx(0.4)
 
 
+@pytest.mark.physics_invariant
 def test_evolve_orbital_zero_eccentricity_is_a_fixed_point():
     """``e = 0`` is a fixed point of the system; with positive ``Imk2``
     the integrator must keep the orbit circular and ``sma`` unchanged.
@@ -241,6 +266,7 @@ def test_evolve_orbital_zero_eccentricity_is_a_fixed_point():
     assert hf_row['semimajorax'] == pytest.approx(AU)
 
 
+@pytest.mark.physics_invariant
 def test_evolve_orbital_returns_finite_for_high_eccentricity():
     """Adversarial near-unity eccentricity: the orchestrator must not
     emit NaN or inf for an aggressive but physically valid input.

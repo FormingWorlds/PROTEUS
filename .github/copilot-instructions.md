@@ -208,8 +208,8 @@ coverage html
 
 **Coverage thresholds** (in `pyproject.toml`; auto-ratcheting, never manually decreased):
 
-- Fast gate (`[tool.proteus.coverage_fast]`, unit + smoke, every PR): ratcheting toward **70%**.
-- Full gate (`[tool.coverage.report]`, unit + smoke + integration + slow, nightly): ratcheting toward **90%** (the PROTEUS-ecosystem ceiling).
+- Fast gate (`[tool.proteus.coverage_fast]`, unit + smoke, every PR): ratcheting toward **90%** (the PROTEUS-ecosystem ceiling). Expected to plateau in the 60-75% band; unit tests alone cannot exercise wrapper paths that require real binaries.
+- Full gate (`[tool.coverage.report]`, unit + smoke + integration + slow, nightly): ratcheting toward **90%**.
 - Estimated total (PR unit/smoke union with nightly artifact, every PR): compared against the full gate. This is the 90% KPI; unit tests alone cannot reach it, the nightly tier fills the wrapper / binary code paths.
 
 See the `Coverage architecture` block in the Testing Standards section below for the contract.
@@ -246,7 +246,7 @@ pre-commit install -f
 
 **CI runs on PRs** (`.github/workflows/ci-pr-checks.yml`):
 
-1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the current fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; auto-ratcheted toward 70%)
+1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the current fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; auto-ratcheted, capped at 90%)
 2. **Smoke tests**: `pytest -m "smoke and not skip"`
 3. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
 4. **Diff-cover**: 80% coverage on changed lines (enforced)
@@ -340,7 +340,7 @@ Every unit test on a **physics module** must assert at least one of the followin
 
 Utility modules (`utils/*`, `config/*`, `plot/*`, `cli.py`, `inference/utils.py`, `tools/*`) are **exempt** from the physics-invariant requirement but still subject to the anti-happy-path rules (edge case, adversarial input handling where applicable, non-trivially-derivable assertion values).
 
-Tag every test that asserts a physical invariant with `@pytest.mark.physics_invariant` so coverage of physics-invariant tests can be tracked separately from line coverage.
+Tag every test that asserts a physical invariant with `@pytest.mark.physics_invariant` so coverage of physics-invariant tests can be tracked separately from line coverage. The marker is per-function, NOT module-level: structural tests (ordering, autonomy, mutation-in-place, pass-through assignment) in a physics-module test file should NOT carry the marker. Reference-pinned tests carry both `@pytest.mark.reference_pinned` and `@pytest.mark.physics_invariant` (the published-value pin is itself the invariant). Granularity of the reference-pinned requirement is **per source file**, not per directory: `interior_energetics/aragog.py` and `interior_energetics/spider.py` each need their own pinned test, even though they live in the same directory. Per-source-file inventory is tracked in `docs/Validation/<module>/<file>.md`; the `tools/check_test_quality.py --reference-pinned-audit` command currently reports at directory granularity and may lag the per-file contract.
 
 ### Anti-happy-path rules (every new test)
 
@@ -437,12 +437,12 @@ PROTEUS uses two gates with explicit sub-targets:
 
 | Gate | Tests included | Target | Enforced |
 |---|---|---|---|
-| Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit + smoke | Ratcheting toward **70%** | Every PR |
+| Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit + smoke | Ratcheting toward **90%** (expected plateau ~60-75%) | Every PR |
 | Estimated total (PR unit/smoke union with latest nightly artifact) | unit + smoke + integration | **90%** (the PROTEUS-ecosystem ceiling) | Every PR |
 | Full gate (`tool.coverage.report.fail_under`) | unit + smoke + integration + slow | **90%** | Nightly only |
 | Diff-cover | changed lines only | 80% (hard-coded) | Every PR |
 
-**What this means for contributors**: unit tests alone are not expected to reach 90%. Wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised by smoke + integration tests in nightly; the nightly artifact is unioned with the PR coverage to estimate the total. The 90% ceiling is the **estimated-total** target, not the fast-gate target. The fast gate ratchets toward 70%; the estimated total ratchets toward 90%. The ratchet is one-way (`tools/update_coverage_threshold.py`, capped at 90%); never manually decrease.
+**What this means for contributors**: 90% is the PROTEUS-ecosystem coverage ceiling and it applies EVERYWHERE. Both gates ratchet toward 90, capped at 90 (`tools/update_coverage_threshold.py` enforces `ECOSYSTEM_CEILING = 90.0`); neither gate ratchets above the ceiling and neither may be manually decreased. Unit tests alone are not expected to actually REACH 90 because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised by smoke + integration tests in nightly; the fast gate will plateau wherever unit + smoke coverage actually lands (typically 60-75%). The 90% target is reached via the estimated-total: the PR's unit/smoke coverage is unioned with the latest nightly artifact and compared against the full gate.
 
 Reports: `pytest --cov=src --cov-report=html` and open `htmlcov/index.html`. Module-level analysis: `bash tools/coverage_analysis.sh`. Diff-cover reasoning is documented in `docs/How-to/test_infrastructure.md`.
 

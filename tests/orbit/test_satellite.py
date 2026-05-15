@@ -38,7 +38,7 @@ from proteus.orbit.satellite import (
 )
 from proteus.utils.constants import const_G, secs_per_hour
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_invariant]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # Reusable parameter tuple (I, L, G, Mpl, Msa, dE_tidal).
@@ -52,12 +52,14 @@ def _params(I=1.0, L=10.0, G=1.0, Mpl=1.0, Msa=0.1, dE=1.0):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_ltot_returns_zero_when_omega_and_a_are_zero():
     """``L = I ω + Mpl (G(Mpl+Msa) a)**0.5``: both terms vanish at
     ``ω = 0`` and ``a = 0``."""
     assert Ltot(ω=0.0, a=0.0, params=_params()) == 0.0
 
 
+@pytest.mark.physics_invariant
 def test_ltot_is_linear_in_spin():
     """The spin term is ``I ω``; doubling ``ω`` adds exactly ``I dω`` to L."""
     base = Ltot(ω=1.0, a=1.0, params=_params())
@@ -66,6 +68,7 @@ def test_ltot_is_linear_in_spin():
     assert boosted - base == pytest.approx(2.0, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_ltot_orbital_term_scales_as_sqrt_a():
     """Orbital term is ``Mpl * sqrt(G * (Mpl+Msa) * a)``, scaling as
     ``a**0.5``. Multiplying ``a`` by 4 must multiply the orbital
@@ -82,11 +85,13 @@ def test_ltot_orbital_term_scales_as_sqrt_a():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_d_omega_dt_vanishes_when_dE_tidal_is_zero():
     """No tidal dissipation → no spin-down (numerator is zero)."""
     assert dω_dt(a=1.0, ω=1.0, params=_params(dE=0.0)) == 0.0
 
 
+@pytest.mark.physics_invariant
 def test_d_omega_dt_sign_follows_negative_dE_tidal():
     """The formula prepends a minus sign on ``dE_tidal``: with
     ``dE_tidal > 0`` the spin derivative must be negative.
@@ -100,11 +105,13 @@ def test_d_omega_dt_sign_follows_negative_dE_tidal():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_da_dt_zero_when_dE_tidal_zero():
     """``da_dt = -2 I a / (L - I ω) * dω_dt``: zero whenever ``dω_dt`` is zero."""
     assert da_dt(a=1.0, ω=1.0, params=_params(dE=0.0)) == 0.0
 
 
+@pytest.mark.physics_invariant
 def test_da_dt_kinematic_relation_holds():
     """``da_dt`` must equal ``-2 I a / (L - I ω) * dω_dt`` exactly
     (mathematical identity)."""
@@ -208,6 +215,7 @@ def test_update_satellite_first_call_seeds_satellite_mass_and_sma():
     assert hf_row['M_sat'] == pytest.approx(2e22)
 
 
+@pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
 def test_update_satellite_angular_momentum_matches_korenaga_2023_formula():
     """Pin the planet-satellite angular-momentum bookkeeping against
@@ -240,6 +248,7 @@ def test_update_satellite_angular_momentum_matches_korenaga_2023_formula():
     assert 1e36 < hf_row['plan_sat_am'] < 1e37
 
 
+@pytest.mark.physics_invariant
 def test_update_satellite_finite_for_long_integration_step():
     """Adversarial-but-physical: a long-baseline integration must
     produce finite ``semimajorax_sat`` and ``axial_period``.

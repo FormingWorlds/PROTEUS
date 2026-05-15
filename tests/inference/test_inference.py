@@ -24,6 +24,12 @@ from proteus.inference.inference import infer_from_config
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+# Mixed-tier file: 5 unit tests + 3 slow tests (subprocess-driven). The
+# slow tests carry @pytest.mark.slow per-function and run only in the
+# nightly tier; the fast PR filter "unit and not slow" selects only
+# the 5 unit tests. Do not move a slow test to the unit tier without
+# refitting it to the 100 ms / 30 s wall budget.
+
 
 # Pytest can hang on process completion when using multiprocessing by default.
 mp.set_start_method('spawn', force=True)

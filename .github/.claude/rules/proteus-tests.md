@@ -33,13 +33,14 @@ Every new test function MUST include:
 These are flagged by `tools/check_test_quality.py` and rejected at PR time.
 
 - **Single-assert test functions**. Two or more assertions per test; the second usually pins the invariant the first hand-waves over. Exception: a single assertion of a hard-fail invariant (mass closure within `1e-12`) is acceptable if the test is the only test of that invariant in the file.
-- **Standalone weak assertions** as the only meaningful check:
+- **Weak assertions when they stand alone as the sole meaningful check in the test.** The shapes are:
   - `assert result is not None`
   - `assert result > 0`
   - `assert len(result) > 0`
   - `assert isinstance(result, dict)`
   - `assert result is None` where the function returns `None` implicitly
-  These are fine as **secondary** sanity checks alongside a discriminating assertion.
+
+  Required carve-out: the three-class discrimination guard (Section 2) uses `assert val > 0` as the sign-error guard and `assert lo < val < hi` as the scale-error guard alongside a primary `pytest.approx(...)` pin. Those secondary lines look like weak assertions in isolation; they are NOT flagged when paired with a stronger primary assertion in the same test. The linter applies the carve-out automatically: weak shapes are flagged only when the test has exactly one `assert` statement (`len(asserts) == 1`) and that assertion is itself the weak shape.
 - **Tests with no function-level docstring**. The docstring states which physical scenario or contract clause is being verified.
 - **`==` adjacent to a float literal**. Use `pytest.approx(val, rel=...)` or `np.testing.assert_allclose(actual, expected, rtol=..., atol=...)`. Comparing two floats with `==` is a known flake source even for "exact" identities like 0.0 (-0.0 vs +0.0, NaN propagation).
 - **Tests asserting on a fixture's implicit default**: e.g. `assert fixture_returning_none() is None`. This is trivially true. Delete the test; do not strengthen it by adding more `is None` assertions.
@@ -66,6 +67,8 @@ When a test pins a numeric value, include explicit assertions that the wrong-for
 1. **Exponent or factor error** (off-by-one exponent, missing factor of 2 / pi). `abs(val - wrong_value)` discriminates.
 2. **Sign error** (`-x` vs `+x`). `abs()` hides this; assert the sign explicitly with `val > 0` or `val < 0`.
 3. **Unit-conversion error** (Pa vs bar, AU vs m). Pin the absolute scale with the unit named in the comment.
+
+**Carve-out for conservation-style invariants.** When the primary assertion IS a conservation closure (mass closure, energy balance, sum-equals-total), the equality form `sum(parts) == pytest.approx(total)` already discriminates exponent / factor errors by construction: any prefactor bug breaks closure at the same order as the discriminating term. In that case the exponent guard is satisfied by the conservation equality itself; sign and scale guards remain mandatory.
 
 Canonical pattern:
 
@@ -276,7 +279,7 @@ Out of scope (these may NAME the procedures they define):
 - This file (`proteus-tests.md`).
 - `proteus-code-review.md`.
 - `copilot-instructions.md`.
-- `docs/How-to/test_*.md` when describing the rule infrastructure itself.
+- Any documentation file whose CONTENT describes the rule infrastructure (`docs/How-to/test_*.md`, `docs/How-to/ai_usage.md`, validation pages under `docs/Validation/`, future rule-meta docs). The scope test is **what the prose is about**, not what the path is. A doc that explains how the testing rules work may name the testing rules; a doc that explains user-facing simulator behavior must keep the voice rule.
 
 Banned phrases inside the in-scope artifacts: "audit", "review pass", "adversarial review", "Phase X" (when "X" is an AI-organized roadmap label, not a real project phase), "T1.x", "Group A/B/C/D" (when AI-organized work groups), `claude-config/...` paths, "Generated with Claude", AI-tool names, em-dashes, en-dashes (except in bibliographic page ranges within citations), process meta-commentary ("after careful analysis").
 
@@ -354,7 +357,7 @@ PROTEUS uses two coverage gates with explicit sub-targets. The fast gate is for 
 
 | Gate | Tests | Target | When |
 |---|---|---|---|
-| Fast gate (`tool.proteus.coverage_fast`) | unit + smoke | ratcheting toward **70%** | Every PR |
+| Fast gate (`tool.proteus.coverage_fast`) | unit + smoke | ratcheting toward **90%** (expected plateau around 60-75% because wrapper code requires real binaries) | Every PR |
 | Estimated total (PR union with nightly artifact) | unit + smoke + integration | **90%** (PROTEUS-ecosystem ceiling) | Every PR |
 | Full gate (`tool.coverage.report`) | unit + smoke + integration + slow | **90%** | Nightly |
 | Diff-cover | changed lines | 80% (hard-coded) | Every PR |

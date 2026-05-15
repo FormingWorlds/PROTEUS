@@ -58,11 +58,9 @@ BASELINE_PATH = REPO_ROOT / 'tools' / 'test_quality_baseline.json'
 TIER_MARKERS = {'unit', 'smoke', 'integration', 'slow'}
 
 # Test directories that contain at least one physics-required source file.
-# Each directory must contain at least one @pytest.mark.reference_pinned test.
-# The per-source-file carve-out (e.g. inference/BO.py is physics, inference/
-# utils.py is utility) is specified in .github/.claude/rules/proteus-tests.md
-# section 3; the audits here operate at directory granularity, which means
-# inference/ is included because BO.py / async_BO.py / objective.py live there.
+# Each directory must contain at least one @pytest.mark.reference_pinned
+# test (current audit granularity); the rule actually requires per source
+# file, tracked in docs/Validation/<module>/<file>.md.
 PHYSICS_MODULES = {
     'interior_struct',
     'interior_energetics',
@@ -73,8 +71,26 @@ PHYSICS_MODULES = {
     'orbit',
     'star',
     'observe',
-    'inference',
+    'inference',  # mixed: BO.py / async_BO.py / objective.py are physics, rest utility
 }
+
+# Per-source-file physics requirements within directories that mix
+# physics and utility code. Documents which files need a per-file
+# reference_pinned test, even though the directory-level audit cannot
+# enforce that today.
+PHYSICS_SOURCES_BY_DIR = {
+    'inference': {'BO.py', 'async_BO.py', 'objective.py'},
+}
+
+# Audit limitations:
+# - PHYSICS_MODULES-based audit is directory-coarse: a single
+#   reference_pinned test in tests/<dir>/ satisfies the rule for the
+#   entire directory, even when the rule (proteus-tests.md section 3)
+#   requires per-source-file granularity. Per-file tracking is delegated
+#   to docs/Validation/<module>/<file>.md for now.
+# - The physics_invariant_audit keyword heuristic is substring-based and
+#   may over- or under-flag. The marker decorator is the source of truth;
+#   the keyword check is a guide for sweeping legacy untagged tests.
 
 # Weak-assertion shapes flagged as standalone violations.
 # Each entry is a callable on an ast.Assert node returning True if it matches.

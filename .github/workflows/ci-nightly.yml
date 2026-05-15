@@ -456,18 +456,6 @@ jobs:
             --cov-report=html \
             --cov-config=pyproject.toml 2>&1 | tee /tmp/integration-output.txt || true
 
-      - name: Save coverage before slow (unit + smoke + integration, for Fast PR reference)
-        # NOTE: Despite the filename "coverage-integration-only.json", this file actually contains
-        # COMBINED coverage from unit + smoke + integration tests (due to --cov-append above).
-        # The PR workflow (ci-pr-checks.yml) uses this to estimate total coverage.
-        # Known limitation: if unit/smoke coverage drops on a PR, stale lines in this
-        # nightly artifact can mask the regression until the next nightly refresh. The
-        # 48 h staleness check in ci-pr-checks.yml mitigates but does not eliminate this.
-        if: always()
-        run: |
-          cd /opt/proteus
-          coverage json -o coverage-integration-only.json || echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-integration-only.json
-
       - name: Run slow integration tests (standard config)
         if: steps.download_full_data.outcome == 'success'
         continue-on-error: true
@@ -480,9 +468,12 @@ jobs:
           # cross-product invariants, hypothesis-driven smoke fuzz,
           # Bayesian-optimization convergence, helper-self tests, and the
           # inference subprocess pipeline. Add new slow files here as
-          # they land and prove themselves.
+          # they land and prove themselves. The filter is tier-exclusive
+          # ("slow and not unit and not smoke and not integration") so any
+          # test that accidentally acquired the slow marker via additive
+          # module + per-function markers is still selected here.
           set -euo pipefail
-          pytest -m slow \
+          pytest -m "slow and not unit and not smoke and not integration" \
             tests/config/test_config_schema_invariants.py \
             tests/integration/test_smoke_hypothesis.py \
             tests/inference/test_bo_convergence.py \
@@ -491,6 +482,20 @@ jobs:
             -p no:faulthandler \
             --junit-xml=/tmp/junit-slow.xml \
             -v --tb=short 2>&1 | tee /tmp/slow-output.txt
+
+      - name: Save combined coverage (unit + smoke + integration + slow, for Fast PR reference)
+        # Despite the historical filename "coverage-integration-only.json",
+        # this artifact now includes coverage from ALL nightly tiers
+        # because --cov-append above accumulates unit + smoke + integration
+        # + slow line coverage by the time this step runs. The PR
+        # workflow (ci-pr-checks.yml) downloads this artifact and unions
+        # it with the PR's own unit/smoke coverage to estimate the total.
+        # The 48 h staleness check in ci-pr-checks.yml gates how stale
+        # this artifact may be before PRs start failing.
+        if: always()
+        run: |
+          cd /opt/proteus
+          coverage json -o coverage-integration-only.json || echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-integration-only.json
 
       - name: Generate coverage JSON
         if: always()

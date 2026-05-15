@@ -52,6 +52,11 @@ from proteus.config._config import (
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
+# Mixed-tier file: 32 unit tests + 1 slow test (the 7776-combo cross-
+# product is too expensive for the unit budget and carries
+# @pytest.mark.slow per-function). New tests default to unit; only
+# combinatorial fuzz that exceeds the 30 s ceiling should be slow.
+
 
 # This file deliberately omits a module-level `pytestmark` because it
 # mixes two tiers: the explicit per-validator tests are `@pytest.mark.unit`

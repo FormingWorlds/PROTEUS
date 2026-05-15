@@ -41,6 +41,10 @@ from tests.integration.conftest import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
+# Mixed-tier file: 2 integration tests + 2 slow tests. The slow pair
+# carries @pytest.mark.slow per-function and runs only in the nightly
+# slow surface; the integration filter selects only the first two.
+
 
 @pytest.mark.integration
 @pytest.mark.slow

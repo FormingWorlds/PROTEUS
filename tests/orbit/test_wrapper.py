@@ -23,7 +23,7 @@ from proteus.orbit.wrapper import (
 )
 from proteus.utils.constants import AU, M_earth, M_sun, R_earth, const_G
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_invariant]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +31,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_inv
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_separation_equals_sma_on_circular_orbit():
     """On a circular orbit ``e = 0`` the time-averaged separation
     collapses to ``sma`` exactly (the ``e**2`` correction vanishes)."""
@@ -39,6 +40,7 @@ def test_separation_equals_sma_on_circular_orbit():
     assert hf_row['separation'] == pytest.approx(AU)
 
 
+@pytest.mark.physics_invariant
 def test_separation_includes_quadratic_eccentricity_correction():
     """``<r> = sma (1 + e^2 / 2)``: at ``e=0.4`` the correction is
     ``+0.08 sma``, not ``+0.4 sma`` (linear) or ``+0.16 sma`` (no factor 1/2).
@@ -48,6 +50,7 @@ def test_separation_includes_quadratic_eccentricity_correction():
     assert hf_row['separation'] == pytest.approx(1.08, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_perihelion_is_sma_times_one_minus_eccentricity():
     """Periapsis distance ``r_p = sma (1 - e)``; at ``e=0.2`` it's
     ``0.8 sma``, regardless of stellar mass."""
@@ -89,6 +92,7 @@ def test_period_matches_keplers_third_law_for_earth_around_sun():
     assert hf_row['orbital_period'] == pytest.approx(sidereal_year_s, rel=5e-3)
 
 
+@pytest.mark.physics_invariant
 def test_period_scales_as_sma_to_three_halves():
     """Doubling ``sma`` must multiply the period by ``2**1.5 ≈ 2.828``,
     not 2.0 (linear) or 8.0 (cubic). This is the canonical Kepler
@@ -101,6 +105,7 @@ def test_period_scales_as_sma_to_three_halves():
     assert ratio == pytest.approx(2.0**1.5, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_period_inversely_sensitive_to_total_mass():
     """Heavier total mass shortens the period (``T ∝ 1/sqrt(M)``)."""
     light = {'semimajorax': AU, 'M_star': M_sun, 'M_planet': 0.0}
@@ -118,6 +123,7 @@ def test_period_inversely_sensitive_to_total_mass():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_hillradius_is_periapsis_times_mass_ratio_to_the_third():
     """``r_H = a (1 - e) (M_pl / (3 M_st))**(1/3)``. Pin against a
     direct hand-calculation at unit-ish values to discriminate
@@ -134,6 +140,7 @@ def test_hillradius_is_periapsis_times_mass_ratio_to_the_third():
     assert hf_row['hill_radius'] == pytest.approx(expected, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_hillradius_scales_as_cube_root_of_mass_ratio():
     """``r_H ∝ (M_pl / M_st)**(1/3)``: increasing M_pl by 8x
     must increase r_H by exactly 2, not 8 or sqrt(8)."""
@@ -150,6 +157,7 @@ def test_hillradius_scales_as_cube_root_of_mass_ratio():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_rochelimit_scales_linearly_in_planet_radius():
     """``d_R = R_pl (2 M_st / M_pl)**(1/3)``: doubling ``R_pl``
     must double the Roche limit; the mass ratio is unchanged."""
@@ -160,6 +168,7 @@ def test_rochelimit_scales_linearly_in_planet_radius():
     assert big['roche_limit'] / small['roche_limit'] == pytest.approx(2.0, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_rochelimit_pinned_value_for_earth_around_sun():
     """Closed-form numerical pin: ``d_R(Earth, Sun) = R_E * (2 M_S/M_E)**(1/3)``."""
     hf_row = {'R_int': R_earth, 'M_int': M_earth, 'M_star': M_sun}
@@ -173,6 +182,7 @@ def test_rochelimit_pinned_value_for_earth_around_sun():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_breakup_period_is_real_and_positive_for_earth():
     """The Earth's break-up rotation period is ~84 minutes; the
     formula must produce a value of that order, not negative or NaN.
@@ -185,6 +195,7 @@ def test_breakup_period_is_real_and_positive_for_earth():
     assert hf_row['breakup_period'] > 0
 
 
+@pytest.mark.physics_invariant
 def test_breakup_period_scales_as_r_to_three_halves():
     """``T_breakup = 2π / sqrt(G M / R**3)`` ∝ ``R**1.5 / sqrt(M)``.
     Doubling R while keeping M constant must multiply T_breakup by

@@ -17,7 +17,26 @@ log = logging.getLogger('fwl.' + __name__)
 
 def Ltot(ω, a, params):
     """
-    Total angular momentum of Earth-Moon system.
+    Total angular momentum of the planet plus satellite system.
+
+    Korenaga (2023) Icarus 400, 115564, Eq. 60 reads
+
+        L = I_E Omega + M_M sqrt(G (M_E + M_M) a)
+
+    so the orbital sqrt is multiplied by the SATELLITE mass M_M (Moon),
+    not the planet mass M_E (Earth). In the M_M << M_E limit this also
+    matches the textbook reduced-mass orbital angular momentum
+    L_orb = mu sqrt(G (M_pl + M_sat) a) with mu = M_pl M_sat / (M_pl + M_sat).
+
+    The implementation below uses Mpl instead of Msa in the prefactor; for
+    the Earth-Moon system this inflates L by M_pl / M_sat ~ 81, returning
+    ~2.4e36 kg m^2 / s where the paper (and textbook) give ~2.85e34. The
+    swap propagates into dω_dt and da_dt below through L, so any future
+    Earth-Moon evolution simulation should treat the angular-momentum
+    bookkeeping as suspect until this prefactor is reconciled with
+    Korenaga's Eq. 60. Tracked as a science follow-up; not corrected here
+    because every Imk2 / L producer in the ecosystem would need a paired
+    audit.
     """
     I, _, G, Mpl, Msa, _ = params
     return I * ω + Mpl * (G * (Mpl + Msa) * a) ** 0.5
@@ -25,7 +44,8 @@ def Ltot(ω, a, params):
 
 def dω_dt(a, ω, params):
     """
-    ODE describing evolution of Earth rotation based on Eq. 58 from Korenaga (2023).
+    ODE describing evolution of planet rotation based on Korenaga (2023)
+    Icarus 400, 115564, Eq. 58.
     """
     I, L, G, Mpl, Msa, dE_tidal = params
     return -dE_tidal / (I * ω + (G * Mpl * Msa * I) / (a * (L - I * ω)))
@@ -33,7 +53,8 @@ def dω_dt(a, ω, params):
 
 def da_dt(a, ω, params):
     """
-    ODE describing evolution of semimajor axis based on Eq. 59 from Korenaga (2023).
+    ODE describing evolution of semimajor axis based on Korenaga (2023)
+    Icarus 400, 115564, Eq. 59.
     """
     I, L, *_ = params
     return -2 * I * a / (L - I * ω) * dω_dt(a, ω, params)

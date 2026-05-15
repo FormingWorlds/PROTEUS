@@ -193,11 +193,14 @@ exclude_lines = [
 directory = "htmlcov"
 
 [tool.proteus.coverage_fast]
-# Fast PR gate: unit + smoke coverage only. Target ratchets toward 70%; unit
-# tests alone are not expected to reach the 90% ecosystem ceiling because
-# wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is
-# exercised by integration / slow tests in the nightly tier. Reaching the
-# 90% ceiling is the estimated-total responsibility (see [tool.coverage.report]).
+# Fast PR gate: unit + smoke coverage only. Target ratchets toward 90% (the
+# PROTEUS-ecosystem ceiling), capped at 90 by tools/update_coverage_threshold.py.
+# Unit tests alone are not expected to actually reach 90 because wrapper code
+# that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised by smoke
+# and integration tests in the nightly tier; the fast gate plateaus wherever
+# unit + smoke actually lands. Reaching the 90% target is the estimated-total
+# responsibility (PR unit/smoke union with the nightly artifact, see
+# [tool.coverage.report]).
 # Auto-ratcheted by tools/update_coverage_threshold.py; never manually decrease.
 fail_under = 44.45
 

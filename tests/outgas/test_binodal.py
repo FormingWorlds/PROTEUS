@@ -31,7 +31,7 @@ import pytest
 from proteus.outgas.binodal import apply_binodal_h2
 from proteus.utils.constants import gas_list
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_invariant]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _make_config(h2_included: bool = True) -> Any:
@@ -133,6 +133,7 @@ def test_returns_early_when_any_state_variable_is_non_physical(override):
         (1.0, 1.0, 0.0),  # Fully miscible: everything dissolved
     ],
 )
+@pytest.mark.physics_invariant
 def test_sigma_partitions_h2_linearly(sigma, expected_liquid_frac, expected_atm_frac):
     """``H2_kg_liquid = sigma * H2_kg_total`` and
     ``H2_kg_atm = (1 - sigma) * H2_kg_total``: linear partition.
@@ -145,6 +146,7 @@ def test_sigma_partitions_h2_linearly(sigma, expected_liquid_frac, expected_atm_
     assert hf_row['H2_kg_atm'] == pytest.approx(expected_atm_frac * 1e18, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_solid_h2_reservoir_is_always_zero():
     """H2 does not partition into solid silicate; the solid reservoir
     must be zeroed regardless of sigma."""
@@ -185,6 +187,7 @@ def test_h2_mass_is_conserved_per_rogers2025_partition():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_h2_partial_pressure_uses_g_over_area_in_pa_to_bar():
     """``P_H2 = m * g / (4 pi R^2)`` then ``/ 1e5`` to convert Pa to bar."""
     import math
@@ -204,6 +207,7 @@ def test_h2_partial_pressure_uses_g_over_area_in_pa_to_bar():
     assert hf_row['H2_bar'] == pytest.approx(expected_bar, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_vmr_closure_after_partition():
     """Volume mixing ratios must sum to 1.0 once ``P_surf`` is rebuilt."""
     cfg = _make_config()
@@ -214,6 +218,7 @@ def test_vmr_closure_after_partition():
     assert vmr_sum == pytest.approx(1.0, rel=1e-12)
 
 
+@pytest.mark.physics_invariant
 def test_atmospheric_mmw_recomputed_when_h2_mass_changes():
     """Redistributing H2 (lighter than H2O) into the dissolved phase
     must increase the atmospheric MMW, not decrease it.
