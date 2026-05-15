@@ -19,6 +19,20 @@ Why this matters:
 - Marked `slow` so it does not gate PR CI; runs in nightly + on-demand.
 - `derandomize=True` so CI is reproducible across runs.
 
+Test-only exemption to the Config-mutability rule:
+
+The project rule (`.claude/rules/proteus-code-review.md`, "Config
+mutability") forbids mutating `Config` attrs at runtime in source code.
+This test deliberately violates that rule by overriding fields after
+`Proteus(...)` initialisation; the alternative would be to render a
+fresh TOML per example, which costs ~50 ms of file IO per run. Because
+the override paths bypass attrs validators that would normally fire at
+init time, the strategy bounds here MUST stay inside the validator-
+accepted ranges (e.g., `mass_tot in [0.3, 5.0]` is well within the
+`> 0` and `< 20` validators of `planet_mass_valid`). Do NOT widen the
+strategy bounds to test validator behaviour; use the dedicated
+`tests/config/test_config_schema_invariants.py` for that.
+
 Hypothesis configuration: max_examples=10, deadline=120s. Each example
 costs ~2-3 seconds for a 1-timestep dummy.toml run; 10 examples × 3 s
 = ~30 seconds wall, well within the slow-tier budget.
@@ -48,7 +62,7 @@ from proteus import Proteus
 pytestmark = pytest.mark.slow
 
 
-# Strategy bounds — chosen to cover the rocky-exoplanet regime PROTEUS
+# Strategy bounds chosen to cover the rocky-exoplanet regime PROTEUS
 # is expected to handle, with margin to surface near-edge bugs:
 # - semi_major_axis [0.01, 2.0] AU: from ultra-hot inner-edge (TOI-561 b
 #   at ~0.01 AU) to wide rocky orbits (~Mars at 1.5 AU); 2.0 AU is

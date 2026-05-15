@@ -25,6 +25,19 @@ Philosophy (per .claude/rules/proteus-tests.md and .claude/rules/proteus-code-re
 - All checks tolerate `M_planet == 0` or `M_atm == 0` as "uninitialised";
   these are valid pre-IC states and asserting on them would false-alarm.
 
+Relationship to `tests/integration/conftest.py`:
+
+- `validate_mass_conservation` in the integration conftest is a softer,
+  scope-narrower check kept for the multi-timestep integration tests.
+  It asserts finiteness and positivity but tolerates any tolerance
+  violation. It is not a substitute for the strict per-element closure
+  here.
+- This helper is the strict version: every assertion fires on a
+  meaningful tolerance violation. New smoke and integration tests
+  should call `assert_smoke_conservation_invariants` (this module) for
+  conservation checks, and use the conftest helpers only for the
+  fixture mechanics they bundle.
+
 Underscore-prefixed module name keeps pytest from auto-collecting this
 file as a test module (it has no `test_*` functions).
 """
@@ -36,7 +49,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, gas_list, secs_per_year
 
 # Tolerance defaults. Chosen so they admit float-rounding noise from the
 # per-species sums but not any physically meaningful drift.
@@ -74,7 +87,7 @@ def assert_no_nan_inf(hf_row: pd.Series, columns: list[str] | None = None) -> No
 
 
 # Temperatures that are always meaningful in any simulation. Module-specific
-# fields (T_solvus, T_core, T_cmb_initial, etc.) are excluded — they are
+# fields (T_solvus, T_core, T_cmb_initial, etc.) are excluded; they are
 # legitimately 0.0 when the relevant module/feature is inactive. Add to this
 # list only if the field is required for every smoke run.
 ALWAYS_POSITIVE_TEMPS = ('T_surf', 'T_magma', 'T_star')
@@ -240,6 +253,31 @@ def assert_atmosphere_element_sum_matches_M_atm(
     )
 
 
+def assert_element_sum_matches_species_sum(hf_row: pd.Series, rel_tol: float = 1e-3) -> None:
+    """sum over elements of e_kg_atm ≈ sum over species of s_kg_atm.
+
+    Cross-tree consistency: PROTEUS maintains both per-element and
+    per-species mass trees. A bug in the species-to-element distribution
+    step (e.g., O atoms in H2O mis-allocated to atomic O budget) could
+    leave each tree internally consistent (per-element closure passes,
+    per-species closure passes) while the two trees disagree with each
+    other. This check catches the cross-tree drift directly, closing the
+    gap that the per-element and per-species closure checks leave open.
+    """
+    elem_sum = sum(float(hf_row.get(f'{e}_kg_atm', 0.0)) for e in element_list)
+    spec_sum = sum(float(hf_row.get(f'{s}_kg_atm', 0.0)) for s in gas_list)
+    if elem_sum <= 0.0 and spec_sum <= 0.0:
+        return
+    denom = max(elem_sum, spec_sum)
+    rel = abs(elem_sum - spec_sum) / denom
+    assert rel < rel_tol, (
+        f'Element sum ({elem_sum:.3e} kg) disagrees with species sum '
+        f'({spec_sum:.3e} kg) by {rel * 100:.4f}% (tol {rel_tol * 100:.4f}%). '
+        f'A species-to-element mass distribution step is dropping or '
+        f'mis-allocating mass between the two bookkeeping trees.'
+    )
+
+
 def assert_M_atm_le_M_planet(hf_row: pd.Series, rel_tol: float = DEFAULT_REL_TOL) -> None:
     """M_atm <= M_planet, the issue #677 hard invariant."""
     M_atm = float(hf_row.get('M_atm', 0.0))
@@ -248,7 +286,7 @@ def assert_M_atm_le_M_planet(hf_row: pd.Series, rel_tol: float = DEFAULT_REL_TOL
         return
     assert M_atm <= M_planet * (1.0 + rel_tol), (
         f'M_atm={M_atm:.3e} kg exceeds M_planet={M_planet:.3e} kg '
-        f'by {(M_atm / M_planet - 1) * 100:.4f}% — issue #677 regression. '
+        f'by {(M_atm / M_planet - 1) * 100:.4f}% (issue #677 regression). '
         f'Likely cause: an aggregation site re-introduced the '
         f'"if e == \'O\': continue" skip.'
     )
@@ -288,7 +326,7 @@ def assert_escape_within_atmospheric_budget(
 
     A finite-step escape cannot remove more than the atmosphere contains.
     The slack_factor (default 10x) is generous: PROTEUS smoke tests use
-    overrideen tsurf_init / dummy modules that may produce unrealistic
+    overridden tsurf_init / dummy modules that may produce unrealistic
     escape rates. The check still catches unphysically huge rates (e.g.
     sign-flip bugs producing ~M_atm / second).
 
@@ -326,12 +364,13 @@ def assert_smoke_conservation_invariants(hf_all: pd.DataFrame) -> None:
     final_row = hf_all.iloc[-1]
 
     # dt in seconds, from the last two helpfile rows. Time is in years.
+    # Use the canonical PROTEUS constant so any future change to the
+    # year-length convention propagates here automatically.
     dt_s = None
     if len(hf_all) >= 2:
-        years_per_sec = 1.0 / (365.25 * 24 * 3600)
         dt_yr = float(final_row['Time']) - float(hf_all.iloc[-2]['Time'])
         if dt_yr > 0:
-            dt_s = dt_yr / years_per_sec
+            dt_s = dt_yr * secs_per_year
 
     assert_no_nan_inf(final_row)
     assert_temperatures_positive(final_row)
@@ -339,6 +378,7 @@ def assert_smoke_conservation_invariants(hf_all: pd.DataFrame) -> None:
     assert_per_element_mass_closure(final_row)
     assert_per_species_mass_closure(final_row)
     assert_atmosphere_element_sum_matches_M_atm(final_row)
+    assert_element_sum_matches_species_sum(final_row)
     assert_M_atm_le_M_planet(final_row)
     assert_M_planet_matches_M_int_plus_M_ele(final_row)
     assert_escape_within_atmospheric_budget(final_row, dt_s=dt_s)

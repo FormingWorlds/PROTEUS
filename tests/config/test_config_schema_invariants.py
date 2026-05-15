@@ -48,6 +48,13 @@ from proteus.config._config import (
     planet_oxygen_mode_explicit,
 )
 
+# This file deliberately omits a module-level `pytestmark` because it
+# mixes two tiers: the explicit per-validator tests are `@pytest.mark.unit`
+# and the exhaustive cross-product is `@pytest.mark.slow`. A module-level
+# mark would double-mark the slow test as unit and break the CI filter
+# `unit and not slow`. Every test function in this file MUST carry its
+# own tier decorator; review for missing marks at PR time.
+
 # ---------------------------------------------------------------------------
 # Schema enum inventory — kept here so a schema change that adds a backend
 # without updating these lists fails test_module_field_inventory_matches_schema
@@ -174,10 +181,18 @@ def test_module_field_inventory_matches_schema():
     )
     for cls, attr_name, expected in pairs:
         actual = _enum_for(cls, attr_name)
-        # interior_struct uses a lambda validator, so _enum_for cannot read
-        # it; that one is checked indirectly via the cross-product test.
-        if actual is None:
-            continue
+        # If introspection fails for any field in `pairs`, fail the test
+        # rather than silently skip the inventory check. The previous
+        # `if actual is None: continue` would mask a future validator
+        # refactor that wraps `in_(...)` inside `and_(...)` or replaces
+        # it with a custom callable, leaving the schema-drift guard
+        # broken for every field.
+        assert actual is not None, (
+            f'_enum_for could not introspect {cls.__name__}.{attr_name}; '
+            f'extend _enum_for to handle the validator shape used here, '
+            f'or move this field to the cross-product-only inventory and '
+            f'document the exemption.'
+        )
         assert set(actual) == set(expected), (
             f'{cls.__name__}.{attr_name} schema enum {actual} disagrees '
             f'with the test inventory {expected}; update both.'
