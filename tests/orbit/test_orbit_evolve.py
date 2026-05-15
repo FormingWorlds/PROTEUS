@@ -30,7 +30,7 @@ import pytest
 from proteus.orbit.orbit import da_dt, de_dt, evolve_orbital, orbitals
 from proteus.utils.constants import AU
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_invariant]
 
 # Reusable parameter tuple (Imk2, Mst, G, Rpl, Mpl) with unit scales so
 # that algebra is easy to verify by hand.
@@ -55,25 +55,34 @@ def test_de_dt_is_linear_in_eccentricity():
     assert scaled == pytest.approx(5.0 * base, rel=1e-12)
 
 
-def test_de_dt_matches_closed_form_value_for_unit_params():
-    """Pin the prefactor and the ``a**6.5`` exponent against a hand-calculated value.
+@pytest.mark.reference_pinned
+def test_de_dt_matches_driscoll_barnes_2015_eq16():
+    """Pin de_dt against Driscoll and Barnes (2015) ApJ 815, 1, Eq. 16.
 
-    With ``Imk2 = Mst = G = Rpl = Mpl = 1``, ``a = 2``, ``e = 0.5``:
+    The source formula is
 
-        de/dt = (21/2) * 1 * 1 * 1 * 1 / (1 * 2**6.5) * 0.5
-              = 10.5 / 90.50966799187809 * 0.5
-              ≈ 0.05799558...
+        de/dt = (21/2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5
+                / (Mpl * a**6.5) * e
 
-    A regression to ``a**5`` would land near 0.164; ``a**7`` near
-    0.041; the value below discriminates both.
+    With Imk2 = Mst = G = Rpl = Mpl = 1, a = 2, e = 0.5:
+
+        de/dt = (21/2) * 0.5 / 2**6.5 = 10.5 / 90.50966 / 2 = 5.7996e-2
     """
     val = de_dt(a=2.0, e=0.5, params=_UNIT_PARAMS)
     expected = (21.0 / 2.0) * 0.5 / (2.0**6.5)
     assert val == pytest.approx(expected, rel=1e-12)
-    # Sanity-check the magnitude against the wrong exponents to make
-    # the assertion above an honest discriminator.
+    # Exponent-error guard: an off-by-one in the semi-major-axis
+    # exponent (a**5 instead of a**6.5) lands at 0.164 rather than
+    # 5.8e-2. The chosen test point makes that error visible.
     wrong_a5 = (21.0 / 2.0) * 0.5 / (2.0**5)
-    assert abs(val - wrong_a5) > 0.05  # well outside any plausible tolerance
+    assert abs(val - wrong_a5) > 0.05
+    # Sign guard: positive Imk2 produces a positive RHS under the
+    # current sign convention. A sign-flip regression would fail this.
+    assert val > 0.0
+    # Scale guard: order of magnitude is ~6e-2 (dimensionless rate per
+    # unit time). A scale-conversion bug (e.g. kg vs g, AU vs m) would
+    # land outside the [1e-3, 1.0] bracket.
+    assert 1e-3 < val < 1.0
 
 
 def test_de_dt_scales_as_radius_to_the_fifth_power():

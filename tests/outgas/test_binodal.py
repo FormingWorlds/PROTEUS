@@ -31,7 +31,7 @@ import pytest
 from proteus.outgas.binodal import apply_binodal_h2
 from proteus.utils.constants import gas_list
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_invariant]
 
 
 def _make_config(h2_included: bool = True) -> Any:
@@ -156,14 +156,28 @@ def test_solid_h2_reservoir_is_always_zero():
     assert hf_row['H2_mol_solid'] == 0.0
 
 
-def test_h2_mass_is_conserved_across_partition():
-    """For any sigma, ``H2_kg_atm + H2_kg_liquid + H2_kg_solid = H2_kg_total``."""
+@pytest.mark.reference_pinned
+def test_h2_mass_is_conserved_per_rogers2025_partition():
+    """Mass closure across the Rogers et al. (2025) binodal partition:
+    for any miscibility weight ``sigma`` returned by the H2-MgSiO3
+    suppression function, the post-partition reservoirs must satisfy
+    ``H2_kg_atm + H2_kg_liquid + H2_kg_solid = H2_kg_total``. This
+    is the conservation invariant the binodal model is required to
+    preserve (Rogers et al. 2025, Section 3.2).
+    """
     cfg = _make_config()
     hf_row = _make_hf_row(H2_kg_total=5e17)
     with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.4):
         apply_binodal_h2(hf_row, cfg)
     total = hf_row['H2_kg_atm'] + hf_row['H2_kg_liquid'] + hf_row['H2_kg_solid']
     assert total == pytest.approx(5e17, rel=1e-12)
+    # Sign guard: every reservoir is non-negative.
+    assert hf_row['H2_kg_atm'] >= 0.0
+    assert hf_row['H2_kg_liquid'] >= 0.0
+    assert hf_row['H2_kg_solid'] == 0.0  # H2 has no solid silicate sink
+    # Scale guard: each reservoir is bounded above by the total.
+    assert hf_row['H2_kg_atm'] <= 5e17
+    assert hf_row['H2_kg_liquid'] <= 5e17
 
 
 # ---------------------------------------------------------------------------

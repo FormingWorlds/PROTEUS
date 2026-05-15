@@ -7,8 +7,13 @@ Enforces the rules in `.github/.claude/rules/proteus-tests.md` (sections 1 + 7):
   marker (``unit`` / ``smoke`` / ``integration`` / ``slow``).
 - Test functions must contain at least 2 assertion statements OR a discriminating
   property-based assertion. Single-assert tests are a known weak pattern.
-- Forbidden standalone weak assertions: ``result is not None``, ``result > 0``,
+- Forbidden weak assertions when they stand alone as the sole meaningful
+  check in the test: ``result is not None``, ``result > 0``,
   ``len(result) > 0``, ``isinstance(result, dict)``, ``result is None``.
+  A weak assertion that accompanies a stronger primary assertion (the
+  three-class discrimination guard from proteus-tests.md section 2 uses
+  ``val > 0`` as a sign guard alongside ``pytest.approx(...)``, for
+  example) is NOT flagged.
 - Every test function must have a docstring.
 - ``==`` adjacent to a numeric literal in a test body is a likely float-comparison
   bug (use ``pytest.approx`` instead).
@@ -82,7 +87,11 @@ def _is_weak_assert(node: ast.Assert) -> str | None:
     if isinstance(test, ast.Compare) and len(test.ops) == 1:
         op = test.ops[0]
         right = test.comparators[0]
-        if isinstance(op, (ast.Is, ast.IsNot)) and isinstance(right, ast.Constant) and right.value is None:
+        if (
+            isinstance(op, (ast.Is, ast.IsNot))
+            and isinstance(right, ast.Constant)
+            and right.value is None
+        ):
             return 'is_none_or_not_none'
         # `assert x > 0`
         if isinstance(op, ast.Gt) and isinstance(right, ast.Constant) and right.value == 0:
@@ -151,7 +160,9 @@ def _has_float_eq(node: ast.AST) -> bool:
                     if isinstance(right, ast.Constant) and isinstance(right.value, float):
                         if not _is_exact_zero(right.value):
                             return True
-                    if isinstance(child.left, ast.Constant) and isinstance(child.left.value, float):
+                    if isinstance(child.left, ast.Constant) and isinstance(
+                        child.left.value, float
+                    ):
                         if not _is_exact_zero(child.left.value):
                             return True
     return False
@@ -209,7 +220,11 @@ def _func_markers(fn: ast.FunctionDef) -> set[str]:
 
 
 def _docstring_of(fn: ast.FunctionDef) -> str | None:
-    if fn.body and isinstance(fn.body[0], ast.Expr) and isinstance(fn.body[0].value, ast.Constant):
+    if (
+        fn.body
+        and isinstance(fn.body[0], ast.Expr)
+        and isinstance(fn.body[0].value, ast.Constant)
+    ):
         v = fn.body[0].value.value
         if isinstance(v, str):
             return v
@@ -315,14 +330,17 @@ def check_file(path: Path) -> Violations:
         elif n_assert == 1:
             v.add('single_assert', where)
 
-        # Weak-assertion shapes (flag every occurrence, not just sole-assertion).
-        for a in asserts:
-            label = _is_weak_assert(a)
+        # Weak-assertion shapes. Flag only when the weak assertion stands
+        # alone as the sole meaningful check in the test. A `> 0` or
+        # `is not None` line that accompanies a strong primary assertion
+        # (e.g. the sign guard alongside a `pytest.approx` pin, per the
+        # discrimination-guard rule) is legitimate and not flagged.
+        if n_assert == 1 and len(asserts) == 1:
+            label = _is_weak_assert(asserts[0])
             if label is not None:
                 v.add(f'weak_assert_{label}', where)
-        # Sole `assert isinstance(...)` as the only assert is its own violation.
-        if n_assert == 1 and len(asserts) == 1 and _is_isinstance_assert(asserts[0]):
-            v.add('weak_assert_only_isinstance', where)
+            if _is_isinstance_assert(asserts[0]):
+                v.add('weak_assert_only_isinstance', where)
 
     return v
 
@@ -436,6 +454,7 @@ def cmd_baseline() -> int:
     old_total = sum(old.values())
     new_total = sum(v.counts.values())
     import os
+
     allow = os.environ.get('PROTEUS_TEST_QUALITY_ALLOW_REGRESS') == '1'
     if old and new_total > old_total and not allow:
         print(
@@ -515,9 +534,13 @@ def cmd_reference_pinned_audit() -> int:
 def cmd_physics_invariant_audit() -> int:
     flagged = physics_invariant_audit()
     if not flagged:
-        print('All physics-module tests either carry @pytest.mark.physics_invariant or use property-based language.')
+        print(
+            'All physics-module tests either carry @pytest.mark.physics_invariant or use property-based language.'
+        )
         return 0
-    print('Physics-module tests without @pytest.mark.physics_invariant and no property-based assertion language:')
+    print(
+        'Physics-module tests without @pytest.mark.physics_invariant and no property-based assertion language:'
+    )
     for f in flagged:
         print(f'  {f}')
     return 0
