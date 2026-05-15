@@ -24,13 +24,13 @@ import pytest
 
 from proteus.interior_energetics.common import Interior_t
 
-# Marked `slow` so the fast PR check (filter `unit and not skip`) skips
-# this module. The Interior_t P-S table loaders re-read SPIDER lookup
-# files on a fresh container/runner and the suite hangs at ~30+ min on
-# the GitHub-hosted runners. The tests still run via `pytest -m slow`
-# locally and in any future nightly/full configuration. Revisit when
-# the test infrastructure rework lands.
-pytestmark = pytest.mark.slow
+# Tests run in the fast PR check. The P-S table loaders only touch
+# tmp_path-backed synthetic files (FWL_DATA is monkeypatched to a
+# nonexistent path), so the cost is bounded and the whole module
+# completes in well under a second. The per-test 30 s timeout is a
+# defensive ceiling against any future regression that introduces a
+# real-disk or solver call.
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _make_ps_table_file(filepath, nP=3, nS=4, val_scale=3000.0):
@@ -251,9 +251,8 @@ def test_load_ps_table_invalid_filename(tmp_path):
 def test_interior_t_stale_struct_steps_init():
     """Interior_t initialises ``_stale_struct_steps`` to 0.
 
-    Regression test for T1.1 (2026-04-26 coupling audit). The counter
-    tracks consecutive Aragog steps integrated on a stale Zalmoxis
-    structure, surfacing the silent-stale-mesh failure mode.
+    The counter tracks consecutive Aragog steps integrated on a stale
+    Zalmoxis structure, surfacing the silent-stale-mesh failure mode.
 
     Anti-happy-path: verifies the counter is mutable (not a property)
     and an integer, guarding against the two most plausible typo

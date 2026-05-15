@@ -21,10 +21,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Marked `slow` so the fast PR check (filter `unit and not skip`) skips
-# this module. Hangs CI past 10 min on hosted runners. Revisit during
-# the test infrastructure rework.
-pytestmark = pytest.mark.slow
+# Tests run in the fast PR check. The configs are MagicMocks and the
+# downstream EOS path is caught and swallowed, so the assertion only
+# depends on the NL20 log line emitted near the top of the function.
+# Per-test 30 s timeout guards against any future regression that
+# stops swallowing or pushes the log emission past the EOS table read.
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _make_minimal_config(

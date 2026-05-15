@@ -42,10 +42,13 @@ from proteus.utils.constants import (
     secs_per_year,
 )
 
-# Marked `slow` so the fast PR check (filter `unit and not skip`) skips
-# this module. BoundaryRunner test setup is slow on hosted runners.
-# Revisit during the test infrastructure rework.
-pytestmark = pytest.mark.slow
+# Tests run in the fast PR check. The BoundaryRunner is constructed
+# against mocked config / interior / atmos / hf_row fixtures and the
+# solver tests patch out scipy.integrate.solve_ivp, so the module
+# completes in under a second locally. Per-test 30 s timeout is a
+# defensive ceiling against any future regression that introduces a
+# real solver call.
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # =============================================================================
 # Fixtures for BoundaryRunner Configuration & Setup
@@ -216,7 +219,6 @@ def boundary_runner(
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_viscosity_aggregate_model_limits(boundary_runner):
     """
     Test aggregate viscosity model behaves correctly at extremes (φ=0, φ=1).
@@ -247,7 +249,6 @@ def test_viscosity_aggregate_model_limits(boundary_runner):
     assert 1e2 < eta_mid < 1e21
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize(
     'phi,expected_eta_range',
     [
@@ -271,7 +272,6 @@ def test_viscosity_aggregate_parametrized(boundary_runner, phi, expected_eta_ran
     assert eta_min < eta < eta_max
 
 
-@pytest.mark.slow
 def test_viscosity_arrhenius_solid_mantle(boundary_runner):
     """
     Test Arrhenius viscosity below critical melt fraction (solid mantle Arrhenius).
@@ -299,7 +299,6 @@ def test_viscosity_arrhenius_solid_mantle(boundary_runner):
     assert eta_hot > 0
 
 
-@pytest.mark.slow
 def test_viscosity_arrhenius_magma_ocean(boundary_runner):
     """
     Test Arrhenius viscosity above critical melt fraction (magma ocean Vogel-Fulcher-Tammann).
@@ -324,7 +323,6 @@ def test_viscosity_arrhenius_magma_ocean(boundary_runner):
     assert 1e-3 < eta < 1e4
 
 
-@pytest.mark.slow
 def test_viscosity_dispatcher_constant_model(boundary_runner):
     """
     Test viscosity dispatcher selects constant model (model=1) correctly.
@@ -342,7 +340,6 @@ def test_viscosity_dispatcher_constant_model(boundary_runner):
     assert eta == pytest.approx(1e21, rel=1e-10)
 
 
-@pytest.mark.slow
 def test_viscosity_dispatcher_aggregate_model(boundary_runner):
     """
     Test viscosity dispatcher selects aggregate model (model=2) correctly.
@@ -359,7 +356,6 @@ def test_viscosity_dispatcher_aggregate_model(boundary_runner):
     assert 1e2 < eta < 1e21
 
 
-@pytest.mark.slow
 def test_viscosity_dispatcher_arrhenius_model(boundary_runner):
     """
     Test viscosity dispatcher selects Arrhenius model (model=3) correctly.
@@ -376,7 +372,6 @@ def test_viscosity_dispatcher_arrhenius_model(boundary_runner):
     assert eta == pytest.approx(expected_eta, rel=1e-12)
 
 
-@pytest.mark.slow
 def test_viscosity_dispatcher_unknown_model(boundary_runner, caplog):
     """
     Test viscosity dispatcher defaults to aggregate (model=2) for invalid model numbers.
@@ -398,7 +393,6 @@ def test_viscosity_dispatcher_unknown_model(boundary_runner, caplog):
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_rayleigh_number_physical_range(boundary_runner):
     """
     Test Rayleigh number falls within physically realistic range for planetary mantles.
@@ -421,7 +415,6 @@ def test_rayleigh_number_physical_range(boundary_runner):
     assert 1e5 < ra < 1e15
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize(
     'T_p,T_surf,phi',
     [
@@ -444,7 +437,6 @@ def test_rayleigh_number_parametrized(boundary_runner, T_p, T_surf, phi):
     assert 1e5 < ra < 1e15
 
 
-@pytest.mark.slow
 def test_rayleigh_number_temperature_dependence(boundary_runner):
     """
     Test Rayleigh number increases with temperature contrast (Ra ∝ ΔT).
@@ -469,7 +461,6 @@ def test_rayleigh_number_temperature_dependence(boundary_runner):
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_q_m_positive_heat_loss(boundary_runner):
     """
     Test convective heat flux is positive (heat flowing outward).
@@ -488,7 +479,6 @@ def test_q_m_positive_heat_loss(boundary_runner):
     assert 1e4 < q_m < 1e8  # W/m² (realistic mantle heat flux)
 
 
-@pytest.mark.slow
 def test_q_m_temperature_dependence(boundary_runner):
     """
     Test convective heat flux increases with temperature contrast.
@@ -505,7 +495,6 @@ def test_q_m_temperature_dependence(boundary_runner):
     assert q_m_large_delta > q_m_small_delta
 
 
-@pytest.mark.slow
 def test_q_m_zero_temperature_difference(boundary_runner):
     """
     Test convective heat flux approaches zero when T_p = T_surf.
@@ -526,7 +515,6 @@ def test_q_m_zero_temperature_difference(boundary_runner):
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_radioactive_heating_disabled(boundary_runner):
     """
     Test radioactive heating returns 0 when disabled in config.
@@ -542,7 +530,6 @@ def test_radioactive_heating_disabled(boundary_runner):
     assert h_radio == 0.0
 
 
-@pytest.mark.slow
 def test_radioactive_heating_enabled_positive(boundary_runner):
     """
     Test radioactive heating is positive when enabled.
@@ -567,7 +554,6 @@ def test_radioactive_heating_enabled_positive(boundary_runner):
     assert h_radio > 0
 
 
-@pytest.mark.slow
 def test_radioactive_heating_decay_with_time(boundary_runner):
     """
     Test radioactive heating decays exponentially with time.
@@ -598,7 +584,6 @@ def test_radioactive_heating_decay_with_time(boundary_runner):
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_melt_fraction_clipping_below_solidus(boundary_runner):
     """
     Test melt fraction is 0 below solidus temperature.
@@ -615,7 +600,6 @@ def test_melt_fraction_clipping_below_solidus(boundary_runner):
     assert phi == pytest.approx(0.0, abs=1e-10)
 
 
-@pytest.mark.slow
 def test_melt_fraction_clipping_above_liquidus(boundary_runner):
     """
     Test melt fraction is 1 above liquidus temperature.
@@ -632,7 +616,6 @@ def test_melt_fraction_clipping_above_liquidus(boundary_runner):
     assert phi == pytest.approx(1.0, abs=1e-10)
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize(
     'T_p,expected_phi',
     [
@@ -660,7 +643,6 @@ def test_melt_fraction_parametrized(boundary_runner, T_p, expected_phi):
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_r_s_fully_molten(boundary_runner):
     """
     Test solidification radius equals core radius when fully molten (φ = 1).
@@ -676,7 +658,6 @@ def test_r_s_fully_molten(boundary_runner):
     assert r_s == pytest.approx(boundary_runner.core_radius, rel=1e-10)
 
 
-@pytest.mark.slow
 def test_r_s_fully_solid(boundary_runner):
     """
     Test solidification radius equals planet radius when fully solid (φ = 0).
@@ -692,7 +673,6 @@ def test_r_s_fully_solid(boundary_runner):
     assert r_s == pytest.approx(boundary_runner.planet_radius, rel=1e-10)
 
 
-@pytest.mark.slow
 def test_r_s_intermediate(boundary_runner):
     """
     Test solidification radius is intermediate when partially molten.
@@ -716,7 +696,6 @@ def test_r_s_intermediate(boundary_runner):
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_drs_dTp_sign_and_magnitude(boundary_runner):
     """
     Test dr_s/dT_p derivative is negative (solidification radius decreases with increasing T).
@@ -739,7 +718,6 @@ def test_drs_dTp_sign_and_magnitude(boundary_runner):
     )
 
 
-@pytest.mark.slow
 def test_dT_pdt_heat_loss_dominates(boundary_runner):
     """
     Test dT_p/dt is negative (cooling) when convective heat loss dominates internal heating.
@@ -760,7 +738,6 @@ def test_dT_pdt_heat_loss_dominates(boundary_runner):
     assert dTp_dt < 0
 
 
-@pytest.mark.slow
 def test_dT_pdt_near_surface_temperature(boundary_runner):
     """
     Test dT_p/dt becomes small when T_p ≈ T_surf (reduced driving force).
@@ -779,7 +756,6 @@ def test_dT_pdt_near_surface_temperature(boundary_runner):
     assert abs(dTp_dt) < abs(boundary_runner.dT_pdt(3000.0, 1600.0, 0.0))
 
 
-@pytest.mark.slow
 def test_dT_surfdt_physical_sign(boundary_runner):
     """
     Test dT_surf/dt sign depends on atmospheric balance.
@@ -805,7 +781,6 @@ def test_dT_surfdt_physical_sign(boundary_runner):
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_thermal_rhs_returns_list(boundary_runner):
     """
     Test thermal_rhs returns list of derivatives matching scipy.integrate.solve_ivp format.
@@ -822,7 +797,6 @@ def test_thermal_rhs_returns_list(boundary_runner):
     assert all(isinstance(val, (float, np.floating)) for val in rhs)
 
 
-@pytest.mark.slow
 def test_thermal_rhs_surface_temperature_constraint(boundary_runner):
     """
     Test thermal_rhs enforces T_surf ≤ T_p constraint.
@@ -844,7 +818,6 @@ def test_thermal_rhs_surface_temperature_constraint(boundary_runner):
     assert len(rhs) == 2
 
 
-@pytest.mark.slow
 def test_thermal_rhs_continuity_across_time(boundary_runner):
     """
     Test thermal_rhs is continuous (smooth) in state variables.
@@ -873,7 +846,6 @@ def test_thermal_rhs_continuity_across_time(boundary_runner):
 # =============================================================================
 
 
-@pytest.mark.slow
 @patch('proteus.interior_energetics.boundary.solve_ivp')
 def test_run_solver_integration_success(mock_solve_ivp, boundary_runner, mock_interior):
     """
@@ -917,7 +889,6 @@ def test_run_solver_integration_success(mock_solve_ivp, boundary_runner, mock_in
     assert 'Phi_global' in output
 
 
-@pytest.mark.slow
 @patch('proteus.interior_energetics.boundary.solve_ivp')
 def test_run_solver_output_keys(mock_solve_ivp, boundary_runner, mock_interior):
     """
@@ -963,7 +934,6 @@ def test_run_solver_output_keys(mock_solve_ivp, boundary_runner, mock_interior):
         assert key in output
 
 
-@pytest.mark.slow
 @patch('proteus.interior_energetics.boundary.solve_ivp')
 def test_run_solver_interior_object_updated(mock_solve_ivp, boundary_runner, mock_interior):
     """
@@ -1004,7 +974,6 @@ def test_run_solver_interior_object_updated(mock_solve_ivp, boundary_runner, moc
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_compute_time_step_first_iteration(mock_config, mock_dirs):
     """
     Test compute_time_step returns 0 for first iteration (ic=1).
@@ -1020,7 +989,6 @@ def test_compute_time_step_first_iteration(mock_config, mock_dirs):
     assert dt == 0.0
 
 
-@pytest.mark.slow
 @patch('proteus.interior_energetics.boundary.next_step')
 def test_compute_time_step_normal_iteration(mock_next_step, mock_config, mock_dirs):
     """
@@ -1045,7 +1013,6 @@ def test_compute_time_step_normal_iteration(mock_next_step, mock_config, mock_di
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_physical_consistency_conservation(boundary_runner):
     """
     Test physical conservation laws: mass and energy conservation checks.
@@ -1066,7 +1033,6 @@ def test_physical_consistency_conservation(boundary_runner):
         assert q_m > 0  # Heat should flow outward
 
 
-@pytest.mark.slow
 def test_physical_bounds_temperatures(boundary_runner):
     """
     Test that temperatures stay within physically reasonable bounds.
@@ -1089,7 +1055,6 @@ def test_physical_bounds_temperatures(boundary_runner):
 # =============================================================================
 
 
-@pytest.mark.slow
 def test_zero_temperature_gradient(boundary_runner):
     """
     Test behavior when T_p = T_surf (isothermal interior).
@@ -1107,7 +1072,6 @@ def test_zero_temperature_gradient(boundary_runner):
     assert ra >= 0
 
 
-@pytest.mark.slow
 def test_extreme_melt_fraction_bounds(boundary_runner):
     """
     Test viscosity models handle melt fraction bounds (φ = 0, φ = 1) gracefully.
@@ -1132,7 +1096,6 @@ def test_extreme_melt_fraction_bounds(boundary_runner):
 # ============================================================================
 
 
-@pytest.mark.slow
 def test_boundary_runner_all_nan_layer_cp_falls_back_to_atm_heat_capacity(
     mock_config, mock_atmos, mock_hf_row, mock_hf_all, mock_interior, mock_dirs
 ):
@@ -1166,7 +1129,6 @@ def test_boundary_runner_all_nan_layer_cp_falls_back_to_atm_heat_capacity(
     )
 
 
-@pytest.mark.slow
 def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
     mock_config, mock_atmos, mock_hf_row, mock_hf_all, mock_interior, mock_dirs
 ):
