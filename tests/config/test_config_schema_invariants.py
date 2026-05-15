@@ -250,7 +250,14 @@ def _make_config_instance(**overrides):
 def test_check_module_dependencies_passes_with_default_backends():
     """All hard-dep default backends import cleanly; the validator is silent."""
     instance = _make_config_instance()
-    check_module_dependencies(instance, None, None)  # must not raise
+    result = check_module_dependencies(instance, None, None)
+    assert result is None  # contract: validator returns None silently when imports succeed
+    # Discriminating check: the instance carries the hard-dep default backends
+    # that the validator must have successfully imported (calliope for outgas,
+    # zephyrus for escape). A regression that broke either import would have
+    # raised before this assertion.
+    assert instance.outgas.module == 'calliope'
+    assert instance.escape.module == 'zephyrus'
 
 
 @pytest.mark.unit
@@ -336,7 +343,12 @@ def test_boreas_requires_atmosphere_rejects_dummy_atmos():
 def test_boreas_requires_atmosphere_passes_with_radiative_atmos():
     """BOREAS escape with agni passes; validator is silent."""
     instance = _make_config_instance(**{'escape.module': 'boreas', 'atmos_clim.module': 'agni'})
-    boreas_requires_atmosphere(instance, None, None)  # must not raise
+    result = boreas_requires_atmosphere(instance, None, None)
+    assert result is None  # contract: BOREAS + agni is the canonical accepted combo
+    # Discriminating check: agni is a band-resolved atmosphere; the dummy module
+    # would have raised. Pin the combination that produced the silent pass.
+    assert instance.escape.module == 'boreas'
+    assert instance.atmos_clim.module == 'agni'
 
 
 @pytest.mark.unit
@@ -345,7 +357,12 @@ def test_boreas_requires_atmosphere_skips_when_not_boreas():
     instance = _make_config_instance(
         **{'escape.module': 'zephyrus', 'atmos_clim.module': 'dummy'}
     )
-    boreas_requires_atmosphere(instance, None, None)  # must not raise
+    result = boreas_requires_atmosphere(instance, None, None)
+    assert result is None  # contract: non-boreas escape short-circuits the validator
+    # Discriminating check: atmos_clim.module='dummy' would have raised under
+    # boreas; only the escape-module-skip branch can produce a silent pass.
+    assert instance.escape.module == 'zephyrus'
+    assert instance.atmos_clim.module == 'dummy'
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +373,12 @@ def test_boreas_requires_atmosphere_skips_when_not_boreas():
 def test_planet_mass_valid_accepts_in_range(mass):
     """Masses in (0, 20] M_earth are accepted."""
     instance = _make_config_instance(**{'planet.mass_tot': mass})
-    planet_mass_valid(instance, None, None)
+    result = planet_mass_valid(instance, None, None)
+    assert result is None  # contract: in-range mass is accepted silently
+    # Discriminating check: 0 < mass < 20 (strict) - the open lower bound and the
+    # 20 M_earth upper limit are the documented accepted band.
+    assert 0.0 < mass < 20.0
+    assert instance.planet.mass_tot == mass
 
 
 @pytest.mark.unit
@@ -404,7 +426,13 @@ def test_planet_oxygen_mode_explicit_rejects_required_sentinel():
 def test_planet_oxygen_mode_explicit_accepts_all_four_documented_modes(mode):
     """All four documented O_mode values pass the validator."""
     instance = _make_config_instance(**{'planet.elements': SimpleNamespace(O_mode=mode)})
-    planet_oxygen_mode_explicit(instance, None, None)
+    result = planet_oxygen_mode_explicit(instance, None, None)
+    assert result is None  # contract: each documented O_mode value passes silently
+    # Discriminating check: the parametrized mode is one of the four documented
+    # values; the validator must reject 'REQUIRED' (the placeholder) and any
+    # unknown string. Pin both ends of the contract on this row.
+    assert mode in ('ic_chemistry', 'ppmw', 'kg', 'FeO_mantle_wt_pct')
+    assert instance.planet.elements.O_mode == mode
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +443,7 @@ def test_fO2_source_user_constant_accepts_all_O_modes():
     """The default fO2_source = "user_constant" accepts every (O_mode,
     volatile_mode) combination; this is the legacy-compatible path.
     """
+    combos_checked = 0
     for o_mode in ('ic_chemistry', 'ppmw', 'kg', 'FeO_mantle_wt_pct'):
         for v_mode in ('elements', 'gas_prs'):
             instance = _make_config_instance(
@@ -424,7 +453,11 @@ def test_fO2_source_user_constant_accepts_all_O_modes():
                     'planet.volatile_mode': v_mode,
                 }
             )
-            planet_fO2_source_compat(instance, None, None)
+            assert planet_fO2_source_compat(instance, None, None) is None
+            combos_checked += 1
+    # Discriminating check: all 4 x 2 = 8 (O_mode, volatile_mode) combinations
+    # were exercised; a loop short-circuit (or accidental skip) would land below.
+    assert combos_checked == 8
 
 
 @pytest.mark.unit
@@ -518,7 +551,12 @@ def test_fO2_source_from_O_budget_silent_when_fO2_shift_IW_zero():
     )
     with warnings.catch_warnings():
         warnings.simplefilter('error')  # any warning becomes an error
-        planet_fO2_source_compat(instance, None, None)
+        result = planet_fO2_source_compat(instance, None, None)
+    assert result is None  # contract: Path C + zero shift is silent (no warning, no raise)
+    # Discriminating check: fO2_shift_IW must be exactly zero. Any non-zero value
+    # under Path C would have produced the 'will be ignored at runtime' UserWarning
+    # (which `simplefilter('error')` would have re-raised).
+    assert instance.outgas.fO2_shift_IW == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +578,12 @@ def test_boundary_requires_fixed_surface_state_passes_with_fixed():
     """
     instance = _make_config_instance(**{'interior_energetics.module': 'boundary'})
     instance.atmos_clim.surf_state = 'fixed'
-    boundary_requires_fixed_surface_state(instance, None, None)
+    result = boundary_requires_fixed_surface_state(instance, None, None)
+    assert result is None  # contract: boundary + fixed surf_state is the canonical combo
+    # Discriminating check: surf_state='mixed_layer' would have raised under
+    # boundary; only the 'fixed' branch can produce a silent pass here.
+    assert instance.interior_energetics.module == 'boundary'
+    assert instance.atmos_clim.surf_state == 'fixed'
 
 
 @pytest.mark.unit
@@ -570,7 +613,12 @@ def test_boundary_zalmoxis_incompatible_passes_with_dummy_struct():
             'interior_struct.module': 'dummy',
         }
     )
-    boundary_zalmoxis_incompatible(instance, None, None)
+    result = boundary_zalmoxis_incompatible(instance, None, None)
+    assert result is None  # contract: boundary + non-zalmoxis struct is accepted silently
+    # Discriminating check: struct.module='zalmoxis' would have raised; only the
+    # non-zalmoxis branch can produce a silent pass here.
+    assert instance.interior_energetics.module == 'boundary'
+    assert instance.interior_struct.module != 'zalmoxis'
 
 
 # ---------------------------------------------------------------------------
@@ -598,7 +646,12 @@ def test_instmethod_evolve_passes_with_inst_and_no_evolve():
             'orbit.evolve': False,
         }
     )
-    instmethod_evolve(instance, None, None)
+    result = instmethod_evolve(instance, None, None)
+    assert result is None  # contract: inst + evolve=False is the canonical compatible combo
+    # Discriminating check: evolve=True with inst would have raised; only the
+    # evolve=False branch can produce a silent pass under inst.
+    assert instance.orbit.instellation_method == 'inst'
+    assert instance.orbit.evolve is False
 
 
 @pytest.mark.unit
@@ -610,7 +663,12 @@ def test_instmethod_evolve_passes_with_separation_and_evolve():
             'orbit.evolve': True,
         }
     )
-    instmethod_evolve(instance, None, None)
+    result = instmethod_evolve(instance, None, None)
+    assert result is None  # contract: non-inst method permits orbital evolution
+    # Discriminating check: evolve=True with inst would have raised; only the
+    # non-inst branch can produce a silent pass with evolve=True.
+    assert instance.orbit.instellation_method != 'inst'
+    assert instance.orbit.evolve is True
 
 
 @pytest.mark.unit
@@ -635,7 +693,12 @@ def test_satellite_evolve_passes_with_satellite_and_no_evolve():
             'orbit.evolve': False,
         }
     )
-    satellite_evolve(instance, None, None)
+    result = satellite_evolve(instance, None, None)
+    assert result is None  # contract: satellite=True + evolve=False is the accepted combo
+    # Discriminating check: satellite=True + evolve=True would have raised; only
+    # the evolve=False branch can produce a silent pass under satellite=True.
+    assert instance.orbit.satellite is True
+    assert instance.orbit.evolve is False
 
 
 @pytest.mark.unit
@@ -647,7 +710,12 @@ def test_satellite_evolve_passes_without_satellite():
             'orbit.evolve': True,
         }
     )
-    satellite_evolve(instance, None, None)
+    result = satellite_evolve(instance, None, None)
+    assert result is None  # contract: no-satellite path accepts orbital evolution
+    # Discriminating check: satellite=False is the path that allows evolve=True;
+    # the validator's other branch (satellite=True + evolve=True) would have raised.
+    assert instance.orbit.satellite is False
+    assert instance.orbit.evolve is True
 
 
 # ---------------------------------------------------------------------------

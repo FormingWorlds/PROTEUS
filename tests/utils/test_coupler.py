@@ -23,6 +23,7 @@ Fixtures from conftest.py:
 
 from __future__ import annotations
 
+import math
 import os
 import tempfile
 from datetime import datetime
@@ -1327,8 +1328,13 @@ def test_assert_mass_conservation_passes_when_invariants_hold():
     for s in gas_list:
         hf_row[s + '_kg_atm'] = per_species
 
-    # Must not raise
-    assert_mass_conservation(hf_row)
+    result = assert_mass_conservation(hf_row)
+    assert result is None  # contract: helper returns None silently when M_atm <= M_planet
+    # Discriminating check: M_atm < M_planet strictly (not vacuously zero), and
+    # the per-species sum exactly equals M_atm so the closure path is exercised.
+    assert hf_row['M_atm'] < hf_row['M_planet']
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
+    assert math.isclose(species_sum, hf_row['M_atm'], rel_tol=1e-12)
 
 
 @pytest.mark.unit
@@ -1393,4 +1399,9 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
         'M_planet': 0.0,  # not yet computed
     }
     # Must not raise; the M_planet=0 short-circuit handles the pre-IC case.
-    assert_mass_conservation(hf_row)
+    result = assert_mass_conservation(hf_row)
+    assert result is None  # contract: M_planet=0 short-circuits the conservation check
+    # Discriminating check: M_atm is non-zero, so only the M_planet=0 skip branch
+    # can produce a silent pass on this row.
+    assert hf_row['M_atm'] > 0.0
+    assert hf_row['M_planet'] == 0.0

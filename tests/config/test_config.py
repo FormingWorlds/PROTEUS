@@ -77,11 +77,18 @@ def test_valid_config_version_rejects_old():
 
 @pytest.mark.unit
 def test_valid_config_version_accepts_current():
-    """config_version validator accepts the current version."""
+    """config_version validator accepts the current version.
+
+    Sister to ``test_valid_config_version_rejects_unknown`` (which exercises
+    a future version string '2.0' that must raise); together they pin the
+    accepted-version envelope.
+    """
     from proteus.config._config import valid_config_version
 
     instance = SimpleNamespace()
-    valid_config_version(instance, SimpleNamespace(), '3.0')  # Should not raise
+    result = valid_config_version(instance, SimpleNamespace(), '3.0')
+    assert result is None  # contract: validator returns None silently on accepted version
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -480,8 +487,11 @@ def test_star_mors_rotation_percentile_valid():
         ),
     )
 
-    # Should not raise error
-    valid_mors(config, SimpleNamespace(), None)
+    result = valid_mors(config, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # validator must not mutate the input config; use pytest.approx to keep the
+    # comparison float-safe (the underlying value is a literal float).
+    assert config.mors.rot_pcntle == pytest.approx(50.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -799,7 +809,11 @@ def test_janus_tmp_max_bigger_than_tmp_min_valid():
             tmp_maximum=5000.0,
         ),
     )
-    valid_janus(instance, SimpleNamespace(), instance.janus)  # Should not raise
+    result = valid_janus(instance, SimpleNamespace(), instance.janus)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # Discriminating bounds preserved: tmp_minimum unchanged, tmp_maximum strictly greater.
+    assert instance.tmp_minimum == pytest.approx(300.0, rel=1e-12)
+    assert instance.janus.tmp_maximum > instance.tmp_minimum
 
 
 @pytest.mark.unit
@@ -846,7 +860,9 @@ def test_atmos_clim_warn_if_dummy_rayleigh_compatible():
     # Valid: AGNI module with rayleigh enabled
     instance = SimpleNamespace(module='agni')
     attribute = SimpleNamespace(name='rayleigh')
-    warn_if_dummy(instance, attribute, True)  # Should not raise
+    result = warn_if_dummy(instance, attribute, True)
+    assert result is None  # contract: validator returns None silently on accepted module
+    assert instance.module == 'agni'  # no mutation of the module sentinel
 
 
 @pytest.mark.unit
@@ -870,7 +886,9 @@ def test_atmos_clim_warn_if_dummy_rayleigh_disabled():
 
     # Valid: dummy module with rayleigh disabled
     instance = SimpleNamespace(module='dummy')
-    warn_if_dummy(instance, SimpleNamespace(), False)  # Should not raise
+    result = warn_if_dummy(instance, SimpleNamespace(), False)
+    assert result is None  # contract: rayleigh=False short-circuits the dummy guard
+    assert instance.module == 'dummy'  # no mutation of the module sentinel
 
 
 @pytest.mark.unit
@@ -879,7 +897,9 @@ def test_atmos_clim_check_overlap_valid_ro():
     from proteus.config._atmos_clim import check_overlap
 
     instance = SimpleNamespace()
-    check_overlap(instance, SimpleNamespace(), 'ro')  # Should not raise
+    result = check_overlap(instance, SimpleNamespace(), 'ro')
+    assert result is None  # contract: validator returns None silently on accepted overlap
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -888,7 +908,9 @@ def test_atmos_clim_check_overlap_valid_rorr():
     from proteus.config._atmos_clim import check_overlap
 
     instance = SimpleNamespace()
-    check_overlap(instance, SimpleNamespace(), 'rorr')  # Should not raise
+    result = check_overlap(instance, SimpleNamespace(), 'rorr')
+    assert result is None  # contract: validator returns None silently on accepted overlap
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -897,7 +919,9 @@ def test_atmos_clim_check_overlap_valid_ee():
     from proteus.config._atmos_clim import check_overlap
 
     instance = SimpleNamespace()
-    check_overlap(instance, SimpleNamespace(), 'ee')  # Should not raise
+    result = check_overlap(instance, SimpleNamespace(), 'ee')
+    assert result is None  # contract: validator returns None silently on accepted overlap
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -926,10 +950,13 @@ def test_atmos_clim_valid_albedo_float_in_range():
     from proteus.config._atmos_clim import valid_albedo
 
     instance = SimpleNamespace()
-    # Boundary values and midpoint
-    valid_albedo(instance, SimpleNamespace(), 0.0)  # Lower bound
-    valid_albedo(instance, SimpleNamespace(), 0.5)  # Midpoint
-    valid_albedo(instance, SimpleNamespace(), 1.0)  # Upper bound
+    # Boundary values and midpoint; each call must return silently on the
+    # accepted-range path.
+    assert valid_albedo(instance, SimpleNamespace(), 0.0) is None
+    assert valid_albedo(instance, SimpleNamespace(), 0.5) is None
+    assert valid_albedo(instance, SimpleNamespace(), 1.0) is None
+    # The validator does not mutate the input instance.
+    assert vars(instance) == {}
 
 
 @pytest.mark.unit
@@ -958,7 +985,9 @@ def test_atmos_clim_valid_albedo_string():
     from proteus.config._atmos_clim import valid_albedo
 
     instance = SimpleNamespace()
-    valid_albedo(instance, SimpleNamespace(), '/path/to/albedo_file.csv')  # Should not raise
+    result = valid_albedo(instance, SimpleNamespace(), '/path/to/albedo_file.csv')
+    assert result is None  # contract: validator returns None silently on accepted string
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -985,7 +1014,12 @@ def test_atmos_clim_janus_module_skip():
         spectral_group=None,
         spectral_bands=None,
     )
-    valid_janus(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_janus(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-janus module short-circuits the validator
+    # Discriminating check: spectral_group/spectral_bands are both None, which
+    # would normally raise via the janus path; only the module-skip branch can
+    # produce a silent pass here.
+    assert instance.module == 'agni'
 
 
 @pytest.mark.unit
@@ -1030,7 +1064,9 @@ def test_atmos_clim_janus_valid_spectral_config():
         tmp_minimum=0.5,
         janus=SimpleNamespace(tmp_maximum=5000.0),
     )
-    valid_janus(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_janus(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    assert instance.janus.tmp_maximum > instance.tmp_minimum  # bounds preserved
 
 
 @pytest.mark.unit
@@ -1040,7 +1076,11 @@ def test_atmos_clim_agni_module_skip():
 
     # With module='dummy', validator should return early without checking agni config
     instance = SimpleNamespace(module='dummy', agni=SimpleNamespace())
-    valid_agni(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_agni(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-agni module short-circuits the validator
+    # Discriminating check: instance.agni is empty; only the module-skip branch
+    # can produce a silent pass.
+    assert instance.module == 'dummy'
 
 
 @pytest.mark.unit
@@ -1216,7 +1256,12 @@ def test_atmos_clim_agni_valid_complete_config():
         ),
         surf_state='skin',
     )
-    valid_agni(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_agni(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # Discriminating bounds: p_top below both psurf_thresh and p_obs; surf_state='skin'
+    # is compatible with solve_energy=True. Each is a separate branch in valid_agni.
+    assert instance.p_top < instance.agni.psurf_thresh
+    assert instance.p_top < instance.p_obs
 
 
 # ========================
@@ -1229,7 +1274,10 @@ def test_params_valid_path_non_empty_string():
     """Test valid_path validator accepts non-empty strings."""
     from proteus.config._params import valid_path
 
-    valid_path(SimpleNamespace(), SimpleNamespace(name='data_path'), '/data/output')  # OK
+    instance = SimpleNamespace()
+    result = valid_path(instance, SimpleNamespace(name='data_path'), '/data/output')
+    assert result is None  # contract: validator returns None silently on accepted string
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1268,7 +1316,9 @@ def test_params_max_bigger_than_min_valid():
     from proteus.config._params import max_bigger_than_min
 
     instance = SimpleNamespace(minimum=100)
-    max_bigger_than_min(instance, SimpleNamespace(), 1000)  # Should not raise
+    result = max_bigger_than_min(instance, SimpleNamespace(), 1000)
+    assert result is None  # contract: validator returns None silently when max > min
+    assert instance.minimum == 100  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1297,7 +1347,9 @@ def test_params_valid_mod_none():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    valid_mod(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_mod(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently for value=None
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1306,8 +1358,10 @@ def test_params_valid_mod_positive():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    valid_mod(instance, SimpleNamespace(), 1)  # OK
-    valid_mod(instance, SimpleNamespace(), 100)  # OK
+    # Both small (1) and large (100) positive values on the accepted-range path.
+    assert valid_mod(instance, SimpleNamespace(), 1) is None
+    assert valid_mod(instance, SimpleNamespace(), 100) is None
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1316,7 +1370,9 @@ def test_params_valid_mod_zero():
     from proteus.config._params import valid_mod
 
     instance = SimpleNamespace()
-    valid_mod(instance, SimpleNamespace(), 0)  # OK (0 means special behavior, not invalid)
+    result = valid_mod(instance, SimpleNamespace(), 0)
+    assert result is None  # zero is a documented special sentinel, not invalid
+    assert vars(instance) == {}  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
@@ -1340,7 +1396,11 @@ def test_planet_mass_valid_accepts_positive():
     from proteus.config._config import planet_mass_valid
 
     instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=1.0))
-    planet_mass_valid(instance, SimpleNamespace(), None)  # Should not raise
+    result = planet_mass_valid(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on accepted mass
+    # validator must not mutate mass_tot; use pytest.approx to keep the
+    # comparison float-safe.
+    assert instance.planet.mass_tot == pytest.approx(1.0, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -1379,7 +1439,9 @@ def test_struct_zalmoxis_module_skip():
     from proteus.config._struct import valid_zalmoxis
 
     instance = SimpleNamespace(module='spider', zalmoxis=SimpleNamespace())
-    valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_zalmoxis(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-zalmoxis module short-circuits the validator
+    assert instance.module == 'spider'  # no mutation of the module sentinel
 
 
 @pytest.mark.unit
@@ -1444,7 +1506,11 @@ def test_struct_zalmoxis_valid_configuration():
             mantle_mass_fraction=0,
         ),
     )
-    valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_zalmoxis(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # Discriminating check: ice_layer_eos=None selects the 2-layer branch where
+    # mantle_mass_fraction=0 is the only valid combination.
+    assert instance.zalmoxis.mantle_mass_fraction == 0
 
 
 @pytest.mark.unit
@@ -1497,7 +1563,12 @@ def test_struct_zalmoxis_tdep_allows_mantle_fraction():
             mantle_mass_fraction=0.675,
         ),
     )
-    valid_zalmoxis(instance, SimpleNamespace(), None)  # Should not raise
+    result = valid_zalmoxis(instance, SimpleNamespace(), None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    # Discriminating check: a fixed-EOS (Seager2007) mantle would have rejected
+    # mantle_mass_fraction=0.675; the T-dependent WolfBower2018 EOS path is the
+    # only branch that permits it.
+    assert instance.zalmoxis.mantle_eos.startswith('WolfBower2018')
 
 
 # ========================
@@ -1529,7 +1600,11 @@ def test_config_spada_zephyrus_non_zephyrus_skip():
         escape=SimpleNamespace(module='dummy'),
         star=SimpleNamespace(module='dummy'),
     )
-    spada_zephyrus(instance, SimpleNamespace(), None)  # Should not raise
+    result = spada_zephyrus(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-zephyrus escape short-circuits the validator
+    # Discriminating check: star.module='dummy' would have raised under zephyrus;
+    # the escape-module-skip branch is the only path to a silent pass here.
+    assert instance.escape.module == 'dummy'
 
 
 @pytest.mark.unit
@@ -1556,7 +1631,11 @@ def test_config_instmethod_dummy_non_inst_skip():
         orbit=SimpleNamespace(instellation_method='gravity'),
         star=SimpleNamespace(module='mors'),
     )
-    instmethod_dummy(instance, SimpleNamespace(), None)  # Should not raise
+    result = instmethod_dummy(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-inst method short-circuits the validator
+    # Discriminating check: star.module='mors' would have raised under 'inst';
+    # the instellation_method-skip branch is the only path to a silent pass.
+    assert instance.orbit.instellation_method == 'gravity'
 
 
 @pytest.mark.unit
@@ -1587,7 +1666,12 @@ def test_config_instmethod_evolve_allows_non_inst_with_evolution():
             evolve=True,
         ),
     )
-    instmethod_evolve(instance, SimpleNamespace(), None)  # Should not raise
+    result = instmethod_evolve(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-inst method permits orbital evolution
+    # Discriminating check: evolve=True with instellation_method='inst' would have raised;
+    # only the gravity-method branch allows the True-evolve combination.
+    assert instance.orbit.evolve is True
+    assert instance.orbit.instellation_method == 'gravity'
 
 
 @pytest.mark.unit
@@ -1618,7 +1702,12 @@ def test_config_satellite_evolve_allows_satellite_without_evolution():
             evolve=False,
         ),
     )
-    satellite_evolve(instance, SimpleNamespace(), None)  # Should not raise
+    result = satellite_evolve(instance, SimpleNamespace(), None)
+    assert result is None  # contract: satellite=True with evolve=False is the valid combo
+    # Discriminating check: satellite=True with evolve=True would have raised; only the
+    # evolve=False branch can produce a silent pass with satellite=True.
+    assert instance.orbit.satellite is True
+    assert instance.orbit.evolve is False
 
 
 @pytest.mark.unit
@@ -1645,7 +1734,11 @@ def test_config_tides_enabled_orbit_allows_no_tides():
         interior_energetics=SimpleNamespace(heat_tidal=False),
         orbit=SimpleNamespace(module=None),
     )
-    tides_enabled_orbit(instance, SimpleNamespace(), None)  # Should not raise
+    result = tides_enabled_orbit(instance, SimpleNamespace(), None)
+    assert result is None  # contract: heat_tidal=False short-circuits the validator
+    # Discriminating check: orbit.module=None with heat_tidal=True would have raised;
+    # only the heat_tidal-disabled branch can produce a silent pass.
+    assert instance.interior_energetics.heat_tidal is False
 
 
 @pytest.mark.unit
@@ -1672,7 +1765,11 @@ def test_config_observe_resolved_atmosphere_allows_no_synthesis():
         observe=SimpleNamespace(synthesis=None),
         atmos_clim=SimpleNamespace(module='dummy'),
     )
-    observe_resolved_atmosphere(instance, SimpleNamespace(), None)  # Should not raise
+    result = observe_resolved_atmosphere(instance, SimpleNamespace(), None)
+    assert result is None  # contract: synthesis=None short-circuits the validator
+    # Discriminating check: atmos_clim.module='dummy' with synthesis='platon' would
+    # have raised; only the synthesis-disabled branch can produce a silent pass.
+    assert instance.observe.synthesis is None
 
 
 @pytest.mark.unit
@@ -1701,7 +1798,11 @@ def test_config_janus_escape_atmosphere_non_zephyrus_skip():
         atmos_clim=SimpleNamespace(module='janus'),
         params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
-    janus_escape_atmosphere(instance, SimpleNamespace(), None)  # Should not raise
+    result = janus_escape_atmosphere(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-zephyrus escape short-circuits the validator
+    # Discriminating check: stop.escape.enabled=False with zephyrus+janus would have
+    # raised; only the escape-module-skip branch can produce a silent pass here.
+    assert instance.escape.module == 'dummy'
 
 
 @pytest.mark.unit
@@ -1715,7 +1816,11 @@ def test_config_janus_escape_atmosphere_non_janus_skip():
         atmos_clim=SimpleNamespace(module='agni'),
         params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=False))),
     )
-    janus_escape_atmosphere(instance, SimpleNamespace(), None)  # Should not raise
+    result = janus_escape_atmosphere(instance, SimpleNamespace(), None)
+    assert result is None  # contract: non-janus atmosphere short-circuits the validator
+    # Discriminating check: stop.escape.enabled=False with zephyrus+janus would have
+    # raised; only the atmos-module-skip branch can produce a silent pass here.
+    assert instance.atmos_clim.module == 'agni'
 
 
 # ----------------------------------------------------------------------

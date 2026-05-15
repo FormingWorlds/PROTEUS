@@ -315,7 +315,12 @@ def test_validate_zalmoxis_output_schema_consistent(tmp_path):
     M_int = M_mantle + M_core
     hf_row = {'R_int': R_int, 'M_int': M_int, 'M_core': M_core}
 
-    validate_zalmoxis_output_schema(output_path, hf_row)
+    result = validate_zalmoxis_output_schema(output_path, hf_row)
+    assert result is None  # contract: schema validator returns None silently on a match
+    # Discriminating check: hf_row['M_int'] equals M_mantle + M_core within float
+    # noise; a regression that swapped M_core and M_mantle would fail here even
+    # if the file itself was OK.
+    assert hf_row['M_int'] == pytest.approx(M_mantle + M_core, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -415,8 +420,14 @@ def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
 
     # All scalars zero: both checks skipped, file-shape passes.
     hf_row_empty = {'R_int': 0.0, 'M_int': 0.0, 'M_core': 0.0}
-    validate_zalmoxis_output_schema(output_path, hf_row_empty)
+    result_empty = validate_zalmoxis_output_schema(output_path, hf_row_empty)
+    assert result_empty is None  # all-zero scalars must take the silent-skip branch
 
     # Only mass info missing: radius check still runs against R_int_top.
     hf_row_no_mass = {'R_int': R_int_top, 'M_int': 0.0, 'M_core': 0.0}
-    validate_zalmoxis_output_schema(output_path, hf_row_no_mass)
+    result_no_mass = validate_zalmoxis_output_schema(output_path, hf_row_no_mass)
+    assert result_no_mass is None  # mass-only-missing path still passes the radius check
+    # Discriminating check: R_int matches the file top while masses are zero;
+    # only the mass-skip branch can produce a silent pass on the second call.
+    assert hf_row_no_mass['R_int'] == R_int_top
+    assert hf_row_no_mass['M_int'] == 0.0

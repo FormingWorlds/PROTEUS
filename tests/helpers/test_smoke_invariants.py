@@ -115,7 +115,11 @@ def test_assert_no_nan_inf_accepts_clean_row():
     """A fully-consistent synthetic row passes ``assert_no_nan_inf``
     without raising; pairs with the NaN / Inf flag tests below.
     """
-    assert_no_nan_inf(_good_row())
+    row = _good_row()
+    result = assert_no_nan_inf(row)
+    assert result is None  # contract: helper returns None silently on a clean row
+    # Discriminating check: every numeric column in the row is finite (no NaN/Inf).
+    assert all(math.isfinite(v) for v in row.values if isinstance(v, (int, float)))
 
 
 def test_assert_no_nan_inf_flags_nan():
@@ -147,7 +151,13 @@ def test_assert_temperatures_positive_accepts_positive():
     """All-positive temperatures in the synthetic row pass
     ``assert_temperatures_positive`` without raising.
     """
-    assert_temperatures_positive(_good_row())
+    row = _good_row()
+    result = assert_temperatures_positive(row)
+    assert result is None  # contract: helper returns None silently when T > 0
+    # Discriminating check: each required temperature column is strictly positive.
+    assert row['T_surf'] > 0.0
+    assert row['T_magma'] > 0.0
+    assert row['T_star'] > 0.0
 
 
 def test_assert_temperatures_positive_flags_zero():
@@ -178,7 +188,12 @@ def test_assert_temperatures_positive_skips_module_specific_zeros():
     row['T_solvus'] = 0.0
     row['T_core'] = 0.0
     row['T_cmb_initial'] = 0.0
-    assert_temperatures_positive(row)  # must not raise
+    result = assert_temperatures_positive(row)
+    assert result is None  # contract: optional-zero T columns must not trip the check
+    # Discriminating check: the required T columns are still positive (so we know
+    # the silent pass came from the optional-skip branch, not from a global bypass).
+    assert row['T_surf'] > 0.0
+    assert row['T_magma'] > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +203,9 @@ def test_assert_pressures_non_negative_accepts_zero():
     """P_surf = 0 is legitimate (empty atmosphere); the check is non-negative."""
     row = _good_row()
     row['P_surf'] = 0.0
-    assert_pressures_non_negative(row)
+    result = assert_pressures_non_negative(row)
+    assert result is None  # contract: P=0 is on the accepted side of >= 0
+    assert row['P_surf'] == 0.0  # the zero value is preserved (no clamp/replace)
 
 
 def test_assert_pressures_non_negative_flags_negative_pressure():
@@ -208,7 +225,15 @@ def test_per_element_mass_closure_accepts_consistent_row():
     """A fully-consistent row where each ``<E>_kg_total = atm + solid + liquid``
     passes the closure check without raising.
     """
-    assert_per_element_mass_closure(_good_row())
+    row = _good_row()
+    result = assert_per_element_mass_closure(row)
+    assert result is None  # contract: helper returns None silently on a closed row
+    # Discriminating closure check: per-element <E>_kg_total = atm + liquid + solid
+    # within float noise; pin the H column directly so the closure invariant is
+    # asserted by the test, not just by the helper.
+    for e in ('H', 'O', 'C'):
+        partition_sum = row[f'{e}_kg_atm'] + row[f'{e}_kg_liquid'] + row[f'{e}_kg_solid']
+        assert math.isclose(row[f'{e}_kg_total'], partition_sum, rel_tol=1e-9)
 
 
 def test_per_element_mass_closure_flags_dropped_partition():
@@ -224,7 +249,13 @@ def test_per_element_mass_closure_tolerates_float_noise():
     row = _good_row()
     # 1e-9 relative drift is well below rel_tol = 1e-6
     row['H_kg_total'] = row['H_kg_total'] * (1.0 + 1e-9)
-    assert_per_element_mass_closure(row)
+    result = assert_per_element_mass_closure(row)
+    assert result is None  # contract: drift below rel_tol must be absorbed silently
+    # Discriminating check: the drift is non-zero (otherwise the test would be
+    # vacuous) but well below the helper's rel_tol = 1e-6 threshold.
+    partition_sum = row['H_kg_atm'] + row['H_kg_liquid'] + row['H_kg_solid']
+    drift = abs(row['H_kg_total'] - partition_sum) / partition_sum
+    assert 0.0 < drift < 1e-6
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +265,13 @@ def test_per_species_mass_closure_accepts_consistent_row():
     """A fully-consistent row where each species' ``kg_total = kg_atm
     + kg_liquid + kg_solid`` passes the closure check.
     """
-    assert_per_species_mass_closure(_good_row())
+    row = _good_row()
+    result = assert_per_species_mass_closure(row)
+    assert result is None  # contract: helper returns None silently on a closed row
+    # Discriminating species-level closure: pin H2O so the invariant is asserted
+    # by the test rather than only by the helper.
+    h2o_sum = row['H2O_kg_atm'] + row['H2O_kg_liquid'] + row['H2O_kg_solid']
+    assert math.isclose(row['H2O_kg_total'], h2o_sum, rel_tol=1e-9)
 
 
 def test_per_species_mass_closure_flags_inconsistent_species():
@@ -254,7 +291,13 @@ def test_atmosphere_element_sum_matches_M_atm_accepts_consistent_row():
     """A consistent row where ``sum(<E>_kg_atm) == M_atm`` passes the
     cross-tree check without raising.
     """
-    assert_atmosphere_element_sum_matches_M_atm(_good_row())
+    row = _good_row()
+    result = assert_atmosphere_element_sum_matches_M_atm(row)
+    assert result is None  # contract: helper returns None silently when sums match
+    # Discriminating check: the per-element atmospheric sum equals M_atm within
+    # float noise; pin the invariant in the test, not only in the helper.
+    elem_sum = row['H_kg_atm'] + row['O_kg_atm'] + row['C_kg_atm']
+    assert math.isclose(elem_sum, row['M_atm'], rel_tol=1e-9)
 
 
 def test_atmosphere_element_sum_matches_M_atm_flags_drift():
@@ -270,7 +313,13 @@ def test_atmosphere_element_sum_matches_M_atm_skips_when_M_atm_zero():
     row = _good_row()
     row['M_atm'] = 0.0
     # element sums are non-zero but the function returns early
-    assert_atmosphere_element_sum_matches_M_atm(row)
+    result = assert_atmosphere_element_sum_matches_M_atm(row)
+    assert result is None  # contract: M_atm=0 short-circuits the cross-tree check
+    # Discriminating check: the per-element sum is non-zero, so the silent pass
+    # came from the M_atm=0 skip branch, not from a zero-sum coincidence.
+    elem_sum = row['H_kg_atm'] + row['O_kg_atm'] + row['C_kg_atm']
+    assert elem_sum > 0.0
+    assert row['M_atm'] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +330,15 @@ def test_element_sum_matches_species_sum_accepts_consistent_row():
     the species-tree atmospheric sum (the two independent
     representations agree) passes the cross-tree check.
     """
-    assert_element_sum_matches_species_sum(_good_row())
+    row = _good_row()
+    result = assert_element_sum_matches_species_sum(row)
+    assert result is None  # contract: helper returns None silently when trees agree
+    # Discriminating check: the two independent representations agree within
+    # float noise. Pin the invariant directly so the test catches a regression
+    # that loosens the helper's tolerance.
+    elem_sum = row['H_kg_atm'] + row['O_kg_atm'] + row['C_kg_atm']
+    species_sum = row['H2O_kg_atm'] + row['CO2_kg_atm'] + row['N2_kg_atm']
+    assert math.isclose(elem_sum, species_sum, rel_tol=1e-9)
 
 
 def test_element_sum_matches_species_sum_flags_distribution_bug():
@@ -295,7 +352,11 @@ def test_element_sum_matches_species_sum_flags_distribution_bug():
 def test_element_sum_matches_species_sum_skips_when_both_zero():
     """No volatile inventory: both sums are 0, function returns early."""
     row = pd.Series({})
-    assert_element_sum_matches_species_sum(row)
+    result = assert_element_sum_matches_species_sum(row)
+    assert result is None  # contract: empty row short-circuits the cross-tree check
+    # Discriminating check: the row genuinely has no kg-columns, so the silent
+    # pass came from the zero-inventory skip branch.
+    assert not any(col.endswith('_kg_atm') for col in row.index)
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +367,13 @@ def test_M_atm_le_M_planet_accepts_realistic_row():
     ``assert_M_atm_le_M_planet`` without raising; pairs with the
     violation test below.
     """
-    assert_M_atm_le_M_planet(_good_row())
+    row = _good_row()
+    result = assert_M_atm_le_M_planet(row)
+    assert result is None  # contract: helper returns None silently when M_atm <= M_planet
+    # Discriminating check: M_atm is well below M_planet (1e21 vs 6e24 ratio),
+    # so the silent pass is not from a coincidental zero in either side.
+    assert row['M_atm'] < row['M_planet']
+    assert row['M_atm'] / row['M_planet'] < 1e-2  # << 1, Earth-like inventory
 
 
 def test_M_atm_le_M_planet_flags_violation():
@@ -321,7 +388,12 @@ def test_M_atm_le_M_planet_admits_float_rounding():
     """A drift at the rel_tol boundary must NOT fire."""
     row = _good_row()
     row['M_atm'] = row['M_planet'] * (1.0 + 5e-7)  # below 1e-6 tol
-    assert_M_atm_le_M_planet(row)
+    result = assert_M_atm_le_M_planet(row)
+    assert result is None  # contract: drift below rel_tol must be absorbed silently
+    # Discriminating check: M_atm strictly exceeds M_planet (so the test would
+    # be vacuous without the tolerance), but only by less than the 1e-6 threshold.
+    drift = (row['M_atm'] - row['M_planet']) / row['M_planet']
+    assert 0.0 < drift < 1e-6
 
 
 def test_M_atm_le_M_planet_skips_when_M_planet_zero():
@@ -331,7 +403,12 @@ def test_M_atm_le_M_planet_skips_when_M_planet_zero():
     """
     row = _good_row()
     row['M_planet'] = 0.0
-    assert_M_atm_le_M_planet(row)
+    result = assert_M_atm_le_M_planet(row)
+    assert result is None  # contract: M_planet=0 short-circuits the bound check
+    # Discriminating check: M_atm is non-zero, so without the M_planet=0 skip
+    # branch the helper would otherwise raise on this row.
+    assert row['M_atm'] > 0.0
+    assert row['M_planet'] == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +418,12 @@ def test_M_planet_matches_M_int_plus_M_ele_accepts_consistent_row():
     """A consistent row where ``M_planet == M_int + M_ele`` passes the
     interior-vs-element bookkeeping check.
     """
-    assert_M_planet_matches_M_int_plus_M_ele(_good_row())
+    row = _good_row()
+    result = assert_M_planet_matches_M_int_plus_M_ele(row)
+    assert result is None  # contract: helper returns None silently when bookkeeping matches
+    # Discriminating check: pin the additivity invariant directly so the test
+    # catches a regression that loosens the helper's tolerance.
+    assert math.isclose(row['M_planet'], row['M_int'] + row['M_ele'], rel_tol=1e-9)
 
 
 def test_M_planet_matches_M_int_plus_M_ele_flags_disagreement():
@@ -362,8 +444,14 @@ def test_escape_bound_accepts_realistic_rate():
     within the 10*M_atm cap and passes the bound check.
     """
     row = _good_row()
+    dt_s = 3.156e7  # one Julian year
     # 1 yr of escape at 1e3 kg/s = ~3.15e10 kg, well under 10x M_atm
-    assert_escape_within_atmospheric_budget(row, dt_s=3.156e7)
+    result = assert_escape_within_atmospheric_budget(row, dt_s=dt_s)
+    assert result is None  # contract: helper returns None silently on a bounded rate
+    # Discriminating check: the integrated mass loss is far below 10*M_atm,
+    # so the silent pass came from the bounded-rate branch.
+    escape_over_dt = row['esc_rate_total'] * dt_s
+    assert escape_over_dt < 10.0 * row['M_atm']
 
 
 def test_escape_bound_flags_unphysical_rate():
@@ -388,7 +476,13 @@ def test_escape_bound_skips_when_dt_unknown():
     """dt_s = None falls back to finiteness/sign only, not bound."""
     row = _good_row()
     row['esc_rate_total'] = row['M_atm'] * 1e6  # huge but no dt provided
-    assert_escape_within_atmospheric_budget(row, dt_s=None)
+    result = assert_escape_within_atmospheric_budget(row, dt_s=None)
+    assert result is None  # contract: dt=None falls back to finiteness/sign only
+    # Discriminating check: the rate is positive and finite (the only contract
+    # the helper enforces without dt), and the magnitude would have raised under
+    # any dt > 0; only the dt=None branch produces a silent pass.
+    assert row['esc_rate_total'] > 0.0
+    assert math.isfinite(row['esc_rate_total'])
 
 
 def test_escape_bound_flags_nonfinite_rate():
@@ -414,7 +508,12 @@ def test_composite_check_accepts_clean_dataframe():
     df = pd.DataFrame([row.copy(), row.copy()])
     df.loc[0, 'Time'] = 0.0
     df.loc[1, 'Time'] = 1000.0
-    assert_smoke_conservation_invariants(df)
+    result = assert_smoke_conservation_invariants(df)
+    assert result is None  # contract: composite check returns None silently when all pass
+    # Discriminating check: dt is computed (two rows, distinct Time values), so the
+    # silent pass exercised the dt-dependent escape bound rather than skipping it.
+    assert len(df) == 2
+    assert df['Time'].iloc[1] - df['Time'].iloc[0] == pytest.approx(1000.0, rel=1e-12)
 
 
 def test_composite_check_rejects_empty_dataframe():
@@ -430,7 +529,11 @@ def test_composite_check_falls_back_when_single_row():
     cleanly. Other invariants still run.
     """
     df = pd.DataFrame([_good_row()])
-    assert_smoke_conservation_invariants(df)
+    result = assert_smoke_conservation_invariants(df)
+    assert result is None  # contract: single-row dt-skip is silent
+    # Discriminating check: the DataFrame has exactly one row, so only the
+    # single-row fallback branch could produce a silent pass.
+    assert len(df) == 1
 
 
 def test_composite_check_propagates_first_failure():
@@ -486,7 +589,11 @@ def test_all_zero_helpfile_does_not_false_alarm():
         }
     )
     df = pd.DataFrame([row])
-    assert_smoke_conservation_invariants(df)
+    result = assert_smoke_conservation_invariants(df)
+    assert result is None  # contract: all-zero pre-IC state must not false-alarm
+    # Discriminating check: every mass column is zero, so only the early-return
+    # zero-inventory branches can produce a silent pass.
+    assert (df[['M_planet', 'M_int', 'M_ele', 'M_atm']] == 0.0).all().all()
 
 
 def test_zero_volatile_planet_passes_per_element_closure():
@@ -496,7 +603,12 @@ def test_zero_volatile_planet_passes_per_element_closure():
     for e in ('H', 'O', 'C'):
         for k in ('atm', 'solid', 'liquid', 'total'):
             row[f'{e}_kg_{k}'] = 0.0
-    assert_per_element_mass_closure(row)
+    result = assert_per_element_mass_closure(row)
+    assert result is None  # contract: all-zero element columns must pass via abs_tol floor
+    # Discriminating check: every H/O/C column is zero, so only the abs_tol
+    # branch (not rel_tol) can produce a silent pass.
+    for e in ('H', 'O', 'C'):
+        assert row[f'{e}_kg_total'] == 0.0
 
 
 def test_string_columns_in_helpfile_are_skipped():
@@ -504,7 +616,11 @@ def test_string_columns_in_helpfile_are_skipped():
     (some helpfile fields like config_path are strings)."""
     row = _good_row()
     row['config_path'] = '/tmp/some/path'  # noqa: S108  test-only path
-    assert_no_nan_inf(row)
+    result = assert_no_nan_inf(row)
+    assert result is None  # contract: helper returns None silently with a string column
+    # Discriminating check: the string column is genuinely present, so the silent
+    # pass came from the non-numeric-skip branch.
+    assert isinstance(row['config_path'], str)
 
 
 def test_uses_canonical_constant_for_year_length():

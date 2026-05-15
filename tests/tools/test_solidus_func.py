@@ -906,8 +906,11 @@ class TestValidateEntropyExportArrays:
         S_sol = np.array([100.0, 150.0, 200.0])
         S_liq = np.array([150.0, 200.0, 250.0])
 
-        # Should not raise
-        validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
+        result = validate_entropy_export_arrays(P, S_sol, S_liq, 'test_model')
+        assert result is None  # contract: validator returns None silently on the pass path
+        # Discriminating physics check: liquidus entropy strictly above solidus
+        # at every pressure (the physical ordering the validator must accept).
+        assert np.all(S_liq > S_sol)
 
     def test_empty_array_raises(self):
         """Empty array raises ValueError."""

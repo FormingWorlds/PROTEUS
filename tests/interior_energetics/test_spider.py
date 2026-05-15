@@ -820,7 +820,12 @@ def test_check_eos_range_high_pressure(spider_json_dir, caplog):
 @pytest.mark.unit
 def test_check_eos_range_missing_files(spider_json_dir):
     """Missing EOS files should return silently (non-critical check)."""
-    _check_eos_table_range(spider_json_dir, None, 500e9)  # No crash
+    # Discriminating pre-check: the EOS files are genuinely absent, so the
+    # silent pass exercised the missing-files branch (not a noop wrapper).
+    assert not os.path.exists(os.path.join(spider_json_dir, 'density_solid.dat'))
+    assert not os.path.exists(os.path.join(spider_json_dir, 'density_melt.dat'))
+    result = _check_eos_table_range(spider_json_dir, None, 500e9)
+    assert result is None  # contract: missing-files path returns None silently
 
 
 @pytest.mark.unit
@@ -846,7 +851,12 @@ def test_check_eos_range_parse_failure(spider_json_dir):
     with open(os.path.join(eos_dir, 'density_melt.dat'), 'w') as f:
         f.write('also garbage\n')
     # Should not crash — hits the except (ValueError, IndexError, IOError) path
-    _check_eos_table_range(eos_dir, None, 500e9)
+    result = _check_eos_table_range(eos_dir, None, 500e9)
+    assert result is None  # contract: parse-failure path returns None silently
+    # Discriminating check: the EOS files exist but their content is unparseable;
+    # only the except-branch can produce a silent pass on this row.
+    assert os.path.exists(os.path.join(eos_dir, 'density_solid.dat'))
+    assert os.path.exists(os.path.join(eos_dir, 'density_melt.dat'))
 
 
 # ============================================================================

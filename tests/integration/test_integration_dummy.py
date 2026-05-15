@@ -52,6 +52,11 @@ def test_dummy_helpfile(dummy_run):
     hf_all = hf_all.drop(columns=NEGLECT, errors='ignore')
     hf_ref = hf_ref.drop(columns=NEGLECT, errors='ignore')
 
+    # Pre-check the intersection produced real data; a regression that returns
+    # empty frames would have let the assert_frame_equal below pass vacuously.
+    assert len(hf_all) > 0
+    assert len(hf_all.columns) > 0
+
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 

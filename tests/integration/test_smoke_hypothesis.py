@@ -143,6 +143,14 @@ def test_smoke_conservation_invariants_hypothesis(params):
 
         runner.start(resume=False, offline=True)
 
+        # Discriminating pre-checks: the run produced helpfile rows AND its final
+        # state carries the overrides the strategy generated. A regression that
+        # exited the loop before writing any row, or one that lost the overrides
+        # at IC, would have let the conservation helper return early and pass
+        # vacuously.
+        assert len(runner.hf_all) > 0
+        assert runner.config.planet.mass_tot == pytest.approx(m_planet_mearth, rel=1e-12)
+
         # Single composite call: NaN/Inf, T > 0, P >= 0, per-element +
         # per-species mass closure, M_atm <= M_planet, M_planet ≈ M_int
         # + M_ele, escape bounded by atmospheric mass.
@@ -199,5 +207,12 @@ def test_smoke_conservation_invariants_named_edge_cases(
         runner.config.params.out.archive_mod = 'none'
 
         runner.start(resume=False, offline=True)
+
+        # Discriminating pre-checks: the run produced helpfile rows AND the
+        # eccentricity override survived to the final config. A regression that
+        # exited the loop early, or one that lost the override at IC, would
+        # have let the conservation helper return early and pass vacuously.
+        assert len(runner.hf_all) > 0
+        assert runner.config.orbit.eccentricity == pytest.approx(eccentricity, abs=1e-12)
 
         assert_smoke_conservation_invariants(runner.hf_all)

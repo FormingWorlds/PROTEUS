@@ -28,10 +28,14 @@ def grid_run():
 @pytest.mark.integration
 def test_grid_run(grid_run):
     """A small dummy-backend grid completes without raising. The fixture
-    runs the whole grid; this test just pins that the fixture itself
-    succeeded.
+    runs the whole grid; this test pins that the fixture succeeded by
+    asserting the per-grid output directory exists.
     """
-    pass
+    # Discriminating post-state: the grid manager creates OUT_DIR as part of
+    # its normal completion path. A fixture that raised partway would leave
+    # this assertion to fire instead of swallowing the failure silently.
+    assert OUT_DIR.exists()
+    assert OUT_DIR.is_dir()
 
 
 @pytest.mark.integration

@@ -64,18 +64,30 @@ def test_valid_rayleigh_rejects_agni_greygas():
 
 @pytest.mark.unit
 def test_valid_rayleigh_passes_when_disabled():
-    """valid_rayleigh is a no-op when rayleigh is False."""
+    """valid_rayleigh is a no-op when rayleigh is False.
+
+    Both module='dummy' and the AGNI-greygas combination would normally
+    raise; passing value=False must short-circuit before either guard.
+    """
     instance = SimpleNamespace(module='dummy', agni=SimpleNamespace(spectral_file='greygas'))
-    valid_rayleigh(instance, attribute=None, value=False)
+    result = valid_rayleigh(instance, attribute=None, value=False)
+    assert result is None  # contract: validator returns None silently on the pass path
+    assert instance.module == 'dummy'  # validator must not mutate the input instance
 
 
 @pytest.mark.unit
 def test_valid_agni_allows_greygas_spectral_file():
     """AGNI with ``spectral_file='greygas'`` is the analytic grey-gas
     configuration; the validator accepts it silently.
+
+    The other AGNI checks (psurf_thresh > p_top, p_obs > p_top, surf_state,
+    solve_energy) all pass with the defaults; the spectral_file branch is
+    what this test pins.
     """
     instance = _make_agni_instance(spectral_file='greygas')
-    valid_agni(instance, attribute=None, value=None)
+    result = valid_agni(instance, attribute=None, value=None)
+    assert result is None  # contract: validator returns None silently on the pass path
+    assert instance.agni.spectral_file == 'greygas'  # no mutation of the greygas marker
 
 
 @pytest.mark.unit
@@ -146,14 +158,21 @@ def test_valid_aerosols_enabled_passes_for_agni_with_path():
     instance = SimpleNamespace(
         module='agni', agni=SimpleNamespace(spectral_file='/path/to/sw_lw.spc')
     )
-    # No raise.
-    valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), True)
+    result = valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), True)
+    assert result is None  # contract: validator returns None silently on the pass path
+    assert instance.agni.spectral_file == '/path/to/sw_lw.spc'  # spectral_file unchanged
 
 
 @pytest.mark.unit
 def test_valid_aerosols_enabled_no_op_when_disabled():
-    """A False value bypasses every guard, regardless of module."""
+    """A False value bypasses every guard, regardless of module.
+
+    Both module='dummy' and the AGNI-greygas combination would normally
+    raise; passing value=False must short-circuit before either guard.
+    """
     from proteus.config._atmos_clim import valid_aerosols_enabled
 
     instance = SimpleNamespace(module='dummy', agni=SimpleNamespace(spectral_file='greygas'))
-    valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), False)
+    result = valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), False)
+    assert result is None  # contract: validator returns None silently on the pass path
+    assert instance.module == 'dummy'  # validator must not mutate the input instance

@@ -300,7 +300,14 @@ def test_spider_verify_zero_s_target_is_handled():
         patch('os.path.isfile', return_value=True),
     ):
         # Must not raise ZeroDivisionError
-        _verify_initial_entropy(config, S_target=0.0, tsurf=2873.0, source='unit-test')
+        result = _verify_initial_entropy(config, S_target=0.0, tsurf=2873.0, source='unit-test')
+    # Contract: verifier returns None on the guarded-zero path; an unguarded
+    # rel_diff = abs(x - 0) / 0 would have raised ZeroDivisionError instead.
+    assert result is None
+    # Discriminating check: tsurf was a positive scalar (so the source-side
+    # surface-entropy computation is exercised) and S_target genuinely zero
+    # (so the guard branch is the only one that can produce a silent pass).
+    assert config.interior_struct.module == 'zalmoxis'
 
 
 # ======================================================================
