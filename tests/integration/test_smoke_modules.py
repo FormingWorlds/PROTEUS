@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from _smoke_invariants import assert_smoke_conservation_invariants
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
@@ -120,6 +121,11 @@ def test_smoke_escape_dummy_atmos():
             # Validate time progressed
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
+
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
 
         finally:
             # Cleanup handled by tempfile context manager
@@ -223,6 +229,11 @@ def test_smoke_star_instellation():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
+
         finally:
             # Cleanup handled by tempfile context manager
             pass
@@ -319,6 +330,11 @@ def test_smoke_orbit_heat_tidaling():
             # Validate time progressed
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
+
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
 
         finally:
             # Cleanup handled by tempfile context manager
@@ -425,6 +441,11 @@ def test_smoke_outgas_atmos_volatiles():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
+
         finally:
             # Cleanup handled by tempfile context manager
             pass
@@ -525,6 +546,11 @@ def test_smoke_dummy_full_chain():
             # Validate time progressed
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
+
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
 
         finally:
             # Cleanup handled by tempfile context manager
