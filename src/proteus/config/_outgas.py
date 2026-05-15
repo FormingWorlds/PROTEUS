@@ -156,7 +156,7 @@ class Outgas:
     """
 
     module: str = field(
-        default='atmodeller', validator=validators.in_(('calliope', 'atmodeller', 'dummy'))
+        default='calliope', validator=validators.in_(('calliope', 'atmodeller', 'dummy'))
     )
     fO2_shift_IW: float = field(default=4.0)
 

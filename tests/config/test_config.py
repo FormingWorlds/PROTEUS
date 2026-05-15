@@ -97,11 +97,17 @@ def test_auto_output_path_resolved():
 
 
 @pytest.mark.unit
-@pytest.mark.skip(
-    reason='FIXME: ValueError raised against input/minimal.toml in CI container; the file needs a refresh for the post-merge config schema. Tracked in claude-config/memory for the test-rework phase.'
-)
 def test_factory_defaults_from_minimal_config():
-    """Config sections omitted from TOML use factory defaults."""
+    """Config sections omitted from TOML use factory defaults.
+
+    Pins the per-module default backend so a downstream schema change cannot
+    silently flip a default and corrupt CI runs that lack the optional
+    backend's package. The most recent regression of this kind: the
+    outgas.module default used to be "atmodeller" while atmodeller is not
+    in the PROTEUS dependency set; CI without atmodeller could not load
+    minimal.toml because check_module_dependencies tried to import the
+    missing package.
+    """
     from proteus.config import read_config_object
 
     cfg = read_config_object(PROTEUS_ROOT / 'input' / 'minimal.toml')
@@ -113,6 +119,11 @@ def test_factory_defaults_from_minimal_config():
     assert cfg.interior_energetics.module == 'aragog'
     assert cfg.star.module == 'mors'
     assert cfg.atmos_clim.module == 'agni'
+    # outgas.module default must be a backend whose package is in the
+    # PROTEUS hard-dependency set. calliope is hard-pinned in
+    # pyproject.toml; atmodeller is not. The default must be calliope so
+    # any environment that has PROTEUS installed can load minimal.toml.
+    assert cfg.outgas.module == 'calliope'
 
 
 @pytest.mark.unit
