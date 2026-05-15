@@ -15,6 +15,8 @@ import pytest
 
 import proteus.utils.terminate as terminate
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _cfg(**kwargs: Any) -> Any:
     """Build a minimal config-like namespace with defaults and overrides."""

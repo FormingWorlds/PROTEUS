@@ -8,6 +8,8 @@ import pytest
 
 from proteus.config._atmos_clim import valid_agni, valid_rayleigh
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_agni_instance(**kwargs):
     """Build a stand-in for the AtmosClim attrs instance used by valid_agni.

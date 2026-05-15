@@ -26,6 +26,9 @@ from proteus.outgas.calliope import calc_surface_pressures
 from proteus.utils.constants import element_list, gas_list, vol_list
 from proteus.utils.coupler import GetHelpfileKeys
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 logging.getLogger('calliope').setLevel(logging.WARNING)
 
 

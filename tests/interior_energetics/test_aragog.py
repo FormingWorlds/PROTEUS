@@ -21,6 +21,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silicate'):
     """Create a mock config for AragogRunner.setup_solver tests."""

@@ -14,6 +14,8 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 from proteus.config import Config
 
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
+
 
 @pytest.mark.smoke
 def test_proteus_dummy_init():

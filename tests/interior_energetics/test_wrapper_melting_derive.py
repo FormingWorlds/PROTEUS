@@ -23,6 +23,8 @@ from proteus.interior_energetics.wrapper import (
     _override_melting_curves_from_pt,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _write_synthetic_ps_phase_table(
     path: Path,

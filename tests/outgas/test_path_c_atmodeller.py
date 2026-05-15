@@ -35,6 +35,9 @@ pytest.importorskip(
 
 from proteus.utils.constants import element_list, gas_list  # noqa: E402
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 logging.getLogger('atmodeller').setLevel(logging.WARNING)
 
 

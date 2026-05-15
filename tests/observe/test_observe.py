@@ -36,6 +36,8 @@ from proteus.observe.common import (
     read_transit,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_get_transit_fpath_outgas():

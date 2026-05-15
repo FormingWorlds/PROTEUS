@@ -29,6 +29,8 @@ from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
 
 @pytest.mark.integration
 def test_smoke_zalmoxis_spider_coupling():

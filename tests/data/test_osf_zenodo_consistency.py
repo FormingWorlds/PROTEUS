@@ -27,6 +27,10 @@ import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Optional
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 # Set up environment before loading module
 os.environ.setdefault('FWL_DATA', str(Path.home() / '.fwl_data_test'))

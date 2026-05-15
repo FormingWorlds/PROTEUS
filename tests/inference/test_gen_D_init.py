@@ -17,6 +17,8 @@ import torch
 
 import proteus.inference.gen_D_init as init_mod
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_create_init_rejects_small_sample_count():

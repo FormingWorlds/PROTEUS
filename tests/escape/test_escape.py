@@ -29,6 +29,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # =======================================================================================
 # SECTION: run_escape() — Generic escape orchestrator
 # =======================================================================================

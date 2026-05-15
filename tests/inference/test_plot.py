@@ -17,6 +17,8 @@ import toml
 
 import proteus.inference.plot as plot_mod
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_plots_perf_timeline_BO(tmp_path):

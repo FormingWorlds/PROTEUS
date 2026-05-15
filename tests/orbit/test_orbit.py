@@ -11,6 +11,8 @@ import pytest
 from proteus.interior_energetics.common import Interior_t
 from proteus.orbit.dummy import run_dummy_orbit
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_config(phi_tide: str, h_tide: float, imk2: float) -> Any:
     dummy = SimpleNamespace(Phi_tide=phi_tide, H_tide=h_tide, Imk2=imk2)

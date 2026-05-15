@@ -42,6 +42,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # ======================================================================
 # SPIDER path: _verify_initial_entropy in common.py
 # ======================================================================

@@ -31,6 +31,8 @@ from proteus.interior_energetics.wrapper import (
     update_structure_from_interior,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _ns_prevent_warming(prevent_warming: bool, module: str = 'aragog'):
     """Build the minimal config namespace _prevent_warming_clamp_active reads.

@@ -23,6 +23,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _load_solidus_func_module():
     """Load ``tools/solidus_func.py`` as a module without sys.path manipulation.

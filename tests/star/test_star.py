@@ -15,6 +15,8 @@ import pytest
 import proteus.star.dummy as star
 from proteus.utils.constants import AU, R_sun, Teff_sun
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _cfg(*, teff: float = 5778.0, radius: float = 1.0, calculate_radius: bool = False) -> Any:
     """Build a minimal config for star tests."""

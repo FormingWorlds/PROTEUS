@@ -43,6 +43,9 @@ from proteus.interior_energetics.spider import (
     remap_entropy_for_new_mesh,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # Path to SPIDER output used for testing
 SPIDER_JSON = os.path.join(
     os.path.dirname(__file__),

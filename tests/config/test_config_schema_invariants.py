@@ -50,6 +50,9 @@ from proteus.config._config import (
     satellite_evolve,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # This file deliberately omits a module-level `pytestmark` because it
 # mixes two tiers: the explicit per-validator tests are `@pytest.mark.unit`
 # and the exhaustive cross-product is `@pytest.mark.slow`. A module-level

@@ -50,6 +50,8 @@ importlib.reload(_vulcan_mod)  # Force re-import with the real vulcan mock
 
 from proteus.atmos_chem.vulcan import run_vulcan  # noqa: E402
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_mock_config(*, network='CHO', photo_on=True, atmos_module='agni'):
     """Helper to create a realistic mock config for VULCAN tests.

@@ -35,6 +35,8 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 from proteus.utils.constants import M_earth
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
 
 @pytest.mark.integration
 def test_structure_update_consistency():

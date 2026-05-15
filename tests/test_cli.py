@@ -9,6 +9,9 @@ from click.testing import CliRunner
 from proteus import __version__ as proteus_version
 from proteus import cli
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 runner = CliRunner()
 
 

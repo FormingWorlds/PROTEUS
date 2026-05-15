@@ -29,6 +29,9 @@ from proteus.interior_energetics.dummy import calculate_simple_mantle_mass, run_
 from proteus.interior_energetics.wrapper import determine_interior_radius, update_planet_mass
 from proteus.utils.constants import M_earth, R_earth, element_list
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # ============================================================================
 # Test calculate_simple_mantle_mass
 # ============================================================================

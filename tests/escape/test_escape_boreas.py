@@ -9,6 +9,9 @@ from proteus.config import read_config_object
 from proteus.escape.boreas import BOREAS_GASES, _set_boreas_params
 from proteus.utils.constants import AU, M_earth, R_earth, element_list
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 log = logging.getLogger(__name__)
 
 

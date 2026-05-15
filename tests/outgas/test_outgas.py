@@ -41,6 +41,8 @@ from proteus.outgas.wrapper import (
 )
 from proteus.utils.constants import element_list, gas_list
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_calc_target_elemental_inventories_calliope_enabled():

@@ -18,6 +18,8 @@ import torch
 
 import proteus.inference.objective as objective_mod
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_update_toml_updates_nested_keys(tmp_path):

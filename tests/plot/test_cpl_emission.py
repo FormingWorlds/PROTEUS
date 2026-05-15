@@ -9,6 +9,8 @@ import pytest
 
 import proteus.plot.cpl_emission as emission_mod
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 class _FakeDataset(dict):
     def close(self):

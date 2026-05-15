@@ -15,6 +15,8 @@ import torch
 
 import proteus.inference.async_BO as async_mod
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 class _DummyLock:
     def __enter__(self):

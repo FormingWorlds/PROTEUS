@@ -7,6 +7,8 @@ import pytest
 
 from proteus.utils.visual import cmf, interp_spec
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_interp_spec_single_point_returns_constant():

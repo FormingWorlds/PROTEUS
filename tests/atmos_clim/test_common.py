@@ -30,6 +30,8 @@ from proteus.atmos_clim.common import (
     read_ncdf_profile,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_ncdf_flag_to_bool():

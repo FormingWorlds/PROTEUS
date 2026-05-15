@@ -17,6 +17,8 @@ from proteus.doctor import (
     doctor_entry,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 class DummyPackage(BasePackage):
     def __init__(self, name: str, current: str, latest: str):

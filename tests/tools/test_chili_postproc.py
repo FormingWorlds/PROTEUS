@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _load_chili_postproc_module():
     """Load ``tools/chili_postproc.py`` as a module for direct function tests."""

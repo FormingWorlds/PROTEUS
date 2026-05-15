@@ -5,6 +5,8 @@ import pytest
 
 from proteus.utils.plot import _preset_colours, get_colour, latexify
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_get_colour():

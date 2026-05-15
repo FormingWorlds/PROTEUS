@@ -13,6 +13,9 @@ import pytest
 
 from proteus import Proteus
 
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
+
+
 RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
 

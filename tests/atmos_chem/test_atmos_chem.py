@@ -46,6 +46,8 @@ sys.modules['proteus.atmos_chem.vulcan'] = mock_vulcan_module
 from proteus.atmos_chem.common import read_result  # noqa: E402
 from proteus.atmos_chem.wrapper import run_chemistry  # noqa: E402
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_read_result_disabled_module():

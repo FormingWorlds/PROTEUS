@@ -482,6 +482,8 @@ from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_installation_md_does_not_clone_aragog_or_zalmoxis():

@@ -32,6 +32,9 @@ from proteus.config._outgas import Calliope
 from proteus.config._params import max_bigger_than_min, valid_mod, valid_path
 from proteus.config._planet import GasPrs, Planet
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 PATHS = chain(
     (PROTEUS_ROOT / 'input').glob('*.toml'),
 )

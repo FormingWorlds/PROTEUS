@@ -16,6 +16,9 @@ from proteus.plot.cpl_atmosphere_cbar import plot_atmosphere_cbar_entry
 from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
+
 out_dir = PROTEUS_ROOT / 'output' / 'dummy_agni'
 ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy_agni'
 config_path = PROTEUS_ROOT / 'tests' / 'integration' / 'dummy_agni.toml'

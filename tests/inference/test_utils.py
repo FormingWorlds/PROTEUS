@@ -17,6 +17,8 @@ import torch
 
 import proteus.inference.utils as utils_mod
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_save_dataset_csv_validates_input_shapes(tmp_path):

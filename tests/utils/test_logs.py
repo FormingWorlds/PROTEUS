@@ -24,6 +24,8 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 class TestStreamToLogger:
     """Test suite for StreamToLogger stream-to-logger redirection.

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 class TestGlobalMiscibilityConfig:

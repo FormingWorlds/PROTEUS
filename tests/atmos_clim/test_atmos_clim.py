@@ -33,6 +33,9 @@ import pytest
 
 from proteus.utils.constants import const_R, const_sigma
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # =======================================================================================
 # SECTION: RunDummyAtm() — Fixed surface temperature mode
 # =======================================================================================

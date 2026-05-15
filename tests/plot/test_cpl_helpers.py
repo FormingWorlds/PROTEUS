@@ -9,6 +9,8 @@ from helpers import PROTEUS_ROOT
 from proteus.config import Config
 from proteus.plot._cpl_helpers import get_handler_from_argv
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_get_handler_from_argv():

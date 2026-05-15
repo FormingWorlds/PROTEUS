@@ -22,6 +22,8 @@ import pytest
 
 from proteus.atmos_chem.dummy import _ALL_SPECIES, _build_profiles, run_dummy_chem
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_hf_row(
     T_magma=3000.0,

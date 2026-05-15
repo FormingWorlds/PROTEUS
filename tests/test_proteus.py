@@ -21,6 +21,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_proteus_instance(tmp_path, *, struct_module='zalmoxis', interior_module='spider'):
     """Build a Proteus object with mocked config and directories."""

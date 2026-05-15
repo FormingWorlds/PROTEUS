@@ -23,6 +23,9 @@ import pytest
 
 from proteus.plot.cpl_visual import anim_visual, plot_visual
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

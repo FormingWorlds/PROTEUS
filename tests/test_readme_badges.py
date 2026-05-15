@@ -18,6 +18,9 @@ import pytest
 
 from tests.helpers.helpers import PROTEUS_ROOT
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 README_PATH = PROTEUS_ROOT / 'README.md'
 DOCS_INDEX_PATH = PROTEUS_ROOT / 'docs' / 'index.md'
 

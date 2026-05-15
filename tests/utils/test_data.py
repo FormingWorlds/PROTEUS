@@ -33,6 +33,8 @@ from proteus.utils.data import (
     validate_zenodo_folder,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_get_zenodo_record():

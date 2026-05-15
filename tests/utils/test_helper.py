@@ -30,6 +30,9 @@ from proteus.utils.helper import (
     recursive_get,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # =============================================================================
 # Test: multiple() - Robust modulo checking
 # =============================================================================

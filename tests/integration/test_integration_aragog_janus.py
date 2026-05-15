@@ -15,6 +15,9 @@ from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
 from proteus.interior_energetics.aragog import read_ncdf as read_interior
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
+
 out_dir = PROTEUS_ROOT / 'output' / 'aragog_janus'
 ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'aragog_janus'
 config_path = PROTEUS_ROOT / 'tests' / 'integration' / 'aragog_janus.toml'

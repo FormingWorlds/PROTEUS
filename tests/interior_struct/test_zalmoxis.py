@@ -24,6 +24,8 @@ import pytest
 
 from proteus.interior_struct.zalmoxis import write_spider_mesh_file
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_synthetic_mantle_profiles(
     r_cmb: float = 3.48e6,

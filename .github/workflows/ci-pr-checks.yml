@@ -271,7 +271,7 @@ jobs:
           # keeps behaviour consistent across the matrix.
           # --durations=25 prints the slowest 25 tests for diagnostics
           # without flooding the log like --durations=0 does.
-          pytest -m "unit and not skip" \
+          pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
             $COV_ARGS \
             -p no:faulthandler \
@@ -315,7 +315,7 @@ jobs:
           else
             COV_ARGS=""
           fi
-          pytest -m "smoke and not skip" \
+          pytest -m "smoke and not skip and not slow and not integration" \
             --ignore=tests/examples \
             $COV_ARGS \
             -p no:faulthandler \
@@ -667,7 +667,7 @@ jobs:
           # macOS GitHub runners deny faulthandler.enable() with
           # PermissionError, which aborts pytest at configure time
           # (exit code 3) before any test runs.
-          pytest -m "unit and not skip" \
+          pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
             -p no:faulthandler \
             --durations=25 | tee pytest-unit-macos.log

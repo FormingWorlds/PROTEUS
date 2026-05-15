@@ -28,6 +28,8 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
 
 @pytest.mark.integration
 def test_integration_calliope_multi_timestep(proteus_multi_timestep_run):

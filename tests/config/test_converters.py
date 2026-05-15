@@ -16,6 +16,8 @@ from proteus.config._converters import (
     zero_if_none,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 class TestNoneIfNone:
     """Test none_if_none converter for TOML 'none' string → Python None."""

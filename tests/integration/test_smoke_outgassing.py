@@ -18,6 +18,9 @@ import pytest
 
 from proteus.proteus import Proteus
 
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
+
+
 PROTEUS_ROOT = Path(__file__).parent.parent.parent
 RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 

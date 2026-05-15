@@ -26,6 +26,9 @@ from proteus.outgas.common import expected_keys
 from proteus.outgas.dummy import _ELEMENT_TO_SPECIES, _MMW, calc_surface_pressures_dummy
 from proteus.utils.constants import element_list, gas_list
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # Default planet parameters for tests
 _R = 6.371e6
 _g = 9.81

@@ -11,6 +11,9 @@ from proteus.grid.manage import grid_from_config
 from proteus.grid.pack import pack as gpack
 from proteus.grid.summarise import summarise as gsummarise
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
+
 OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_grid'
 
 GRID_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'dummy.grid.toml'

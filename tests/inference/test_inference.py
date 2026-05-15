@@ -22,6 +22,9 @@ from helpers import PROTEUS_ROOT
 import proteus.inference.inference as inference_mod
 from proteus.inference.inference import infer_from_config
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # Pytest can hang on process completion when using multiprocessing by default.
 mp.set_start_method('spawn', force=True)
 

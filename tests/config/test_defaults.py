@@ -30,6 +30,8 @@ from proteus.config._params import (
     TimeStepParams,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_output_params_defaults():

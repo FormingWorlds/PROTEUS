@@ -10,6 +10,9 @@ from pandas.testing import assert_frame_equal
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+
+
 out_dir = PROTEUS_ROOT / 'output' / 'dummy'
 ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
 
