@@ -26,9 +26,9 @@ def de_dt(a, e, params):
     positive de/dt and so EXPANDS the orbit rather than circularizing it.
     The paper convention would require Imk2 < 0 to obtain the physical
     circularization direction. Treat the sign as a known science item;
-    do not invert it without an ecosystem-wide audit of every Imk2
-    producer (proteus.orbit.dummy, proteus.orbit.lovepy, and any
-    Imk2-dependent test).
+    do not invert it without first checking every Imk2 producer
+    (proteus.orbit.dummy, proteus.orbit.lovepy, and any Imk2-dependent
+    test) so the change propagates consistently.
     """
     Imk2, Mst, G, Rpl, Mpl = params
     return (21 / 2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5 / (Mpl * a**6.5) * e

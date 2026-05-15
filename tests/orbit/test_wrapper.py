@@ -65,7 +65,9 @@ def test_perigee_passes_through_satellite_sma():
     unmodified for a downstream consumer."""
     hf_row = {'semimajorax': AU, 'eccentricity': 0.1, 'semimajorax_sat': 3.5e8}
     update_separation(hf_row)
-    assert hf_row['perigee'] == 3.5e8
+    assert hf_row['perigee'] == pytest.approx(3.5e8, rel=1e-12)
+    # Positivity guard: perigee is a distance, must be > 0.
+    assert hf_row['perigee'] > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +75,7 @@ def test_perigee_passes_through_satellite_sma():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
 def test_period_matches_keplers_third_law_for_earth_around_sun():
     """Kepler's third law (Kepler 1619, Harmonices Mundi Book V):

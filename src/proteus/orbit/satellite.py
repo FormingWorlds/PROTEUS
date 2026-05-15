@@ -42,8 +42,11 @@ def Ltot(ω, a, params):
 
         L_orb = mu * sqrt(G * (M_E + M_M) * a)
 
-    Korenaga (2023) replaces mu by M_M, which is exact in the limit
-    M_M << M_E (since mu = M_M * (1 - M_M/M_E) -> M_M as M_M/M_E -> 0).
+    Korenaga (2023) replaces mu by M_M, which is the limit of mu as
+    M_M / M_E -> 0:
+
+        mu = M_E M_M / (M_E + M_M) = M_M / (1 + M_M / M_E) -> M_M.
+
     For the Earth-Moon system the relative error of this substitution is
     M_M / M_E ~ 1/81 ~ 1.2%; for any heavier-satellite system the
     approximation would degrade, but PROTEUS's satellite module is
@@ -55,18 +58,13 @@ def Ltot(ω, a, params):
     constant L produced here is consumed by ``dω_dt`` and ``da_dt`` below,
     so any change to this formula MUST be paired with sanity checks on
     the time-evolution equations (Eqs. 58 + 59).
-
-    Historical note: prior to commit landing this docstring, the orbital
-    prefactor was M_planet rather than M_satellite, which inflated L by
-    ~M_planet / M_satellite ~ 81 for the Earth-Moon system. The swap was
-    surfaced by ``tests/orbit/test_satellite.py::test_update_satellite_angular_momentum_matches_korenaga_2023_formula``
-    (a ``@pytest.mark.reference_pinned`` test).
     """
     I, _, G, Mpl, Msa, _ = params
-    # Korenaga (2023) Eq. 60: orbital prefactor is the SATELLITE mass M_M,
-    # which is the M_M << M_E limit of the textbook reduced-mass formula.
-    # Substituting M_pl here gives a result inflated by M_pl / M_sat (~80x
-    # for Earth-Moon); the reference-pinned test pins the M_sat form.
+    # Korenaga (2023) Eq. 60: the orbital prefactor is the SATELLITE mass
+    # M_M, which is the M_M << M_E limit of the textbook reduced-mass
+    # formula. Substituting M_planet here inflates L by M_planet/M_sat
+    # (~80x for Earth-Moon); see the reference-pinned test in
+    # tests/orbit/test_satellite.py for the discriminating numeric guard.
     return I * ω + Msa * (G * (Mpl + Msa) * a) ** 0.5
 
 

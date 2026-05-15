@@ -19,8 +19,8 @@ so the formula evaluated with positive `Imk2` returns positive `de/dt`
 and expands the orbit instead of circularizing it. This is documented
 in the source docstring as a known science item; the test pins the
 algebra under the source convention and does NOT certify the convention
-matches the paper. A future audit must visit every `Imk2` producer in
-the ecosystem before any sign correction.
+matches the paper. Any future sign correction must visit every `Imk2` producer in the
+ecosystem so the change propagates consistently.
 
 ## Re-derivation note
 

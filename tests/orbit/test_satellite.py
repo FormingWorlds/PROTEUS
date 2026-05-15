@@ -70,7 +70,7 @@ def test_ltot_is_linear_in_spin():
 
 @pytest.mark.physics_invariant
 def test_ltot_orbital_term_scales_as_sqrt_a():
-    """Orbital term is ``Mpl * sqrt(G * (Mpl+Msa) * a)``, scaling as
+    """Orbital term is ``Msa * sqrt(G * (Mpl+Msa) * a)``, scaling as
     ``a**0.5``. Multiplying ``a`` by 4 must multiply the orbital
     contribution by 2.0, not 4.0 or 16.0.
     """
@@ -112,14 +112,37 @@ def test_da_dt_zero_when_dE_tidal_zero():
 
 
 @pytest.mark.physics_invariant
-def test_da_dt_kinematic_relation_holds():
-    """``da_dt`` must equal ``-2 I a / (L - I ω) * dω_dt`` exactly
-    (mathematical identity)."""
-    I, L = 1.5, 8.0
-    a, ω = 2.0, 0.5
-    params = _params(I=I, L=L)
-    expected = -2.0 * I * a / (L - I * ω) * dω_dt(a=a, ω=ω, params=params)
-    assert da_dt(a=a, ω=ω, params=params) == pytest.approx(expected, rel=1e-14)
+def test_da_dt_matches_korenaga_eq59_closed_form_value():
+    """Pin ``da_dt`` against an independently hand-computed value of
+    Korenaga (2023) Eq. 59 at ``(I, L, G, Mpl, Msa, dE) = (1.5, 8.0, 1.0,
+    1.0, 0.1, 1.0)`` and ``(a, ω) = (2.0, 0.5)``.
+
+    Hand derivation:
+        dω/dt = -1 / (1.5*0.5 + 0.15 / (2*(8 - 0.75)))
+              = -1 / 0.76034482758...  =  -1.31519274376...
+        da/dt = -2*1.5*2 / 7.25 * dω/dt
+              =  -0.82758620690... * -1.31519274376...
+              =   1.08843537414966...
+
+    The pin is independent of the source (no call to ``dω_dt`` in the
+    test) and so discriminates an Eq. 59 rearrangement bug; a regression
+    that replaces the ``-2 I a`` prefactor by ``-3 I a`` would land at
+    ~1.63 instead of ~1.088, well outside the 1e-12 tolerance.
+    """
+    params = _params(I=1.5, L=8.0)
+    expected = 1.08843537414966
+    actual = da_dt(a=2.0, ω=0.5, params=params)
+    assert actual == pytest.approx(expected, rel=1e-12)
+    # Sign guard: dE > 0 and L > I*ω make dω/dt < 0 (spin slows), which
+    # combined with -2 I a / (L - I ω) < 0 must yield da/dt > 0 (orbit
+    # expands). The factor of `-3` rearrangement would still be positive
+    # so this guard alone does not catch it, but it pins the qualitative
+    # outward-migration prediction Korenaga Eq. 59 makes for the prograde
+    # Earth-Moon configuration.
+    assert actual > 0.0
+    # Scale guard: a prefactor of `-3` would land at ~1.63, outside the
+    # [1.05, 1.15] window; a prefactor of `-1` would land at ~0.544.
+    assert 1.05 < actual < 1.15
 
 
 # ---------------------------------------------------------------------------
@@ -227,9 +250,15 @@ def test_update_satellite_angular_momentum_matches_korenaga_2023_eq60():
     the M_M << M_E limit of the textbook reduced-mass orbital angular
     momentum L_orb = mu * sqrt(G (M_E + M_M) a) with reduced mass
     mu = M_E * M_M / (M_E + M_M); the limit's relative error is M_M / M_E
-    ~ 1/81 ~ 1.2% for the Earth-Moon system. Cross-check value:
-    Touma and Wisdom (1994) report the present-day Earth-Moon orbital
-    angular momentum as ~2.85e34 kg m^2 / s.
+    ~ 1/81 ~ 1.2% for the Earth-Moon system.
+
+    For Earth parameters the two components of Eq. 60 evaluate to:
+      - spin term I_E * Omega ~ 7.05e33 kg m^2 / s
+      - orbital term M_M sqrt(G (M_E + M_M) a) ~ 2.89e34 kg m^2 / s
+      - total L_total ~ 3.60e34 kg m^2 / s
+
+    The orbital component matches the Touma and Wisdom (1994) value
+    of ~2.85e34 kg m^2 / s for the present-day Earth-Moon orbit.
     """
     cfg = _make_config(semimajoraxis_sat=3.844e8, mass_sat=7.342e22, axial_period_h=24.0)
     hf_row = _make_hf_row(time=0.0, R_int=6.371e6, M_int=5.972e24)
@@ -242,10 +271,12 @@ def test_update_satellite_angular_momentum_matches_korenaga_2023_eq60():
     # Sign guard: total system AM is positive for a prograde Moon.
     assert hf_row['plan_sat_am'] > 0.0
     # Scale guard: Korenaga Eq. 60 evaluated on the Earth-Moon system
-    # lands at ~2.89e34 kg m^2 / s, matching Touma and Wisdom (1994).
-    # The [1e34, 1e35] bracket catches any SI-vs-CGS or kg-vs-g unit
-    # slip; it would also catch a regression to the pre-fix M_planet
-    # prefactor, which inflated the result to ~2.4e36.
+    # lands at ~3.60e34 kg m^2 / s for the total (spin ~7.05e33 +
+    # orbital ~2.89e34). The orbital component matches Touma and
+    # Wisdom (1994) (~2.85e34). The [1e34, 1e35] bracket catches any
+    # SI-vs-CGS or kg-vs-g unit slip and discriminates the M_sat form
+    # in Eq. 60 from a substitution of M_planet, which would inflate
+    # the orbital term to ~2.4e36 (well above the upper bound).
     assert 1e34 < hf_row['plan_sat_am'] < 1e35
 
 

@@ -158,28 +158,60 @@ def test_solid_h2_reservoir_is_always_zero():
     assert hf_row['H2_mol_solid'] == 0.0
 
 
+@pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_h2_mass_is_conserved_per_rogers2025_partition():
-    """Mass closure across the Rogers et al. (2025) binodal partition:
-    for any miscibility weight ``sigma`` returned by the H2-MgSiO3
-    suppression function, the post-partition reservoirs must satisfy
-    ``H2_kg_atm + H2_kg_liquid + H2_kg_solid = H2_kg_total``. This
-    is the conservation invariant the binodal model is required to
-    preserve (Rogers et al. 2025, Section 3.2).
+def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025():
+    """Pin the molar-mass conversion the binodal partition applies to
+    every H2 reservoir, against an independent computation that uses
+    scipy.constants.Avogadro and ``M(H2) = 2.016e-3 kg/mol`` (Rogers et
+    al. 2025 Section 3.2; the partition leaves the chemistry-side molar
+    bookkeeping untouched, so ``H2_mol_total = H2_kg_total / M_H2 /
+    N_av``).
+
+    The kg-closure ``atm + liquid + solid = total`` is structurally
+    trivial here (``sigma * T + (1-sigma) * T + 0 = T`` for the
+    source's three assignments), so the discriminating assertion is the
+    molar-mass pin: a regression that mistook M(H2) for M(H) (the H
+    atomic mass, 1.008e-3 kg/mol, a recurring confusion in legacy
+    geochemistry code) would inflate the mol total by a factor of two
+    and would be caught by the rel=1e-12 pin below.
     """
+    import scipy.constants as const
+
     cfg = _make_config()
     hf_row = _make_hf_row(H2_kg_total=5e17)
     with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.4):
         apply_binodal_h2(hf_row, cfg)
-    total = hf_row['H2_kg_atm'] + hf_row['H2_kg_liquid'] + hf_row['H2_kg_solid']
-    assert total == pytest.approx(5e17, rel=1e-12)
-    # Sign guard: every reservoir is non-negative.
+
+    # kg closure (still required, but it's a sanity rail not a discrimination guard).
+    assert (
+        hf_row['H2_kg_atm']
+        + hf_row['H2_kg_liquid']
+        + hf_row['H2_kg_solid']
+        == pytest.approx(5e17, rel=1e-12)
+    )
+
+    # Molar-mass pin: H2 molecular mass 2.016 g/mol, NOT H atomic mass 1.008 g/mol.
+    M_H2 = 2.016e-3
+    expected_mol_total = 5e17 / M_H2 / const.Avogadro
+    assert hf_row['H2_mol_total'] == pytest.approx(expected_mol_total, rel=1e-12)
+
+    # Mole closure across reservoirs.
+    assert (
+        hf_row['H2_mol_atm']
+        + hf_row['H2_mol_liquid']
+        + hf_row['H2_mol_solid']
+        == pytest.approx(expected_mol_total, rel=1e-12)
+    )
+
+    # Discrimination guard: with M(H2)=2.016e-3 the mol_total lands at
+    # ~4.12e-4; a regression to M(H)=1.008e-3 would land at ~8.24e-4
+    # (factor of 2). The bracket [3e-4, 5e-4] catches the latter.
+    assert 3e-4 < hf_row['H2_mol_total'] < 5e-4
+    # Sign guards on reservoirs.
     assert hf_row['H2_kg_atm'] >= 0.0
     assert hf_row['H2_kg_liquid'] >= 0.0
     assert hf_row['H2_kg_solid'] == 0.0  # H2 has no solid silicate sink
-    # Scale guard: each reservoir is bounded above by the total.
-    assert hf_row['H2_kg_atm'] <= 5e17
-    assert hf_row['H2_kg_liquid'] <= 5e17
 
 
 # ---------------------------------------------------------------------------

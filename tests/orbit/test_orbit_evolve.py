@@ -217,17 +217,24 @@ def _make_hf_row(
     }
 
 
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
 def test_evolve_orbital_first_call_seeds_from_config_with_au_conversion():
     """On the first call (``Time <= 1``) the orchestrator must seed
     ``hf_row`` from ``config``, applying the AU → m conversion to the
-    semi-major axis. A regression that forgot the AU factor would leave
-    ``semimajorax`` near 1, not near 1.496e11.
+    semi-major axis. The pin against ``0.5 * AU`` (~7.48e10 m) catches
+    a regression that forgot the AU factor (which would leave
+    ``semimajorax`` at 0.5 instead of ~7.48e10).
     """
     cfg = _make_config(semimajoraxis_au=0.5, eccentricity=0.2)
     hf_row = _make_hf_row(time=0.0, sma_m=999.0, ecc=999.0)  # garbage that must be overwritten
     evolve_orbital(hf_row, cfg, dt=1.0)
-    assert hf_row['semimajorax'] == pytest.approx(0.5 * AU)
-    assert hf_row['eccentricity'] == pytest.approx(0.2)
+    assert hf_row['semimajorax'] == pytest.approx(0.5 * AU, rel=1e-12)
+    assert hf_row['eccentricity'] == pytest.approx(0.2, rel=1e-12)
+    # Explicit scale guard: a missing AU factor would leave the value
+    # at 0.5; anything below 1e9 m would be sub-stellar-radius for any
+    # real system. The lower bound discriminates AU-vs-meter slip.
+    assert hf_row['semimajorax'] > 1e10
 
 
 @pytest.mark.parametrize('time', [0.0, 0.5, 1.0])
