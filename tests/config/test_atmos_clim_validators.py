@@ -42,6 +42,10 @@ def _make_agni_instance(**kwargs):
 
 @pytest.mark.unit
 def test_valid_rayleigh_rejects_dummy_module():
+    """Rayleigh scattering cannot be enabled with the dummy atmos_clim
+    module; the validator raises with an 'incompatible with Rayleigh
+    scattering' message.
+    """
     instance = SimpleNamespace(module='dummy', agni=SimpleNamespace(spectral_file=None))
     with pytest.raises(ValueError, match='incompatible with Rayleigh scattering'):
         valid_rayleigh(instance, attribute=None, value=True)
@@ -49,6 +53,10 @@ def test_valid_rayleigh_rejects_dummy_module():
 
 @pytest.mark.unit
 def test_valid_rayleigh_rejects_agni_greygas():
+    """Rayleigh scattering cannot be enabled with AGNI's grey-gas RT
+    (no band structure to scatter in); the validator raises with a
+    'grey gas is incompatible' message.
+    """
     instance = SimpleNamespace(module='agni', agni=SimpleNamespace(spectral_file='greygas'))
     with pytest.raises(ValueError, match='grey gas is incompatible with Rayleigh scattering'):
         valid_rayleigh(instance, attribute=None, value=True)
@@ -63,12 +71,19 @@ def test_valid_rayleigh_passes_when_disabled():
 
 @pytest.mark.unit
 def test_valid_agni_allows_greygas_spectral_file():
+    """AGNI with ``spectral_file='greygas'`` is the analytic grey-gas
+    configuration; the validator accepts it silently.
+    """
     instance = _make_agni_instance(spectral_file='greygas')
     valid_agni(instance, attribute=None, value=None)
 
 
 @pytest.mark.unit
 def test_valid_agni_rejects_missing_spectral_file_path():
+    """A non-existent spectral file path raises FileNotFoundError with the
+    'AGNI spectral file not found' message, so a typo in config does not
+    silently fall back to a different file.
+    """
     instance = _make_agni_instance(spectral_file='/this/path/does/not/exist.spc')
     with pytest.raises(FileNotFoundError, match='AGNI spectral file not found'):
         valid_agni(instance, attribute=None, value=None)
@@ -76,6 +91,9 @@ def test_valid_agni_rejects_missing_spectral_file_path():
 
 @pytest.mark.unit
 def test_valid_agni_requires_spectral_group_when_no_file():
+    """With no explicit spectral file, ``spectral_group`` must be set so
+    the runtime can construct the file path; an empty value raises.
+    """
     instance = _make_agni_instance(spectral_file=None, spectral_group='')
     with pytest.raises(ValueError, match='Must set atmos_clim.spectral_group'):
         valid_agni(instance, attribute=None, value=None)
@@ -83,6 +101,9 @@ def test_valid_agni_requires_spectral_group_when_no_file():
 
 @pytest.mark.unit
 def test_valid_agni_requires_spectral_bands_when_no_file():
+    """With no explicit spectral file, ``spectral_bands`` must be set so
+    the runtime can construct the file path; an empty value raises.
+    """
     instance = _make_agni_instance(spectral_file=None, spectral_bands='')
     with pytest.raises(ValueError, match='Must set atmos_clim.spectral_bands'):
         valid_agni(instance, attribute=None, value=None)

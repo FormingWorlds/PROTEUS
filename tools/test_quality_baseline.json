@@ -1,6 +1,5 @@
 {
   "float_eq_literal": 47,
-  "missing_docstring": 157,
   "no_assertions": 90,
   "single_assert": 665,
   "weak_assert_gt_zero": 4,

@@ -40,10 +40,16 @@ class TestOuterSolverSchema:
         assert z.outer_solver == 'newton'
 
     def test_explicit_picard_accepted(self):
+        """An explicit ``outer_solver='picard'`` is accepted by the
+        validator; pairs with the default-Newton test above.
+        """
         z = Zalmoxis(outer_solver='picard')
         assert z.outer_solver == 'picard'
 
     def test_explicit_newton_accepted(self):
+        """An explicit ``outer_solver='newton'`` is accepted; round-trips
+        through the validator and lands on the attribute as-is.
+        """
         z = Zalmoxis(outer_solver='newton')
         assert z.outer_solver == 'newton'
 
@@ -57,6 +63,9 @@ class TestOuterSolverSchema:
             Zalmoxis(outer_solver=bad_value)
 
     def test_newton_max_iter_default(self):
+        """``newton_max_iter`` defaults to 30; tested separately from the
+        validator-boundary test below.
+        """
         z = Zalmoxis()
         assert z.newton_max_iter == 30
 
@@ -69,6 +78,10 @@ class TestOuterSolverSchema:
         assert z.newton_max_iter == 5
 
     def test_newton_tol_default_and_validation(self):
+        """``newton_tol`` defaults to 1e-4 and rejects non-positive
+        values (zero or negative), so a misconfigured tolerance fails
+        loudly at attrs validation time.
+        """
         z = Zalmoxis()
         assert z.newton_tol == 1.0e-4
         # gt(0) validator
@@ -163,6 +176,11 @@ class TestPicardPathDoesNotChangeIntegratorTolerances:
     """
 
     def test_picard_omits_integrator_tolerance_keys(self, monkeypatch):
+        """When ``outer_solver='picard'``, ``load_zalmoxis_configuration``
+        sets the ``outer_solver`` key but does NOT inject
+        ``relative_tolerance`` / ``absolute_tolerance``, so Zalmoxis
+        falls back to its mass-adaptive defaults.
+        """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
         config = _make_mock_config(outer_solver='picard')
@@ -186,6 +204,11 @@ class TestNewtonPathTightensIntegratorTolerances:
     """
 
     def test_newton_passes_relative_tolerance(self, monkeypatch):
+        """When ``outer_solver='newton'``, ``load_zalmoxis_configuration``
+        injects the tightened integrator tolerances (1e-9 relative,
+        1e-10 absolute) plus the Newton-specific iteration cap and tol,
+        so the Newton precondition is satisfied automatically.
+        """
         from proteus.interior_struct.zalmoxis import load_zalmoxis_configuration
 
         config = _make_mock_config(outer_solver='newton')

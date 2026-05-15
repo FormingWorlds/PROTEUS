@@ -35,6 +35,9 @@ class DummyPackage(BasePackage):
 
 @pytest.mark.unit
 def test_get_status_message_reports_update_for_newer_release():
+    """When the local version is older than the remote, the status message
+    contains an 'Update available <current> -> <latest>' notice.
+    """
     package = DummyPackage('fwl-proteus', current='25.10.15', latest='25.11.19')
 
     message = package.get_status_message()
@@ -44,6 +47,9 @@ def test_get_status_message_reports_update_for_newer_release():
 
 @pytest.mark.unit
 def test_get_status_message_does_not_suggest_downgrade():
+    """A local version newer than the latest release is reported as such,
+    NOT as 'Update available' (which would suggest a misleading downgrade).
+    """
     package = DummyPackage('fwl-proteus', current='25.11.19', latest='25.10.15')
 
     message = package.get_status_message()
@@ -54,6 +60,10 @@ def test_get_status_message_does_not_suggest_downgrade():
 
 @pytest.mark.unit
 def test_get_status_message_handles_unparseable_versions():
+    """A non-PEP-440 local version (e.g. ``'main'``) surfaces the
+    InvalidVersion error in the status message instead of crashing,
+    so the doctor keeps reporting on the rest of the packages.
+    """
     package = DummyPackage('fwl-proteus', current='main', latest='v25.11.19')
 
     message = package.get_status_message()
@@ -64,6 +74,9 @@ def test_get_status_message_handles_unparseable_versions():
 
 @pytest.mark.unit
 def test_python_package_latest_version_reads_json_response():
+    """``PythonPackage.latest_version`` parses ``info.version`` out of the
+    PyPI JSON response and returns it as a ``Version`` object.
+    """
     package = PythonPackage(name='fwl-proteus')
     response = Mock(ok=True)
     response.json.return_value = {'info': {'version': '25.11.19'}}
@@ -74,6 +87,9 @@ def test_python_package_latest_version_reads_json_response():
 
 @pytest.mark.unit
 def test_python_package_latest_version_raises_on_bad_http_status():
+    """A non-2xx HTTP response from PyPI surfaces as ``HTTPError`` rather
+    than a silent fallback to a placeholder version.
+    """
     package = PythonPackage(name='fwl-proteus')
     response = Mock(ok=False)
     response.raise_for_status.side_effect = requests.HTTPError('boom')
@@ -85,6 +101,11 @@ def test_python_package_latest_version_raises_on_bad_http_status():
 
 @pytest.mark.unit
 def test_git_package_current_version_converts_missing_repo_to_package_not_found():
+    """A missing on-disk checkout (FileNotFoundError) is converted into a
+    ``PackageNotFoundError`` with a descriptive 'is not installed' message
+    so the doctor reports the same status surface for git-tracked packages
+    as for Python packages.
+    """
     package = GitPackage(
         name='SOCRATES',
         owner='FormingWorlds',
@@ -97,6 +118,9 @@ def test_git_package_current_version_converts_missing_repo_to_package_not_found(
 
 @pytest.mark.unit
 def test_git_package_latest_version_reads_tag_name_from_json_response():
+    """``GitPackage.latest_version`` reads ``tag_name`` from the GitHub
+    /releases/latest JSON response and parses it as a ``Version``.
+    """
     package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
     response = Mock(ok=True)
     response.json.return_value = {'tag_name': 'v2026.01'}
@@ -107,6 +131,9 @@ def test_git_package_latest_version_reads_tag_name_from_json_response():
 
 @pytest.mark.unit
 def test_git_package_latest_version_raises_on_bad_http_status():
+    """A non-2xx GitHub response surfaces as ``HTTPError`` rather than a
+    silent fallback to a placeholder version.
+    """
     package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
     response = Mock(ok=False)
     response.raise_for_status.side_effect = requests.HTTPError('nope')
@@ -368,6 +395,11 @@ def test_python_package_status_handles_editable_without_git_metadata():
 
 @pytest.mark.unit
 def test_doctor_entry_prints_environment_variables_before_packages():
+    """``doctor_entry`` prints the 'Environment variables' header and
+    its entries BEFORE the 'Packages' header and its entries. Pins the
+    output order so users see env-var failures (which usually explain
+    package failures) at the top of the report.
+    """
     fake_package = Mock()
     fake_package.get_status_message.return_value = 'pkg: ok'
     outputs: list[str] = []

@@ -66,6 +66,11 @@ def aragog_janus_run():
 
 @pytest.mark.integration
 def test_aragog_janus_run(aragog_janus_run):
+    """End-to-end Aragog interior + Janus atmosphere coupling produces a
+    ``runtime_helpfile.csv`` matching the committed reference within
+    rtol=6e-3 on shared columns (slightly looser than dummy/albedo to
+    absorb Janus stochasticity).
+    """
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
@@ -82,8 +87,10 @@ def test_aragog_janus_run(aragog_janus_run):
 
 @pytest.mark.integration
 def test_aragog_janus_spectrum(aragog_janus_run):
-    # Check stellar spectrum
-
+    """The stellar spectrum file ``0.sflux`` written by the Aragog+Janus
+    run is bit-identical to the committed reference, pinning the stellar
+    input that the coupling sees.
+    """
     _out = out_dir / 'data' / '0.sflux'
     _ref = ref_dir / '0.sflux'
 
@@ -92,7 +99,11 @@ def test_aragog_janus_spectrum(aragog_janus_run):
 
 @pytest.mark.integration
 def test_aragog_janus_atmosphere(aragog_janus_run):
-    # Keys to load and test
+    """Atmosphere NetCDF snapshot at iter 402 matches the reference on
+    five physically meaningful fields (T, P, z, upwelling LW, downwelling
+    SW) within rtol=1e-3, AND has the expected level count from the
+    config (2*num_levels + 1).
+    """
     _out = out_dir / 'data' / '402_atm.nc'
     _ref = ref_dir / '402_atm.nc'
     fields = ['t', 'p', 'z', 'fl_U_LW', 'fl_D_SW']
@@ -116,7 +127,11 @@ def test_aragog_janus_atmosphere(aragog_janus_run):
 
 @pytest.mark.integration
 def test_aragog_janus_interior(aragog_janus_run):
-    # Keys to load and test
+    """Interior NetCDF snapshot at iter 402 matches the reference on five
+    fields (radius, pressure, temperature, melt fraction, radiogenic
+    heating) within rtol=1e-3, AND has the expected mesh size from the
+    Aragog num_levels config.
+    """
     _out = out_dir / 'data' / '402_int.nc'
     _ref = ref_dir / '402_int.nc'
     fields = ['radius_b', 'pres_b', 'temp_b', 'phi_b', 'Hradio_s']
@@ -142,6 +157,11 @@ def test_aragog_janus_interior(aragog_janus_run):
 @pytest.mark.xfail(raises=AssertionError)
 @pytest.mark.parametrize('image', IMAGE_LIST)
 def test_aragog_janus_plot(aragog_janus_run, image):
+    """Each post-run plot matches its committed reference within a 3-unit
+    image-diff tolerance. Marked xfail because Janus rendering produces
+    small platform-dependent variation that cannot be pinned to a single
+    reference image.
+    """
     out_img = out_dir / 'plots' / image
     ref_img = ref_dir / image
     tolerance = 3

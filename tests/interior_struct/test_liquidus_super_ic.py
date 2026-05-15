@@ -44,6 +44,10 @@ class TestResolveZalmoxisTemperatureMode:
     """``_resolve_zalmoxis_temperature_mode`` mapping rules."""
 
     def test_liquidus_super_maps_to_adiabatic_from_cmb(self):
+        """PROTEUS ``liquidus_super`` mode maps to Zalmoxis
+        ``adiabatic_from_cmb``. PROTEUS-side handles the liquidus anchor
+        before handing the mode to Zalmoxis as a standard CMB adiabat.
+        """
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_temperature_mode,
         )
@@ -52,6 +56,9 @@ class TestResolveZalmoxisTemperatureMode:
 
     @pytest.mark.parametrize('mode', ['accretion', 'isentropic'])
     def test_accretion_isentropic_collapse_to_adiabatic(self, mode):
+        """PROTEUS ``accretion`` and ``isentropic`` both collapse to the
+        Zalmoxis ``adiabatic`` mode (no separate CMB anchor).
+        """
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_temperature_mode,
         )
@@ -63,6 +70,10 @@ class TestResolveZalmoxisTemperatureMode:
         ['isothermal', 'linear', 'adiabatic', 'adiabatic_from_cmb'],
     )
     def test_pass_through_unchanged(self, mode):
+        """Modes that exist verbatim on the Zalmoxis side
+        (``isothermal``, ``linear``, ``adiabatic``, ``adiabatic_from_cmb``)
+        are passed through unchanged by the resolver.
+        """
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_temperature_mode,
         )
@@ -107,6 +118,11 @@ class TestResolveZalmoxisCMBTemperature:
     """Fei+2021 + delta_T_super arithmetic and fallback discipline."""
 
     def test_non_liquidus_super_returns_tcmb_init_verbatim(self):
+        """For any non-liquidus_super mode, ``_resolve_zalmoxis_cmb_temperature``
+        echoes ``config.planet.tcmb_init`` verbatim and does not consult
+        ``hf_row['P_cmb']``. This pins the contract that the Fei+2021
+        anchor logic is gated on the mode flag.
+        """
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
         )

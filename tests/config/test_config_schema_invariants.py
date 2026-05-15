@@ -535,6 +535,9 @@ def test_boundary_requires_fixed_surface_state_rejects_dynamic():
 
 @pytest.mark.unit
 def test_boundary_requires_fixed_surface_state_passes_with_fixed():
+    """Boundary backend with ``atmos_clim.surf_state='fixed'`` is accepted;
+    the validator stays silent. Pairs with the negative test above.
+    """
     instance = _make_config_instance(**{'interior_energetics.module': 'boundary'})
     instance.atmos_clim.surf_state = 'fixed'
     boundary_requires_fixed_surface_state(instance, None, None)
@@ -542,6 +545,10 @@ def test_boundary_requires_fixed_surface_state_passes_with_fixed():
 
 @pytest.mark.unit
 def test_boundary_zalmoxis_incompatible_rejects_combo():
+    """``interior_energetics.module='boundary'`` with
+    ``interior_struct.module='zalmoxis'`` is an unsupported coupling and
+    must raise with a message naming ``zalmoxis``.
+    """
     instance = _make_config_instance(
         **{
             'interior_energetics.module': 'boundary',
@@ -554,6 +561,9 @@ def test_boundary_zalmoxis_incompatible_rejects_combo():
 
 @pytest.mark.unit
 def test_boundary_zalmoxis_incompatible_passes_with_dummy_struct():
+    """Boundary energetics with the dummy structure backend is allowed;
+    the incompatibility is specific to the zalmoxis combo above.
+    """
     instance = _make_config_instance(
         **{
             'interior_energetics.module': 'boundary',

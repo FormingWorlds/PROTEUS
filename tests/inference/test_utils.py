@@ -22,6 +22,10 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 @pytest.mark.unit
 def test_save_dataset_csv_validates_input_shapes(tmp_path):
+    """``save_dataset_csv`` rejects malformed inputs with specific
+    ValueError messages: X must be 2D, Y must have matching column rank,
+    and the row counts of X and Y must agree.
+    """
     out = tmp_path / 'dataset.csv'
 
     with pytest.raises(ValueError, match='Expected X to be 2D'):
@@ -38,8 +42,9 @@ def test_save_dataset_csv_validates_input_shapes(tmp_path):
 
 @pytest.mark.unit
 def test_load_dataset_csv_validates_required_columns(tmp_path):
-
-    # check parameter key
+    """``load_dataset_csv`` raises if the CSV is missing either an
+    ``x_<index>`` parameter column or the ``y`` objective column.
+    """
     no_x = tmp_path / 'no_x.csv'
     pd.DataFrame({'y': [1.0]}).to_csv(no_x, index=False)
     with pytest.raises(ValueError, match='x_<index>'):
@@ -54,6 +59,11 @@ def test_load_dataset_csv_validates_required_columns(tmp_path):
 
 @pytest.mark.unit
 def test_get_obj_reads_square_worker_grid(monkeypatch, tmp_path):
+    """``get_obj`` walks an n*n worker grid, reads each worker's
+    ``runtime_helpfile.csv``, evaluates the objective, and returns the
+    values as an n*n tensor. Worker paths follow the
+    ``workers/w_-1/i_<k>/`` convention.
+    """
     seen_paths: list[Path] = []
 
     def fake_get_obs(out_csv, observables):

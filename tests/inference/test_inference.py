@@ -59,12 +59,20 @@ def inference_run():
 
 @pytest.mark.slow
 def test_inference_smoke_config(inference_run):
+    """A finished inference run leaves a copy of its config TOML
+    (``copy.infer.toml``) and a bit-identical copy of the reference base
+    config under the output directory. Reproducibility hook.
+    """
     assert os.path.isfile(OUT_DIR / 'copy.infer.toml')
     assert filecmp.cmp(OUT_DIR / 'ref_config.toml', BASE_CONFIG, shallow=False)
 
 
 @pytest.mark.slow
 def test_inference_smoke_init(inference_run):
+    """The inference run produces an ``init.csv`` containing the
+    Halton-sampled initial design, with the canonical ``y`` objective
+    column and at least one ``x_*`` parameter column.
+    """
     assert os.path.isfile(OUT_DIR / 'init.csv')
     data = pd.read_csv(OUT_DIR / 'init.csv')
     assert 'y' in data.columns
@@ -73,6 +81,10 @@ def test_inference_smoke_init(inference_run):
 
 @pytest.mark.slow
 def test_inference_smoke_output(inference_run):
+    """The inference run produces a ``data.csv`` with at least three rows
+    (initial design + BO iterations) and writes the two canonical result
+    plots (``result_correlation.png``, ``result_objective.png``).
+    """
     assert os.path.isfile(OUT_DIR / 'data.csv')
 
     data = pd.read_csv(OUT_DIR / 'data.csv')
@@ -86,6 +98,10 @@ def test_inference_smoke_output(inference_run):
 
 @pytest.mark.unit
 def test_run_inference_rejects_too_many_workers(monkeypatch, tmp_path):
+    """``run_inference`` rejects ``n_workers >= cpu_count`` with a
+    'Not enough CPU cores' error, so a misconfigured job fails at
+    config-load rather than DoSing the host machine.
+    """
     config = {
         'output': 'unit_inference',
         'logging': 'INFO',
@@ -116,6 +132,9 @@ def test_run_inference_rejects_too_many_workers(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_run_inference_raises_for_missing_reference_config(monkeypatch, tmp_path):
+    """``run_inference`` raises FileNotFoundError when ``ref_config`` does
+    not point to an existing file on disk, naming the missing path.
+    """
     config = {
         'output': 'unit_inference',
         'logging': 'INFO',
@@ -147,6 +166,10 @@ def test_run_inference_raises_for_missing_reference_config(monkeypatch, tmp_path
 
 @pytest.mark.unit
 def test_infer_from_config_loads_toml_and_dispatches(monkeypatch, tmp_path):
+    """``infer_from_config(path)`` parses the TOML and forwards the
+    resulting dict verbatim to ``run_inference``; no field is dropped or
+    renamed in the dispatch step.
+    """
     config_path = tmp_path / 'inference.toml'
     expected = {'output': 'dummy', 'n_workers': 1}
     config_path.write_text(toml.dumps(expected), encoding='utf-8')

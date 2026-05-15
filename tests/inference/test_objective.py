@@ -23,6 +23,10 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 @pytest.mark.unit
 def test_update_toml_updates_nested_keys(tmp_path):
+    """``update_toml`` applies dotted-key overrides on the loaded config
+    (e.g. ``section.value=2``) and creates intermediate nesting for keys
+    that did not exist in the base (``new.branch.leaf=3``).
+    """
     base_cfg = {'section': {'value': 1}}
     config_file = tmp_path / 'base.toml'
     out_file = tmp_path / 'nested' / 'updated.toml'
@@ -41,6 +45,11 @@ def test_update_toml_updates_nested_keys(tmp_path):
 
 @pytest.mark.unit
 def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
+    """``run_proteus`` handles the escaped-atmosphere case (P_surf=0):
+    the observable dictionary is populated with zeros instead of NaN,
+    and ``update_toml`` is invoked exactly twice (once per simulator pass)
+    so the inversion harness sees a numeric value.
+    """
     out_abs = tmp_path / 'sim'
     out_abs.mkdir(parents=True)
     pd.DataFrame([{'P_surf': 0.0, 'atm_kg_per_mol': 44.0}]).to_csv(
@@ -77,6 +86,10 @@ def test_run_proteus_success_handles_escaped_atmosphere(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
+    """A ``FileNotFoundError`` from ``subprocess.run`` (i.e. the proteus
+    binary is not on PATH) is wrapped as ``RuntimeError`` with a
+    'command not found' message.
+    """
     out_abs = tmp_path / 'sim'
     out_abs.mkdir(parents=True)
     monkeypatch.setattr(
@@ -102,6 +115,10 @@ def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
+    """A non-zero exit from the proteus binary is wrapped as
+    ``RuntimeError`` with an 'exit code N' message; the exit code is
+    surfaced so the caller can diagnose the failure mode.
+    """
     out_abs = tmp_path / 'sim'
     out_abs.mkdir(parents=True)
     monkeypatch.setattr(
@@ -129,6 +146,11 @@ def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
+    """Requesting an observable that the simulator did not write to the
+    helpfile raises ``KeyError`` with a 'Requested observable' message,
+    so a typo in the inference config fails loudly rather than producing
+    silent NaN results.
+    """
     out_abs = tmp_path / 'sim'
     out_abs.mkdir(parents=True)
     pd.DataFrame([{'P_surf': 1.0}]).to_csv(
@@ -154,6 +176,12 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
+    """``eval_obj`` evaluates log-relative residuals for log-scaled
+    observables and linear-relative residuals for linear ones, then
+    returns ``-log10(sum_sq + 1e-10)``. The mixed-mode arithmetic is the
+    point of this test: log and linear contributions enter the sum
+    using different normalisations.
+    """
     monkeypatch.setattr(objective_mod, 'variable_is_logarithmic', lambda key: key == 'P_surf')
 
     sim = {'P_surf': 1e-6, 'R_obs': 2.0}
@@ -168,6 +196,10 @@ def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
 
 @pytest.mark.unit
 def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
+    """``prot_builder`` returns a closure that un-normalises an x in
+    [0, 1]^d to the physical parameter ranges (so x=0.5 with bounds
+    [0, 10] maps to 5.0) before calling the inner objective ``J``.
+    """
     captured = {}
 
     def fake_J(x, **kwargs):

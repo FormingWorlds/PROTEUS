@@ -78,6 +78,10 @@ def boreas_config() -> object:
 
 
 def test_boreas_params(boreas_config):
+    """``_set_boreas_params`` populates the BOREAS parameter object from
+    ``hf_row``, with FXUV converted from W/m^2 to mW/m^2 (factor 1e3) and
+    albedo defaulting to 0.0 when not set in the config.
+    """
     hf_row = _make_minimal_hf_row()
 
     # make parameters object

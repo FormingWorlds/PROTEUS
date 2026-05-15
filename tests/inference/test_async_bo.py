@@ -28,6 +28,10 @@ class _DummyLock:
 
 @pytest.mark.unit
 def test_checkpoint_writes_expected_files(tmp_path):
+    """``async_BO.checkpoint`` writes the three expected files
+    (``data.csv``, ``logs.csv``, ``Ts.csv``) and the timing CSV has the
+    canonical ``elapsed_s`` column header.
+    """
     D = {
         'X': torch.tensor([[0.1]], dtype=torch.double),
         'Y': torch.tensor([[0.2]], dtype=torch.double),
@@ -45,6 +49,10 @@ def test_checkpoint_writes_expected_files(tmp_path):
 
 @pytest.mark.unit
 def test_worker_updates_shared_data_and_logs(monkeypatch, tmp_path):
+    """A single worker iteration appends one row to the shared X/Y
+    tensors, one entry to the timing list, one log record, and triggers
+    exactly one checkpoint snapshot.
+    """
     D_shared = {
         'X': torch.tensor([[0.1]], dtype=torch.double),
         'Y': torch.tensor([[0.2]], dtype=torch.double),
@@ -101,6 +109,9 @@ def test_worker_updates_shared_data_and_logs(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_parallel_process_rejects_unknown_kernel():
+    """``parallel_process`` raises ValueError with a 'Unknown kernel'
+    message when called with a kernel name outside the supported set.
+    """
     with pytest.raises(ValueError, match='Unknown kernel'):
         async_mod.parallel_process(
             objective_builder=lambda **kwargs: None,
@@ -118,6 +129,9 @@ def test_parallel_process_rejects_unknown_kernel():
 
 @pytest.mark.unit
 def test_parallel_process_raises_when_init_dataset_missing(monkeypatch, tmp_path):
+    """``parallel_process`` raises FileNotFoundError when the initial
+    dataset (``D_init``) is missing from the output directory.
+    """
     monkeypatch.setattr(
         async_mod, 'get_proteus_directories', lambda _output: {'output': str(tmp_path)}
     )
@@ -140,6 +154,12 @@ def test_parallel_process_raises_when_init_dataset_missing(monkeypatch, tmp_path
 
 @pytest.mark.unit
 def test_parallel_process_happy_path_with_mocked_manager(monkeypatch, tmp_path):
+    """With a mocked multiprocessing Manager and Process, ``parallel_process``
+    spawns one Process per worker, returns the final dataset, the per-worker
+    logs, and the elapsed-time list. Pins the orchestration contract
+    without invoking real subprocesses.
+    """
+
     class FakeManager:
         def dict(self, data=None):
             return {} if data is None else dict(data)

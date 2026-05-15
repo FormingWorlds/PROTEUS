@@ -32,6 +32,11 @@ class TestIronFractions:
     """Validation and physical-bound checks on the iron-fraction helper."""
 
     def test_mass_mode_returns_input_cmf(self):
+        """In ``'mass'`` mode, ``iron_fractions`` returns the input CMF
+        verbatim as ``x_cmf`` and produces ``x_fem`` (mantle iron mass
+        fraction) and ``x_fe`` (total iron mass fraction) in the
+        physical bounds 0 < x_fem < x_fe < 1.
+        """
         from proteus.utils.structure_estimate import iron_fractions
 
         x_cmf, x_fe, x_fem = iron_fractions(0.325, 'mass')
@@ -40,12 +45,20 @@ class TestIronFractions:
         assert x_fem < x_fe < 1.0
 
     def test_radius_mode_collapses_via_power_law(self):
+        """In ``'radius'`` mode, ``iron_fractions`` maps the input
+        core-radius fraction to CMF via ``cf**2.5`` (the NL20 power-law
+        approximation for converting radius to mass fraction).
+        """
         from proteus.utils.structure_estimate import iron_fractions
 
         x_cmf, _, _ = iron_fractions(0.55, 'radius')
         assert x_cmf == pytest.approx(0.55**2.5, rel=1e-12)
 
     def test_radius_mode_clamps_to_window(self):
+        """``'radius'`` mode clamps the resulting CMF to the [0.01, 0.80]
+        window so the NL20 calibration band is not violated at the
+        physical extremes (Mercury-like to mantle-stripped).
+        """
         from proteus.utils.structure_estimate import iron_fractions
 
         x_cmf_lo, _, _ = iron_fractions(0.05, 'radius')
@@ -55,12 +68,18 @@ class TestIronFractions:
 
     @pytest.mark.parametrize('bad_cf', [-0.1, 0.0, 1.0, 1.5])
     def test_invalid_core_frac_raises(self, bad_cf):
+        """Core fractions outside (0, 1) raise ValueError; the helper does
+        not silently clamp into range.
+        """
         from proteus.utils.structure_estimate import iron_fractions
 
         with pytest.raises(ValueError):
             iron_fractions(bad_cf, 'mass')
 
     def test_unknown_mode_raises(self):
+        """An unsupported mode string (e.g. 'volume') raises ValueError
+        rather than falling back to one of the two supported modes.
+        """
         from proteus.utils.structure_estimate import iron_fractions
 
         with pytest.raises(ValueError):
@@ -115,6 +134,9 @@ class TestEstimatePCMB:
         assert 300e9 < P_cmb < 500e9
 
     def test_super_earth_5me_continues_scaling(self):
+        """At 5 M_Earth, NL20 ``P_cmb`` lands in the 500-800 GPa band,
+        continuing the mass-scaling trend established at 1 and 3 M_Earth.
+        """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
 
         P_cmb = estimate_P_cmb_NL20(5.0, 0.325, 'mass')
@@ -168,6 +190,9 @@ class TestEstimatePCMB:
             )
 
     def test_zero_or_negative_mass_raises(self):
+        """``estimate_P_cmb_NL20`` rejects mass values that are not
+        strictly positive, since the scaling laws are undefined there.
+        """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
 
         with pytest.raises(ValueError):
@@ -176,6 +201,9 @@ class TestEstimatePCMB:
             estimate_P_cmb_NL20(-1.0, 0.325, 'mass')
 
     def test_invalid_core_frac_raises(self):
+        """A core fraction at the upper bound (1.0) raises ValueError; the
+        function does not produce a degenerate zero-mantle result.
+        """
         from proteus.utils.structure_estimate import estimate_P_cmb_NL20
 
         with pytest.raises(ValueError):

@@ -184,12 +184,9 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025():
         apply_binodal_h2(hf_row, cfg)
 
     # kg closure (still required, but it's a sanity rail not a discrimination guard).
-    assert (
-        hf_row['H2_kg_atm']
-        + hf_row['H2_kg_liquid']
-        + hf_row['H2_kg_solid']
-        == pytest.approx(5e17, rel=1e-12)
-    )
+    assert hf_row['H2_kg_atm'] + hf_row['H2_kg_liquid'] + hf_row[
+        'H2_kg_solid'
+    ] == pytest.approx(5e17, rel=1e-12)
 
     # Molar-mass pin: H2 molecular mass 2.016 g/mol, NOT H atomic mass 1.008 g/mol.
     M_H2 = 2.016e-3
@@ -197,12 +194,9 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025():
     assert hf_row['H2_mol_total'] == pytest.approx(expected_mol_total, rel=1e-12)
 
     # Mole closure across reservoirs.
-    assert (
-        hf_row['H2_mol_atm']
-        + hf_row['H2_mol_liquid']
-        + hf_row['H2_mol_solid']
-        == pytest.approx(expected_mol_total, rel=1e-12)
-    )
+    assert hf_row['H2_mol_atm'] + hf_row['H2_mol_liquid'] + hf_row[
+        'H2_mol_solid'
+    ] == pytest.approx(expected_mol_total, rel=1e-12)
 
     # Discrimination guard: with M(H2)=2.016e-3 the mol_total lands at
     # ~4.12e-4; a regression to M(H)=1.008e-3 would land at ~8.24e-4

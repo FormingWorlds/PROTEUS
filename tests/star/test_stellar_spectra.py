@@ -153,6 +153,10 @@ def _make_handler_for_init_star(
 
 @pytest.mark.unit
 def test_phoenix_param_zero_formatting():
+    """``phoenix_param(0.0)`` formats FeH as ``'-0.0'`` and alpha as
+    ``'+0.0'``. The asymmetric sign convention matches the PHOENIX
+    filename grid layout, where these two strings index distinct files.
+    """
     from proteus.utils.phoenix_helper import phoenix_param
 
     assert phoenix_param(0.0, kind='FeH') == '-0.0'
@@ -161,6 +165,10 @@ def test_phoenix_param_zero_formatting():
 
 @pytest.mark.unit
 def test_phoenix_to_grid_snaps_to_nearest():
+    """``phoenix_to_grid`` snaps off-grid (FeH, alpha, Teff, logg)
+    requests to the nearest tabulated PHOENIX grid value. Off-grid
+    inputs like Teff=5873 land on the nearest 100-K node (5900 K).
+    """
     from proteus.utils.phoenix_helper import phoenix_to_grid
 
     grid = phoenix_to_grid(FeH=-0.12, alpha=0.33, Teff=5873, logg=4.62)
@@ -188,6 +196,10 @@ def test_phoenix_to_grid_disallows_alpha_when_feh_positive(caplog):
 
 @pytest.mark.unit
 def test_phoenix_filename_format():
+    """``phoenix_filename`` produces the canonical PHOENIX file naming
+    pattern ``LTE_T<T>_logg<g>_FeH<x>_alpha<y>_phoenixMedRes_R05000.txt``
+    used by the downloader and the FWL_DATA tree.
+    """
     from proteus.utils.phoenix_helper import phoenix_filename
 
     name = phoenix_filename(Teff=2300, logg=1.0, FeH=0.0, alpha=0.0)
@@ -199,6 +211,10 @@ def test_phoenix_filename_format():
 
 @pytest.mark.unit
 def test_get_phoenix_modern_spectrum_scales_to_1au(tmp_path, monkeypatch):
+    """``get_phoenix_modern_spectrum`` scales the raw stellar-surface
+    PHOENIX flux to 1 AU by ``(R_star / 1 AU)**2``. The wavelength axis
+    is preserved unchanged.
+    """
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
     from proteus.utils.constants import AU, R_sun
@@ -229,6 +245,10 @@ def test_get_phoenix_modern_spectrum_scales_to_1au(tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkeypatch):
+    """In offline mode with no raw PHOENIX file on disk,
+    ``get_phoenix_modern_spectrum`` raises FileNotFoundError rather
+    than attempting to download from Zenodo.
+    """
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
 
@@ -241,6 +261,10 @@ def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkey
 
 @pytest.mark.unit
 def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch):
+    """In online mode with no raw PHOENIX file present,
+    ``get_phoenix_modern_spectrum`` calls ``download_phoenix`` to
+    materialise the raw grid before producing the 1 AU file.
+    """
     import proteus.star.phoenix as phoenix_mod
     from proteus.star.phoenix import get_phoenix_modern_spectrum
     from proteus.utils.phoenix_helper import phoenix_filename, phoenix_param
@@ -273,6 +297,10 @@ def test_get_phoenix_modern_spectrum_downloads_when_online(tmp_path, monkeypatch
 
 @pytest.mark.unit
 def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypatch):
+    """With ``spectrum_source=None``, ``init_star`` prefers MUSCLES over
+    solar when BOTH files exist; pins the priority order in the spectrum
+    fallback chain.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -294,6 +322,10 @@ def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypa
 
 @pytest.mark.unit
 def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeypatch):
+    """With ``spectrum_source=None`` and no solar file on disk,
+    ``init_star`` falls through to MUSCLES rather than raising. Pairs
+    with the preference test above to pin the full fallback chain.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -314,6 +346,10 @@ def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeyp
 def test_init_star_source_solar_falls_back_to_muscles_with_warning(
     tmp_path, monkeypatch, caplog
 ):
+    """With ``spectrum_source='solar'`` but no solar file on disk,
+    ``init_star`` falls back to MUSCLES AND emits a warning so the user
+    sees that the requested source was unavailable.
+    """
     from proteus.star.wrapper import init_star
 
     caplog.set_level('WARNING')
@@ -336,6 +372,10 @@ def test_init_star_source_solar_falls_back_to_muscles_with_warning(
 def test_init_star_source_muscles_falls_back_to_solar_with_warning(
     tmp_path, monkeypatch, caplog
 ):
+    """Symmetric to the solar->MUSCLES fallback: with
+    ``spectrum_source='muscles'`` but no MUSCLES file on disk,
+    ``init_star`` falls back to solar with a warning.
+    """
     from proteus.star.wrapper import init_star
 
     caplog.set_level('WARNING')
@@ -356,6 +396,10 @@ def test_init_star_source_muscles_falls_back_to_solar_with_warning(
 
 @pytest.mark.unit
 def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
+    """With ``spectrum_source=None`` and neither solar nor MUSCLES on
+    disk, ``init_star`` raises FileNotFoundError rather than producing
+    a silent zero-flux spectrum.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -367,6 +411,10 @@ def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
+    """A user-supplied ``star_path`` takes precedence over the
+    catalogue-based dispatch; the file at that path is loaded as the
+    stellar spectrum verbatim.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -385,6 +433,10 @@ def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_init_star_star_path_missing_raises(tmp_path, monkeypatch):
+    """A user-supplied ``star_path`` that does not exist on disk raises
+    FileNotFoundError with a 'Custom stellar spectrum path' message,
+    so the user sees the typo rather than getting a silent fallback.
+    """
     from proteus.star.wrapper import init_star
 
     _install_fake_mors(monkeypatch)
@@ -402,6 +454,11 @@ def test_init_star_star_path_missing_raises(tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_init_star_phoenix_branch_uses_get_phoenix_modern_spectrum(tmp_path, monkeypatch):
+    """With ``spectrum_source='phoenix'`` and ``tracks='baraffe'``,
+    ``init_star`` dispatches to ``get_phoenix_modern_spectrum`` exactly
+    once, passing the Baraffe track object, and attaches the track to
+    the handler so the radiative-transfer pipeline can read it later.
+    """
     import proteus.star.wrapper as wrapper_mod
     from proteus.star.wrapper import init_star
 

@@ -17,6 +17,9 @@ runner = CliRunner()
 
 @pytest.mark.unit
 def test_doctor():
+    """``proteus doctor`` exits 0 and reports the expected package list,
+    including AGNI and fwl-mors.
+    """
     # run PROTEUS doctor command
     response = runner.invoke(cli.doctor, [])
 
@@ -31,6 +34,7 @@ def test_doctor():
 
 @pytest.mark.unit
 def test_version():
+    """``proteus --version`` exits 0 and prints the current PROTEUS version."""
     # run PROTEUS version command
     response = runner.invoke(cli.cli, ['--version'])
 
@@ -124,6 +128,7 @@ def test_get(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_get_help_extended():
+    """``proteus get --help`` lists every data-fetch subcommand."""
     runner = CliRunner()
     res = runner.invoke(cli.cli, ['get', '--help'])
     assert res.exit_code == 0
@@ -135,6 +140,7 @@ def test_get_help_extended():
 
 @pytest.mark.unit
 def test_get_unknown_subcommand():
+    """Unknown ``get`` subcommand exits non-zero with a 'No such command' message."""
     runner = CliRunner()
     res = runner.invoke(cli.cli, ['get', 'does-not-exist'])
     assert res.exit_code != 0
@@ -146,6 +152,7 @@ def test_get_unknown_subcommand():
 
 @pytest.mark.unit
 def test_get_spectral_defaults(monkeypatch):
+    """``proteus get spectral`` (no args) calls the downloader with name=None, bands=None."""
     runner = CliRunner()
     calls = []
 
@@ -164,6 +171,7 @@ def test_get_spectral_defaults(monkeypatch):
 
 @pytest.mark.unit
 def test_get_spectral_forwards_args(monkeypatch):
+    """``proteus get spectral -n NAME -b BANDS`` forwards the args to the downloader."""
     runner = CliRunner()
     calls = []
 
@@ -184,6 +192,7 @@ def test_get_spectral_forwards_args(monkeypatch):
 
 @pytest.mark.unit
 def test_get_surfaces_calls_downloader(monkeypatch):
+    """``proteus get surfaces`` calls download_surface_albedos exactly once."""
     runner = CliRunner()
     calls = []
 
@@ -201,6 +210,7 @@ def test_get_surfaces_calls_downloader(monkeypatch):
 
 @pytest.mark.unit
 def test_get_reference_calls_both_downloaders(monkeypatch):
+    """``proteus get reference`` triggers BOTH exoplanet-data and mass-radius downloaders."""
     runner = CliRunner()
     calls = []
 
@@ -228,6 +238,7 @@ def test_get_reference_calls_both_downloaders(monkeypatch):
 
 @pytest.mark.unit
 def test_get_stellar_downloads_tracks_and_spectra(monkeypatch):
+    """``proteus get stellar`` downloads BOTH track sets (Spada + Baraffe) and the spectra."""
     runner = CliRunner()
     calls = []
 
@@ -256,6 +267,7 @@ def test_get_stellar_downloads_tracks_and_spectra(monkeypatch):
 
 @pytest.mark.unit
 def test_get_muscles_requires_star_or_all():
+    """``proteus get muscles`` with neither --star nor --all exits non-zero with a usage hint."""
     runner = CliRunner()
     res = runner.invoke(cli.cli, ['get', 'muscles'])
     assert res.exit_code != 0
@@ -264,6 +276,7 @@ def test_get_muscles_requires_star_or_all():
 
 @pytest.mark.unit
 def test_get_muscles_list_outputs_names():
+    """``proteus get muscles --list`` enumerates the known star names."""
     runner = CliRunner()
     res = runner.invoke(cli.cli, ['get', 'muscles', '--list'])
     assert res.exit_code == 0
@@ -274,6 +287,7 @@ def test_get_muscles_list_outputs_names():
 
 @pytest.mark.unit
 def test_get_muscles_star_normalization_and_download(monkeypatch):
+    """User-supplied star name is lowercased and stripped before the downloader sees it."""
     runner = CliRunner()
     calls = []
 
@@ -291,6 +305,7 @@ def test_get_muscles_star_normalization_and_download(monkeypatch):
 
 @pytest.mark.unit
 def test_get_muscles_star_unknown_suggests_close_matches():
+    """An unknown star name is rejected with either a Did-you-mean or --list hint."""
     runner = CliRunner()
     res = runner.invoke(cli.cli, ['get', 'muscles', '--star', 'gj87'])
     assert res.exit_code != 0
@@ -301,6 +316,7 @@ def test_get_muscles_star_unknown_suggests_close_matches():
 
 @pytest.mark.unit
 def test_get_muscles_all_and_star_mutually_exclusive():
+    """``--all`` and ``--star`` cannot be combined; the CLI rejects the call with a usage hint."""
     runner = CliRunner()
     res = runner.invoke(cli.cli, ['get', 'muscles', '--all', '--star', 'trappist-1'])
     assert res.exit_code != 0
@@ -309,6 +325,7 @@ def test_get_muscles_all_and_star_mutually_exclusive():
 
 @pytest.mark.unit
 def test_get_muscles_all_reports_failures(monkeypatch):
+    """``--all`` mode reports per-star success/failure counts and names failed stars."""
     runner = CliRunner()
 
     # keep the loop small
@@ -327,6 +344,7 @@ def test_get_muscles_all_reports_failures(monkeypatch):
 
 @pytest.mark.unit
 def test_get_muscles_all_all_failed_raises(monkeypatch):
+    """``--all`` mode with every download failing exits non-zero with an aggregate error."""
     runner = CliRunner()
 
     monkeypatch.setattr(cli, 'STARS_ONLINE', {'muscles': ['a', 'b'], 'solar': ['sun']})
@@ -346,6 +364,7 @@ def test_get_muscles_all_all_failed_raises(monkeypatch):
 
 @pytest.mark.unit
 def test_get_phoenix_calls_grid_mapper_and_downloader(monkeypatch):
+    """``proteus get phoenix`` first calls ``phoenix_to_grid`` to snap params, then the downloader."""
     runner = CliRunner()
     calls = []
 
@@ -372,6 +391,7 @@ def test_get_phoenix_calls_grid_mapper_and_downloader(monkeypatch):
 
 @pytest.mark.unit
 def test_get_phoenix_download_failure_raises(monkeypatch):
+    """A failed PHOENIX download surfaces as non-zero exit with a 'Failed to download' message."""
     runner = CliRunner()
 
     def fake_phoenix_to_grid(FeH, alpha, Teff):
@@ -393,6 +413,7 @@ def test_get_phoenix_download_failure_raises(monkeypatch):
 
 @pytest.mark.unit
 def test_get_solar_success_when_files_present(monkeypatch, tmp_path):
+    """``proteus get solar`` succeeds when files materialise under FWL_DATA/stellar_spectra/solar."""
     runner = CliRunner()
 
     def fake_GetFWLData():
@@ -416,6 +437,9 @@ def test_get_solar_success_when_files_present(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_get_solar_raises_if_no_files_found(monkeypatch, tmp_path):
+    """``proteus get solar`` exits non-zero when the downloader writes no files,
+    and points the user to the Zenodo download / validate log paths.
+    """
     runner = CliRunner()
 
     def fake_GetFWLData():
@@ -439,6 +463,7 @@ def test_get_solar_raises_if_no_files_found(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_get_solar_wraps_downloader_exception(monkeypatch, tmp_path):
+    """A downloader exception is wrapped, not propagated raw, so the CLI exits cleanly with a message."""
     runner = CliRunner()
 
     def fake_GetFWLData():
@@ -463,6 +488,9 @@ def test_get_solar_wraps_downloader_exception(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
+    """``proteus get interiordata`` reads the config and triggers BOTH interior lookup tables
+    AND melting-curve downloads, passing the config object through.
+    """
     runner = CliRunner()
     calls = []
 
@@ -512,6 +540,7 @@ def test_get_interiordata_calls_clean_downloads(monkeypatch, tmp_path):
     ],
 )
 def test_get_tools_subcommands_call_setup(monkeypatch, subcommand, target):
+    """Each of ``get socrates``, ``get petsc``, ``get spider`` dispatches to its setup helper."""
     runner = CliRunner()
     calls = []
 

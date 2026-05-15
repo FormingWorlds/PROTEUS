@@ -29,6 +29,10 @@ def albedo_run():
 # check result
 @pytest.mark.integration
 def test_albedo_helpfile(albedo_run):
+    """The albedo-lookup integration run produces a ``runtime_helpfile.csv``
+    that matches the committed reference helpfile column-by-column (within
+    rtol=5e-3 on shared columns).
+    """
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
@@ -46,7 +50,10 @@ def test_albedo_helpfile(albedo_run):
 # check albedo interpolation
 @pytest.mark.integration
 def test_albedo_interp(albedo_run):
-    # check loaded data ok
+    """The runtime albedo lookup interpolator matches the tabulated values
+    from ``cloudy.csv`` at each tabulated temperature (atol=1e-7), which
+    pins both the loader and the interpolation method.
+    """
     assert albedo_run.atmos_o.albedo_o.ok
 
     # read data file
@@ -66,6 +73,11 @@ def test_albedo_interp(albedo_run):
 # Check physics
 @pytest.mark.integration
 def test_albedo_physics(albedo_run):
+    """Physical sanity at two points along the trajectory: F_atm > 0
+    (planet is cooling), planetary albedo stays in (0, 1) at both, and
+    the surface cools monotonically from the early point to the final
+    point with T_surf staying above 100 K throughout.
+    """
     hf_all = ReadHelpfileFromCSV(out_dir)
     row_0 = hf_all.iloc[3]
     row_1 = hf_all.iloc[-1]

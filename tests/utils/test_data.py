@@ -1306,6 +1306,10 @@ def test_download_phoenix_unzips_and_cleans_up(
 def test_download_phoenix_force_removes_existing_grid_dir(
     mock_download, mock_zipfile, mock_safe_rm, tmp_path, monkeypatch
 ):
+    """``download_phoenix(force=True)`` removes the pre-existing PHOENIX
+    grid directory before re-extracting, so a corrupted prior download
+    cannot leak stale files into the new grid.
+    """
     from proteus.utils.data import download_phoenix
     from proteus.utils.phoenix_helper import phoenix_param
 
@@ -1345,6 +1349,9 @@ def test_download_phoenix_force_removes_existing_grid_dir(
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
 def test_download_phoenix_returns_false_if_download_fails(mock_download, tmp_path, monkeypatch):
+    """``download_phoenix`` returns False when the underlying ``download``
+    helper returns False, propagating the failure rather than raising.
+    """
     from proteus.utils.data import download_phoenix
 
     monkeypatch.setattr('proteus.utils.data.GetFWLData', lambda: tmp_path)

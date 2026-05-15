@@ -27,13 +27,19 @@ def grid_run():
 
 @pytest.mark.integration
 def test_grid_run(grid_run):
-    # Call fixture to ensure that it has run without error
+    """A small dummy-backend grid completes without raising. The fixture
+    runs the whole grid; this test just pins that the fixture itself
+    succeeded.
+    """
     pass
 
 
 @pytest.mark.integration
 def test_grid_config(grid_run):
-    # Copy of grid's config exists in output dir
+    """The grid run copies its grid TOML and the base config TOML into the
+    output directory bit-identically, and writes a per-case config under
+    ``cfgs/case_<id>.toml``. Reproducibility hook for the grid manager.
+    """
     assert os.path.isfile(OUT_DIR / 'copy.grid.toml')
 
     # Copy of base config is identical to base config
@@ -45,7 +51,10 @@ def test_grid_config(grid_run):
 
 @pytest.mark.integration
 def test_grid_log(grid_run):
-    # Read logfile and check for expected statements
+    """``manager.log`` records the flattened parameter grid (values list),
+    the case-completion summary line, and the explored sweep values
+    (1000, 2000 in the test grid).
+    """
     with open(OUT_DIR / 'manager.log', 'r') as hdl:
         lines = hdl.read()
     assert 'Flattened grid points' in lines
@@ -55,7 +64,9 @@ def test_grid_log(grid_run):
 
 @pytest.mark.integration
 def test_grid_summarise(grid_run):
-    # Test running grid-summarise command
+    """``proteus grid summarise`` produces a non-empty summary in three
+    modes: default, ``completed`` filter, and ``status=11`` filter.
+    """
     assert gsummarise(OUT_DIR)
     assert gsummarise(OUT_DIR, 'completed')
     assert gsummarise(OUT_DIR, 'status=11')
@@ -63,7 +74,10 @@ def test_grid_summarise(grid_run):
 
 @pytest.mark.integration
 def test_grid_pack(grid_run):
-    # Test running grid-pack command
+    """``proteus grid pack`` produces a packed directory and zip archive
+    containing manager log, per-case helpfiles, and plots. Verifies the
+    pack tree structure that downstream users rely on.
+    """
     assert gpack(OUT_DIR, plots=True, zip=True, rmdir_pack=False)
 
     # check pack folder exists

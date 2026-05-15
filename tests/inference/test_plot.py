@@ -22,12 +22,21 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 @pytest.mark.unit
 def test_plots_perf_timeline_BO(tmp_path):
+    """``plots_perf_timeline`` with an empty logs list produces no PNGs;
+    the plotting pipeline gracefully no-ops rather than writing an
+    empty figure.
+    """
     plot_mod.plots_perf_timeline(logs=[], directory=str(tmp_path), n_init=0)
     assert not list((tmp_path / 'plots').glob('*.png'))
 
 
 @pytest.mark.unit
 def test_plot_result_correlation_BO(monkeypatch, tmp_path, caplog):
+    """``plot_result_correlation`` reads each worker's helpfile, applies
+    log/linear scaling per parameter via ``variable_is_logarithmic``,
+    sets axis labels, draws the legend, and saves the figure. Missing
+    helpfiles produce a warning log entry rather than crashing.
+    """
     caplog.set_level('WARNING')
     workers = tmp_path / 'workers'
 

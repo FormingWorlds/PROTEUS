@@ -29,12 +29,19 @@ def dummy_run():
 # run the integration
 @pytest.mark.integration
 def test_dummy_run(dummy_run):
+    """All-dummy-backend integration produces a ``status`` file
+    bit-identical to the committed reference. This is the cheapest
+    binary-reproducibility check for the run loop end-to-end.
+    """
     assert filecmp.cmp(out_dir / 'status', ref_dir / 'status', shallow=False)
 
 
 # check result
 @pytest.mark.integration
 def test_dummy_helpfile(dummy_run):
+    """``runtime_helpfile.csv`` of the all-dummy run matches the
+    committed reference column-by-column within rtol=5e-3 on shared columns.
+    """
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
@@ -52,12 +59,19 @@ def test_dummy_helpfile(dummy_run):
 # Check stellar spectra
 @pytest.mark.integration
 def test_dummy_stellar(dummy_run):
+    """The all-dummy stellar spectrum file ``0.sflux`` is bit-identical to
+    the committed reference, pinning the dummy-star fall-back path.
+    """
     assert filecmp.cmp(out_dir / 'data' / '0.sflux', ref_dir / '0.sflux', shallow=False)
 
 
 # Check physics
 @pytest.mark.integration
 def test_dummy_physics(dummy_run):
+    """Physical sanity along the all-dummy trajectory: F_atm > 0 (planet
+    is cooling), eccentricity decreases monotonically (tidal damping),
+    and T_surf decreases monotonically but stays above 100 K.
+    """
     hf_all = ReadHelpfileFromCSV(out_dir)
     row_0 = hf_all.iloc[3]
     row_1 = hf_all.iloc[-1]

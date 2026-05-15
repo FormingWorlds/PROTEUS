@@ -112,10 +112,16 @@ def _good_row() -> pd.Series:
 # assert_no_nan_inf
 # ---------------------------------------------------------------------------
 def test_assert_no_nan_inf_accepts_clean_row():
+    """A fully-consistent synthetic row passes ``assert_no_nan_inf``
+    without raising; pairs with the NaN / Inf flag tests below.
+    """
     assert_no_nan_inf(_good_row())
 
 
 def test_assert_no_nan_inf_flags_nan():
+    """A NaN value in T_surf trips ``assert_no_nan_inf`` with a
+    ``T_surf=NaN`` message identifying the offending column.
+    """
     row = _good_row()
     row['T_surf'] = float('nan')
     with pytest.raises(AssertionError, match=r'T_surf=NaN'):
@@ -123,6 +129,10 @@ def test_assert_no_nan_inf_flags_nan():
 
 
 def test_assert_no_nan_inf_flags_inf():
+    """An Inf value in F_atm trips ``assert_no_nan_inf`` with an
+    ``F_atm=Inf`` message; the helper distinguishes Inf from NaN in the
+    error message so the user sees which class of non-finite value fired.
+    """
     row = _good_row()
     row['F_atm'] = float('inf')
     row['F_atm'] = float('inf')  # add new column
@@ -134,10 +144,17 @@ def test_assert_no_nan_inf_flags_inf():
 # assert_temperatures_positive
 # ---------------------------------------------------------------------------
 def test_assert_temperatures_positive_accepts_positive():
+    """All-positive temperatures in the synthetic row pass
+    ``assert_temperatures_positive`` without raising.
+    """
     assert_temperatures_positive(_good_row())
 
 
 def test_assert_temperatures_positive_flags_zero():
+    """``T_surf = 0`` trips the helper with a formatted message including
+    the offending value and the K unit, so the user sees the exact
+    column and magnitude that violated the positivity contract.
+    """
     row = _good_row()
     row['T_surf'] = 0.0
     with pytest.raises(AssertionError, match=r'T_surf=0.000e\+00 K'):
@@ -145,6 +162,10 @@ def test_assert_temperatures_positive_flags_zero():
 
 
 def test_assert_temperatures_positive_flags_negative():
+    """A negative T_magma trips the helper; ensures the sign comparison
+    is ``> 0`` (strict) rather than ``>= 0`` (which would silently
+    accept the zero case tested above).
+    """
     row = _good_row()
     row['T_magma'] = -100.0
     with pytest.raises(AssertionError, match=r'T_magma=-1.000e\+02 K'):
@@ -171,6 +192,9 @@ def test_assert_pressures_non_negative_accepts_zero():
 
 
 def test_assert_pressures_non_negative_flags_negative_pressure():
+    """Any negative ``*_bar`` partial pressure trips the helper; the
+    error message names the column and the offending value.
+    """
     row = _good_row()
     row['H2O_bar'] = -0.5
     with pytest.raises(AssertionError, match=r'H2O_bar=-5.000e-01 bar'):
@@ -181,6 +205,9 @@ def test_assert_pressures_non_negative_flags_negative_pressure():
 # Per-element mass closure
 # ---------------------------------------------------------------------------
 def test_per_element_mass_closure_accepts_consistent_row():
+    """A fully-consistent row where each ``<E>_kg_total = atm + solid + liquid``
+    passes the closure check without raising.
+    """
     assert_per_element_mass_closure(_good_row())
 
 
@@ -204,10 +231,16 @@ def test_per_element_mass_closure_tolerates_float_noise():
 # Per-species mass closure
 # ---------------------------------------------------------------------------
 def test_per_species_mass_closure_accepts_consistent_row():
+    """A fully-consistent row where each species' ``kg_total = kg_atm
+    + kg_liquid + kg_solid`` passes the closure check.
+    """
     assert_per_species_mass_closure(_good_row())
 
 
 def test_per_species_mass_closure_flags_inconsistent_species():
+    """Inflating ``H2O_kg_total`` without changing the partition values
+    breaks closure; the helper raises with a message naming H2O.
+    """
     row = _good_row()
     row['H2O_kg_total'] = row['H2O_kg_total'] + 1e22  # 10 EkG drop
     with pytest.raises(AssertionError, match=r'H2O: total='):
@@ -218,6 +251,9 @@ def test_per_species_mass_closure_flags_inconsistent_species():
 # assert_atmosphere_element_sum_matches_M_atm
 # ---------------------------------------------------------------------------
 def test_atmosphere_element_sum_matches_M_atm_accepts_consistent_row():
+    """A consistent row where ``sum(<E>_kg_atm) == M_atm`` passes the
+    cross-tree check without raising.
+    """
     assert_atmosphere_element_sum_matches_M_atm(_good_row())
 
 
@@ -241,6 +277,10 @@ def test_atmosphere_element_sum_matches_M_atm_skips_when_M_atm_zero():
 # assert_element_sum_matches_species_sum (cross-tree consistency)
 # ---------------------------------------------------------------------------
 def test_element_sum_matches_species_sum_accepts_consistent_row():
+    """A consistent row where the element-tree atmospheric sum matches
+    the species-tree atmospheric sum (the two independent
+    representations agree) passes the cross-tree check.
+    """
     assert_element_sum_matches_species_sum(_good_row())
 
 
@@ -262,6 +302,10 @@ def test_element_sum_matches_species_sum_skips_when_both_zero():
 # assert_M_atm_le_M_planet
 # ---------------------------------------------------------------------------
 def test_M_atm_le_M_planet_accepts_realistic_row():
+    """An Earth-like row where M_atm << M_planet passes
+    ``assert_M_atm_le_M_planet`` without raising; pairs with the
+    violation test below.
+    """
     assert_M_atm_le_M_planet(_good_row())
 
 
@@ -281,6 +325,10 @@ def test_M_atm_le_M_planet_admits_float_rounding():
 
 
 def test_M_atm_le_M_planet_skips_when_M_planet_zero():
+    """A pre-IC state where ``M_planet = 0`` (no structure yet) returns
+    early without firing; otherwise the helper would false-alarm on
+    every simulation's first iteration.
+    """
     row = _good_row()
     row['M_planet'] = 0.0
     assert_M_atm_le_M_planet(row)
@@ -290,10 +338,16 @@ def test_M_atm_le_M_planet_skips_when_M_planet_zero():
 # assert_M_planet_matches_M_int_plus_M_ele
 # ---------------------------------------------------------------------------
 def test_M_planet_matches_M_int_plus_M_ele_accepts_consistent_row():
+    """A consistent row where ``M_planet == M_int + M_ele`` passes the
+    interior-vs-element bookkeeping check.
+    """
     assert_M_planet_matches_M_int_plus_M_ele(_good_row())
 
 
 def test_M_planet_matches_M_int_plus_M_ele_flags_disagreement():
+    """Halving M_int leaves ``M_planet > M_int + M_ele``; the helper
+    raises with a message naming the two sides of the comparison.
+    """
     row = _good_row()
     row['M_int'] = row['M_int'] * 0.5  # halve the interior, planet now wrong
     with pytest.raises(AssertionError, match=r'M_planet=.*does not match M_int \+ M_ele'):
@@ -304,6 +358,9 @@ def test_M_planet_matches_M_int_plus_M_ele_flags_disagreement():
 # assert_escape_within_atmospheric_budget
 # ---------------------------------------------------------------------------
 def test_escape_bound_accepts_realistic_rate():
+    """A physically plausible escape rate (1e3 kg/s for one year) is well
+    within the 10*M_atm cap and passes the bound check.
+    """
     row = _good_row()
     # 1 yr of escape at 1e3 kg/s = ~3.15e10 kg, well under 10x M_atm
     assert_escape_within_atmospheric_budget(row, dt_s=3.156e7)
@@ -318,6 +375,9 @@ def test_escape_bound_flags_unphysical_rate():
 
 
 def test_escape_bound_flags_negative_rate():
+    """A negative escape rate is unphysical (atmosphere can only leave,
+    not arrive); the helper trips with the value in the message.
+    """
     row = _good_row()
     row['esc_rate_total'] = -1.0e3
     with pytest.raises(AssertionError, match=r'esc_rate_total = -1.000e\+03 kg/s'):
@@ -332,6 +392,9 @@ def test_escape_bound_skips_when_dt_unknown():
 
 
 def test_escape_bound_flags_nonfinite_rate():
+    """A NaN escape rate is caught by the bound check (which guards
+    against any non-finite value as well as out-of-bound rates).
+    """
     row = _good_row()
     row['esc_rate_total'] = float('nan')
     with pytest.raises(AssertionError, match=r'esc_rate_total = nan'):
@@ -342,6 +405,10 @@ def test_escape_bound_flags_nonfinite_rate():
 # Composite check
 # ---------------------------------------------------------------------------
 def test_composite_check_accepts_clean_dataframe():
+    """``assert_smoke_conservation_invariants`` accepts a two-row
+    DataFrame where every per-row invariant passes and the dt-dependent
+    escape bound is satisfied.
+    """
     row = _good_row()
     # Two rows so dt is computed (dt = 1000 yr, well under 10x M_atm)
     df = pd.DataFrame([row.copy(), row.copy()])
@@ -351,6 +418,9 @@ def test_composite_check_accepts_clean_dataframe():
 
 
 def test_composite_check_rejects_empty_dataframe():
+    """An empty helpfile DataFrame is rejected with a 'helpfile is
+    empty' message rather than silently passing on a zero-row check.
+    """
     with pytest.raises(AssertionError, match=r'helpfile is empty'):
         assert_smoke_conservation_invariants(pd.DataFrame())
 
