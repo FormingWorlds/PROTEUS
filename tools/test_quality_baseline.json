@@ -1,0 +1,10 @@
+{
+  "float_eq_literal": 76,
+  "missing_docstring": 157,
+  "missing_module_pytestmark": 74,
+  "no_assertions": 90,
+  "single_assert": 670,
+  "weak_assert_gt_zero": 88,
+  "weak_assert_is_none_or_not_none": 103,
+  "weak_assert_only_isinstance": 5
+}

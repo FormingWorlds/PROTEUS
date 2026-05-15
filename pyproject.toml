@@ -161,13 +161,19 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "smoke: marks tests as smoke tests (quick validation with real binaries, 1 timestep, low res)",
+    "physics_invariant: marks tests that assert a physical invariant (conservation, positivity, boundedness, monotonicity, symmetry). See .github/.claude/rules/proteus-tests.md section 3.",
+    "reference_pinned: marks tests that pin behavior against a published benchmark, analytical limit, or cross-implementation cross-check. Cite the source in the test docstring. Each physics module must contain at least one. See .github/.claude/rules/proteus-tests.md section 3.",
 ]
 
 [tool.coverage.report]
-# Coverage threshold - automatically updated by CI when coverage increases.
-# See: tools/update_coverage_threshold.py and .github/workflows/ci_tests.yml.
-# The ratcheting (only ever increasing or staying the same) is enforced in CI;
-# do not manually decrease this value in pyproject.toml.
+# Full coverage gate: unit + smoke + integration + slow tests, enforced by the
+# nightly workflow. Target ratchets toward the 90% PROTEUS-ecosystem ceiling.
+# The estimated-total coverage on PRs (union of PR unit/smoke with the latest
+# nightly artifact) is also compared against this gate; that is the 90% KPI
+# operators read.
+# Auto-ratcheted by tools/update_coverage_threshold.py; never manually decrease.
+# See docs/How-to/test_categorization.md and .github/.claude/rules/proteus-tests.md
+# section 15 for the contract.
 fail_under = 59
 show_missing = true
 precision = 2
@@ -187,9 +193,12 @@ exclude_lines = [
 directory = "htmlcov"
 
 [tool.proteus.coverage_fast]
-# Fast CI (unit + smoke) coverage gate; ratcheted independently from full suite
-# This lower bar is intended for mocked/fast tests only and will auto-increase
-# when the fast suite gains coverage. Do not decrease manually.
+# Fast PR gate: unit + smoke coverage only. Target ratchets toward 70%; unit
+# tests alone are not expected to reach the 90% ecosystem ceiling because
+# wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is
+# exercised by integration / slow tests in the nightly tier. Reaching the
+# 90% ceiling is the estimated-total responsibility (see [tool.coverage.report]).
+# Auto-ratcheted by tools/update_coverage_threshold.py; never manually decrease.
 fail_under = 44.45
 
 [tool.ruff]

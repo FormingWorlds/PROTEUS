@@ -289,8 +289,11 @@ tests/validation/
 src/proteus/_version.py
 
 # Claude AI files
-CLAUDE.md
-.claude/
+# Note: the repo-root CLAUDE.md is a tracked symlink to .github/copilot-instructions.md;
+# the .github/.claude/rules/ directory is tracked and shared across collaborators.
+# Personal session state (anything under the top-level .claude/ that is not the tracked
+# rules tree) stays out of git.
+/.claude/
 .mcp.json
 
 # Editor / IDE

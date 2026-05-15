@@ -16,11 +16,19 @@ Follow the same standards for testing, coverage, code quality, and infrastructur
 
 ## High-Level Instructions
 
-1. **Always** follow the testing standards outlined in this document and `docs/How-to/test_infrastructure.md` for all code changes.
-2. **Always** inform yourself of the current project memory in `.github/copilot-memory.md` before making changes.
-3. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
-4. When creating a PR, **always** follow the PR template and ensure all sections are filled out with relevant information.
-5. **Claude-specific**: `CLAUDE.md` is a symlink to this file. Store all project memories and session learnings in `.github/copilot-memory.md` (not in `.claude/` subdirectories), following the structure and conventions already established there.
+> ### Rule files you MUST read on every session
+>
+> PROTEUS keeps its Claude-Code rule files under `.github/.claude/rules/` (NOT the conventional repo-root `.claude/`, which is gitignored and so cannot be shared with collaborators). Claude Code does NOT auto-discover the rules at this unusual path. Read them explicitly at the start of every session and any time you open a related file:
+>
+> - [`.github/.claude/rules/proteus-tests.md`](.claude/rules/proteus-tests.md) -- test quality deep-dive: anti-happy-path patterns, discriminating-value guards, physics-invariant tiering, validation certification markers, adversarial-review trigger. **Required reading before editing any file under `tests/**` or `src/proteus/**`.**
+> - [`.github/.claude/rules/proteus-code-review.md`](.claude/rules/proteus-code-review.md) -- review-pass gate, domain-aware physics review (Stefan-Boltzmann, hf_row save/restore, IC consistency, whole-element aggregation symmetry, etc.). **Required reading before any code review pass.**
+>
+> These two files plus this one are the canonical sources of truth for testing rigor and review criteria. Together they enforce PROTEUS's extreme-rigor stance on physics validity, anti-happy-path testing, and validation certification.
+
+1. **Always** read the two rule files above plus the testing standards in this document and `docs/How-to/test_infrastructure.md` before any code change.
+2. **Always** inform the user that you are reading in this file by printing a message at the start of your response: "(Read in copilot-instructions.md...)"
+3. When creating a PR, **always** follow the PR template and ensure all sections are filled out with relevant information.
+4. **Claude-specific**: `CLAUDE.md` is a symlink to this file. Session learnings, plans, and memories live in `~/.claude/projects/<repo>/memory/` (per the global voice rule); they do NOT live in this repository.
 
 ## Ecosystem Structure
 
@@ -198,10 +206,13 @@ coverage report
 coverage html
 ```
 
-**Coverage thresholds** (in `pyproject.toml`; ratchet capped at the 90% PROTEUS-ecosystem ceiling):
+**Coverage thresholds** (in `pyproject.toml`; auto-ratcheting, never manually decreased):
 
-- Fast gate: `[tool.proteus.coverage_fast] fail_under = 44.45`
-- Full suite: `[tool.coverage.report] fail_under = 59`
+- Fast gate (`[tool.proteus.coverage_fast]`, unit + smoke, every PR): ratcheting toward **70%**.
+- Full gate (`[tool.coverage.report]`, unit + smoke + integration + slow, nightly): ratcheting toward **90%** (the PROTEUS-ecosystem ceiling).
+- Estimated total (PR unit/smoke union with nightly artifact, every PR): compared against the full gate. This is the 90% KPI; unit tests alone cannot reach it, the nightly tier fills the wrapper / binary code paths.
+
+See the `Coverage architecture` block in the Testing Standards section below for the contract.
 
 **Validate test structure**:
 
@@ -290,35 +301,150 @@ pre-commit install -f
 
 ## Testing Standards
 
-**Structure**: Tests MUST mirror source exactly. `src/proteus/config/_config.py` → `tests/config/test_config.py`
+PROTEUS is scientific simulation code, so the test suite is held to physics-grade rigor. The rules below are the contract; the deep-dive (anti-happy-path patterns, discriminating-value guards, certification markers, adversarial-review trigger) lives in [`.github/.claude/rules/proteus-tests.md`](.claude/rules/proteus-tests.md). Read that file before editing any test file or any source file under `src/proteus/**`. The two files must be kept in sync; if you change one, mirror the change in the other.
 
-**Framework:** Use `pytest` exclusively in the `tests/` directory.
+### Structure
 
-**Markers** (use consistently):
+- Tests MUST mirror source exactly: `src/proteus/<module>/<file>.py` -> `tests/<module>/test_<file>.py`. Validated by `bash tools/validate_test_structure.sh`.
+- Framework: `pytest` exclusively in the `tests/` directory.
+- Shared fixtures: `tests/conftest.py` (parameter classes `EarthLikeParams`, `UltraHotSuperEarthParams`, `IntermediateSuperEarthParams`; config paths `config_earth`, `config_minimal`, `config_dummy`, ...). Read `tests/conftest.py` before writing new tests.
 
-- `@pytest.mark.unit` - Fast Python logic tests (<100ms, mock heavy physics)
-- `@pytest.mark.smoke` - Real binary validation (1 timestep, <30s)
-- `@pytest.mark.integration` - Multi-module coupling
-- `@pytest.mark.slow` - Full physics validation (hours)
+### Markers and the module-level marker rule
 
-**Rules**:
+Tier markers, with their CI surface and per-test wall-time budgets:
 
-- **Mocking:** Default to `unittest.mock` for ALL external calls (SOCRATES, AGNI, file I/O, network) in unit tests. Only use real calls if explicitly requested for integration tests.
-- **Speed:** Unit tests must run in <100ms. Aggressively mock heavy simulations, I/O, and external APIs.
-- **Floats:** NEVER use `==` for floats. Use `pytest.approx(val, rel=1e-5)` or `np.testing.assert_allclose`.
-- **Physics:** Use physically valid inputs (T > 0K, P > 0) unless testing error handling. Add comments explaining *why* a specific input range was chosen (e.g., "Temperature set to 300K to represent habitable zone conditions").
-- **Context:** Always read `tests/conftest.py` before writing tests to use existing fixtures.
-- **Parametrization:** Prefer `@pytest.mark.parametrize` over writing multiple similar test functions.
-- **Documentation:** Add docstrings to each test explaining the physical scenario. In test file headers, include an overview and links to `docs/How-to/test_infrastructure.md`, `docs/How-to/test_categorization.md`, and `docs/How-to/test_building.md`.
-- **Coverage Tool:** `pytest --cov` (convenient) or `coverage run -m pytest` (matches CI). Both work correctly.
-- **Formatting:** Ruff format all test files before committing.
+| Marker | What it tests | Speed budget | When CI runs it |
+|---|---|---|---|
+| `@pytest.mark.unit` | Python logic, heavy physics mocked | < 100 ms per test | Every PR (`unit and not skip`) |
+| `@pytest.mark.smoke` | Real binaries, 1 timestep, low resolution | < 30 s per test | Every PR (`smoke and not skip`) |
+| `@pytest.mark.integration` | Multi-module coupling | Minutes per test | Nightly only |
+| `@pytest.mark.slow` | Full physics validation | Up to hours per test | Nightly only (targeted file list) |
+| `@pytest.mark.skip` | Placeholder, deliberately disabled | n/a | Never |
 
-### Coverage Requirements
-- **Threshold:** Check `pyproject.toml` [tool.coverage.report] `fail_under` for current threshold.
-- **Automatic Ratcheting:** Coverage threshold automatically increases on main branch via `tools/update_coverage_threshold.py` (never decreases).
-- **Reports:** Run `pytest --cov --cov-report=html` and inspect `htmlcov/index.html` for gaps.
-- **Analysis:** Use `bash tools/coverage_analysis.sh` to identify low-coverage modules needing tests.
-- **Quality Gate:** All PRs must pass the coverage threshold defined in CI (see `.github/workflows/proteus_test_quality_gate.yml`).
+**Mandatory module-level marker** (no exceptions): every test file begins with
+
+```python
+pytestmark = [pytest.mark.<tier>, pytest.mark.timeout(<budget>)]
+```
+
+with timeouts: 30 s for unit, 60 s for smoke, 300 s for integration, 3600 s for slow. Per-function markers are additive but do not replace the module-level marker. CI runs `pytest -m "unit and not skip"`; tests without a tier marker are invisible to CI. The `pytest-timeout` ceiling is a defensive net against future regressions that introduce a hang; current budgets are well clear of it.
+
+### Physics validity (tiered)
+
+Every unit test on a **physics module** must assert at least one of the following invariants. Physics modules are: `interior_struct/*`, `interior_energetics/*`, `atmos_clim/*`, `atmos_chem/*`, `escape/*`, `outgas/*`, `orbit/*`, `star/*`, `observe/*`, `inference/objective.py`.
+
+- **Conservation**: mass closure (sum of reservoirs = total), energy balance (LHS = RHS within tolerance), angular-momentum conservation.
+- **Positivity / boundedness**: T > 0 K, P > 0 Pa, mass fractions in [0, 1], escape rate <= atmospheric mass, outgassing >= 0, melt fraction in [0, 1].
+- **Monotonicity or symmetry**: e.g. P increasing with depth implies rho increasing; reversing time integration recovers the initial condition.
+- **Pinned numeric value with a discrimination guard**: a closed-form value pinned via `pytest.approx`, accompanied by an explicit assertion that the most plausible wrong-formula result would differ from the correct one by more than the tolerance. The deep-dive file has examples.
+
+Utility modules (`utils/*`, `config/*`, `plot/*`, `cli.py`, `inference/utils.py`, `tools/*`) are **exempt** from the physics-invariant requirement but still subject to the anti-happy-path rules (edge case, adversarial input handling where applicable, non-trivially-derivable assertion values).
+
+Tag every test that asserts a physical invariant with `@pytest.mark.physics_invariant` so coverage of physics-invariant tests can be tracked separately from line coverage.
+
+### Anti-happy-path rules (every new test)
+
+Every new test function MUST include:
+
+1. **At least one edge case** (boundary value, empty input, extreme physical parameter).
+2. **At least one path that exercises the error contract**: a documented exception path, a guard return, or a graceful clamp. If the function under test has no validation logic, exercise the limit-input behavior (e.g. `e = 0` for an eccentricity-dependent routine) and assert the mathematical invariant.
+3. **Assertion values that are NOT trivially derivable from the implementation**: discriminating numeric pins (not `T = 1` where every exponent gives 1), property-based assertions (monotonicity, conservation) preferred over point checks.
+
+**Forbidden patterns** (these will be flagged by `tools/check_test_quality.py`):
+
+- Single-assert test functions.
+- Standalone weak assertions: `assert result is not None`, `assert result > 0`, `assert len(result) > 0`, `assert isinstance(result, dict)` as the only meaningful check.
+- Tests with no function-level docstring.
+- Tests using `==` adjacent to float literals.
+- Tests asserting on a fixture's implicit default (e.g. `assert fixture is None` where the fixture returns `None` implicitly): a trivially-true test is worse than no test.
+
+### Validation certification (marker policy)
+
+Two markers track validation quality independently of line coverage:
+
+- `@pytest.mark.physics_invariant` -- this test asserts at least one of the four invariants above. Every physics-module test should carry this marker if it qualifies.
+- `@pytest.mark.reference_pinned` -- this test pins behavior against a **published benchmark** (cite the paper, figure, table), an **analytical limit** (e.g. the Stefan-Boltzmann black-body limit), or a **cross-implementation cross-check** (e.g. SPIDER vs Aragog at the same IC). Each physics module under `interior_*`, `interior_energetics/*`, `interior_struct/*`, `atmos_*`, `escape/*`, `outgas/*`, `orbit/*`, `star/*` must contain at least one `reference_pinned` test. Module-level inventory tracked in `docs/Validation/<module>.md`.
+
+The new markers are registered in `pyproject.toml`. They do not gate CI by themselves; they are tracked via `tools/check_test_quality.py` for visibility.
+
+### Float and numerical comparison
+
+- NEVER use `==` for floats. Use `pytest.approx(val, rel=1e-5)` (or `abs=...`) or `np.testing.assert_allclose(actual, expected, rtol=..., atol=...)`.
+- State the tolerance rationale in a comment when the choice is non-obvious (e.g. "rtol=1e-3 because Cp lookup truncates to 4 sig fig").
+- For pinned numeric values, include a **discrimination guard**: a follow-up `assert` showing the wrong-formula value would differ from the correct one by more than the tolerance. See `.github/.claude/rules/proteus-tests.md` Section 2 for the canonical pattern.
+
+### Mocking discipline
+
+- Default to `unittest.mock` for ALL external calls in unit tests: SOCRATES, AGNI, SPIDER, file I/O, network, Aragog/Zalmoxis solvers.
+- Mock at the narrowest scope: a specific function, not a whole module.
+- A mocked physics function must return **physically plausible** values; a mock that returns `0.0` or `1.0` for everything can mask real bugs.
+- NEVER mock the function under test.
+- Smoke tests use real binaries; integration tests use real submodules.
+
+### Optional-dependency imports
+
+Any test that imports an optional dependency (`hypothesis`, `boreas`, `atmodeller`, `lovepy`, `mors`, `vulcan`, also `zalmoxis` when not installed via editable) MUST call `pytest.importorskip('<dep>')` at module top. The PR Docker image is built with `pip install --no-deps`; tests that import optional deps unconditionally will fail to collect on CI even though they run locally. This trap has recurred multiple times and is now lint-enforced.
+
+### Module-level constants and `monkeypatch`
+
+When the source under test reads an environment variable into a module-level constant at import time, e.g.
+
+```python
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', ...))
+```
+
+`monkeypatch.setenv` is **not sufficient**: the constant is frozen at the import that already happened. Patch the constant directly:
+
+```python
+monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path, raising=False)
+```
+
+Patch BOTH the env var (for downstream code that re-reads it) AND the constant (for code that reads only the constant).
+
+### Voice rule for test artifacts
+
+The repo-wide voice rule (zero AI-process disclosure in any public artifact, see top of this file) applies to test code with the same strictness as to source. Banned in test-skip reasons, test-file docstrings, parametrize ids, log-capture assertions, and test-function names: "audit", "review pass", "adversarial review", "Phase X", "T1.x", "Group A/B/C/D", `claude-config/...` paths, "Generated with Claude", em-dashes, en-dashes. Write the OUTCOME (what the test verifies) never the PROCESS (how the rule got there).
+
+### Speed and determinism
+
+- Unit tests: < 100 ms wall-time each. The 30 s `timeout` is a defensive ceiling, not the target.
+- Aggressively mock heavy simulations, file I/O, and external APIs in unit tests.
+- Set seeds for any randomness: `np.random.seed(42)`, `torch.manual_seed(42)`, `random.seed(42)`. All three must be seeded if all three are exercised; deterministic-only-on-one is a known regression vector.
+- Use `tmp_path` (pytest fixture) for temporary files; do not produce large outputs in tests.
+
+### Documentation per test
+
+- File-level docstring: name the module under test, list the invariants and contract clauses the file exercises, and link to the three test docs (`test_infrastructure.md`, `test_categorization.md`, `test_building.md`).
+- Function-level docstring: state the physical scenario or contract clause being verified, in plain language. Required (lint-enforced).
+- Inline comments: explain **why** a specific input range was chosen ("T=300 K and T=1500 K so the T**3 vs T**4 difference is resolved well above tolerance").
+
+### Adversarial review trigger
+
+Any commit that adds or substantially modifies > 50 lines of test code (single commit, across all `tests/**` paths) triggers an adversarial-review pass before merge. The reviewer cites the anti-happy-path rule, the discrimination-guard requirement, and the physics-invariant tier; flags single-assert tests, weak `is not None` patterns, missing module-level marker, missing `physics_invariant` tag on a physics-module test, and dead tests (tests that pass for the wrong reason).
+
+### Tooling
+
+- Validate test structure: `bash tools/validate_test_structure.sh`
+- Test-quality lint (anti-happy-path, marker, weak assertions): `python tools/check_test_quality.py --check`
+- Baseline (run after a deliberate sweep): `python tools/check_test_quality.py --baseline`
+- Coverage analysis: `bash tools/coverage_analysis.sh`
+- Format: `ruff format src/ tests/`
+- Lint: `ruff check src/ tests/`
+
+### Coverage architecture
+
+PROTEUS uses two gates with explicit sub-targets:
+
+| Gate | Tests included | Target | Enforced |
+|---|---|---|---|
+| Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit + smoke | Ratcheting toward **70%** | Every PR |
+| Estimated total (PR unit/smoke union with latest nightly artifact) | unit + smoke + integration | **90%** (the PROTEUS-ecosystem ceiling) | Every PR |
+| Full gate (`tool.coverage.report.fail_under`) | unit + smoke + integration + slow | **90%** | Nightly only |
+| Diff-cover | changed lines only | 80% (hard-coded) | Every PR |
+
+**What this means for contributors**: unit tests alone are not expected to reach 90%. Wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised by smoke + integration tests in nightly; the nightly artifact is unioned with the PR coverage to estimate the total. The 90% ceiling is the **estimated-total** target, not the fast-gate target. The fast gate ratchets toward 70%; the estimated total ratchets toward 90%. The ratchet is one-way (`tools/update_coverage_threshold.py`, capped at 90%); never manually decrease.
+
+Reports: `pytest --cov=src --cov-report=html` and open `htmlcov/index.html`. Module-level analysis: `bash tools/coverage_analysis.sh`. Diff-cover reasoning is documented in `docs/How-to/test_infrastructure.md`.
 
 ## Safety & Determinism
 - **Randomness:** Explicitly set seeds (e.g., `np.random.seed(42)`) in tests.
@@ -418,41 +544,19 @@ Under D1A (the chosen design), CALLIOPE / atmodeller chemistry is unchanged. Oxy
 - **Docs development**: `docs/How-to/documentation.md` (build/serve with `zensical serve`)
 - **Copilot guidelines**: `.github/copilot-instructions.md` (this file; applies to all ecosystem modules)
 
-## 🧠 Memory Maintenance
+## Project memory and session learnings
 
-### Prime Directive: Keep Project Memory Current
+Session-specific knowledge (debugging logs, design rationale, sprint focus, ADR drafts) lives outside this repository, in the Claude memory tree under `~/.claude/projects/<project>/memory/`. The previous in-repo `copilot-memory.md` file was retired in favor of that location because Claude's memory tree is per-user, sync-ready across machines, and not exposed in public commit history.
 
-**ALWAYS** update `.github/copilot-memory.md` after making significant architectural changes, adding new libraries, or finalizing a key design decision.
+What still lives in this repository:
 
-**What to record**:
-- The change made and the *reasoning* (the "Why") behind it
-- New architectural decisions (ADRs) with context
-- Major refactorings or infrastructure changes
-- Lessons learned from debugging or CI/CD issues
-- Updates to active context (current sprint focus)
-- New dependencies or ecosystem module changes
+- Architectural decisions that affect every contributor: this file (`.github/copilot-instructions.md`).
+- Test and review rules: `.github/.claude/rules/proteus-tests.md` and `.github/.claude/rules/proteus-code-review.md`.
+- Per-PR rationale: PR descriptions.
+- Per-commit rationale: commit messages.
+- Module-level scientific validation: `docs/Validation/<module>.md` (created when the first `@pytest.mark.reference_pinned` test for that module is added).
 
-**When to record**:
-- Immediately after implementing architectural changes
-- After resolving complex bugs (capture the lesson)
-- When adding/removing major dependencies
-- After CI/CD workflow modifications
-- When establishing new coding patterns or standards
-
-**How to update**:
-1. Open `.github/copilot-memory.md`
-2. Update relevant section (Active Context, ADRs, Known Debt, etc.)
-3. Add date stamp to "Last Updated" at top
-4. Commit with message: `docs: update copilot-memory.md - [brief description]`
-
-**Goal**: Ensure future sessions (and future developers) have context on *why* decisions were made, not just *what* was changed. This prevents re-litigating solved problems and preserves institutional knowledge.
-
-**Example scenarios requiring memory updates**:
-- Adding a new test marker or CI workflow
-- Changing coverage thresholds or ratcheting strategy
-- Discovering a fragile code area (add to "Code Hotspots")
-- Making a decision about library versions or dependencies
-- Learning why something was implemented a certain way
+Do not introduce a new in-repo "memory" or "decisions log" file. The four channels above are the contract.
 
 ---
 
