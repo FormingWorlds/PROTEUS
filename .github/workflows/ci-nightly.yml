@@ -16,6 +16,16 @@ concurrency:
   group: nightly-science-${{ github.ref }}
   cancel-in-progress: false
 
+# Pin the shell explicitly. Inside the proteus Docker container, the
+# default `run:` shell selection is non-deterministic: some runs use
+# /usr/bin/bash, others use /bin/sh (dash). dash does not support
+# `set -o pipefail`, so any step that relies on pipefail breaks when
+# sh is picked. Forcing bash everywhere keeps the test-failure
+# propagation contract reliable.
+defaults:
+  run:
+    shell: bash
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: formingworlds/proteus
