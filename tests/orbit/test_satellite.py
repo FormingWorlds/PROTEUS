@@ -217,35 +217,36 @@ def test_update_satellite_first_call_seeds_satellite_mass_and_sma():
 
 @pytest.mark.physics_invariant
 @pytest.mark.reference_pinned
-def test_update_satellite_angular_momentum_matches_korenaga_2023_formula():
+def test_update_satellite_angular_momentum_matches_korenaga_2023_eq60():
     """Pin the planet-satellite angular-momentum bookkeeping against
-    the Korenaga (2023) decomposition implemented in
-    ``proteus.orbit.satellite.Ltot``:
+    Korenaga (2023) Icarus 400, 115564, Eq. 60:
 
-        L = I_planet * omega_planet + M_planet * sqrt(G (M_pl + M_sat) a_sat)
+        L = I_E * Omega + M_M * sqrt(G * (M_E + M_M) * a)
 
-    Note: this decomposition multiplies the orbital sqrt by the
-    primary mass (M_planet), not the reduced mass mu = M_pl M_sat /
-    (M_pl + M_sat). The textbook orbital angular momentum of the
-    Moon around Earth, ~2.85e34 kg m^2 / s, uses reduced mass; the
-    Korenaga (2023) formulation gives ~2.4e36 for the same input.
-    The test pins the source-implemented value (closed form) and
-    brackets that order of magnitude.
+    where M_M is the SATELLITE mass (Moon), not M_E (Earth). This is
+    the M_M << M_E limit of the textbook reduced-mass orbital angular
+    momentum L_orb = mu * sqrt(G (M_E + M_M) a) with reduced mass
+    mu = M_E * M_M / (M_E + M_M); the limit's relative error is M_M / M_E
+    ~ 1/81 ~ 1.2% for the Earth-Moon system. Cross-check value:
+    Touma and Wisdom (1994) report the present-day Earth-Moon orbital
+    angular momentum as ~2.85e34 kg m^2 / s.
     """
     cfg = _make_config(semimajoraxis_sat=3.844e8, mass_sat=7.342e22, axial_period_h=24.0)
     hf_row = _make_hf_row(time=0.0, R_int=6.371e6, M_int=5.972e24)
     update_satellite(hf_row, cfg, dt=1.0)
     I = 2 / 5 * 5.972e24 * 6.371e6**2
     omega = 2 * np.pi / (24.0 * secs_per_hour)
-    expected = I * omega + 5.972e24 * (const_G * (5.972e24 + 7.342e22) * 3.844e8) ** 0.5
+    # Eq. 60: orbital prefactor is the satellite mass M_M.
+    expected = I * omega + 7.342e22 * (const_G * (5.972e24 + 7.342e22) * 3.844e8) ** 0.5
     assert hf_row['plan_sat_am'] == pytest.approx(expected, rel=1e-6)
     # Sign guard: total system AM is positive for a prograde Moon.
     assert hf_row['plan_sat_am'] > 0.0
-    # Scale guard: the Korenaga (2023) decomposition gives ~2.4e36 for
-    # the Earth-Moon system. Bracket the order of magnitude to catch
-    # any SI-vs-CGS or kg-vs-g unit conversion bug. The bracket also
-    # documents the offset from the textbook reduced-mass result.
-    assert 1e36 < hf_row['plan_sat_am'] < 1e37
+    # Scale guard: Korenaga Eq. 60 evaluated on the Earth-Moon system
+    # lands at ~2.89e34 kg m^2 / s, matching Touma and Wisdom (1994).
+    # The [1e34, 1e35] bracket catches any SI-vs-CGS or kg-vs-g unit
+    # slip; it would also catch a regression to the pre-fix M_planet
+    # prefactor, which inflated the result to ~2.4e36.
+    assert 1e34 < hf_row['plan_sat_am'] < 1e35
 
 
 @pytest.mark.physics_invariant
