@@ -39,10 +39,40 @@ def test_version():
 
 
 @pytest.mark.unit
-def test_get(monkeypatch):
-    # All `proteus get <subcommand>` paths must dispatch without error.
-    # The downloaders touch the network; replace each with a no-op so the
-    # test stays a pure CLI dispatch check rather than a network smoke test.
+def test_get(monkeypatch, tmp_path):
+    """Every `proteus get <subcommand>` dispatches without raising.
+
+    The downloaders touch the network; each is replaced with a no-op so
+    the test stays a pure CLI dispatch check rather than a network smoke.
+    Some subcommands also assert post-conditions (e.g. `solar` requires
+    that files exist under FWL_DATA/stellar_spectra/solar after the
+    downloader returns), so the no-op for download_stellar_spectra writes
+    a stub file at the expected path. FWL_DATA itself is monkeypatched to
+    a tmp_path so the test never touches the user's real data tree.
+
+    Anti-happy-path: each subcommand assertion is its own line and asserts
+    the specific exit code; a regression in any one of them surfaces the
+    name of the failing subcommand in the assertion output. The previous
+    failure (test_get fails on `solar` in CI but not locally because the
+    user's FWL_DATA happened to have stellar_spectra/solar/ already
+    populated) is now eliminated by controlling FWL_DATA explicitly.
+    """
+    # Monkeypatch FWL_DATA to a writable tmp_path so post-condition file
+    # checks have a controlled environment.
+    monkeypatch.setenv('FWL_DATA', str(tmp_path))
+
+    def stub_download_stellar_spectra(folders=('solar',), **kwargs):
+        # The CLI `solar` subcommand checks for files under
+        # GetFWLData()/stellar_spectra/solar after the downloader returns,
+        # raising ClickException if none are present. The no-op honours
+        # that contract by writing a stub file so the post-condition
+        # passes without touching the network.
+        for folder in folders:
+            target = tmp_path / 'stellar_spectra' / folder
+            target.mkdir(parents=True, exist_ok=True)
+            (target / '_stub.txt').write_text('stub')
+        return True
+
     no_op = lambda *args, **kwargs: True  # noqa: E731
     for target in (
         'proteus.utils.data.download_exoplanet_data',
@@ -51,28 +81,32 @@ def test_get(monkeypatch):
         'proteus.utils.data.download_spectral_file',
         'proteus.utils.data.download_phoenix',
         'proteus.utils.data.download_muscles',
-        'proteus.utils.data.download_stellar_spectra',
         'proteus.utils.data.download_stellar_tracks',
     ):
         monkeypatch.setattr(target, no_op, raising=False)
+    monkeypatch.setattr(
+        'proteus.utils.data.download_stellar_spectra',
+        stub_download_stellar_spectra,
+        raising=False,
+    )
 
     response = runner.invoke(cli.get, ['reference'])
-    assert response.exit_code == 0
+    assert response.exit_code == 0, f'reference: {response.output}'
 
     response = runner.invoke(cli.get, ['surfaces'])
-    assert response.exit_code == 0
+    assert response.exit_code == 0, f'surfaces: {response.output}'
 
     response = runner.invoke(cli.get, ['spectral', '-n', 'Frostflow', '-b', '16'])
-    assert response.exit_code == 0
+    assert response.exit_code == 0, f'spectral: {response.output}'
 
     response = runner.invoke(cli.get, ['muscles', '--star', 'trappist-1'])
-    assert response.exit_code == 0
+    assert response.exit_code == 0, f'muscles: {response.output}'
 
     response = runner.invoke(cli.get, ['phoenix', '--feh', '0.0', '--alpha', '0.0'])
-    assert response.exit_code == 0
+    assert response.exit_code == 0, f'phoenix: {response.output}'
 
     response = runner.invoke(cli.get, ['solar'])
-    assert response.exit_code == 0
+    assert response.exit_code == 0, f'solar: {response.output}'
 
 
 # ---------------------------
