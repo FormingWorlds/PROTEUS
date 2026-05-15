@@ -21,7 +21,7 @@ Why this matters:
 
 Test-only exemption to the Config-mutability rule:
 
-The project rule (`.claude/rules/proteus-code-review.md`, "Config
+The project rule (`.github/.claude/rules/proteus-code-review.md`, "Config
 mutability") forbids mutating `Config` attrs at runtime in source code.
 This test deliberately violates that rule by overriding fields after
 `Proteus(...)` initialisation; the alternative would be to render a

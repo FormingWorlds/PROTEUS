@@ -3,7 +3,7 @@
 ## Philosophy
 
 PROTEUS is a scientific simulation framework where correctness matters more than convenience.
-AI coding assistants can accelerate development, but every contribution — human or AI-generated — must meet the same standards for physical validity, numerical robustness, and test coverage.
+AI coding assistants can accelerate development, but every contribution (whether human or AI-generated) must meet the same standards for physical validity, numerical robustness, and test coverage.
 
 **AI is not used for:** Scientific algorithms, physics implementations, or research decisions. These require domain expertise and human judgment.
 
@@ -20,7 +20,7 @@ This guide explains how to use AI coding assistants safely and effectively with 
 ## Quick Start
 
 1. **Set up an AI assistant**: Install [GitHub Copilot for VS Code](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot), or use a CLI-based tool such as [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-2. **Provide context**: Point the assistant to `.github/copilot-instructions.md` (coding guidelines) and `.github/copilot-memory.md` (project state)
+2. **Provide context**: Point the assistant to `.github/copilot-instructions.md` (coding guidelines) and the two deep-dive rule files under `.github/.claude/rules/`
 3. **Generate code**: Use prompts from [Test Building](test_building.md) for tests
 4. **Review thoroughly**: Check all AI output before committing
 5. **Run tests**: `pytest -m "unit and not skip"` and `ruff check`
@@ -31,7 +31,7 @@ This guide explains how to use AI coding assistants safely and effectively with 
 
 PROTEUS uses two special files to provide AI assistants with project context:
 
-### .github/copilot-instructions.md — Coding Guidelines
+### .github/copilot-instructions.md: Coding Guidelines
 
 **Purpose:** Instructions for AI agents on how to write PROTEUS-compliant code. GitHub Copilot automatically discovers this file; other tools access it via the `CLAUDE.md` symlink at the project root.
 
@@ -45,19 +45,23 @@ PROTEUS uses two special files to provide AI assistants with project context:
 
 **How to use:** GitHub Copilot reads this file automatically. For other AI assistants, add it to the context window or reference it in prompts.
 
-### .github/copilot-memory.md — Project State
+### .github/.claude/rules/: Deep-Dive Rule Files
 
-**Purpose:** Living document capturing current project state and decisions.
+**Purpose:** The two files under `.github/.claude/rules/` complement the high-level entry point with topic-specific deep-dives:
+
+- `proteus-tests.md` covers test quality (anti-happy-path patterns, discrimination-guard requirement, physics-invariant tiering, validation certification markers, mocking discipline, the independent-review trigger for non-trivial test changes).
+- `proteus-code-review.md` covers domain-aware physics review (Stefan-Boltzmann exponent, hf_row save/restore, IC consistency, whole-element aggregation symmetry).
 
 **Contains:**
 
-- Recent architectural decisions
-- Current sprint focus and priorities
-- Known issues and workarounds
-- Coverage thresholds and CI status
-- Lessons learned from past work
+- The contract that source and test code must satisfy.
+- Validation certification markers (`physics_invariant`, `reference_pinned`).
+- Recurring trap patterns (importorskip, module-level constants vs monkeypatch.setenv).
+- The cross-link map to the coverage architecture and CI gates.
 
-**How to use:** Reference when you need context about *why* things are done a certain way.
+**How to use:** Open both files before editing anything in `tests/**` or `src/proteus/**`. Read `proteus-code-review.md` before opening a review pass.
+
+Project state, sprint focus, and per-session notes live in the user's Claude memory tree (`~/.claude/projects/<project>/memory/`), not in the repo.
 
 ---
 
@@ -164,7 +168,7 @@ Use AI to review your changes *before* pushing a PR. This catches issues early a
 
 1. **Never share secrets**: Do not paste API keys, passwords, or credentials into AI prompts
 2. **Review all output**: AI can generate plausible-looking but incorrect code
-3. **Verify physics**: AI does not understand scientific validity — check equations, units, and boundary conditions manually
+3. **Verify physics**: AI does not understand scientific validity, so check equations, units, and boundary conditions manually
 4. **Check file operations**: AI may suggest destructive file operations (rm, overwrite)
 5. **Validate external calls**: AI may add network requests or subprocess calls
 
@@ -229,7 +233,7 @@ git diff --staged                         # Review changes yourself
 
 **Problem:** AI uses deprecated APIs or old coding patterns
 
-**Solution:** Reference `.github/copilot-memory.md` for current patterns; specify Python version (3.12)
+**Solution:** Reference the deep-dive rules under `.github/.claude/rules/` for current patterns; specify Python version (3.12)
 
 ### AI generates code that fails CI
 
@@ -246,10 +250,11 @@ bash tools/validate_test_structure.sh
 
 ## References
 
-- [.github/copilot-instructions.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-instructions.md) — AI coding guidelines for PROTEUS
-- [.github/copilot-memory.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-memory.md) — Project state and decisions
-- [Test Building](test_building.md) — Test generation prompts
-- [Test Categorization](test_categorization.md) — Test markers and CI
-- [Test Infrastructure](test_infrastructure.md) — Coverage and workflows
+- [.github/copilot-instructions.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-instructions.md): AI coding guidelines for PROTEUS
+- [.github/.claude/rules/proteus-tests.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/.claude/rules/proteus-tests.md): Test quality deep-dive
+- [.github/.claude/rules/proteus-code-review.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/.claude/rules/proteus-code-review.md): Code review criteria
+- [Test Building](test_building.md): Test generation prompts
+- [Test Categorization](test_categorization.md): Test markers and CI
+- [Test Infrastructure](test_infrastructure.md): Coverage and workflows
 - [GitHub Copilot Documentation](https://docs.github.com/en/copilot)
 - [GitHub Education (Academic License)](https://education.github.com/benefits)

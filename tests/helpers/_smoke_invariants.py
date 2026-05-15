@@ -7,7 +7,7 @@ condition and includes diagnostic context in its failure message so a
 regression points at the broken invariant by name and value, not at a bare
 `assert False`.
 
-Philosophy (per .claude/rules/proteus-tests.md and .claude/rules/proteus-code-review.md):
+Philosophy (per .github/.claude/rules/proteus-tests.md and .github/.claude/rules/proteus-code-review.md):
 
 - Conservation invariants hold for ANY valid simulation, regardless of
   which modules are active. They are the strongest class of assertion

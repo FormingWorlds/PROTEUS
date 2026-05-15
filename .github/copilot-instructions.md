@@ -246,7 +246,7 @@ pre-commit install -f
 
 **CI runs on PRs** (`.github/workflows/ci-pr-checks.yml`):
 
-1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=44.45`
+1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the current fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; auto-ratcheted toward 70%)
 2. **Smoke tests**: `pytest -m "smoke and not skip"`
 3. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
 4. **Diff-cover**: 80% coverage on changed lines (enforced)
@@ -331,7 +331,7 @@ with timeouts: 30 s for unit, 60 s for smoke, 300 s for integration, 3600 s for 
 
 ### Physics validity (tiered)
 
-Every unit test on a **physics module** must assert at least one of the following invariants. Physics modules are: `interior_struct/*`, `interior_energetics/*`, `atmos_clim/*`, `atmos_chem/*`, `escape/*`, `outgas/*`, `orbit/*`, `star/*`, `observe/*`, `inference/objective.py`.
+Every unit test on a **physics module** must assert at least one of the following invariants. Physics modules are: `interior_struct/*`, `interior_energetics/*`, `atmos_clim/*`, `atmos_chem/*`, `escape/*`, `outgas/*`, `orbit/*`, `star/*`, `observe/*`, `inference/objective.py`, `inference/BO.py`, `inference/async_BO.py`. Helpers under physics directories (e.g. `escape/common.py`, `outgas/common.py`) are physics-required when their outputs feed physics; the utility exemption applies only to pure structural plumbing (logging, path resolution, type coercion with no physical quantity). See `.github/.claude/rules/proteus-tests.md` section 3 for the source-file-purpose carve-out.
 
 - **Conservation**: mass closure (sum of reservoirs = total), energy balance (LHS = RHS within tolerance), angular-momentum conservation.
 - **Positivity / boundedness**: T > 0 K, P > 0 Pa, mass fractions in [0, 1], escape rate <= atmospheric mass, outgassing >= 0, melt fraction in [0, 1].
@@ -403,7 +403,7 @@ Patch BOTH the env var (for downstream code that re-reads it) AND the constant (
 
 ### Voice rule for test artifacts
 
-The repo-wide voice rule (zero AI-process disclosure in any public artifact, see top of this file) applies to test code with the same strictness as to source. Banned in test-skip reasons, test-file docstrings, parametrize ids, log-capture assertions, and test-function names: "audit", "review pass", "adversarial review", "Phase X", "T1.x", "Group A/B/C/D", `claude-config/...` paths, "Generated with Claude", em-dashes, en-dashes. Write the OUTCOME (what the test verifies) never the PROCESS (how the rule got there).
+The repo-wide voice rule (zero AI-process disclosure in any public artifact, see top of this file) applies to test code with the same strictness as to source. The rule is scoped to artifacts other contributors and external readers see: test-skip reasons, test-file/function docstrings, test-function/class names, parametrize ids, log-capture assertions, **commit messages on test-touching commits, pull-request titles and bodies on test-touching PRs**, GitHub Actions job/step names, inline `src/proteus/**` comments, and shipped log strings. Out of scope: the rule documents themselves (this file, `.github/.claude/rules/proteus-tests.md`, `.github/.claude/rules/proteus-code-review.md`, `docs/How-to/test_*.md`) may legitimately name the procedures they define. Banned phrases inside in-scope artifacts: "audit", "review pass", "adversarial review", "Phase X" (AI-roadmap labels), "T1.x", "Group A/B/C/D" (AI work groups), `claude-config/...` paths, "Generated with Claude", em-dashes, en-dashes (except bibliographic page ranges). Write the OUTCOME, never the PROCESS.
 
 ### Speed and determinism
 
@@ -418,9 +418,9 @@ The repo-wide voice rule (zero AI-process disclosure in any public artifact, see
 - Function-level docstring: state the physical scenario or contract clause being verified, in plain language. Required (lint-enforced).
 - Inline comments: explain **why** a specific input range was chosen ("T=300 K and T=1500 K so the T**3 vs T**4 difference is resolved well above tolerance").
 
-### Adversarial review trigger
+### Independent review trigger
 
-Any commit that adds or substantially modifies > 50 lines of test code (single commit, across all `tests/**` paths) triggers an adversarial-review pass before merge. The reviewer cites the anti-happy-path rule, the discrimination-guard requirement, and the physics-invariant tier; flags single-assert tests, weak `is not None` patterns, missing module-level marker, missing `physics_invariant` tag on a physics-module test, and dead tests (tests that pass for the wrong reason).
+A pull request that adds or substantially modifies > 50 lines of test code across all its commits triggers an independent review pass before merge. The denominator is PR-level (`git diff origin/main...HEAD -- 'tests/**'`), not per-commit; splitting into many sub-50-line commits does not dodge the trigger. The reviewer cites the anti-happy-path rule, the discrimination-guard requirement, and the physics-invariant tier; flags single-assert tests, weak `is not None` patterns, missing module-level marker, missing `physics_invariant` tag on a physics-module test, and dead tests (tests that pass for the wrong reason).
 
 ### Tooling
 
@@ -588,7 +588,7 @@ zensical serve
 nohup proteus start -c <cfg.toml> --offline > output/<run>/launch.log 2>&1 & disown
 ```
 
-Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` snapshot under `data/`; see `src/proteus/proteus.py` ~395-430. Never foreground a multi-hour run — plain `&` alone dies on SIGHUP. `--deterministic` self-re-execs to pin `JAX_ENABLE_X64=1` + `XLA_FLAGS=--xla_cpu_enable_fast_math=false` before JAX import (on top of always-on `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB=1`); use when Aragog hits T_core-jump-guard exhaustion on tight-tol runs.  **Remember**: Trust these instructions. Only search if information is incomplete or found to be in error.
+Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` snapshot under `data/`; see `src/proteus/proteus.py` ~395-430. Never foreground a multi-hour run; plain `&` alone dies on SIGHUP. `--deterministic` self-re-execs to pin `JAX_ENABLE_X64=1` + `XLA_FLAGS=--xla_cpu_enable_fast_math=false` before JAX import (on top of always-on `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB=1`); use when Aragog hits T_core-jump-guard exhaustion on tight-tol runs.  **Remember**: Trust these instructions. Only search if information is incomplete or found to be in error.
 
 ---
 

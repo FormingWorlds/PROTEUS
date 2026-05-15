@@ -224,6 +224,18 @@ jobs:
           cd /opt/proteus
           bash tools/validate_test_structure.sh
 
+      - name: Check test quality
+        # AST scan for the test-quality rules documented in
+        # .github/.claude/rules/proteus-tests.md. Compares current
+        # violation counts against tools/test_quality_baseline.json
+        # and fails if any rule regresses or the total goes up.
+        # Non-blocking during the legacy-violation sweep; flip the
+        # continue-on-error to false once the baseline is small.
+        continue-on-error: true
+        run: |
+          cd /opt/proteus
+          python tools/check_test_quality.py --check
+
       - name: Decide whether to collect coverage
         run: |
           # Coverage instrumentation (pytest-cov + JAX tracing) inflates

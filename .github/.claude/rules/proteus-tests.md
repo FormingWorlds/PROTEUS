@@ -61,21 +61,31 @@ The test contract is: a regression that introduces a plausible bug must fail the
 
 ### Discrimination guard (REQUIRED for pinned-value tests)
 
-When a test pins a numeric value, include an explicit assertion that the wrong-formula result would differ from the correct one by more than tolerance. This proves the chosen input actually discriminates. Without it, "I picked a good input" is a claim, not a verified one.
+When a test pins a numeric value, include explicit assertions that the wrong-formula result would differ from the correct one for **each plausible bug class**. "Each plausible bug class" means at minimum:
+
+1. **Exponent or factor error** (off-by-one exponent, missing factor of 2 / pi). `abs(val - wrong_value)` discriminates.
+2. **Sign error** (`-x` vs `+x`). `abs()` hides this; assert the sign explicitly with `val > 0` or `val < 0`.
+3. **Unit-conversion error** (Pa vs bar, AU vs m). Pin the absolute scale with the unit named in the comment.
 
 Canonical pattern:
 
 ```python
 def test_de_dt_matches_closed_form_value_for_unit_params():
     val = de_dt(a=2.0, e=0.5, params=_UNIT_PARAMS)
-    expected = (21.0 / 2.0) * 0.5 / (2.0**6.5)
+    expected = (21.0 / 2.0) * 0.5 / (2.0**6.5)  # dimensionless, e-fraction per time-unit
     assert val == pytest.approx(expected, rel=1e-12)
-    # Discrimination guard: a regression to a**5 lands at 0.164, not 0.058.
+    # Exponent-error guard: a regression to a**5 lands at 0.164, not 0.058.
     wrong_a5 = (21.0 / 2.0) * 0.5 / (2.0**5)
     assert abs(val - wrong_a5) > 0.05
+    # Sign guard: positive Imk2 produces a positive RHS magnitude under the
+    # current sign convention. A flipped sign would fail this.
+    assert val > 0
+    # Scale guard: order of magnitude is ~5e-2, not ~5e-5 (kg-vs-g conversion bug)
+    # or ~5e+2 (forgotten division). Pin the magnitude.
+    assert 1e-3 < val < 1.0
 ```
 
-The guard line is mandatory whenever the test's primary assertion is a `pytest.approx` against a hand-calculated value. It is not required for property-based assertions (those are already discriminating by construction).
+The guard lines are mandatory whenever the test's primary assertion is a `pytest.approx` against a hand-calculated value. Property-based assertions (monotonicity, conservation, symmetry) do not need a separate guard because they are already discriminating across the input space; their own form is the guard.
 
 ---
 
@@ -96,9 +106,15 @@ src/proteus/orbit/*
 src/proteus/star/*
 src/proteus/observe/*
 src/proteus/inference/objective.py
+src/proteus/inference/BO.py
+src/proteus/inference/async_BO.py
 ```
 
-Utility modules are exempt from this requirement but still subject to all anti-happy-path rules:
+Bayesian-optimization tests are physics-required because the objective evaluated by BO is the physics simulator itself: BO convergence is the property the simulator is being optimized against, and weak assertions on the BO loop have already shipped on this branch (the centered-target dead-test caught during the second review pass).
+
+Helpers, common code, and shared utilities under a physics directory (e.g. `interior_energetics/common.py`, `escape/common.py`, `outgas/common.py`) are STILL physics-required because their callers are physics. The carve-out is by source file purpose, not by filename: a pure-Python data plumbing helper in `outgas/_recompute_atm_mmw` is physics-required if its output is consumed by physics; only if a helper is purely structural plumbing (logging, path resolution, type coercion with no physical quantity) does the utility exemption apply.
+
+Utility modules are exempt from the physics-invariant requirement but still subject to all anti-happy-path rules:
 
 ```
 src/proteus/utils/*
@@ -106,7 +122,7 @@ src/proteus/config/*
 src/proteus/plot/*
 src/proteus/cli.py
 src/proteus/inference/utils.py
-src/proteus/inference/{BO,async_BO,gen_D_init,plot}.py
+src/proteus/inference/{gen_D_init,plot}.py
 src/proteus/grid/*
 src/proteus/tools/* (when present)
 ```
@@ -136,7 +152,10 @@ Property-based assertions (monotonicity, conservation, symmetry, boundedness) ar
 Two markers track validation quality independently of line coverage:
 
 - **`@pytest.mark.physics_invariant`** -- this test asserts at least one of the four invariants. Tag every qualifying test in a physics module. `tools/check_test_quality.py` warns when a physics-module test asserts no invariant and is not tagged.
-- **`@pytest.mark.reference_pinned`** -- this test pins behavior against a **published benchmark** (paper, figure, table; cite explicitly in the test docstring), an **analytical limit** (Stefan-Boltzmann black-body limit, hydrostatic equilibrium, isentropic Kepler relations), or a **cross-implementation cross-check** (SPIDER vs Aragog at the same IC, CALLIOPE vs atmodeller at the same fO2 shift). Each physics module must contain at least one `reference_pinned` test. The per-module inventory is tracked in `docs/Validation/<module>.md`; the missing-tests punch list is computed by `tools/check_test_quality.py --reference-pinned-audit`.
+- **`@pytest.mark.reference_pinned`** -- this test pins behavior against a **published benchmark** (paper, figure, table; cite explicitly in the test docstring), an **analytical limit** (Stefan-Boltzmann black-body limit, hydrostatic equilibrium, isentropic Kepler relations), or a **cross-implementation cross-check** (SPIDER vs Aragog at the same IC, CALLIOPE vs atmodeller at the same fO2 shift).
+  - **Per-source-file**: each source file in a physics-module directory whose public API computes or returns a physical quantity must have at least one `reference_pinned` test against it. Granularity is per source file, not per directory: `interior_energetics/aragog.py` and `interior_energetics/spider.py` each need their own pinned test, even though they live in the same directory.
+  - **Tracking**: pinned tests are inventoried in `docs/Validation/<module>/<file>.md`, one markdown page per source file. The page records: the source under test, the reference cited, the test ids carrying the marker, and the date of last comparison against the source.
+  - **Audit**: `tools/check_test_quality.py --reference-pinned-audit` currently reports per-directory coverage; per-file granularity is enforced by manual cross-reference against `docs/Validation/`. Extending the audit to per-file resolution is a follow-up.
 
 Both markers are registered in `pyproject.toml` under `[tool.pytest.ini_options] markers`. They do not gate CI on their own; their coverage is a separate KPI surfaced in the PR summary comment.
 
@@ -236,18 +255,32 @@ The `timeout` ceiling exists so a future regression that introduces a hang (real
 
 ## 9. Voice rule for test artifacts
 
-The repo-wide voice rule (zero AI-process disclosure in any public artifact) applies to test code with the same strictness as to source. Banned in:
+The repo-wide voice rule (zero AI-process disclosure in any public artifact) applies to test code with the same strictness as to source. The voice rule is **scoped** to public artifacts other contributors and external readers see; it does NOT apply to the rule documents themselves (this file, `proteus-code-review.md`, `copilot-instructions.md`), which legitimately name the procedures they define.
+
+In scope (the voice rule is BANNED here):
 
 - Test-skip reasons (`@pytest.mark.skip(reason='...')`).
 - Test-file docstrings.
+- Test-function and test-class names.
+- Test-function docstrings.
 - Parametrize ids (`@pytest.mark.parametrize('name', [...], ids=[...])`).
 - Log-capture assertions (regex against `caplog.records`).
-- Test-function names.
-- Test-class names.
+- Commit messages on test-touching commits (subject AND body).
+- **Pull-request titles and bodies on test-touching PRs** (`gh pr create --title ... --body ...`, edits via the GitHub UI).
+- GitHub Actions job names and step names that ship to the PR Checks tab.
+- Inline source comments and docstrings on `src/proteus/**`.
+- Log strings that ship with the repo (anything that ends up in `proteus_00.log` or a shipped artifact).
 
-Banned phrases: "audit", "review pass", "adversarial review", "Phase X", "T1.x", "Group A/B/C/D", `claude-config/...` paths, "Generated with Claude", em-dashes, en-dashes (except in bibliographic page ranges within citations).
+Out of scope (these may NAME the procedures they define):
 
-Write the OUTCOME (what the test verifies) never the PROCESS (how the rule was derived). First-person Tim voice. Going-forward only, no history rewrite.
+- This file (`proteus-tests.md`).
+- `proteus-code-review.md`.
+- `copilot-instructions.md`.
+- `docs/How-to/test_*.md` when describing the rule infrastructure itself.
+
+Banned phrases inside the in-scope artifacts: "audit", "review pass", "adversarial review", "Phase X" (when "X" is an AI-organized roadmap label, not a real project phase), "T1.x", "Group A/B/C/D" (when AI-organized work groups), `claude-config/...` paths, "Generated with Claude", AI-tool names, em-dashes, en-dashes (except in bibliographic page ranges within citations), process meta-commentary ("after careful analysis").
+
+Write the OUTCOME (what the test verifies; what the PR achieves) never the PROCESS (how the rule was derived; which review caught what). First-person Tim voice. Going-forward only, no history rewrite.
 
 ---
 
@@ -285,7 +318,7 @@ Write the OUTCOME (what the test verifies) never the PROCESS (how the rule was d
 
 ## 13. Adversarial review trigger
 
-Any single commit that adds or substantially modifies **> 50 lines** of test code (cumulative across all `tests/**` paths) triggers an adversarial-review pass before merge.
+A pull request that adds or substantially modifies **> 50 lines of test code across all its commits** triggers an independent review pass before merge. The denominator is PR-level, not per-commit: `git diff origin/main...HEAD -- 'tests/**'` is the source of truth. Splitting one large change into 49 + 49 + 49 line commits does NOT dodge the trigger.
 
 The reviewer's mandate:
 

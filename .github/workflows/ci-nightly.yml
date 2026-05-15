@@ -460,8 +460,9 @@ jobs:
         # NOTE: Despite the filename "coverage-integration-only.json", this file actually contains
         # COMBINED coverage from unit + smoke + integration tests (due to --cov-append above).
         # The PR workflow (ci-pr-checks.yml) uses this to estimate total coverage.
-        # TODO: Potential coverage math issue - if unit/smoke coverage drops on a PR, stale lines
-        # from this nightly artifact could mask the regression. See .github/copilot-memory.md for tracking.
+        # Known limitation: if unit/smoke coverage drops on a PR, stale lines in this
+        # nightly artifact can mask the regression until the next nightly refresh. The
+        # 48 h staleness check in ci-pr-checks.yml mitigates but does not eliminate this.
         if: always()
         run: |
           cd /opt/proteus

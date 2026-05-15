@@ -1,7 +1,7 @@
 """
 Defensive-skip tests for the population diagram loaders.
 
-Anti-happy-path discipline (per .claude/rules/proteus-tests.md):
+Anti-happy-path discipline (per .github/.claude/rules/proteus-tests.md):
 - Tests must include the missing-data path AND the present-data path.
 - Tests must include malformed inputs that the loaders should tolerate.
 - Tests must verify the wrappers do not raise when the loaders return

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AST-based test-quality linter for the PROTEUS test suite.
 
-Enforces the rules in `.claude/rules/proteus-tests.md` (sections 1 + 7):
+Enforces the rules in `.github/.claude/rules/proteus-tests.md` (sections 1 + 7):
 
 - Every test file must declare a module-level ``pytestmark`` containing a tier
   marker (``unit`` / ``smoke`` / ``integration`` / ``slow``).
@@ -52,9 +52,12 @@ BASELINE_PATH = REPO_ROOT / 'tools' / 'test_quality_baseline.json'
 
 TIER_MARKERS = {'unit', 'smoke', 'integration', 'slow'}
 
-# Physics modules whose tests should carry @pytest.mark.physics_invariant when
-# they assert an invariant, and which require at least one
-# @pytest.mark.reference_pinned test per module.
+# Test directories that contain at least one physics-required source file.
+# Each directory must contain at least one @pytest.mark.reference_pinned test.
+# The per-source-file carve-out (e.g. inference/BO.py is physics, inference/
+# utils.py is utility) is specified in .github/.claude/rules/proteus-tests.md
+# section 3; the audits here operate at directory granularity, which means
+# inference/ is included because BO.py / async_BO.py / objective.py live there.
 PHYSICS_MODULES = {
     'interior_struct',
     'interior_energetics',
@@ -65,6 +68,7 @@ PHYSICS_MODULES = {
     'orbit',
     'star',
     'observe',
+    'inference',
 }
 
 # Weak-assertion shapes flagged as standalone violations.
@@ -107,16 +111,49 @@ def _is_isinstance_assert(node: ast.Assert) -> bool:
     )
 
 
+def _is_numpy_testing(node: ast.AST) -> bool:
+    """True if ``node`` represents the ``numpy.testing`` or ``np.testing`` module
+    (i.e. the value side of ``numpy.testing.assert_allclose``).
+
+    Matches both the ``import numpy as np`` short form (``np.testing.X``) and
+    the ``import numpy`` long form (``numpy.testing.X``).
+    """
+    if not isinstance(node, ast.Attribute):
+        return False
+    if node.attr != 'testing':
+        return False
+    if isinstance(node.value, ast.Name) and node.value.id in ('np', 'numpy'):
+        return True
+    return False
+
+
+def _is_exact_zero(value) -> bool:
+    """True for the sentinel ``0.0`` / ``-0.0`` float comparand.
+
+    Asserting an exact-zero result (e.g. radioactive heating disabled, escape
+    rate at the no-atmosphere limit, eccentricity damping at ``e=0``) is a
+    legitimate physics check and does not need ``pytest.approx``: there is no
+    rounding error to absorb. Comparing against any other float literal is
+    flagged.
+    """
+    return isinstance(value, float) and value == 0.0
+
+
 def _has_float_eq(node: ast.AST) -> bool:
-    """Return True if any descendant uses ``==`` against a float literal."""
+    """Return True if any descendant uses ``==`` against a non-zero float literal.
+
+    Exact-zero comparisons are exempt; see :func:`_is_exact_zero`.
+    """
     for child in ast.walk(node):
         if isinstance(child, ast.Compare):
             for op, right in zip(child.ops, child.comparators):
                 if isinstance(op, ast.Eq):
                     if isinstance(right, ast.Constant) and isinstance(right.value, float):
-                        return True
+                        if not _is_exact_zero(right.value):
+                            return True
                     if isinstance(child.left, ast.Constant) and isinstance(child.left.value, float):
-                        return True
+                        if not _is_exact_zero(child.left.value):
+                            return True
     return False
 
 
@@ -219,13 +256,16 @@ def _count_implicit_assertions(node: ast.AST) -> int:
                         and ctx.func.attr in ('raises', 'warns', 'deprecated_call')
                     ):
                         count += 1
-        # Method calls: x.assert_called*, x.assert_not_called(), np.testing.assert_*
+        # Method calls: x.assert_called*, x.assert_not_called(),
+        # np.testing.assert_*, numpy.testing.assert_*.
         if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute):
             attr = child.func.attr
             if attr.startswith('assert_called') or attr == 'assert_not_called':
                 count += 1
-            elif attr.startswith('assert_') and isinstance(child.func.value, ast.Attribute):
-                # np.testing.assert_allclose, np.testing.assert_array_equal, etc.
+            elif attr.startswith('assert_') and _is_numpy_testing(child.func.value):
+                # np.testing.assert_allclose, numpy.testing.assert_array_equal,
+                # etc. Recognized for both `import numpy as np` and the bare
+                # `import numpy` form.
                 count += 1
             elif isinstance(child.func.value, ast.Name) and child.func.value.id == 'pytest':
                 if attr == 'fail':
@@ -235,7 +275,13 @@ def _count_implicit_assertions(node: ast.AST) -> int:
 
 def check_file(path: Path) -> Violations:
     v = Violations()
-    rel = str(path.relative_to(REPO_ROOT))
+    try:
+        rel = str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        # Tests directory or individual test file lives behind a symlink that
+        # points outside the repo root. Fall back to the absolute path so the
+        # walk completes; this only affects display, not correctness.
+        rel = str(path)
     try:
         tree = ast.parse(path.read_text())
     except SyntaxError as e:
@@ -294,6 +340,33 @@ def walk_tests() -> Violations:
     return total
 
 
+def _file_has_decorator(path: Path, decorator_name: str) -> bool:
+    """True if any function or class in ``path`` carries ``@pytest.mark.<decorator_name>``.
+
+    AST scan; comments, docstrings, and import strings do not count.
+    """
+    try:
+        tree = ast.parse(path.read_text())
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        for dec in node.decorator_list:
+            d = dec
+            if isinstance(d, ast.Call):
+                d = d.func
+            if isinstance(d, ast.Attribute) and isinstance(d.value, ast.Attribute):
+                if (
+                    isinstance(d.value.value, ast.Name)
+                    and d.value.value.id == 'pytest'
+                    and d.value.attr == 'mark'
+                    and d.attr == decorator_name
+                ):
+                    return True
+    return False
+
+
 def reference_pinned_audit() -> list[str]:
     """Return module-relative paths of physics modules lacking a reference_pinned test."""
     missing = []
@@ -303,8 +376,7 @@ def reference_pinned_audit() -> list[str]:
             continue
         has_ref = False
         for p in mod_dir.rglob('test_*.py'):
-            text = p.read_text()
-            if 'pytest.mark.reference_pinned' in text:
+            if _file_has_decorator(p, 'reference_pinned'):
                 has_ref = True
                 break
         if not has_ref:
@@ -357,10 +429,30 @@ def load_baseline() -> dict[str, int]:
 
 def cmd_baseline() -> int:
     v = walk_tests()
+    # Guard against accidental regeneration that would raise the baseline and
+    # mask a regression. If the new total exceeds the old, refuse unless the
+    # caller explicitly opts in via PROTEUS_TEST_QUALITY_ALLOW_REGRESS=1.
+    old = load_baseline()
+    old_total = sum(old.values())
+    new_total = sum(v.counts.values())
+    import os
+    allow = os.environ.get('PROTEUS_TEST_QUALITY_ALLOW_REGRESS') == '1'
+    if old and new_total > old_total and not allow:
+        print(
+            f'Refusing to regenerate baseline: new total ({new_total}) exceeds '
+            f'old total ({old_total}). The baseline should only ratchet downward.\n'
+            f'If this is intentional (e.g. a new rule was added that surfaces '
+            f'pre-existing violations), set PROTEUS_TEST_QUALITY_ALLOW_REGRESS=1.',
+            file=sys.stderr,
+        )
+        return 2
     BASELINE_PATH.write_text(json.dumps(v.to_baseline(), indent=2, sort_keys=True) + '\n')
     print(f'Wrote baseline: {BASELINE_PATH.relative_to(REPO_ROOT)}')
     for rule in sorted(v.counts):
         print(f'  {rule}: {v.counts[rule]}')
+    if old:
+        delta = new_total - old_total
+        print(f'  total: {new_total} ({delta:+d} vs previous baseline {old_total})')
     return 0
 
 
@@ -378,6 +470,16 @@ def cmd_check() -> int:
         if c > b:
             failed = True
         print(f'{rule:42} {b:>8} {c:>9}   {status}')
+    # Cross-rule total-violation guard. A refactor that adds 5 single-asserts
+    # and removes 5 missing-docstrings would pass the per-rule check while
+    # degrading the suite. Catch that here.
+    total_baseline = sum(baseline.values())
+    total_current = sum(v.counts.values())
+    print('-' * 76)
+    total_status = 'OK' if total_current <= total_baseline else 'REGRESSION'
+    print(f'{"TOTAL":42} {total_baseline:>8} {total_current:>9}   {total_status}')
+    if total_current > total_baseline:
+        failed = True
     if failed:
         print()
         print('New violations vs baseline:')

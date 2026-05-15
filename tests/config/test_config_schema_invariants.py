@@ -2,7 +2,7 @@
 Schema invariant tests: every validator catches its target invalid input,
 and every default backend is importable on a stock CI runner.
 
-Anti-happy-path discipline (per .claude/rules/proteus-tests.md):
+Anti-happy-path discipline (per .github/.claude/rules/proteus-tests.md):
 
 - Every validator under test gets a positive AND negative test. The negative
   test asserts a specific exception type AND a specific error-message regex,
