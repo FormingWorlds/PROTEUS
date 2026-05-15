@@ -86,11 +86,14 @@ def test_get_mr_data_returns_none_when_zeng_missing(tmp_path, caplog):
     )
 
 
-def test_get_mr_data_returns_none_when_one_file_missing(tmp_path):
+def test_get_mr_data_returns_none_when_one_file_missing(tmp_path, caplog):
     """Even one missing curve out of five returns None (no partial load).
 
     Anti-happy: writes 4 of 5 files, omits one. The loader must NOT return
-    a partial dict that downstream code would then fail on.
+    a partial dict that downstream code would then fail on. Verifies the
+    warning names the missing file so the failure mode is diagnosable
+    (without this assertion the test could pass for the wrong reason if
+    the loader returned None for an unrelated cause).
     """
     z19 = tmp_path / 'mass_radius' / 'Zeng2019'
     z19.mkdir(parents=True)
@@ -103,8 +106,13 @@ def test_get_mr_data_returns_none_when_one_file_missing(tmp_path):
     ):
         (z19 / name).write_text('1.0 1.0\n2.0 1.5\n3.0 1.7\n')
     # massradiushydrogen.txt missing on purpose.
-    result = _get_mr_data(str(tmp_path))
+    with caplog.at_level(logging.WARNING):
+        result = _get_mr_data(str(tmp_path))
     assert result is None
+    msgs = [rec.message for rec in caplog.records]
+    assert any('massradiushydrogen.txt' in m for m in msgs), (
+        f'Expected a warning naming the missing file; got: {msgs}'
+    )
 
 
 def test_get_mr_data_loads_present_curves(tmp_path):

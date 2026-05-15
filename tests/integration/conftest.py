@@ -1,9 +1,8 @@
 """
 Integration test fixtures and helpers for PROTEUS.
 
-This module provides reusable fixtures and validation functions for multi-timestep
-integration tests. These are designed to support Phase 2 of the test building strategy:
-establishing integration test infrastructure.
+Reusable fixtures and validation functions for multi-timestep
+integration tests.
 
 **Fixtures**:
 - `proteus_multi_timestep_run`: Run PROTEUS for N timesteps with configurable parameters

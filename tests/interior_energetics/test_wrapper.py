@@ -683,7 +683,7 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
 
 @pytest.mark.unit
 @pytest.mark.skip(
-    reason='FIXME: requires SPIDER/Aragog P-S EOS tables (Zenodo 19473625) which are not present in the CI Docker image. Tracked in claude-config/memory for the test-rework phase.'
+    reason='FIXME: requires SPIDER/Aragog P-S EOS tables (Zenodo 19473625) which are not present in the CI Docker image.'
 )
 def test_determine_zalmoxis_no_adiabatic_switch_non_tdep():
     """Non-T-dep EOS does not trigger adiabatic switch."""

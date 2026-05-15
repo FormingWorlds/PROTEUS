@@ -37,7 +37,7 @@ def inference_run():
 
 @pytest.mark.smoke
 @pytest.mark.skip(
-    reason='FIXME: PROTEUS subprocess exits with code 1 inside the CI container during the inference fixture. All four smoke tests in this file share the `inference_run` fixture so they fail in lockstep. Tracked in claude-config/memory for the test-rework phase.'
+    reason='FIXME: PROTEUS subprocess exits with code 1 inside the CI container during the inference fixture. All four smoke tests in this file share the `inference_run` fixture so they fail in lockstep.'
 )
 def test_inference_smoke_run(inference_run):
     assert inference_run is None

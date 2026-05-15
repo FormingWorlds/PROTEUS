@@ -43,9 +43,11 @@ from proteus.config._config import (
     boundary_requires_fixed_surface_state,
     boundary_zalmoxis_incompatible,
     check_module_dependencies,
+    instmethod_evolve,
     planet_fO2_source_compat,
     planet_mass_valid,
     planet_oxygen_mode_explicit,
+    satellite_evolve,
 )
 
 # This file deliberately omits a module-level `pytestmark` because it
@@ -103,7 +105,7 @@ HARD_DEP_BACKENDS = {
 
 
 # ---------------------------------------------------------------------------
-# Schema-default importability: the validator that ate Group A
+# Schema-default importability: every default backend must be importable
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 @pytest.mark.parametrize(
@@ -200,8 +202,7 @@ def test_module_field_inventory_matches_schema():
 
 
 # ---------------------------------------------------------------------------
-# check_module_dependencies — positive + negative
-# This validator had zero direct coverage before this file. Group A bug.
+# check_module_dependencies: positive + negative
 # ---------------------------------------------------------------------------
 def _make_config_instance(**overrides):
     """Build a SimpleNamespace shaped enough for the validators we invoke.
@@ -217,6 +218,12 @@ def _make_config_instance(**overrides):
         interior_energetics=SimpleNamespace(module='aragog'),
         interior_struct=SimpleNamespace(module='zalmoxis'),
         observe=SimpleNamespace(synthesis=None),
+        orbit=SimpleNamespace(
+            module='dummy',
+            instellation_method='separation',
+            evolve=False,
+            satellite=False,
+        ),
         params=SimpleNamespace(stop=SimpleNamespace(escape=SimpleNamespace(enabled=True))),
         planet=SimpleNamespace(
             mass_tot=1.0,
@@ -546,6 +553,83 @@ def test_boundary_zalmoxis_incompatible_passes_with_dummy_struct():
         }
     )
     boundary_zalmoxis_incompatible(instance, None, None)
+
+
+# ---------------------------------------------------------------------------
+# Orbit-coupling validators: instmethod_evolve and satellite_evolve
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
+    """instellation_method='inst' is incompatible with orbit.evolve=True."""
+    instance = _make_config_instance(
+        **{
+            'orbit.instellation_method': 'inst',
+            'orbit.evolve': True,
+        }
+    )
+    with pytest.raises(ValueError, match=r"instellation_method='inst'"):
+        instmethod_evolve(instance, None, None)
+
+
+@pytest.mark.unit
+def test_instmethod_evolve_passes_with_inst_and_no_evolve():
+    """instellation_method='inst' is OK when orbit.evolve is False."""
+    instance = _make_config_instance(
+        **{
+            'orbit.instellation_method': 'inst',
+            'orbit.evolve': False,
+        }
+    )
+    instmethod_evolve(instance, None, None)
+
+
+@pytest.mark.unit
+def test_instmethod_evolve_passes_with_separation_and_evolve():
+    """orbit.evolve is fine when instellation_method != 'inst'."""
+    instance = _make_config_instance(
+        **{
+            'orbit.instellation_method': 'separation',
+            'orbit.evolve': True,
+        }
+    )
+    instmethod_evolve(instance, None, None)
+
+
+@pytest.mark.unit
+def test_satellite_evolve_rejects_satellite_with_evolve():
+    """orbit.satellite=True with orbit.evolve=True must raise."""
+    instance = _make_config_instance(
+        **{
+            'orbit.satellite': True,
+            'orbit.evolve': True,
+        }
+    )
+    with pytest.raises(ValueError, match=r'satellite'):
+        satellite_evolve(instance, None, None)
+
+
+@pytest.mark.unit
+def test_satellite_evolve_passes_with_satellite_and_no_evolve():
+    """A satellite with a fixed orbit is allowed."""
+    instance = _make_config_instance(
+        **{
+            'orbit.satellite': True,
+            'orbit.evolve': False,
+        }
+    )
+    satellite_evolve(instance, None, None)
+
+
+@pytest.mark.unit
+def test_satellite_evolve_passes_without_satellite():
+    """orbit.evolve alone (no satellite) is allowed."""
+    instance = _make_config_instance(
+        **{
+            'orbit.satellite': False,
+            'orbit.evolve': True,
+        }
+    )
+    satellite_evolve(instance, None, None)
 
 
 # ---------------------------------------------------------------------------

@@ -22,13 +22,12 @@ if TYPE_CHECKING:
 # Counter for consecutive Zalmoxis convergence failures during time evolution.
 # Reset on each successful structure update. Crash after max_consecutive.
 #
-# NOTE (2026-04-20 adversarial review): this is a module-level global that
-# persists across runs in the same Python process (pytest session with
-# multiple integration tests, `proteus grid` ensembles spawning in one
-# process, Jupyter kernels). A prior run that hit N consecutive failures
-# leaves the counter at N; the next run's first failure could then trigger
-# the abort threshold. `reset_run_state()` below clears the counter; it
-# should be called from the PROTEUS run-init path.
+# This is a module-level global that persists across runs in the same Python
+# process (pytest sessions with multiple integration tests, `proteus grid`
+# ensembles spawning in one process, Jupyter kernels). A prior run that hit
+# N consecutive failures leaves the counter at N; the next run's first
+# failure could then trigger the abort threshold. `reset_run_state()` below
+# clears the counter and must be called from the PROTEUS run-init path.
 _zalmoxis_fail_count = 0
 # Raised from 5 to 8 on 2026-04-26 after the chili_dry_coupled_stage2_ab_smoothstep
 # crash at iter ~134 and the pre-fix run at iter ~135 both died on consecutive

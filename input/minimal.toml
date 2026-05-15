@@ -19,4 +19,5 @@ config_version = "3.0"
         H_budget = 0.5               # [Earth oceans]
 
 [outgas]
+    module       = "calliope"        # explicit pin so the file is robust to schema-default changes
     fO2_shift_IW = 4                 # [log10 delta IW]
