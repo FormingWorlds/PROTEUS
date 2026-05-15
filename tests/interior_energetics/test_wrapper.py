@@ -682,17 +682,24 @@ def test_determine_zalmoxis_adiabatic_switch(caplog):
 
 
 @pytest.mark.unit
-@pytest.mark.skip(
-    reason='FIXME: requires SPIDER/Aragog P-S EOS tables (Zenodo 19473625) which are not present in the CI Docker image.'
-)
-def test_determine_zalmoxis_no_adiabatic_switch_non_tdep():
-    """Non-T-dep EOS does not trigger adiabatic switch."""
+def test_determine_zalmoxis_no_adiabatic_switch_non_tdep(caplog):
+    """Non-T-dep EOS (Seager2007) does NOT trigger the adiabatic override.
+
+    The companion test `test_determine_zalmoxis_adiabatic_switch` covers the
+    positive case (T-dep EOS with SPIDER + isothermal triggers the override).
+    This test pins the negative case: a Seager2007 mantle EOS prefix is
+    outside `_TDEP_PREFIXES`, so the override must NOT fire and the
+    temperature_mode must remain 'isothermal' both during and after the
+    call. The 'Overriding Zalmoxis temperature_mode' log line must NOT
+    appear.
+    """
     from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
 
     config = MagicMock()
     config.interior_energetics.module = 'spider'
     config.interior_energetics.eos_dir = 'Seager2007'
     config.planet.temperature_mode = 'isothermal'
+    config.planet.mass_tot = 1.0
     config.interior_struct.zalmoxis.mantle_eos = 'Seager2007:silicate'
 
     dirs = {'spider': '/nonexistent/spider'}
@@ -706,11 +713,160 @@ def test_determine_zalmoxis_no_adiabatic_switch_non_tdep():
             return_value=(3.48e6, None),
         ),
         patch('proteus.interior_energetics.wrapper.run_interior'),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables'),
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
     ):
         determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
 
-    # Should not have been changed
+    # Mode unchanged: the override gate did not fire.
     assert config.planet.temperature_mode == 'isothermal'
+    # No override log line: the gate skipped silently.
+    assert not any(
+        'Overriding Zalmoxis temperature_mode' in r.message for r in caplog.records
+    ), (
+        'Adiabatic override fired despite Seager2007 EOS being outside '
+        '_TDEP_PREFIXES; the prefix gate is broken.'
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    'mantle_eos,should_override',
+    [
+        # T-dep prefixes: override expected
+        ('WolfBower2018:MgSiO3', True),
+        ('WolfBower2018:Fe', True),
+        ('RTPress100TPa:silicate', True),
+        # Non-T-dep prefixes: override skipped
+        ('Seager2007:silicate', False),
+        ('Seager2007:Fe', False),
+        ('PALEOS-Fei2021:MgSiO3', False),
+    ],
+)
+def test_determine_zalmoxis_adiabatic_override_gate_per_eos(
+    mantle_eos, should_override, caplog
+):
+    """The adiabatic override gate fires iff the mantle_eos starts with one
+    of `_TDEP_PREFIXES` and the run is SPIDER + isothermal.
+
+    Discriminating values: each parametrized case targets a specific
+    prefix-match decision. A regression that broadens the gate (e.g.,
+    matching Seager2007 as if it were T-dep) or narrows it (e.g.,
+    missing RTPress100TPa) fires here with the offending eos name in
+    the assertion output.
+    """
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
+
+    config = MagicMock()
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.eos_dir = mantle_eos.split(':')[0]
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.mass_tot = 1.0
+    config.interior_struct.zalmoxis.mantle_eos = mantle_eos
+
+    dirs = {'spider': '/nonexistent/spider'}
+    hf_row = {'R_int': 6.371e6}
+
+    with (
+        patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior_energetics.wrapper.Interior_t'),
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.48e6, None),
+        ),
+        patch('proteus.interior_energetics.wrapper.run_interior'),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables'),
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
+
+    fired = any('Overriding Zalmoxis temperature_mode' in r.message for r in caplog.records)
+    assert fired is should_override, (
+        f'Adiabatic override gate behaved unexpectedly for mantle_eos={mantle_eos!r}: '
+        f'expected fired={should_override}, got fired={fired}.'
+    )
+    # The config object must never be mutated regardless of the override path.
+    assert config.planet.temperature_mode == 'isothermal'
+
+
+@pytest.mark.unit
+def test_determine_zalmoxis_no_override_when_module_is_aragog(caplog):
+    """Even with a T-dep EOS, Aragog interior must NOT trigger the override.
+
+    The override is gated on `interior_energetics.module == 'spider'`. A
+    regression that drops that gate would corrupt Aragog runs by re-routing
+    Zalmoxis through an adiabatic-mode initial guess Aragog never asked for.
+    """
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
+    config.planet.temperature_mode = 'isothermal'
+    config.planet.mass_tot = 1.0
+    config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+
+    dirs = {}
+    hf_row = {'R_int': 6.371e6}
+
+    with (
+        patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior_energetics.wrapper.Interior_t'),
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.48e6, None),
+        ),
+        patch('proteus.interior_energetics.wrapper.run_interior'),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables'),
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
+
+    assert not any(
+        'Overriding Zalmoxis temperature_mode' in r.message for r in caplog.records
+    ), 'Override fired under Aragog; module-gate is broken.'
+
+
+@pytest.mark.unit
+def test_determine_zalmoxis_no_override_when_temperature_mode_already_adiabatic(
+    caplog,
+):
+    """If temperature_mode is already 'adiabatic', the override is a no-op.
+
+    The override only flips isothermal to adiabatic. A regression that
+    drops the `temperature_mode == 'isothermal'` clause would re-fire the
+    log line spuriously when the user already asked for adiabatic.
+    """
+    from proteus.interior_energetics.wrapper import determine_interior_radius_with_zalmoxis
+
+    config = MagicMock()
+    config.interior_energetics.module = 'spider'
+    config.interior_energetics.eos_dir = 'WolfBower2018_MgSiO3'
+    config.planet.temperature_mode = 'adiabatic'
+    config.planet.mass_tot = 1.0
+    config.interior_struct.zalmoxis.mantle_eos = 'WolfBower2018:MgSiO3'
+
+    dirs = {'spider': '/nonexistent/spider'}
+    hf_row = {'R_int': 6.371e6}
+
+    with (
+        patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50),
+        patch('proteus.interior_energetics.wrapper.Interior_t'),
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.48e6, None),
+        ),
+        patch('proteus.interior_energetics.wrapper.run_interior'),
+        patch('proteus.interior_struct.zalmoxis.generate_spider_tables'),
+        caplog.at_level('INFO', logger='fwl.proteus.interior_energetics.wrapper'),
+    ):
+        determine_interior_radius_with_zalmoxis(dirs, config, None, hf_row, '/tmp')
+
+    # User-set adiabatic stays untouched
+    assert config.planet.temperature_mode == 'adiabatic'
+    assert not any(
+        'Overriding Zalmoxis temperature_mode' in r.message for r in caplog.records
+    ), 'Override fired when user already requested adiabatic; isothermal-clause broken.'
 
 
 @pytest.mark.unit
