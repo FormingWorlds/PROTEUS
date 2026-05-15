@@ -58,8 +58,13 @@ def test_get(monkeypatch, tmp_path):
     populated) is now eliminated by controlling FWL_DATA explicitly.
     """
     # Monkeypatch FWL_DATA to a writable tmp_path so post-condition file
-    # checks have a controlled environment.
+    # checks have a controlled environment. The module-level FWL_DATA_DIR
+    # constant in proteus.utils.data is read at import time, so setenv
+    # alone is not enough; patch the module attribute too.
+    from pathlib import Path as _Path
+
     monkeypatch.setenv('FWL_DATA', str(tmp_path))
+    monkeypatch.setattr('proteus.utils.data.FWL_DATA_DIR', _Path(tmp_path), raising=False)
 
     def stub_download_stellar_spectra(folders=('solar',), **kwargs):
         # The CLI `solar` subcommand checks for files under
