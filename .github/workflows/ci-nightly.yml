@@ -107,6 +107,34 @@ jobs:
           mkdir -p /opt/julia_depot
           pip install -e ".[develop]" --no-deps
 
+      - name: Refresh CALLIOPE to the branch the nightly needs
+        run: |
+          set -euo pipefail
+          # The Docker base image carries the latest CALLIOPE release
+          # from PyPI, but the branch may depend on entry points that
+          # live only on an unreleased CALLIOPE branch. pyproject.toml
+          # pins that branch via git URL; the overlay install above used
+          # --no-deps so we re-resolve the CALLIOPE dependency here
+          # without touching the rest of the dependency tree.
+          cd /opt/proteus
+          python - <<'PY' > calliope_dep.txt
+          import pathlib
+          import tomllib
+
+          deps = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']
+          for d in deps:
+              if 'fwl-calliope' in d:
+                  print(d)
+                  break
+          PY
+          dep=$(cat calliope_dep.txt)
+          if [ -n "$dep" ]; then
+            echo "Resolved CALLIOPE dependency: $dep"
+            pip install --upgrade --force-reinstall --no-deps "$dep"
+          else
+            echo "No fwl-calliope entry found in pyproject.toml; nothing to refresh."
+          fi
+
       - name: Read full coverage threshold
         run: |
           cd /opt/proteus
