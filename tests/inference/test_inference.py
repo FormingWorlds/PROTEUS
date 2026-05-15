@@ -35,27 +35,26 @@ def inference_run():
     infer_from_config(INFER_CONFIG)
 
 
-@pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: PROTEUS subprocess exits with code 1 inside the CI container during the inference fixture. All four smoke tests in this file share the `inference_run` fixture so they fail in lockstep.'
-)
+# The four tests below run the full inference pipeline as a child PROTEUS
+# subprocess. Each evaluation takes ~75 s wall (~5 min for 4 evaluations),
+# which exceeds the smoke tier's per-test budget. Tagged `slow` so they
+# run in nightly and on-demand but do not gate PR CI; the unit-tier test
+# below (test_run_inference_rejects_too_many_workers) covers the
+# fast-feedback portion of the inference contract.
+
+
+@pytest.mark.slow
 def test_inference_smoke_run(inference_run):
     assert inference_run is None
 
 
-@pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: PROTEUS subprocess exits with code 1 inside the CI container during the inference fixture. See test_inference_smoke_run.'
-)
+@pytest.mark.slow
 def test_inference_smoke_config(inference_run):
     assert os.path.isfile(OUT_DIR / 'copy.infer.toml')
     assert filecmp.cmp(OUT_DIR / 'ref_config.toml', BASE_CONFIG, shallow=False)
 
 
-@pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: PROTEUS subprocess exits with code 1 inside the CI container during the inference fixture. See test_inference_smoke_run.'
-)
+@pytest.mark.slow
 def test_inference_smoke_init(inference_run):
     assert os.path.isfile(OUT_DIR / 'init.csv')
     data = pd.read_csv(OUT_DIR / 'init.csv')
@@ -63,10 +62,7 @@ def test_inference_smoke_init(inference_run):
     assert any(col.startswith('x_') for col in data.columns)
 
 
-@pytest.mark.smoke
-@pytest.mark.skip(
-    reason='FIXME: PROTEUS subprocess exits with code 1 inside the CI container during the inference fixture. See test_inference_smoke_run.'
-)
+@pytest.mark.slow
 def test_inference_smoke_output(inference_run):
     assert os.path.isfile(OUT_DIR / 'data.csv')
 
