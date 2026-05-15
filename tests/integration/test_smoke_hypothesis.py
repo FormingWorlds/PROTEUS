@@ -54,10 +54,18 @@ from pathlib import Path
 import pytest
 from _smoke_invariants import assert_smoke_conservation_invariants
 from helpers import PROTEUS_ROOT
-from hypothesis import HealthCheck, given, settings
-from hypothesis import strategies as st
 
-from proteus import Proteus
+# hypothesis is in the [develop] optional-dependencies group. The Docker CI
+# image installs the project with `--no-deps` and so does not pick up new
+# develop deps until the base image is rebuilt; skip the whole module
+# cleanly when hypothesis is unavailable.
+hypothesis = pytest.importorskip('hypothesis')
+HealthCheck = hypothesis.HealthCheck
+given = hypothesis.given
+settings = hypothesis.settings
+st = hypothesis.strategies
+
+from proteus import Proteus  # noqa: E402
 
 pytestmark = pytest.mark.slow
 
