@@ -1198,7 +1198,9 @@ def test_append_to_shell_rc_unknown_shell_returns_none(monkeypatch, tmp_path):
 @pytest.mark.unit
 def test_is_julia_installed_true_when_shutil_finds_it(monkeypatch):
     """is_julia_installed returns True when shutil.which finds a julia binary."""
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     result = cli.is_julia_installed()
     assert result is True
     # Discrimination: the helper returns a Python bool, not a path string.
@@ -1327,7 +1329,9 @@ def test_install_all_success_with_export_env(monkeypatch, tmp_path):
     """
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
     monkeypatch.setenv('SHELL', '/bin/bash')
     monkeypatch.setattr(Path, 'home', lambda: tmp_path / 'home')
@@ -1363,7 +1367,9 @@ def test_install_all_invokes_socrates_when_missing(monkeypatch, tmp_path):
     """SOCRATES install branch fires subprocess.run when the socrates/ dir is absent."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     # NO socrates dir; AGNI pre-existing so it doesn't try git clone
@@ -1397,7 +1403,9 @@ def test_install_all_socrates_subprocess_failure_aborts(monkeypatch, tmp_path):
     """A CalledProcessError from the SOCRATES install script aborts with exit != 0."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     # No socrates dir; the install attempt must raise
@@ -1424,7 +1432,9 @@ def test_install_all_agni_clone_failure_aborts(monkeypatch, tmp_path):
     """A CalledProcessError during AGNI clone aborts the installation."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     # SOCRATES present so the SOCRATES branch is skipped
@@ -1470,7 +1480,9 @@ def test_update_all_success_path(monkeypatch, tmp_path):
     """Happy path: socrates + AGNI present, julia found, pip + git pull all stubbed."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     (tmp_path / 'socrates').mkdir()
@@ -1501,11 +1513,15 @@ def test_update_all_warns_when_socrates_missing(monkeypatch, tmp_path):
     """SOCRATES-missing path emits a warning, no crash."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     # NO socrates dir, NO AGNI dir
-    monkeypatch.setattr(cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})())
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
     monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
 
     res = runner.invoke(cli.cli, ['update-all'])
@@ -1523,7 +1539,9 @@ def test_update_all_warns_when_julia_missing(monkeypatch, tmp_path):
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     (tmp_path / 'socrates').mkdir()
-    monkeypatch.setattr(cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})())
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
     monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
 
     res = runner.invoke(cli.cli, ['update-all'])
@@ -1539,7 +1557,9 @@ def test_update_all_socrates_update_failure_continues(monkeypatch, tmp_path):
     """A SOCRATES update subprocess failure is reported but the command still continues."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     (tmp_path / 'socrates').mkdir()
@@ -1569,7 +1589,9 @@ def test_update_all_agni_update_failure_continues(monkeypatch, tmp_path):
     """An AGNI update subprocess failure is reported but the command still continues."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
 
     (tmp_path / 'socrates').mkdir()
@@ -1598,7 +1620,9 @@ def test_update_all_export_env_writes_rc(monkeypatch, tmp_path):
     """``update-all --export-env`` writes rc lines for FWL_DATA and RAD_DIR."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
-    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setattr(
+        cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None
+    )
     monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
     monkeypatch.setenv('SHELL', '/bin/bash')
     monkeypatch.setattr(Path, 'home', lambda: tmp_path / 'home')
@@ -1606,7 +1630,9 @@ def test_update_all_export_env_writes_rc(monkeypatch, tmp_path):
 
     (tmp_path / 'socrates').mkdir()
     (tmp_path / 'AGNI').mkdir()
-    monkeypatch.setattr(cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})())
+    monkeypatch.setattr(
+        cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})()
+    )
     monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
 
     res = runner.invoke(cli.cli, ['update-all', '--export-env'])
