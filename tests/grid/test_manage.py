@@ -199,8 +199,9 @@ class TestThreadTarget:
         """
         recorded = {}
         monkeypatch.setattr(
-            gm.subprocess, 'run',
-            lambda cmd, **kw: recorded.setdefault('cmd', cmd) or mock.MagicMock(returncode=0)
+            gm.subprocess,
+            'run',
+            lambda cmd, **kw: recorded.setdefault('cmd', cmd) or mock.MagicMock(returncode=0),
         )
         monkeypatch.setattr(gm.time, 'sleep', lambda *_a, **_k: None)
 
@@ -338,9 +339,7 @@ class TestGridInit:
         # New outdir exists and contains ref_config.toml (proof of fresh init):
         assert os.path.isfile(os.path.join(g.outdir, 'ref_config.toml'))
 
-    def test_refuses_to_clean_outdir_containing_git(
-        self, fake_proteus_dir, base_config_path
-    ):
+    def test_refuses_to_clean_outdir_containing_git(self, fake_proteus_dir, base_config_path):
         """Safety net: never wipe a directory containing a git repo.
 
         Verifies the error fires AND that the .git directory survives,
@@ -554,9 +553,7 @@ class TestGridGenerate:
         assert g.cfgdir in path0
         assert g.cfgdir in path42
 
-    def test_print_setup_logs_dimension_metadata(
-        self, grid_with_mocks, caplog
-    ):
+    def test_print_setup_logs_dimension_metadata(self, grid_with_mocks, caplog):
         """``print_setup`` logs the grid's dimension names, parameter
         keys, and value lists at INFO. Verifies the user-facing diagnostic.
         """
@@ -593,9 +590,7 @@ class TestGridGenerate:
 class TestWriteConfigFiles:
     """write_config_files: deepcopy base + set per-point attrs + write."""
 
-    def test_writes_one_file_per_grid_point(
-        self, grid_with_mocks, monkeypatch
-    ):
+    def test_writes_one_file_per_grid_point(self, grid_with_mocks, monkeypatch):
         """A 2-point grid produces exactly two config files at the
         expected ``cfgdir/case_NNNNNN.toml`` paths.
         """
@@ -632,9 +627,7 @@ class TestWriteConfigFiles:
         assert any(p.endswith('case_000000.toml') for p in written_paths)
         assert any(p.endswith('case_000001.toml') for p in written_paths)
 
-    def test_recursive_setattr_called_for_each_param(
-        self, grid_with_mocks, monkeypatch
-    ):
+    def test_recursive_setattr_called_for_each_param(self, grid_with_mocks, monkeypatch):
         """``recursive_setattr`` is invoked once per (grid point x
         parameter) combination with the parameter name and value pair.
         """
@@ -657,7 +650,8 @@ class TestWriteConfigFiles:
 
         monkeypatch.setattr(gm, 'read_config_object', lambda p: _FakeConf())
         monkeypatch.setattr(
-            gm, 'recursive_setattr',
+            gm,
+            'recursive_setattr',
             lambda obj, attr, val: recursive_calls.append((attr, val)),
         )
         monkeypatch.setattr(gm.os, 'sync', lambda: None)
@@ -678,9 +672,7 @@ class TestWriteConfigFiles:
 class TestSlurmConfig:
     """slurm_config: writes a sbatch script with the right knobs."""
 
-    def test_slurm_script_contents_test_run(
-        self, grid_with_mocks, monkeypatch, tmp_path
-    ):
+    def test_slurm_script_contents_test_run(self, grid_with_mocks, monkeypatch, tmp_path):
         """``slurm_config(..., test_run=True)`` writes a slurm_dispatch.sh
         with the echo-stub command. The SBATCH array bound matches size.
         """
@@ -717,9 +709,7 @@ class TestSlurmConfig:
         # max_mem propagated:
         assert '--mem-per-cpu=8G' in contents
 
-    def test_slurm_script_real_run_uses_proteus(
-        self, grid_with_mocks, monkeypatch
-    ):
+    def test_slurm_script_real_run_uses_proteus(self, grid_with_mocks, monkeypatch):
         """When ``test_run=False`` the dispatch command is the real CLI."""
         g = grid_with_mocks
         g.add_dimension('m', 'planet.mass_tot')
@@ -745,9 +735,7 @@ class TestSlurmConfig:
         assert 'proteus start --offline --config' in contents
         assert '/bin/echo' not in contents
 
-    def test_max_jobs_capped_at_grid_size(
-        self, grid_with_mocks, monkeypatch
-    ):
+    def test_max_jobs_capped_at_grid_size(self, grid_with_mocks, monkeypatch):
         """``max_jobs`` cannot exceed the number of grid points; the
         array bound reflects the capped value implicitly via size-1.
         """
@@ -818,9 +806,7 @@ class _ImmediateDoneProcess:
 class TestGridRun:
     """Grid.run end-to-end with subprocess and multiprocessing mocked."""
 
-    def test_run_with_test_run_dispatches_each_point(
-        self, grid_with_mocks, monkeypatch
-    ):
+    def test_run_with_test_run_dispatches_each_point(self, grid_with_mocks, monkeypatch):
         """``run(test_run=True)`` writes configs, starts a Process per
         point, and joins each one. Sleep waits are stubbed.
         """
@@ -862,9 +848,7 @@ class TestGridRun:
         assert len(instances) == 2
         assert all(inst.started for inst in instances)
 
-    def test_run_threads_capped_at_grid_size(
-        self, grid_with_mocks, monkeypatch
-    ):
+    def test_run_threads_capped_at_grid_size(self, grid_with_mocks, monkeypatch):
         """A caller asking for 64 threads on a 2-point grid uses at most
         2 worker slots; behavior is documented and protects against
         oversubscription.
@@ -890,9 +874,9 @@ class TestGridRun:
 
         instances = []
         monkeypatch.setattr(
-            gm.multiprocessing, 'Process',
-            lambda *a, **k: instances.append(_ImmediateDoneProcess(*a, **k))
-            or instances[-1],
+            gm.multiprocessing,
+            'Process',
+            lambda *a, **k: instances.append(_ImmediateDoneProcess(*a, **k)) or instances[-1],
         )
 
         # Asking for 64 threads but only 2 points exist
@@ -904,9 +888,7 @@ class TestGridRun:
         # All eventually started:
         assert all(i.started for i in instances)
 
-    def test_run_raises_when_cfg_file_missing(
-        self, grid_with_mocks, monkeypatch
-    ):
+    def test_run_raises_when_cfg_file_missing(self, grid_with_mocks, monkeypatch):
         """If write_config_files is bypassed (so no per-case file
         exists), the run loop's existence check fires within a few
         seconds and raises with a clear message.
@@ -978,11 +960,13 @@ class TestGridFromConfig:
         run_called = {'n': 0}
         slurm_called = {'n': 0}
         monkeypatch.setattr(
-            Grid, 'run',
+            Grid,
+            'run',
             lambda self, *a, **k: run_called.__setitem__('n', run_called['n'] + 1),
         )
         monkeypatch.setattr(
-            Grid, 'slurm_config',
+            Grid,
+            'slurm_config',
             lambda self, *a, **k: slurm_called.__setitem__('n', slurm_called['n'] + 1),
         )
         with pytest.raises(ValueError, match='BOGUS_METHOD'):
@@ -1009,9 +993,7 @@ class TestGridFromConfig:
         # Post-state: the relative path was never created (no side effects).
         assert not (fake_proteus_dir / 'relative' / 'path').exists()
 
-    def test_auto_folder_name_is_grid_prefixed(
-        self, fake_proteus_dir, monkeypatch
-    ):
+    def test_auto_folder_name_is_grid_prefixed(self, fake_proteus_dir, monkeypatch):
         """When ``output = "auto"``, the generated folder name starts
         with the ``grid_`` prefix and embeds a timestamp + hex suffix.
         """
@@ -1051,9 +1033,7 @@ class TestGridFromConfig:
         assert captured['name'].startswith('grid_')
         assert len(captured['name']) > 8
 
-    def test_use_slurm_branch_calls_slurm_config(
-        self, fake_proteus_dir, monkeypatch
-    ):
+    def test_use_slurm_branch_calls_slurm_config(self, fake_proteus_dir, monkeypatch):
         """``use_slurm = true`` routes through ``Grid.slurm_config`` and
         does NOT call ``Grid.run``.
         """
@@ -1073,11 +1053,13 @@ class TestGridFromConfig:
 
         call_record = {'run': 0, 'slurm': 0}
         monkeypatch.setattr(
-            Grid, 'run',
+            Grid,
+            'run',
             lambda self, *a, **k: call_record.__setitem__('run', call_record['run'] + 1),
         )
         monkeypatch.setattr(
-            Grid, 'slurm_config',
+            Grid,
+            'slurm_config',
             lambda self, *a, **k: call_record.__setitem__('slurm', call_record['slurm'] + 1),
         )
         monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
@@ -1089,9 +1071,7 @@ class TestGridFromConfig:
         assert call_record['slurm'] == 1
         assert call_record['run'] == 0
 
-    def test_run_branch_calls_run(
-        self, fake_proteus_dir, monkeypatch
-    ):
+    def test_run_branch_calls_run(self, fake_proteus_dir, monkeypatch):
         """``use_slurm = false`` dispatches to ``Grid.run`` instead of
         ``Grid.slurm_config``.
         """
@@ -1111,11 +1091,13 @@ class TestGridFromConfig:
 
         call_record = {'run': 0, 'slurm': 0}
         monkeypatch.setattr(
-            Grid, 'run',
+            Grid,
+            'run',
             lambda self, *a, **k: call_record.__setitem__('run', call_record['run'] + 1),
         )
         monkeypatch.setattr(
-            Grid, 'slurm_config',
+            Grid,
+            'slurm_config',
             lambda self, *a, **k: call_record.__setitem__('slurm', call_record['slurm'] + 1),
         )
         monkeypatch.setattr(gm, 'read_config_object', lambda p: mock.MagicMock())
@@ -1127,9 +1109,7 @@ class TestGridFromConfig:
         assert call_record['run'] == 1
         assert call_record['slurm'] == 0
 
-    def test_all_four_methods_set_correctly(
-        self, fake_proteus_dir, monkeypatch
-    ):
+    def test_all_four_methods_set_correctly(self, fake_proteus_dir, monkeypatch):
         """The four dimension methods (direct/linspace/logspace/arange)
         all route to the matching setter and yield non-trivial values.
         """
@@ -1211,11 +1191,13 @@ class TestGridFromConfig:
         run_called = {'n': 0}
         slurm_called = {'n': 0}
         monkeypatch.setattr(
-            Grid, 'run',
+            Grid,
+            'run',
             lambda self, *a, **k: run_called.__setitem__('n', run_called['n'] + 1),
         )
         monkeypatch.setattr(
-            Grid, 'slurm_config',
+            Grid,
+            'slurm_config',
             lambda self, *a, **k: slurm_called.__setitem__('n', slurm_called['n'] + 1),
         )
         monkeypatch.setattr(gm, 'recursive_setattr', lambda *a, **k: None)
