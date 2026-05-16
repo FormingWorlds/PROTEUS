@@ -334,9 +334,7 @@ class TestSetupLogger:
             # requested logpath. A regression that silently dropped the file
             # handler would still pass the level check but break the contract
             # (route fwl output to logpath).
-            file_handlers = [
-                h for h in logger.handlers if isinstance(h, logging.FileHandler)
-            ]
+            file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
             assert any(h.baseFilename == os.path.abspath(logpath) for h in file_handlers)
 
     @pytest.mark.unit

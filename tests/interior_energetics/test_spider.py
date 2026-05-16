@@ -1588,9 +1588,7 @@ def test_run_spider_success_first_attempt():
     config = MagicMock()
     config.interior_energetics.heat_tidal = False
 
-    with patch(
-        'proteus.interior_energetics.spider._try_spider', return_value=True
-    ) as mock_try:
+    with patch('proteus.interior_energetics.spider._try_spider', return_value=True) as mock_try:
         result = RunSPIDER(
             dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
             config=config,
@@ -1649,9 +1647,7 @@ def test_run_spider_all_attempts_fail():
     config.interior_energetics.heat_tidal = False
 
     with (
-        patch(
-            'proteus.interior_energetics.spider._try_spider', return_value=False
-        ) as mock_try,
+        patch('proteus.interior_energetics.spider._try_spider', return_value=False) as mock_try,
         patch('proteus.interior_energetics.spider.UpdateStatusfile') as mock_status,
         pytest.raises(RuntimeError, match='error occurred when executing SPIDER'),
     ):
