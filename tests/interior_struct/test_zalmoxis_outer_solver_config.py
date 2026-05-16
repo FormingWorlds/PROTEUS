@@ -38,6 +38,11 @@ class TestOuterSolverSchema:
         """
         z = Zalmoxis()
         assert z.outer_solver == 'newton'
+        # Discriminator: 'newton' is the only accepted default; a
+        # regression that fell back to the legacy 'picard' default
+        # would break the end-to-end consistency with the
+        # tighten-integrator-tolerance plumbing and would land here.
+        assert z.outer_solver != 'picard'
 
     def test_explicit_picard_accepted(self):
         """An explicit ``outer_solver='picard'`` is accepted by the
@@ -45,6 +50,10 @@ class TestOuterSolverSchema:
         """
         z = Zalmoxis(outer_solver='picard')
         assert z.outer_solver == 'picard'
+        # Discriminator: the validator must not silently coerce
+        # 'picard' to the default 'newton'. A regression that flipped
+        # the default-vs-explicit handling would land here.
+        assert z.outer_solver != 'newton'
 
     def test_explicit_newton_accepted(self):
         """An explicit ``outer_solver='newton'`` is accepted; round-trips
@@ -52,6 +61,10 @@ class TestOuterSolverSchema:
         """
         z = Zalmoxis(outer_solver='newton')
         assert z.outer_solver == 'newton'
+        # Discriminator: case-folding or whitespace stripping by the
+        # validator could silently rewrite 'newton' to a different
+        # casing. Pin the lowercase, exact form.
+        assert z.outer_solver == z.outer_solver.lower().strip()
 
     @pytest.mark.parametrize(
         'bad_value',
@@ -61,6 +74,12 @@ class TestOuterSolverSchema:
         """attrs in_() validator catches typos, case, and wrong types."""
         with pytest.raises(ValueError):
             Zalmoxis(outer_solver=bad_value)
+        # Positive control: the immediately-adjacent good values must
+        # both still construct. This rules out a regression that
+        # broadened the rejection to also block the legitimate
+        # 'newton' and 'picard' tokens.
+        assert Zalmoxis(outer_solver='newton').outer_solver == 'newton'
+        assert Zalmoxis(outer_solver='picard').outer_solver == 'picard'
 
     def test_newton_max_iter_default(self):
         """``newton_max_iter`` defaults to 30; tested separately from the
@@ -68,6 +87,11 @@ class TestOuterSolverSchema:
         """
         z = Zalmoxis()
         assert z.newton_max_iter == 30
+        # Bounded discriminator: 30 must lie strictly above the
+        # validator's ge(5) lower bound (otherwise the default sits
+        # at the precondition boundary and any noise pushes it
+        # below) and well below an absurd ceiling.
+        assert 5 < z.newton_max_iter < 1000
 
     def test_newton_max_iter_minimum_5(self):
         """ge(5) validator: too few iters can't converge anything useful."""
@@ -262,3 +286,15 @@ class TestNewtonPathTightensIntegratorTolerances:
             f'_NEWTON_REQUIRED_REL_TOL ({_NEWTON_REQUIRED_REL_TOL:.0e}); '
             'otherwise Newton ValueErrors on entry.'
         )
+        # Sign / positivity guard: an integrator tolerance must be a
+        # strictly positive real. A regression that set the default
+        # to 0 or a negative number would still pass the
+        # less-than-or-equal check above (0 <= 1e-7) but would crash
+        # the SciPy integrator at entry.
+        assert cp['relative_tolerance'] > 0.0
+        # Scale guard: the default must also be well above the
+        # smallest representable double (~5e-324). The Newton
+        # precondition is 1e-7; the Zalmoxis-default is 1e-9. A
+        # regression that bumped the default below 1e-15 would
+        # produce silent integrator stalls instead of useful steps.
+        assert cp['relative_tolerance'] >= 1.0e-15

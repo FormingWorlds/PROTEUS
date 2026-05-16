@@ -141,6 +141,12 @@ def test_resolve_skips_when_M_core_missing(tmp_path):
     result = resolve_core_density(config, hf_row, str(tmp_path))
 
     assert result == pytest.approx(11000.0)
+    # No-side-effect discriminator: the missing-M_core branch must
+    # leave hf_row untouched. A regression that wrote a NaN or zero
+    # to hf_row['core_density'] would propagate into the helpfile and
+    # downstream into the energy-balance BC on the next iteration.
+    assert hf_row['core_density'] == pytest.approx(11000.0)
+    assert 'M_core' not in hf_row
 
 
 @pytest.mark.unit
@@ -362,6 +368,15 @@ def test_update_structure_handles_missing_eos_file(tmp_path):
     AragogRunner.update_structure(config, hf_row, interior_o)
 
     assert solver.parameters.mesh.core_density == pytest.approx(init_rho)
+    # No-side-effect discriminator: hf_row['core_density'] must also
+    # remain the cached baseline. A regression that wrote NaN through
+    # to hf_row before bailing on the missing file would propagate
+    # into the helpfile and corrupt the next iteration's BC.
+    assert hf_row['core_density'] == pytest.approx(init_rho)
+    # Sign / positivity invariant (Section 3): core density must
+    # remain strictly positive after the fallback. A regression
+    # that zeroed the field on the exception path would land here.
+    assert solver.parameters.mesh.core_density > 0.0
 
 
 @pytest.mark.unit
@@ -393,6 +408,14 @@ def test_update_structure_skips_when_M_core_is_zero(tmp_path):
     AragogRunner.update_structure(config, hf_row, interior_o)
 
     assert solver.parameters.mesh.core_density == pytest.approx(init_rho)
+    # No-side-effect discriminator: with M_core=0 the wrapper must
+    # skip the echo-back and leave hf_row['core_density'] at the
+    # baseline. A divide-by-zero regression would have written NaN to
+    # both the solver and hf_row.
+    assert hf_row['core_density'] == pytest.approx(init_rho)
+    # Section 3 positivity: even on the skip path the live core
+    # density must remain strictly positive (the BC depends on it).
+    assert solver.parameters.mesh.core_density > 0.0
 
 
 # -- Round-trip consistency tests -------------------------------------------
@@ -441,6 +464,15 @@ def test_round_trip_setup_then_update_consistent(tmp_path):
     rho_update = solver.parameters.mesh.core_density
 
     assert rho_setup == pytest.approx(rho_update, rel=1e-15)
+    # Closed-form discriminator: the round-trip must agree with the
+    # analytical M / (4/3 pi R^3) formula at R_cmb = 3.495e6 m. A
+    # regression that read R_int (~ 6.371e6 m) instead of R_cmb would
+    # produce a value ~6.1x lower, well outside rel=1e-12.
+    expected = M_core / (4.0 / 3.0 * math.pi * 3.495e6**3)
+    assert rho_setup == pytest.approx(expected, rel=1e-12)
+    # Positivity invariant (Section 3): core density is a physical
+    # density and must be strictly positive.
+    assert rho_setup > 0.0
 
 
 @pytest.mark.unit
@@ -605,3 +637,13 @@ def test_echo_back_formula_correct(tmp_path):
 
     # Same formula, same inputs -> floating-point parity.
     assert aragog_rho == pytest.approx(spider_rho, rel=1e-15)
+    # Exponent-error guard: the formula uses R_cmb**3 (sphere volume),
+    # not R_cmb**2 or R_cmb**4. The wrong exponent at R_cmb=3.480e6 m
+    # and M_core=1.94e24 kg lands many orders of magnitude away:
+    # R**2 would give 1.27e10 kg/m^3 (1e6x too high), R**4 would
+    # give 1.10e-2 kg/m^3 (1e6x too low). The bracket below
+    # discriminates both.
+    assert 8000.0 < aragog_rho < 14000.0
+    # Sign / positivity invariant (Section 3): mass and volume are
+    # both strictly positive so the density must be strictly positive.
+    assert aragog_rho > 0.0

@@ -25,12 +25,29 @@ class TestNoackScalingLaws:
         R_p_km = (7030 - 1840 * x_fe) * 1.0**0.282
         # Earth radius is ~6371 km; scaling law should give within 5%
         assert abs(R_p_km - 6371) / 6371 < 0.05, f'R_p={R_p_km:.0f} km'
+        # Exponent-error guard: at M=1 the (M/M_E)^0.282 term is 1, so
+        # the entire signature of NL20 Eq. 5 is the prefactor
+        # 7030 - 1840 * X_Fe. A regression that swapped + for -
+        # (writing 7030 + 1840 * X_Fe) would land at ~7660 km, 1280 km
+        # above; the 5% bracket above is 320 km, but this explicit
+        # range pins the linear coefficient too.
+        assert 6200.0 < R_p_km < 6500.0
+        # Sign / positivity invariant (Section 3): planetary radius is
+        # a physical length, strictly positive.
+        assert R_p_km > 0.0
 
     def test_core_radius_earth_like(self):
         """Core radius for 1 M_Earth, X_CMF=0.325 should be ~3480 km."""
         # Eq. 9: R_c = 4850 * X_CMF^0.328 * (M/M_E)^0.266
         R_c_km = 4850 * 0.325**0.328 * 1.0**0.266
         assert abs(R_c_km - 3480) / 3480 < 0.10, f'R_c={R_c_km:.0f} km'
+        # Boundedness invariant (Section 3): the core must sit strictly
+        # inside Earth (R_int ~ 6371 km) and well above zero. A regression
+        # that swapped the X_CMF and (M/M_E) exponents would still pass a
+        # 10% relative bracket at this fiducial point (both exponents
+        # apply to factors close to unity), but only an unphysical core
+        # radius would escape this bracketed bound.
+        assert 1000.0 < R_c_km < 6371.0
 
     def test_surface_gravity_earth_like(self):
         """Surface gravity for 1 M_Earth should be ~9.8 m/s^2."""
@@ -40,6 +57,14 @@ class TestNoackScalingLaws:
         R_p = (7030 - 1840 * x_fe) * 1.0**0.282 * 1e3  # [m]
         g = const_G * M_earth / R_p**2
         assert abs(g - 9.81) / 9.81 < 0.05, f'g={g:.2f} m/s^2'
+        # Exponent-error guard: g = G * M / R**2. A regression to R**1
+        # would land at ~ 6.25e4 m/s^2 (G*M/R, 6e6x too large) and a
+        # regression to R**3 would land at ~ 9.8e-21 m/s^2 (G*M/R^3,
+        # vanishing). The bracket below discriminates both.
+        assert 5.0 < g < 20.0
+        # Sign / positivity invariant (Section 3): surface gravity from
+        # G * M / R^2 is strictly positive for any positive M and R.
+        assert g > 0.0
 
     def test_iron_fractions_mass_mode(self):
         """Iron fractions from mass-mode core_frac."""
@@ -56,6 +81,18 @@ class TestNoackScalingLaws:
 
         x_cmf, x_fe, x_fem = _iron_fractions(0.55, 'radius')
         assert 0.01 < x_cmf < 0.80
+        # Boundedness invariant (Section 3): every iron fraction lives
+        # in [0, 1] regardless of input mode. A regression that
+        # double-counted core+mantle iron, or treated radius-mode
+        # input as if it were mass-mode without conversion, would
+        # land x_fe or x_fem outside [0, 1].
+        assert 0.0 <= x_fe <= 1.0
+        assert 0.0 <= x_fem <= 1.0
+        # Inequality discriminator: total iron fraction x_fe must
+        # exceed the mantle iron fraction x_fem (the core adds iron
+        # on top of whatever sits in the mantle). A regression that
+        # swapped the return order would invert this.
+        assert x_fe >= x_fem
 
     def test_solve_dummy_structure_fills_hf_row(self):
         """Full dummy solve fills all required hf_row keys."""
@@ -194,3 +231,12 @@ class TestNoackScalingLaws:
                 solve_dummy_structure(config, hf_row, tmpdir)
             radii.append(hf_row['R_int'])
         assert radii[0] < radii[1] < radii[2], f'R should increase with M: {radii}'
+        # Closed-form discriminator: NL20 Eq. 5 gives R ~ M^0.282 at
+        # fixed X_Fe, so doubling the mass must multiply the radius by
+        # 2**0.282 ~ 1.216. A regression that linearised the scaling
+        # (R ~ M) would land at 2.0; an inverse-cube-root mass-volume
+        # collapse (R ~ M^(1/3)) at ~1.260. The 5% bracket below
+        # distinguishes the correct exponent from those alternatives.
+        ratio = radii[2] / radii[1]  # M doubled from 1.0 to 2.0
+        expected_ratio = 2.0**0.282
+        assert ratio == pytest.approx(expected_ratio, rel=0.05)

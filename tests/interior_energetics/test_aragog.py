@@ -115,6 +115,16 @@ def test_setup_solver_zalmoxis_inner_radius(tmp_path):
     call_kwargs = mock_params.call_args
     mesh_arg = call_kwargs.kwargs.get('mesh') or call_kwargs[1].get('mesh')
     assert mesh_arg.inner_radius == pytest.approx(R_core_expected)
+    # Discriminator: a regression that read R_core from the wrong field
+    # (e.g. config.interior_struct.core_frac * R_int = 0.55 * 6.371e6 =
+    # 3.504e6) would still pass an approx pin on the right order of
+    # magnitude. The fallback value is ~24 km away from R_core_expected;
+    # require the gap to be smaller than that.
+    R_core_fallback = 0.55 * 6.371e6
+    assert abs(mesh_arg.inner_radius - R_core_expected) < abs(R_core_fallback - R_core_expected)
+    # Bounded mesh discriminator (Section 3 boundedness): inner_radius
+    # must lie strictly inside (0, R_int) regardless of source field.
+    assert 0.0 < mesh_arg.inner_radius < 6.371e6
 
 
 @pytest.mark.unit
@@ -208,6 +218,11 @@ def test_setup_solver_eos_fallback(tmp_path):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
 
     assert mock_solver.called
+    # Fallback-path discriminator: the solver must have been instantiated
+    # exactly once (the fallback path runs the setup body to completion;
+    # a regression that retried after the unified-path miss could call
+    # the solver more than once or zero times via a swallowed exception).
+    assert mock_solver.call_count == 1
 
 
 @pytest.mark.unit
@@ -231,9 +246,16 @@ def test_setup_solver_eos_not_found(tmp_path):
 
     with (
         patch('proteus.interior_energetics.aragog.FWL_DATA_DIR', tmp_path),
+        patch('proteus.interior_energetics.aragog.EntropySolver') as mock_solver,
         pytest.raises(FileNotFoundError, match='Aragog lookup data not found'),
     ):
         AragogRunner.setup_solver(config, hf_row, interior_o, outdir)
+
+    # No-side-effect discriminator: the EOS-path check raises before the
+    # solver is instantiated. A regression that downgraded the missing
+    # data to a warning and proceeded with a stale path would have
+    # called EntropySolver at least once.
+    assert not mock_solver.called
 
 
 @pytest.mark.unit
@@ -288,6 +310,12 @@ class TestUpdateStructureZalmoxisRefresh:
         }
         AragogRunner.update_structure(config, hf_row, interior_o)
         assert solver.parameters.mesh.inner_radius == pytest.approx(3.2e6)
+        # Discriminator: 3.2e6 (= 0.50 * 6.4e6) is the fallback value;
+        # a regression that read R_core=0.0 verbatim would set
+        # inner_radius to 0, while a regression that used the old
+        # init-time inner_radius (3.4e6) would land 200 km away.
+        assert solver.parameters.mesh.inner_radius > 0.0
+        assert abs(solver.parameters.mesh.inner_radius - 3.4e6) > 100e3
 
     def test_zalmoxis_rejects_negative_r_core(self):
         """A negative R_core (corrupt / failed solve) triggers the
@@ -305,6 +333,14 @@ class TestUpdateStructureZalmoxisRefresh:
         }
         AragogRunner.update_structure(config, hf_row, interior_o)
         assert solver.parameters.mesh.inner_radius == pytest.approx(2.56e6)
+        # Positivity discriminator (Section 3): the fallback exists
+        # precisely so a nonsensical negative R_core never reaches the
+        # mesh. A regression that propagated -1.0 verbatim would land
+        # at a negative inner_radius and trigger this guard.
+        assert solver.parameters.mesh.inner_radius > 0.0
+        # Bounded discriminator: 2.56e6 = 0.40 * 6.4e6 must lie strictly
+        # inside (0, R_int) and must differ from R_int.
+        assert solver.parameters.mesh.inner_radius < 6.4e6
 
     def test_spider_branch_unchanged(self):
         """The existing spider / dummy branch continues to refresh
@@ -321,3 +357,10 @@ class TestUpdateStructureZalmoxisRefresh:
         }
         AragogRunner.update_structure(config, hf_row, interior_o)
         assert solver.parameters.mesh.inner_radius == pytest.approx(3.5e6)
+        # Discriminator: on the spider branch the inner_radius must
+        # track hf_row['R_core'] directly, not the core_frac fallback
+        # (= 0.55 * 6.4e6 = 3.52e6) and not the init-time inner_radius
+        # (3.2e6). The pin above already distinguishes 3.52e6 (within
+        # 20 km) but 3.2e6 is 300 km away; the explicit lower-bound
+        # check makes the failure mode loud.
+        assert abs(solver.parameters.mesh.inner_radius - 3.2e6) > 100e3

@@ -58,6 +58,14 @@ def test_run_escape_disabled():
 
     # Verify escape rate is zero
     assert hf_row['esc_rate_total'] == pytest.approx(0.0, abs=1e-12)
+    # Early-return discriminator: the disabled branch zeroes per-element
+    # escape rates and returns before the M_vol_initial / esc_kg_cumulative
+    # baseline is seeded. A regression that fell through to the dummy
+    # branch would (a) leave esc_rate_H at the unfractionated partition
+    # and (b) seed M_vol_initial from element_list. Both keys absent here
+    # rules that out.
+    assert hf_row['esc_rate_H'] == pytest.approx(0.0, abs=1e-12)
+    assert 'M_vol_initial' not in hf_row
 
 
 @pytest.mark.unit
@@ -194,6 +202,13 @@ def test_run_escape_invalid_module():
     with pytest.raises(ValueError, match='Invalid escape model'):
         run_escape(config, hf_row, dt=1000.0, stellar_track=None)
 
+    # Side-effect discriminator: the dispatch raises in the else branch
+    # BEFORE the final `esc_rate_total` log line. A regression that
+    # silently fell through (e.g. defaulted to dummy) would set
+    # esc_rate_total on hf_row. With the raise intact, the key is never
+    # written.
+    assert 'esc_rate_total' not in hf_row
+
 
 @pytest.mark.unit
 def test_run_escape_snapshots_baseline_on_first_call():
@@ -329,6 +344,15 @@ def test_run_escape_resets_baseline_if_corrupt():
     assert hf_row['M_vol_initial'] == pytest.approx(5e20, rel=1e-10), (
         'NaN baseline must be re-snapshotted from current inventory'
     )
+    # Finiteness discriminator: a regression that propagated NaN through
+    # arithmetic (writing `0.0 * nan` or `nan + something`) instead of
+    # detecting and replacing the corrupt baseline would leave a NaN
+    # in M_vol_initial. The pytest.approx pin above already discriminates
+    # 5e20 from a propagated NaN, but the explicit finiteness check
+    # makes the failure mode loud.
+    import math
+
+    assert math.isfinite(hf_row['M_vol_initial'])
 
 
 # =======================================================================================
@@ -620,6 +644,14 @@ def test_calc_new_elements_prevent_negative_mass():
     for e in tgt:
         assert tgt[e] >= 0.0
 
+    # Bulk escape over dt at 1e10 kg/s exceeds the total inventory
+    # (~1e17 kg ~ 1.04e19 vs esc_mass = 1e10 * 3.156e7 * 1e6 ~ 3.16e23
+    # kg). Every element must therefore be driven to zero, not just be
+    # non-negative. A regression that allowed a partial debit through
+    # would land at a small positive number rather than exact zero.
+    for e in tgt:
+        assert tgt[e] == pytest.approx(0.0, abs=1e-3)
+
 
 @pytest.mark.unit
 def test_calc_new_elements_pxuv_not_supported():
@@ -646,9 +678,19 @@ def test_calc_new_elements_pxuv_not_supported():
     reservoir = 'pxuv'
     min_thresh = 1e10
 
+    # Snapshot hf_row to verify the raise is side-effect-free.
+    snapshot = dict(hf_row)
+
     # Verify ValueError is raised for pxuv
     with pytest.raises(ValueError, match='Fractionation at p_xuv is not yet supported'):
         calc_new_elements(hf_row, dt, reservoir, min_thresh)
+
+    # No-side-effect discriminator: the reservoir match-case raises in
+    # the pxuv branch before any partition arithmetic runs. A regression
+    # that fell through to the bulk path and only logged a warning
+    # would leave H_kg_total and the other inventories debited on the
+    # caller's dict.
+    assert hf_row == snapshot
 
 
 @pytest.mark.unit
@@ -676,9 +718,18 @@ def test_calc_new_elements_invalid_reservoir():
     reservoir = 'invalid_reservoir'
     min_thresh = 1e10
 
+    # Snapshot hf_row to verify the raise is side-effect-free.
+    snapshot = dict(hf_row)
+
     # Verify ValueError is raised
     with pytest.raises(ValueError, match='Invalid escape reservoir'):
         calc_new_elements(hf_row, dt, reservoir, min_thresh)
+
+    # No-side-effect discriminator: the default match-case raises before
+    # any partition arithmetic runs. A regression that downgraded the
+    # invalid reservoir to a silent default-bulk fallthrough would have
+    # debited H_kg_total and the other inventories on the caller's dict.
+    assert hf_row == snapshot
 
 
 @pytest.mark.unit
