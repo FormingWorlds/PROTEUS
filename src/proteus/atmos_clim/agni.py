@@ -35,26 +35,33 @@ def _agni_setup_accepts_aerosol_species() -> bool:
     """Detect whether the installed AGNI version's ``setup!`` accepts the
     ``aerosol_species`` kwarg. Older AGNI installs do not, and passing the
     kwarg trips a Julia MethodError. Resolve at module load by scanning
-    ``AGNI/src/atmosphere.jl`` for a kwarg-list reference of the form
-    ``aerosol_species ::`` or ``aerosol_species =``.
+    every ``atmosphere.jl`` under AGNI/src for a kwarg-list reference of
+    the form ``aerosol_species ::`` or ``aerosol_species =``.
+
+    AGNI moved ``atmosphere.jl`` from ``src/`` to ``src/state/`` in a
+    layout refactor; this helper tolerates both paths so PROTEUS does
+    not have to be kept in lockstep with AGNI's directory structure.
 
     Returns ``False`` when AGNI is not on the conventional sibling path
-    or when the file cannot be read, so existing PROTEUS installs with an
-    older AGNI fall through cleanly.
+    or when no ``atmosphere.jl`` can be located.
     """
     import re
 
     from proteus.utils.helper import get_proteus_dir
 
-    agni_atmos = os.path.join(get_proteus_dir(), 'AGNI', 'src', 'atmosphere.jl')
-    if not os.path.isfile(agni_atmos):
+    agni_root = os.path.join(get_proteus_dir(), 'AGNI', 'src')
+    if not os.path.isdir(agni_root):
         return False
-    try:
-        with open(agni_atmos, 'r') as fh:
-            text = fh.read()
-    except OSError:
-        return False
-    return bool(re.search(r'\baerosol_species\s*(?:::|=)', text))
+    pattern = re.compile(r'\baerosol_species\s*(?:::|=)')
+    for root, _dirs, files in os.walk(agni_root):
+        if 'atmosphere.jl' in files:
+            try:
+                with open(os.path.join(root, 'atmosphere.jl'), 'r') as fh:
+                    if pattern.search(fh.read()):
+                        return True
+            except OSError:
+                continue
+    return False
 
 
 _AGNI_HAS_AEROSOL_SPECIES = _agni_setup_accepts_aerosol_species()

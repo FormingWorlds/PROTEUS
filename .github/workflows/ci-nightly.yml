@@ -131,6 +131,25 @@ jobs:
           mkdir -p /opt/julia_depot
           pip install -e ".[develop]" --no-deps
 
+      - name: Refresh AGNI to the latest main on the nichollsh/AGNI remote
+        run: |
+          set -euo pipefail
+          # The Docker base image bakes in an older AGNI checkout; PROTEUS
+          # on this branch passes the ``aerosol_species`` kwarg to AGNI's
+          # setup! which only exists on a newer AGNI revision. Refresh
+          # the in-image AGNI to ``origin/main`` so the kwarg is accepted
+          # and so the AGNI-based smoke / integration / slow tests can
+          # run end-to-end and contribute coverage.
+          if [ -d "/opt/proteus/AGNI/.git" ]; then
+            cd /opt/proteus/AGNI
+            git fetch --depth=1 origin main || echo "AGNI fetch failed (network?)"
+            git checkout main || echo "AGNI checkout main failed"
+            git reset --hard origin/main || echo "AGNI reset failed"
+            echo "AGNI now at $(git rev-parse --short HEAD)"
+          else
+            echo "AGNI not a git repo at /opt/proteus/AGNI; skipping refresh"
+          fi
+
       - name: Refresh CALLIOPE to the branch the nightly needs
         run: |
           set -euo pipefail
