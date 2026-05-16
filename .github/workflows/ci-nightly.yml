@@ -103,6 +103,10 @@ jobs:
 
       - name: Run slow integration tests
         continue-on-error: true
+        # Hard wall-time cap: total nightly job stays under 120 min by
+        # giving the slow tier 75 min after ~15 min of cold-cache setup
+        # and ~5 min of unit/smoke/integration-not-slow.
+        timeout-minutes: 75
         run: |
           set -euo pipefail
           # Slim slow file list: schema invariants, hypothesis fuzz, BO
@@ -374,6 +378,7 @@ jobs:
 
       - name: Run slow integration tests
         continue-on-error: true
+        timeout-minutes: 75
         run: |
           set -euo pipefail
           pytest -m "slow and not unit and not smoke and not integration" \
