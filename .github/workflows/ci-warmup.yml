@@ -13,6 +13,9 @@ on:
     - cron: '0 4 * * 1'   # Mondays 04:00 UTC (one hour after typical nightly)
   workflow_dispatch:
 
+permissions:
+  contents: read    # checkout main; no commits, no comments, no artifacts
+
 defaults:
   run:
     shell: bash
