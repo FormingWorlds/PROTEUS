@@ -1082,9 +1082,7 @@ def test_download_automatic_mapping(
 @patch('proteus.utils.data.sleep', return_value=None)  # speed up retries
 @patch('proteus.utils.data.sp.run')
 @patch('proteus.utils.data.GetFWLData')
-def test_download_zenodo_folder_error_diagnostics(
-    mock_getfwl, mock_run, _mock_sleep, tmp_path
-):
+def test_download_zenodo_folder_error_diagnostics(mock_getfwl, mock_run, _mock_sleep, tmp_path):
     """Test improved error message diagnostics."""
 
     from proteus.utils.data import download_zenodo_folder

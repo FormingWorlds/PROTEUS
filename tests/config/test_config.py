@@ -8,6 +8,7 @@ docs/test_building.md for required structure, speed, and physics validity.
 
 from __future__ import annotations
 
+import os
 from itertools import chain
 from types import SimpleNamespace
 
@@ -164,6 +165,15 @@ def test_none_if_none():
 
 
 @pytest.mark.parametrize('path', PATHS)
+@pytest.mark.skipif(
+    not os.environ.get('RAD_DIR'),
+    reason=(
+        'Configs that select AGNI or JANUS read RAD_DIR at init; the macOS '
+        'host job does not install SOCRATES, so RAD_DIR is unset. The Linux '
+        'Docker job and the nightly tier do install SOCRATES and exercise '
+        'this test fully.'
+    ),
+)
 def test_proteus_init(path):
     """Smoke-test initialization for bundled example configs that should parse."""
     if 'nogit' in str(path):
