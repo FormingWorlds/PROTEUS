@@ -69,8 +69,18 @@ def test_update_wtg_surf_scales_inversely_with_planet_rotation_rate():
     Discrimination: a regression that put omega in the numerator would
     invert this scaling.
     """
-    hf_fast = {'axial_period': 86400.0, 'atm_kg_per_mol': 0.029, 'T_surf': 300.0, 'R_int': 6.371e6}
-    hf_slow = {'axial_period': 86400.0 * 10.0, 'atm_kg_per_mol': 0.029, 'T_surf': 300.0, 'R_int': 6.371e6}
+    hf_fast = {
+        'axial_period': 86400.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 300.0,
+        'R_int': 6.371e6,
+    }
+    hf_slow = {
+        'axial_period': 86400.0 * 10.0,
+        'atm_kg_per_mol': 0.029,
+        'T_surf': 300.0,
+        'R_int': 6.371e6,
+    }
     atmos_wrapper.update_wtg_surf(hf_fast)
     atmos_wrapper.update_wtg_surf(hf_slow)
 

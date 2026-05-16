@@ -115,7 +115,9 @@ def _install_mock_plt(monkeypatch):
     mock_fig = MagicMock()
     mock_ax = MagicMock()
     mock_plt.subplots.return_value = (mock_fig, mock_ax)
-    mock_plt.cm.ScalarMappable.return_value = MagicMock(to_rgba=MagicMock(return_value=(0.1, 0.2, 0.3, 1.0)))
+    mock_plt.cm.ScalarMappable.return_value = MagicMock(
+        to_rgba=MagicMock(return_value=(0.1, 0.2, 0.3, 1.0))
+    )
     monkeypatch.setattr(structure_mod, 'plt', mock_plt)
 
     mock_mpl = MagicMock()
@@ -300,14 +302,17 @@ def test_plot_structure_spider_branch_reads_via_get_dict_values(monkeypatch, tmp
     # dropped one of the keys would change this count.
     for ds in int_data:
         # 2 keys per time
-        assert sum(
-            1
-            for keys in (
-                ('data', 'temp_b'),
-                ('data', 'radius_b'),
+        assert (
+            sum(
+                1
+                for keys in (
+                    ('data', 'temp_b'),
+                    ('data', 'radius_b'),
+                )
+                if keys in ds._data
             )
-            if keys in ds._data
-        ) == 2
+            == 2
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +331,9 @@ def test_plot_structure_entry_dispatches_with_correct_arguments(monkeypatch, tmp
     # by plot_format as a keyword, matching the source signature.
     captured = {}
 
-    def fake_plot_structure(hf_all, output_dir, times, int_data, atm_data, module, plot_format='pdf'):
+    def fake_plot_structure(
+        hf_all, output_dir, times, int_data, atm_data, module, plot_format='pdf'
+    ):
         captured['hf_all'] = hf_all
         captured['output_dir'] = output_dir
         captured['times'] = times

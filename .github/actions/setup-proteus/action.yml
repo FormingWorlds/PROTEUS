@@ -59,6 +59,25 @@ runs:
         elif [[ "$RUNNER_OS" == "macOS" ]]; then
           # gcc bundles gfortran on macOS. netcdf-fortran provides nf-config.
           brew install --quiet gcc netcdf netcdf-fortran openssl@3
+          # Homebrew installs gfortran as a versioned binary (gfortran-15);
+          # the plain `gfortran` symlink is not always present when gcc was
+          # pre-installed on the runner image. Create one so SOCRATES's
+          # `command -v gfortran` check succeeds.
+          if ! command -v gfortran >/dev/null 2>&1; then
+            gfortran_bin="$(ls /opt/homebrew/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
+            if [ -z "$gfortran_bin" ]; then
+              gfortran_bin="$(ls /usr/local/bin/gfortran-* 2>/dev/null | sort -V | tail -n 1)"
+            fi
+            if [ -z "$gfortran_bin" ]; then
+              echo "ERROR: no gfortran-* binary found after brew install gcc" >&2
+              ls -la /opt/homebrew/bin/gfortran* /usr/local/bin/gfortran* 2>/dev/null || true
+              exit 1
+            fi
+            target_dir="$(dirname "$gfortran_bin")"
+            ln -sf "$gfortran_bin" "$target_dir/gfortran"
+            echo "Linked $gfortran_bin -> $target_dir/gfortran"
+          fi
+          gfortran --version | head -n 1
         else
           echo "Unsupported RUNNER_OS=$RUNNER_OS" >&2
           exit 1

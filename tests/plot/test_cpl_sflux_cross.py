@@ -171,9 +171,7 @@ def test_plot_sflux_cross_overlays_modern_spectrum_when_age_positive(monkeypatch
 
     mock_plt, mock_fig, mock_ax = _install_mock_plt(monkeypatch)
 
-    sflux_mod.plot_sflux_cross(
-        output_dir=str(tmp_path), modern_age=4.567e9, plot_format='pdf'
-    )
+    sflux_mod.plot_sflux_cross(output_dir=str(tmp_path), modern_age=4.567e9, plot_format='pdf')
 
     # Discrimination: 8 line plots + 8 modern-spectrum scatter overlays
     assert mock_ax.plot.call_count == 8

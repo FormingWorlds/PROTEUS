@@ -118,9 +118,7 @@ def test_plot_spectra_full_path_both_panels_populated(monkeypatch, tmp_path):
 
     mock_plt, mock_fig, mock_axt, mock_axb = _install_mock_plt(monkeypatch)
 
-    spectra_mod.plot_spectra(
-        output_dir=str(tmp_path), plot_format='pdf', wlmin=0.5, wlmax=20.0
-    )
+    spectra_mod.plot_spectra(output_dir=str(tmp_path), plot_format='pdf', wlmin=0.5, wlmax=20.0)
 
     # Discrimination: both panels get exactly one line each
     assert mock_axt.plot.call_count == 1

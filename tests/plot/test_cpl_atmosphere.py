@@ -53,7 +53,9 @@ def _install_mock_plt(monkeypatch):
     mock_ax0 = MagicMock()
     mock_ax1 = MagicMock()
     mock_plt.subplots.return_value = (mock_fig, (mock_ax0, mock_ax1))
-    mock_plt.cm.ScalarMappable.return_value = MagicMock(to_rgba=MagicMock(return_value=(0.1, 0.2, 0.3, 1.0)))
+    mock_plt.cm.ScalarMappable.return_value = MagicMock(
+        to_rgba=MagicMock(return_value=(0.1, 0.2, 0.3, 1.0))
+    )
     monkeypatch.setattr(atmos_mod, 'plt', mock_plt)
 
     mock_mpl = MagicMock()
@@ -180,7 +182,9 @@ def test_plot_atmosphere_entry_forwards_handler_attributes(monkeypatch):
     monkeypatch.setattr(atmos_mod, 'plot_atmosphere', fake_plot)
     monkeypatch.setattr(atmos_mod, 'sample_output', lambda *a, **kw: ([1e4, 1e6], None))
     monkeypatch.setattr(
-        atmos_mod, 'read_atmosphere_data', lambda output_dir, times: [_make_profile() for _ in times]
+        atmos_mod,
+        'read_atmosphere_data',
+        lambda output_dir, times: [_make_profile() for _ in times],
     )
 
     handler = MagicMock()

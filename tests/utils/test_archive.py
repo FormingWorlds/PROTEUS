@@ -215,8 +215,7 @@ def test_extract_restores_files_and_optionally_removes_tar(tmp_path):
 
 
 def test_extract_keeps_tar_when_remove_tar_false(tmp_path):
-    """remove_tar=False (default) leaves the tar in place after extraction.
-    """
+    """remove_tar=False (default) leaves the tar in place after extraction."""
     (tmp_path / 'a.txt').write_text('content', encoding='utf-8')
     archive_mod.create(str(tmp_path), remove_files=True)
     archive_mod.extract(str(tmp_path), remove_tar=False)
@@ -226,8 +225,7 @@ def test_extract_keeps_tar_when_remove_tar_false(tmp_path):
 
 
 def test_extract_returns_none_when_directory_missing(tmp_path, caplog):
-    """If the directory doesn't exist, extract logs an error and returns.
-    """
+    """If the directory doesn't exist, extract logs an error and returns."""
     missing = tmp_path / 'absent'
     with caplog.at_level('ERROR'):
         result = archive_mod.extract(str(missing))

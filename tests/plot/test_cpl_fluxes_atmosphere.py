@@ -152,7 +152,9 @@ def test_plot_fluxes_atmosphere_full_path_with_all_optional_variables(monkeypatc
     assert saved_path.endswith('plot_fluxes_atmosphere.png')
 
 
-def test_plot_fluxes_atmosphere_falls_back_when_optional_variables_missing(monkeypatch, tmp_path):
+def test_plot_fluxes_atmosphere_falls_back_when_optional_variables_missing(
+    monkeypatch, tmp_path
+):
     """When optional NetCDF variables (fl_cnvct, fl_latent, fl_tot,
     fl_sens) are absent, the function substitutes zero arrays / zero
     scalar and still produces a figure. A regression that didn't catch

@@ -30,20 +30,20 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 def _make_grid_with_cases(tmp_path, n_cases: int = 2, with_plots: bool = True):
     """Build a minimal grid layout:
 
-        grid/
-            manager.log
-            ref_config.toml
-            copy.grid.toml
-            case_000000/
-                runtime_helpfile.csv
-                init_coupler.toml
-                status
-                proteus_00.log
-                plots/
-                    plot_global.png
-                    plot_orbit.pdf
-            case_000001/
-                ...
+    grid/
+        manager.log
+        ref_config.toml
+        copy.grid.toml
+        case_000000/
+            runtime_helpfile.csv
+            init_coupler.toml
+            status
+            proteus_00.log
+            plots/
+                plot_global.png
+                plot_orbit.pdf
+        case_000001/
+            ...
     """
     grid = tmp_path / 'grid'
     grid.mkdir()
