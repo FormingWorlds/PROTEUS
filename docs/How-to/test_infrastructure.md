@@ -67,9 +67,9 @@ When you open a pull request, CI automatically:
 
 | Workflow | Runs When | What It Does |
 |----------|-----------|--------------|
-| `ci-pr-checks.yml` | Every PR | Unit + smoke tests (Linux), unit tests (macOS), lint, ~5-10 min |
-| `docker-build.yml` | Daily 2am UTC / dependency changes | Rebuilds Docker image, then triggers nightly |
-| `ci-nightly.yml` | Triggered by docker-build (fallback: 3am cron) | All tests including slow, updates thresholds, uploads coverage to Codecov |
+| `ci-pr-checks.yml` | Every PR | Unit tests on Linux + macOS, lint, editable-install verification. Linux job also computes estimated-total coverage and runs diff-cover. |
+| `ci-nightly.yml` | 3am UTC daily | All tiers (unit + smoke + integration + slow) on Linux + macOS. Updates thresholds, uploads combined coverage to Codecov, produces the artifact PR checks consume. |
+| `ci-warmup.yml` | Mondays 04:00 UTC | Runs setup-proteus on main to keep actions/cache entries warm under GitHub's 7-day inactivity policy. |
 
 **Key features:**
 
@@ -272,11 +272,11 @@ pytest --pdb   # Debugger on failure
 
 PR checks compare coverage against the last successful nightly run. If the nightly workflow fails (e.g. data download timeout, CI infrastructure issues, or transient test failures), the baseline becomes stale (>48 hours old) and PRs will fail validation. To fix this, [trigger the nightly workflow manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml) and wait for it to complete.
 
-### Docker CI
+### CI cache misses
 
-- **Build fails**: `docker build -t proteus-test .` locally; check Dockerfile and deps.
-- **Image pull fails**: Verify `ghcr.io/formingworlds/proteus:latest` is public.
-- **Tests fail in container**: `docker run -it ghcr.io/formingworlds/proteus:latest bash` and run `pytest -m unit -v` inside.
+When ubuntu-latest or macos-latest runners spin up with a cold cache (rare; can happen after long quiet periods, branch force-pushes, or fresh forks), the first run takes 25-45 minutes while SOCRATES rebuilds, the Julia depot precompiles AGNI, and FWL_DATA downloads. Subsequent runs on the same platform hit the cache and complete in 5-20 minutes.
+
+To force-warm caches: re-run the [warmup workflow](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-warmup.yml) manually.
 
 ---
 
@@ -418,7 +418,6 @@ If your module has an existing test workflow:
 
 - [Test Categorization](test_categorization.md) — Markers, CI pipeline, fixtures
 - [Test Building](test_building.md) — Prompts for unit/integration tests
-- [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
 - [AI-Assisted Development](ai_usage.md) — Using AI for tests and code review
 - [tests/conftest.py](https://github.com/FormingWorlds/PROTEUS/blob/main/tests/conftest.py) — Shared fixtures
 - [.github/copilot-instructions.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-instructions.md) — Commands and thresholds

@@ -82,5 +82,4 @@ Use when adding or extending integration tests (e.g. ARAGOG+AGNI+CALLIOPE+ZEPHYR
 
 - [Test Categorization](test_categorization.md) — Markers, CI pipeline, fixtures
 - [Test Infrastructure](test_infrastructure.md) — Layout, coverage, reusable quality gate
-- [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
 - [.github/copilot-instructions.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-instructions.md) — Test commands and coverage thresholds

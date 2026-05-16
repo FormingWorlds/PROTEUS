@@ -214,7 +214,15 @@ fi
 
 echo ""
 echo "Cloning SPIDER from GitHub..."
-git clone https://github.com/FormingWorlds/SPIDER.git "$workpath"
+
+# Resolve the pinned URL + ref from pyproject.toml. Allow override via
+# the SPIDER_GIT_URL / SPIDER_GIT_REF env vars for local dev.
+script_root="$(cd "$(dirname "$0")/.." && pwd)"
+sp_url="${SPIDER_GIT_URL:-$(python "$script_root/tools/_module_pins.py" spider url)}"
+sp_ref="${SPIDER_GIT_REF:-$(python "$script_root/tools/_module_pins.py" spider ref)}"
+
+git clone "$sp_url" "$workpath"
+git -C "$workpath" checkout --quiet "$sp_ref"
 
 # -----------------------------------------------------------------------------
 # 6. Build SPIDER

@@ -1,20 +1,21 @@
 name: CI - Fast PR Checks
 
-# Purpose: Fast feedback for pull requests using pre-built Docker image
+# Purpose: Fast feedback for pull requests, on Linux + macOS.
 # Strategy:
-#   1. Use pre-compiled Docker image (ghcr.io/formingworlds/proteus:latest)
-#   2. Overlay PR code changes onto the container
-#   3. Run @pytest.mark.unit tests with mocked physics (target: <5 min wall, hard cap 10 min)
-#   4. Exclude placeholder tests (@pytest.mark.skip) - these are placeholders for future implementation
+#   1. ubuntu-latest / macos-latest runners (no Docker, all setup via composite action)
+#   2. actions/cache restores SOCRATES build, Julia depot, FWL_DATA between runs
+#   3. Run @pytest.mark.unit tests with mocked physics
+#   4. Linux job also computes estimated total coverage by union with the
+#      latest nightly artifact, runs diff-cover, ratchets the fast threshold.
+#   5. macOS job runs unit tier only (parity at the level that catches
+#      Apple Silicon / dyld / brew issues; the heavier tiers run nightly).
 #
-# Test Categories (PR cycle runs unit only; smoke + integration + slow run nightly):
-#   @pytest.mark.unit        -> Mocked-physics unit tests (target: <100ms each, ~5 min total)
+# Test Categories:
+#   @pytest.mark.unit        -> Mocked-physics unit tests (target: <100ms each)
 #   @pytest.mark.smoke       -> Real-binary 1-timestep validation; nightly only
 #   @pytest.mark.integration -> Multi-module coupling; nightly only
-#   @pytest.mark.slow        -> Full physics validation; nightly only (targeted whitelist)
-#   @pytest.mark.skip        -> Placeholder tests not yet implemented (excluded from CI)
-#
-# For current test counts and detailed metrics, see: docs/test_infrastructure.md
+#   @pytest.mark.slow        -> Full physics validation; nightly only
+#   @pytest.mark.skip        -> Placeholder tests not yet implemented
 
 on:
   pull_request:
@@ -28,33 +29,16 @@ on:
   push:
     branches:
       - main
-      - 'tl/**'  # Tim's long-running feature branches (often draft PRs;
-                # draft PRs do not fire pull_request:synchronize by
-                # default, so an explicit push trigger keeps CI live).
-  workflow_dispatch:  # Allow manual triggering for testing
+      - 'tl/**'
+  workflow_dispatch:
 
 # Deduplicate runs along two axes:
-#   1. Same commit, two events: a push to tl/** fires the push event
-#      AND, once the PR is ready for review, pull_request:synchronize
-#      fires on the same commit. Without dedup, both run the full matrix.
-#   2. Older commit superseded by a newer push to the same branch:
-#      no point spending 15 min on the old commit when the new one is
-#      already queued.
-# github.head_ref is set for pull_request events (PR source branch);
-# github.ref_name is set for push events (branch name). Both resolve
-# to the same string for the same branch, so all events on a branch
-# share a concurrency group.
+#   1. Same commit, two events (push + pull_request:synchronize on the same SHA).
+#   2. Older commits superseded by a newer push to the same branch.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
-# Pin the shell explicitly. Inside the proteus Docker container, the
-# default `run:` shell selection is non-deterministic: some runs use
-# /usr/bin/bash, others use /bin/sh (dash). dash does not support
-# `set -o pipefail`, so any step that relies on pipefail (to capture
-# pytest's exit code through a tee pipe, for example) breaks when sh
-# is picked. Forcing bash everywhere keeps the test-failure
-# propagation contract reliable.
 defaults:
   run:
     shell: bash
@@ -62,15 +46,15 @@ defaults:
 permissions:
   contents: write  # Allow auto-commit of ratcheted coverage thresholds
   packages: read
-  actions: read  # Required to download artifact from last nightly run
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: formingworlds/proteus
+  actions: read    # Required to download artifact from last nightly run
 
 jobs:
+  # --------------------------------------------------------------------
+  # Linux unit tests + coverage validation. This is the canonical PR
+  # check: gates merges via coverage threshold, diff-cover, lint, etc.
+  # --------------------------------------------------------------------
   unit-tests:
-    name: Unit Tests (Mocked Physics)
+    name: Unit Tests (Linux)
     runs-on: ubuntu-latest
     outputs:
       unit-outcome: ${{ steps.unit-tests.outcome }}
@@ -86,14 +70,6 @@ jobs:
       nightly-pct: ${{ steps.coverage-validation.outputs.nightly_pct }}
       est-covered-union: ${{ steps.coverage-validation.outputs.est_covered_union }}
       est-total-union: ${{ steps.coverage-validation.outputs.est_total_union }}
-    container:
-      image: ghcr.io/formingworlds/proteus:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      # NOTE: Running as root is required because the Docker image installs to
-      # system paths (/opt/proteus) and actions/checkout needs workspace write access.
-      options: --user root
 
     steps:
       - name: Checkout PR code
@@ -103,22 +79,20 @@ jobs:
 
       - name: Prevent threshold decreases vs main
         run: |
-          git config --global --add safe.directory /__w/PROTEUS/PROTEUS
+          git config --global --add safe.directory "$PWD"
           git fetch origin main
-          python - <<'PY'  # Heredoc: inline Python script (PY marks start/end)
+          python - <<'PY'
           import pathlib
           import subprocess
           import tomllib
 
           base = "origin/main"
           current = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
-          base_text = subprocess.check_output(["git", "show", f"{base}:pyproject.toml"], text=True)
+          base_text = subprocess.check_output(
+              ["git", "show", f"{base}:pyproject.toml"], text=True
+          )
           base_data = tomllib.loads(base_text)
 
-          # ECOSYSTEM_CEILING is the maximum allowed value for any
-          # coverage gate across the PROTEUS ecosystem. Single source
-          # of truth lives in tools/update_coverage_threshold.py;
-          # duplicated here to keep this workflow self-contained.
           ECOSYSTEM_CEILING = 90.0
 
           paths = {
@@ -137,14 +111,11 @@ jobs:
           for label, path in paths.items():
               cur = get_val(current, path)
               base_val = get_val(base_data, path)
-
               if base_val is None or cur is None:
                   print(f"Skipping {label} check (missing in base or current)")
                   continue
-
               if cur < base_val:
                   raise SystemExit(f"{label} fail_under decreased: {cur} < {base_val}")
-
               if cur > ECOSYSTEM_CEILING:
                   raise SystemExit(
                       f"{label} fail_under {cur} exceeds the "
@@ -157,94 +128,39 @@ jobs:
           )
           PY
 
-      - name: Overlay PR code onto container
-        run: |
-          set -euo pipefail
-          echo "Copying PR code over container base..."
-          rsync -av --delete --exclude='.git' --exclude='SPIDER' --exclude='socrates' --exclude='petsc' --exclude='AGNI' . /opt/proteus/
-          # The Docker image carries a stale .git/ from its build that
-          # rsync's --exclude protected from --delete. setuptools-scm
-          # would try to read it for version derivation, git would
-          # refuse with "dubious ownership", and the build_editable
-          # step would abort before pip can even install. Removing the
-          # stale .git/ lets setuptools-scm fall back to the
-          # fallback_version configured in pyproject.toml.
-          rm -rf /opt/proteus/.git
-          cd /opt/proteus
-          pip install -e ".[develop]" --no-deps
-
-      - name: Refresh CALLIOPE to the branch the PR needs
-        run: |
-          set -euo pipefail
-          # The Docker base image carries the latest CALLIOPE release
-          # from PyPI, but PR code may depend on entry points that live
-          # only on an unreleased CALLIOPE branch. pyproject.toml pins
-          # that branch via git URL; the overlay install above used
-          # --no-deps so we re-resolve the CALLIOPE dependency here
-          # without touching the rest of the dependency tree.
-          cd /opt/proteus
-          python - <<'PY' > calliope_dep.txt
-          import pathlib
-          import tomllib
-
-          deps = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['dependencies']
-          for d in deps:
-              if 'fwl-calliope' in d:
-                  print(d)
-                  break
-          PY
-          dep=$(cat calliope_dep.txt)
-          if [ -n "$dep" ]; then
-            echo "Resolved CALLIOPE dependency: $dep"
-            pip install --upgrade --force-reinstall --no-deps "$dep"
-          else
-            echo "No fwl-calliope entry found in pyproject.toml; nothing to refresh."
-          fi
+      - name: Set up PROTEUS environment
+        uses: ./.github/actions/setup-proteus
+        with:
+          full-data: 'false'
 
       - name: Install CI helper tools
-        run: |
-          cd /opt/proteus
-          pip install diff-cover
+        run: pip install diff-cover
 
       - name: Read fast coverage threshold
         run: |
-          cd /opt/proteus
           python - <<'PY' >> "$GITHUB_ENV"
           import pathlib
           import tomllib
-
           data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
           val = float(data["tool"]["proteus"]["coverage_fast"]["fail_under"])
           print(f"FAST_COV_FAIL_UNDER={val}")
           PY
 
       - name: Validate test structure
-        run: |
-          cd /opt/proteus
-          bash tools/validate_test_structure.sh
+        run: bash tools/validate_test_structure.sh
 
       - name: Check test quality
-        # AST scan for the test-quality rules documented in
-        # .github/.claude/rules/proteus-tests.md. Compares current
-        # violation counts against tools/test_quality_baseline.json
-        # and fails if any rule regresses or the total goes up.
-        # Non-blocking during the legacy-violation sweep; flip the
-        # continue-on-error to false once the baseline is small.
         continue-on-error: true
-        run: |
-          cd /opt/proteus
-          python tools/check_test_quality.py --check
+        run: python tools/check_test_quality.py --check
 
       - name: Decide whether to collect coverage
         run: |
           # Coverage instrumentation (pytest-cov + JAX tracing) inflates
-          # Linux unit tests from ~4 min to ~15 min. Coverage only feeds
-          # the diff-cover gate, codecov upload, and the ratchet, all of
-          # which only matter when a PR is genuinely up for review. On
-          # draft PRs and on direct branch pushes (via the tl/** filter
-          # in the trigger block), skip coverage entirely and keep CI
-          # fast.
-          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.draft }}" != "true" ]; then
+          # Linux unit tests substantially. Coverage only feeds the
+          # diff-cover gate, codecov upload, and the ratchet, all of
+          # which only matter when a PR is genuinely up for review.
+          if [ "${{ github.event_name }}" = "pull_request" ] && \
+             [ "${{ github.event.pull_request.draft }}" != "true" ]; then
             echo "RUN_COVERAGE=true" >> $GITHUB_ENV
             echo "Coverage instrumentation: ON (ready-for-review PR)"
           else
@@ -255,26 +171,14 @@ jobs:
       - name: Run unit tests
         id: unit-tests
         continue-on-error: true
-        # The unit tier is mocked-physics only and targets <5 min wall.
-        # The 10 min hard cap surfaces a regression that introduces a
-        # real-binary or real-disk call quickly, instead of riding the
-        # 6 hour GitHub Actions ceiling.
         timeout-minutes: 10
         run: |
-          set -euo pipefail  # propagate pytest's exit code through the tee pipe
-          cd /opt/proteus
+          set -euo pipefail
           if [ "$RUN_COVERAGE" = "true" ]; then
             COV_ARGS="--cov=src --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=${FAST_COV_FAIL_UNDER}"
           else
             COV_ARGS=""
           fi
-          # -p no:faulthandler disables pytest's faulthandler plugin.
-          # GitHub macOS runners deny faulthandler.enable() with
-          # PermissionError; the same plugin is harmless on Linux but
-          # disabling it on both matches the local invocation and
-          # keeps behaviour consistent across the matrix.
-          # --durations=25 prints the slowest 25 tests for diagnostics
-          # without flooding the log like --durations=0 does.
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
             $COV_ARGS \
@@ -283,15 +187,12 @@ jobs:
 
       - name: Generate coverage JSON
         if: env.RUN_COVERAGE == 'true'
-        run: |
-          cd /opt/proteus
-          # Use --fail-under=0 to prevent failure when fast coverage < full threshold
-          coverage json -o coverage-unit.json --fail-under=0
+        run: coverage json -o coverage-unit.json --fail-under=0
 
       - name: Download last nightly coverage (for estimated total)
         id: download-nightly
         if: always() && env.RUN_COVERAGE == 'true'
-        continue-on-error: true  # Do not fail job when no nightly artifact exists yet
+        continue-on-error: true
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: ci-nightly.yml
@@ -300,34 +201,30 @@ jobs:
           workflow_conclusion: success
           if_no_artifact_found: warn
 
-      - name: Copy nightly coverage into container and check staleness
+      - name: Check nightly staleness
         id: check-nightly
         if: always() && env.RUN_COVERAGE == 'true'
         run: |
-          cd /opt/proteus
           STALE_HOURS=48
           NIGHTLY_STALE=false
           NIGHTLY_MISSING=false
 
-          if [ -f /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-integration-only.json ]; then
-            cp /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-integration-only.json /opt/proteus/
-            cp /__w/PROTEUS/PROTEUS/nightly-coverage/nightly-timestamp.txt /opt/proteus/ 2>/dev/null || true
-            cp /__w/PROTEUS/PROTEUS/nightly-coverage/coverage-by-type.json /opt/proteus/ 2>/dev/null || true
+          if [ -f nightly-coverage/coverage-integration-only.json ]; then
+            cp nightly-coverage/coverage-integration-only.json .
+            cp nightly-coverage/nightly-timestamp.txt . 2>/dev/null || true
+            cp nightly-coverage/coverage-by-type.json . 2>/dev/null || true
 
-            # Check staleness
-            if [ -f /opt/proteus/nightly-timestamp.txt ]; then
-              NIGHTLY_TS=$(cat /opt/proteus/nightly-timestamp.txt)
+            if [ -f nightly-timestamp.txt ]; then
+              NIGHTLY_TS=$(cat nightly-timestamp.txt)
               python3 - <<PYEOF
-          from datetime import datetime, timezone, timedelta
+          from datetime import datetime, timezone
           import sys
           ts = datetime.fromisoformat("$NIGHTLY_TS".replace('Z', '+00:00'))
-          age = datetime.now(timezone.utc) - ts
-          hours = age.total_seconds() / 3600
-          print(f"Nightly artifact age: {hours:.1f} hours")
-          if hours > $STALE_HOURS:
-              print(f"WARNING: Nightly artifact is stale ({hours:.1f}h > {$STALE_HOURS}h)")
+          age = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
+          print(f"Nightly artifact age: {age:.1f} hours")
+          if age > $STALE_HOURS:
+              print(f"WARNING: Nightly artifact is stale ({age:.1f}h > $STALE_HOURS h)")
               sys.exit(1)
-          print("Nightly artifact is fresh.")
           PYEOF
               if [ $? -ne 0 ]; then
                 NIGHTLY_STALE=true
@@ -352,14 +249,13 @@ jobs:
           NIGHTLY_STALE: ${{ env.NIGHTLY_STALE }}
           NIGHTLY_MISSING: ${{ env.NIGHTLY_MISSING }}
         run: |
-          cd /opt/proteus
           python - <<'PY'
           import json
           import os
           import pathlib
           import tomllib
 
-          GRACE_PERIOD = 0.3  # Allow coverage drops up to this margin
+          GRACE_PERIOD = 0.3
 
           def read_totals(path):
               try:
@@ -394,14 +290,12 @@ jobs:
                       out.add((n, line))
               return out
 
-          # Read thresholds from pyproject.toml
           try:
               pyproject = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
               full_threshold = float(pyproject["tool"]["coverage"]["report"]["fail_under"])
           except Exception:
-              full_threshold = 59.0  # Fallback (matches pyproject.toml)
+              full_threshold = 59.0
 
-          # Read coverage data
           u_pct, u_covered, u_total = read_totals(pathlib.Path("coverage-unit.json"))
           u_data = {}
           try:
@@ -410,65 +304,64 @@ jobs:
           except (json.JSONDecodeError, OSError):
               pass
 
-          # NOTE: Despite the filename, coverage-integration-only.json actually contains
-          # COMBINED coverage (unit + smoke + integration) from nightly. See ci-nightly.yml.
-          # TODO: Potential coverage math issue - stale nightly lines could mask PR regressions.
           i_data = {}
           try:
               if pathlib.Path("coverage-integration-only.json").exists():
                   i_data = json.loads(pathlib.Path("coverage-integration-only.json").read_text())
           except (json.JSONDecodeError, OSError):
               pass
-          i_pct, i_covered, i_total = read_totals(pathlib.Path("coverage-integration-only.json"))
 
-          # Compute estimated total (union)
-          est_pct_union = None
-          est_covered_union = 0
-          est_total_union = 0
-          if u_data.get("files") and i_data.get("files"):
-              u_exec = line_set_from_files(u_data)
-              i_exec = line_set_from_files(i_data)
-              u_all = executable_set_from_files(u_data)
-              i_all = executable_set_from_files(i_data)
-              union_covered = u_exec | i_exec
-              union_executable = u_all | i_all
-              if union_executable:
-                  est_covered_union = len(union_covered)
-                  est_total_union = len(union_executable)
-                  est_pct_union = min(100.0, 100.0 * est_covered_union / est_total_union)
+          nightly_pct = 0
+          if i_data:
+              t = i_data.get("totals", {})
+              nightly_pct = t.get("percent_covered", 0)
 
-          # Check staleness and coverage status
-          nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
-          nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
+          unit_lines = line_set_from_files(u_data) if u_data else set()
+          nightly_lines = line_set_from_files(i_data) if i_data else set()
+          union_executed = unit_lines | nightly_lines
 
-          # Determine coverage status
-          coverage_status = "ok"
-          coverage_drop = 0
-          if est_pct_union is not None:
-              coverage_drop = full_threshold - est_pct_union
-              if coverage_drop > GRACE_PERIOD:
-                  coverage_status = "fail"
-              elif coverage_drop > 0:
-                  coverage_status = "warn"
+          unit_exec = executable_set_from_files(u_data) if u_data else set()
+          nightly_exec = executable_set_from_files(i_data) if i_data else set()
+          union_executable = unit_exec | nightly_exec
 
-          # Write outputs for subsequent steps and summary job
-          output_file = pathlib.Path(os.environ.get("GITHUB_OUTPUT", "/tmp/outputs.txt"))
-          est_total_str = f"{est_pct_union:.2f}" if est_pct_union is not None else "0"
-          with open(output_file, "a") as f:
-              f.write(f"coverage_status={coverage_status}\n")
-              f.write(f"coverage_drop={coverage_drop:.2f}\n")
-              f.write(f"estimated_total={est_total_str}\n")
-              f.write(f"threshold={full_threshold}\n")
-              f.write(f"unit_pct={u_pct:.2f}\n")
+          if union_executable:
+              estimated_total = 100.0 * len(union_executed) / len(union_executable)
+              est_covered = len(union_executed)
+              est_total = len(union_executable)
+          elif nightly_pct > 0:
+              estimated_total = nightly_pct
+              est_covered = 0
+              est_total = 0
+          else:
+              estimated_total = u_pct
+              est_covered = u_covered
+              est_total = u_total
+
+          drop = full_threshold - estimated_total
+          if estimated_total >= full_threshold:
+              status = "ok"
+          elif drop <= GRACE_PERIOD:
+              status = "warn"
+          else:
+              status = "fail"
+
+          out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a") as f:
+              f.write(f"unit_pct={u_pct}\n")
               f.write(f"unit_covered={u_covered}\n")
               f.write(f"unit_total={u_total}\n")
-              f.write(f"nightly_pct={i_pct:.2f}\n")
-              f.write(f"est_covered_union={est_covered_union}\n")
-              f.write(f"est_total_union={est_total_union}\n")
+              f.write(f"nightly_pct={nightly_pct}\n")
+              f.write(f"estimated_total={estimated_total:.2f}\n")
+              f.write(f"est_covered_union={est_covered}\n")
+              f.write(f"est_total_union={est_total}\n")
+              f.write(f"threshold={full_threshold}\n")
+              f.write(f"coverage_status={status}\n")
+              f.write(f"coverage_drop={drop:.2f}\n")
 
-          # Print summary to log
-          disp_est = f"{est_pct_union:.2f}%" if est_pct_union else "—"
-          print(f"Unit: {u_pct:.2f}% | Nightly: {i_pct:.2f}% | Estimated total: {disp_est} | Status: {coverage_status}")
+          print(f"Unit: {u_pct:.2f}% ({u_covered}/{u_total})")
+          print(f"Nightly combined: {nightly_pct:.2f}%")
+          print(f"Estimated total (union): {estimated_total:.2f}% ({est_covered}/{est_total})")
+          print(f"Threshold: {full_threshold}%  drop={drop:+.2f}  status={status}")
           PY
 
       - name: Diff coverage on changed lines (fast suite)
@@ -477,13 +370,9 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
-          # Fetch base branch and generate diff file to avoid remote fetch issues in container
-          cd /__w/PROTEUS/PROTEUS
           git fetch --no-tags --prune --depth=100 origin "${BASE_REF}"
           git diff "origin/${BASE_REF}...HEAD" > /tmp/pr-changes.diff
-
-          # Run diff-cover using the prepared diff file
-          diff-cover /opt/proteus/coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
+          diff-cover coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
 
       - name: Post coverage warning comment on PR
         if: env.RUN_COVERAGE == 'true' && github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'
@@ -491,30 +380,23 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ## ⚠️ Coverage Warning
+            ## Coverage Warning
 
             This PR reduces test coverage by **${{ steps.coverage-validation.outputs.coverage_drop }}%** (from ${{ steps.coverage-validation.outputs.threshold }}% to ${{ steps.coverage-validation.outputs.estimated_total }}%).
 
-            While this is within the **0.3% grace margin** and won't block merge, we encourage you to add tests in a follow-up PR to restore coverage above ${{ steps.coverage-validation.outputs.threshold }}%.
-
-            **How to fix:** Add unit tests for the new/changed code paths.
-            See [test_building.md](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md) for guidance.
+            Within the 0.3% grace margin and not blocking merge; consider adding tests in a follow-up.
 
       - name: Fail job if nightly is stale
         if: always() && env.RUN_COVERAGE == 'true' && steps.check-nightly.outcome == 'success'
         run: |
           if [ "$NIGHTLY_STALE" = "true" ]; then
-            echo "❌ Nightly baseline is stale (>48 hours old). Cannot validate coverage."
-            echo "Trigger nightly CI manually: https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml"
+            echo "Nightly baseline is stale (>48h). Trigger nightly CI manually."
             exit 1
           fi
 
       - name: Fail job if coverage dropped beyond grace period
         if: always() && env.RUN_COVERAGE == 'true' && steps.coverage-validation.outputs.coverage_status == 'fail'
-        run: |
-          echo "❌ Coverage dropped by ${{ steps.coverage-validation.outputs.coverage_drop }}% (exceeds 0.3% grace margin)"
-          echo "Add tests to restore coverage above ${{ steps.coverage-validation.outputs.threshold }}%"
-          exit 1
+        run: exit 1
 
       - name: Fail job if unit tests failed
         if: always() && steps.unit-tests.outcome == 'failure'
@@ -523,23 +405,16 @@ jobs:
       - name: Ratchet fast coverage threshold
         if: env.RUN_COVERAGE == 'true'
         run: |
-          cd /opt/proteus
-          # Exit codes: 0=updated, 1=no update needed, 2=error
-          # Treat both 0 and 1 as success
-          python tools/update_coverage_threshold.py --coverage-file coverage-unit.json --target fast || [ $? -eq 1 ]
+          python tools/update_coverage_threshold.py \
+            --coverage-file coverage-unit.json \
+            --target fast || [ $? -eq 1 ]
 
       - name: Commit ratcheted threshold (if changed)
         if: env.RUN_COVERAGE == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: |
-          cd /__w/PROTEUS/PROTEUS
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Copy updated pyproject.toml from container to workspace
-          cp /opt/proteus/pyproject.toml /__w/PROTEUS/PROTEUS/pyproject.toml
-
-          # Check if there are changes
           if git diff --quiet pyproject.toml; then
             echo "No threshold changes to commit"
           else
@@ -547,21 +422,14 @@ jobs:
             COVERAGE=$(grep -A5 '\[tool.proteus.coverage_fast\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
             git commit -m "ratchet: Auto-update fast coverage threshold to ${COVERAGE}% [skip ci]"
             git push
-            echo "✓ Committed ratcheted threshold: ${COVERAGE}%"
           fi
-
-      - name: Install gpg for Codecov verification
-        if: always() && env.RUN_COVERAGE == 'true'
-        run: |
-          apt-get update
-          apt-get install -y gnupg
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v4
         if: always() && env.RUN_COVERAGE == 'true'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: /opt/proteus/coverage.xml
+          files: coverage.xml
           flags: unit-tests
           name: unit-tests-coverage
           fail_ci_if_error: false
@@ -571,7 +439,7 @@ jobs:
         if: always() && env.RUN_COVERAGE == 'true'
         with:
           name: unit-coverage-html
-          path: /opt/proteus/htmlcov/
+          path: htmlcov/
           retention-days: 7
 
       - name: Upload unit pytest log
@@ -579,38 +447,32 @@ jobs:
         if: always()
         with:
           name: unit-pytest-log
-          path: /opt/proteus/pytest-unit.log
+          path: pytest-unit.log
           retention-days: 7
 
+  # --------------------------------------------------------------------
+  # macOS unit tests (catches Apple Silicon / dyld / brew issues at PR time)
+  # --------------------------------------------------------------------
   macos-unit-tests:
-    name: Unit Tests macOS
+    name: Unit Tests (macOS)
     runs-on: macos-latest
     outputs:
       unit-outcome: ${{ steps.unit-tests.outcome }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout PR code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - name: Set up PROTEUS environment
+        uses: ./.github/actions/setup-proteus
         with:
-          python-version: '3.12'
-
-      - name: Install PROTEUS
-        run: |
-          pip install -e ".[develop]"
+          full-data: 'false'
 
       - name: Run unit tests
         id: unit-tests
         continue-on-error: true
-        # Matches the Linux unit step: <5 min target, 10 min hard cap.
         timeout-minutes: 10
         run: |
-          # -p no:faulthandler disables pytest's faulthandler plugin.
-          # macOS GitHub runners deny faulthandler.enable() with
-          # PermissionError, which aborts pytest at configure time
-          # (exit code 3) before any test runs.
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
             -p no:faulthandler \
@@ -628,6 +490,9 @@ jobs:
         if: always() && steps.unit-tests.outcome == 'failure'
         run: exit 1
 
+  # --------------------------------------------------------------------
+  # Lint (ruff)
+  # --------------------------------------------------------------------
   lint:
     name: Code Quality (ruff)
     runs-on: ubuntu-latest
@@ -650,18 +515,14 @@ jobs:
       - name: Run ruff format check
         run: ruff format --check src/ tests/
 
+  # --------------------------------------------------------------------
+  # Editable submodule install verification.
+  # --------------------------------------------------------------------
   editable-install-check:
     name: Editable submodule install
     runs-on: ubuntu-latest
     outputs:
       outcome: ${{ steps.verify.outcome }}
-
-    # Verifies that the tools/get_*.sh setup scripts install the FWL
-    # Python submodule sibling checkouts editable and that the editable
-    # copies take precedence over the corresponding PyPI fall-back pins
-    # listed in pyproject.toml [project] dependencies. Without this
-    # gate, a regression in a setup script (wrong upstream URL casing,
-    # missing pip flag, etc.) would only surface for end users.
 
     steps:
       - name: Checkout code
@@ -673,16 +534,9 @@ jobs:
           python-version: '3.12'
 
       - name: Install PROTEUS (PyPI fall-back path)
-        # This first install resolves the fwl-aragog / fwl-zalmoxis PyPI
-        # pins from pyproject.toml. The next step then overrides those
-        # wheels with editable sibling checkouts; the verification step
-        # asserts the override took effect.
         run: pip install -e ".[develop]"
 
       - name: Run editable setup scripts
-        # The setup scripts probe SSH and fall back to HTTPS when the
-        # runner has no SSH key (the default on hosted runners). The
-        # fall-back is what gets exercised here.
         run: |
           bash tools/get_aragog.sh
           bash tools/get_zalmoxis.sh
@@ -696,21 +550,13 @@ jobs:
           import os
           import sys
 
-          # The editable checkouts live inside the PROTEUS root.
           proteus_root = os.getcwd()
           expected_aragog = os.path.join(proteus_root, 'aragog')
           expected_zalmoxis = os.path.join(proteus_root, 'Zalmoxis')
 
-          # Use __path__[0] (always populated for regular packages),
-          # not __file__ (None for some editable backends that resolve
-          # the package through a .pth shim rather than a real
-          # __init__.py in site-packages).
           aragog_path = aragog.__path__[0]
           zalmoxis_path = zalmoxis.__path__[0]
 
-          # importlib resolution must land in the sibling checkout,
-          # not the site-packages wheel. Compare via os.path.commonpath
-          # to tolerate src/ layouts inside each package.
           if os.path.commonpath([aragog_path, expected_aragog]) != expected_aragog:
               print(f'FAIL: aragog loaded from {aragog_path}, expected under {expected_aragog}')
               sys.exit(1)
@@ -721,6 +567,9 @@ jobs:
           print(f'OK: zalmoxis -> {zalmoxis_path}')
           PY
 
+  # --------------------------------------------------------------------
+  # PR summary aggregator
+  # --------------------------------------------------------------------
   summary:
     name: PR Summary
     runs-on: ubuntu-latest
@@ -753,46 +602,40 @@ jobs:
 
           def icon(outcome):
               if outcome == "success":
-                  return "✅ pass"
+                  return "pass"
               elif outcome == "failure":
-                  return "❌ FAIL"
+                  return "FAIL"
               elif outcome == "skipped":
-                  return "⏭️ skipped"
-              return outcome or "—"
+                  return "skipped"
+              return outcome or "-"
 
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md")
-          nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
-          nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
-          cov_status = os.environ.get("COV_STATUS", "")
-          cov_drop = float(os.environ.get("COV_DROP", "0") or "0")
-
           linux_unit = os.environ.get("LINUX_UNIT", "")
           linux_job_result = os.environ.get("LINUX_JOB_RESULT", "")
           macos_unit = os.environ.get("MACOS_UNIT", "")
           macos_job_result = os.environ.get("MACOS_JOB_RESULT", "")
           lint = os.environ.get("LINT", "")
 
+          nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
+          nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
+          cov_status = os.environ.get("COV_STATUS", "")
+          cov_drop = float(os.environ.get("COV_DROP", "0") or "0")
+
           with open(summary_path, "w") as f:
               f.write("# Fast PR Checks: Summary\n\n")
 
-              # Staleness/missing warnings
               if nightly_stale:
-                  f.write("## ❌ Stale Nightly Baseline\n\n")
-                  f.write("The last successful nightly CI run was **more than 48 hours ago**.\n")
-                  f.write("Cannot validate coverage against an outdated baseline.\n\n")
-                  f.write("**Action required:** Wait for nightly CI to run, or ")
-                  f.write("[trigger it manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
+                  f.write("## Stale Nightly Baseline\n\n")
+                  f.write("The last successful nightly CI run was more than 48 hours ago. Cannot validate coverage.\n\n")
+                  f.write("Action: wait for nightly CI, or [trigger it manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
               elif nightly_missing:
-                  f.write("## ⚠️ No Nightly Baseline\n\n")
+                  f.write("## No Nightly Baseline\n\n")
                   f.write("No nightly coverage artifact found. Coverage validation skipped.\n\n")
 
-              # Coverage warning
               if cov_status == "warn":
-                  f.write(f"## ⚠️ Coverage Warning\n\n")
-                  f.write(f"Coverage dropped **{cov_drop:.2f}%** (within 0.3% grace margin).\n")
-                  f.write("Consider adding tests in a follow-up PR.\n\n")
+                  f.write(f"## Coverage Warning\n\n")
+                  f.write(f"Coverage dropped {cov_drop:.2f}% (within 0.3% grace margin).\n\n")
 
-              # Test results - with platform column
               f.write("## Test Results\n\n")
               f.write("| Platform | Test Type | Status |\n")
               f.write("|----------|-----------|--------|\n")
@@ -800,7 +643,6 @@ jobs:
               f.write(f"| macOS | Unit tests | {icon(macos_unit)} |\n")
               f.write(f"| (any) | Lint (ruff) | {icon(lint)} |\n\n")
 
-              # Coverage section (Linux data only)
               unit_pct = float(os.environ.get("UNIT_PCT", "0") or "0")
               unit_covered = os.environ.get("UNIT_COVERED", "0")
               unit_total = os.environ.get("UNIT_TOTAL", "0")
@@ -818,42 +660,35 @@ jobs:
                   f.write(f"| Smoke + Integration + Slow (nightly) | {nightly_pct:.2f}% | (combined) |\n")
               est = float(est_total or "0")
               if est > 0:
-                  status_icon = "✅" if cov_status == "ok" else ("⚠️" if cov_status == "warn" else "❌")
-                  f.write(f"| **Estimated TOTAL** | **{est:.2f}%** | {est_covered_union} / {est_total_union} |\n\n")
-                  f.write(f"**Baseline (last nightly):** {threshold:.2f}% | **Status:** {status_icon}\n\n")
+                  status_text = ("OK" if cov_status == "ok" else
+                                  ("WARN" if cov_status == "warn" else "FAIL"))
+                  f.write(f"| Estimated TOTAL | {est:.2f}% | {est_covered_union} / {est_total_union} |\n\n")
+                  f.write(f"Baseline (last nightly): {threshold:.2f}% | Status: {status_text}\n\n")
               else:
-                  f.write("\n*Estimated total unavailable (nightly data missing)*\n\n")
+                  f.write("\nEstimated total unavailable (nightly data missing)\n\n")
 
               f.write("### Notes\n")
               f.write("- PR cycle runs unit tests only; smoke + integration + slow tiers run nightly.\n")
               f.write("- Coverage thresholds enforced on Linux only (source of truth).\n")
               f.write("- Grace period: 0.3% | Nightly staleness threshold: 48 hours.\n")
-              f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
 
-              # Failure guidance - includes non-test failures (diff-cover, coverage, staleness)
               any_test_fail = linux_unit == "failure" or macos_unit == "failure"
-              # Detect non-test failures: job failed but specific test steps didn't fail
               linux_non_test_fail = (linux_job_result == "failure" and linux_unit != "failure")
               macos_non_test_fail = macos_job_result == "failure" and macos_unit != "failure"
               cov_fail = cov_status == "fail"
 
               if any_test_fail or lint == "failure" or linux_non_test_fail or macos_non_test_fail or cov_fail or nightly_stale:
-                  f.write("\n---\n")
-                  f.write("## ❌ PR did not pass checks\n\n")
+                  f.write("\n---\n## PR did not pass checks\n\n")
                   if any_test_fail:
-                      f.write("**Unit tests failed.** See the logs above for details.\n\n")
-                      f.write("See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance.\n\n")
+                      f.write("Unit tests failed. See logs above.\n\n")
                   if lint == "failure":
-                      f.write("**Lint (ruff) failed.** Run `ruff check --fix src/ tests/ && ruff format src/ tests/` locally.\n\n")
+                      f.write("Lint (ruff) failed. Run `ruff check --fix src/ tests/ && ruff format src/ tests/`.\n\n")
                   if linux_non_test_fail:
-                      f.write("**Linux job failed on non-test step** (diff-cover, coverage validation, or other check).\n")
-                      f.write("Check the 'Unit Tests (Mocked Physics)' job logs for details.\n\n")
+                      f.write("Linux job failed on non-test step.\n\n")
                   if cov_fail:
-                      f.write(f"**Coverage dropped too much** ({cov_drop:.2f}% below threshold, exceeds 0.3% grace margin).\n")
-                      f.write("Add tests to restore coverage above the threshold.\n\n")
+                      f.write(f"Coverage dropped too much ({cov_drop:.2f}% below threshold).\n\n")
                   if nightly_stale:
-                      f.write("**Nightly baseline is stale.** Coverage validation cannot proceed.\n")
-                      f.write("[Trigger nightly CI manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
+                      f.write("Nightly baseline is stale.\n\n")
           PY
 
       - name: Fail if any checks failed
@@ -863,5 +698,5 @@ jobs:
           needs.lint.result == 'failure' ||
           needs.editable-install-check.result == 'failure'
         run: |
-          echo "❌ One or more required checks failed. See summary above for details."
+          echo "One or more required checks failed. See summary above."
           exit 1

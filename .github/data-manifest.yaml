@@ -1,0 +1,50 @@
+# PROTEUS data manifest -- explicit version pins for the datasets CI caches.
+#
+# The CI composite action (.github/actions/setup-proteus/action.yml) hashes
+# this file to key the FWL_DATA cache. The cache invalidates only when this
+# manifest changes; CI runs that don't change the manifest reuse the
+# previously cached FWL_DATA tree.
+#
+# Bump a version string in this file when:
+#   * a new dataset becomes a hard requirement of a tier the CI runs;
+#   * an existing dataset gets re-released with breaking changes;
+#   * the loader code in src/proteus/utils/data.py starts pulling a new file.
+#
+# After bumping, the next CI run will full-download the affected datasets.
+# Subsequent runs will hit the cache again.
+
+# Bump this top-level version string when you want a hard cache reset
+# (any change to it busts every keyed entry).
+schema_version: 1
+
+datasets:
+  # Stellar spectra used by JANUS/AGNI smoke + integration tests.
+  spectral_files:
+    family: Dayspring
+    bands: ["16", "48"]
+  stellar_spectra:
+    folders: ["solar", "muscles"]
+
+  # ARAGOG lookup tables (~50 MB compressed).
+  interior_lookuptables:
+    version: 1TPa-dK09-elec-free-v3
+
+  # Melting curves required by ARAGOG / SPIDER. Loaded from FWL_DATA at
+  # runtime based on the active config's interior_struct settings.
+  melting_curves:
+    version: 2025-01
+
+  # Stellar evolution tracks used by MORS.
+  mors_evolution_tracks:
+    family: Spada
+
+  # DACE / Zeng-2019 reference catalogs for the cpl_population plots.
+  exoplanet_archive:
+    version: 2026-05
+  massradius_curves:
+    version: 2024-01
+
+  # Dynamic EOS table required by ARAGOG at runtime when no explicit
+  # eos_dir is configured (the standard fallback path).
+  eos_dynamic:
+    version: WolfBower2018_MgSiO3

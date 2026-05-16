@@ -520,7 +520,7 @@ pytest --pdb                        # Drop into debugger on failure
 
 ## Important Notes
 
-- **Docker CI**: Uses pre-built image `ghcr.io/formingworlds/proteus:latest`. PR code is overlaid, only changed files recompiled.
+- **CI caching**: ubuntu-latest + macos-latest runners with `actions/cache` for SOCRATES build, Julia depot, FWL_DATA, AGNI clone, pip wheels. Composite action `.github/actions/setup-proteus` handles platform-aware setup. Cache keys derive from `[tool.proteus.modules]` in pyproject.toml plus `.github/data-manifest.yaml`.
 - **Coverage ratcheting**: Thresholds auto-increase when coverage improves (committed by `github-actions[bot]`), capped at the 90% PROTEUS-ecosystem ceiling. Never manually decrease.
 - **Test placeholders**: Some tests marked `@pytest.mark.skip` are placeholders. Excluded from CI.
 - **Windows**: Not supported. Linux/macOS only.
