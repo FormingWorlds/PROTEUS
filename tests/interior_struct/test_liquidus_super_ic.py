@@ -53,6 +53,11 @@ class TestResolveZalmoxisTemperatureMode:
         )
 
         assert _resolve_zalmoxis_temperature_mode('liquidus_super') == 'adiabatic_from_cmb'
+        # Discrimination: the output must NOT pass the input through
+        # verbatim. A regression that returned 'liquidus_super' to Zalmoxis
+        # would fail in the structure solver downstream (Zalmoxis does not
+        # recognise that token); pin the rename explicitly.
+        assert _resolve_zalmoxis_temperature_mode('liquidus_super') != 'liquidus_super'
 
     @pytest.mark.parametrize('mode', ['accretion', 'isentropic'])
     def test_accretion_isentropic_collapse_to_adiabatic(self, mode):
@@ -63,7 +68,13 @@ class TestResolveZalmoxisTemperatureMode:
             _resolve_zalmoxis_temperature_mode,
         )
 
-        assert _resolve_zalmoxis_temperature_mode(mode) == 'adiabatic'
+        out = _resolve_zalmoxis_temperature_mode(mode)
+        assert out == 'adiabatic'
+        # Discrimination: must NOT collapse to ``adiabatic_from_cmb``
+        # (which would silently anchor at config.planet.tcmb_init even
+        # for non-CMB modes) or pass the input string through verbatim.
+        assert out != 'adiabatic_from_cmb'
+        assert out != mode
 
     @pytest.mark.parametrize(
         'mode',
@@ -78,7 +89,15 @@ class TestResolveZalmoxisTemperatureMode:
             _resolve_zalmoxis_temperature_mode,
         )
 
-        assert _resolve_zalmoxis_temperature_mode(mode) == mode
+        out = _resolve_zalmoxis_temperature_mode(mode)
+        assert out == mode
+        # Discrimination: must not silently remap to the special
+        # ``adiabatic_from_cmb`` token used by ``liquidus_super``. A
+        # regression that defaulted everything to the CMB-anchored branch
+        # would still pass an equality-only check for ``adiabatic_from_cmb``
+        # but fail for the other three modes here.
+        if mode != 'adiabatic_from_cmb':
+            assert out != 'adiabatic_from_cmb'
 
     def test_unknown_mode_passes_through_unchanged(self):
         """Discriminator: validator (in _planet.py) is the source of
@@ -90,10 +109,12 @@ class TestResolveZalmoxisTemperatureMode:
             _resolve_zalmoxis_temperature_mode,
         )
 
-        assert (
-            _resolve_zalmoxis_temperature_mode('hypothetical_future_mode')
-            == 'hypothetical_future_mode'
-        )
+        out = _resolve_zalmoxis_temperature_mode('hypothetical_future_mode')
+        assert out == 'hypothetical_future_mode'
+        # Discrimination: the resolver must not silently coerce an unknown
+        # mode to one of the two special remapped tokens. A regression that
+        # added a fallthrough branch would land on one of these.
+        assert out not in ('adiabatic', 'adiabatic_from_cmb')
 
 
 # ----------------------------------------------------------------------
@@ -136,6 +157,12 @@ class TestResolveZalmoxisCMBTemperature:
             'adiabatic_from_cmb',
         )
         assert T == pytest.approx(7199.0)
+        # Discrimination: T must NOT be the Fei+2021 anchor at 135 GPa
+        # (~5944 K). If the gate on the mode flag failed, the anchor
+        # would override tcmb_init and the test would still see a
+        # plausible Kelvin value but the wrong one.
+        T_liq_135 = 6000.0 * (135.0 / 140.0) ** 0.26
+        assert abs(T - T_liq_135) > 1000.0
 
     def test_liquidus_super_uses_hf_row_p_cmb_at_135_gpa(self):
         """At P=135 GPa, Fei+2021 gives T_liq ~ 5935 K. With
@@ -157,6 +184,12 @@ class TestResolveZalmoxisCMBTemperature:
         # Fei+2021: 6000 * (135/140)**0.26 ~ 5935 K
         T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
         assert T == pytest.approx(T_liq_expected + 500.0, rel=1e-9)
+        # Sign + scale guard: T must be positive Kelvin (Section 3 positivity)
+        # and the offset must be additive, not multiplicative. A regression
+        # that multiplied by (1 + delta_T_super) instead of adding 500 K
+        # would put T at ~3e6 K, far outside the magma-ocean band.
+        assert T > 0.0
+        assert 5000.0 < T < 10000.0
 
     def test_liquidus_super_zero_offset_lands_on_liquidus(self):
         """delta_T_super = 0 K -> anchor exactly on the Fei liquidus.
@@ -174,6 +207,17 @@ class TestResolveZalmoxisCMBTemperature:
         )
         T_liq_expected = 6000.0 * (135.0 / 140.0) ** 0.26
         assert T == pytest.approx(T_liq_expected, rel=1e-9)
+        # Discrimination: changing delta_T_super from 0 to 500 K must
+        # shift T by exactly 500 K. A regression that ignored delta_T_super
+        # (or applied it multiplicatively) would not produce that exact
+        # additive shift.
+        cfg_offset = _make_minimal_config(delta_T_super=500.0)
+        T_offset = _resolve_zalmoxis_cmb_temperature(
+            cfg_offset,
+            {'P_cmb': 135e9},
+            'liquidus_super',
+        )
+        assert T_offset - T == pytest.approx(500.0, rel=1e-9)
 
     def test_liquidus_super_super_earth_pressure(self):
         """At P=400 GPa (3 M_E typical), T_liq ~ 7716 K, anchor with
@@ -392,6 +436,14 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
             'liquidus_super must collapse to adiabatic_from_cmb on the '
             f'Zalmoxis structure side; got {cp["temperature_mode"]!r}'
         )
+        # Discrimination: the cmb_temperature plumbed alongside the remap
+        # must be the Fei-derived anchor (positive Kelvin in the magma-ocean
+        # band), not the raw token or an unset placeholder. A regression
+        # that remapped the mode but left cmb_temperature stale would fail
+        # this positivity + scale guard.
+        T_anchor = cp['cmb_temperature']
+        assert T_anchor > 0.0
+        assert 5000.0 < T_anchor < 10000.0
 
     def test_cmb_temperature_overrides_tcmb_init(self, monkeypatch):
         """When mode=liquidus_super, cmb_temperature is the Fei-derived
@@ -459,6 +511,12 @@ class TestLoadZalmoxisConfigurationLiquidusSuper:
             T_liq_expected + 500.0,
             rel=1e-9,
         )
+        # Discrimination: the fallback must differ from the legacy
+        # hardcoded 135 GPa anchor by > 5 K at 1 M_E (NL20 lands at
+        # ~142 GPa). A regression that re-introduced the legacy
+        # constant would collapse the two anchors.
+        T_legacy = 6000.0 * (135.0 / 140.0) ** 0.26 + 500.0
+        assert abs(cp['cmb_temperature'] - T_legacy) > 5.0
 
     def test_isentropic_unaffected_by_delta_T_super(self, monkeypatch):
         """Setting delta_T_super on a non-liquidus_super run must not
@@ -501,6 +559,16 @@ class TestPaleosLiquidusSourceOfTruth:
 
         T = float(paleos_liquidus(135e9))
         assert T == pytest.approx(5943.53, abs=1.0)
+        # Sign guard (Section 3 positivity): liquidus temperature must
+        # be positive Kelvin everywhere.
+        assert T > 0.0
+        # Exponent-error guard: a regression that swapped the 0.26
+        # exponent for 0.5 would give 6000 * (135/140)**0.5 ~ 5892 K
+        # (50 K below the correct 5944 K); the abs=1.0 tolerance
+        # discriminates that even before this scale check fires, but
+        # the explicit guard keeps the failure message readable.
+        wrong_exp = 6000.0 * (135.0 / 140.0) ** 0.5
+        assert abs(T - wrong_exp) > 30.0
 
     def test_paleos_liquidus_continuous_at_crossover(self):
         """Crossover at 2.5517 GPa: Belonoshko and Fei branches must meet."""
@@ -510,6 +578,14 @@ class TestPaleosLiquidusSourceOfTruth:
         T_above = float(paleos_liquidus(2.56e9))
         # Both branches at the crossover should give ~1972 K (within 5 K).
         assert abs(T_above - T_below) < 5.0
+        # Positivity and scale guard: both branches must produce
+        # positive Kelvin temperatures in the documented ~1970 K
+        # neighbourhood at the crossover. A regression that emitted
+        # zero or negative on one side (e.g. branch dispatch error)
+        # would fail this even when the difference happens to be small.
+        assert T_below > 0.0
+        assert T_above > 0.0
+        assert 1500.0 < T_below < 2500.0
 
     def test_paleos_liquidus_monotonic(self):
         """Liquidus must increase with pressure across the magma-ocean range."""
@@ -522,3 +598,12 @@ class TestPaleosLiquidusSourceOfTruth:
                 f'Liquidus not monotonic at P={Ps[i]:.1e}: '
                 f'T(P[i-1])={Ts[i - 1]:.0f} >= T(P[i])={Ts[i]:.0f}'
             )
+        # Positivity guard across the full sampled range and minimum
+        # scale separation between endpoints. The 1 GPa Belonoshko
+        # value is ~1942 K and the 600 GPa Fei value is ~8417 K, so
+        # the span must be > 5000 K. A regression that flattened the
+        # fit (e.g. clipped exponent to zero) would still pass the
+        # monotonicity check above as long as each step is tiny.
+        for T in Ts:
+            assert T > 0.0
+        assert Ts[-1] - Ts[0] > 5000.0

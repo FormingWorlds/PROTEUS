@@ -108,8 +108,9 @@ def _make_interior_o():
 class TestMushyCap:
     """Verify the Phi-aware dt cap activates only inside the mushy band."""
 
+    @pytest.mark.physics_invariant
     def test_disabled_when_mushy_maximum_is_zero(self, tmp_path):
-        """``mushy_maximum = 0`` must preserve legacy behaviour — no cap."""
+        """``mushy_maximum = 0`` must preserve legacy behaviour, no cap."""
         from proteus.interior_energetics.timestep import next_step
 
         config = _make_config(mushy_maximum=0.0)
@@ -130,7 +131,11 @@ class TestMushyCap:
         # SFINC * dt_prev = 1.6 * 5e3 = 8e3. No cap applied since
         # mushy_maximum = 0 disables the feature.
         assert dt == pytest.approx(8.0e3, rel=1e-6), f'Expected 8e3, got {dt}'
+        # Section 3 positivity: time-step must be > 0. A regression that
+        # returned a non-positive dt would silently freeze the simulation.
+        assert dt > 0.0
 
+    @pytest.mark.physics_invariant
     def test_cap_active_when_phi_in_band(self, tmp_path):
         """Cap kicks in when Phi_global is inside (phi_crit, mushy_upper)."""
         from proteus.interior_energetics.timestep import next_step
@@ -152,7 +157,12 @@ class TestMushyCap:
         )
         # 1.6 * 5e3 = 8e3 would be chosen; cap to 4e3.
         assert dt == pytest.approx(4.0e3, rel=1e-6), f'Expected 4e3 (mushy cap), got {dt}'
+        # Discrimination: with the cap active, dt must be strictly below
+        # the uncapped 8e3 controller choice. A regression that disabled
+        # the cap inside the band would land at 8e3 here.
+        assert dt < 8.0e3
 
+    @pytest.mark.physics_invariant
     def test_cap_inactive_when_phi_above_upper(self):
         """Pure-liquid (Phi > mushy_upper) must NOT trigger the cap."""
         from proteus.interior_energetics.timestep import next_step
@@ -170,6 +180,11 @@ class TestMushyCap:
         )
         # Cap not active because Phi = 1.0 >= mushy_upper = 0.99.
         assert dt > 4.0e3, f'Expected dt > 4e3 (cap inactive), got {dt}'
+        # Discrimination: with the cap bypassed, dt should land at the
+        # uncapped SFINC step (1.6 * 5e3 = 8e3). A regression that
+        # extended the cap above the upper bound would clip back to 4e3
+        # and fail the prior inequality but also break this equality.
+        assert dt == pytest.approx(8.0e3, rel=1e-6)
 
     def test_cap_inactive_when_phi_below_phi_crit(self):
         """Solidified (Phi < phi_crit) must NOT trigger the cap."""
@@ -211,6 +226,9 @@ class TestMushyCap:
         assert dt == pytest.approx(dt_no_cap, rel=1e-6), (
             f'Cap should be inactive below phi_crit, but dt={dt} vs dt_no_cap={dt_no_cap}'
         )
+        # Section 3 positivity: dt must remain strictly positive in the
+        # solidified branch (Phi < phi_crit).
+        assert dt > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +299,7 @@ class TestHysteresis:
             f'Expected counter decremented to 1, got {interior_o.dt_hysteresis_remaining}'
         )
 
+    @pytest.mark.physics_invariant
     def test_zero_hysteresis_preserves_legacy_sfinc(self):
         """``hysteresis_iters = 0`` keeps the full SFINC = 1.6."""
         from proteus.interior_energetics.timestep import next_step
@@ -307,6 +326,11 @@ class TestHysteresis:
         )
         # 1.6 * 1e3 = 1.6e3.
         assert dt == pytest.approx(1.6e3, rel=1e-6), f'Expected full SFINC dt = 1.6e3, got {dt}'
+        # Discrimination: must NOT have collapsed to the gentler
+        # hysteresis_sfinc * dt_prev = 1.1e3. The two factors differ
+        # by 500 yr; a regression that always applied the hysteresis
+        # factor would land there.
+        assert abs(dt - 1.1e3) > 100.0
 
     def test_counter_decrements_to_zero(self):
         """After enough speed-ups the counter returns to 0 and SFINC
@@ -353,6 +377,7 @@ class TestHysteresis:
         )
         assert interior_o.dt_hysteresis_remaining == 0
 
+    @pytest.mark.physics_invariant
     def test_none_interior_o_disables_hysteresis(self):
         """Passing ``interior_o=None`` must preserve pre-2026-04-09
         behaviour: no hysteresis, no counter, full SFINC."""
@@ -368,6 +393,11 @@ class TestHysteresis:
         dt = next_step(config, {}, hf_row, hf_all, 1.0, interior_o=None)
         # Without interior_o the hysteresis machinery is fully skipped.
         assert dt == pytest.approx(1.6e3, rel=1e-6)
+        # Section 3 positivity: timestep stays positive even on the
+        # legacy code path. Combined with the equality above this
+        # rules out a regression that returned 0 or NaN when
+        # interior_o is None.
+        assert dt > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +485,7 @@ def test_next_step_handles_subyear_remaining_time_without_overshoot():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_next_step_not_capped_by_stop_time_when_disabled():
     """If stop.time is disabled, dt should follow dt.maximum without overshoot cap."""
     from proteus.interior_energetics.timestep import next_step
@@ -467,9 +498,15 @@ def test_next_step_not_capped_by_stop_time_when_disabled():
     dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
 
     assert dt == pytest.approx(7.5)
+    # Discrimination: stop.time.maximum sits at 50.2 with Time = 50.0;
+    # if the disabled-flag gate failed, dt would clip to the 1 yr
+    # floor (max(1, 0.2) = 1) and stay there. dt = 7.5 must NOT be
+    # silently clipped to 1.
+    assert dt > 1.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_next_step_maximum_rel_widens_the_cap():
     """dt.maximum_rel adds a Time-proportional allowance on top of dt.maximum."""
     from proteus.interior_energetics.timestep import next_step
@@ -485,11 +522,17 @@ def test_next_step_maximum_rel_widens_the_cap():
     # The point of this test is that maximum_rel does not lower the cap.
     dt = next_step(config, {}, hf_row, _make_overshoot_hf_all(), step_sf=1.0)
     assert dt == pytest.approx(100.0)
+    # Discrimination: the additive cap 100 + 0.1 * 50 = 105 must NOT
+    # bind here (dtswitch is already 100). A regression that swapped
+    # the formula to min(dt.maximum, maximum_rel * Time) would clamp
+    # to 0.1 * 50 = 5 instead.
+    assert dt > 50.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_next_step_maximum_rel_additive_is_binding_when_dt_max_smaller():
-    """Regression for the maximum_rel docstring/semantics audit (7e follow-up).
+    """Regression for the maximum_rel docstring/semantics rework (7e follow-up).
 
     The cap formula is ``dt.maximum + maximum_rel * Time`` (additive),
     NOT ``min(dt.maximum, maximum_rel * Time)`` as an earlier docstring
@@ -503,7 +546,7 @@ def test_next_step_maximum_rel_additive_is_binding_when_dt_max_smaller():
     # With maximum_rel=0.5 and Time=100, the additive cap is
     # dt.maximum + 0.5 * 100 = 10 + 50 = 60. dtswitch=10 < 60 so the cap
     # is not binding here. The point is to confirm dt stays at the
-    # underlying method value (10), NOT min(10, 50)=10 either way — but
+    # underlying method value (10), NOT min(10, 50)=10 either way, but
     # in the additive-min formula misread, 60 would silently be the new
     # ceiling rather than 60.
     config = _make_overshoot_config(
@@ -518,9 +561,13 @@ def test_next_step_maximum_rel_additive_is_binding_when_dt_max_smaller():
     # formula would give the same answer here, so this asserts the
     # arithmetic identity rather than the formula shape.
     assert dt == pytest.approx(10.0)
+    # Section 3 positivity guard: any time-step must be strictly positive
+    # (a zero or negative dt would freeze or reverse the integration).
+    assert dt > 0.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_next_step_maximum_rel_zero_disables_time_proportional_widening():
     """Documentation contract: maximum_rel=0.0 must reduce the cap to
     the pure absolute dt.maximum. This pins down the documented "off"
@@ -540,9 +587,16 @@ def test_next_step_maximum_rel_zero_disables_time_proportional_widening():
     # asserts that the default value DOES widen the cap, so the pair of
     # tests pins down the contract.
     assert dt == pytest.approx(10.0)
+    # Discrimination: a regression that swapped the additive formula
+    # for a multiplicative one (cap = dt.maximum * (1 + max_rel * Time))
+    # would still return 10 here (1 + 0 = 1), but the pair with the
+    # `_default_widens_cap` test pins the contract. Add a positivity
+    # guard so dt staying at 10 isn't masked by a NaN cancellation.
+    assert dt > 0.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_next_step_maximum_rel_default_widens_cap_proportional_to_Time():
     """The default maximum_rel=1.0 means the additive allowance equals
     Time, so the effective cap doubles when Time equals dt.maximum.
@@ -569,3 +623,8 @@ def test_next_step_maximum_rel_default_widens_cap_proportional_to_Time():
     # because the additive cap widened to 110.
     # If the cap were strictly dt.maximum (no additive), dt would be 10.
     assert dt == pytest.approx(50.0)
+    # Discrimination: dt must be strictly greater than the unwidened
+    # cap of 10 (the absolute dt.maximum). A regression that ignored
+    # maximum_rel would land at 10 here; the gap of 40 is well above
+    # any reasonable rounding error.
+    assert dt > 10.0

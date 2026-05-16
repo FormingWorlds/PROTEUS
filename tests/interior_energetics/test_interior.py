@@ -57,6 +57,7 @@ def test_calculate_simple_mantle_mass_earth_like():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_calculate_simple_mantle_mass_no_core():
     """Test mantle mass with zero core fraction (entire planet is mantle).
 
@@ -72,9 +73,18 @@ def test_calculate_simple_mantle_mass_no_core():
     # Full sphere volume: (4/3) * pi * r^3
     expected_mass = (4 * np.pi / 3) * radius**3 * density
     assert mantle_mass == pytest.approx(expected_mass, rel=1e-10)
+    # Section 3 positivity: mass must be positive Kelvin-free SI quantity.
+    # A regression that forgot the (1 - core_frac**3) factor still gives
+    # the same result at core_frac=0, so positivity alone is weak; pair
+    # with a scale guard against a missing 4/3 factor (which would shift
+    # the result by ~24%).
+    assert mantle_mass > 0.0
+    naive_no_43 = np.pi * radius**3 * density
+    assert abs(mantle_mass - naive_no_43) > 0.1 * expected_mass
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_calculate_simple_mantle_mass_scales_with_radius_cubed():
     """Test that mantle mass scales with radius^3 (volume scaling).
 
@@ -91,6 +101,11 @@ def test_calculate_simple_mantle_mass_scales_with_radius_cubed():
 
     # Volume scaling: (2r)³ = 8r³
     assert mass2 / mass1 == pytest.approx(8.0, rel=1e-8)
+    # Exponent-error discrimination: a regression to r**2 (surface
+    # scaling) would give ratio 4, a regression to r**4 would give 16.
+    # The cube exponent is the only one that produces ratio 8 here.
+    assert abs(mass2 / mass1 - 4.0) > 1.0
+    assert abs(mass2 / mass1 - 16.0) > 1.0
 
 
 @pytest.mark.unit
@@ -227,6 +242,7 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_calculate_simple_mantle_mass_scales_with_density():
     """Test linear scaling with density.
 
@@ -243,6 +259,12 @@ def test_calculate_simple_mantle_mass_scales_with_density():
 
     # Linear density scaling
     assert mass2 / mass1 == pytest.approx(2.0, rel=1e-10)
+    # Positivity guard plus density-squared exponent guard. A regression
+    # that squared density (e.g. wrong unit power) would give ratio 4
+    # at density2 = 2 * density1.
+    assert mass1 > 0.0
+    assert mass2 > 0.0
+    assert abs(mass2 / mass1 - 4.0) > 1.0
 
 
 @pytest.mark.unit
@@ -261,6 +283,12 @@ def test_calculate_simple_mantle_mass_full_core():
 
     # No mantle if core fills entire planet
     assert mantle_mass == pytest.approx(0.0, abs=1e-10)
+    # Discrimination: shrinking the core (core_frac=0.999) must give a
+    # tiny but strictly positive mantle mass, scaling roughly as
+    # 1 - 0.999**3 ~ 0.003. A regression that always returned 0 would
+    # fail this neighboring-input check.
+    mantle_near_full = calculate_simple_mantle_mass(radius, 0.999, density)
+    assert mantle_near_full > 0.0
 
 
 # ============================================================================
@@ -401,6 +429,7 @@ def test_run_dummy_int_melt_fraction_partial():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_run_dummy_int_heat_radiogening():
     """Test radiogenic heating contribution (F_radio).
 
@@ -424,9 +453,22 @@ def test_run_dummy_int_heat_radiogening():
     expected_F_radio = heat_internal * output['M_mantle'] / area
 
     assert output['F_radio'] == pytest.approx(expected_F_radio, rel=1e-8)
+    # Positivity: outgoing radiogenic flux must be non-negative for
+    # non-negative heat_internal (Section 3 positivity invariant).
+    assert output['F_radio'] > 0.0
+    # Linear scaling discrimination: doubling heat_internal doubles
+    # F_radio at fixed geometry. A regression that squared the per-kg
+    # heat source or applied a fixed offset would fail this ratio.
+    config2 = _create_mock_config(heat_internal=2.0 * heat_internal, tsurf_init=2000.0)
+    interior_o2 = Interior_t(nlev_b=2)
+    interior_o2.ic = 1
+    interior_o2.tides = [0.0]
+    _, output2 = run_dummy_int(config2, dirs, dict(hf_row), hf_all, interior_o2)
+    assert output2['F_radio'] / output['F_radio'] == pytest.approx(2.0, rel=1e-8)
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_run_dummy_int_heat_tidaling_enabled():
     """Test tidal heating flux when heat_tidal=True.
 
@@ -449,9 +491,17 @@ def test_run_dummy_int_heat_tidaling_enabled():
     expected_F_tidal = interior_o.tides[0] * output['M_mantle'] / area
 
     assert output['F_tidal'] == pytest.approx(expected_F_tidal, rel=1e-8)
+    # Positivity: non-zero tidal specific power must produce a strictly
+    # positive F_tidal (Section 3 positivity).
+    assert output['F_tidal'] > 0.0
+    # Discrimination: F_tidal must NOT collapse to zero when the gate
+    # is open and tides[0] > 0. A regression that swapped the gate
+    # truth value would surface here.
+    assert output['F_tidal'] != pytest.approx(0.0, abs=1e-30)
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_run_dummy_int_heat_tidaling_disabled():
     """Test that F_tidal=0 when heat_tidal=False.
 
@@ -470,6 +520,16 @@ def test_run_dummy_int_heat_tidaling_disabled():
     _, output = run_dummy_int(config, dirs, hf_row, hf_all, interior_o)
 
     assert output['F_tidal'] == pytest.approx(0.0, abs=1e-15)
+    # Discrimination: re-enabling the gate at the same tides[0] must
+    # produce a strictly positive F_tidal. A regression that ignored
+    # the heat_tidal flag entirely (always-off) would return 0 in both
+    # branches and pass the equality above.
+    config_on = _create_mock_config(heat_tidal=True, tsurf_init=2000.0)
+    interior_on = Interior_t(nlev_b=2)
+    interior_on.ic = 1
+    interior_on.tides = [5e-12]
+    _, output_on = run_dummy_int(config_on, dirs, dict(hf_row), hf_all, interior_on)
+    assert output_on['F_tidal'] > 0.0
 
 
 @pytest.mark.unit
@@ -513,6 +573,7 @@ def test_run_dummy_int_interior_arrays():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_run_dummy_int_rf_depth_scaling():
     """Test RF_depth (rheological front depth) scales with melt fraction.
 
@@ -534,6 +595,15 @@ def test_run_dummy_int_rf_depth_scaling():
 
     expected_rf_depth = output['Phi_global'] * (1 - 0.6)
     assert output['RF_depth'] == pytest.approx(expected_rf_depth, rel=1e-10)
+    # Boundedness (Section 3): RF_depth is a normalised mantle-fraction
+    # so it must lie in [0, 1 - core_frac]. With core_frac=0.6 the
+    # upper bound is 0.4.
+    assert 0.0 <= output['RF_depth'] <= 0.4
+    # Discrimination: a regression that dropped the (1 - core_frac)
+    # factor would give RF_depth = Phi_global, which here exceeds
+    # the 0.4 upper bound because tsurf_init=2000 sits mid-melt
+    # (Phi_global = 0.5 > 0.4).
+    assert output['RF_depth'] < output['Phi_global']
 
 
 # ============================================================================
@@ -630,6 +700,12 @@ def test_eval_rheoparam_invalid_parameter():
 
     with pytest.raises(ValueError, match='Invalid rheological parameter'):
         eval_rheoparam(0.2, 'invalid')
+    # Discrimination: at the same phi=0.2, each of the three documented
+    # parameter names must produce a strictly positive result. A
+    # regression that broadened the match arms to swallow the unknown
+    # name AND clamped to a typo path would mask both branches.
+    for name in ('visc', 'shear', 'bulk'):
+        assert eval_rheoparam(0.2, name) > 0.0
 
 
 @pytest.mark.unit
@@ -734,6 +810,12 @@ def test_interior_t_resume_tides_file_missing(tmp_path):
 
     # Tides should remain zero from initialization
     assert interior.tides[0] == 0.0
+    # Discrimination: the entire pre-allocated tides array (nlev_s=2
+    # slots for nlev_b=3) must remain at the zero-IC. A regression
+    # that partially overwrote the array on the missing-file path
+    # would leave one slot non-zero.
+    assert len(interior.tides) == 2
+    assert all(float(t) == 0.0 for t in interior.tides)
 
 
 @pytest.mark.unit

@@ -53,6 +53,13 @@ class TestIronFractions:
 
         x_cmf, _, _ = iron_fractions(0.55, 'radius')
         assert x_cmf == pytest.approx(0.55**2.5, rel=1e-12)
+        # Exponent-error discrimination: a regression that used the
+        # mass-mode passthrough (exponent 1.0) would give 0.55 here,
+        # well separated from the correct 0.55**2.5 ~ 0.224.
+        assert abs(x_cmf - 0.55) > 0.1
+        # A regression that used the cube (exponent 3.0) would give
+        # 0.55**3 = 0.166, also discriminable.
+        assert abs(x_cmf - 0.55**3) > 0.01
 
     def test_radius_mode_clamps_to_window(self):
         """``'radius'`` mode clamps the resulting CMF to the [0.01, 0.80]
@@ -75,6 +82,11 @@ class TestIronFractions:
 
         with pytest.raises(ValueError):
             iron_fractions(bad_cf, 'mass')
+        # Discrimination: a value just inside the open interval must NOT
+        # raise. A regression that broadened the rejection (e.g. <= 0.5)
+        # would fail this neighboring-input check.
+        result = iron_fractions(0.5, 'mass')
+        assert result[0] == pytest.approx(0.5, rel=1e-12)
 
     def test_unknown_mode_raises(self):
         """An unsupported mode string (e.g. 'volume') raises ValueError
@@ -84,6 +96,13 @@ class TestIronFractions:
 
         with pytest.raises(ValueError):
             iron_fractions(0.325, 'volume')
+        # Discrimination: the two documented modes must NOT raise and
+        # must produce CMF values in the open unit interval. A
+        # regression that tightened the gate would surface here.
+        x_cmf_mass, _, _ = iron_fractions(0.325, 'mass')
+        x_cmf_rad, _, _ = iron_fractions(0.325, 'radius')
+        assert 0.0 < x_cmf_mass < 1.0
+        assert 0.0 < x_cmf_rad < 1.0
 
     def test_x_fe_increases_with_x_cmf(self):
         """Anti-happy-path: more core mass means more total iron, all
@@ -94,6 +113,11 @@ class TestIronFractions:
         _, x_fe_low, _ = iron_fractions(0.20, 'mass')
         _, x_fe_high, _ = iron_fractions(0.50, 'mass')
         assert x_fe_high > x_fe_low + 0.20
+        # Boundedness: both iron fractions must lie inside (0, 1). A
+        # regression that overshot the mantle-iron contribution would
+        # produce x_fe > 1, breaking the physical bounds.
+        assert 0.0 < x_fe_low < 1.0
+        assert 0.0 < x_fe_high < 1.0
 
 
 # ----------------------------------------------------------------------
@@ -132,6 +156,13 @@ class TestEstimatePCMB:
 
         P_cmb = estimate_P_cmb_NL20(3.0, 0.325, 'mass')
         assert 300e9 < P_cmb < 500e9
+        # Discrimination: at 3 M_E the NL20 estimate must be well
+        # above the 1 M_E value (~142 GPa). A regression to a fixed
+        # Earth-only constant would land at 135 GPa, failing the
+        # 300 GPa lower bound but reinforce with a direct 1-vs-3
+        # mass comparison so the bug surfaces on identifier change.
+        P_1me = estimate_P_cmb_NL20(1.0, 0.325, 'mass')
+        assert P_cmb > P_1me + 100e9
 
     def test_super_earth_5me_continues_scaling(self):
         """At 5 M_Earth, NL20 ``P_cmb`` lands in the 500-800 GPa band,
@@ -141,6 +172,11 @@ class TestEstimatePCMB:
 
         P_cmb = estimate_P_cmb_NL20(5.0, 0.325, 'mass')
         assert 500e9 < P_cmb < 800e9
+        # Discrimination: the 5 M_E estimate must continue rising above
+        # 3 M_E. A regression that capped P_cmb at a saturation value
+        # (e.g. via spurious clamp) would tie the two masses together.
+        P_3me = estimate_P_cmb_NL20(3.0, 0.325, 'mass')
+        assert P_cmb > P_3me + 50e9
 
     def test_super_earth_10me_high_pressure_branch(self):
         """At 10 M_Earth the CMB pressure is order-1 TPa. NL20 should
@@ -152,6 +188,12 @@ class TestEstimatePCMB:
 
         P_cmb = estimate_P_cmb_NL20(10.0, 0.325, 'mass')
         assert 0.8e12 < P_cmb < 2.0e12
+        # Discrimination: the 10 M_E pressure must exceed the 5 M_E
+        # value by a meaningful amount (>200 GPa). A regression that
+        # saturated the scaling above 5 M_E would land both values
+        # near the 800 GPa band and lose the trend.
+        P_5me = estimate_P_cmb_NL20(5.0, 0.325, 'mass')
+        assert P_cmb > P_5me + 200e9
 
     def test_p_cmb_monotonic_in_mass(self):
         """Property-based: P_cmb increases with planet mass at fixed CMF.
@@ -168,6 +210,12 @@ class TestEstimatePCMB:
                 f'M={masses[i - 1]} -> {Ps[i - 1] / 1e9:.1f} GPa, '
                 f'M={masses[i]} -> {Ps[i] / 1e9:.1f} GPa'
             )
+        # Scale discrimination: the 0.5 M_E vs 10 M_E span must be at
+        # least an order of magnitude in P_cmb. A regression that
+        # flattened the mass exponent close to zero would still pass
+        # the inner monotonicity check (any tiny upward drift is
+        # monotonic) but lose the physical scale.
+        assert Ps[-1] / Ps[0] > 10.0
 
     def test_p_cmb_monotonic_decreasing_in_cmf_at_fixed_mass(self):
         """Property-based: at fixed mass, more core mass means a thinner
@@ -188,6 +236,12 @@ class TestEstimatePCMB:
                 f'fixed mass: CMF={cmfs[i - 1]} -> {Ps[i - 1] / 1e9:.1f} GPa, '
                 f'CMF={cmfs[i]} -> {Ps[i] / 1e9:.1f} GPa'
             )
+        # Scale discrimination: the CMF=0.20 vs CMF=0.50 endpoints must
+        # differ by at least 20 GPa at 1 M_E. A regression that wired
+        # whole-planet density into the mantle factor would flip the
+        # sign of this trend; even a regression that only weakened the
+        # gradient would compress the endpoint gap below 20 GPa.
+        assert Ps[0] - Ps[-1] > 20e9
 
     def test_zero_or_negative_mass_raises(self):
         """``estimate_P_cmb_NL20`` rejects mass values that are not
@@ -208,6 +262,12 @@ class TestEstimatePCMB:
 
         with pytest.raises(ValueError):
             estimate_P_cmb_NL20(1.0, 1.0, 'mass')
+        # Discrimination: an in-band core_frac just below the upper bound
+        # must NOT raise and must return a positive P_cmb in Pa. A
+        # regression that broadened the rejection to closed-interval
+        # would surface on the neighboring 0.95 input.
+        P = estimate_P_cmb_NL20(1.0, 0.95, 'mass')
+        assert P > 0.0
 
     def test_returns_finite_float(self):
         """Anti-happy-path: must return a finite float (not nan/inf/None)
