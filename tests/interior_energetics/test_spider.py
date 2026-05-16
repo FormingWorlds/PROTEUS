@@ -553,8 +553,19 @@ def test_remap_entropy_node_count_mismatch(spider_json_dir):
     mesh_path = os.path.join(spider_json_dir, 'mesh.dat')
     _make_mesh_file(mesh_path, r_b_wrong, r_s_wrong)
 
+    # Snapshot JSON content before the call.
+    with open(test_json, 'rb') as f:
+        before = f.read()
+
     result = remap_entropy_for_new_mesh(test_json, mesh_path, r_b_old[0])
     assert result is False
+    # Discrimination: a node-count mismatch must abort before any
+    # write; the JSON must be byte-identical afterwards. A regression
+    # that wrote a truncated subdomain vector (the 30-node interpolant
+    # into the original-size slot) would still return False but mutate
+    # the file.
+    with open(test_json, 'rb') as f:
+        assert f.read() == before
 
 
 @pytest.mark.unit
@@ -628,6 +639,7 @@ def test_remap_entropy_on_blended_mesh(spider_json_dir):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_coresize_from_mesh_earth_like(spider_json_dir):
     """Earth-like mesh (coresize=0.55) should return correct ratio."""
     N_b = 50
@@ -638,9 +650,14 @@ def test_coresize_from_mesh_earth_like(spider_json_dir):
 
     coresize = _coresize_from_mesh(mesh_path)
     assert coresize == pytest.approx(0.55, rel=1e-6)
+    # Physics boundedness: a core-to-surface radius ratio must lie
+    # strictly inside (0, 1). A regression that swapped surface and CMB
+    # nodes would return 1/0.55 ~ 1.818, outside the open interval.
+    assert 0.0 < coresize < 1.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_coresize_from_mesh_small_core(spider_json_dir):
     """CMF=0.1 (coresize~0.46) returns plausible ratio < 0.5."""
     N_b = 20
@@ -651,9 +668,15 @@ def test_coresize_from_mesh_small_core(spider_json_dir):
 
     coresize = _coresize_from_mesh(mesh_path)
     assert coresize == pytest.approx(0.46, rel=1e-6)
+    # Physics boundedness: the small-core regime must return a ratio
+    # strictly below 0.5 (CMF=0.1 implies coresize < 0.5 for any
+    # plausible mantle density). A regression that returned an
+    # absolute radius (3.68e6 m) or 1 - ratio (0.54) would fail.
+    assert coresize < 0.5
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_coresize_from_mesh_minimal(spider_json_dir):
     """Minimal 3-node mesh still returns correct ratio."""
     r_b = np.array([1e7, 7e6, 5e6])
@@ -663,6 +686,11 @@ def test_coresize_from_mesh_minimal(spider_json_dir):
 
     coresize = _coresize_from_mesh(mesh_path)
     assert coresize == pytest.approx(0.5, rel=1e-6)
+    # Discrimination: re-pin against the explicit r_cmb / r_surface
+    # division to guard against an off-by-one that reads node[nb-2]
+    # instead of node[nb-1] as the CMB (that regression would return
+    # 7e6 / 1e7 = 0.7, not 0.5).
+    assert coresize == pytest.approx(r_b[-1] / r_b[0], rel=1e-12)
 
 
 # ============================================================================
@@ -802,7 +830,16 @@ def test_check_eos_range_entropy_mismatch(spider_json_dir, caplog):
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.spider'):
         _check_eos_table_range(eos_dir, None, 100e9)
-    assert any('narrower' in r.message for r in caplog.records)
+    spider_warnings = [r for r in caplog.records if 'spider' in r.name]
+    assert any('narrower' in r.message for r in spider_warnings)
+    # Discrimination: exactly one entropy-range warning fires (not zero,
+    # not two). The rendered message must mention the narrow solid
+    # maximum (2400) and the wider melt maximum (3200). A regression
+    # that swapped solid/melt argument order would invert which bound
+    # appears next to the "narrower" tag.
+    assert len(spider_warnings) == 1
+    rendered = spider_warnings[0].getMessage()
+    assert '2400' in rendered and '3200' in rendered
 
 
 @pytest.mark.unit
@@ -814,7 +851,14 @@ def test_check_eos_range_high_pressure(spider_json_dir, caplog):
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.spider'):
         _check_eos_table_range(eos_dir, None, 500e9)
-    assert any('narrower' in r.message for r in caplog.records)
+    spider_warnings = [r for r in caplog.records if 'spider' in r.name]
+    assert any('narrower' in r.message for r in spider_warnings)
+    # Discrimination: the entropy-range predicate depends only on the
+    # solid vs melt extents, not on P_cmb. A regression that gated the
+    # check on a P_cmb threshold (e.g. only warn above 400 GPa) would
+    # still fire here but mask the unconditional-warning contract;
+    # checking exactly one warning rules out doubled emission too.
+    assert len(spider_warnings) == 1
 
 
 @pytest.mark.unit
@@ -836,9 +880,15 @@ def test_check_eos_range_no_warnings(spider_json_dir, caplog):
     _make_eos_table(os.path.join(eos_dir, 'density_melt.dat'), y_max=3200.0)
 
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.spider'):
-        _check_eos_table_range(eos_dir, None, 100e9)
+        result = _check_eos_table_range(eos_dir, None, 100e9)
     spider_warnings = [r for r in caplog.records if 'spider' in r.name]
     assert len(spider_warnings) == 0
+    # Discrimination: the safe-conditions path must return None without
+    # raising. A regression that tripped the parse-failure except branch
+    # on a malformed-but-readable header would also produce zero
+    # spider-named warnings; pinning the return value distinguishes
+    # the successful-parse-no-warning branch from the silent fail-out.
+    assert result is None
 
 
 @pytest.mark.unit
@@ -1149,6 +1199,7 @@ def test_try_spider_missing_eos_dir(tmp_path):
     with (
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', '/nonexistent/eos'),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', mc_base),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
         patch(
             'proteus.interior_energetics.common.compute_initial_entropy',
             return_value=3000.0,
@@ -1165,6 +1216,12 @@ def test_try_spider_missing_eos_dir(tmp_path):
                 atol_sf=1.0,
                 dT_max=1000.0,
             )
+        # Discrimination: the EOS lookup must fail BEFORE SPIDER is
+        # spawned. A regression that built a degenerate call sequence
+        # and then crashed inside subprocess would still raise
+        # FileNotFoundError with a similar message, but sp.run would
+        # have been invoked.
+        mock_run.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1177,6 +1234,7 @@ def test_try_spider_missing_melting_curves(tmp_path):
     with (
         patch('proteus.interior_energetics.spider.EOS_DYNAMIC_DIR', eos_base),
         patch('proteus.interior_energetics.spider.MELTING_CURVES_DIR', '/nonexistent/mc'),
+        patch('proteus.interior_energetics.spider.sp.run') as mock_run,
         patch(
             'proteus.interior_energetics.common.compute_initial_entropy',
             return_value=3000.0,
@@ -1193,6 +1251,12 @@ def test_try_spider_missing_melting_curves(tmp_path):
                 atol_sf=1.0,
                 dT_max=1000.0,
             )
+        # Discrimination: the melting-curves check must fail BEFORE
+        # the subprocess is spawned. A regression that deferred the
+        # check until inside the spawned SPIDER process would let
+        # sp.run be called even though the same exception type is
+        # eventually raised.
+        mock_run.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1251,7 +1315,7 @@ def test_try_spider_subprocess_timeout(tmp_path):
         patch(
             'proteus.interior_energetics.spider.sp.run',
             side_effect=sub.TimeoutExpired(cmd='spider', timeout=60),
-        ),
+        ) as mock_run,
         patch(
             'proteus.interior_energetics.common.compute_initial_entropy',
             return_value=3000.0,
@@ -1269,6 +1333,12 @@ def test_try_spider_subprocess_timeout(tmp_path):
         )
 
     assert result is False
+    # Discrimination: the subprocess must actually have been invoked
+    # before timing out. A regression that returned False from a
+    # pre-spawn validation check would also pass `result is False`
+    # but would leave sp.run uncalled, masking that the timeout
+    # branch was never exercised.
+    mock_run.assert_called_once()
 
 
 @pytest.mark.unit
@@ -1283,8 +1353,16 @@ def test_blend_mesh_malformed_file(spider_json_dir):
     with open(new_path, 'w') as f:
         f.write('also garbage\n')
 
+    with open(new_path) as f:
+        new_content_before = f.read()
     result = blend_mesh_files(old_path, new_path, max_shift=0.05)
     assert result == 0.0
+    # Discrimination: the parse-failure branch must abort before any
+    # blend/write occurs, so the new file is byte-identical afterwards.
+    # A regression that wrote a partially-parsed mesh would change the
+    # file even though the return value stayed 0.0.
+    with open(new_path) as f:
+        assert f.read() == new_content_before
 
 
 # ============================================================================
@@ -1418,12 +1496,23 @@ def test_get_all_output_times(tmp_path):
 
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
-    # Create fake JSON files
+    # Create fake JSON files (inserted out of order on disk to verify sorting)
     for t in [100, 0, 500]:
         (data_dir / f'{t}.json').write_text('{}')
+    # Sprinkle a non-json file in the same directory; the function must
+    # filter it out via the .json suffix check, otherwise the int()
+    # cast on the stem would raise.
+    (data_dir / 'mesh.dat').write_text('not a time')
 
     times = get_all_output_times(str(tmp_path))
     np.testing.assert_array_equal(times, [0, 100, 500])
+    # Discrimination: the return type contract is np.ndarray and the
+    # output is strictly monotone ascending. A regression that returned
+    # the unsorted Python list (or skipped the sort) would fail the
+    # monotone check; a regression that failed to filter mesh.dat
+    # would raise inside int().
+    assert isinstance(times, np.ndarray)
+    assert np.all(np.diff(times) > 0)
 
 
 @pytest.mark.unit
@@ -1433,6 +1522,13 @@ def test_get_all_output_times_empty(tmp_path):
 
     data_dir = tmp_path / 'data'
     data_dir.mkdir()
+    # Discrimination: the data directory is genuinely empty (no JSON,
+    # no other files). A regression that raised from a missing
+    # parent path or from a stat-failed iteration would also match
+    # the broad 'Exception' clause but for the wrong reason; confirming
+    # the directory exists and is empty here pins the empty-dir branch.
+    assert data_dir.exists()
+    assert list(data_dir.iterdir()) == []
 
     with pytest.raises(Exception, match='no files'):
         get_all_output_times(str(tmp_path))
@@ -1492,7 +1588,9 @@ def test_run_spider_success_first_attempt():
     config = MagicMock()
     config.interior_energetics.heat_tidal = False
 
-    with patch('proteus.interior_energetics.spider._try_spider', return_value=True):
+    with patch(
+        'proteus.interior_energetics.spider._try_spider', return_value=True
+    ) as mock_try:
         result = RunSPIDER(
             dirs={'output': '/tmp', 'output/data': '/tmp/data', 'spider': '/tmp'},
             config=config,
@@ -1502,6 +1600,12 @@ def test_run_spider_success_first_attempt():
         )
 
     assert result is True
+    # Discrimination: success on the first attempt must short-circuit
+    # the retry loop, so _try_spider runs exactly once. A regression
+    # that always exhausted max_attempts (e.g. by ignoring the True
+    # return value) would still bottom out at True but with
+    # call_count > 1.
+    assert mock_try.call_count == 1
 
 
 @pytest.mark.unit
@@ -1545,8 +1649,10 @@ def test_run_spider_all_attempts_fail():
     config.interior_energetics.heat_tidal = False
 
     with (
-        patch('proteus.interior_energetics.spider._try_spider', return_value=False),
-        patch('proteus.interior_energetics.spider.UpdateStatusfile'),
+        patch(
+            'proteus.interior_energetics.spider._try_spider', return_value=False
+        ) as mock_try,
+        patch('proteus.interior_energetics.spider.UpdateStatusfile') as mock_status,
         pytest.raises(RuntimeError, match='error occurred when executing SPIDER'),
     ):
         RunSPIDER(
@@ -1556,6 +1662,15 @@ def test_run_spider_all_attempts_fail():
             hf_row={'F_atm': 100.0, 'T_eqm': 255.0},
             interior_o=interior_o,
         )
+    # Discrimination: the retry loop must exhaust all attempts before
+    # raising (not bail out on the first False). A regression that
+    # raised on the first failure would leave call_count == 1; the
+    # retry contract requires at least two attempts.
+    assert mock_try.call_count >= 2
+    # The status file update must fire on the failure path so the
+    # operator sees the SPIDER failure recorded. A regression that
+    # raised without recording status would skip this call.
+    assert mock_status.called
 
 
 @pytest.mark.unit
@@ -1581,7 +1696,13 @@ def test_run_spider_heat_tidal_active():
 
     # dT_max should be 4.0 (tidal heating limit)
     call_kwargs = mock_try.call_args
-    assert call_kwargs[1].get('dT_max', call_kwargs[0][7]) == pytest.approx(4.0)
+    dT_max_passed = call_kwargs[1].get('dT_max', call_kwargs[0][7])
+    assert dT_max_passed == pytest.approx(4.0)
+    # Discrimination: the tidal limit must be strictly tighter than the
+    # default 1000 K cap used by callers without active tides. A
+    # regression that left dT_max at the default would pass any
+    # "dT_max <= 1000" check but fail the < 1000 distinction here.
+    assert dT_max_passed < 1000.0
 
 
 # ============================================================================
@@ -1685,6 +1806,11 @@ def test_read_spider_returns_precise_time_years(tmp_path):
         f'ReadSPIDER returned sim_time={sim_time}, expected 100.7 from time_years. '
         f'If this is 175, the code is reading the filename instead of the JSON.'
     )
+    # Discrimination: the precise-vs-llround difference is 74.3 yr.
+    # A regression reading the filename stem would land at exactly
+    # 175.0; the assertion below fails that scenario specifically
+    # (the approx-pin alone tolerates ~ 1e-6 of 100.7, far below 74.3).
+    assert abs(sim_time - 175.0) > 10.0
 
 
 @pytest.mark.unit
@@ -1717,8 +1843,14 @@ def test_read_spider_prevent_warming(tmp_path):
 
     sim_time, output = ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
 
-    # F_int clamped to at least 1e-8
+    # F_int is non-negative when prevent_warming is in effect.
     assert output['F_int'] >= 1e-8
+    # Discrimination: the prevent_warming clamp lives in the wrapper,
+    # not in ReadSPIDER; the read path must pass the raw Fatm=1e5
+    # from the JSON through untouched. A regression that collapsed
+    # F_int down to the 1e-8 floor at the read site would still
+    # satisfy the >=1e-8 line but fail this exact-pin.
+    assert output['F_int'] == pytest.approx(1e5, rel=1e-9)
 
 
 @pytest.mark.unit
@@ -1757,8 +1889,14 @@ def test_read_spider_nan_temperature(tmp_path):
 
     dirs = {'output': str(tmp_path), 'output/data': str(data_dir)}
 
-    with pytest.raises(Exception, match='NaN'):
+    with pytest.raises(Exception, match='NaN') as excinfo:
         ReadSPIDER(dirs, config, R_int=6.371e6, interior_o=interior_o)
+    # Discrimination: the raised error must name the magma-ocean
+    # temperature, not some other downstream NaN (e.g. F_int or
+    # T_pot). The Fatm value of 1e5 in the fake JSON is finite, so
+    # a regression that raised on a different field would name a
+    # different quantity here.
+    assert 'temperature' in str(excinfo.value).lower()
 
 
 # ============================================================================
@@ -1797,9 +1935,14 @@ def test_myjson_get_dict_values_internal(tmp_path):
     _make_spider_json(fpath, num_basic=11)
 
     jobj = MyJSON(fpath)
-    # radius_b has 11 values; internal should strip first and last → 9
+    # radius_b has 11 values; internal should strip first and last -> 9
+    full = jobj.get_dict_values(['data', 'radius_b'])
     internal = jobj.get_dict_values_internal(['data', 'radius_b'])
     assert len(internal) == 9
+    # Discrimination: the stripped values must be the original full[1:-1]
+    # array, not the full[:-2] (strip-tail) or full[2:] (strip-head)
+    # variants that an off-by-one indexing regression would produce.
+    np.testing.assert_array_equal(internal, full[1:-1])
 
 
 @pytest.mark.unit
