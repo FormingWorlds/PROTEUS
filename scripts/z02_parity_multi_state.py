@@ -65,7 +65,6 @@ def build_solver_and_jax_args():
     solver = interior_o.aragog_solver
 
     import jax.numpy as jnp
-
     from aragog.jax.eos import EntropyEOS_JAX
     from aragog.jax.phase import MeshArrays, PhaseParams
     from aragog.jax.solver import BoundaryParams
@@ -152,7 +151,6 @@ def synthesize_state(solver, eos_jax, kind: str) -> np.ndarray:
 def parity_for_state(solver, args, state: np.ndarray, label: str) -> dict:
     """Compute dSdt with both numpy and JAX, return parity stats."""
     import jax.numpy as jnp
-
     from aragog.jax.solver import dSdt_energy_balance
 
     # numpy side: drives entropy_solver, advances state.update internally

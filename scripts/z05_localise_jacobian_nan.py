@@ -25,13 +25,12 @@ import numpy as np  # noqa: E402
 def main():
     print('=== Z.2 NaN-localisation (z05) ===')
     sys.path.insert(0, str(Path(__file__).parent))
+    from aragog.jax.phase import PhaseParams  # noqa: E402
+    from aragog.solver.cvode_jax import build_jax_rhs_and_jacobian  # noqa: E402
     from z02_parity_multi_state import (  # noqa: E402
         build_solver_and_jax_args,
         synthesize_state,
     )
-
-    from aragog.jax.phase import PhaseParams  # noqa: E402
-    from aragog.solver.cvode_jax import build_jax_rhs_and_jacobian  # noqa: E402
 
     solver, args, eos_jax = build_solver_and_jax_args()
     n_stag = solver._n_stag

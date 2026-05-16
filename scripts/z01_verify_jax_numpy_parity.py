@@ -99,7 +99,6 @@ def main():
     # ── Build JAX components ──
     print('\n--- Building JAX components ---')
     import jax.numpy as jnp
-
     from aragog.jax.eos import EntropyEOS_JAX
     from aragog.jax.phase import MeshArrays, PhaseParams
     from aragog.jax.solver import BoundaryParams, dSdt_energy_balance
