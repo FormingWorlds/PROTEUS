@@ -35,10 +35,10 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 from proteus.utils.constants import M_earth
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 def test_structure_update_consistency():
     """Verify periodic Zalmoxis re-computation is stable and continuous.
 

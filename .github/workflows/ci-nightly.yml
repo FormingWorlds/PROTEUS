@@ -541,6 +541,9 @@ jobs:
           pytest -m "slow and not unit and not smoke and not integration" \
             tests/config/test_config_schema_invariants.py \
             tests/integration/test_smoke_hypothesis.py \
+            tests/integration/test_smoke_zalmoxis_spider.py \
+            tests/integration/test_regression_aw_zalmoxis.py \
+            tests/integration/test_regression_structure_update.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \

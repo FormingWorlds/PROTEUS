@@ -28,7 +28,7 @@ from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 def _run_proteus(config_path, tmpdir, label, struct_module):
@@ -65,7 +65,7 @@ def _run_proteus(config_path, tmpdir, label, struct_module):
     return runner.hf_all.iloc[-1]
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 def test_aw_vs_zalmoxis_earth_mass():
     """Compare AW and Zalmoxis mesh pathways for 1 M_earth SPIDER run.
 
