@@ -206,9 +206,15 @@ runs:
         # Run the build steps directly so we keep the pinned ref intact.
         # RAD_DIR is exported by the later "Export environment" step but
         # AGNI's deps/build.jl reads it inline, so we set it here too.
+        #
+        # Keep the committed Manifest.toml in place: deleting it forces
+        # Pkg to re-resolve the dependency graph and re-precompile every
+        # package even on a Julia depot cache hit (~4 min penalty per
+        # run). The depot cache key already hashes Project.toml and
+        # Manifest.toml, so any genuine manifest change invalidates
+        # correctly. The pinned AGNI ref ships a matching Manifest.
         export RAD_DIR="$GITHUB_WORKSPACE/socrates"
         cd AGNI
-        rm -f Manifest.toml
         julia deps/build.jl
         julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
 
