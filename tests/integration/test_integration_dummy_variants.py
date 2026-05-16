@@ -31,10 +31,10 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 
-@pytest.mark.slow
+@pytest.mark.integration
 def test_integration_dummy_eccentric_orbit(proteus_multi_timestep_run):
     """All-dummy multi-step run with an eccentric (e=0.4) orbit.
 
@@ -75,7 +75,7 @@ def test_integration_dummy_eccentric_orbit(proteus_multi_timestep_run):
     assert np.all(sep > sma), 'separation must exceed sma for an eccentric orbit'
 
 
-@pytest.mark.slow
+@pytest.mark.integration
 def test_integration_dummy_hot_super_earth(proteus_multi_timestep_run):
     """All-dummy multi-step run with a hot super-Earth (M = 1.5 M_earth,
     T_surf_init = 3000 K) to exercise the hot-end branch of dummy outgas and
@@ -112,7 +112,7 @@ def test_integration_dummy_hot_super_earth(proteus_multi_timestep_run):
     validate_mass_conservation(hf, tolerance=0.10)
 
 
-@pytest.mark.slow
+@pytest.mark.integration
 def test_integration_dummy_low_mass_planet(proteus_multi_timestep_run):
     """All-dummy multi-step run with a sub-Earth (M = 0.3 M_earth) to
     exercise the low-mass branch of Noack & Lasbleis Eq. 5 (R_p scaling),
@@ -144,7 +144,7 @@ def test_integration_dummy_low_mass_planet(proteus_multi_timestep_run):
     assert np.all(g < 9.81), 'sub-Earth must have gravity below 9.81 m s^-2'
 
 
-@pytest.mark.slow
+@pytest.mark.integration
 def test_integration_dummy_radio_heating_disabled(proteus_multi_timestep_run):
     """All-dummy multi-step run with radiogenic heating disabled.
     Exercises the ``interior_energetics.heat_radiogenic = False`` branch of
