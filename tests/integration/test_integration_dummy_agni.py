@@ -24,37 +24,6 @@ ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy_agni'
 config_path = PROTEUS_ROOT / 'tests' / 'integration' / 'dummy_agni.toml'
 
 
-# AGNI's setup! signature on this branch does not accept the aerosol_species
-# keyword that PROTEUS sends, so the dummy-AGNI integration test cannot run
-# until the AGNI submodule is bumped to a version that accepts the new kwarg.
-# Skip at module scope so the test does not error in collection and so it does
-# not block the integration tier from going green.
-_AGNI_PATH = PROTEUS_ROOT / 'AGNI' / 'src' / 'atmosphere.jl'
-
-
-def _agni_setup_accepts_aerosol_species() -> bool:
-    """Heuristic: scan AGNI's atmosphere.jl for ``aerosol_species`` appearing
-    in the kwarg list of a setup!-style function definition. Returns False
-    when AGNI is not present or when the kwarg cannot be located.
-    """
-    if not _AGNI_PATH.is_file():
-        return False
-    text = _AGNI_PATH.read_text()
-    # Look for the kwarg form: ``aerosol_species ::`` or ``aerosol_species=`` in a
-    # setup! signature. Both forms have been used historically; either is enough.
-    import re as _re
-
-    return bool(_re.search(r'\baerosol_species\s*(?:::|=)', text))
-
-
-pytestmark.append(
-    pytest.mark.skipif(
-        not _agni_setup_accepts_aerosol_species(),
-        reason='Installed AGNI setup! does not accept the aerosol_species kwarg PROTEUS sends',
-    )
-)
-
-
 @pytest.fixture(scope='module')
 def dummy_agni_run():
     # Run simulation

@@ -31,6 +31,35 @@ AGNI_LOGFILE_NAME = 'agni_recent.log'
 ALWAYS_DRY = ('CO', 'N2', 'H2')
 
 
+def _agni_setup_accepts_aerosol_species() -> bool:
+    """Detect whether the installed AGNI version's ``setup!`` accepts the
+    ``aerosol_species`` kwarg. Older AGNI installs do not, and passing the
+    kwarg trips a Julia MethodError. Resolve at module load by scanning
+    ``AGNI/src/atmosphere.jl`` for a kwarg-list reference of the form
+    ``aerosol_species ::`` or ``aerosol_species =``.
+
+    Returns ``False`` when AGNI is not on the conventional sibling path
+    or when the file cannot be read, so existing PROTEUS installs with an
+    older AGNI fall through cleanly.
+    """
+    import re
+
+    from proteus.utils.helper import get_proteus_dir
+
+    agni_atmos = os.path.join(get_proteus_dir(), 'AGNI', 'src', 'atmosphere.jl')
+    if not os.path.isfile(agni_atmos):
+        return False
+    try:
+        with open(agni_atmos, 'r') as fh:
+            text = fh.read()
+    except OSError:
+        return False
+    return bool(re.search(r'\baerosol_species\s*(?:::|=)', text))
+
+
+_AGNI_HAS_AEROSOL_SPECIES = _agni_setup_accepts_aerosol_species()
+
+
 def sync_log_files(outdir: str) -> list[str]:
     """Move AGNI logfile content into the PROTEUS logfile and clear it.
 
@@ -371,29 +400,15 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         if len(aerosol_species) == 0:
             log.warning('No data found for aerosol species')
 
-    # Setup struct
-    succ = jl.AGNI.atmosphere.setup_b(
-        atmos,
-        dirs['agni'],
-        dirs['output'],
-        input_sf,
-        hf_row['F_ins'],
-        config.orbit.s0_factor,
-        float(hf_row['albedo_pl']),
-        config.orbit.zenith_angle,
-        hf_row['T_surf'],
-        hf_row['gravity'],
-        hf_row['R_int'],
-        int(config.atmos_clim.num_levels),
-        p_surf,
-        p_top,
-        vol_dict,
-        '',
+    # Build the AGNI setup! kwargs. The ``aerosol_species`` parameter is
+    # only present on newer AGNI installs; if the installed AGNI predates
+    # that addition, sending the kwarg raises a Julia MethodError. Detect
+    # the kwarg at module load and only pass it when AGNI accepts it.
+    setup_kwargs = dict(
         IO_DIR=io_dir,
         flag_rayleigh=config.atmos_clim.rayleigh,
         flag_cloud=config.atmos_clim.cloud_enabled,
         flag_aerosol=config.atmos_clim.aerosols_enabled,
-        aerosol_species=convert(jl.Dict, aerosol_species),
         overlap_method=config.atmos_clim.overlap_method,
         albedo_s=config.atmos_clim.surf_greyalbedo,
         surface_material=surface_material,
@@ -417,6 +432,28 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         tmp_floor=config.atmos_clim.tmp_minimum,
         κ_grey_lw=config.atmos_clim.agni.grey_opacity_lw,
         κ_grey_sw=config.atmos_clim.agni.grey_opacity_sw,
+    )
+    if _AGNI_HAS_AEROSOL_SPECIES:
+        setup_kwargs['aerosol_species'] = convert(jl.Dict, aerosol_species)
+
+    succ = jl.AGNI.atmosphere.setup_b(
+        atmos,
+        dirs['agni'],
+        dirs['output'],
+        input_sf,
+        hf_row['F_ins'],
+        config.orbit.s0_factor,
+        float(hf_row['albedo_pl']),
+        config.orbit.zenith_angle,
+        hf_row['T_surf'],
+        hf_row['gravity'],
+        hf_row['R_int'],
+        int(config.atmos_clim.num_levels),
+        p_surf,
+        p_top,
+        vol_dict,
+        '',
+        **setup_kwargs,
     )
 
     # Check setup! success
