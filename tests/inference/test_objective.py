@@ -22,6 +22,37 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
+def test_log_warp_monotonic_decreasing_in_squared_distance():
+    """``log_warp(sq_dist)`` returns -log10(sq_dist + 1e-10): values
+    closer to the target (sq_dist near 0) score higher than distant
+    ones. Discrimination: a regression that flipped the sign would
+    invert the ranking; a regression that dropped the offset 1e-10
+    would diverge at sq_dist=0.
+    """
+    near = torch.tensor([1e-4], dtype=torch.double)
+    far = torch.tensor([1.0], dtype=torch.double)
+    score_near = objective_mod.log_warp(near)
+    score_far = objective_mod.log_warp(far)
+    # Closer (smaller sq_dist) -> larger score
+    assert score_near.item() > score_far.item()
+    # Scale guards: -log10(1e-4) ~ 4, -log10(1.0) ~ 0
+    assert 3 < score_near.item() < 5
+    assert -0.5 < score_far.item() < 0.5
+
+
+@pytest.mark.unit
+def test_log_warp_finite_at_exact_zero():
+    """``log_warp(0.0)`` does not diverge: the 1e-10 offset guarantees
+    finite output. Discrimination: a regression that removed the offset
+    would emit -inf, which would NaN-poison downstream BO maths.
+    """
+    val = objective_mod.log_warp(torch.tensor([0.0], dtype=torch.double))
+    assert torch.isfinite(val).all()
+    # Expected ~ -log10(1e-10) = 10
+    assert 9 < val.item() < 11
+
+
+@pytest.mark.unit
 def test_update_toml_updates_nested_keys(tmp_path):
     """``update_toml`` applies dotted-key overrides on the loaded config
     (e.g. ``section.value=2``) and creates intermediate nesting for keys
