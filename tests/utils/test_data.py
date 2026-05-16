@@ -273,9 +273,12 @@ def test_download_zenodo_file_success_via_rglob_fallback(mock_getfwl, mock_run, 
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)  # speed up retries
 @patch('proteus.utils.data.sp.run')
 @patch('proteus.utils.data.GetFWLData')
-def test_download_zenodo_file_zero_exit_but_file_missing(mock_getfwl, mock_run, tmp_path):
+def test_download_zenodo_file_zero_exit_but_file_missing(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
     """If zenodo_get exits 0 but file is missing/empty everywhere, function should return False."""
     from proteus.utils.data import download_zenodo_file
 
@@ -370,10 +373,13 @@ def test_download_zenodo_file_nonzero_exit_reads_log_content(
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)  # speed up retries
 @patch('proteus.utils.data.safe_rm')
 @patch('proteus.utils.data.sp.run')
 @patch('proteus.utils.data.GetFWLData')
-def test_download_zenodo_file_cleanup_branches(mock_getfwl, mock_run, mock_safe_rm, tmp_path):
+def test_download_zenodo_file_cleanup_branches(
+    mock_getfwl, mock_run, mock_safe_rm, _mock_sleep, tmp_path
+):
     """Covers file, directory, and exception branches in expected_path cleanup."""
 
     from proteus.utils.data import download_zenodo_file
@@ -894,9 +900,10 @@ def test_download_zenodo_folder_availability_check(mock_run):
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)  # speed up retries
 @patch('proteus.utils.data.sp.run')
 @patch('proteus.utils.data.GetFWLData')
-def test_download_zenodo_folder_timeout(mock_getfwl, mock_run, tmp_path):
+def test_download_zenodo_folder_timeout(mock_getfwl, mock_run, _mock_sleep, tmp_path):
     """Test timeout handling in zenodo_get downloads."""
     import subprocess as sp
 
@@ -1072,9 +1079,12 @@ def test_download_automatic_mapping(
 
 
 @pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)  # speed up retries
 @patch('proteus.utils.data.sp.run')
 @patch('proteus.utils.data.GetFWLData')
-def test_download_zenodo_folder_error_diagnostics(mock_getfwl, mock_run, tmp_path):
+def test_download_zenodo_folder_error_diagnostics(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
     """Test improved error message diagnostics."""
 
     from proteus.utils.data import download_zenodo_folder
