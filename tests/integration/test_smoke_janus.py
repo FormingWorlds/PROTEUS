@@ -93,6 +93,9 @@ config_version = "3.0"
     tsurf_init = 2000.0
     prevent_warming = false
 
+    [planet.elements]
+        O_mode = "ic_chemistry"  # Required by issue #677 hard cutover; legacy-compatible default
+
 [interior_struct]
     module = "dummy"
     core_frac = 0.5

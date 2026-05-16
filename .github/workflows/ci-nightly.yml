@@ -390,6 +390,19 @@ jobs:
                   print('ARAGOG+AGNI data download completed.')
               except Exception as e_agni:
                   print(f'Warning: ARAGOG+AGNI data download failed: {e_agni}')
+
+              # Aragog falls back to MgSiO3_Wolf_Bower_2018_1TPa at runtime
+              # whenever interior_struct.eos_dir is None or missing, but
+              # _get_sufficient only pulls download_eos_dynamic when eos_dir
+              # is set. Pull it unconditionally so the integration tests
+              # find the table at the path aragog expects.
+              try:
+                  from proteus.utils.data import download_eos_dynamic
+                  print('Downloading aragog dynamic EOS (WolfBower2018_MgSiO3)...')
+                  download_eos_dynamic('WolfBower2018_MgSiO3')
+                  print('Aragog dynamic EOS download completed.')
+              except Exception as e_eos:
+                  print(f'Warning: aragog dynamic EOS download failed: {e_eos}')
           except Exception as e:
               print(f'ERROR during data download: {e}')
               traceback.print_exc()
