@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import Mock, patch
+from urllib.parse import urlparse
 
 import pytest
 import requests
@@ -91,8 +92,13 @@ def test_python_package_latest_version_reads_json_response():
     # Discrimination: confirm the PyPI URL was queried with the package name
     # in the path; a regression that hit the GitHub releases endpoint would
     # have produced the same Version on this mock but called a wrong URL.
+    # urlparse-based hostname check rejects a misleading URL like
+    # ``https://attacker.example/?host=pypi.org`` that a naive substring
+    # match would accept.
     assert mock_get.call_count == 1
-    assert 'pypi.org' in mock_get.call_args[0][0] and 'fwl-proteus' in mock_get.call_args[0][0]
+    queried = urlparse(mock_get.call_args[0][0])
+    assert queried.hostname == 'pypi.org'
+    assert 'fwl-proteus' in queried.path
 
 
 @pytest.mark.unit
