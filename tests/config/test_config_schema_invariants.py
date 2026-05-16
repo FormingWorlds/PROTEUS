@@ -275,8 +275,14 @@ def test_check_module_dependencies_raises_when_atmodeller_missing():
         return real_import(name)
 
     with patch('importlib.import_module', side_effect=_fake_import):
-        with pytest.raises(ImportError, match=r'pip install atmodeller'):
+        with pytest.raises(ImportError, match=r'pip install atmodeller') as excinfo:
             check_module_dependencies(instance, None, None)
+    # Discrimination: the original ImportError must be chained as __cause__ so
+    # users see the "No module named 'atmodeller'" detail. A regression that
+    # re-raised a bare ImportError without `raise ... from e` would lose the
+    # chain and trip this check.
+    assert excinfo.value.__cause__ is not None
+    assert 'atmodeller' in str(excinfo.value.__cause__)
 
 
 @pytest.mark.unit
@@ -294,8 +300,13 @@ def test_check_module_dependencies_raises_when_boreas_missing():
         return real_import(name)
 
     with patch('importlib.import_module', side_effect=_fake_import):
-        with pytest.raises(ImportError, match=r'pip install boreas'):
+        with pytest.raises(ImportError, match=r'pip install boreas') as excinfo:
             check_module_dependencies(instance, None, None)
+    # Discrimination: the message must name escape.module (not outgas.module) to
+    # confirm the boreas branch fired and not, e.g., an accidental atmodeller
+    # path. A regression that misattributed the hint to outgas would fail here.
+    msg = str(excinfo.value)
+    assert 'escape.module' in msg and 'boreas' in msg
 
 
 @pytest.mark.unit
@@ -322,6 +333,10 @@ def test_check_module_dependencies_skips_unselected_backends():
     assert 'atmodeller' not in seen, (
         f'Validator imported atmodeller despite outgas.module = calliope; imports were: {seen}'
     )
+    # Discrimination: the validator must have imported calliope (the selected
+    # backend) at least once. A regression that short-circuited before any
+    # import would leave `seen` empty and still pass the 'not in' check above.
+    assert 'calliope' in seen
 
 
 # ---------------------------------------------------------------------------
@@ -335,8 +350,14 @@ def test_boreas_requires_atmosphere_rejects_dummy_atmos():
     instance = _make_config_instance(
         **{'escape.module': 'boreas', 'atmos_clim.module': 'dummy'}
     )
-    with pytest.raises(ValueError, match=r'agni or janus'):
+    with pytest.raises(ValueError, match=r'agni or janus') as excinfo:
         boreas_requires_atmosphere(instance, None, None)
+    # Discrimination: the message must name both 'boreas' (the triggering escape
+    # backend) and 'dummy' (the rejected atmos_clim). A regression with a generic
+    # "needs a real atmos" message that did not echo the offending combo would
+    # fail this check.
+    msg = str(excinfo.value)
+    assert 'boreas' in msg and 'dummy' in msg
 
 
 @pytest.mark.unit
@@ -385,8 +406,14 @@ def test_planet_mass_valid_accepts_in_range(mass):
 def test_planet_mass_valid_rejects_unset():
     """planet.mass_tot = None raises with the 'must be set' message."""
     instance = _make_config_instance(**{'planet.mass_tot': None})
-    with pytest.raises(ValueError, match=r'mass_tot.*must be set'):
+    with pytest.raises(ValueError, match=r'mass_tot.*must be set') as excinfo:
         planet_mass_valid(instance, None, None)
+    # Discrimination: the unset branch fires before the '> 0' and '< 20' range
+    # branches; the message must NOT mention the numeric bounds. A regression
+    # that reordered the branches and reached the '> 0' check first would land
+    # on a different message.
+    msg = str(excinfo.value)
+    assert '> 0' not in msg and '< 20' not in msg
 
 
 @pytest.mark.unit
@@ -394,8 +421,14 @@ def test_planet_mass_valid_rejects_unset():
 def test_planet_mass_valid_rejects_non_positive(bad_mass):
     """Zero and negative masses raise with the '> 0' message."""
     instance = _make_config_instance(**{'planet.mass_tot': bad_mass})
-    with pytest.raises(ValueError, match=r'must be > 0'):
+    with pytest.raises(ValueError, match=r'must be > 0') as excinfo:
         planet_mass_valid(instance, None, None)
+    # Discrimination: the non-positive branch fires, NOT the upper-bound branch.
+    # A regression that flipped the comparison sign and landed on '< 20' for
+    # bad_mass=0 (since 0 < 20 is true) would fail this check.
+    assert '< 20' not in str(excinfo.value)
+    # Pin that the input really is non-positive (parametrize sanity).
+    assert bad_mass <= 0.0
 
 
 @pytest.mark.unit
@@ -403,8 +436,15 @@ def test_planet_mass_valid_rejects_non_positive(bad_mass):
 def test_planet_mass_valid_rejects_above_upper(big_mass):
     """Masses above 20 M_earth raise with the '< 20' message."""
     instance = _make_config_instance(**{'planet.mass_tot': big_mass})
-    with pytest.raises(ValueError, match=r'must be < 20'):
+    with pytest.raises(ValueError, match=r'must be < 20') as excinfo:
         planet_mass_valid(instance, None, None)
+    # Discrimination: the upper-bound branch fires, NOT the '> 0' or 'must be
+    # set' branches. A regression that flipped the comparison and landed on
+    # '> 0' (which would also match any positive number) would fail.
+    msg = str(excinfo.value)
+    assert '> 0' not in msg and 'must be set' not in msg
+    # Pin that the input really exceeds the documented cap.
+    assert big_mass > 20.0
 
 
 # ---------------------------------------------------------------------------
@@ -417,8 +457,15 @@ def test_planet_oxygen_mode_explicit_rejects_required_sentinel():
     modes (issue #677 hard cutover).
     """
     instance = _make_config_instance(**{'planet.elements': SimpleNamespace(O_mode='REQUIRED')})
-    with pytest.raises(ValueError, match=r'O_mode is required'):
+    with pytest.raises(ValueError, match=r'O_mode is required') as excinfo:
         planet_oxygen_mode_explicit(instance, None, None)
+    # Discrimination: the migration hint must enumerate ALL four documented
+    # modes so users can fix the config without grep'ing source. A regression
+    # that shortened the hint to "set O_mode" without listing the modes would
+    # fail this check.
+    msg = str(excinfo.value)
+    assert 'ic_chemistry' in msg and 'ppmw' in msg
+    assert 'kg' in msg and 'FeO_mantle_wt_pct' in msg
 
 
 @pytest.mark.unit
@@ -466,8 +513,13 @@ def test_fO2_source_from_mantle_redox_rejected_as_reserved():
     wired into the runtime; reject at config load with the issue reference.
     """
     instance = _make_config_instance(**{'planet.fO2_source': 'from_mantle_redox'})
-    with pytest.raises(ValueError, match=r'issue #653'):
+    with pytest.raises(ValueError, match=r'issue #653') as excinfo:
         planet_fO2_source_compat(instance, None, None)
+    # Discrimination: the message must name both wired-in alternatives
+    # ('user_constant' and 'from_O_budget') so the user can pick a working
+    # path. A regression that dropped one alternative would fail this check.
+    msg = str(excinfo.value)
+    assert 'user_constant' in msg and 'from_O_budget' in msg
 
 
 @pytest.mark.unit
@@ -482,8 +534,14 @@ def test_fO2_source_from_O_budget_rejects_ic_chemistry():
             'planet.elements': SimpleNamespace(O_mode='ic_chemistry'),
         }
     )
-    with pytest.raises(ValueError, match=r'authoritative O budget'):
+    with pytest.raises(ValueError, match=r'authoritative O budget') as excinfo:
         planet_fO2_source_compat(instance, None, None)
+    # Discrimination: the message must name 'ic_chemistry' (the offending mode)
+    # and at least one concrete-budget alternative. A regression that raised a
+    # generic "incompatible" without naming the offending mode would fail.
+    msg = str(excinfo.value)
+    assert 'ic_chemistry' in msg
+    assert 'ppmw' in msg or 'kg' in msg or 'FeO_mantle_wt_pct' in msg
 
 
 @pytest.mark.unit
@@ -498,8 +556,15 @@ def test_fO2_source_from_O_budget_rejects_gas_prs_volatile_mode():
             'planet.volatile_mode': 'gas_prs',
         }
     )
-    with pytest.raises(ValueError, match=r'volatile_mode'):
+    with pytest.raises(ValueError, match=r'volatile_mode') as excinfo:
         planet_fO2_source_compat(instance, None, None)
+    # Discrimination: the volatile_mode branch fires, not the ic_chemistry
+    # branch (O_mode is 'ppmw' here). The message must name both 'gas_prs' (the
+    # rejected setting) and 'elements' (the required setting); ic_chemistry
+    # must NOT appear in the message.
+    msg = str(excinfo.value)
+    assert 'gas_prs' in msg and 'elements' in msg
+    assert 'ic_chemistry' not in msg
 
 
 @pytest.mark.unit
@@ -514,8 +579,14 @@ def test_fO2_source_from_O_budget_rejects_dummy_outgas():
             'outgas.module': 'dummy',
         }
     )
-    with pytest.raises(ValueError, match=r'no chemistry to invert against'):
+    with pytest.raises(ValueError, match=r'no chemistry to invert against') as excinfo:
         planet_fO2_source_compat(instance, None, None)
+    # Discrimination: the message must name both supported alternatives
+    # ('calliope', 'atmodeller') and 'dummy' (the rejected setting). A regression
+    # that dropped one alternative from the hint, or replaced 'dummy' with a
+    # generic 'this backend', would fail.
+    msg = str(excinfo.value)
+    assert 'calliope' in msg and 'atmodeller' in msg and 'dummy' in msg
 
 
 @pytest.mark.unit
@@ -532,8 +603,13 @@ def test_fO2_source_from_O_budget_warns_when_fO2_shift_IW_set():
             'outgas.fO2_shift_IW': 4.0,
         }
     )
-    with pytest.warns(UserWarning, match=r'will be ignored at runtime'):
+    with pytest.warns(UserWarning, match=r'will be ignored at runtime') as warns:
         planet_fO2_source_compat(instance, None, None)
+    # Discrimination: the warning must echo the offending numeric value so the
+    # user can locate it in their TOML. A regression that emitted a generic
+    # "fO2_shift_IW will be ignored" without the value would fail.
+    msg = str(warns[0].message)
+    assert '4.0' in msg or '4.000' in msg
 
 
 @pytest.mark.unit
@@ -567,8 +643,13 @@ def test_boundary_requires_fixed_surface_state_rejects_dynamic():
     """Boundary backend assumes fixed surface coupling; dynamic surf_state raises."""
     instance = _make_config_instance(**{'interior_energetics.module': 'boundary'})
     instance.atmos_clim.surf_state = 'mixed_layer'
-    with pytest.raises(ValueError, match=r"surf_state='fixed'"):
+    with pytest.raises(ValueError, match=r"surf_state='fixed'") as excinfo:
         boundary_requires_fixed_surface_state(instance, None, None)
+    # Discrimination: the message must name 'boundary' (the triggering interior
+    # backend) so the user knows which side of the coupling is restrictive. A
+    # regression with a generic "surf_state must be fixed" message that did not
+    # echo the interior backend name would fail.
+    assert 'boundary' in str(excinfo.value)
 
 
 @pytest.mark.unit
@@ -598,8 +679,12 @@ def test_boundary_zalmoxis_incompatible_rejects_combo():
             'interior_struct.module': 'zalmoxis',
         }
     )
-    with pytest.raises(ValueError, match=r'zalmoxis'):
+    with pytest.raises(ValueError, match=r'zalmoxis') as excinfo:
         boundary_zalmoxis_incompatible(instance, None, None)
+    # Discrimination: the message must also name 'boundary' to identify BOTH
+    # sides of the incompatible combo. A regression that dropped the interior
+    # backend name (so the user only sees 'zalmoxis cannot be used') would fail.
+    assert 'boundary' in str(excinfo.value).lower() or 'Boundary' in str(excinfo.value)
 
 
 @pytest.mark.unit
@@ -633,8 +718,14 @@ def test_instmethod_evolve_rejects_inst_with_orbit_evolve():
             'orbit.evolve': True,
         }
     )
-    with pytest.raises(ValueError, match=r"instellation_method='inst'"):
+    with pytest.raises(ValueError, match=r"instellation_method='inst'") as excinfo:
         instmethod_evolve(instance, None, None)
+    # Discrimination: the message must mention orbital evolution as the
+    # incompatible-with feature, so the user knows which of the two settings
+    # to change. A regression with just "instellation_method='inst' is bad"
+    # that did not name the conflicting evolve flag would fail.
+    msg = str(excinfo.value).lower()
+    assert 'evolution' in msg or 'evolve' in msg
 
 
 @pytest.mark.unit
@@ -680,8 +771,14 @@ def test_satellite_evolve_rejects_satellite_with_evolve():
             'orbit.evolve': True,
         }
     )
-    with pytest.raises(ValueError, match=r'satellite'):
+    with pytest.raises(ValueError, match=r'satellite') as excinfo:
         satellite_evolve(instance, None, None)
+    # Discrimination: the message must also mention orbital evolution; the
+    # incompatibility is between satellite=True AND evolve=True. A regression
+    # that only named 'satellite' without naming the conflicting evolve flag
+    # would leave users guessing which side to flip.
+    msg = str(excinfo.value).lower()
+    assert 'evolution' in msg or 'evolve' in msg
 
 
 @pytest.mark.unit
