@@ -2963,9 +2963,7 @@ def test_download_zenodo_folder_unexpected_exception(
     # Discrimination: confirm all retry attempts were exhausted; a
     # regression that re-raised RuntimeError would never reach the
     # second download call.
-    download_calls = [
-        c for c in mock_run.call_args_list if '--version' not in c[0][0]
-    ]
+    download_calls = [c for c in mock_run.call_args_list if '--version' not in c[0][0]]
     assert len(download_calls) == 3
 
 
@@ -3049,9 +3047,7 @@ def test_download_zenodo_file_timeout_exhausts_retries(
     assert ok is False
     # Discrimination: MAX_ATTEMPTS download attempts must all have fired
     # (the availability probe runs once, then three download attempts).
-    download_calls = [
-        c for c in mock_run.call_args_list if '--version' not in c[0][0]
-    ]
+    download_calls = [c for c in mock_run.call_args_list if '--version' not in c[0][0]]
     assert len(download_calls) == 3
 
 
@@ -3128,9 +3124,7 @@ def test_download_zenodo_file_generic_exception_caught(
     assert ok is False
     # Discrimination: must retry 3 download attempts after availability
     # check (the function should not re-raise on RuntimeError).
-    download_calls = [
-        c for c in mock_run.call_args_list if '--version' not in c[0][0]
-    ]
+    download_calls = [c for c in mock_run.call_args_list if '--version' not in c[0][0]]
     assert len(download_calls) == 3
 
 
@@ -3170,9 +3164,7 @@ def test_download_zenodo_file_log_read_exception_swallowed(
     assert ok is False
     # Discrimination: download exited with non-zero return-code so the
     # retry loop must have run fully (3 attempts).
-    download_calls = [
-        c for c in mock_run.call_args_list if '--version' not in c[0][0]
-    ]
+    download_calls = [c for c in mock_run.call_args_list if '--version' not in c[0][0]]
     assert len(download_calls) == 3
 
 
@@ -3439,8 +3431,9 @@ def test_validate_zenodo_folder_md5sums_read_failure_no_files(
                 continue
             yield p
 
-    with patch('builtins.open', side_effect=selective_open), patch.object(
-        Path, 'rglob', filtered_rglob
+    with (
+        patch('builtins.open', side_effect=selective_open),
+        patch.object(Path, 'rglob', filtered_rglob),
     ):
         ok = validate_zenodo_folder('12345', folder_dir)
 
@@ -3531,9 +3524,7 @@ def test_validate_zenodo_folder_skips_symlink_entries(mock_getfwl, mock_run, tmp
 @pytest.mark.unit
 @patch('proteus.utils.data.sp.run')
 @patch('proteus.utils.data.GetFWLData')
-def test_validate_zenodo_folder_skips_large_files_without_hash(
-    mock_getfwl, mock_run, tmp_path
-):
+def test_validate_zenodo_folder_skips_large_files_without_hash(mock_getfwl, mock_run, tmp_path):
     """Files larger than hash_maxfilesize are accepted without hash comparison."""
     from proteus.utils.data import validate_zenodo_folder
 
@@ -3568,9 +3559,7 @@ def test_validate_zenodo_folder_skips_large_files_without_hash(
 @pytest.mark.unit
 @patch('proteus.utils.data.sp.run')
 @patch('proteus.utils.data.GetFWLData')
-def test_validate_zenodo_folder_hash_mismatch_returns_false(
-    mock_getfwl, mock_run, tmp_path
-):
+def test_validate_zenodo_folder_hash_mismatch_returns_false(mock_getfwl, mock_run, tmp_path):
     """A wrong-hash entry causes validation to fail."""
     from proteus.utils.data import md5, validate_zenodo_folder
 
@@ -3666,10 +3655,13 @@ def _make_osf_storage(file_specs):
         if callable(payload):
             f.write_to = payload
         else:
+
             def make_writer(payload_bytes):
                 def _write(fp):
                     fp.write(payload_bytes)
+
                 return _write
+
             f.write_to = make_writer(payload)
         files.append(f)
     storage.files = files
@@ -4211,9 +4203,7 @@ def test_download_interior_lookuptables_warns_and_skips_unmapped(
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
 @patch('proteus.utils.data.GetFWLData')
-def test_download_melting_curves_none_dir_is_noop(
-    mock_getfwl, mock_download, tmp_path
-):
+def test_download_melting_curves_none_dir_is_noop(mock_getfwl, mock_download, tmp_path):
     """When melting_dir is None, the function returns early without calling download()."""
     from unittest.mock import MagicMock
 
@@ -4236,9 +4226,7 @@ def test_download_melting_curves_none_dir_is_noop(
 @pytest.mark.unit
 @patch('proteus.utils.data.download')
 @patch('proteus.utils.data.GetFWLData')
-def test_download_melting_curves_clean_removes_dir(
-    mock_getfwl, mock_download, tmp_path
-):
+def test_download_melting_curves_clean_removes_dir(mock_getfwl, mock_download, tmp_path):
     """When clean=True, the folder_dir is removed before download is attempted."""
     from unittest.mock import MagicMock
 
@@ -4310,9 +4298,7 @@ def test_download_eos_dynamic_manifest_complete_no_warning(
         download_eos_dynamic('WolfBower2018_MgSiO3')
 
     # Discrimination: no "missing" warning should have fired.
-    missing_warnings = [
-        r for r in caplog.records if 'missing' in r.getMessage().lower()
-    ]
+    missing_warnings = [r for r in caplog.records if 'missing' in r.getMessage().lower()]
     assert missing_warnings == []
     # And the download function was called.
     mock_download.assert_called_once()
@@ -4393,9 +4379,7 @@ def test_download_stellar_tracks_mors_success(tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
-def test_download_stellar_tracks_mors_completes_but_tracks_missing(
-    tmp_path, monkeypatch
-):
+def test_download_stellar_tracks_mors_completes_but_tracks_missing(tmp_path, monkeypatch):
     """MORS download claims success but tracks dir is empty: triggers OSF fallback."""
     import sys
     import types
@@ -4454,9 +4438,7 @@ def test_download_stellar_tracks_mors_failure_no_osf_fallback(tmp_path, monkeypa
     monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
 
     osf_calls = []
-    monkeypatch.setattr(
-        data_mod, 'download_OSF_folder', lambda **k: osf_calls.append('x')
-    )
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: osf_calls.append('x'))
 
     with pytest.raises(ConnectionError, match='MORS down'):
         data_mod.download_stellar_tracks('Spada', use_osf_fallback=False)
@@ -4672,11 +4654,7 @@ def test_load_melting_curve_returns_interpolator(tmp_path):
     melt_file = tmp_path / 'melt.dat'
     # 4 anchor points: linear T(P): T = 1000 + P / 1e6
     melt_file.write_text(
-        '# header line\n'
-        '1.0e9   2000.0\n'
-        '2.0e9   3000.0\n'
-        '3.0e9   4000.0\n'
-        '4.0e9   5000.0\n'
+        '# header line\n1.0e9   2000.0\n2.0e9   3000.0\n3.0e9   4000.0\n4.0e9   5000.0\n'
     )
 
     f = load_melting_curve(melt_file)
@@ -4751,9 +4729,7 @@ def test_get_zalmoxis_melting_curves_missing_dir_raises(monkeypatch, tmp_path):
         get_zalmoxis_melting_curves(config)
     # Discrimination: confirm the directory really does not exist (so
     # the error path was reached for the right reason).
-    missing = (
-        tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'NonexistentCurve'
-    )
+    missing = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'NonexistentCurve'
     assert not missing.exists()
 
 
@@ -4951,9 +4927,7 @@ def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_folder, mock_chab
 @patch('proteus.utils.data._download_zalmoxis_chabrier')
 @patch('proteus.utils.data._download_zalmoxis_folder')
 @patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_paleos_2phase_highres(
-    mock_static, mock_folder, mock_chabrier
-):
+def test_download_zalmoxis_eos_paleos_2phase_highres(mock_static, mock_folder, mock_chabrier):
     """PALEOS-2phase:MgSiO3-highres selects the highres liquid + solid tables."""
     from proteus.utils.data import download_zalmoxis_eos
 
@@ -4991,15 +4965,11 @@ def test_download_zalmoxis_eos_unknown_component_warns(
 @patch('proteus.utils.data._download_zalmoxis_chabrier')
 @patch('proteus.utils.data._download_zalmoxis_folder')
 @patch('proteus.utils.data.download_eos_static')
-def test_download_zalmoxis_eos_paleos_api_no_download(
-    mock_static, mock_folder, mock_chabrier
-):
+def test_download_zalmoxis_eos_paleos_api_no_download(mock_static, mock_folder, mock_chabrier):
     """PALEOS-API:* and PALEOS-API-2phase:* are valid but trigger no downloads."""
     from proteus.utils.data import download_zalmoxis_eos
 
-    download_zalmoxis_eos(
-        'PALEOS-API:MgSiO3+PALEOS-API-2phase:H2O', core_eos='Seager2007:iron'
-    )
+    download_zalmoxis_eos('PALEOS-API:MgSiO3+PALEOS-API-2phase:H2O', core_eos='Seager2007:iron')
 
     # Discrimination: Seager static (always for core fallback) is the
     # only download; PALEOS-API prefixes are NOT routed to the folder
@@ -5089,7 +5059,11 @@ def test_get_zalmoxis_EOS_unified_static_path_used(monkeypatch, tmp_path):
     eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
     seager_unified = eos_base / 'static' / 'Seager2007'
     seager_unified.mkdir(parents=True, exist_ok=True)
-    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+    for fname in (
+        'eos_seager07_iron.txt',
+        'eos_seager07_silicate.txt',
+        'eos_seager07_water.txt',
+    ):
         (seager_unified / fname).write_text('eos')
 
     iron_silicate, _, water, _ = get_zalmoxis_EOS()
@@ -5112,7 +5086,11 @@ def test_get_zalmoxis_EOS_wb_pt_subfolder_takes_precedence(monkeypatch, tmp_path
     eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
     seager_unified = eos_base / 'static' / 'Seager2007'
     seager_unified.mkdir(parents=True, exist_ok=True)
-    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+    for fname in (
+        'eos_seager07_iron.txt',
+        'eos_seager07_silicate.txt',
+        'eos_seager07_water.txt',
+    ):
         (seager_unified / fname).write_text('eos')
 
     wb_pt = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
@@ -5145,7 +5123,11 @@ def test_get_zalmoxis_EOS_rt_legacy_folder_used(monkeypatch, tmp_path, caplog):
 
     seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
     seager_legacy.mkdir(parents=True, exist_ok=True)
-    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+    for fname in (
+        'eos_seager07_iron.txt',
+        'eos_seager07_silicate.txt',
+        'eos_seager07_water.txt',
+    ):
         (seager_legacy / fname).write_text('eos')
 
     rt_legacy = tmp_path / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
@@ -5163,9 +5145,7 @@ def test_get_zalmoxis_EOS_rt_legacy_folder_used(monkeypatch, tmp_path, caplog):
     assert 'cp_file' in iron_rt['melted_mantle']
     # No "RTPress100TPa EOS folder not found" warning fires; only the
     # Cp-table warning would fire if missing, and we created it.
-    folder_warnings = [
-        r for r in caplog.records if 'EOS folder not found' in r.getMessage()
-    ]
+    folder_warnings = [r for r in caplog.records if 'EOS folder not found' in r.getMessage()]
     assert folder_warnings == []
 
 
@@ -5180,7 +5160,11 @@ def test_get_zalmoxis_EOS_rt_missing_cp_warns(monkeypatch, tmp_path, caplog):
     eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
     seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
     seager_legacy.mkdir(parents=True, exist_ok=True)
-    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+    for fname in (
+        'eos_seager07_iron.txt',
+        'eos_seager07_silicate.txt',
+        'eos_seager07_water.txt',
+    ):
         (seager_legacy / fname).write_text('eos')
 
     rt_unified = eos_base / 'RTPress_melt_100TPa'
@@ -5192,9 +5176,7 @@ def test_get_zalmoxis_EOS_rt_missing_cp_warns(monkeypatch, tmp_path, caplog):
 
     # Discrimination: a "Cp table not found" warning fired; the cp_file
     # key is absent from the dict.
-    cp_warnings = [
-        r for r in caplog.records if 'Cp table not found' in r.getMessage()
-    ]
+    cp_warnings = [r for r in caplog.records if 'Cp table not found' in r.getMessage()]
     assert len(cp_warnings) >= 1
     assert 'cp_file' not in iron_rt['melted_mantle']
 
@@ -5211,7 +5193,11 @@ def test_get_zalmoxis_EOS_rt_folder_missing_warns(monkeypatch, tmp_path, caplog)
     # locations.
     seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
     seager_legacy.mkdir(parents=True, exist_ok=True)
-    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+    for fname in (
+        'eos_seager07_iron.txt',
+        'eos_seager07_silicate.txt',
+        'eos_seager07_water.txt',
+    ):
         (seager_legacy / fname).write_text('eos')
 
     with caplog.at_level('WARNING'):
@@ -5220,9 +5206,7 @@ def test_get_zalmoxis_EOS_rt_folder_missing_warns(monkeypatch, tmp_path, caplog)
     folder_warnings = [
         r for r in caplog.records if 'RTPress100TPa EOS folder not found' in r.getMessage()
     ]
-    cp_warnings = [
-        r for r in caplog.records if 'Cp table not found' in r.getMessage()
-    ]
+    cp_warnings = [r for r in caplog.records if 'Cp table not found' in r.getMessage()]
     # Discrimination: exactly the folder-not-found warning fired AND the
     # Cp-table warning ALSO fired (because the file under the missing
     # folder cannot exist either).
@@ -5373,9 +5357,7 @@ def test_get_sufficient_agni_aerosols_downloads_scattering(monkeypatch):
     import proteus.utils.data as data_mod
 
     scattering_calls = []
-    monkeypatch.setattr(
-        data_mod, 'download_scattering', lambda: scattering_calls.append('x')
-    )
+    monkeypatch.setattr(data_mod, 'download_scattering', lambda: scattering_calls.append('x'))
     monkeypatch.setattr(data_mod, 'download_stellar_spectra', lambda *a, **k: None)
     monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *a, **k: None)
     monkeypatch.setattr(data_mod, 'download_spectral_file', lambda *a, **k: None)
@@ -5400,9 +5382,7 @@ def test_get_sufficient_agni_aerosols_downloads_scattering(monkeypatch):
     )
 
     surface_calls = []
-    monkeypatch.setattr(
-        data_mod, 'download_surface_albedos', lambda: surface_calls.append('s')
-    )
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: surface_calls.append('s'))
 
     data_mod._get_sufficient(config)
 
@@ -5486,9 +5466,7 @@ def test_download_zalmoxis_chabrier_removes_macosx_and_dotfiles(monkeypatch, tmp
 
 
 @pytest.mark.unit
-def test_download_stellar_tracks_osf_per_project_exception_caught(
-    tmp_path, monkeypatch
-):
+def test_download_stellar_tracks_osf_per_project_exception_caught(tmp_path, monkeypatch):
     """If get_osf raises for one project, the function moves on and raises RuntimeError."""
     import sys
     import types
@@ -5561,7 +5539,5 @@ def test_download_zenodo_file_log_read_failure_after_nonzero(
     assert ok is False
     # Discrimination: confirm we exhausted retries with non-zero exit
     # (so the log-readback branch on line 234 fired).
-    download_calls = [
-        c for c in mock_run.call_args_list if '--version' not in c[0][0]
-    ]
+    download_calls = [c for c in mock_run.call_args_list if '--version' not in c[0][0]]
     assert len(download_calls) == 3
