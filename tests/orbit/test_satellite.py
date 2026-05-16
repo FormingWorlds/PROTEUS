@@ -54,18 +54,28 @@ def _params(I=1.0, L=10.0, G=1.0, Mpl=1.0, Msa=0.1, dE=1.0):
 
 @pytest.mark.physics_invariant
 def test_ltot_returns_zero_when_omega_and_a_are_zero():
-    """``L = I ω + Mpl (G(Mpl+Msa) a)**0.5``: both terms vanish at
-    ``ω = 0`` and ``a = 0``."""
+    """``L = I omega + Mpl (G(Mpl+Msa) a)**0.5``: both terms vanish at
+    ``omega = 0`` and ``a = 0``."""
     assert Ltot(ω=0.0, a=0.0, params=_params()) == 0.0
+    # Limit-input invariant: when only omega is zero but a is positive,
+    # the orbital term must remain. A regression that masked Ltot to
+    # zero on either-zero input would fail here.
+    assert Ltot(ω=0.0, a=1.0, params=_params()) > 0.0
 
 
 @pytest.mark.physics_invariant
 def test_ltot_is_linear_in_spin():
-    """The spin term is ``I ω``; doubling ``ω`` adds exactly ``I dω`` to L."""
+    """The spin term is ``I omega``; doubling ``omega`` adds exactly
+    ``I d_omega`` to L."""
     base = Ltot(ω=1.0, a=1.0, params=_params())
     boosted = Ltot(ω=3.0, a=1.0, params=_params())
-    # The orbital term cancels in the difference, leaving ``I (ω' - ω) = 2``.
+    # The orbital term cancels in the difference, leaving ``I * d_omega = 2``.
     assert boosted - base == pytest.approx(2.0, rel=1e-12)
+    # Linearity guard at a third spin value: L(omega=5) - L(omega=1)
+    # must give I*(5-1) = 4. A regression that introduced quadratic
+    # omega dependence would fail one of the two equalities.
+    extra = Ltot(ω=5.0, a=1.0, params=_params())
+    assert extra - base == pytest.approx(4.0, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -74,10 +84,15 @@ def test_ltot_orbital_term_scales_as_sqrt_a():
     ``a**0.5``. Multiplying ``a`` by 4 must multiply the orbital
     contribution by 2.0, not 4.0 or 16.0.
     """
-    # Strip out the spin term by setting ω = 0.
+    # Strip out the spin term by setting omega = 0.
     L_small = Ltot(ω=0.0, a=1.0, params=_params())
     L_big = Ltot(ω=0.0, a=4.0, params=_params())
-    assert L_big / L_small == pytest.approx(2.0, rel=1e-12)
+    ratio = L_big / L_small
+    assert ratio == pytest.approx(2.0, rel=1e-12)
+    # Exponent guards: sqrt(4) = 2; linear-in-a gives 4, quadratic gives
+    # 16. Both wrong-exponent landings are well separated from 2.
+    assert abs(ratio - 4.0) > 1.0
+    assert abs(ratio - 16.0) > 10.0
 
 
 # ---------------------------------------------------------------------------
@@ -87,8 +102,12 @@ def test_ltot_orbital_term_scales_as_sqrt_a():
 
 @pytest.mark.physics_invariant
 def test_d_omega_dt_vanishes_when_dE_tidal_is_zero():
-    """No tidal dissipation → no spin-down (numerator is zero)."""
+    """No tidal dissipation gives no spin-down (numerator is zero)."""
     assert dω_dt(a=1.0, ω=1.0, params=_params(dE=0.0)) == 0.0
+    # Limit-input invariant: the zero result must be independent of
+    # the (a, omega) operating point. Exercise a second state to
+    # rule out an accidental cancellation at (1, 1).
+    assert dω_dt(a=2.5, ω=0.7, params=_params(dE=0.0)) == 0.0
 
 
 @pytest.mark.physics_invariant
@@ -98,6 +117,11 @@ def test_d_omega_dt_sign_follows_negative_dE_tidal():
     """
     val = dω_dt(a=1.0, ω=1.0, params=_params(dE=1.0))
     assert val < 0.0
+    # Sign symmetry: flipping the sign of dE_tidal must flip the sign
+    # of the spin derivative. A regression that lost the linear-in-dE
+    # dependence would give the same sign for both.
+    val_neg = dω_dt(a=1.0, ω=1.0, params=_params(dE=-1.0))
+    assert val_neg > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +131,14 @@ def test_d_omega_dt_sign_follows_negative_dE_tidal():
 
 @pytest.mark.physics_invariant
 def test_da_dt_zero_when_dE_tidal_zero():
-    """``da_dt = -2 I a / (L - I ω) * dω_dt``: zero whenever ``dω_dt`` is zero."""
+    """``da_dt = -2 I a / (L - I omega) * d_omega_dt``: zero whenever
+    ``d_omega_dt`` is zero."""
     assert da_dt(a=1.0, ω=1.0, params=_params(dE=0.0)) == 0.0
+    # Limit-input invariant: zero-tidal-power must zero da/dt for any
+    # valid (a, omega). A regression that dropped the dE factor from
+    # the chain through dw/dt would emit a non-zero value at a
+    # different operating point.
+    assert da_dt(a=3.0, ω=0.4, params=_params(dE=0.0)) == 0.0
 
 
 @pytest.mark.physics_invariant
@@ -166,6 +196,11 @@ def test_orbitals_is_autonomous():
     early = orbitals(t=0.0, z=z, params=_params())
     late = orbitals(t=1e9, z=z, params=_params())
     assert early == late
+    # Autonomy invariant at a third t: a regression that picked up a
+    # linear-in-t term would generally fail one of the three equalities
+    # even if two coincided at the chosen pair.
+    mid = orbitals(t=2.5, z=z, params=_params())
+    assert mid == early
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +252,11 @@ def test_update_satellite_first_call_converts_axial_period_hours_to_seconds():
     hf_row = _make_hf_row(time=0.0)
     update_satellite(hf_row, cfg, dt=1.0)
     assert hf_row['axial_period'] == pytest.approx(24.0 * secs_per_hour)
+    # Scale guard: the converted value lands in seconds (~86400 s for
+    # one rotation in hours = 24 h), well above the 100 s lower bound
+    # and below 1e6 s. A regression that forgot the conversion would
+    # leave the value at 24.0, below the lower bound.
+    assert 1e4 < hf_row['axial_period'] < 1e6
 
 
 def test_update_satellite_first_call_falls_back_to_sor_when_axial_period_is_none():
@@ -226,6 +266,13 @@ def test_update_satellite_first_call_falls_back_to_sor_when_axial_period_is_none
     hf_row = _make_hf_row(time=0.5, orbital_period_s=4.32e4)
     update_satellite(hf_row, cfg, dt=1.0)
     assert hf_row['axial_period'] == pytest.approx(4.32e4)
+    # 1:1 SOR pass-through: changing the orbital period must drive an
+    # identical change in axial_period under SOR. A regression that
+    # stamped a constant default would fail this second case.
+    cfg2 = _make_config(axial_period_h=None)
+    hf_row2 = _make_hf_row(time=0.5, orbital_period_s=2.16e4)
+    update_satellite(hf_row2, cfg2, dt=1.0)
+    assert hf_row2['axial_period'] == pytest.approx(2.16e4)
 
 
 def test_update_satellite_first_call_seeds_satellite_mass_and_sma():

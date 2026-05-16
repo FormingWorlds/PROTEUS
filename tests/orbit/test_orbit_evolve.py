@@ -44,17 +44,28 @@ _UNIT_PARAMS = (1.0, 1.0, 1.0, 1.0, 1.0)
 
 @pytest.mark.physics_invariant
 def test_de_dt_vanishes_at_zero_eccentricity():
-    """A circular orbit (e=0) is a fixed point of the tidal evolution."""
+    """A circular orbit (e=0) is a fixed point of the tidal evolution.
+    Holds for any semi-major axis: e=0 zeros the prefactor regardless
+    of a, so we exercise two values of a to confirm the fixed point is
+    a property of the eccentricity factor, not an accidental zero at
+    one a value."""
     assert de_dt(a=1.0, e=0.0, params=_UNIT_PARAMS) == 0.0
+    # Limit-input invariant: a must drop out of the e=0 result; a
+    # regression that introduced a stray a-dependent additive term
+    # would only show at a != 1.
+    assert de_dt(a=5.0, e=0.0, params=_UNIT_PARAMS) == 0.0
 
 
 @pytest.mark.physics_invariant
 def test_de_dt_is_linear_in_eccentricity():
-    """``de_dt`` scales linearly in ``e`` per Driscoll & Barnes (2015) Eq. 16."""
+    """``de_dt`` scales linearly in ``e`` per Driscoll and Barnes (2015) Eq. 16."""
     base = de_dt(a=1.0, e=0.01, params=_UNIT_PARAMS)
     scaled = de_dt(a=1.0, e=0.05, params=_UNIT_PARAMS)
-    # 5x e → 5x de/dt within float precision
+    # 5x e -> 5x de/dt within float precision
     assert scaled == pytest.approx(5.0 * base, rel=1e-12)
+    # Linearity guard: a quadratic-in-e regression would give a ratio
+    # of 25, not 5. The absolute gap discriminates.
+    assert abs(scaled / base - 25.0) > 10.0
 
 
 @pytest.mark.reference_pinned
@@ -110,6 +121,11 @@ def test_de_dt_scales_as_radius_to_the_fifth_power():
     p_big = (1.0, 1.0, 1.0, 2.0, 1.0)
     ratio = de_dt(a=1.0, e=0.1, params=p_big) / de_dt(a=1.0, e=0.1, params=p_small)
     assert ratio == pytest.approx(32.0, rel=1e-12)
+    # Exponent guards: 2**5 = 32; reject the neighbours 2**4 = 16 and
+    # 2**6 = 64. The base 2 choice makes adjacent-exponent regressions
+    # land at well-separated values.
+    assert abs(ratio - 16.0) > 10.0
+    assert abs(ratio - 64.0) > 20.0
 
 
 @pytest.mark.physics_invariant
@@ -117,8 +133,14 @@ def test_de_dt_inverse_planet_mass_dependence():
     """``de_dt`` is inversely proportional to planet mass ``Mpl``."""
     p_light = (1.0, 1.0, 1.0, 1.0, 1.0)
     p_heavy = (1.0, 1.0, 1.0, 1.0, 3.0)
-    ratio = de_dt(a=1.0, e=0.1, params=p_light) / de_dt(a=1.0, e=0.1, params=p_heavy)
+    val_light = de_dt(a=1.0, e=0.1, params=p_light)
+    val_heavy = de_dt(a=1.0, e=0.1, params=p_heavy)
+    ratio = val_light / val_heavy
     assert ratio == pytest.approx(3.0, rel=1e-12)
+    # Monotonicity guard: heavier planet always damps slower under
+    # inverse-Mpl. A regression that put Mpl in the numerator would
+    # flip the inequality.
+    assert val_heavy < val_light
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +156,10 @@ def test_da_dt_is_zero_for_circular_orbit():
     return a nonzero value here.
     """
     assert da_dt(a=10.0, e=0.0, params=_UNIT_PARAMS) == 0.0
+    # Limit-input invariant: the fixed point is independent of a. A
+    # regression that recovered an a-dependent constant term at e=0
+    # would only show at a different a value.
+    assert da_dt(a=0.5, e=0.0, params=_UNIT_PARAMS) == 0.0
 
 
 @pytest.mark.physics_invariant
@@ -143,6 +169,13 @@ def test_da_dt_obeys_kinematic_identity():
     lhs = da_dt(a=a, e=e, params=_UNIT_PARAMS)
     rhs = 2.0 * a * e * de_dt(a=a, e=e, params=_UNIT_PARAMS)
     assert lhs == pytest.approx(rhs, rel=1e-14)
+    # Identity guard at a different (a, e): the relation must hold
+    # everywhere, not at one accidentally-coincidental point. Exercise
+    # at a second point well away from the first.
+    a2, e2 = 3.0, 0.7
+    lhs2 = da_dt(a=a2, e=e2, params=_UNIT_PARAMS)
+    rhs2 = 2.0 * a2 * e2 * de_dt(a=a2, e=e2, params=_UNIT_PARAMS)
+    assert lhs2 == pytest.approx(rhs2, rel=1e-14)
 
 
 @pytest.mark.physics_invariant
@@ -152,6 +185,11 @@ def test_da_dt_quadratic_in_eccentricity():
     scaled = da_dt(a=1.0, e=0.04, params=_UNIT_PARAMS)
     # (0.04 / 0.01)**2 = 16
     assert scaled == pytest.approx(16.0 * base, rel=1e-12)
+    # Exponent guard: linear-in-e (ratio 4) and cubic (ratio 64) are
+    # both rejected by the absolute gap from 16. The base 4x in e
+    # makes adjacent-exponent landings well-separated.
+    assert abs(scaled / base - 4.0) > 5.0
+    assert abs(scaled / base - 64.0) > 20.0
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +215,12 @@ def test_orbitals_ignores_explicit_time_argument():
     a_early = orbitals(t=0.0, z=z, params=_UNIT_PARAMS)
     a_late = orbitals(t=1e9, z=z, params=_UNIT_PARAMS)
     assert a_early == a_late
+    # Autonomy invariant: hold at a third time too. A regression that
+    # picked up a time-dependent term (e.g. a stray dt in the
+    # right-hand side) would generally fail one of the three
+    # equalities even if two happened to coincide.
+    a_mid = orbitals(t=1e3, z=z, params=_UNIT_PARAMS)
+    assert a_mid == a_early
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +290,11 @@ def test_evolve_orbital_first_call_boundary_inclusive(time):
     hf_row = _make_hf_row(time=time, sma_m=42.0)
     evolve_orbital(hf_row, cfg, dt=0.1)
     assert hf_row['semimajorax'] == pytest.approx(0.3 * AU)
+    # Config-seed branch must also overwrite the garbage eccentricity
+    # in hf_row with the config value. A regression that gated the
+    # eccentricity seed on a different boundary would leave
+    # hf_row['eccentricity'] at the _make_hf_row default of 0.1.
+    assert hf_row['eccentricity'] == pytest.approx(0.01, rel=1e-12)
 
 
 @pytest.mark.physics_invariant
