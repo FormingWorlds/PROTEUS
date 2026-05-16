@@ -49,6 +49,11 @@ def test_valid_rayleigh_rejects_dummy_module():
     instance = SimpleNamespace(module='dummy', agni=SimpleNamespace(spectral_file=None))
     with pytest.raises(ValueError, match='incompatible with Rayleigh scattering'):
         valid_rayleigh(instance, attribute=None, value=True)
+    # Discrimination: the same instance with value=False must NOT raise,
+    # so the rejection is driven by the rayleigh flag, not the dummy
+    # module alone. A regression that hard-raised on every call would
+    # also raise here.
+    assert valid_rayleigh(instance, attribute=None, value=False) is None
 
 
 @pytest.mark.unit
@@ -60,6 +65,12 @@ def test_valid_rayleigh_rejects_agni_greygas():
     instance = SimpleNamespace(module='agni', agni=SimpleNamespace(spectral_file='greygas'))
     with pytest.raises(ValueError, match='grey gas is incompatible with Rayleigh scattering'):
         valid_rayleigh(instance, attribute=None, value=True)
+    # Discrimination: swapping the spectral_file from greygas to a real
+    # band-resolved path on the same AGNI instance must make the
+    # validator pass. A regression that rejected every AGNI value
+    # regardless of the spectral file would still raise here.
+    instance.agni.spectral_file = '/path/to/sw_lw.spc'
+    assert valid_rayleigh(instance, attribute=None, value=True) is None
 
 
 @pytest.mark.unit
@@ -99,6 +110,13 @@ def test_valid_agni_rejects_missing_spectral_file_path():
     instance = _make_agni_instance(spectral_file='/this/path/does/not/exist.spc')
     with pytest.raises(FileNotFoundError, match='AGNI spectral file not found'):
         valid_agni(instance, attribute=None, value=None)
+    # Discrimination: swapping to the analytic 'greygas' sentinel must
+    # pass on the same instance, so the rejection is driven by the
+    # missing path, not by all string spectral_files. A regression
+    # that always rejected non-None spectral_file would still raise
+    # here.
+    instance.agni.spectral_file = 'greygas'
+    assert valid_agni(instance, attribute=None, value=None) is None
 
 
 @pytest.mark.unit
@@ -109,6 +127,12 @@ def test_valid_agni_requires_spectral_group_when_no_file():
     instance = _make_agni_instance(spectral_file=None, spectral_group='')
     with pytest.raises(ValueError, match='Must set atmos_clim.spectral_group'):
         valid_agni(instance, attribute=None, value=None)
+    # Discrimination: restoring a non-empty spectral_group on the same
+    # instance must make the validator pass. A regression that
+    # rejected every spectral_file=None instance regardless of the
+    # group would still raise here.
+    instance.spectral_group = 'Honeyside'
+    assert valid_agni(instance, attribute=None, value=None) is None
 
 
 @pytest.mark.unit
@@ -119,6 +143,12 @@ def test_valid_agni_requires_spectral_bands_when_no_file():
     instance = _make_agni_instance(spectral_file=None, spectral_bands='')
     with pytest.raises(ValueError, match='Must set atmos_clim.spectral_bands'):
         valid_agni(instance, attribute=None, value=None)
+    # Discrimination: restoring a non-empty spectral_bands on the same
+    # instance must make the validator pass. A regression that
+    # rejected every spectral_file=None instance regardless of the
+    # band setting would still raise here.
+    instance.spectral_bands = '64'
+    assert valid_agni(instance, attribute=None, value=None) is None
 
 
 # ============================================================================
@@ -136,6 +166,12 @@ def test_valid_aerosols_enabled_rejects_agni_greygas():
     instance = SimpleNamespace(module='agni', agni=SimpleNamespace(spectral_file='greygas'))
     with pytest.raises(ValueError, match='aerosols'):
         valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), True)
+    # Discrimination: passing value=False on the same greygas instance
+    # must short-circuit and return None. A regression that hard-raised
+    # on greygas regardless of the aerosols flag would still raise here.
+    assert valid_aerosols_enabled(
+        instance, SimpleNamespace(name='aerosols_enabled'), False
+    ) is None
 
 
 @pytest.mark.unit
@@ -147,6 +183,15 @@ def test_valid_aerosols_enabled_rejects_dummy_module():
     instance = SimpleNamespace(module='dummy', agni=SimpleNamespace(spectral_file=None))
     with pytest.raises(ValueError, match='Dummy atmos_clim'):
         valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), True)
+    # Discrimination: swapping the module to AGNI with a real spectral
+    # file on the same instance must make the validator pass. A
+    # regression that rejected every value=True call regardless of the
+    # module would still raise here.
+    instance.module = 'agni'
+    instance.agni.spectral_file = '/path/to/sw_lw.spc'
+    assert valid_aerosols_enabled(
+        instance, SimpleNamespace(name='aerosols_enabled'), True
+    ) is None
 
 
 @pytest.mark.unit

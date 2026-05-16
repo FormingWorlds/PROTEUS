@@ -155,6 +155,7 @@ def test_path_c_builds_5_element_mass_constraints():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_path_c_drops_O2_fugacity_constraint():
     """The IronWustiteBuffer fugacity constraint must not be passed
     under Path C. atmodeller would otherwise over-constrain the system
@@ -176,6 +177,15 @@ def test_path_c_drops_O2_fugacity_constraint():
 
     fug_kwargs = fake_model.solve.call_args.kwargs['fugacity_constraints']
     assert fug_kwargs == {}
+    # Constraint-count invariant: Path C uses 5 element-mass constraints
+    # (H/C/N/S/O) and zero fugacity constraints. A regression that
+    # added O to mass_constraints but forgot to drop the IW buffer
+    # would over-constrain the system (5 mass + 1 fugacity > 5 unknowns).
+    mass_kwargs = fake_model.solve.call_args.kwargs['mass_constraints']
+    assert len(mass_kwargs) + len(fug_kwargs) == 5
+    # Discrimination: 'O' must be in mass_constraints (the Path C
+    # invariant), not silently dropped from both.
+    assert 'O' in mass_kwargs
 
 
 @pytest.mark.unit
@@ -214,6 +224,7 @@ def test_legacy_path_keeps_4_element_mass_constraints_and_fO2_buffer():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_path_c_writes_solver_derived_fO2_to_helpfile():
     """Under Path C the wrapper must read atmodeller's back-computed
     log10dIW_1_bar from ``output.asdict()`` and write it to
@@ -242,9 +253,15 @@ def test_path_c_writes_solver_derived_fO2_to_helpfile():
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
 
     assert hf_row['fO2_shift_IW_derived'] == pytest.approx(-2.7)
+    # Discrimination: a regression that left the pre-seeded default
+    # (config.outgas.fO2_shift_IW = 4.0) in place would land at 4.0,
+    # which differs from the solver's -2.7 by 6.7 dex (well above any
+    # tolerance). Pin the magnitude of the disagreement.
+    assert abs(hf_row['fO2_shift_IW_derived'] - config.outgas.fO2_shift_IW) > 1.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_legacy_path_preserves_pre_dispatch_fO2_echo():
     """Under user_constant the wrapper must NOT overwrite
     fO2_shift_IW_derived with atmodeller's back-computed value, because
@@ -274,6 +291,10 @@ def test_legacy_path_preserves_pre_dispatch_fO2_echo():
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
 
     assert hf_row['fO2_shift_IW_derived'] == pytest.approx(config.outgas.fO2_shift_IW)
+    # Discrimination: the solver's -2.7 must NOT have overwritten the
+    # echoed 4.0. A regression that unconditionally writes the solver
+    # value would land 6.7 dex away from the user input.
+    assert abs(hf_row['fO2_shift_IW_derived'] - (-2.7)) > 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +303,7 @@ def test_legacy_path_preserves_pre_dispatch_fO2_echo():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_atmodeller_maintains_per_species_kg_total_invariant():
     """The CALLIOPE wrapper provides ``{species}_kg_total = kg_atm +
     kg_liquid + kg_solid`` natively via its solver output. The
@@ -314,9 +336,18 @@ def test_atmodeller_maintains_per_species_kg_total_invariant():
         kg_sol = hf_row[f'{sp}_kg_solid']
         kg_total = hf_row[f'{sp}_kg_total']
         assert kg_total == pytest.approx(kg_atm + kg_liq + kg_sol, rel=1e-12)
+    # Positivity / non-stale discrimination: at least one species (H2O
+    # is the largest in the fake output) must have a strictly positive
+    # post-call kg_total. A regression that skipped the write entirely
+    # would leave the fixture's seeded 0.0; that would still satisfy
+    # the conservation closure above (since kg_atm + kg_liq + kg_sol
+    # would also be 0 if the per-species writes were skipped), making
+    # the closure alone insufficient.
+    assert hf_row['H2O_kg_total'] > 0.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_atmodeller_kg_total_not_stale_after_call():
     """A regression that read stale ``_kg_total`` from a prior
     iteration would silently propagate a wrong value forward. Pre-load
@@ -356,6 +387,7 @@ def test_atmodeller_kg_total_not_stale_after_call():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_path_c_preserves_authoritative_O_kg_total():
     """Under Path C the user O budget is authoritative. atmodeller's
     converged element_density at iteration N is mass_atm + mass_dissolved
@@ -382,9 +414,16 @@ def test_path_c_preserves_authoritative_O_kg_total():
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
 
     assert hf_row['O_kg_total'] == pytest.approx(1.0e22, rel=1e-12)
+    # Discrimination: the wrapper must have passed the SAME O value
+    # into atmodeller's mass_constraints. A regression where the
+    # solver wrote a residual-perturbed value into O_kg_total would
+    # also break the mass-constraint input pin.
+    mass_kwargs = fake_model.solve.call_args.kwargs['mass_constraints']
+    assert mass_kwargs['O'] == pytest.approx(1.0e22, rel=1e-12)
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_legacy_path_does_not_overwrite_O_kg_total():
     """Mirror: under user_constant the atmodeller wrapper does not
     touch ``O_kg_total`` (atmodeller's output doesn't include O as a
@@ -407,6 +446,12 @@ def test_legacy_path_does_not_overwrite_O_kg_total():
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
 
     assert hf_row['O_kg_total'] == pytest.approx(5.5e21, rel=1e-12)
+    # Discrimination: the legacy path must NOT have added 'O' to the
+    # mass_constraints dict (atmodeller solves O via the IW fugacity
+    # buffer here). A regression that mistakenly added it would
+    # silently over-constrain the system.
+    mass_kwargs = fake_model.solve.call_args.kwargs['mass_constraints']
+    assert 'O' not in mass_kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +477,17 @@ def test_path_c_with_O_below_threshold_raises():
 
     with pytest.raises(ValueError, match='from_O_budget'):
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
+    # Boundary discrimination: an O budget comfortably above the
+    # mass_thresh of 1e8 kg on the same Path C config must NOT raise.
+    # The rejection is driven by the threshold, not by Path C itself.
+    # A regression that hard-raised on every Path C call would fail
+    # this.
+    hf_row_ok = _earth_hf_row(O_kg_total=1.0e22)
+    fake_model = MagicMock()
+    fake_model.output = _fake_atmodeller_output()
+    with patch('atmodeller.EquilibriumModel', return_value=fake_model):
+        calc_surface_pressures_atmodeller(dirs, config, hf_row_ok)
+    assert hf_row_ok['O_kg_total'] == pytest.approx(1.0e22, rel=1e-12)
 
 
 # ---------------------------------------------------------------------------

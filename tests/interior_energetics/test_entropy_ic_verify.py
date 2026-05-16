@@ -138,6 +138,7 @@ def test_spider_verify_passes_on_consistent_inversion(caplog):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_spider_verify_warns_on_moderate_mismatch(caplog):
     """
     2 % discrepancy triggers WARN verdict and a log.warning, no exception.
@@ -178,9 +179,16 @@ def test_spider_verify_warns_on_moderate_mismatch(caplog):
 
     joined = '\n'.join(r.message for r in caplog.records)
     assert 'verdict=WARN' in joined, f'Expected WARN verdict: {joined!r}'
+    # Discrimination: the verdict must specifically be WARN, not PASS or
+    # FAIL. The bucket boundaries are 1 % (PASS/WARN) and 5 % (WARN/FAIL);
+    # 2 % must land cleanly in WARN. A regression that collapsed the
+    # three-bucket logic to a binary pass/fail would not produce WARN.
+    assert 'verdict=PASS' not in joined
+    assert 'verdict=FAIL' not in joined
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_spider_verify_raises_on_large_mismatch():
     """
     8 % discrepancy triggers FAIL verdict and raises RuntimeError.
@@ -213,6 +221,34 @@ def test_spider_verify_raises_on_large_mismatch():
     ):
         with pytest.raises(RuntimeError, match=r'cross-check FAIL'):
             _verify_initial_entropy(config, S_target=S_target, tsurf=2873.0, source='unit-test')
+    # Boundary discrimination: a 4 % mismatch is below the FAIL
+    # threshold (5 %) and must NOT raise. Same instance, smaller
+    # mismatch, no raise. A regression that hard-raised on any
+    # non-zero mismatch would fail this.
+    S_adiabat_warn = S_target * 1.04
+    with (
+        patch(
+            'zalmoxis.eos_export.compute_surface_entropy',
+            return_value={'S_target': S_adiabat_warn, 'P_surface': 1e5, 'T_surface': 2500.0},
+            create=True,
+        ) as mock_compute,
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value={
+                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
+                'PALEOS-2phase:MgSiO3': {},
+            },
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+            return_value=None,
+        ),
+        patch('os.path.isfile', return_value=True),
+    ):
+        _verify_initial_entropy(config, S_target=S_target, tsurf=2873.0, source='unit-test')
+    # The 4 % path must actually reach the EOS computation (otherwise
+    # the no-raise verdict would be from an unrelated early-skip path).
+    mock_compute.assert_called_once()
 
 
 @pytest.mark.unit
@@ -264,11 +300,17 @@ def test_spider_verify_skipped_when_paleos_file_missing(caplog):
                 return_value={'PALEOS:MgSiO3': {'eos_file': ''}},
             ),
             patch('os.path.isfile', return_value=False),
+            patch('zalmoxis.eos_export.compute_surface_entropy', create=True) as mock_compute,
         ):
             _verify_initial_entropy(config, S_target=6437.4, tsurf=2873.0, source='unit-test')
 
     # No PASS/WARN/FAIL verdict was ever logged
     assert not any('verdict=' in r.message for r in caplog.records)
+    # Discrimination: the silent-skip branch must NOT have invoked the
+    # PALEOS surface-entropy computation. A regression that proceeded
+    # past the missing-file guard and then merely failed to log would
+    # still have called the EOS helper.
+    mock_compute.assert_not_called()
 
 
 @pytest.mark.unit
@@ -368,6 +410,15 @@ def test_aragog_verify_skips_for_dummy_module(tmp_path):
     AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
 
     interior_o.aragog_solver.entropy_eos.temperature_scalar.assert_not_called()
+    # Discrimination: invert_temperature must also not be called. A
+    # regression that took the verify branch on dummy and only the
+    # temperature_scalar mock was untouched (because the path
+    # exclusively used invert_temperature) would falsely pass the
+    # assert_not_called above.
+    interior_o.aragog_solver.entropy_eos.invert_temperature.assert_not_called()
+    # The set_initial_entropy override path must also be untouched on
+    # the skip branch.
+    interior_o.aragog_solver.set_initial_entropy.assert_not_called()
 
 
 @pytest.mark.unit
@@ -414,6 +465,48 @@ def test_aragog_verify_raises_on_api_drift(tmp_path):
         # narrowed except clause).
         with pytest.raises(AttributeError, match=r'_S0'):
             AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+    # Discrimination: a solver that DOES expose _S0 with the same other
+    # mocks in place must not raise. The exception above must come
+    # specifically from the missing attribute, not from an unrelated
+    # path in the verify routine that fires on every call.
+    class WorkingSolver:
+        _S0 = np.array([6437.0, 6437.0])
+        _P_stag_flat = np.array([1e5, 1e11])
+        entropy_eos = MagicMock()
+        set_initial_entropy = MagicMock()
+
+    working_solver = WorkingSolver()
+    working_solver.entropy_eos.temperature_scalar = MagicMock(side_effect=lambda p, s: float(s) * 0.4)
+    working_solver.entropy_eos.invert_temperature = MagicMock(side_effect=lambda p, t: float(t) / 0.4)
+    interior_o.aragog_solver = working_solver
+    with (
+        patch(
+            'zalmoxis.eos_export.compute_entropy_adiabat',
+            return_value={
+                'P': np.array([1e5, 1e11]),
+                'T': np.array([2575.0, 2575.0]),
+                'S_target': 6437.0,
+            },
+            create=True,
+        ) as mock_adiabat,
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_material_dictionaries',
+            return_value={
+                'PALEOS:MgSiO3': {'eos_file': '/fake/paleos.dat'},
+                'PALEOS-2phase:MgSiO3': {},
+            },
+        ),
+        patch(
+            'proteus.interior_struct.zalmoxis.load_zalmoxis_solidus_liquidus_functions',
+            return_value=None,
+        ),
+        patch('os.path.isfile', return_value=True),
+    ):
+        AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+    # The verify path must have actually queried the PALEOS adiabat. A
+    # regression that early-returned past the _S0 check would skip the
+    # mock and the no-raise verdict would mean nothing.
+    mock_adiabat.assert_called_once()
 
 
 @pytest.mark.unit
@@ -472,6 +565,12 @@ def test_aragog_verify_runs_and_overrides_on_warn(tmp_path):
     # cross-check is advisory only, see aragog.py docstring). The verify
     # call must complete without touching the IC entropy.
     interior_o.aragog_solver.set_initial_entropy.assert_not_called()
+    # Discrimination: the solver's temperature_scalar must have been
+    # consulted for the IC profile evaluation. A regression that
+    # short-circuited the entire verify routine would leave both
+    # set_initial_entropy AND temperature_scalar untouched (both
+    # assert_not_called would pass for the wrong reason).
+    assert interior_o.aragog_solver.entropy_eos.temperature_scalar.called
 
 
 @pytest.mark.unit
@@ -534,3 +633,8 @@ def test_aragog_verify_logs_on_large_mismatch_but_does_not_raise(tmp_path, caplo
     assert 'Entropy IC full-profile cross-check' in joined, (
         f'Expected full-profile log line, got: {joined!r}'
     )
+    # Discrimination: the routine must NOT have written through the
+    # override path (advisory-only contract). A regression that
+    # re-enabled the override would also satisfy the log-line check
+    # above but silently overwrite the IC profile.
+    interior_o.aragog_solver.set_initial_entropy.assert_not_called()

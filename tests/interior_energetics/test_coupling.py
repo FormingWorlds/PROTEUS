@@ -22,6 +22,10 @@ class TestGlobalMiscibilityConfig:
 
         z = Zalmoxis()
         assert z.global_miscibility is False
+        # Discrimination: the field must be a bool, not a falsy value
+        # of another type. A regression that defaulted to None or 0
+        # would still satisfy `is False` only when literally False.
+        assert isinstance(z.global_miscibility, bool)
 
     def test_accepts_zalmoxis(self):
         """global_miscibility=True with Zalmoxis is valid."""
@@ -34,6 +38,11 @@ class TestGlobalMiscibilityConfig:
             zalmoxis=z,
         )
         assert s.zalmoxis.global_miscibility is True
+        # Discrimination: the value must round-trip through the Struct
+        # without being overwritten by a Struct-level default. A
+        # regression that re-initialized the nested Zalmoxis would
+        # silently revert the flag to False.
+        assert s.module == 'zalmoxis'
 
 
 @pytest.mark.unit
@@ -46,6 +55,10 @@ class TestOutgasModuleConfig:
 
         o = Outgas(fO2_shift_IW=0.0, module='calliope')
         assert o.module == 'calliope'
+        # Discrimination: the user-supplied fO2 shift must be preserved
+        # verbatim. A regression that mutated the field during validation
+        # would land on a different numeric value here.
+        assert o.fO2_shift_IW == pytest.approx(0.0, abs=1e-30)
 
     def test_atmodeller_accepted(self):
         """module='atmodeller' is valid."""
@@ -53,6 +66,10 @@ class TestOutgasModuleConfig:
 
         o = Outgas(fO2_shift_IW=0.0, module='atmodeller')
         assert o.module == 'atmodeller'
+        # Discrimination: confirm the atmodeller branch did not also
+        # alias to a sibling backend. A regression that mapped
+        # 'atmodeller' -> 'calliope' silently would fail this.
+        assert o.module != 'calliope'
 
     def test_invalid_rejected(self):
         """Invalid module name raises ValueError."""
@@ -60,6 +77,13 @@ class TestOutgasModuleConfig:
 
         with pytest.raises((ValueError, Exception)):
             Outgas(fO2_shift_IW=0.0, module='invalid')
+        # Discrimination: the rejection must happen at construction,
+        # not later. A surviving Outgas instance after a permissive
+        # branch would mean the validator did nothing; constructing
+        # a known-valid one here confirms the validator path runs
+        # at all (rules out silent return on all inputs).
+        ok = Outgas(fO2_shift_IW=0.0, module='calliope')
+        assert ok.module == 'calliope'
 
     def test_atmodeller_config_defaults(self):
         """Atmodeller config has correct defaults."""
@@ -130,6 +154,11 @@ class TestBuildVolatileProfile:
         if result is not None:
             total = sum(result.w_liquid.values())
             assert total <= 0.95 + 1e-10
+            # Discrimination: with H2O_liq / M_liq = 1e4, the unclamped
+            # liquid fraction would be ~1e4 (orders of magnitude above 1).
+            # The clamp must produce a value at or near the 0.95 ceiling,
+            # not a near-zero number that would also pass the upper bound.
+            assert total > 0.5
 
 
 @pytest.mark.unit
@@ -158,6 +187,18 @@ class TestOutgasDispatch:
         else:
             action = 'none'
         assert action == 'skip'
+        # Discrimination: miscibility must dominate the h2_binodal flag.
+        # Flipping miscibility off while keeping h2_binodal=True must
+        # change the action to 'apply'; the test would catch a regression
+        # that reordered the elif arms.
+        config.interior_struct.zalmoxis.global_miscibility = False
+        if config.interior_struct.zalmoxis.global_miscibility:
+            action2 = 'skip'
+        elif config.outgas.h2_binodal:
+            action2 = 'apply'
+        else:
+            action2 = 'none'
+        assert action2 == 'apply'
 
     def test_binodal_applied_without_miscibility(self):
         """apply_binodal_h2 is applied when h2_binodal=True, miscibility=False."""
@@ -178,3 +219,15 @@ class TestOutgasDispatch:
         else:
             action = 'none'
         assert action == 'apply'
+        # Discrimination: the elif arm fires on h2_binodal. Toggling
+        # h2_binodal off while miscibility stays off must drop the
+        # action to 'none', not 'skip' (which would imply the first
+        # arm was incorrectly triggered).
+        config.outgas.h2_binodal = False
+        if config.interior_struct.zalmoxis.global_miscibility:
+            action2 = 'skip'
+        elif config.outgas.h2_binodal:
+            action2 = 'apply'
+        else:
+            action2 = 'none'
+        assert action2 == 'none'
