@@ -25,7 +25,7 @@ from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
 
 
 @pytest.mark.smoke

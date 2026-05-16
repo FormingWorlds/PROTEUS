@@ -67,7 +67,7 @@ st = hypothesis.strategies
 
 from proteus import Proteus  # noqa: E402
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 # Strategy bounds chosen to cover the rocky-exoplanet regime PROTEUS
