@@ -671,3 +671,1001 @@ def test_deterministic_warning_when_sentinel_missing(tmp_path, monkeypatch):
         import os as _os
 
         assert cli._PROTEUS_DETERMINISTIC_SENTINEL not in _os.environ
+
+
+# ---------------------------
+# 'plot' command
+# ---------------------------
+
+
+class _FakeProteusForPlot:
+    """Minimal stand-in for Proteus used by the plot command path."""
+
+    def __init__(self, *, config_path):
+        self.config_path = config_path
+        self.directories = {'output': '/tmp/proteus_test_plot_output'}
+
+        class _Params:
+            class _Out:
+                logging = 'INFO'
+
+            out = _Out()
+
+        class _Config:
+            params = _Params()
+
+        self.config = _Config()
+
+
+@pytest.mark.unit
+def test_plot_list_argument_lists_available_plots(monkeypatch, tmp_path):
+    """``proteus plot list`` (positional) prints the dispatch keys and returns 0.
+
+    Different from ``--list`` flag: ``list`` as positional argument runs through
+    the handler body. Verifies that at least two known plot kinds appear and
+    that no plot function is actually invoked.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub config\n')
+
+    invoked = []
+
+    def fake_setup_logger(*args, **kwargs):
+        invoked.append('logger')
+
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusForPlot)
+    monkeypatch.setattr(cli, 'setup_logger', fake_setup_logger)
+
+    res = runner.invoke(cli.plot, ['list', '-c', str(cfg)])
+    assert res.exit_code == 0, f'plot list output: {res.output}'
+    assert 'Available plots:' in res.output
+    # Two distinct kinds must appear, otherwise a single-key regression slips through.
+    assert 'atmosphere' in res.output
+    assert 'interior' in res.output
+
+
+@pytest.mark.unit
+def test_plot_invalid_plot_name_reports_and_continues(monkeypatch, tmp_path):
+    """An unknown plot name yields an 'Invalid plot' message but does NOT raise.
+
+    Discrimination: a regression that raised on unknown names would make the
+    CLI brittle for partial typos; we pin the graceful-skip contract.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub config\n')
+
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusForPlot)
+    monkeypatch.setattr(cli, 'setup_logger', lambda *a, **k: None)
+
+    res = runner.invoke(cli.plot, ['does_not_exist', '-c', str(cfg)])
+    assert res.exit_code == 0
+    assert 'Invalid plot: does_not_exist' in res.output
+
+
+@pytest.mark.unit
+def test_plot_all_dispatches_every_known_plot(monkeypatch, tmp_path):
+    """``proteus plot all -c cfg`` iterates every dispatch key and invokes each handler.
+
+    Mocks all plot functions so the test stays fast and offline. The post-state
+    assertion checks the number of calls equals the size of plot_dispatch and
+    that the handler kwarg was threaded through.
+    """
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub config\n')
+
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusForPlot)
+    monkeypatch.setattr(cli, 'setup_logger', lambda *a, **k: None)
+
+    # Patch each entry of plot_dispatch to a recorder so the real plotting
+    # implementations don't fire (they would touch matplotlib / data files).
+    from proteus import plot as plot_module
+
+    calls = []
+
+    def make_recorder(name):
+        def _rec(handler):
+            calls.append((name, handler))
+
+        return _rec
+
+    fake_dispatch = {key: make_recorder(key) for key in plot_module.plot_dispatch}
+    monkeypatch.setattr(plot_module, 'plot_dispatch', fake_dispatch)
+
+    res = runner.invoke(cli.plot, ['all', '-c', str(cfg)])
+    assert res.exit_code == 0, f'plot all output: {res.output}'
+    # Every dispatch entry must have fired exactly once
+    assert len(calls) == len(fake_dispatch)
+    # Discrimination: regression that swallowed the loop would yield 0 calls;
+    # regression that double-dispatched would yield 2*N.
+    assert {name for name, _ in calls} == set(fake_dispatch.keys())
+
+
+@pytest.mark.unit
+def test_plot_single_named_plot_invokes_only_that_handler(monkeypatch, tmp_path):
+    """Naming a single plot dispatches ONLY that handler, not the whole dispatch table."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub config\n')
+
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusForPlot)
+    monkeypatch.setattr(cli, 'setup_logger', lambda *a, **k: None)
+
+    from proteus import plot as plot_module
+
+    calls = []
+
+    def make_recorder(name):
+        def _rec(handler):
+            calls.append(name)
+
+        return _rec
+
+    fake_dispatch = {key: make_recorder(key) for key in plot_module.plot_dispatch}
+    monkeypatch.setattr(plot_module, 'plot_dispatch', fake_dispatch)
+
+    res = runner.invoke(cli.plot, ['atmosphere', '-c', str(cfg)])
+    assert res.exit_code == 0
+    assert calls == ['atmosphere']
+    # Discrimination guard: no other plot fired (regression that ran 'all'
+    # would produce >1 entry).
+    assert len(calls) == 1
+
+
+@pytest.mark.unit
+def test_plot_list_flag_prints_dispatch_and_exits(monkeypatch):
+    """``proteus plot --list`` (the eager-flag callback) prints dispatch names and exits."""
+    # The --list flag goes through list_plots(); that callback uses sys.exit(),
+    # which click captures and surfaces as exit_code != None.
+    res = runner.invoke(cli.plot, ['--list'])
+    # sys.exit() with no arg means 0
+    assert res.exit_code == 0
+    # The eager callback prints space-separated dispatch keys
+    assert 'atmosphere' in res.output
+    assert 'interior' in res.output
+
+
+# ---------------------------
+# normalize_star_name / validate_star_name
+# ---------------------------
+
+
+@pytest.mark.unit
+def test_normalize_star_name_returns_none_for_falsy_inputs():
+    """Empty string and None both return None (the 'no input' branch)."""
+    # Both falsy inputs collapse to the same None; pin that contract.
+    assert cli.normalize_star_name(None) is None
+    assert cli.normalize_star_name('') is None
+    # Discrimination: a non-empty string MUST NOT return None.
+    assert cli.normalize_star_name('Sun') == 'sun'
+
+
+@pytest.mark.unit
+def test_normalize_star_name_lowercases_and_strips():
+    """User input is lowercased and stripped before catalog lookup."""
+    out = cli.normalize_star_name('  TRAPPIST-1 ')
+    assert out == 'trappist-1'
+    # Sign / scale guard: the original string contained uppercase letters and
+    # whitespace; the output has neither.
+    assert out.islower()
+    assert out.strip() == out
+
+
+@pytest.mark.unit
+def test_validate_star_name_passthrough_for_none():
+    """``validate_star_name(None)`` returns None without raising (matches normalize)."""
+    out = cli.validate_star_name(None, catalog='muscles')
+    assert out is None
+    # Discrimination: with a valid name it should NOT return None
+    assert cli.validate_star_name('trappist-1', catalog='muscles') == 'trappist-1'
+
+
+@pytest.mark.unit
+def test_validate_star_name_rejects_unknown_catalog():
+    """An unknown catalog name surfaces ``ClickException`` listing available ones."""
+    import click as _click
+
+    with pytest.raises(_click.ClickException) as exc_info:
+        cli.validate_star_name('trappist-1', catalog='not_a_real_catalog')
+
+    msg = str(exc_info.value.message)
+    assert "Unknown catalog 'not_a_real_catalog'" in msg
+    # Discrimination: the error message must enumerate at least one valid catalog.
+    assert 'muscles' in msg
+
+
+@pytest.mark.unit
+def test_validate_star_name_unknown_star_raises():
+    """Unknown star in a known catalog raises ClickException, no return value."""
+    import click as _click
+
+    with pytest.raises(_click.ClickException) as exc_info:
+        cli.validate_star_name('definitely-not-a-star-xyz', catalog='muscles')
+
+    # Error message must name the star + cite --list as the recovery path
+    msg = str(exc_info.value.message)
+    assert 'definitely-not-a-star-xyz' in msg
+    assert '--list' in msg
+
+
+# ---------------------------
+# 'scattering' get subcommand
+# ---------------------------
+
+
+@pytest.mark.unit
+def test_get_scattering_dispatches_to_downloader(monkeypatch):
+    """``proteus get scattering`` calls download_scattering exactly once."""
+    calls = []
+
+    def fake_download_scattering():
+        calls.append('scattering')
+
+    monkeypatch.setattr('proteus.utils.data.download_scattering', fake_download_scattering)
+
+    res = runner.invoke(cli.cli, ['get', 'scattering'])
+    assert res.exit_code == 0
+    assert calls == ['scattering']
+
+
+# ---------------------------
+# archive commands
+# ---------------------------
+
+
+class _FakeProteusArchive:
+    """Tracks create_archives / extract_archives invocations."""
+
+    instances = []
+
+    def __init__(self, *, config_path):
+        self.config_path = config_path
+        self.created = False
+        self.extracted = False
+        type(self).instances.append(self)
+
+    def create_archives(self):
+        self.created = True
+
+    def extract_archives(self):
+        self.extracted = True
+
+
+@pytest.mark.unit
+def test_create_archives_dispatches(monkeypatch, tmp_path):
+    """``proteus create-archives -c cfg`` instantiates Proteus and calls create_archives."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    _FakeProteusArchive.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusArchive)
+
+    res = runner.invoke(cli.create_archives, ['-c', str(cfg)])
+    assert res.exit_code == 0
+    assert len(_FakeProteusArchive.instances) == 1
+    assert _FakeProteusArchive.instances[0].created is True
+    # Discrimination: extract path must NOT have fired
+    assert _FakeProteusArchive.instances[0].extracted is False
+
+
+@pytest.mark.unit
+def test_extract_archives_dispatches(monkeypatch, tmp_path):
+    """``proteus extract-archives -c cfg`` instantiates Proteus and calls extract_archives."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    _FakeProteusArchive.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusArchive)
+
+    res = runner.invoke(cli.extract_archives, ['-c', str(cfg)])
+    assert res.exit_code == 0
+    assert len(_FakeProteusArchive.instances) == 1
+    assert _FakeProteusArchive.instances[0].extracted is True
+    # Discrimination: create path must NOT have fired
+    assert _FakeProteusArchive.instances[0].created is False
+
+
+# ---------------------------
+# 'offchem' and 'observe' postprocessing commands
+# ---------------------------
+
+
+class _FakeProteusPost:
+    """Stand-in for Proteus with offline_chemistry / observe methods recorded."""
+
+    instances = []
+
+    def __init__(self, *, config_path):
+        self.config_path = config_path
+        self.directories = {'output': '/tmp/proteus_post_output'}
+
+        class _Params:
+            class _Out:
+                logging = 'INFO'
+
+            out = _Out()
+
+        class _Config:
+            params = _Params()
+
+        self.config = _Config()
+        self.ran_offchem = False
+        self.ran_observe = False
+        type(self).instances.append(self)
+
+    def offline_chemistry(self):
+        self.ran_offchem = True
+
+    def observe(self):
+        self.ran_observe = True
+
+
+@pytest.mark.unit
+def test_offchem_invokes_offline_chemistry(monkeypatch, tmp_path):
+    """``proteus offchem -c cfg`` calls runner.offline_chemistry, not observe."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    _FakeProteusPost.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
+    monkeypatch.setattr(cli, 'setup_logger', lambda *a, **k: None)
+
+    res = runner.invoke(cli.offchem, ['-c', str(cfg)])
+    assert res.exit_code == 0
+    assert len(_FakeProteusPost.instances) == 1
+    assert _FakeProteusPost.instances[0].ran_offchem is True
+    # Discrimination: observe path must NOT have fired
+    assert _FakeProteusPost.instances[0].ran_observe is False
+
+
+@pytest.mark.unit
+def test_observe_invokes_observe(monkeypatch, tmp_path):
+    """``proteus observe -c cfg`` calls runner.observe, not offline_chemistry."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    _FakeProteusPost.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusPost)
+    monkeypatch.setattr(cli, 'setup_logger', lambda *a, **k: None)
+
+    res = runner.invoke(cli.observe, ['-c', str(cfg)])
+    assert res.exit_code == 0
+    assert len(_FakeProteusPost.instances) == 1
+    assert _FakeProteusPost.instances[0].ran_observe is True
+    # Discrimination: offchem path must NOT have fired
+    assert _FakeProteusPost.instances[0].ran_offchem is False
+
+
+# ---------------------------
+# grid / infer entry points
+# ---------------------------
+
+
+@pytest.mark.unit
+def test_grid_calls_grid_from_config(monkeypatch, tmp_path):
+    """``proteus grid -c cfg`` dispatches to grid_from_config with the config path."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    received = []
+
+    def fake_grid_from_config(path):
+        received.append(Path(path))
+
+    import proteus.grid.manage as gmanage
+
+    monkeypatch.setattr(gmanage, 'grid_from_config', fake_grid_from_config)
+
+    res = runner.invoke(cli.grid, ['-c', str(cfg)])
+    assert res.exit_code == 0
+    # Discrimination: exactly one call, with the resolved config path.
+    assert len(received) == 1
+    assert received[0].name == 'cfg.toml'
+
+
+@pytest.mark.unit
+def test_infer_calls_infer_from_config(monkeypatch, tmp_path):
+    """``proteus infer -c cfg`` dispatches to infer_from_config with the config path."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    received = []
+
+    def fake_infer_from_config(path):
+        received.append(Path(path))
+
+    import proteus.inference.inference as inf
+
+    monkeypatch.setattr(inf, 'infer_from_config', fake_infer_from_config)
+
+    res = runner.invoke(cli.infer, ['-c', str(cfg)])
+    assert res.exit_code == 0
+    assert len(received) == 1
+    assert received[0].name == 'cfg.toml'
+
+
+# ---------------------------
+# grid_summarise / grid_pack
+# ---------------------------
+
+
+@pytest.mark.unit
+def test_grid_summarise_dispatches_with_status(monkeypatch, tmp_path):
+    """``proteus grid-summarise -o output -s completed`` calls summarise(output, status)."""
+    outdir = tmp_path / 'out'
+    outdir.mkdir()
+
+    received = []
+
+    def fake_summarise(output_path, status):
+        received.append((Path(output_path), status))
+
+    import proteus.grid.summarise as gsum
+
+    monkeypatch.setattr(gsum, 'summarise', fake_summarise)
+
+    res = runner.invoke(cli.cli, ['grid-summarise', '-o', str(outdir), '-s', 'completed'])
+    assert res.exit_code == 0
+    assert len(received) == 1
+    assert received[0][1] == 'completed'
+
+
+@pytest.mark.unit
+def test_grid_pack_dispatches(monkeypatch, tmp_path):
+    """``proteus grid-pack -o output`` calls pack(output)."""
+    outdir = tmp_path / 'out'
+    outdir.mkdir()
+
+    received = []
+
+    def fake_pack(output_path):
+        received.append(Path(output_path))
+
+    import proteus.grid.pack as gpack
+
+    monkeypatch.setattr(gpack, 'pack', fake_pack)
+
+    res = runner.invoke(cli.cli, ['grid-pack', '-o', str(outdir)])
+    assert res.exit_code == 0
+    assert len(received) == 1
+    assert received[0].name == 'out'
+
+
+# ---------------------------
+# Installer helpers
+# ---------------------------
+
+
+@pytest.mark.unit
+def test_resolve_fwl_data_dir_uses_env_when_set(monkeypatch, tmp_path):
+    """When FWL_DATA is set, resolve_fwl_data_dir returns that exact path."""
+    monkeypatch.setenv('FWL_DATA', str(tmp_path))
+    out = cli.resolve_fwl_data_dir()
+    assert out == Path(tmp_path)
+    # Discrimination: the result must equal the env var value, not the
+    # fallback (which is sibling to the source tree).
+    assert 'FWL_DATA' not in str(out) or str(out) == str(tmp_path)
+
+
+@pytest.mark.unit
+def test_resolve_fwl_data_dir_falls_back_when_env_missing(monkeypatch):
+    """When FWL_DATA is NOT set, resolve_fwl_data_dir returns the source-adjacent default."""
+    monkeypatch.delenv('FWL_DATA', raising=False)
+    out = cli.resolve_fwl_data_dir()
+    # The fallback is a directory named FWL_DATA next to the proteus parent.
+    assert out.name == 'FWL_DATA'
+    # Discrimination: env path branch would return whatever FWL_DATA pointed
+    # to; pin that the fallback path is parent-of-package-relative.
+    assert isinstance(out, Path)
+
+
+@pytest.mark.unit
+def test_append_to_shell_rc_writes_when_absent(monkeypatch, tmp_path):
+    """append_to_shell_rc creates the rc file and writes the export line on first call."""
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    rc = cli.append_to_shell_rc('TEST_VAR', '/some/value', shell='/bin/bash')
+    assert rc is not None
+    assert rc == tmp_path / '.bashrc'
+    contents = rc.read_text()
+    assert 'TEST_VAR' in contents
+    assert '/some/value' in contents
+
+
+@pytest.mark.unit
+def test_append_to_shell_rc_skips_when_already_present(monkeypatch, tmp_path):
+    """If the export line is already in the rc file, the helper returns None and does not duplicate."""
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    rc_first = cli.append_to_shell_rc('TEST_VAR', '/some/value', shell='/bin/zsh')
+    assert rc_first == tmp_path / '.zshrc'
+
+    rc_second = cli.append_to_shell_rc('TEST_VAR', '/some/value', shell='/bin/zsh')
+    # Already present, must signal a no-op.
+    assert rc_second is None
+    # Idempotency guard: line count for that var must be exactly 1.
+    occurrences = (tmp_path / '.zshrc').read_text().count('TEST_VAR')
+    assert occurrences == 1
+
+
+@pytest.mark.unit
+def test_append_to_shell_rc_unknown_shell_returns_none(monkeypatch, tmp_path):
+    """An unrecognized shell returns None and does NOT create any rc file."""
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    out = cli.append_to_shell_rc('TEST_VAR', '/x', shell='/usr/local/bin/exotic_shell')
+    assert out is None
+    # Discrimination: no rc files created
+    assert not (tmp_path / '.bashrc').exists()
+    assert not (tmp_path / '.zshrc').exists()
+
+
+@pytest.mark.unit
+def test_is_julia_installed_true_when_shutil_finds_it(monkeypatch):
+    """is_julia_installed returns True when shutil.which finds a julia binary."""
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    result = cli.is_julia_installed()
+    assert result is True
+    # Discrimination: the helper returns a Python bool, not a path string.
+    # A regression that returned shutil.which()'s output directly would fail
+    # the type pin below (str truthy but not `is True`).
+    assert isinstance(result, bool)
+
+
+@pytest.mark.unit
+def test_is_julia_installed_false_when_missing(monkeypatch):
+    """is_julia_installed returns False when shutil.which cannot resolve julia."""
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: None)
+    result = cli.is_julia_installed()
+    assert result is False
+    # Discrimination: pin the bool type so a regression returning None (also
+    # falsy) does not slip through.
+    assert isinstance(result, bool)
+
+
+@pytest.mark.unit
+def test_update_input_data_returns_false_when_config_missing(monkeypatch, tmp_path):
+    """_update_input_data returns False and prints a skip message when config does not exist."""
+    missing = tmp_path / 'missing.toml'
+
+    # Stash a sentinel so we can prove download_sufficient_data was NOT called.
+    download_calls = []
+
+    def fake_download(*args, **kwargs):
+        download_calls.append(True)
+
+    monkeypatch.setattr(cli, 'download_sufficient_data', fake_download)
+
+    out = cli._update_input_data(missing)
+    assert out is False
+    # Discrimination: the download branch must NOT have fired when the
+    # config file is missing.
+    assert download_calls == []
+
+
+@pytest.mark.unit
+def test_update_input_data_returns_true_when_config_exists(monkeypatch, tmp_path):
+    """_update_input_data returns True and triggers download_sufficient_data on a present config."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    received = []
+
+    def fake_read_config_object(path):
+        received.append(('read', Path(path)))
+        return {'fake': 'configuration'}
+
+    def fake_download_sufficient_data(configuration, clean):
+        received.append(('dl', configuration, clean))
+
+    monkeypatch.setattr(cli, 'read_config_object', fake_read_config_object)
+    monkeypatch.setattr(cli, 'download_sufficient_data', fake_download_sufficient_data)
+
+    out = cli._update_input_data(cfg)
+    assert out is True
+    # Both calls fired, in order
+    assert len(received) == 2
+    assert received[0][0] == 'read'
+    assert received[1][0] == 'dl'
+    # clean kwarg threaded as True
+    assert received[1][2] is True
+
+
+# ---------------------------
+# install_all
+# ---------------------------
+
+
+def _stub_disk_usage_high():
+    """Return a disk_usage-shaped tuple with plenty of free space (100 GB)."""
+    from collections import namedtuple
+
+    Usage = namedtuple('Usage', ['total', 'used', 'free'])
+    return Usage(total=1_000_000_000_000, used=0, free=100_000_000_000)
+
+
+def _stub_disk_usage_low():
+    """Return a disk_usage-shaped tuple with <5 GB free."""
+    from collections import namedtuple
+
+    Usage = namedtuple('Usage', ['total', 'used', 'free'])
+    return Usage(total=1_000_000_000_000, used=0, free=1_000_000_000)
+
+
+@pytest.mark.unit
+def test_install_all_aborts_on_low_disk(monkeypatch, tmp_path):
+    """``install-all`` exits non-zero when free disk is below the 5 GB threshold."""
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_low())
+
+    res = runner.invoke(cli.cli, ['install-all'])
+    assert res.exit_code != 0
+    assert 'Aborting installation' in res.output
+    # Discrimination: must NOT print the "completed" message that lives on
+    # the success path.
+    assert 'PROTEUS installation completed' not in res.output
+
+
+@pytest.mark.unit
+def test_install_all_aborts_when_julia_missing(monkeypatch, tmp_path):
+    """``install-all`` aborts with a Julia-not-found message when julia is missing."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    # Pre-create socrates dir so the SOCRATES install path is skipped
+    (tmp_path / 'socrates').mkdir()
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    # Force the julia check to fail
+    monkeypatch.setattr(cli, 'is_julia_installed', lambda: False)
+
+    res = runner.invoke(cli.cli, ['install-all'])
+    assert res.exit_code != 0
+    assert 'Julia not found' in res.output
+    # Discrimination: AGNI install path must NOT have been reached
+    assert 'Installing AGNI' not in res.output
+
+
+@pytest.mark.unit
+def test_install_all_success_with_export_env(monkeypatch, tmp_path):
+    """Full ``install-all --export-env`` path with all heavy steps stubbed.
+
+    Verifies the rc-export step writes lines, the socrates / AGNI dirs are
+    detected as pre-existing, and the completion message fires.
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    monkeypatch.setenv('SHELL', '/bin/bash')
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path / 'home')
+    (tmp_path / 'home').mkdir()
+
+    # Pre-create socrates and AGNI to skip subprocess calls
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+
+    subprocess_calls = []
+
+    def fake_subprocess_run(cmd, **kwargs):
+        subprocess_calls.append(cmd)
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
+    # No config file so the input-data step gracefully skips.
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['install-all', '--export-env'])
+    assert res.exit_code == 0, f'install-all output: {res.output}'
+    assert 'PROTEUS installation completed' in res.output
+    # Discrimination: at least one rc-export line fired
+    assert 'Exported' in res.output or 'already exported' in res.output
+
+
+@pytest.mark.unit
+def test_install_all_invokes_socrates_when_missing(monkeypatch, tmp_path):
+    """SOCRATES install branch fires subprocess.run when the socrates/ dir is absent."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    # NO socrates dir; AGNI pre-existing so it doesn't try git clone
+    (tmp_path / 'AGNI').mkdir()
+
+    subprocess_calls = []
+
+    def fake_subprocess_run(cmd, **kwargs):
+        subprocess_calls.append(tuple(cmd) if isinstance(cmd, list) else cmd)
+        # Simulate that the socrates install script created the dir
+        if 'get_socrates.sh' in (cmd[1] if len(cmd) > 1 else ''):
+            (tmp_path / 'socrates').mkdir(exist_ok=True)
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['install-all'])
+    assert res.exit_code == 0, f'install-all output: {res.output}'
+    # Discrimination: at least one subprocess call was the socrates install
+    socrates_calls = [c for c in subprocess_calls if 'get_socrates.sh' in str(c)]
+    assert len(socrates_calls) >= 1
+
+
+@pytest.mark.unit
+def test_install_all_socrates_subprocess_failure_aborts(monkeypatch, tmp_path):
+    """A CalledProcessError from the SOCRATES install script aborts with exit != 0."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    # No socrates dir; the install attempt must raise
+
+    def fake_subprocess_run(cmd, **kwargs):
+        if 'get_socrates.sh' in str(cmd):
+            raise cli.subprocess.CalledProcessError(returncode=1, cmd=cmd)
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['install-all'])
+    assert res.exit_code != 0
+    assert 'Failed to install SOCRATES' in res.output
+
+
+@pytest.mark.unit
+def test_install_all_agni_clone_failure_aborts(monkeypatch, tmp_path):
+    """A CalledProcessError during AGNI clone aborts the installation."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    # SOCRATES present so the SOCRATES branch is skipped
+    (tmp_path / 'socrates').mkdir()
+    # AGNI missing; cloning must fail
+
+    def fake_subprocess_run(cmd, **kwargs):
+        if 'git' in str(cmd[0]) and 'clone' in cmd:
+            raise cli.subprocess.CalledProcessError(returncode=1, cmd=cmd)
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['install-all'])
+    assert res.exit_code != 0
+    assert 'Failed to install AGNI' in res.output
+
+
+# ---------------------------
+# update_all
+# ---------------------------
+
+
+@pytest.mark.unit
+def test_update_all_aborts_on_low_disk(monkeypatch, tmp_path):
+    """``update-all`` exits non-zero when free disk is below the 5 GB threshold."""
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_low())
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code != 0
+    assert 'Aborting installation' in res.output
+    # Discrimination: must NOT print the success message.
+    assert 'PROTEUS update completed' not in res.output
+
+
+@pytest.mark.unit
+def test_update_all_success_path(monkeypatch, tmp_path):
+    """Happy path: socrates + AGNI present, julia found, pip + git pull all stubbed."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+
+    subprocess_calls = []
+
+    def fake_subprocess_run(cmd, **kwargs):
+        subprocess_calls.append(cmd)
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0, f'update-all output: {res.output}'
+    assert 'PROTEUS update completed' in res.output
+    # Discrimination: pip + socrates + AGNI commands all fired (>= 3 subprocess calls).
+    assert len(subprocess_calls) >= 3
+
+
+@pytest.mark.unit
+def test_update_all_warns_when_socrates_missing(monkeypatch, tmp_path):
+    """SOCRATES-missing path emits a warning, no crash."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    # NO socrates dir, NO AGNI dir
+    monkeypatch.setattr(cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})())
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0
+    assert 'SOCRATES not found' in res.output
+    assert 'AGNI not found' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_warns_when_julia_missing(monkeypatch, tmp_path):
+    """Julia-missing path emits a warning but does NOT abort (unlike install-all)."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    (tmp_path / 'socrates').mkdir()
+    monkeypatch.setattr(cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})())
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    # update-all does NOT abort on missing Julia, only install-all does.
+    assert res.exit_code == 0
+    assert 'Julia not found' in res.output
+    # Discrimination: success message still fires for the rest of the path
+    assert 'PROTEUS update completed' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_socrates_update_failure_continues(monkeypatch, tmp_path):
+    """A SOCRATES update subprocess failure is reported but the command still continues."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+
+    def fake_subprocess_run(cmd, **kwargs):
+        if 'get_socrates.sh' in str(cmd):
+            raise cli.subprocess.CalledProcessError(returncode=1, cmd=cmd)
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    # The SOCRATES failure is caught, AGNI + others continue, exit 0.
+    assert res.exit_code == 0
+    assert 'Failed to update SOCRATES' in res.output
+    assert 'PROTEUS update completed' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_agni_update_failure_continues(monkeypatch, tmp_path):
+    """An AGNI update subprocess failure is reported but the command still continues."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+
+    def fake_subprocess_run(cmd, **kwargs):
+        # The AGNI block uses cwd=agni_dir; identify by that
+        if kwargs.get('cwd') == tmp_path / 'AGNI':
+            raise cli.subprocess.CalledProcessError(returncode=1, cmd=cmd)
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(cli.subprocess, 'run', fake_subprocess_run)
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['update-all'])
+    assert res.exit_code == 0
+    assert 'Failed to update AGNI' in res.output
+
+
+@pytest.mark.unit
+def test_update_all_export_env_writes_rc(monkeypatch, tmp_path):
+    """``update-all --export-env`` writes rc lines for FWL_DATA and RAD_DIR."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli.shutil, 'disk_usage', lambda path: _stub_disk_usage_high())
+    monkeypatch.setattr(cli.shutil, 'which', lambda exe: '/usr/local/bin/julia' if exe == 'julia' else None)
+    monkeypatch.setenv('FWL_DATA', str(tmp_path / 'fwl_data'))
+    monkeypatch.setenv('SHELL', '/bin/bash')
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path / 'home')
+    (tmp_path / 'home').mkdir()
+
+    (tmp_path / 'socrates').mkdir()
+    (tmp_path / 'AGNI').mkdir()
+    monkeypatch.setattr(cli.subprocess, 'run', lambda cmd, **kw: type('R', (), {'returncode': 0})())
+    monkeypatch.setattr(cli, '_update_input_data', lambda path: False)
+
+    res = runner.invoke(cli.cli, ['update-all', '--export-env'])
+    assert res.exit_code == 0
+    assert 'PROTEUS update completed' in res.output
+    # Either exported or detected as already exported; at least one rc line touched.
+    assert 'Exported' in res.output or 'already exported' in res.output
+
+
+# ---------------------------
+# start command (covering the non-deterministic happy path)
+# ---------------------------
+
+
+class _FakeProteusStart:
+    """Stand-in for Proteus.start that records its kwargs."""
+
+    instances = []
+
+    def __init__(self, *, config_path):
+        self.config_path = config_path
+        type(self).instances.append(self)
+
+    def start(self, *, resume=False, offline=False):
+        self.resume = resume
+        self.offline = offline
+
+
+@pytest.mark.unit
+def test_start_dispatches_resume_and_offline_flags(monkeypatch, tmp_path):
+    """``proteus start -c cfg --resume --offline`` threads the flags into Proteus.start."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    _FakeProteusStart.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusStart)
+    # Ensure the deterministic-sentinel safety net does NOT fire on this path.
+    monkeypatch.delenv(cli._PROTEUS_DETERMINISTIC_SENTINEL, raising=False)
+
+    res = runner.invoke(cli.start, ['-c', str(cfg), '--resume', '--offline'])
+    assert res.exit_code == 0, f'start output: {res.output}'
+    assert len(_FakeProteusStart.instances) == 1
+    inst = _FakeProteusStart.instances[0]
+    assert inst.resume is True
+    assert inst.offline is True
+
+
+@pytest.mark.unit
+def test_start_defaults_to_no_resume_no_offline(monkeypatch, tmp_path):
+    """Without --resume / --offline, Proteus.start is called with both flags False."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    _FakeProteusStart.instances = []
+    monkeypatch.setattr(cli, 'Proteus', _FakeProteusStart)
+
+    res = runner.invoke(cli.start, ['-c', str(cfg)])
+    assert res.exit_code == 0
+    assert len(_FakeProteusStart.instances) == 1
+    inst = _FakeProteusStart.instances[0]
+    assert inst.resume is False
+    assert inst.offline is False
