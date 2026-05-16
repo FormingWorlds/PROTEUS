@@ -4,7 +4,7 @@ config_version = "3.0"
 author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [params.out]
-        path        = "auto"
+        path        = "dummy_agni"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -33,6 +33,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     age_ini = 0.200     # Gyr, model initialisation/start age
     module  = "mors"
     [star.mors]
+        rot_pcntle = "none"     # disable percentile, use period instead
         rot_period = 80.9       # rotation period
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 4.0     # Gyr, current age of star used for scaling
@@ -57,6 +58,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     volatile_mode = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]
+    module       = "dummy"   # Noack & Lasbleis (2020) scaling laws (fast, integration-tier)
     core_frac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table

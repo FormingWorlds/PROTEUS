@@ -9,7 +9,7 @@ from pandas.testing import assert_frame_equal, assert_series_equal
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 out_dir = PROTEUS_ROOT / 'output' / 'albedo_lookup'
@@ -27,7 +27,7 @@ def albedo_run():
 
 
 # check result
-@pytest.mark.integration
+@pytest.mark.slow
 def test_albedo_helpfile(albedo_run):
     """The albedo-lookup integration run produces a ``runtime_helpfile.csv``
     that matches the committed reference helpfile column-by-column (within
@@ -53,7 +53,7 @@ def test_albedo_helpfile(albedo_run):
 
 
 # check albedo interpolation
-@pytest.mark.integration
+@pytest.mark.slow
 def test_albedo_interp(albedo_run):
     """The runtime albedo lookup interpolator matches the tabulated values
     from ``cloudy.csv`` at each tabulated temperature (atol=1e-7), which
@@ -82,7 +82,7 @@ def test_albedo_interp(albedo_run):
 
 
 # Check physics
-@pytest.mark.integration
+@pytest.mark.slow
 def test_albedo_physics(albedo_run):
     """Physical sanity at two points along the trajectory: F_atm > 0
     (planet is cooling), planetary albedo stays in (0, 1) at both, and

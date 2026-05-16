@@ -10,7 +10,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # ----------------------------------------------------
 # Parameters
     [params.out]
-        path        = "auto"
+        path        = "dummy"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 100      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -103,6 +103,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     prevent_warming = true      # do not allow the planet to heat up
 [interior_struct]
+    module       = "dummy"   # all-dummy run: NL20 scaling laws
     core_frac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]

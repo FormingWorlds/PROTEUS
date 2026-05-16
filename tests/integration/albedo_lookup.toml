@@ -10,7 +10,7 @@
 config_version = "3.0"
 
     [params.out]
-        path        = "auto"
+        path        = "albedo_lookup"  # stable path so test fixtures can find the helpfile
         plot_mod    = 0
 
 [star]
