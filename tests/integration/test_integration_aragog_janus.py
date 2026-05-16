@@ -100,9 +100,14 @@ def test_aragog_janus_spectrum(aragog_janus_run):
     _ref = ref_dir / '0.sflux'
 
     assert filecmp.cmp(_out, _ref, shallow=False)
+    # Discrimination: both files must exist with non-zero size. A regression
+    # that wrote an empty `0.sflux` AND removed the reference would still
+    # pass the bit-identical comparison above on two empty files.
+    assert _out.stat().st_size > 0
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_aragog_janus_atmosphere(aragog_janus_run):
     """Atmosphere NetCDF snapshot at iter 402 matches the reference on
     five physically meaningful fields (T, P, z, upwelling LW, downwelling
@@ -118,6 +123,12 @@ def test_aragog_janus_atmosphere(aragog_janus_run):
 
     # Compare to config
     assert len(out['t']) == aragog_janus_run.config.atmos_clim.num_levels * 2 + 1
+    # Physics: every atmospheric level must have positive T and P.
+    # Discrimination: a regression that left NaN or zero in any level would
+    # still satisfy assert_allclose against a similarly-broken reference but
+    # would violate the positivity invariant here.
+    assert (out['t'] > 0).all()
+    assert (out['p'] > 0).all()
 
     # Load atmosphere reference
     ref = read_atmosphere(_ref, extra_keys=fields)
@@ -131,6 +142,7 @@ def test_aragog_janus_atmosphere(aragog_janus_run):
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_aragog_janus_interior(aragog_janus_run):
     """Interior NetCDF snapshot at iter 402 matches the reference on five
     fields (radius, pressure, temperature, melt fraction, radiogenic
@@ -146,6 +158,12 @@ def test_aragog_janus_interior(aragog_janus_run):
 
     # Compare to config
     assert len(out['radius_b']) == aragog_janus_run.config.interior_energetics.aragog.num_levels
+    # Physics: melt fraction must be bounded in [0, 1] at every depth and
+    # temperature must be positive everywhere. A regression that wrote a
+    # phi > 1 or T < 0 would still pass assert_allclose against a similarly
+    # corrupted reference but violates the boundedness invariant here.
+    assert (out['phi_b'] >= 0).all() and (out['phi_b'] <= 1).all()
+    assert (out['temp_b'] > 0).all()
 
     # Load interior reference
     ref = read_interior(_ref)

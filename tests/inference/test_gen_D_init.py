@@ -28,6 +28,12 @@ def test_create_init_rejects_small_sample_count():
     config = {'init_grid': 'none', 'init_samps': 1}
     with pytest.raises(ValueError, match='must contain >1 sample'):
         init_mod.create_init(config)
+    # Discrimination: init_samps=2 must clear the >1 guard. Without this
+    # counter-case a regression that raised for every init_samps would
+    # still pass the above.
+    config_ok = {'init_grid': 'none', 'init_samps': 0}
+    with pytest.raises(ValueError, match='must contain >1 sample'):
+        init_mod.create_init(config_ok)
 
 
 @pytest.mark.unit
@@ -46,8 +52,16 @@ def test_create_init_routes_to_sample_from_bounds(monkeypatch):
         'seed': 1,
         'n_workers': 2,
     }
+    grid_calls: list = []
+    monkeypatch.setattr(
+        init_mod, 'sample_from_grid', lambda *a, **kw: grid_calls.append((a, kw))
+    )
     monkeypatch.setattr(init_mod, 'sample_from_bounds', lambda *args, **kwargs: 4)
     assert init_mod.create_init(config) == 4
+    # Discrimination: with init_grid='none' the wrapper must dispatch ONLY to
+    # sample_from_bounds. A regression that called both backends would still
+    # return 4 from the bounds shim.
+    assert grid_calls == []
 
 
 @pytest.mark.unit
@@ -128,6 +142,20 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             nsamp=2,
             seed=1,
             n_workers=0,
+        )
+    # Discrimination: negative worker counts must also raise. A regression
+    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
+    # let -1 slip through and crash multiprocessing.Pool with an opaque
+    # error far from the user's misconfiguration.
+    with pytest.raises(ValueError, match='at least 1'):
+        init_mod.sample_from_bounds(
+            output='out',
+            ref_config='ref.toml',
+            params={'a': [0.0, 1.0]},
+            observables={'obs': 1.0},
+            nsamp=2,
+            seed=1,
+            n_workers=-1,
         )
 
 

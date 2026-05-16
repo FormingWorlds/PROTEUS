@@ -239,6 +239,12 @@ def test_zalmoxis_config_no_ice_layer():
 
     result = load_zalmoxis_configuration(config, hf_row)
     assert 'ice_layer' not in result['layer_eos_config']
+    # Discrimination: the core + mantle layers must still be present. A
+    # regression that dropped ALL layers when ice_layer_eos was None would
+    # still satisfy the absence check above but break the downstream EOS
+    # dispatch.
+    assert 'core' in result['layer_eos_config']
+    assert 'mantle' in result['layer_eos_config']
 
 
 # ============================================================================
@@ -341,9 +347,12 @@ def test_validate_zalmoxis_output_schema_radius_mismatch(tmp_path):
     with pytest.raises(RuntimeError, match='top-of-mantle'):
         validate_zalmoxis_output_schema(output_path, hf_row_over)
 
-    # Edge: 5e-7 drift (sub-tolerance) must NOT raise.
+    # Edge: 5e-7 drift (sub-tolerance) must NOT raise. Pin the silent-pass
+    # return contract so a regression that started returning a non-None
+    # status object would fail here.
     hf_row_under = {'R_int': R_int * (1 + 5e-7), 'M_int': M_int, 'M_core': M_core}
-    validate_zalmoxis_output_schema(output_path, hf_row_under)
+    result = validate_zalmoxis_output_schema(output_path, hf_row_under)
+    assert result is None
 
 
 @pytest.mark.unit

@@ -34,6 +34,10 @@ def test_dummy_run(dummy_run):
     binary-reproducibility check for the run loop end-to-end.
     """
     assert filecmp.cmp(out_dir / 'status', ref_dir / 'status', shallow=False)
+    # Discrimination: the bit-comparison above would pass on two empty
+    # files. Pin a non-zero size so a regression that emitted an empty
+    # status file (or skipped the write entirely) is caught.
+    assert (out_dir / 'status').stat().st_size > 0
 
 
 # check result
@@ -68,6 +72,10 @@ def test_dummy_stellar(dummy_run):
     the committed reference, pinning the dummy-star fall-back path.
     """
     assert filecmp.cmp(out_dir / 'data' / '0.sflux', ref_dir / '0.sflux', shallow=False)
+    # Discrimination: bit-comparison passes on two empty files. Pin a
+    # non-zero size on the generated spectrum to catch a regression that
+    # silently wrote an empty `0.sflux`.
+    assert (out_dir / 'data' / '0.sflux').stat().st_size > 0
 
 
 # Check physics

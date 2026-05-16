@@ -98,16 +98,26 @@ def test_bo_step_raises_for_unknown_acquisition(monkeypatch):
         1: torch.tensor([[0.20]], dtype=torch.double),
     }
 
+    f_calls: list = []
+
+    def _f(_x):
+        f_calls.append(_x)
+        return torch.tensor([[0.0]], dtype=torch.double)
+
     with pytest.raises(ValueError, match='Unknown acquisition function'):
         bo_mod.BO_step(
             D=D,
             B=B,
-            f=lambda _x: torch.tensor([[0.0]], dtype=torch.double),
+            f=_f,
             k=object(),
             acqf='BAD-ACQF',
             lock=_DummyLock(),
             worker_id=0,
         )
+    # Discrimination: the guard must fire BEFORE the expensive objective
+    # call. A regression that evaluated `f` first and then raised would
+    # waste a costly simulator call per misconfigured worker.
+    assert f_calls == []
 
 
 @pytest.mark.unit
@@ -202,3 +212,7 @@ def test_plot_iter_writes_figure(tmp_path):
     )
 
     assert (tmp_path / 'iter.png').is_file()
+    # Discrimination: a regression that wrote an empty file (matplotlib
+    # closed before save) would still satisfy `is_file()`. Pin a non-zero
+    # file size to catch that mode.
+    assert (tmp_path / 'iter.png').stat().st_size > 0

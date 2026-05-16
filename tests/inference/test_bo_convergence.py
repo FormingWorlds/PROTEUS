@@ -225,6 +225,17 @@ def test_bo_converges_with_each_acquisition_function(acqf):
         f'Acquisition {acqf!r} did not improve the best Y by 30%. '
         f'Y_init_best={Y_init_best:.4f}, Y_final_best={Y_final_best:.4f}.'
     )
+    # Discrimination: the best-x must approach the target geometrically, not
+    # just lower its Y by exploiting some pathological GP fit. A regression
+    # that returned constant `(0.5, 0.5)` for every acqf would still satisfy
+    # the gap check on this centered target; the proximity bound is what
+    # catches that mode.
+    initial_min_dist = _initial_max_distance(X[:4], target)
+    final_min_dist = torch.min(torch.norm(X - target, dim=1)).item()
+    assert final_min_dist < initial_min_dist, (
+        f'Acquisition {acqf!r} did not move best-x closer to target. '
+        f'Initial min={initial_min_dist:.4f}, final={final_min_dist:.4f}.'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +281,14 @@ def test_bo_different_seeds_produce_different_trajectories():
         'BO loop produced identical initial X under different seeds; the '
         'random-seed plumbing is broken or seeds are silently overridden.'
     )
+    # Discrimination: the BO-selected candidates (rows beyond the initial
+    # sample) must also diverge. A regression that re-seeded inside the
+    # acquisition optimiser would let the initial-X check pass while still
+    # collapsing the BO trajectory to a seed-independent path.
+    assert not torch.allclose(X1[3:], X2[3:], rtol=1e-3), (
+        'BO post-init trajectory is seed-independent; the acquisition '
+        'optimiser is overriding the test seed.'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +304,14 @@ def test_bo_step_rejects_unknown_acquisition():
     objective = make_quadratic_objective(target)
     with pytest.raises(ValueError, match=r'Unknown acquisition function'):
         _run_bo_loop(objective, d=2, n_init=3, n_iter=1, acqf='not-a-real-acqf', seed=4)
+    # Discrimination: a known-good acqf in the same harness must complete
+    # without raising AND grow the dataset by exactly one iteration.
+    # Without this paired call, a regression that raised
+    # `ValueError('Unknown acquisition function')` for EVERY acqf would
+    # still pass the test above; without the shape pin, a regression that
+    # returned an empty X tensor would also pass.
+    X_ok, _ = _run_bo_loop(objective, d=2, n_init=3, n_iter=1, acqf='LogEI', seed=4)
+    assert X_ok.shape == (4, 2)
 
 
 def test_bo_handles_constant_objective_without_crashing():

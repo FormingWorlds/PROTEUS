@@ -182,6 +182,10 @@ def test_helpfile_schema_keys_unique():
     keys = GetHelpfileKeys()
     duplicates = {k for k in keys if keys.count(k) > 1}
     assert duplicates == set(), f'duplicate helpfile keys: {duplicates}'
+    # Discrimination: schema must be non-empty. A regression that returned
+    # an empty list would also have an empty duplicate set and pass above
+    # vacuously.
+    assert len(keys) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +360,11 @@ def test_path_c_preserves_authoritative_O_kg_total():
         calc_surface_pressures(dirs, config, hf_row)
 
     assert hf_row['O_kg_total'] == pytest.approx(1.0e22, rel=1e-12)
+    # Discrimination: the solver's 5% drift must not leak into the
+    # helpfile. Pin the gap between the solver-output and stored values.
+    # Without the restore, hf_row would carry 1.05e22 and the gap would
+    # be 5e20 (well above any conservation tolerance).
+    assert abs(hf_row['O_kg_total'] - 1.05e22) > 1e20
 
 
 @pytest.mark.unit
@@ -377,6 +386,10 @@ def test_legacy_path_lets_solver_set_O_kg_total():
         calc_surface_pressures(dirs, config, hf_row)
 
     assert hf_row['O_kg_total'] == pytest.approx(3.3e22, rel=1e-12)
+    # Discrimination: the solver's value must overwrite the empty input. A
+    # regression that preserved the user input (correct under Path C but
+    # wrong under legacy) would leave hf_row['O_kg_total'] at 0.0.
+    assert hf_row['O_kg_total'] > 0.0
 
 
 # ---------------------------------------------------------------------------

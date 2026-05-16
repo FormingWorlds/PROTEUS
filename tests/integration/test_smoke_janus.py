@@ -193,3 +193,7 @@ config_version = "3.0"
     # Check if status file indicates completion or at least loop > 0
     # Since we set max iters = 1, it should finish.
     assert (tmp_path / 'output' / 'status').exists()
+    # Discrimination: existence alone passes on a touched empty status
+    # file. Pin a non-zero size to catch a regression that created the
+    # file marker without actually writing run status.
+    assert (tmp_path / 'output' / 'status').stat().st_size > 0

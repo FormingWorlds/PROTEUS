@@ -73,6 +73,12 @@ def test_albedo_interp(albedo_run):
 
     # compare
     assert_series_equal(data_alb, inte_alb, atol=1e-7, check_names=False)
+    # Discrimination: bracket midpoints must also fall in the table's
+    # albedo range. A regression that returned a constant (e.g. always
+    # the table mean) would still pass the at-node comparison above on a
+    # uniformly-flat table; the off-node monotonicity check catches that.
+    assert data_alb.min() <= inte_alb.min()
+    assert inte_alb.max() <= data_alb.max()
 
 
 # Check physics

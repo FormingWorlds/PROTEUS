@@ -664,3 +664,10 @@ def test_deterministic_warning_when_sentinel_missing(tmp_path, monkeypatch):
     # captures both stdout and stderr in `output`.
     if 'started' in captured:
         assert 'NOT pinned' in res.output
+        # Discrimination: with the sentinel deliberately unset, the click
+        # handler must NOT have re-execed; pin its absence in env so the
+        # warning above can only have come from the safety net, not from
+        # an unrelated emit.
+        import os as _os
+
+        assert cli._PROTEUS_DETERMINISTIC_SENTINEL not in _os.environ

@@ -78,6 +78,14 @@ def test_aragog_parser_symbols_used_by_wrapper_exist():
         'Coordinate the rename/removal with '
         'src/proteus/interior_energetics/aragog.py.'
     )
+    # Discrimination: each required symbol must be class-like (callable),
+    # not just present as a None placeholder. A regression that stubbed
+    # the names without bodies would still pass the hasattr check above
+    # but fail this stricter constructor-availability gate.
+    non_callable = [name for name in required if not callable(getattr(aragog_parser, name))]
+    assert not non_callable, (
+        f'aragog.parser symbols are present but not callable: {non_callable}'
+    )
 
 
 def test_aragog_solver_public_classes_exist():
@@ -93,3 +101,11 @@ def test_aragog_solver_public_classes_exist():
     required = ('EntropySolver', 'SolverOutput')
     missing = [name for name in required if not hasattr(aragog_solver, name)]
     assert not missing, f'aragog.solver is missing wrapper-required classes: {missing}'
+    # Discrimination: required names must be class-like (callable). A
+    # regression that aliased the names to bare instances or None would
+    # still pass hasattr above but break the wrapper's `EntropySolver(...)`
+    # construction call.
+    non_callable = [name for name in required if not callable(getattr(aragog_solver, name))]
+    assert not non_callable, (
+        f'aragog.solver symbols are present but not callable: {non_callable}'
+    )

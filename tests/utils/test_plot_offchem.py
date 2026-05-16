@@ -100,6 +100,10 @@ def test_offchem_read_year_prefers_per_snapshot_over_offline(tmp_path):
     out = offchem_read_year(str(tmp_path) + '/', 2000)
     # Must be the online payload's temperatures, not the offline 99 K.
     np.testing.assert_allclose(out['temperature'], [1850.0, 950.0, 300.0])
+    # Discrimination: pin that the offline payload was NOT silently mixed
+    # in. The offline file's distinctive 99 K marker must not appear in
+    # the returned snapshot.
+    assert 99.0 not in out['temperature']
 
 
 def test_offchem_read_year_raises_when_no_file(tmp_path):
@@ -108,6 +112,10 @@ def test_offchem_read_year_raises_when_no_file(tmp_path):
     os.makedirs(str(tmp_path / 'offchem'))
     with pytest.raises(FileNotFoundError, match='No VULCAN snapshot found'):
         offchem_read_year(str(tmp_path) + '/', 100)
+    # Discrimination: confirm the offchem directory genuinely is empty, so
+    # the FileNotFoundError above can only have come from the missing-
+    # snapshot guard, not from a different I/O on another path.
+    assert not list((tmp_path / 'offchem').iterdir())
 
 
 def test_offchem_read_year_read_const_unsupported(tmp_path):
@@ -118,6 +126,12 @@ def test_offchem_read_year_read_const_unsupported(tmp_path):
     _write_pickle(str(tmp_path / 'offchem' / 'vulcan_500.pkl'), payload)
     with pytest.raises(NotImplementedError, match='read_const'):
         offchem_read_year(str(tmp_path) + '/', 500, read_const=True)
+    # Discrimination: the same call with read_const=False on the same
+    # payload must succeed. Without this counter-case, a regression that
+    # raised NotImplementedError unconditionally would still pass the
+    # check above.
+    out = offchem_read_year(str(tmp_path) + '/', 500, read_const=False)
+    assert out['year'] == 500
 
 
 def test_offchem_read_year_clip_applied_to_extremes(tmp_path):

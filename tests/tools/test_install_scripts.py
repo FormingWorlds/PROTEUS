@@ -507,6 +507,12 @@ def test_installation_md_does_not_clone_aragog_or_zalmoxis():
     assert not matches, (
         f'installation.md re-introduced editable-install of Aragog/Zalmoxis: {matches!r}'
     )
+    # Discrimination: installation.md must still cover the PyPI install
+    # path. An empty file would also have zero matches above but would
+    # silently delete the install instructions; pin the canonical PyPI
+    # package name as evidence the file still documents the supported
+    # path.
+    assert 'fwl-aragog' in text or 'pip install -e ".[develop]"' in text
 
 
 @pytest.mark.unit

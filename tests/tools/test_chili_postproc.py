@@ -151,3 +151,8 @@ def test_postproc_once_raises_when_helpfile_missing(tmp_path):
 
     with pytest.raises(FileNotFoundError, match='runtime_helpfile.csv'):
         chili_postproc.postproc_once(str(simdir), plot=False)
+    # Discrimination: confirm the helpfile genuinely is absent at the time
+    # of the raise so the FileNotFoundError above can only have come from
+    # the missing-helpfile guard, not from some other I/O on a different
+    # path.
+    assert not (simdir / 'runtime_helpfile.csv').exists()

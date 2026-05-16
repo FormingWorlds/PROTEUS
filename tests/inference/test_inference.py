@@ -126,8 +126,17 @@ def test_run_inference_rejects_too_many_workers(monkeypatch, tmp_path):
     monkeypatch.setattr(inference_mod, 'str_time', lambda: '2026-04-30 00:00:00 UTC')
     monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 4)
 
+    create_init_calls: list = []
+    monkeypatch.setattr(
+        inference_mod, 'create_init', lambda *a, **kw: create_init_calls.append((a, kw))
+    )
     with pytest.raises(RuntimeError, match='Not enough CPU cores'):
         inference_mod.run_inference(config)
+    # Discrimination: the CPU-count guard must fire before any expensive
+    # initial-design dispatch. A regression that allowed init sampling to
+    # start and only raised at parallel_process would have a non-empty
+    # call list here.
+    assert create_init_calls == []
 
 
 @pytest.mark.unit
@@ -160,8 +169,16 @@ def test_run_inference_raises_for_missing_reference_config(monkeypatch, tmp_path
     monkeypatch.setattr(inference_mod.os, 'cpu_count', lambda: 8)
     monkeypatch.setattr(inference_mod.os.path, 'isfile', lambda _path: False)
 
+    create_init_calls: list = []
+    monkeypatch.setattr(
+        inference_mod, 'create_init', lambda *a, **kw: create_init_calls.append((a, kw))
+    )
     with pytest.raises(FileNotFoundError, match='Cannot find reference config'):
         inference_mod.run_inference(config)
+    # Discrimination: the missing-config guard must fire before initial
+    # design generation. A regression that built the init dataset and
+    # only failed later would have a non-empty call list here.
+    assert create_init_calls == []
 
 
 @pytest.mark.unit
@@ -184,6 +201,10 @@ def test_infer_from_config_loads_toml_and_dispatches(monkeypatch, tmp_path):
     inference_mod.infer_from_config(str(config_path))
 
     assert observed['config'] == expected
+    # Discrimination: a regression that mutated the dispatched config in
+    # place would leave a still-equal-to-expected dict but with extra keys
+    # injected. Pin the exact key set.
+    assert set(observed['config'].keys()) == set(expected.keys())
 
 
 # ============================================================================

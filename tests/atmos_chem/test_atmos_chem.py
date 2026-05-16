@@ -278,6 +278,11 @@ def test_run_chemistry_invalid_module():
     # Should raise ValueError for unrecognized module
     with pytest.raises(ValueError, match='Invalid atmos_chem module'):
         run_chemistry(dirs, config, hf_row)
+    # Discrimination: the offending module value must appear in the raised
+    # message. A regression that raised a generic ValueError without echoing
+    # the bad input would silently regress the error contract.
+    with pytest.raises(ValueError, match='invalid_module'):
+        run_chemistry(dirs, config, hf_row)
 
 
 @pytest.mark.unit
@@ -599,4 +604,9 @@ def test_run_chemistry_invalid_when():
     hf_row = {'Time': 0.0}
 
     with pytest.raises(ValueError, match='Invalid atmos_chem.when value'):
+        run_chemistry(dirs, config, hf_row)
+    # Discrimination: the rejected scheduling value must appear in the
+    # raised message so users can locate the misconfiguration. A regression
+    # to a generic ValueError without echoing the bad input would fail this.
+    with pytest.raises(ValueError, match='invalid_value'):
         run_chemistry(dirs, config, hf_row)

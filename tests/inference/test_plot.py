@@ -28,6 +28,12 @@ def test_plots_perf_timeline_BO(tmp_path):
     """
     plot_mod.plots_perf_timeline(logs=[], directory=str(tmp_path), n_init=0)
     assert not list((tmp_path / 'plots').glob('*.png'))
+    # Discrimination: a regression that wrote zero-byte PNG placeholders
+    # would still glob-match nothing if the suffix changed, but it would
+    # leave files in the plots subdir. Pin the subdir itself as untouched
+    # (either absent or empty) to catch a "silently writes garbage" mode.
+    plots_dir = tmp_path / 'plots'
+    assert (not plots_dir.exists()) or not any(plots_dir.iterdir())
 
 
 @pytest.mark.unit

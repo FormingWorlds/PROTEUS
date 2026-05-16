@@ -247,6 +247,11 @@ def test_plot_population_handles_path_with_spaces(tmp_path):
     plot_population_mass_radius(hf_all, str(out_dir), str(spaced), 'png')
     plot_population_time_density(hf_all, str(out_dir), str(spaced), 'png')
     assert not list((out_dir / 'plots').glob('plot_population*'))
+    # Discrimination: confirm the spaced path actually exists on disk so
+    # the no-plots outcome above can only have come from the defensive
+    # warn-and-skip path, not from a path-construction failure short of
+    # the loader.
+    assert spaced.exists()
 
 
 def test_plot_population_does_not_eagerly_import_dace_at_module_load():

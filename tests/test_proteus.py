@@ -188,6 +188,10 @@ def test_proteus_resume_no_mesh_file(tmp_path):
     _resume_with_patches(p, _make_hf_df())
 
     assert 'spider_mesh' not in p.directories
+    # Discrimination: the prev-mesh slot must also remain unset. A regression
+    # that touched only the primary slot but recorded a stale spider_mesh_prev
+    # would still pass the above absence check.
+    assert 'spider_mesh_prev' not in p.directories
 
 
 @pytest.mark.unit
