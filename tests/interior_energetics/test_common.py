@@ -18,20 +18,27 @@ Functions tested:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from proteus.interior_energetics.common import Interior_t
 
-# Tests run in the nightly slow tier. The P-S table loaders are
-# tmp_path-bound with FWL_DATA monkeypatched out, so the module
-# completes in well under a second locally. On hosted CI runners the
-# same paths hang past the per-test ceiling, likely because a mock
-# leaks into a real scipy or real-disk call whose path resolves
-# differently on the runner. Until the leak is identified, the module
-# runs nightly only.
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
+# Tests run in the fast PR check. Each test patches BOTH the
+# ``FWL_DATA`` environment variable AND the module-level
+# ``proteus.utils.data.FWL_DATA_DIR`` constant so neither the
+# inline ``os.environ.get('FWL_DATA', '')`` read in
+# ``Interior_t._load_ps_table`` nor any downstream consumer of the
+# import-time-frozen ``FWL_DATA_DIR`` constant can fall through to
+# real on-disk lookup tables. The earlier hang on hosted CI runners
+# was the classic module-level-constant trap: ``monkeypatch.setenv``
+# alone does NOT reach a constant initialised at import time, and
+# on a hosted image with a real ``FWL_DATA`` tree the frozen
+# constant pointed at multi-gigabyte EOS data that genfromtxt would
+# walk past the per-test 30 s ceiling. The 30 s timeout is a
+# defensive ceiling against any future regression of the same shape.
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _make_ps_table_file(filepath, nP=3, nS=4, val_scale=3000.0):
@@ -68,7 +75,13 @@ def test_load_ps_table_local_path(tmp_path):
 
     interior_o = Interior_t(50)
     with pytest.MonkeyPatch.context() as mp:
+        # Patch BOTH the env var (so the inline ``os.environ.get`` in
+        # _load_ps_table cannot resolve to a real FWL_DATA path) AND
+        # the module-level FWL_DATA_DIR constant in proteus.utils.data
+        # (frozen at import time; not reached by setenv on hosted CI
+        # images where FWL_DATA was already populated at process start).
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
+        mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
         table = interior_o._load_ps_table(
             spider_dir, 'WolfBower2018_MgSiO3', 'density_melt.dat'
         )
@@ -108,6 +121,9 @@ def test_load_ps_table_fwl_data_path(tmp_path):
     interior_o = Interior_t(50)
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', fwl_data)
+        # Mirror the env-var into the module-level constant so any
+        # downstream consumer sees the same tmp_path-bound location.
+        mp.setattr('proteus.utils.data.FWL_DATA_DIR', Path(fwl_data), raising=False)
         table = interior_o._load_ps_table(
             spider_dir, 'WolfBower2018_MgSiO3', 'heat_capacity_melt.dat'
         )
@@ -122,6 +138,7 @@ def test_load_ps_table_both_missing(tmp_path):
     interior_o = Interior_t(50)
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
+        mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
         result = interior_o._load_ps_table(
             str(tmp_path / 'also_nonexistent'),
             'SomeEOS',
@@ -158,6 +175,7 @@ def test_load_ps_table_scaling(tmp_path):
     interior_o = Interior_t(50)
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
+        mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
         table = interior_o._load_ps_table(
             spider_dir, 'WolfBower2018_MgSiO3', 'density_melt.dat'
         )
@@ -200,6 +218,7 @@ def test_interior_t_init_loads_all_three_tables(tmp_path):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
+        mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
         interior_o = Interior_t(50, spider_dir=spider_dir, eos_dir='WolfBower2018_MgSiO3')
 
     assert interior_o.lookup_rho_melt is not None
@@ -233,6 +252,7 @@ def test_interior_t_init_partial_table_set(tmp_path):
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
+        mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
         interior_o = Interior_t(50, spider_dir=spider_dir, eos_dir='WolfBower2018_MgSiO3')
 
     assert interior_o.lookup_rho_melt is not None
@@ -248,6 +268,7 @@ def test_load_ps_table_invalid_filename(tmp_path):
     interior_o = Interior_t(50)
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv('FWL_DATA', str(tmp_path / 'nonexistent'))
+        mp.setattr('proteus.utils.data.FWL_DATA_DIR', tmp_path / 'nonexistent', raising=False)
         result = interior_o._load_ps_table(
             spider_dir, 'WolfBower2018_MgSiO3', 'this_file_does_not_exist.dat'
         )

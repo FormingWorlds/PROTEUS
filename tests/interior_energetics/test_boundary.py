@@ -31,6 +31,7 @@ magma ocean states to solid interiors.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -42,15 +43,23 @@ from proteus.utils.constants import (
     secs_per_year,
 )
 
-# Tests run in the nightly slow tier. The BoundaryRunner is built
-# from mocked config / interior / atmos / hf_row fixtures and the
-# solver tests patch out scipy.integrate.solve_ivp, so the module
-# completes in under a second locally. On hosted CI runners the same
-# paths hang past the per-test ceiling, likely because the solve_ivp
-# patch site or one of the mocks leaks to a real call whose behaviour
-# differs on the runner. Until the leak is identified, the module
-# runs nightly only.
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
+# Tests run in the fast PR check. The config, interior and atmos
+# fixtures are built from plain SimpleNamespace objects with every
+# attribute the BoundaryRunner reads pinned to a concrete value, so
+# no attribute lookup can auto-create a Mock that bypasses a guard
+# or trips a downstream conversion. The solver tests patch solve_ivp
+# at the local binding ``proteus.interior_energetics.boundary.solve_ivp``
+# (the module does ``from scipy.integrate import solve_ivp`` and then
+# calls it by bare name, so the in-module binding is the one that
+# must be replaced). The earlier hang on hosted CI runners was a Mock
+# auto-attribute leak: ``Mock()`` returns a truthy Mock for any unset
+# attribute, so a getattr-with-default guard on the source side could
+# silently descend into a real-physics path on a runner whose scipy
+# and numpy versions differ from the local environment. SimpleNamespace
+# raises AttributeError on any missing attribute, surfacing the leak
+# loudly instead. The 30 s per-test timeout is a defensive ceiling
+# against any future regression of the same shape.
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # =============================================================================
 # Fixtures for BoundaryRunner Configuration & Setup
@@ -60,98 +69,113 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 @pytest.fixture
 def mock_config():
     """
-    Create a mock Config object with sensible defaults for boundary layer testing.
+    Create a Config-shaped SimpleNamespace with sensible defaults for boundary layer testing.
 
-    Returns a Config mock with interior.boundary parameters matching typical
-    rocky planet evolution scenarios (T_p = 3000 K, solid mantle viscosity ~1e21 Pa·s).
+    Returns a nested SimpleNamespace tree with interior.boundary parameters
+    matching typical rocky planet evolution scenarios (T_p = 3000 K, solid
+    mantle viscosity ~1e21 Pa s). SimpleNamespace, in contrast to Mock(),
+    raises AttributeError on any unset attribute, so a downstream lookup
+    the fixture forgot to pin surfaces loudly instead of returning a
+    truthy Mock that could bypass a guard.
 
     **Physical Basis**: Terrestrial magma ocean cooling parameters (Turcotte & Schubert 2014)
     """
-    config = Mock()
-
-    # Interior boundary parameters
-    config.interior_energetics.boundary.rtol = 1e-6
-    config.interior_energetics.boundary.atol = 1e-9
-    config.interior_energetics.boundary.T_p_0 = 3500.0  # K
-    config.interior_energetics.boundary.T_solidus = 1420.0  # K
-    config.interior_energetics.boundary.T_liquidus = 2020.0  # K
-    config.interior_energetics.boundary.critical_melt_fraction = 0.4  # dimensionless
-    config.interior_energetics.boundary.Tsurf_event_change = 500.0  # K
-    config.interior_energetics.boundary.critical_rayleigh_number = 1e3  # dimensionless
-    config.interior_energetics.boundary.heat_fusion_silicate = 4.0e5  # J/kg
-    config.interior_energetics.boundary.nusselt_exponent = 1.0 / 3.0  # Rayleigh-Bénard scaling
-    config.interior_energetics.boundary.silicate_heat_capacity = 1.2e3  # J/kg/K
-    config.interior_energetics.boundary.atm_heat_capacity = 1.7e4  # J/kg/K
-    config.interior_energetics.boundary.silicate_density = 4500.0  # kg/m³
-    config.interior_energetics.boundary.thermal_conductivity = 4.2  # W/m/K
-    config.interior_energetics.boundary.thermal_diffusivity = 1e-6  # m²/s
-    config.interior_energetics.boundary.thermal_expansivity = 2e-5  # 1/K
-    config.interior_energetics.boundary.viscosity_model = 1  # Constant viscosity (default)
-    config.interior_energetics.boundary.eta_constant = 1e2  # Pa·s (liquid mantle)
-    config.interior_energetics.boundary.transition_width = 0.2  # dimensionless
-    config.interior_energetics.boundary.eta_solid_const = 1e22  # Pa·s
-    config.interior_energetics.boundary.eta_melt_const = 1e2  # Pa·s
-    config.interior_energetics.boundary.dynamic_viscosity = 3.8e9  # Pa·s
-    config.interior_energetics.boundary.activation_energy = 3.5e5  # J/mol (silicate mantle)
-    config.interior_energetics.boundary.creep_parameter = 26  # dimensionless
-    config.interior_energetics.boundary.viscosity_prefactor = 2.4e-4  # Pa·s
-    config.interior_energetics.boundary.viscosity_activation_temp = 4600.0  # K
-    config.interior_energetics.boundary.logging = False
-
-    # Structural parameters
-    config.planet.mass_tot = 1.0  # Earth masses
-    config.interior_struct.core_frac = 0.55  # Core radius fraction
-    config.interior_struct.module = 'self'
-
-    # Stellar parameters
-    config.star.age_ini = 0.1  # Gyr
-
-    # Delivery/radiogenic parameters
-    config.interior_energetics.radio_tref = 4.567  # Gyr (Solar System age)
-    config.interior_energetics.radio_U = 0.031  # ppm (BSE abundance)
-    config.interior_energetics.radio_Th = 0.124  # ppm (BSE abundance)
-    config.interior_energetics.radio_K = 310  # ppm (BSE abundance)
-
-    # Interior heat sources
-    config.interior_energetics.rfront_loc = 0.4  # dimensionless
-    config.interior_energetics.heat_radiogenic = False
-    config.interior_energetics.heat_tidal = False
-
-    return config
+    boundary = SimpleNamespace(
+        rtol=1e-6,
+        atol=1e-9,
+        T_p_0=3500.0,  # K
+        T_solidus=1420.0,  # K
+        T_liquidus=2020.0,  # K
+        critical_melt_fraction=0.4,  # dimensionless
+        Tsurf_event_change=500.0,  # K
+        critical_rayleigh_number=1e3,  # dimensionless
+        heat_fusion_silicate=4.0e5,  # J/kg
+        nusselt_exponent=1.0 / 3.0,  # Rayleigh-Benard scaling
+        silicate_heat_capacity=1.2e3,  # J/kg/K
+        atm_heat_capacity=1.7e4,  # J/kg/K
+        silicate_density=4500.0,  # kg/m^3
+        thermal_conductivity=4.2,  # W/m/K
+        thermal_diffusivity=1e-6,  # m^2/s
+        thermal_expansivity=2e-5,  # 1/K
+        viscosity_model=1,  # Constant viscosity (default)
+        eta_constant=1e2,  # Pa s (liquid mantle)
+        transition_width=0.2,  # dimensionless
+        eta_solid_const=1e22,  # Pa s
+        eta_melt_const=1e2,  # Pa s
+        dynamic_viscosity=3.8e9,  # Pa s
+        activation_energy=3.5e5,  # J/mol (silicate mantle)
+        creep_parameter=26,  # dimensionless
+        viscosity_prefactor=2.4e-4,  # Pa s
+        viscosity_activation_temp=4600.0,  # K
+        logging=False,
+    )
+    interior_energetics = SimpleNamespace(
+        boundary=boundary,
+        rfront_loc=0.4,  # dimensionless
+        heat_radiogenic=False,
+        heat_tidal=False,
+        radio_tref=4.567,  # Gyr (Solar System age)
+        radio_U=0.031,  # ppm (BSE abundance)
+        radio_Th=0.124,  # ppm (BSE abundance)
+        radio_K=310,  # ppm (BSE abundance)
+    )
+    interior_struct = SimpleNamespace(
+        core_frac=0.55,  # Core radius fraction
+        module='self',
+    )
+    planet = SimpleNamespace(mass_tot=1.0)  # Earth masses
+    star = SimpleNamespace(age_ini=0.1)  # Gyr
+    return SimpleNamespace(
+        interior_energetics=interior_energetics,
+        interior_struct=interior_struct,
+        planet=planet,
+        star=star,
+    )
 
 
 @pytest.fixture
 def mock_interior():
     """
-    Create a mock Interior_t object for coupling with BoundaryRunner.
+    Create an Interior_t-shaped SimpleNamespace for coupling with BoundaryRunner.
+
+    SimpleNamespace prevents auto-attribute leaks: any field the source
+    reads that the fixture has not explicitly set raises AttributeError
+    rather than silently returning a Mock that could trip a comparison
+    or a numpy conversion.
 
     **Physical Basis**: Interior evolution object state at a magma ocean cooling timestep.
     """
-    interior = Mock()
-    interior.ic = 0  # Initial condition type (0 = not first step)
-    interior.tides = [0.0]  # No tidal heating by default
-    interior.phi = None
-    interior.mass = None
-    interior.visc = None
-    interior.density = None
-    interior.temp = None
-    interior.pres = None
-    interior.radius = None
-    return interior
+    return SimpleNamespace(
+        ic=0,  # Initial condition type (0 = not first step)
+        tides=[0.0],  # No tidal heating by default
+        phi=None,
+        mass=None,
+        visc=None,
+        density=None,
+        temp=None,
+        pres=None,
+        radius=None,
+    )
 
 
 @pytest.fixture
 def mock_atmos():
     """
-    Create a mock Atmos_t object for atmospheric coupling.
+    Create an Atmos_t-shaped SimpleNamespace for atmospheric coupling.
 
-    **Physical Basis**: Thin H₂-rich atmosphere on early magma ocean with
+    The source code uses ``getattr(getattr(atmos_o, '_atm', None),
+    'layer_cp', None)`` to read the per-layer heat capacity. With a
+    SimpleNamespace, the two getattr calls return the explicit
+    attributes; a missing ``_atm`` correctly resolves to None.
+
+    **Physical Basis**: Thin H2-rich atmosphere on early magma ocean with
     heat capacity typical of light molecular atmospheres.
     """
-    atmos = Mock()
-    atmos._atm = Mock()
-    atmos._atm.layer_cp = np.array([1.7e4, 1.7e4, 1.7e4])  # J/kg/K for H2 layers
-    return atmos
+    return SimpleNamespace(
+        _atm=SimpleNamespace(
+            layer_cp=np.array([1.7e4, 1.7e4, 1.7e4]),  # J/kg/K for H2 layers
+        ),
+    )
 
 
 @pytest.fixture
@@ -987,9 +1011,7 @@ def test_compute_time_step_first_iteration(mock_config, mock_dirs):
 
     **Physical Scenario**: Initial condition (ic=1) → no evolution → dt=0.
     """
-    interior = Mock()
-    interior.ic = 1
-    interior.tides = [0.0]
+    interior = SimpleNamespace(ic=1, tides=[0.0])
 
     dt = BoundaryRunner.compute_time_step(mock_config, mock_dirs, {}, None, interior)
 
@@ -1005,8 +1027,7 @@ def test_compute_time_step_normal_iteration(mock_next_step, mock_config, mock_di
     """
     mock_next_step.return_value = 1e-5  # Myr as returned by next_step
 
-    interior = Mock()
-    interior.ic = 0
+    interior = SimpleNamespace(ic=0)
 
     dt = BoundaryRunner.compute_time_step(mock_config, mock_dirs, {}, None, interior)
 
