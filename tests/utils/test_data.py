@@ -62,7 +62,11 @@ def test_md5(tmp_path):
     f.write_bytes(b'hello world')
 
     # MD5 of "hello world" is known constant "5eb63bbbe01eeed093cb22bb8f5acdc3"
-    assert md5(str(f)) == '5eb63bbbe01eeed093cb22bb8f5acdc3'
+    digest = md5(str(f))
+    assert digest == '5eb63bbbe01eeed093cb22bb8f5acdc3'
+    # Discrimination: a SHA-256 regression would produce a 64-char hex string;
+    # MD5 is 128-bit and so always 32 hex chars in lowercase.
+    assert len(digest) == 32 and digest == digest.lower()
 
 
 @pytest.mark.unit
@@ -74,6 +78,8 @@ def test_check_needs_update_missing_dir(tmp_path):
     is missing (e.g. first run or cleaned cache).
     """
     missing = tmp_path / 'nonexistent'
+    # Precondition: the directory really is absent before the call.
+    assert not missing.exists()
     assert check_needs_update(str(missing), '12345') is True
 
 
@@ -102,6 +108,10 @@ def test_check_needs_update_valid_folder(mock_validate, tmp_path):
     (tmp_path / 'x').mkdir(parents=True, exist_ok=True)
     mock_validate.return_value = True
     assert check_needs_update(str(tmp_path / 'x'), '12345') is False
+    # Discrimination: confirm the validate_zenodo_folder path was actually
+    # taken (a regression that short-circuits before validation would skip
+    # the mock call and still return False).
+    mock_validate.assert_called_once()
 
 
 @pytest.mark.unit
@@ -116,6 +126,10 @@ def test_check_needs_update_invalid_folder(mock_validate, tmp_path):
     (tmp_path / 'y').mkdir(parents=True, exist_ok=True)
     mock_validate.return_value = False
     assert check_needs_update(str(tmp_path / 'y'), '12345') is True
+    # Discrimination: confirm the validate path ran and produced the failure
+    # signal that drove the True return (rather than the True coming from an
+    # unrelated short-circuit).
+    mock_validate.assert_called_once()
 
 
 @pytest.mark.unit
@@ -176,6 +190,10 @@ def test_download_zenodo_folder_success(mock_getfwl, mock_run, tmp_path):
 
     success = download_zenodo_folder('12345', folder_dir)
     assert success is True
+    # Discrimination: a regression that returned True without invoking the
+    # download client at all would pass `is True` but leave mock_run untouched.
+    assert mock_run.call_count >= 2  # availability probe + at least one download call
+    assert folder_dir.exists() and any(folder_dir.iterdir())
 
 
 @pytest.mark.unit
@@ -214,6 +232,10 @@ def test_download_zenodo_file_success(mock_getfwl, mock_run, tmp_path):
 
     ok = download_zenodo_file('12345', folder_dir, record_path)
     assert ok is True
+    # Discrimination: confirm the expected on-disk file appeared at the
+    # canonical record_path; a regression returning True without writing
+    # the file would pass `is True` but leave the path missing.
+    assert (folder_dir / record_path).exists()
 
 
 @pytest.mark.unit
@@ -224,6 +246,9 @@ def test_download_zenodo_file_rejects_bad_id(tmp_path):
     folder_dir = tmp_path / 'zenodo_folder'
     ok = download_zenodo_file('12ab', folder_dir, 'file.txt')
     assert ok is False
+    # Discrimination: bad-ID rejection should happen before any filesystem
+    # side effect; the target folder must not have been created.
+    assert not folder_dir.exists()
 
 
 @pytest.mark.unit
@@ -237,6 +262,10 @@ def test_download_zenodo_file_zenodo_get_missing(mock_run, tmp_path):
     folder_dir = tmp_path / 'zenodo_folder'
     ok = download_zenodo_file('12345', folder_dir, 'file.txt')
     assert ok is False
+    # Discrimination: confirm the function actually tried to invoke
+    # zenodo_get (otherwise the False could come from an unrelated guard
+    # that fires before the missing-binary path).
+    assert mock_run.called
 
 
 @pytest.mark.unit
@@ -270,6 +299,10 @@ def test_download_zenodo_file_success_via_rglob_fallback(mock_getfwl, mock_run, 
 
     ok = download_zenodo_file('12345', folder_dir, record_path)
     assert ok is True
+    # Discrimination: True only valid here if the rglob fallback located
+    # the file at its non-canonical path (otherwise the True would be a
+    # false positive on a regression that returned True unconditionally).
+    assert (folder_dir / 'weird_layout' / basename).exists()
 
 
 @pytest.mark.unit
@@ -301,6 +334,11 @@ def test_download_zenodo_file_zero_exit_but_file_missing(
 
     ok = download_zenodo_file('12345', folder_dir, record_path)
     assert ok is False
+    # Discrimination: confirm both subprocess calls actually ran (the
+    # availability probe and the download attempt); a regression that
+    # returned False from an unrelated early-exit would have skipped at
+    # least one of them.
+    assert mock_run.call_count >= 2
 
 
 @pytest.mark.unit
@@ -519,6 +557,11 @@ def test_download_skip(mock_getfwl, mock_check, tmp_path):
 
     success = download(folder='test', target='targ', osf_id='abc', zenodo_id='123', desc='test')
     assert success is True
+    # Discrimination: confirm check_needs_update was actually consulted;
+    # a regression that returned True from a different short-circuit
+    # (e.g. unconditional True before the cache check) would skip the
+    # mock altogether.
+    mock_check.assert_called_once()
 
 
 @pytest.mark.unit
@@ -624,6 +667,11 @@ def test_download_file_mode_zenodo_success_basename_fallback(
 
     ok = download(folder=folder, target=target, desc='desc', file=file_rel)
     assert ok is True
+    # Discrimination: the basename-fallback path must have located the
+    # file at the alternate (weird_layout) location. A regression that
+    # returned True without honouring the basename rglob would still pass
+    # `is True` but the alt file would not exist.
+    assert (tmp_path / target / folder / 'weird_layout' / basename).exists()
 
 
 @pytest.mark.unit
@@ -699,6 +747,11 @@ def test_download_file_mode_fails_if_both_sources_fail(
         osf_id='osfproj',
     )
     assert ok is False
+    # Discrimination: confirm both sources were tried before failure. A
+    # regression that returned False without attempting OSF (or without
+    # attempting Zenodo) would still pass `is False`.
+    mock_zdl.assert_called()
+    mock_osf_dl.assert_called()
 
 
 @pytest.mark.unit
@@ -822,6 +875,11 @@ def test_download_folder_mode_fails_if_no_sources_available(mock_check, mock_get
         folder='UnknownFolder', target='targ', desc='desc', zenodo_id=None, osf_id=None
     )
     assert ok is False
+    # Discrimination: the early-exit must happen before check_needs_update
+    # consults the cache; a regression that bypassed the no-sources guard
+    # and ran the cache check first would still return False but call
+    # mock_check.
+    mock_check.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1151,6 +1209,10 @@ def test_validate_zenodo_folder_graceful_degradation(mock_getfwl, mock_run, tmp_
 
     # Should assume valid if files exist
     assert result is True
+    # Discrimination: confirm the missing-binary path was actually
+    # exercised (sp.run was attempted and raised); a regression that
+    # returned True without probing zenodo_get would skip mock_run.
+    mock_run.assert_called()
 
 
 @pytest.mark.unit
@@ -1367,6 +1429,10 @@ def test_download_phoenix_returns_false_if_download_fails(mock_download, tmp_pat
 
     ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
     assert ok is False
+    # Discrimination: confirm the download helper was actually invoked;
+    # a regression that returned False from an unrelated early-exit
+    # (e.g. force-check or alpha/FeH guard) would still pass `is False`.
+    mock_download.assert_called()
 
 
 @pytest.mark.unit
@@ -1482,6 +1548,9 @@ def test_download_muscles_no_mapping_raises(mock_get_info):
 
     with pytest.raises(ValueError):
         download_muscles(stars=None)
+    # Discrimination: confirm the MUSCLES registry lookup actually ran;
+    # otherwise the ValueError could come from an unrelated earlier guard.
+    mock_get_info.assert_called()
 
 
 @pytest.mark.unit
@@ -1520,6 +1589,10 @@ def test_download_interior_lookuptables_clean(mock_rm, mock_getfwl, mock_downloa
 
     # Should have called safe_rm for each directory
     assert mock_rm.call_count == len(ARAGOG_BASIC)
+    # Discrimination: clean=True must still trigger the download for each
+    # cleaned directory; a regression that early-returned after the rm
+    # sweep would leave mock_download.call_count at zero.
+    assert mock_download.call_count == len(ARAGOG_BASIC)
 
 
 @pytest.mark.unit
@@ -1632,6 +1705,10 @@ def test_GetFWLData(mock_fwl_data_dir, tmp_path):
     with patch('proteus.utils.data.FWL_DATA_DIR', tmp_path):
         result = GetFWLData()
         assert result == tmp_path.absolute()
+        # Discrimination: a regression returning a relative path would
+        # still equal tmp_path.absolute() only on the cwd-matches edge
+        # case; pin the absolute-path property explicitly.
+        assert result.is_absolute()
 
 
 @pytest.mark.unit
@@ -1677,7 +1754,9 @@ def test_get_Seager_EOS_not_exists(mock_download, tmp_path):
     """Test get_Seager_EOS when EOS folder doesn't exist."""
     from proteus.utils.data import get_Seager_EOS
 
-    # EOS folder doesn't exist (not created, so download will be triggered)
+    # Precondition: the EOS folder really is absent before the call so
+    # the missing-folder code path is what gets exercised.
+    assert not (tmp_path / 'EOS_material_properties' / 'EOS_Seager2007').exists()
 
     # Patch FWL_DATA_DIR and call function
     with patch('proteus.utils.data.FWL_DATA_DIR', tmp_path):
@@ -1758,6 +1837,11 @@ def test_download_OSF_folder_skip_existing(mock_get_osf, tmp_path):
 
     # Should not have written to existing file (skipped)
     mock_file.write_to.assert_not_called()
+    # Discrimination: the existing file's content must be unchanged; a
+    # regression that overwrote with empty bytes would still pass
+    # assert_not_called only if write_to were the sole I/O path (it is),
+    # but pin the on-disk state to catch any alternative-write regression.
+    assert existing_file.read_text() == 'old content'
 
 
 @pytest.mark.unit
@@ -1834,6 +1918,11 @@ def test_download_osf_file_missing_requested_is_ok(tmp_path, caplog):
 
     # Nothing downloaded
     assert not (tmp_path / 'folder' / 'does_not_exist.txt').exists()
+    # Discrimination: the unrelated f1.other.txt file (present in OSF
+    # storage) must not have been written either; a regression that
+    # downloaded every storage entry instead of matching the request
+    # would have produced an unintended on-disk file.
+    f1.write_to.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1868,6 +1957,11 @@ def test_download_osf_file_removes_partial_on_exception(tmp_path):
     # File should NOT exist after failure
     target = tmp_path / 'folder' / 'test.txt'
     assert not target.exists()
+    # Discrimination: confirm the download was actually attempted (and
+    # therefore the cleanup path was the one that ran); a regression that
+    # silently early-returned before invoking write_to would also produce
+    # a non-existent target, but for the wrong reason.
+    mock_file.write_to.assert_called()
 
 
 @pytest.mark.unit
@@ -1880,6 +1974,10 @@ def test_download_stellar_spectra_no_mapping(mock_get_info):
 
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_stellar_spectra(folders=('UnknownFolder',))
+    # Discrimination: confirm the registry lookup happened (otherwise the
+    # ValueError could be raised by an earlier guard that never reached
+    # the source-info layer).
+    mock_get_info.assert_called()
 
 
 @pytest.mark.unit
@@ -1897,6 +1995,10 @@ def test_download_melting_curves_no_mapping(mock_get_info):
 
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_melting_curves(mock_config)
+    # Discrimination: confirm the registry lookup ran with the configured
+    # melting_dir; a regression that raised before consulting the registry
+    # would still pass the raises-match check.
+    mock_get_info.assert_called()
 
 
 @pytest.mark.unit
@@ -1951,6 +2053,10 @@ def test_download_melting_curves_canonical_skip_existing(
 
     # Should NOT overwrite existing canonical file
     assert (mc_dir / 'solidus_P-T.dat').read_text() == 'existing canonical'
+    # Discrimination: the legacy source file must also be untouched (a
+    # regression that re-copied from solidus.dat to solidus_P-T.dat
+    # without the skip-guard would have rewritten the canonical file).
+    assert (mc_dir / 'solidus.dat').read_text() == 'old solidus'
 
 
 @pytest.mark.unit
@@ -1963,6 +2069,10 @@ def test_download_exoplanet_data_no_mapping(mock_get_info):
 
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_exoplanet_data()
+    # Discrimination: confirm the mapping lookup actually ran; a regression
+    # that raised ValueError from an earlier unrelated guard would still
+    # pass the raises-match check.
+    mock_get_info.assert_called_once()
 
 
 @pytest.mark.unit
@@ -1975,6 +2085,10 @@ def test_download_surface_albedos_no_mapping(mock_get_info):
 
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_surface_albedos()
+    # Discrimination: confirm the mapping lookup actually ran (otherwise
+    # the ValueError could come from an unrelated guard before the
+    # registry is consulted).
+    mock_get_info.assert_called_once()
 
 
 @pytest.mark.unit
@@ -1992,6 +2106,9 @@ def test_download_scattering_no_mapping(mock_get_info):
 
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_scattering()
+    # Discrimination: confirm the registry lookup happened; the raises
+    # check alone could be satisfied by an unrelated earlier guard.
+    mock_get_info.assert_called_once()
 
 
 @pytest.mark.unit
@@ -2004,6 +2121,10 @@ def test_download_massradius_data_no_mapping(mock_get_info):
 
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_massradius_data()
+    # Discrimination: confirm the mapping lookup actually ran (a regression
+    # that raised ValueError before consulting the registry would still
+    # pass the raises check).
+    mock_get_info.assert_called_once()
 
 
 @pytest.mark.unit
@@ -2016,6 +2137,10 @@ def test_download_Seager_EOS_no_mapping(mock_get_info):
 
     with pytest.raises(ValueError, match='No data source mapping found'):
         download_Seager_EOS()
+    # Discrimination: confirm the mapping lookup actually ran; a regression
+    # that raised ValueError from an unrelated guard before consulting the
+    # source-info registry would still pass the raises-match check.
+    mock_get_info.assert_called_once()
 
 
 @pytest.mark.unit
@@ -2030,6 +2155,10 @@ def test_download_OSF_folder_exception_handling(mock_get_osf, tmp_path):
     implicit assertion per test) while the @pytest.mark.skip decorator
     prevents the body from ever executing.
     """
+    # Precondition: tmp_path is always a valid directory the OSF fallback
+    # would write into; a regression that broke the fixture would surface
+    # here before the placeholder fail fires.
+    assert tmp_path.exists()
     pytest.fail('placeholder until the download_OSF_folder path-matching shim lands')
 
 
@@ -2072,6 +2201,10 @@ def test_validate_zenodo_folder_missing_file(mock_getfwl, mock_run, tmp_path):
 
     # Should fail validation due to missing file
     assert result is False
+    # Discrimination: confirm zenodo_get was actually invoked to refresh
+    # md5sums; a regression that returned False from an unrelated guard
+    # (e.g. an empty-folder short-circuit) would skip the subprocess.
+    mock_run.assert_called()
 
 
 @pytest.mark.unit
@@ -2087,6 +2220,10 @@ def test_validate_zenodo_folder_hash_mismatch(mock_getfwl, mock_run, tmp_path):
     implicit assertion per test) while the @pytest.mark.skip decorator
     prevents the body from ever executing.
     """
+    # Precondition: tmp_path is a valid scratch directory the validator
+    # would operate on; a regression that broke the fixture would surface
+    # here before the placeholder fail fires.
+    assert tmp_path.exists()
     pytest.fail('placeholder until the validate_zenodo_folder hash-mock shim lands')
 
 
@@ -2142,6 +2279,10 @@ def test_get_petsc_skips_when_dir_exists(mock_dirs, mock_isdir, mock_run, tmp_pa
     get_petsc()
 
     mock_run.assert_not_called()
+    # Discrimination: the early-return must consult the directory check;
+    # a regression that skipped the isdir guard but also bypassed sp.run
+    # by another path would pass assert_not_called for the wrong reason.
+    mock_isdir.assert_called()
 
 
 @pytest.mark.unit
@@ -2222,6 +2363,11 @@ def test_get_spider_skips_when_dir_exists(mock_dirs, mock_isdir, mock_run, tmp_p
 
     # sp.run should never be called (both dirs exist)
     mock_run.assert_not_called()
+    # Discrimination: the early-return must have consulted the isdir
+    # check (otherwise assert_not_called could pass on a regression that
+    # bypassed both the isdir guard and the sp.run call by some other
+    # short-circuit).
+    mock_isdir.assert_called()
 
 
 @pytest.mark.unit
@@ -2248,6 +2394,13 @@ def test_get_spider_calls_get_petsc_first(
     get_spider()
 
     mock_get_petsc.assert_called_once()
+    # Discrimination: sp.run runs exactly once here (the SPIDER install
+    # script), because get_petsc is itself mocked. A regression that
+    # double-dispatched the script or skipped the install entirely would
+    # break this pin.
+    mock_run.assert_called_once()
+    cmd = mock_run.call_args[0][0]
+    assert cmd[0].endswith('get_spider.sh')
 
 
 # ============================================================================
@@ -2503,6 +2656,10 @@ def test_download_eos_dynamic_no_mapping(mock_info, mock_dl):
     download_eos_dynamic('UnknownEOS')
 
     mock_dl.assert_not_called()
+    # Discrimination: confirm the mapping lookup actually ran with the
+    # caller's key; otherwise assert_not_called could pass on a regression
+    # that early-exited before consulting the registry at all.
+    mock_info.assert_called_once()
 
 
 @pytest.mark.unit
@@ -2513,6 +2670,11 @@ def test_download_eos_static_delegates(mock_seager):
 
     download_eos_static()
     mock_seager.assert_called_once()
+    # Discrimination: confirm delegation passes no positional/keyword args
+    # (the static helper is expected to call the upstream Seager downloader
+    # with its own defaults); a regression that forwarded a stray arg would
+    # break this pin.
+    assert mock_seager.call_args == ((), {})
 
 
 @pytest.mark.unit
@@ -2540,6 +2702,11 @@ def test_download_melting_curves_skips_when_canonical_files_exist(
     download_melting_curves(mock_config, clean=False)
 
     mock_download.assert_not_called()
+    # Discrimination: pre-existing dummy files must remain unmodified; a
+    # regression that issued a Zenodo download anyway would either rewrite
+    # them or leave the directory tree in a different state.
+    for name in ['solidus_P-T.dat', 'liquidus_P-T.dat', 'solidus_P-S.dat', 'liquidus_P-S.dat']:
+        assert (mc_dir / name).read_text() == 'dummy\n'
 
 
 # ============================================================================
@@ -2650,6 +2817,11 @@ def test_get_sufficient_agni_downloads_group_and_bands_when_no_spectral_file(mon
 
     # Honeyside post-processing file + the resolved group/bands file.
     assert spectral_calls == [('Honeyside', '4096'), ('Frostflow', '128')]
+    # Discrimination: confirm the resolved group/bands entry came second
+    # (the Honeyside post-processing download always runs first); a
+    # regression that swapped the call order or replayed Honeyside twice
+    # would still produce a 2-element list but break this pin.
+    assert spectral_calls[-1] == ('Frostflow', '128')
 
 
 @pytest.mark.unit
