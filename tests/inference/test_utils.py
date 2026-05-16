@@ -87,3 +87,104 @@ def test_get_obj_reads_square_worker_grid(monkeypatch, tmp_path):
     # worker results
     assert seen_paths[0] == tmp_path / 'workers' / 'w_-1' / 'i_0' / 'runtime_helpfile.csv'
     assert seen_paths[-1] == tmp_path / 'workers' / 'w_-1' / 'i_3' / 'runtime_helpfile.csv'
+
+
+# ---------------------------------------------------------------------------
+# Pure-Python helpers: str_time, get_nested, flatten
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_str_time_returns_iso_like_string_with_timezone():
+    """``str_time`` returns the current wall-clock time formatted as
+    'YYYY-MM-DD HH:MM:SS TZ'. Discrimination: a regression that dropped
+    the seconds field or the timezone abbreviation would not match
+    the expected length+structure.
+    """
+    s = utils_mod.str_time()
+    # Expected shape: 19 chars for date+time + 1 space + timezone abbrev
+    assert isinstance(s, str)
+    # Discrimination: must contain at least one ':' (HH:MM:SS) and one '-' (YYYY-MM-DD)
+    assert s.count(':') >= 2
+    assert s.count('-') >= 2
+    # Discrimination: must be at least 20 chars (full date+time) and at most ~30 chars
+    assert 20 <= len(s) <= 40
+
+
+@pytest.mark.unit
+def test_get_nested_drills_into_nested_dict():
+    """``get_nested`` resolves a dot-separated key path through a nested
+    dict. Discrimination: get_nested(d, 'a.b.c') must return the value
+    at d['a']['b']['c'], not a different branch.
+    """
+    config = {'a': {'b': {'c': 42, 'd': 'wrong'}}, 'x': 'unrelated'}
+    assert utils_mod.get_nested(config, 'a.b.c') == 42
+    # Discrimination: the sibling key 'a.b.d' must resolve independently
+    assert utils_mod.get_nested(config, 'a.b.d') == 'wrong'
+
+
+@pytest.mark.unit
+def test_get_nested_accepts_custom_separator():
+    """``get_nested`` honours the ``sep`` argument so callers can use a
+    different separator (e.g. '/'). Discrimination: with sep='/' the
+    function must use '/' for splitting, not '.'.
+    """
+    config = {'a': {'b': 7}}
+    assert utils_mod.get_nested(config, 'a/b', sep='/') == 7
+
+
+@pytest.mark.unit
+def test_get_nested_raises_keyerror_for_missing_path():
+    """``get_nested`` raises KeyError when any segment in the path is
+    absent. Discrimination: a regression that silently returned None
+    would mask user typos in config keys.
+    """
+    config = {'a': {'b': 1}}
+    with pytest.raises(KeyError):
+        utils_mod.get_nested(config, 'a.missing')
+
+
+@pytest.mark.unit
+def test_flatten_handles_nested_dict_with_dot_separator():
+    """``flatten`` produces a single-level dict whose keys are the
+    dot-joined paths from the original nested dict. Discrimination:
+    a regression that dropped the parent_key would produce raw leaf
+    keys (no 'a.b.' prefix).
+    """
+    config = {'a': {'b': 1, 'c': 2}, 'd': 3}
+    flat = utils_mod.flatten(config)
+    assert flat == {'a.b': 1, 'a.c': 2, 'd': 3}
+
+
+@pytest.mark.unit
+def test_flatten_descends_through_multiple_levels():
+    """``flatten`` recurses through arbitrarily deep nesting.
+    Discrimination: a regression that flattened only one level would
+    leave the deepest dicts intact.
+    """
+    config = {'a': {'b': {'c': {'d': 99}}}}
+    flat = utils_mod.flatten(config)
+    assert flat == {'a.b.c.d': 99}
+
+
+@pytest.mark.unit
+def test_flatten_honours_custom_separator():
+    """``flatten`` uses the ``sep`` argument for path joins. With sep='/'
+    the keys must use '/' (e.g. 'a/b'), not '.'. A regression that
+    hardcoded '.' would fail this discrimination.
+    """
+    config = {'a': {'b': 1}}
+    flat = utils_mod.flatten(config, sep='/')
+    assert flat == {'a/b': 1}
+    # Discrimination: the same input under default sep gives a different key
+    flat_default = utils_mod.flatten(config)
+    assert flat_default == {'a.b': 1}
+
+
+@pytest.mark.unit
+def test_flatten_returns_empty_dict_for_empty_input():
+    """``flatten({})`` returns ``{}`` (the identity on empty dicts).
+    Discrimination: a regression that returned None or raised would
+    fail this test.
+    """
+    assert utils_mod.flatten({}) == {}
