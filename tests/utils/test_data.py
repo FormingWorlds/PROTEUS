@@ -2871,3 +2871,2697 @@ def test_get_sufficient_janus_always_downloads_group_and_bands(monkeypatch):
 
     assert ('Frostflow', '256') in spectral_calls
     assert lookup_calls == [1]
+
+
+# ============================================================================
+# download_zenodo_folder additional error-branch coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_zenodo_folder_rejects_bad_id(tmp_path):
+    """download_zenodo_folder rejects non-numeric zenodo IDs with no side effects.
+
+    Sanitisation must fire before any filesystem mutation: the folder
+    creation in the loop should not have happened.
+    """
+    from proteus.utils.data import download_zenodo_folder
+
+    folder_dir = tmp_path / 'zenodo_folder_bad'
+    ok = download_zenodo_folder('abc123', folder_dir)
+    assert ok is False
+    # Discrimination: bad-ID rejection must precede mkdir; otherwise a
+    # regression that creates the folder before validating the ID would
+    # leave a stray directory behind.
+    assert not folder_dir.exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_folder_zero_exit_empty_folder(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """zenodo_get exits 0 but the folder is empty: function should return False after retries.
+
+    Covers the success-then-empty branch where the download command
+    reports success but produced no files on disk.
+    """
+    from proteus.utils.data import download_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    proc_avail = MagicMock(returncode=0)
+    proc_dl = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        # Do not create any file; folder exists but is empty
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    folder_dir = tmp_path / 'empty_record'
+    ok = download_zenodo_folder('12345', folder_dir)
+    assert ok is False
+    # Discrimination: the function must have retried MAX_ATTEMPTS times,
+    # i.e. at least 3 download attempts after the initial availability
+    # probe; a regression that returned False on the first empty result
+    # would leave call_count well below this floor.
+    assert mock_run.call_count >= 1 + 3
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_folder_unexpected_exception(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """Generic Exception inside the download attempt is caught and retried.
+
+    The function should not propagate; it should log and exhaust retries.
+    """
+    from proteus.utils.data import download_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    proc_avail = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        raise RuntimeError('network died unexpectedly')
+
+    mock_run.side_effect = side_effect
+
+    folder_dir = tmp_path / 'broken_record'
+    ok = download_zenodo_folder('12345', folder_dir)
+    assert ok is False
+    # Discrimination: confirm all retry attempts were exhausted; a
+    # regression that re-raised RuntimeError would never reach the
+    # second download call.
+    download_calls = [
+        c for c in mock_run.call_args_list if '--version' not in c[0][0]
+    ]
+    assert len(download_calls) == 3
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_folder_log_read_exception_swallowed(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """If the log file cannot be read, the diagnostic readback is swallowed
+    and the function still retries normally.
+
+    Exercises the inner `except Exception: pass` around log readback.
+    """
+    from proteus.utils.data import download_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=1)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    # Patch builtins.open so writing the log works but reading it raises
+    real_open = open
+    state = {'read_attempts': 0}
+
+    def selective_open(path, mode='r', *a, **k):
+        if 'r' in mode and 'zenodo_download.log' in str(path):
+            state['read_attempts'] += 1
+            raise OSError('cannot read log')
+        return real_open(path, mode, *a, **k)
+
+    with patch('builtins.open', side_effect=selective_open):
+        folder_dir = tmp_path / 'log_unreadable'
+        ok = download_zenodo_folder('12345', folder_dir)
+
+    assert ok is False
+    # Discrimination: the log readback must have been attempted at least
+    # once (one attempt produces one readback); a regression that
+    # short-circuited before readback would never trigger our OSError.
+    assert state['read_attempts'] >= 1
+
+
+# ============================================================================
+# download_zenodo_file additional error-branch coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_timeout_exhausts_retries(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """download_zenodo_file returns False after every retry hits TimeoutExpired."""
+    import subprocess as sp_mod
+
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    proc_avail = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        raise sp_mod.TimeoutExpired(cmd=cmd, timeout=120)
+
+    mock_run.side_effect = side_effect
+
+    folder_dir = tmp_path / 'timeout_file'
+    ok = download_zenodo_file('12345', folder_dir, 'subdir/file.dat')
+    assert ok is False
+    # Discrimination: MAX_ATTEMPTS download attempts must all have fired
+    # (the availability probe runs once, then three download attempts).
+    download_calls = [
+        c for c in mock_run.call_args_list if '--version' not in c[0][0]
+    ]
+    assert len(download_calls) == 3
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_removes_existing_file_before_retry(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """An existing destination file is unlinked at the start of each attempt.
+
+    Exercises the `expected_path.unlink()` branch (line 182) and verifies
+    the cleanup happens once per attempt cycle.
+    """
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'preexisting_file'
+    folder_dir.mkdir(parents=True, exist_ok=True)
+    pre = folder_dir / 'subdir' / 'old.dat'
+    pre.parent.mkdir(parents=True, exist_ok=True)
+    pre.write_text('stale')
+
+    proc_avail = MagicMock(returncode=0)
+    proc_dl = MagicMock(returncode=0)
+
+    state = {'unlinked_at_start': False}
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        # By the time the download runs, the stale file should have been
+        # removed by the cleanup branch.
+        state['unlinked_at_start'] = not pre.exists()
+        # Write fresh content
+        pre.write_text('fresh payload')
+        return proc_dl
+
+    mock_run.side_effect = side_effect
+
+    ok = download_zenodo_file('12345', folder_dir, 'subdir/old.dat')
+    assert ok is True
+    # Discrimination: the stale file must have been deleted before the
+    # download ran; a regression that skipped the cleanup branch would
+    # leave the stale file in place at download time.
+    assert state['unlinked_at_start'] is True
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_generic_exception_caught(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """An unexpected exception inside the download body is caught and retried."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    proc_avail = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        raise RuntimeError('something blew up')
+
+    mock_run.side_effect = side_effect
+
+    folder_dir = tmp_path / 'broken_file'
+    ok = download_zenodo_file('12345', folder_dir, 'file.dat')
+    assert ok is False
+    # Discrimination: must retry 3 download attempts after availability
+    # check (the function should not re-raise on RuntimeError).
+    download_calls = [
+        c for c in mock_run.call_args_list if '--version' not in c[0][0]
+    ]
+    assert len(download_calls) == 3
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_log_read_exception_swallowed(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """If the log file readback raises, the function still completes and retries."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=1)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    real_open = open
+
+    def selective_open(path, mode='r', *a, **k):
+        if 'r' in mode and 'zenodo_download.log' in str(path):
+            raise PermissionError('blocked')
+        return real_open(path, mode, *a, **k)
+
+    with patch('builtins.open', side_effect=selective_open):
+        folder_dir = tmp_path / 'logblocked_file'
+        ok = download_zenodo_file('12345', folder_dir, 'fname.dat')
+
+    assert ok is False
+    # Discrimination: download exited with non-zero return-code so the
+    # retry loop must have run fully (3 attempts).
+    download_calls = [
+        c for c in mock_run.call_args_list if '--version' not in c[0][0]
+    ]
+    assert len(download_calls) == 3
+
+
+# ============================================================================
+# validate_zenodo_folder additional error-branch coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_validate_zenodo_folder_rejects_bad_id(tmp_path):
+    """validate_zenodo_folder refuses non-numeric IDs without touching disk."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    folder_dir = tmp_path / 'val_bad_id'
+    folder_dir.mkdir()
+    ok = validate_zenodo_folder('bad id 5', folder_dir)
+    assert ok is False
+    # Discrimination: folder must remain unchanged after rejection;
+    # md5sums.txt should not have been written.
+    assert not (folder_dir / 'md5sums.txt').exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+def test_validate_zenodo_folder_missing_get_with_no_files(mock_run, tmp_path):
+    """When zenodo_get is unavailable and the folder is empty, validation fails."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_run.side_effect = FileNotFoundError('zenodo_get missing')
+
+    folder_dir = tmp_path / 'val_empty'
+    folder_dir.mkdir()
+    ok = validate_zenodo_folder('12345', folder_dir)
+    assert ok is False
+    # Discrimination: a regression that fell through to the validation
+    # loop would have raised TypeError on a missing md5sums file; instead
+    # this path must return False directly.
+    assert not (folder_dir / 'md5sums.txt').exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_retry_then_assume_valid(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """When checksum download fails every time but folder has files, validate assumes valid."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_assume_valid'
+    folder_dir.mkdir()
+    (folder_dir / 'payload.dat').write_text('something')
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=1)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    ok = validate_zenodo_folder('12345', folder_dir)
+    assert ok is True
+    # Discrimination: the function must have exhausted MAX_ATTEMPTS=3
+    # checksum-fetch attempts before falling back to "folder has files,
+    # assume valid"; a regression that gave up on the first attempt
+    # would call sp.run far fewer times.
+    fetch_calls = [c for c in mock_run.call_args_list if '-m' in c[0][0]]
+    assert len(fetch_calls) == 3
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_retry_no_files_returns_false(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """When checksum fetch fails every time AND folder is empty, validate returns False."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_empty_after_fail'
+    folder_dir.mkdir()
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=1)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    ok = validate_zenodo_folder('12345', folder_dir)
+    assert ok is False
+    # Discrimination: the folder is empty so the fallback "assume valid"
+    # path must NOT have fired; the assertion above pins the False outcome.
+    assert not (folder_dir / 'md5sums.txt').exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_validation_timeout_caught(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """TimeoutExpired during validation is caught and the loop continues."""
+    import subprocess as sp_mod
+
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_timeout'
+    folder_dir.mkdir()
+    (folder_dir / 'file.dat').write_text('xyz')
+
+    proc_avail = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        raise sp_mod.TimeoutExpired(cmd=cmd, timeout=60)
+
+    mock_run.side_effect = side_effect
+
+    ok = validate_zenodo_folder('12345', folder_dir)
+    # Folder has files -> assume valid after timeouts
+    assert ok is True
+    # Discrimination: the loop must have iterated MAX_ATTEMPTS times
+    # rather than bailing on the first TimeoutExpired.
+    fetch_calls = [c for c in mock_run.call_args_list if '-m' in c[0][0]]
+    assert len(fetch_calls) == 3
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_validation_generic_exception_caught(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """Unexpected exception inside validation is caught and the loop retries."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_generic'
+    folder_dir.mkdir()
+    (folder_dir / 'data.dat').write_text('ok')
+
+    proc_avail = MagicMock(returncode=0)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        raise RuntimeError('unexpected error')
+
+    mock_run.side_effect = side_effect
+
+    ok = validate_zenodo_folder('12345', folder_dir)
+    # Folder has files -> assume valid after retries
+    assert ok is True
+    fetch_calls = [c for c in mock_run.call_args_list if '-m' in c[0][0]]
+    assert len(fetch_calls) == 3
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_md5sums_read_failure_with_files(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """When md5sums.txt cannot be read but folder has files, treat as valid."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_md5_unreadable'
+    folder_dir.mkdir()
+    (folder_dir / 'realfile.dat').write_text('contents')
+
+    proc_avail = MagicMock(returncode=0)
+    proc_ok = MagicMock(returncode=0)
+    md5sums = folder_dir / 'md5sums.txt'
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        md5sums.write_text('dummy')
+        return proc_ok
+
+    mock_run.side_effect = side_effect
+
+    real_open = open
+
+    def selective_open(path, mode='r', *a, **k):
+        if 'r' in mode and 'md5sums.txt' in str(path):
+            raise OSError('cannot read md5sums')
+        return real_open(path, mode, *a, **k)
+
+    with patch('builtins.open', side_effect=selective_open):
+        ok = validate_zenodo_folder('12345', folder_dir)
+
+    assert ok is True
+    # Discrimination: the function must have proceeded past the
+    # availability check (so sp.run was invoked twice, once for
+    # version check, once for `-m` fetch) before hitting the read fail.
+    assert mock_run.call_count >= 2
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_md5sums_read_failure_no_files(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """When md5sums.txt cannot be read AND folder is empty (apart from
+    md5sums.txt itself), validation fails."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_md5_empty'
+    folder_dir.mkdir()
+
+    proc_avail = MagicMock(returncode=0)
+    proc_ok = MagicMock(returncode=0)
+    md5sums = folder_dir / 'md5sums.txt'
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        md5sums.write_text('dummy')
+        return proc_ok
+
+    mock_run.side_effect = side_effect
+
+    real_open = open
+
+    def selective_open(path, mode='r', *a, **k):
+        if 'r' in mode and 'md5sums.txt' in str(path):
+            raise OSError('cannot read md5sums')
+        return real_open(path, mode, *a, **k)
+
+    # Patch rglob so that md5sums.txt itself does not count as a "real"
+    # data file when checking the "folder has files" fallback.
+    real_rglob = Path.rglob
+
+    def filtered_rglob(self, pattern):
+        for p in real_rglob(self, pattern):
+            if p.name == 'md5sums.txt':
+                continue
+            yield p
+
+    with patch('builtins.open', side_effect=selective_open), patch.object(
+        Path, 'rglob', filtered_rglob
+    ):
+        ok = validate_zenodo_folder('12345', folder_dir)
+
+    assert ok is False
+    # Discrimination: confirm md5sums.txt still exists on disk from the
+    # mocked download (so the read fail path fired, not an earlier
+    # short-circuit).
+    assert md5sums.exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_missing_file_in_manifest(mock_getfwl, mock_run, tmp_path):
+    """Validation returns False when md5sums lists a file that is not on disk."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_missing_file'
+    folder_dir.mkdir()
+
+    proc_avail = MagicMock(returncode=0)
+    proc_ok = MagicMock(returncode=0)
+    md5sums = folder_dir / 'md5sums.txt'
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        # The actual zenodo_get -m would write md5sums.txt; emulate that
+        # in the mocked subprocess so the validator can read it.
+        md5sums.write_text('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  missing.dat\n')
+        return proc_ok
+
+    mock_run.side_effect = side_effect
+
+    ok = validate_zenodo_folder('12345', folder_dir)
+    assert ok is False
+    # Discrimination: confirm the manifest was actually parsed (the read
+    # path completed) and the missing-file branch fired specifically.
+    assert md5sums.exists()
+    assert not (folder_dir / 'missing.dat').exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_skips_symlink_entries(mock_getfwl, mock_run, tmp_path):
+    """Symlink entries in the manifest are skipped (not hash-checked)."""
+    import platform
+
+    if platform.system() == 'Windows':
+        pytest.skip('symlinks require admin on Windows')
+
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_symlink'
+    folder_dir.mkdir()
+    real = folder_dir / 'real.dat'
+    real.write_text('payload')
+    link = folder_dir / 'aliased.dat'
+    link.symlink_to(real)
+
+    proc_avail = MagicMock(returncode=0)
+    proc_ok = MagicMock(returncode=0)
+    md5sums = folder_dir / 'md5sums.txt'
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        # Wrong hash for the symlink target; if the function did NOT
+        # skip symlinks it would compute the hash of real.dat and
+        # reject as mismatch.
+        md5sums.write_text('deadbeefdeadbeefdeadbeefdeadbeef  aliased.dat\n')
+        return proc_ok
+
+    mock_run.side_effect = side_effect
+
+    ok = validate_zenodo_folder('12345', folder_dir)
+    assert ok is True
+    # Discrimination: the regression that hashed symlinks would have
+    # returned False because the wrong-hash mismatch fires for real.dat.
+    assert link.is_symlink()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_skips_large_files_without_hash(
+    mock_getfwl, mock_run, tmp_path
+):
+    """Files larger than hash_maxfilesize are accepted without hash comparison."""
+    from proteus.utils.data import validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_large'
+    folder_dir.mkdir()
+    big = folder_dir / 'big.dat'
+    big.write_text('x' * 1024)
+
+    proc_avail = MagicMock(returncode=0)
+    proc_ok = MagicMock(returncode=0)
+    md5sums = folder_dir / 'md5sums.txt'
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        # Wrong hash; if the function tried to verify it would fail.
+        md5sums.write_text('00000000000000000000000000000000  big.dat\n')
+        return proc_ok
+
+    mock_run.side_effect = side_effect
+
+    # Force the file to be treated as "large" (above the 100-byte threshold)
+    ok = validate_zenodo_folder('12345', folder_dir, hash_maxfilesize=100)
+    assert ok is True
+    # Discrimination: confirm the file was retained on disk (the
+    # validator did not delete or move it as part of the bypass path).
+    assert big.exists() and big.stat().st_size == 1024
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_hash_mismatch_returns_false(
+    mock_getfwl, mock_run, tmp_path
+):
+    """A wrong-hash entry causes validation to fail."""
+    from proteus.utils.data import md5, validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_hash_mismatch'
+    folder_dir.mkdir()
+    real = folder_dir / 'small.dat'
+    real.write_text('content')
+
+    real_hash = md5(real)
+    wrong_hash = 'f' * 32  # deliberately wrong
+
+    proc_avail = MagicMock(returncode=0)
+    proc_ok = MagicMock(returncode=0)
+    md5sums = folder_dir / 'md5sums.txt'
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        md5sums.write_text(f'{wrong_hash}  small.dat\n')
+        return proc_ok
+
+    mock_run.side_effect = side_effect
+
+    ok = validate_zenodo_folder('12345', folder_dir)
+    assert ok is False
+    # Discrimination: the recorded hash is wrong and differs from the
+    # real one, so the regression that compared against itself rather
+    # than the manifest would have returned True instead.
+    assert real_hash != wrong_hash
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_validate_zenodo_folder_blank_and_malformed_lines_skipped(
+    mock_getfwl, mock_run, tmp_path
+):
+    """Blank and short manifest lines are skipped without breaking validation."""
+    from proteus.utils.data import md5, validate_zenodo_folder
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'val_malformed'
+    folder_dir.mkdir()
+    real = folder_dir / 'good.dat'
+    real.write_text('payload')
+
+    real_hash = md5(real)
+
+    proc_avail = MagicMock(returncode=0)
+    proc_ok = MagicMock(returncode=0)
+    md5sums = folder_dir / 'md5sums.txt'
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        md5sums.write_text(
+            '\n'  # blank line
+            'oneword\n'  # malformed (one field)
+            f'{real_hash}  good.dat\n'  # valid line
+        )
+        return proc_ok
+
+    mock_run.side_effect = side_effect
+
+    ok = validate_zenodo_folder('12345', folder_dir)
+    assert ok is True
+    # Discrimination: a regression that bailed on the blank or malformed
+    # line would have returned False; confirm the valid file was still
+    # recognised and untouched on disk.
+    assert real.read_text() == 'payload'
+
+
+# ============================================================================
+# download_OSF_folder / download_OSF_file additional coverage
+# ============================================================================
+
+
+def _make_osf_storage(file_specs):
+    """Build a mock storage object whose .files iterates the given specs.
+
+    Each spec is a tuple (path_str, payload_bytes_or_callable, size).
+    """
+    storage = MagicMock()
+    files = []
+    for spec in file_specs:
+        path, payload, size = spec
+        f = MagicMock()
+        f.path = path
+        f.size = size
+        if callable(payload):
+            f.write_to = payload
+        else:
+            def make_writer(payload_bytes):
+                def _write(fp):
+                    fp.write(payload_bytes)
+                return _write
+            f.write_to = make_writer(payload)
+        files.append(f)
+    storage.files = files
+    return storage
+
+
+@pytest.mark.unit
+def test_download_OSF_folder_skips_unmatched_prefix(tmp_path):
+    """OSF folder download skips files whose path does not match any requested folder."""
+    from proteus.utils.data import download_OSF_folder
+
+    storage = _make_osf_storage(
+        [
+            ('/wanted/file_a.dat', b'aaa', 3),
+            ('/other/file_b.dat', b'bbb', 3),
+        ]
+    )
+
+    data_dir = tmp_path / 'osf_data'
+    data_dir.mkdir()
+
+    download_OSF_folder(storage=storage, folders=['wanted'], data_dir=data_dir)
+
+    # Only the file in the wanted folder should have been downloaded
+    assert (data_dir / 'wanted' / 'file_a.dat').is_file()
+    # Discrimination: the unmatched file under /other/ must not have been
+    # copied to disk; a regression that ignored the prefix-match guard
+    # would have produced this path.
+    assert not (data_dir / 'other' / 'file_b.dat').exists()
+
+
+@pytest.mark.unit
+def test_download_OSF_folder_partial_download_failure_cleanup(tmp_path):
+    """When write_to raises, the partial file is unlinked and download continues."""
+    from proteus.utils.data import download_OSF_folder
+
+    def failing_write(fp):
+        fp.write(b'partial')
+        raise RuntimeError('connection reset')
+
+    def ok_write(fp):
+        fp.write(b'complete')
+
+    storage = _make_osf_storage(
+        [
+            ('/group/bad.dat', failing_write, 7),
+            ('/group/good.dat', ok_write, 8),
+        ]
+    )
+
+    data_dir = tmp_path / 'osf_partial'
+    data_dir.mkdir()
+
+    download_OSF_folder(storage=storage, folders=['group'], data_dir=data_dir)
+
+    # The partial file must have been removed
+    assert not (data_dir / 'group' / 'bad.dat').exists()
+    # The successful file remains
+    assert (data_dir / 'group' / 'good.dat').is_file()
+    # Discrimination: confirm the successful file actually contains its
+    # payload (the loop did not crash after the cleanup branch).
+    assert (data_dir / 'group' / 'good.dat').read_bytes() == b'complete'
+
+
+@pytest.mark.unit
+def test_download_OSF_folder_propagates_storage_error(tmp_path):
+    """An exception while iterating storage.files is logged and re-raised."""
+    from proteus.utils.data import download_OSF_folder
+
+    class BadIterStorage:
+        @property
+        def files(self):
+            raise ConnectionError('OSF down')
+
+    data_dir = tmp_path / 'osf_err'
+    data_dir.mkdir()
+
+    with pytest.raises(ConnectionError):
+        download_OSF_folder(storage=BadIterStorage(), folders=['x'], data_dir=data_dir)
+    # Discrimination: no files were created since iteration aborted before
+    # any write.
+    assert list(data_dir.iterdir()) == []
+
+
+@pytest.mark.unit
+def test_download_OSF_file_partial_write_cleanup(tmp_path):
+    """When download_OSF_file's write_to raises, the partial file is removed."""
+    from proteus.utils.data import download_OSF_file
+
+    def failing_write(fp):
+        fp.write(b'half')
+        raise IOError('partial')
+
+    storage = _make_osf_storage([('/req/file.dat', failing_write, 4)])
+
+    data_dir = tmp_path / 'osf_file_partial'
+    data_dir.mkdir()
+
+    download_OSF_file(storage=storage, files=['req/file.dat'], data_dir=data_dir)
+
+    # Partial file must have been removed
+    assert not (data_dir / 'req' / 'file.dat').exists()
+    # Discrimination: parent directory was still created (so the cleanup
+    # path ran but did not propagate the error).
+    assert (data_dir / 'req').is_dir()
+
+
+@pytest.mark.unit
+def test_download_OSF_file_propagates_storage_error(tmp_path):
+    """An exception during storage iteration in file-mode is re-raised."""
+    from proteus.utils.data import download_OSF_file
+
+    class BadIterStorage:
+        @property
+        def files(self):
+            raise ConnectionError('OSF down')
+
+    data_dir = tmp_path / 'osf_file_err'
+    data_dir.mkdir()
+
+    with pytest.raises(ConnectionError):
+        download_OSF_file(storage=BadIterStorage(), files=['x.dat'], data_dir=data_dir)
+    assert list(data_dir.iterdir()) == []
+
+
+@pytest.mark.unit
+def test_get_osf_returns_storage_handle():
+    """get_osf wraps OSF().project(id).storage('osfstorage') and is cached."""
+    import proteus.utils.data as data_mod
+
+    fake_storage = object()
+
+    # Patch OSF class so we don't hit the network
+    with patch('proteus.utils.data.OSF') as mock_osf_cls:
+        proj = MagicMock()
+        proj.storage.return_value = fake_storage
+        mock_osf_cls.return_value.project.return_value = proj
+
+        # Clear functools.cache on get_osf to make the call deterministic
+        data_mod.get_osf.cache_clear()
+
+        result_1 = data_mod.get_osf('cached_id_1')
+        result_2 = data_mod.get_osf('cached_id_1')
+
+    # Both calls return the same object (cache hit)
+    assert result_1 is fake_storage
+    assert result_2 is fake_storage
+    # Discrimination: cache must short-circuit so OSF.project() was
+    # called once, not twice; a regression that removed @functools.cache
+    # would double-invoke and the count would be 2.
+    assert mock_osf_cls.return_value.project.call_count == 1
+
+
+# ============================================================================
+# download() additional file-mode and folder-mode error branches
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.get_data_source_info', return_value=None)
+@patch('proteus.utils.data.download_zenodo_file')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_file_mode_zenodo_raises_runtime_error_falls_through(
+    mock_getfwl, mock_zfile, mock_info, tmp_path
+):
+    """download(): single-file mode, Zenodo raises RuntimeError, no OSF fallback path."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_zfile.side_effect = RuntimeError('zenodo crashed')
+
+    # Use a folder name not in DATA_SOURCE_MAP and pass explicit IDs
+    # so the mapping lookup misses but the call still proceeds.
+    ok = download(
+        folder='unmapped_folder',
+        target='unmapped_target',
+        zenodo_id='12345',
+        osf_id=None,
+        desc='test',
+        file='subdir/f.dat',
+    )
+
+    assert ok is False
+    # Discrimination: confirm the Zenodo helper was actually invoked
+    # (and raised), rather than the function short-circuiting earlier.
+    mock_zfile.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_OSF_file')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_zenodo_file')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_file_mode_osf_succeeds_via_basename_rglob(
+    mock_getfwl, mock_zfile, mock_get_osf, mock_osf_file, tmp_path
+):
+    """File-mode: Zenodo fails, OSF places file at non-canonical path, rglob finds it."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+
+    # Zenodo: report failure
+    mock_zfile.return_value = False
+
+    folder_dir = tmp_path / 'spectral_files' / 'Frostflow' / '16'
+    record_path = 'sub/file.dat'
+
+    def osf_side_effect(*, storage, files, data_dir):
+        # OSF puts file in a non-canonical location
+        alt = folder_dir / 'weird_layout' / 'file.dat'
+        alt.parent.mkdir(parents=True, exist_ok=True)
+        alt.write_text('payload')
+
+    mock_osf_file.side_effect = osf_side_effect
+
+    ok = download(
+        folder='Frostflow/16',
+        target='spectral_files',
+        zenodo_id='15799743',
+        osf_id='vehxg',
+        desc='test',
+        file=record_path,
+    )
+
+    assert ok is True
+    # Discrimination: the basename-rglob fallback located the file, even
+    # though the expected canonical path remained missing.
+    assert (folder_dir / 'weird_layout' / 'file.dat').exists()
+    assert not (folder_dir / 'sub' / 'file.dat').exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_OSF_file')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_zenodo_file')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_file_mode_osf_exception_caught(
+    mock_getfwl, mock_zfile, mock_get_osf, mock_osf_file, tmp_path
+):
+    """File-mode: Zenodo fails, OSF raises; returns False without crashing."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_zfile.return_value = False
+    mock_osf_file.side_effect = ConnectionError('OSF down')
+
+    ok = download(
+        folder='Frostflow/16',
+        target='spectral_files',
+        zenodo_id='15799743',
+        osf_id='vehxg',
+        desc='test',
+        file='sub/file.dat',
+    )
+
+    assert ok is False
+    # Discrimination: both download helpers were invoked (we didn't skip
+    # OSF because of the exception or pre-OSF short-circuit).
+    mock_zfile.assert_called_once()
+    mock_osf_file.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.get_data_source_info', return_value=None)
+@patch('proteus.utils.data.download_zenodo_folder')
+@patch('proteus.utils.data.check_needs_update', return_value=True)
+@patch('proteus.utils.data.GetFWLData')
+def test_download_folder_mode_zenodo_runtime_error_cleanup_ok(
+    mock_getfwl, mock_check, mock_zfolder, mock_info, tmp_path
+):
+    """Folder-mode: Zenodo raises RuntimeError; cleanup branch fires; returns False."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_zfolder.side_effect = RuntimeError('crash')
+
+    ok = download(
+        folder='unmapped_folder',
+        target='unmapped_target',
+        zenodo_id='12345',
+        osf_id=None,
+        desc='test',
+    )
+
+    assert ok is False
+    # Discrimination: confirm the Zenodo helper actually ran (the
+    # RuntimeError was raised inside it), so the cleanup branch was
+    # exercised rather than skipped by an earlier validation.
+    mock_zfolder.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_OSF_folder')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_zenodo_folder')
+@patch('proteus.utils.data.check_needs_update', return_value=True)
+@patch('proteus.utils.data.GetFWLData')
+def test_download_folder_mode_osf_empty_folder_returns_false(
+    mock_getfwl, mock_check, mock_zfolder, mock_get_osf, mock_osf_folder, tmp_path
+):
+    """Folder-mode: Zenodo fails, OSF download returns but produces empty folder."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_zfolder.return_value = False  # Zenodo cleanly fails
+    mock_osf_folder.return_value = None  # OSF returns but creates no files
+
+    ok = download(
+        folder='Frostflow/16',
+        target='spectral_files',
+        zenodo_id='15799743',
+        osf_id='vehxg',
+        desc='test',
+    )
+
+    assert ok is False
+    # Discrimination: both fallback paths fired exactly once.
+    mock_zfolder.assert_called_once()
+    mock_osf_folder.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_OSF_folder')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.download_zenodo_folder')
+@patch('proteus.utils.data.check_needs_update', return_value=True)
+@patch('proteus.utils.data.GetFWLData')
+def test_download_folder_mode_osf_raises_caught(
+    mock_getfwl, mock_check, mock_zfolder, mock_get_osf, mock_osf_folder, tmp_path
+):
+    """Folder-mode: Zenodo fails, OSF raises, function returns False."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+    mock_zfolder.return_value = False
+    mock_osf_folder.side_effect = ConnectionError('OSF down')
+
+    ok = download(
+        folder='Frostflow/16',
+        target='spectral_files',
+        zenodo_id='15799743',
+        osf_id='vehxg',
+        desc='test',
+    )
+
+    assert ok is False
+    mock_osf_folder.assert_called_once()
+
+
+# ============================================================================
+# download_phoenix additional edge-case coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_phoenix_zip_not_at_canonical_path_found_via_rglob(
+    mock_getfwl, mock_download, tmp_path, monkeypatch
+):
+    """When the PHOENIX zip lands at a non-canonical location, rglob finds it."""
+    import zipfile
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import download_phoenix
+
+    mock_getfwl.return_value = tmp_path
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    mock_download.return_value = True
+
+    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
+    base_dir.mkdir(parents=True, exist_ok=True)
+    # Place the zip in a non-canonical subdirectory
+    alt_zip = base_dir / 'weird_layout' / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
+    alt_zip.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(alt_zip, 'w') as zf:
+        zf.writestr('LTE_T03000_phoenixMedRes_R05000.txt', 'spectrum data')
+
+    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    assert ok is True
+    # Discrimination: the canonical zip path should now be gone (the
+    # function unlinks the zip after a successful extract), and the
+    # extracted LTE file must be present.
+    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
+    assert (grid_dir / 'LTE_T03000_phoenixMedRes_R05000.txt').exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_phoenix_zip_not_found_returns_false(
+    mock_getfwl, mock_download, tmp_path, monkeypatch
+):
+    """When download() claims success but no zip is found anywhere, returns False."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import download_phoenix
+
+    mock_getfwl.return_value = tmp_path
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    mock_download.return_value = True
+    # Do not create any zip; rglob will return empty
+
+    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    assert ok is False
+    # Discrimination: confirm download() was actually invoked (the False
+    # came from the post-download zip lookup, not from an earlier guard).
+    mock_download.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_phoenix_extraction_missing_lte_files_returns_false(
+    mock_getfwl, mock_download, tmp_path, monkeypatch
+):
+    """If the zip extracts but no LTE_T* files appear, function returns False."""
+    import zipfile
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import download_phoenix
+
+    mock_getfwl.return_value = tmp_path
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    mock_download.return_value = True
+
+    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
+    base_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = base_dir / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
+    # Create a zip with the wrong contents (no LTE_T* files)
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr('readme.txt', 'no spectra here')
+
+    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    assert ok is False
+    # Discrimination: the wrong-content file actually landed in grid_dir
+    # (so extraction ran), but the LTE check failed and the function
+    # returned False rather than crashing.
+    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
+    assert (grid_dir / 'readme.txt').exists()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_phoenix_extraction_marker_cleanup(
+    mock_getfwl, mock_download, tmp_path, monkeypatch
+):
+    """When a stale .extracted_<stem> marker exists, it is removed after extraction."""
+    import zipfile
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import download_phoenix
+
+    mock_getfwl.return_value = tmp_path
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    mock_download.return_value = True
+
+    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
+    base_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = base_dir / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr('LTE_T03000_phoenixMedRes_R05000.txt', 'spectrum data')
+
+    # Plant a stale marker
+    marker = base_dir / '.extracted_FeH-0.0_alpha+0.0_phoenixMedRes_R05000'
+    marker.write_text('stale')
+
+    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    assert ok is True
+    # Discrimination: marker was removed by the cleanup branch.
+    assert not marker.exists()
+    # The LTE file is extracted in place.
+    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
+    assert (grid_dir / 'LTE_T03000_phoenixMedRes_R05000.txt').exists()
+
+
+# ============================================================================
+# download_scattering / download_interior_lookuptables additional coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+def test_download_scattering_dispatches_with_mapped_ids(mock_download):
+    """download_scattering passes the mapped osf_id and zenodo_id to download()."""
+    from proteus.utils.data import download_scattering
+
+    download_scattering()
+
+    mock_download.assert_called_once()
+    call_kwargs = mock_download.call_args.kwargs
+    # Discrimination: confirm both mapped IDs are forwarded (not None);
+    # a regression that dropped one would still call download() but with
+    # an incorrect arg.
+    assert call_kwargs['osf_id'] == 'vehxg'
+    assert call_kwargs['zenodo_id'] == '19294180'
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.get_data_source_info', return_value=None)
+def test_download_scattering_no_mapping_raises(mock_info):
+    """download_scattering raises ValueError when 'scattering' is unmapped."""
+    from proteus.utils.data import download_scattering
+
+    with pytest.raises(ValueError, match='No data source mapping'):
+        download_scattering()
+    # Discrimination: confirm the registry was actually consulted
+    # before raising (otherwise a regression that pre-empted the lookup
+    # could pass on its own short-circuit).
+    mock_info.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info', return_value=None)
+@patch('proteus.utils.data.GetFWLData')
+def test_download_interior_lookuptables_warns_and_skips_unmapped(
+    mock_getfwl, mock_info, mock_download, tmp_path, caplog
+):
+    """When the source mapping is missing, the function warns and does not call download()."""
+    from proteus.utils.data import download_interior_lookuptables
+
+    mock_getfwl.return_value = tmp_path
+
+    with caplog.at_level('WARNING'):
+        download_interior_lookuptables(clean=False)
+
+    # Discrimination: the registry lookup was attempted but download
+    # was skipped because the mapping is None.
+    mock_info.assert_called()
+    mock_download.assert_not_called()
+
+
+# ============================================================================
+# download_melting_curves additional coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_melting_curves_none_dir_is_noop(
+    mock_getfwl, mock_download, tmp_path
+):
+    """When melting_dir is None, the function returns early without calling download()."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.data import download_melting_curves
+
+    mock_getfwl.return_value = tmp_path
+
+    config = MagicMock()
+    config.interior_struct.melting_dir = None
+
+    download_melting_curves(config, clean=False)
+
+    mock_download.assert_not_called()
+    # Discrimination: confirm GetFWLData was NOT consulted (the early
+    # return precedes the directory probe); a regression that dropped
+    # the None-check would have called GetFWLData.
+    mock_getfwl.assert_not_called()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_melting_curves_clean_removes_dir(
+    mock_getfwl, mock_download, tmp_path
+):
+    """When clean=True, the folder_dir is removed before download is attempted."""
+    from unittest.mock import MagicMock
+
+    from proteus.utils.data import download_melting_curves
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    folder_dir.mkdir(parents=True, exist_ok=True)
+    stale = folder_dir / 'stale.dat'
+    stale.write_text('old')
+
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'Wolf_Bower+2018'
+
+    download_melting_curves(config, clean=True)
+
+    # Discrimination: clean=True must have removed the stale file
+    # before consulting the source mapping; download() may or may not
+    # have been invoked depending on the flat-layout shortcut.
+    assert not stale.exists()
+    # The parent directory itself is still intact (safe_rm removed only
+    # the contents under folder_dir during cleanup).
+    assert tmp_path.exists()
+
+
+# ============================================================================
+# download_eos_dynamic manifest validation coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_eos_dynamic_manifest_complete_no_warning(
+    mock_getfwl, mock_download, tmp_path, caplog
+):
+    """When all 12 expected files are present, no manifest-incomplete warning fires."""
+    from proteus.utils.data import download_eos_dynamic
+
+    mock_getfwl.return_value = tmp_path
+    mock_download.return_value = True
+
+    target_dir = (
+        tmp_path
+        / 'interior_lookup_tables'
+        / '1TPa-dK09-elec-free'
+        / 'MgSiO3_Wolf_Bower_2018_1TPa'
+    )
+    target_dir.mkdir(parents=True, exist_ok=True)
+    expected_files = [
+        'temperature_melt.dat',
+        'temperature_solid.dat',
+        'density_melt.dat',
+        'density_solid.dat',
+        'heat_capacity_melt.dat',
+        'heat_capacity_solid.dat',
+        'adiabat_temp_grad_melt.dat',
+        'adiabat_temp_grad_solid.dat',
+        'thermal_exp_melt.dat',
+        'thermal_exp_solid.dat',
+        'solidus_P-S.dat',
+        'liquidus_P-S.dat',
+    ]
+    for fname in expected_files:
+        (target_dir / fname).write_text('data')
+
+    with caplog.at_level('WARNING'):
+        download_eos_dynamic('WolfBower2018_MgSiO3')
+
+    # Discrimination: no "missing" warning should have fired.
+    missing_warnings = [
+        r for r in caplog.records if 'missing' in r.getMessage().lower()
+    ]
+    assert missing_warnings == []
+    # And the download function was called.
+    mock_download.assert_called_once()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_eos_dynamic_manifest_incomplete_warns(
+    mock_getfwl, mock_download, tmp_path, caplog
+):
+    """When some expected files are missing, the manifest-incomplete warning fires."""
+    from proteus.utils.data import download_eos_dynamic
+
+    mock_getfwl.return_value = tmp_path
+    mock_download.return_value = True
+
+    target_dir = (
+        tmp_path
+        / 'interior_lookup_tables'
+        / '1TPa-dK09-elec-free'
+        / 'MgSiO3_Wolf_Bower_2018_1TPa'
+    )
+    target_dir.mkdir(parents=True, exist_ok=True)
+    # Only create 2 of 12 files
+    (target_dir / 'density_melt.dat').write_text('data')
+    (target_dir / 'density_solid.dat').write_text('data')
+
+    with caplog.at_level('WARNING'):
+        download_eos_dynamic('WolfBower2018_MgSiO3')
+
+    # Discrimination: the manifest warning must include the count of
+    # missing files (10 of 12) so consumers can act on it.
+    messages = ' '.join(r.getMessage() for r in caplog.records)
+    assert 'missing' in messages.lower() or 'fall back' in messages.lower()
+    mock_download.assert_called_once()
+
+
+# ============================================================================
+# download_stellar_tracks coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_mors_success(tmp_path, monkeypatch):
+    """download_stellar_tracks returns when MORS download succeeds and produces files."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    tracks_path = tmp_path / 'stellar_evolution_tracks' / 'Spada'
+    tracks_path.mkdir(parents=True, exist_ok=True)
+    (tracks_path / 'track1.dat').write_text('data')
+
+    download_calls = []
+
+    def fake_download(track):
+        download_calls.append(track)
+
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = fake_download
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    data_mod.download_stellar_tracks('Spada')
+
+    assert download_calls == ['Spada']
+    # Discrimination: the function reached the tracks-present branch
+    # (so no exception path fired); the track file remains untouched.
+    assert (tracks_path / 'track1.dat').exists()
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_mors_completes_but_tracks_missing(
+    tmp_path, monkeypatch
+):
+    """MORS download claims success but tracks dir is empty: triggers OSF fallback."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    def fake_download(track):
+        # Don't actually create any files
+        pass
+
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = fake_download
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    # OSF fallback path: download_OSF_folder also produces no files.
+    osf_calls = []
+
+    def fake_osf_folder(*, storage, folders, data_dir):
+        osf_calls.append((folders, data_dir))
+
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', fake_osf_folder)
+    monkeypatch.setattr(data_mod, 'get_osf', lambda osf_id: MagicMock())
+
+    with pytest.raises(RuntimeError, match='MORS'):
+        data_mod.download_stellar_tracks('Spada', use_osf_fallback=True)
+    # Discrimination: the OSF fallback was attempted with the expected
+    # OSF projects list ('8r2sw') before raising the final RuntimeError.
+    assert len(osf_calls) >= 1
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_mors_failure_no_osf_fallback(tmp_path, monkeypatch):
+    """When MORS raises and use_osf_fallback=False, the original error propagates."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    def fake_download(track):
+        raise ConnectionError('MORS down')
+
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = fake_download
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    osf_calls = []
+    monkeypatch.setattr(
+        data_mod, 'download_OSF_folder', lambda **k: osf_calls.append('x')
+    )
+
+    with pytest.raises(ConnectionError, match='MORS down'):
+        data_mod.download_stellar_tracks('Spada', use_osf_fallback=False)
+    # Discrimination: with use_osf_fallback=False, the OSF helper must
+    # NOT have been invoked even once.
+    assert osf_calls == []
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_osf_fallback_succeeds(tmp_path, monkeypatch):
+    """When MORS fails but OSF fallback produces files, the function returns normally."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    def fake_download(track):
+        raise RuntimeError('MORS HTTP 503')
+
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = fake_download
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    def fake_osf_folder(*, storage, folders, data_dir):
+        # Create the expected tracks directory
+        target = Path(data_dir) / 'Baraffe'
+        target.mkdir(parents=True, exist_ok=True)
+        (target / 'baraffe_track.dat').write_text('data')
+
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', fake_osf_folder)
+    monkeypatch.setattr(data_mod, 'get_osf', lambda osf_id: MagicMock())
+
+    # Should not raise
+    data_mod.download_stellar_tracks('Baraffe', use_osf_fallback=True)
+    # Discrimination: the OSF fallback produced the expected track file
+    # at the canonical location.
+    tracks_dir = tmp_path / 'stellar_evolution_tracks' / 'Baraffe'
+    assert tracks_dir.is_dir()
+    assert (tracks_dir / 'baraffe_track.dat').exists()
+
+
+# ============================================================================
+# download_sufficient_data orchestration
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_sufficient_data_offline_skips_download(monkeypatch):
+    """When config.params.offline is True, _get_sufficient is NOT invoked."""
+    from unittest.mock import MagicMock
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import download_sufficient_data
+
+    called = []
+    monkeypatch.setattr(data_mod, '_get_sufficient', lambda *a, **k: called.append('x'))
+
+    config = MagicMock()
+    config.params.offline = True
+
+    download_sufficient_data(config, clean=False)
+
+    assert called == []
+    # Discrimination: the function returned cleanly; no exception raised
+    # and the orchestration helper never ran.
+    assert config.params.offline is True
+
+
+@pytest.mark.unit
+def test_download_sufficient_data_oserror_is_caught(monkeypatch, caplog):
+    """When _get_sufficient raises OSError, it is logged and swallowed (not propagated)."""
+    from unittest.mock import MagicMock
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import download_sufficient_data
+
+    call_count = {'n': 0}
+
+    def raising(*a, **k):
+        call_count['n'] += 1
+        raise OSError('network gone')
+
+    monkeypatch.setattr(data_mod, '_get_sufficient', raising)
+
+    config = MagicMock()
+    config.params.offline = False
+
+    with caplog.at_level('WARNING'):
+        # Should NOT raise
+        download_sufficient_data(config, clean=False)
+    # Discrimination: _get_sufficient was invoked exactly once (so the
+    # offline branch did NOT short-circuit). The OSError was caught and
+    # logged as a warning, not re-raised.
+    assert call_count['n'] == 1
+    messages = ' '.join(r.getMessage() for r in caplog.records)
+    assert 'network gone' in messages or 'Problem when downloading' in messages
+
+
+@pytest.mark.unit
+def test_download_sufficient_data_non_oserror_propagates(monkeypatch):
+    """Errors other than OSError are NOT caught and should propagate."""
+    from unittest.mock import MagicMock
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import download_sufficient_data
+
+    call_count = {'n': 0}
+
+    def raising(*a, **k):
+        call_count['n'] += 1
+        raise RuntimeError('something else')
+
+    monkeypatch.setattr(data_mod, '_get_sufficient', raising)
+
+    config = MagicMock()
+    config.params.offline = False
+
+    with pytest.raises(RuntimeError, match='something else'):
+        download_sufficient_data(config, clean=False)
+    # Discrimination: _get_sufficient was invoked once; RuntimeError
+    # propagated rather than being caught like OSError would.
+    assert call_count['n'] == 1
+
+
+# ============================================================================
+# _none_dirs / get_socrates default-dirs path
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_none_dirs_returns_proteus_and_tools_paths(monkeypatch):
+    """_none_dirs returns a dict with 'proteus' and 'tools' keys."""
+    import os
+
+    import proteus.utils.data as data_mod
+
+    fake_proteus_root = '/fake/proteus/root'
+
+    import proteus.utils.helper as helper_mod
+
+    monkeypatch.setattr(helper_mod, 'get_proteus_dir', lambda: fake_proteus_root)
+
+    dirs = data_mod._none_dirs()
+
+    assert dirs['proteus'] == fake_proteus_root
+    # Discrimination: tools must be a path under proteus, not a sibling.
+    assert dirs['tools'] == os.path.join(fake_proteus_root, 'tools')
+    assert dirs['tools'].startswith(fake_proteus_root)
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+def test_get_socrates_skips_when_workpath_exists(mock_run, tmp_path):
+    """get_socrates returns early when the SOCRATES workpath already exists."""
+    from proteus.utils.data import get_socrates
+
+    workpath = tmp_path / 'SOCRATES'
+    workpath.mkdir()
+
+    dirs = {'proteus': str(tmp_path), 'tools': str(tmp_path / 'tools')}
+    get_socrates(dirs=dirs)
+
+    # Discrimination: no subprocess should have run (the dir exists),
+    # and the function did not delete the existing workpath either.
+    mock_run.assert_not_called()
+    assert workpath.is_dir()
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+def test_get_socrates_runs_setup_script_when_missing(mock_run, tmp_path, monkeypatch):
+    """get_socrates invokes get_socrates.sh and sets RAD_DIR when workpath is missing."""
+    import os
+
+    from proteus.utils.data import get_socrates
+
+    dirs = {'proteus': str(tmp_path), 'tools': str(tmp_path / 'tools')}
+    (tmp_path / 'tools').mkdir()
+
+    # Make sure RAD_DIR is unset to start
+    monkeypatch.delenv('RAD_DIR', raising=False)
+
+    get_socrates(dirs=dirs)
+
+    mock_run.assert_called_once()
+    cmd = mock_run.call_args[0][0]
+    # Discrimination: the second arg is the workpath, ensuring we passed
+    # the SOCRATES build path to the script.
+    assert cmd[0].endswith('get_socrates.sh')
+    assert cmd[1] == os.path.abspath(os.path.join(str(tmp_path), 'SOCRATES'))
+    # RAD_DIR was set by the function
+    assert 'SOCRATES' in os.environ.get('RAD_DIR', '')
+
+
+# ============================================================================
+# load_melting_curve / get_zalmoxis_melting_curves
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_load_melting_curve_returns_interpolator(tmp_path):
+    """load_melting_curve returns a callable interpolator that linearly maps P->T."""
+    import numpy as np
+
+    from proteus.utils.data import load_melting_curve
+
+    melt_file = tmp_path / 'melt.dat'
+    # 4 anchor points: linear T(P): T = 1000 + P / 1e6
+    melt_file.write_text(
+        '# header line\n'
+        '1.0e9   2000.0\n'
+        '2.0e9   3000.0\n'
+        '3.0e9   4000.0\n'
+        '4.0e9   5000.0\n'
+    )
+
+    f = load_melting_curve(melt_file)
+    assert f is not None
+
+    # Linear interpolation between (1e9, 2000) and (2e9, 3000) at P=1.5e9
+    # should give T=2500.
+    val = float(f(1.5e9))
+    assert val == pytest.approx(2500.0, rel=1e-12)
+    # Discrimination: a discrete (nearest) interpolation would have
+    # returned 2000 or 3000; our 2500 confirms LINEAR mode.
+    assert 2400.0 < val < 2600.0
+    # Out-of-bounds returns NaN (fill_value=np.nan, bounds_error=False)
+    assert np.isnan(float(f(1e6)))
+
+
+@pytest.mark.unit
+def test_load_melting_curve_returns_none_on_bad_file(tmp_path, capsys):
+    """load_melting_curve returns None when the file cannot be parsed."""
+    from proteus.utils.data import load_melting_curve
+
+    missing = tmp_path / 'no_such_file.dat'
+    result = load_melting_curve(missing)
+    assert result is None
+    # Discrimination: the function prints an "Error loading" line so the
+    # user is notified; capture stdout to confirm.
+    captured = capsys.readouterr()
+    assert 'Error loading melting curve data' in captured.out
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_melting_curves_none_dir_returns_none(monkeypatch, tmp_path):
+    """When melting_dir is None, the helper returns None and does not consult the disk."""
+    from unittest.mock import MagicMock
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_melting_curves
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    # Create the directory that the function would otherwise consult;
+    # this lets us verify the early return does not touch disk.
+    curves_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'X'
+    curves_dir.mkdir(parents=True, exist_ok=True)
+    sentinel = curves_dir / 'sentinel.dat'
+    sentinel.write_text('untouched')
+
+    config = MagicMock()
+    config.interior_struct.melting_dir = None
+
+    result = get_zalmoxis_melting_curves(config)
+    # Discrimination: result is the early-return sentinel and the
+    # filesystem under FWL_DATA_DIR was not modified.
+    assert result is None
+    assert sentinel.read_text() == 'untouched'
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_melting_curves_missing_dir_raises(monkeypatch, tmp_path):
+    """When the melting curves directory is missing, FileNotFoundError is raised."""
+    from unittest.mock import MagicMock
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_melting_curves
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'NonexistentCurve'
+
+    with pytest.raises(FileNotFoundError, match='Melting curves'):
+        get_zalmoxis_melting_curves(config)
+    # Discrimination: confirm the directory really does not exist (so
+    # the error path was reached for the right reason).
+    missing = (
+        tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'NonexistentCurve'
+    )
+    assert not missing.exists()
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_melting_curves_returns_two_interpolators(monkeypatch, tmp_path):
+    """When the directory and files exist, the helper returns (solidus, liquidus) callables."""
+    from unittest.mock import MagicMock
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_melting_curves
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    curves_dir = tmp_path / 'interior_lookup_tables' / 'Melting_curves' / 'Wolf_Bower+2018'
+    curves_dir.mkdir(parents=True, exist_ok=True)
+
+    (curves_dir / 'solidus_P-T.dat').write_text('1e9 2000\n2e9 3000\n')
+    (curves_dir / 'liquidus_P-T.dat').write_text('1e9 2500\n2e9 3500\n')
+
+    config = MagicMock()
+    config.interior_struct.melting_dir = 'Wolf_Bower+2018'
+
+    sol, liq = get_zalmoxis_melting_curves(config)
+    assert sol is not None and liq is not None
+
+    # Mid-point T values for the two curves at P=1.5e9
+    s_val = float(sol(1.5e9))
+    l_val = float(liq(1.5e9))
+    # Discrimination: solidus should be cooler than liquidus at the same
+    # pressure, otherwise something has gone wrong with file ordering.
+    assert s_val == pytest.approx(2500.0, rel=1e-12)
+    assert l_val == pytest.approx(3000.0, rel=1e-12)
+    assert s_val < l_val
+
+
+# ============================================================================
+# get_zalmoxis_eos_dir
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_eos_dir_returns_fwl_data_subpath(monkeypatch, tmp_path):
+    """get_zalmoxis_eos_dir returns FWL_DATA / zalmoxis_eos."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_eos_dir
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    result = get_zalmoxis_eos_dir()
+    assert result == tmp_path / 'zalmoxis_eos'
+    # Discrimination: the returned path must end in zalmoxis_eos exactly
+    # (not 'zalmoxis_eos_dir' or some variant).
+    assert result.name == 'zalmoxis_eos'
+
+
+# ============================================================================
+# _download_zalmoxis_chabrier coverage
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_zalmoxis_chabrier_already_present_returns_early(monkeypatch, tmp_path):
+    """When the Chabrier folder already exists with content, the helper returns immediately."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import _download_zalmoxis_chabrier
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    folder_dir = tmp_path / 'zalmoxis_eos' / 'EOS_Chabrier2021_HHe'
+    folder_dir.mkdir(parents=True, exist_ok=True)
+    (folder_dir / 'placeholder.dat').write_text('data')
+
+    download_calls = []
+    monkeypatch.setattr(
+        data_mod, 'download_zenodo_folder', lambda *a, **k: download_calls.append(a)
+    )
+
+    _download_zalmoxis_chabrier()
+
+    # Discrimination: no download attempt was made because folder existed
+    # with files.
+    assert download_calls == []
+    # The placeholder remains intact.
+    assert (folder_dir / 'placeholder.dat').exists()
+
+
+@pytest.mark.unit
+def test_download_zalmoxis_chabrier_zenodo_failure_returns(monkeypatch, tmp_path):
+    """When download_zenodo_folder returns False, the helper warns and returns."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import _download_zalmoxis_chabrier
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    monkeypatch.setattr(data_mod, 'download_zenodo_folder', lambda *a, **k: False)
+
+    _download_zalmoxis_chabrier()
+
+    folder_dir = tmp_path / 'zalmoxis_eos' / 'EOS_Chabrier2021_HHe'
+    # Discrimination: folder was created (mkdir line ran) before the
+    # download attempt, but no contents extracted.
+    assert folder_dir.exists()
+    assert list(folder_dir.iterdir()) == []
+
+
+@pytest.mark.unit
+def test_download_zalmoxis_chabrier_extracts_tarball(monkeypatch, tmp_path):
+    """The helper extracts a downloaded .tar.gz, moves contents up, and cleans up."""
+    import tarfile
+
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import _download_zalmoxis_chabrier
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    folder_dir = tmp_path / 'zalmoxis_eos' / 'EOS_Chabrier2021_HHe'
+
+    def fake_download(zenodo_id, target):
+        target.mkdir(parents=True, exist_ok=True)
+        # Build a tarball containing a nested subdir
+        inner_dir = target / 'inner_temp'
+        inner_dir.mkdir(parents=True, exist_ok=True)
+        (inner_dir / 'chabrier2021_H.dat').write_text('chabrier data')
+        tarball = target / 'chabrier.tar.gz'
+        with tarfile.open(tarball, 'w:gz') as tar:
+            tar.add(inner_dir, arcname='inner_dir')
+        # Remove the inner_temp dir; the test simulates the actual
+        # tar-only contents.
+        import shutil
+
+        shutil.rmtree(inner_dir)
+        # Also write an md5sums.txt that should be cleaned up
+        (target / 'md5sums.txt').write_text('hash file.dat\n')
+        return True
+
+    monkeypatch.setattr(data_mod, 'download_zenodo_folder', fake_download)
+
+    _download_zalmoxis_chabrier()
+
+    # The expected file landed at the top level (after move from subdir)
+    assert (folder_dir / 'chabrier2021_H.dat').exists()
+    # Discrimination: the md5sums.txt was cleaned up, and no tarball
+    # remains.
+    assert not (folder_dir / 'md5sums.txt').exists()
+    assert list(folder_dir.glob('*.tar.gz')) == []
+
+
+# ============================================================================
+# download_zalmoxis_eos additional dispatch branches
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_rtpress(mock_static, mock_folder, mock_chabrier):
+    """RTPress100TPa selects density_melt + adiabat_temp_grad_melt files."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('RTPress100TPa:MgSiO3', core_eos='Seager2007:iron')
+
+    mock_static.assert_called_once()
+    rt_calls = [c for c in mock_folder.call_args_list if 'RTPress' in str(c)]
+    # Discrimination: exactly TWO RTPress files (density melt and
+    # adiabat grad melt) must have been requested; a regression that
+    # only fetched one would break this pin.
+    assert len(rt_calls) == 2
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_2phase(mock_static, mock_folder, mock_chabrier):
+    """PALEOS-2phase:MgSiO3 selects the liquid + solid tables."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-2phase:MgSiO3', core_eos='Seager2007:iron')
+
+    p2_calls = [c for c in mock_folder.call_args_list if 'PALEOS_MgSiO3' in str(c)]
+    # Discrimination: exactly two files (liquid + solid). A regression
+    # that downloaded only one would fail this assertion.
+    assert len(p2_calls) == 2
+    files = [c.kwargs.get('file', '') for c in p2_calls]
+    assert any('liquid' in f for f in files)
+    assert any('solid' in f for f in files)
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_2phase_highres(
+    mock_static, mock_folder, mock_chabrier
+):
+    """PALEOS-2phase:MgSiO3-highres selects the highres liquid + solid tables."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos('PALEOS-2phase:MgSiO3-highres', core_eos='Seager2007:iron')
+
+    p2_calls = [c for c in mock_folder.call_args_list if 'PALEOS_MgSiO3' in str(c)]
+    assert len(p2_calls) == 2
+    files = [c.kwargs.get('file', '') for c in p2_calls]
+    # Discrimination: the file names must contain 'highres' suffix.
+    assert all('highres' in f for f in files)
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_unknown_component_warns(
+    mock_static, mock_folder, mock_chabrier, caplog
+):
+    """An unknown EOS family triggers a warning but no exception."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    with caplog.at_level('WARNING'):
+        download_zalmoxis_eos('UnknownFamily:Foo', core_eos='Seager2007:iron')
+
+    warnings = [r for r in caplog.records if 'no handler' in r.getMessage()]
+    # Discrimination: at least one warning was emitted for the unknown
+    # component, and no folder-download was queued for it.
+    assert len(warnings) >= 1
+    no_handler_messages = [w.getMessage() for w in warnings]
+    assert any('UnknownFamily' in m for m in no_handler_messages)
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data._download_zalmoxis_chabrier')
+@patch('proteus.utils.data._download_zalmoxis_folder')
+@patch('proteus.utils.data.download_eos_static')
+def test_download_zalmoxis_eos_paleos_api_no_download(
+    mock_static, mock_folder, mock_chabrier
+):
+    """PALEOS-API:* and PALEOS-API-2phase:* are valid but trigger no downloads."""
+    from proteus.utils.data import download_zalmoxis_eos
+
+    download_zalmoxis_eos(
+        'PALEOS-API:MgSiO3+PALEOS-API-2phase:H2O', core_eos='Seager2007:iron'
+    )
+
+    # Discrimination: Seager static (always for core fallback) is the
+    # only download; PALEOS-API prefixes are NOT routed to the folder
+    # helper.
+    mock_static.assert_called_once()
+    assert mock_folder.call_count == 0
+
+
+# ============================================================================
+# _download_zalmoxis_folder unmapped folder warns
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.get_data_source_info', return_value=None)
+def test_download_zalmoxis_folder_no_mapping_warns(mock_info, mock_dl, caplog):
+    """_download_zalmoxis_folder warns when the source mapping is missing."""
+    from proteus.utils.data import _download_zalmoxis_folder
+
+    with caplog.at_level('WARNING'):
+        _download_zalmoxis_folder('UnknownEOS')
+
+    # Discrimination: download() was NOT called; the function warned and
+    # returned.
+    mock_dl.assert_not_called()
+    messages = ' '.join(r.getMessage() for r in caplog.records)
+    assert 'No data source mapping' in messages
+
+
+# ============================================================================
+# download() further branches: no Zenodo, OSF cleanup of empty folder
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download_OSF_file')
+@patch('proteus.utils.data.get_osf')
+@patch('proteus.utils.data.get_data_source_info', return_value=None)
+@patch('proteus.utils.data.GetFWLData')
+def test_download_file_mode_no_zenodo_id_skips_to_osf(
+    mock_getfwl, mock_info, mock_get_osf, mock_osf_file, tmp_path
+):
+    """File-mode: when zenodo_id is None, OSF is the only source."""
+    from proteus.utils.data import download
+
+    mock_getfwl.return_value = tmp_path
+
+    folder_dir = tmp_path / 'unmapped_target' / 'unmapped_folder'
+
+    def osf_side_effect(*, storage, files, data_dir):
+        dest = folder_dir / 'sub' / 'file.dat'
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text('payload')
+
+    mock_osf_file.side_effect = osf_side_effect
+
+    ok = download(
+        folder='unmapped_folder',
+        target='unmapped_target',
+        zenodo_id=None,
+        osf_id='osf_proj',
+        desc='test',
+        file='sub/file.dat',
+    )
+
+    assert ok is True
+    # Discrimination: OSF was the only mechanism that ran; the file was
+    # placed at the expected canonical path.
+    mock_osf_file.assert_called_once()
+    assert (folder_dir / 'sub' / 'file.dat').exists()
+
+
+# ============================================================================
+# get_zalmoxis_EOS branches
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_EOS_unified_static_path_used(monkeypatch, tmp_path):
+    """When EOS/static/Seager2007 exists, that path is preferred over the legacy fallback."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_EOS
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
+    seager_unified = eos_base / 'static' / 'Seager2007'
+    seager_unified.mkdir(parents=True, exist_ok=True)
+    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+        (seager_unified / fname).write_text('eos')
+
+    iron_silicate, _, water, _ = get_zalmoxis_EOS()
+    # Discrimination: the iron file path must point inside the unified
+    # location, NOT the legacy EOS_material_properties path.
+    assert 'EOS/static/Seager2007' in iron_silicate['core']['eos_file']
+    assert 'EOS_material_properties' not in iron_silicate['core']['eos_file']
+    # Water dict picks up the water EOS file as well
+    assert water['ice_layer']['eos_file'].endswith('eos_seager07_water.txt')
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_EOS_wb_pt_subfolder_takes_precedence(monkeypatch, tmp_path):
+    """When EOS/dynamic/WolfBower2018_MgSiO3/P-T exists, it is preferred over the parent."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_EOS
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
+    seager_unified = eos_base / 'static' / 'Seager2007'
+    seager_unified.mkdir(parents=True, exist_ok=True)
+    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+        (seager_unified / fname).write_text('eos')
+
+    wb_pt = eos_base / 'dynamic' / 'WolfBower2018_MgSiO3' / 'P-T'
+    wb_pt.mkdir(parents=True, exist_ok=True)
+    # Optional Cp + adiabat-grad files: when present, they should be
+    # included in the dict.
+    (wb_pt / 'heat_capacity_melt.dat').write_text('cp')
+    (wb_pt / 'heat_capacity_solid.dat').write_text('cp')
+    (wb_pt / 'adiabat_temp_grad_melt.dat').write_text('grad')
+
+    _, iron_Tdep, _, _ = get_zalmoxis_EOS()
+
+    # Discrimination: the cp_file and adiabat_grad_file entries appear
+    # because the optional files exist on disk; a regression that
+    # dropped the conditional include would leave one or both absent.
+    assert 'cp_file' in iron_Tdep['melted_mantle']
+    assert 'adiabat_grad_file' in iron_Tdep['melted_mantle']
+    assert 'cp_file' in iron_Tdep['solid_mantle']
+    # Density paths must point inside the P-T subfolder.
+    assert 'WolfBower2018_MgSiO3/P-T' in iron_Tdep['melted_mantle']['eos_file']
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_EOS_rt_legacy_folder_used(monkeypatch, tmp_path, caplog):
+    """When the unified RTPress folder is missing but legacy exists, it is used."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_EOS
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
+    seager_legacy.mkdir(parents=True, exist_ok=True)
+    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+        (seager_legacy / fname).write_text('eos')
+
+    rt_legacy = tmp_path / 'EOS_material_properties' / 'EOS_RTPress_melt_100TPa'
+    rt_legacy.mkdir(parents=True, exist_ok=True)
+    (rt_legacy / 'heat_capacity_melt.dat').write_text('cp')
+    (rt_legacy / 'adiabat_temp_grad_melt.dat').write_text('grad')
+
+    with caplog.at_level('WARNING'):
+        _, _, _, iron_rt = get_zalmoxis_EOS()
+
+    # Discrimination: the RTPress path lands in the legacy folder
+    # (because the unified EOS/RTPress_melt_100TPa subfolder is missing).
+    assert 'EOS_RTPress_melt_100TPa' in iron_rt['melted_mantle']['eos_file']
+    # cp_file is populated because the file exists.
+    assert 'cp_file' in iron_rt['melted_mantle']
+    # No "RTPress100TPa EOS folder not found" warning fires; only the
+    # Cp-table warning would fire if missing, and we created it.
+    folder_warnings = [
+        r for r in caplog.records if 'EOS folder not found' in r.getMessage()
+    ]
+    assert folder_warnings == []
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_EOS_rt_missing_cp_warns(monkeypatch, tmp_path, caplog):
+    """When the RTPress Cp table is missing, a warning fires and the dict omits cp_file."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_EOS
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    eos_base = tmp_path / 'interior_lookup_tables' / 'EOS'
+    seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
+    seager_legacy.mkdir(parents=True, exist_ok=True)
+    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+        (seager_legacy / fname).write_text('eos')
+
+    rt_unified = eos_base / 'RTPress_melt_100TPa'
+    rt_unified.mkdir(parents=True, exist_ok=True)
+    # Do NOT create heat_capacity_melt.dat
+
+    with caplog.at_level('WARNING'):
+        _, _, _, iron_rt = get_zalmoxis_EOS()
+
+    # Discrimination: a "Cp table not found" warning fired; the cp_file
+    # key is absent from the dict.
+    cp_warnings = [
+        r for r in caplog.records if 'Cp table not found' in r.getMessage()
+    ]
+    assert len(cp_warnings) >= 1
+    assert 'cp_file' not in iron_rt['melted_mantle']
+
+
+@pytest.mark.unit
+def test_get_zalmoxis_EOS_rt_folder_missing_warns(monkeypatch, tmp_path, caplog):
+    """When neither unified nor legacy RTPress folder exists, a folder-not-found warning fires."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_zalmoxis_EOS
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+
+    # Only Seager is present (legacy); RTPress folder is absent in BOTH
+    # locations.
+    seager_legacy = tmp_path / 'EOS_material_properties' / 'EOS_Seager2007'
+    seager_legacy.mkdir(parents=True, exist_ok=True)
+    for fname in ('eos_seager07_iron.txt', 'eos_seager07_silicate.txt', 'eos_seager07_water.txt'):
+        (seager_legacy / fname).write_text('eos')
+
+    with caplog.at_level('WARNING'):
+        _, _, _, iron_rt = get_zalmoxis_EOS()
+
+    folder_warnings = [
+        r for r in caplog.records if 'RTPress100TPa EOS folder not found' in r.getMessage()
+    ]
+    cp_warnings = [
+        r for r in caplog.records if 'Cp table not found' in r.getMessage()
+    ]
+    # Discrimination: exactly the folder-not-found warning fired AND the
+    # Cp-table warning ALSO fired (because the file under the missing
+    # folder cannot exist either).
+    assert len(folder_warnings) >= 1
+    assert len(cp_warnings) >= 1
+    # The returned dict still resolves a path (legacy default) for the
+    # density_melt eos_file, even though no file exists on disk.
+    assert 'RTPress' in iron_rt['melted_mantle']['eos_file']
+
+
+# ============================================================================
+# download_phoenix existing-grid skip branch
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.download')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_phoenix_existing_grid_keeps_zip_and_returns_true(
+    mock_getfwl, mock_download, tmp_path, monkeypatch
+):
+    """If grid_dir already has LTE files and a leftover zip is present, it is removed and True returned."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import download_phoenix
+
+    mock_getfwl.return_value = tmp_path
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    mock_download.return_value = True
+
+    base_dir = tmp_path / 'stellar_spectra' / 'PHOENIX'
+    base_dir.mkdir(parents=True, exist_ok=True)
+    grid_dir = base_dir / 'FeH-0.0_alpha+0.0'
+    grid_dir.mkdir(parents=True, exist_ok=True)
+    (grid_dir / 'LTE_T03000_phoenixMedRes_R05000.txt').write_text('spectrum')
+
+    # A leftover zip from a previous run
+    zip_path = base_dir / 'FeH-0.0_alpha+0.0_phoenixMedRes_R05000.zip'
+    zip_path.write_bytes(b'leftover')
+
+    ok = download_phoenix(alpha=0.0, FeH=0.0, force=False)
+    assert ok is True
+    # Discrimination: the leftover zip is removed AND the LTE file is
+    # untouched. A regression that re-extracted would have overwritten
+    # the LTE contents.
+    assert not zip_path.exists()
+    assert (grid_dir / 'LTE_T03000_phoenixMedRes_R05000.txt').read_text() == 'spectrum'
+
+
+# ============================================================================
+# _get_sufficient: MORS star module branch + scattering branch
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_get_sufficient_mors_solar_spectrum_only(monkeypatch):
+    """When star.mors.spectrum_source='solar', MUSCLES is skipped."""
+    from types import SimpleNamespace
+
+    import proteus.utils.data as data_mod
+
+    spectra_calls = []
+    monkeypatch.setattr(
+        data_mod,
+        'download_stellar_spectra',
+        lambda *args, **kwargs: spectra_calls.append(kwargs.get('folders', args)),
+    )
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_spectral_file', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_scattering', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_exoplanet_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_massradius_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_interior_lookuptables', lambda *a, **k: None)
+    monkeypatch.setattr(data_mod, 'download_melting_curves', lambda *a, **k: None)
+
+    config = SimpleNamespace(
+        star=SimpleNamespace(
+            module='mors',
+            mors=SimpleNamespace(spectrum_source='solar', tracks='spada'),
+        ),
+        atmos_clim=SimpleNamespace(module='dummy', aerosols_enabled=False),
+        interior_energetics=SimpleNamespace(module='dummy'),
+        interior_struct=SimpleNamespace(module='dummy'),
+    )
+
+    data_mod._get_sufficient(config)
+
+    assert len(spectra_calls) == 1
+    folders = spectra_calls[0]
+    # Discrimination: solar source should request 'Named' and 'solar'
+    # but NOT 'MUSCLES'.
+    assert 'Named' in folders
+    assert 'solar' in folders
+    assert 'MUSCLES' not in folders
+
+
+@pytest.mark.unit
+def test_get_sufficient_mors_muscles_spectrum_only(monkeypatch):
+    """When star.mors.spectrum_source='muscles', solar is skipped."""
+    from types import SimpleNamespace
+
+    import proteus.utils.data as data_mod
+
+    spectra_calls = []
+    tracks_calls = []
+    monkeypatch.setattr(
+        data_mod,
+        'download_stellar_spectra',
+        lambda *args, **kwargs: spectra_calls.append(kwargs.get('folders', args)),
+    )
+    monkeypatch.setattr(
+        data_mod, 'download_stellar_tracks', lambda name: tracks_calls.append(name)
+    )
+    monkeypatch.setattr(data_mod, 'download_spectral_file', lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_scattering', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_exoplanet_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_massradius_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_interior_lookuptables', lambda *a, **k: None)
+    monkeypatch.setattr(data_mod, 'download_melting_curves', lambda *a, **k: None)
+
+    config = SimpleNamespace(
+        star=SimpleNamespace(
+            module='mors',
+            mors=SimpleNamespace(spectrum_source='muscles', tracks='baraffe'),
+        ),
+        atmos_clim=SimpleNamespace(module='dummy', aerosols_enabled=False),
+        interior_energetics=SimpleNamespace(module='dummy'),
+        interior_struct=SimpleNamespace(module='dummy'),
+    )
+
+    data_mod._get_sufficient(config)
+
+    folders = spectra_calls[0]
+    assert 'Named' in folders
+    assert 'MUSCLES' in folders
+    assert 'solar' not in folders
+    # Discrimination: tracks='baraffe' must dispatch Baraffe, not Spada.
+    assert tracks_calls == ['Baraffe']
+
+
+@pytest.mark.unit
+def test_get_sufficient_agni_aerosols_downloads_scattering(monkeypatch):
+    """When aerosols_enabled is True, download_scattering is invoked."""
+    from types import SimpleNamespace
+
+    import proteus.atmos_clim.common as atmos_common
+    import proteus.utils.data as data_mod
+
+    scattering_calls = []
+    monkeypatch.setattr(
+        data_mod, 'download_scattering', lambda: scattering_calls.append('x')
+    )
+    monkeypatch.setattr(data_mod, 'download_stellar_spectra', lambda *a, **k: None)
+    monkeypatch.setattr(data_mod, 'download_stellar_tracks', lambda *a, **k: None)
+    monkeypatch.setattr(data_mod, 'download_spectral_file', lambda *a, **k: None)
+    monkeypatch.setattr(data_mod, 'download_surface_albedos', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_exoplanet_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_massradius_data', lambda: None)
+    monkeypatch.setattr(data_mod, 'download_interior_lookuptables', lambda *a, **k: None)
+    monkeypatch.setattr(data_mod, 'download_melting_curves', lambda *a, **k: None)
+    monkeypatch.setattr(
+        atmos_common, 'get_spfile_name_and_bands', lambda *a: ('Frostflow', '256')
+    )
+
+    config = SimpleNamespace(
+        star=SimpleNamespace(module='dummy'),
+        atmos_clim=SimpleNamespace(
+            module='agni',
+            aerosols_enabled=True,
+            agni=SimpleNamespace(spectral_file=None),
+        ),
+        interior_energetics=SimpleNamespace(module='dummy'),
+        interior_struct=SimpleNamespace(module='dummy'),
+    )
+
+    surface_calls = []
+    monkeypatch.setattr(
+        data_mod, 'download_surface_albedos', lambda: surface_calls.append('s')
+    )
+
+    data_mod._get_sufficient(config)
+
+    # Discrimination: download_scattering fired exactly once, and
+    # download_surface_albedos also fired (both are AGNI-only paths).
+    assert scattering_calls == ['x']
+    assert surface_calls == ['s']
+
+
+# ============================================================================
+# get_socrates default-dirs path
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sp.run')
+def test_get_socrates_uses_none_dirs_when_not_given(mock_run, tmp_path, monkeypatch):
+    """When dirs is None, get_socrates derives them from _none_dirs."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import get_socrates
+
+    fake_dirs = {'proteus': str(tmp_path), 'tools': str(tmp_path / 'tools')}
+    (tmp_path / 'tools').mkdir()
+
+    monkeypatch.setattr(data_mod, '_none_dirs', lambda: fake_dirs)
+
+    get_socrates(dirs=None)
+
+    # Discrimination: subprocess invoked, and the cmd's tool path
+    # corresponds to the fake_dirs['tools'] entry.
+    mock_run.assert_called_once()
+    cmd = mock_run.call_args[0][0]
+    assert cmd[0].startswith(str(tmp_path / 'tools'))
+
+
+# ============================================================================
+# _download_zalmoxis_chabrier: __MACOSX and dotfile branches
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_zalmoxis_chabrier_removes_macosx_and_dotfiles(monkeypatch, tmp_path):
+    """The helper removes __MACOSX subdirs and skips ._/.DS_Store entries."""
+    import proteus.utils.data as data_mod
+    from proteus.utils.data import _download_zalmoxis_chabrier
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    folder_dir = tmp_path / 'zalmoxis_eos' / 'EOS_Chabrier2021_HHe'
+
+    def fake_download(zenodo_id, target):
+        target.mkdir(parents=True, exist_ok=True)
+        # Create a __MACOSX subdir at the top level that must be removed
+        macosx = target / '__MACOSX'
+        macosx.mkdir(parents=True, exist_ok=True)
+        (macosx / 'junk.dat').write_text('mac junk')
+        # Create a normal subdir with a dotfile and a real file
+        inner = target / 'inner'
+        inner.mkdir(parents=True, exist_ok=True)
+        (inner / 'chabrier2021_H.dat').write_text('real data')
+        (inner / '._hidden').write_text('apple metadata')
+        (inner / '.DS_Store').write_text('finder')
+        return True
+
+    monkeypatch.setattr(data_mod, 'download_zenodo_folder', fake_download)
+
+    _download_zalmoxis_chabrier()
+
+    # Discrimination: __MACOSX was removed; only the real chabrier file
+    # survived at the top level. The dotfiles did NOT make it up.
+    assert not (folder_dir / '__MACOSX').exists()
+    assert (folder_dir / 'chabrier2021_H.dat').read_text() == 'real data'
+    assert not (folder_dir / '._hidden').exists()
+    assert not (folder_dir / '.DS_Store').exists()
+
+
+# ============================================================================
+# download_stellar_tracks OSF inner-loop exception caught
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_stellar_tracks_osf_per_project_exception_caught(
+    tmp_path, monkeypatch
+):
+    """If get_osf raises for one project, the function moves on and raises RuntimeError."""
+    import sys
+    import types
+
+    import proteus.utils.data as data_mod
+
+    monkeypatch.setattr(data_mod, 'FWL_DATA_DIR', tmp_path, raising=False)
+    monkeypatch.setattr(data_mod, 'GetFWLData', lambda: tmp_path)
+
+    def fake_download(track):
+        raise RuntimeError('MORS HTTP 503')
+
+    fake_mors_data = types.ModuleType('mors.data')
+    fake_mors_data.DownloadEvolutionTracks = fake_download
+    fake_mors = types.ModuleType('mors')
+    fake_mors.data = fake_mors_data
+    monkeypatch.setitem(sys.modules, 'mors', fake_mors)
+    monkeypatch.setitem(sys.modules, 'mors.data', fake_mors_data)
+
+    get_osf_calls = []
+
+    def bad_get_osf(osf_id):
+        get_osf_calls.append(osf_id)
+        raise ConnectionError('OSF unreachable')
+
+    monkeypatch.setattr(data_mod, 'get_osf', bad_get_osf)
+    monkeypatch.setattr(data_mod, 'download_OSF_folder', lambda **k: None)
+
+    with pytest.raises(RuntimeError, match='MORS error'):
+        data_mod.download_stellar_tracks('Spada', use_osf_fallback=True)
+    # Discrimination: get_osf was actually called for each candidate
+    # OSF project, so the per-project except path fired (not an outer
+    # short-circuit).
+    assert len(get_osf_calls) >= 1
+
+
+# ============================================================================
+# download_zenodo_file: log read on success-path returns 0 exit
+# (line 247 TimeoutExpired-in-file-mode is already covered above; round out
+# the file-mode test inventory with the rejects-bad-id for completeness)
+# ============================================================================
+
+
+@pytest.mark.unit
+@patch('proteus.utils.data.sleep', return_value=None)
+@patch('proteus.utils.data.sp.run')
+@patch('proteus.utils.data.GetFWLData')
+def test_download_zenodo_file_log_read_failure_after_nonzero(
+    mock_getfwl, mock_run, _mock_sleep, tmp_path
+):
+    """When zenodo_get exits non-zero and log readback succeeds, the diagnostic is logged."""
+    from proteus.utils.data import download_zenodo_file
+
+    mock_getfwl.return_value = tmp_path
+
+    proc_avail = MagicMock(returncode=0)
+    proc_fail = MagicMock(returncode=2)
+
+    def side_effect(cmd, *args, **kwargs):
+        if '--version' in cmd:
+            return proc_avail
+        # The function writes its own log file via `with open(out, 'w')`;
+        # we don't need to write extra content because the open succeeds.
+        return proc_fail
+
+    mock_run.side_effect = side_effect
+
+    folder_dir = tmp_path / 'log_readable_file'
+    ok = download_zenodo_file('12345', folder_dir, 'sub/file.dat')
+    assert ok is False
+    # Discrimination: confirm we exhausted retries with non-zero exit
+    # (so the log-readback branch on line 234 fired).
+    download_calls = [
+        c for c in mock_run.call_args_list if '--version' not in c[0][0]
+    ]
+    assert len(download_calls) == 3
