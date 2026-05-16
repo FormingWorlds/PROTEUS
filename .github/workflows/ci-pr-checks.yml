@@ -4,15 +4,15 @@ name: CI - Fast PR Checks
 # Strategy:
 #   1. Use pre-compiled Docker image (ghcr.io/formingworlds/proteus:latest)
 #   2. Overlay PR code changes onto the container
-#   3. Smart rebuild: Only recompile changed source files (make handles this)
-#   4. Run @pytest.mark.unit tests with mocked physics (fast, ~2-5 min total)
-#   5. Run @pytest.mark.smoke tests with real binaries (1 timestep, low res, ~2-5 min)
-#   6. Exclude placeholder tests (@pytest.mark.skip) - these are placeholders for future implementation
+#   3. Run @pytest.mark.unit tests with mocked physics (target: <5 min wall, hard cap 10 min)
+#   4. Exclude placeholder tests (@pytest.mark.skip) - these are placeholders for future implementation
 #
-# Test Categories:
-#   @pytest.mark.unit    -> Fast tests with mocked physics (target: <100ms each)
-#   @pytest.mark.smoke   -> Quick validation with real binaries (target: <30s each)
-#   @pytest.mark.skip    -> Placeholder tests not yet implemented (excluded from CI)
+# Test Categories (PR cycle runs unit only; smoke + integration + slow run nightly):
+#   @pytest.mark.unit        -> Mocked-physics unit tests (target: <100ms each, ~5 min total)
+#   @pytest.mark.smoke       -> Real-binary 1-timestep validation; nightly only
+#   @pytest.mark.integration -> Multi-module coupling; nightly only
+#   @pytest.mark.slow        -> Full physics validation; nightly only (targeted whitelist)
+#   @pytest.mark.skip        -> Placeholder tests not yet implemented (excluded from CI)
 #
 # For current test counts and detailed metrics, see: docs/test_infrastructure.md
 
@@ -74,7 +74,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       unit-outcome: ${{ steps.unit-tests.outcome }}
-      smoke-outcome: ${{ steps.smoke-tests.outcome }}
       coverage-status: ${{ steps.coverage-validation.outputs.coverage_status }}
       coverage-drop: ${{ steps.coverage-validation.outputs.coverage_drop }}
       estimated-total: ${{ steps.coverage-validation.outputs.estimated_total }}
@@ -256,6 +255,11 @@ jobs:
       - name: Run unit tests
         id: unit-tests
         continue-on-error: true
+        # The unit tier is mocked-physics only and targets <5 min wall.
+        # The 10 min hard cap surfaces a regression that introduces a
+        # real-binary or real-disk call quickly, instead of riding the
+        # 6 hour GitHub Actions ceiling.
+        timeout-minutes: 10
         run: |
           set -euo pipefail  # propagate pytest's exit code through the tee pipe
           cd /opt/proteus
@@ -276,50 +280,6 @@ jobs:
             $COV_ARGS \
             -p no:faulthandler \
             --durations=25 | tee pytest-unit.log
-
-      - name: Smart rebuild of physics modules
-        run: |
-          cd /opt/proteus
-          echo "Checking if Fortran/C source files changed..."
-
-          # SOCRATES rebuild (only if sources changed)
-          if [ -d "socrates" ]; then
-            cd socrates
-            ./build_code 2>&1 | grep -q "Nothing to be done" || {
-              echo "SOCRATES needs rebuild..."
-              ./build_code
-            }
-            cd /opt/proteus
-          fi
-
-          # AGNI rebuild (only if Julia sources changed)
-          if [ -d "AGNI" ]; then
-            cd AGNI
-            if git diff --name-only HEAD origin/main | grep -q '\.jl$'; then
-              echo "AGNI Julia sources changed, re-instantiating packages..."
-              julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
-            else
-              echo "No AGNI changes detected, skipping rebuild"
-            fi
-            cd /opt/proteus
-          fi
-
-      - name: Run smoke tests
-        id: smoke-tests
-        continue-on-error: true
-        run: |
-          set -euo pipefail  # propagate pytest's exit code through the tee pipe
-          cd /opt/proteus
-          if [ "$RUN_COVERAGE" = "true" ]; then
-            COV_ARGS="--cov=src --cov-append --cov-report=term-missing --cov-report=xml --cov-report=html"
-          else
-            COV_ARGS=""
-          fi
-          pytest -m "smoke and not skip and not slow and not integration" \
-            --ignore=tests/examples \
-            $COV_ARGS \
-            -p no:faulthandler \
-            --durations=25 -v --tb=short | tee pytest-smoke.log
 
       - name: Generate coverage JSON
         if: env.RUN_COVERAGE == 'true'
@@ -508,7 +468,7 @@ jobs:
 
           # Print summary to log
           disp_est = f"{est_pct_union:.2f}%" if est_pct_union else "—"
-          print(f"Unit+Smoke: {u_pct:.2f}% | Nightly: {i_pct:.2f}% | Estimated total: {disp_est} | Status: {coverage_status}")
+          print(f"Unit: {u_pct:.2f}% | Nightly: {i_pct:.2f}% | Estimated total: {disp_est} | Status: {coverage_status}")
           PY
 
       - name: Diff coverage on changed lines (fast suite)
@@ -556,8 +516,8 @@ jobs:
           echo "Add tests to restore coverage above ${{ steps.coverage-validation.outputs.threshold }}%"
           exit 1
 
-      - name: Fail job if unit or smoke tests failed
-        if: always() && (steps.unit-tests.outcome == 'failure' || steps.smoke-tests.outcome == 'failure')
+      - name: Fail job if unit tests failed
+        if: always() && steps.unit-tests.outcome == 'failure'
         run: exit 1
 
       - name: Ratchet fast coverage threshold
@@ -622,24 +582,6 @@ jobs:
           path: /opt/proteus/pytest-unit.log
           retention-days: 7
 
-      - name: Upload smoke pytest log
-        uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: smoke-pytest-log
-          path: /opt/proteus/pytest-smoke.log
-          retention-days: 7
-
-      - name: Upload smoke test artifacts on failure
-        uses: actions/upload-artifact@v6
-        if: failure() && steps.smoke-tests.outcome == 'failure'
-        with:
-          name: smoke-test-failures
-          path: |
-            /opt/proteus/output/
-            /opt/proteus/tests/**/*.log
-          retention-days: 7
-
   macos-unit-tests:
     name: Unit Tests macOS
     runs-on: macos-latest
@@ -662,6 +604,8 @@ jobs:
       - name: Run unit tests
         id: unit-tests
         continue-on-error: true
+        # Matches the Linux unit step: <5 min target, 10 min hard cap.
+        timeout-minutes: 10
         run: |
           # -p no:faulthandler disables pytest's faulthandler plugin.
           # macOS GitHub runners deny faulthandler.enable() with
@@ -787,7 +731,6 @@ jobs:
       - name: Write combined summary
         env:
           LINUX_UNIT: ${{ needs.unit-tests.outputs.unit-outcome }}
-          LINUX_SMOKE: ${{ needs.unit-tests.outputs.smoke-outcome }}
           LINUX_JOB_RESULT: ${{ needs.unit-tests.result }}
           MACOS_UNIT: ${{ needs.macos-unit-tests.outputs.unit-outcome }}
           MACOS_JOB_RESULT: ${{ needs.macos-unit-tests.result }}
@@ -824,14 +767,13 @@ jobs:
           cov_drop = float(os.environ.get("COV_DROP", "0") or "0")
 
           linux_unit = os.environ.get("LINUX_UNIT", "")
-          linux_smoke = os.environ.get("LINUX_SMOKE", "")
           linux_job_result = os.environ.get("LINUX_JOB_RESULT", "")
           macos_unit = os.environ.get("MACOS_UNIT", "")
           macos_job_result = os.environ.get("MACOS_JOB_RESULT", "")
           lint = os.environ.get("LINT", "")
 
           with open(summary_path, "w") as f:
-              f.write("# Fast PR Checks – Summary\n\n")
+              f.write("# Fast PR Checks: Summary\n\n")
 
               # Staleness/missing warnings
               if nightly_stale:
@@ -855,9 +797,8 @@ jobs:
               f.write("| Platform | Test Type | Status |\n")
               f.write("|----------|-----------|--------|\n")
               f.write(f"| Linux | Unit tests | {icon(linux_unit)} |\n")
-              f.write(f"| Linux | Smoke tests | {icon(linux_smoke)} |\n")
               f.write(f"| macOS | Unit tests | {icon(macos_unit)} |\n")
-              f.write(f"| — | Lint (ruff) | {icon(lint)} |\n\n")
+              f.write(f"| (any) | Lint (ruff) | {icon(lint)} |\n\n")
 
               # Coverage section (Linux data only)
               unit_pct = float(os.environ.get("UNIT_PCT", "0") or "0")
@@ -872,9 +813,9 @@ jobs:
               f.write("## Coverage by Test Type (Linux)\n\n")
               f.write("| Test Type | Coverage | Lines Covered |\n")
               f.write("|-----------|----------|---------------|\n")
-              f.write(f"| Unit + Smoke (this PR) | {unit_pct:.2f}% | {unit_covered} / {unit_total} |\n")
+              f.write(f"| Unit (this PR) | {unit_pct:.2f}% | {unit_covered} / {unit_total} |\n")
               if nightly_pct > 0:
-                  f.write(f"| Integration (nightly) | {nightly_pct:.2f}% | — |\n")
+                  f.write(f"| Smoke + Integration + Slow (nightly) | {nightly_pct:.2f}% | (combined) |\n")
               est = float(est_total or "0")
               if est > 0:
                   status_icon = "✅" if cov_status == "ok" else ("⚠️" if cov_status == "warn" else "❌")
@@ -884,16 +825,15 @@ jobs:
                   f.write("\n*Estimated total unavailable (nightly data missing)*\n\n")
 
               f.write("### Notes\n")
-              f.write("- macOS runs unit tests only (no smoke tests — requires compiled binaries)\n")
-              f.write("- Coverage thresholds enforced on Linux only (source of truth)\n")
-              f.write("- Grace period: 0.3% | Nightly staleness threshold: 48 hours\n")
+              f.write("- PR cycle runs unit tests only; smoke + integration + slow tiers run nightly.\n")
+              f.write("- Coverage thresholds enforced on Linux only (source of truth).\n")
+              f.write("- Grace period: 0.3% | Nightly staleness threshold: 48 hours.\n")
               f.write("- See `docs/test_infrastructure.md` for testing strategy.\n")
 
               # Failure guidance - includes non-test failures (diff-cover, coverage, staleness)
-              any_test_fail = linux_unit == "failure" or linux_smoke == "failure" or macos_unit == "failure"
+              any_test_fail = linux_unit == "failure" or macos_unit == "failure"
               # Detect non-test failures: job failed but specific test steps didn't fail
-              linux_non_test_fail = (linux_job_result == "failure" and
-                                     linux_unit != "failure" and linux_smoke != "failure")
+              linux_non_test_fail = (linux_job_result == "failure" and linux_unit != "failure")
               macos_non_test_fail = macos_job_result == "failure" and macos_unit != "failure"
               cov_fail = cov_status == "fail"
 
@@ -901,7 +841,7 @@ jobs:
                   f.write("\n---\n")
                   f.write("## ❌ PR did not pass checks\n\n")
                   if any_test_fail:
-                      f.write("**Unit tests or smoke tests failed.** See the logs above for details.\n\n")
+                      f.write("**Unit tests failed.** See the logs above for details.\n\n")
                       f.write("See **[How to create more unit tests](https://github.com/FormingWorlds/PROTEUS/blob/main/docs/test_building.md)** for guidance.\n\n")
                   if lint == "failure":
                       f.write("**Lint (ruff) failed.** Run `ruff check --fix src/ tests/ && ruff format src/ tests/` locally.\n\n")
