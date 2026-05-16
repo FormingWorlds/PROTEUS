@@ -201,9 +201,16 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        # AGNI's own src/get_agni.sh starts with `git pull`, which fails on
+        # the detached-HEAD checkout we pinned via tools/_module_pins.py.
+        # Run the build steps directly so we keep the pinned ref intact.
+        # RAD_DIR is exported by the later "Export environment" step but
+        # AGNI's deps/build.jl reads it inline, so we set it here too.
+        export RAD_DIR="$GITHUB_WORKSPACE/socrates"
         cd AGNI
-        # Skip AGNI's own test suite (we only need Pkg.instantiate).
-        bash src/get_agni.sh 0
+        rm -f Manifest.toml
+        julia deps/build.jl
+        julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
 
     # ------------------------------------------------------------------
     # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)
