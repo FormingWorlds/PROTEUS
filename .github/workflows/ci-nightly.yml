@@ -550,16 +550,18 @@ jobs:
           set -euo pipefail
           # The zalmoxis-heavy tests (test_smoke_zalmoxis_spider.py,
           # test_regression_aw_zalmoxis.py, test_regression_structure_update.py)
-          # are temporarily excluded: zalmoxis structure solves hang for
-          # 10+ minutes locally on this branch and pile up on hosted CI.
-          # The aragog_janus + aragog_agni files are still out for the
-          # same reason (AGNI version mismatch on this branch).
-          # Re-add them as the zalmoxis hang and the AGNI keyword
-          # mismatch are diagnosed.
+          # are excluded: zalmoxis structure solves hang for 10+ minutes
+          # locally on this branch and pile up on hosted CI. The aragog_agni
+          # and aragog_janus files run end-to-end with the bumped AGNI
+          # (see the "Refresh AGNI" step above) and contribute coverage
+          # even though some helpfile-equality assertions fail against
+          # stale reference data.
           pytest -m "slow and not unit and not smoke and not integration" \
             tests/config/test_config_schema_invariants.py \
             tests/integration/test_smoke_hypothesis.py \
             tests/integration/test_integration_dummy.py \
+            tests/integration/test_integration_aragog_agni.py \
+            tests/integration/test_integration_aragog_janus.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \
