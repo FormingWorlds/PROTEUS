@@ -15,7 +15,7 @@ from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
 from proteus.interior_energetics.aragog import read_ncdf as read_interior
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 out_dir = PROTEUS_ROOT / 'output' / 'aragog_janus'
@@ -64,7 +64,7 @@ def aragog_janus_run():
     return runner
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 def test_aragog_janus_run(aragog_janus_run):
     """End-to-end Aragog interior + Janus atmosphere coupling produces a
     ``runtime_helpfile.csv`` matching the committed reference within
@@ -90,7 +90,7 @@ def test_aragog_janus_run(aragog_janus_run):
     assert_frame_equal(hf_all, hf_ref, rtol=6e-3)
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 def test_aragog_janus_spectrum(aragog_janus_run):
     """The stellar spectrum file ``0.sflux`` written by the Aragog+Janus
     run is bit-identical to the committed reference, pinning the stellar
@@ -106,7 +106,7 @@ def test_aragog_janus_spectrum(aragog_janus_run):
     assert _out.stat().st_size > 0
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 @pytest.mark.physics_invariant
 def test_aragog_janus_atmosphere(aragog_janus_run):
     """Atmosphere NetCDF snapshot at iter 402 matches the reference on
@@ -141,7 +141,7 @@ def test_aragog_janus_atmosphere(aragog_janus_run):
         )
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 @pytest.mark.physics_invariant
 def test_aragog_janus_interior(aragog_janus_run):
     """Interior NetCDF snapshot at iter 402 matches the reference on five
@@ -176,7 +176,7 @@ def test_aragog_janus_interior(aragog_janus_run):
         )
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 @pytest.mark.xfail(raises=AssertionError)
 @pytest.mark.parametrize('image', IMAGE_LIST)
 def test_aragog_janus_plot(aragog_janus_run, image):

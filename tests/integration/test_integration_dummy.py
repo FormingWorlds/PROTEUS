@@ -10,7 +10,7 @@ from pandas.testing import assert_frame_equal
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 out_dir = PROTEUS_ROOT / 'output' / 'dummy'
@@ -27,7 +27,7 @@ def dummy_run():
 
 
 # run the integration
-@pytest.mark.integration
+@pytest.mark.slow
 def test_dummy_run(dummy_run):
     """All-dummy-backend integration produces a ``status`` file
     bit-identical to the committed reference. This is the cheapest
@@ -41,7 +41,7 @@ def test_dummy_run(dummy_run):
 
 
 # check result
-@pytest.mark.integration
+@pytest.mark.slow
 def test_dummy_helpfile(dummy_run):
     """``runtime_helpfile.csv`` of the all-dummy run matches the
     committed reference column-by-column within rtol=5e-3 on shared columns.
@@ -66,7 +66,7 @@ def test_dummy_helpfile(dummy_run):
 
 
 # Check stellar spectra
-@pytest.mark.integration
+@pytest.mark.slow
 def test_dummy_stellar(dummy_run):
     """The all-dummy stellar spectrum file ``0.sflux`` is bit-identical to
     the committed reference, pinning the dummy-star fall-back path.
@@ -79,7 +79,7 @@ def test_dummy_stellar(dummy_run):
 
 
 # Check physics
-@pytest.mark.integration
+@pytest.mark.slow
 def test_dummy_physics(dummy_run):
     """Physical sanity along the all-dummy trajectory: F_atm > 0 (planet
     is cooling), eccentricity decreases monotonically (tidal damping),

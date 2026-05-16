@@ -544,11 +544,21 @@ jobs:
             tests/integration/test_smoke_zalmoxis_spider.py \
             tests/integration/test_regression_aw_zalmoxis.py \
             tests/integration/test_regression_structure_update.py \
+            tests/integration/test_integration_dummy.py \
+            tests/integration/test_integration_aragog_janus.py \
+            tests/integration/test_integration_aragog_agni.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \
             -p no:faulthandler \
             --junit-xml=/tmp/junit-slow.xml \
+            --cov=proteus \
+            --cov-append \
+            --cov-fail-under=0 \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html \
+            --cov-config=pyproject.toml \
             -v --tb=short 2>&1 | tee /tmp/slow-output.txt
 
       - name: Save combined coverage (unit + smoke + integration + slow, for Fast PR reference)

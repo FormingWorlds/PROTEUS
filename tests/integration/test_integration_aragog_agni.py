@@ -38,10 +38,10 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 def test_integration_aragog_agni_multi_timestep(proteus_multi_timestep_run):
     """Test multi-timestep ARAGOG + AGNI interior–atmosphere coupling.
 
