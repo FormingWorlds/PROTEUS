@@ -21,14 +21,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Tests run in the nightly slow tier. The configs are MagicMocks and
-# the downstream EOS path is caught and swallowed, so the assertion
-# only depends on the NL20 log line emitted near the top of the
-# function. The module completes in under a second locally but hangs
-# on hosted CI runners, likely because the swallow no longer catches
-# every downstream failure mode on that environment. Until the leak
-# is identified, the module runs nightly only.
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
+# Tests run in the fast PR check. _make_minimal_config explicitly sets
+# interior_struct.zalmoxis = None so compute_initial_entropy returns at
+# the early Zalmoxis-config-absent fallback after emitting the NL20 log
+# line. The earlier hang on hosted CI was a MagicMock leak: without the
+# explicit None, MagicMock auto-creates interior_struct.zalmoxis and the
+# function descended into the real 2-phase EOS loaders with MagicMock
+# paths, which could feed JAX compilation or disk scans that never
+# terminate on the hosted runner. The 30 s per-test timeout is a
+# defensive ceiling against any future regression of the same shape.
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _make_minimal_config(
@@ -47,6 +49,15 @@ def _make_minimal_config(
     cfg.interior_struct.core_frac = core_frac
     cfg.interior_struct.core_frac_mode = core_frac_mode
     cfg.interior_struct.module = 'dummy'
+    # Explicitly None out interior_struct.zalmoxis so the function takes the
+    # early fallback at common.py around line 374 ("Zalmoxis config not
+    # available"). Without this line MagicMock auto-creates a MagicMock for
+    # interior_struct.zalmoxis, the None-guard never fires, and the function
+    # runs the real Zalmoxis 2-phase EOS loaders with MagicMock paths. That
+    # path completes quickly on a host where zalmoxis import fails early but
+    # can hang on a hosted CI image where zalmoxis is installed and the
+    # MagicMock paths feed into JAX compilation or disk-scan loops.
+    cfg.interior_struct.zalmoxis = None
     return cfg
 
 
