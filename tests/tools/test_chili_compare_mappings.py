@@ -55,6 +55,11 @@ def test_chili_mapping_T_pot_uses_PROTEUS_T_pot_not_T_magma():
     assert mod.CHILI_TO_PROTEUS['T_pot(K)'] == 'T_pot', (
         'T_pot(K) must map to PROTEUS T_pot, not T_magma'
     )
+    # Discrimination guard: an explicit negative pin against the
+    # previously-wrong column name catches a regression that reverted
+    # to T_magma. The previous mapping diverged from T_pot by several
+    # hundred K in the mushy stage; the two names must never coincide.
+    assert mod.CHILI_TO_PROTEUS['T_pot(K)'] != 'T_magma'
 
 
 @pytest.mark.unit
@@ -67,6 +72,11 @@ def test_chili_mapping_flux_ASR_uses_derived_F_asr_not_F_ins():
     assert mod.CHILI_TO_PROTEUS['flux_ASR(W/m2)'] == 'F_asr', (
         'flux_ASR(W/m2) must map to the derived F_asr column, not F_ins'
     )
+    # Discrimination guard: an explicit negative pin against F_ins
+    # catches a regression that reverted to the raw-instellation column.
+    # The two differ by s0_factor * (1 - albedo_pl), about a factor of
+    # 0.34 at Earth-like configurations.
+    assert mod.CHILI_TO_PROTEUS['flux_ASR(W/m2)'] != 'F_ins'
 
 
 @pytest.mark.unit
@@ -79,6 +89,10 @@ def test_chili_mapping_phi_vol_frac_uses_PROTEUS_Phi_global_vol():
     assert mod.CHILI_TO_PROTEUS['phi(vol_frac)'] == 'Phi_global_vol', (
         'phi(vol_frac) must map to Phi_global_vol, not Phi_global'
     )
+    # Discrimination guard: an explicit negative pin against Phi_global
+    # catches a regression to the mass-weighted column. The two values
+    # diverge by 5-10% in the mushy zone for silicate compositions.
+    assert mod.CHILI_TO_PROTEUS['phi(vol_frac)'] != 'Phi_global'
 
 
 @pytest.mark.unit
@@ -102,3 +116,18 @@ def test_chili_mapping_other_columns_unchanged():
         assert mod.CHILI_TO_PROTEUS[ck] == expected_pk, (
             f'{ck!r} must continue mapping to {expected_pk!r}'
         )
+    # Coverage guard: every CHILI key in the expected reference set
+    # must actually exist in the loaded mapping. A regression that
+    # silently dropped a key would let the loop's per-key equality
+    # raise a KeyError, but pin the membership explicitly so the
+    # failure surfaces as a clean assertion rather than a KeyError
+    # traceback.
+    for ck in expected:
+        assert ck in mod.CHILI_TO_PROTEUS, f'{ck!r} missing from CHILI_TO_PROTEUS'
+    # No-drift guard: the three corrected columns (T_pot, flux_ASR,
+    # phi(vol_frac)) must still be the corrected values, not the
+    # pre-fix values. This catches a regression that reverted any of
+    # the three fixes in the SAME commit as a working-column rename.
+    assert mod.CHILI_TO_PROTEUS['T_pot(K)'] == 'T_pot'
+    assert mod.CHILI_TO_PROTEUS['flux_ASR(W/m2)'] == 'F_asr'
+    assert mod.CHILI_TO_PROTEUS['phi(vol_frac)'] == 'Phi_global_vol'

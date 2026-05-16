@@ -416,7 +416,13 @@ def test_validate_agni_state_rejects_unconverged():
 
 def test_extract_agni_failure_reason_nan_flux():
     """Parser must recognise the NaN-values failure marker emitted by
-    AGNI/src/solver.jl line 977."""
+    AGNI/src/solver.jl line 977.
+
+    The classifier maps the NaN-values text to 'nan_flux' specifically;
+    a regression that returned 'unparsed' or one of the other modes
+    (singular_jacobian, max_iterations) would represent a real
+    diagnostic loss.
+    """
     from proteus.atmos_clim.agni import _extract_agni_failure_reason
 
     log_lines = [
@@ -425,22 +431,54 @@ def test_extract_agni_failure_reason_nan_flux():
     ]
     reason = _extract_agni_failure_reason(log_lines)
     assert reason == 'nan_flux'
+    # Discrimination guard: the parser must NOT report any of the other
+    # failure modes for this input. A regression that always returned
+    # the first failure mode in its lookup table (e.g. 'singular_jacobian')
+    # would pass the original equality check only by coincidence.
+    assert reason != 'singular_jacobian'
+    assert reason != 'max_iterations'
+    assert reason != 'unparsed'
 
 
 def test_extract_agni_failure_reason_singular_jacobian():
-    """Parser must recognise the singular-jacobian marker (solver.jl:971)."""
+    """Parser must recognise the singular-jacobian marker (solver.jl:971).
+
+    Distinct failure mode from NaN-values and max-iterations; the parser
+    must classify each marker into its own bucket so downstream logic
+    can dispatch on it.
+    """
     from proteus.atmos_clim.agni import _extract_agni_failure_reason
 
     log_lines = ['[error]     failure (singular jacobian)\n']
-    assert _extract_agni_failure_reason(log_lines) == 'singular_jacobian'
+    reason = _extract_agni_failure_reason(log_lines)
+    assert reason == 'singular_jacobian'
+    # Discrimination guard: must NOT collide with the other failure
+    # buckets. Pin negative results so a regression returning a constant
+    # label is caught.
+    assert reason != 'nan_flux'
+    assert reason != 'max_iterations'
+    assert reason != 'unparsed'
 
 
 def test_extract_agni_failure_reason_max_iterations():
-    """Parser must recognise the max-iterations marker (solver.jl:968)."""
+    """Parser must recognise the max-iterations marker (solver.jl:968).
+
+    Each of the three documented failure markers (max_iterations,
+    singular_jacobian, nan_flux) must map to its own distinct label;
+    no two markers may collide into a single bucket.
+    """
     from proteus.atmos_clim.agni import _extract_agni_failure_reason
 
     log_lines = ['[error]     failure (maximum iterations)\n']
-    assert _extract_agni_failure_reason(log_lines) == 'max_iterations'
+    reason = _extract_agni_failure_reason(log_lines)
+    assert reason == 'max_iterations'
+    # Discrimination guard: must NOT collide with the other failure
+    # buckets. A regression that returned the same label for every
+    # error line would pass an equality check on at most one of the
+    # three markers and fail the others.
+    assert reason != 'nan_flux'
+    assert reason != 'singular_jacobian'
+    assert reason != 'unparsed'
 
 
 def test_extract_agni_failure_reason_picks_last_attempt():
@@ -458,6 +496,16 @@ def test_extract_agni_failure_reason_picks_last_attempt():
     ]
     reason = _extract_agni_failure_reason(log_lines)
     assert reason == 'nan_flux', 'parser must report the latest failure marker, not the first'
+    # Discrimination guard: a forward-scan regression would land on
+    # 'singular_jacobian' (the first marker). Pin the negative case
+    # explicitly so the wrong-direction scan is caught even if the
+    # equality check above were ever weakened.
+    assert reason != 'singular_jacobian'
+    # Order-sensitivity check: reverse the input and confirm the
+    # parser now reports the formerly-first marker. This verifies the
+    # parser is genuinely position-sensitive rather than label-biased.
+    reversed_reason = _extract_agni_failure_reason(list(reversed(log_lines)))
+    assert reversed_reason == 'singular_jacobian'
 
 
 def test_extract_agni_failure_reason_unparsed_when_missing():

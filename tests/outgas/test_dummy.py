@@ -90,6 +90,14 @@ def test_dummy_outgas_sets_all_expected_keys():
 
     missing = [k for k in expected_keys() if k != 'M_atm' and k not in hf_row]
     assert missing == [], f'Missing keys after dummy outgas: {missing}'
+    # Discrimination guard: M_atm itself must remain absent, since the
+    # dummy module's contract is to leave it for the wrapper. A regression
+    # that started writing M_atm would also pass the missing-list check.
+    assert 'M_atm' not in hf_row
+    # Sanity: at least one canonical key actually got populated with a
+    # nonzero value (a regression that wrote zeros for all expected_keys
+    # would pass the presence check but break the contract).
+    assert hf_row['P_surf'] > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -191,13 +199,28 @@ def test_dummy_outgas_pressure_per_element(element, element_kg):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_outgas_pressure_sum():
-    """P_surf = sum of all partial pressures."""
+    """P_surf = sum of all partial pressures.
+
+    Dalton's law for partial pressures: total surface pressure is the
+    additive sum of each species' contribution.
+    """
     hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=1e18, S_kg=1e17, Phi_global=0.3)
     _run(hf_row)
 
     p_sum = sum(hf_row[f'{s}_bar'] for s in gas_list)
     assert hf_row['P_surf'] == pytest.approx(p_sum, rel=1e-10)
+    # Positivity guard: with nonzero H, C, N, S inventories at Phi=0.3,
+    # the outgassed atmosphere must have strictly positive pressure.
+    # A regression that left P_surf at zero would still pass the sum
+    # equality above (0 == sum of zeros).
+    assert hf_row['P_surf'] > 0.0
+    # Scale guard: order of magnitude is ~10^1 bar at this inventory.
+    # H_kg=1e20 partitioned 70% to atm gives ~7e19 kg H -> ~6.3e20 kg
+    # H2O over a 5.1e14 m^2 surface at g=9.81 m/s^2: P_H2O ~ 12 bar.
+    # A unit-conversion bug (Pa vs bar) would land at ~1.2e6 or ~1e-5.
+    assert 1.0 < hf_row['P_surf'] < 1.0e3
 
 
 # ---------------------------------------------------------------------------
@@ -218,13 +241,31 @@ def test_dummy_outgas_vmr_single_species():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_outgas_vmr_sum_to_one():
-    """VMRs must sum to 1.0 when P_surf > 0."""
+    """VMRs must sum to 1.0 when P_surf > 0.
+
+    Volume mixing ratio normalisation: VMRs sum to unity. Each individual
+    VMR must lie in [0, 1].
+    """
     hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=1e18, S_kg=1e17, Phi_global=0.3)
     _run(hf_row)
 
     vmr_sum = sum(hf_row[f'{s}_vmr'] for s in gas_list)
     assert vmr_sum == pytest.approx(1.0, abs=1e-10)
+    # Boundedness guard: every individual VMR must lie in [0, 1]. A
+    # regression that produced a negative VMR for one species and a
+    # compensating overshoot for another would still sum to 1.0 and
+    # pass the closure above.
+    for s in gas_list:
+        vmr = hf_row[f'{s}_vmr']
+        assert 0.0 <= vmr <= 1.0, f'{s}_vmr out of [0, 1]: {vmr}'
+    # H2O dominates the inventory by mass (1e20 H_kg vs 1e19 C_kg). Its
+    # VMR must be the largest of the four mapped species. A regression
+    # that swapped element->species mapping would invert the ordering.
+    assert hf_row['H2O_vmr'] > hf_row['CO2_vmr']
+    assert hf_row['H2O_vmr'] > hf_row['N2_vmr']
+    assert hf_row['H2O_vmr'] > hf_row['SO2_vmr']
 
 
 # ---------------------------------------------------------------------------
@@ -233,17 +274,36 @@ def test_dummy_outgas_vmr_sum_to_one():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_outgas_mmw_single_species():
-    """Pure H2O atmosphere: MMW = 18.015e-3 kg/mol."""
+    """Pure H2O atmosphere: MMW = 18.015e-3 kg/mol.
+
+    Limit case: with only H present and fully outgassed atmosphere,
+    the mean molecular weight equals the H2O molar mass exactly.
+    """
     hf_row = _make_hf_row(H_kg=1e20, C_kg=0, N_kg=0, S_kg=0, Phi_global=0.0)
     _run(hf_row)
 
     assert hf_row['atm_kg_per_mol'] == pytest.approx(18.015e-3, rel=1e-8)
+    # Discrimination guard: a regression that returned the CO2 molar
+    # mass (44.009e-3) or N2 (28.014e-3) would differ by more than a
+    # factor of 1.5 from the H2O value. Pin the absolute scale.
+    assert abs(hf_row['atm_kg_per_mol'] - 44.009e-3) > 1.0e-3
+    assert abs(hf_row['atm_kg_per_mol'] - 28.014e-3) > 1.0e-3
+    # Unit guard: a g/mol vs kg/mol mix-up would land at ~18.015
+    # (three orders of magnitude off). Pin the order of magnitude.
+    assert 1.0e-3 < hf_row['atm_kg_per_mol'] < 1.0e-1
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_outgas_mmw_multi_species():
-    """Multi-species atmosphere: MMW = sum(VMR_i * M_i), analytically verified."""
+    """Multi-species atmosphere: MMW = sum(VMR_i * M_i), analytically verified.
+
+    Two-species mixture: closed-form linear combination of molar masses
+    weighted by VMR. The result must lie between the lightest and
+    heaviest component (boundedness invariant).
+    """
     hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, N_kg=0, S_kg=0, Phi_global=0.0)
     _run(hf_row)
 
@@ -257,6 +317,15 @@ def test_dummy_outgas_mmw_multi_species():
     vmr_CO2 = P_CO2 / P_total
     expected_mmw = vmr_H2O * _MMW['H2O'] + vmr_CO2 * _MMW['CO2']
     assert hf_row['atm_kg_per_mol'] == pytest.approx(expected_mmw, rel=1e-8)
+    # Boundedness invariant: the MMW of a mixture is bracketed by the
+    # endmember molar masses. A regression that summed without weighting
+    # by VMR (sum of all _MMW values) would exceed the upper bound.
+    assert _MMW['H2O'] < hf_row['atm_kg_per_mol'] < _MMW['CO2']
+    # H2O dominates by VMR (H_kg/C_kg = 10), so the mixture MMW must
+    # land closer to H2O than to CO2. A regression that inverted the
+    # VMR weighting would land near CO2 instead.
+    midpoint = 0.5 * (_MMW['H2O'] + _MMW['CO2'])
+    assert hf_row['atm_kg_per_mol'] < midpoint
 
 
 # ---------------------------------------------------------------------------

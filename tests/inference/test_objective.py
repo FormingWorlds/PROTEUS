@@ -96,13 +96,16 @@ def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
         objective_mod, 'get_proteus_directories', lambda _path: {'output': str(out_abs)}
     )
     monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        objective_mod.subprocess,
-        'run',
-        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError('missing')),
-    )
 
-    with pytest.raises(RuntimeError, match='command not found'):
+    run_calls = []
+
+    def _fake_run(*args, **kwargs):
+        run_calls.append((args, kwargs))
+        raise FileNotFoundError('missing')
+
+    monkeypatch.setattr(objective_mod.subprocess, 'run', _fake_run)
+
+    with pytest.raises(RuntimeError, match='command not found') as excinfo:
         objective_mod.run_proteus(
             parameters={},
             worker=0,
@@ -111,6 +114,15 @@ def test_run_proteus_raises_when_command_missing(monkeypatch, tmp_path):
             ref_config='reference.toml',
             output='dummy_output',
         )
+    # Cause-preservation guard: the original FileNotFoundError must be
+    # chained via __cause__. A regression that swallowed the cause and
+    # raised a bare RuntimeError would still match the 'command not found'
+    # text but lose the traceback the operator needs.
+    assert isinstance(excinfo.value.__cause__, FileNotFoundError)
+    # Side-effect guard: subprocess.run must have been invoked exactly
+    # once. A regression that short-circuited before dispatch would
+    # still raise but with a different (constant) error path.
+    assert len(run_calls) == 1
 
 
 @pytest.mark.unit
@@ -133,7 +145,7 @@ def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
         ),
     )
 
-    with pytest.raises(RuntimeError, match='exit code 3'):
+    with pytest.raises(RuntimeError, match='exit code 3') as excinfo:
         objective_mod.run_proteus(
             parameters={},
             worker=0,
@@ -142,6 +154,13 @@ def test_run_proteus_raises_when_command_fails(monkeypatch, tmp_path):
             ref_config='reference.toml',
             output='dummy_output',
         )
+    # Cause-preservation guard: the original CalledProcessError must be
+    # chained via __cause__ so the operator sees the failing command.
+    assert isinstance(excinfo.value.__cause__, subprocess.CalledProcessError)
+    # Exit-code-fidelity guard: a regression that always reported
+    # 'exit code 0' or hardcoded a different code would still pass a
+    # plain regex match if loose, so pin the integer through the cause.
+    assert excinfo.value.__cause__.returncode == 3
 
 
 @pytest.mark.unit
@@ -163,7 +182,7 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
     monkeypatch.setattr(objective_mod, 'update_toml', lambda *_args, **_kwargs: None)
     monkeypatch.setattr(objective_mod.subprocess, 'run', lambda *args, **kwargs: None)
 
-    with pytest.raises(KeyError, match='Requested observable'):
+    with pytest.raises(KeyError, match='Requested observable') as excinfo:
         objective_mod.run_proteus(
             parameters={},
             worker=0,
@@ -172,9 +191,27 @@ def test_run_proteus_raises_on_missing_observable(monkeypatch, tmp_path):
             ref_config='reference.toml',
             output='dummy_output',
         )
+    # Identity guard: the raised KeyError must name the offending
+    # observable explicitly. A regression that emitted a generic
+    # 'Requested observable not found' without the field name would
+    # match the regex above but lose the diagnostic information.
+    assert 'not_present' in str(excinfo.value)
+    # Discrimination: a valid observable on the same helpfile must
+    # complete normally. This rules out a regression that hard-raises
+    # KeyError on every input regardless of the observables list.
+    obs = objective_mod.run_proteus(
+        parameters={},
+        worker=0,
+        iter=0,
+        observables=['P_surf'],
+        ref_config='reference.toml',
+        output='dummy_output',
+    )
+    assert obs['P_surf'] == pytest.approx(1.0)
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
     """``eval_obj`` evaluates log-relative residuals for log-scaled
     observables and linear-relative residuals for linear ones, then
@@ -192,6 +229,24 @@ def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
     expected_sq = ((1.0 - (-6.0 / -5.0)) ** 2) + ((1.0 - 2.0 / 1.0) ** 2)
     expected = -torch.log10(torch.tensor([[expected_sq + 1e-10]], dtype=torch.double))
     assert value.item() == pytest.approx(expected.item())
+    # Discrimination guard: a regression that treated P_surf as linear
+    # (1e-6 vs 1e-5: relative residual 0.9) would land at a very
+    # different objective than the log-mode (-6/-5 = 1.2: residual
+    # 0.04). Pin the magnitude with a wrong-mode counter-value.
+    sim_lin = {'P_surf': 1e-6, 'R_obs': 2.0}
+    expected_sq_wrong = ((1.0 - 1e-6 / 1e-5) ** 2) + ((1.0 - 2.0 / 1.0) ** 2)
+    expected_wrong = -torch.log10(
+        torch.tensor([[expected_sq_wrong + 1e-10]], dtype=torch.double)
+    )
+    assert abs(value.item() - expected_wrong.item()) > 0.1
+    # Sign / boundedness guard: the objective is -log10(sum_sq + 1e-10).
+    # With sum_sq > 0 (mismatched sim vs tru), the inner argument
+    # exceeds 1e-10 and the result is finite. A regression that
+    # produced NaN or inf would fail an isfinite check.
+    assert torch.isfinite(value).all()
+    # Identical sim == tru produces sum_sq = 0, hence -log10(1e-10) = 10.
+    value_match = objective_mod.eval_obj(sim_lin, sim_lin)
+    assert value_match.item() == pytest.approx(10.0, rel=1e-6)
 
 
 @pytest.mark.unit

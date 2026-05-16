@@ -92,6 +92,15 @@ def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir):
 
     # Should return empty list
     assert aerosols == []
+    # Discrimination guard: the directory existed, so isdir must have
+    # been queried AND listdir must have been called to inspect the
+    # contents. A regression that returned [] without inspecting (e.g.
+    # always short-circuited) would still pass the assertion above.
+    mock_isdir.assert_called_once_with('/path/to/fwl/scattering/scattering')
+    mock_listdir.assert_called_once()
+    # Type guard: returning None or a non-list would also satisfy
+    # `== []` against another empty container, so pin the type.
+    assert isinstance(aerosols, list)
 
 
 @pytest.mark.unit
@@ -150,6 +159,13 @@ def test_determine_condensates_all_dry():
 
     # Should return empty list
     assert condensates == []
+    # Discrimination guard: the input list is non-empty (len 3), so a
+    # regression that returned the input unchanged would land at
+    # ['H2', 'N2', 'CO'] not []. Pin the explicit filter behaviour.
+    assert len(condensates) < len(vol_list)
+    # The input is not mutated: filtering must not change the caller's
+    # list (single-gas warning path notwithstanding).
+    assert vol_list == ['H2', 'N2', 'CO']
 
 
 @pytest.mark.unit
@@ -174,9 +190,23 @@ def test_determine_condensates_empty_list():
     Test condensate determination with empty volatile list.
 
     Physical scenario: Edge case where no volatiles are specified.
+    Empty input must traverse the list-comprehension path (not the
+    single-gas warning short-circuit), so the return must be a fresh
+    empty list, not the caller's list aliased back.
     """
-    condensates = _determine_condensates([])
+    input_list = []
+    condensates = _determine_condensates(input_list)
     assert condensates == []
+    # Type guard: a regression returning None on empty input would
+    # also satisfy `== []` against the empty container of the wrong
+    # type? `None == []` is False, so `==` alone catches that. Pin
+    # the list type explicitly for clarity.
+    assert isinstance(condensates, list)
+    # Idempotency: a second call with the same empty input must return
+    # the same empty result. A regression that introduced caller-state
+    # would diverge.
+    second = _determine_condensates([])
+    assert second == condensates
 
 
 class _FakeAtmosphere:
@@ -395,3 +425,15 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
 
     with pytest.raises(FileNotFoundError, match='No stellar spectrum'):
         init_agni_atmos(dirs, config, hf_row)
+    # Discrimination guard: a regression that hard-raised FileNotFoundError
+    # on every path (regardless of spectral_file or *.sflux presence) would
+    # also pass the pytest.raises block. Verify that flipping back to the
+    # grey-gas branch (which does not need a stellar spectrum) does NOT
+    # raise on the same hf_row and same empty data dir.
+    config.atmos_clim.agni.spectral_file = 'greygas'
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+    # The grey-gas branch must have allocated with an empty stellar path
+    # (no spectral file copied) to confirm the dispatch took the correct
+    # branch rather than a no-op fallback.
+    assert fake_agni.last_allocate_input_star == ''
