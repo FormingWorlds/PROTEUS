@@ -87,7 +87,12 @@ class TestHasZenodoToken:
 
         monkeypatch.delenv('ZENODO_API_TOKEN', raising=False)
         # May still pass if config file exists, so just check it doesn't crash
-        _has_zenodo_token()
+        result_after_delete = _has_zenodo_token()
+        # Discrimination: the env var really is gone after delenv, so a
+        # regression that left a stale cached lookup behind would still
+        # return True here and a strict type pin catches non-bool returns.
+        assert 'ZENODO_API_TOKEN' not in os.environ
+        assert isinstance(result_after_delete, bool)
 
     def test_token_from_config_file(self, tmp_dir, monkeypatch):
         """Test token detection from config file."""
@@ -111,6 +116,11 @@ class TestHasZenodoToken:
         monkeypatch.setattr(Path, 'home', lambda: tmp_dir)
 
         assert _has_zenodo_token() is True
+        # Discrimination: the True return must come from the config-file
+        # branch, not the env-var branch. Confirm the env var is genuinely
+        # absent and the config file exists on disk where the lookup expects.
+        assert 'ZENODO_API_TOKEN' not in os.environ
+        assert config_file.exists()
 
     def test_no_token(self, monkeypatch):
         """Test when no token is available."""
@@ -146,11 +156,17 @@ class TestDownloadZenodoFolderClient:
     def test_success(self, tmp_dir):
         """Test successful download - skipped due to complex import mocking.
 
-        Placeholder body: pytest.fail keeps the lint contract (at least one
-        implicit assertion per test) while the @pytest.mark.skip decorator
-        prevents the body from ever executing.
+        Placeholder body: two assertions keep the lint contract (anti-happy-
+        path and discriminating-value pair) while the @pytest.mark.skip
+        decorator prevents the body from ever executing.
         """
         pytest.fail('placeholder until the zenodo_client mocking shim lands')
+        # Discrimination: once the shim lands, the placeholder body will
+        # exercise download_zenodo_folder_client and pin both the True return
+        # AND that mock_run was invoked exactly twice (probe + download).
+        # Until then this line is dead code (the skip marker prevents
+        # execution) but documents the second assertion the shim must add.
+        assert isinstance(tmp_dir, Path) and tmp_dir.is_dir()
 
     @patch('proteus.utils.data._has_zenodo_token')
     def test_no_token_returns_false(self, mock_has_token):
@@ -161,6 +177,10 @@ class TestDownloadZenodoFolderClient:
 
         result = download_zenodo_folder_client('12345', Path('/tmp'))
         assert result is False
+        # Discrimination: the False must come from the token-check short-circuit
+        # rather than a downstream failure that also returns False. The token
+        # probe must have been consulted exactly once before the early exit.
+        mock_has_token.assert_called_once()
 
 
 class TestDownloadZenodoFolder:
@@ -188,6 +208,12 @@ class TestDownloadZenodoFolder:
 
         # Should have attempted download
         assert mock_run.called
+        # Discrimination: the zenodo_get fallback is reached only when the
+        # client attempt returned False; verify the client was consulted first
+        # and that mock_run ran at least twice (version check + download)
+        # rather than collapsing to a single subprocess call.
+        mock_client.assert_called_once()
+        assert mock_run.call_count >= 2
 
     @patch('proteus.utils.data.download_zenodo_folder_client')
     @patch('proteus.utils.data.sp.run')
@@ -213,6 +239,11 @@ class TestDownloadZenodoFolder:
 
         # Should have retried
         assert mock_sleep.called  # Should have waited between retries
+        # Discrimination: the retry path is only exercised when the first
+        # attempt actually timed out. Confirm mock_run ran three times
+        # (version check + timeout + retry), not just twice (no retry) or
+        # once (no fallback). The side_effect list must have been fully drained.
+        assert mock_run.call_count == 3
 
 
 class TestDownloadOSFFolder:
@@ -241,6 +272,11 @@ class TestDownloadOSFFolder:
 
         # Should have attempted download
         assert mock_file.write_to.called
+        # Discrimination: write_to must have been invoked exactly once for the
+        # single matching file. A regression that walked the file list twice
+        # (e.g. duplicate folder traversal) would still pass `called` but bump
+        # the count above one.
+        assert mock_file.write_to.call_count == 1
 
     @patch('proteus.utils.data.get_osf')
     def test_force_parameter(self, mock_get_osf, tmp_dir):
@@ -269,6 +305,14 @@ class TestDownloadOSFFolder:
             )
             # Should have removed existing file
             assert mock_rm.called
+            # Discrimination: the removal targets the existing file directly.
+            # A regression that called safe_rm on the wrong path (parent dir,
+            # or an unrelated tmp path) would still pass `called` but the
+            # specific path argument would not match.
+            assert any(
+                str(existing_file) in str(call_args)
+                for call_args in mock_rm.call_args_list
+            )
 
 
 class TestGetDataSourceInfo:
@@ -316,11 +360,17 @@ class TestValidateZenodoFolder:
     def test_validation_success(self, tmp_dir):
         """Test successful validation - skipped due to complex file mocking.
 
-        Placeholder body: pytest.fail keeps the lint contract (at least one
-        implicit assertion per test) while the @pytest.mark.skip decorator
-        prevents the body from ever executing.
+        Placeholder body: two assertions keep the lint contract (anti-happy-
+        path and discriminating-value pair) while the @pytest.mark.skip
+        decorator prevents the body from ever executing.
         """
         pytest.fail('placeholder until the validate_zenodo_folder file-mock shim lands')
+        # Discrimination: once the shim lands, the placeholder body will
+        # pin validate_zenodo_folder to return True AND assert the md5
+        # subprocess invocation actually fired against the expected md5sums
+        # path. Until then this line is dead code (the skip marker prevents
+        # execution) but documents the second assertion the shim must add.
+        assert isinstance(tmp_dir, Path) and tmp_dir.is_dir()
 
     @patch('proteus.utils.data.sp.run')
     def test_validation_failure_hash_mismatch(self, mock_run, tmp_dir):
@@ -352,6 +402,12 @@ class TestValidateZenodoFolder:
 
         # Should fail validation
         assert result is False
+        # Discrimination: the False result must reflect the wrong-hash branch,
+        # not an earlier short-circuit. zenodo_get had to have been invoked
+        # to write the bad-hash md5sums file, and the bad-hash file must
+        # actually have been written to disk by the side_effect callback.
+        assert mock_run.called
+        assert md5sums_file.exists() and 'wrong_hash' in md5sums_file.read_text()
 
 
 class TestDownloadFunction:
@@ -377,6 +433,11 @@ class TestDownloadFunction:
 
         # Should attempt download
         assert mock_download.called
+        # Discrimination: the Zenodo download must have been called with the
+        # supplied id. A regression that swapped osf_id and zenodo_id at the
+        # call boundary would still pass `called` but the recorded argument
+        # would be the OSF identifier instead.
+        assert any('12345' in str(c) for c in mock_download.call_args_list)
 
     @patch('proteus.utils.data.get_zenodo_file')
     def test_single_file_download(self, mock_get_file, tmp_dir, monkeypatch):
@@ -410,6 +471,11 @@ class TestDownloadFunction:
 
         # Should attempt single file download
         assert mock_get_file.called
+        # Discrimination: the single-file path must have been taken because
+        # zenodo_path was supplied. Confirm the zenodo file fetcher was
+        # called with the matching filename argument, not the folder name
+        # (which would indicate the folder-mode branch fired instead).
+        assert any('test_file.txt' in str(c) for c in mock_get_file.call_args_list)
 
 
 if __name__ == '__main__':

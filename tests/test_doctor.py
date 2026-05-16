@@ -43,6 +43,10 @@ def test_get_status_message_reports_update_for_newer_release():
     message = package.get_status_message()
 
     assert 'Update available 25.10.15 -> 25.11.19' in message
+    # Discrimination: the downgrade-direction wording must NOT appear; a
+    # regression that swapped current/latest arrows would still match
+    # 'Update available' but flip the message into a downgrade warning.
+    assert 'is newer than latest release' not in message
 
 
 @pytest.mark.unit
@@ -81,8 +85,14 @@ def test_python_package_latest_version_reads_json_response():
     response = Mock(ok=True)
     response.json.return_value = {'info': {'version': '25.11.19'}}
 
-    with patch('proteus.doctor.requests.get', return_value=response):
-        assert package.latest_version() == Version('25.11.19')
+    with patch('proteus.doctor.requests.get', return_value=response) as mock_get:
+        result = package.latest_version()
+        assert result == Version('25.11.19')
+    # Discrimination: confirm the PyPI URL was queried with the package name
+    # in the path; a regression that hit the GitHub releases endpoint would
+    # have produced the same Version on this mock but called a wrong URL.
+    assert mock_get.call_count == 1
+    assert 'pypi.org' in mock_get.call_args[0][0] and 'fwl-proteus' in mock_get.call_args[0][0]
 
 
 @pytest.mark.unit
@@ -97,6 +107,10 @@ def test_python_package_latest_version_raises_on_bad_http_status():
     with patch('proteus.doctor.requests.get', return_value=response):
         with pytest.raises(requests.HTTPError, match='boom'):
             package.latest_version()
+    # Discrimination: raise_for_status must have actually been called on the
+    # response object; a regression that swallowed the bad status (returning
+    # a placeholder Version) would have skipped raise_for_status entirely.
+    response.raise_for_status.assert_called_once()
 
 
 @pytest.mark.unit
@@ -106,14 +120,19 @@ def test_git_package_current_version_converts_missing_repo_to_package_not_found(
     so the doctor reports the same status surface for git-tracked packages
     as for Python packages.
     """
+    version_getter = Mock(side_effect=FileNotFoundError())
     package = GitPackage(
         name='SOCRATES',
         owner='FormingWorlds',
-        version_getter=Mock(side_effect=FileNotFoundError()),
+        version_getter=version_getter,
     )
 
     with pytest.raises(PackageNotFoundError, match='SOCRATES is not installed'):
         package.current_version()
+    # Discrimination: the version_getter must have been invoked exactly once.
+    # A regression that converted FileNotFoundError to PackageNotFoundError
+    # without ever calling the getter would have left the mock untouched.
+    version_getter.assert_called_once()
 
 
 @pytest.mark.unit
@@ -122,11 +141,17 @@ def test_git_package_latest_version_reads_tag_name_from_json_response():
     /releases/latest JSON response and parses it as a ``Version``.
     """
     package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
-    response = Mock(ok=True)
+    response = Mock(ok=True, status_code=200)
     response.json.return_value = {'tag_name': 'v2026.01'}
 
-    with patch('proteus.doctor.requests.get', return_value=response):
-        assert package.latest_version() == Version('v2026.01')
+    with patch('proteus.doctor.requests.get', return_value=response) as mock_get:
+        result = package.latest_version()
+        assert result == Version('v2026.01')
+    # Discrimination: confirm the /releases/latest endpoint was hit (the
+    # primary path) and the /tags fallback was NOT exercised (which would
+    # double the call count and indicate the 404 branch ran by mistake).
+    assert mock_get.call_count == 1
+    assert mock_get.call_args[0][0].endswith('/releases/latest')
 
 
 @pytest.mark.unit
@@ -135,12 +160,17 @@ def test_git_package_latest_version_raises_on_bad_http_status():
     silent fallback to a placeholder version.
     """
     package = GitPackage(name='SOCRATES', owner='FormingWorlds', version_getter=Mock())
-    response = Mock(ok=False)
+    response = Mock(ok=False, status_code=500)
     response.raise_for_status.side_effect = requests.HTTPError('nope')
 
-    with patch('proteus.doctor.requests.get', return_value=response):
+    with patch('proteus.doctor.requests.get', return_value=response) as mock_get:
         with pytest.raises(requests.HTTPError, match='nope'):
             package.latest_version()
+    # Discrimination: confirm the failure came from the /releases/latest call
+    # (status 500, not 404). A regression that fell into the 404 tags branch
+    # would have made a second mock_get call against /tags.
+    assert mock_get.call_count == 1
+    assert mock_get.call_args[0][0].endswith('/releases/latest')
 
 
 @pytest.mark.unit
@@ -165,8 +195,15 @@ def test_git_package_falls_back_to_tags_when_releases_latest_404():
     with patch(
         'proteus.doctor.requests.get',
         side_effect=[releases_response, tags_response],
-    ):
-        assert package.latest_version() == Version('25.05')
+    ) as mock_get:
+        result = package.latest_version()
+        assert result == Version('25.05')
+    # Discrimination: both endpoints must have been hit in order. A regression
+    # that returned the 25.05 Version without consulting /tags (e.g. parsing it
+    # out of the 404 releases body) would leave the mock at one call only.
+    assert mock_get.call_count == 2
+    assert mock_get.call_args_list[0][0][0].endswith('/releases/latest')
+    assert mock_get.call_args_list[1][0][0].endswith('/tags')
 
 
 @pytest.mark.unit
@@ -186,9 +223,14 @@ def test_git_package_fallback_raises_when_no_tags_either():
     with patch(
         'proteus.doctor.requests.get',
         side_effect=[releases_response, tags_response],
-    ):
+    ) as mock_get:
         with pytest.raises(RuntimeError, match='no releases or tags found'):
             package.latest_version()
+    # Discrimination: the error must come AFTER both endpoints were consulted.
+    # A regression that raised before falling back to /tags would leave the
+    # call count at 1, masking the real "empty-tags" diagnosis.
+    assert mock_get.call_count == 2
+    assert mock_get.call_args_list[1][0][0].endswith('/tags')
 
 
 @pytest.mark.unit
@@ -203,9 +245,14 @@ def test_git_package_fallback_propagates_tags_http_error():
     with patch(
         'proteus.doctor.requests.get',
         side_effect=[releases_response, tags_response],
-    ):
+    ) as mock_get:
         with pytest.raises(requests.HTTPError, match='tags 500'):
             package.latest_version()
+    # Discrimination: the HTTPError must arise from the /tags call, not the
+    # /releases/latest call. Confirm both were attempted and that the tags
+    # response's raise_for_status was the one invoked.
+    assert mock_get.call_count == 2
+    tags_response.raise_for_status.assert_called_once()
 
 
 def _make_editable_distribution(file_url: str) -> Mock:
@@ -277,6 +324,10 @@ def test_editable_checkout_path_returns_unquoted_filesystem_path():
     with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
         path = _editable_checkout_path('fwl-aragog')
     assert path == '/Users/Tim L/git/aragog'
+    # Discrimination: a regression that forgot to unquote would still be a
+    # string but would contain '%20'; a regression that returned the full
+    # file:// URL would still be a string but would start with 'file://'.
+    assert '%20' not in path and not path.startswith('file://')
 
 
 @pytest.mark.unit
@@ -303,9 +354,16 @@ def test_git_checkout_state_reports_clean_tree():
             return ''
         raise AssertionError(f'unexpected git invocation: {cmd}')
 
-    with patch('proteus.doctor.subprocess.check_output', side_effect=fake_check_output):
+    with patch(
+        'proteus.doctor.subprocess.check_output', side_effect=fake_check_output
+    ) as mock_check:
         state = _git_checkout_state('/tmp/aragog')
     assert state == ('d051902', False)
+    # Discrimination: both git invocations (rev-parse + status) must have run
+    # to produce the (hash, False) pair. A regression that defaulted the dirty
+    # flag to False without running `git status` would still pass the tuple
+    # equality but skip the second subprocess call.
+    assert mock_check.call_count == 2
 
 
 @pytest.mark.unit
@@ -319,9 +377,14 @@ def test_git_checkout_state_reports_dirty_tree():
             return ' M src/aragog/solver/entropy_solver.py\n?? scratch.py\n'
         raise AssertionError(f'unexpected git invocation: {cmd}')
 
-    with patch('proteus.doctor.subprocess.check_output', side_effect=fake_check_output):
+    with patch(
+        'proteus.doctor.subprocess.check_output', side_effect=fake_check_output
+    ) as mock_check:
         state = _git_checkout_state('/tmp/aragog')
     assert state == ('d051902', True)
+    # Discrimination: the dirty flag must derive from a real `git status` call,
+    # not from a hardcoded True. Both git invocations should have run.
+    assert mock_check.call_count == 2
 
 
 @pytest.mark.unit
@@ -400,6 +463,12 @@ def test_python_package_status_marks_dirty_editable_install():
     ):
         message = package.get_status_message()
     assert 'editable @ Zalmoxis -> 39308df (dirty)' in message
+    # Discrimination: the trailing-space marker must immediately follow the
+    # short hash. A regression that always emitted '(dirty)' regardless of the
+    # state tuple's dirty flag would still match the substring above, but the
+    # order constraint (hash then space then '(dirty)') would not hold.
+    assert message.index('39308df') < message.index('(dirty)')
+    assert ' (dirty)' in message  # space-then-paren, not 'X(dirty)' fused form
 
 
 @pytest.mark.unit
@@ -441,3 +510,9 @@ def test_doctor_entry_prints_environment_variables_before_packages():
         doctor_entry()
 
     assert outputs == ['Environment variables', 'RAD_DIR: ok', '\nPackages', 'pkg: ok']
+    # Discrimination: each package's status method must have been called
+    # exactly once. A regression that printed the headers in the right order
+    # but skipped the package iteration would still produce a list with the
+    # correct first three entries, but fake_package.get_status_message would
+    # never have run.
+    fake_package.get_status_message.assert_called_once()
