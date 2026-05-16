@@ -175,3 +175,7 @@ def test_update_bolometry_eclipse_depth_scales_with_flux_excess():
 
     ratio = hf_hot['eclipse_depth'] / hf_base['eclipse_depth']
     assert ratio == pytest.approx(2.0, rel=1e-12)
+    # Discrimination: both eclipse depths are positive (catches a sign
+    # flip on F_sct or F_olr).
+    assert hf_base['eclipse_depth'] > 0
+    assert hf_hot['eclipse_depth'] > hf_base['eclipse_depth']

@@ -69,14 +69,16 @@ def _write_sflux(path, wavelengths, fluxes, skiprows_header: int = 1, delimiter:
 
 def test_plot_sflux_returns_early_when_no_files(monkeypatch, tmp_path):
     """With no .sflux files in output_dir/data/, the function logs a
-    warning and returns. Discrimination: subplots not called.
+    warning and returns. Discrimination: neither subplots NOR savefig
+    are called (a regression that fell through would create a figure).
     """
-    mock_plt, _, _ = _install_mock_plt(monkeypatch)
+    mock_plt, mock_fig, _ = _install_mock_plt(monkeypatch)
     (tmp_path / 'data').mkdir()
 
     sflux_mod.plot_sflux(output_dir=str(tmp_path))
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_fig.savefig.call_count == 0
 
 
 def test_plot_sflux_single_file_branch_uses_blue_line_with_year_label(monkeypatch, tmp_path):
@@ -195,3 +197,7 @@ def test_plot_sflux_entry_sets_plt_modern_false_for_dummy_module(monkeypatch):
     sflux_mod.plot_sflux_entry(handler)
 
     assert captured['plt_modern'] is False
+    # Discrimination: a regression that defaulted to True regardless of
+    # star.module would fail this check; True/False distinction is the
+    # whole point of the branch.
+    assert captured['plt_modern'] is not True

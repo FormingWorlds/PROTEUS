@@ -230,7 +230,11 @@ def test_temperature_profile_adiabatic_from_cmb_anchors_at_user_tcmb():
 
 def test_temperature_profile_unknown_mode_raises_value_error():
     """An unrecognised ``temperature_mode`` raises ``ValueError`` whose
-    message contains the offending mode name.
+    message contains the offending mode name. Discrimination: the
+    raised exception message must also name "temperature_mode" so an
+    operator can locate the misconfigured field; a generic ValueError
+    that swallowed the mode name would pass a bare ``pytest.raises``
+    but fail the more specific match below.
     """
     from proteus.interior_struct.dummy import _build_temperature_profile
 
@@ -238,7 +242,7 @@ def test_temperature_profile_unknown_mode_raises_value_error():
     r_stag = _mesh()
     P_stag = _pressure()
 
-    with pytest.raises(ValueError, match='not_a_real_mode'):
+    with pytest.raises(ValueError, match='not_a_real_mode') as exc:
         _build_temperature_profile(
             config,
             r_stag,
@@ -250,6 +254,7 @@ def test_temperature_profile_unknown_mode_raises_value_error():
             rho_m=4500.0,
             g_m_av=9.8,
         )
+    assert 'temperature_mode' in str(exc.value).lower() or 'mode' in str(exc.value).lower()
 
 
 # ---------------------------------------------------------------------------

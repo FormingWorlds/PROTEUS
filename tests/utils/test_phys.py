@@ -60,14 +60,17 @@ def test_planck_wav_scales_with_temperature_in_expected_direction():
     """At fixed wavelength near the visible peak (500 nm), doubling T
     moves the function into a regime where flux increases (Wien tail
     -> peak). Discrimination: the ratio must be substantially > 1
-    (sign and scale guards rule out flipped or unit-confused regressions).
+    (sign and scale guards rule out flipped or unit-confused
+    regressions); both endpoints must also be positive (a regression
+    that returned signed/negative radiance would pass a ratio check on
+    its own when both endpoints flipped sign).
     """
     wav = 5e-7
     flx_cold = phys_mod.planck_wav(2500.0, wav)
     flx_hot = phys_mod.planck_wav(5000.0, wav)
-    # At 500 nm, going from 2500 K to 5000 K is moving from deep Wien
-    # tail into peak; flux increases by many orders of magnitude.
     assert flx_hot > flx_cold * 100
+    assert flx_cold > 0
+    assert flx_hot > 0
 
 
 def test_planck_wav_returns_floor_value_under_short_wavelength_overflow():
@@ -106,3 +109,9 @@ def test_planck_wav_hemispheric_integration_multiplies_by_pi():
     flx1 = phys_mod.planck_wav(3000.0, 1e-6)
     flx2 = phys_mod.planck_wav(3000.0, 1e-6)
     assert flx1 == pytest.approx(flx2, rel=1e-15)
+    # Magnitude sanity: at 3000 K and 1 um the Planck flux density is
+    # ~3e12 W/m^2/m (above the Wien-tail trough but near the peak).
+    # A dropped-pi regression would land near 1e12 (a factor of pi too
+    # low); a misplaced cubic-vs-quartic exponent would be many orders
+    # of magnitude wrong, so this 10x-wide band still discriminates.
+    assert 1e12 < flx1 < 1e13

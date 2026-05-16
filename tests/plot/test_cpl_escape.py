@@ -70,11 +70,13 @@ def test_plot_escape_returns_early_when_too_few_rows(monkeypatch, tmp_path):
     escape_mod.plot_escape(hf, str(tmp_path))
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 def test_plot_escape_returns_early_when_max_time_below_two(monkeypatch, tmp_path):
     """Helpfile whose max Time < 2 yr triggers early-return regardless
-    of row count. Discrimination: subplots not called.
+    of row count. Discrimination: subplots not called AND no figure
+    written to disk via mock_plt.savefig.
     """
     mock_plt, _, _, _ = _install_mock_plt(monkeypatch)
     hf = _make_hf_all(n=10)
@@ -83,6 +85,7 @@ def test_plot_escape_returns_early_when_max_time_below_two(monkeypatch, tmp_path
     escape_mod.plot_escape(hf, str(tmp_path))
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 def test_plot_escape_full_path_plots_per_element_and_summary_panels(monkeypatch, tmp_path):

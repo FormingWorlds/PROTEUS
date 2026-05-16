@@ -28,14 +28,15 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_inv
 
 def test_scale_spectrum_to_toa_at_one_au_is_identity():
     """At separation = 1 AU (in metres), the scaling factor is exactly
-    1: the flux array passes through unchanged.
-
-    Discrimination: a regression that returned a different power of
-    (AU/sep) would change the magnitude at 1 AU away from unity.
+    1: the flux array passes through unchanged. Discrimination: a
+    regression that returned a different power of (AU/sep) would change
+    the magnitude at 1 AU away from unity; also verify the returned
+    array length matches the input (rules out a slice/truncation bug).
     """
     fl = [1.0, 2.0, 3.0]
     scaled = star_wrapper.scale_spectrum_to_toa(fl, AU)
     np.testing.assert_allclose(scaled, fl, rtol=1e-12)
+    assert len(scaled) == len(fl)
 
 
 def test_scale_spectrum_to_toa_inverse_square_at_two_au():
@@ -81,8 +82,11 @@ def test_scale_spectrum_to_toa_handles_numpy_array_input():
 def test_scale_spectrum_to_toa_preserves_sign_for_zero_flux():
     """A zero-flux input array stays at zero regardless of separation:
     the inverse-square scaling factor only multiplies. Discrimination:
-    if a regression added an additive offset, this test would catch it.
+    if a regression added an additive offset, this test would catch it
+    at every separation (here 2 AU and 0.5 AU; both must produce zero).
     """
     fl = np.array([0.0, 0.0])
-    scaled = star_wrapper.scale_spectrum_to_toa(fl, 2.0 * AU)
-    np.testing.assert_allclose(scaled, [0.0, 0.0], atol=1e-30)
+    scaled_far = star_wrapper.scale_spectrum_to_toa(fl, 2.0 * AU)
+    scaled_near = star_wrapper.scale_spectrum_to_toa(fl, 0.5 * AU)
+    np.testing.assert_allclose(scaled_far, [0.0, 0.0], atol=1e-30)
+    np.testing.assert_allclose(scaled_near, [0.0, 0.0], atol=1e-30)

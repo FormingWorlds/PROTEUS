@@ -180,6 +180,9 @@ def test_plot_fluxes_atmosphere_falls_back_when_optional_variables_missing(
     # still be saved. A regression that propagated the KeyError would
     # have aborted before this.
     assert mock_fig.savefig.call_count == 1
+    # The figure must have been built (subplots called once) on the
+    # fallback path too, not produced from a dangling earlier handle.
+    assert mock_plt.subplots.call_count == 1
 
 
 def test_plot_fluxes_atmosphere_picks_natural_sort_last_file(monkeypatch, tmp_path):

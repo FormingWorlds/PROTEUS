@@ -44,24 +44,30 @@ def _make_grid(tmp_path, statuses):
 # ---------------------------------------------------------------------------
 
 
-def test_summarise_raises_when_grid_directory_missing(tmp_path):
+def test_summarise_raises_when_grid_directory_missing(tmp_path, capsys):
     """A non-existent grid path raises FileNotFoundError. A regression
     that returned silently would mask user typos and waste time.
+    Discrimination: nothing must be printed to stdout before the
+    raise (no "Statistics" header from a partially-executed path).
     """
     with pytest.raises(FileNotFoundError, match='Invalid path'):
         summarise_mod.summarise(str(tmp_path / 'missing'))
+    assert 'Statistics' not in capsys.readouterr().out
 
 
 def test_summarise_raises_when_case_status_file_missing(tmp_path):
     """If a case_NNNNNN folder exists but has no ``status`` file, the
     function raises FileNotFoundError. Discrimination against silent
-    skip: every case must have a status file to be analysable.
+    skip: every case must have a status file to be analysable; the
+    error message must name the specific case directory so an operator
+    can locate the broken case.
     """
     grid = tmp_path / 'grid'
     grid.mkdir()
     (grid / 'case_000000').mkdir()  # no status file
-    with pytest.raises(FileNotFoundError, match='Cannot find status file'):
+    with pytest.raises(FileNotFoundError, match='Cannot find status file') as exc:
         summarise_mod.summarise(str(grid))
+    assert 'case_000000' in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -167,14 +173,16 @@ def test_summarise_lists_cases_by_explicit_code(tmp_path, capsys):
 def test_summarise_treats_status_equals_as_code_equals(tmp_path, capsys):
     """tgt_status='status=10' is converted to 'code=10' before dispatch.
     Backwards-compatibility alias; a regression that dropped the
-    replacement would treat status=10 as unmatched.
+    replacement would treat status=10 as unmatched. Discrimination:
+    the unmatched-status help text must NOT appear (which would be
+    emitted by the fall-through branch if the alias rewrite failed).
     """
     grid = _make_grid(tmp_path, statuses=[10])
     summarise_mod.summarise(str(grid), tgt_status='status=10')
 
     out = capsys.readouterr().out
-    # Discrimination: the section header must appear (not an unmatched warning)
     assert 'Code 10 cases:' in out
+    assert 'Invalid status category' not in out
 
 
 # ---------------------------------------------------------------------------

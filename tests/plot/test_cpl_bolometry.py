@@ -65,6 +65,7 @@ def test_plot_bolometry_returns_early_for_short_runs(monkeypatch, tmp_path):
     bolometry_mod.plot_bolometry(hf, str(tmp_path))
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 def test_plot_bolometry_full_path_two_panels_with_twin_axis(monkeypatch, tmp_path):

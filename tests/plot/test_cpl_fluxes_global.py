@@ -72,6 +72,7 @@ def test_plot_fluxes_global_returns_early_for_too_few_samples(monkeypatch, tmp_p
     fluxes_mod.plot_fluxes_global(hf, str(tmp_path), config=_make_config())
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 def test_plot_fluxes_global_full_path_plots_seven_flux_components(monkeypatch, tmp_path):
@@ -109,6 +110,8 @@ def test_plot_fluxes_global_uses_config_plot_format_in_filename(monkeypatch, tmp
     saved_path = mock_fig.savefig.call_args.args[0]
     # Discrimination: must end in 'png', not 'pdf'
     assert saved_path.endswith('plot_fluxes_global.png')
+    assert 'plot_fluxes_global' in saved_path
+    assert not saved_path.endswith('.pdf')
 
 
 def test_plot_fluxes_global_entry_forwards_handler_attributes(monkeypatch, tmp_path):

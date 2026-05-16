@@ -77,16 +77,21 @@ def _make_grid_with_cases(tmp_path, n_cases: int = 2, with_plots: bool = True):
 
 def test_pack_raises_when_grid_directory_missing(tmp_path):
     """Non-existent grid path raises FileNotFoundError. A regression that
-    proceeded would create a pack/ folder at the parent.
+    proceeded silently would create a pack/ folder at the parent;
+    assert that no pack/ artefact was produced.
     """
+    missing = tmp_path / 'missing'
     with pytest.raises(FileNotFoundError, match='Invalid path'):
-        pack_mod.pack(str(tmp_path / 'missing'))
+        pack_mod.pack(str(missing))
+    assert not (missing / 'pack').exists()
+    assert not (tmp_path / 'pack').exists()
 
 
 def test_pack_raises_when_grid_has_no_cases(tmp_path):
     """An empty grid directory (no case_* subfolders) raises
     FileNotFoundError. Discrimination: the pack/ folder is created by
-    pack before the check, but the error is still raised loudly.
+    pack before the check, but the error is still raised loudly; and
+    NO pack.zip must exist (the zip step must not run after the raise).
     """
     grid = tmp_path / 'grid'
     grid.mkdir()
@@ -96,6 +101,7 @@ def test_pack_raises_when_grid_has_no_cases(tmp_path):
 
     with pytest.raises(FileNotFoundError, match='subfolders containing grid cases'):
         pack_mod.pack(str(grid))
+    assert not (grid / 'pack.zip').exists()
 
 
 # ---------------------------------------------------------------------------

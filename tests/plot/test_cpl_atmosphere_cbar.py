@@ -49,9 +49,10 @@ def _install_mock_plt(monkeypatch):
 
 def test_plot_atmosphere_cbar_returns_early_when_single_time(monkeypatch, tmp_path):
     """A single-snapshot times list (len < 2) is skipped with a warning.
-    A regression that proceeded would have called subplots.
+    A regression that proceeded would have called subplots and saved a
+    figure. Discrimination: neither subplots NOR savefig may have run.
     """
-    mock_plt, _, _ = _install_mock_plt(monkeypatch)
+    mock_plt, mock_fig, _ = _install_mock_plt(monkeypatch)
 
     atmos_cbar_mod.plot_atmosphere_cbar(
         output_dir=str(tmp_path),
@@ -60,6 +61,7 @@ def test_plot_atmosphere_cbar_returns_early_when_single_time(monkeypatch, tmp_pa
     )
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_fig.savefig.call_count == 0
 
 
 def test_plot_atmosphere_cbar_full_path_creates_figure_and_colourbar(monkeypatch, tmp_path):

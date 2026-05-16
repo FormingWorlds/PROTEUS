@@ -86,7 +86,10 @@ def test_plot_atmosphere_returns_early_for_empty_times(monkeypatch, tmp_path):
 
 def test_plot_atmosphere_returns_early_when_max_time_below_minimum(monkeypatch, tmp_path):
     """When the latest snapshot time is < 2 yr, plotting is skipped. A
-    regression that ignored the time guard would have called subplots.
+    regression that ignored the time guard would have called subplots
+    and produced a figure on disk. Discrimination: no figure must be
+    saved either (subplots could be skipped while savefig still ran via
+    a stale figure handle).
     """
     mock_plt, _, _, _ = _install_mock_plt(monkeypatch)
 
@@ -97,6 +100,7 @@ def test_plot_atmosphere_returns_early_when_max_time_below_minimum(monkeypatch, 
     )
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 # ---------------------------------------------------------------------------

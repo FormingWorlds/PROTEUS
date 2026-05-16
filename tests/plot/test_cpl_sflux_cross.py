@@ -107,6 +107,7 @@ def test_plot_sflux_cross_returns_early_when_few_files(monkeypatch, tmp_path):
     sflux_mod.plot_sflux_cross(output_dir=str(tmp_path))
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -231,3 +232,7 @@ def test_plot_sflux_cross_entry_sets_modern_age_negative_for_non_mors(monkeypatc
     sflux_mod.plot_sflux_cross_entry(handler)
 
     assert captured['modern_age'] == -1
+    # Discrimination: -1 is the documented "disable overlay" sentinel;
+    # a regression that emitted 0 (a plausible alternative falsy value)
+    # would still pass a generic falsiness check but break the loader.
+    assert captured['modern_age'] < 0

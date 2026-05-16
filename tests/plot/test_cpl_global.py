@@ -51,6 +51,7 @@ def test_plot_global_returns_early_when_max_time_below_three(monkeypatch, tmp_pa
     global_mod.plot_global(hf, str(tmp_path), config=_make_config())
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 def test_plot_global_entry_invokes_plot_global_twice_for_log_and_linear_axes(

@@ -127,21 +127,30 @@ def test_get_nested_drills_into_nested_dict():
 def test_get_nested_accepts_custom_separator():
     """``get_nested`` honours the ``sep`` argument so callers can use a
     different separator (e.g. '/'). Discrimination: with sep='/' the
-    function must use '/' for splitting, not '.'.
+    function must use '/' for splitting (not '.'); the same key under
+    the default separator would NOT resolve because 'a/b' is a single
+    literal segment under sep='.'.
     """
     config = {'a': {'b': 7}}
     assert utils_mod.get_nested(config, 'a/b', sep='/') == 7
+    with pytest.raises(KeyError):
+        utils_mod.get_nested(config, 'a/b')
 
 
 @pytest.mark.unit
 def test_get_nested_raises_keyerror_for_missing_path():
     """``get_nested`` raises KeyError when any segment in the path is
     absent. Discrimination: a regression that silently returned None
-    would mask user typos in config keys.
+    would mask user typos in config keys; verify both that the present
+    sibling still resolves AND that a missing leaf and a missing root
+    both raise.
     """
     config = {'a': {'b': 1}}
+    assert utils_mod.get_nested(config, 'a.b') == 1
     with pytest.raises(KeyError):
         utils_mod.get_nested(config, 'a.missing')
+    with pytest.raises(KeyError):
+        utils_mod.get_nested(config, 'missing.b')
 
 
 @pytest.mark.unit
@@ -149,22 +158,26 @@ def test_flatten_handles_nested_dict_with_dot_separator():
     """``flatten`` produces a single-level dict whose keys are the
     dot-joined paths from the original nested dict. Discrimination:
     a regression that dropped the parent_key would produce raw leaf
-    keys (no 'a.b.' prefix).
+    keys (no 'a.b.' prefix); the top-level non-dict 'd' must survive
+    untouched (a regression that nested all keys would mangle it).
     """
     config = {'a': {'b': 1, 'c': 2}, 'd': 3}
     flat = utils_mod.flatten(config)
     assert flat == {'a.b': 1, 'a.c': 2, 'd': 3}
+    assert 'd' in flat and flat['d'] == 3
 
 
 @pytest.mark.unit
 def test_flatten_descends_through_multiple_levels():
     """``flatten`` recurses through arbitrarily deep nesting.
     Discrimination: a regression that flattened only one level would
-    leave the deepest dicts intact.
+    leave the deepest dicts intact; assert the result is fully flat
+    (no dict values remain).
     """
     config = {'a': {'b': {'c': {'d': 99}}}}
     flat = utils_mod.flatten(config)
     assert flat == {'a.b.c.d': 99}
+    assert all(not isinstance(v, dict) for v in flat.values())
 
 
 @pytest.mark.unit
@@ -185,6 +198,9 @@ def test_flatten_honours_custom_separator():
 def test_flatten_returns_empty_dict_for_empty_input():
     """``flatten({})`` returns ``{}`` (the identity on empty dicts).
     Discrimination: a regression that returned None or raised would
-    fail this test.
+    fail; the result must be a real dict (not a falsy stand-in like
+    None or an empty list).
     """
-    assert utils_mod.flatten({}) == {}
+    result = utils_mod.flatten({})
+    assert result == {}
+    assert isinstance(result, dict)

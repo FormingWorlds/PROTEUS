@@ -41,16 +41,20 @@ def test_archive_exists_returns_false_when_no_tar(tmp_path, caplog):
     assert any('does not exist' in record.message for record in caplog.records)
 
 
-def test_archive_exists_returns_true_when_tar_present(tmp_path):
+def test_archive_exists_returns_true_when_tar_present(tmp_path, caplog):
     """When `<basename>.tar` exists inside the directory, the function
     returns True. The basename is taken from os.path.split(dir)[-1].
+    Discrimination: no warning should be emitted on the True path
+    (mirroring the False-path test). A regression that always logged
+    the missing-tar warning would fail this.
     """
-    # Create the expected tar at <dir>/<basename>.tar
     tar_path = tmp_path / f'{tmp_path.name}.tar'
     tar_path.write_bytes(b'fake-tar-content')
 
-    result = archive_mod.archive_exists(str(tmp_path))
+    with caplog.at_level('WARNING'):
+        result = archive_mod.archive_exists(str(tmp_path))
     assert result is True
+    assert not any('does not exist' in record.message for record in caplog.records)
 
 
 def test_archive_exists_suppresses_warning_with_flag(tmp_path, caplog):
@@ -225,11 +229,17 @@ def test_extract_keeps_tar_when_remove_tar_false(tmp_path):
 
 
 def test_extract_returns_none_when_directory_missing(tmp_path, caplog):
-    """If the directory doesn't exist, extract logs an error and returns."""
+    """If the directory doesn't exist, extract logs an error and returns
+    None. Discrimination: an error message must have been recorded, and
+    no tar must have been created at the parent (i.e. extract didn't
+    silently fall through and write something unexpected).
+    """
     missing = tmp_path / 'absent'
     with caplog.at_level('ERROR'):
         result = archive_mod.extract(str(missing))
     assert result is None
+    assert any('does not exist' in record.message for record in caplog.records)
+    assert not (tmp_path / f'{missing.name}.tar').exists()
 
 
 # ---------------------------------------------------------------------------

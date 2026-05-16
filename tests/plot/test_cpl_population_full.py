@@ -173,6 +173,7 @@ def test_plot_population_time_density_skips_when_hf_too_short(monkeypatch, tmp_p
     pop.plot_population_time_density(hf, str(tmp_path), fwl_dir='ignored', plot_format='pdf')
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 def test_plot_population_entry_dispatches_to_both_plot_helpers(monkeypatch, tmp_path):

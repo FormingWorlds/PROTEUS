@@ -172,6 +172,7 @@ def test_plot_structure_returns_early_when_max_time_below_minimum(monkeypatch):
     )
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 def test_plot_structure_rejects_non_supported_interior_module(monkeypatch):
@@ -194,6 +195,7 @@ def test_plot_structure_rejects_non_supported_interior_module(monkeypatch):
     )
 
     assert mock_plt.subplots.call_count == 0
+    assert mock_plt.savefig.call_count == 0
 
 
 # ---------------------------------------------------------------------------

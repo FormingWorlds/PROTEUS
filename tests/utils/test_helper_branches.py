@@ -28,18 +28,25 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # ---------------------------------------------------------------------------
 
 
-def test_safe_rm_warns_and_returns_on_empty_path(caplog):
+def test_safe_rm_warns_and_returns_on_empty_path(tmp_path, caplog, monkeypatch):
     """``safe_rm('')`` must emit a warning and return without raising;
     this guards against accidental rm-rf-from-root if a caller forgets
-    to supply a path. Discrimination: warning log captured, no
-    exception.
+    to supply a path. Discrimination: warning log captured AND the
+    process working directory is untouched (a regression that fell
+    through to a real ``shutil.rmtree('')`` could attempt to remove cwd).
     """
     from proteus.utils.helper import safe_rm
+
+    sentinel = tmp_path / 'cwd'
+    sentinel.mkdir()
+    (sentinel / 'keep.txt').write_text('keep')
+    monkeypatch.chdir(sentinel)
 
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.utils.helper'):
         safe_rm('')
 
     assert any('empty path' in rec.message for rec in caplog.records)
+    assert (sentinel / 'keep.txt').exists()
 
 
 def test_safe_rm_refuses_to_delete_directory_containing_git_subfolder(tmp_path, caplog):
@@ -64,20 +71,30 @@ def test_safe_rm_refuses_to_delete_directory_containing_git_subfolder(tmp_path, 
 
 
 def test_safe_rm_removes_regular_directory(tmp_path):
-    """Without ``.git`` inside, ``safe_rm`` removes a directory tree."""
+    """Without ``.git`` inside, ``safe_rm`` removes a directory tree.
+    Discrimination: a regression that only removed top-level files but
+    left the directory would fail the second assertion; and a sibling
+    directory must remain untouched (no scope creep into the parent).
+    """
     from proteus.utils.helper import safe_rm
 
     target = tmp_path / 'scratch'
     target.mkdir()
     (target / 'file.txt').write_text('data')
+    sibling = tmp_path / 'sibling'
+    sibling.mkdir()
 
     safe_rm(str(target))
 
     assert not target.exists()
+    assert sibling.exists()
 
 
 def test_safe_rm_removes_regular_file(tmp_path):
-    """``safe_rm`` removes a regular file."""
+    """``safe_rm`` removes a regular file. Discrimination: the parent
+    directory must remain (a regression that removed the parent would
+    pass a naive ``not target.exists()`` check).
+    """
     from proteus.utils.helper import safe_rm
 
     target = tmp_path / 'file.txt'
@@ -86,6 +103,7 @@ def test_safe_rm_removes_regular_file(tmp_path):
     safe_rm(str(target))
 
     assert not target.exists()
+    assert tmp_path.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -161,12 +179,18 @@ def test_recursive_setattr_updates_nested_attribute():
 
 
 def test_recursive_setattr_single_segment_writes_directly():
-    """A single-segment attribute is set without recursion."""
+    """A single-segment attribute is set without recursion.
+    Discrimination: sibling attributes are not perturbed and the type of
+    the written value is preserved (a regression that always cast to
+    string would fail).
+    """
     from proteus.utils.helper import recursive_setattr
 
-    obj = SimpleNamespace(x=0)
+    obj = SimpleNamespace(x=0, y=99)
     recursive_setattr(obj, 'x', 7)
     assert obj.x == 7
+    assert obj.y == 99
+    assert isinstance(obj.x, int)
 
 
 # ---------------------------------------------------------------------------
@@ -200,11 +224,15 @@ def test_comment_from_status_maps_each_documented_code(status, fragment):
     """Every documented status code returns a description containing a
     distinctive fragment. Discrimination: distinct fragments per code
     catch accidental fall-through (a regression that mapped 21 onto the
-    "Atmosphere" string would fail the 21 row).
+    "Atmosphere" string would fail the 21 row); the result must also be
+    non-empty (a regression that returned the empty string would pass a
+    weak ``in`` check against an empty fragment).
     """
     from proteus.utils.helper import CommentFromStatus
 
-    assert fragment.lower() in CommentFromStatus(status).lower()
+    desc = CommentFromStatus(status)
+    assert fragment.lower() in desc.lower()
+    assert len(desc) >= len(fragment)
 
 
 def test_comment_from_status_unhandled_code_emits_warning(caplog):
@@ -314,13 +342,18 @@ def test_eval_gas_mmw_returns_element_mmw_when_input_is_pure_element():
 def test_eval_gas_mmw_sums_atomic_masses_for_water():
     """For 'H2O', the molecular mass is 2*H + 1*O. Discrimination: any
     formula that treated 'H2' as element 'H2' instead of 2*'H' would
-    raise a KeyError and the test would fail loudly.
+    raise a KeyError and the test would fail loudly. Also discriminates
+    a regression that omitted the oxygen contribution: ``2*H + O`` is
+    well above ``2*H`` alone (the wrong-formula value would land near
+    2 g/mol, not ~18).
     """
     from proteus.utils.constants import element_mmw
     from proteus.utils.helper import eval_gas_mmw
 
     expected = 2 * element_mmw['H'] + element_mmw['O']
-    assert eval_gas_mmw('H2O') == pytest.approx(expected)
+    actual = eval_gas_mmw('H2O')
+    assert actual == pytest.approx(expected)
+    assert abs(actual - 2 * element_mmw['H']) > element_mmw['O'] * 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -329,11 +362,17 @@ def test_eval_gas_mmw_sums_atomic_masses_for_water():
 
 
 def test_get_proteus_dir_returns_directory_containing_pyproject_toml():
-    """The returned path must contain ``pyproject.toml`` at its root."""
+    """The returned path must contain ``pyproject.toml`` at its root and
+    that pyproject must declare PROTEUS (a regression that walked too
+    far up the tree could land on an unrelated parent pyproject).
+    """
     from proteus.utils.helper import get_proteus_dir
 
     root = get_proteus_dir()
-    assert os.path.isfile(os.path.join(root, 'pyproject.toml'))
+    pyproject = os.path.join(root, 'pyproject.toml')
+    assert os.path.isfile(pyproject)
+    with open(pyproject, encoding='utf-8') as fh:
+        assert 'fwl-proteus' in fh.read()
 
 
 # ---------------------------------------------------------------------------
