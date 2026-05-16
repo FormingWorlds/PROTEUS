@@ -257,9 +257,7 @@ def test_plot_orbit_system_roche_radius_scaled_to_AU(tmp_path, monkeypatch):
     # The Roche-limit plot call is the (2 * nrows + 1)-th plot call when counted
     # over the planet (n) + sat (n) loop. Easier: scan all plot calls for the
     # one with the 'dashed' linestyle.
-    dashed_calls = [
-        c for c in mock_ax.plot.call_args_list if c.kwargs.get('ls') == 'dashed'
-    ]
+    dashed_calls = [c for c in mock_ax.plot.call_args_list if c.kwargs.get('ls') == 'dashed']
     assert len(dashed_calls) == 1
     x_vals = dashed_calls[0][0][0]
     expected = 1.0e10 / AU

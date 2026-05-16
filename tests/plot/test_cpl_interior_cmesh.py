@@ -117,9 +117,7 @@ def _install_full_mocks(monkeypatch, n_panels: int = 4):
 
     # make_axes_locatable returns a divider whose append_axes returns an Axes;
     # the colorbar then uses that Axes. None of those are exercised numerically.
-    monkeypatch.setattr(
-        cmesh_mod, 'make_axes_locatable', lambda _ax: MagicMock()
-    )
+    monkeypatch.setattr(cmesh_mod, 'make_axes_locatable', lambda _ax: MagicMock())
 
     return mock_plt, axs, mock_fig
 
@@ -129,9 +127,7 @@ def _install_full_mocks(monkeypatch, n_panels: int = 4):
 # ---------------------------------------------------------------------------
 
 
-def test_plot_interior_cmesh_returns_early_with_under_three_samples(
-    tmp_path, monkeypatch
-):
+def test_plot_interior_cmesh_returns_early_with_under_three_samples(tmp_path, monkeypatch):
     """The routine demands at least 3 time samples to make a useful colourmesh.
     A 2-sample input must skip without touching matplotlib.
     """

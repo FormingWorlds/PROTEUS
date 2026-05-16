@@ -122,8 +122,7 @@ def _install_full_mocks(monkeypatch):
 
 
 def test_plot_interior_returns_early_when_max_time_below_two(tmp_path, monkeypatch):
-    """Times below 2 yr trigger silent skip; matplotlib must not be called.
-    """
+    """Times below 2 yr trigger silent skip; matplotlib must not be called."""
     mock_plt, _axs, _fig = _install_full_mocks(monkeypatch)
     times = [0.5, 1.0, 1.5]
     data = [_make_aragog_entropy_ds() for _ in times]
@@ -142,8 +141,7 @@ def test_plot_interior_returns_early_when_max_time_below_two(tmp_path, monkeypat
 
 
 def test_plot_interior_rejects_unknown_module(tmp_path, monkeypatch):
-    """An unknown interior module must short-circuit before any plotting.
-    """
+    """An unknown interior module must short-circuit before any plotting."""
     mock_plt, _axs, _fig = _install_full_mocks(monkeypatch)
     times = [10.0, 20.0, 30.0]
     data = [_make_aragog_entropy_ds() for _ in times]
@@ -166,9 +164,7 @@ def test_plot_interior_rejects_unknown_module(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_plot_interior_aragog_entropy_branch_invokes_all_five_panels(
-    tmp_path, monkeypatch
-):
+def test_plot_interior_aragog_entropy_branch_invokes_all_five_panels(tmp_path, monkeypatch):
     """The aragog entropy branch reads pres_s / temp_s / phi_s, divides
     temperatures by 1000 (kK), multiplies phi by 100 (percent), and emits
     three plot calls per panel per snapshot (solid + mush + melt masks).
@@ -300,9 +296,7 @@ def test_plot_interior_spider_branch_converts_radius_to_km(tmp_path, monkeypatch
 # ---------------------------------------------------------------------------
 
 
-def test_plot_interior_sets_log_scale_when_viscosity_dynamic_range_wide(
-    tmp_path, monkeypatch
-):
+def test_plot_interior_sets_log_scale_when_viscosity_dynamic_range_wide(tmp_path, monkeypatch):
     """Panel (c) flips to log scale when ``visc_max > 100 * visc_min``. Our
     synthetic log10visc range (1e15..1e21) trips the threshold; a forgotten
     test against linear here would miss the wide-range default.
