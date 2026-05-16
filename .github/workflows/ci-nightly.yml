@@ -111,17 +111,22 @@ jobs:
           set -euo pipefail
           # Slim slow file list: schema invariants, hypothesis fuzz, BO
           # convergence, inference subprocess pipeline, helper self tests,
-          # and the all-dummy multi-iter run. The aragog_agni and
-          # aragog_janus files run the AGNI/aragog bridge end-to-end now
-          # that AGNI is pinned at a known good ref. Zalmoxis-heavy
-          # files stay excluded until the structure-solver runtime is
-          # understood on this branch.
+          # and the all-dummy multi-iter run. Excluded until their
+          # runtime fits the 75 min slow-tier budget on the standard
+          # GitHub runner:
+          #   - test_integration_aragog_agni_multi_timestep hit the
+          #     per-test 60 min timeout on macos-latest in nightly
+          #     25972492916.
+          #   - test_integration_aragog_janus::test_aragog_janus_run
+          #     ran 30 min then asserted out before completion.
+          #   - Zalmoxis-heavy files (test_smoke_zalmoxis_spider,
+          #     test_regression_aw_zalmoxis,
+          #     test_regression_structure_update) hang in the
+          #     structure solver.
           pytest -m "slow and not unit and not smoke and not integration" \
             tests/config/test_config_schema_invariants.py \
             tests/integration/test_smoke_hypothesis.py \
             tests/integration/test_integration_dummy.py \
-            tests/integration/test_integration_aragog_agni.py \
-            tests/integration/test_integration_aragog_janus.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \
@@ -385,8 +390,6 @@ jobs:
             tests/config/test_config_schema_invariants.py \
             tests/integration/test_smoke_hypothesis.py \
             tests/integration/test_integration_dummy.py \
-            tests/integration/test_integration_aragog_agni.py \
-            tests/integration/test_integration_aragog_janus.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \
