@@ -29,7 +29,6 @@ def main():
 
     import jax  # noqa: E402
     import jax.numpy as jnp  # noqa: E402
-
     from aragog.jax.eos import EntropyEOS_JAX  # noqa: E402
 
     EOS_DIR = Path(
@@ -41,8 +40,8 @@ def main():
     # Three test states (uniform per state)
     P = jnp.linspace(120e9, 1e9, 80)  # Earth-like P profile
     states = {
-        'IC':         jnp.full(80, 3900.0),  # extrapolated above table top
-        'mid':        jnp.linspace(3300.0, 3700.0, 80),
+        'IC': jnp.full(80, 3900.0),  # extrapolated above table top
+        'mid': jnp.linspace(3300.0, 3700.0, 80),
         'near_solid': jnp.linspace(3000.0, 3300.0, 80),
     }
 
@@ -52,7 +51,11 @@ def main():
 
         # Forward sanity
         state = eos.compute_phase_state(
-            P, S, k_solid=4.0, k_liquid=2.0, matprop_smooth_width=0.01,
+            P,
+            S,
+            k_solid=4.0,
+            k_liquid=2.0,
+            matprop_smooth_width=0.01,
         )
         for name, val in [
             ('temperature', state.temperature),
@@ -63,15 +66,21 @@ def main():
         ]:
             v = np.asarray(val)
             n_finite = int(np.isfinite(v).sum())
-            print(f'    fwd {name:>22}: shape={v.shape}, finite={n_finite}/{v.size}, '
-                  f'range=[{v.min():.3e}, {v.max():.3e}]')
+            print(
+                f'    fwd {name:>22}: shape={v.shape}, finite={n_finite}/{v.size}, '
+                f'range=[{v.min():.3e}, {v.max():.3e}]'
+            )
 
         # Jacobian of each property summed (scalar) wrt S
-        for prop in ['temperature', 'density', 'heat_capacity',
-                     'thermal_expansivity', 'dTdPs']:
+        for prop in ['temperature', 'density', 'heat_capacity', 'thermal_expansivity', 'dTdPs']:
+
             def f(S_arg, p=prop):
                 state = eos.compute_phase_state(
-                    P, S_arg, k_solid=4.0, k_liquid=2.0, matprop_smooth_width=0.01,
+                    P,
+                    S_arg,
+                    k_solid=4.0,
+                    k_liquid=2.0,
+                    matprop_smooth_width=0.01,
                 )
                 return getattr(state, p).sum()
 

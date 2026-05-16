@@ -29,12 +29,11 @@ def main():
     sys.path.insert(0, str(Path(__file__).parent))
     import jax  # noqa: E402
     import jax.numpy as jnp  # noqa: E402
+    from aragog.jax.phase import compute_fluxes  # noqa: E402
     from z02_parity_multi_state import (  # noqa: E402
         build_solver_and_jax_args,
         synthesize_state,
     )
-
-    from aragog.jax.phase import compute_fluxes  # noqa: E402
 
     solver, args, eos_jax = build_solver_and_jax_args()
     n_stag = solver._n_stag
@@ -46,11 +45,18 @@ def main():
         S_basic_cmb_override = float(state[0])  # rough; just for compatibility
         dSdr_cmb_override = float(state[n_stag])
 
-        print(f'\n  state={kind!r}, S range=[{float(S_stag.min()):.1f}, {float(S_stag.max()):.1f}]')
+        print(
+            f'\n  state={kind!r}, S range=[{float(S_stag.min()):.1f}, {float(S_stag.max()):.1f}]'
+        )
 
         def f(S_arg):
             flux = compute_fluxes(
-                S_arg, 0.0, eos_jax2, params, mesh, heating,
+                S_arg,
+                0.0,
+                eos_jax2,
+                params,
+                mesh,
+                heating,
                 S_basic_cmb_override=S_basic_cmb_override,
                 dSdr_cmb_override=dSdr_cmb_override,
             )
@@ -58,20 +64,29 @@ def main():
 
         # Forward sanity
         flux = compute_fluxes(
-            S_stag, 0.0, eos_jax2, params, mesh, heating,
+            S_stag,
+            0.0,
+            eos_jax2,
+            params,
+            mesh,
+            heating,
             S_basic_cmb_override=S_basic_cmb_override,
             dSdr_cmb_override=dSdr_cmb_override,
         )
         hf = np.asarray(flux.heat_flux)
-        print(f'    fwd heat_flux: finite={int(np.isfinite(hf).sum())}/{hf.size}, '
-              f'range=[{hf.min():.3e}, {hf.max():.3e}]')
+        print(
+            f'    fwd heat_flux: finite={int(np.isfinite(hf).sum())}/{hf.size}, '
+            f'range=[{hf.min():.3e}, {hf.max():.3e}]'
+        )
 
         # Backward
         grad = jax.grad(f)(S_stag)
         grad_np = np.asarray(grad)
         n_finite = int(np.isfinite(grad_np).sum())
         n_nan = int(np.isnan(grad_np).sum())
-        print(f'    bwd grad(heat_flux.sum()): {"FINITE" if n_finite == grad_np.size else f"{n_nan} NaN"}')
+        print(
+            f'    bwd grad(heat_flux.sum()): {"FINITE" if n_finite == grad_np.size else f"{n_nan} NaN"}'
+        )
 
     return 0
 
