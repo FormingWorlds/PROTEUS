@@ -130,6 +130,11 @@ def test_assert_no_nan_inf_flags_nan():
     row['T_surf'] = float('nan')
     with pytest.raises(AssertionError, match=r'T_surf=NaN'):
         assert_no_nan_inf(row)
+    # Discrimination: restoring T_surf to a finite value makes the helper
+    # return None silently. Catches a regression that latched on T_surf
+    # regardless of its current value.
+    row['T_surf'] = 1500.0
+    assert assert_no_nan_inf(row) is None
 
 
 def test_assert_no_nan_inf_flags_inf():
@@ -141,6 +146,12 @@ def test_assert_no_nan_inf_flags_inf():
     row['F_atm'] = float('inf')
     row['F_atm'] = float('inf')  # add new column
     with pytest.raises(AssertionError, match=r'F_atm=Inf'):
+        assert_no_nan_inf(pd.Series(row))
+    # Discrimination: NaN fires with a different tag than Inf. The helper
+    # must distinguish the two; a regression that always reported "Inf"
+    # would still match this match-pattern but fail the NaN tag check.
+    row['F_atm'] = float('nan')
+    with pytest.raises(AssertionError, match=r'F_atm=NaN'):
         assert_no_nan_inf(pd.Series(row))
 
 
@@ -169,6 +180,12 @@ def test_assert_temperatures_positive_flags_zero():
     row['T_surf'] = 0.0
     with pytest.raises(AssertionError, match=r'T_surf=0.000e\+00 K'):
         assert_temperatures_positive(row)
+    # Strict-positivity boundary: lifting T_surf to a finite positive
+    # value (even very small) returns None. Catches a regression to
+    # >= 0 (which would still trip on 0.0) and confirms the formatting
+    # path is conditional on the bad-value branch.
+    row['T_surf'] = 1.0
+    assert assert_temperatures_positive(row) is None
 
 
 def test_assert_temperatures_positive_flags_negative():
@@ -180,6 +197,11 @@ def test_assert_temperatures_positive_flags_negative():
     row['T_magma'] = -100.0
     with pytest.raises(AssertionError, match=r'T_magma=-1.000e\+02 K'):
         assert_temperatures_positive(row)
+    # Sign-flip discrimination: the same magnitude positive must NOT fire.
+    # Catches a regression that compared |T| > 0 (which would always pass)
+    # or that fired on any non-finite or non-zero value.
+    row['T_magma'] = 100.0
+    assert assert_temperatures_positive(row) is None
 
 
 def test_assert_temperatures_positive_skips_module_specific_zeros():
@@ -216,6 +238,11 @@ def test_assert_pressures_non_negative_flags_negative_pressure():
     row['H2O_bar'] = -0.5
     with pytest.raises(AssertionError, match=r'H2O_bar=-5.000e-01 bar'):
         assert_pressures_non_negative(row)
+    # Zero-boundary discrimination: zero partial pressure is legitimate
+    # (empty atmosphere) and must NOT fire; the helper enforces >= 0,
+    # not > 0. Catches a regression that made the comparison strict.
+    row['H2O_bar'] = 0.0
+    assert assert_pressures_non_negative(row) is None
 
 
 # ---------------------------------------------------------------------------
@@ -239,9 +266,15 @@ def test_per_element_mass_closure_accepts_consistent_row():
 def test_per_element_mass_closure_flags_dropped_partition():
     """Set H_kg_total higher than the sum of partitions; closure must fail."""
     row = _good_row()
-    row['H_kg_total'] = row['H_kg_total'] * 2.0
+    H_total_orig = row['H_kg_total']
+    row['H_kg_total'] = H_total_orig * 2.0
     with pytest.raises(AssertionError, match=r'H: total=.*atm\+solid\+liquid'):
         assert_per_element_mass_closure(row)
+    # Per-element symmetry: lifting H_kg_atm by the same offset restores
+    # closure on H. Catches a regression that fired regardless of whether
+    # the partitions matched the total.
+    row['H_kg_atm'] = row['H_kg_atm'] + H_total_orig
+    assert assert_per_element_mass_closure(row) is None
 
 
 def test_per_element_mass_closure_tolerates_float_noise():
@@ -282,6 +315,11 @@ def test_per_species_mass_closure_flags_inconsistent_species():
     row['H2O_kg_total'] = row['H2O_kg_total'] + 1e22  # 10 EkG drop
     with pytest.raises(AssertionError, match=r'H2O: total='):
         assert_per_species_mass_closure(row)
+    # Per-species symmetry: matching the inflation on H2O_kg_liquid (the
+    # mantle reservoir) restores closure. Catches a regression that fired
+    # the gate regardless of partition consistency.
+    row['H2O_kg_liquid'] = row['H2O_kg_liquid'] + 1e22
+    assert assert_per_species_mass_closure(row) is None
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +344,12 @@ def test_atmosphere_element_sum_matches_M_atm_flags_drift():
     row['M_atm'] = row['M_atm'] * 1.01
     with pytest.raises(AssertionError, match=r'M_atm=.*disagrees with sum over elements'):
         assert_atmosphere_element_sum_matches_M_atm(row)
+    # Tolerance-boundary discrimination: a drift of 0.05% sits below the
+    # 0.1% rel_tol and must NOT fire. Catches a regression that tightened
+    # the tolerance to zero or absolute equality.
+    elem_sum = row['H_kg_atm'] + row['O_kg_atm'] + row['C_kg_atm']
+    row['M_atm'] = elem_sum * 1.0005  # 0.05% drift, below 0.1% rel_tol
+    assert assert_atmosphere_element_sum_matches_M_atm(row) is None
 
 
 def test_atmosphere_element_sum_matches_M_atm_skips_when_M_atm_zero():
@@ -347,6 +391,11 @@ def test_element_sum_matches_species_sum_flags_distribution_bug():
     row['H2O_kg_atm'] = row['H2O_kg_atm'] * 1.5
     with pytest.raises(AssertionError, match=r'Element sum.*disagrees with species sum'):
         assert_element_sum_matches_species_sum(row)
+    # Cross-tree discrimination: rebuilding a clean row from the fixture
+    # must restore agreement. Catches a regression that fires regardless
+    # of cross-tree state.
+    row_clean = _good_row()
+    assert assert_element_sum_matches_species_sum(row_clean) is None
 
 
 def test_element_sum_matches_species_sum_skips_when_both_zero():
@@ -382,6 +431,10 @@ def test_M_atm_le_M_planet_flags_violation():
     row['M_atm'] = row['M_planet'] * 1.5
     with pytest.raises(AssertionError, match=r'issue #677 regression'):
         assert_M_atm_le_M_planet(row)
+    # Discrimination: shrinking M_atm back below M_planet restores closure
+    # on the bound. Catches a regression that fires regardless of M_atm.
+    row['M_atm'] = row['M_planet'] * 0.5
+    assert assert_M_atm_le_M_planet(row) is None
 
 
 def test_M_atm_le_M_planet_admits_float_rounding():
@@ -431,9 +484,15 @@ def test_M_planet_matches_M_int_plus_M_ele_flags_disagreement():
     raises with a message naming the two sides of the comparison.
     """
     row = _good_row()
-    row['M_int'] = row['M_int'] * 0.5  # halve the interior, planet now wrong
+    M_int_original = row['M_int']
+    row['M_int'] = M_int_original * 0.5  # halve the interior, planet now wrong
     with pytest.raises(AssertionError, match=r'M_planet=.*does not match M_int \+ M_ele'):
         assert_M_planet_matches_M_int_plus_M_ele(row)
+    # Symmetry: lifting M_ele by the lost interior mass restores the
+    # M_int + M_ele = M_planet bookkeeping. Catches a regression that
+    # fired regardless of compensating reservoir moves.
+    row['M_ele'] = row['M_ele'] + M_int_original * 0.5
+    assert assert_M_planet_matches_M_int_plus_M_ele(row) is None
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +519,12 @@ def test_escape_bound_flags_unphysical_rate():
     row['esc_rate_total'] = row['M_atm'] * 100  # would empty atmosphere in 0.01s
     with pytest.raises(AssertionError, match=r'Escape over one step'):
         assert_escape_within_atmospheric_budget(row, dt_s=1.0)
+    # Bound discrimination: the same rate over a much smaller dt (1e-3 s)
+    # gives a cumulative loss below 10 * M_atm and must pass; the gate is
+    # `esc * dt`, not the rate alone.
+    row['esc_rate_total'] = row['M_atm'] * 100
+    # cum loss = 0.1*M_atm, well under the 10*M_atm slack
+    assert assert_escape_within_atmospheric_budget(row, dt_s=1e-3) is None
 
 
 def test_escape_bound_flags_negative_rate():
@@ -470,6 +535,11 @@ def test_escape_bound_flags_negative_rate():
     row['esc_rate_total'] = -1.0e3
     with pytest.raises(AssertionError, match=r'esc_rate_total = -1.000e\+03 kg/s'):
         assert_escape_within_atmospheric_budget(row, dt_s=1.0)
+    # Sign discrimination: the same magnitude with a positive sign falls
+    # well under the 10 * M_atm bound and must pass. Catches a regression
+    # that fired on |esc| > 0 rather than esc < 0.
+    row['esc_rate_total'] = 1.0e3
+    assert assert_escape_within_atmospheric_budget(row, dt_s=1.0) is None
 
 
 def test_escape_bound_skips_when_dt_unknown():
@@ -492,6 +562,12 @@ def test_escape_bound_flags_nonfinite_rate():
     row = _good_row()
     row['esc_rate_total'] = float('nan')
     with pytest.raises(AssertionError, match=r'esc_rate_total = nan'):
+        assert_escape_within_atmospheric_budget(row, dt_s=1.0)
+    # Non-finite discrimination: Inf is also non-finite and must also fire,
+    # but with a distinct value in the message. Catches a regression that
+    # short-circuited only on NaN.
+    row['esc_rate_total'] = float('inf')
+    with pytest.raises(AssertionError, match=r'esc_rate_total = inf'):
         assert_escape_within_atmospheric_budget(row, dt_s=1.0)
 
 
@@ -522,6 +598,10 @@ def test_composite_check_rejects_empty_dataframe():
     """
     with pytest.raises(AssertionError, match=r'helpfile is empty'):
         assert_smoke_conservation_invariants(pd.DataFrame())
+    # Boundary discrimination: a single-row DataFrame must NOT raise the
+    # empty-dataframe error; the gate fires on len == 0 strictly. Catches
+    # a regression to len <= 1 or a swapped comparison.
+    assert assert_smoke_conservation_invariants(pd.DataFrame([_good_row()])) is None
 
 
 def test_composite_check_falls_back_when_single_row():
@@ -547,6 +627,12 @@ def test_composite_check_propagates_first_failure():
     df.loc[1, 'Time'] = 1000.0
     with pytest.raises(AssertionError, match=r'T_surf=NaN'):
         assert_smoke_conservation_invariants(df)
+    # Propagation discrimination: dropping the NaN restores the clean row
+    # contract and the composite must accept the DataFrame. Catches a
+    # regression that latched the failure state across calls.
+    df.loc[0, 'T_surf'] = 1500.0
+    df.loc[1, 'T_surf'] = 1500.0
+    assert assert_smoke_conservation_invariants(df) is None
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +651,11 @@ def test_dt_conversion_uses_canonical_year_length():
     expected_dt_s = 1000.0 * secs_per_year
     # 1 year in seconds = 3.156e7 (Julian year via 365.25 days)
     assert math.isclose(expected_dt_s, 3.15576e10, rel_tol=1e-3)
+    # Discrimination: the canonical year length sits between the two
+    # plausible alternative conventions, the tropical year (~3.1556926e7)
+    # and a 360-day year (3.1104e7). Pin the value above either tropical
+    # or 360-day approximations would fail to match this magnitude.
+    assert expected_dt_s > 3.1e10  # rules out 360-day year (would give ~3.1104e10)
     # Composite check must accept this dt without firing the escape bound
     assert_smoke_conservation_invariants(df)
 

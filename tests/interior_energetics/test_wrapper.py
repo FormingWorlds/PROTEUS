@@ -112,8 +112,19 @@ def test_update_disabled():
     hf_row = {'Time': 500.0, 'T_magma': 3000.0, 'Phi_global': 0.8}
     interior_o = _mock_interior_o()
 
-    result = update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver:
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
     assert result == (0.0, 3000.0, 0.8)
+    # Side-effect discrimination: the disabled branch must NOT invoke
+    # the Zalmoxis solver. Catches a regression that ran the solver
+    # and then discarded its output (which would still return the
+    # unchanged tuple but burn CPU and pollute the mesh files).
+    mock_solver.assert_not_called()
 
 
 # ============================================================================
@@ -136,7 +147,10 @@ def test_ceiling_trigger():
     interior_o = _mock_interior_o()
 
     with (
-        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
@@ -145,6 +159,10 @@ def test_ceiling_trigger():
         )
     # Should have triggered: last_struct_time updated to current
     assert result[0] == pytest.approx(1100.0, rel=1e-12)
+    # Trigger discrimination: the ceiling branch must actually invoke
+    # Zalmoxis. Catches a regression where the time was updated without
+    # the structure solver being run, leaving the mesh stale.
+    mock_solver.assert_called_once()
 
 
 # ============================================================================
@@ -172,7 +190,10 @@ def test_tmagma_trigger():
     interior_o = _mock_interior_o()
 
     with (
-        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
@@ -180,6 +201,11 @@ def test_tmagma_trigger():
             dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
         )
     assert result[0] == pytest.approx(200.0, rel=1e-12)
+    # Trigger discrimination: a 4% T change crosses the 3% threshold,
+    # so the solver must run. Catches a regression that swapped the
+    # comparison direction (dT < threshold) and would still produce
+    # the same time-advance from the ceiling branch on a later step.
+    mock_solver.assert_called_once()
 
 
 @pytest.mark.unit
@@ -199,8 +225,18 @@ def test_tmagma_no_trigger():
     }
     interior_o = _mock_interior_o()
 
-    result = update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
-    assert result[0] == 0.0  # Not triggered
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver:
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
+        )
+    assert result[0] == pytest.approx(0.0, abs=1e-12)  # Not triggered
+    # No-trigger discrimination: the solver must NOT run when dT/T is
+    # below threshold. Catches a regression that fired the solver and
+    # then discarded its result on the no-trigger branch.
+    mock_solver.assert_not_called()
 
 
 # ============================================================================
@@ -228,7 +264,10 @@ def test_phi_trigger():
     interior_o = _mock_interior_o()
 
     with (
-        patch('proteus.interior_struct.zalmoxis.zalmoxis_solver', return_value=(3.504e6, None)),
+        patch(
+            'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+            return_value=(3.504e6, None),
+        ) as mock_solver,
         patch('proteus.interior_energetics.wrapper.np.savetxt'),
         patch('proteus.interior_energetics.wrapper.shutil.copy2'),
     ):
@@ -236,6 +275,11 @@ def test_phi_trigger():
             dirs, config, hf_row, interior_o, 0.0, 2990.0, 0.80
         )
     assert result[0] == pytest.approx(200.0, rel=1e-12)
+    # Trigger discrimination: a 0.1 absolute drop in Phi crosses the
+    # 0.05 threshold, so the solver must run. The phi trigger branch
+    # is separate from the T trigger branch (dT/T is 0% here), so a
+    # regression that disabled the phi branch alone would fail here.
+    mock_solver.assert_called_once()
 
 
 @pytest.mark.unit
@@ -256,8 +300,18 @@ def test_phi_no_trigger():
     }
     interior_o = _mock_interior_o()
 
-    result = update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80)
-    assert result[0] == 0.0  # Not triggered
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver:
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.80
+        )
+    assert result[0] == pytest.approx(0.0, abs=1e-12)  # Not triggered
+    # No-trigger discrimination: dPhi = 0.02 < 0.05 threshold; the
+    # solver must NOT run. Catches a regression that compared |dPhi|
+    # to a different threshold or that flipped the comparison sense.
+    mock_solver.assert_not_called()
 
 
 # ============================================================================
@@ -282,8 +336,20 @@ def test_floor_blocks_update():
     }
     interior_o = _mock_interior_o()
 
-    result = update_structure_from_interior(dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8)
-    assert result[0] == 0.0  # Floor blocked
+    with patch(
+        'proteus.interior_struct.zalmoxis.zalmoxis_solver',
+        return_value=(3.504e6, None),
+    ) as mock_solver:
+        result = update_structure_from_interior(
+            dirs, config, hf_row, interior_o, 0.0, 3000.0, 0.8
+        )
+    assert result[0] == pytest.approx(0.0, abs=1e-12)  # Floor blocked
+    # Floor discrimination: a 33% T change is well above the dT/T
+    # threshold AND a 0.3 Phi drop is well above the Phi threshold;
+    # only the floor (elapsed < min_interval) can produce a no-update
+    # outcome here. Catches a regression that ignored the floor and
+    # still skipped the solver for some other reason.
+    mock_solver.assert_not_called()
 
 
 # ============================================================================
@@ -516,7 +582,7 @@ def test_entropy_remap_exception(tmp_path):
         patch(
             'proteus.interior_energetics.spider.get_all_output_times',
             side_effect=RuntimeError('no JSON files'),
-        ),
+        ) as mock_get_times,
         patch('proteus.interior_energetics.wrapper.gc.collect'),
     ):
         # Should not raise
@@ -525,6 +591,11 @@ def test_entropy_remap_exception(tmp_path):
         )
 
     assert result[0] == pytest.approx(1100.0, rel=1e-12)
+    # Exception-path discrimination: get_all_output_times raised, so it
+    # must have been invoked; the function still returned cleanly. A
+    # regression that short-circuited the remap before invoking the
+    # call would still produce the same time advance.
+    mock_get_times.assert_called_once()
 
 
 @pytest.mark.unit
@@ -597,10 +668,15 @@ def test_phi_crit_warning(caplog):
     with caplog.at_level('WARNING', logger='fwl.proteus.interior_energetics.wrapper'):
         with patch(
             'proteus.interior_energetics.wrapper.determine_interior_radius_with_zalmoxis'
-        ):
+        ) as mock_zal:
             solve_structure({}, config, None, {}, '/tmp')
 
     assert any('phi_crit' in r.message for r in caplog.records)
+    # Dispatch discrimination: the warning fired AND the zalmoxis backend
+    # was still dispatched (the warning does not abort solve_structure).
+    # Catches a regression where the warning short-circuited the structure
+    # call, leaving the simulation without an updated radius.
+    mock_zal.assert_called_once()
 
 
 # ============================================================================
@@ -906,6 +982,15 @@ def test_solve_structure_invalid_module():
 
     with pytest.raises(ValueError, match='Invalid structure interior module'):
         solve_structure({}, config, None, {}, '/tmp')
+    # Dispatch discrimination: switching back to a recognised module
+    # name (zalmoxis) must dispatch to its backend. Catches a regression
+    # that fired the validation gate regardless of the module string.
+    config.interior_struct.module = 'zalmoxis'
+    with patch(
+        'proteus.interior_energetics.wrapper.determine_interior_radius_with_zalmoxis'
+    ) as mock_zal:
+        solve_structure({}, config, None, {}, '/tmp')
+    mock_zal.assert_called_once()
 
 
 # ============================================================================
@@ -1406,7 +1491,7 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
     with patch(
         'proteus.interior_struct.zalmoxis.zalmoxis_solver',
         side_effect=RuntimeError('mock failure'),
-    ):
+    ) as mock_solver:
         update_structure_from_interior(
             dirs,
             config,
@@ -1420,6 +1505,11 @@ def test_last_successful_struct_time_not_advanced_on_failure(tmp_path):
         'fall-back must NOT advance last_successful_struct_time '
         '(got %r, expected 5e4)' % interior_o.last_successful_struct_time
     )
+    # Fall-back discrimination: the solver was actually invoked (the test
+    # exercises the failure branch, not the no-trigger branch). A
+    # regression that bypassed the solver entirely would also leave
+    # last_successful_struct_time at 5e4 and fool the primary assert.
+    mock_solver.assert_called_once()
 
     _w._zalmoxis_fail_count = 0
 
@@ -1441,6 +1531,14 @@ def test_prevent_warming_clamp_off_when_disabled():
         assert _prevent_warming_clamp_active(cfg) is False, (
             f'clamp wrongly active for module={module} when prevent_warming=False'
         )
+    # Toggle discrimination: flipping prevent_warming to True must flip
+    # the clamp ON for every module. Catches a regression that hard-coded
+    # the return value to False regardless of the flag.
+    for module in ('aragog', 'spider', 'dummy'):
+        cfg = _ns_prevent_warming(prevent_warming=True, module=module)
+        assert _prevent_warming_clamp_active(cfg) is True, (
+            f'clamp wrongly inactive for module={module} when prevent_warming=True'
+        )
 
 
 @pytest.mark.unit
@@ -1456,6 +1554,11 @@ def test_prevent_warming_clamp_on_when_enabled_regardless_of_module(module):
     """
     cfg = _ns_prevent_warming(prevent_warming=True, module=module)
     assert _prevent_warming_clamp_active(cfg) is True
+    # Toggle discrimination: flipping prevent_warming to False (for the
+    # same module) must flip the clamp OFF. Catches a regression that
+    # branched on module name and ignored the prevent_warming flag.
+    cfg_off = _ns_prevent_warming(prevent_warming=False, module=module)
+    assert _prevent_warming_clamp_active(cfg_off) is False
 
 
 @pytest.mark.unit
@@ -1635,9 +1738,10 @@ def test_run_interior_t_surf_runaway_warning_fires():
     the configured dT_delta budget."""
     config = _make_run_interior_config(prevent_warming=False)
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    raw_t_surf = 2900.0  # 100 K leap, well above tmagma_atol=20
     out = {
         'T_magma': 3005.0,
-        'T_surf': 2900.0,  # 100 K leap, well above tmagma_atol=20
+        'T_surf': raw_t_surf,
         'Phi_global': 0.7,
         'F_int': 0.15,
         'M_mantle': 4.0e24,
@@ -1649,6 +1753,11 @@ def test_run_interior_t_surf_runaway_warning_fires():
 
     # T_surf capped at T_surf_prev + dT_delta = 2800 + 20.
     assert hf_row['T_surf'] == pytest.approx(2820.0)
+    # Cap discrimination: the post-cap value lies strictly between the
+    # previous T_surf (2800) and the raw solver output (2900). Catches
+    # a regression that left the raw output untouched (would give 2900)
+    # or that snapped to T_surf_prev (would give 2800).
+    assert 2800.0 < hf_row['T_surf'] < raw_t_surf
 
 
 @pytest.mark.unit
@@ -1878,11 +1987,12 @@ def test_run_interior_F_int_floor_fires_on_ic1_restart_when_prevent_warming():
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
     # Dummy backend returns a tiny negative F_int (simulates the
     # SPIDER post-restart heat-pump artefact).
+    raw_F_int = -1.0e-3
     out = {
         'T_magma': 3000.0,
         'T_surf': 2800.0,
         'Phi_global': 0.4,
-        'F_int': -1.0e-3,
+        'F_int': raw_F_int,
         'M_mantle': 4.0e24,
         'M_mantle_liquid': 1.0e24,
         'M_mantle_solid': 3.0e24,
@@ -1892,6 +2002,11 @@ def test_run_interior_F_int_floor_fires_on_ic1_restart_when_prevent_warming():
 
     # Floor fires even on ic == 1 because prevent_warming is enabled.
     assert hf_row['F_int'] == pytest.approx(1.0e-8)
+    # Sign-correction discrimination: the raw output was strictly negative,
+    # and the post-floor value is strictly positive. A regression that
+    # passed the raw value through unchanged would still satisfy any
+    # |F_int| < threshold check; only the sign flip discriminates.
+    assert raw_F_int < 0.0 < hf_row['F_int']
 
 
 @pytest.mark.unit
@@ -1902,11 +2017,12 @@ def test_run_interior_F_int_floor_skipped_when_prevent_warming_off():
     1e-8 floor)."""
     config = _make_run_interior_config(prevent_warming=False)
     hf_all, hf_row = _make_run_interior_state(prev_f_int=0.2)
+    raw_F_int = -1.0e-3
     out = {
         'T_magma': 3000.0,
         'T_surf': 2800.0,
         'Phi_global': 0.4,
-        'F_int': -1.0e-3,
+        'F_int': raw_F_int,
         'M_mantle': 4.0e24,
         'M_mantle_liquid': 1.0e24,
         'M_mantle_solid': 3.0e24,
@@ -1916,3 +2032,8 @@ def test_run_interior_F_int_floor_skipped_when_prevent_warming_off():
 
     # Floor does NOT fire; negative F_int survives.
     assert hf_row['F_int'] == pytest.approx(-1.0e-3)
+    # Sign discrimination: the raw output stayed strictly negative.
+    # A regression that silently applied the floor regardless of the
+    # prevent_warming flag would flip the sign to ~1e-8 and fool the
+    # primary pytest.approx check if its abs= tolerance were too loose.
+    assert hf_row['F_int'] < 0.0
