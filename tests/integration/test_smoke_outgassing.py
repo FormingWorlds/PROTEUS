@@ -74,6 +74,7 @@ def test_smoke_calliope_dummy_atmos_outgassing():
                     'atmosphere',
                     'agni',
                     'julia',  # AGNI/Julia allocation
+                    'paleos',  # Zalmoxis PALEOS EOS table not in minimal-data set
                 ]
             ):
                 pytest.skip(
@@ -122,6 +123,7 @@ def test_smoke_calliope_dummy_atmos_outgassing():
                         'download',
                         'network',
                         'connection',
+                        'paleos',  # Zalmoxis PALEOS EOS table not in minimal-data set
                     ]
                 ):
                     pytest.skip(

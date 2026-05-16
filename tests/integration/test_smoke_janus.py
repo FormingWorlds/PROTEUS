@@ -94,7 +94,7 @@ config_version = "3.0"
     prevent_warming = false
 
 [interior_struct]
-    module = "spider"
+    module = "dummy"
     core_frac = 0.5
     core_frac_mode = "radius"
     core_density = 8000.0

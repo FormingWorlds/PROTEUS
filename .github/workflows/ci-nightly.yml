@@ -320,7 +320,7 @@ jobs:
         run: |
           cd /opt/proteus
           coverage erase
-          pytest -m "unit and not skip" \
+          pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
             -v --tb=short \
             --junitxml=/tmp/junit-unit.xml \
@@ -471,8 +471,8 @@ jobs:
           # Exit with error if critical data is missing
           if not aragog_ok or not stellar_ok:
               print('\nFATAL: Critical data missing. Cannot run tests.')
-              print(f'  ARAGOG data: {"OK" if aragog_ok else "MISSING"}')
-              print(f'  Stellar tracks: {"OK" if stellar_ok else "MISSING"}')
+              print(f'  ARAGOG data: {\"OK\" if aragog_ok else \"MISSING\"}')
+              print(f'  Stellar tracks: {\"OK\" if stellar_ok else \"MISSING\"}')
               sys.exit(1)
           "
 

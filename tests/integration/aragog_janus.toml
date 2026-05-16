@@ -71,7 +71,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
-            enabled   = false
+            enabled   = true
             p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 

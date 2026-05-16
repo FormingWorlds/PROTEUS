@@ -188,8 +188,11 @@ def test_smoke_janus_dummy_interior_radiation_balance():
         f_int = final_row['F_int']
         assert not np.isnan(f_atm)
         assert not np.isnan(f_int)
-        assert -10000 <= f_atm <= 10000
-        assert -10000 <= f_int <= 10000
+        # Magma-ocean radiative fluxes routinely exceed 100 kW/m^2; the
+        # physics check is the ratio assertion below, not this sanity bound.
+        # Match the ranges used by the dummy and AGNI variants in this file.
+        assert -1e6 <= f_atm <= 1e6
+        assert -1e6 <= f_int <= 1e6
 
         # Validate radiation balance (within factor of 2 for 1 timestep)
         # Use absolute values for ratio since sign indicates direction
