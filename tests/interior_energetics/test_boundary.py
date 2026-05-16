@@ -283,6 +283,7 @@ def test_viscosity_aggregate_model_limits(boundary_runner):
         (0.9, (1e2, 1e5)),  # Mostly liquid
     ],
 )
+@pytest.mark.physics_invariant
 def test_viscosity_aggregate_parametrized(boundary_runner, phi, expected_eta_range):
     """
     Test aggregate viscosity model across melt fraction range via parametrization.
@@ -296,6 +297,13 @@ def test_viscosity_aggregate_parametrized(boundary_runner, phi, expected_eta_ran
     eta = boundary_runner.viscosity_aggregate_model(phi)
     eta_min, eta_max = expected_eta_range
     assert eta_min < eta < eta_max
+    # Positivity invariant: viscosity is computed as 10**(log_eta), a
+    # log-linear blend of two strictly positive bounds; the result is
+    # always positive. A sign-error regression that emitted a negative
+    # log_eta from a swapped (z, 1-z) blend would still yield a
+    # positive 10**, but a regression that returned a raw negative
+    # blend (forgetting the exponentiation) would fail this.
+    assert eta > 0.0
 
 
 def test_viscosity_arrhenius_solid_mantle(boundary_runner):
@@ -325,6 +333,7 @@ def test_viscosity_arrhenius_solid_mantle(boundary_runner):
     assert eta_hot > 0
 
 
+@pytest.mark.physics_invariant
 def test_viscosity_arrhenius_magma_ocean(boundary_runner):
     """
     Test Arrhenius viscosity above critical melt fraction (magma ocean Vogel-Fulcher-Tammann).
@@ -347,6 +356,11 @@ def test_viscosity_arrhenius_magma_ocean(boundary_runner):
 
     # Magma ocean viscosity should be low (~0.001–1000 Pa·s)
     assert 1e-3 < eta < 1e4
+    # Positivity invariant: viscosity is a physical resistance, so
+    # must be positive everywhere. A regression that flipped the
+    # sign of the crystal-weakening exponent could yield a negative
+    # eta from a denominator going negative.
+    assert eta > 0.0
 
 
 def test_viscosity_dispatcher_constant_model(boundary_runner):
@@ -364,6 +378,12 @@ def test_viscosity_dispatcher_constant_model(boundary_runner):
 
     eta = boundary_runner.viscosity(T_p, T_surf, phi)
     assert eta == pytest.approx(1e21, rel=1e-10)
+    # T-independence guard: model==1 must ignore T_p / T_surf / phi.
+    # A regression that fell through to the aggregate model would
+    # blend toward eta_melt_const (1e2) at phi=0.8 and miss 1e21 by
+    # nineteen orders of magnitude.
+    eta_other = boundary_runner.viscosity(1500.0, 300.0, 0.1)
+    assert eta_other == pytest.approx(eta, rel=1e-12)
 
 
 def test_viscosity_dispatcher_aggregate_model(boundary_runner):
@@ -380,6 +400,12 @@ def test_viscosity_dispatcher_aggregate_model(boundary_runner):
     eta = boundary_runner.viscosity(T_p, T_surf, phi)
     # Should call aggregate model
     assert 1e2 < eta < 1e21
+    # Identity guard: when model==2, the dispatcher must return the
+    # aggregate-model value, not the constant-model value (1e2 here
+    # via the default eta_constant from the fixture). The two are
+    # well-separated in this regime.
+    expected = boundary_runner.viscosity_aggregate_model(phi)
+    assert eta == pytest.approx(expected, rel=1e-12)
 
 
 def test_viscosity_dispatcher_arrhenius_model(boundary_runner):
@@ -396,6 +422,12 @@ def test_viscosity_dispatcher_arrhenius_model(boundary_runner):
     eta = boundary_runner.viscosity(T_p, T_surf, phi)
     expected_eta = boundary_runner.viscosity_arrhenius(T_p, phi)
     assert eta == pytest.approx(expected_eta, rel=1e-12)
+    # Discriminator vs the constant-model fallback: with the fixture
+    # defaults eta_constant=1e2, the Arrhenius branch at T_p=2000 K,
+    # E_a=3e5 J/mol returns a value many orders of magnitude away
+    # from 1e2. A dispatcher regression that routed model==3 to the
+    # constant path would land at 1e2 and fail this check.
+    assert eta != pytest.approx(boundary_runner.eta_constant, rel=1e-2)
 
 
 def test_viscosity_dispatcher_unknown_model(boundary_runner, caplog):
@@ -412,6 +444,12 @@ def test_viscosity_dispatcher_unknown_model(boundary_runner, caplog):
 
     # Should not crash; should use aggregate fallback
     assert 1e2 < eta < 1e21
+    # Fallback-identity guard: the unknown-model branch must dispatch
+    # to the aggregate model, not to the constant-eta_constant path
+    # or to a raised exception. Compare to the aggregate output
+    # directly so a future fallback change has to be intentional.
+    expected = boundary_runner.viscosity_aggregate_model(0.5)
+    assert eta == pytest.approx(expected, rel=1e-12)
 
 
 # =============================================================================
@@ -419,6 +457,7 @@ def test_viscosity_dispatcher_unknown_model(boundary_runner, caplog):
 # =============================================================================
 
 
+@pytest.mark.physics_invariant
 def test_rayleigh_number_physical_range(boundary_runner):
     """
     Test Rayleigh number falls within physically realistic range for planetary mantles.
@@ -439,6 +478,12 @@ def test_rayleigh_number_physical_range(boundary_runner):
 
     # Ra should be in realistic mantle convection range
     assert 1e5 < ra < 1e15
+    # Positivity invariant: every factor in the Rayleigh number is
+    # strictly positive for this regime (rho, g, alpha, |ΔT|, L^3,
+    # 1/(eta kappa)). A sign error in any factor would flip Ra
+    # negative; the |T_p - T_surf| in the source must absorb any
+    # ordering convention.
+    assert ra > 0.0
 
 
 @pytest.mark.parametrize(
@@ -463,6 +508,7 @@ def test_rayleigh_number_parametrized(boundary_runner, T_p, T_surf, phi):
     assert 1e5 < ra < 1e15
 
 
+@pytest.mark.physics_invariant
 def test_rayleigh_number_temperature_dependence(boundary_runner):
     """
     Test Rayleigh number increases with temperature contrast (Ra ∝ ΔT).
@@ -480,6 +526,11 @@ def test_rayleigh_number_temperature_dependence(boundary_runner):
 
     # Larger temperature contrast → larger Ra
     assert ra_large_delta > ra_small_delta
+    # Pinned ratio: with constant viscosity, Ra is linear in |ΔT|.
+    # ΔT_large / ΔT_small = (4000 - 300) / (2500 - 300) = 3700/2200
+    # = 1.6818..., not 1.0 (constant-Ra bug) and not 2.56 (squared).
+    expected_ratio = (4000.0 - 300.0) / (2500.0 - 300.0)
+    assert ra_large_delta / ra_small_delta == pytest.approx(expected_ratio, rel=1e-10)
 
 
 # =============================================================================
@@ -505,6 +556,7 @@ def test_q_m_positive_heat_loss(boundary_runner):
     assert 1e4 < q_m < 1e8  # W/m² (realistic mantle heat flux)
 
 
+@pytest.mark.physics_invariant
 def test_q_m_temperature_dependence(boundary_runner):
     """
     Test convective heat flux increases with temperature contrast.
@@ -519,8 +571,13 @@ def test_q_m_temperature_dependence(boundary_runner):
 
     # Larger temperature contrast → larger heat flux
     assert q_m_large_delta > q_m_small_delta
+    # Positivity invariant: heat flux is computed from |T_p - T_surf|
+    # and Nu>0, so both must be strictly positive. A sign-error
+    # regression that returned -|q_m| would fail this guard.
+    assert q_m_small_delta > 0.0 and q_m_large_delta > 0.0
 
 
+@pytest.mark.physics_invariant
 def test_q_m_zero_temperature_difference(boundary_runner):
     """
     Test convective heat flux approaches zero when T_p = T_surf.
@@ -534,6 +591,10 @@ def test_q_m_zero_temperature_difference(boundary_runner):
 
     # Should be near zero (or exactly zero depending on Nu scaling)
     assert abs(q_m) < 1e2
+    # Positivity invariant: q_m derives from |T_p - T_surf| * Nu, both
+    # non-negative, so q_m must be non-negative even in the ΔT=0 limit.
+    # A sign-error regression would land here as a small negative.
+    assert q_m >= 0.0
 
 
 # =============================================================================
@@ -554,6 +615,11 @@ def test_radioactive_heating_disabled(boundary_runner):
     h_radio = boundary_runner.radioactive_heating(t)
 
     assert h_radio == 0.0
+    # Discriminating guard: the disabled branch must short-circuit at
+    # any time argument, not only at t=1 Gyr. A regression that gated
+    # on time rather than the flag would fire for at least one of
+    # these two probes.
+    assert boundary_runner.radioactive_heating(0.0) == 0.0
 
 
 def test_radioactive_heating_enabled_positive(boundary_runner):
@@ -585,6 +651,7 @@ def test_radioactive_heating_enabled_positive(boundary_runner):
     assert 1e-13 < h_radio < 1e-9
 
 
+@pytest.mark.physics_invariant
 def test_radioactive_heating_decay_with_time(boundary_runner):
     """
     Test radioactive heating decays exponentially with time.
@@ -608,6 +675,12 @@ def test_radioactive_heating_decay_with_time(boundary_runner):
 
     # Early heating should exceed late heating (radioactive decay)
     assert h_early > h_late
+    # Positivity invariant: each isotope contributes a non-negative
+    # decay term, so the sum is strictly positive while any half-life
+    # > 0. A sign-flip in the exp(-lambda t) factor would invert the
+    # primary monotonicity check; positivity catches the case where
+    # both endpoints drop below zero together.
+    assert h_late > 0.0
 
 
 # =============================================================================
@@ -615,6 +688,7 @@ def test_radioactive_heating_decay_with_time(boundary_runner):
 # =============================================================================
 
 
+@pytest.mark.physics_invariant
 def test_melt_fraction_clipping_below_solidus(boundary_runner):
     """
     Test melt fraction is 0 below solidus temperature.
@@ -629,8 +703,13 @@ def test_melt_fraction_clipping_below_solidus(boundary_runner):
     phi = boundary_runner.melt_fraction(T_p)
 
     assert phi == pytest.approx(0.0, abs=1e-10)
+    # Boundedness invariant: without the np.clip lower bound the raw
+    # linear formula gives phi = (1500 - 1600) / 400 = -0.25, a
+    # negative melt fraction. The bound is the contract.
+    assert phi >= 0.0
 
 
+@pytest.mark.physics_invariant
 def test_melt_fraction_clipping_above_liquidus(boundary_runner):
     """
     Test melt fraction is 1 above liquidus temperature.
@@ -645,6 +724,10 @@ def test_melt_fraction_clipping_above_liquidus(boundary_runner):
     phi = boundary_runner.melt_fraction(T_p)
 
     assert phi == pytest.approx(1.0, abs=1e-10)
+    # Boundedness invariant: without the np.clip upper bound the raw
+    # linear formula gives phi = (2500 - 1600) / (2000 - 1600) = 2.25,
+    # well outside [0, 1]. The bound is the contract.
+    assert phi <= 1.0
 
 
 @pytest.mark.parametrize(
@@ -655,6 +738,7 @@ def test_melt_fraction_clipping_above_liquidus(boundary_runner):
         (2000.0, 1.0),  # At liquidus
     ],
 )
+@pytest.mark.physics_invariant
 def test_melt_fraction_parametrized(boundary_runner, T_p, expected_phi):
     """
     Test melt fraction linearly interpolates between solidus and liquidus.
@@ -667,6 +751,11 @@ def test_melt_fraction_parametrized(boundary_runner, T_p, expected_phi):
     phi = boundary_runner.melt_fraction(T_p)
 
     assert phi == pytest.approx(expected_phi, rel=1e-10)
+    # Boundedness invariant: phi must always live in [0, 1]; the three
+    # parametrized inputs span the closed interval and each must respect
+    # the bound. A regression that returned the raw (unclipped) ratio
+    # would fail this on the endpoints if T_p drifted across them.
+    assert 0.0 <= phi <= 1.0
 
 
 # =============================================================================
@@ -674,6 +763,7 @@ def test_melt_fraction_parametrized(boundary_runner, T_p, expected_phi):
 # =============================================================================
 
 
+@pytest.mark.physics_invariant
 def test_r_s_fully_molten(boundary_runner):
     """
     Test solidification radius equals core radius when fully molten (φ = 1).
@@ -687,8 +777,14 @@ def test_r_s_fully_molten(boundary_runner):
     r_s = boundary_runner.r_s(T_p)
 
     assert r_s == pytest.approx(boundary_runner.core_radius, rel=1e-10)
+    # Boundedness invariant: r_s never exceeds the planet radius and
+    # never falls below the core radius. The fully-molten limit pins
+    # the lower bound; this guard catches any regression that returned
+    # 0 or a negative radius from a degenerate intermediate branch.
+    assert boundary_runner.core_radius <= r_s <= boundary_runner.planet_radius
 
 
+@pytest.mark.physics_invariant
 def test_r_s_fully_solid(boundary_runner):
     """
     Test solidification radius equals planet radius when fully solid (φ = 0).
@@ -702,8 +798,14 @@ def test_r_s_fully_solid(boundary_runner):
     r_s = boundary_runner.r_s(T_p)
 
     assert r_s == pytest.approx(boundary_runner.planet_radius, rel=1e-10)
+    # Boundedness invariant: r_s must lie in [r_core, R_planet]; the
+    # fully-solid limit pins the upper bound. A swapped-branch
+    # regression that returned the core radius for phi=0 would
+    # fail both this and the primary assertion.
+    assert boundary_runner.core_radius <= r_s <= boundary_runner.planet_radius
 
 
+@pytest.mark.physics_invariant
 def test_r_s_intermediate(boundary_runner):
     """
     Test solidification radius is intermediate when partially molten.
@@ -720,6 +822,11 @@ def test_r_s_intermediate(boundary_runner):
 
     # Should be strictly between core and planet radii
     assert boundary_runner.core_radius < r_s < boundary_runner.planet_radius
+    # Monotonicity invariant: increasing T_p melts more mantle so the
+    # solidification front retreats inward. r_s(T_higher) must be
+    # strictly less than r_s(T_lower) in the partially-molten regime.
+    r_s_hotter = boundary_runner.r_s(1900.0)
+    assert r_s_hotter < r_s
 
 
 # =============================================================================
@@ -749,6 +856,7 @@ def test_drs_dTp_sign_and_magnitude(boundary_runner):
     )
 
 
+@pytest.mark.physics_invariant
 def test_dT_pdt_heat_loss_dominates(boundary_runner):
     """
     Test dT_p/dt is negative (cooling) when convective heat loss dominates internal heating.
@@ -767,6 +875,11 @@ def test_dT_pdt_heat_loss_dominates(boundary_runner):
 
     # Should be negative (cooling)
     assert dTp_dt < 0
+    # Finiteness invariant: a regression that returned NaN (div-by-zero
+    # in denominator when the mantle goes fully solid) or inf (degenerate
+    # latent-heat term) would pass the sign check (NaN < 0 is False, but
+    # inf-cooling is < 0) and silently corrupt the ODE integration.
+    assert np.isfinite(dTp_dt)
 
 
 def test_dT_pdt_near_surface_temperature(boundary_runner):
@@ -849,6 +962,7 @@ def test_thermal_rhs_surface_temperature_constraint(boundary_runner):
     assert len(rhs) == 2
 
 
+@pytest.mark.physics_invariant
 def test_thermal_rhs_continuity_across_time(boundary_runner):
     """
     Test thermal_rhs is continuous (smooth) in state variables.
@@ -870,6 +984,11 @@ def test_thermal_rhs_continuity_across_time(boundary_runner):
     # Changes should be small (continuous derivatives)
     for rhs_nom, rhs_pert in zip(rhs_nominal, rhs_perturbed):
         assert abs(rhs_pert - rhs_nom) < 1e-5
+    # Finiteness invariant: continuous derivatives are useless if the
+    # base evaluation diverged. Pin that both components are finite
+    # so an inf/NaN regression cannot pass the smallness check by
+    # subtracting two infinities.
+    assert all(np.isfinite(v) for v in rhs_nominal)
 
 
 # =============================================================================
@@ -963,6 +1082,13 @@ def test_run_solver_output_keys(mock_solve_ivp, boundary_runner, mock_interior):
 
     for key in required_keys:
         assert key in output
+    # Conservation of mantle mass: M_mantle = M_mantle_liquid + M_mantle_solid.
+    # A regression that double-counted or lost mass between phases
+    # would break this closure beyond float-roundoff. This is the
+    # mass-closure invariant for the solid-liquid mantle split.
+    assert output['M_mantle'] == pytest.approx(
+        output['M_mantle_liquid'] + output['M_mantle_solid'], rel=1e-10
+    )
 
 
 @patch('proteus.interior_energetics.boundary.solve_ivp')
@@ -1016,6 +1142,14 @@ def test_compute_time_step_first_iteration(mock_config, mock_dirs):
     dt = BoundaryRunner.compute_time_step(mock_config, mock_dirs, {}, None, interior)
 
     assert dt == 0.0
+    # Type pin: the ic=1 branch returns the literal 0.0 (float); a regression
+    # that called next_step and got 0 back would yield int 0 only on the
+    # contrived case of next_step returning int(0). The two-part check
+    # discriminates "early return path taken" from "next_step path with a
+    # zero return", since the latter would also have called next_step and
+    # any side effect there would be reflected via mock_next_step assertions
+    # in the sister test test_compute_time_step_normal_iteration.
+    assert isinstance(dt, float)
 
 
 @patch('proteus.interior_energetics.boundary.next_step')
@@ -1155,6 +1289,10 @@ def test_boundary_runner_all_nan_layer_cp_falls_back_to_atm_heat_capacity(
         'all-NaN layer_cp must fall back to config.interior_energetics.boundary.'
         'atm_heat_capacity, not the non-existent const_heat_capacity'
     )
+    # Positivity invariant: a heat capacity must be strictly positive.
+    # A regression that fell back to 0.0 (e.g. silently swallowed
+    # AttributeError) would produce a div-by-zero in dT_surfdt downstream.
+    assert runner.atmosphere_heat_capacity > 0.0
 
 
 def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
@@ -1176,3 +1314,7 @@ def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
     # value (9999.9) must NOT be used because at least one finite
     # layer exists.
     assert runner.atmosphere_heat_capacity == pytest.approx(2.0e4)
+    # Discriminating guard: the fallback constant 9999.9 differs from
+    # the 2e4 mean by 1e4. A regression that took the fallback branch
+    # by treating any NaN as triggering "all-NaN" would fail this.
+    assert abs(runner.atmosphere_heat_capacity - 9999.9) > 5e3

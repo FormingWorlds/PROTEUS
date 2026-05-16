@@ -40,6 +40,11 @@ def test_is_spider_ps_format_accepts_canonical_header(tmp_path):
     p = tmp_path / 'density_melt.dat'
     p.write_text('# 5 2020 95\n# Pressure, Entropy, Quantity\ndata\n')
     assert _is_spider_ps_format(str(p)) is True
+    # Type pin: the sniffer must return a real bool (not truthy
+    # int/str). A regression that returned the header tuple
+    # ('# 5 2020 95'.split()) would be truthy but is not a bool;
+    # downstream callers compare with ``is True``.
+    assert isinstance(_is_spider_ps_format(str(p)), bool)
 
 
 def test_is_spider_ps_format_rejects_pt_header(tmp_path):
@@ -49,6 +54,13 @@ def test_is_spider_ps_format_rejects_pt_header(tmp_path):
     p = tmp_path / 'density_melt.dat'
     p.write_text('#pressure temperature density\n0.0 1000.0 3000.0\n')
     assert _is_spider_ps_format(str(p)) is False
+    # Discriminator: a P-T header whose first token is `#` but the
+    # second token is anything other than the literal `5` must also
+    # be rejected. The sniff key is the second-token equality
+    # against `5`, not the absence of `#`.
+    p2 = tmp_path / 'density_melt_2.dat'
+    p2.write_text('# 4 2020 95\n# header with wrong head count\n')
+    assert _is_spider_ps_format(str(p2)) is False
 
 
 def test_is_spider_ps_format_rejects_missing_file(tmp_path):
@@ -56,6 +68,14 @@ def test_is_spider_ps_format_rejects_missing_file(tmp_path):
     from proteus.interior_energetics.wrapper import _is_spider_ps_format
 
     assert _is_spider_ps_format(str(tmp_path / 'nope.dat')) is False
+    # Empty-file edge case: an existing but zero-byte file yields
+    # an empty first line, whose split() has fewer than 2 parts.
+    # The sniff must reject this without raising IndexError on
+    # parts[1]; a regression that read parts[1] before the length
+    # guard would crash.
+    empty = tmp_path / 'empty.dat'
+    empty.write_text('')
+    assert _is_spider_ps_format(str(empty)) is False
 
 
 def test_is_spider_ps_format_rejects_wrong_head_count(tmp_path):
@@ -66,6 +86,13 @@ def test_is_spider_ps_format_rejects_wrong_head_count(tmp_path):
     p = tmp_path / 'density_melt.dat'
     p.write_text('# 6 2020 95\n# different format\n')
     assert _is_spider_ps_format(str(p)) is False
+    # Discriminator: the rejection must be specific to the second
+    # token. Replacing the leading `6` with `5` on the same file
+    # would flip the verdict to True. A regression that rejected
+    # on the file extension or a different feature would not.
+    p2 = tmp_path / 'density_melt_canonical.dat'
+    p2.write_text('# 5 2020 95\n# different format\n')
+    assert _is_spider_ps_format(str(p2)) is True
 
 
 # =====================================================================
@@ -159,6 +186,11 @@ def test_rectangularize_rejects_large_drift(tmp_path):
     _write_spider_ps_file(src, n_P=4, n_S=3, drift=0.1)  # 10% drift
     with pytest.raises(ValueError, match='not quasi-rectangular'):
         _rectangularize_spider_ps_file(str(src), str(dst))
+    # Side-effect guard: rejection must happen before dst is opened
+    # for writing. The drift check is the safety net against silently
+    # corrupting genuinely irregular grids into rectangular nonsense,
+    # so leaving a partial dst on disk would defeat the whole point.
+    assert not dst.exists()
 
 
 def test_rectangularize_rejects_header_row_count_mismatch(tmp_path):
@@ -182,6 +214,11 @@ def test_rectangularize_rejects_header_row_count_mismatch(tmp_path):
 
     with pytest.raises(ValueError, match='NX\\*NY'):
         _rectangularize_spider_ps_file(str(src), str(dst))
+    # Side-effect guard: the rejection must happen before any data is
+    # written. A regression that wrote a partial dst before raising
+    # would leave the caller with a corrupt file masquerading as a
+    # successful conversion on the filesystem.
+    assert not dst.exists()
 
 
 # =====================================================================
@@ -206,11 +243,17 @@ def test_tier4_num_tolerance_alias_copies_to_rtol():
 
 def test_tier4_num_tolerance_and_rtol_conflict_raises():
     """If BOTH num_tolerance and rtol are set to distinct non-default
-    values, loading must raise ValueError — we can't guess."""
+    values, loading must raise ValueError, we can't guess."""
     from proteus.config._interior import Interior
 
     with pytest.raises(ValueError, match='num_tolerance'):
         Interior(num_tolerance=1e-6, rtol=1e-9)
+    # Identical non-default values must NOT raise; the conflict gate
+    # discriminates on value-difference, not on both-being-set. A
+    # regression that gated on presence rather than value would
+    # raise here and break the silent-no-op contract.
+    ie = Interior(num_tolerance=1e-6, rtol=1e-6)
+    assert ie.rtol == pytest.approx(1e-6)
 
 
 def test_tier4_num_tolerance_and_rtol_same_value_silent():
@@ -272,6 +315,12 @@ def test_tier4_spider_tolerance_rel_conflict_raises():
 
     with pytest.raises(ValueError, match='spider\\.tolerance_rel'):
         Interior(rtol=1e-9, spider=Spider(tolerance_rel=1e-6))
+    # Identical non-default values must NOT raise: the conflict gate
+    # discriminates on value-difference, not on both-being-set. A
+    # regression that gated on presence rather than value would
+    # raise here and break the silent-no-op contract.
+    ie = Interior(rtol=1e-6, spider=Spider(tolerance_rel=1e-6))
+    assert ie.rtol == pytest.approx(1e-6)
 
 
 # =====================================================================
