@@ -374,9 +374,7 @@ def test_anim_visual_returns_false_on_frame_failure(tmp_path):
 
     with (
         patch('proteus.plot.cpl_visual.which', return_value='/usr/bin/ffmpeg'),
-        patch(
-            'proteus.plot.cpl_visual.plot_visual', return_value=False
-        ) as mock_pv,
+        patch('proteus.plot.cpl_visual.plot_visual', return_value=False) as mock_pv,
         patch('proteus.plot.cpl_visual.safe_rm'),
     ):
         result = anim_visual(hf, output_dir, nframes=2)
@@ -409,9 +407,7 @@ def test_anim_visual_returns_false_on_nonzero_ffmpeg(tmp_path):
         patch('proteus.plot.cpl_visual.plot_visual', return_value=fake_frame),
         patch('proteus.plot.cpl_visual.safe_rm'),
         patch('proteus.plot.cpl_visual.copyfile'),
-        patch(
-            'proteus.plot.cpl_visual.Popen', return_value=mock_process
-        ) as mock_popen,
+        patch('proteus.plot.cpl_visual.Popen', return_value=mock_process) as mock_popen,
     ):
         result = anim_visual(hf, output_dir, nframes=2)
     assert result is False
@@ -442,9 +438,7 @@ def test_anim_visual_returns_false_on_missing_output(tmp_path):
         patch('proteus.plot.cpl_visual.safe_rm'),
         patch('proteus.plot.cpl_visual.copyfile'),
         patch('proteus.plot.cpl_visual.Popen', return_value=mock_process),
-        patch(
-            'proteus.plot.cpl_visual.os.path.isfile', return_value=False
-        ) as mock_isfile,
+        patch('proteus.plot.cpl_visual.os.path.isfile', return_value=False) as mock_isfile,
     ):
         result = anim_visual(hf, output_dir, nframes=2)
     assert result is False
@@ -471,9 +465,7 @@ def test_anim_visual_success(tmp_path):
 
     with (
         patch('proteus.plot.cpl_visual.which', return_value='/usr/bin/ffmpeg'),
-        patch(
-            'proteus.plot.cpl_visual.plot_visual', return_value=fake_frame
-        ) as mock_pv,
+        patch('proteus.plot.cpl_visual.plot_visual', return_value=fake_frame) as mock_pv,
         patch('proteus.plot.cpl_visual.safe_rm'),
         patch('proteus.plot.cpl_visual.copyfile'),
         patch('proteus.plot.cpl_visual.Popen', return_value=mock_process),

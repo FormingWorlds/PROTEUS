@@ -169,9 +169,10 @@ def test_valid_aerosols_enabled_rejects_agni_greygas():
     # Discrimination: passing value=False on the same greygas instance
     # must short-circuit and return None. A regression that hard-raised
     # on greygas regardless of the aerosols flag would still raise here.
-    assert valid_aerosols_enabled(
-        instance, SimpleNamespace(name='aerosols_enabled'), False
-    ) is None
+    assert (
+        valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), False)
+        is None
+    )
 
 
 @pytest.mark.unit
@@ -189,9 +190,9 @@ def test_valid_aerosols_enabled_rejects_dummy_module():
     # module would still raise here.
     instance.module = 'agni'
     instance.agni.spectral_file = '/path/to/sw_lw.spc'
-    assert valid_aerosols_enabled(
-        instance, SimpleNamespace(name='aerosols_enabled'), True
-    ) is None
+    assert (
+        valid_aerosols_enabled(instance, SimpleNamespace(name='aerosols_enabled'), True) is None
+    )
 
 
 @pytest.mark.unit

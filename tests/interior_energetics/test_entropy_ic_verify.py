@@ -465,6 +465,7 @@ def test_aragog_verify_raises_on_api_drift(tmp_path):
         # narrowed except clause).
         with pytest.raises(AttributeError, match=r'_S0'):
             AragogRunner._verify_entropy_ic(config, interior_o, str(tmp_path))
+
     # Discrimination: a solver that DOES expose _S0 with the same other
     # mocks in place must not raise. The exception above must come
     # specifically from the missing attribute, not from an unrelated
@@ -476,8 +477,12 @@ def test_aragog_verify_raises_on_api_drift(tmp_path):
         set_initial_entropy = MagicMock()
 
     working_solver = WorkingSolver()
-    working_solver.entropy_eos.temperature_scalar = MagicMock(side_effect=lambda p, s: float(s) * 0.4)
-    working_solver.entropy_eos.invert_temperature = MagicMock(side_effect=lambda p, t: float(t) / 0.4)
+    working_solver.entropy_eos.temperature_scalar = MagicMock(
+        side_effect=lambda p, s: float(s) * 0.4
+    )
+    working_solver.entropy_eos.invert_temperature = MagicMock(
+        side_effect=lambda p, t: float(t) / 0.4
+    )
     interior_o.aragog_solver = working_solver
     with (
         patch(
