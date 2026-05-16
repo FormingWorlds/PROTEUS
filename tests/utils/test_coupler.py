@@ -118,6 +118,10 @@ def test_get_helpfile_keys_no_duplicates():
     """Test that GetHelpfileKeys contains no duplicate keys."""
     keys = GetHelpfileKeys()
     assert len(keys) == len(set(keys)), 'Duplicate keys found in helpfile'
+    # Discrimination: a regression that returned an empty list would also
+    # trivially satisfy the no-duplicate check; pin a substantial lower
+    # bound on the schema size so an accidental truncation is caught.
+    assert len(keys) > 50
 
 
 # =============================================================================
@@ -143,6 +147,11 @@ def test_zero_helpfile_row_all_values_are_zero():
     row = ZeroHelpfileRow()
     for key, value in row.items():
         assert value == 0.0, f'Key {key} has value {value}, expected 0.0'
+    # Discrimination: every value must be a Python float (not int 0 or
+    # numpy zero), so a regression that initialised values to integer 0
+    # would be caught even though `0 == 0.0` is True.
+    for key, value in row.items():
+        assert isinstance(value, float), f'Key {key} is {type(value).__name__}, expected float'
 
 
 @pytest.mark.unit
@@ -152,6 +161,10 @@ def test_zero_helpfile_row_has_correct_keys():
     keys = GetHelpfileKeys()
 
     assert set(row.keys()) == set(keys), 'ZeroHelpfileRow keys do not match GetHelpfileKeys'
+    # Discrimination: equal set sizes corroborate the equality above;
+    # a regression that emitted duplicate keys via the loop would make
+    # set(row.keys()) lossy and len(row) != len(keys).
+    assert len(row) == len(keys)
 
 
 @pytest.mark.unit
@@ -190,6 +203,10 @@ def test_create_helpfile_from_dict_has_all_keys():
     keys = GetHelpfileKeys()
     for key in keys:
         assert key in hf.columns
+    # Discrimination: the DataFrame must carry exactly the schema columns
+    # in schema order (no extras leaking in from the dict, no reordering);
+    # CSV writers downstream rely on the column order being canonical.
+    assert list(hf.columns) == keys
 
 
 # =============================================================================
@@ -247,6 +264,10 @@ def test_extend_helpfile_validates_keys():
 
     with pytest.raises(Exception, match='missing expected keys'):
         ExtendHelpfile(hf, row2)
+    # Discrimination: the raise must happen BEFORE the helpfile gets a new
+    # row appended. A regression that appended first and then raised would
+    # leave the helpfile growing on every failed call.
+    assert len(hf) == 1
 
 
 @pytest.mark.unit
@@ -289,6 +310,11 @@ def test_extend_helpfile_preserves_dataframe_order():
     expected_times = [0.0] + times
     for i, expected_t in enumerate(expected_times):
         assert hf['Time'].iloc[i] == pytest.approx(expected_t)
+    # Discrimination: the helpfile must be strictly monotonic in Time so
+    # a regression that reversed insertion order or shuffled rows would
+    # produce a non-sorted column.
+    times_seq = hf['Time'].tolist()
+    assert times_seq == sorted(times_seq)
 
 
 # =============================================================================
@@ -387,8 +413,15 @@ def test_write_and_read_helpfile_roundtrip():
 def test_read_helpfile_from_csv_missing_file():
     """Test that ReadHelpfileFromCSV raises error for missing file."""
     with tempfile.TemporaryDirectory() as tmpdir:
+        # Precondition: confirm no helpfile is present so the missing-file
+        # branch is what gets exercised (not a tmpdir leftover).
+        assert not os.path.exists(os.path.join(tmpdir, 'runtime_helpfile.csv'))
         with pytest.raises(Exception, match='Cannot find helpfile'):
             ReadHelpfileFromCSV(tmpdir)
+        # Discrimination: the error path must not have created a stub file
+        # as a side effect. A regression that wrote an empty CSV before
+        # raising would silently corrupt resume.
+        assert not os.path.exists(os.path.join(tmpdir, 'runtime_helpfile.csv'))
 
 
 @pytest.mark.unit
@@ -439,6 +472,11 @@ def test_create_lock_file_returns_path():
 
         expected_path = os.path.join(tmpdir, 'keepalive')
         assert lockfile_path == expected_path
+        # Discrimination: the returned path is not just a string; the file
+        # must actually exist on disk. A regression that returned the
+        # expected path string without writing the file would still pass
+        # the equality check above but leave the loop unable to find it.
+        assert os.path.isfile(lockfile_path)
 
 
 @pytest.mark.unit
@@ -466,6 +504,11 @@ def test_lock_file_contains_message():
             content = f.read()
 
         assert 'stop' in content.lower() or 'remove' in content.lower()
+        # Discrimination: the message must reference PROTEUS by name so an
+        # operator who finds the file in an unfamiliar directory can tell
+        # which simulator owns it. A regression that wrote a generic
+        # placeholder ("delete me") would lose that traceability.
+        assert 'proteus' in content.lower()
 
 
 # =============================================================================
@@ -490,6 +533,11 @@ def test_print_current_state_with_valid_row():
 
         # Verify logger was called
         assert mock_log.info.called
+        # Discrimination: every populated quantity must produce its own
+        # log.info call. The source emits 9 lines (header + Wall time +
+        # Time + T_surf + T_magma + P_surf + Phi_global + F_atm + F_int);
+        # a regression that fused lines or dropped one would land below 9.
+        assert mock_log.info.call_count >= 9
 
 
 @pytest.mark.unit
@@ -504,6 +552,11 @@ def test_print_current_state_includes_time():
         # Check if Time was in any log call
         log_calls = [str(call) for call in mock_log.info.call_args_list]
         assert any('Model time' in str(call) for call in log_calls)
+        # Discrimination: the numeric Time value must appear in the log
+        # in %.2e format. A regression that printed the label but dropped
+        # the substitution (e.g. broken %-format) would still match
+        # 'Model time' but lose the 1.50e+08 fingerprint.
+        assert any('1.50e+08' in str(call) for call in log_calls)
 
 
 @pytest.mark.unit
@@ -519,6 +572,12 @@ def test_print_current_state_includes_temperatures():
         # Verify temperatures were formatted in output
         # (exact matching is difficult due to formatting)
         assert mock_log.info.called
+        # Discrimination: the 8.3f-formatted T_surf and T_magma numeric
+        # values must appear in the captured log output. A regression that
+        # swapped the two labels or dropped the values would surface here.
+        log_calls = [str(call) for call in mock_log.info.call_args_list]
+        assert any('300.500' in str(call) for call in log_calls)
+        assert any('2500.300' in str(call) for call in log_calls)
 
 
 # =============================================================================
@@ -557,6 +616,9 @@ def test_get_current_time_is_recent():
     # Should contain current year
     current_year = datetime.now().year
     assert str(current_year) in result
+    # Discrimination: the result must NOT contain a future year (e.g. a
+    # regression to a hardcoded future date or off-by-one year handling).
+    assert str(current_year + 1) not in result
 
 
 @pytest.mark.unit
@@ -567,6 +629,10 @@ def test_get_current_time_format_consistency():
 
     # Both should have same length (allowing for second differences)
     assert abs(len(result1) - len(result2)) <= 1
+    # Discrimination: the format is '%Y-%m-%d %H:%M:%S %Z'. Pin the YYYY-MM-DD
+    # date-separator shape so a regression that switched to a localized
+    # format (e.g. 'MM/DD/YYYY') is caught even if it kept the same length.
+    assert result1[4] == '-' and result1[7] == '-' and result1[10] == ' '
 
 
 # =============================================================================
@@ -628,6 +694,11 @@ def test_helpfile_float_precision():
     hf = CreateHelpfileFromDict(row)
 
     assert hf['M_planet'].iloc[0] == pytest.approx(precise_value, rel=1e-8)
+    # Discrimination: the stored value must NOT have been truncated to
+    # single precision (~7 digits). 1.23456789e12 keeps 9 digits in
+    # float64 but only 7 in float32; assert at tighter rel-tol than the
+    # primary to surface a regression that downcasted columns.
+    assert hf['M_planet'].iloc[0] == pytest.approx(precise_value, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -708,6 +779,11 @@ def test_get_socrates_version_with_mock():
         with patch.dict(os.environ, {'RAD_DIR': tmpdir}):
             version = _get_socrates_version()
             assert version == '24.1.0'
+            # Discrimination: the trailing newline from the file must be
+            # stripped. A regression that returned the raw read would equal
+            # '24.1.0\n' and fail downstream version-parse logic that
+            # splits on '.' expecting clean numeric components.
+            assert '\n' not in version
 
 
 @pytest.mark.unit
@@ -716,6 +792,10 @@ def test_get_socrates_version_raises_without_rad_dir():
     from proteus.utils.coupler import _get_socrates_version
 
     with patch.dict(os.environ, {}, clear=True):
+        # Precondition: confirm RAD_DIR is actually absent in the clean
+        # env so the missing-env branch is what gets exercised (rather
+        # than a leaked outer-process value).
+        assert 'RAD_DIR' not in os.environ
         with pytest.raises(EnvironmentError, match='RAD_DIR environment variable is not set'):
             _get_socrates_version()
 
@@ -736,6 +816,11 @@ def test_get_agni_version_with_mock():
         version = _get_agni_version(dirs)
 
         assert version == '1.8.0'
+        # Discrimination: a regression that returned the 'name' field
+        # ('AGNI') instead of the version key would still be a non-empty
+        # string. Pin the dotted-version shape explicitly.
+        assert version.count('.') == 2
+        assert version != 'AGNI'
 
 
 @pytest.mark.unit
@@ -802,6 +887,10 @@ def test_print_stoptime_minutes():
         # Verify minutes formatting was used
         log_calls = [str(call) for call in mock_log.info.call_args_list]
         assert any('minutes' in str(call) for call in log_calls)
+        # Discrimination: the minutes branch must NOT also report hours.
+        # A regression that dropped the elif and fell through to the
+        # hours branch (or printed both labels) would surface here.
+        assert not any('hours' in str(call) for call in log_calls)
 
 
 @pytest.mark.unit
@@ -817,6 +906,11 @@ def test_print_stoptime_hours():
         # Verify hours formatting was used
         log_calls = [str(call) for call in mock_log.info.call_args_list]
         assert any('hours' in str(call) for call in log_calls)
+        # Discrimination: exactly one 'Total runtime' line should land.
+        # A regression that printed both 'hours' and the minutes
+        # fallback would emit two such lines.
+        runtime_lines = [c for c in log_calls if 'Total runtime' in str(c)]
+        assert len(runtime_lines) == 1
 
 
 @pytest.mark.unit
@@ -854,6 +948,13 @@ def test_print_system_configuration_fallback_username():
 
                 # Verify fallback username was used
                 assert mock_log.info.called
+                # Discrimination: the pwd fallback path must have been
+                # taken (a regression that re-raised the OSError instead
+                # of falling back would not call pwd.getpwuid). Also pin
+                # the fallback username actually appears in the log.
+                mock_getpwuid.assert_called_once()
+                log_calls = [str(call) for call in mock_log.info.call_args_list]
+                assert any('fallback_user' in str(call) for call in log_calls)
 
 
 # =============================================================================
@@ -870,6 +971,10 @@ def test_write_helpfile_validates_missing_keys():
 
         with pytest.raises(Exception, match='mismatched keys'):
             WriteHelpfileToCSV(tmpdir, df)
+        # Discrimination: the validation must short-circuit BEFORE writing
+        # the CSV. A regression that wrote first and then raised would
+        # leave a corrupted stub file on disk that resume would consume.
+        assert not os.path.exists(os.path.join(tmpdir, 'runtime_helpfile.csv'))
 
 
 @pytest.mark.unit
@@ -883,6 +988,12 @@ def test_zero_helpfile_row_is_immutable_structure():
 
     # Second row should still be zero
     assert row2['Time'] == 0.0
+    # Discrimination: the two dicts must be distinct objects (no shared
+    # cached singleton). A regression that returned a cached module-level
+    # dict would have id(row1) == id(row2) and the mutation above would
+    # also alter row2.
+    assert row1 is not row2
+    assert row1['Time'] == pytest.approx(100.0)
 
 
 @pytest.mark.unit
@@ -894,6 +1005,11 @@ def test_helpfile_preserves_column_order():
 
     # Verify column order matches GetHelpfileKeys
     assert list(hf.columns) == keys
+    # Discrimination: 'Time' must be the first column. The CSV format
+    # used downstream relies on Time leading the row; a regression that
+    # alphabetised the schema would still equal-compare key-set but put
+    # 'C_kg_atm' or similar at index 0.
+    assert hf.columns[0] == 'Time'
 
 
 @pytest.mark.unit
@@ -920,6 +1036,11 @@ def test_extend_helpfile_preserves_dtype():
 
     # All columns should be float
     assert hf_extended['Time'].dtype == float
+    # Discrimination: every numeric column must stay float64 after extend.
+    # A regression that introduced an object dtype (e.g. via mixed-type
+    # coercion on a string-valued private key) would surface here.
+    assert hf_extended['T_surf'].dtype == float
+    assert hf_extended['M_planet'].dtype == float
 
 
 @pytest.mark.unit
@@ -930,6 +1051,12 @@ def test_helpfile_handles_large_time_values():
     hf = CreateHelpfileFromDict(row)
 
     assert hf['Time'].iloc[0] == pytest.approx(4.567e9)
+    # Discrimination: the Time column must stay float64 so a Gyr-scale
+    # value retains its full precision. A regression that coerced Time
+    # to int (truncating to 4567000000) would still equal-compare the
+    # nominal value at approx() tolerance but lose sub-Myr resolution.
+    assert hf['Time'].dtype == float
+    assert hf['Time'].iloc[0] == pytest.approx(4.567e9, rel=1e-12)
 
 
 @pytest.mark.unit
@@ -1368,6 +1495,13 @@ def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
 
     with pytest.raises(RuntimeError, match='Mass conservation violation'):
         assert_mass_conservation(hf_row)
+    # Discrimination: confirm the excess is well above the 1e-6 tolerance
+    # so the test is exercising the violation branch, not riding the
+    # numerical edge. M_atm/M_planet should exceed 1.0 by ~21 percent.
+    assert hf_row['M_atm'] / hf_row['M_planet'] > 1.2
+    # And the hf_row dict must NOT be mutated by the failed call (so
+    # downstream callers can inspect the row that triggered the raise).
+    assert hf_row['M_atm'] == pytest.approx(7.2e24)
 
 
 @pytest.mark.unit
@@ -1392,6 +1526,12 @@ def test_assert_mass_conservation_fails_when_species_sum_disagrees():
 
     with pytest.raises(RuntimeError, match='M_atm bookkeeping inconsistency'):
         assert_mass_conservation(hf_row)
+    # Discrimination: the M_atm <= M_planet invariant must HOLD here so
+    # the failure must come from the per-species bookkeeping path, not
+    # from the M_atm > M_planet path. Pin both legs.
+    assert hf_row['M_atm'] < hf_row['M_planet']
+    species_sum = sum(hf_row[s + '_kg_atm'] for s in gas_list)
+    assert species_sum < 0.9 * hf_row['M_atm']
 
 
 @pytest.mark.unit
