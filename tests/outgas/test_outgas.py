@@ -65,6 +65,11 @@ def test_calc_target_elemental_inventories_calliope_enabled():
     with patch('proteus.outgas.calliope.calc_target_masses') as mock_calc:
         calc_target_elemental_inventories(dirs, config, hf_row)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
+        # Issue #677 fix: M_ele must be populated by the wrapper as the
+        # sum over element_list (including O) so M_planet bookkeeping
+        # stays symmetric with M_atm. A regression that skipped the sum
+        # would leave M_ele unset or carry a stale value.
+        assert hf_row['M_ele'] == pytest.approx(0.0, abs=1e-30)
 
 
 @pytest.mark.unit
@@ -86,9 +91,17 @@ def test_calc_target_elemental_inventories_always_calls_calc_target_masses():
     with patch('proteus.outgas.calliope.calc_target_masses') as mock_calc:
         calc_target_elemental_inventories(dirs, config, hf_row)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
+        # Issue #677: even when outgas.module == 'none', every tracked
+        # element gets a zeroed _kg_total entry so downstream M_ele
+        # aggregation has the symmetric H/C/N/S/O reservoir set. A
+        # regression that gated the zero-fill on the module would
+        # leave element_list entries absent from hf_row.
+        for e in element_list:
+            assert e + '_kg_total' in hf_row
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_check_desiccation_not_desiccated():
     """
     Test check_desiccation returns False when volatiles remain above threshold.
@@ -109,9 +122,15 @@ def test_check_desiccation_not_desiccated():
 
     result = check_desiccation(config, hf_row)
     assert result is False
+    # Physics invariant: idempotency. The threshold check is a pure
+    # read; calling it a second time on the unchanged hf_row must
+    # return the same verdict. A regression that mutated hf_row in
+    # place would flip the second call.
+    assert check_desiccation(config, hf_row) is False
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_check_desiccation_fully_desiccated():
     """
     Test check_desiccation returns True when every tracked element is
@@ -132,9 +151,16 @@ def test_check_desiccation_fully_desiccated():
 
     result = check_desiccation(config, hf_row)
     assert result is True
+    # Monotonicity discrimination: lifting any single element above the
+    # threshold must flip the verdict to False. A regression that lost
+    # the per-element loop (e.g. summed before comparing) would still
+    # see total < threshold and return True for both states.
+    hf_row['H_kg_total'] = 1e18  # above threshold
+    assert check_desiccation(config, hf_row) is False
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_check_desiccation_refused_when_loss_unexplained():
     """
     Test the escape-balance gate: when M_ele has collapsed but cumulative
@@ -162,9 +188,18 @@ def test_check_desiccation_refused_when_loss_unexplained():
 
     result = check_desiccation(config, hf_row)
     assert result is False, 'Loss of ~1e21 kg with only 1e15 kg escape budget MUST be refused'
+    # Physics invariant: the escape gate's predicate is
+    # `lost > 1.5 * esc_cum + 1e3`. With lost ~1e21 and esc_cum 1e15,
+    # the unexplained-loss ratio is ~1e6. Crediting an esc_cum large
+    # enough to explain the loss must flip the verdict back to True;
+    # otherwise the gate is firing on something other than the escape
+    # budget mismatch.
+    hf_row['esc_kg_cumulative'] = 1e21  # now matches the lost mass
+    assert check_desiccation(config, hf_row) is True
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_check_desiccation_allowed_when_loss_matches_escape():
     """
     Test that legitimate desiccation (loss accounted for by escape) is still
@@ -184,6 +219,12 @@ def test_check_desiccation_allowed_when_loss_matches_escape():
 
     result = check_desiccation(config, hf_row)
     assert result is True, 'Loss matching cumulative escape must be allowed'
+    # Boundary discrimination: collapse esc_kg_cumulative below the
+    # threshold ratio and the gate must refuse. With M_vol_initial
+    # 1e16 and current ~9e10, lost ~ 1e16; an esc_cum of 1e10
+    # leaves lost / esc ~ 1e6, well above the 1.5x slack.
+    hf_row['esc_kg_cumulative'] = 1e10
+    assert check_desiccation(config, hf_row) is False
 
 
 @pytest.mark.unit
@@ -219,6 +260,7 @@ def test_check_desiccation_gate_inactive_without_baseline():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_check_desiccation_gate_with_one_t_floor():
     """
     Test the absolute floor (1e3 kg) on the gate. With M_vol_initial near
@@ -244,6 +286,13 @@ def test_check_desiccation_gate_with_one_t_floor():
     # 500 kg loss is below the 1e3 absolute floor, so the gate must allow it.
     result = check_desiccation(config, hf_row)
     assert result is True
+    # Floor boundary discrimination: bumping the baseline up so the
+    # implied loss is ~2e3 kg (clearly above the 1e3 floor with zero
+    # escape budget) must flip the gate from "allow" to "refuse". A
+    # regression that swapped the 1e3 floor for a 1e6 would still
+    # admit this case and the predicate would be broken.
+    hf_row['M_vol_initial'] = 1e10 + 2000.0
+    assert check_desiccation(config, hf_row) is False
 
 
 @pytest.mark.unit
@@ -286,6 +335,7 @@ def test_check_desiccation_oxygen_prevents_under_d1a():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_check_desiccation_single_element_prevents():
     """
     Test that a single element above threshold prevents desiccation.
@@ -306,6 +356,12 @@ def test_check_desiccation_single_element_prevents():
 
     result = check_desiccation(config, hf_row)
     assert result is False  # Not desiccated (S remains)
+    # Symmetry across element_list: deplete S too and the gate must
+    # flip to desiccated. A regression that hard-coded the threshold
+    # check to a fixed subset (e.g. H/C/N only) would return False in
+    # both states and the per-element early-return loop would be dead.
+    hf_row['S_kg_total'] = 1e12
+    assert check_desiccation(config, hf_row) is True
 
 
 @pytest.mark.unit
@@ -343,6 +399,7 @@ def test_run_outgassing_calliope_calculation():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_run_outgassing_atmosphere_mass_conservation():
     """
     Test that M_atm is correctly summed from individual gas species.
@@ -389,6 +446,12 @@ def test_run_outgassing_atmosphere_mass_conservation():
         # Check mass conservation with tolerance for floating point
         expected_M_atm = sum(gas_masses)
         assert hf_row['M_atm'] == pytest.approx(expected_M_atm, rel=1e-10)
+        # Positivity invariant: the sum is over strictly positive gas
+        # masses spanning 10 orders of magnitude, so M_atm must be
+        # dominated by the largest entry (1e20 kg) and never negative.
+        # A regression that subtracted instead of summed would land
+        # near zero or negative.
+        assert hf_row['M_atm'] > 1e20 / 2  # dominated by the largest gas
 
 
 @pytest.mark.unit
@@ -535,6 +598,7 @@ def test_run_desiccated_preserves_critical_keys():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_run_outgassing_zero_atmosphere_mass():
     """
     Test run_outgassing with all gas masses zero (edge case).
@@ -562,9 +626,16 @@ def test_run_outgassing_zero_atmosphere_mass():
 
         # M_atm should be exactly zero
         assert hf_row['M_atm'] == 0.0
+        # Conservation in the zero-input limit: every species mass
+        # stays at 0.0; a regression that filled a divide-by-zero
+        # guard with a non-zero fallback would leak mass back into
+        # the helpfile row even though the sum was reported as zero.
+        for s in gas_list:
+            assert hf_row[s + '_kg_atm'] == 0.0
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_check_desiccation_at_exact_threshold():
     """
     Test check_desiccation behavior when volatile mass at or below threshold (edge case).
@@ -590,6 +661,12 @@ def test_check_desiccation_at_exact_threshold():
 
     # Current implementation uses >, so nothing > threshold means desiccated
     assert result is True
+    # Strict-greater discrimination: pushing H clearly above the
+    # threshold must flip the verdict. A regression that flipped the
+    # per-element predicate sense (e.g. `<` instead of `>`) would
+    # still return True here despite a 10x surplus.
+    hf_row['H_kg_total'] = 1e17  # 10x above threshold
+    assert check_desiccation(config, hf_row) is False
 
 
 @pytest.mark.unit
@@ -726,6 +803,7 @@ def test_run_desiccated_zeros_element_mass_ratios():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_resolve_oxygen_budget_ppmw_mode():
     """_resolve_oxygen_budget('ppmw') mirrors the H ppmw conversion.
 
@@ -742,9 +820,15 @@ def test_resolve_oxygen_budget_ppmw_mode():
 
     o_kg = _resolve_oxygen_budget(config, hf_row)
     assert o_kg == pytest.approx(4.04e23, rel=1e-10)
+    # Discrimination guard for exponent / unit error: missing the 1e-6
+    # conversion would land at 4.04e29 kg (six orders too large);
+    # double-applying it would land at 4.04e17 kg. The 4.04e23 result
+    # sits in a narrow 1e22 - 1e24 window that neither bug enters.
+    assert 1e22 < o_kg < 1e24
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_resolve_oxygen_budget_kg_mode_pass_through():
     """O_mode='kg' returns O_budget unchanged."""
     config = MagicMock()
@@ -752,10 +836,19 @@ def test_resolve_oxygen_budget_kg_mode_pass_through():
     config.planet.elements.O_budget = 3.7e23
     config.planet.volatile_reservoir = 'mantle'
     hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
+    o_kg = _resolve_oxygen_budget(config, hf_row)
+    assert o_kg == pytest.approx(3.7e23)
+    # Invariance under reservoir choice: kg mode must NOT consult
+    # volatile_reservoir or M_mantle/M_int (those only matter for ppmw).
+    # Switching the reservoir must leave the result unchanged. A
+    # regression that mixed the ppmw conversion into kg mode would
+    # multiply by M_int and the second call would differ.
+    config.planet.volatile_reservoir = 'mantle+core'
     assert _resolve_oxygen_budget(config, hf_row) == pytest.approx(3.7e23)
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_resolve_oxygen_budget_FeO_mantle_wt_pct_mode():
     """FeO_mantle_wt_pct mode: O_kg = M_mantle * wt% * (M_O/M_FeO).
 
@@ -773,6 +866,12 @@ def test_resolve_oxygen_budget_FeO_mantle_wt_pct_mode():
     # M_O = 15.999, M_FeO = 71.844, so M_O/M_FeO = 0.22269...
     expected = 4.04e24 * 0.10 * (15.999 / 71.844)
     assert o_kg == pytest.approx(expected, rel=1e-4)
+    # Discrimination guard against the wt-pct conversion bug: a
+    # regression that forgot the M_O/M_FeO mass-fraction factor would
+    # land at 4.04e24 * 0.10 = 4.04e23 kg, 4.5x larger than the
+    # correct value. The asserted gap (>1e23 kg) rules that out.
+    wrong_no_mass_fraction = 4.04e24 * 0.10
+    assert abs(o_kg - wrong_no_mass_fraction) > 1e23
 
 
 @pytest.mark.unit
@@ -805,9 +904,16 @@ def test_resolve_oxygen_budget_unknown_mode_raises():
     hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
     with pytest.raises(ValueError, match='Unknown O_mode'):
         _resolve_oxygen_budget(config, hf_row)
+    # The raised message must name the offending mode string so the
+    # user can self-correct. A bare ValueError without the bad value
+    # in the text would still satisfy the match='Unknown O_mode' regex
+    # only if the literal sentence stays intact; pin that explicitly.
+    with pytest.raises(ValueError, match='not_a_real_mode'):
+        _resolve_oxygen_budget(config, hf_row)
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_resolve_oxygen_budget_mantle_plus_core_reservoir():
     """volatile_reservoir='mantle+core' uses M_int (not M_mantle) for ppmw.
 
@@ -821,7 +927,17 @@ def test_resolve_oxygen_budget_mantle_plus_core_reservoir():
     config.planet.volatile_reservoir = 'mantle+core'
     hf_row = {'M_mantle': 4.04e24, 'M_int': 5.97e24}
     # ppmw against M_int now, not M_mantle
-    assert _resolve_oxygen_budget(config, hf_row) == pytest.approx(5.97e23, rel=1e-10)
+    mantle_plus_core = _resolve_oxygen_budget(config, hf_row)
+    assert mantle_plus_core == pytest.approx(5.97e23, rel=1e-10)
+    # Cross-reservoir discrimination: the same config under
+    # volatile_reservoir = 'mantle' must use M_mantle and give a
+    # strictly smaller result. The ratio is M_int / M_mantle ~ 1.477.
+    # A regression that ignored volatile_reservoir would return
+    # identical values for both calls.
+    config.planet.volatile_reservoir = 'mantle'
+    mantle_only = _resolve_oxygen_budget(config, hf_row)
+    assert mantle_only < mantle_plus_core
+    assert mantle_plus_core / mantle_only == pytest.approx(5.97e24 / 4.04e24, rel=1e-10)
 
 
 @pytest.mark.unit
@@ -842,6 +958,11 @@ def test_check_ic_oxygen_budget_passes_within_tolerance():
     check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
     # Sentinel flipped so re-call is a no-op
     assert hf_row['O_kg_user_ic'] == pytest.approx(-1.0)
+    # Authoritative chemistry value must be left alone: the check is a
+    # one-shot diagnostic, not a setter. A regression that overwrote
+    # O_kg_total on success would invalidate every downstream mass
+    # aggregation that consumes it.
+    assert hf_row['O_kg_total'] == pytest.approx(1.4e23)
 
 
 @pytest.mark.unit
@@ -860,6 +981,11 @@ def test_check_ic_oxygen_budget_hard_fails_above_threshold():
     }
     with pytest.raises(ValueError, match='IC oxygen budget mismatch'):
         check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
+    # On hard-fail the sentinel must stay set to the original user value,
+    # not be silently flipped to -1.0. A regression that flipped the
+    # sentinel before raising would let a retry mask the failure on the
+    # next call.
+    assert hf_row['O_kg_user_ic'] == pytest.approx(1.0e23)
 
 
 @pytest.mark.unit
@@ -875,6 +1001,10 @@ def test_check_ic_oxygen_budget_skipped_under_ic_chemistry_sentinel():
     check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
     # Sentinel preserved
     assert hf_row['O_kg_user_ic'] == pytest.approx(-1.0)
+    # O_kg_total must also be untouched: the skip branch is a pure
+    # no-op. A regression that wrote to O_kg_total on the skip path
+    # would corrupt the chemistry-supplied value downstream.
+    assert hf_row['O_kg_total'] == pytest.approx(1.0e30)
 
 
 @pytest.mark.unit
@@ -894,6 +1024,11 @@ def test_check_ic_oxygen_budget_skipped_when_chem_zero():
     check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
     # Sentinel unchanged (check did nothing)
     assert hf_row['O_kg_user_ic'] == pytest.approx(1.0e23)
+    # Degenerate chem_O = 0 must not divide-by-zero into NaN or Inf;
+    # the helpfile field must stay exactly zero. A regression that
+    # computed rel_div before the guard would have written NaN here
+    # via the log.info formatting or follow-up writes.
+    assert hf_row['O_kg_total'] == 0.0
 
 
 @pytest.mark.unit
@@ -910,11 +1045,18 @@ def test_check_ic_oxygen_budget_skipped_under_path_C():
     config.planet.fO2_source = 'from_O_budget'
     hf_row = {
         'O_kg_user_ic': 1.0e23,
-        'O_kg_total': 1.0e24,  # 90% divergence — would fail under user_constant
+        'O_kg_total': 1.0e24,  # 90% divergence; would fail under user_constant
     }
     check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
     # Sentinel must remain intact; we did not run the check at all.
     assert hf_row['O_kg_user_ic'] == pytest.approx(1.0e23)
+    # Cross-check: flipping fO2_source back to user_constant on the
+    # same hf_row must raise. Without this guard a regression that
+    # accidentally widened the path-C skip to all sources would still
+    # pass the sentinel-unchanged assertion above.
+    config.planet.fO2_source = 'user_constant'
+    with pytest.raises(ValueError, match='IC oxygen budget mismatch'):
+        check_ic_oxygen_budget(config, hf_row, threshold_frac=0.5)
 
 
 @pytest.mark.unit
@@ -946,6 +1088,14 @@ def test_run_outgassing_from_O_budget_dispatches_to_calliope():
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
         run_outgassing(dirs, config, hf_row)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
+        # Pre-seed invariant under Path C: run_outgassing must set
+        # fO2_shift_IW_derived to the configured buffer value before
+        # dispatch (CALLIOPE overrides it with the solver-derived
+        # number, but the pre-seed is the safety net for skipped
+        # solves). The mock here does not overwrite, so the pre-seed
+        # is what stays in hf_row.
+        assert 'fO2_shift_IW_derived' in hf_row
+        assert hf_row['O_res'] == 0.0
 
 
 @pytest.mark.unit
@@ -973,8 +1123,14 @@ def test_run_outgassing_from_O_budget_dispatches_to_atmodeller():
     hf_row['atm_kg_per_mol'] = 0.018
 
     with patch('proteus.outgas.atmodeller.calc_surface_pressures_atmodeller') as mock_calc:
-        run_outgassing(dirs, config, hf_row)
+        # Cross-backend isolation: the calliope dispatcher must NOT be
+        # invoked when module = 'atmodeller'. A regression that left
+        # both calls active (or fell through to calliope as a default)
+        # would silently double-solve, with the second result winning.
+        with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calliope:
+            run_outgassing(dirs, config, hf_row)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
+        mock_calliope.assert_not_called()
 
 
 @pytest.mark.unit
@@ -994,6 +1150,14 @@ def test_run_outgassing_from_O_budget_rejects_dummy_backend():
 
     with pytest.raises(NotImplementedError, match='dummy'):
         run_outgassing(dirs, config, hf_row)
+    # Negative side-effect check: the dummy backend's calc function
+    # must NOT be invoked when the wrapper rejects the combination.
+    # A regression that raised AFTER dispatching would leak a partial
+    # solve into hf_row.
+    with patch('proteus.outgas.dummy.calc_surface_pressures_dummy') as mock_dummy:
+        with pytest.raises(NotImplementedError, match='dummy'):
+            run_outgassing(dirs, config, hf_row)
+        mock_dummy.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1014,6 +1178,14 @@ def test_run_outgassing_rejects_unknown_fO2_source():
 
     with pytest.raises(NotImplementedError, match='something_unexpected'):
         run_outgassing(dirs, config, hf_row)
+    # No-dispatch invariant: an unrecognised fO2_source must reject
+    # before any backend call. A regression that raised AFTER dispatch
+    # (or that left the legacy chemistry path running and re-raised on
+    # exit) would still match the regex but quietly do real work.
+    with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
+        with pytest.raises(NotImplementedError, match='something_unexpected'):
+            run_outgassing(dirs, config, hf_row)
+        mock_calc.assert_not_called()
 
 
 @pytest.mark.unit
@@ -1049,6 +1221,13 @@ config_version = "3.0"
     cfg_path.write_text(toml_text)
 
     with pytest.raises(ValueError, match='O_mode is required'):
+        read_config_object(str(cfg_path))
+    # Migration-hint discrimination: the error must surface the
+    # explicit migration tag (issue #677) so users can find the
+    # upstream context. A regression that softened the message to a
+    # generic 'missing field' would pass the first regex but fail
+    # this stricter discrimination.
+    with pytest.raises(ValueError, match='issue #677'):
         read_config_object(str(cfg_path))
 
 
@@ -1114,6 +1293,12 @@ def test_config_rejects_from_mantle_redox_reserved(tmp_path):
 
     with pytest.raises(ValueError, match='issue #653'):
         read_config_object(str(cfg_path))
+    # The error must name the reserved enum value itself so a user
+    # who hits this without context can find the right line in their
+    # TOML. A regression that pruned the value from the message
+    # would still match 'issue #653' but lose self-correction value.
+    with pytest.raises(ValueError, match='from_mantle_redox'):
+        read_config_object(str(cfg_path))
 
 
 @pytest.mark.unit
@@ -1135,6 +1320,12 @@ def test_config_rejects_from_O_budget_with_ic_chemistry(tmp_path):
     )
 
     with pytest.raises(ValueError, match='ic_chemistry'):
+        read_config_object(str(cfg_path))
+    # The error must also name the other half of the incompatible
+    # pair so a user reading the message in isolation can find both
+    # fields. A regression that dropped fO2_source from the wording
+    # would still match 'ic_chemistry' but offer half a clue.
+    with pytest.raises(ValueError, match='from_O_budget'):
         read_config_object(str(cfg_path))
 
 
@@ -1179,6 +1370,12 @@ config_version = "3.0"
     cfg_path = _write_toml(tmp_path, 'from_O_budget_gas_prs.toml', toml_text)
 
     with pytest.raises(ValueError, match='gas_prs'):
+        read_config_object(str(cfg_path))
+    # The error must also name from_O_budget so the user sees both
+    # incompatible halves of the pair in the message. A regression
+    # that named only the volatile_mode value would still match
+    # 'gas_prs' but lose the cross-reference.
+    with pytest.raises(ValueError, match='from_O_budget'):
         read_config_object(str(cfg_path))
 
 
@@ -1300,6 +1497,12 @@ config_version = "3.0"
 
     with pytest.raises(ValueError, match='dummy'):
         read_config_object(str(cfg_path))
+    # The error must also name from_O_budget so the user sees the
+    # incompatible pair in full. A regression that softened the
+    # message to "dummy backend not supported" without naming the
+    # source would still match 'dummy'.
+    with pytest.raises(ValueError, match='from_O_budget'):
+        read_config_object(str(cfg_path))
 
 
 @pytest.mark.unit
@@ -1347,6 +1550,18 @@ def test_config_rejects_unknown_fO2_source_value(tmp_path):
 
     with pytest.raises(ValueError, match='user_const'):
         read_config_object(str(cfg_path))
+    # Cross-validator isolation: a fully-correct fO2_source on the
+    # same _minimal_valid_toml fixture must load cleanly. If the
+    # cfg-load were failing for an unrelated reason (e.g. the
+    # _minimal_valid_toml helper became invalid in isolation), the
+    # 'user_const' match above could be a coincidental hit.
+    good_path = _write_toml(
+        tmp_path,
+        'good.toml',
+        _minimal_valid_toml(extra_planet='    fO2_source = "user_constant"\n'),
+    )
+    cfg = read_config_object(str(good_path))
+    assert cfg.planet.fO2_source == 'user_constant'
 
 
 @pytest.mark.unit
