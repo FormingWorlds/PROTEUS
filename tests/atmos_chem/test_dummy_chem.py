@@ -81,8 +81,9 @@ def test_dummy_chem_profile_shape():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_chem_vmr_normalization():
-    """VMRs sum to 1.0 at every level."""
+    """VMRs sum to 1.0 at every level (mass-fraction closure)."""
     hf_row = _make_hf_row()
     config = _make_config()
     result = _build_profiles(hf_row, config, num_levels=50)
@@ -92,9 +93,17 @@ def test_dummy_chem_vmr_normalization():
         total += result[sp]
 
     np.testing.assert_allclose(total, 1.0, atol=1e-10)
+    # Boundedness invariant: every species VMR must lie in [0, 1] at every
+    # level. A regression that produced a normalised total of 1 via a
+    # negative-and-positive cancellation (e.g. signed photolysis product)
+    # would pass the closure check above but fail this bound.
+    for sp in _ALL_SPECIES:
+        assert np.all(result[sp] >= 0.0), f'{sp} went negative'
+        assert np.all(result[sp] <= 1.0 + 1e-12), f'{sp} exceeded unit fraction'
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_chem_h2o_cold_trap():
     """H2O VMR limited by Clausius-Clapeyron in the cold stratosphere.
 
@@ -122,11 +131,24 @@ def test_dummy_chem_h2o_cold_trap():
     assert h2o_min < 0.1 * h2o_surf, (
         f'Cold trap should suppress H2O: min={h2o_min:.4e} vs surface={h2o_surf:.4e}'
     )
+    # Boundedness invariant: the minimum H2O must occur strictly above the
+    # surface index (the cold trap is in the upper troposphere, not at
+    # ground level). A regression that applied saturation TO the surface
+    # (broken Clausius-Clapeyron threshold) would put the minimum at
+    # index -1 and fail this discriminator.
+    h2o_min_idx = int(np.argmin(h2o))
+    assert h2o_min_idx < len(h2o) - 1, (
+        f'Cold trap minimum at surface index ({h2o_min_idx}); should be above'
+    )
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_chem_photolysis_products():
-    """Photolysis products (O, OH, H) increase toward TOA."""
+    """Photolysis products (O, OH, H) increase toward TOA. The exponential
+    factor exp(-P/P_photo) damps to ~0 at the surface (high P) and rises
+    toward 1 at TOA (low P), so the TOA-vs-surface ratio must be large.
+    """
     hf_row = _make_hf_row()
     config = _make_config()
     result = _build_profiles(hf_row, config, num_levels=50)
@@ -135,6 +157,17 @@ def test_dummy_chem_photolysis_products():
         vmr = result[product]
         # Should be higher at TOA than at surface
         assert vmr[0] > vmr[-1], f'{product} should increase toward TOA'
+        # Positivity + scale invariant: the photolysis factor is
+        # exp(-P_surf / P_photo) where P_surf >> P_photo, so the surface
+        # VMR must be many orders of magnitude smaller than the TOA value.
+        # A regression that swapped the sign of the exponent (decreasing
+        # with altitude) would also satisfy vmr[0] > vmr[-1] only if the
+        # parent surface VMR happened to dominate; pin a large ratio so
+        # that bug class is rejected.
+        assert vmr[0] > 0.0, f'{product} must be positive at TOA'
+        assert vmr[0] > 100.0 * max(vmr[-1], 1e-300), (
+            f'{product} TOA/surface ratio too small for exp(-P/P_photo) law'
+        )
 
 
 @pytest.mark.unit
@@ -150,36 +183,71 @@ def test_dummy_chem_pressure_ordering():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_chem_altitude_ordering():
-    """Altitude decreases from TOA (index 0) to surface (index -1)."""
+    """Altitude decreases monotonically from TOA (index 0) to surface
+    (index -1). Monotonicity is the discriminating property: an endpoint
+    check alone would also pass for an oscillating altitude profile that
+    happens to satisfy z[0] > z[-1].
+    """
     hf_row = _make_hf_row()
     config = _make_config()
     result = _build_profiles(hf_row, config, num_levels=50)
 
     z = result['z']
     assert z[0] > z[-1], 'TOA altitude should be greater than surface'
+    # Monotonicity invariant: hydrostatic integration must give z strictly
+    # decreasing with index. A regression that reversed only the endpoints
+    # (or that produced a non-monotonic profile from a sign error in
+    # `dz = H * log(p[i+1]/p[i])`) would fail this stricter check.
+    assert np.all(np.diff(z) < 0), 'altitude must decrease monotonically'
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_chem_no_negative_vmrs():
-    """No species should have negative VMR at any level."""
+    """No species should have negative VMR at any level (positivity
+    invariant on a volume mixing ratio).
+    """
     hf_row = _make_hf_row()
     config = _make_config()
     result = _build_profiles(hf_row, config, num_levels=50)
 
     for sp in _ALL_SPECIES:
         assert np.all(result[sp] >= 0), f'{sp} has negative VMR'
+    # Discrimination: a regression that returned an all-zero profile would
+    # trivially satisfy the >= 0 bound; pin the sum-of-all-species at the
+    # surface to ~1 so an empty-profile bug is caught here.
+    surface_sum = sum(result[sp][-1] for sp in _ALL_SPECIES)
+    assert surface_sum == pytest.approx(1.0, abs=1e-10), (
+        f'normalization should give surface sum 1, got {surface_sum}'
+    )
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_dummy_chem_zero_atmosphere():
-    """Zero surface VMRs should produce zero profiles without crashing."""
+    """Zero surface VMRs should produce zero profiles without crashing.
+
+    Edge case: a divide-by-zero in the normalization step (total == 0) is
+    the most likely regression. The function under test guards against
+    that with `np.where(total > 0, ...)`, so the species profiles must
+    be cleanly zero AND the temperature / pressure grids must still be
+    populated at the requested resolution.
+    """
     hf_row = _make_hf_row(H2O_vmr=0, CO2_vmr=0, N2_vmr=0, H2_vmr=0, CH4_vmr=0)
     config = _make_config()
     result = _build_profiles(hf_row, config, num_levels=30)
 
     for sp in _ALL_SPECIES:
         assert np.all(result[sp] == 0.0), f'{sp} should be zero'
+    # Discrimination: a regression that returned early (or short-circuited
+    # the whole function) on all-zero VMR input would also pass the
+    # species-zero check above by producing empty arrays. Pin that the
+    # T / P / z / Kzz grids are still populated at the requested length
+    # and that T and P are strictly positive everywhere.
+    assert result['tmp'].shape == (30,) and result['p'].shape == (30,)
+    assert np.all(result['tmp'] > 0.0) and np.all(result['p'] > 0.0)
 
 
 @pytest.mark.unit

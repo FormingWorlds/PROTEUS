@@ -49,6 +49,11 @@ class TestNoneIfNone:
     def test_empty_string_preserved(self):
         """Empty string is distinct from 'none' and passes through."""
         assert none_if_none('') == ''
+        # Discrimination: a regression that treated any falsy string as
+        # 'none' would return None here. Pin the identity: the return is
+        # the empty string itself, not None. `is None` would also catch a
+        # regression that returned None for any non-'none' input.
+        assert none_if_none('') is not None
 
     @pytest.mark.unit
     def test_whitespace_strings_preserved(self):
@@ -65,6 +70,11 @@ class TestZeroIfNone:
     def test_converts_none_string_to_zero(self):
         """'none' string converts to 0.0 for optional numeric parameters."""
         assert zero_if_none('none') == 0.0
+        # Discrimination: case-sensitive on lowercase 'none' only. A
+        # regression that called `.lower()` on the input first would
+        # collapse 'None' to 0.0 too and silently coerce any string a
+        # downstream consumer expected to round-trip as a label.
+        assert zero_if_none('None') == 'None'
 
     @pytest.mark.unit
     def test_preserves_numeric_strings(self):
@@ -108,6 +118,12 @@ class TestDictReplaceNone:
         }
         result = dict_replace_none(data)
         assert result == data
+        # Discrimination: the converter must return a NEW dict, not the
+        # same object. The input mapping is part of the user's config and
+        # later mutation of `result` (e.g. TOML serialization) must not
+        # write back through to `data`. A regression that returned `data`
+        # itself would fail this identity check.
+        assert result is not data
 
     @pytest.mark.unit
     def test_handles_nested_dictionaries(self):
@@ -125,7 +141,14 @@ class TestDictReplaceNone:
     @pytest.mark.unit
     def test_handles_empty_dictionary(self):
         """Empty dict returns empty dict."""
-        assert dict_replace_none({}) == {}
+        result = dict_replace_none({})
+        assert result == {}
+        # Discrimination: the converter must return a fresh dict (or at
+        # least a value that compares equal to {} and is itself a dict),
+        # not None or some scalar sentinel. A regression that returned the
+        # input unchanged via `return d or None` would fail this type
+        # check on the empty-dict input.
+        assert isinstance(result, dict)
 
     @pytest.mark.unit
     def test_handles_all_none_values(self):
@@ -133,6 +156,11 @@ class TestDictReplaceNone:
         data = {'a': None, 'b': None, 'c': None}
         result = dict_replace_none(data)
         assert result == {'a': 'none', 'b': 'none', 'c': 'none'}
+        # Discrimination: the input dict must not be mutated in place. A
+        # regression that operated on `data` directly would leave the
+        # original mapping with 'none' strings instead of the True None
+        # objects, breaking any caller that retained a reference.
+        assert data == {'a': None, 'b': None, 'c': None}
 
     @pytest.mark.unit
     def test_deeply_nested_dictionaries(self):
@@ -195,8 +223,15 @@ class TestLowercase:
 
     @pytest.mark.unit
     def test_empty_string_handling(self):
-        """Empty string converts to empty string."""
-        assert lowercase('') == ''
+        """Empty string converts to empty string (idempotent on the
+        boundary case)."""
+        result = lowercase('')
+        assert result == ''
+        # Discrimination: the converter must be idempotent (lowercase of
+        # an already-lowercase output is the same output). A regression
+        # that returned a non-string sentinel (e.g. `None` or a stripped
+        # value) on the empty input would fail this second pass.
+        assert lowercase(result) == ''
 
     @pytest.mark.unit
     def test_preserves_numbers_and_special_chars(self):

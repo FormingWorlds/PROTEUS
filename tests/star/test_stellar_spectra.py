@@ -204,6 +204,13 @@ def test_phoenix_filename_format():
 
     name = phoenix_filename(Teff=2300, logg=1.0, FeH=0.0, alpha=0.0)
     assert name == 'LTE_T02300_logg1.00_FeH-0.0_alpha+0.0_phoenixMedRes_R05000.txt'
+    # Discrimination: the Teff field is zero-padded to 5 digits, and a
+    # different (Teff, logg, FeH, alpha) tuple must produce a distinct
+    # filename with the same template. A regression that hard-coded the
+    # T or logg slot (e.g. always 'T02300' or 'logg1.00') would fail here.
+    other = phoenix_filename(Teff=5800, logg=4.5, FeH=0.5, alpha=0.2)
+    assert other == 'LTE_T05800_logg4.50_FeH+0.5_alpha+0.2_phoenixMedRes_R05000.txt'
+    assert other != name
 
 
 # star/phoenix.py tests
@@ -257,6 +264,13 @@ def test_get_phoenix_modern_spectrum_offline_missing_raw_raises(tmp_path, monkey
 
     with pytest.raises(FileNotFoundError):
         get_phoenix_modern_spectrum(handler, stellar_track=None)
+
+    # Discrimination: the offline branch must NOT silently emit a 1 AU file
+    # before raising. A regression that wrote a zero-flux fallback to disk
+    # and then raised (or that swallowed the raise) would corrupt the
+    # downstream pipeline; assert no PHOENIX 1AU directory was created.
+    one_au_dir = tmp_path / 'stellar_spectra' / 'PHOENIX' / '1AU'
+    assert not one_au_dir.exists() or not any(one_au_dir.iterdir())
 
 
 @pytest.mark.unit
@@ -318,6 +332,10 @@ def test_init_star_source_none_prefers_muscles_when_available(tmp_path, monkeypa
     backup = tmp_path / 'out' / 'data' / '-1.sflux'
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([30.0, 40.0]))
+    # Discrimination: a regression that picked solar (the OTHER existing
+    # file, flux=[10, 20]) would still pass a "is not None" check on the
+    # backup. Pin the MUSCLES flux specifically and reject the solar flux.
+    assert not np.allclose(arr[:, 1], np.array([10.0, 20.0]))
 
 
 @pytest.mark.unit
@@ -340,6 +358,11 @@ def test_init_star_source_none_uses_muscles_when_solar_missing(tmp_path, monkeyp
     backup = tmp_path / 'out' / 'data' / '-1.sflux'
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([30.0, 40.0]))
+    # Discrimination: the wavelength column is preserved verbatim from the
+    # MUSCLES file (100, 200 nm), and the row count matches the source. A
+    # regression that built a zero-flux fallback grid would fail both pins.
+    assert np.allclose(arr[:, 0], np.array([100.0, 200.0]))
+    assert arr.shape == (2, 2)
 
 
 @pytest.mark.unit
@@ -408,6 +431,13 @@ def test_init_star_source_none_missing_both_raises(tmp_path, monkeypatch):
     with pytest.raises(FileNotFoundError):
         init_star(handler)
 
+    # Discrimination: the raise must fire BEFORE any backup spectrum is
+    # written. A regression that silently produced a zero-flux fallback
+    # file and then raised (or that swallowed the raise) would corrupt
+    # the downstream pipeline. The backup path must not exist.
+    backup = tmp_path / 'out' / 'data' / '-1.sflux'
+    assert not backup.exists()
+
 
 @pytest.mark.unit
 def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
@@ -429,6 +459,11 @@ def test_init_star_star_path_override_is_used(tmp_path, monkeypatch):
     backup = tmp_path / 'out' / 'data' / '-1.sflux'
     arr = np.loadtxt(backup)
     assert np.allclose(arr[:, 1], np.array([111.0, 222.0]))
+    # Discrimination: the override path's wavelength axis (100, 200 nm from
+    # _write_spectrum_file) is preserved verbatim. A regression that
+    # silently fell through to the catalogue dispatch (which has no file on
+    # disk in this test) would either raise or produce a different grid.
+    assert np.allclose(arr[:, 0], np.array([100.0, 200.0]))
 
 
 @pytest.mark.unit
@@ -450,6 +485,15 @@ def test_init_star_star_path_missing_raises(tmp_path, monkeypatch):
 
     with pytest.raises(FileNotFoundError, match='Custom stellar spectrum path does not exist'):
         init_star(handler)
+
+    # Discrimination: the raise must fire BEFORE any backup file is
+    # produced. A regression that silently fell back to the catalogue
+    # dispatch (with no MUSCLES or solar file on disk either) and then
+    # raised a generic FileNotFoundError would still satisfy the match
+    # pattern only by coincidence. Pin: the backup spectrum file must
+    # not exist after the raise.
+    backup = tmp_path / 'out' / 'data' / '-1.sflux'
+    assert not backup.exists()
 
 
 @pytest.mark.unit

@@ -162,9 +162,15 @@ def test_run_vulcan_offline_non_agni():
     dirs = {'output': '/tmp/test', 'output/offchem': '/tmp/test/offchem'}
     hf_row = _make_mock_hf_row()
 
+    mock_vulcan_package.main.reset_mock()
     result = run_vulcan(dirs, config, hf_row)
 
     assert result is False
+    # Discrimination: the guard must short-circuit BEFORE any VULCAN solver
+    # call. A regression that returned False from a later code path would
+    # still satisfy the False return but would have dispatched into the
+    # mocked vulcan package. Assert vulcan.main was not called.
+    mock_vulcan_package.main.assert_not_called()
 
 
 @pytest.mark.unit
@@ -172,15 +178,21 @@ def test_run_vulcan_online_non_agni():
     """
     Test run_vulcan returns False in online mode when atmosphere module is not AGNI.
 
-    Physics: Same constraint as offline — VULCAN needs AGNI TP profiles.
+    Physics: same constraint as offline. VULCAN needs AGNI TP profiles.
     """
     config = _make_mock_config(atmos_module='janus')
     dirs = {'output': '/tmp/test', 'output/offchem': '/tmp/test/offchem'}
     hf_row = _make_mock_hf_row()
 
+    mock_vulcan_package.main.reset_mock()
     result = run_vulcan(dirs, config, hf_row, online=True)
 
     assert result is False
+    # Discrimination: parallel arm to the offline guard. The guard must
+    # short-circuit before any VULCAN solver call regardless of mode. A
+    # regression that conditioned the guard on `not online` would let the
+    # online path through and would invoke vulcan.main on a janus config.
+    mock_vulcan_package.main.assert_not_called()
 
 
 @pytest.mark.unit
@@ -369,10 +381,17 @@ def test_run_vulcan_online_missing_result_file(
     if hasattr(run_vulcan, '_made'):
         del run_vulcan._made
 
-    # Do NOT create the result pickle — simulates VULCAN failure
+    # Do NOT create the result pickle, simulates VULCAN failure
     result = run_vulcan(dirs, config, hf_row, online=True)
 
     assert result is False
+    # Discrimination: the missing pickle is at the per-snapshot path
+    # `vulcan_300.pkl`. A regression that swallowed the missing-result
+    # path (e.g. returned True with empty output) would not leave the
+    # disk in this state. Pin: the expected pickle still must not exist
+    # after run_vulcan returns (it was never created).
+    expected_pkl = offchem_dir / 'vulcan_300.pkl'
+    assert not expected_pkl.exists()
 
 
 @pytest.mark.unit
@@ -414,10 +433,16 @@ def test_run_vulcan_offline_unrecognised_network(
     mock_loadtxt.return_value = np.array([[200.0, 1e-5], [300.0, 1e-4], [400.0, 1e-3]])
 
     mock_vulcan_package.Config.return_value = MagicMock()
+    mock_vulcan_package.main.reset_mock()
 
     result = run_vulcan(dirs, config, hf_row)
 
     assert result is False
+    # Discrimination: the unrecognised-network branch must short-circuit
+    # BEFORE the solver invocation. A regression that fell through to a
+    # default network (e.g. silently coerced 'INVALID' to 'CHO') would
+    # have invoked vulcan.main and would not return False.
+    mock_vulcan_package.main.assert_not_called()
 
 
 @pytest.mark.unit
@@ -484,8 +509,13 @@ def test_run_vulcan_online_network_selection(
     result = run_vulcan(dirs, config, hf_row, online=True)
 
     assert result is True
-    # Verify the atom_list was set correctly for this network
-    mock_vcfg.atom_list = expected_elements
+    # Discrimination: the production code sets `vcfg.atom_list = ele_arr`
+    # from the network branch in atmos_chem/vulcan.py. The mock captures
+    # the assigned value; pin the exact element list per network so a
+    # regression that selected the wrong network branch (or that lost the
+    # 'C' element from CHO) is caught here. The original assignment-style
+    # check (`mock_vcfg.atom_list = expected_elements`) was a no-op write.
+    assert mock_vcfg.atom_list == expected_elements
 
 
 @pytest.mark.unit
@@ -576,9 +606,11 @@ def test_run_vulcan_boundary_pressures_use_level_edges(
 @patch('proteus.atmos_chem.vulcan.glob.glob')
 @patch('proteus.atmos_chem.vulcan.np.loadtxt')
 @patch('proteus.atmos_chem.vulcan.np.savetxt')
+@patch('proteus.atmos_chem.vulcan.shutil.rmtree')
 @patch('proteus.atmos_chem.vulcan.os.makedirs')
 def test_run_vulcan_online_uses_exist_ok(
     mock_makedirs,
+    mock_rmtree,
     mock_savetxt,
     mock_loadtxt,
     mock_glob,
@@ -623,3 +655,8 @@ def test_run_vulcan_online_uses_exist_ok(
 
     # Verify makedirs was called with exist_ok=True
     mock_makedirs.assert_called_with(str(offchem_dir), exist_ok=True)
+    # Discrimination: the online branch must NOT call shutil.rmtree (that
+    # is the offline path's wipe-and-recreate behaviour). A regression
+    # that took the offline branch in online mode would still satisfy the
+    # `exist_ok=True` makedirs call but would also have wiped the directory.
+    mock_rmtree.assert_not_called()
