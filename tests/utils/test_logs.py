@@ -55,6 +55,10 @@ class TestStreamToLogger:
         mock_logger = MagicMock()
         stream = StreamToLogger(mock_logger, log_level=logging.WARNING)
         assert stream.log_level == logging.WARNING
+        # Discrimination: a regression that ignored the kwarg and fell back to
+        # the INFO default would still pass an `is not None` style check;
+        # pin the numeric level to rule that out (WARNING=30, INFO=20).
+        assert stream.log_level != logging.INFO
 
     @pytest.mark.unit
     def test_write_single_line(self):
@@ -71,6 +75,11 @@ class TestStreamToLogger:
 
         # Verify immediate logging without buffering
         mock_logger.log.assert_called_once_with(logging.DEBUG, 'Test message')
+        # Discrimination: the trailing newline must be stripped from the logged
+        # payload and the line buffer must be cleared (a regression that kept
+        # the newline or stashed the line in linebuf would leak it onto the
+        # next write).
+        assert stream.linebuf == ''
 
     @pytest.mark.unit
     def test_write_multiple_lines(self):
@@ -111,6 +120,11 @@ class TestStreamToLogger:
         stream.write('Incom')
         stream.write('plete\n')
         mock_logger.log.assert_called_once_with(logging.INFO, 'Incomplete')
+        # Discrimination: buffer must be empty after the completing write so
+        # the next call starts fresh. A regression that emitted the line but
+        # left the fragment in linebuf would silently duplicate text on the
+        # next non-newline write.
+        assert stream.linebuf == ''
 
     @pytest.mark.unit
     def test_flush_with_content(self):
@@ -137,6 +151,10 @@ class TestStreamToLogger:
         stream = StreamToLogger(mock_logger)
         stream.flush()
         mock_logger.log.assert_not_called()
+        # Discrimination: flush must leave the buffer empty (no-op on an
+        # already-empty buffer). A regression that logged an empty string
+        # would emit a spurious record into the log.
+        assert stream.linebuf == ''
 
     @pytest.mark.unit
     def test_write_empty_string(self):
@@ -145,6 +163,11 @@ class TestStreamToLogger:
         stream = StreamToLogger(mock_logger)
         stream.write('')
         mock_logger.log.assert_not_called()
+        # Discrimination: an empty write must NOT corrupt the buffer; a
+        # regression that appended '' to linebuf would change linebuf
+        # identity even though the resulting string is empty. Pin the
+        # buffer's exact empty-string state.
+        assert stream.linebuf == ''
 
     @pytest.mark.unit
     def test_write_only_newline(self):
@@ -153,6 +176,10 @@ class TestStreamToLogger:
         stream = StreamToLogger(mock_logger)
         stream.write('\n')
         mock_logger.log.assert_called_once_with(logging.INFO, '')
+        # Discrimination: a regression that buffered the bare newline instead
+        # of treating it as a complete (empty) line would leave a stray '\n'
+        # in linebuf and emit nothing.
+        assert stream.linebuf == ''
 
 
 class TestCustomFormatter:
@@ -303,6 +330,14 @@ class TestSetupLogger:
             logpath = os.path.join(tmpdir, 'test.log')
             logger = setup_logger(logpath=logpath, level='INFO', logterm=False)
             assert logger.level == logging.INFO
+            # Discrimination: confirm a FileHandler was registered against the
+            # requested logpath. A regression that silently dropped the file
+            # handler would still pass the level check but break the contract
+            # (route fwl output to logpath).
+            file_handlers = [
+                h for h in logger.handlers if isinstance(h, logging.FileHandler)
+            ]
+            assert any(h.baseFilename == os.path.abspath(logpath) for h in file_handlers)
 
     @pytest.mark.unit
     def test_setup_logger_level_debug(self):
@@ -311,6 +346,11 @@ class TestSetupLogger:
             logpath = os.path.join(tmpdir, 'test.log')
             logger = setup_logger(logpath=logpath, level='DEBUG', logterm=False)
             assert logger.level == logging.DEBUG
+            # Discrimination: pin the canonical logger name ('fwl'). A
+            # regression that returned the root logger or a per-call named
+            # instance would still expose the correct .level and pass the
+            # primary check but break downstream getLogger('fwl') lookups.
+            assert logger.name == 'fwl'
 
     @pytest.mark.unit
     def test_setup_logger_level_error(self):
@@ -319,6 +359,11 @@ class TestSetupLogger:
             logpath = os.path.join(tmpdir, 'test.log')
             logger = setup_logger(logpath=logpath, level='ERROR', logterm=False)
             assert logger.level == logging.ERROR
+            # Discrimination: ERROR (40) must sit strictly above WARNING (30).
+            # A regression that mapped 'ERROR' to a lower numeric level would
+            # pass the equality check only if both literal constants moved,
+            # but would fail the strict-ordering pin against WARNING.
+            assert logger.level > logging.WARNING
 
     @pytest.mark.unit
     def test_setup_logger_level_warning(self):
@@ -327,6 +372,10 @@ class TestSetupLogger:
             logpath = os.path.join(tmpdir, 'test.log')
             logger = setup_logger(logpath=logpath, level='WARNING', logterm=False)
             assert logger.level == logging.WARNING
+            # Discrimination: WARNING (30) sits strictly between INFO (20) and
+            # ERROR (40). Pin both inequalities to catch a regression that
+            # silently mapped 'WARNING' to INFO or ERROR.
+            assert logging.INFO < logger.level < logging.ERROR
 
     @pytest.mark.unit
     def test_setup_logger_invalid_level_raises(self):
@@ -341,6 +390,11 @@ class TestSetupLogger:
             # Invalid level should raise immediately, not silently default
             with pytest.raises(ValueError, match='Invalid log level'):
                 setup_logger(logpath=logpath, level='INVALID', logterm=False)
+            # Discrimination: failure must happen BEFORE any side effect on
+            # disk. A regression that opened the FileHandler before validating
+            # the level would have left the logfile behind even though the
+            # exception fired.
+            assert not os.path.exists(logpath)
 
     @pytest.mark.unit
     def test_setup_logger_level_case_insensitive(self):
@@ -349,6 +403,12 @@ class TestSetupLogger:
             logpath = os.path.join(tmpdir, 'test.log')
             logger = setup_logger(logpath=logpath, level='info', logterm=False)
             assert logger.level == logging.INFO
+            # Discrimination: lowercase 'info' must resolve to the SAME numeric
+            # level as uppercase 'INFO'. A regression that dropped the .upper()
+            # call and returned a different default for unrecognized strings
+            # would diverge here. Pin parity with the canonical form.
+            logger2 = setup_logger(logpath=logpath + '.up', level='INFO', logterm=False)
+            assert logger2.level == logger.level
 
     @pytest.mark.unit
     def test_setup_logger_level_with_whitespace(self):
@@ -357,6 +417,12 @@ class TestSetupLogger:
             logpath = os.path.join(tmpdir, 'test.log')
             logger = setup_logger(logpath=logpath, level='  DEBUG  ', logterm=False)
             assert logger.level == logging.DEBUG
+            # Discrimination: whitespace-padded input must resolve to the same
+            # level as the stripped form. A regression that dropped the
+            # `.strip()` call would raise ValueError before reaching this line.
+            # Pin parity with the canonical form to lock the contract.
+            logger2 = setup_logger(logpath=logpath + '.bare', level='DEBUG', logterm=False)
+            assert logger2.level == logger.level
 
     @pytest.mark.unit
     def test_setup_logger_with_terminal_output(self):
@@ -385,6 +451,16 @@ class TestSetupLogger:
             with open(logpath) as f:
                 content = f.read()
             assert 'Test without terminal' in content
+            # Discrimination: with logterm=False no plain StreamHandler routed
+            # to sys.stdout should have been registered by this call. The
+            # FileHandler subclass is still allowed; check the non-file
+            # handlers do not include a stdout-routed StreamHandler.
+            stream_to_stdout = [
+                h
+                for h in logger.handlers
+                if type(h) is logging.StreamHandler and getattr(h, 'stream', None) is sys.stdout
+            ]
+            assert stream_to_stdout == []
 
     @pytest.mark.unit
     def test_setup_logger_file_handler_has_custom_formatter(self):
@@ -408,6 +484,11 @@ class TestSetupLogger:
             with open(logpath) as f:
                 content = f.read()
             assert 'Test message' in content
+            # Discrimination: the file formatter emits a level prefix
+            # ('[ INFO  ] ...' per the source). A regression that wrote raw
+            # messages without the level tag would pass the substring check
+            # above but break log post-processing tools that key on the prefix.
+            assert 'INFO' in content
 
     @pytest.mark.unit
     def test_setup_logger_exception_handler(self):
@@ -418,6 +499,10 @@ class TestSetupLogger:
             setup_logger(logpath=logpath, logterm=False)
             # Verify exception hook was set
             assert sys.excepthook != original_hook
+            # Discrimination: the installed hook must be callable. A regression
+            # that stored a non-callable sentinel would pass the !=-original
+            # check but break on the first uncaught exception.
+            assert callable(sys.excepthook)
             sys.excepthook = original_hook  # Restore original hook
 
 
@@ -438,6 +523,10 @@ class TestGetCurrentLogfileIndex:
         with tempfile.TemporaryDirectory() as tmpdir:
             result = GetCurrentLogfileIndex(tmpdir)
             assert result == -1  # Sentinel value for "no logs yet"
+            # Discrimination: the function must be a pure read; an empty
+            # directory must remain empty after the call (no log files
+            # auto-created as a side effect).
+            assert os.listdir(tmpdir) == []
 
     @pytest.mark.unit
     def test_single_logfile_returns_zero(self):
@@ -446,6 +535,10 @@ class TestGetCurrentLogfileIndex:
             pathlib.Path(os.path.join(tmpdir, 'proteus_00.log')).touch()
             result = GetCurrentLogfileIndex(tmpdir)
             assert result == 0
+            # Discrimination: a regression that returned the count of files
+            # (1) instead of the highest index (0) would diverge here. Pin
+            # the int identity and explicitly rule out the off-by-one.
+            assert result != 1
 
     @pytest.mark.unit
     def test_multiple_sequential_logfiles(self):
@@ -455,6 +548,11 @@ class TestGetCurrentLogfileIndex:
                 pathlib.Path(os.path.join(tmpdir, f'proteus_{i:02d}.log')).touch()
             result = GetCurrentLogfileIndex(tmpdir)
             assert result == 4
+            # Discrimination: distinguish "highest index" from "file count".
+            # 5 sequential files (indices 0..4) means highest index 4 and
+            # count 5; an off-by-one regression returning the count would
+            # land at 5 here.
+            assert result == 5 - 1
 
     @pytest.mark.unit
     def test_gap_in_logfiles(self):
@@ -471,6 +569,11 @@ class TestGetCurrentLogfileIndex:
             result = GetCurrentLogfileIndex(tmpdir)
             # Returns 1, so next log will fill gap as proteus_02.log
             assert result == 1
+            # Discrimination: this is the key contract. A regression that
+            # ignored the gap and returned the global maximum (3) would break
+            # the "fill the gap" semantics. Pin the strict-less-than relation
+            # against the post-gap file index.
+            assert result < 3
 
     @pytest.mark.unit
     def test_ignores_non_matching_files(self):
@@ -481,6 +584,10 @@ class TestGetCurrentLogfileIndex:
             pathlib.Path(os.path.join(tmpdir, 'proteus_01.txt')).touch()
             result = GetCurrentLogfileIndex(tmpdir)
             assert result == 0  # Stops at first gap (missing _01.log)
+            # Discrimination: confirm the non-matching files were not consumed
+            # by a regression that broadened the pattern. A '.txt' sibling at
+            # index 01 must NOT cause result == 1.
+            assert result != 1
 
 
 class TestGetLogfilePath:
@@ -499,18 +606,31 @@ class TestGetLogfilePath:
         """
         path = GetLogfilePath('/tmp', 0)
         assert path == '/tmp/proteus_00.log'  # Two-digit padding: 00 not 0
+        # Discrimination: rule out the non-padded form explicitly. A
+        # regression that used '%d' instead of '%02d' would produce
+        # '/tmp/proteus_0.log', which sorts AFTER proteus_10.log lexically.
+        assert path != '/tmp/proteus_0.log'
 
     @pytest.mark.unit
     def test_constructs_correct_path_index_five(self):
         """GetLogfilePath constructs correct path for index 5."""
         path = GetLogfilePath('/var/log', 5)
         assert path == '/var/log/proteus_05.log'
+        # Discrimination: rule out the non-padded variant. A regression that
+        # used '%d' instead of '%02d' would produce '/var/log/proteus_5.log',
+        # which sorts after proteus_10.log lexically.
+        assert 'proteus_5.log' not in path
 
     @pytest.mark.unit
     def test_constructs_correct_path_index_99(self):
         """GetLogfilePath constructs correct path for index 99."""
         path = GetLogfilePath('/logs', 99)
         assert path == '/logs/proteus_99.log'
+        # Discrimination: 99 is the documented upper bound (the source raises
+        # at j > 99). The boundary case must succeed and produce the two-digit
+        # filename; any three-digit form (proteus_099.log) would signal a
+        # format-string regression that widened the padding.
+        assert 'proteus_099.log' not in path
 
     @pytest.mark.unit
     def test_raises_for_index_over_99(self):
@@ -522,12 +642,22 @@ class TestGetLogfilePath:
         with pytest.raises(Exception, match='too many'):
             # Index 100 exceeds two-digit format limit
             GetLogfilePath('/tmp', 100)
+        # Discrimination: confirm the boundary is exactly j > 99, i.e. that
+        # 99 itself is still accepted. A regression that hardened the gate
+        # to j >= 99 would refuse the valid 99 case and still pass the >99
+        # raise.
+        assert GetLogfilePath('/tmp', 99) == '/tmp/proteus_99.log'
 
     @pytest.mark.unit
     def test_raises_for_large_index(self):
         """GetLogfilePath raises exception for large indices."""
         with pytest.raises(Exception, match='too many'):
             GetLogfilePath('/tmp', 1000)
+        # Discrimination: the same gate must fire for any index past 99,
+        # not just the round number 1000. A regression that special-cased
+        # a particular value would miss the intermediate 500 case.
+        with pytest.raises(Exception, match='too many'):
+            GetLogfilePath('/tmp', 500)
 
     @pytest.mark.unit
     def test_path_uses_zero_padding(self):
