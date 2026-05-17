@@ -126,6 +126,12 @@ def proteus_multi_timestep_run():
                     obj = getattr(obj, part)
                 setattr(obj, parts[-1], value)
 
+            # Re-initialise the directories dict so module-conditional keys
+            # (e.g. ``dirs['rad']`` for AGNI / JANUS) reflect the override
+            # set, not the original config that was on disk at Proteus()
+            # construction time.
+            runner.init_directories()
+
             # Set time limits for multi-timestep run
             # Estimate timestep size to get approximately num_timesteps
             estimated_dt = (max_time - min_time) / num_timesteps
