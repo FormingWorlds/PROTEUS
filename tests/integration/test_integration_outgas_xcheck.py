@@ -2,27 +2,26 @@
 Integration test: calliope vs atmodeller at the same initial condition.
 
 Runs PROTEUS twice from an identical IC, swapping only the outgas backend
-between calliope (fsolve-based, O'Neill buffer, ideal-gas EOS) and
-atmodeller (JAX-based, Hirschmann buffer, real-gas EOS by default but here
-configured for ideal). The two backends are expected to differ in detail
-(buffer-dependence diverges at ~0.95 dex at 3000 K, different S2 model,
-different solubility-law selections) and the test does NOT pin tight
-agreement. It pins:
+between calliope (Fischer 2011 IW buffer by default, fsolve-based, ideal
+gas) and atmodeller (Hirschmann composite buffer, JAX-based, ideal gas
+where the EOS options are toggled off). The CALLIOPE
+``cross_backend_comparison`` docs page (Fig. 3, Fig. 4 bar 2) reports that
+with the Fischer default the two backends agree to within ~0.16 dex in
+ΔIW at Earth-like inputs and below ~0.3 dex in magnitude across the
+1800-3000 K magma-ocean range; the previous O'Neill default had a much
+larger ~1 dex gap that motivated the buffer-default flip in CALLIOPE PR
+#20. This test pins a factor-of-3 window on the P_surf ratio, which is
+~0.48 dex and gives ~1.6x headroom over the documented worst-case at
+3000 K and ~2.8x headroom over the observed ~0.17 dex on the dummy IC.
 
-- Both backends produce a physically reasonable surface pressure (positive,
-  bounded, finite) on the same IC.
-- The two surface pressures are within a factor of 30 of each other,
-  consistent with the largest documented buffer/EOS-driven divergence on
-  rocky-planet IC.
-- Per-element mass closure holds in both runs.
-
-This is the smallest cross-backend test that captures "atmodeller is alive
-and produces broadly comparable IC to calliope" without baking in either
-backend's specific value as a reference.
+A regression that swapped CALLIOPE back to O'Neill, or that introduced
+a sign / unit error in either backend, would push the ratio outside the
+factor-of-3 window.
 
 See also:
 - docs/How-to/test_infrastructure.md
 - docs/How-to/test_categorization.md
+- CALLIOPE docs/Explanations/cross_backend_comparison.md
 """
 
 from __future__ import annotations
@@ -79,26 +78,28 @@ def _per_element_closure(hf_row, rel: float = 2e-2) -> None:
 @pytest.mark.integration
 @pytest.mark.physics_invariant
 def test_calliope_atmodeller_cross_consistency(proteus_multi_timestep_run):
-    """Same IC, two backends, broad consistency.
+    """Same IC, two backends, Fischer-buffer-tight consistency.
 
     Physical scenario: Earth-mass, IW+2 fO2 shift, 3000 ppmw H budget. Run
-    PROTEUS twice; once with outgas=calliope and once with outgas=atmodeller.
+    PROTEUS twice; once with outgas=calliope (Fischer 2011 buffer by
+    default) and once with outgas=atmodeller (Hirschmann composite).
     Compare the final surface pressure of both runs.
 
     Verifies:
     - Both runs complete and produce >= 2 helpfile rows.
     - Both P_surf are finite, positive, and below 1 Mbar (1e10 Pa).
-    - The ratio of the two P_surf values is within [1/30, 30]. The 30x
-      window encompasses the largest documented divergence between the
-      two backends on rocky-IC: ~0.95 dex from the buffer choice +
-      ~0.5 dex from the S2 model + ~0.3 dex from EOS, summed at the
-      pessimistic upper bound. A regression that makes one backend
-      return a value 100x off would fail this gate.
-    - Per-element mass closure holds in both runs (catches a per-run
-      bookkeeping bug not specific to either backend).
-    - Discrimination: assert that ``p_calliope > 0`` and
-      ``p_atmodeller > 0`` separately so a regression that zeroed out
-      one backend's result cannot be hidden by the ratio guard.
+    - The ratio of the two P_surf values is within [1/3, 3] (≈0.48 dex).
+      Bound derived from the CALLIOPE ``cross_backend_comparison`` doc:
+      raw ΔIW gap with Fischer default is 0.16 dex at canonical Earth
+      fiducial, and below 0.3 dex everywhere across 1800-3000 K. The
+      P_surf ratio inherits the same scale because partial pressures
+      track the buffered chemistry. Factor-of-3 leaves ~1.6x headroom
+      over the documented worst-case at 3000 K and ~2.8x over the
+      observed ~0.17 dex at this dummy IC.
+    - Per-element mass closure holds in both runs independently.
+    - Discrimination: ``p_calliope > 0`` and ``p_atmodeller > 0`` are
+      asserted separately so a regression that zeroed out one backend's
+      result cannot be hidden by the ratio guard.
 
     Runtime budget: ~30-60 s for the pair (calliope ~5 s, atmodeller
     first-call ~15-30 s including JAX compile, second-call ~1 s).
@@ -136,14 +137,21 @@ def test_calliope_atmodeller_cross_consistency(proteus_multi_timestep_run):
     assert p_c < 1e10, f'calliope P_surf above 1 Mbar: {p_c:.3e}'
     assert p_a < 1e10, f'atmodeller P_surf above 1 Mbar: {p_a:.3e}'
 
-    # Cross-backend agreement: factor-of-30 window. Documented divergence
-    # budget is ~0.95 dex (buffer) + ~0.5 dex (S2) + ~0.3 dex (EOS), so
-    # the upper bound at ~1.75 dex = 56x is the worst case; 30x is the
-    # plausible-IC envelope. Wider window would let a buggy backend ship.
+    # Cross-backend agreement: factor-of-3 (~0.48 dex). Derived from
+    # the CALLIOPE cross_backend_comparison doc: with the Fischer 2011
+    # default buffer the raw ΔIW gap against atmodeller is 0.16 dex at
+    # canonical Earth fiducial, climbing to ~0.3 dex only at 3000 K
+    # (Figure 3 panel b). The observed log10(p_atmodeller / p_calliope)
+    # on this dummy IC is ~0.17 dex; factor-of-3 leaves enough headroom
+    # for the documented hot-end envelope while still discriminating a
+    # regression that swapped CALLIOPE back to the O'Neill buffer (which
+    # would push the ratio to 5x-10x at 2000-3000 K) or that introduced
+    # a sign / unit error in either backend.
     ratio = p_a / p_c
-    assert (1.0 / 30.0) < ratio < 30.0, (
+    assert (1.0 / 3.0) < ratio < 3.0, (
         f'cross-backend P_surf disagreement out of window: '
-        f'p_calliope={p_c:.3e}, p_atmodeller={p_a:.3e}, ratio={ratio:.2f}'
+        f'p_calliope={p_c:.3e}, p_atmodeller={p_a:.3e}, ratio={ratio:.3f} '
+        f'(log10 = {np.log10(ratio):+.3f} dex)'
     )
 
     # Per-element closure must hold INDEPENDENTLY in each backend; a
