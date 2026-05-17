@@ -116,6 +116,8 @@ jobs:
             tests/config/test_config_schema_invariants.py \
             tests/integration/test_smoke_hypothesis.py \
             tests/integration/test_integration_dummy.py \
+            tests/integration/test_slow_aragog_calliope.py \
+            tests/integration/test_slow_aragog_atmodeller.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \
@@ -377,6 +379,8 @@ jobs:
             tests/config/test_config_schema_invariants.py \
             tests/integration/test_smoke_hypothesis.py \
             tests/integration/test_integration_dummy.py \
+            tests/integration/test_slow_aragog_calliope.py \
+            tests/integration/test_slow_aragog_atmodeller.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \
