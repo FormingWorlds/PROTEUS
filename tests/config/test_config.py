@@ -173,10 +173,10 @@ def test_none_if_none():
 @pytest.mark.skipif(
     not os.environ.get('RAD_DIR'),
     reason=(
-        'Configs that select AGNI or JANUS read RAD_DIR at init; the macOS '
-        'host job does not install SOCRATES, so RAD_DIR is unset. The Linux '
-        'Docker job and the nightly tier do install SOCRATES and exercise '
-        'this test fully.'
+        'Configs that select AGNI or JANUS read RAD_DIR at init. Local '
+        'developer environments that have not installed SOCRATES skip; '
+        'CI jobs (Linux and macOS) install SOCRATES via the composite '
+        'action so RAD_DIR is set and this test exercises fully.'
     ),
 )
 def test_proteus_init(path):

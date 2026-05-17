@@ -268,25 +268,24 @@ def test_calculate_simple_mantle_mass_scales_with_density():
 
 
 @pytest.mark.unit
-@pytest.mark.skip(reason='Source code raises exception for core_frac=1.0 by design')
-def test_calculate_simple_mantle_mass_full_core():
-    """Test edge case: core fills entire planet (core_frac=1.0).
+def test_calculate_simple_mantle_mass_full_core_raises():
+    """Edge case: core fills the entire planet (core_frac=1.0).
 
-    This should result in zero mantle volume and thus zero mantle mass.
-    Validates handling of geometric degeneracy.
+    The geometric degeneracy gives zero mantle volume, which the source
+    treats as an invariant violation and raises with "mantle mass is
+    negative". Pins the guard at the boundary.
     """
     radius = 1e6
     core_frac = 1.0
     density = 3000.0
 
-    mantle_mass = calculate_simple_mantle_mass(radius, core_frac, density)
+    with pytest.raises(Exception, match='mantle mass is negative'):
+        calculate_simple_mantle_mass(radius, core_frac, density)
 
-    # No mantle if core fills entire planet
-    assert mantle_mass == pytest.approx(0.0, abs=1e-10)
-    # Discrimination: shrinking the core (core_frac=0.999) must give a
+    # Discrimination: shrinking the core to 0.999 must succeed and give a
     # tiny but strictly positive mantle mass, scaling roughly as
-    # 1 - 0.999**3 ~ 0.003. A regression that always returned 0 would
-    # fail this neighboring-input check.
+    # 1 - 0.999**3 ~ 0.003. A regression that broadened the guard to
+    # also reject this neighbouring input would surface here.
     mantle_near_full = calculate_simple_mantle_mass(radius, 0.999, density)
     assert mantle_near_full > 0.0
 

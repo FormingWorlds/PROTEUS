@@ -193,6 +193,9 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025():
     atomic mass, 1.008e-3 kg/mol, a recurring confusion in legacy
     geochemistry code) would inflate the mol total by a factor of two
     and would be caught by the rel=1e-12 pin below.
+
+    See ``docs/Validation/outgas/binodal.md`` for the validation
+    registry entry.
     """
     import scipy.constants as const
 

@@ -88,6 +88,9 @@ def test_de_dt_matches_driscoll_barnes_2015_eq16():
     a = 2, e = 0.5 gives
 
         de/dt = (21/2) * 0.5 / 2**6.5 = 5.7996e-2
+
+    See ``docs/Validation/orbit/orbit.md`` for the validation registry
+    entry, including the sign-convention note.
     """
     val = de_dt(a=2.0, e=0.5, params=_UNIT_PARAMS)
     expected = (21.0 / 2.0) * 0.5 / (2.0**6.5)
@@ -265,10 +268,13 @@ def _make_hf_row(
 @pytest.mark.reference_pinned
 def test_evolve_orbital_first_call_seeds_from_config_with_au_conversion():
     """On the first call (``Time <= 1``) the orchestrator must seed
-    ``hf_row`` from ``config``, applying the AU → m conversion to the
+    ``hf_row`` from ``config``, applying the AU to m conversion to the
     semi-major axis. The pin against ``0.5 * AU`` (~7.48e10 m) catches
     a regression that forgot the AU factor (which would leave
     ``semimajorax`` at 0.5 instead of ~7.48e10).
+
+    See ``docs/Validation/orbit/orbit.md`` for the validation registry
+    entry.
     """
     cfg = _make_config(semimajoraxis_au=0.5, eccentricity=0.2)
     hf_row = _make_hf_row(time=0.0, sma_m=999.0, ecc=999.0)  # garbage that must be overwritten

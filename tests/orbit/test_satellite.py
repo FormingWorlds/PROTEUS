@@ -306,6 +306,9 @@ def test_update_satellite_angular_momentum_matches_korenaga_2023_eq60():
 
     The orbital component matches the Touma and Wisdom (1994) value
     of ~2.85e34 kg m^2 / s for the present-day Earth-Moon orbit.
+
+    See ``docs/Validation/orbit/satellite.md`` for the validation
+    registry entry and the re-derivation note.
     """
     cfg = _make_config(semimajoraxis_sat=3.844e8, mass_sat=7.342e22, axial_period_h=24.0)
     hf_row = _make_hf_row(time=0.0, R_int=6.371e6, M_int=5.972e24)

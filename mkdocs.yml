@@ -35,7 +35,6 @@ nav:
 
   - Explanations:
       - Model description: Explanations/model.md
-      - Docker CI architecture: Explanations/docker_ci_architecture.md
 
   - Reference:
       - Reference data: Reference/data.md
@@ -44,6 +43,13 @@ nav:
           - Interior structure (Zalmoxis wrapper): Reference/api/interior_struct_zalmoxis.md
           - Interior structure config: Reference/api/config_struct.md
           - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
+      - Validation:
+          - Orbit:
+              - Orbital evolution (orbit.py): Validation/orbit/orbit.md
+              - Satellite angular momentum (satellite.py): Validation/orbit/satellite.md
+              - Orbit module wrapper (wrapper.py): Validation/orbit/wrapper.md
+          - Outgas:
+              - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
 
   - Community:
       - Contact: Community/contact.md

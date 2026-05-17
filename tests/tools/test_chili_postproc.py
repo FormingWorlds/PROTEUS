@@ -75,8 +75,7 @@ def _make_runtime_helpfile(path: Path, gas_list: list[str]):
         'write block (chili_postproc.py:74 vs :84). The assertion in this test '
         'expects the opposite order. A real fix requires either moving the '
         'scalar-write block ahead of the config read, or mocking Proteus() so '
-        'the placeholder config does not trigger schema validation. Tracked '
-        'for Phase 10 test-coverage rework.'
+        'the placeholder config does not trigger schema validation.'
     ),
     strict=True,
 )

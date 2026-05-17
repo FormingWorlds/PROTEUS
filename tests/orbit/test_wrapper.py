@@ -98,6 +98,9 @@ def test_period_matches_keplers_third_law_for_earth_around_sun():
     ``T = 2 pi sqrt(a**3 / (G (M_star + M_planet)))``. For Earth at
     1 AU around the Sun, the period must come within 0.5% of the
     observed sidereal year (365.256 days).
+
+    See ``docs/Validation/orbit/wrapper.md`` for the validation
+    registry entry.
     """
     hf_row = {'semimajorax': AU, 'M_star': M_sun, 'M_planet': M_earth}
     update_period(hf_row)

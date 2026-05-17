@@ -9,6 +9,7 @@ section 3.
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|
 | `tests/orbit/test_orbit_evolve.py::test_de_dt_matches_driscoll_barnes_2015_eq16` | Driscoll and Barnes (2015), Astrobiology 15, 739 (DOI 10.1089/ast.2015.1325; arXiv:1509.07452), Eq. 16 | n/a (closed form) | Pins the prefactor `21/2`, the `a^-6.5` exponent, the `R_pl^5` scaling, and the linear-in-`e` dependence of the tidal eccentricity-damping rate at unit-scale parameters. Also asserts sign and order-of-magnitude, with discrimination guards against `a^5` and `a^7` neighbouring exponents. |
+| `tests/orbit/test_orbit_evolve.py::test_evolve_orbital_first_call_seeds_from_config_with_au_conversion` | AU constant from `scipy.constants` (IAU 2015 Resolution B2 nominal value, 1 AU = 1.495978707e11 m) | n/a (closed form) | Pins the AU-to-metres conversion that the orchestrator applies to `semimajoraxis` on the first call. A regression that dropped the AU factor would leave the semi-major axis at the config value in AU (e.g. 0.5) instead of the SI value (~7.48e10 m); the lower-bound `> 1e10 m` scale guard discriminates this. |
 
 ## Sign convention note
 
