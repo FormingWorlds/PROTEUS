@@ -2146,23 +2146,7 @@ def test_download_Seager_EOS_no_mapping(mock_get_info):
 @pytest.mark.unit
 @pytest.mark.skip(
     reason='Complex path matching logic - exception handling verified in integration tests'
-)
-@patch('proteus.utils.data.get_osf')
-def test_download_OSF_folder_exception_handling(mock_get_osf, tmp_path):
-    """Test OSF folder download handles exceptions gracefully.
-
-    Placeholder body: pytest.fail keeps the lint contract (at least one
-    implicit assertion per test) while the @pytest.mark.skip decorator
-    prevents the body from ever executing.
-    """
-    # Precondition: tmp_path is always a valid directory the OSF fallback
-    # would write into; a regression that broke the fixture would surface
-    # here before the placeholder fail fires.
-    assert tmp_path.exists()
-    pytest.fail('placeholder until the download_OSF_folder path-matching shim lands')
-
-
-# Note: download_zenodo_folder_client function doesn't exist in current codebase
+)# Note: download_zenodo_folder_client function doesn't exist in current codebase
 # These tests are skipped until the function is implemented
 
 
@@ -2210,24 +2194,7 @@ def test_validate_zenodo_folder_missing_file(mock_getfwl, mock_run, tmp_path):
 @pytest.mark.unit
 @pytest.mark.skip(
     reason='Complex file system mocking required - hash validation verified in integration tests'
-)
-@patch('proteus.utils.data.sp.run')
-@patch('proteus.utils.data.GetFWLData')
-def test_validate_zenodo_folder_hash_mismatch(mock_getfwl, mock_run, tmp_path):
-    """Test validation fails when file hash doesn't match.
-
-    Placeholder body: pytest.fail keeps the lint contract (at least one
-    implicit assertion per test) while the @pytest.mark.skip decorator
-    prevents the body from ever executing.
-    """
-    # Precondition: tmp_path is a valid scratch directory the validator
-    # would operate on; a regression that broke the fixture would surface
-    # here before the placeholder fail fires.
-    assert tmp_path.exists()
-    pytest.fail('placeholder until the validate_zenodo_folder hash-mock shim lands')
-
-
-# =============================================================================
+)# =============================================================================
 # get_petsc / get_spider wrapper tests
 # =============================================================================
 

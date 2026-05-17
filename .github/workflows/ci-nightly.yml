@@ -90,8 +90,6 @@ jobs:
         run: |
           pytest tests/integration \
             -m "integration and not slow" \
-            --ignore=tests/integration/test_integration_dummy_agni.py \
-            --ignore=tests/integration/test_albedo_lookup.py \
             -p no:faulthandler \
             -v --tb=short \
             --junitxml=/tmp/junit-integration.xml \
@@ -109,20 +107,11 @@ jobs:
         timeout-minutes: 75
         run: |
           set -euo pipefail
-          # Slim slow file list: schema invariants, hypothesis fuzz, BO
+          # Slow-tier file list: schema invariants, hypothesis fuzz, BO
           # convergence, inference subprocess pipeline, helper self tests,
-          # and the all-dummy multi-iter run. Excluded until their
-          # runtime fits the 75 min slow-tier budget on the standard
-          # GitHub runner:
-          #   - test_integration_aragog_agni_multi_timestep hit the
-          #     per-test 60 min timeout on macos-latest in nightly
-          #     25972492916.
-          #   - test_integration_aragog_janus::test_aragog_janus_run
-          #     ran 30 min then asserted out before completion.
-          #   - Zalmoxis-heavy files (test_smoke_zalmoxis_spider,
-          #     test_regression_aw_zalmoxis,
-          #     test_regression_structure_update) hang in the
-          #     structure solver.
+          # and the all-dummy multi-iter run. Cross-module pair tests and
+          # full-physics end-to-end tests land here as Phase 2 / Phase 3
+          # of the cross-module integration test plan.
           pytest -m "slow and not unit and not smoke and not integration" \
             tests/config/test_config_schema_invariants.py \
             tests/integration/test_smoke_hypothesis.py \
@@ -375,8 +364,6 @@ jobs:
         run: |
           pytest tests/integration \
             -m "integration and not slow" \
-            --ignore=tests/integration/test_integration_dummy_agni.py \
-            --ignore=tests/integration/test_albedo_lookup.py \
             -p no:faulthandler \
             --junitxml=/tmp/junit-integration.xml \
             -v --tb=short 2>&1 | tee /tmp/integration-output-macos.txt || true

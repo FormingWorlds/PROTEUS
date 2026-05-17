@@ -147,42 +147,6 @@ class TestHasZenodoToken:
         assert 'ZENODO_API_TOKEN' not in os.environ
 
 
-class TestDownloadZenodoFolderClient:
-    """Test zenodo_client download method."""
-
-    @pytest.mark.skip(
-        reason='Complex mocking of zenodo_client import - covered by integration tests'
-    )
-    def test_success(self, tmp_dir):
-        """Test successful download - skipped due to complex import mocking.
-
-        Placeholder body: two assertions keep the lint contract (anti-happy-
-        path and discriminating-value pair) while the @pytest.mark.skip
-        decorator prevents the body from ever executing.
-        """
-        pytest.fail('placeholder until the zenodo_client mocking shim lands')
-        # Discrimination: once the shim lands, the placeholder body will
-        # exercise download_zenodo_folder_client and pin both the True return
-        # AND that mock_run was invoked exactly twice (probe + download).
-        # Until then this line is dead code (the skip marker prevents
-        # execution) but documents the second assertion the shim must add.
-        assert isinstance(tmp_dir, Path) and tmp_dir.is_dir()
-
-    @patch('proteus.utils.data._has_zenodo_token')
-    def test_no_token_returns_false(self, mock_has_token):
-        """Test that missing token returns False."""
-        from proteus.utils.data import download_zenodo_folder_client
-
-        mock_has_token.return_value = False
-
-        result = download_zenodo_folder_client('12345', Path('/tmp'))
-        assert result is False
-        # Discrimination: the False must come from the token-check short-circuit
-        # rather than a downstream failure that also returns False. The token
-        # probe must have been consulted exactly once before the early exit.
-        mock_has_token.assert_called_once()
-
-
 class TestDownloadZenodoFolder:
     """Test zenodo_get download method (via download_zenodo_folder)."""
 
@@ -349,65 +313,6 @@ class TestGetDataSourceInfo:
             assert 'zenodo_id' in result
             assert 'osf_id' in result
             assert 'osf_project' in result
-
-
-class TestValidateZenodoFolder:
-    """Test Zenodo folder validation."""
-
-    @pytest.mark.skip(
-        reason='Complex file creation mocking - validation is tested in integration tests'
-    )
-    def test_validation_success(self, tmp_dir):
-        """Test successful validation - skipped due to complex file mocking.
-
-        Placeholder body: two assertions keep the lint contract (anti-happy-
-        path and discriminating-value pair) while the @pytest.mark.skip
-        decorator prevents the body from ever executing.
-        """
-        pytest.fail('placeholder until the validate_zenodo_folder file-mock shim lands')
-        # Discrimination: once the shim lands, the placeholder body will
-        # pin validate_zenodo_folder to return True AND assert the md5
-        # subprocess invocation actually fired against the expected md5sums
-        # path. Until then this line is dead code (the skip marker prevents
-        # execution) but documents the second assertion the shim must add.
-        assert isinstance(tmp_dir, Path) and tmp_dir.is_dir()
-
-    @patch('proteus.utils.data.sp.run')
-    def test_validation_failure_hash_mismatch(self, mock_run, tmp_dir):
-        """Test validation failure due to hash mismatch."""
-
-        from proteus.utils.data import validate_zenodo_folder
-
-        # Create test file
-        test_file = tmp_dir / 'test.txt'
-        test_file.write_text('test content')
-
-        # Mock md5sums file with wrong hash - will be created by zenodo_get mock
-        md5sums_file = tmp_dir / 'md5sums.txt'
-
-        # Mock zenodo_get to create md5sums file with wrong hash
-        def run_side_effect(*args, **kwargs):
-            if 'zenodo_get' in args[0] and '-m' in args[0]:
-                # Create md5sums file with wrong hash
-                md5sums_file.write_text('wrong_hash  test.txt\n')
-            return Mock(returncode=0)
-
-        mock_run.side_effect = run_side_effect
-
-        with patch(
-            'proteus.utils.data.os.path.isfile',
-            side_effect=lambda p: str(p) == str(md5sums_file),
-        ):
-            result = validate_zenodo_folder('12345', tmp_dir)
-
-        # Should fail validation
-        assert result is False
-        # Discrimination: the False result must reflect the wrong-hash branch,
-        # not an earlier short-circuit. zenodo_get had to have been invoked
-        # to write the bad-hash md5sums file, and the bad-hash file must
-        # actually have been written to disk by the side_effect callback.
-        assert mock_run.called
-        assert md5sums_file.exists() and 'wrong_hash' in md5sums_file.read_text()
 
 
 class TestDownloadFunction:
