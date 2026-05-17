@@ -37,7 +37,13 @@ from tests.integration.conftest import (  # noqa: E402
     validate_stability,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+# Module-level timeout raised from the 300 s integration default because
+# aragog's real-binary first-call dominates wall time and atmodeller's
+# first JAX compile adds another ~15-30 s. 192 s observed on a fast
+# local Mac Studio; 300 s exceeded on the macos-latest GHA runner.
+# 600 s gives ~1.5x headroom on macOS without crossing into the
+# slow-tier bucket.
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(600)]
 
 
 @pytest.mark.integration
