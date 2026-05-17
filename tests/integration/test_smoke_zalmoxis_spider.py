@@ -32,6 +32,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 @pytest.mark.slow
+@pytest.mark.physics_invariant
 def test_smoke_zalmoxis_spider_coupling(zalmoxis_spider_config):
     """Test Zalmoxis structure + SPIDER interior end-to-end (few timesteps).
 

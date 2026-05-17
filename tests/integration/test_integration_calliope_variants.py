@@ -28,6 +28,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_integration_calliope_reducing_atmosphere(proteus_multi_timestep_run):
     """CALLIOPE outgassing at a reduced fO2 buffer (IW-2).
 
@@ -69,6 +70,7 @@ def test_integration_calliope_reducing_atmosphere(proteus_multi_timestep_run):
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_integration_calliope_oxidising_atmosphere(proteus_multi_timestep_run):
     """CALLIOPE outgassing at an oxidising fO2 buffer (IW+4).
 

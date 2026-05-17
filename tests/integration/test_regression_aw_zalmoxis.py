@@ -65,6 +65,7 @@ def _run_proteus(config_path, tmpdir, label, struct_module):
 
 
 @pytest.mark.slow
+@pytest.mark.physics_invariant
 def test_aw_vs_zalmoxis_earth_mass(zalmoxis_spider_config):
     """Compare AW and Zalmoxis mesh pathways for 1 M_earth SPIDER run.
 

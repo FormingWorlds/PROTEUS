@@ -83,6 +83,7 @@ def test_albedo_interp(albedo_run):
 
 # Check physics
 @pytest.mark.slow
+@pytest.mark.physics_invariant
 def test_albedo_physics(albedo_run):
     """Physical sanity at two points along the trajectory: F_atm > 0
     (planet is cooling), planetary albedo stays in (0, 1) at both, and

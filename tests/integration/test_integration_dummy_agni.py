@@ -37,6 +37,7 @@ def dummy_agni_run():
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_dummy_agni_run(dummy_agni_run):
     """The AGNI + dummy interior run completes and produces a helpfile
     whose final-state physical quantities agree with the committed

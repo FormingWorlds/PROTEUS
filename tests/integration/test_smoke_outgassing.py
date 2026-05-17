@@ -26,6 +26,7 @@ RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='CALLIOPE integration smoke test reserved for nightly CI with compiled binaries',

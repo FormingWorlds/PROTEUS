@@ -38,6 +38,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 @pytest.mark.slow
+@pytest.mark.physics_invariant
 def test_structure_update_consistency(zalmoxis_spider_config):
     """Verify periodic Zalmoxis re-computation is stable and continuous.
 

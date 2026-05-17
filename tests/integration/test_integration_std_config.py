@@ -47,6 +47,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 @pytest.mark.slow
 @pytest.mark.timeout(1800)  # 30 minute timeout for this test
 def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
@@ -266,6 +267,7 @@ def test_integration_std_config_multi_timestep(proteus_multi_timestep_run):
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 @pytest.mark.slow
 @pytest.mark.timeout(3600)  # 60 minute timeout for extended run
 def test_integration_std_config_extended_run(proteus_multi_timestep_run):

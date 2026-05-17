@@ -100,6 +100,7 @@ PARAM_STRATEGY = st.tuples(
     suppress_health_check=[HealthCheck.too_slow],
 )
 @given(params=PARAM_STRATEGY)
+@pytest.mark.physics_invariant
 def test_smoke_conservation_invariants_hypothesis(params):
     """Cross-product fuzz over (a, e, Teff, M_planet) asserting the
     conservation invariants survive every realised parameter combination.
@@ -177,6 +178,7 @@ EDGE_CASES = [
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 @pytest.mark.parametrize('semimajoraxis,eccentricity,teff,m_planet_mearth', EDGE_CASES)
 def test_smoke_conservation_invariants_named_edge_cases(
     semimajoraxis, eccentricity, teff, m_planet_mearth

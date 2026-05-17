@@ -35,6 +35,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_integration_dummy_eccentric_orbit(proteus_multi_timestep_run):
     """All-dummy multi-step run with an eccentric (e=0.4) orbit.
 
@@ -76,6 +77,7 @@ def test_integration_dummy_eccentric_orbit(proteus_multi_timestep_run):
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_integration_dummy_hot_super_earth(proteus_multi_timestep_run):
     """All-dummy multi-step run with a hot super-Earth (M = 1.5 M_earth,
     T_surf_init = 3000 K) to exercise the hot-end branch of dummy outgas and
@@ -113,6 +115,7 @@ def test_integration_dummy_hot_super_earth(proteus_multi_timestep_run):
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_integration_dummy_low_mass_planet(proteus_multi_timestep_run):
     """All-dummy multi-step run with a sub-Earth (M = 0.3 M_earth) to
     exercise the low-mass branch of Noack & Lasbleis Eq. 5 (R_p scaling),
@@ -145,6 +148,7 @@ def test_integration_dummy_low_mass_planet(proteus_multi_timestep_run):
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_integration_dummy_radio_heating_disabled(proteus_multi_timestep_run):
     """All-dummy multi-step run with radiogenic heating disabled.
     Exercises the ``interior_energetics.heat_radiogenic = False`` branch of

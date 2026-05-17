@@ -42,6 +42,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 @pytest.mark.slow
+@pytest.mark.physics_invariant
 def test_integration_aragog_agni_multi_timestep(proteus_multi_timestep_run):
     """Test multi-timestep ARAGOG + AGNI interior–atmosphere coupling.
 

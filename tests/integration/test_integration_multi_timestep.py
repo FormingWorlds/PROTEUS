@@ -34,6 +34,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_integration_dummy_multi_timestep(proteus_multi_timestep_run):
     """Test multi-timestep coupling with dummy modules.
 
@@ -125,6 +126,7 @@ def test_integration_dummy_multi_timestep(proteus_multi_timestep_run):
 
 
 @pytest.mark.integration
+@pytest.mark.physics_invariant
 def test_integration_dummy_extended_run(proteus_multi_timestep_run):
     """Test extended multi-timestep run (10 timesteps).
 

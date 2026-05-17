@@ -35,6 +35,7 @@ RUN_NIGHTLY_SMOKE = os.environ.get('PROTEUS_CI_NIGHTLY', '0') == '1'
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
     """Test dummy atmosphere + dummy interior coupling (1 timestep).
 
@@ -131,6 +132,7 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='JANUS integration smoke test requires compiled SOCRATES binaries (nightly only)',
@@ -208,6 +210,7 @@ def test_smoke_janus_dummy_interior_radiation_balance():
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 @pytest.mark.skipif(
     not RUN_NIGHTLY_SMOKE,
     reason='AGNI integration smoke test requires Julia/AGNI binaries (nightly only)',

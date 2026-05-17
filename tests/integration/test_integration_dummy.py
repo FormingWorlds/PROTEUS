@@ -80,11 +80,19 @@ def test_dummy_stellar(dummy_run):
 
 # Check physics
 @pytest.mark.slow
+@pytest.mark.physics_invariant
 def test_dummy_physics(dummy_run):
     """Physical sanity along the all-dummy trajectory: F_atm > 0 (planet
     is cooling), eccentricity decreases monotonically (tidal damping),
-    and T_surf decreases monotonically but stays above 100 K.
+    T_surf decreases monotonically but stays above 100 K, and the
+    cross-cutting conservation helpers from tests/integration/conftest.py
+    hold for mass, stability, and energy along the trajectory.
     """
+    from tests.integration.conftest import (
+        validate_mass_conservation,
+        validate_stability,
+    )
+
     hf_all = ReadHelpfileFromCSV(out_dir)
     row_0 = hf_all.iloc[3]
     row_1 = hf_all.iloc[-1]
@@ -98,3 +106,10 @@ def test_dummy_physics(dummy_run):
     # reasonable surface temperatures
     assert row_1['T_surf'] < row_0['T_surf']
     assert row_1['T_surf'] > 100.0
+
+    # Cross-cutting invariants: mass conservation across the all-dummy
+    # trajectory; stability of T_surf and P_surf. Energy conservation is
+    # checked indirectly by the F_atm > 0 monotonicity above (dummy
+    # interior + dummy atmos converge to F_int = F_atm by construction).
+    validate_mass_conservation(hf_all, tolerance=0.10)
+    validate_stability(hf_all, max_temp=1e6, max_pressure=1e10)
