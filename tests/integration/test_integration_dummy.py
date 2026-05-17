@@ -95,22 +95,21 @@ def test_dummy_helpfile_schema(dummy_run):
 
     # Per-column physical invariants on the trajectory.
     for col, lo, hi in [
-        ('T_surf', 50.0, 6000.0),       # surface temperature in K
-        ('T_magma', 100.0, 6000.0),     # magma ocean temperature in K
-        ('P_surf', 0.0, 1e10),          # surface pressure in Pa
-        ('F_ins', 0.0, 1e7),            # instellation in W/m^2
-        ('R_int', 1e6, 1e8),            # interior radius in m
-        ('M_int', 1e22, 1e28),          # interior mass in kg
-        ('gravity', 0.0, 100.0),        # surface gravity in m/s^2
-        ('Phi_global', 0.0, 1.0),       # global melt fraction
-        ('semimajorax', 1e9, 1e13),     # semi-major axis in m
-        ('eccentricity', 0.0, 1.0),     # orbital eccentricity
+        ('T_surf', 50.0, 6000.0),  # surface temperature in K
+        ('T_magma', 100.0, 6000.0),  # magma ocean temperature in K
+        ('P_surf', 0.0, 1e10),  # surface pressure in Pa
+        ('F_ins', 0.0, 1e7),  # instellation in W/m^2
+        ('R_int', 1e6, 1e8),  # interior radius in m
+        ('M_int', 1e22, 1e28),  # interior mass in kg
+        ('gravity', 0.0, 100.0),  # surface gravity in m/s^2
+        ('Phi_global', 0.0, 1.0),  # global melt fraction
+        ('semimajorax', 1e9, 1e13),  # semi-major axis in m
+        ('eccentricity', 0.0, 1.0),  # orbital eccentricity
     ]:
         vals = hf[col].to_numpy()
         assert np.all(np.isfinite(vals)), f'{col}: contains NaN or Inf'
         assert (vals >= lo).all() and (vals <= hi).all(), (
-            f'{col}: out of [{lo}, {hi}], '
-            f'observed [{vals.min():.3e}, {vals.max():.3e}]'
+            f'{col}: out of [{lo}, {hi}], observed [{vals.min():.3e}, {vals.max():.3e}]'
         )
 
 

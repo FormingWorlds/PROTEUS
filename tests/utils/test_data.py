@@ -2146,7 +2146,7 @@ def test_download_Seager_EOS_no_mapping(mock_get_info):
 @pytest.mark.unit
 @pytest.mark.skip(
     reason='Complex path matching logic - exception handling verified in integration tests'
-)# Note: download_zenodo_folder_client function doesn't exist in current codebase
+)  # Note: download_zenodo_folder_client function doesn't exist in current codebase
 # These tests are skipped until the function is implemented
 
 
@@ -2194,7 +2194,7 @@ def test_validate_zenodo_folder_missing_file(mock_getfwl, mock_run, tmp_path):
 @pytest.mark.unit
 @pytest.mark.skip(
     reason='Complex file system mocking required - hash validation verified in integration tests'
-)# =============================================================================
+)  # =============================================================================
 # get_petsc / get_spider wrapper tests
 # =============================================================================
 
