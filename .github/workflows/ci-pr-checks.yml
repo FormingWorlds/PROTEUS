@@ -65,6 +65,14 @@ jobs:
       nightly-pct: ${{ steps.coverage-validation.outputs.nightly_pct }}
       est-covered-union: ${{ steps.coverage-validation.outputs.est_covered_union }}
       est-total-union: ${{ steps.coverage-validation.outputs.est_total_union }}
+      test-count: ${{ steps.parse-junit.outputs.test_count }}
+      tests-passed: ${{ steps.parse-junit.outputs.passed }}
+      tests-failed: ${{ steps.parse-junit.outputs.failed }}
+      tests-skipped: ${{ steps.parse-junit.outputs.skipped }}
+      tests-errors: ${{ steps.parse-junit.outputs.errors }}
+      wall-time-s: ${{ steps.parse-junit.outputs.wall_time_s }}
+      physics-invariant-count: ${{ steps.marker-stats.outputs.physics_invariant }}
+      reference-pinned-count: ${{ steps.marker-stats.outputs.reference_pinned }}
 
     steps:
       - name: Checkout PR code
@@ -176,9 +184,72 @@ jobs:
           fi
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
+            --junit-xml=junit-unit-linux.xml \
             $COV_ARGS \
             -p no:faulthandler \
             --durations=25 | tee pytest-unit.log
+
+      - name: Parse Linux unit junit XML
+        id: parse-junit
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          def _emit(name, value):
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+                  fh.write(f'{name}={value}\n')
+
+          path = Path('junit-unit-linux.xml')
+          if not path.is_file():
+              for name in ('test_count', 'passed', 'failed', 'skipped', 'errors', 'wall_time_s'):
+                  _emit(name, 0)
+              raise SystemExit(0)
+
+          root = ET.parse(path).getroot()
+          # Pytest emits a wrapping <testsuites> with one <testsuite>; some
+          # configurations emit just a single <testsuite>. Handle both.
+          suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
+          totals = {'tests': 0, 'failures': 0, 'errors': 0, 'skipped': 0, 'time': 0.0}
+          for s in suites:
+              for k in ('tests', 'failures', 'errors', 'skipped'):
+                  totals[k] += int(s.attrib.get(k, 0))
+              totals['time'] += float(s.attrib.get('time', 0))
+
+          passed = totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped']
+          _emit('test_count', totals['tests'])
+          _emit('passed', passed)
+          _emit('failed', totals['failures'])
+          _emit('skipped', totals['skipped'])
+          _emit('errors', totals['errors'])
+          _emit('wall_time_s', f"{totals['time']:.1f}")
+          print(f"junit summary: {totals['tests']} tests, {passed} passed, "
+                f"{totals['failures']} failed, {totals['errors']} errored, "
+                f"{totals['skipped']} skipped, wall_time={totals['time']:.1f}s")
+          PY
+
+      - name: Compute marker coverage stats
+        id: marker-stats
+        if: always()
+        run: |
+          # Count test FUNCTIONS carrying each marker (not source-file lines).
+          # Counts every '@pytest.mark.<name>' decorator across tests/.
+          PHYS=$(grep -rh '@pytest.mark.physics_invariant' tests/ --include='*.py' 2>/dev/null | wc -l | tr -d ' ')
+          REFPIN=$(grep -rh '@pytest.mark.reference_pinned' tests/ --include='*.py' 2>/dev/null | wc -l | tr -d ' ')
+          echo "physics_invariant=$PHYS" >> $GITHUB_OUTPUT
+          echo "reference_pinned=$REFPIN" >> $GITHUB_OUTPUT
+          echo "physics_invariant=$PHYS  reference_pinned=$REFPIN"
+
+      - name: Upload Linux junit XML
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: junit-unit-linux
+          path: junit-unit-linux.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Generate coverage JSON
         if: env.RUN_COVERAGE == 'true'
@@ -453,6 +524,12 @@ jobs:
     runs-on: macos-latest
     outputs:
       unit-outcome: ${{ steps.unit-tests.outcome }}
+      test-count: ${{ steps.parse-junit.outputs.test_count }}
+      tests-passed: ${{ steps.parse-junit.outputs.passed }}
+      tests-failed: ${{ steps.parse-junit.outputs.failed }}
+      tests-skipped: ${{ steps.parse-junit.outputs.skipped }}
+      tests-errors: ${{ steps.parse-junit.outputs.errors }}
+      wall-time-s: ${{ steps.parse-junit.outputs.wall_time_s }}
 
     steps:
       - name: Checkout PR code
@@ -470,15 +547,57 @@ jobs:
         run: |
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
+            --junit-xml=junit-unit-macos.xml \
             -p no:faulthandler \
             --durations=25 | tee pytest-unit-macos.log
 
-      - name: Upload macOS pytest log
-        uses: actions/upload-artifact@v6
+      - name: Parse macOS unit junit XML
+        id: parse-junit
         if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          def _emit(name, value):
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+                  fh.write(f'{name}={value}\n')
+
+          path = Path('junit-unit-macos.xml')
+          if not path.is_file():
+              for name in ('test_count', 'passed', 'failed', 'skipped', 'errors', 'wall_time_s'):
+                  _emit(name, 0)
+              raise SystemExit(0)
+
+          root = ET.parse(path).getroot()
+          suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
+          totals = {'tests': 0, 'failures': 0, 'errors': 0, 'skipped': 0, 'time': 0.0}
+          for s in suites:
+              for k in ('tests', 'failures', 'errors', 'skipped'):
+                  totals[k] += int(s.attrib.get(k, 0))
+              totals['time'] += float(s.attrib.get('time', 0))
+
+          passed = totals['tests'] - totals['failures'] - totals['errors'] - totals['skipped']
+          _emit('test_count', totals['tests'])
+          _emit('passed', passed)
+          _emit('failed', totals['failures'])
+          _emit('skipped', totals['skipped'])
+          _emit('errors', totals['errors'])
+          _emit('wall_time_s', f"{totals['time']:.1f}")
+          print(f"junit summary: {totals['tests']} tests, {passed} passed, "
+                f"{totals['failures']} failed, {totals['errors']} errored, "
+                f"{totals['skipped']} skipped, wall_time={totals['time']:.1f}s")
+          PY
+
+      - name: Upload macOS junit XML + pytest log
+        if: always()
+        uses: actions/upload-artifact@v6
         with:
           name: unit-pytest-log-macos
-          path: pytest-unit-macos.log
+          path: |
+            pytest-unit-macos.log
+            junit-unit-macos.xml
           retention-days: 7
 
       - name: Fail job if unit tests failed
@@ -591,6 +710,20 @@ jobs:
           NIGHTLY_PCT: ${{ needs.unit-tests.outputs.nightly-pct }}
           EST_COVERED_UNION: ${{ needs.unit-tests.outputs.est-covered-union }}
           EST_TOTAL_UNION: ${{ needs.unit-tests.outputs.est-total-union }}
+          LINUX_TEST_COUNT: ${{ needs.unit-tests.outputs.test-count }}
+          LINUX_PASSED: ${{ needs.unit-tests.outputs.tests-passed }}
+          LINUX_FAILED: ${{ needs.unit-tests.outputs.tests-failed }}
+          LINUX_SKIPPED: ${{ needs.unit-tests.outputs.tests-skipped }}
+          LINUX_ERRORS: ${{ needs.unit-tests.outputs.tests-errors }}
+          LINUX_WALL_S: ${{ needs.unit-tests.outputs.wall-time-s }}
+          MACOS_TEST_COUNT: ${{ needs.macos-unit-tests.outputs.test-count }}
+          MACOS_PASSED: ${{ needs.macos-unit-tests.outputs.tests-passed }}
+          MACOS_FAILED: ${{ needs.macos-unit-tests.outputs.tests-failed }}
+          MACOS_SKIPPED: ${{ needs.macos-unit-tests.outputs.tests-skipped }}
+          MACOS_ERRORS: ${{ needs.macos-unit-tests.outputs.tests-errors }}
+          MACOS_WALL_S: ${{ needs.macos-unit-tests.outputs.wall-time-s }}
+          PHYS_INV_COUNT: ${{ needs.unit-tests.outputs.physics-invariant-count }}
+          REF_PIN_COUNT: ${{ needs.unit-tests.outputs.reference-pinned-count }}
         run: |
           python3 - <<'PY'
           import os
@@ -604,6 +737,18 @@ jobs:
                   return "skipped"
               return outcome or "-"
 
+          def _int(name, default=0):
+              try:
+                  return int(os.environ.get(name, str(default)) or default)
+              except ValueError:
+                  return default
+
+          def _float(name, default=0.0):
+              try:
+                  return float(os.environ.get(name, str(default)) or default)
+              except ValueError:
+                  return default
+
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md")
           linux_unit = os.environ.get("LINUX_UNIT", "")
           linux_job_result = os.environ.get("LINUX_JOB_RESULT", "")
@@ -614,7 +759,32 @@ jobs:
           nightly_stale = os.environ.get("NIGHTLY_STALE", "false") == "true"
           nightly_missing = os.environ.get("NIGHTLY_MISSING", "false") == "true"
           cov_status = os.environ.get("COV_STATUS", "")
-          cov_drop = float(os.environ.get("COV_DROP", "0") or "0")
+          cov_drop = _float("COV_DROP")
+
+          # Per-platform test counts from junit XML.
+          linux_count = _int("LINUX_TEST_COUNT")
+          linux_passed = _int("LINUX_PASSED")
+          linux_failed = _int("LINUX_FAILED")
+          linux_skipped = _int("LINUX_SKIPPED")
+          linux_errors = _int("LINUX_ERRORS")
+          linux_wall = _float("LINUX_WALL_S")
+          macos_count = _int("MACOS_TEST_COUNT")
+          macos_passed = _int("MACOS_PASSED")
+          macos_failed = _int("MACOS_FAILED")
+          macos_skipped = _int("MACOS_SKIPPED")
+          macos_errors = _int("MACOS_ERRORS")
+          macos_wall = _float("MACOS_WALL_S")
+          phys_inv = _int("PHYS_INV_COUNT")
+          ref_pin = _int("REF_PIN_COUNT")
+
+          def _result_cell(passed, failed, skipped, errors, total):
+              if total == 0:
+                  return "-"
+              if failed or errors:
+                  return f"{passed}/{total} pass ({failed} FAIL, {errors} err, {skipped} skip)"
+              if skipped:
+                  return f"{passed}/{total} pass ({skipped} skip)"
+              return f"{passed}/{total} pass"
 
           with open(summary_path, "w") as f:
               f.write("# Fast PR Checks: Summary\n\n")
@@ -625,47 +795,75 @@ jobs:
                   f.write("Action: wait for nightly CI, or [trigger it manually](https://github.com/FormingWorlds/PROTEUS/actions/workflows/ci-nightly.yml).\n\n")
               elif nightly_missing:
                   f.write("## No Nightly Baseline\n\n")
-                  f.write("No nightly coverage artifact found. Coverage validation skipped.\n\n")
+                  f.write("No nightly coverage artifact found. Coverage validation skipped (unit test counts and marker stats still reported below).\n\n")
 
               if cov_status == "warn":
                   f.write(f"## Coverage Warning\n\n")
                   f.write(f"Coverage dropped {cov_drop:.2f}% (within 0.3% grace margin).\n\n")
 
+              # ---- Test results table with counts + wall time ----
               f.write("## Test Results\n\n")
-              f.write("| Platform | Test Type | Status |\n")
-              f.write("|----------|-----------|--------|\n")
-              f.write(f"| Linux | Unit tests | {icon(linux_unit)} |\n")
-              f.write(f"| macOS | Unit tests | {icon(macos_unit)} |\n")
-              f.write(f"| (any) | Lint (ruff) | {icon(lint)} |\n\n")
+              f.write("| Platform | Test Type | Status | Tests | Wall time |\n")
+              f.write("|----------|-----------|--------|-------|-----------|\n")
+              f.write(
+                  f"| Linux | Unit | {icon(linux_unit)} | "
+                  f"{_result_cell(linux_passed, linux_failed, linux_skipped, linux_errors, linux_count)} | "
+                  f"{linux_wall:.1f} s |\n"
+              )
+              f.write(
+                  f"| macOS | Unit | {icon(macos_unit)} | "
+                  f"{_result_cell(macos_passed, macos_failed, macos_skipped, macos_errors, macos_count)} | "
+                  f"{macos_wall:.1f} s |\n"
+              )
+              f.write(f"| (any) | Lint (ruff) | {icon(lint)} | n/a | n/a |\n\n")
 
-              unit_pct = float(os.environ.get("UNIT_PCT", "0") or "0")
+              # ---- Marker coverage stats ----
+              f.write("## Marker Coverage (whole tests/ tree)\n\n")
+              f.write("| Marker | Function count |\n")
+              f.write("|--------|---------------:|\n")
+              f.write(f"| @pytest.mark.physics_invariant | {phys_inv} |\n")
+              f.write(f"| @pytest.mark.reference_pinned | {ref_pin} |\n\n")
+              f.write("Markers measure how many test functions assert physical invariants ")
+              f.write("(conservation, positivity, monotonicity, boundedness) or pin numeric ")
+              f.write("results to a published reference / analytical limit. Higher counts ")
+              f.write("mean more regression-catching power per line covered.\n\n")
+
+              # ---- Coverage block (only meaningful when coverage instrumentation is on) ----
+              unit_pct = _float("UNIT_PCT")
               unit_covered = os.environ.get("UNIT_COVERED", "0")
               unit_total = os.environ.get("UNIT_TOTAL", "0")
-              nightly_pct = float(os.environ.get("NIGHTLY_PCT", "0") or "0")
+              nightly_pct = _float("NIGHTLY_PCT")
               est_total = os.environ.get("EST_TOTAL", "")
               est_covered_union = os.environ.get("EST_COVERED_UNION", "0")
               est_total_union = os.environ.get("EST_TOTAL_UNION", "0")
-              threshold = float(os.environ.get("THRESHOLD", "0") or "0")
-
-              f.write("## Coverage by Test Type (Linux)\n\n")
-              f.write("| Test Type | Coverage | Lines Covered |\n")
-              f.write("|-----------|----------|---------------|\n")
-              f.write(f"| Unit (this PR) | {unit_pct:.2f}% | {unit_covered} / {unit_total} |\n")
-              if nightly_pct > 0:
-                  f.write(f"| Smoke + Integration + Slow (nightly) | {nightly_pct:.2f}% | (combined) |\n")
+              threshold = _float("THRESHOLD")
               est = float(est_total or "0")
-              if est > 0:
-                  status_text = ("OK" if cov_status == "ok" else
-                                  ("WARN" if cov_status == "warn" else "FAIL"))
-                  f.write(f"| Estimated TOTAL | {est:.2f}% | {est_covered_union} / {est_total_union} |\n\n")
-                  f.write(f"Baseline (last nightly): {threshold:.2f}% | Status: {status_text}\n\n")
+
+              coverage_on = unit_pct > 0 or est > 0
+              if coverage_on:
+                  f.write("## Coverage by Test Type (Linux)\n\n")
+                  f.write("| Test Type | Coverage | Lines Covered |\n")
+                  f.write("|-----------|----------|---------------|\n")
+                  f.write(f"| Unit (this PR) | {unit_pct:.2f}% | {unit_covered} / {unit_total} |\n")
+                  if nightly_pct > 0:
+                      f.write(f"| Smoke + Integration + Slow (nightly) | {nightly_pct:.2f}% | (combined) |\n")
+                  if est > 0:
+                      status_text = ("OK" if cov_status == "ok" else
+                                      ("WARN" if cov_status == "warn" else "FAIL"))
+                      f.write(f"| Estimated TOTAL | {est:.2f}% | {est_covered_union} / {est_total_union} |\n\n")
+                      f.write(f"Baseline (last nightly): {threshold:.2f}% | Status: {status_text}\n\n")
               else:
-                  f.write("\nEstimated total unavailable (nightly data missing)\n\n")
+                  f.write("## Coverage\n\n")
+                  f.write("Coverage instrumentation is OFF for this run. ")
+                  f.write("Coverage runs only on non-draft PRs and on the nightly pipeline. ")
+                  f.write("Flip the PR out of draft to enable per-PR coverage thresholds.\n\n")
 
               f.write("### Notes\n")
-              f.write("- PR cycle runs unit tests only; smoke + integration + slow tiers run nightly.\n")
-              f.write("- Coverage thresholds enforced on Linux only (source of truth).\n")
-              f.write("- Grace period: 0.3% | Nightly staleness threshold: 48 hours.\n")
+              f.write("- PR cycle runs the **unit tier only**; smoke + integration + slow tiers run nightly.\n")
+              f.write("- Test counts above are from junit XML emitted by the same pytest run that the Status column reports.\n")
+              f.write("- Marker counts include every test function in `tests/` carrying the marker; they are independent of which tests ran in this PR.\n")
+              f.write("- Coverage instrumentation runs only on ready-for-review PRs (skipped in draft to keep PR CI under 5 min).\n")
+              f.write("- Coverage thresholds enforced on Linux only (source of truth); grace period 0.3%; nightly staleness threshold 48 hours.\n")
 
               any_test_fail = linux_unit == "failure" or macos_unit == "failure"
               linux_non_test_fail = (linux_job_result == "failure" and linux_unit != "failure")
