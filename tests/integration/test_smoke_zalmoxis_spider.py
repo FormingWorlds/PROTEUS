@@ -25,7 +25,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
@@ -33,7 +32,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 @pytest.mark.slow
-def test_smoke_zalmoxis_spider_coupling():
+def test_smoke_zalmoxis_spider_coupling(zalmoxis_spider_config):
     """Test Zalmoxis structure + SPIDER interior end-to-end (few timesteps).
 
     Physical scenario: 1 M_earth planet with Zalmoxis computing the static
@@ -51,7 +50,7 @@ def test_smoke_zalmoxis_spider_coupling():
 
     Runtime: ~30-60s
     """
-    config_path = PROTEUS_ROOT / 'input' / 'tests' / 'zalmoxis_spider.toml'
+    config_path = zalmoxis_spider_config
 
     with tempfile.TemporaryDirectory() as tmpdir:
         runner = Proteus(config_path=config_path)

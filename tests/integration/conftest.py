@@ -6,6 +6,7 @@ integration tests.
 
 **Fixtures**:
 - `proteus_multi_timestep_run`: Run PROTEUS for N timesteps with configurable parameters
+- `zalmoxis_spider_config`: Path to a materialized zalmoxis+SPIDER smoke config
 
 **Validation Helpers**:
 - `validate_energy_conservation`: Check energy balance across timesteps
@@ -43,6 +44,159 @@ from proteus import Proteus
 
 if TYPE_CHECKING:
     from pandas import DataFrame
+
+
+_ZALMOXIS_SPIDER_TOML = """\
+# Zalmoxis structure + SPIDER interior coupling smoke fixture.
+# Dummy modules for atmosphere, star, escape so the run finishes in
+# seconds while still exercising the zalmoxis mesh writer and the
+# SPIDER external-mesh entry point.
+
+config_version = "3.0"
+
+    [params.out]
+        path        = "auto"
+        plot_mod = 0
+        write_mod = 0
+        archive_mod = "none"
+
+    [params.dt]
+        minimum  = 1e2
+        maximum  = 3e7
+        initial  = 1e2
+        starspec = 1e9
+        starinst = 1e1
+        method   = "adaptive"
+
+            atol = 0.02
+            rtol = 0.10
+
+        [params.stop.time]
+            enabled = true
+            minimum = 1.0e3
+            maximum = 1.0e4
+
+        [params.stop.iters]
+            enabled = true
+            minimum = 3
+            maximum = 20
+
+        [params.stop.solid]
+            enabled = false
+
+        [params.stop.radeqm]
+            enabled = false
+
+        [params.stop.escape]
+            enabled = false
+
+[star]
+    mass    = 1.0
+    age_ini = 0.100
+    module  = "dummy"
+    [star.dummy]
+        radius = 1.0
+        Teff   = 5772.0
+
+[orbit]
+    semimajoraxis = 1.0
+    eccentricity  = 0.0
+    zenith_angle  = 48.19
+    s0_factor     = 0.375
+    module        = "none"
+
+
+[planet]
+    mass_tot = 1.0
+    volatile_mode = "elements"
+
+[interior_struct]
+    core_frac     = 0.55
+    core_density = 10738.33
+    core_heatcap = 880.0
+    module       = "zalmoxis"
+
+    [interior_struct.zalmoxis]
+        core_eos                   = "PALEOS:iron"
+        mantle_eos                 = "PALEOS:MgSiO3"
+        ice_layer_eos = "none"
+        mantle_mass_fraction       = 0
+
+[atmos_clim]
+    surf_state = "fixed"
+    albedo_pl  = 0.1
+    module     = "dummy"
+    rayleigh   = false
+
+    [atmos_clim.dummy]
+        gamma = 0.7
+
+[escape]
+    module    = "dummy"
+    reservoir = "outgas"
+    [escape.dummy]
+        rate = 1.0
+
+[interior_energetics]
+    module          = "spider"
+    heat_radiogenic = false
+    heat_tidal      = false
+    grain_size      = 0.1
+    flux_guess       = 1000.0
+    rfront_loc    = 0.5
+    rfront_wid    = 0.2
+
+    [interior_energetics.spider]
+        tolerance_rel = 1e-8
+        solver_type   = "bdf"
+
+[outgas]
+    fO2_shift_IW = 2
+    module       = "calliope"
+
+    [outgas.calliope]
+        include_NH3 = false
+
+[accretion]
+    module  = "none"
+
+    [planet.elements]
+        O_mode          = "ic_chemistry"
+        H_mode          = "ppmw"
+        H_budget        = 3e3
+        C_mode          = "C/H"
+        C_budget        = 1.0
+        N_mode          = "ppmw"
+        N_budget        = 0.0
+        S_mode          = "S/H"
+        S_budget        = 1.0
+
+[observe]
+    synthesis = "none"
+
+[atmos_chem]
+    module = "none"
+"""
+
+
+@pytest.fixture(scope='session')
+def zalmoxis_spider_config(tmp_path_factory) -> Path:
+    """
+    Path to a materialized zalmoxis+SPIDER smoke configuration.
+
+    Returns the path to a TOML file written into a session-scoped
+    pytest temp directory. The contents pin a 1 M_earth dummy-atmosphere
+    run with the zalmoxis structure solver writing the SPIDER mesh and
+    SPIDER evolving the interior on it; runtime is seconds.
+
+    Tests should treat the returned ``Path`` as read-only. Each Proteus
+    instance loads the TOML into its own config object, so per-test
+    config overrides do not leak between tests sharing the fixture.
+    """
+    cfg_dir = tmp_path_factory.mktemp('zalmoxis_spider_cfg')
+    cfg_path = cfg_dir / 'zalmoxis_spider.toml'
+    cfg_path.write_text(_ZALMOXIS_SPIDER_TOML, encoding='utf-8')
+    return cfg_path
 
 
 @pytest.fixture

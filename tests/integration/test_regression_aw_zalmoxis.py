@@ -24,7 +24,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
@@ -66,7 +65,7 @@ def _run_proteus(config_path, tmpdir, label, struct_module):
 
 
 @pytest.mark.slow
-def test_aw_vs_zalmoxis_earth_mass():
+def test_aw_vs_zalmoxis_earth_mass(zalmoxis_spider_config):
     """Compare AW and Zalmoxis mesh pathways for 1 M_earth SPIDER run.
 
     Both runs use the same initial entropy, atmosphere, and volatile
@@ -79,7 +78,7 @@ def test_aw_vs_zalmoxis_earth_mass():
 
     Runtime: ~60-90s
     """
-    config_path = PROTEUS_ROOT / 'input' / 'tests' / 'zalmoxis_spider.toml'
+    config_path = zalmoxis_spider_config
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Run both pathways

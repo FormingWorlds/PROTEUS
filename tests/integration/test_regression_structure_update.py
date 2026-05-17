@@ -30,7 +30,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 from proteus.utils.constants import M_earth
@@ -39,7 +38,7 @@ pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 @pytest.mark.slow
-def test_structure_update_consistency():
+def test_structure_update_consistency(zalmoxis_spider_config):
     """Verify periodic Zalmoxis re-computation is stable and continuous.
 
     Runs a Zalmoxis+SPIDER simulation with update_interval=100 yr so the
@@ -49,7 +48,7 @@ def test_structure_update_consistency():
 
     Runtime: ~5 min
     """
-    config_path = PROTEUS_ROOT / 'input' / 'tests' / 'zalmoxis_spider.toml'
+    config_path = zalmoxis_spider_config
 
     with tempfile.TemporaryDirectory() as tmpdir:
         runner = Proteus(config_path=config_path)

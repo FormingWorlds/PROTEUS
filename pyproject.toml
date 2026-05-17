@@ -259,7 +259,7 @@ fail_under = 44.45
 [tool.ruff]
 line-length = 96
 target-version = "py312"
-extend-exclude = ["*ipynb", "tests/validation"]
+extend-exclude = ["*ipynb"]
 
 [tool.ruff.lint]
 select = [

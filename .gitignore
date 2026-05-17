@@ -86,17 +86,24 @@ __pycache__
 nogit*
 data/
 
-# Experimental CHILI configs (dev-session debris, never tracked)
+# Local CHILI configs and dev-session debris (never tracked)
 input/chili/chili_aragog_*.toml
+input/chili/chili_paleos_*.toml
 input/chili/energy_*.toml
+input/chili/evolution-proteus-earth-config.toml
 input/chili/exp*.toml
 input/chili/nightly_*.toml
-input/chili/smoke_*_jax.toml
+input/chili/paper_eos_compare_*.toml
+input/chili/smoke_*.toml
 input/chili/stage_*.toml
-input/chili/verify_dil*.toml
+input/chili/verify_*.toml
 
-# Local dev-session launch scripts (never tracked)
-scripts/*.sh
+# Local integration fixtures materialised at test time (never tracked)
+input/tests/zalmoxis_spider.toml
+
+# Local dev-session scripts and parity workbench (never tracked)
+scripts/
+tests/validation/
 tools/*.csv
 tools/grid_proteus_SNS*
 
