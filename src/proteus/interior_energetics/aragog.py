@@ -4,6 +4,8 @@ from __future__ import annotations  # noqa: I001
 import glob
 import logging
 import os
+import platform
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -60,6 +62,58 @@ _RHO_CORE_MAX = 30000.0
 def _is_plausible_core_density(rho_core: float) -> bool:
     """Return True iff ``rho_core`` falls inside the physical-bounds bracket."""
     return _RHO_CORE_MIN <= float(rho_core) <= _RHO_CORE_MAX
+
+
+_DIAG_ENV_LOGGED = False
+
+
+def _maybe_log_solver_environment(config: Config) -> None:
+    """One-shot diagnostic log of the host + JAX + solver configuration.
+
+    Active only when ``PROTEUS_CI_NIGHTLY=1``. Captures the data needed
+    to attribute aragog wall-time differences across runners: machine,
+    CPU count, JAX backend and version, aragog backend choice, ODE
+    method, and tolerance settings. Logged once per process.
+    """
+    global _DIAG_ENV_LOGGED
+    if _DIAG_ENV_LOGGED:
+        return
+    if os.environ.get('PROTEUS_CI_NIGHTLY') != '1':
+        return
+    _DIAG_ENV_LOGGED = True
+    try:
+        jax_backend = jax_devices = jax_version = '<jax-unavailable>'
+        try:
+            import jax
+
+            jax_backend = jax.default_backend()
+            jax_devices = repr(jax.devices())
+            jax_version = jax.__version__
+        except Exception as exc:
+            jax_version = f'<import-failed: {exc}>'
+
+        cfg = config.interior_energetics.aragog
+        logger.info(
+            'aragog diag: machine=%s system=%s cpu=%s | jax=%s backend=%s devices=%s '
+            'JAX_PLATFORMS=%s XLA_FLAGS=%s | aragog.backend=%s ode_method=%s '
+            'atol_T=%s rtol=%s surface_bc=%s core_bc=%s',
+            platform.machine(),
+            platform.system(),
+            os.cpu_count(),
+            jax_version,
+            jax_backend,
+            jax_devices,
+            os.environ.get('JAX_PLATFORMS', '<unset>'),
+            os.environ.get('XLA_FLAGS', '<unset>'),
+            cfg.backend,
+            getattr(cfg, 'ode_method', '<unset>'),
+            cfg.atol_temperature_equivalent,
+            config.interior_energetics.rtol,
+            config.interior_energetics.surface_bc_mode,
+            cfg.core_bc,
+        )
+    except Exception as exc:
+        logger.warning('aragog diag env log failed: %s', exc)
 
 
 def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
@@ -233,13 +287,26 @@ class AragogRunner:
         config: Config, hf_row: dict, interior_o: Interior_t, dt: float, dirs: dict
     ):
         if interior_o.aragog_solver is None:
+            _maybe_log_solver_environment(config)
+            _t_setup = time.perf_counter()
             AragogRunner.setup_solver(config, hf_row, interior_o, dirs['output'])
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o, output_dir=dirs['output'])
+            _t_init = time.perf_counter()
             interior_o.aragog_solver.initialize()
+            _t_after_init = time.perf_counter()
             # Option Z: register the JAX CVODE callback factory when
             # the flag is on. No-op when the flag is off.
             AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
+            _t_after_factory = time.perf_counter()
+            if os.environ.get('PROTEUS_CI_NIGHTLY') == '1':
+                logger.info(
+                    'aragog diag: first-call phases setup=%.2fs initialize=%.2fs '
+                    'jax_cvode_factory=%.2fs',
+                    _t_init - _t_setup,
+                    _t_after_init - _t_init,
+                    _t_after_factory - _t_after_init,
+                )
             # Set entropy IC from Zalmoxis T(r) profile via PALEOS inversion
             AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
             # Verify and correct IC if table resolution causes > 1% T mismatch
@@ -1648,10 +1715,23 @@ class AragogRunner:
         solver._atol_sf = 1.0
 
         out = None
+        _diag_on = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
         try:
             for attempt in range(1, max_attempts + 1):
+                _t0 = time.perf_counter()
                 solver.solve()
+                _solve_wall = time.perf_counter() - _t0
                 out = solver.get_state()
+                if _diag_on:
+                    logger.info(
+                        'aragog diag: solve() attempt=%d dt=%.3e yr wall=%.2fs '
+                        'status=%d t=%.3e yr',
+                        attempt,
+                        float(solver.parameters.solver.end_time) - t_start,
+                        _solve_wall,
+                        int(out.status),
+                        float(hf_row.get('Time', 0.0)),
+                    )
 
                 # Status check: did CVODE accept the step?
                 if out.status == 0:

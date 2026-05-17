@@ -101,6 +101,13 @@ def test_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
         max_time=1e3,
         min_time=1e2,
         interior_energetics__module='aragog',
+        # Discriminator for the Linux GHA wall-time investigation: pin
+        # the numpy backend so the test exercises scipy-CVode with the
+        # numpy RHS, not the option-Z JAX RHS + Jacobian. Production
+        # CHILI configs already run with backend='numpy' (input/chili/
+        # nightly_np_dilOn_utblOn.toml, stage_4_4_a2_wet_1me_atmod.toml),
+        # so this stays inside the validated path.
+        interior_energetics__aragog__backend='numpy',
         # Legacy fallback EOS path is reached when eos_dir=None +
         # interior_struct=dummy (the aragog.py:642 else-branch).
         interior_struct__melting_dir='Monteux-600',
