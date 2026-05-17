@@ -640,21 +640,30 @@ class AragogRunner:
                     / 'MgSiO3_Wolf_Bower_2018_1TPa'
                 )
         else:
-            LOOK_UP_DIR = (
+            # Legacy shipped tables; used when interior_struct.eos_dir is
+            # None (no dynamic EOS selected) or when the dynamic path
+            # does not resolve to a populated directory. The "EOS/dynamic"
+            # tree is only materialised when zalmoxis pre-generates
+            # PALEOS tables; outside that pathway it is empty.
+            legacy_lookup = (
                 FWL_DATA_DIR
                 / 'interior_lookup_tables'
-                / 'EOS'
-                / 'dynamic'
-                / config.interior_struct.eos_dir
-                / 'P-T'
+                / '1TPa-dK09-elec-free'
+                / 'MgSiO3_Wolf_Bower_2018_1TPa'
             )
-            if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+            if config.interior_struct.eos_dir is None:
+                LOOK_UP_DIR = legacy_lookup
+            else:
                 LOOK_UP_DIR = (
                     FWL_DATA_DIR
                     / 'interior_lookup_tables'
-                    / '1TPa-dK09-elec-free'
-                    / 'MgSiO3_Wolf_Bower_2018_1TPa'
+                    / 'EOS'
+                    / 'dynamic'
+                    / config.interior_struct.eos_dir
+                    / 'P-T'
                 )
+                if not (LOOK_UP_DIR / 'heat_capacity_melt.dat').is_file():
+                    LOOK_UP_DIR = legacy_lookup
         # Determine melting curves. When using PALEOS EOS via Zalmoxis,
         # generate PALEOS-derived melting curves so Aragog uses the SAME
         # solidus/liquidus as SPIDER (PALEOS-liquidus * mushy_zone_factor).
