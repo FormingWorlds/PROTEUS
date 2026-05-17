@@ -1,12 +1,6 @@
 name: Code style
 
 on:
-  push:
-    branches:
-      - main
-      - 'tl/**'  # Tim's long-running feature branches (often draft PRs;
-                # draft PRs do not fire pull_request:synchronize by
-                # default, so an explicit push trigger keeps CI live).
   pull_request:
     branches:
       - main
@@ -17,11 +11,8 @@ on:
       - ready_for_review
   workflow_dispatch:
 
-# Deduplicate runs along two axes: same commit two events (push +
-# pull_request:synchronize on the same SHA) and older-commit
-# superseded by a newer push to the same branch. Keying on the branch
-# name (head_ref for PR events, ref_name for push events) groups all
-# events on the same branch under one concurrency cell.
+# Deduplicate runs when a newer commit on the same PR branch
+# supersedes an older one. Keys on head_ref (the PR's source branch).
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true

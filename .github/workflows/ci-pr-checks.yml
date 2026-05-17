@@ -26,15 +26,10 @@ on:
       - reopened
       - synchronize
       - ready_for_review
-  push:
-    branches:
-      - main
-      - 'tl/**'
   workflow_dispatch:
 
-# Deduplicate runs along two axes:
-#   1. Same commit, two events (push + pull_request:synchronize on the same SHA).
-#   2. Older commits superseded by a newer push to the same branch.
+# Deduplicate runs when a newer commit on the same PR branch
+# supersedes an older one. Keys on head_ref (the PR's source branch).
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
