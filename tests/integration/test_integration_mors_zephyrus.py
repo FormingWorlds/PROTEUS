@@ -46,12 +46,22 @@ def _ensure_mors_data_or_skip() -> None:
     only pre-fetches data when aragog or agni is the active module,
     so mors data needs its own primer here). Skip only when the
     download itself fails, which is the offline-without-cache case.
+
+    Checks both case variants of the directory name because the MORS
+    downloader inconsistently lands data at ``Spada`` or ``spada``
+    depending on the OS and the path through DownloadEvolutionTracks
+    vs the OSF fallback.
     """
     fwl = os.environ.get('FWL_DATA')
     if not fwl:
         pytest.skip('FWL_DATA env var not set; mors track data unavailable')
-    spada = Path(fwl) / 'stellar_evolution_tracks' / 'spada'
-    if spada.is_dir():
+    parent = Path(fwl) / 'stellar_evolution_tracks'
+    candidates = (parent / 'spada', parent / 'Spada')
+
+    def _present() -> bool:
+        return any(c.is_dir() and any(c.iterdir()) for c in candidates)
+
+    if _present():
         return
     try:
         from proteus.utils.data import download_stellar_tracks
@@ -59,8 +69,11 @@ def _ensure_mors_data_or_skip() -> None:
         download_stellar_tracks('Spada')
     except (OSError, RuntimeError, Exception) as exc:  # noqa: BLE001
         pytest.skip(f'could not fetch mors spada tracks: {exc}')
-    if not spada.is_dir():
-        pytest.skip(f'mors spada tracks still missing after download attempt at {spada}')
+    if not _present():
+        pytest.skip(
+            'mors spada tracks still missing after download attempt at '
+            f'{parent} (checked spada/ and Spada/)'
+        )
 
 
 @pytest.mark.integration
