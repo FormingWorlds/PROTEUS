@@ -57,6 +57,11 @@ dependencies = [
     "fwl-aragog>=26.05.13",
     "fwl-zalmoxis>=26.05.13",
     "fwl-vulcan>=26.04.22",
+    # atmodeller is the JAX-based alternative outgas backend to CALLIOPE
+    # (Bower+2025, ApJ 995:59). Selected via outgas.module = "atmodeller".
+    # Pulls JAX and equinox transitively; CALLIOPE PR #20 wires up the
+    # authoritative-O entry point that lets the two backends share a closure.
+    "atmodeller>=1.0.0",
     "boreas@git+https://github.com/ExoInteriors/BOREAS@0174edb",
     "cmcrameri",
     "juliacall",
