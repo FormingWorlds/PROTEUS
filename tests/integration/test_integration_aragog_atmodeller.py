@@ -70,9 +70,7 @@ class _AragogAtmodellerScenario:
 _SCENARIOS = (
     _AragogAtmodellerScenario(name='earth_IWp2', fO2_shift_IW=2.0, H_budget=3.0e3),
     _AragogAtmodellerScenario(name='reducing_IWm2', fO2_shift_IW=-2.0, H_budget=3.0e3),
-    _AragogAtmodellerScenario(
-        name='oxidising_IWp4_high_H', fO2_shift_IW=4.0, H_budget=1.0e4
-    ),
+    _AragogAtmodellerScenario(name='oxidising_IWp4_high_H', fO2_shift_IW=4.0, H_budget=1.0e4),
 )
 
 
