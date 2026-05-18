@@ -55,10 +55,13 @@ runs:
             libnetcdff-dev \
             netcdf-bin \
             libssl-dev \
+            libsundials-dev \
             curl
         elif [[ "$RUNNER_OS" == "macOS" ]]; then
           # gcc bundles gfortran on macOS. netcdf-fortran provides nf-config.
-          brew install --quiet gcc netcdf netcdf-fortran openssl@3
+          # sundials backs the scikits-odes CVODE path used by the aragog
+          # production solver.
+          brew install --quiet gcc netcdf netcdf-fortran openssl@3 sundials
           # Homebrew installs gfortran as a versioned binary (gfortran-15);
           # the plain `gfortran` symlink is not always present when gcc was
           # pre-installed on the runner image. Create one so SOCRATES's
@@ -227,6 +230,26 @@ runs:
         set -euo pipefail
         python -m pip install --upgrade pip
         pip install -e ".[develop]"
+
+    # ------------------------------------------------------------------
+    # 8b. scikits-odes-sundials (production CVODE backend for aragog)
+    # ------------------------------------------------------------------
+    # The PyPI dist of fwl-aragog does not declare scikits-odes-sundials
+    # as a runtime dep, so it must be installed explicitly. Without it,
+    # aragog's EntropySolver silently falls back from CVODE to scipy
+    # Radau and the JAX analytic-Jacobian factory installed by the
+    # PROTEUS aragog wrapper is never consumed. The slow-tier aragog
+    # tests assert the factory call count and now fail loud if this
+    # install is missing or broken.
+    - name: Install scikits-odes-sundials
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "$RUNNER_OS" == "macOS" ]]; then
+          export SUNDIALS_INST="$(brew --prefix sundials)"
+        fi
+        pip install "scikits-odes-sundials>=3.0.0"
+        python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
 
     # ------------------------------------------------------------------
     # 9. FWL_DATA cache + smoke / full data download
