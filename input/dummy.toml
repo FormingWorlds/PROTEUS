@@ -1,0 +1,81 @@
+# PROTEUS: all-dummy configuration
+# Every module set to "dummy" for fast test runs without external solvers
+# (no AGNI, SPIDER, VULCAN, MORS, Zalmoxis, CALLIOPE, or SOCRATES needed).
+# Use this for wiring tests, CI, and rapid development iteration.
+# Config file format version
+config_version = "3.0"
+
+    [params.out]
+        path = "auto"
+
+    [params.dt]
+        initial  = 1e2           # initial step [yr]
+        minimum  = 1e2           # min step [yr]
+        maximum  = 3e7           # max step [yr]
+
+        [params.stop.time]
+            maximum = 1e9        # stop time [yr]
+        [params.stop.solid]
+            enabled = false
+        [params.stop.radeqm]
+            enabled = false
+
+# Star: fixed solar luminosity (no evolution)
+[star]
+    module = "dummy"
+    [star.dummy]
+        radius = 1.0                 # [R_sun]
+
+# Orbit: 0.5 AU with weak tidal heating
+[orbit]
+    module        = "dummy"
+    semimajoraxis = 0.5          # [AU]
+    eccentricity  = 0.1
+    [orbit.dummy]
+        H_tide = 1e-9            # tidal power density [W/kg]
+        Imk2   = -0.01           # Im(k2) love number
+
+# Planet: 1 Earth mass, 3000 ppmw H
+[planet]
+    mass_tot      = 1.0              # [M_earth]
+    volatile_mode = "elements"
+    [planet.elements]
+        O_mode   = "ic_chemistry"  # Issue #677: use CALLIOPE IC equilibrium to derive O budget
+        O_budget = 0.0           # ignored for ic_chemistry mode
+        H_mode   = "ppmw"
+        H_budget = 3e3
+        N_budget = 0.0
+
+# Interior structure: scaling laws (no external solver)
+[interior_struct]
+    module         = "dummy"
+    core_frac      = 0.55        # radius fraction
+    core_frac_mode = "radius"
+
+# Interior energetics: parameterized cooling
+[interior_energetics]
+    module = "dummy"
+
+# Outgassing: parameterized partitioning (no thermodynamic solver)
+[outgas]
+    fO2_shift_IW = 2
+    module       = "dummy"
+
+# Atmosphere: grey opacity model
+[atmos_clim]
+    module     = "dummy"
+    surf_state = "fixed"
+    rayleigh   = false
+    albedo_pl  = 0.1
+    [atmos_clim.dummy]
+        gamma = 0.7              # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
+
+# Escape: fixed bulk rate
+[escape]
+    module = "dummy"
+    [escape.dummy]
+        rate = 1e6               # bulk escape rate [kg/s]
+
+[atmos_chem]
+    module = "dummy"
+    when   = "offline"

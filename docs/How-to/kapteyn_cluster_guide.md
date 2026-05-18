@@ -158,7 +158,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     getenv = True
     universe = vanilla
     executable = /dataserver/users/formingworlds/${USER}/miniconda3/bin/conda
-    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/demos/escape.toml
+    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/dummy.toml
     log = condor_outputs/log/logfile.$(PROCESS)
     output = condor_outputs/output/outfile.$(PROCESS)
     error = condor_outputs/output/errfile.$(PROCESS)
@@ -230,7 +230,7 @@ To resolve this issue:
 3. Delete the `socrates/` directory using `rm -r socrates/`
 4. Run the `./tools/get_socrates.sh` command to download SOCRATES again, ensuring this is done OUTSIDE of any conda environment.
 5. Execute the `cat socrates/set_rad_env` command to verify that SOCRATES is pointing to the correct NetCDF version (i.e. the NetCDF version installed on the Kapteyn cluster system).
-6. Finally, run a PROTEUS simulation using the `default.toml` configuration file to confirm it is working correctly.
+6. Finally, run a PROTEUS simulation using the `dummy.toml` configuration file to confirm it is working correctly.
 
 ### Error reporting
 

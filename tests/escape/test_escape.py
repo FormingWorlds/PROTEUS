@@ -29,6 +29,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 # =======================================================================================
 # SECTION: run_escape() — Generic escape orchestrator
 # =======================================================================================
@@ -55,6 +58,14 @@ def test_run_escape_disabled():
 
     # Verify escape rate is zero
     assert hf_row['esc_rate_total'] == pytest.approx(0.0, abs=1e-12)
+    # Early-return discriminator: the disabled branch zeroes per-element
+    # escape rates and returns before the M_vol_initial / esc_kg_cumulative
+    # baseline is seeded. A regression that fell through to the dummy
+    # branch would (a) leave esc_rate_H at the unfractionated partition
+    # and (b) seed M_vol_initial from element_list. Both keys absent here
+    # rules that out.
+    assert hf_row['esc_rate_H'] == pytest.approx(0.0, abs=1e-12)
+    assert 'M_vol_initial' not in hf_row
 
 
 @pytest.mark.unit
@@ -191,6 +202,158 @@ def test_run_escape_invalid_module():
     with pytest.raises(ValueError, match='Invalid escape model'):
         run_escape(config, hf_row, dt=1000.0, stellar_track=None)
 
+    # Side-effect discriminator: the dispatch raises in the else branch
+    # BEFORE the final `esc_rate_total` log line. A regression that
+    # silently fell through (e.g. defaulted to dummy) would set
+    # esc_rate_total on hf_row. With the raise intact, the key is never
+    # written.
+    assert 'esc_rate_total' not in hf_row
+
+
+@pytest.mark.unit
+def test_run_escape_snapshots_baseline_on_first_call():
+    """Test that the first run_escape call snapshots the bulk volatile
+    inventory into M_vol_initial. This baseline is used by
+    `outgas.wrapper.check_desiccation` to detect unexplained mass loss
+    cascades (CHILI sweep R7/R21).
+
+    Physical scenario: Earth-like planet with mixed H/C/N/S/O inventory.
+    Issue #677 fix: O is now included in the baseline alongside H/C/N/S
+    so the desiccation gate's (M_vol_initial - cur_m_ele) versus
+    1.5*esc_kg_cumulative arithmetic stays consistent now that escape
+    proportionally debits O via the new calc_new_elements.
+
+    Validates that M_vol_initial = sum(*_kg_total) over ALL elements,
+    and that esc_kg_cumulative is initialised to zero alongside the
+    baseline. O is set to ~14x the H+C inventory here to make the
+    O-inclusion observable: if O were silently dropped from the
+    baseline the expected value would be off by O(1).
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.dummy.rate = 1e3  # kg/s
+    config.escape.reservoir = 'bulk'
+    config.outgas.mass_thresh = 1e10
+
+    hf_row = {
+        'H_kg_total': 4.7e20,
+        'C_kg_total': 2.7e20,
+        'N_kg_total': 0.0,
+        'S_kg_total': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_total': 0.0,
+        'O_kg_total': 1e22,  # included in baseline since issue #677 fix
+    }
+
+    run_escape(config, hf_row, dt=1000.0, stellar_track=None)
+
+    expected_baseline = 4.7e20 + 2.7e20 + 1e22  # H + C + O (others zero)
+    assert 'M_vol_initial' in hf_row
+    assert hf_row['M_vol_initial'] == pytest.approx(expected_baseline, rel=1e-10), (
+        'M_vol_initial must equal sum of *_kg_total over ALL elements '
+        '(issue #677 fix: O is no longer excluded)'
+    )
+    assert 'esc_kg_cumulative' in hf_row
+    # Cumulative escape after one step at 1e3 kg/s for 1000 yr:
+    # 1e3 * 1000 * secs_per_year ≈ 3.156e13 kg
+    assert hf_row['esc_kg_cumulative'] > 0.0
+    assert hf_row['esc_kg_cumulative'] < 1e15
+
+
+@pytest.mark.unit
+def test_run_escape_baseline_persists_across_calls():
+    """Test that subsequent run_escape calls do NOT overwrite M_vol_initial.
+
+    Physical scenario: Multi-iteration evolution. The baseline must remain
+    the FIRST snapshot, not get re-snapshotted on every iteration (which
+    would defeat the desiccation gate).
+
+    Discriminating: snapshot baseline = 1e21 kg. After escape removes
+    ~3e16 kg, the second call must NOT reset M_vol_initial to 1e21 - 3e16.
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.dummy.rate = 1e9  # very high rate to make change visible
+    config.escape.reservoir = 'bulk'
+    config.outgas.mass_thresh = 1e10
+
+    hf_row = {
+        'H_kg_total': 1e21,
+        'C_kg_total': 0.0,
+        'N_kg_total': 0.0,
+        'S_kg_total': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_total': 0.0,
+    }
+
+    # Iteration 1
+    run_escape(config, hf_row, dt=1000.0, stellar_track=None)
+    baseline_iter1 = hf_row['M_vol_initial']
+    assert baseline_iter1 == pytest.approx(1e21, rel=1e-10)
+    cum_iter1 = hf_row['esc_kg_cumulative']
+
+    # Iteration 2 — H_kg_total has shrunk, but baseline must be unchanged
+    run_escape(config, hf_row, dt=1000.0, stellar_track=None)
+    assert hf_row['M_vol_initial'] == pytest.approx(baseline_iter1, rel=1e-12), (
+        'M_vol_initial must NOT be overwritten by subsequent escape calls'
+    )
+    # Cumulative escape must monotonically increase (not reset)
+    assert hf_row['esc_kg_cumulative'] > cum_iter1, (
+        'esc_kg_cumulative must accumulate, not reset, on subsequent calls'
+    )
+
+
+@pytest.mark.unit
+def test_run_escape_resets_baseline_if_corrupt():
+    """Test that a NaN or non-positive M_vol_initial gets re-snapshotted.
+
+    Physical scenario: Resume from an old CSV that has the column but with
+    NaN values, or a transient corruption. The gate must self-heal rather
+    than carry forward bogus data forever.
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.dummy.rate = 1e3
+    config.escape.reservoir = 'bulk'
+    config.outgas.mass_thresh = 1e10
+
+    hf_row = {
+        'H_kg_total': 5e20,
+        'C_kg_total': 0.0,
+        'N_kg_total': 0.0,
+        'S_kg_total': 0.0,
+        'Si_kg_total': 0.0,
+        'Mg_kg_total': 0.0,
+        'Fe_kg_total': 0.0,
+        'Na_kg_total': 0.0,
+        'M_vol_initial': float('nan'),  # corrupt baseline
+    }
+
+    run_escape(config, hf_row, dt=1.0, stellar_track=None)
+
+    assert hf_row['M_vol_initial'] == pytest.approx(5e20, rel=1e-10), (
+        'NaN baseline must be re-snapshotted from current inventory'
+    )
+    # Finiteness discriminator: a regression that propagated NaN through
+    # arithmetic (writing `0.0 * nan` or `nan + something`) instead of
+    # detecting and replacing the corrupt baseline would leave a NaN
+    # in M_vol_initial. The pytest.approx pin above already discriminates
+    # 5e20 from a propagated NaN, but the explicit finiteness check
+    # makes the failure mode loud.
+    import math
+
+    assert math.isfinite(hf_row['M_vol_initial'])
+
 
 # =======================================================================================
 # SECTION: run_zephyrus() — Energy-limited escape
@@ -293,14 +456,23 @@ def test_calc_new_elements_bulk_reservoir():
     """Test elemental inventory update using bulk reservoir.
 
     Physical scenario: Unfractionated escape from entire planet (bulk).
-    Validates that elemental mass ratios are preserved during escape.
+    Issue #677 fix: O is now included in the partitioning and
+    debited proportionally with the other elements. Validates that:
+      (a) elemental mass ratios across ALL elements (incl. O) are
+          approximately preserved (the unfractionated property)
+      (b) sum of per-element losses equals the bulk mass loss
+      (c) O is in the output dict and gets debited
     """
     from proteus.escape.wrapper import calc_new_elements
+    from proteus.utils.constants import secs_per_year
 
-    # Initial hf_row with bulk inventories
+    # Initial hf_row with bulk inventories, including a significant O budget.
+    # O is set to ~14x the H reservoir so the "is O being debited?" check
+    # has discriminating signal: without the fix, tgt['O'] would equal the
+    # initial O_kg_total exactly.
     hf_row = {
         'esc_rate_total': 1e5,  # kg/s
-        'H_kg_total': 1e21,  # Dominant H reservoir
+        'H_kg_total': 1e21,
         'C_kg_total': 1e18,
         'N_kg_total': 1e19,
         'S_kg_total': 1e17,
@@ -308,45 +480,52 @@ def test_calc_new_elements_bulk_reservoir():
         'Mg_kg_total': 1e18,
         'Fe_kg_total': 1e20,
         'Na_kg_total': 1e16,
-        # Oxygen not included (set by fO2)
+        'O_kg_total': 1.4e22,  # Issue #677: O is now budgeted and escape-able
     }
 
     dt = 1000.0  # years
     reservoir = 'bulk'
     min_thresh = 1e10  # kg
 
-    # Calculate initial mass ratios
-    M_vols_initial = (
-        hf_row['H_kg_total']
-        + hf_row['C_kg_total']
-        + hf_row['N_kg_total']
-        + hf_row['S_kg_total']
-    )
+    # Calculate initial mass ratios over ALL elements (incl. O)
+    M_vols_initial = sum(hf_row[k] for k in hf_row if k.endswith('_kg_total'))
     emr_H_initial = hf_row['H_kg_total'] / M_vols_initial
-    emr_C_initial = hf_row['C_kg_total'] / M_vols_initial
+    emr_O_initial = hf_row['O_kg_total'] / M_vols_initial
 
     # Call calc_new_elements
     tgt = calc_new_elements(hf_row, dt, reservoir, min_thresh)
 
-    # Verify all elements are in output
+    # Verify all elements are in output, including O (issue #677 fix)
     assert 'H' in tgt
     assert 'C' in tgt
     assert 'N' in tgt
     assert 'S' in tgt
-    assert 'O' not in tgt  # Oxygen excluded
+    assert 'O' in tgt, 'Issue #677: O must now be included in calc_new_elements output'
 
-    # Verify masses decreased (escape occurred)
+    # Verify masses decreased (escape occurred). O must also decrease since
+    # it is now part of the proportional partitioning.
     assert tgt['H'] < hf_row['H_kg_total']
     assert tgt['C'] < hf_row['C_kg_total']
     assert tgt['N'] < hf_row['N_kg_total']
     assert tgt['S'] < hf_row['S_kg_total']
+    assert tgt['O'] < hf_row['O_kg_total'], (
+        'O_kg_total must decrease under escape now that O is in the partitioning'
+    )
 
-    # Verify elemental mass ratios are approximately preserved (unfractionated)
-    M_vols_final = tgt['H'] + tgt['C'] + tgt['N'] + tgt['S']
+    # Verify elemental mass ratios across ALL elements are preserved
+    # (unfractionated property). At asymmetric inputs (O dominates by 14x),
+    # this would fail loudly if O were dropped from the denominator.
+    M_vols_final = sum(tgt.values())
     emr_H_final = tgt['H'] / M_vols_final
-    emr_C_final = tgt['C'] / M_vols_final
+    emr_O_final = tgt['O'] / M_vols_final
     assert emr_H_final == pytest.approx(emr_H_initial, rel=1e-5)
-    assert emr_C_final == pytest.approx(emr_C_initial, rel=1e-5)
+    assert emr_O_final == pytest.approx(emr_O_initial, rel=1e-5)
+
+    # Conservation property: sum of per-element loss equals bulk MLR * dt.
+    # This is the test that would catch any future "skip O" regression.
+    esc_mass_expected = hf_row['esc_rate_total'] * secs_per_year * dt
+    total_loss = M_vols_initial - M_vols_final
+    assert total_loss == pytest.approx(esc_mass_expected, rel=1e-5)
 
     # Verify no negative masses
     for e in tgt:
@@ -465,6 +644,14 @@ def test_calc_new_elements_prevent_negative_mass():
     for e in tgt:
         assert tgt[e] >= 0.0
 
+    # Bulk escape over dt at 1e10 kg/s exceeds the total inventory
+    # (~1e17 kg ~ 1.04e19 vs esc_mass = 1e10 * 3.156e7 * 1e6 ~ 3.16e23
+    # kg). Every element must therefore be driven to zero, not just be
+    # non-negative. A regression that allowed a partial debit through
+    # would land at a small positive number rather than exact zero.
+    for e in tgt:
+        assert tgt[e] == pytest.approx(0.0, abs=1e-3)
+
 
 @pytest.mark.unit
 def test_calc_new_elements_pxuv_not_supported():
@@ -491,9 +678,19 @@ def test_calc_new_elements_pxuv_not_supported():
     reservoir = 'pxuv'
     min_thresh = 1e10
 
+    # Snapshot hf_row to verify the raise is side-effect-free.
+    snapshot = dict(hf_row)
+
     # Verify ValueError is raised for pxuv
     with pytest.raises(ValueError, match='Fractionation at p_xuv is not yet supported'):
         calc_new_elements(hf_row, dt, reservoir, min_thresh)
+
+    # No-side-effect discriminator: the reservoir match-case raises in
+    # the pxuv branch before any partition arithmetic runs. A regression
+    # that fell through to the bulk path and only logged a warning
+    # would leave H_kg_total and the other inventories debited on the
+    # caller's dict.
+    assert hf_row == snapshot
 
 
 @pytest.mark.unit
@@ -521,9 +718,18 @@ def test_calc_new_elements_invalid_reservoir():
     reservoir = 'invalid_reservoir'
     min_thresh = 1e10
 
+    # Snapshot hf_row to verify the raise is side-effect-free.
+    snapshot = dict(hf_row)
+
     # Verify ValueError is raised
     with pytest.raises(ValueError, match='Invalid escape reservoir'):
         calc_new_elements(hf_row, dt, reservoir, min_thresh)
+
+    # No-side-effect discriminator: the default match-case raises before
+    # any partition arithmetic runs. A regression that downgraded the
+    # invalid reservoir to a silent default-bulk fallthrough would have
+    # debited H_kg_total and the other inventories on the caller's dict.
+    assert hf_row == snapshot
 
 
 @pytest.mark.unit

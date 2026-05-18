@@ -26,6 +26,13 @@ class Atmos_t:
         # Albedo lookup object
         self.albedo_o: Albedo_t = None
 
+        # Whether the most recent atmosphere call converged. For AGNI this
+        # is True iff the Newton/LM solver converged on at least one attempt;
+        # JANUS, dummy, and transparent solvers always set it True. The main
+        # coupling loop reads this to detect AGNI deadlocks (consecutive
+        # failures with no interior state change). Transient — not persisted.
+        self.converged: bool = True
+
 
 def ncdf_flag_to_bool(var) -> bool:
     """Convert NetCDF flag (y/n) to Python bool (true/false)"""
@@ -219,12 +226,8 @@ def get_spfile_name_and_bands(config: Config):
     Get spectral file name and bands from config
     """
 
-    # Get table corresponding to the right atmosphere module
-    obj = getattr(config.atmos_clim, config.atmos_clim.module)
-
-    # Get bands and group name (strings)
-    bands = obj.spectral_bands
-    group = obj.spectral_group
+    group = config.atmos_clim.spectral_group
+    bands = config.atmos_clim.spectral_bands
 
     return group, bands
 

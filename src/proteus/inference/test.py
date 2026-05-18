@@ -28,15 +28,15 @@ log = logging.getLogger('fwl.' + __name__)
 torch.manual_seed(1)
 
 # Reference configuration for the PROTEUS simulator
-ref = 'input/demos/dummy.toml'
+ref = 'input/dummy.toml'
 output = 'output/inference/'
 
 log.info('perform sanity check')
 
 # Define parameter bounds matching prot_builder setup
 params = {
-    'struct.mass_tot': [0.5, 3.0],
-    'struct.corefrac': [0.3, 0.9],
+    'planet.mass_tot': [0.5, 3.0],
+    'interior_struct.core_frac': [0.3, 0.9],
     'atmos_clim.dummy.gamma': [0.05, 0.95],
     'escape.dummy.rate': [1.0, 1e5],
     'interior.dummy.ini_tmagma': [2000.0, 4500.0],

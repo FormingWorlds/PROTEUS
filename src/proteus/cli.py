@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from difflib import get_close_matches
 from pathlib import Path
 
@@ -12,18 +13,51 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'  # noqa
 os.environ['NUMEXPR_NUM_THREADS'] = '1'  # noqa
 os.environ['VECLIB_MAXIMUM_THREADS'] = '1'  # noqa
 
-import shutil
-import subprocess
-import sys
-import tempfile
+# Optional --deterministic mode: extra-strict numerical reproducibility for
+# coupled runs that fail on noise-floor floating-point divergence. Activated
+# by passing --deterministic on any subcommand. We intercept it here in raw
+# sys.argv (before click parses it) because JAX/XLA env vars must be set
+# BEFORE any module that imports JAX is imported — and `from proteus import
+# Proteus` below transitively imports JAX via Aragog.
+_PROTEUS_DETERMINISTIC_SENTINEL = 'PROTEUS_DETERMINISTIC_APPLIED'
+_DETERMINISTIC_XLA_FLAG = '--xla_cpu_enable_fast_math=false'
 
-import click
 
-from proteus import Proteus
-from proteus import __version__ as proteus_version
-from proteus.config import read_config_object
-from proteus.utils.data import download_sufficient_data
-from proteus.utils.logs import setup_logger
+def _apply_deterministic_env(environ) -> None:
+    """Set the deterministic env vars in `environ` (in-place).
+
+    Idempotent: appends the XLA flag only if not already present, sets
+    JAX_ENABLE_X64=1, and marks the sentinel. Caller decides whether to
+    re-exec; this function does NOT re-exec on its own (so it is safe to
+    call from tests).
+    """
+    environ[_PROTEUS_DETERMINISTIC_SENTINEL] = '1'
+    environ['JAX_ENABLE_X64'] = '1'
+    xla_existing = environ.get('XLA_FLAGS', '').strip()
+    if _DETERMINISTIC_XLA_FLAG not in xla_existing:
+        environ['XLA_FLAGS'] = (xla_existing + ' ' + _DETERMINISTIC_XLA_FLAG).strip()
+
+
+def _should_apply_deterministic(argv, environ) -> bool:
+    """Return True iff --deterministic is in argv and sentinel is not set."""
+    return '--deterministic' in argv and environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1'
+
+
+if _should_apply_deterministic(sys.argv, os.environ):
+    _apply_deterministic_env(os.environ)
+    os.execvp(sys.argv[0], sys.argv)
+
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+
+import click  # noqa: E402
+
+from proteus import Proteus  # noqa: E402
+from proteus import __version__ as proteus_version  # noqa: E402
+from proteus.config import read_config_object  # noqa: E402
+from proteus.utils.data import download_sufficient_data  # noqa: E402
+from proteus.utils.logs import setup_logger  # noqa: E402
 
 config_option = click.option(
     '-c',
@@ -130,8 +164,28 @@ cli.add_command(plot)
     default=False,
     help='Run in offline mode; do not connect to the internet',
 )
-def start(config_path: Path, resume: bool, offline: bool):
+@click.option(
+    '--deterministic',
+    is_flag=True,
+    default=False,
+    help=(
+        'Force extra-strict numerical reproducibility (sets JAX_ENABLE_X64=1 '
+        'and XLA_FLAGS=--xla_cpu_enable_fast_math=false on top of the always-on '
+        'BLAS thread pins). Use when a coupled run fails on noise-floor '
+        'floating-point divergence (e.g. Aragog T_core-jump-guard exhaustion '
+        'on numerically fragile anchors). The flag is intercepted before JAX '
+        'imports and triggers a one-shot self re-exec; the sentinel env var '
+        'PROTEUS_DETERMINISTIC_APPLIED=1 is set in the child process.'
+    ),
+)
+def start(config_path: Path, resume: bool, offline: bool, deterministic: bool):
     """Start proteus run"""
+    if deterministic and os.environ.get(_PROTEUS_DETERMINISTIC_SENTINEL) != '1':
+        click.secho(
+            '[!] --deterministic was requested but the env-var re-exec did not '
+            'take effect. Numerical determinism is NOT pinned. Investigate.',
+            fg='yellow',
+        )
     runner = Proteus(config_path=config_path)
     runner.start(resume=resume, offline=offline)
 
@@ -531,7 +585,7 @@ def offchem(config_path: Path):
     """Run offline chemistry on PROTEUS output files"""
     runner = Proteus(config_path=config_path)
     setup_logger(
-        logpath=runner.directories['output'] + 'offchem.log',
+        logpath=os.path.join(runner.directories['output'], 'offchem.log'),
         logterm=True,
         level=runner.config.params.out.logging,
     )
@@ -544,7 +598,7 @@ def observe(config_path: Path):
     """Run synthetic observations pipeline"""
     runner = Proteus(config_path=config_path)
     setup_logger(
-        logpath=runner.directories['output'] + 'observe.log',
+        logpath=os.path.join(runner.directories['output'], 'observe.log'),
         logterm=True,
         level=runner.config.params.out.logging,
     )

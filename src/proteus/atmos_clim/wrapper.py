@@ -87,12 +87,16 @@ def run_atmosphere(
         hf_row['albedo_pl'] = 0.0
 
     # Handle new surface temperature
-    if config.interior.module == 'boundary':
-        # surface temperature is already calculated by boundary interior module
+    if config.interior_energetics.module == 'boundary':
+        # T_surf is already advanced by the Boundary backend's ODE, so the
+        # atmosphere wrapper must not overwrite it.
         pass
 
     elif config.atmos_clim.surf_state == 'mixed_layer':
-        hf_row['T_surf'] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+        # Argument order: (current hf_row, previous committed row). The
+        # function integrates forward from hf_pre['Time'] to hf_cur['Time']
+        # starting at hf_pre['T_surf'].
+        hf_row['T_surf'] = ShallowMixedOceanLayer(hf_row, hf_all.iloc[-1].to_dict())
 
     elif config.atmos_clim.surf_state == 'fixed':
         hf_row['T_surf'] = hf_row['T_magma']
@@ -182,6 +186,11 @@ def run_atmosphere(
 
         # Run dummy atmosphere model
         atm_output = RunDummyAtm(dirs, config, hf_row)
+
+    # Capture the atmosphere convergence flag onto the transient struct
+    # (not persisted to helpfile). AGNI sets this from its Newton solver;
+    # JANUS / dummy / transparent always succeed and default to True.
+    atmos_o.converged = bool(atm_output.pop('agni_converged', True))
 
     # Store variables common to `hf_row` and `atm_output`
     for key in atm_output.keys():

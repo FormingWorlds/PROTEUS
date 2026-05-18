@@ -1,9 +1,8 @@
 """
 Integration test fixtures and helpers for PROTEUS.
 
-This module provides reusable fixtures and validation functions for multi-timestep
-integration tests. These are designed to support Phase 2 of the test building strategy:
-establishing integration test infrastructure.
+Reusable fixtures and validation functions for multi-timestep
+integration tests.
 
 **Fixtures**:
 - `proteus_multi_timestep_run`: Run PROTEUS for N timesteps with configurable parameters
@@ -17,7 +16,7 @@ establishing integration test infrastructure.
     @pytest.mark.integration
     def test_multi_timestep(proteus_multi_timestep_run):
         runner = proteus_multi_timestep_run(
-            config_path='input/demos/dummy.toml',
+            config_path='input/dummy.toml',
             num_timesteps=5,
             max_time=1e6,  # years
         )
@@ -61,7 +60,7 @@ def proteus_multi_timestep_run():
         max_time: Maximum simulation time in years (float, default: 1e6)
         min_time: Minimum simulation time in years (float, default: 1e2)
         output_suffix: Suffix for output directory (str, default: auto-generated UUID)
-        **kwargs: Additional config overrides (e.g., `interior.dummy.ini_tmagma=2000.0`)
+        **kwargs: Additional config overrides (e.g., `interior.dummy.tsurf_init=2000.0`)
 
     **Returns**:
         Proteus: Runner object with completed simulation
@@ -69,10 +68,10 @@ def proteus_multi_timestep_run():
     **Example**:
         def test_my_integration(proteus_multi_timestep_run):
             runner = proteus_multi_timestep_run(
-                config_path='input/demos/dummy.toml',
+                config_path='input/dummy.toml',
                 num_timesteps=10,
                 max_time=1e7,
-                interior__dummy__ini_tmagma=2000.0,
+                interior__dummy__tsurf_init=2000.0,
             )
             assert len(runner.hf_all) >= 10
     """
@@ -94,7 +93,7 @@ def proteus_multi_timestep_run():
             max_time: Maximum simulation time in years
             min_time: Minimum simulation time in years
             output_suffix: Suffix for output directory (auto-generated if None)
-            **config_overrides: Config overrides using dot notation (e.g., `interior__dummy__ini_tmagma=2000.0`)
+            **config_overrides: Config overrides using dot notation (e.g., `interior__dummy__tsurf_init=2000.0`)
 
         Returns:
             Proteus runner with completed simulation
@@ -120,12 +119,18 @@ def proteus_multi_timestep_run():
 
             # Apply config overrides (convert dot notation to nested attribute access)
             for key, value in config_overrides.items():
-                # Convert 'interior__dummy__ini_tmagma' to nested attribute access
+                # Convert 'interior__dummy__tsurf_init' to nested attribute access
                 parts = key.split('__')
                 obj = runner.config
                 for part in parts[:-1]:
                     obj = getattr(obj, part)
                 setattr(obj, parts[-1], value)
+
+            # Re-initialise the directories dict so module-conditional keys
+            # (e.g. ``dirs['rad']`` for AGNI / JANUS) reflect the override
+            # set, not the original config that was on disk at Proteus()
+            # construction time.
+            runner.init_directories()
 
             # Set time limits for multi-timestep run
             # Estimate timestep size to get approximately num_timesteps
@@ -145,7 +150,7 @@ def proteus_multi_timestep_run():
             # Ensure required data exists when using ARAGOG or AGNI (download if missing).
             # Runs locally and in CI; no-op or quick when data already present.
             if (
-                runner.config.interior.module == 'aragog'
+                runner.config.interior_energetics.module == 'aragog'
                 or runner.config.atmos_clim.module == 'agni'
             ):
                 from proteus.utils.data import download_sufficient_data

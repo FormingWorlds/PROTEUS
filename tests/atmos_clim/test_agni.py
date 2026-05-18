@@ -22,6 +22,8 @@ import pytest
 import proteus.atmos_clim.agni as agni_mod
 from proteus.atmos_clim.agni import _determine_aerosols, _determine_condensates, init_agni_atmos
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.unit
 @patch('proteus.atmos_clim.agni.os.listdir')
@@ -90,6 +92,15 @@ def test_determine_aerosols_empty_directory(mock_isdir, mock_listdir):
 
     # Should return empty list
     assert aerosols == []
+    # Discrimination guard: the directory existed, so isdir must have
+    # been queried AND listdir must have been called to inspect the
+    # contents. A regression that returned [] without inspecting (e.g.
+    # always short-circuited) would still pass the assertion above.
+    mock_isdir.assert_called_once_with('/path/to/fwl/scattering/scattering')
+    mock_listdir.assert_called_once()
+    # Type guard: returning None or a non-list would also satisfy
+    # `== []` against another empty container, so pin the type.
+    assert isinstance(aerosols, list)
 
 
 @pytest.mark.unit
@@ -148,6 +159,13 @@ def test_determine_condensates_all_dry():
 
     # Should return empty list
     assert condensates == []
+    # Discrimination guard: the input list is non-empty (len 3), so a
+    # regression that returned the input unchanged would land at
+    # ['H2', 'N2', 'CO'] not []. Pin the explicit filter behaviour.
+    assert len(condensates) < len(vol_list)
+    # The input is not mutated: filtering must not change the caller's
+    # list (single-gas warning path notwithstanding).
+    assert vol_list == ['H2', 'N2', 'CO']
 
 
 @pytest.mark.unit
@@ -172,9 +190,23 @@ def test_determine_condensates_empty_list():
     Test condensate determination with empty volatile list.
 
     Physical scenario: Edge case where no volatiles are specified.
+    Empty input must traverse the list-comprehension path (not the
+    single-gas warning short-circuit), so the return must be a fresh
+    empty list, not the caller's list aliased back.
     """
-    condensates = _determine_condensates([])
+    input_list = []
+    condensates = _determine_condensates(input_list)
     assert condensates == []
+    # Type guard: a regression returning None on empty input would
+    # also satisfy `== []` against the empty container of the wrong
+    # type? `None == []` is False, so `==` alone catches that. Pin
+    # the list type explicitly for clarity.
+    assert isinstance(condensates, list)
+    # Idempotency: a second call with the same empty input must return
+    # the same empty result. A regression that introduced caller-state
+    # would diverge.
+    second = _determine_condensates([])
+    assert second == condensates
 
 
 class _FakeAtmosphere:
@@ -185,47 +217,36 @@ class _FakeAtmosphere:
 class _FakeAGNI:
     def __init__(self):
         self.last_setup_args = None
+        self.last_setup_kwargs = None
         self.last_allocate_input_star = None
-        self.last_fromncdf_path = None
         self.atmosphere = SimpleNamespace(
             Atmos_t=lambda: _FakeAtmosphere(),
             setup_b=self._setup_b,
             allocate_b=self._allocate_b,
         )
-        self.setpt = SimpleNamespace(fromncdf_b=self._fromncdf_b)
+        # setpt routines: record-only stubs
+        self.setpt = SimpleNamespace(
+            fromncdf_b=lambda *_a, **_k: None,
+            loglinear_b=lambda *_a, **_k: None,
+            isothermal_b=lambda *_a, **_k: None,
+            dry_adiabat_b=lambda *_a, **_k: None,
+            analytic_b=lambda *_a, **_k: None,
+            stratosphere_b=lambda *_a, **_k: None,
+        )
 
     def _setup_b(self, atmos, *args, **kwargs):
         self.last_setup_args = args
+        self.last_setup_kwargs = kwargs
         return True
 
     def _allocate_b(self, atmos, input_star, **kwargs):
         self.last_allocate_input_star = input_star
         return True
 
-    def _fromncdf_b(self, atmos, nc_path):
-        self.last_fromncdf_path = nc_path
 
-
-@pytest.mark.unit
-def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
-    """Greygas path should avoid runtime spectral-file copy inputs.
-
-    User specifies `greygas' scenario in config file. This means we don't need to worry
-    about copying/constructing/modifying SOCRATES spectral files.
-    """
-    fake_agni = _FakeAGNI()
-    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
-
-    output_dir = tmp_path / 'out'
-    data_dir = output_dir / 'data'
-    data_dir.mkdir(parents=True)
-
-    # Existing files used by init_agni_atmos bookkeeping.
-    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
-    (data_dir / '100_atm.nc').write_text('nc', encoding='utf-8')
-
-    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
-    config = SimpleNamespace(
+def _build_greygas_config():
+    """Build a config object that triggers the grey-gas dispatch."""
+    return SimpleNamespace(
         atmos_clim=SimpleNamespace(
             aerosols_enabled=False,
             cloud_enabled=False,
@@ -234,6 +255,9 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
             surface_d=0.0,
             surface_k=0.0,
             tmp_minimum=50.0,
+            num_levels=40,
+            p_top=1e-5,
+            overlap_method='ro',
             agni=SimpleNamespace(
                 spectral_file='greygas',
                 verbosity=2,
@@ -241,9 +265,6 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
                 rainout=False,
                 chemistry='none',
                 surf_material='greybody',
-                p_top=1e-5,
-                num_levels=40,
-                overlap_method='ro',
                 surf_roughness=0.0,
                 surf_windspeed=0.0,
                 phs_timescale=1.0,
@@ -255,13 +276,35 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
                 fastchem_xtol_elem=1e-6,
                 real_gas=False,
                 mlt_criterion='a',
+                ini_profile='isothermal',
                 grey_opacity_lw=0.1,
                 grey_opacity_sw=0.2,
+                check_safe_gas=False,
             ),
         ),
         orbit=SimpleNamespace(s0_factor=1.0, zenith_angle=48.0),
         params=SimpleNamespace(out=SimpleNamespace(logging='INFO')),
     )
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
+    """Greygas path should not call get_spfile_path or pass a stellar spectrum.
+
+    When spectral_file='greygas' is set, AGNI uses the grey-gas RT scheme and
+    does not need a SOCRATES spectral file or stellar flux to be copied into
+    the runtime directory.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    (data_dir / '100.sflux').write_text('sflux', encoding='utf-8')
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
     hf_row = {
         'F_ins': 1000.0,
         'albedo_pl': 0.2,
@@ -273,32 +316,124 @@ def test_init_agni_atmos_greygas_bypasses_spectral_copy(monkeypatch, tmp_path):
 
     monkeypatch.setattr(agni_mod, 'jl', fake_jl)
     monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
-    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_args, **_kwargs: {'H2O': 1.0})
-    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
     monkeypatch.setattr(
         agni_mod,
         'get_spfile_path',
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        lambda *_a, **_k: (_ for _ in ()).throw(
             AssertionError('get_spfile_path should not be called for greygas')
-        ),
-    )
-    monkeypatch.setattr(
-        agni_mod.glob,
-        'glob',
-        lambda pattern: (
-            [str(data_dir / '100.sflux')]
-            if pattern.endswith('*.sflux')
-            else [str(data_dir / '100_atm.nc')]
         ),
     )
 
     atmos = init_agni_atmos(dirs, config, hf_row)
 
-    # main check: atmosphere was set up ok
     assert atmos is not None
 
     # setup_b positional args: [dirs['agni'], dirs['output'], input_sf, ...]
     assert fake_agni.last_setup_args[2] == 'greygas'
 
     # Empty stellar path prevents AGNI from modifying/copying runtime spectral assets.
+    assert fake_agni.last_allocate_input_star == ''
+
+    # grey_opacity_lw/sw should be forwarded as the Greek-named AGNI kwargs.
+    assert fake_agni.last_setup_kwargs['κ_grey_lw'] == pytest.approx(0.1)
+    assert fake_agni.last_setup_kwargs['κ_grey_sw'] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_greygas_does_not_glob_sflux(monkeypatch, tmp_path):
+    """Regression: in grey-gas mode, init_agni_atmos must not require any
+    *.sflux file to exist. Before this fix, an unconditional
+    `glob.glob('*.sflux'); sorted(...)[-1]` at the top of the function
+    would crash with IndexError on a fresh output dir before reaching the
+    grey-gas dispatch.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    # NOTE: no *.sflux file written. Pre-fix this would have crashed.
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    config = _build_greygas_config()
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        agni_mod,
+        'get_spfile_path',
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError('get_spfile_path should not be called for greygas')
+        ),
+    )
+
+    # Must not raise.
+    atmos = init_agni_atmos(dirs, config, hf_row)
+
+    assert atmos is not None
+    assert fake_agni.last_setup_args[2] == 'greygas'
+    assert fake_agni.last_allocate_input_star == ''
+
+
+@pytest.mark.unit
+def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, tmp_path):
+    """When AGNI needs a fresh spectral file (no runtime.sf, no
+    user-provided path), it must have a stellar spectrum to seed from.
+    A missing *.sflux in that branch should raise FileNotFoundError
+    instead of IndexError, so the caller sees a clear diagnostic."""
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+
+    output_dir = tmp_path / 'out'
+    data_dir = output_dir / 'data'
+    data_dir.mkdir(parents=True)
+    # No *.sflux; no runtime.sf either.
+
+    dirs = {'output': str(output_dir), 'agni': '/fake/agni', 'fwl': '/fake/fwl'}
+    # Use the same scaffold as greygas test but flip spectral_file to None
+    # so the function takes the "AGNI copy from FWL_DATA" branch.
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = None
+    hf_row = {
+        'F_ins': 1000.0,
+        'albedo_pl': 0.2,
+        'T_surf': 900.0,
+        'gravity': 9.8,
+        'R_int': 6.4e6,
+        'P_surf': 1.0,
+    }
+
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'convert', lambda _typ, value: value)
+    monkeypatch.setattr(agni_mod, '_construct_voldict', lambda *_a, **_k: {'H2O': 1.0})
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, 'UpdateStatusfile', lambda *_a, **_k: None)
+    monkeypatch.setattr(agni_mod, 'get_spfile_path', lambda *_a, **_k: '/fake/spfile')
+
+    with pytest.raises(FileNotFoundError, match='No stellar spectrum'):
+        init_agni_atmos(dirs, config, hf_row)
+    # Discrimination guard: a regression that hard-raised FileNotFoundError
+    # on every path (regardless of spectral_file or *.sflux presence) would
+    # also pass the pytest.raises block. Verify that flipping back to the
+    # grey-gas branch (which does not need a stellar spectrum) does NOT
+    # raise on the same hf_row and same empty data dir.
+    config.atmos_clim.agni.spectral_file = 'greygas'
+    atmos = init_agni_atmos(dirs, config, hf_row)
+    assert atmos is not None
+    # The grey-gas branch must have allocated with an empty stellar path
+    # (no spectral file copied) to confirm the dispatch took the correct
+    # branch rather than a no-op fallback.
     assert fake_agni.last_allocate_input_star == ''

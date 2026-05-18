@@ -21,13 +21,13 @@ Although PROTEUS aims to treat the problem of *planetary* evolution, it must nec
 
 | Module | Implementations | Role |
 |--------|----------------|------|
-| Structure | Zalmoxis, self | Interior structure (radius, density, gravity profiles) |
+| Structure | Zalmoxis, dummy | Interior structure (radius, density, gravity profiles) |
 | Interior | SPIDER, Aragog, dummy | Mantle/core thermal evolution |
 | Atmosphere (climate) | AGNI, JANUS, dummy | Radiative-convective profile |
 | Atmosphere (chemistry) | VULCAN, dummy | Chemical kinetics |
 | Star | MORS, dummy | Stellar evolution |
 | Escape | ZEPHYRUS, dummy | Atmospheric escape |
-| Outgassing | CALLIOPE, dummy | Volatile exchange between interior and atmosphere |
+| Outgassing | CALLIOPE, atmodeller, dummy | Volatile exchange between interior and atmosphere |
 | Orbit | Obliqua, dummy | Orbital evolution and tidal heating |
 
 ### Structure–interior coupling
@@ -35,7 +35,7 @@ Although PROTEUS aims to treat the problem of *planetary* evolution, it must nec
 The structure and interior modules serve complementary roles.
 The *interior* module (SPIDER or Aragog) evolves the mantle temperature and melt fraction in time, while the *structure* module (Zalmoxis) solves for the hydrostatic equilibrium of the planet given a temperature profile and equation of state.
 
-When `struct.module = 'zalmoxis'` and `struct.update_interval > 0`, PROTEUS can dynamically recompute the planetary structure during a simulation.
+When `interior_struct.module = 'zalmoxis'` and `interior_struct.zalmoxis.update_interval > 0`, PROTEUS can dynamically recompute the planetary structure during a simulation.
 Structure updates are governed by a hybrid trigger that combines physics-based criteria with timing constraints:
 
 - **Floor** (`update_min_interval`): minimum time between updates, preventing excessive recomputation during rapid cooling.

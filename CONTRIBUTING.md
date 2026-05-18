@@ -158,7 +158,7 @@ The documentation is hosted on the [PROTEUS framework website](https://proteus-f
 
 ### Making a release
 
-The versioning scheme we use is [CalVer](https://calver.org/), in the format `YY.MM.DD`, without a leading 'v'. This means that releases are made based on the date of the release.
+The versioning scheme we use is [CalVer](https://calver.org/), in the format `YY.MM.DD`, without a leading 'v'. Versions are derived from git tags by [`setuptools-scm`](https://setuptools-scm.readthedocs.io/); there is no hand-edited version string anywhere in the repository.
 
 0. Update requirements files:
 
@@ -167,15 +167,17 @@ python tools/generate_requirements_txt.py
 pip-compile -o requirements_full.txt pyproject.toml
 ```
 
-1. Bump the version (`release`/`patch`) as needed
+1. Tag the release on `main` and push the tag:
 
 ```console
-bump-my-version bump release
-# 24.08.12
+git tag 26.05.14
+git push origin 26.05.14
 ```
 
-2. Commit and push your changes.
+2. Create a GitHub release pointing at the tag:
 
-3. Make a new [release](https://github.com/FormingWorlds/PROTEUS/releases). Make sure to set the tag to the specified version, e.g. `24.08.12`.
+```console
+gh release create 26.05.14 --generate-notes
+```
 
-4. The [upload to pypi](https://pypi.org/project/fwl-proteus) is triggered when a release is published and handled by [this workflow](https://github.com/FormingWorlds/PROTEUS/actions/workflows/publish.yaml).
+3. The [upload to PyPI](https://pypi.org/project/fwl-proteus) is triggered when the release is published and handled by [this workflow](https://github.com/FormingWorlds/PROTEUS/actions/workflows/publish.yaml).

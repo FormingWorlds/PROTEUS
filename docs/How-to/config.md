@@ -13,7 +13,7 @@ stellar evolution module (i.e. `star.module == 'mors'`), then you are required t
 the variable `star.mors.age_now`. However, if you instead decided to use the `dummy`
 stellar evolution module then the `age_now` parameter is not required.
 
-See the [`default.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/default.toml) configuration for a comprehensive example of all possible parameters.
+See the [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/all_options.toml) configuration for a comprehensive example of all possible parameters.
 
 ### Examples
 
@@ -112,7 +112,7 @@ for ideas of how to set up your config in practice.
 
 ## Elemental delivery and accretion
 
-::: proteus.config._delivery
+::: proteus.config._accretion
     options:
       heading_level: 3
       show_root_heading: False

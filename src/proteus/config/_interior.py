@@ -1,29 +1,34 @@
 from __future__ import annotations
 
+import logging
+import warnings
+
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
+
+log = logging.getLogger('fwl.' + __name__)
 
 
 def valid_spider(instance, attribute, value):
     if instance.module != 'spider':
         return
 
-    ini_entropy = instance.spider.ini_entropy
-    if (not ini_entropy) or (ini_entropy <= 200.0):
-        raise ValueError('`interior.spider.ini_entropy` must be >200')
-
     # at least one energy term enabled
-    spider = instance.spider
     if not (
-        spider.conduction
-        or spider.convection
-        or spider.mixing
-        or spider.gravitational_separation
+        instance.trans_conduction
+        or instance.trans_convection
+        or instance.trans_mixing
+        or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in SPIDER')
 
 
 def valid_interiorboundary(instance, attribute, value):
+    """Validate Boundary backend's solidus/liquidus ordering.
+
+    Only fires when ``module == 'boundary'``; otherwise the subclass is
+    constructed with defaults and never exercised.
+    """
     if instance.module != 'boundary':
         return
 
@@ -33,66 +38,60 @@ def valid_interiorboundary(instance, attribute, value):
         raise ValueError(f'Boundary liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
 
 
-def valid_path(instance, attribute, value):
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"'{attribute.name}' must be a non-empty string")
-
-
 @define
 class Spider:
-    """Parameters for SPIDER module.
+    """SPIDER-specific parameters.
+
+    ``solver_type`` is the SUNDIALS integrator choice. The relative
+    tolerance (``tolerance_rel``) was promoted to
+    ``[interior_energetics].rtol`` in the Tier 4 refactor
+    (2026-04-08) and is kept here only as a deprecated alias for
+    backwards compat.
+
+    ``matprop_smooth_width`` is the SPIDER-specific smoothing width
+    for material-property blending across the solidus/liquidus. It
+    was briefly top-level (Tier 4) for SPIDER-Aragog parity, but the
+    2026-04-09 Aragog Jgrav fix replaced the tanh smoothing with a
+    parameter-free cubic Hermite polynomial, so the knob is once
+    again SPIDER-only.
 
     Attributes
     ----------
-    num_levels: int
-        Number of SPIDER grid levels.
-    mixing_length: int
-        Parameterisation used to determine convective mixing length.
-    tolerance: float
-        Absolute solver tolerance.
-    tolerance_rel: float
-        Relative solver tolerance.
-    tolerance_struct: float
-        Tolerance on mass for planet initial structure convergence.
-    tsurf_atol: float
-        Absolute tolerance on change in T_mantle during a single interior iteration.
-    tsurf_rtol: float
-        Relative tolerance on change in T_mantle during a single interior iteration.
-    ini_entropy: float
-        Initial specific surface entropy [J K-1 kg-1].
-    ini_dsdr: float
-        Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     solver_type: str
-        Numerical integrator. Choices: 'adams', 'bdf'.
-    conduction: bool
-        Whether to include conductive heat flux in the model.
-    convection: bool
-        Whether to include convective heat flux in the model.
-    gravitational_separation: bool
-        Whether to include gravitational separation flux in the model.
-    mixing: bool
-        Whether to include mixing flux in the model.
+        SUNDIALS integrator choice. Choices: 'adams', 'bdf'.
+    tolerance_rel: float
+        Deprecated alias for ``Interior.rtol``. Set
+        ``interior_energetics.rtol`` at the top level instead.
     matprop_smooth_width: float
-        Window width, in melt-fraction, for smoothing properties across liquidus and solidus
-    log_output: bool
-        Whether to save SPIDER output to a log file in the output directory.
+        Melt-fraction window width for smoothing SPIDER's material
+        properties across the solidus/liquidus. Passed to SPIDER as
+        ``-matprop_smooth_width``. Unused by Aragog.
     """
 
-    ini_entropy = field(default=None)
-    ini_dsdr: float = field(default=-4.698e-6, validator=lt(0))
-    num_levels: int = field(default=190, validator=ge(30))
-    mixing_length: int = field(default=2, validator=in_((1, 2)))
-    tolerance: float = field(default=1e-10, validator=gt(0))
-    tolerance_rel: float = field(default=1e-10, validator=gt(0))
-    tolerance_struct: float = field(default=1e2, validator=gt(0))
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
-    tsurf_atol: float = field(default=10.0, validator=gt(0))
-    tsurf_rtol: float = field(default=0.01, validator=gt(0))
-    conduction: bool = field(default=True)
-    convection: bool = field(default=True)
-    gravitational_separation: bool = field(default=True)
-    mixing: bool = field(default=True)
-    matprop_smooth_width: float = field(default=1e-2, validator=(gt(0), lt(1)))
+
+    # Sentinel -1 means "not set"; old configs that set it will copy to
+    # the top-level rtol in Interior.__attrs_post_init__ and emit a
+    # DeprecationWarning. The validator allows -1 as a pass-through.
+    tolerance_rel: float = field(default=-1.0)
+
+    # Material-property smoothing width for the phase-boundary blend.
+    # Passed to SPIDER as ``-matprop_smooth_width`` and to Aragog's
+    # ``EntropyPhaseEvaluator`` via ``_PhaseMixedParameters``. Controls
+    # the tanh transition between two-phase (Lever Rule) and single-
+    # phase material properties near the solidus and liquidus.
+    matprop_smooth_width: float = field(default=1.0e-2, validator=(gt(0), lt(1)))
+
+    # Absolute mass tolerance [kg] for the secant solver in
+    # determine_interior_radius. Tightens with mass scale; the default
+    # 100 kg is below SPIDER's own internal mass-balance error on a 1
+    # M_E planet.
+    tolerance_struct: float = field(default=1e2, validator=gt(0))
+
+    # When True (default), the SPIDER subprocess writes stdout/stderr
+    # to ``<output>/spider_recent.log``. Set False to discard the
+    # subprocess output entirely (sp.DEVNULL); useful for batch runs
+    # where the log files accumulate disk pressure.
     log_output: bool = field(default=True)
 
 
@@ -100,107 +99,109 @@ def valid_aragog(instance, attribute, value):
     if instance.module != 'aragog':
         return
 
-    ini_tmagma = instance.aragog.ini_tmagma
-    if (not ini_tmagma) or (ini_tmagma <= 200.0):
-        raise ValueError('`interior.aragog.ini_tmagma` must be >200')
-
-    # at least one energy term enabled
-    aragog = instance.aragog
+    # at least one energy term enabled (uses top-level interior fields)
     if not (
-        aragog.conduction
-        or aragog.convection
-        or aragog.mixing
-        or aragog.gravitational_separation
+        instance.trans_conduction
+        or instance.trans_convection
+        or instance.trans_mixing
+        or instance.trans_grav_sep
     ):
         raise ValueError('Must enable at least one energy transport term in Aragog')
 
 
 @define
 class Aragog:
-    """Parameters for Aragog module.
+    """Aragog-specific parameters.
 
     Attributes
     ----------
-    logging: str
-        Log verbosity of Aragog. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
-    num_levels: int
-        Number of Aragog grid levels (basic mesh).
-    initial_condition: int
-        How to define the intial temperature profile (1: linear, 2: user defined, 3: adiabat)
-    tolerance: float
-        Absolute solver tolerance.
-    tolerance_rel: float
-        Relative solver tolerance.
-    tolerance_struct: float
-        Tolerance on mass for planet initial structure convergence.
-    ini_tmagma: float
-        Initial magma surface temperature [K].
-    basal_temperature: float
-        Temperature at the base of the mantle (if using a linear temperature profile to start)
-    init_file: str
-        File containing the initial temperature file for aragog
-    inner_boundary_condition: int
-        Type of inner boundary condition. Choices:  1 (core cooling), 2 (prescribed heat flux), 3 (prescribed temperature).
-    inner_boundary_value: float
-        Value of the inner boundary condition, either temperature or heat flux, depending on the chosen condition.
-    conduction: bool
-        Whether to include conductive heat flux in the model. Default is True.
-    convection: bool
-        Whether to include convective heat flux in the model. Default is True.
-    gravitational_separation: bool
-        Whether to include gravitational separation flux in the model. Default is False.
-    mixing: bool
-        Whether to include mixing flux in the model. Default is False.
-    dilatation: bool
-        Whether to include dilatation source term in the model. Default is False.
     mass_coordinates: bool
-        Whether to use mass coordinates in the model. Default is False.
-    tsurf_poststep_change: float
-        Maximum change in surface temperature allowed during a single interior iteration [K].
-    event_triggering: bool
-        Whether to include event triggering in the solver. Default is True.
-    bulk_modulus: float
-        Adiabatic bulk modulus AW-EOS parameter [Pa].
+        Whether to use mass coordinates in the model. Default is True.
+        Uses uniform spacing in mass coordinate space, giving larger cells
+        at the surface where density is lower, matching SPIDER's mesh.
+    backend: str
+        ODE backend selector. Default 'jax'.
+          - 'jax'   : CVODE with JAX-derived RHS and JAX analytic Jacobian
+                     (`jax.jacrev`). Recommended for production.
+          - 'numpy' : CVODE with numpy RHS and CVODE finite-difference
+                     Jacobian. Available for development and SPIDER-parity
+                     comparisons; less robust than 'jax' at production
+                     resolution because the FD-Jacobian noise can trip
+                     Aragog's T_core-jump retry guard at tight tolerances.
+        The diffrax direct-JAX integration path is research-only and
+        gated on a code-level flag in `proteus.interior_energetics.aragog`.
+    atol_temperature_equivalent: float
+        Effective temperature-scale absolute tolerance [K] for Aragog's
+        CVODE integrator. Aragog's state variable is entropy (J/kg/K),
+        but users think in Kelvin, so this is exposed as a temperature
+        equivalent that Aragog converts internally via Cp/T. Default is
+        1e-8 K, matching SPIDER's atol=rtol=1e-8 setting; this tight
+        tolerance eliminates the CVODE marginal-stability bifurcation
+        at the first dt jump after equilibration.
+    core_bc: str
+        Core-mantle boundary condition mode. Default 'energy_balance'.
+        Valid values:
+          - 'quasi_steady': legacy v3 alpha-factor heat-flux partition;
+                            gives -19% T_core offset vs SPIDER.
+          - 'energy_balance': SPIDER bit-parity BC with dSdr_cmb as a
+                              new state variable (mirrors SPIDER
+                              bc.c:76-131).
+          - 'gradient': gradient-based state with two boundary entropies
+                        as state variables.
+          - 'bower2018': experimental, do not use for production.
     """
 
-    logging: str = field(default='ERROR', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma = field(default=None)
-    basal_temperature: float = field(default=7000)
-    init_file: str = field(default=None)
-    num_levels: int = field(default=100, validator=ge(40))
-    initial_condition: int = field(
-        default=1,
-        validator=in_(
-            (
-                1,
-                2,
-                3,
-            )
-        ),
+    mass_coordinates: bool = field(default=True)
+    backend: str = field(default='jax', validator=in_(('numpy', 'jax')))
+    atol_temperature_equivalent: float = field(default=1.0e-8, validator=gt(0))
+    """Effective temperature-scale absolute tolerance [K] for Aragog's ODE integrator.
+    Default 1e-8 matches SPIDER's atol=rtol=1e-8 setting. Empirically (2026-04-16)
+    this tightening eliminates the marginal-stability bifurcation observed at the
+    iter-9 dt jump that affected runs with atol=3e-7."""
+    core_bc: str = field(
+        default='energy_balance',
+        validator=in_(('quasi_steady', 'energy_balance', 'gradient', 'bower2018')),
     )
-    tolerance: float = field(default=1e-10, validator=gt(0))
-    tolerance_rel: float = field(default=1e-10, validator=gt(0))
+    phase_smoothing: str = field(
+        default='tanh',
+        validator=in_(('tanh', 'cubic_hermite')),
+    )
+    """Phase-boundary smoothing for Jgrav and Jmix: 'tanh' (SPIDER parity) or 'cubic_hermite'."""
+    solver_method: str = field(
+        default='cvode',
+        validator=in_(('cvode', 'radau', 'bdf')),
+    )
+    """ODE solver: 'cvode' (SUNDIALS, SPIDER parity), 'radau' (scipy), 'bdf' (scipy)."""
+    scalar_gravity_override: bool = field(default=False)
+    """Stage 1c.4 comparison knob. When True, the external mesh file that
+    Zalmoxis writes has its gravity column overwritten with a uniform scalar
+    (the surface value from ``hf_row['gravity']``) before Aragog reads it.
+    Aragog's per-node gravity path then interpolates to that scalar everywhere,
+    which is functionally the same as the pre-1c.1 scalar-g code path. This is
+    the official way to produce a scalar-g control run on the live-coupling
+    branch without pinning the aragog submodule back to 8fc5072. False by
+    default; set True only when running a paired scalar-g comparison."""
+    phi_step_cap: float = field(default=0.0, validator=ge(0.0))
+    """Per-call ΔΦ cap (Strategy B). When > 0 and at least one staggered cell
+    sits in or near the mushy band at solve() entry, Aragog clamps the
+    integration end_time so the projected per-cell |ΔΦ| over the requested
+    window stays within this cap. The estimate uses |dΦ/dt| at t=start_time
+    scaled by a 0.5 safety factor, and the PROTEUS outer loop sees the
+    truncated achieved time via ``sol.t[-1]``. Default 0.0 (disabled, no
+    behavioural change)."""
+
     tolerance_struct: float = field(default=1e2, validator=gt(0))
-    inner_boundary_condition: int = field(default=1, validator=ge(0))
-    inner_boundary_value: float = field(default=4000, validator=ge(0))
-    conduction: bool = field(default=True)
-    convection: bool = field(default=True)
-    gravitational_separation: bool = field(default=False)
-    mixing: bool = field(default=False)
-    dilatation: bool = field(default=False)
-    mass_coordinates: bool = field(default=False)
-    tsurf_poststep_change: float = field(default=30, validator=ge(0))
-    event_triggering: bool = field(default=True)
-    bulk_modulus: float = field(default=260e9, validator=gt(0))
+    """Absolute mass tolerance [kg] for the secant solver in
+    determine_interior_radius. Default 100 kg; pairs with Spider's
+    matching field so both backends drive the same outer-loop convergence
+    criterion."""
 
 
 def valid_interiordummy(instance, attribute, value):
     if instance.module != 'dummy':
         return
 
-    ini_tmagma = instance.dummy.ini_tmagma
-    if (not ini_tmagma) or (ini_tmagma <= 200.0):
-        raise ValueError('`interior.dummy.ini_tmagma` must be >200')
+    pass  # dummy uses planet.tsurf_init for initial temperature
 
     tliq = instance.dummy.mantle_tliq
     tsol = instance.dummy.mantle_tsol
@@ -315,12 +316,6 @@ class InteriorDummy:
 
     Attributes
     ----------
-    ini_tmagma: float
-        Initial magma surface temperature [K].
-    tmagma_atol: float
-        Max absolute change in surface temperature [K] during a single iteration.
-    tmagma_rtol: float
-        Max relative change in surface temperature [K] during a single iteration.
     mantle_rho: float
         Mantle mass density [kg m-3].
     mantle_cp: float
@@ -329,18 +324,15 @@ class InteriorDummy:
         Mantle liquidus temperature [K]
     mantle_tsol: float
         Mantle solidus temperature [K]
-    H_radio: float
-        Constant radiogenic heating rate [W kg-1]
+    heat_internal: float
+        Internal heating rate (e.g., radiogenic, tidal) [W kg-1]
     """
 
-    ini_tmagma = field(default=None)
-    tmagma_atol: float = field(default=30.0, validator=ge(0))
-    tmagma_rtol: float = field(default=0.05, validator=ge(0))
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
     mantle_rho: float = field(default=4.55e3, validator=gt(0))
     mantle_cp: float = field(default=1792.0, validator=ge(0))
-    H_radio: float = field(default=0.0, validator=ge(0))
+    heat_internal: float = field(default=0.0, validator=ge(0))
 
 
 @define
@@ -351,15 +343,25 @@ class Interior:
     ----------
     grain_size: float
         Crystal settling grain size [m].
-    F_initial: float
-        Initial heat flux guess [W m-2].
-    radiogenic_heat: bool
+    flux_guess: float
+        Initial heat flux guess [W m-2]. When < 0 (default), computed
+        automatically as sigma * T_magma^4. Set to a positive value to
+        prescribe a specific initial flux. Set to 0 for zero initial flux.
+    radio_tref: float
+        Reference age for setting radioactive decay [Gyr].
+    radio_K: float
+        Concentration (ppmw) of potassium-40 at reference age t=radio_tref.
+    radio_U: float
+        Concentration (ppmw) of uranium at reference age t=radio_tref.
+    radio_Th: float
+        Concentration (ppmw) of thorium-232 at reference age t=radio_tref.
+    heat_radiogenic: bool
         Include radiogenic heat production?
-    tidal_heat: bool
+    heat_tidal: bool
         Include tidal heating?
-    rheo_phi_loc: float
+    rfront_loc: float
         Centre of rheological transition in terms of melt fraction
-    rheo_phi_wid: float
+    rfront_wid: float
         Width of rheological transition in terms of melt fraction
 
     module: str
@@ -370,24 +372,47 @@ class Interior:
         Parameters for running the aragog module.
     dummy: Dummy
         Parameters for running the dummy module.
-    melting_dir: str
-        Melting curve set used by all interior modules (Zalmoxis, Aragog, SPIDER).
-        Must correspond to a folder in FWL_DATA/interior_lookup_tables/Melting_curves/
-        containing solidus_P-T.dat and liquidus_P-T.dat (T(P) format). SPIDER additionally
-        requires pre-computed S(P) files in its lookup directory.
-    eos_dir: str
-        Equation of state used by SPIDER and Aragog. Must correspond to a
-        folder under FWL_DATA/interior_lookup_tables/EOS/dynamic/ containing
-        P-T/ (pressure-temperature format, used by Aragog) and P-S/
-        (pressure-entropy format, used by SPIDER) subdirectories.
-        Zalmoxis derives its EOS paths from struct.zalmoxis config instead.
+
+    Notes
+    -----
+    The ``melting_dir`` and ``eos_dir`` fields live on the parent
+    ``[interior_struct]`` section (class ``Struct`` in
+    ``config/_struct.py``), not here. They are shared across SPIDER,
+    Aragog, and Zalmoxis and so belong with the structure config.
     """
 
-    module: str = field(validator=in_(('spider', 'aragog', 'dummy', 'boundary')))
-    melting_dir: str = field(default='Monteux-600', validator=valid_path)
-    eos_dir: str = field(default='WolfBower2018_MgSiO3', validator=valid_path)
-    radiogenic_heat: bool = field(default=True)
-    tidal_heat: bool = field(default=True)
+    module: str = field(
+        default='aragog', validator=in_(('spider', 'aragog', 'dummy', 'boundary'))
+    )
+    num_levels: int = field(default=80, validator=ge(40))
+
+    # Unified ODE tolerance: both SPIDER and Aragog read from here.
+    # num_tolerance is a deprecated alias (emits DeprecationWarning).
+    # matprop_smooth_width is SPIDER-only (on the Spider subclass).
+    rtol: float = field(default=1e-10, validator=gt(0))
+    """Relative numerical tolerance for the interior ODE solver.
+    SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling).
+    Aragog: scipy solve_ivp rtol. Replaces the legacy Spider.tolerance_rel
+    and Interior.num_tolerance fields."""
+
+    atol: float = field(default=1e-10, validator=gt(0))
+    """Absolute numerical tolerance for the interior ODE solver.
+    SPIDER: -ts_sundials_atol (scaled by atol_sf at runtime). Aragog
+    uses [interior_energetics.aragog].atol_temperature_equivalent
+    instead because its state variable is entropy, not temperature, and
+    a direct entropy-scale atol would be unintuitive to tune."""
+
+    # Deprecated alias for rtol. Kept for backwards compatibility with
+    # existing configs. Emits DeprecationWarning when set to any non-
+    # default value. Will be removed in a future release.
+    num_tolerance: float = field(default=1e-10, validator=gt(0))
+
+    trans_conduction: bool = field(default=True)
+    trans_convection: bool = field(default=True)
+    trans_grav_sep: bool = field(default=True)
+    trans_mixing: bool = field(default=True)
+    heat_radiogenic: bool = field(default=True)
+    heat_tidal: bool = field(default=False)
 
     spider: Spider = field(factory=Spider, validator=valid_spider)
     aragog: Aragog = field(factory=Aragog, validator=valid_aragog)
@@ -396,7 +421,240 @@ class Interior:
         factory=InteriorBoundary, validator=valid_interiorboundary
     )
 
+    mixing_length: str = field(default='nearest', validator=in_(('nearest', 'constant')))
     grain_size: float = field(default=0.1, validator=gt(0))
-    F_initial: float = field(default=1e3, validator=gt(0))
-    rheo_phi_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
-    rheo_phi_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
+    flux_guess: float = field(default=-1)
+    tmagma_atol: float = field(default=20.0, validator=ge(0))
+    tmagma_rtol: float = field(default=0.02, validator=ge(0))
+
+    radio_tref: float = field(default=4.567, validator=ge(0))
+    radio_Al: float = field(default=0.0, validator=ge(0))
+    radio_Fe: float = field(default=0.0, validator=ge(0))
+    radio_K: float = field(default=310.0, validator=ge(0))
+    radio_U: float = field(default=0.031, validator=ge(0))
+    radio_Th: float = field(default=0.124, validator=ge(0))
+
+    rfront_loc: float = field(default=0.5, validator=(gt(0), lt(1)))
+    rfront_wid: float = field(default=0.2, validator=(gt(0), lt(1)))
+
+    # Phase-dependent eddy diffusivity floor [m^2/s]. Default 0 = standard MLT.
+    # When > 0, applies max(kh_MLT, floor * f(phi)) where f transitions from
+    # 1 (liquid) to 0 (solid) at the rheological transition. Passed to both
+    # SPIDER (-kappah_floor) and Aragog (kappah_floor in energy config).
+    kappah_floor: float = field(default=10.0, validator=ge(0))
+
+    # Ultra-thin thermal boundary layer parameterization (Bower et al. 2018, Eq. 18).
+    # Corrects the surface temperature for the unresolved boundary layer:
+    #   T_interior = T_surf + param_utbl_const * T_surf^3
+    # Applies to both SPIDER and Aragog. Default off.
+    param_utbl: bool = field(default=False)
+    param_utbl_const: float = field(default=1e-7, validator=gt(0))
+
+    # Surface boundary condition mode for SPIDER/Aragog.
+    #
+    # - 'flux' (default): prescribed heat flux from hf_row['F_atm']. SPIDER
+    #   uses -SURFACE_BC 4, Aragog uses outer_boundary_condition=4. The Python
+    #   atmosphere module (dummy, AGNI, JANUS) is responsible for computing
+    #   F_atm, which the interior consumes unchanged for the full duration of
+    #   the coupling step.
+    #
+    # - 'grey_body': native grey-body BC computed inside the interior solver
+    #   per CVode substep from the current top-cell T. SPIDER uses -SURFACE_BC 1
+    #   -emissivity0 1.0, Aragog uses outer_boundary_condition=1 with
+    #   emissivity=1. Both compute F = sigma * (T_surf^4 - T_eqm^4) using the
+    #   T_eqm value in hf_row['T_eqm']. This is the formulation used by
+    #   SPIDER-Aragog parity tests: both solvers follow the identical physical
+    #   law so their cooling trajectories can be compared directly. The
+    #   Python-side atmosphere module still runs to populate diagnostic
+    #   helpfile fields (F_olr, F_sct, R_obs, ...), but its F_atm output is
+    #   not used by the interior.
+    surface_bc_mode: str = field(
+        default='flux',
+        validator=in_(('flux', 'grey_body')),
+    )
+
+    # -----------------------------------------------------------------
+    # EOS and rheology parameters exposed to config. Defaults match
+    # SPIDER values for cross-solver consistency.
+    # -----------------------------------------------------------------
+
+    # Adams-Williamson mantle hydrostatic EOS parameters.
+    adams_williamson_rhos: float = field(
+        default=4078.95095544,
+        validator=gt(0),
+    )
+    """Adams-Williamson surface density [kg/m^3]. Matches SPIDER
+    -adams_williamson_rhos and Aragog _MeshParameters.surface_density.
+    Previously hardcoded: SPIDER 4078.95095544, Aragog 4090 (0.27% off)."""
+
+    adams_williamson_beta: float = field(
+        default=1.1115348931000002e-07,
+        validator=gt(0),
+    )
+    """Adams-Williamson density gradient [1/m]. Matches SPIDER
+    -adams_williamson_beta. Aragog derives its own via bulk modulus so
+    this value is SPIDER-only today."""
+
+    adiabatic_bulk_modulus: float = field(
+        default=260e9,
+        validator=gt(0),
+    )
+    """Adiabatic bulk modulus [Pa] used by Aragog's Adams-Williamson EOS
+    (_MeshParameters.adiabatic_bulk_modulus). SPIDER derives its own."""
+
+    # Phase viscosities (log10 Pa s).
+    melt_log10visc: float = field(default=2.0)
+    """log10 viscosity of molten silicate [Pa s]. Matches SPIDER
+    -melt_log10visc (2.0 = 1e2 Pa s)."""
+
+    solid_log10visc: float = field(default=22.0)
+    """log10 viscosity of solid silicate [Pa s]. Matches SPIDER
+    -solid_log10visc (22.0 = 1e22 Pa s). Aragog previously hardcoded
+    1e21 (log10=21), a 10x undervalue that made Aragog's solid-phase
+    rheology an order of magnitude softer than SPIDER's. Fixed here."""
+
+    # Phase thermal conductivity [W/m/K].
+    melt_cond: float = field(default=4.0, validator=gt(0))
+    """Thermal conductivity of molten silicate [W/m/K]. Matches SPIDER
+    -melt_cond."""
+
+    solid_cond: float = field(default=4.0, validator=gt(0))
+    """Thermal conductivity of solid silicate [W/m/K]. Matches SPIDER
+    -solid_cond."""
+
+    # Eddy diffusivity scaling (dimensionless multiplier on MLT-derived kappa).
+    eddy_diffusivity_thermal: float = field(default=1.0)
+    """Multiplier on the internally-computed thermal eddy diffusivity.
+    SPIDER: -eddy_diffusivity_thermal (1.0 default)."""
+
+    eddy_diffusivity_chemical: float = field(default=1.0)
+    """Multiplier on the internally-computed chemical eddy diffusivity.
+    SPIDER: -eddy_diffusivity_chemical (1.0 default)."""
+
+    # Constant-properties mode (SPIDER -use_const_properties parity).
+    # When True, both SPIDER and Aragog bypass EOS tables and use
+    # analytical T(S) = T_ref * exp((S - S_ref) / Cp) with constant
+    # rho, Cp, alpha, k, visc. phi=1 always (no phase transitions).
+    # For controlled parity comparisons with dummy structure + atmosphere.
+    const_properties: bool = field(default=False)
+    const_rho: float = field(default=4000.0, validator=gt(0))
+    """Constant density [kg/m3]."""
+    const_Cp: float = field(default=1000.0, validator=gt(0))
+    """Constant heat capacity [J/kg/K]."""
+    const_alpha: float = field(default=1e-5, validator=gt(0))
+    """Constant thermal expansivity [1/K]."""
+    const_cond: float = field(default=4.0, validator=gt(0))
+    """Constant thermal conductivity [W/m/K]."""
+    const_log10visc: float = field(default=2.0)
+    """Constant log10 dynamic viscosity [Pa.s]."""
+    const_T_ref: float = field(default=3500.0, validator=gt(0))
+    """Reference temperature for T(S) = T_ref * exp((S-S_ref)/Cp) [K]."""
+    const_S_ref: float = field(default=3000.0)
+    """Reference entropy for T(S) [J/kg/K]. No positivity constraint
+    since entropy reference states can be zero or negative."""
+
+    # Phase transition thermodynamics.
+    latent_heat_of_fusion: float = field(default=4e6, validator=gt(0))
+    """Latent heat of fusion of silicate [J/kg]. Aragog uses this as a
+    scalar in _PhaseMixedParameters. SPIDER derives it per-(P,S) from
+    dS * T_fus via the EOS tables; the SPIDER derivation is more
+    physically correct but this scalar matches Aragog's historical
+    default (4e6) and is good to ~10% at Earth-mantle conditions. TODO:
+    switch Aragog to SPIDER's derivation once the EntropyEOS exposes a
+    dS_fus(P) method."""
+
+    phase_transition_width: float = field(
+        default=0.1,
+        validator=(gt(0), lt(1)),
+    )
+    """Width [fraction] of the mushy-zone transition in Aragog's
+    _PhaseMixedParameters. Sets the width of the phase boundary in
+    Aragog's mixed-phase blending (viscosity, thermal conductivity
+    etc.). Distinct from ``[interior_energetics.spider].matprop_smooth_width``
+    which is SPIDER's analogous knob for its own solver."""
+
+    # Core thermal model (Bower+2018 Table 2).
+    core_tfac_avg: float = field(default=1.147, validator=gt(0))
+    """Core T_avg / T_cmb ratio from adiabatic gradient (Bower+2018
+    Table 2). Used by Aragog's _BoundaryConditionsParameters.tfac_core_avg.
+    SPIDER derives its own internally."""
+
+    # Diagnostic flag for T_core investigations.
+    write_flux_diagnostics: bool = field(default=False)
+    """When True, Aragog's NetCDF output includes per-component flux
+    decomposition (Jcond_b, Jconv_b, Jgrav_b, Jmix_b) and basic-node
+    state variables (dSdr_b, eddy_diff_b, phi_basic_b, T/cp/rho_basic_b).
+    Adds ~10 fields per snapshot; default False keeps output compact.
+    Used for the T_core phi=0 CMB-closure instability investigation
+    (2026-04-14). SPIDER path ignores this flag (uses SPIDER's own JSON
+    output which already includes Jcond_b, Jconv_b, Jgrav_b, Jmix_b)."""
+
+    def __attrs_post_init__(self):
+        """Resolve Tier 4 deprecation aliases.
+
+        Two legacy fields are accepted as backwards-compat aliases
+        for ``interior_energetics.rtol``:
+        ``num_tolerance`` (old top-level name) and
+        ``[interior_energetics.spider].tolerance_rel`` (old
+        per-solver name).
+
+        The resolution rules are:
+
+        - If only the alias is set, its value is copied to ``rtol``
+          and a ``DeprecationWarning`` is emitted.
+        - If both are set to the same value, the alias is silently
+          ignored (the user is in a clean state).
+        - If both are set to DISTINCT non-default values, ``ValueError``
+          is raised because we cannot guess which one the user meant.
+
+        All aliases will be removed in a future release.
+
+        Note: ``matprop_smooth_width`` was briefly a top-level field
+        under Tier 4 but reverted to SPIDER-only on 2026-04-09 after
+        the Aragog Jgrav smoothing was made parameter-free. It lives
+        on ``Spider`` now, no alias logic needed.
+        """
+        _default_rtol = 1e-10
+
+        # --- num_tolerance (top-level) -> rtol ---
+        num_tol_set = self.num_tolerance != _default_rtol
+        rtol_set = self.rtol != _default_rtol
+        if num_tol_set and rtol_set and self.num_tolerance != self.rtol:
+            raise ValueError(
+                'interior_energetics.num_tolerance and .rtol are both '
+                'set to distinct non-default values '
+                f'(num_tolerance={self.num_tolerance}, rtol={self.rtol}). '
+                'num_tolerance is deprecated; set rtol only.'
+            )
+        if num_tol_set and not rtol_set:
+            warnings.warn(
+                'interior_energetics.num_tolerance is deprecated; use '
+                'interior_energetics.rtol instead. Value copied to rtol '
+                'for backwards compatibility. This alias will be removed '
+                'in a future release.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            object.__setattr__(self, 'rtol', float(self.num_tolerance))
+            rtol_set = True
+
+        # --- spider.tolerance_rel -> rtol ---
+        spider_tol = float(getattr(self.spider, 'tolerance_rel', -1.0))
+        if spider_tol > 0:
+            if rtol_set and spider_tol != self.rtol:
+                raise ValueError(
+                    'interior_energetics.spider.tolerance_rel is a '
+                    'deprecated alias for interior_energetics.rtol, but '
+                    f'both are set to distinct values ({spider_tol} vs '
+                    f'{self.rtol}). Remove the [interior_energetics.spider] '
+                    'section and set rtol at the top level.'
+                )
+            warnings.warn(
+                'interior_energetics.spider.tolerance_rel is deprecated; '
+                'use interior_energetics.rtol at the top level instead. '
+                'Value copied to rtol for backwards compatibility. This '
+                'alias will be removed in a future release.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            object.__setattr__(self, 'rtol', spider_tol)

@@ -60,11 +60,21 @@ rm -rf "$socpath"
 set -euo pipefail
 
 
+# Resolve the pinned URL + ref from pyproject.toml. The HTTPS URL is the
+# default; SSH is used only when ssh -T against github succeeded above.
+soc_url=$(python "$root/tools/_module_pins.py" socrates url)
+soc_ref=$(python "$root/tools/_module_pins.py" socrates ref)
+
 if [ "$use_ssh" = true ]; then
-    git clone git@github.com:FormingWorlds/SOCRATES.git "$socpath"
+    # Rewrite https://github.com/ -> git@github.com: for SSH transport.
+    soc_ssh_url=${soc_url/https:\/\/github.com\//git@github.com:}
+    git clone "$soc_ssh_url" "$socpath"
 else
-    git clone https://github.com/FormingWorlds/SOCRATES.git "$socpath"
+    git clone "$soc_url" "$socpath"
 fi
+
+# Pin to the configured SHA / tag / branch.
+git -C "$socpath" checkout --quiet "$soc_ref"
 
 # Compile SOCRATES
 cd "$socpath"

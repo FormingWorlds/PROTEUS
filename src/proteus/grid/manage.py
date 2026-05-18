@@ -492,7 +492,7 @@ class Grid:
         )
 
     def slurm_config(
-        self, max_jobs: int, test_run: bool = False, max_days: int = 1, max_mem: int = 3
+        self, max_jobs: int, test_run: bool = False, max_days: int = 1, max_mem: int = 12
     ):
         """Write slurm config file.
 
@@ -580,6 +580,13 @@ def grid_from_config(config_fpath: str, test_run: bool = False, check_interval: 
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config['output'])
+    if folder.strip().lower() == 'auto':
+        import secrets
+        from datetime import datetime
+
+        stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        suffix = secrets.token_hex(2)
+        folder = f'grid_{stamp}_{suffix}'
 
     # Set this string to have the output files created at an alternative location. The
     #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this

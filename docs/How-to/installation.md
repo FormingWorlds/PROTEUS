@@ -248,13 +248,6 @@ git clone git@github.com:FormingWorlds/CALLIOPE
 python -m pip install -e CALLIOPE/.
 ```
 
-**ARAGOG** (interior thermal evolution):
-
-```console
-git clone git@github.com:FormingWorlds/aragog.git
-python -m pip install -e aragog/.
-```
-
 **ZEPHYRUS** (atmospheric escape):
 
 ```console
@@ -262,36 +255,20 @@ git clone git@github.com:FormingWorlds/ZEPHYRUS
 python -m pip install -e ZEPHYRUS/.
 ```
 
+**Aragog** (interior thermal evolution):
+
+```console
+./tools/get_aragog.sh
+```
+
 **Zalmoxis** (planetary interior structure):
 
 ```console
-git clone git@github.com:FormingWorlds/Zalmoxis
-python -m pip install -e Zalmoxis/.
+./tools/get_zalmoxis.sh
 ```
 
-The environment variable `ZALMOXIS_ROOT` must point to the Zalmoxis installation directory. Add it to your shell config file:
-
-=== "bash"
-
-    ```console
-    echo "export ZALMOXIS_ROOT=$PWD/Zalmoxis/" >> "$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    ```
-
-=== "zsh"
-
-    ```console
-    echo "export ZALMOXIS_ROOT=$PWD/Zalmoxis/" >> "$HOME/.zshrc"
-    source "$HOME/.zshrc"
-    ```
-
-Download the required data files:
-
-```console
-cd Zalmoxis
-bash src/get_zalmoxis.sh
-cd ../
-```
+!!! info "Editable checkout overrides the PyPI version"
+    `fwl-aragog`, `fwl-zalmoxis`, and `fwl-vulcan` are listed in `pyproject.toml` as PyPI dependencies (a fall-back for users who install PROTEUS from a tarball without cloning). When the editable sibling checkouts are present, they take precedence over the PyPI versions on `sys.path`, so `import aragog` resolves to your local working tree. Run `proteus doctor` to confirm which version is active.
 
 ## 11. Setup PETSc (numerical computing library)
 
@@ -362,7 +339,7 @@ LovePy is written in Julia. You can use the same environment as AGNI if you wish
 
 ### Chemical kinetics atmosphere model (VULCAN)
 
-VULCAN is not available as a standard Python package, so it is installed via a dedicated script:
+VULCAN is available on PyPI as `fwl-vulcan` (installed automatically in step 13). For local development, install it as an editable sibling checkout via the dedicated script; the editable install takes precedence over the PyPI version on `sys.path`:
 
 ```console
 ./tools/get_vulcan.sh

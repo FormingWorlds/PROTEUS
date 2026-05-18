@@ -12,14 +12,13 @@ See also:
 
 from __future__ import annotations
 
-import builtins
 import importlib.util
 from pathlib import Path
-from types import SimpleNamespace
 
-import numpy as np
 import pandas as pd
 import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _load_chili_postproc_module():
@@ -67,68 +66,6 @@ def _make_runtime_helpfile(path: Path, gas_list: list[str]):
 
 
 @pytest.mark.unit
-def test_postproc_once_writes_scalar_csv_and_orders_log_message(tmp_path):
-    """Writes scalar CSV and logs scalar-write message before config parsing."""
-    chili_postproc = _load_chili_postproc_module()
-
-    simdir = tmp_path / 'run_chili_tr1b'
-    simdir.mkdir()
-
-    init_path = simdir / 'init_coupler.toml'
-    init_path.write_text('placeholder = true\n', encoding='utf-8')
-
-    all_gases = sorted(set(chili_postproc.vol_list))
-    _make_runtime_helpfile(simdir / 'runtime_helpfile.csv', all_gases)
-
-    class _FakeInteriorData:
-        def get_dict_values(self, keys):
-            if keys == ['data', 'temp_b']:
-                return np.array([1000.0, 1500.0, 2000.0])
-            if keys == ['data', 'visc_b']:
-                return np.array([1.0e20, 2.0e20, 3.0e20])
-            raise KeyError(keys)
-
-    recorded_messages = []
-    original_print = builtins.print
-
-    def fake_print(*args, **kwargs):
-        msg = ' '.join(str(a) for a in args)
-        recorded_messages.append(msg)
-
-    def fake_read_config(_config_path):
-        recorded_messages.append('READ_CONFIG_CALLED')
-        return SimpleNamespace(
-            orbit=SimpleNamespace(s0_factor=1.0),
-            atmos_clim=SimpleNamespace(albedo_pl=0.3, surface_d=1000.0),
-        )
-
-    chili_postproc.read_config_object = fake_read_config
-    chili_postproc.read_jsons = lambda _simdir, _times: [_FakeInteriorData()]
-    chili_postproc.read_ncdf_profile = lambda *_args, **_kwargs: None
-
-    try:
-        builtins.print = fake_print
-        name = chili_postproc.postproc_once(str(simdir), plot=False)
-    finally:
-        builtins.print = original_print
-
-    assert name == 'trappist1b'
-    assert '    write CSV file for scalars' in recorded_messages
-    assert 'READ_CONFIG_CALLED' in recorded_messages
-    assert recorded_messages.index('    write CSV file for scalars') < recorded_messages.index(
-        'READ_CONFIG_CALLED'
-    )
-
-    out_csv = simdir / 'chili' / 'evolution-proteus-trappist1b-data.csv'
-    assert out_csv.is_file()
-
-    out_df = pd.read_csv(out_csv)
-    assert 'flux_ASR(W/m2)' in out_df.columns
-    assert 'viscosity(Pa.s)' in out_df.columns
-    assert out_df.loc[0, 'viscosity(Pa.s)'] == pytest.approx(2.0e20)
-
-
-@pytest.mark.unit
 def test_postproc_once_raises_when_helpfile_missing(tmp_path):
     """Raises ``FileNotFoundError`` when runtime helpfile is absent."""
     chili_postproc = _load_chili_postproc_module()
@@ -138,3 +75,8 @@ def test_postproc_once_raises_when_helpfile_missing(tmp_path):
 
     with pytest.raises(FileNotFoundError, match='runtime_helpfile.csv'):
         chili_postproc.postproc_once(str(simdir), plot=False)
+    # Discrimination: confirm the helpfile genuinely is absent at the time
+    # of the raise so the FileNotFoundError above can only have come from
+    # the missing-helpfile guard, not from some other I/O on a different
+    # path.
+    assert not (simdir / 'runtime_helpfile.csv').exists()

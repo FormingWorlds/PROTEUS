@@ -15,6 +15,8 @@ import pytest
 
 import proteus.utils.terminate as terminate
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _cfg(**kwargs: Any) -> Any:
     """Build a minimal config-like namespace with defaults and overrides."""
@@ -38,7 +40,7 @@ def _cfg(**kwargs: Any) -> Any:
         strict=False,
     )
     params = ns(stop=stop)
-    return ns(params=params, atmos_clim=ns(prevent_warming=False), **kwargs)
+    return ns(params=params, planet=ns(prevent_warming=False), **kwargs)
 
 
 def _handler(cfg: Any, *, phi_global: float = 0.4) -> Any:
@@ -120,7 +122,7 @@ def test_check_radeqm_hits_energy_balance(patch_statusfile):
 def test_check_radeqm_prevent_warming_triggers(monkeypatch, patch_statusfile):
     """Energy balance: prevent_warming=True exits when cooling stops (status 14)."""
     cfg = _cfg()
-    cfg.atmos_clim.prevent_warming = True
+    cfg.planet.prevent_warming = True
     h = _handler(cfg)
     h.hf_row['F_atm'] = 0.0
     h.hf_row['F_tidal'] = 1.0

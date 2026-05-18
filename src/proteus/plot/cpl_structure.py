@@ -12,7 +12,7 @@ from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
 from proteus.atmos_clim.common import read_atmosphere_data
-from proteus.interior.wrapper import read_interior_data
+from proteus.interior_energetics.wrapper import read_interior_data
 from proteus.utils.constants import R_earth
 from proteus.utils.plot import get_colour, latex_float, sample_output
 
@@ -81,8 +81,13 @@ def plot_structure(
         # Get temperuture-depth interior data for this time
         ds = int_data[i]
         if module == 'aragog':
-            int_t = ds['temp_b'][::-1]
-            int_r = ds['radius_b'][::-1] * 1e3
+            # Entropy solver uses staggered variables (temp_s, radius_s)
+            if 'temp_s' in ds:
+                int_t = ds['temp_s'][::-1]
+                int_r = ds['radius_s'][::-1] * 1e3
+            else:
+                int_t = ds['temp_b'][::-1]
+                int_r = ds['radius_b'][::-1] * 1e3
         elif module == 'spider':
             int_t = ds.get_dict_values(['data', 'temp_b'])
             int_r = ds.get_dict_values(['data', 'radius_b'])
@@ -163,7 +168,7 @@ def plot_structure_entry(handler: Proteus):
         os.path.join(handler.directories['output'], 'runtime_helpfile.csv'), sep=r'\s+'
     )
 
-    int_module = handler.config.interior.module
+    int_module = handler.config.interior_energetics.module
     output_dir = handler.directories['output']
 
     int_data = read_interior_data(output_dir, int_module, plot_times)

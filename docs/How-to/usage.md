@@ -22,6 +22,7 @@ proteus start -c [cfgfile]
 ```
 Where `[cfgfile]` is the path to the required configuration file.
 Pass the flag `--resume` in to resume the simulation from the disk.
+Pass `--deterministic` to pin the JAX/XLA reduction order on top of the always-on BLAS thread pins; use this when a coupled run fails on noise-floor floating-point divergence between launches (see [troubleshooting](troubleshooting.md#numerically-fragile-coupled-runs)).
 
 A good first test is to run the `all_options.toml` config, which is located in the `input` folder:
 
@@ -116,10 +117,10 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
 It is often useful to run grids of forward models, where each point in a grid represents a different set of parameters. This can also be done using the command line interface. For example:
 
 ```console
-proteus grid -c input/ensembles/example.grid.toml
+proteus grid -c input/example.grid.toml
 ```
 
-Configure a grid of your choosing by creating a TOML file which specifies the grid's axes and determines how it should be run. An example configuration file for a PROTEUS grid is available at `input/ensembles/example.grid.toml`, which uses the dummy configuration file as a "reference" and then modifies it for every combination of the parameters in the `.grid.toml` file.
+Configure a grid of your choosing by creating a TOML file which specifies the grid's axes and determines how it should be run. An example configuration file for a PROTEUS grid is available at `input/example.grid.toml`, which uses the dummy configuration file as a "reference" and then modifies it for every combination of the parameters in the `.grid.toml` file.
 
 Grids can be dispatched with or without using a workload manager. In PROTEUS, we use the [Slurm](https://slurm.schedmd.com/overview.html) workload manager, which can allow running large ensembles of models on high-performance compute clusters. The subsections below detail cases with/without Slurm.
 

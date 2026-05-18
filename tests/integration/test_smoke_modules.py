@@ -20,12 +20,16 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from _smoke_invariants import assert_smoke_conservation_invariants
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
+
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 def test_smoke_escape_dummy_atmos():
     """Test escape module + dummy atmosphere coupling (1 timestep).
 
@@ -45,7 +49,7 @@ def test_smoke_escape_dummy_atmos():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration (uses dummy escape + dummy atmos)
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -63,15 +67,19 @@ def test_smoke_escape_dummy_atmos():
 
         # Set initial volatile inventory (needed for escape to work)
         # Use delivery module to set initial elements
-        runner.config.delivery.module = 'none'  # No delivery module, just initial inventory
-        runner.config.delivery.initial = 'elements'
-        runner.config.delivery.elements.H_ppmw = 3e3  # Hydrogen inventory
-        runner.config.delivery.elements.CH_ratio = 1.0  # C/H ratio
-        runner.config.delivery.elements.N_ppmw = 100.0  # Nitrogen inventory
-        runner.config.delivery.elements.SH_ratio = 1.0  # S/H ratio
+        runner.config.accretion.module = 'none'  # No delivery module, just initial inventory
+        runner.config.planet.volatile_mode = 'elements'
+        runner.config.planet.elements.H_mode = 'ppmw'
+        runner.config.planet.elements.H_budget = 3e3  # Hydrogen inventory
+        runner.config.planet.elements.C_mode = 'C/H'
+        runner.config.planet.elements.C_budget = 1.0  # C/H ratio
+        runner.config.planet.elements.N_mode = 'ppmw'
+        runner.config.planet.elements.N_budget = 100.0  # Nitrogen inventory
+        runner.config.planet.elements.S_mode = 'S/H'
+        runner.config.planet.elements.S_budget = 1.0  # S/H ratio
 
-        # Fix: Lower ini_tmagma to prevent runaway heating
-        runner.config.interior.dummy.ini_tmagma = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.planet.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -115,12 +123,18 @@ def test_smoke_escape_dummy_atmos():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
+
         finally:
             # Cleanup handled by tempfile context manager
             pass
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 def test_smoke_star_instellation():
     """Test star module + dummy atmosphere coupling (1 timestep).
 
@@ -141,7 +155,7 @@ def test_smoke_star_instellation():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -159,8 +173,8 @@ def test_smoke_star_instellation():
         runner.config.star.dummy.Teff = 5772.0  # Solar temperature
         runner.config.star.dummy.radius = 1.0  # Solar radius
 
-        # Fix: Lower ini_tmagma to prevent runaway heating
-        runner.config.interior.dummy.ini_tmagma = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.planet.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -217,13 +231,19 @@ def test_smoke_star_instellation():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
+
         finally:
             # Cleanup handled by tempfile context manager
             pass
 
 
 @pytest.mark.smoke
-def test_smoke_orbit_tidal_heating():
+@pytest.mark.physics_invariant
+def test_smoke_orbit_heat_tidaling():
     """Test orbit module + dummy interior coupling (1 timestep).
 
     Validates that orbital dynamics correctly calculates tidal heating and couples
@@ -243,7 +263,7 @@ def test_smoke_orbit_tidal_heating():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -262,10 +282,10 @@ def test_smoke_orbit_tidal_heating():
         runner.config.orbit.dummy.Imk2 = -1e5  # Love number
 
         # Enable tidal heating in interior
-        runner.config.interior.tidal_heat = True
+        runner.config.interior_energetics.heat_tidal = True
 
-        # Fix: Lower ini_tmagma to prevent runaway heating
-        runner.config.interior.dummy.ini_tmagma = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.planet.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -314,12 +334,18 @@ def test_smoke_orbit_tidal_heating():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
+
         finally:
             # Cleanup handled by tempfile context manager
             pass
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 def test_smoke_outgas_atmos_volatiles():
     """Test outgas module + dummy atmosphere coupling (1 timestep).
 
@@ -340,7 +366,7 @@ def test_smoke_outgas_atmos_volatiles():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -356,15 +382,19 @@ def test_smoke_outgas_atmos_volatiles():
         runner.config.outgas.fO2_shift_IW = 0  # No fO2 shift
 
         # Set initial volatile inventory
-        runner.config.delivery.module = 'none'  # No delivery module, just initial inventory
-        runner.config.delivery.initial = 'elements'
-        runner.config.delivery.elements.H_ppmw = 3e3  # Hydrogen inventory
-        runner.config.delivery.elements.CH_ratio = 1.0  # C/H ratio
-        runner.config.delivery.elements.N_ppmw = 100.0  # Nitrogen inventory
-        runner.config.delivery.elements.SH_ratio = 1.0  # S/H ratio
+        runner.config.accretion.module = 'none'  # No delivery module, just initial inventory
+        runner.config.planet.volatile_mode = 'elements'
+        runner.config.planet.elements.H_mode = 'ppmw'
+        runner.config.planet.elements.H_budget = 3e3  # Hydrogen inventory
+        runner.config.planet.elements.C_mode = 'C/H'
+        runner.config.planet.elements.C_budget = 1.0  # C/H ratio
+        runner.config.planet.elements.N_mode = 'ppmw'
+        runner.config.planet.elements.N_budget = 100.0  # Nitrogen inventory
+        runner.config.planet.elements.S_mode = 'S/H'
+        runner.config.planet.elements.S_budget = 1.0  # S/H ratio
 
-        # Fix: Lower ini_tmagma to prevent runaway heating
-        runner.config.interior.dummy.ini_tmagma = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.planet.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -415,12 +445,18 @@ def test_smoke_outgas_atmos_volatiles():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
+
         finally:
             # Cleanup handled by tempfile context manager
             pass
 
 
 @pytest.mark.smoke
+@pytest.mark.physics_invariant
 def test_smoke_dummy_full_chain():
     """Test all dummy modules in sequence (star → orbit → interior → atmos → escape).
 
@@ -441,7 +477,7 @@ def test_smoke_dummy_full_chain():
     unique_id = str(uuid.uuid4())[:8]
     with tempfile.TemporaryDirectory() as tmpdir:
         # Load dummy configuration (uses all dummy modules)
-        config_path = PROTEUS_ROOT / 'input' / 'demos' / 'dummy.toml'
+        config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
         # Initialize PROTEUS
         runner = Proteus(config_path=config_path)
@@ -455,12 +491,12 @@ def test_smoke_dummy_full_chain():
         # Ensure all modules are set to dummy
         runner.config.star.module = 'dummy'
         runner.config.orbit.module = 'dummy'
-        runner.config.interior.module = 'dummy'
+        runner.config.interior_energetics.module = 'dummy'
         runner.config.atmos_clim.module = 'dummy'
         runner.config.escape.module = 'dummy'
 
-        # Fix: Lower ini_tmagma to prevent runaway heating
-        runner.config.interior.dummy.ini_tmagma = 2000.0
+        # Fix: Lower tsurf_init to prevent runaway heating
+        runner.config.planet.tsurf_init = 2000.0
 
         # Override stop time to run only 1 timestep
         runner.config.params.stop.time.minimum = 1e2  # yr
@@ -515,6 +551,11 @@ def test_smoke_dummy_full_chain():
             # Validate time progressed
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
+
+            # Conservation invariants — applied to every smoke test so a
+            # bookkeeping regression in any module surfaces here, not
+            # in a quiet helpfile drift months later.
+            assert_smoke_conservation_invariants(runner.hf_all)
 
         finally:
             # Cleanup handled by tempfile context manager

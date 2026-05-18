@@ -18,6 +18,9 @@ import pytest
 
 from tests.helpers.helpers import PROTEUS_ROOT
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 README_PATH = PROTEUS_ROOT / 'README.md'
 DOCS_INDEX_PATH = PROTEUS_ROOT / 'docs' / 'index.md'
 
@@ -49,6 +52,10 @@ def readme_content():
 def test_readme_exists():
     """README.md must exist at the repository root."""
     assert README_PATH.is_file(), f'README.md not found at {README_PATH}'
+    # Discrimination: existence alone passes on an empty README. Pin a
+    # non-trivial size so a regression that truncated the file to a
+    # placeholder still surfaces here.
+    assert README_PATH.stat().st_size > 1024
 
 
 @pytest.mark.unit
@@ -97,6 +104,12 @@ def test_expected_badges_present(readme_content, badge_marker):
     img_urls = re.findall(r'<img\s+src="([^"]+)"', readme_content)
     matching = [url for url in img_urls if badge_marker in url]
     assert len(matching) > 0, f"Expected badge with '{badge_marker}' not found in README"
+    # Discriminating check: each badge marker should appear exactly once; a
+    # duplicate is a copy-paste regression that a `len > 0` check would miss.
+    assert len(matching) == 1, (
+        f"Badge with '{badge_marker}' appears {len(matching)} times in README; "
+        f'expected exactly one occurrence.'
+    )
 
 
 @pytest.mark.unit
@@ -128,6 +141,11 @@ def test_workflow_badges_reference_existing_workflows(workflow_file):
     assert workflow_path.is_file(), (
         f'Workflow file referenced by badge does not exist: {workflow_path}'
     )
+    # Discrimination: existence alone passes on an empty stub workflow.
+    # Pin a non-zero size and the YAML extension so a regression that
+    # touched empty placeholder files surfaces here.
+    assert workflow_path.stat().st_size > 0
+    assert workflow_path.suffix in ('.yml', '.yaml')
 
 
 def _extract_badge_block(text: str) -> str:
@@ -160,3 +178,7 @@ def test_readme_and_docs_badges_are_identical():
         'Badge blocks differ between README.md and docs/index.md. '
         'Update both files to keep them in sync.'
     )
+    # Discrimination: equality between two empty strings would also pass
+    # the check above. Pin that the extracted block carries actual badge
+    # markup (the <img tag is the load-bearing element).
+    assert '<img' in readme_badges

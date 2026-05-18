@@ -3,18 +3,19 @@ from __future__ import annotations
 import logging
 
 import tomlkit
-from attrs import asdict, define, field, validators
+from attrs import asdict, define, field
 
+from ._accretion import Accretion
 from ._atmos_chem import AtmosChem
 from ._atmos_clim import AtmosClim
 from ._converters import dict_replace_none
-from ._delivery import Delivery
 from ._escape import Escape
 from ._interior import Interior
 from ._observe import Observe
 from ._orbit import Orbit
 from ._outgas import Outgas
 from ._params import Params
+from ._planet import Planet
 from ._star import Star
 from ._struct import Struct
 
@@ -54,8 +55,85 @@ def satellite_evolve(instance, attribute, value):
 
 def tides_enabled_orbit(instance, attribute, value):
     # Tides in interior requires orbit module to not be None
-    if (instance.interior.tidal_heat) and (instance.orbit.module is None):
+    if (instance.interior_energetics.heat_tidal) and (instance.orbit.module is None):
         raise ValueError('Interior tidal heating requires an orbit module to be enabled')
+
+
+def prevent_warming_advisory(instance, attribute, value):
+    """Warn when planet.prevent_warming is enabled.
+
+    The clamp at interior_energetics/wrapper.py forces T_magma to monotonically
+    decrease each iteration. This suppresses physical temperature oscillations
+    and can hide energy non-conservation (T_magma latching, F_atm = F_int
+    reported as convergence by clamp consistency rather than radiative
+    balance). It is only safe in regimes that are known a priori to be
+    strictly cooling.
+    """
+    if not instance.planet.prevent_warming:
+        return
+    log.warning(
+        'planet.prevent_warming = true: T_magma is forced to monotonically '
+        'decrease each iteration. This suppresses physical temperature '
+        'oscillations and can hide energy non-conservation (T_magma latching, '
+        'F_atm = F_int reported as convergence by clamp consistency rather '
+        'than radiative balance). Default is false; enable only for known '
+        'strictly-cooling regimes.'
+    )
+
+
+CURRENT_CONFIG_VERSION = '3.0'
+
+
+def valid_config_version(instance, attribute, value):
+    if value != CURRENT_CONFIG_VERSION:
+        raise ValueError(
+            f'Config file version "{value}" is not compatible with this version of PROTEUS '
+            f'(requires config_version = "{CURRENT_CONFIG_VERSION}"). '
+            f'Please update your configuration file to match the current format. '
+            f'See input/all_options.toml for the full reference.'
+        )
+
+
+def check_module_dependencies(instance, attribute, value):
+    """Check that required external packages are importable for the selected modules."""
+    import importlib
+
+    checks = {
+        'calliope': (
+            instance.outgas.module == 'calliope',
+            'calliope',
+            'outgas.module = "calliope" requires the calliope package. '
+            'Install with: git clone git@github.com:FormingWorlds/CALLIOPE && pip install -e CALLIOPE/.',
+        ),
+        'atmodeller': (
+            instance.outgas.module == 'atmodeller',
+            'atmodeller',
+            'outgas.module = "atmodeller" requires the atmodeller package. '
+            'Install with: pip install atmodeller',
+        ),
+        'boreas': (
+            instance.escape.module == 'boreas',
+            'boreas',
+            'escape.module = "boreas" requires the boreas package. '
+            'Install with: pip install boreas',
+        ),
+    }
+
+    for name, (needed, pkg, msg) in checks.items():
+        if needed:
+            try:
+                importlib.import_module(pkg)
+            except ImportError as e:
+                raise ImportError(f'{msg}\n  Original error: {e}') from e
+
+
+def boreas_requires_atmosphere(instance, attribute, value):
+    """BOREAS escape requires a radiative atmosphere (not dummy)."""
+    if (instance.escape.module == 'boreas') and (instance.atmos_clim.module == 'dummy'):
+        raise ValueError(
+            'escape.module = "boreas" requires a radiative atmosphere model (agni or janus), '
+            'not atmos_clim.module = "dummy". BOREAS needs per-level T/P/composition profiles.'
+        )
 
 
 def observe_resolved_atmosphere(instance, attribute, value):
@@ -69,26 +147,180 @@ def janus_escape_atmosphere(instance, attribute, value):
     if (
         (instance.escape.module == 'zephyrus')
         and (instance.atmos_clim.module == 'janus')
-        and (instance.params.stop.escape is False)
+        and (not instance.params.stop.escape.enabled)
     ):
         raise ValueError(
             'When using escape.zephyrus with JANUS, params.stop.escape must be True.'
         )
 
 
-def boundary_requires_fixed_surface_state(instance, attribute, value):
-    # Boundary interior assumes fixed surface state coupling.
-    if (instance.interior.module == 'boundary') and (instance.atmos_clim.surf_state != 'fixed'):
+def planet_mass_valid(instance, attribute, value):
+    """Validate that mass_tot is set and within range."""
+    from ._converters import none_if_none
+
+    mass_tot = none_if_none(instance.planet.mass_tot)
+
+    if mass_tot is None:
+        raise ValueError('`planet.mass_tot` must be set')
+    if mass_tot <= 0:
+        raise ValueError('The total planet mass must be > 0')
+    if mass_tot > 20:
+        raise ValueError('The total planet mass must be < 20 M_earth')
+
+
+def planet_oxygen_mode_explicit(instance, attribute, value):
+    """Require explicit O_mode in planet.elements (issue #677 hard cutover).
+
+    Whole-planet oxygen accounting (issue #677) requires every config to
+    declare how the IC O budget is interpreted. The 'REQUIRED' sentinel
+    default in Elements.O_mode means the user did not set it in the TOML;
+    we reject that with a migration hint listing the four valid modes.
+
+    Configs that pre-date the issue #677 fix can be migrated in one step
+    by adding to their `[planet.elements]` block:
+
+        O_mode   = "ic_chemistry"  # use CALLIOPE IC equilibrium
+        O_budget = 0.0             # ignored under ic_chemistry
+
+    This preserves the legacy "buffered fO2 + CALLIOPE-derived O" behaviour.
+    Petrologists who prefer to specify the inventory directly can use
+    O_mode = "ppmw" / "kg" / "FeO_mantle_wt_pct" instead.
+    """
+    if instance.planet.elements.O_mode == 'REQUIRED':
         raise ValueError(
-            "Must set atmos_clim.surf_state='fixed' when interior.module='boundary'"
+            'planet.elements.O_mode is required (issue #677 hard cutover). '
+            'Add to [planet.elements] one of: '
+            'O_mode = "ic_chemistry" (defer to CALLIOPE equilibrium at IC, '
+            'legacy-compatible), '
+            'O_mode = "ppmw" with O_budget in ppmw of M_mantle (or M_int '
+            'depending on planet.volatile_reservoir), '
+            'O_mode = "kg" with O_budget in kg, or '
+            'O_mode = "FeO_mantle_wt_pct" with O_budget in mantle FeO wt%.'
+        )
+
+
+def planet_fO2_source_compat(instance, attribute, value):
+    """Validate planet.fO2_source against O_mode, volatile_mode, and
+    against availability.
+
+    Rejection rules:
+
+    1. ``fO2_source = "from_mantle_redox"`` is a reserved enum value for
+       the radial Fe3+/Fe2+ fO2 framework (issue #653, Schaefer et al.
+       2024). The runtime path for it does not exist yet; reject the
+       config so users don't silently fall through to legacy behaviour.
+
+    2. ``fO2_source = "from_O_budget"`` requires the O budget to be
+       authoritative. ``O_mode = "ic_chemistry"`` defers the O inventory
+       to the chemistry solver, which contradicts Path C — there is
+       nothing to invert against. Require a concrete O budget
+       ("ppmw" / "kg" / "FeO_mantle_wt_pct") instead.
+
+    3. ``fO2_source = "from_O_budget"`` requires the volatile budget to
+       be set element-wise. ``volatile_mode = "gas_prs"`` supplies
+       partial pressures directly and makes ``planet.elements.O_mode``
+       inoperative; Path C has nothing to invert against. Switch
+       ``volatile_mode`` to ``"elements"`` or pick a different fO2_source.
+
+    4. ``fO2_source = "from_O_budget"`` requires an outgassing backend
+       with an authoritative-O implementation: CALLIOPE
+       (``equilibrium_atmosphere_authoritative_O``) and atmodeller
+       (native mass-constraint API) both qualify; the ``dummy`` backend
+       does not. The runtime dispatch echoes this rejection too, but
+       failing at config-load saves the user from burning interior IC
+       and structure setup before hitting the wall.
+
+    ``fO2_source = "user_constant"`` (default) accepts every O_mode and
+    every volatile_mode (legacy behaviour, no change).
+
+    Warning rule:
+
+    - ``fO2_source = "from_O_budget"`` with a non-default
+      ``outgas.fO2_shift_IW`` emits a UserWarning. Under Path C the
+      buffer offset is *derived*, so a user-supplied value is silently
+      ignored. The warning surfaces the misconfiguration without
+      blocking the run.
+    """
+    fO2_source = instance.planet.fO2_source
+    O_mode = instance.planet.elements.O_mode
+    volatile_mode = instance.planet.volatile_mode
+
+    if fO2_source == 'from_mantle_redox':
+        raise ValueError(
+            'planet.fO2_source = "from_mantle_redox" is reserved for the '
+            'radial Fe3+/Fe2+ tracking framework (issue #653) and is not '
+            'yet wired into the runtime. Use "user_constant" (legacy '
+            'fO2 buffered by outgas.fO2_shift_IW) or "from_O_budget" '
+            '(authoritative O budget, fO2 derived) instead.'
+        )
+
+    if fO2_source == 'from_O_budget' and O_mode == 'ic_chemistry':
+        raise ValueError(
+            'planet.fO2_source = "from_O_budget" requires an authoritative '
+            'O budget but planet.elements.O_mode = "ic_chemistry" defers '
+            'the O inventory to the chemistry solver. Pick an explicit O '
+            'budget mode ("ppmw", "kg", or "FeO_mantle_wt_pct") or switch '
+            'fO2_source back to "user_constant".'
+        )
+
+    if fO2_source == 'from_O_budget' and volatile_mode == 'gas_prs':
+        raise ValueError(
+            'planet.fO2_source = "from_O_budget" requires '
+            'planet.volatile_mode = "elements" so the O inventory is '
+            'derived from planet.elements.O_budget. Under '
+            'volatile_mode = "gas_prs" the user supplies partial '
+            'pressures directly and the element budgets are inert, so '
+            'Path C has no O target to invert against. Either switch '
+            'volatile_mode to "elements" or set fO2_source back to '
+            '"user_constant".'
+        )
+
+    if fO2_source == 'from_O_budget':
+        outgas_module = getattr(instance.outgas, 'module', None)
+        if outgas_module == 'dummy':
+            raise ValueError(
+                'planet.fO2_source = "from_O_budget" requires an '
+                'outgassing backend with an authoritative-O '
+                'implementation. outgas.module = "dummy" has no '
+                'chemistry to invert against, so Path C has nothing '
+                'to compute. Switch outgas.module to "calliope" or '
+                '"atmodeller", or set fO2_source back to '
+                '"user_constant".'
+            )
+
+    if fO2_source == 'from_O_budget':
+        import warnings
+
+        fO2_shift_IW = getattr(instance.outgas, 'fO2_shift_IW', None)
+        if fO2_shift_IW is not None and fO2_shift_IW != 0.0:
+            warnings.warn(
+                'outgas.fO2_shift_IW = %.3f is set but '
+                'planet.fO2_source = "from_O_budget" derives the buffer '
+                'offset from the O budget; the configured value will be '
+                'ignored at runtime.' % fO2_shift_IW,
+                UserWarning,
+                stacklevel=2,
+            )
+
+
+def boundary_requires_fixed_surface_state(instance, attribute, value):
+    """Boundary backend assumes a fixed surface state coupling."""
+    if (instance.interior_energetics.module == 'boundary') and (
+        instance.atmos_clim.surf_state != 'fixed'
+    ):
+        raise ValueError(
+            "Must set atmos_clim.surf_state='fixed' when interior_energetics.module='boundary'"
         )
 
 
 def boundary_zalmoxis_incompatible(instance, attribute, value):
-    # Boundary interior module cannot be used with zalmoxis structure module.
-    if (instance.interior.module == 'boundary') and (instance.struct.module == 'zalmoxis'):
+    """Boundary backend is not yet wired up to the Zalmoxis structure refresh."""
+    if (instance.interior_energetics.module == 'boundary') and (
+        instance.interior_struct.module == 'zalmoxis'
+    ):
         raise ValueError(
-            'Boundary interior module cannot currently be used with zalmoxis structure module'
+            'Boundary interior module cannot currently be used with the '
+            'zalmoxis structure module'
         )
 
 
@@ -98,51 +330,71 @@ class Config:
 
     Attributes
     ----------
-    version: str
-        Version of the configuration file.
+    config_version: str
+        Version of the configuration file format.
     params: Params
         Parameters for code execution, output files, time-stepping, convergence.
     star: Star
         Stellar parameters, model selection.
     orbit: Orbit
         Orbital and star-system parameters.
-    struct: Struct
-        Planetary structure calculation (mass, radius).
+    planet: Planet
+        Bulk planet properties (mass, initial volatile inventory).
+    interior_struct: Struct
+        Planetary structure calculation (radius, composition, Zalmoxis).
+    interior_energetics: Interior
+        Magma ocean / mantle energetics model parameters, model selection.
+    outgas: Outgas
+        Outgassing parameters (fO2, etc) and included volatiles.
     atmos_clim: AtmosClim
         Planetary atmosphere climate parameters, model selection.
     atmos_chem: AtmosChem
         Planetary atmosphere chemistry parameters, model selection.
     escape: Escape
         Atmospheric escape parameters, model selection.
-    interior: Interior
-        Magma ocean / mantle model parameters, model selection.
-    outgas: Outgas
-        Outgassing parameters (fO2, etc) and included volatiles.
-    delivery: Delivery
-        Initial volatile inventory, and delivery model selection.
+    accretion: Accretion
+        Late accretion / delivery model selection.
     observe: Observe
         Synthetic observations.
     """
 
-    version: str = field(validator=validators.in_(('2.0',)))
-
-    params: Params
-    star: Star
-    orbit: Orbit = field(validator=(instmethod_dummy, instmethod_evolve, satellite_evolve))
-    struct: Struct
-    atmos_clim: AtmosClim
-    atmos_chem: AtmosChem
-    escape: Escape = field(validator=(spada_zephyrus,))
-    interior: Interior = field(
+    params: Params = field(factory=Params)
+    star: Star = field(factory=Star)
+    orbit: Orbit = field(
+        factory=Orbit, validator=(instmethod_dummy, instmethod_evolve, satellite_evolve)
+    )
+    planet: Planet = field(
+        factory=Planet,
+        validator=(
+            planet_mass_valid,
+            planet_oxygen_mode_explicit,
+            planet_fO2_source_compat,
+        ),
+    )
+    interior_struct: Struct = field(factory=Struct)
+    interior_energetics: Interior = field(
+        factory=Interior,
         validator=(
             tides_enabled_orbit,
+            prevent_warming_advisory,
             boundary_requires_fixed_surface_state,
             boundary_zalmoxis_incompatible,
-        )
+        ),
     )
-    outgas: Outgas
-    delivery: Delivery
-    observe: Observe
+    outgas: Outgas = field(factory=Outgas)
+    atmos_clim: AtmosClim = field(factory=AtmosClim)
+    atmos_chem: AtmosChem = field(factory=AtmosChem)
+    escape: Escape = field(
+        factory=Escape,
+        validator=(spada_zephyrus, janus_escape_atmosphere, boreas_requires_atmosphere),
+    )
+    accretion: Accretion = field(factory=Accretion)
+    observe: Observe = field(factory=Observe, validator=(observe_resolved_atmosphere,))
+
+    config_version: str = field(
+        default='3.0',
+        validator=(valid_config_version, check_module_dependencies),
+    )
 
     def write(self, out: str):
         """

@@ -17,32 +17,59 @@ import torch
 
 import proteus.inference.gen_D_init as init_mod
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_create_init_rejects_small_sample_count():
+    """``create_init`` rejects ``init_samps < 2`` because the GP needs at
+    least two distinct samples for a meaningful prior fit.
+    """
     config = {'init_grid': 'none', 'init_samps': 1}
     with pytest.raises(ValueError, match='must contain >1 sample'):
         init_mod.create_init(config)
+    # Discrimination: init_samps=2 must clear the >1 guard. Without this
+    # counter-case a regression that raised for every init_samps would
+    # still pass the above.
+    config_ok = {'init_grid': 'none', 'init_samps': 0}
+    with pytest.raises(ValueError, match='must contain >1 sample'):
+        init_mod.create_init(config_ok)
 
 
 @pytest.mark.unit
 def test_create_init_routes_to_sample_from_bounds(monkeypatch):
+    """``create_init`` with ``init_grid='none'`` dispatches to
+    ``sample_from_bounds`` (Halton-sequence sampling of the parameter
+    box), not to ``sample_from_grid``.
+    """
     config = {
         'init_grid': 'none',
         'init_samps': 4,
         'output': 'out',
         'ref_config': 'ref.toml',
-        'parameters': {'struct.mass_tot': [0.7, 3.0]},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
         'observables': {'R_obs': 1.0},
         'seed': 1,
         'n_workers': 2,
     }
+    grid_calls: list = []
+    monkeypatch.setattr(
+        init_mod, 'sample_from_grid', lambda *a, **kw: grid_calls.append((a, kw))
+    )
     monkeypatch.setattr(init_mod, 'sample_from_bounds', lambda *args, **kwargs: 4)
     assert init_mod.create_init(config) == 4
+    # Discrimination: with init_grid='none' the wrapper must dispatch ONLY to
+    # sample_from_bounds. A regression that called both backends would still
+    # return 4 from the bounds shim.
+    assert grid_calls == []
 
 
 @pytest.mark.unit
 def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
+    """``create_init`` with a non-'none' ``init_grid`` dispatches to
+    ``sample_from_grid`` and resolves the grid path via
+    ``proteus_directories.output``.
+    """
     observed = {}
     monkeypatch.setattr(init_mod, 'get_proteus_directories', lambda: {'proteus': str(tmp_path)})
 
@@ -55,7 +82,7 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
         'init_grid': 'my_grid',
         'init_samps': 3,
         'output': 'out',
-        'parameters': {'struct.mass_tot': [0.7, 3.0]},
+        'parameters': {'planet.mass_tot': [0.7, 3.0]},
         'observables': {'R_obs': 1.0},
     }
 
@@ -65,6 +92,11 @@ def test_create_init_routes_to_sample_from_grid(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
+    """``sample_from_grid`` walks each ``case_N/`` subdirectory, reads
+    the case parameters from ``init_coupler.toml``, reads the observable
+    from ``runtime_helpfile.csv``, and saves the combined dataset as
+    ``init.csv`` with canonical columns ``x_0, y``.
+    """
     grid_dir = tmp_path / 'grid'
     output_dir = tmp_path / 'output'
     output_dir.mkdir(parents=True)
@@ -75,7 +107,7 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
             case / 'runtime_helpfile.csv', sep=' ', index=False
         )
         (case / 'init_coupler.toml').write_text(
-            toml.dumps({'struct': {'mass_tot': mass}}), encoding='utf-8'
+            toml.dumps({'planet': {'mass_tot': mass}}), encoding='utf-8'
         )
 
     monkeypatch.setattr(
@@ -84,7 +116,7 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
 
     n = init_mod.sample_from_grid(
         output='ignored',
-        params={'struct.mass_tot': [0.0, 10.0]},
+        params={'planet.mass_tot': [0.0, 10.0]},
         observables={'R_obs': 1.0},
         grid_dir=str(grid_dir),
     )
@@ -97,6 +129,10 @@ def test_sample_from_grid_builds_and_saves_dataset(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_sample_from_bounds_rejects_invalid_worker_count():
+    """``sample_from_bounds`` rejects ``n_workers < 1`` with an
+    'at least 1' message, so a misconfigured worker pool fails loudly
+    rather than silently producing zero samples.
+    """
     with pytest.raises(ValueError, match='at least 1'):
         init_mod.sample_from_bounds(
             output='out',
@@ -107,10 +143,29 @@ def test_sample_from_bounds_rejects_invalid_worker_count():
             seed=1,
             n_workers=0,
         )
+    # Discrimination: negative worker counts must also raise. A regression
+    # that only guarded the n_workers==0 boundary (e.g. `if n == 0`) would
+    # let -1 slip through and crash multiprocessing.Pool with an opaque
+    # error far from the user's misconfiguration.
+    with pytest.raises(ValueError, match='at least 1'):
+        init_mod.sample_from_bounds(
+            output='out',
+            ref_config='ref.toml',
+            params={'a': [0.0, 1.0]},
+            observables={'obs': 1.0},
+            nsamp=2,
+            seed=1,
+            n_workers=-1,
+        )
 
 
 @pytest.mark.unit
 def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
+    """``sample_from_bounds`` caps the worker pool at ``cpu_count - 1``
+    (3 in this test, with cpu_count=4 mocked) regardless of the user's
+    request, uses Halton sequences for the initial design, and saves
+    the resulting (X, Y) dataset to ``init.csv``.
+    """
     captured = {}
 
     class FakeHalton:

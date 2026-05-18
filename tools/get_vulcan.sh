@@ -27,15 +27,20 @@ else
     use_ssh=false
 fi
 
-# Download
+# Resolve the pinned URL + ref from pyproject.toml.
+vc_url=$(python "$root/tools/_module_pins.py" vulcan url)
+vc_ref=$(python "$root/tools/_module_pins.py" vulcan ref)
+
 echo "Cloning from GitHub"
 if [ "$use_ssh" = true ]; then
-    uri="git@github.com:FormingWorlds/VULCAN.git"
+    # Rewrite https://github.com/ -> git@github.com: for SSH transport.
+    uri=${vc_url/https:\/\/github.com\//git@github.com:}
 else
-    uri="https://github.com/FormingWorlds/VULCAN.git"
+    uri="$vc_url"
 fi
-echo "    $uri -> $workpath"
+echo "    $uri @ $vc_ref -> $workpath"
 git clone "$uri" "$workpath"
+git -C "$workpath" checkout --quiet "$vc_ref"
 
 # Compile fastchem
 cd "$workpath/fastchem_vulcan/"

@@ -25,6 +25,8 @@ from proteus.utils.plot import (
     sample_times,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 def test_get_colour_preset():

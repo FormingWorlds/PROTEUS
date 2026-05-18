@@ -10,7 +10,7 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
-from proteus.interior.wrapper import read_interior_data
+from proteus.interior_energetics.wrapper import read_interior_data
 from proteus.utils.plot import latex_float, sample_output
 
 if TYPE_CHECKING:
@@ -58,13 +58,19 @@ def plot_interior(
 
         # Pressure [GPa] grid
         if module == 'aragog':
-            xx_pres = ds['pres_b']
+            # Entropy solver writes staggered variables (pres_s, temp_s, phi_s)
+            # Old T-solver wrote basic variables (pres_b, temp_b, phi_b)
+            _is_entropy = 'pres_s' in ds.keys() if hasattr(ds, 'keys') else 'pres_s' in ds
+            if _is_entropy:
+                xx_pres = ds['pres_s']
+            else:
+                xx_pres = ds['pres_b']
         elif module == 'spider':
             xx_pres = ds.get_dict_values(['data', 'pressure_b']) * 1e-9
 
         # Phase masks
         if module == 'aragog':
-            yy = np.array(ds['phi_b'])
+            yy = np.array(ds['phi_s'] if _is_entropy else ds['phi_b'])
             MASK_SO = yy < 0.05
             MASK_MI = (0.05 <= yy) & (yy <= 0.95)
             MASK_ME = yy > 0.95
@@ -74,11 +80,15 @@ def plot_interior(
             MASK_SO = ds.get_solid_phase_boolean_array('basic')
 
         # Widen mixed phase region by 1 index so that lines are continuous on the plot
-        MASK_MI[2:-2] = MASK_MI[2:-2] | MASK_MI[1:-3] | MASK_MI[3:-1]
+        if len(MASK_MI) > 4:
+            MASK_MI[2:-2] = MASK_MI[2:-2] | MASK_MI[1:-3] | MASK_MI[3:-1]
 
         # Depth [km] grid
         if module == 'aragog':
-            xx_radius = ds['radius_b'][:]
+            if _is_entropy:
+                xx_radius = ds['radius_s'][:]
+            else:
+                xx_radius = ds['radius_b'][:]
             xx_depth = xx_radius[-1] - xx_radius
         elif module == 'spider':
             xx_radius = ds.get_dict_values(['data', 'radius_b']) * 1e-3
@@ -87,7 +97,7 @@ def plot_interior(
 
         # Plot temperature
         if module == 'aragog':
-            yy = ds['temp_b'][:]
+            yy = ds['temp_s'][:] if _is_entropy else ds['temp_b'][:]
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'temp_b'])
         yy = np.array(yy, dtype=float) / 1e3  # convert to kK
@@ -100,7 +110,7 @@ def plot_interior(
 
         # Plot melt fraction
         if module == 'aragog':
-            yy = ds['phi_b'][:]
+            yy = ds['phi_s'][:] if _is_entropy else ds['phi_b'][:]
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'phi_b'])
         yy *= 100.0  # convert to percentage
@@ -110,18 +120,31 @@ def plot_interior(
 
         # Plot viscosity
         if module == 'aragog':
-            yy = 10 ** ds['log10visc_b'][:]
+            if _is_entropy and 'log10visc_s' in ds:
+                yy = 10 ** ds['log10visc_s'][:]
+            elif 'log10visc_b' in ds:
+                yy = 10 ** ds['log10visc_b'][:]
+            else:
+                yy = None
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'visc_b'])
-        axs[2].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
-        axs[2].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
-        axs[2].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
-        visc_min = min(visc_min, np.amin(yy))
-        visc_max = max(visc_max, np.amax(yy))
+        if yy is not None:
+            axs[2].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
+            axs[2].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
+            axs[2].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
+            visc_min = min(visc_min, np.amin(yy))
+            visc_max = max(visc_max, np.amax(yy))
 
-        # Plot convective flux
+        # Plot total flux
         if module == 'aragog':
-            yy = ds['Fconv_b'][:]
+            if _is_entropy and 'Ftotal_b' in ds:
+                # Total flux at basic nodes; interpolate to staggered for plotting
+                fb = ds['Ftotal_b'][:]
+                yy = 0.5 * (fb[:-1] + fb[1:])
+            elif 'Fconv_b' in ds:
+                yy = ds['Fconv_b'][:]
+            else:
+                yy = np.zeros_like(xx_pres)
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'Jconv_b'])
         yy = np.array(yy) / 1e3  # convert units to kW/m2
@@ -131,13 +154,20 @@ def plot_interior(
         flux_min = min(flux_min, np.amin(yy))
         flux_max = max(flux_max, np.amax(yy))
 
-        # Plot tidal heating
+        # Plot heating (total for entropy solver, tidal for old solver / SPIDER)
         if module == 'aragog':
-            yy = ds['Htidal_s'][:]
+            if _is_entropy and 'Htotal_s' in ds:
+                yy = ds['Htotal_s'][:]
+            elif 'Htidal_s' in ds:
+                yy = ds['Htidal_s'][:]
+            else:
+                yy = np.zeros(len(xx_pres))
         elif module == 'spider':
             yy = ds.get_dict_values(['data', 'Htidal_s'])
         yy = np.array(yy) * 1e9  # convert units to nW/kg
-        yy = np.append([yy[0]], yy)  # extend to surface (_s arrays are shorter than _b)
+        # Staggered heating has N points; pad to match pressure grid if needed
+        if len(yy) < len(xx_pres):
+            yy = np.append([yy[0]], yy)
         axs[4].plot(yy[MASK_SO], xx_pres[MASK_SO], ls='solid', c=color, lw=lw)
         axs[4].plot(yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
         axs[4].plot(yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
@@ -173,14 +203,14 @@ def plot_interior(
     if visc_max > 100.0 * visc_min:
         axs[2].set_xscale('log')
 
-    title = '(d) Convective flux'
-    axs[3].set(title=title, xlabel=r'$F_c$ [kW m$^{-2}$]')
-    if flux_max > 100.0 * flux_min:
+    title = '(d) Heat flux'
+    axs[3].set(title=title, xlabel=r'$F$ [kW m$^{-2}$]')
+    if flux_max > 100.0 * abs(flux_min):
         axs[3].set_xscale('symlog', linthresh=1.0)
-    axs[3].set_xlim(left=0.0, right=flux_max)
+    axs[3].set_xlim(left=0.0, right=max(flux_max, 1.0))
 
-    title = '(e) Tidal power density'
-    axs[4].set(title=title, xlabel=r'$H_t$ [nW kg$^{-1}$]')
+    title = '(e) Heating'
+    axs[4].set(title=title, xlabel=r'$H$ [nW kg$^{-1}$]')
     axs[4].set_xlim(left=tide_min, right=tide_max * 1.5)
     axs[4].set_xscale('symlog', linthresh=1.0)
 
@@ -201,7 +231,7 @@ def plot_interior(
 
 
 def plot_interior_entry(handler: Proteus):
-    module = handler.config.interior.module
+    module = handler.config.interior_energetics.module
     if module == 'spider':
         extension = '.json'
     elif module == 'aragog':

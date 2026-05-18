@@ -9,6 +9,9 @@ from proteus.config import read_config_object
 from proteus.escape.boreas import BOREAS_GASES, _set_boreas_params
 from proteus.utils.constants import AU, M_earth, R_earth, element_list
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
 log = logging.getLogger(__name__)
 
 
@@ -67,7 +70,7 @@ def _make_minimal_hf_row() -> dict:
 @pytest.fixture(scope='module')
 def boreas_config() -> object:
     """Load the demo BOREAS TOML into a validated Config object."""
-    config_path = Path('input/demos/boreas.toml')
+    config_path = Path('input/dummy.toml')
     cfg = read_config_object(config_path)
     # Ensure module selection
     cfg.escape.module = 'boreas'
@@ -75,6 +78,10 @@ def boreas_config() -> object:
 
 
 def test_boreas_params(boreas_config):
+    """``_set_boreas_params`` populates the BOREAS parameter object from
+    ``hf_row``, with FXUV converted from W/m^2 to mW/m^2 (factor 1e3) and
+    albedo defaulting to 0.0 when not set in the config.
+    """
     hf_row = _make_minimal_hf_row()
 
     # make parameters object

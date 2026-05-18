@@ -71,7 +71,7 @@ Tests mirror `src/proteus/`. Validation: `bash tools/validate_test_structure.sh`
 ```text
 tests/
 ├── integration/     # test_smoke_*.py, test_integration_*.py, test_aragog_*, test_std_config, etc.
-├── config/, utils/, plot/, star/, orbit/, interior/, escape/, outgas/, observe/, atmos_clim/, atmos_chem/
+├── config/, utils/, plot/, star/, orbit/, interior_struct/, interior_energetics/, escape/, outgas/, observe/, atmos_clim/, atmos_chem/
 ├── grid/, inference/, data/
 ├── test_cli.py, test_init.py
 └── conftest.py      # Shared fixtures (see Test Infrastructure)
@@ -132,7 +132,7 @@ For fast gate check: `pytest -m "unit and not skip" --cov=src --cov-fail-under=<
 - **`integration`** — Covers cross-module coupling paths (e.g., ARAGOG + JANUS handoff).
 - **`slow`** — Full scientific validation. Contributes to coverage but primarily validates physics, not code paths.
 
-All thresholds auto-increase ("ratchet") and never decrease. Check coverage locally with `pytest --cov=src --cov-report=html`.
+All thresholds auto-increase ("ratchet") and never decrease, capped at the 90% PROTEUS-ecosystem ceiling. Check coverage locally with `pytest --cov=src --cov-report=html`.
 
 For details on how coverage is collected across workflows and how the estimated total is computed, see [Coverage Collection & Reporting](test_infrastructure.md#coverage-collection-reporting).
 
@@ -142,5 +142,4 @@ For details on how coverage is collected across workflows and how the estimated 
 
 - [Test Infrastructure](test_infrastructure.md) — Coverage workflows, reusable quality gate, troubleshooting
 - [Test Building](test_building.md) — Prompts for unit/integration tests
-- [Docker CI Architecture](docker_ci_architecture.md) — Docker image, CI pipelines
 - [.github/copilot-instructions.md](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/copilot-instructions.md) — Commands and thresholds
