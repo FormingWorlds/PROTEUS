@@ -930,10 +930,23 @@ class AragogRunner:
         if not use_jax_jac:
             return
 
+        # Nightly CI escalates every fallback path to a hard failure so the
+        # tests cannot silently pass on the FD Jacobian when they claim to
+        # exercise the production JAX + analytic-Jacobian path.
+        nightly_strict = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
+
         solver = interior_o.aragog_solver
         if solver is None:
-            logger.warning("backend='jax' but aragog_solver is None; skipping factory install.")
+            msg = "backend='jax' but aragog_solver is None; skipping factory install."
+            if nightly_strict:
+                raise RuntimeError(msg)
+            logger.warning(msg)
             return
+
+        # Pre-initialise the discrimination counter so a test that fails to
+        # install the factory (e.g. JAX stack missing on a non-nightly run)
+        # reads 0 rather than raising AttributeError.
+        solver._jax_factory_call_count = 0
 
         try:
             import jax.numpy as jnp
@@ -942,11 +955,13 @@ class AragogRunner:
             from aragog.jax.solver import BoundaryParams
             from aragog.solver.cvode_jax import build_jax_rhs_and_jacobian
         except ImportError as exc:
-            logger.warning(
-                'Option Z requested but JAX stack is not importable '
-                '(%s); falling back to FD Jacobian.',
-                exc,
+            msg = (
+                f'Option Z requested but JAX stack is not importable '
+                f'({exc}); falling back to FD Jacobian.'
             )
+            if nightly_strict:
+                raise RuntimeError(msg) from exc
+            logger.warning(msg)
             return
 
         try:
@@ -982,6 +997,11 @@ class AragogRunner:
             n_stag = solver._n_stag
 
             def factory(scales, core_bc_mode):
+                # Discrimination counter (set on solver before the try block).
+                # Tests assert this is > 0 after a run to prove CVODE actually
+                # consumed the analytic Jacobian rather than silently falling
+                # back to the FD path.
+                solver._jax_factory_call_count += 1
                 # OQ3 option C: ``scales`` is now an
                 # aragog.jax.nondim.NonDimScales single source of truth.
                 # The legacy 4-arg (state_scale, rhs_scale, t_ref,
@@ -1064,10 +1084,10 @@ class AragogRunner:
                 n_stag,
             )
         except Exception as exc:
-            logger.warning(
-                'Option Z factory install failed (%s); falling back to FD Jacobian.',
-                exc,
-            )
+            msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
+            if nightly_strict:
+                raise RuntimeError(msg) from exc
+            logger.warning(msg)
 
     @staticmethod
     def _set_entropy_ic(

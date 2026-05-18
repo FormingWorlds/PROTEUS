@@ -98,6 +98,27 @@ def test_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     assert hf is not None, 'helpfile should be created'
     assert len(hf) >= 2, f'expected >= 2 rows, got {len(hf)}'
 
+    # Production-path discrimination guard. The aragog wrapper installs a
+    # JAX RHS + analytic-Jacobian factory on the CVODE solver when
+    # backend='jax' (the production default). If the JAX import or pytree
+    # construction silently failed, CVODE would still run on its FD
+    # Jacobian fallback and the physics invariants below would pass for
+    # the wrong reason. The counter is incremented exactly once per
+    # CVODE solve(), so >= 1 proves the analytic-Jacobian factory was
+    # consumed at least once during the two-step run.
+    solver = runner.interior_o.aragog_solver
+    assert solver is not None, 'aragog solver missing after run'
+    n_factory_calls = getattr(solver, '_jax_factory_call_count', None)
+    assert n_factory_calls is not None, (
+        'JAX CVODE factory never installed on solver; backend may have '
+        'silently fallen back to FD Jacobian'
+    )
+    assert n_factory_calls >= 1, (
+        f'JAX CVODE factory installed but never invoked '
+        f'(call_count={n_factory_calls}); production analytic-Jacobian '
+        f'path was not exercised'
+    )
+
     final = hf.iloc[-1]
 
     # Per-element mass closure: the conservation invariant. The equality
