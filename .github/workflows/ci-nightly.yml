@@ -101,10 +101,12 @@ jobs:
 
       - name: Run slow integration tests
         continue-on-error: true
-        # Hard wall-time cap: total nightly job stays under 120 min by
-        # giving the slow tier 75 min after ~15 min of cold-cache setup
-        # and ~5 min of unit/smoke/integration-not-slow.
-        timeout-minutes: 75
+        # Hard wall-time cap. Linux x86 runs the aragog CVODE+JAX
+        # production path noticeably slower than macOS arm64 (single
+        # solve() ~30 min vs ~3 min), so the slow tier needs 120 min
+        # of headroom; the surrounding job cap of 180 min still covers
+        # cold-cache setup (~15 min) and unit/smoke/integration tiers.
+        timeout-minutes: 120
         run: |
           set -euo pipefail
           # Slow-tier file list: schema invariants, hypothesis fuzz, BO
@@ -372,7 +374,10 @@ jobs:
 
       - name: Run slow integration tests
         continue-on-error: true
-        timeout-minutes: 75
+        # Match the Linux slow-tier cap so the two jobs share a budget;
+        # macOS arm64 typically finishes the aragog tests in 5-10 min
+        # and won't approach this ceiling.
+        timeout-minutes: 120
         run: |
           set -euo pipefail
           pytest -m "slow and not unit and not smoke and not integration" \

@@ -48,7 +48,7 @@ from tests.integration.conftest import (
 # timeout sits above the macOS GHA wall time (~440 s) and the projected
 # Linux GHA wall time (~1800-2200 s) with a margin; well under the
 # slow-tier 3600 s budget cap from proteus-tests.md section 7.
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(2400)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 @pytest.mark.slow
@@ -78,9 +78,11 @@ def test_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
       jump).
     - mass conservation + stability cross-cutting helpers.
 
-    Runtime budget: ~180 s on local Mac Studio, ~440 s on macOS GHA,
-    ~1800-2200 s on Linux GHA (the 360 s setup phase on Linux x86 is
-    the dominant overhead). 2400 s timeout accommodates the Linux runner.
+    Runtime budget: ~180 s on local Mac Studio, ~270 s on macOS GHA,
+    > 2400 s on Linux GHA. The production CVODE+JAX path is markedly
+    slower on Linux x86 than on macOS arm64; the 3600 s timeout
+    accommodates that delta while keeping the slow tier inside its
+    120 min step cap.
     """
     runner = proteus_multi_timestep_run(
         config_path='input/dummy.toml',
