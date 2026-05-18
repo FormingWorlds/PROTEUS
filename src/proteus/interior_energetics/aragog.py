@@ -1,6 +1,7 @@
 # Aragog interior module
 from __future__ import annotations  # noqa: I001
 
+import functools
 import glob
 import logging
 import os
@@ -41,6 +42,34 @@ if TYPE_CHECKING:
 
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
+
+
+@functools.lru_cache(maxsize=8)
+def _cached_entropy_eos(eos_dir_str: str):
+    """Construct an EntropyEOS, caching by eos_dir.
+
+    PALEOS table load + scipy interpolator construction takes ~10 s on
+    macOS arm64 and ~390 s on Linux x86 per PROTEUS timestep. The result
+    depends only on the eos_dir and is read-only after construction, so
+    a per-process cache keyed on the resolved path eliminates the rebuild
+    on every PROTEUS timestep.
+    """
+    return EntropyEOS(Path(eos_dir_str))
+
+
+@functools.lru_cache(maxsize=8)
+def _cached_entropy_eos_jax(eos_dir_str: str):
+    """Construct an EntropyEOS_JAX, caching by eos_dir.
+
+    Same motivation as ``_cached_entropy_eos``: the JAX-side EOS trace
+    + compile is ~7 s on macOS arm64 and ~310 s on Linux x86. The
+    constructed object is read-only and depends only on eos_dir, so a
+    per-process cache is safe.
+    """
+    from aragog.jax.eos import EntropyEOS_JAX
+
+    return EntropyEOS_JAX(eos_dir_str)
+
 
 # Research-only flag. Flip to True to enable the diffrax direct-JAX
 # integration path (`aragog_jax.AragogJAXRunner`). Not production-viable
@@ -900,11 +929,11 @@ class AragogRunner:
         else:
             spider_eos_dir = interior_o._spider_eos_dir
             if spider_eos_dir and os.path.isdir(spider_eos_dir):
-                entropy_eos = EntropyEOS(Path(spider_eos_dir))
+                entropy_eos = _cached_entropy_eos(str(spider_eos_dir))
             else:
                 fallback_dir = Path(outdir) / 'data' / 'spider_eos'
                 if fallback_dir.is_dir():
-                    entropy_eos = EntropyEOS(fallback_dir)
+                    entropy_eos = _cached_entropy_eos(str(fallback_dir))
                 else:
                     raise FileNotFoundError(
                         f'PALEOS P-S tables not found. Aragog entropy solver '
@@ -960,10 +989,10 @@ class AragogRunner:
 
         try:
             import jax.numpy as jnp
-            from aragog.jax.eos import EntropyEOS_JAX
             from aragog.jax.phase import MeshArrays, PhaseParams
             from aragog.jax.solver import BoundaryParams
             from aragog.solver.cvode_jax import build_jax_rhs_and_jacobian
+            # EntropyEOS_JAX is imported lazily by _cached_entropy_eos_jax.
         except ImportError as exc:
             msg = (
                 f'Option Z requested but JAX stack is not importable '
@@ -977,7 +1006,7 @@ class AragogRunner:
         try:
             eos_dir = interior_o._spider_eos_dir
             _t_pre_jax_eos = time.perf_counter()
-            eos_jax = EntropyEOS_JAX(eos_dir)
+            eos_jax = _cached_entropy_eos_jax(str(eos_dir))
             _t_post_jax_eos = time.perf_counter()
             if nightly_strict:
                 logger.info(
