@@ -535,7 +535,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         )
 
         # Update solver
-        jl.AGNI.solver.ls_increase = float(ls_increase)
+        jl.AGNI.solver.solve_energy.ls_increase = float(ls_increase)
 
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(
