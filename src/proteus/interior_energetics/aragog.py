@@ -892,6 +892,8 @@ class AragogRunner:
 
         # Load PALEOS P-S EOS tables for entropy solver.
         # Skip entirely in const_properties mode (no table lookups needed).
+        nightly_strict = os.environ.get('PROTEUS_CI_NIGHTLY') == '1'
+        _t_pre_eos = time.perf_counter()
         if config.interior_energetics.const_properties:
             entropy_eos = None
             logger.info('const_properties=True: skipping EOS table loading')
@@ -908,7 +910,15 @@ class AragogRunner:
                         f'PALEOS P-S tables not found. Aragog entropy solver '
                         f'requires P-S tables. Checked: {spider_eos_dir}, {fallback_dir}'
                     )
+        _t_post_eos = time.perf_counter()
         interior_o.aragog_solver = EntropySolver(param, entropy_eos)
+        _t_post_solver = time.perf_counter()
+        if nightly_strict:
+            logger.info(
+                'aragog diag: setup_solver phases entropy_eos=%.2fs entropy_solver=%.2fs',
+                _t_post_eos - _t_pre_eos,
+                _t_post_solver - _t_post_eos,
+            )
 
     @staticmethod
     def _maybe_install_jax_cvode_factory(config: Config, interior_o: Interior_t) -> None:
@@ -966,7 +976,14 @@ class AragogRunner:
 
         try:
             eos_dir = interior_o._spider_eos_dir
+            _t_pre_jax_eos = time.perf_counter()
             eos_jax = EntropyEOS_JAX(eos_dir)
+            _t_post_jax_eos = time.perf_counter()
+            if nightly_strict:
+                logger.info(
+                    'aragog diag: jax_cvode_factory phases entropy_eos_jax=%.2fs',
+                    _t_post_jax_eos - _t_pre_jax_eos,
+                )
 
             ie = config.interior_energetics
             params_jax = PhaseParams(
@@ -993,8 +1010,15 @@ class AragogRunner:
                 phase_smoothing_width=0.01,
             )
 
+            _t_pre_mesh = time.perf_counter()
             mesh_jax = MeshArrays.from_numpy_mesh(solver.evaluator.mesh)
+            _t_post_mesh = time.perf_counter()
             n_stag = solver._n_stag
+            if nightly_strict:
+                logger.info(
+                    'aragog diag: jax_cvode_factory phases params_jax+mesh=%.2fs',
+                    _t_post_mesh - _t_post_jax_eos,
+                )
 
             def factory(scales, core_bc_mode):
                 # Discrimination counter (set on solver before the try block).
