@@ -23,7 +23,6 @@ def test_plot_emission_returns_early_with_insufficient_snapshots(tmp_path):
 
 @pytest.mark.unit
 def test_plot_emission_handles_greygas_branch(monkeypatch, tmp_path):
-
     # greygas RT and dummy atmos_clim only have one spectral band
     ds = _FakeDataset(
         {

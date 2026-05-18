@@ -139,8 +139,8 @@ version = "2.0"
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
     instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
 
-    # semimajoraxis = 0.09   # SN
-    # semimajoraxis = 0.05   # SE
+    # semimajoraxis = 0.08   # SN
+    # semimajoraxis = 0.04   # SE
     semimajoraxis = 0.02   # TR
 
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
@@ -223,8 +223,9 @@ version = "2.0"
         p_top           = 1.0e-3        # bar, top of atmosphere grid pressure
         p_obs           = 0.02          # bar, level probed in transmission
         # spectral_group  = "Dayspring"   # which gas opacities to include
-        # spectral_bands  = "16"          # how many spectral bands?
-        spectral_file   = "greygas"          # optional path to AGNI spectral file; if None, will use spectral_group and spectral_bands to find file in FWL data directory
+        # spectral_bands  = "48"          # how many spectral bands?
+        spectral_file   = "output/scratch/runtime.sf"          # optional path to AGNI spectral file; if None, will use spectral_group and spectral_bands to find file in FWL data directory
+        # spectral_file   = "greygas"          # optional path to AGNI spectral file; if None, will use spectral_group and spectral_bands to find file in FWL data directory
         num_levels      = 25            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
@@ -255,7 +256,7 @@ version = "2.0"
         fastchem_maxiter_solv = 20000   # Maximum FC iterations (internal solver)
         fastchem_xtol_chem    = 1e-4    # FC solver tolerance (chemistry)
         fastchem_xtol_elem    = 1e-4    # FC solver tolerance (elemental)
-        ini_profile     = 'isothermal'  # Initial guess for temperature profile shape
+        ini_profile     = 'loglinear'  # Initial guess for temperature profile shape
         ls_default      = 2             # Default linesearch method (0:none, 1:gs, 2:bt)
         fdo             = 2             # finite-difference order (options: 2, 4)
 

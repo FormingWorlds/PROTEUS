@@ -16,7 +16,8 @@ from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
 
 dtype = torch.double
-LOG_CLIP = 1e-30
+EPS_CLIP = 1e-10
+LOG_CLIP = 1e-20
 log = logging.getLogger('fwl.' + __name__)
 
 
@@ -165,7 +166,7 @@ def log_warp(sq_dist):
     ----------
     - torch.Tensor: Warped score, larger for closer matches.
     """
-    warped_dist = -torch.log10(sq_dist + 1e-10)
+    warped_dist = -torch.log10(sq_dist + EPS_CLIP)
     return warped_dist
 
 
@@ -201,8 +202,11 @@ def eval_obj(sim_dict, tru_dict):
     sim = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
     true_y = torch.tensor(tru_vals, dtype=dtype).reshape(1, -1)
 
-    # Compute normalized difference and squared distance
+    # If true_y is zero, set to small value; sim should also be small in this case
+    true_y = torch.clamp(true_y, min=EPS_CLIP)
+    sim = torch.clamp(sim, min=EPS_CLIP)
 
+    # Compute normalized difference and squared distance
     diff = torch.ones(1, 1, dtype=dtype) - sim / true_y
     sq_dist = (diff**2).sum(dim=1, keepdim=True)
 
@@ -228,7 +232,7 @@ def J(
     Transforms normalized `x` to raw parameters, runs the simulator,
     and computes the squared-error based objective:
 
-        J = log_10(sum((1 - sim/true)^2) + 1e-10)
+        J = log_10(sum((1 - sim/true)^2) + eps)
 
     Parameters
     ----------
@@ -304,6 +308,7 @@ def prot_builder(
         """
         # Convert normalized to raw inputs
         x_raw = unnormalize(x_norm, bounds)
+
         # Partially apply J with fixed context
         J_context = partial(
             J,
@@ -314,7 +319,18 @@ def prot_builder(
             ref_config=ref_config,
             output=output,
         )
+
+        J_eval = J_context(x_raw)
+
+        # Check J is finite
+        if not torch.isfinite(J_eval).all():
+            x_param = {parameters[i]: x_raw[0, i].item() for i in range(d)}
+
+            log.warning('Non-finite objective value')
+            log.warning(f'    Raw input x: {x_param}')
+            log.warning(f'    Reference config: {ref_config}')
+
         # Compute objective
-        return J_context(x_raw)
+        return J_eval
 
     return f

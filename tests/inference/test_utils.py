@@ -36,7 +36,6 @@ def test_save_dataset_csv_validates_input_shapes(tmp_path):
 
 @pytest.mark.unit
 def test_load_dataset_csv_validates_required_columns(tmp_path):
-
     # check parameter key
     no_x = tmp_path / 'no_x.csv'
     pd.DataFrame({'y': [1.0]}).to_csv(no_x, index=False)

@@ -488,6 +488,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
         easy_start = False
         grey_start = False
         dx_max = float(config.atmos_clim.agni.dx_max)
+        ls_min_scale = 1e-4
         ls_increase = 0.7
         perturb_all = bool(config.atmos_clim.agni.perturb_all)
         max_steps = int(config.atmos_clim.agni.max_steps)
@@ -536,6 +537,7 @@ def _solve_energy(atmos, loops_total: int, dirs: dict, config: Config):
 
         # Update solver
         jl.AGNI.solver.solve_energy.ls_increase = float(ls_increase)
+        jl.AGNI.solver.solve_energy.ls_min_scale = float(ls_min_scale)
 
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(

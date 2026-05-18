@@ -20,7 +20,6 @@ def test_interp_spec_single_point_returns_constant():
 
 @pytest.mark.unit
 def test_interp_spec_multi_point_interpolates_to_cmf_grid():
-
     # dummy wl and fl arrays
     wl = np.array([380.0, 500.0, 780.0])
     fl = np.array([1.0, 2.0, 4.0])
