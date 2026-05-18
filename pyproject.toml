@@ -69,7 +69,10 @@ dependencies = [
     "jaxlib<0.10",
     "boreas@git+https://github.com/ExoInteriors/BOREAS@0174edb",
     "cmcrameri",
-    "juliacall",
+    # juliacall 0.9.33 mis-resolves the PythonCall.jl dev-path on conda
+    # envs (passes `<env>/lib/python3.12` to Pkg.develop, which has no
+    # Project.toml). 0.9.32 ships the working Pkg.add fallback.
+    "juliacall<0.9.33",
     "matplotlib",
     "netCDF4",
     "numpy>=2.0.0",
