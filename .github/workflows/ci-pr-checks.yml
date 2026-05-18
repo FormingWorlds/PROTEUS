@@ -36,7 +36,7 @@ concurrency:
 
 defaults:
   run:
-    shell: bash
+    shell: bash -el {0}
 
 permissions:
   contents: write  # Allow auto-commit of ratcheted coverage thresholds

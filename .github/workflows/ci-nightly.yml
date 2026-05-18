@@ -21,7 +21,7 @@ concurrency:
 
 defaults:
   run:
-    shell: bash
+    shell: bash -el {0}
 
 jobs:
   # --------------------------------------------------------------------

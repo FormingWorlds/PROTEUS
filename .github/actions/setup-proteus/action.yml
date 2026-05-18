@@ -55,13 +55,10 @@ runs:
             libnetcdff-dev \
             netcdf-bin \
             libssl-dev \
-            libsundials-dev \
             curl
         elif [[ "$RUNNER_OS" == "macOS" ]]; then
           # gcc bundles gfortran on macOS. netcdf-fortran provides nf-config.
-          # sundials backs the scikits-odes CVODE path used by the aragog
-          # production solver.
-          brew install --quiet gcc netcdf netcdf-fortran openssl@3 sundials
+          brew install --quiet gcc netcdf netcdf-fortran openssl@3
           # Homebrew installs gfortran as a versioned binary (gfortran-15);
           # the plain `gfortran` symlink is not always present when gcc was
           # pre-installed on the runner image. Create one so SOCRATES's
@@ -100,14 +97,31 @@ runs:
           brew-${{ runner.os }}-${{ runner.arch }}-
 
     # ------------------------------------------------------------------
-    # 2. Python + pip wheel cache
+    # 2. Miniforge + conda environment (matches the developer install)
     # ------------------------------------------------------------------
-    - name: Set up Python
-      uses: actions/setup-python@v5
+    # Conda-forge owns SUNDIALS + scikits.odes, which the production
+    # aragog CVODE path requires. Installing via pip would need SUNDIALS
+    # 7.x from source on Linux (apt ships 6.x) and an MPI build on
+    # macOS; conda-forge provides matched binaries on both platforms.
+    - name: Set up miniforge + proteus env
+      uses: conda-incubator/setup-miniconda@v3
       with:
+        miniforge-version: latest
         python-version: ${{ inputs.python-version }}
-        cache: pip
-        cache-dependency-path: pyproject.toml
+        activate-environment: proteus
+        channels: conda-forge
+        channel-priority: strict
+        auto-activate-base: false
+
+    # Install the conda-side dependencies that need native libraries
+    # (SUNDIALS for CVODE, scikits.odes for the Python bindings). The
+    # rest of PROTEUS installs via pip into the same env in step 8.
+    - name: Install conda dependencies
+      shell: bash -el {0}
+      run: |
+        set -euo pipefail
+        mamba install -n proteus -c conda-forge -y sundials 'scikits.odes>=3.0.0'
+        python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
 
     # ------------------------------------------------------------------
     # 3. Julia (AGNI needs 1.11.x)
@@ -122,7 +136,7 @@ runs:
     # ------------------------------------------------------------------
     - name: Read module pins
       id: pins
-      shell: bash
+      shell: bash -el {0}
       run: |
         set -euo pipefail
         echo "agni_ref=$(python tools/_module_pins.py agni ref)" >> "$GITHUB_OUTPUT"
@@ -225,31 +239,11 @@ runs:
     # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)
     # ------------------------------------------------------------------
     - name: Install PROTEUS
-      shell: bash
+      shell: bash -el {0}
       run: |
         set -euo pipefail
         python -m pip install --upgrade pip
         pip install -e ".[develop]"
-
-    # ------------------------------------------------------------------
-    # 8b. scikits-odes-sundials (production CVODE backend for aragog)
-    # ------------------------------------------------------------------
-    # The PyPI dist of fwl-aragog does not declare scikits-odes-sundials
-    # as a runtime dep, so it must be installed explicitly. Without it,
-    # aragog's EntropySolver silently falls back from CVODE to scipy
-    # Radau and the JAX analytic-Jacobian factory installed by the
-    # PROTEUS aragog wrapper is never consumed. The slow-tier aragog
-    # tests assert the factory call count and now fail loud if this
-    # install is missing or broken.
-    - name: Install scikits-odes-sundials
-      shell: bash
-      run: |
-        set -euo pipefail
-        if [[ "$RUNNER_OS" == "macOS" ]]; then
-          export SUNDIALS_INST="$(brew --prefix sundials)"
-        fi
-        pip install "scikits-odes-sundials>=3.0.0"
-        python -c "import scikits.odes; print('scikits.odes OK, version', scikits.odes.__version__)"
 
     # ------------------------------------------------------------------
     # 9. FWL_DATA cache + smoke / full data download
@@ -263,7 +257,7 @@ runs:
           fwl-data-${{ runner.os }}-
 
     - name: Download smoke data
-      shell: bash
+      shell: bash -el {0}
       env:
         FWL_DATA: ${{ github.workspace }}/../fwl_data
       run: |
@@ -289,7 +283,7 @@ runs:
 
     - name: Download full integration data
       if: inputs.full-data == 'true'
-      shell: bash
+      shell: bash -el {0}
       env:
         FWL_DATA: ${{ env.FWL_DATA }}
       run: |
@@ -320,7 +314,7 @@ runs:
     # ------------------------------------------------------------------
     - name: Export environment
       id: export-env
-      shell: bash
+      shell: bash -el {0}
       run: |
         set -euo pipefail
         RAD_DIR="$GITHUB_WORKSPACE/socrates"
