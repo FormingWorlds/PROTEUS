@@ -130,6 +130,8 @@ jobs:
             --cov-report=xml:coverage.xml \
             --cov-report=html \
             --cov-config=pyproject.toml \
+            --log-cli-level=INFO \
+            --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
             -v --tb=short 2>&1 | tee /tmp/slow-output.txt
 
       - name: Save combined coverage
@@ -310,6 +312,17 @@ jobs:
             fi
           fi
 
+      - name: Upload Linux junit + logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: nightly-linux-logs
+          path: |
+            /tmp/junit-*.xml
+            /tmp/*-output.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload coverage artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -391,6 +404,8 @@ jobs:
             tests/helpers/test_smoke_invariants.py \
             -p no:faulthandler \
             --junit-xml=/tmp/junit-slow.xml \
+            --log-cli-level=INFO \
+            --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
             -v --tb=short 2>&1 | tee /tmp/slow-output-macos.txt
 
       - name: Upload macOS junit + logs
