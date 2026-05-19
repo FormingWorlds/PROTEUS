@@ -440,10 +440,13 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
 
     # ---------------------
     # Set temperatures at all levels
+    tmp_max = max(1000, float(hf_row['T_magma']))
     for i in range(nlev_c):
-        atmos.tmp[i] = float(itp(np.log10(atmos.p[i])))
-        atmos.tmpl[i] = float(itp(np.log10(atmos.pl[i])))
-    atmos.tmpl[-1] = float(itp(np.log10(atmos.pl[-1])))
+        atmos.tmp[i]  = float(min(tmp_max, itp(np.log10(atmos.p[i]  )) ))
+        atmos.tmpl[i] = float(min(tmp_max, itp(np.log10(atmos.pl[i] )) ))
+    atmos.tmpl[-1]    = float(min(tmp_max, itp(np.log10(atmos.pl[-1])) ))
+
+
 
     return atmos
 

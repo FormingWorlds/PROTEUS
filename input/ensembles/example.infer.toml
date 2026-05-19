@@ -30,7 +30,7 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 "struct.mass_tot"           = [0.8,     4.0]
 "struct.corefrac"           = [0.2,     0.8]
 "outgas.fO2_shift_IW"       = [-3.5,    5.0]
-"delivery.elements.H_oceans"= [1.0,     850.0]
+"delivery.elements.H_oceans"= [1.0,     750.0]
 "delivery.elements.CH_ratio"= [0.1,     6.0]
 "delivery.elements.SH_ratio"= [0.1,     6.0]
 
