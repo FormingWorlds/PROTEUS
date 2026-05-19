@@ -1,7 +1,6 @@
 # Aragog interior module
 from __future__ import annotations  # noqa: I001
 
-import functools
 import glob
 import logging
 import os
@@ -44,31 +43,67 @@ if TYPE_CHECKING:
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 
-@functools.lru_cache(maxsize=8)
+_entropy_eos_cache: dict = {}
+_entropy_eos_jax_cache: dict = {}
+
+
+def _eos_content_key(eos_dir_str: str) -> str:
+    """Compute a content fingerprint for an EOS directory.
+
+    The PROTEUS test fixture materialises the EOS tables into a fresh
+    per-test ``outdir/data/spider_eos`` directory each time, so a path
+    based cache key misses across tests. The content fingerprint is a
+    sorted tuple of ``(filename, file size)`` pairs for every regular
+    file in the directory; it is stable across distinct on-disk copies
+    of the same tables but cheap to compute (one ``os.listdir`` + one
+    ``getsize`` per file).
+    """
+    try:
+        pairs = []
+        for name in sorted(os.listdir(eos_dir_str)):
+            full = os.path.join(eos_dir_str, name)
+            if os.path.isfile(full):
+                pairs.append((name, os.path.getsize(full)))
+        return repr(pairs)
+    except OSError:
+        # Filesystem error: fall back to the path as the key.
+        return eos_dir_str
+
+
 def _cached_entropy_eos(eos_dir_str: str):
-    """Construct an EntropyEOS, caching by eos_dir.
+    """Construct an EntropyEOS, caching by content fingerprint.
 
     PALEOS table load + scipy interpolator construction takes ~10 s on
     macOS arm64 and ~390 s on Linux x86 per PROTEUS timestep. The result
-    depends only on the eos_dir and is read-only after construction, so
-    a per-process cache keyed on the resolved path eliminates the rebuild
-    on every PROTEUS timestep.
+    depends only on the file contents and is read-only after
+    construction (pure lookup methods, no mutation API), so a single
+    cached instance can be shared across PROTEUS timesteps and across
+    pytest tests in the same process.
     """
-    return EntropyEOS(Path(eos_dir_str))
+    key = _eos_content_key(eos_dir_str)
+    cached = _entropy_eos_cache.get(key)
+    if cached is None:
+        cached = EntropyEOS(Path(eos_dir_str))
+        _entropy_eos_cache[key] = cached
+    return cached
 
 
-@functools.lru_cache(maxsize=8)
 def _cached_entropy_eos_jax(eos_dir_str: str):
-    """Construct an EntropyEOS_JAX, caching by eos_dir.
+    """Construct an EntropyEOS_JAX, caching by content fingerprint.
 
     Same motivation as ``_cached_entropy_eos``: the JAX-side EOS trace
-    + compile is ~7 s on macOS arm64 and ~310 s on Linux x86. The
-    constructed object is read-only and depends only on eos_dir, so a
-    per-process cache is safe.
+    + compile is ~7 s on macOS arm64 and ~310 s on Linux x86, the result
+    is an equinox Module (immutable pytree), and the construction
+    depends only on the file contents.
     """
-    from aragog.jax.eos import EntropyEOS_JAX
+    key = _eos_content_key(eos_dir_str)
+    cached = _entropy_eos_jax_cache.get(key)
+    if cached is None:
+        from aragog.jax.eos import EntropyEOS_JAX
 
-    return EntropyEOS_JAX(eos_dir_str)
+        cached = EntropyEOS_JAX(eos_dir_str)
+        _entropy_eos_jax_cache[key] = cached
+    return cached
 
 
 # Research-only flag. Flip to True to enable the diffrax direct-JAX
