@@ -450,7 +450,7 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
                 #nfrac[e] = max(molfracs[e],1e-6) #avoid that hydrogen has 0 abundance
                 nfrac[e] = max(molfracs[e]/total_mols,1e-9)
                 print('hydrogenfraction is: %.2e'%nfrac['H'])
-            #else:
+            else:
                 nfrac[e]= molfracs[e]/total_mols
         else:
             if e=='H':

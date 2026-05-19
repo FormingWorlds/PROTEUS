@@ -31,7 +31,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "no_Hforced_1IW_0.1AU_4Hocean_1CH_True"
+        path        = "small_grid_1IW_0.05AU_4Hocean_1CH_True"
         logging     = "INFO"
         plot_mod    = 3     # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -131,7 +131,7 @@ version = "2.0"
 [orbit]
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
     instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
-    semimajoraxis = 0.1         # initial semi-major axis of planet's orbit [AU]
+    semimajoraxis = 0.05         # initial semi-major axis of planet's orbit [AU]
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
     zenith_angle = 48.19        # characteristic zenith angle [degrees]
     s0_factor = 0.375           # instellation scale factor [dimensionless]
