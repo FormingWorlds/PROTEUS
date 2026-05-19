@@ -296,6 +296,7 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
         fastchem_xtol_chem=config.atmos_clim.agni.fastchem_xtol_chem,
         fastchem_xtol_elem=config.atmos_clim.agni.fastchem_xtol_elem,
         real_gas=config.atmos_clim.agni.real_gas,
+        thermo_functions=config.atmos_clim.agni.thermo_functions,
         check_integrity=False,  # don't check thermo files every time
         mlt_criterion=convert(jl.Char, config.atmos_clim.agni.mlt_criterion),
         skin_d=config.atmos_clim.surface_d,

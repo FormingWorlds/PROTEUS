@@ -58,11 +58,11 @@ n_steps    = 60       # Total number of evaluations (i.e. BO steps)
 # "S/O_atm" = 9.1113060537e-02
 
 # helpfile: /scratch/p321409/proteus_outputs/bayesopt_tr/runtime_helpfile.csv
-# extracted at index: 41, time: 1.000e+08 years
+# extracted at index: 31, time: 1.000e+08 years
 [observables]
-"M_planet" = 5.9174344948e+24
-"R_obs" = 6.7136929290e+06
-"T_obs" = 9.3709998298e+02
-"atm_kg_per_mol" = 2.8749705175e-02
-"C/O_atm" = 2.1365382648e-01
-"S/O_atm" = 1.1175923693e-01
+"M_planet" = 5.9193602397e+24
+"R_obs" = 6.9577526031e+06
+"T_obs" = 5.2734064003e+02
+"atm_kg_per_mol" = 2.2593052637e-02
+"C/O_atm" = 0.0000000000e+00
+"S/O_atm" = 3.4644730387e-01

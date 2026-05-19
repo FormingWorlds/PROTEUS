@@ -209,6 +209,7 @@ class Agni:
     conduction: bool = field(default=True)
     sens_heat: bool = field(default=True)
     real_gas: bool = field(default=False)
+    thermo_functions: bool = field(default=True)
     psurf_thresh: float = field(default=0.1, validator=ge(0))
     dx_max: float = field(default=35.0, validator=gt(1))
     dx_max_ini: float = field(default=300.0, validator=gt(1))
