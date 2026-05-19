@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 from proteus.utils.constants import element_list, vol_list
 
 log = logging.getLogger('fwl.' + __name__)
+
 
 
 # species db class comes from HELIOS code Kitzmann+2017
@@ -32,9 +34,9 @@ class paths_importer:
         '''
 
         # General directory structure
-        self.wkdir = os.environ.get("LAVATMOS_DIR")
-        self.output_dir = self.wkdir+'output/'
-        self.input_dir = self.wkdir+'input/'
+        self.wkdir = '/data3/leoni/LavAtmos/'
+        self.output_dir = self.wkdir + 'output/'
+        self.input_dir = self.wkdir + 'input/'
 
         # Inputs
         self.lava_comps = self.input_dir+'lava_compositions/'
@@ -43,7 +45,7 @@ class paths_importer:
         self.lavatmos_run = self.wkdir+'ThermoEngine/LavAtmos/lavatmos_run.py'
 
         # FastChem 3
-        self.fastchem3_dir = os.environ.get("FC_DIR")
+        self.fastchem3_dir = '/data3/leoni/LavAtmos/FastChem/fastchem3/'
         #self.fastchem3_dir = self.wkdir+'FastChem/fastchem3/'
         self.fastchem3_input = self.wkdir+'input/fastchem3/'
         self.fastchem3_config_template = self.fastchem3_input+'config_template.input'
@@ -301,7 +303,67 @@ def read_in_element_fracs(input_path,time,parameters):
     #dataframe has been multiplied by 1e20, so need to renormalise to get real fractions
     return df_frac/1e20
 
+def edit_fastchem_configs(fastchem_dir,T,P,parameters):
 
+        '''copied from lavatmos3'''
+
+
+        # print(T,P)
+        # print(f'Running FastChem for single point at T: {T[0]} [K] and P: {P[0]:.3e} [bar]')
+         # Open parameter template file
+        tp_point_path = 'input/tp_point.dat'
+        #tp_file = open(self.fastchem_dir+tp_point_path, 'w')
+        tp_file = open(fastchem_dir+tp_point_path, 'w')
+        tp_file.write(f'P\tT\n{P[0]:.6e}\t{T[0]:.6e}')
+        tp_file.close()
+
+        '''
+        Editing config file
+        '''
+        # print('\nEditing FastChem config')
+
+
+        abundances_location = '/data3/leoni/LavAtmos/input/fastchem3/element_abundances3'
+        #fastchem_column_names = ['Pbar','Tk','n_<tot>','n_g','mu']
+
+        config_path = fastchem_dir+'input/config.input'
+        param_path = fastchem_dir+'input/parameters.dat'
+
+        # Config file
+        template_path_config = fastchem_dir+'input/config_template.input'
+
+        # Open parameter template file
+        template = open(template_path_config)
+        configurations = template.read()
+        template.close()
+
+        abundance_fname=abundances_location + parameters['elementfile']
+        #print(self.abundance_fname.replace('FastChem/',''))
+
+        fastchem_config = {
+            'param_path' : param_path,
+            'tp_grid_path' : tp_point_path,
+            'output_abundance_fname' : 'output/boa_chem.dat',
+            'element_abundance_file' : abundance_fname.replace('FastChem/','')
+            }
+        for config in fastchem_config:
+            configurations = configurations.replace(f'<<{config}>>', fastchem_config[config])
+
+        # Save config file
+        config_file = open(config_path, 'w')
+        config_file.write(configurations)
+        config_file.close()
+
+
+def run_fastchem(fastchem_dir):
+        # Check call instead of call can catch the error
+        try:
+            subprocess.check_call(['./fastchem input/config.input'],\
+                                  shell=True,\
+                                  cwd=f'{fastchem_dir}/',stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            print('\nFastChem cannot run properly.')
+            print(f'Try compile it by running make under {fastchem_dir}\n')
 
 def read_in_element_fracs_normalized(input_path,parameters):
 
@@ -384,12 +446,15 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     for e in input_eles:
         if total_mols > 0:
             if e=='H':
-                nfrac[e] = max(molfracs[e],1e-6) #avoid that hydrogen has 0 abundance
-            else:
+                print('hydrogen mol fraction is: %.2e'%molfracs['H'])
+                #nfrac[e] = max(molfracs[e],1e-6) #avoid that hydrogen has 0 abundance
+                nfrac[e] = max(molfracs[e]/total_mols,1e-9)
+                print('hydrogenfraction is: %.2e'%nfrac['H'])
+            #else:
                 nfrac[e]= molfracs[e]/total_mols
         else:
             if e=='H':
-                nfrac[e] = 1e-6
+                nfrac[e] = 1e-9
             else:
                 nfrac[e] = 0.0
     log.info('volatile element fractions going as input to lavatmos : %s',nfrac)
@@ -404,7 +469,7 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         'lava_comp': 'BSE_palm',
         'silicate_abundances': 'lavatmos3',  # 'lavatmos1', 'lavatmos2', 'manual'
         # Volatile parameters
-        'P_volatile': hf_row['P_surf'] + hf_row['P_silicates'],  # bar
+        'P_volatile': hf_row['P_surf'],  # bar
         'oxygen_abundance': 'degassed',  # 'degassed', 'manual',
         'volatile_comp': nfrac,
         'melt_fraction': 1.0,
@@ -420,18 +485,38 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         Toutgas = 1500
 
     #create a tiuny fake atmosphere for lavatmos to run ? - not sure if this is necessary
-    if parameters['P_volatile']<1e-3:  #when lavatmos1 results start to become surface pressure dependent
-       parameters['silicate_abundances'] = 'lavatmos1'
-       log.info('volatile pressure below 1e-3bar, run lavatmos1')
 
 
+    #paragraph below is for modelling speed purposes -> runs lavatmos 1 instead of lavatmos 3 to save time
+    if parameters['P_volatile'] < 1e-3:  #when lavatmos1 results start to become surface pressure dependent - not sure if this is
+        parameters['P_volatile']= 1e-3  #this avoids that at some point in lavatmos division by zero happens
+        #parameters['silicate_abundances'] = 'lavatmos1'
+        #parameters['P_volatile'] = hf_row['P_silicates'] # use pressure of silicates from last iteration as surface pressure
+        #log.info('volatile pressure below 1e-3bar, run lavatmos1 ')
+
+
+        #lavatmos_instance = container_lavatmos(parameters)
+        #lavatmos_instance.run_lavatmos(Toutgas)
+
+        #'Ehere also run fastchem!!!'
+
+        #fastchem_dir = '/data3/leoni/LavAtmos/FastChem/fastchem3/'
+        #edit_fastchem_configs(fastchem_dir,Toutgas, hf_row['P_silicates'])
+        #run_fastchem(fastchem_dir)
+
+    #else:
+
+
+    #system = lavatmos3.melt_vapor_system(paths)
+    #lavatmos_output = system.vaporise(parameters['T_surf'], parameters['P_volatile'], parameters['melt_comp'], parameters['volatile_comp'] ,parameters['elementfile'], parameters['melt_fraction'])
+    # Save results
+    #output_name = f'{parameters['run_name']}.csv'
+    #lavatmos_output.to_csv(paths.output_dir+output_name)
 
     lavatmos_instance = container_lavatmos(parameters)
-    lavatmos_instance.run_lavatmos(Toutgas)
-
-
+    lavatmos_instance.run_lavatmos(Toutgas) #call run_lavatmos form the ocntainer class
     #convert the element abundances from lavatmos file to element fractions, normalized to unity
-    element_fracs=read_in_element_fracs_normalized(config.outgas.elementfile,parameters)
+    element_fracs=read_in_element_fracs_normalized(config.outgas.elementfile, parameters)
 
     log.info('element fraction after running lavatmos: %s'%element_fracs)
     # read in boa chemistry from last iteration of fastchem and lavatmos
@@ -465,7 +550,7 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     P_new_kPa = new_atmos_abundances['Pbar'][0] * 100 #convert pressure to cgs
     Poutgas =  new_atmos_abundances['Pbar'][0] - hf_row['P_surf'] #comput ehow much silicates are outgassed
 
-    # update outgassed preessure to use as input for next alvatmos run
+    # update outgassed preessure
 
     log.info('pressure of outgassed species before updating, i.e. from last iteration: %.4f'%hf_row['P_silicates'])
     hf_row['P_silicates'] = Poutgas
@@ -492,6 +577,9 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
 
     H_budget=0.0
     Hlist=['H2','H2S','H2O','CH4','NH3','SiH','HS','OH']
+    log.info('old CO abundance before lavamos :%.4f'%hf_row['CO_vmr'])
+    log.info('old H2 abundance before lavamos :%.4f'%hf_row['H2_vmr'])
+
     for vol in gas_list:
         new_pp = new_atmos_abundances[vol][0] * new_atmos_abundances['Pbar'][0]
         hf_row[vol + '_bar'] = new_pp
@@ -505,9 +593,9 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
         if vol in Hlist:
             H_budget += hf_row[vol + '_vmr']
 
-    if H_budget<1e-15:
-        hf_row['H2_vmr']=1e-15
-        log.info('small H2 abundance!!! Needs to be adapted for agni')
+    #if H_budget<1e-15:
+        #hf_row['H2_vmr']=1e-15
+        #log.info('small H2 abundance!!! Needs to be adapted for agni')
 
     log.info('H2 abundance now:%.3e', hf_row['H2_vmr'])
 

@@ -219,6 +219,7 @@ def get_oarr_from_parr(p_arr: list, o_arr: list, p_tgt: float) -> tuple:
     """
 
     p_close, idx = find_nearest(p_arr, p_tgt)
+    log.debug('pressure and corresponding radii:%.2e %.2e',float(p_close), float(o_arr[idx]))
     return float(p_close), float(o_arr[idx])
 
 

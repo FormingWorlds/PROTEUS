@@ -136,7 +136,6 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
 
     from zephyrus.escape import EL_escape
 
-    log.info('Running EL escape (ZEPHYRUS) ...')
 
     # Compute energy-limited escape
     mlr = EL_escape(
@@ -169,6 +168,7 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
         for e in element_list:
             hf_row[f'esc_rate_{e}'] = 0.0
 
+    log.debug(f'escape rate = {mlr}')
     return float(mlr)
 
 
@@ -211,15 +211,20 @@ def calc_new_elements(
     # calculate mass of elements in the reservoir
     res: dict[str, float] = {}
     for e in element_list:
+        #if e in ['H','C','N','S']:
         if e == 'O':  # Oxygen is set by fO2, so we skip it here (const_fO2)
             continue
         res[e] = float(hf_row.get(f'{e}{key}', 0.0))
 
-    log.info('Elemental masses in escape reservoir before escape:%s'%res)
-    log.info('Total mass of hydrogen in atmosphere before escape: %e kg'%hf_row.get('H_kg_atm', 0.0))
-    log.info('Total mass of hydrogen in interior before escape: %e kg'%hf_row.get('H_kg_liquid', 0.0))
+    log.debug('Total mass of hydrogen in atmosphere before escape: %e kg'%hf_row.get('H_kg_atm', 0.0))
+    log.debug('Total mass of hydrogen in interior before escape: %e kg'%hf_row.get('H_kg_liquid', 0.0))
 
     M_vols = float(sum(res.values()))
+    for e in element_list:
+        if e=='O':
+            continue
+        else:
+            log.debug('mass ratio of element %s %.4f',e,(res[e] / M_vols))
 
     # check if we just desiccated the planet...
     if M_vols < min_thresh:
