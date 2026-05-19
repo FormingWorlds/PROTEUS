@@ -18,10 +18,10 @@ import numpy as np
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import normalize
 from scipy.stats.qmc import Halton
 
 from proteus.inference.objective import eval_obj, prot_builder
+from proteus.inference.transforms import normalize_parameters
 from proteus.inference.utils import save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import recursive_get
@@ -144,7 +144,7 @@ def sample_from_grid(output: str, params: dict, observables: dict, grid_dir: str
         raw_x = torch.tensor(raw_x, dtype=dtype)
 
         # Generate normalised INPUT parameters
-        nrm_x = normalize(raw_x, bounds).flatten()
+        nrm_x = normalize_parameters(raw_x, bounds, keys).flatten()
         X[i, :] = nrm_x[:]  # store (list of floats)
 
         # Get values of OUTPUT observables from grid point data (list of floats)

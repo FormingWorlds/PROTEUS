@@ -9,9 +9,9 @@ from pathlib import Path
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import unnormalize
 from numpy import log10
 
+from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import element_list, gas_list
 from proteus.utils.coupler import get_proteus_directories, variable_is_logarithmic
 
@@ -175,6 +175,7 @@ def eval_obj(sim_dict, tru_dict):
 
     The metric compares each observable in either linear or log space,
     accumulates squared normalized differences, and applies `log_warp`.
+    A small offset is applied to the denominator to avoid division by zero.
 
     Parameters
     ----------
@@ -202,12 +203,9 @@ def eval_obj(sim_dict, tru_dict):
     sim = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
     true_y = torch.tensor(tru_vals, dtype=dtype).reshape(1, -1)
 
-    # If true_y is zero, set to small value; sim should also be small in this case
-    true_y = torch.clamp(true_y, min=EPS_CLIP)
-    sim = torch.clamp(sim, min=EPS_CLIP)
-
     # Compute normalized difference and squared distance
-    diff = torch.ones(1, 1, dtype=dtype) - sim / true_y
+    denom = torch.where(true_y >= 0, true_y + EPS_CLIP, true_y - EPS_CLIP)
+    diff = torch.ones_like(true_y) - sim / denom
     sq_dist = (diff**2).sum(dim=1, keepdim=True)
 
     # obj = torch.ones(1, 1, dtype=dtype) - sq_dist
@@ -290,7 +288,8 @@ def prot_builder(
     - callable: Function f(x_norm) -> y_objective.
     """
     # Build bounds tensor for unnormalization
-    d = len(parameters)
+    param_keys = list(parameters.keys())
+    d = len(param_keys)
     bounds = torch.tensor(
         [[list(parameters.values())[i][j] for i in range(d)] for j in range(2)], dtype=dtype
     )
@@ -307,12 +306,12 @@ def prot_builder(
         - torch.Tensor: Objective value tensor of shape (1, 1).
         """
         # Convert normalized to raw inputs
-        x_raw = unnormalize(x_norm, bounds)
+        x_raw = unnormalize_parameters(x_norm, bounds, param_keys)
 
         # Partially apply J with fixed context
         J_context = partial(
             J,
-            parameters=list(parameters.keys()),
+            parameters=param_keys,
             true_observables=observables,
             worker=worker,
             iter=iter,

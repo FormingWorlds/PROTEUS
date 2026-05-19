@@ -165,6 +165,22 @@ def test_eval_obj_mixes_log_and_linear_variables(monkeypatch):
 
 
 @pytest.mark.unit
+def test_eval_obj_handles_zero_true_value():
+    """Zero-valued observables should use an offset denominator."""
+    sim = {'R_obs': 2.0}
+    tru = {'R_obs': 0.0}
+
+    value = objective_mod.eval_obj(sim, tru)
+
+    denom = 0.0 + objective_mod.EPS_CLIP
+    expected_sq = (1.0 - 2.0 / denom) ** 2
+    expected = -torch.log10(
+        torch.tensor([[expected_sq + objective_mod.EPS_CLIP]], dtype=torch.double)
+    )
+    assert value.item() == pytest.approx(expected.item())
+
+
+@pytest.mark.unit
 def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     captured = {}
 
@@ -189,3 +205,29 @@ def test_prot_builder_unnormalizes_and_calls_J(monkeypatch):
     assert y.item() == pytest.approx(5.0)
     assert captured['x'][0, 0].item() == pytest.approx(5.0)
     assert captured['x'][0, 1].item() == pytest.approx(2.5)
+
+
+@pytest.mark.unit
+def test_prot_builder_unnormalizes_log_scaled_parameter(monkeypatch):
+    """Surface pressure spans orders of magnitude, so log scaling must round-trip."""
+    captured = {}
+
+    def fake_J(x, **kwargs):
+        captured['x'] = x
+        return torch.tensor([[1.0]], dtype=torch.double)
+
+    monkeypatch.setattr(objective_mod, 'J', fake_J)
+
+    f = objective_mod.prot_builder(
+        parameters={'P_surf': [1e-3, 1e3], 'struct.mass_tot': [1.0, 3.0]},
+        observables={'obs': 1.0},
+        worker=0,
+        iter=0,
+        output='out_dir',
+        ref_config='ref.toml',
+    )
+
+    f(torch.tensor([[0.5, 0.25]], dtype=torch.double))
+
+    assert captured['x'][0, 0].item() == pytest.approx(1.0)
+    assert captured['x'][0, 1].item() == pytest.approx(1.5)

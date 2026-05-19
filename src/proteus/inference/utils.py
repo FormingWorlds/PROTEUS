@@ -27,12 +27,12 @@ import numpy as np
 import pandas as pd
 import toml
 import torch
-from botorch.utils.transforms import unnormalize
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.kernels import MaternKernel, RBFKernel
 from gpytorch.priors.torch_priors import LogNormalPrior
 
-from proteus.inference.objective import eval_obj
+from proteus.inference.objective import EPS_CLIP, eval_obj
+from proteus.inference.transforms import unnormalize_parameters
 from proteus.utils.constants import gas_list
 
 # Use double precision for tensor computations
@@ -91,7 +91,11 @@ def flatten(d, parent_key: str = '', sep: str = '.'):
     return dict(items)
 
 
-def save_dataset_csv(X: torch.Tensor, Y: torch.Tensor, fpath: str) -> None:
+def save_dataset_csv(
+    X: torch.Tensor,
+    Y: torch.Tensor,
+    fpath: str,
+) -> None:
     """Persist BO dataset tensors to a plain-text CSV file.
 
     The file contains one row per sample with columns `x_0...x_(d-1)` and `y`.
@@ -194,7 +198,7 @@ def print_results(D, logs, config, output, n_init):
     input = flatten(input)  # flatten nested config
 
     # Extract inferred parameter values in original order
-    params = config['parameters'].keys()
+    param_keys = list(config['parameters'].keys())
 
     # Log summary, account for python index vs step index and n_init
     log.info(f'Best case was step {i_opt + 1 - n_init}, with J={J_opt:+.4f}')
@@ -205,25 +209,28 @@ def print_results(D, logs, config, output, n_init):
     for i, k in enumerate(observables):
         tru = true_y[k]
         obs = sim_opt[i]
-        dif = 100 * (obs - tru) / tru
+        denom = tru + EPS_CLIP if tru >= 0 else tru - EPS_CLIP
+        dif = 100 * (obs - tru) / denom
         log.info(f'{k:28s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}')
     log.info(' ')
 
     log.info(f'{"Parameter":28s} | Best fitting value')
-    for i, k in enumerate(list(params)):
+    for i, k in enumerate(param_keys):
         log.info(f'{k:28s}   {input[k]:g}')
     log.info(' ')
 
     # Log parameter statistics
-    d = len(params)
+    d = len(param_keys)
     bounds = torch.tensor(
         [[list(config['parameters'].values())[i][j] for i in range(d)] for j in range(2)]
     )
     # remove intial data
-    X_samp = np.array(unnormalize(X, bounds), copy=None, dtype=float)[n_init:, :]
+    X_samp = np.array(unnormalize_parameters(X, bounds, param_keys), copy=None, dtype=float)[
+        n_init:, :
+    ]
     log.info(f'Ensemble statistics (N={len(X_samp)})')
     log.info(f'{"Parameter":28s} |   Median  ±  stderr')
-    for i, k in enumerate(list(params)):
+    for i, k in enumerate(param_keys):
         x_med = np.median(X_samp[:, i])
         x_err = np.std(X_samp[:, i]) / len(X_samp) ** 0.5
         log.info(f'{k:28s}   {x_med:g} ± {x_err:g}')
