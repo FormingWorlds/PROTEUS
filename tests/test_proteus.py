@@ -209,3 +209,157 @@ def test_proteus_resume_mesh_no_prev(tmp_path):
     assert p.directories.get('spider_mesh') == str(mesh_file)
     assert 'spider_mesh_prev' not in p.directories
     assert p.directories.get('mesh_shift_active') is False
+
+
+# ---------------------------------------------------------------------------
+# Proteus._check_atmosphere_deadlock: AGNI-vs-interior deadlock detector.
+# Targets the previously-untested block at proteus.py:802-853 (now extracted
+# to a method on Proteus so it can be exercised in isolation).
+# ---------------------------------------------------------------------------
+
+
+def _make_deadlock_proteus(tmp_path, *, converged=False, hf_all=None, hf_row=None):
+    """Build a Proteus instance pre-positioned for the deadlock check.
+
+    All the fields the check reads (atmos_o.converged, hf_all, hf_row,
+    agni_deadlock_count, agni_deadlock_max, directories) are set
+    explicitly; everything else is left at its post-__init__ default.
+    """
+    from types import SimpleNamespace
+
+    p = _make_proteus_instance(tmp_path)
+    p.atmos_o = SimpleNamespace(converged=bool(converged))
+    p.hf_all = hf_all
+    p.hf_row = hf_row if hf_row is not None else {}
+    p.agni_deadlock_count = 0
+    p.agni_deadlock_max = 3
+    return p
+
+
+def test_check_atmosphere_deadlock_resets_counter_when_solve_converged(tmp_path):
+    """A converged atmosphere solve must reset the deadlock counter to
+    zero, regardless of any previously-accumulated misses.
+
+    Discriminating: pre-load the counter to a near-trip value (2 out
+    of 3) so a regression that incremented on converged solves would
+    visibly cross the threshold.
+    """
+    p = _make_deadlock_proteus(tmp_path, converged=True)
+    p.agni_deadlock_count = 2
+    p._check_atmosphere_deadlock()
+    assert p.agni_deadlock_count == 0
+
+
+def test_check_atmosphere_deadlock_does_not_fire_on_first_iteration(tmp_path):
+    """When hf_all is None (the fresh-run state before the first row
+    is committed), the deadlock cannot fire because there is no
+    previous row to compare against. The counter stays at zero.
+
+    Edge: limit-input case for the first iteration of a fresh run.
+    """
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=None,
+        hf_row={'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    )
+    p._check_atmosphere_deadlock()
+    assert p.agni_deadlock_count == 0
+
+
+def test_check_atmosphere_deadlock_resets_when_interior_state_moved(tmp_path):
+    """An AGNI failure with a still-moving interior is a transient
+    non-convergence, not a deadlock. The counter must reset.
+
+    Discriminating: T_magma differs by 50 K between prev and current.
+    Even though the solver did not converge, the interior is clearly
+    evolving, so the deadlock detector must NOT increment.
+    """
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3050.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 110.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    )
+    p.agni_deadlock_count = 1
+    p._check_atmosphere_deadlock()
+    assert p.agni_deadlock_count == 0
+
+
+def test_check_atmosphere_deadlock_increments_when_interior_frozen(tmp_path, caplog):
+    """When AGNI fails AND (T_magma, Phi_global, F_atm) all match the
+    previous row to bit-exactness (T, Phi) or 1e-6 relative (F), the
+    counter must increment and the warning message must name both
+    the current count and the configured maximum.
+
+    Discriminating: pin both the counter (==1) and the warning text.
+    A regression that read the wrong dict key would land at zero.
+    """
+    import logging
+
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    )
+    p.agni_deadlock_max = 3
+    with caplog.at_level(logging.WARNING, logger='fwl.proteus.proteus'):
+        p._check_atmosphere_deadlock()
+    assert p.agni_deadlock_count == 1
+    messages = [r.message for r in caplog.records]
+    assert any('deadlock count = 1 / 3' in m for m in messages)
+
+
+def test_check_atmosphere_deadlock_raises_at_threshold(tmp_path):
+    """When the counter reaches agni_deadlock_max, the detector must
+    write status code 22 AND raise RuntimeError. The raise comes
+    AFTER UpdateStatusfile so an unattended run leaves a parseable
+    status on disk.
+
+    Discriminating: pin the status code (22, not 20 or 23) and the
+    exception type. A regression that re-ordered (raise before
+    status-write) would leave mock_update uncalled.
+    """
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        hf_row={'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    )
+    p.agni_deadlock_max = 3
+    p.agni_deadlock_count = 2  # already at max - 1
+    with patch('proteus.proteus.UpdateStatusfile') as mock_update:
+        with pytest.raises(RuntimeError, match='consecutive AGNI failures'):
+            p._check_atmosphere_deadlock()
+    mock_update.assert_called_once()
+    args, _ = mock_update.call_args
+    assert args[1] == 22
+
+
+def test_check_atmosphere_deadlock_f_atm_tolerance_boundary(tmp_path):
+    """The F_atm match uses a 1e-6 relative tolerance, NOT bit-
+    exactness, so AGNI's stochastic non-convergence noise still
+    registers as frozen. Pin the boundary at relative change 5e-7
+    (below the threshold) -> still frozen -> counter increments.
+
+    Discriminating: an F_atm relative change just above 1e-6 would
+    classify as NOT-frozen and reset the counter; a regression that
+    flipped the comparator (>= vs <) would fire here.
+    """
+    p = _make_deadlock_proteus(
+        tmp_path,
+        converged=False,
+        hf_all=pd.DataFrame([{'F_atm': 100.0, 'T_magma': 3000.0, 'Phi_global': 1.0}]),
+        # F_atm rel change = 0.00005 / 100 = 5e-7  (below 1e-6 threshold)
+        hf_row={'F_atm': 100.00005, 'T_magma': 3000.0, 'Phi_global': 1.0},
+    )
+    p.agni_deadlock_max = 3
+    p._check_atmosphere_deadlock()
+    assert p.agni_deadlock_count == 1  # counted as frozen
+    # Now perturb F_atm above the tolerance and confirm the reset path
+    # fires. This is the discrimination guard against a flipped
+    # comparator.
+    p.hf_row = {'F_atm': 200.0, 'T_magma': 3000.0, 'Phi_global': 1.0}
+    p._check_atmosphere_deadlock()
+    assert p.agni_deadlock_count == 0

@@ -103,6 +103,79 @@ class Proteus:
         """
         return float(self.config.planet.tsurf_init)
 
+    def _check_atmosphere_deadlock(self) -> None:
+        """Detect and abort on an atmosphere-interior coupling deadlock.
+
+        Behaviour:
+
+        - If the most recent atmosphere solve converged, reset
+          ``agni_deadlock_count`` to 0.
+        - If the solve did not converge AND the interior state has not
+          moved (bit-exact ``T_magma`` and ``Phi_global``; relative
+          ``F_atm`` change below 1e-6) since the previous committed
+          row, increment the counter.
+        - If the solve did not converge but the interior IS moving,
+          reset the counter (transient non-convergence, not a
+          deadlock).
+        - When the counter reaches ``agni_deadlock_max``, write
+          status code 22 and raise ``RuntimeError`` to abort the run.
+
+        On the first iteration ``hf_all`` is None: no previous row
+        exists, so the deadlock cannot fire. The counter stays at 0.
+        """
+        log = logging.getLogger('fwl.' + __name__)
+        if self.atmos_o.converged:
+            self.agni_deadlock_count = 0
+            return
+
+        if self.hf_all is not None and len(self.hf_all) >= 1:
+            prev = self.hf_all.iloc[-1]
+            cur_F = float(self.hf_row.get('F_atm', 0.0))
+            prev_F = float(prev.get('F_atm', 0.0))
+            F_rel_change = abs(cur_F - prev_F) / max(abs(prev_F), 1.0)
+            interior_frozen = (
+                float(prev.get('T_magma', 0.0)) == float(self.hf_row.get('T_magma', 0.0))
+                and float(prev.get('Phi_global', 0.0))
+                == float(self.hf_row.get('Phi_global', 0.0))
+                and F_rel_change < 1.0e-6
+            )
+        else:
+            interior_frozen = False
+
+        if not interior_frozen:
+            # AGNI failed but interior is still moving: transient.
+            self.agni_deadlock_count = 0
+            return
+
+        self.agni_deadlock_count += 1
+        log.warning(
+            'AGNI did not converge AND interior state is frozen '
+            '(consecutive deadlock count = %d / %d)',
+            self.agni_deadlock_count,
+            self.agni_deadlock_max,
+        )
+        if self.agni_deadlock_count < self.agni_deadlock_max:
+            return
+
+        log.error(
+            'Atmosphere-interior coupling deadlock detected: '
+            'AGNI failed to converge for %d consecutive iterations '
+            'with no change in (T_magma, Phi_global, F_atm). '
+            'Aborting to prevent an indefinite stuck-loop. Try '
+            '(a) reducing the interior dt, (b) switching AGNI to '
+            'a more robust solver mode, or (c) checking that the '
+            'surface boundary condition has not entered a regime '
+            'AGNI cannot represent (e.g. very thick H2-rich '
+            'atmospheres at the rheological transition).',
+            self.agni_deadlock_count,
+        )
+        UpdateStatusfile(self.directories, 22)
+        raise RuntimeError(
+            'Atmosphere-interior coupling deadlock: '
+            f'{self.agni_deadlock_count} consecutive AGNI failures '
+            'with frozen interior state.'
+        )
+
     def init_directories(self):
         """Initialize directories dictionary"""
         from proteus.utils.coupler import set_directories
@@ -799,58 +872,7 @@ class Proteus:
             # there is no "previous" row to compare against, so the
             # deadlock detector cannot fire yet — count the failure but do
             # not abort.
-            if not self.atmos_o.converged:
-                if self.hf_all is not None and len(self.hf_all) >= 1:
-                    prev = self.hf_all.iloc[-1]
-                    cur_F = float(self.hf_row.get('F_atm', 0.0))
-                    prev_F = float(prev.get('F_atm', 0.0))
-                    F_rel_change = abs(cur_F - prev_F) / max(abs(prev_F), 1.0)
-                    interior_frozen = (
-                        float(prev.get('T_magma', 0.0))
-                        == float(self.hf_row.get('T_magma', 0.0))
-                        and float(prev.get('Phi_global', 0.0))
-                        == float(self.hf_row.get('Phi_global', 0.0))
-                        and F_rel_change < 1.0e-6
-                    )
-                else:
-                    interior_frozen = False
-
-                if interior_frozen:
-                    self.agni_deadlock_count += 1
-                    log.warning(
-                        'AGNI did not converge AND interior state is frozen '
-                        '(consecutive deadlock count = %d / %d)',
-                        self.agni_deadlock_count,
-                        self.agni_deadlock_max,
-                    )
-                    if self.agni_deadlock_count >= self.agni_deadlock_max:
-                        log.error(
-                            'Atmosphere-interior coupling deadlock detected: '
-                            'AGNI failed to converge for %d consecutive '
-                            'iterations with no change in (T_magma, Phi_global, '
-                            'F_atm). Aborting to prevent an indefinite '
-                            'stuck-loop. Try (a) reducing the interior dt, '
-                            '(b) switching AGNI to a more robust solver mode, '
-                            'or (c) checking that the surface boundary '
-                            'condition has not entered a regime AGNI cannot '
-                            'represent (e.g. very thick H2-rich atmospheres '
-                            'at the rheological transition). See '
-                            'output_files/analysis_1EO_M1_profiles/'
-                            'DEEP_ANALYSIS_FINDINGS.md for the diagnosis.',
-                            self.agni_deadlock_count,
-                        )
-                        UpdateStatusfile(self.directories, 22)
-                        raise RuntimeError(
-                            'Atmosphere-interior coupling deadlock: '
-                            f'{self.agni_deadlock_count} consecutive AGNI '
-                            'failures with frozen interior state.'
-                        )
-                else:
-                    # AGNI failed but interior is still moving — reset.
-                    self.agni_deadlock_count = 0
-            else:
-                # AGNI converged — clear the counter.
-                self.agni_deadlock_count = 0
+            self._check_atmosphere_deadlock()
 
             if _IT_TIMING_ENABLED:
                 _t_mod['atmos'] = time.perf_counter() - _t0_atmos
