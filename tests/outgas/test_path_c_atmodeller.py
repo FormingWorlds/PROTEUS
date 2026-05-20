@@ -520,3 +520,132 @@ def test_path_c_writes_finite_O_residual():
     # The fake output produces a finite atmospheric + dissolved O, so
     # the residual must be strictly less than the full target.
     assert abs(hf_row['O_res']) < target_O
+
+
+# ---------------------------------------------------------------------------
+# Branch coverage: unknown solubility/EOS keys, T_floor early return,
+# solver exception, zero P_total VMR fallback. These exercise paths the
+# main Path C tests above do not reach because their config uses
+# valid keys, a high enough T_magma, and a successful fake solve.
+# ---------------------------------------------------------------------------
+
+
+def test_atmodeller_warns_when_solubility_key_unknown(caplog):
+    """A configured solubility model name that does NOT appear in
+    atmodeller's solubility registry must log a warning and continue
+    with no solubility (the species is still added).
+
+    Discriminating: pin the gas name in the warning message so a
+    regression that silently dropped the warning, or that crashed on
+    the unknown key instead of warning, would fail this test.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_path_c_config()
+    config.outgas.atmodeller.solubility_H2O = 'totally_not_a_real_law'
+    hf_row = _earth_hf_row()
+    fake_model = MagicMock()
+    fake_model.output = _fake_atmodeller_output()
+    with (
+        caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'),
+        patch('atmodeller.EquilibriumModel', return_value=fake_model),
+    ):
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+    # Warning text must name the missing model.
+    assert any('totally_not_a_real_law' in rec.message for rec in caplog.records), (
+        f'expected solubility-name warning, got: {[r.message for r in caplog.records]}'
+    )
+    # Discrimination guard: the dispatch still completed (the solve
+    # ran), so hf_row carries a P_surf entry.
+    assert 'P_surf' in hf_row
+
+
+def test_atmodeller_warns_when_eos_key_unknown(caplog):
+    """A configured real-gas EOS name not in atmodeller's eos registry
+    must log a warning ('using ideal gas') and continue.
+
+    Edge: same shape as the solubility case but the warning text
+    differs; pin both the gas name and the 'ideal gas' fallback
+    string so future renames of the message do not silently lose
+    discrimination.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_path_c_config()
+    config.outgas.atmodeller.eos_H2O = 'phantom_eos_v999'
+    hf_row = _earth_hf_row()
+    fake_model = MagicMock()
+    fake_model.output = _fake_atmodeller_output()
+    with (
+        caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'),
+        patch('atmodeller.EquilibriumModel', return_value=fake_model),
+    ):
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+    eos_warnings = [r.message for r in caplog.records if 'phantom_eos_v999' in r.message]
+    assert eos_warnings, 'expected EOS-name warning for phantom_eos_v999'
+    assert any('ideal gas' in m for m in eos_warnings), (
+        'EOS warning should mention the ideal-gas fallback'
+    )
+
+
+def test_atmodeller_returns_early_when_t_magma_below_floor(caplog):
+    """When ``T_magma < config.outgas.T_floor`` the wrapper must log a
+    warning and return before invoking atmodeller's solver.
+
+    Discriminating: confirm EquilibriumModel is NOT called and that
+    hf_row['P_surf'] is NOT written. A regression that fell through
+    to the solver would attempt the solve at low T and either crash
+    or write a P_surf entry.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_path_c_config()
+    config.outgas.T_floor = 2000.0  # above the hf_row T_magma of 1800 K
+    hf_row = _earth_hf_row()
+    snapshot = dict(hf_row)
+
+    fake_model = MagicMock()
+    with (
+        caplog.at_level(logging.WARNING, logger='fwl.proteus.outgas.atmodeller'),
+        patch('atmodeller.EquilibriumModel', return_value=fake_model),
+    ):
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+    # The model is constructed for species-network setup before the
+    # T_floor check, but model.solve must NOT have been called.
+    assert fake_model.solve.call_count == 0, (
+        'solve() must not run when T_magma < T_floor'
+    )
+    # P_surf should NOT have been added under the early-return path.
+    assert 'P_surf' not in hf_row, 'P_surf must not appear when T_magma < T_floor'
+    # Snapshot guard: hf_row stays untouched by this branch.
+    assert hf_row == snapshot
+    # Warning fired.
+    assert any('T_floor' in rec.message for rec in caplog.records)
+
+
+def test_atmodeller_propagates_solver_exception(caplog):
+    """If atmodeller's ``model.solve(...)`` raises, the wrapper must
+    log the failure and re-raise (lines 277-279). The caller is
+    responsible for the abort + status-file update.
+
+    Discriminating: pin both that the original exception bubbles up
+    (a regression that swallowed it would mask the failure mode) and
+    that the log message names the failure.
+    """
+    from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
+
+    dirs = {'output': '/tmp/test'}
+    config = _make_path_c_config()
+    hf_row = _earth_hf_row()
+    fake_model = MagicMock()
+    fake_model.solve.side_effect = RuntimeError('contrived solver failure')
+    with (
+        caplog.at_level(logging.ERROR, logger='fwl.proteus.outgas.atmodeller'),
+        patch('atmodeller.EquilibriumModel', return_value=fake_model),
+        pytest.raises(RuntimeError, match='contrived solver failure'),
+    ):
+        calc_surface_pressures_atmodeller(dirs, config, hf_row)
+    assert any('Atmodeller solve failed' in rec.message for rec in caplog.records)
