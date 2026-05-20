@@ -363,3 +363,120 @@ def test_check_atmosphere_deadlock_f_atm_tolerance_boundary(tmp_path):
     p.hf_row = {'F_atm': 200.0, 'T_magma': 3000.0, 'Phi_global': 1.0}
     p._check_atmosphere_deadlock()
     assert p.agni_deadlock_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Proteus.observe() and Proteus.offline_chemistry(): postprocessing methods.
+# Target lines 1055-1098 of proteus.py.
+# ---------------------------------------------------------------------------
+
+
+def _helpfile_df_one_row():
+    """Minimal helpfile DataFrame with one committed row."""
+    return pd.DataFrame(
+        [
+            {
+                'Time': 1.0e8,
+                'T_magma': 2500.0,
+                'F_atm': 150.0,
+                'Phi_global': 0.7,
+            }
+        ]
+    )
+
+
+def test_observe_dispatches_to_run_observe_with_last_helpfile_row(tmp_path):
+    """Proteus.observe() must read the helpfile, take the last row,
+    and dispatch to run_observe with (hf_row, output_dir, config).
+
+    Discriminating: pin the kwargs of the run_observe call. A
+    regression that passed the entire DataFrame instead of just the
+    last row would fail the dict-type check; a regression that
+    swapped (hf_row, output_dir) order would fail the path check.
+    """
+    p = _make_proteus_instance(tmp_path)
+    p.directories['output'] = str(tmp_path)
+    df = _helpfile_df_one_row()
+    with (
+        patch.object(p, 'extract_archives'),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=df),
+        patch('proteus.observe.wrapper.run_observe') as mock_run,
+    ):
+        p.observe()
+    mock_run.assert_called_once()
+    args = mock_run.call_args.args
+    # First arg is the hf_row dict pulled from df.iloc[-1].
+    assert isinstance(args[0], dict)
+    assert args[0]['T_magma'] == pytest.approx(2500.0)
+    assert args[0]['F_atm'] == pytest.approx(150.0)
+    # Second arg is the output directory path.
+    assert args[1] == str(tmp_path)
+
+
+def test_observe_raises_on_empty_helpfile(tmp_path):
+    """When the helpfile is empty, observe() must raise an Exception
+    rather than feeding an empty DataFrame to the downstream
+    pipeline.
+
+    Edge: limit-input case. Pin the exception message so a regression
+    that returned None silently would surface here.
+    """
+    p = _make_proteus_instance(tmp_path)
+    empty_df = pd.DataFrame()
+    with (
+        patch.object(p, 'extract_archives'),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=empty_df),
+        patch('proteus.observe.wrapper.run_observe') as mock_run,
+    ):
+        with pytest.raises(Exception, match='too short to be postprocessed'):
+            p.observe()
+    # Discrimination: confirm run_observe was NOT called. A regression
+    # that swallowed the empty case and still dispatched would call
+    # run_observe with an out-of-range index.
+    assert mock_run.call_count == 0
+
+
+def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_path):
+    """Proteus.offline_chemistry() must dispatch to run_chemistry
+    and return its result verbatim.
+
+    Discriminating: pin the return propagation. A regression that
+    discarded the return value or wrapped it in a dict would fail
+    the identity check.
+    """
+    p = _make_proteus_instance(tmp_path)
+    df = _helpfile_df_one_row()
+    expected = pd.DataFrame([{'species': 'H2O', 'mx': 0.42}])
+    with (
+        patch.object(p, 'extract_archives'),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=df),
+        patch('proteus.atmos_chem.wrapper.run_chemistry', return_value=expected) as mock_chem,
+    ):
+        result = p.offline_chemistry()
+    mock_chem.assert_called_once()
+    # The result must be the run_chemistry return, unchanged.
+    assert result is expected
+    # Discrimination: verify the last-row dict was passed (not the
+    # full DataFrame). A regression that passed df would land args[2]
+    # as a pandas object, not a dict.
+    args = mock_chem.call_args.args
+    assert isinstance(args[2], dict)
+    assert args[2]['Phi_global'] == pytest.approx(0.7)
+
+
+def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):
+    """offline_chemistry must also raise on an empty helpfile, with
+    the same contract as observe().
+
+    Discriminating: confirm run_chemistry is NOT called.
+    """
+    p = _make_proteus_instance(tmp_path)
+    empty_df = pd.DataFrame()
+    with (
+        patch.object(p, 'extract_archives'),
+        patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=empty_df),
+        patch('proteus.atmos_chem.wrapper.run_chemistry') as mock_chem,
+    ):
+        with pytest.raises(Exception, match='too short to be postprocessed'):
+            p.offline_chemistry()
+    assert mock_chem.call_count == 0
