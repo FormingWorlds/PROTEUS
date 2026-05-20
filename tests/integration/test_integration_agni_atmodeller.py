@@ -73,11 +73,21 @@ def test_outgas_module_atmodeller_round_trips_through_schema():
 def test_atmodeller_solver_mode_enum_is_robust_or_basic():
     """``Atmodeller.solver_mode`` is restricted to {'robust', 'basic'}.
 
-    Discrimination: both round-trip with identity check; any third
-    value is rejected at validator time.
+    Discrimination: pin the enum AS A SET (catches a regression that
+    silently broadened it to a third value), confirm both members
+    round-trip, default is 'robust', and a non-member is rejected.
     """
+    import attrs
+
     from proteus.config._outgas import Atmodeller
 
+    # Pin the exact enum at the validator level so a regression that
+    # added (or removed) a member fails here, even if all the named
+    # members still round-trip.
+    allowed = attrs.fields(Atmodeller).solver_mode.validator.options
+    assert set(allowed) == {'robust', 'basic'}, (
+        f'solver_mode enum drifted from documented {{robust, basic}}: {allowed}'
+    )
     for known in ('robust', 'basic'):
         a = Atmodeller(solver_mode=known)
         assert a.solver_mode == known
@@ -146,6 +156,35 @@ def test_atmodeller_none_sentinel_coerced_to_python_none_on_eos_fields():
     assert a_real.eos_H2O == 'SHV_CORK'
 
 
+def test_atmodeller_eos_and_solubility_field_counts_pin_documented_set():
+    """Pin the count of converter-bearing fields on Atmodeller so a
+    regression that silently adds an eleventh solubility law (e.g.
+    solubility_O2) or a sixth EOS table is caught at the schema layer.
+
+    Documented from ``_outgas.py:115-128``: 7 ``solubility_*`` fields
+    (H2O, CO2, H2, N2, S2, CO, CH4) and 5 ``eos_*`` fields (H2O,
+    CO2, H2, CH4, CO). Each carries the ``none_if_none`` converter.
+
+    Discrimination: a regression that broadened the field set
+    without changing the seven/five documented names would flow into
+    atmodeller's dispatch invisibly; the count check fails loudly.
+    """
+    import attrs
+
+    from proteus.config._outgas import Atmodeller
+
+    fields = attrs.fields(Atmodeller)
+    solubility_fields = [f.name for f in fields if f.name.startswith('solubility_')]
+    eos_fields = [f.name for f in fields if f.name.startswith('eos_')]
+    assert len(solubility_fields) == 7, (
+        f'Expected 7 solubility_* fields on Atmodeller, '
+        f'got {len(solubility_fields)}: {solubility_fields}'
+    )
+    assert len(eos_fields) == 5, (
+        f'Expected 5 eos_* fields on Atmodeller, got {len(eos_fields)}: {eos_fields}'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Optical-depth monotonicity at the AGNI side of the AGNI x atmodeller pair.
 # Matrix design lock: every AGNI x X integration test must assert this.
@@ -211,6 +250,12 @@ def test_agni_atmodeller_optical_depth_bounded_below_by_zero():
     assert tau_surface > 0.0
     # Strictly less than surface even when TOA is zero.
     assert tau_TOA < tau_surface
+    # Matrix design lock invariant: every AGNI x X test asserts this
+    # alongside the strict ordering. With TOA = 0 and surface > 0,
+    # the half-surface guard trivially holds, but the assertion
+    # documents the contract for this pair the same way the other
+    # optical-depth tests do.
+    assert tau_TOA < 0.5 * tau_surface
 
 
 # ---------------------------------------------------------------------------
