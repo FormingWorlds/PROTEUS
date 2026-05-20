@@ -210,8 +210,51 @@ def test_determine_condensates_empty_list():
 
 
 class _FakeAtmosphere:
+    """Stand-in struct used by the `init_agni_atmos` dispatch tests.
+
+    Carries every field listed in `_REQUIRED_ATMOS_FIELDS` so the
+    schema check at allocate succeeds. Tests that need to vary a
+    specific field assign it on the instance after construction.
+    """
+
     def __init__(self):
         self.transparent = False
+        # Pressure-temperature state
+        self.tmp = [300.0]
+        self.tmpl = [295.0, 305.0]
+        self.pl = [1e4, 1e5]
+        self.p_boa = 1e5
+        self.p_oboa = 1e5
+        self.tmp_surf = 1500.0
+        self.tmp_magma = 1500.0
+        # Solver flags
+        self.is_converged = True
+        # Radiative fluxes
+        self.flux_d_sw = [100.0]
+        self.flux_u_lw = [300.0]
+        self.flux_u_sw = [10.0]
+        self.flux_tot = [100.0, 200.0]
+        # AGNI 1.10.2 additive
+        self.tau_band = [[0.0], [0.5]]
+        self.diagnostic_Ra = [1.0]
+        self.timescale_conv = [1e3]
+        self.timescale_rad = [1e6]
+        self.mask_c = [False]
+        # Gas composition
+        self.gas_names = ['H2O']
+        self.gas_vmr = {'H2O': [1.0]}
+        self.gas_ovmr = {'H2O': [1.0]}
+        # Ocean diagnostics
+        self.ocean_areacov = 0.0
+        self.ocean_maxdepth = 0.0
+        self.ocean_tot = 0.0
+        # Stellar / transit
+        self.instellation = 1361.0
+        self.transspec_p = 1e2
+        self.transspec_r = 6.371e6
+        self.transspec_tmp = 295.0
+        # Chemistry workspace
+        self.fastchem_work = ''
 
 
 class _FakeAGNI:
@@ -466,6 +509,10 @@ def _build_complete_atmos_stub() -> SimpleNamespace:
         flux_u_sw=[10.0],
         flux_tot=[100.0, 200.0],
         tau_band=[[0.0], [0.5]],
+        diagnostic_Ra=[1.0, 2.0],
+        timescale_conv=[1e3, 2e3],
+        timescale_rad=[1e6, 1e6],
+        mask_c=[False, True],
         gas_names=['H2O'],
         gas_vmr={'H2O': [1.0]},
         gas_ovmr={'H2O': [1.0]},
@@ -536,3 +583,102 @@ def test_check_agni_schema_rejects_multiple_missing_fields():
     # Discriminating: a regression that reported only the first missing
     # field would fail this test because the other two would be absent
     # from the message.
+
+
+# ---------------------------------------------------------------------------
+# tau_band and diagnostic summarisers (AGNI 1.10.2 outputs into hf_row)
+# ---------------------------------------------------------------------------
+
+
+def test_summarise_tau_band_returns_monotonic_TOA_below_surface():
+    """At a realistic IR optical-depth profile, tau at TOA < tau at surface.
+
+    Discriminating: a regression that swapped the TOA and surface
+    indices, or read the array in the wrong axis order, would land on
+    the inverted ordering. The TOA value of 0.05 vs the surface value
+    of 4.5 is well outside any plausible aggregation noise.
+    """
+    # Layout matches AGNI's Julia storage: (nlev_c, nbands).
+    atmos = SimpleNamespace(
+        nlev_c=3,
+        nbands=2,
+        tau_band=[[0.0, 0.1], [1.0, 1.2], [4.0, 5.0]],
+    )
+    toa, surf = agni_mod._summarise_tau_band(atmos)
+    assert toa == pytest.approx(0.05, rel=1e-6)
+    assert surf == pytest.approx(4.5, rel=1e-6)
+    # Monotonicity: optical depth integrated from TOA downwards must
+    # grow with depth. Discrimination guard against wrong-direction
+    # integration: a flipped sum would invert this inequality.
+    assert toa < surf
+    # Scale guard: the inversion-resistant form. Rejects 0.5 *
+    # surface = 2.25 > TOA, which still passes the strict inequality
+    # but would mean the gap is shrinking.
+    assert toa < 0.5 * surf
+
+
+def test_summarise_tau_band_returns_nan_on_unreadable_array():
+    """If atmos.tau_band cannot be coerced into a numpy array, both
+    aggregates are NaN so the helpfile column remains well-formed.
+
+    Edge: a transparent-mode solve never populates tau_band, leaving
+    the field unset on the struct. The summariser must not raise.
+    """
+    atmos = SimpleNamespace()  # no tau_band attribute at all
+
+    class _Raises:
+        def __array__(self, *_a, **_k):
+            raise RuntimeError('not readable from this Julia context')
+
+    atmos.tau_band = _Raises()
+    atmos.nlev_c = 3
+    atmos.nbands = 2
+    toa, surf = agni_mod._summarise_tau_band(atmos)
+    import math
+
+    assert math.isnan(toa)
+    assert math.isnan(surf)
+
+
+def test_summarise_diagnostics_picks_top_convective_level_for_rcb():
+    """The radiative-convective boundary is the topmost convective
+    level (smallest index where mask_c is True).
+
+    Discriminating: a regression that took the bottom convective level
+    or argmax over all booleans would land at index 3, where
+    t_conv / t_rad = 1e2 / 1e4 = 1e-2. The correct index is 1, where
+    the ratio is 1.0e3 / 1.0e6 = 1e-3. Order-of-magnitude separation.
+    """
+    atmos = SimpleNamespace(
+        diagnostic_Ra=[0.0, 5.0, 4.0, 3.0],
+        timescale_conv=[0.0, 1.0e3, 2.0e3, 1.0e2],
+        timescale_rad=[1.0e6, 1.0e6, 1.0e5, 1.0e4],
+        mask_c=[False, True, True, True],
+    )
+    ra_max, ratio = agni_mod._summarise_diagnostics(atmos)
+    assert ra_max == pytest.approx(5.0, rel=1e-12)
+    assert ratio == pytest.approx(1.0e-3, rel=1e-6)
+    # Sign + scale guards. A negative or zero ratio would mean the
+    # convective timescale was read as zero, which is unphysical.
+    assert ratio > 0
+    assert ratio < 1.0  # convection should win at the RCB
+
+
+def test_summarise_diagnostics_emits_nan_when_no_level_is_convective():
+    """A purely radiative profile has no RCB; the timescale ratio is NaN.
+
+    Edge: this is the limit-input case for an atmosphere too cold or
+    too stable to convect. Ra_max is still well-defined as the maximum
+    of the populated array.
+    """
+    atmos = SimpleNamespace(
+        diagnostic_Ra=[0.5, 0.3, 0.2],
+        timescale_conv=[1e3, 1e3, 1e3],
+        timescale_rad=[1e6, 1e6, 1e6],
+        mask_c=[False, False, False],
+    )
+    ra_max, ratio = agni_mod._summarise_diagnostics(atmos)
+    assert ra_max == pytest.approx(0.5, rel=1e-12)
+    import math
+
+    assert math.isnan(ratio)

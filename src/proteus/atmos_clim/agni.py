@@ -54,6 +54,13 @@ _REQUIRED_ATMOS_FIELDS = (
     'flux_tot',
     # Per-band optical depth (added in AGNI 1.10.2 via PR #192)
     'tau_band',
+    # Diagnostics computed by AGNI's prescribed-T solver path and
+    # available on the struct after the radiative calc. Energy-solver
+    # path leaves the arrays at their zero-initialised state.
+    'diagnostic_Ra',
+    'timescale_conv',
+    'timescale_rad',
+    'mask_c',
     # Gas composition
     'gas_names',
     'gas_vmr',
@@ -102,6 +109,70 @@ def _check_agni_schema(atmos) -> None:
         'moved past a PROTEUS-known schema; update _REQUIRED_ATMOS_FIELDS '
         'and the matching reads in atmos_clim/agni.py.'
     )
+
+
+def _summarise_tau_band(atmos) -> tuple[float, float]:
+    """Reduce the per-band optical-depth array to TOA and surface scalars.
+
+    AGNI stores ``tau_band`` as a ``(nlev_c, nbands)`` Julia array (level
+    index outermost). After juliacall conversion the numpy view may
+    appear as either ``(nlev_c, nbands)`` or ``(nbands, nlev_c)``; the
+    aggregator inspects ``atmos.nlev_c`` and ``atmos.nbands`` to align.
+
+    Returns
+    -------
+    tuple of (tau_atm_TOA, tau_atm_surface), each the band-mean
+    optical depth at that level. NaN on shape or read errors so the
+    helpfile column is still well-formed.
+    """
+    try:
+        tau_arr = np.asarray(atmos.tau_band)
+    except Exception:
+        return float('nan'), float('nan')
+    if tau_arr.size == 0:
+        return float('nan'), float('nan')
+    nlev_c = int(atmos.nlev_c) if hasattr(atmos, 'nlev_c') else tau_arr.shape[0]
+    nbands = int(atmos.nbands) if hasattr(atmos, 'nbands') else tau_arr.shape[-1]
+    if tau_arr.shape == (nlev_c, nbands):
+        toa = float(tau_arr[0, :].mean())
+        surf = float(tau_arr[-1, :].mean())
+    elif tau_arr.shape == (nbands, nlev_c):
+        toa = float(tau_arr[:, 0].mean())
+        surf = float(tau_arr[:, -1].mean())
+    else:
+        log.warning(
+            'tau_band has unexpected shape %s for nlev_c=%d, nbands=%d',
+            tau_arr.shape,
+            nlev_c,
+            nbands,
+        )
+        return float('nan'), float('nan')
+    return toa, surf
+
+
+def _summarise_diagnostics(atmos) -> tuple[float, float]:
+    """Reduce the convection / radiation diagnostic arrays to scalars.
+
+    Returns the maximum Rayleigh number across levels and the ratio
+    timescale_conv / timescale_rad evaluated at the topmost convective
+    level (the radiative-convective boundary). NaN when no level is
+    convective or when the diagnostics were not populated (energy
+    solver path skips them).
+    """
+    try:
+        ra_arr = np.asarray(atmos.diagnostic_Ra)
+        t_conv_arr = np.asarray(atmos.timescale_conv)
+        t_rad_arr = np.asarray(atmos.timescale_rad)
+        mask_c = np.asarray(atmos.mask_c).astype(bool)
+    except Exception:
+        return float('nan'), float('nan')
+    Ra_max = float(np.nanmax(ra_arr)) if ra_arr.size else float('nan')
+    if not mask_c.any() or t_conv_arr.size == 0 or t_rad_arr.size == 0:
+        return Ra_max, float('nan')
+    rcb_idx = int(np.argmax(mask_c))  # first convective level from TOA downwards
+    denom = max(float(t_rad_arr[rcb_idx]), 1e-300)
+    ratio = float(t_conv_arr[rcb_idx]) / denom
+    return Ra_max, ratio
 
 
 def _agni_setup_accepts_aerosol_species() -> bool:
@@ -1063,6 +1134,12 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1]  # m
 
+    # AGNI 1.10.2 diagnostics: band-mean optical depth at TOA and at the
+    # surface, plus the Rayleigh number maximum and the convective vs
+    # radiative timescale ratio at the radiative-convective boundary.
+    tau_TOA, tau_surface = _summarise_tau_band(atmos)
+    Ra_max, t_conv_over_t_rad = _summarise_diagnostics(atmos)
+
     # final things to store
     output = {}
     output['F_atm'] = F_atm_lim
@@ -1073,6 +1150,10 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     output['T_obs'] = T_obs
     output['R_obs'] = R_obs
     output['albedo'] = albedo
+    output['tau_atm_TOA'] = tau_TOA
+    output['tau_atm_surface'] = tau_surface
+    output['agni_Ra_max'] = Ra_max
+    output['agni_t_conv_over_t_rad'] = t_conv_over_t_rad
     # Transient-only flag (not persisted to helpfile). True if AGNI's Newton
     # solver converged on at least one attempt; False if all attempts were
     # exhausted via the "Maximum attempts" path. The main coupling loop uses
