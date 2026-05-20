@@ -86,33 +86,61 @@ def test_escape_module_enum_is_documented_set():
 
 
 def test_zephyrus_pxuv_is_in_zero_to_ten_bar_open_lower_closed_upper():
-    """``Zephyrus.Pxuv`` must be strictly positive and not exceed
-    10 bar per ``valid_zephyrus`` at ``_escape.py:13-15``.
+    """``Zephyrus.Pxuv`` is gated by two validators:
 
-    Edge: 0 raises (lower-open), 10.0 round-trips (upper-closed),
-    10.0001 raises (just above upper), -1 raises, the default
+    - field-level ``ge(0)`` at ``_escape.py:36`` rejects any
+      strictly-negative value at Zephyrus construction time.
+    - cross-validator ``valid_zephyrus`` at ``_escape.py:13-15``
+      rejects ``Pxuv <= 0`` or ``Pxuv > 10`` at Escape construction
+      time. This pins the open-lower ``0`` and the just-above-upper
+      ``10.0001`` cases that the field validator does not catch.
+
+    Edge: 0 raises (lower-open, valid_zephyrus), 10.0 round-trips
+    (upper-closed), 10.0001 raises (just above upper), the default
     (5e-5) round-trips.
 
-    Discrimination: pin BOTH the open-lower and closed-upper sides
-    so a regression that flipped <= to < at either end would fail
-    one of the four contract assertions.
+    Discrimination: pinning ``Pxuv=0.0`` exercises valid_zephyrus
+    specifically (the ``ge(0)`` field validator accepts 0); pinning
+    ``Pxuv=10.0001`` exercises the upper bound that ``ge(0)`` does
+    not cover. Together the two rejections discriminate the
+    cross-validator from the field validator.
     """
     from proteus.config._escape import Escape, Zephyrus
 
-    # Below the open lower bound rejects.
+    # Open lower bound: 0.0 passes the ge(0) field validator but
+    # fails valid_zephyrus (Pxuv <= 0). This case discriminates the
+    # cross-validator from the field validator.
     with pytest.raises(ValueError, match=r'(?i)pxuv'):
         Escape(module='zephyrus', zephyrus=Zephyrus(Pxuv=0.0))
+    # Just above the closed upper bound: 10.0001 only fails
+    # valid_zephyrus; the ge(0) field validator passes.
     with pytest.raises(ValueError, match=r'(?i)pxuv'):
-        Escape(module='zephyrus', zephyrus=Zephyrus(Pxuv=-1.0))
-    # Above the closed upper bound rejects.
-    with pytest.raises(ValueError, match=r'(?i)pxuv'):
-        Escape(module='zephyrus', zephyrus=Zephyrus(Pxuv=10.001))
+        Escape(module='zephyrus', zephyrus=Zephyrus(Pxuv=10.0001))
     # Right at the upper bound round-trips.
     e_upper = Escape(module='zephyrus', zephyrus=Zephyrus(Pxuv=10.0))
     assert e_upper.zephyrus.Pxuv == pytest.approx(10.0, rel=1e-12)
     # The documented default round-trips.
     e_default = Escape(module='zephyrus')
     assert e_default.zephyrus.Pxuv == pytest.approx(5.0e-5, rel=1e-12)
+
+
+def test_zephyrus_pxuv_field_level_validator_rejects_strictly_negative():
+    """The field-level ``ge(0)`` validator at ``_escape.py:36``
+    rejects strictly-negative Pxuv at Zephyrus construction time,
+    BEFORE valid_zephyrus runs at the enclosing Escape construction.
+
+    Discrimination: separating this case from the cross-validator
+    test above ensures a future regression that removed ``ge(0)``
+    in favour of relying on valid_zephyrus alone would surface
+    here (Zephyrus(Pxuv=-1.0) would no longer raise at the field
+    layer; it would only raise inside an Escape construction).
+    """
+    from proteus.config._escape import Zephyrus
+
+    # The field validator on Zephyrus itself catches negative Pxuv
+    # before any Escape-level cross-validator runs.
+    with pytest.raises(ValueError, match=r'(?i)pxuv'):
+        Zephyrus(Pxuv=-1.0)
 
 
 def test_zephyrus_efficiency_in_unit_interval_closed_at_both_ends():
