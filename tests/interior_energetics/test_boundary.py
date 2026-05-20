@@ -1326,7 +1326,6 @@ def test_boundary_runner_partial_nan_layer_cp_averages_finite_values(
 # =============================================================================
 
 
-@pytest.mark.physics_invariant
 def test_boundary_runner_init_clamps_surface_temperature_below_potential(
     mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
 ):
@@ -1334,35 +1333,34 @@ def test_boundary_runner_init_clamps_surface_temperature_below_potential(
     exceeds the potential temperature (an unphysical input), the
     constructor must clamp T_surf_0 to T_p_0 - 1 K.
 
-    Edge: this catches a config combination where a hot prescribed
-    surface is paired with a cooler potential. Discriminating: the
-    clamp result is exactly T_p_0 - 1.0; a regression to T_p_0 + 1
-    or T_surf_0 (no clamp) would land at clearly different values.
+    Edge: drive the zalmoxis-style init path (``interior_o.ic == 2``)
+    so the constructor reads ``T_p_0 = hf_row['T_magma']`` and
+    ``T_surf_0 = hf_row['T_surf']``. With hf_row['T_surf'] >
+    hf_row['T_magma'] the clamp at lines 105-108 fires.
+
+    Discriminating: pin ``runner.T_surf_0 == runner.T_p_0 - 1.0``
+    exactly. A regression that dropped the -1 K offset would land at
+    runner.T_p_0 (equal, not strictly less); a regression that kept
+    the user-supplied T_surf_0 would land at 3500 K (5 K above T_p).
     """
     mock_config.interior_struct.module = 'self'
-    mock_config.interior_energetics.boundary.T_p_0 = 3000.0
-    # Set hf_row.T_magma absent so the init uses config.T_p_0
-    mock_hf_row.pop('T_magma', None)
-    mock_hf_row.pop('T_surf', None)
-    mock_interior.ic = 0  # not zalmoxis path
-    # Force the constructor to read config defaults, where T_surf_0
-    # initialises to T_p_0 (same value), so the clamp triggers only
-    # under the explicit test parametrisation. Force a manual override.
-    # Use a SimpleNamespace clone so we can adjust mid-test.
-    mock_config.interior_energetics.boundary.T_p_0 = 3000.0
-
+    # Force the zalmoxis-style branch so T_p_0 / T_surf_0 come from
+    # hf_row. ic == 2 triggers the override at boundary.py:98-100.
+    mock_interior.ic = 2
+    mock_hf_row['T_magma'] = 3495.0  # K (potential temperature)
+    mock_hf_row['T_surf'] = 3500.0  # K (surface; intentionally hotter)
     with patch('proteus.interior_energetics.boundary.next_step', return_value=1.0e3):
         runner = BoundaryRunner(
             mock_config, mock_dirs, mock_hf_row, mock_hf_all, mock_interior, mock_atmos
         )
-    # Manually set T_surf_0 > T_p_0 to exercise the clamp by mutating
-    # post-init values; rerun the clamp logic. The constructor's
-    # body at lines 105-108 applied the clamp on construction; verify
-    # both values are now properly ordered.
-    assert runner.T_surf_0 <= runner.T_p_0
-    # Positivity: temperatures stay above absolute zero.
-    assert runner.T_p_0 > 0
-    assert runner.T_surf_0 > 0
+    # Closed-form pin: clamp drops T_surf to T_p - 1 K exactly.
+    assert runner.T_p_0 == pytest.approx(3495.0, rel=1e-12)
+    assert runner.T_surf_0 == pytest.approx(3494.0, rel=1e-12)
+    # Discrimination: a regression that left T_surf_0 untouched would
+    # land at the original 3500 K; a regression that snapped to T_p_0
+    # without the -1 K offset would land at 3495 K. Reject both.
+    assert runner.T_surf_0 != pytest.approx(3500.0)
+    assert runner.T_surf_0 != pytest.approx(3495.0)
 
 
 def test_boundary_layer_thickness_returns_tiny_delta_at_equal_temperatures(
@@ -1409,31 +1407,65 @@ def test_boundary_layer_thickness_inverse_to_heat_flux(boundary_runner):
 def test_dT_pdt_uses_silicate_heat_capacity_for_fully_solid_mantle(boundary_runner):
     """In the fully-solid regime (T_p below the solidus), the
     denominator of dT_p/dt reduces to silicate_heat_capacity *
-    mantle_mass with no latent-heat contribution from melting.
+    mantle_mass; the latent-heat term in the partially-molten branch
+    is exactly zero because r_s_val == planet_radius.
 
-    Edge: limit-input case (no melt). The dT_p/dt magnitude is then
-    bounded by the radiogenic + atmospheric heat-flow balance with
-    the simpler denominator.
-
-    Discriminating: the wrong-branch regression would still include
-    the latent-heat term, dramatically lowering |dT_p/dt|. Confirm
-    the result is finite and of the same sign as the radiogenic
-    heating minus atmospheric losses.
+    Discriminating: re-derive the numerator and denominator at the
+    test parameters and pin dT_pdt to the closed-form ratio. A
+    regression that flipped the if-condition (`<=` instead of `<`)
+    would take the partial-melt branch and produce a denominator
+    with the latent-heat term, landing at a different value.
     """
-    # Pick T_p below the configured solidus (1420 K) so phi = 0.
-    T_p_solid = 1300.0
+    import numpy as np
+
+    runner = boundary_runner
+    T_p_solid = 1300.0  # below configured solidus (1420 K) -> phi = 0
     T_surf = 1200.0
-    # dT_pdt signature: (T_p, T_surf, t). t=0 keeps radiogenic
-    # heating at its initial decay-chain amplitude.
-    dT_pdt = boundary_runner.dT_pdt(T_p_solid, T_surf, t=0.0)
-    # Finite + non-zero. The fully-solid branch must still produce
-    # a meaningful cooling rate.
+    t = 0.0
+    dT_pdt = runner.dT_pdt(T_p_solid, T_surf, t=t)
+    # Sanity: a real cooling rate (negative, finite, mantle-physics scale).
     assert np.isfinite(dT_pdt)
-    # Discrimination: the wrong denominator (with latent-heat term)
-    # would be larger, making |dT_pdt| smaller in magnitude. Both
-    # have the same sign though, so we cannot pin a numeric value
-    # without re-deriving the full formula. Pin sign-only.
-    assert dT_pdt < 0  # mantle cools when T_surf < T_p
+    assert dT_pdt < 0
+
+    # Re-derive the expected value from the closed-form else-branch.
+    phi = runner.melt_fraction(T_p_solid)
+    assert phi == pytest.approx(0.0, abs=1e-12)
+    q_m_val = runner.q_m(T_p_solid, T_surf, phi)
+    Q_val = runner.radioactive_heating(t)
+    numerator = -4 * np.pi * runner.planet_radius**2 * q_m_val + runner.mantle_mass * (
+        Q_val + runner.tidal_term
+    )
+    denominator_else = runner.silicate_heat_capacity * runner.mantle_mass
+    expected = numerator / denominator_else
+    assert dT_pdt == pytest.approx(expected, rel=1e-12)
+    # Discrimination guard: the wrong-branch denominator (partial melt
+    # path) at phi = 0 has the same first term but ADDS a latent-heat
+    # term proportional to r_s_val**2 * dr_s_dT_p, evaluated at the
+    # clamp r_s = planet_radius. Re-compute and confirm the two
+    # denominators differ by more than the test's relative tolerance.
+    r_s_val = runner.r_s(T_p_solid)
+    assert r_s_val == pytest.approx(runner.planet_radius, rel=1e-12)
+    dr_s_dT_p = runner.drs_dTp(T_p_solid)
+    denominator_partial = (
+        (4 / 3)
+        * np.pi
+        * runner.mantle_bulk_density
+        * runner.silicate_heat_capacity
+        * (runner.planet_radius**3 - r_s_val**3)
+        - 4
+        * np.pi
+        * r_s_val** 2
+        * runner.mantle_bulk_density
+        * runner.heat_fusion_silicate
+        * dr_s_dT_p
+    )
+    # At phi = 0 the first chunk of the partial-melt denominator is
+    # 0 (planet_radius**3 - r_s_val**3 vanishes), so the partial
+    # denominator collapses to the latent-heat term alone. Confirm
+    # the resulting wrong-formula ratio differs from the captured
+    # value by at least one order of magnitude.
+    wrong_partial = numerator / denominator_partial
+    assert abs(dT_pdt - wrong_partial) > 0.5 * abs(dT_pdt)
 
 
 def test_run_solver_writes_csv_log_when_logging_enabled(

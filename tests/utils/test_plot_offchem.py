@@ -246,9 +246,20 @@ def test_offchem_read_grid_aggregates_year_data_across_cases(tmp_path, monkeypat
     assert data.shape == (2, 2)
     # Years must be sorted per case despite the unsorted on-disk order.
     np.testing.assert_array_equal(np.sort(years, axis=1), years)
-    # Discrimination guard: total of 4 snapshots (2 cases x 2 years)
-    # must equal the sum of the two case-year lists.
-    assert int(years.sum()) == 50 + 100 + 25 + 200
+    # Discrimination: both case names must be present in opts (the
+    # glob ordering is not guaranteed, so we do not pin per-index).
+    # A regression that read the same case twice, or that dropped a
+    # case silently, would fail the set equality below.
+    names = {row['name'] for row in opts}
+    assert names == {'alpha', 'beta'}
+    # Per-case year sum: the case named 'alpha' has years [50, 100]
+    # (sum 150) and 'beta' has [25, 200] (sum 225). Pair each opts
+    # row with its years row and verify the per-case totals match.
+    # This catches a regression that joined the wrong case folder to
+    # the wrong opts dict.
+    expected_per_case = {'alpha': 50 + 100, 'beta': 25 + 200}
+    for i, row in enumerate(opts):
+        assert int(years[i].sum()) == expected_per_case[row['name']]
 
 
 def test_offchem_slice_grid_keeps_only_matching_grid_points():
