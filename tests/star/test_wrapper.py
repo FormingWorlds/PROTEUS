@@ -18,7 +18,7 @@ import pytest
 import proteus.star.wrapper as star_wrapper
 from proteus.utils.constants import AU
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_invariant]
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # ---------------------------------------------------------------------------
@@ -26,6 +26,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30), pytest.mark.physics_inv
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_scale_spectrum_to_toa_at_one_au_is_identity():
     """At separation = 1 AU (in metres), the scaling factor is exactly
     1: the flux array passes through unchanged. Discrimination: a
@@ -39,6 +40,7 @@ def test_scale_spectrum_to_toa_at_one_au_is_identity():
     assert len(scaled) == len(fl)
 
 
+@pytest.mark.physics_invariant
 def test_scale_spectrum_to_toa_inverse_square_at_two_au():
     """At separation = 2 AU, the inverse-square law predicts flux scales
     by (1/2)^2 = 1/4. A regression that used (1/r) or (1/r^3) would not
@@ -54,6 +56,7 @@ def test_scale_spectrum_to_toa_inverse_square_at_two_au():
     assert abs(scaled[0] - 12.5) > 1
 
 
+@pytest.mark.physics_invariant
 def test_scale_spectrum_to_toa_amplifies_at_close_separation():
     """At separation = 0.5 AU, the scaling factor is (1/0.5)^2 = 4: the
     flux is amplified. A regression that flipped the ratio (sep/AU)^2
@@ -79,6 +82,7 @@ def test_scale_spectrum_to_toa_handles_numpy_array_input():
     assert scaled.shape == fl.shape
 
 
+@pytest.mark.physics_invariant
 def test_scale_spectrum_to_toa_preserves_sign_for_zero_flux():
     """A zero-flux input array stays at zero regardless of separation:
     the inverse-square scaling factor only multiplies. Discrimination:
@@ -169,6 +173,7 @@ def test_update_stellar_temperature_baraffe_branch_calls_baraffestellarteff():
     assert 2000.0 < hf_row['T_star'] < 8000.0
 
 
+@pytest.mark.physics_invariant
 def test_update_instellation_baraffe_branch_uses_baraffesolarconstant_and_zeros_xuv():
     """The Baraffe branch of update_instellation calls
     ``stellar_track.BaraffeSolarConstant(age_yr, sep_in_AU)`` and
@@ -222,6 +227,8 @@ def test_update_instellation_dummy_branch_zeroes_fxuv_and_computes_finstellation
     assert hf_row['F_xuv'] == 0.0
 
 
+@pytest.mark.physics_invariant
+@pytest.mark.reference_pinned
 def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form():
     """T_eqm = ((1 - albedo) * S * s0_factor / sigma) ** 0.25.
 

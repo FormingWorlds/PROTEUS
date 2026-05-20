@@ -52,7 +52,7 @@ _REQUIRED_ATMOS_FIELDS = (
     'flux_u_lw',
     'flux_u_sw',
     'flux_tot',
-    # Per-band optical depth (added in AGNI 1.10.2 via PR #192)
+    # Per-band optical depth [nlev_c x nbands], longwave all-sky
     'tau_band',
     # Diagnostics computed by AGNI's prescribed-T solver path and
     # available on the struct after the radiative calc. Energy-solver
@@ -1134,9 +1134,9 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
         p_xuv = hf_row['p_xuv']  # bar
         r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1]  # m
 
-    # AGNI 1.10.2 diagnostics: band-mean optical depth at TOA and at the
-    # surface, plus the Rayleigh number maximum and the convective vs
-    # radiative timescale ratio at the radiative-convective boundary.
+    # Diagnostics surfaced into hf_row: band-mean optical depth at TOA
+    # and at the surface, plus the Rayleigh number maximum and the
+    # convective vs radiative timescale ratio at the RCB.
     tau_TOA, tau_surface = _summarise_tau_band(atmos)
     Ra_max, t_conv_over_t_rad = _summarise_diagnostics(atmos)
 

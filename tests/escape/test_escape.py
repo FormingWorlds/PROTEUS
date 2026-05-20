@@ -211,6 +211,7 @@ def test_run_escape_invalid_module():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_run_escape_snapshots_baseline_on_first_call():
     """Test that the first run_escape call snapshots the bulk volatile
     inventory into M_vol_initial. This baseline is used by
@@ -452,6 +453,7 @@ def test_run_zephyrus_with_tidal(mock_el_escape):
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_calc_new_elements_bulk_reservoir():
     """Test elemental inventory update using bulk reservoir.
 
@@ -612,6 +614,7 @@ def test_calc_new_elements_below_threshold():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_calc_new_elements_prevent_negative_mass():
     """Test that elemental masses cannot go negative during escape.
 

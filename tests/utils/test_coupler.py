@@ -47,7 +47,7 @@ from proteus.utils.coupler import (
     get_proteus_directories,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # =============================================================================
 # Test: Helpfile Key Generation

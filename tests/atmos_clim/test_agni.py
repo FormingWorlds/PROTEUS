@@ -22,7 +22,7 @@ import pytest
 import proteus.atmos_clim.agni as agni_mod
 from proteus.atmos_clim.agni import _determine_aerosols, _determine_condensates, init_agni_atmos
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
@@ -590,6 +590,7 @@ def test_check_agni_schema_rejects_multiple_missing_fields():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.physics_invariant
 def test_summarise_tau_band_returns_monotonic_TOA_below_surface():
     """At a realistic IR optical-depth profile, tau at TOA < tau at surface.
 
@@ -640,14 +641,16 @@ def test_summarise_tau_band_returns_nan_on_unreadable_array():
     assert math.isnan(surf)
 
 
+@pytest.mark.physics_invariant
 def test_summarise_diagnostics_picks_top_convective_level_for_rcb():
     """The radiative-convective boundary is the topmost convective
     level (smallest index where mask_c is True).
 
-    Discriminating: a regression that took the bottom convective level
-    or argmax over all booleans would land at index 3, where
-    t_conv / t_rad = 1e2 / 1e4 = 1e-2. The correct index is 1, where
-    the ratio is 1.0e3 / 1.0e6 = 1e-3. Order-of-magnitude separation.
+    Discriminating: a regression that took the LAST convective level
+    (np.where(mask_c)[0][-1]) would land at index 3, where
+    t_conv / t_rad = 1e2 / 1e4 = 1e-2. The correct topmost index is
+    1, where the ratio is 1.0e3 / 1.0e6 = 1e-3. Order-of-magnitude
+    separation.
     """
     atmos = SimpleNamespace(
         diagnostic_Ra=[0.0, 5.0, 4.0, 3.0],

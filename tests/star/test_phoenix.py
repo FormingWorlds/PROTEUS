@@ -100,6 +100,7 @@ def test_phoenix_params_pulls_from_baraffe_track_when_tracks_is_baraffe():
     assert track.Value.call_count == 0
 
 
+@pytest.mark.physics_invariant
 def test_phoenix_params_computes_logg_from_mass_and_radius():
     """When logg is None and mass + radius are known, phoenix_params
     computes log g from g = G * M / R**2 (in cgs).
