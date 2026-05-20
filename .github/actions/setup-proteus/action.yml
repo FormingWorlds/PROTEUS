@@ -224,6 +224,15 @@ runs:
         # RAD_DIR is exported by the later "Export environment" step but
         # AGNI's deps/build.jl reads it inline, so we set it here too.
         #
+        # Order matters: Pkg.instantiate must run BEFORE deps/build.jl,
+        # because deps/build.jl includes SOCRATES's clean_wrappers.jl
+        # which does `using Glob`. With AGNI's project activated and
+        # instantiated, Glob (and every other dep in the manifest) is
+        # available to the build script. Running the build first would
+        # invoke `using Glob` against Julia's default environment,
+        # which carries no AGNI deps and fails with
+        # "Package Glob not found in current path."
+        #
         # Keep the committed Manifest.toml in place: deleting it forces
         # Pkg to re-resolve the dependency graph and re-precompile every
         # package even on a Julia depot cache hit (~4 min penalty per
@@ -232,8 +241,8 @@ runs:
         # correctly. The pinned AGNI ref ships a matching Manifest.
         export RAD_DIR="$GITHUB_WORKSPACE/socrates"
         cd AGNI
-        julia deps/build.jl
-        julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+        julia --project=. -e 'using Pkg; Pkg.instantiate()'
+        julia --project=. deps/build.jl
 
     # ------------------------------------------------------------------
     # 8. PROTEUS pip install (resolves PyPI + git deps in pyproject.toml)
