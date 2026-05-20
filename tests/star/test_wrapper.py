@@ -90,3 +90,167 @@ def test_scale_spectrum_to_toa_preserves_sign_for_zero_flux():
     scaled_near = star_wrapper.scale_spectrum_to_toa(fl, 0.5 * AU)
     np.testing.assert_allclose(scaled_far, [0.0, 0.0], atol=1e-30)
     np.testing.assert_allclose(scaled_near, [0.0, 0.0], atol=1e-30)
+
+
+# ---------------------------------------------------------------------------
+# update_stellar_radius / temperature / instellation: dummy + MORS (Spada
+# AND Baraffe) dispatch branches. Spada paths run on every CHILI nightly,
+# so they are already covered; Baraffe paths are not exercised by the
+# default smoke tier and so live entirely as unit-test mocks here.
+# ---------------------------------------------------------------------------
+
+
+def _make_mors_config(tracks: str = 'baraffe'):
+    """Build a MagicMock config object shaped like the live tree, with
+    Mors as the star module and the requested track type."""
+    from unittest.mock import MagicMock
+
+    config = MagicMock()
+    config.star.module = 'mors'
+    config.star.mors.tracks = tracks
+    config.star.bol_scale = 1.0
+    return config
+
+
+def test_update_stellar_radius_baraffe_branch_calls_baraffestellarradius():
+    """When the MORS track is Baraffe, the radius is read from
+    ``stellar_track.BaraffeStellarRadius(age_yr)`` and stored in
+    hf_row scaled by R_sun.
+
+    Discrimination guard: the spada branch would call
+    ``Value(age_Myr, 'Rstar')`` instead. Assert the Baraffe entry
+    point was hit and ``Value`` was not.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.star.wrapper import update_stellar_radius
+    from proteus.utils.constants import R_sun
+
+    config = _make_mors_config('baraffe')
+    track = MagicMock()
+    track.BaraffeStellarRadius.return_value = 0.42  # R_sun
+    hf_row = {'age_star': 1.0e9}
+
+    update_stellar_radius(hf_row, config, stellar_track=track)
+    track.BaraffeStellarRadius.assert_called_once_with(1.0e9)
+    assert track.Value.call_count == 0
+    # SI conversion: R_sun multiplier.
+    assert hf_row['R_star'] == pytest.approx(0.42 * R_sun, rel=1e-12)
+    # Scale guard: half-Solar-radius star at 0.42 R_sun ~ 2.9e8 m;
+    # a units bug returning R in m without the multiplication would
+    # land at 0.42, eight orders of magnitude off.
+    assert 1e8 < hf_row['R_star'] < 1e9
+
+
+def test_update_stellar_temperature_baraffe_branch_calls_baraffestellarteff():
+    """The Baraffe branch of update_stellar_temperature reads Teff
+    from ``BaraffeStellarTeff(age_yr)`` and writes the value verbatim
+    into hf_row.
+
+    Discrimination: the spada path passes age in Myr and reads via
+    ``Value``. Pin the Baraffe path's call signature and the resulting
+    Teff value.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.star.wrapper import update_stellar_temperature
+
+    config = _make_mors_config('baraffe')
+    track = MagicMock()
+    track.BaraffeStellarTeff.return_value = 3200.0
+    hf_row = {'age_star': 2.5e9}
+
+    update_stellar_temperature(hf_row, config, stellar_track=track)
+    track.BaraffeStellarTeff.assert_called_once_with(2.5e9)
+    assert track.Value.call_count == 0
+    assert hf_row['T_star'] == pytest.approx(3200.0, rel=1e-12)
+    # Sign + physical-range guard.
+    assert hf_row['T_star'] > 0
+    assert 2000.0 < hf_row['T_star'] < 8000.0
+
+
+def test_update_instellation_baraffe_branch_uses_baraffesolarconstant_and_zeros_xuv():
+    """The Baraffe branch of update_instellation calls
+    ``stellar_track.BaraffeSolarConstant(age_yr, sep_in_AU)`` and
+    sets F_xuv = 0 because Baraffe tracks do not provide XUV.
+
+    Discrimination: the spada branch would use a different signature
+    (Lbol/(4*pi*d^2) from Value('Lbol')) and would produce a finite
+    F_xuv. Pin both: F_ins == BaraffeSolarConstant return, F_xuv == 0.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.star.wrapper import update_instellation
+    from proteus.utils.constants import AU
+
+    config = _make_mors_config('baraffe')
+    track = MagicMock()
+    track.BaraffeSolarConstant.return_value = 1361.0
+    hf_row = {'age_star': 4.567e9, 'separation': 1.0 * AU}
+
+    update_instellation(hf_row, config, stellar_track=track)
+    # Was passed as (age_yr, sep/AU); confirm sep/AU == 1.0.
+    track.BaraffeSolarConstant.assert_called_once_with(4.567e9, 1.0)
+    assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
+    # XUV explicitly zero for Baraffe (no XUV in those tracks).
+    assert hf_row['F_xuv'] == 0.0
+
+
+def test_update_instellation_dummy_branch_zeroes_fxuv_and_computes_finstellation():
+    """The dummy-star path of update_instellation calls
+    ``star.dummy.calc_instellation(Teff, R_star, sep)`` and explicitly
+    sets F_xuv = 0 (dummy has no XUV model).
+
+    Discrimination: confirm the dummy entry point was called with the
+    Teff + R_star + sep passed in (no implicit unit conversion), and
+    that F_xuv is exactly 0.0.
+    """
+    from unittest.mock import MagicMock, patch
+
+    from proteus.star.wrapper import update_instellation
+
+    config = MagicMock()
+    config.star.module = 'dummy'
+    config.star.dummy.Teff = 5778.0
+    config.star.bol_scale = 1.0
+    hf_row = {'R_star': 6.957e8, 'separation': 1.496e11}
+
+    with patch('proteus.star.dummy.calc_instellation', return_value=1361.0) as mock_inst:
+        update_instellation(hf_row, config)
+    mock_inst.assert_called_once_with(5778.0, 6.957e8, 1.496e11)
+    assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
+    assert hf_row['F_xuv'] == 0.0
+
+
+def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form():
+    """T_eqm = ((1 - albedo) * S * s0_factor / sigma) ** 0.25.
+
+    Discriminating: at S = 1361 W/m^2 and albedo = 0.3 the closed-form
+    T_eqm is ~254 K. A regression to the wrong exponent (Stefan-
+    Boltzmann is T^4, not T^3 or T^5) would land at ~720 K or ~96 K
+    respectively. Pin the value to 254 K with a clear tolerance and
+    add explicit exponent guards.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.star.wrapper import update_equilibrium_temperature
+    from proteus.utils.constants import const_sigma
+
+    config = MagicMock()
+    config.orbit.s0_factor = 0.25  # disk-averaged absorption factor
+    hf_row = {
+        'F_ins': 1361.0,
+        'albedo_pl': 0.3,
+    }
+    update_equilibrium_temperature(hf_row, config)
+    F_asf = 1361.0 * 0.25 * (1 - 0.3)
+    expected = (F_asf / const_sigma) ** 0.25
+    assert hf_row['T_eqm'] == pytest.approx(expected, rel=1e-12)
+    # Closed-form value pin: ~254 K for Earth-like albedo + insolation.
+    assert hf_row['T_eqm'] == pytest.approx(254.0, abs=2.0)
+    # Exponent guard: T^4 -> ~254 K. T^3 would give ~720 K; T^5
+    # would give ~96 K. Both are well outside any plausible tolerance.
+    wrong_cube_root = (F_asf / const_sigma) ** (1.0 / 3.0)
+    wrong_fifth_root = (F_asf / const_sigma) ** (1.0 / 5.0)
+    assert abs(hf_row['T_eqm'] - wrong_cube_root) > 50
+    assert abs(hf_row['T_eqm'] - wrong_fifth_root) > 50
