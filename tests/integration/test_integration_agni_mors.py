@@ -168,10 +168,10 @@ def test_star_bol_scale_allows_zero_rejects_negative():
 
     # Zero is allowed.
     s_zero = Star(bol_scale=0.0)
-    assert s_zero.bol_scale == 0.0
+    assert s_zero.bol_scale == pytest.approx(0.0, abs=1e-12)
     # Positive round-trips.
     s_one = Star(bol_scale=1.0)
-    assert s_one.bol_scale == 1.0
+    assert s_one.bol_scale == pytest.approx(1.0, rel=1e-12)
     # Negative rejects.
     with pytest.raises(ValueError, match=r'(?i)bol_scale'):
         Star(bol_scale=-0.01)
@@ -201,6 +201,45 @@ def test_valid_mors_requires_star_name_when_spectrum_source_is_solar_or_muscles(
     # 'solar' WITH star_name round-trips.
     s_solar = Star(module='mors', mors=Mors(spectrum_source='solar', star_name='sun'))
     assert s_solar.mors.star_name == 'sun'
+
+
+def test_valid_mors_rotation_constraints_both_or_neither_raises():
+    """The ``valid_mors`` cross-validator enforces "exactly one of
+    rot_pcntle / rot_period must be set". Setting both raises;
+    setting neither raises; a negative period raises.
+
+    Edge: pin all three rotation-related branches of valid_mors
+    (lines 29-38 of _star.py). The defaults (rot_pcntle=50.0,
+    rot_period=None) satisfy the "exactly one set" rule, so a
+    regression that flipped the defaults would silently violate the
+    invariant; this test fails loudly on any such drift.
+    """
+    from proteus.config._star import Mors, Star
+
+    # Both set: collision.
+    with pytest.raises(ValueError, match=r'(?i)rotation'):
+        Star(
+            module='mors',
+            mors=Mors(spectrum_source='phoenix', rot_pcntle=50.0, rot_period=10.0),
+        )
+    # Neither set: missing.
+    with pytest.raises(ValueError, match=r'(?i)rotation'):
+        Star(
+            module='mors',
+            mors=Mors(spectrum_source='phoenix', rot_pcntle=None, rot_period=None),
+        )
+    # Negative period: invalid value.
+    with pytest.raises(ValueError, match=r'(?i)period'):
+        Star(
+            module='mors',
+            mors=Mors(spectrum_source='phoenix', rot_pcntle=None, rot_period=-1.0),
+        )
+    # Discrimination: the documented default (rot_pcntle=50.0,
+    # rot_period=None) MUST round-trip without raising. A regression
+    # that flipped one of these defaults would fail here.
+    s_ok = Star(module='mors', mors=Mors(spectrum_source='phoenix'))
+    assert s_ok.mors.rot_pcntle == pytest.approx(50.0, rel=1e-12)
+    assert s_ok.mors.rot_period is None
 
 
 # ---------------------------------------------------------------------------
