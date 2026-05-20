@@ -9,6 +9,9 @@ name: Reusable Test Quality Gate for PROTEUS Ecosystem
 # Ecosystem-wide ceiling: 90%. The ratchet may rise toward this value but never above
 # it; above 90% the gate tracks pragma usage and style rather than bug-finding signal.
 
+permissions:
+  contents: read    # checkout + read; no commits, no comments, no artifacts
+
 on:
   workflow_call:
     inputs:

@@ -5,6 +5,9 @@ on:
       - docs/paper/**
       - .github/workflows/draft-pdf.yml
 
+permissions:
+  contents: read    # checkout + read paper sources; PDF goes to actions artifacts
+
 jobs:
   paper:
     runs-on: ubuntu-latest
