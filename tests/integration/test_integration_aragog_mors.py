@@ -142,6 +142,33 @@ def test_aragog_phase_smoothing_enum_pinned_as_set():
     assert Aragog().phase_smoothing == 'tanh'
 
 
+def test_aragog_solver_method_enum_pinned_as_set():
+    """Pin the Aragog.solver_method enum as ``{'cvode', 'radau',
+    'bdf'}``. Default is 'cvode' (SUNDIALS, SPIDER parity).
+
+    Discrimination: a regression that silently added a fourth
+    solver (e.g. 'diffrax_research_only' graduating from the
+    backend flag to a first-class solver_method) would still let
+    cvode/radau/bdf round-trip; the set check is the only way to
+    catch the drift.
+    """
+    import attrs
+
+    from proteus.config._interior import Aragog
+
+    allowed = attrs.fields(Aragog).solver_method.validator.options
+    assert set(allowed) == {'cvode', 'radau', 'bdf'}, (
+        f'Aragog.solver_method enum drifted from documented set: {allowed}'
+    )
+    for known in ('cvode', 'radau', 'bdf'):
+        a = Aragog(solver_method=known)
+        assert a.solver_method == known
+    with pytest.raises(ValueError, match=r'(?i)solver_method'):
+        Aragog(solver_method='diffrax_research_only')
+    # SPIDER-parity default.
+    assert Aragog().solver_method == 'cvode'
+
+
 def test_aragog_atol_temperature_equivalent_must_be_positive():
     """``Aragog.atol_temperature_equivalent`` uses ``gt(0)`` at
     ``_interior.py:156``. The default is 1e-8 K (SPIDER parity);
@@ -225,5 +252,8 @@ def test_aragog_mors_helpfile_keys_register_interior_and_stellar_columns():
         assert key in keys, f'{key} must be registered in GetHelpfileKeys()'
     row = ZeroHelpfileRow()
     for key in interior_keys + stellar_keys:
-        assert row[key] == 0.0
+        # ZeroHelpfileRow seeds keys as float(0.0); use pytest.approx
+        # with an absolute tolerance because the relative form is
+        # meaningless when the expected value is exactly zero.
+        assert row[key] == pytest.approx(0.0, abs=1e-30)
         assert isinstance(row[key], float)
