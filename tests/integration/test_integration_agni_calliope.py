@@ -7,7 +7,8 @@ AGNI call. This file exercises the integration-tier portions of
 that boundary:
 
 - Pair-wise schema validators round-trip ``atmos_clim.module='agni'``
-  with ``outgas.module='calliope'`` (the Stage-1b Paper-3 fiducial).
+  with ``outgas.module='calliope'`` (the AGNI + CALLIOPE production
+  configuration used in the wet-greenhouse Earth-IC runs).
 - The AGNI optical-depth aggregator emits a monotonic profile from
   TOA to the surface; the matrix design lock (commit b8021c33)
   requires every AGNI x X integration to assert
@@ -123,6 +124,17 @@ def test_calliope_is_included_preserves_documented_ten_gas_set():
     )
     for gas in documented_species:
         assert c.is_included(gas) is True, f'{gas} missing from Calliope defaults'
+
+    # Pin the count of include_* fields so a regression that silently
+    # adds an eleventh species (e.g. include_Xe) fails the count
+    # check even if the ten documented species still appear.
+    import attrs
+
+    include_fields = [f for f in attrs.fields(Calliope) if f.name.startswith('include_')]
+    assert len(include_fields) == len(documented_species), (
+        f'Expected {len(documented_species)} include_* fields on Calliope, '
+        f'got {len(include_fields)}: {[f.name for f in include_fields]}'
+    )
 
     # Discrimination: helper must raise on an undocumented attribute
     # rather than silently return False. The attrs class does not
