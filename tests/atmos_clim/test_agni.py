@@ -437,3 +437,102 @@ def test_init_agni_atmos_non_greygas_no_sflux_raises_filenotfound(monkeypatch, t
     # (no spectral file copied) to confirm the dispatch took the correct
     # branch rather than a no-op fallback.
     assert fake_agni.last_allocate_input_star == ''
+
+
+# ---------------------------------------------------------------------------
+# AgniSchemaMismatch: lightweight Atmos_t field-list check at allocate
+# ---------------------------------------------------------------------------
+
+
+def _build_complete_atmos_stub() -> SimpleNamespace:
+    """Stand-in struct that carries every field PROTEUS expects from Atmos_t.
+
+    Mirrors `_REQUIRED_ATMOS_FIELDS` in `proteus.atmos_clim.agni`. The
+    helper exists so each schema test can compose its own missing-field
+    subset without rewriting the full list.
+    """
+    return SimpleNamespace(
+        tmp=[300.0],
+        tmpl=[295.0, 305.0],
+        pl=[1e4, 1e5],
+        p_boa=1e5,
+        p_oboa=1e5,
+        tmp_surf=1500.0,
+        tmp_magma=1500.0,
+        is_converged=True,
+        transparent=False,
+        flux_d_sw=[100.0],
+        flux_u_lw=[300.0],
+        flux_u_sw=[10.0],
+        flux_tot=[100.0, 200.0],
+        tau_band=[[0.0], [0.5]],
+        gas_names=['H2O'],
+        gas_vmr={'H2O': [1.0]},
+        gas_ovmr={'H2O': [1.0]},
+        ocean_areacov=0.0,
+        ocean_maxdepth=0.0,
+        ocean_tot=0.0,
+        instellation=1361.0,
+        transspec_p=1e2,
+        transspec_r=6.371e6,
+        transspec_tmp=295.0,
+        fastchem_work='',
+    )
+
+
+def test_check_agni_schema_accepts_complete_struct():
+    """A struct carrying every required field must pass without raising.
+
+    Edge: this is the positive baseline. Any change to
+    `_REQUIRED_ATMOS_FIELDS` that drops a name silently would still pass
+    this test, but a *new* required field would trip it because the stub
+    builder above lists fields explicitly.
+    """
+    atmos = _build_complete_atmos_stub()
+    # Returns None (implicit) on success; raising would fail the test.
+    assert agni_mod._check_agni_schema(atmos) is None
+    # Discrimination guard: confirm the stub actually had every required
+    # field, so a passing test cannot mean the checker is a no-op against
+    # an under-populated input.
+    for name in agni_mod._REQUIRED_ATMOS_FIELDS:
+        assert hasattr(atmos, name), f'stub is missing {name}'
+
+
+def test_check_agni_schema_rejects_missing_tau_band():
+    """A struct missing `tau_band` (the AGNI 1.10.2 additive field) must raise.
+
+    Discriminating: `tau_band` is the field a roll-back to AGNI 1.10.1
+    would silently drop. The check must catch this at IC rather than
+    surface as a `KeyError('tau_band')` mid-coupling-loop.
+    """
+    atmos = _build_complete_atmos_stub()
+    del atmos.tau_band
+    with pytest.raises(agni_mod.AgniSchemaMismatch) as excinfo:
+        agni_mod._check_agni_schema(atmos)
+    # The error must name the missing field (not a generic message), so
+    # the next maintainer can fix the pin or the field list directly.
+    assert 'tau_band' in str(excinfo.value)
+    # Side-effect guard: the failing path must NOT silently mutate the
+    # input struct. The other fields remain intact.
+    assert hasattr(atmos, 'flux_tot')
+
+
+def test_check_agni_schema_rejects_multiple_missing_fields():
+    """When several fields are absent the error names every one of them.
+
+    Edge: the next AGNI bump could rename a cluster of related fields
+    in one move. The schema check must surface the entire missing set
+    so the maintainer is not forced through one-at-a-time discovery.
+    """
+    atmos = _build_complete_atmos_stub()
+    del atmos.tau_band
+    del atmos.flux_tot
+    del atmos.gas_vmr
+    with pytest.raises(agni_mod.AgniSchemaMismatch) as excinfo:
+        agni_mod._check_agni_schema(atmos)
+    message = str(excinfo.value)
+    for name in ('tau_band', 'flux_tot', 'gas_vmr'):
+        assert name in message, f'{name} must appear in the schema-mismatch message'
+    # Discriminating: a regression that reported only the first missing
+    # field would fail this test because the other two would be absent
+    # from the message.

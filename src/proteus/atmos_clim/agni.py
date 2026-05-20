@@ -30,6 +30,79 @@ log = logging.getLogger('fwl.' + __name__)
 AGNI_LOGFILE_NAME = 'agni_recent.log'
 ALWAYS_DRY = ('CO', 'N2', 'H2')
 
+# Fields PROTEUS expects to find on the Julia Atmos_t struct after
+# `atmosphere.allocate_b` succeeds. The list mirrors what `agni.py` and
+# `atmos_clim/common.py` actually read at runtime. A missing entry here
+# fires AgniSchemaMismatch at IC rather than surfacing as a silent
+# AttributeError once the main coupling loop is running.
+_REQUIRED_ATMOS_FIELDS = (
+    # Pressure-temperature state
+    'tmp',
+    'tmpl',
+    'pl',
+    'p_boa',
+    'p_oboa',
+    'tmp_surf',
+    'tmp_magma',
+    # Solver flags
+    'is_converged',
+    'transparent',
+    # Radiative fluxes
+    'flux_d_sw',
+    'flux_u_lw',
+    'flux_u_sw',
+    'flux_tot',
+    # Per-band optical depth (added in AGNI 1.10.2 via PR #192)
+    'tau_band',
+    # Gas composition
+    'gas_names',
+    'gas_vmr',
+    'gas_ovmr',
+    # Ocean diagnostics
+    'ocean_areacov',
+    'ocean_maxdepth',
+    'ocean_tot',
+    # Stellar / transit
+    'instellation',
+    'transspec_p',
+    'transspec_r',
+    'transspec_tmp',
+    # Chemistry workspace
+    'fastchem_work',
+)
+
+
+class AgniSchemaMismatch(RuntimeError):
+    """AGNI's Atmos_t is missing a field PROTEUS expects.
+
+    Raised once at first allocate_b, so a future AGNI rename or removal
+    surfaces at IC with a clear list of the missing names instead of
+    propagating into the coupling loop as a generic AttributeError.
+    """
+
+
+def _check_agni_schema(atmos) -> None:
+    """Verify the live Atmos_t carries every field PROTEUS reads.
+
+    Runs after a successful `atmosphere.allocate_b`; both `setup_b` and
+    `allocate_b` must have allocated their backing arrays before this
+    is called, because several fields (e.g. ``tau_band``,
+    ``flux_*``) only exist after the SOCRATES init block runs.
+    """
+    missing = [name for name in _REQUIRED_ATMOS_FIELDS if not hasattr(atmos, name)]
+    if not missing:
+        return
+    try:
+        version = str(jl.AGNI.consts.AGNI_VERSION)
+    except Exception:
+        version = 'unknown'
+    raise AgniSchemaMismatch(
+        f'AGNI {version} Atmos_t is missing PROTEUS-required field(s): '
+        f'{", ".join(missing)}. The AGNI pin in pyproject.toml may have '
+        'moved past a PROTEUS-known schema; update _REQUIRED_ATMOS_FIELDS '
+        'and the matching reads in atmos_clim/agni.py.'
+    )
+
 
 def _agni_setup_accepts_aerosol_species() -> bool:
     """Detect whether the installed AGNI version's ``setup!`` accepts the
@@ -476,6 +549,9 @@ def init_agni_atmos(dirs: dict, config: Config, hf_row: dict):
     if not bool(succ):
         UpdateStatusfile(dirs, 22)
         raise RuntimeError('Could not allocate atmosphere object')
+
+    # Confirm the live Atmos_t carries every field PROTEUS reads
+    _check_agni_schema(atmos)
 
     # Set temperature profile from old NetCDF if it exists
     nc_files = glob.glob(os.path.join(dirs['output'], 'data', '*_atm.nc'))
