@@ -1555,3 +1555,178 @@ def test_assert_mass_conservation_skips_when_M_planet_zero():
     # can produce a silent pass on this row.
     assert hf_row['M_atm'] > 0.0
     assert hf_row['M_planet'] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Edge / error paths in the git-revision and version-validation helpers
+# (lines 50-52, 65-78, 165-166, 201-202 in utils/coupler.py).
+# ---------------------------------------------------------------------------
+
+
+def test_get_git_revision_returns_unknown_when_chdir_fails():
+    """When the target directory does not exist (or cannot be entered),
+    _get_git_revision must return the literal 'unknown' string and the
+    caller's CWD must be preserved.
+
+    Discriminating: assert the returned value is exactly 'unknown'
+    (not None, not the empty string, not a partial git hash). A
+    regression that propagated the OSError up would raise here.
+    """
+    from proteus.utils.coupler import _get_git_revision
+
+    cwd_before = os.getcwd()
+    bogus_dir = '/totally/does/not/exist/this/path/has/no/chance'
+    result = _get_git_revision(bogus_dir)
+    cwd_after = os.getcwd()
+    assert result == 'unknown'
+    # Side-effect guard: the helper must not strand the caller in a
+    # different directory. A regression that returned before the
+    # finally-block chdir-back would leave cwd somewhere else.
+    assert cwd_after == cwd_before
+
+
+def test_get_git_revision_returns_unknown_on_subprocess_failure():
+    """Even if chdir succeeds, a missing git executable or a non-repo
+    directory must surface as 'unknown' rather than raising.
+
+    Discriminating: patch subprocess.check_output to raise
+    FileNotFoundError (git absent). The except branch covers
+    CalledProcessError, FileNotFoundError, TimeoutExpired, and the
+    catch-all Exception; this test pins the FileNotFoundError path
+    explicitly so a future tightening that narrowed the except clause
+    would fail loudly.
+    """
+    from proteus.utils.coupler import _get_git_revision
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with patch('subprocess.check_output', side_effect=FileNotFoundError('git not found')):
+            result = _get_git_revision(tmpdir)
+    assert result == 'unknown'
+
+
+def test_get_git_revision_returns_unknown_on_subprocess_timeout():
+    """A hanging git process that exceeds the 5 s timeout must surface
+    as 'unknown'. Pin the TimeoutExpired exception path specifically.
+    """
+    import subprocess as sp
+
+    from proteus.utils.coupler import _get_git_revision
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with patch(
+            'subprocess.check_output',
+            side_effect=sp.TimeoutExpired(cmd='git', timeout=5),
+        ):
+            result = _get_git_revision(tmpdir)
+    assert result == 'unknown'
+
+
+def _all_dummy_modules_config():
+    """Config with every coupling slot set to 'dummy' except for
+    interior_energetics, which is wired to the module under test.
+    Lets validate_module_versions walk a single branch deterministically.
+    """
+    from unittest.mock import MagicMock
+
+    config = MagicMock()
+    config.interior_energetics.module = 'aragog'
+    config.interior_struct.module = 'dummy'
+    config.atmos_clim.module = 'dummy'
+    config.outgas.module = 'dummy'
+    config.escape.module = 'dummy'
+    config.star.module = 'dummy'
+    return config
+
+
+def test_validate_module_versions_raises_when_module_out_of_date(tmp_path):
+    """A required module at a version older than the pinned minimum
+    triggers an EnvironmentError pointing at the troubleshooting URL.
+
+    Discriminating: pin both the exception type AND the side-effect
+    (UpdateStatusfile called once with status code 20). A regression
+    that swapped the order (raise before write) or that downgraded to
+    a log-only warning would fail one of the two assertions.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    with (
+        patch.dict(
+            'sys.modules',
+            {'aragog': MagicMock(__version__='0.0.1')},
+            clear=False,
+        ),
+        # importlib.metadata.requires is what the closure _get_expver
+        # consults; pinning it lets us drive the comparison from
+        # outside the validate_module_versions function.
+        patch(
+            'importlib.metadata.requires',
+            return_value=['fwl-aragog>=99.99.99'],
+        ),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        with pytest.raises(EnvironmentError, match='Out-of-date modules'):
+            validate_module_versions({'rad': str(tmp_path)}, config)
+    mock_update.assert_called_once()
+    args, _ = mock_update.call_args
+    assert args[1] == 20
+
+
+def test_validate_module_versions_accepts_compatible_versions(tmp_path):
+    """Installed version above the expected minimum: no raise, no
+    status-file write.
+
+    Edge: limit-input compatible setup. Discriminating: a regression
+    that always wrote status would fail the mock_update assertion.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    with (
+        patch.dict(
+            'sys.modules',
+            {'aragog': MagicMock(__version__='99.99.99')},
+            clear=False,
+        ),
+        patch('importlib.metadata.requires', return_value=['fwl-aragog>=1.0.0']),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        result = validate_module_versions({'rad': str(tmp_path)}, config)
+    assert result is None
+    assert mock_update.call_count == 0
+
+
+def test_validate_module_versions_skips_check_when_no_pinned_minimum(tmp_path):
+    """When the resolver finds no pinned minimum (the dep string does
+    not name the module), the inner _valid_ver helper short-circuits
+    via the 'return True if expected is None' guard.
+
+    Edge: the closure _get_expver returns None for a module that
+    doesn't appear in requires(). Discriminating: even an obviously
+    ancient __version__='0.0.1' must NOT trip the check when no
+    expected minimum is available.
+    """
+    from unittest.mock import MagicMock
+
+    from proteus.utils.coupler import validate_module_versions
+
+    config = _all_dummy_modules_config()
+    with (
+        patch.dict(
+            'sys.modules',
+            {'aragog': MagicMock(__version__='0.0.1')},
+            clear=False,
+        ),
+        patch(
+            'importlib.metadata.requires',
+            return_value=['fwl-something-else>=1.0.0'],
+        ),
+        patch('proteus.utils.coupler.UpdateStatusfile') as mock_update,
+    ):
+        result = validate_module_versions({'rad': str(tmp_path)}, config)
+    assert result is None
+    assert mock_update.call_count == 0
