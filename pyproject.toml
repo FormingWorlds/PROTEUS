@@ -223,14 +223,14 @@ directory = "htmlcov"
 # Tracks nichollsh/AGNI main. Bump after every AGNI release that
 # PROTEUS depends on.
 url = "https://github.com/nichollsh/AGNI.git"
-ref = "bf65a56c768b99352208af96a733fca746e82b12"
+ref = "b06a3fed51e0f1610556634d5b5a5e0425428f0e"
 
 [tool.proteus.modules.socrates]
 # Spectral radiative transfer library (Fortran). Compiled in-place
 # under socrates/ by tools/get_socrates.sh; the build output is what
 # the AGNI / JANUS atmosphere modules link against at runtime.
 url = "https://github.com/FormingWorlds/SOCRATES.git"
-ref = "585768f9448d2a28f2a9708b288ef8e938df0922"
+ref = "e7133ff7388847c7939b38572c6e91cd05d5b755"
 
 [tool.proteus.modules.spider]
 # Interior thermal evolution module (C, requires PETSc). Cloned and
