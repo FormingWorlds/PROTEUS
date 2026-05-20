@@ -30,7 +30,7 @@ import pytest
 
 from proteus.atmos_clim.common import Atmos_t
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def test_atmos_t_converged_default_true():
@@ -266,9 +266,9 @@ def test_deadlock_counter_with_jittery_F_atm():
 def test_deadlock_counter_first_iteration_no_prev_row():
     """On a fresh run's first iteration, hf_all is None and there is no
     previous row to compare against. The detector must NOT crash and must
-    NOT increment the counter — it should defer the deadlock decision until
-    a baseline row exists. This catches the original review-found crash bug
-    where len(self.hf_all) raised TypeError on iteration 0.
+    NOT increment the counter; it must defer the deadlock decision until
+    a baseline row exists. Without this guard, ``len(self.hf_all)`` raises
+    TypeError on iteration 0.
     """
     threshold = 3
     counter = 0

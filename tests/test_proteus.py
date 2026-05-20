@@ -371,16 +371,34 @@ def test_check_atmosphere_deadlock_f_atm_tolerance_boundary(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _helpfile_df_one_row():
-    """Minimal helpfile DataFrame with one committed row."""
+def _helpfile_df_multi_row():
+    """Helpfile DataFrame with three distinct rows.
+
+    Distinct values across the three rows are essential: a regression
+    that read ``iloc[0]`` or ``iloc[len(df)//2]`` instead of ``iloc[-1]``
+    would otherwise pass on a single-row fixture. The last row's values
+    are pinned in the tests below.
+    """
     return pd.DataFrame(
         [
+            {
+                'Time': 1.0e6,
+                'T_magma': 3500.0,
+                'F_atm': 1500.0,
+                'Phi_global': 1.0,
+            },
+            {
+                'Time': 5.0e7,
+                'T_magma': 3000.0,
+                'F_atm': 500.0,
+                'Phi_global': 0.85,
+            },
             {
                 'Time': 1.0e8,
                 'T_magma': 2500.0,
                 'F_atm': 150.0,
                 'Phi_global': 0.7,
-            }
+            },
         ]
     )
 
@@ -396,7 +414,7 @@ def test_observe_dispatches_to_run_observe_with_last_helpfile_row(tmp_path):
     """
     p = _make_proteus_instance(tmp_path)
     p.directories['output'] = str(tmp_path)
-    df = _helpfile_df_one_row()
+    df = _helpfile_df_multi_row()
     with (
         patch.object(p, 'extract_archives'),
         patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=df),
@@ -409,6 +427,11 @@ def test_observe_dispatches_to_run_observe_with_last_helpfile_row(tmp_path):
     assert isinstance(args[0], dict)
     assert args[0]['T_magma'] == pytest.approx(2500.0)
     assert args[0]['F_atm'] == pytest.approx(150.0)
+    # Discrimination guards: a regression that read iloc[0] would
+    # land at T_magma=3500 / F_atm=1500; iloc[1] (middle) would
+    # land at T_magma=3000 / F_atm=500. Reject both.
+    assert args[0]['T_magma'] != pytest.approx(3500.0)
+    assert args[0]['T_magma'] != pytest.approx(3000.0)
     # Second arg is the output directory path.
     assert args[1] == str(tmp_path)
 
@@ -445,7 +468,7 @@ def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_pa
     the identity check.
     """
     p = _make_proteus_instance(tmp_path)
-    df = _helpfile_df_one_row()
+    df = _helpfile_df_multi_row()
     expected = pd.DataFrame([{'species': 'H2O', 'mx': 0.42}])
     with (
         patch.object(p, 'extract_archives'),
@@ -462,6 +485,10 @@ def test_offline_chemistry_dispatches_to_run_chemistry_and_returns_result(tmp_pa
     args = mock_chem.call_args.args
     assert isinstance(args[2], dict)
     assert args[2]['Phi_global'] == pytest.approx(0.7)
+    # iloc[0] would land at Phi_global=1.0; iloc[1] at 0.85. Reject
+    # both so the test discriminates the correct last-row pick.
+    assert args[2]['Phi_global'] != pytest.approx(1.0)
+    assert args[2]['Phi_global'] != pytest.approx(0.85)
 
 
 def test_offline_chemistry_raises_on_empty_helpfile(tmp_path):

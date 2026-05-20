@@ -569,8 +569,7 @@ class Proteus:
         # counter reaches `agni_deadlock_max`, the run aborts with status 22.
         # This catches the failure mode where AGNI returns "Maximum attempts"
         # and PROTEUS would otherwise silently accept a frozen state and
-        # advance Time indefinitely. See output_files/analysis_1EO_M1_profiles
-        # for the diagnosis.
+        # advance Time indefinitely.
         self.agni_deadlock_count = 0
         self.agni_deadlock_max = 3
 
@@ -855,9 +854,7 @@ class Proteus:
             # iterations, abort the run with status 22 ("Atmosphere model
             # error"). This catches the case where AGNI returns "Maximum
             # attempts" with no converged solution and the coupling layer
-            # would otherwise silently freeze indefinitely. See deep
-            # diagnosis at
-            #   output_files/analysis_1EO_M1_profiles/DEEP_ANALYSIS_FINDINGS.md
+            # would otherwise silently freeze indefinitely.
             #
             # The "frozen" criterion uses bit-exact equality for T_magma and
             # Phi_global (which truly do not move in a deadlocked interior)
