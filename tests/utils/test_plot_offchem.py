@@ -18,7 +18,7 @@ import pytest
 
 from proteus.utils.plot_offchem import offchem_read_year
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _make_fake_vul_payload():
@@ -162,3 +162,173 @@ def test_offchem_read_year_clip_applied_to_extremes(tmp_path):
     # In-band value preserved.
     assert out['mx_H2O'][2] == pytest.approx(0.5)
     assert out['mx_CO2'][2] == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# offchem_read_grid and offchem_slice_grid: grid-level aggregators.
+# ---------------------------------------------------------------------------
+
+
+def _build_grid_case(case_dir, case_options, snapshot_years):
+    """Lay down a single case_NN folder with a TOML config and one
+    vulcan_<year>.pkl per snapshot year. The pickles use the minimal
+    payload from _make_fake_vul_payload so the reader produces a
+    consistent dict shape per year.
+    """
+    os.makedirs(case_dir, exist_ok=True)
+    offchem_dir = os.path.join(case_dir, 'offchem')
+    os.makedirs(offchem_dir, exist_ok=True)
+    for y in snapshot_years:
+        _write_pickle(os.path.join(offchem_dir, f'vulcan_{y}.pkl'), _make_fake_vul_payload())
+    # Minimal init_coupler.toml that read_config can parse and whose
+    # keys offchem_slice_grid will be able to filter on.
+    toml_text = (
+        '\n'.join(['[params.case]'] + [f'{k} = {v!r}' for k, v in case_options.items()]) + '\n'
+    )
+    with open(os.path.join(case_dir, 'init_coupler.toml'), 'w') as fh:
+        fh.write(toml_text)
+
+
+def test_offchem_read_grid_raises_when_folder_is_empty(tmp_path):
+    """offchem_read_grid raises an Exception when no case_* subfolders
+    are present in the target directory.
+
+    Edge: limit-input case for a freshly-scaffolded grid that has not
+    yet produced any case output. Discriminating: pin the exception
+    AND the exception message so a regression that returned empty
+    arrays silently would fail the pytest.raises block.
+    """
+    from proteus.utils.plot_offchem import offchem_read_grid
+
+    with pytest.raises(Exception, match='no grid points were found'):
+        offchem_read_grid(str(tmp_path))
+
+
+def test_offchem_read_grid_aggregates_year_data_across_cases(tmp_path, monkeypatch):
+    """A grid with two case folders, each carrying two snapshot years,
+    must produce 2x2 years/data arrays and a length-2 opts array.
+
+    Discriminating: pin the shape AND the per-year content. A
+    regression that mis-ordered the years (sorted vs unsorted) or
+    that mixed cases would fail the per-case year list comparison.
+    """
+    import numpy as np
+
+    from proteus.utils.plot_offchem import offchem_read_grid
+
+    # Two cases with the same two snapshot years.
+    _build_grid_case(
+        str(tmp_path / 'case_00'),
+        case_options={'name': 'alpha'},
+        snapshot_years=[100, 50],  # intentionally unsorted on disk
+    )
+    _build_grid_case(
+        str(tmp_path / 'case_01'),
+        case_options={'name': 'beta'},
+        snapshot_years=[200, 25],
+    )
+    # offchem_read_grid calls read_config which expects the full
+    # PROTEUS config structure. Stub it to return our minimal dict
+    # tree so the test does not depend on a full Config schema.
+
+    def _fake_read_config(path):
+        # Return a (config, _) tuple where the first element is a
+        # plain dict (so dict(options[0]) works in the source).
+        if 'case_00' in path:
+            return ({'name': 'alpha'}, None)
+        return ({'name': 'beta'}, None)
+
+    monkeypatch.setattr('proteus.utils.plot_offchem.read_config', _fake_read_config)
+
+    years, opts, data = offchem_read_grid(str(tmp_path))
+    assert years.shape == (2, 2)
+    assert opts.shape == (2,)
+    assert data.shape == (2, 2)
+    # Years must be sorted per case despite the unsorted on-disk order.
+    np.testing.assert_array_equal(np.sort(years, axis=1), years)
+    # Discrimination guard: total of 4 snapshots (2 cases x 2 years)
+    # must equal the sum of the two case-year lists.
+    assert int(years.sum()) == 50 + 100 + 25 + 200
+
+
+def test_offchem_slice_grid_keeps_only_matching_grid_points():
+    """offchem_slice_grid returns a subset of the grid where every
+    point's options dict matches every key/value in cvar_filter.
+
+    Discriminating: a regression that flipped the match logic (kept
+    non-matching points or excluded matching ones) would fail the
+    cardinality assertion AND the per-row name check.
+    """
+    import numpy as np
+
+    from proteus.utils.plot_offchem import offchem_slice_grid
+
+    years = np.array([[100, 200], [150, 250], [300, 400]], dtype=int)
+    opts = np.array([{'name': 'alpha'}, {'name': 'beta'}, {'name': 'alpha'}], dtype=dict)
+    data = np.array(
+        [
+            [{'mx_H2O': 0.1}, {'mx_H2O': 0.2}],
+            [{'mx_H2O': 0.5}, {'mx_H2O': 0.6}],
+            [{'mx_H2O': 0.7}, {'mx_H2O': 0.8}],
+        ],
+        dtype=dict,
+    )
+    s_years, s_opts, s_data = offchem_slice_grid(
+        years, opts, data, cvar_filter={'name': 'alpha'}
+    )
+    assert s_opts.shape == (2,)
+    assert s_years.shape == (2, 2)
+    assert s_data.shape == (2, 2)
+    for row in s_opts:
+        assert row['name'] == 'alpha'
+    # Discrimination: a regression returning the inverse subset
+    # (beta only, 1 row) would fail the shape check above.
+
+
+def test_offchem_slice_grid_warns_when_filter_excludes_every_point(capsys):
+    """An overly-strict filter that excludes every grid point must
+    print a warning and return empty arrays.
+
+    Edge: limit-input case. Discriminating: pin both the warning
+    appearance in stdout and the zero-length result.
+    """
+    import numpy as np
+
+    from proteus.utils.plot_offchem import offchem_slice_grid
+
+    years = np.array([[100], [200]], dtype=int)
+    opts = np.array([{'name': 'alpha'}, {'name': 'beta'}], dtype=dict)
+    data = np.array([[{'x': 1}], [{'x': 2}]], dtype=dict)
+    s_years, s_opts, s_data = offchem_slice_grid(
+        years, opts, data, cvar_filter={'name': 'no-such-value'}
+    )
+    captured = capsys.readouterr()
+    assert 'No grid points left after slicing' in captured.out
+    assert s_opts.shape == (0,)
+
+
+def test_offchem_slice_grid_warns_on_filter_key_not_in_options(capsys):
+    """A filter key absent from a grid point's options must trigger
+    a warning. The point itself is then included (the source's
+    `continue` skips the exclusion check for unknown keys).
+
+    Discriminating: pin both the warning content (the missing key
+    name) AND the inclusion behaviour. A regression that excluded on
+    missing keys would land at zero matches.
+    """
+    import numpy as np
+
+    from proteus.utils.plot_offchem import offchem_slice_grid
+
+    years = np.array([[100]], dtype=int)
+    opts = np.array([{'name': 'alpha'}], dtype=dict)
+    data = np.array([[{'x': 1}]], dtype=dict)
+    s_years, s_opts, s_data = offchem_slice_grid(
+        years, opts, data, cvar_filter={'unknown_key': 'whatever'}
+    )
+    captured = capsys.readouterr()
+    assert "'unknown_key'" in captured.out
+    assert 'is not present in OPTIONS' in captured.out
+    # The single grid point survives because the unknown filter key
+    # is treated as a no-op exclusion check.
+    assert s_opts.shape == (1,)
