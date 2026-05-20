@@ -766,3 +766,162 @@ def test_calc_new_elements_zero_escape_rate():
     assert tgt['C'] == pytest.approx(hf_row['C_kg_total'], rel=1e-10)
     assert tgt['N'] == pytest.approx(hf_row['N_kg_total'], rel=1e-10)
     assert tgt['S'] == pytest.approx(hf_row['S_kg_total'], rel=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Coverage of error/edge paths: TypeError baseline, dummy + zephyrus unfract
+# fallbacks. Targets lines 58-59, 151-153, 200-202 in escape/wrapper.py.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_run_escape_recomputes_baseline_when_m_vol_initial_is_unparseable():
+    """If hf_row['M_vol_initial'] is a string (or any non-numeric value),
+    the float() coercion raises and the source falls back to 0.0 before
+    snapshotting the baseline from the per-element totals.
+
+    Edge: a corrupted helpfile CSV value loaded on resume could land here
+    as a string. The fallback must not crash and must produce a baseline
+    that equals the sum of per-element totals so the desiccation gate
+    remains consistent.
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    # 'dummy' (not disabled) so we reach the baseline-rebuild branch
+    # at lines 50-71; rate=0 keeps the post-dispatch arithmetic trivial.
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'bulk'
+    config.escape.dummy.rate = 0.0
+    config.outgas.mass_thresh = 1.0e10
+    # M_vol_initial is a non-numeric string: triggers the except branch.
+    hf_row = {
+        'M_vol_initial': 'corrupted',
+        'esc_kg_cumulative': 17.0,
+        'H_kg_total': 1.0e20,
+        'O_kg_total': 8.0e19,
+        'C_kg_total': 1.0e18,
+        'N_kg_total': 1.0e19,
+        'S_kg_total': 1.0e17,
+        'Si_kg_total': 1.0e18,
+        'Mg_kg_total': 1.0e17,
+        'Fe_kg_total': 1.0e19,
+        'Na_kg_total': 1.0e16,
+    }
+    expected_baseline = sum(
+        hf_row[f'{e}_kg_total'] for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na')
+    )
+
+    run_escape(config, hf_row, dt=1000.0, stellar_track=None)
+
+    # Baseline rebuilt from per-element totals (Issue #677: O included).
+    assert hf_row['M_vol_initial'] == pytest.approx(expected_baseline, rel=1e-12)
+    # Discrimination guard: a regression that silently kept the string
+    # would have left M_vol_initial == 'corrupted' (type str), not float.
+    assert isinstance(hf_row['M_vol_initial'], float)
+    # Reset alongside baseline; the prior counter of 17.0 must NOT survive.
+    assert hf_row['esc_kg_cumulative'] == 0.0
+
+
+@pytest.mark.unit
+def test_run_escape_dummy_zeroes_elemental_rates_when_unfract_raises():
+    """If calc_unfract_fluxes raises (KeyError/ValueError/TypeError) on
+    the dummy path, the source must zero every per-element rate rather
+    than leave hf_row in a partially-mutated state.
+
+    Discriminating: a regression that swallowed the exception without
+    the cleanup loop would leave the existing elemental rates intact
+    (or whatever calc_unfract_fluxes wrote before raising), producing
+    a silent inconsistency at the next iteration.
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    config.escape.module = 'dummy'
+    config.escape.reservoir = 'bulk'
+    config.escape.dummy.rate = 0.0
+    config.outgas.mass_thresh = 1.0e10
+
+    hf_row = {
+        'P_surf': 1.0e5,
+        'R_int': 6.371e6,
+        # Pre-existing elemental rates that the cleanup MUST overwrite to 0.0.
+        'esc_rate_H': 1.0e5,
+        'esc_rate_O': 1.0e4,
+    }
+    # Populate baseline so we don't hit the baseline-rebuild branch.
+    for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'):
+        hf_row[f'{e}_kg_total'] = 1.0e18
+    hf_row['M_vol_initial'] = sum(
+        hf_row[f'{e}_kg_total'] for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na')
+    )
+
+    # Make calc_unfract_fluxes raise on the dummy path.
+    with patch('proteus.escape.wrapper.calc_unfract_fluxes') as mock_unfract:
+        mock_unfract.side_effect = KeyError('missing element key')
+        run_escape(config, hf_row, dt=0.0, stellar_track=None)
+
+    # Every element's escape rate must have been clamped to 0.0 by the
+    # except branch (run_dummy lines 151-153).
+    for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'):
+        assert hf_row[f'esc_rate_{e}'] == 0.0, f'{e} should have been zeroed'
+    # Side-effect guard: the dummy-rate dispatch still ran, so
+    # esc_rate_total reflects config.escape.dummy.rate (0.0 here).
+    assert hf_row['esc_rate_total'] == 0.0
+
+
+@pytest.mark.unit
+def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
+    """The same cleanup branch in run_zephyrus (lines 200-202) must
+    zero per-element rates when calc_unfract_fluxes raises.
+
+    Discriminating: pin the bulk MLR independently of the per-element
+    zeroing. A regression that put the cleanup loop in the wrong place
+    (e.g. before assigning esc_rate_total) would land esc_rate_total
+    at 0.0 too, failing this test.
+    """
+    from proteus.escape.wrapper import run_escape
+
+    config = MagicMock()
+    config.escape.module = 'zephyrus'
+    config.escape.reservoir = 'bulk'
+    config.escape.zephyrus.tidal = True
+    config.escape.zephyrus.efficiency = 0.3
+    config.escape.zephyrus.Pxuv = 1.0e-2
+    config.star.mass = 1.0  # M_sun units
+    config.outgas.mass_thresh = 1.0e10
+
+    hf_row = {
+        'semimajorax': 1.5e11,
+        'eccentricity': 0.0,
+        'M_planet': 6e24,
+        'R_int': 6.371e6,
+        'R_xuv': 6.371e6,
+        'F_xuv': 1.0,
+    }
+    for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'):
+        hf_row[f'{e}_kg_total'] = 1.0e18
+    hf_row['M_vol_initial'] = sum(
+        hf_row[f'{e}_kg_total'] for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na')
+    )
+
+    # Mock the zephyrus library so we exercise the ZEPHYRUS branch
+    # without needing the optional dep installed.
+    el_escape_mock = MagicMock(return_value=1.234e5)
+    with (
+        patch.dict('sys.modules', {'zephyrus': MagicMock(), 'zephyrus.escape': MagicMock()}),
+        patch('zephyrus.escape.EL_escape', el_escape_mock),
+        patch('proteus.escape.wrapper.calc_unfract_fluxes') as mock_unfract,
+    ):
+        mock_unfract.side_effect = ValueError('unfractionated path broken')
+        run_escape(config, hf_row, dt=0.0, stellar_track=None)
+
+    # esc_rate_total picks up the mocked EL_escape return value, NOT 0.0.
+    # Discrimination guard: separating the bulk-rate assignment from the
+    # per-element cleanup means esc_rate_total survives the except branch.
+    assert hf_row['esc_rate_total'] == pytest.approx(1.234e5, rel=1e-12)
+    for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'):
+        assert hf_row[f'esc_rate_{e}'] == 0.0, f'{e} should have been zeroed'
+    # Scale guard: 1.234e5 kg/s is a plausible XUV-limited MLR (~kg/s for
+    # an Earth-like XUV setup), not 1.234e+15 (units flipped) or 0.0.
+    assert 1e3 < hf_row['esc_rate_total'] < 1e7
