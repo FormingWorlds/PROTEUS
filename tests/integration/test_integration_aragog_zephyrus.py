@@ -47,11 +47,15 @@ import pytest
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 
-def _base_config_kwargs(*, agni: bool = False):
+def _base_config_kwargs():
     """Build base Config kwargs for the (aragog, zephyrus, mors+spada)
-    combination. ``agni=False`` keeps atmos_clim on the default
-    janus/dummy slot; tests for the aragog x zephyrus pair do not
-    need AGNI in the loop.
+    combination. atmos_clim is set to 'dummy' so the
+    ``janus_escape_atmosphere`` cross-validator at
+    ``_config.py:145`` does not fire: that validator gates the
+    ``escape=zephyrus + atmos_clim=janus + stop.escape.enabled=False``
+    combination, and using ``atmos_clim='dummy'`` avoids any latent
+    dependency on the ``stop.escape.enabled`` default. The aragog x
+    zephyrus pair test does not need AGNI or JANUS in the loop.
     """
     from proteus.config._atmos_clim import AtmosClim
     from proteus.config._interior import Interior
@@ -59,7 +63,7 @@ def _base_config_kwargs(*, agni: bool = False):
     from proteus.config._star import Star
 
     return dict(
-        atmos_clim=AtmosClim(module='agni' if agni else 'janus'),
+        atmos_clim=AtmosClim(module='dummy', rayleigh=False),
         interior_energetics=Interior(module='aragog'),
         star=Star(module='mors'),  # default Mors uses spada + phoenix
         planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
@@ -193,9 +197,20 @@ def test_zephyrus_pxuv_upper_bound_under_aragog_pair():
         )
 
 
-def test_zephyrus_efficiency_endpoints_under_aragog_pair():
-    """``Zephyrus.efficiency`` boundary check [0, 1] inclusive at
-    both endpoints under the aragog + mors+spada Config.
+def test_zephyrus_efficiency_endpoints_round_trip_under_aragog_pair():
+    """``Zephyrus.efficiency`` endpoints 0.0 and 1.0 round-trip under
+    the aragog + mors+spada Config.
+
+    Note on validator layering: the out-of-range rejections
+    (negative and >1) are caught by the field-level ``ge(0)`` and
+    ``le(1)`` validators at ``_escape.py:37`` BEFORE
+    ``valid_zephyrus`` runs. The cross-validator's own efficiency
+    check at ``_escape.py:17-19`` is structurally redundant with
+    the field validators (no value passes ``ge/le`` but fails the
+    cross check). The dedicated field-level rejection tests live
+    in ``test_integration_agni_zephyrus.py``; this file pins only
+    the round-trip path so the aragog leg has its own coverage of
+    the inclusive endpoints under a real Config.
     """
     from proteus.config import Config
     from proteus.config._escape import Escape, Zephyrus
@@ -206,16 +221,6 @@ def test_zephyrus_efficiency_endpoints_under_aragog_pair():
             **_base_config_kwargs(),
         )
         assert cfg.escape.zephyrus.efficiency == pytest.approx(boundary, abs=1e-12)
-    with pytest.raises(ValueError, match=r'(?i)efficiency'):
-        Config(
-            escape=Escape(module='zephyrus', zephyrus=Zephyrus(efficiency=-0.001)),
-            **_base_config_kwargs(),
-        )
-    with pytest.raises(ValueError, match=r'(?i)efficiency'):
-        Config(
-            escape=Escape(module='zephyrus', zephyrus=Zephyrus(efficiency=1.001)),
-            **_base_config_kwargs(),
-        )
 
 
 # ---------------------------------------------------------------------------
