@@ -142,6 +142,15 @@ def test_atmodeller_solver_step_and_multistart_must_be_positive_under_mors_pair(
         Atmodeller(solver_multistart=0)
     with pytest.raises(ValueError, match=r'(?i)solver_multistart'):
         Atmodeller(solver_multistart=-1)
+    # Adjacent-valid round-trip on the smallest accepted integer
+    # (1) pins the gt(0) vs ge(0) boundary: ge(0) accepts 0, gt(0)
+    # accepts 1 but not 0. The single-step / single-restart
+    # configuration is unrealistic for production but well-defined
+    # at the schema layer.
+    a_min_steps = Atmodeller(solver_max_steps=1)
+    assert a_min_steps.solver_max_steps == 1
+    a_min_multi = Atmodeller(solver_multistart=1)
+    assert a_min_multi.solver_multistart == 1
     default = Atmodeller()
     # Pin the documented defaults so a silent shift surfaces here.
     assert default.solver_max_steps == 256
@@ -168,15 +177,24 @@ def test_atmodeller_none_sentinel_coerced_case_sensitively_under_mors_pair():
     # And on a solubility_* field.
     a_lower_sol = Atmodeller(solubility_CO='none')
     assert a_lower_sol.solubility_CO is None
-    # Uppercase variants pass through (case-sensitive contract).
+    # Uppercase variants pass through on BOTH eos_* and solubility_*
+    # fields. A regression that broadened only one of the two
+    # converters to case-insensitive would otherwise slip through if
+    # the test covered only one field family.
     for non_sentinel in ('None', 'NONE'):
-        a_passthrough = Atmodeller(eos_H2O=non_sentinel)
-        assert a_passthrough.eos_H2O == non_sentinel, (
-            f'{non_sentinel!r} should pass through; got {a_passthrough.eos_H2O!r}'
+        a_pt_eos = Atmodeller(eos_H2O=non_sentinel)
+        assert a_pt_eos.eos_H2O == non_sentinel, (
+            f'{non_sentinel!r} should pass through eos_*; got {a_pt_eos.eos_H2O!r}'
         )
-    # Non-sentinel string also passes through unchanged.
-    a_real = Atmodeller(eos_H2O='SHV_CORK')
-    assert a_real.eos_H2O == 'SHV_CORK'
+        a_pt_sol = Atmodeller(solubility_CO=non_sentinel)
+        assert a_pt_sol.solubility_CO == non_sentinel, (
+            f'{non_sentinel!r} should pass through solubility_*; got {a_pt_sol.solubility_CO!r}'
+        )
+    # Non-sentinel string also passes through unchanged on both.
+    a_real_eos = Atmodeller(eos_H2O='SHV_CORK')
+    assert a_real_eos.eos_H2O == 'SHV_CORK'
+    a_real_sol = Atmodeller(solubility_CO='CO_basalt_yoshioka19')
+    assert a_real_sol.solubility_CO == 'CO_basalt_yoshioka19'
 
 
 def test_atmodeller_eos_and_solubility_field_counts_under_mors_pair():
