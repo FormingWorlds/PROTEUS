@@ -109,6 +109,13 @@ def test_calliope_zephyrus_rejects_dummy_star_at_spada_zephyrus_layer():
     a non-MORS star. The calliope x zephyrus combination must
     reject the dummy-star configuration even though the calliope
     outgas side itself is valid for any star.
+
+    The kwargs use ``atmos_clim='dummy'`` to avoid a latent
+    dependency on the ``params.stop.escape.enabled`` default: with
+    ``atmos_clim='janus'`` the ``janus_escape_atmosphere``
+    cross-validator would fire when ``stop.escape.enabled`` is
+    False, masking the ``spada_zephyrus`` rejection we want to
+    pin here.
     """
     from proteus.config import Config
     from proteus.config._atmos_clim import AtmosClim
@@ -118,7 +125,7 @@ def test_calliope_zephyrus_rejects_dummy_star_at_spada_zephyrus_layer():
     from proteus.config._star import Star, StarDummy
 
     kwargs = dict(
-        atmos_clim=AtmosClim(module='janus'),
+        atmos_clim=AtmosClim(module='dummy', rayleigh=False),
         outgas=Outgas(module='calliope'),
         star=Star(module='dummy', dummy=StarDummy(calculate_radius=True)),
         planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
@@ -132,6 +139,10 @@ def test_calliope_zephyrus_rejects_baraffe_tracks_at_spada_zephyrus_layer():
     outgas side is calliope. Pinning the baraffe-rejection case
     here so a regression that relaxed the spada-only gate (e.g.
     extended to baraffe as well) surfaces in the calliope leg.
+
+    Same ``atmos_clim='dummy'`` choice as the dummy-star rejection
+    above: avoids any latent dependency on
+    ``params.stop.escape.enabled`` defaults.
     """
     from proteus.config import Config
     from proteus.config._atmos_clim import AtmosClim
@@ -141,7 +152,7 @@ def test_calliope_zephyrus_rejects_baraffe_tracks_at_spada_zephyrus_layer():
     from proteus.config._star import Mors, Star
 
     kwargs = dict(
-        atmos_clim=AtmosClim(module='janus'),
+        atmos_clim=AtmosClim(module='dummy', rayleigh=False),
         outgas=Outgas(module='calliope'),
         star=Star(module='mors', mors=Mors(tracks='baraffe')),
         planet=Planet(mass_tot=1.0, elements=Elements(O_mode='ic_chemistry')),
@@ -305,11 +316,22 @@ def test_zephyrus_pxuv_field_level_validator_rejects_strictly_negative():
     favour of relying on valid_zephyrus alone would surface here
     (``Zephyrus(Pxuv=-1.0)`` would no longer raise at the field
     layer; it would only raise once wrapped in an Escape).
+
+    Edge: a strictly-positive Pxuv adjacent to the boundary
+    (``1e-10`` bar, well below the documented default of 5e-5)
+    round-trips through Zephyrus construction. Pinning this
+    adjacent-valid case rejects a regression that tightened the
+    field validator to ``gt(<positive_floor>)`` and would silently
+    reject the documented default.
     """
     from proteus.config._escape import Zephyrus
 
     with pytest.raises(ValueError, match=r'(?i)pxuv'):
         Zephyrus(Pxuv=-1.0)
+    # Adjacent-valid round-trip: strictly positive, well below the
+    # 5e-5 default; selectivity check on the field validator.
+    z = Zephyrus(Pxuv=1e-10)
+    assert z.Pxuv == pytest.approx(1e-10, rel=1e-12)
 
 
 def test_zephyrus_efficiency_closed_interval_endpoints_round_trip():
@@ -351,11 +373,21 @@ def test_zephyrus_efficiency_above_unit_rejected_at_field_layer():
     The strictly-negative efficiency case is owned by the AGNI x
     ZEPHYRUS file; this pair pins the upper-bound edge only to
     avoid duplicating coverage.
+
+    Edge: an efficiency adjacent to the upper bound (``0.999``)
+    round-trips through Zephyrus construction. Pinning this
+    adjacent-valid case rejects a regression that tightened the
+    field validator to ``le(<below_unit>)`` and would silently
+    reject the documented endpoint 1.0.
     """
     from proteus.config._escape import Zephyrus
 
     with pytest.raises(ValueError, match=r'(?i)efficiency'):
         Zephyrus(efficiency=1.0001)
+    # Adjacent-valid round-trip: just below unit; selectivity check
+    # on the field validator.
+    z = Zephyrus(efficiency=0.999)
+    assert z.efficiency == pytest.approx(0.999, rel=1e-12)
 
 
 # ---------------------------------------------------------------------------
