@@ -381,34 +381,58 @@ def test_zephyrus_efficiency_closed_interval_endpoints_round_trip_under_atmodell
     """``Zephyrus.efficiency`` is constrained to ``[0, 1]``
     inclusive. Both endpoints round-trip under a real Config
     build; the documented default (0.1) round-trips.
+
+    The 0.0 endpoint uses ``pytest.approx(..., abs=)`` because the
+    relative form is undefined at zero; the 1.0 endpoint uses the
+    relative form so a copy-paste to a smaller value later keeps
+    the tolerance scaling correctly.
     """
     from proteus.config import Config
     from proteus.config._escape import Escape, Zephyrus
 
-    for boundary in (0.0, 1.0):
-        cfg = Config(
-            escape=Escape(module='zephyrus', zephyrus=Zephyrus(efficiency=boundary)),
-            **_base_config_kwargs(),
-        )
-        assert cfg.escape.zephyrus.efficiency == pytest.approx(boundary, abs=1e-12)
+    cfg_zero = Config(
+        escape=Escape(module='zephyrus', zephyrus=Zephyrus(efficiency=0.0)),
+        **_base_config_kwargs(),
+    )
+    assert cfg_zero.escape.zephyrus.efficiency == pytest.approx(0.0, abs=1e-12)
+    cfg_one = Config(
+        escape=Escape(module='zephyrus', zephyrus=Zephyrus(efficiency=1.0)),
+        **_base_config_kwargs(),
+    )
+    assert cfg_one.escape.zephyrus.efficiency == pytest.approx(1.0, rel=1e-12)
     default_cfg = Config(escape=Escape(module='zephyrus'), **_base_config_kwargs())
     assert default_cfg.escape.zephyrus.efficiency == pytest.approx(0.1, rel=1e-12)
 
 
 def test_zephyrus_efficiency_above_unit_rejected_field_layer_with_selectivity():
-    """The field-level ``le(1)`` validator at ``_escape.py:37``
-    rejects ``efficiency > 1`` at Zephyrus construction time.
-    An adjacent-valid below-unit efficiency round-trips: a
-    regression that tightened the field validator to
-    ``le(<below_unit>)`` would silently reject the documented
-    endpoint 1.0; the selectivity check catches that.
+    """The field-level ``le(1)`` and ``ge(0)`` validators at
+    ``_escape.py:37`` reject ``efficiency > 1`` and
+    ``efficiency < 0`` at Zephyrus construction time.
+
+    Edge: pin both ends of the closed interval at the field layer.
+
+    - ``efficiency = 1.0001`` rejects (``le(1)``). An adjacent-
+      valid ``efficiency = 0.999`` round-trips: a regression that
+      tightened ``le(1)`` to ``le(<below_unit>)`` would silently
+      reject the documented endpoint 1.0; the selectivity check
+      catches that.
+    - ``efficiency = 0.0`` round-trips (``ge(0)``): a regression
+      that tightened ``ge(0)`` to ``gt(0)`` would silently reject
+      the documented endpoint 0.0; pinning the round-trip at the
+      field layer catches that independently of the cross-
+      validator.
     """
     from proteus.config._escape import Zephyrus
 
+    # Upper-bound rejection and adjacent-valid selectivity.
     with pytest.raises(ValueError, match=r'(?i)efficiency'):
         Zephyrus(efficiency=1.0001)
-    z = Zephyrus(efficiency=0.999)
-    assert z.efficiency == pytest.approx(0.999, rel=1e-12)
+    z_below = Zephyrus(efficiency=0.999)
+    assert z_below.efficiency == pytest.approx(0.999, rel=1e-12)
+    # Lower-bound selectivity: ge(0) must accept 0.0 (catches a
+    # gt(0) regression that would silently reject the endpoint).
+    z_zero = Zephyrus(efficiency=0.0)
+    assert z_zero.efficiency == pytest.approx(0.0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------
