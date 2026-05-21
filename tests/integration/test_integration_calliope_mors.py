@@ -213,6 +213,64 @@ def test_mors_age_now_positivity_at_valid_mors_layer():
     assert s.mors.age_now == pytest.approx(4.567, rel=1e-12)
 
 
+def test_valid_mors_rotation_constraints_both_or_neither_or_out_of_range_raise():
+    """``valid_mors`` at ``_star.py:26-38`` enforces "exactly one of
+    ``rot_pcntle`` / ``rot_period`` is set", a strictly positive
+    period when only the period is set, and a percentile in
+    ``[0, 100]`` when only the percentile is set.
+
+    Edge: pin all four rotation-related branches.
+
+    1. Both ``rot_pcntle`` and ``rot_period`` set: collision.
+    2. Neither set: missing.
+    3. Negative period: invalid value.
+    4. Percentile out of ``[0, 100]``: invalid value (the
+       percentile-range branch is otherwise uncovered by the
+       matrix; pin it here so a regression to ``< 0`` or ``>
+       100`` clamping surfaces).
+
+    The documented defaults (``rot_pcntle=50.0``,
+    ``rot_period=None``) satisfy the "exactly one set" rule, so a
+    regression that flipped one of these defaults would silently
+    violate the invariant; the positive round-trip catches that.
+    """
+    from proteus.config._star import Mors, Star
+
+    # Both set: collision.
+    with pytest.raises(ValueError, match=r'(?i)rotation'):
+        Star(
+            module='mors',
+            mors=Mors(spectrum_source='phoenix', rot_pcntle=50.0, rot_period=10.0),
+        )
+    # Neither set: missing.
+    with pytest.raises(ValueError, match=r'(?i)rotation'):
+        Star(
+            module='mors',
+            mors=Mors(spectrum_source='phoenix', rot_pcntle=None, rot_period=None),
+        )
+    # Negative period: invalid value.
+    with pytest.raises(ValueError, match=r'(?i)period'):
+        Star(
+            module='mors',
+            mors=Mors(spectrum_source='phoenix', rot_pcntle=None, rot_period=-1.0),
+        )
+    # Percentile out of [0, 100]: invalid value. Pin both edges.
+    with pytest.raises(ValueError, match=r'(?i)percentile'):
+        Star(
+            module='mors',
+            mors=Mors(spectrum_source='phoenix', rot_pcntle=-1.0),
+        )
+    with pytest.raises(ValueError, match=r'(?i)percentile'):
+        Star(
+            module='mors',
+            mors=Mors(spectrum_source='phoenix', rot_pcntle=101.0),
+        )
+    # Documented defaults (rot_pcntle=50.0, rot_period=None) round-trip.
+    s_ok = Star(module='mors', mors=Mors(spectrum_source='phoenix'))
+    assert s_ok.mors.rot_pcntle == pytest.approx(50.0, rel=1e-12)
+    assert s_ok.mors.rot_period is None
+
+
 def test_mors_phoenix_overrides_accept_none_default_and_positive_overrides():
     """``Mors.phoenix_radius``, ``phoenix_log_g`` and
     ``phoenix_Teff`` use ``optional(gt(0))`` with a
