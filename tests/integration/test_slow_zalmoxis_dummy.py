@@ -36,10 +36,11 @@ config off the runner. A regression that silently fell back to the
 dummy module would still pass the Earth-scale R_int check but fail
 the explicit module-string assertion.
 
-Runtime budget: ~120-180 s on macOS GHA, ~600-1200 s on Linux GHA
-(JAX/CVode setup tax on x86, mirrors the aragog slow tier). The
-3600 s ceiling accommodates the worst case while staying inside
-the slow-tier 120 min step cap.
+Runtime budget: ~600-1200 s on Linux GHA (JAX + diffrax + CVode
+setup tax on x86; mirrors the aragog slow tier). macOS arm64 is
+skipped at the module level because the same configuration takes
+markedly longer there and exhausts the 3600 s pytest-timeout; if
+the macOS path is re-enabled later, budget at least 3600 s.
 
 See also:
 - docs/How-to/test_infrastructure.md
