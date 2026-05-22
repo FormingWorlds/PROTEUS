@@ -58,7 +58,27 @@ runs:
             curl
         elif [[ "$RUNNER_OS" == "macOS" ]]; then
           # gcc bundles gfortran on macOS. netcdf-fortran provides nf-config.
+          # Tolerate brew post-install warnings: on the macos-latest
+          # Sequoia images, ``brew install`` can exit 1 with all
+          # packages successfully poured if any post-install step emits
+          # the "did not complete successfully" warning. The packages
+          # themselves are functional; verify each is on the prefix
+          # list before accepting the failure.
+          set +e
           brew install --quiet gcc netcdf netcdf-fortran openssl@3
+          brew_rc=$?
+          set -e
+          missing=()
+          for pkg in gcc netcdf netcdf-fortran openssl@3; do
+            brew list "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "ERROR: brew install rc=$brew_rc and missing packages: ${missing[*]}" >&2
+            exit "${brew_rc:-1}"
+          fi
+          if [ "$brew_rc" -ne 0 ]; then
+            echo "brew install exited $brew_rc but all packages present; continuing"
+          fi
           # Homebrew installs gfortran as a versioned binary (gfortran-15);
           # the plain `gfortran` symlink is not always present when gcc was
           # pre-installed on the runner image. Create one so SOCRATES's
