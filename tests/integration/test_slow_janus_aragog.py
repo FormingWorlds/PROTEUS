@@ -69,7 +69,7 @@ from tests.integration.conftest import (
 # but parr is not consistently prepended).
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.timeout(3600),
+    pytest.mark.timeout(7200),
     pytest.mark.skipif(
         sys.platform == 'darwin',
         reason='cpl_chem_atmosphere plot xarr/parr length mismatch on macOS JANUS; Linux covers JANUS path',

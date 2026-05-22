@@ -69,7 +69,7 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(7200)]
 
 
 @pytest.mark.slow

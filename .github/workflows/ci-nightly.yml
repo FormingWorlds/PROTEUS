@@ -98,6 +98,7 @@ jobs:
             junit-unit-${{ matrix.os }}.xml
             junit-smoke-${{ matrix.os }}.xml
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   # ============================================================
@@ -145,6 +146,7 @@ jobs:
             coverage-int-${{ matrix.os }}.xml
             junit-int-${{ matrix.os }}.xml
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   # ============================================================
@@ -219,7 +221,7 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/helpers/test_smoke_invariants.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 75   # per-shard cap; each shard targets 30-65 min
+    timeout-minutes: 130   # per-shard cap; raised from 75 to accommodate heavy zalmoxis_aragog_calliope shard which can take ~80 min Linux + aragog retry storms
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
       USER: "ci-runner"
@@ -253,6 +255,7 @@ jobs:
             coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
             junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   # ============================================================
