@@ -84,6 +84,10 @@ def test_janus_aragog_two_timesteps(proteus_multi_timestep_run):
     - Cross-step T_magma and Phi continuity.
     - Cross-cutting mass + stability helpers.
     """
+    # interior_struct stays on the dummy module; melting_dir must be
+    # set explicitly because Aragog's legacy fallback EOS path reads
+    # the Monteux-600 melting curve folder name from there. Mirrors
+    # the override in ``test_slow_aragog_calliope.py``.
     runner = proteus_multi_timestep_run(
         config_path='input/dummy.toml',
         num_timesteps=2,
@@ -91,6 +95,7 @@ def test_janus_aragog_two_timesteps(proteus_multi_timestep_run):
         min_time=1e2,
         atmos_clim__module='janus',
         interior_energetics__module='aragog',
+        interior_struct__melting_dir='Monteux-600',
         outgas__module='calliope',
     )
 

@@ -89,12 +89,24 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     - R_int stable across rows (no spurious refresh).
     - Cross-cutting mass + stability helpers.
     """
+    # With interior_energetics=dummy the loop runs many iterations
+    # (no thermal inertia, no convergence criterion beyond stop.time),
+    # so the default Zalmoxis update triggers
+    # (``update_dtmagma_frac=0.05``, ``update_dphi_abs=0.05``,
+    # ``update_stale_ceiling=2.5e4 yr``) would fire on every iteration
+    # and call the slow PALEOS solver each time. Disable them so the
+    # IC solve is the only Zalmoxis call. The 1 Gyr ``update_interval``
+    # then sets the only refresh ceiling, which a 1e3 yr run never
+    # crosses.
     runner = proteus_multi_timestep_run(
         config_path='input/dummy.toml',
         num_timesteps=2,
         max_time=1e3,
         min_time=1e2,
         interior_struct__module='zalmoxis',
+        interior_struct__zalmoxis__update_dtmagma_frac=0.999,
+        interior_struct__zalmoxis__update_dphi_abs=0.999,
+        interior_struct__zalmoxis__update_stale_ceiling=0,
     )
 
     hf = runner.hf_all
