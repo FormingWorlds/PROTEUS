@@ -121,6 +121,8 @@ jobs:
             tests/integration/test_slow_aragog_calliope.py \
             tests/integration/test_slow_aragog_atmodeller.py \
             tests/integration/test_slow_zalmoxis_dummy.py \
+            tests/integration/test_slow_zalmoxis_aragog_calliope.py \
+            tests/integration/test_slow_janus_aragog.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \
@@ -401,6 +403,8 @@ jobs:
             tests/integration/test_slow_aragog_calliope.py \
             tests/integration/test_slow_aragog_atmodeller.py \
             tests/integration/test_slow_zalmoxis_dummy.py \
+            tests/integration/test_slow_zalmoxis_aragog_calliope.py \
+            tests/integration/test_slow_janus_aragog.py \
             tests/inference/test_bo_convergence.py \
             tests/inference/test_inference.py \
             tests/helpers/test_smoke_invariants.py \
