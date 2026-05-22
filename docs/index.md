@@ -1,3 +1,7 @@
+---
+title: PROTEUS
+---
+
 <h1 align="center">
     <a href="https://proteus-framework.org">
     <div>
