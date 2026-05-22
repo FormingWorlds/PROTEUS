@@ -160,7 +160,7 @@ The environment variable `RAD_DIR` must always point to the SOCRATES installatio
 
 ## 8. Install AGNI (radiative-convective atmosphere model)
 
-Installation steps can be found at the [AGNI wiki](https://h-nicholls.space/AGNI/dev/setup/). They are also reproduced below.
+Installation steps can be found at the [AGNI wiki](https://www.h-nicholls.space/AGNI/dev/howto/getting_started/). They are also reproduced below.
 
 !!! note
     This step requires `make` and `unzip` to be available on your system. Check with:
