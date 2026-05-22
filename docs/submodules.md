@@ -1,10 +1,9 @@
 # PROTEUS submodules
 
-Since PROTEUS is a modular simulation framework, modelling of physics is handled by various sub-modules, as shown in the module schematic below. The documentation for each submodule can be found in the sidebar.
+PROTEUS is a modular simulation framework: the physics is split across several submodules, shown in the schematic below. Click any module in the diagram to open its documentation, or navigate to it from the sidebar.
 
-<br>
 
-<p align="center">
-      <img src="assets/schematic_round.png" style="max-width: 90%; height: auto;"><br>
-      <b>Schematic of PROTEUS components and corresponding modules.</b> <br>
-</p>
+<object type="image/svg+xml" data="../assets/proteus_modules_schematic.svg" class="arch-diagram arch-diagram--light"></object>
+<object type="image/svg+xml" data="../assets/proteus_modules_schematic_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
+
+<p style="text-align: center;"><strong>Schematic of PROTEUS components and corresponding modules.</strong></p>
