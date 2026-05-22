@@ -1,9 +1,24 @@
 name: CI - Nightly Science Validation
 
-# Purpose: Full test tier matrix (unit + smoke + integration + slow) on
-# Linux and macOS. Generates the combined coverage artifact that
-# ci-pr-checks.yml unions with the PR's unit-tier run to compute the
-# estimated-total coverage gate.
+# Full test tier matrix (unit + smoke + integration + slow) on Linux and
+# macOS with the slow tier sharded across multiple runners in parallel.
+# The aggregator job combines coverage from every shard and uploads the
+# canonical nightly-coverage artifact that ci-pr-checks.yml unions with
+# the PR's unit-tier run for the estimated-total coverage gate.
+#
+# Adding a slow file:
+#   1. If it belongs in an existing shard's logical group: append the
+#      path to that shard's ``files`` line under ``slow-tier.strategy.
+#      matrix.include``. Two-line edit.
+#   2. If it needs its own shard: append two include entries (Linux +
+#      macOS) when the test is tier=critical, or one Linux-only entry
+#      when tier=extended. The aggregator picks up the new shard's
+#      .coverage and XML automatically via glob.
+#
+# macOS concurrent-slot ceiling on the GitHub free tier for public
+# repos is 5. The four critical shards consume 4 of those; a 5th
+# critical shard would queue. Future shards that do not need macOS
+# parity should be added as tier=extended (Linux only).
 
 on:
   schedule:
@@ -11,9 +26,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # ratcheted coverage threshold commits
+  contents: read
   packages: read
-  actions: read    # query workflow runs for dedup
+  actions: read
 
 concurrency:
   group: nightly-science-${{ github.ref }}
@@ -23,446 +38,409 @@ defaults:
   run:
     shell: bash -el {0}
 
-jobs:
-  # --------------------------------------------------------------------
-  # Linux: the canonical nightly. Runs all four tiers, computes
-  # coverage, ratchets the full-gate threshold, uploads the artifact
-  # consumed by ci-pr-checks.yml's estimated-total calculation.
-  # --------------------------------------------------------------------
-  nightly-linux:
-    name: Nightly Full Suite (Linux)
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    env:
-      PROTEUS_CI_NIGHTLY: "1"
-      USER: "ci-runner"
+env:
+  PROTEUS_CI_NIGHTLY: "1"
 
+jobs:
+  # ============================================================
+  # Unit tier: fast Python-only tests, no real binaries.
+  # Runs on both OS for parity. Each job produces its own
+  # .coverage SQLite + per-OS coverage XML.
+  # ============================================================
+  unit-tier:
+    name: Unit tier (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      COVERAGE_FILE: .coverage.unit.${{ matrix.os }}
+      USER: "ci-runner"
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Set up PROTEUS environment
-        uses: ./.github/actions/setup-proteus
+      - uses: ./.github/actions/setup-proteus
         with:
           full-data: 'true'
-
-      - name: Read full coverage threshold
+      - name: Run unit + smoke tier
         run: |
-          python - <<'PY' >> "$GITHUB_ENV"
-          import pathlib, tomllib
-          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
-          val = float(data["tool"]["coverage"]["report"]["fail_under"])
-          print(f"FULL_COV_FAIL_UNDER={val}")
-          PY
-
-      - name: Coverage erase and run unit tests
-        continue-on-error: true
-        run: |
-          coverage erase
+          # Unit tier produces COVERAGE_FILE; smoke uses --cov-append on
+          # the same file so the unit tier artifact carries both.
           pytest -m "unit and not skip and not slow and not integration" \
             --ignore=tests/examples \
             -p no:faulthandler \
-            -v --tb=short \
-            --junitxml=/tmp/junit-unit.xml \
-            --cov=proteus --cov-fail-under=0 \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html \
-            --cov-config=pyproject.toml 2>&1 | tee /tmp/unit-output.txt
-
-      - name: Run smoke tests with coverage
-        continue-on-error: true
-        run: |
-          pytest -m smoke \
+            --junitxml=junit-unit-${{ matrix.os }}.xml \
+            --cov=proteus \
+            --cov-report=xml:coverage-unit-${{ matrix.os }}.xml \
+            --cov-report= \
+            -v --tb=short
+          pytest -m "smoke and not skip and not slow and not integration" \
             -p no:faulthandler \
-            -v --tb=short \
-            --junitxml=/tmp/junit-smoke.xml \
-            --cov=proteus --cov-append --cov-fail-under=0 \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html \
-            --cov-config=pyproject.toml 2>&1 | tee /tmp/smoke-output.txt
+            --junitxml=junit-smoke-${{ matrix.os }}.xml \
+            --cov=proteus --cov-append \
+            --cov-report=xml:coverage-smoke-${{ matrix.os }}.xml \
+            --cov-report= \
+            -v --tb=short
+      - name: Upload unit + smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: tier-unit-${{ matrix.os }}
+          path: |
+            .coverage.unit.${{ matrix.os }}
+            coverage-unit-${{ matrix.os }}.xml
+            coverage-smoke-${{ matrix.os }}.xml
+            junit-unit-${{ matrix.os }}.xml
+            junit-smoke-${{ matrix.os }}.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
-      - name: Run integration coverage (integration and not slow)
-        continue-on-error: true
+  # ============================================================
+  # Integration tier: schema-tier cross-module pair tests, no
+  # real solver boots. Runs after unit tier so the env cache is
+  # warm.
+  # ============================================================
+  integration-tier:
+    name: Integration tier (${{ matrix.os }})
+    needs: unit-tier
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      COVERAGE_FILE: .coverage.integration.${{ matrix.os }}
+      USER: "ci-runner"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-proteus
+        with:
+          full-data: 'true'
+      - name: Run integration tier (not slow)
         run: |
           pytest tests/integration \
             -m "integration and not slow" \
             -p no:faulthandler \
-            -v --tb=short \
-            --junitxml=/tmp/junit-integration.xml \
-            --cov=proteus --cov-append --cov-fail-under=0 \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html \
-            --cov-config=pyproject.toml 2>&1 | tee /tmp/integration-output.txt || true
-
-      - name: Run slow integration tests
-        continue-on-error: true
-        # Hard wall-time cap. Linux x86 runs the aragog CVODE+JAX
-        # production path noticeably slower than macOS arm64 (single
-        # solve() ~30 min vs ~3 min), so the slow tier needs 120 min
-        # of headroom; the surrounding job cap of 180 min still covers
-        # cold-cache setup (~15 min) and unit/smoke/integration tiers.
-        timeout-minutes: 120
-        run: |
-          set -euo pipefail
-          # Slow-tier file list: schema invariants, hypothesis fuzz, BO
-          # convergence, inference subprocess pipeline, helper self tests,
-          # and the all-dummy multi-iter run. Cross-module pair tests and
-          # full-physics end-to-end tests land here as Phase 2 / Phase 3
-          # of the cross-module integration test plan.
-          pytest -m "slow and not unit and not smoke and not integration" \
-            tests/config/test_config_schema_invariants.py \
-            tests/integration/test_smoke_hypothesis.py \
-            tests/integration/test_integration_dummy.py \
-            tests/integration/test_slow_aragog_calliope.py \
-            tests/integration/test_slow_aragog_atmodeller.py \
-            tests/integration/test_slow_zalmoxis_dummy.py \
-            tests/integration/test_slow_zalmoxis_aragog_calliope.py \
-            tests/integration/test_slow_janus_aragog.py \
-            tests/inference/test_bo_convergence.py \
-            tests/inference/test_inference.py \
-            tests/helpers/test_smoke_invariants.py \
-            -p no:faulthandler \
-            --junit-xml=/tmp/junit-slow.xml \
-            --cov=proteus --cov-append --cov-fail-under=0 \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-report=html \
-            --cov-config=pyproject.toml \
-            --log-cli-level=INFO \
-            --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
-            -v --tb=short 2>&1 | tee /tmp/slow-output.txt
-
-      - name: Save combined coverage
-        if: always()
-        run: |
-          coverage json -o coverage-integration-only.json --fail-under=0 || \
-            echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' \
-              > coverage-integration-only.json
-
-      - name: Generate coverage JSON
-        if: always()
-        run: |
-          echo "--- .coverage presence ---"
-          ls -la .coverage 2>/dev/null || true
-          coverage report -m 2>/dev/null | tail -30 || true
-          if coverage json --fail-under=0 -o coverage-branch-nightly.json; then
-            echo "Coverage JSON written."
-          elif [ ! -f coverage-branch-nightly.json ]; then
-            echo '{"totals":{"percent_covered":0,"covered_lines":0,"num_statements":0}}' > coverage-branch-nightly.json
-            echo "Wrote fallback coverage JSON."
-          fi
-          python3 -c "import sys,json; d=json.load(open('coverage-branch-nightly.json')); print(f'Combined: {d[\"totals\"][\"percent_covered\"]:.2f}%')"
-
-      - name: Install gpg for Codecov verification
-        if: always()
-        run: sudo apt-get install -y gnupg
-
-      - name: Upload coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.xml
-          flags: nightly-linux
-          name: nightly-linux-full-suite
-          fail_ci_if_error: false
-
-      - name: Write workflow summary and test results report
-        if: always()
-        run: |
-          python - <<'PY'
-          import json, os, pathlib, sys, traceback
-          import xml.etree.ElementTree as ET
-          import re
-
-          summary_path = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
-          cov_path = pathlib.Path("coverage-branch-nightly.json")
-          failed_tests, skipped_tests = [], []
-          total_tests, passed_tests = 0, 0
-
-          junit_files = {
-              'unit': '/tmp/junit-unit.xml',
-              'smoke': '/tmp/junit-smoke.xml',
-              'integration': '/tmp/junit-integration.xml',
-              'slow': '/tmp/junit-slow.xml',
-          }
-          for category, xml_path in junit_files.items():
-              if not pathlib.Path(xml_path).exists():
-                  continue
-              try:
-                  tree = ET.parse(xml_path)
-                  for testsuite in tree.getroot().findall('testsuite'):
-                      total = int(testsuite.get('tests', 0))
-                      failures = int(testsuite.get('failures', 0))
-                      errors = int(testsuite.get('errors', 0))
-                      skipped = int(testsuite.get('skipped', 0))
-                      total_tests += total
-                      passed_tests += (total - failures - errors - skipped)
-                      for testcase in testsuite.findall('testcase'):
-                          test_name = f"{testcase.get('classname','')}::{testcase.get('name','')}"
-                          failure = testcase.find('failure')
-                          error = testcase.find('error')
-                          skip = testcase.find('skipped')
-                          if failure is not None or error is not None:
-                              reason = (failure.get('message','') if failure is not None
-                                        else error.get('message',''))
-                              failed_tests.append({'category': category, 'test': test_name,
-                                                   'reason': reason[:200] if reason else 'Unknown failure'})
-                          elif skip is not None:
-                              reason = skip.get('message','')
-                              skipped_tests.append({'category': category, 'test': test_name,
-                                                    'reason': reason[:200] if reason else 'Skipped'})
-              except Exception as exc:
-                  print(f"warning: parse {xml_path}: {exc}")
-
-          with summary_path.open("w") as f:
-              f.write("# Nightly Science Validation: Summary\n\n")
-              if cov_path.exists():
-                  try:
-                      data = json.loads(cov_path.read_text())
-                      t = data.get("totals", {})
-                      f.write("## Total test coverage (all tests)\n\n")
-                      f.write(f"- Line coverage: {t.get('percent_covered',0):.2f}%\n")
-                      f.write(f"- Covered lines: {t.get('covered_lines',0)} / {t.get('num_statements',0)}\n\n")
-                  except Exception as exc:
-                      f.write(f"## Coverage parse error: {exc}\n\n")
-              else:
-                  f.write("## Coverage report not available (job may have failed)\n\n")
-
-              f.write("## Test Results Summary\n\n")
-              f.write(f"- Total: {total_tests}, Passed: {passed_tests}, "
-                      f"Failed: {len(failed_tests)}, Skipped: {len(skipped_tests)}\n\n")
-              if failed_tests:
-                  f.write("### Failed tests\n\n")
-                  for t in failed_tests:
-                      f.write(f"- **{t['category']}**: `{t['test']}` — {t['reason']}\n")
-                  f.write("\n")
-              if skipped_tests:
-                  f.write("### Skipped tests\n\n")
-                  by_cat = {}
-                  for t in skipped_tests:
-                      by_cat.setdefault(t['category'], []).append(t)
-                  for cat in sorted(by_cat):
-                      f.write(f"**{cat}:**\n")
-                      for t in by_cat[cat]:
-                          f.write(f"- `{t['test']}` — {t['reason']}\n")
-                  f.write("\n")
-
-          if failed_tests:
-              print(f"ERROR: {len(failed_tests)} test(s) failed.")
-              sys.exit(1)
-          sys.exit(0)
-          PY
-
-      - name: Save coverage by test type
-        if: always()
-        run: |
-          python - <<'PY'
-          import json, pathlib, tomllib
-          from datetime import datetime, timezone
-
-          try:
-              data = json.loads(pathlib.Path("coverage-branch-nightly.json").read_text())
-              t = data.get("totals", {})
-              final = {"percent": t.get("percent_covered", 0),
-                       "covered": t.get("covered_lines", 0),
-                       "total":   t.get("num_statements", 0)}
-          except Exception:
-              final = {"percent": 0, "covered": 0, "total": 0}
-
-          try:
-              py = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
-              threshold = float(py["tool"]["coverage"]["report"]["fail_under"])
-          except Exception:
-              threshold = 59.0
-
-          summary = {"timestamp": datetime.now(timezone.utc).isoformat(),
-                     "total": final, "threshold": threshold}
-          pathlib.Path("coverage-by-type.json").write_text(json.dumps(summary, indent=2))
-          pathlib.Path("nightly-timestamp.txt").write_text(datetime.now(timezone.utc).isoformat())
-          print(f"Coverage: {final['percent']:.2f}%")
-          PY
-
-      - name: Ratchet full coverage threshold
-        if: always()
-        continue-on-error: true
-        run: |
-          python tools/update_coverage_threshold.py \
-            --coverage-file coverage-branch-nightly.json \
-            --target full
-
-      - name: Commit ratcheted threshold (if changed)
-        if: github.ref == 'refs/heads/main'
-        continue-on-error: true
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet pyproject.toml; then
-            echo "No threshold changes to commit"
-          else
-            git add pyproject.toml
-            COVERAGE=$(grep -A6 '\[tool.coverage.report\]' pyproject.toml | grep 'fail_under' | awk '{print $3}')
-            git commit -m "ratchet: Auto-update full coverage threshold to ${COVERAGE}% [skip ci]"
-            if git pull --rebase origin main; then
-              git push origin HEAD:main || true
-            else
-              git rebase --abort || true
-            fi
-          fi
-
-      - name: Upload Linux junit + logs
+            --junitxml=junit-int-${{ matrix.os }}.xml \
+            --cov=proteus \
+            --cov-report=xml:coverage-int-${{ matrix.os }}.xml \
+            --cov-report= \
+            -v --tb=short
+      - name: Upload integration artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: nightly-linux-logs
+          name: tier-int-${{ matrix.os }}
           path: |
-            /tmp/junit-*.xml
-            /tmp/*-output.txt
+            .coverage.integration.${{ matrix.os }}
+            coverage-int-${{ matrix.os }}.xml
+            junit-int-${{ matrix.os }}.xml
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload coverage artifacts
+  # ============================================================
+  # Slow tier: real-solver-boot tests, sharded across logical
+  # groups for parallelism. Each shard runs on both OS by default
+  # (tier=critical). Future tier=extended entries can be Linux-
+  # only to stay under the 5-slot macOS ceiling.
+  # ============================================================
+  slow-tier:
+    name: Slow tier (${{ matrix.shard }} / ${{ matrix.os }})
+    needs: integration-tier
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---- shard: aragog (real Aragog + real outgas) ----
+          - shard: aragog
+            tier: critical
+            os: ubuntu-latest
+            files: >-
+              tests/integration/test_slow_aragog_calliope.py
+              tests/integration/test_slow_aragog_atmodeller.py
+          - shard: aragog
+            tier: critical
+            os: macos-latest
+            files: >-
+              tests/integration/test_slow_aragog_calliope.py
+              tests/integration/test_slow_aragog_atmodeller.py
+          # ---- shard: zalmoxis (real Zalmoxis structure stack) ----
+          - shard: zalmoxis
+            tier: critical
+            os: ubuntu-latest
+            files: >-
+              tests/integration/test_slow_zalmoxis_dummy.py
+              tests/integration/test_slow_zalmoxis_aragog_calliope.py
+          - shard: zalmoxis
+            tier: critical
+            os: macos-latest
+            files: >-
+              tests/integration/test_slow_zalmoxis_dummy.py
+              tests/integration/test_slow_zalmoxis_aragog_calliope.py
+          # ---- shard: janus-inference (JANUS + BO + inference) ----
+          - shard: janus-inference
+            tier: critical
+            os: ubuntu-latest
+            files: >-
+              tests/integration/test_slow_janus_aragog.py
+              tests/inference/test_bo_convergence.py
+              tests/inference/test_inference.py
+          - shard: janus-inference
+            tier: critical
+            os: macos-latest
+            files: >-
+              tests/integration/test_slow_janus_aragog.py
+              tests/inference/test_bo_convergence.py
+              tests/inference/test_inference.py
+          # ---- shard: misc (config + smoke + dummy + helpers) ----
+          - shard: misc
+            tier: critical
+            os: ubuntu-latest
+            files: >-
+              tests/config/test_config_schema_invariants.py
+              tests/integration/test_smoke_hypothesis.py
+              tests/integration/test_integration_dummy.py
+              tests/helpers/test_smoke_invariants.py
+          - shard: misc
+            tier: critical
+            os: macos-latest
+            files: >-
+              tests/config/test_config_schema_invariants.py
+              tests/integration/test_smoke_hypothesis.py
+              tests/integration/test_integration_dummy.py
+              tests/helpers/test_smoke_invariants.py
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75   # per-shard cap; each shard targets 30-65 min
+    env:
+      COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
+      USER: "ci-runner"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-proteus
+        with:
+          full-data: 'true'
+      - name: Run slow shard
+        run: |
+          pytest -m "slow and not unit and not smoke and not integration" \
+            ${{ matrix.files }} \
+            -p no:faulthandler \
+            --junitxml=junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
+            --cov=proteus \
+            --cov-report=xml:coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
+            --cov-report= \
+            --log-cli-level=INFO \
+            --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
+            -v --tb=short
+      - name: Upload slow shard artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: tier-slow-${{ matrix.shard }}-${{ matrix.os }}
+          path: |
+            .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
+            coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
+            junit-slow-${{ matrix.shard }}-${{ matrix.os }}.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ============================================================
+  # Coverage aggregate: download all .coverage and XML artifacts,
+  # union Linux-side coverage into the canonical coverage.xml,
+  # produce per-tier and per-shard summaries, upload to Codecov,
+  # and publish the nightly-coverage artifact for ci-pr-checks.
+  # Runs ``if: always()`` so partial coverage still publishes
+  # when individual shards fail.
+  # ============================================================
+  coverage-aggregate:
+    name: Coverage aggregate
+    needs: [unit-tier, integration-tier, slow-tier]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install coverage tool
+        run: pip install 'coverage[toml]>=7'
+      - name: Download all tier artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+      - name: List downloaded artifacts
+        run: find artifacts -type f | sort
+      - name: Combine Linux .coverage files
+        run: |
+          # Combine .coverage SQLite files from Linux runners into the
+          # canonical coverage.xml. macOS .coverage files are NOT
+          # combined here because their absolute paths under
+          # /Users/runner/work/... do not match the Linux runner paths
+          # under /home/runner/work/... without an extended
+          # [tool.coverage.paths] mapping. pyproject.toml's paths
+          # section currently maps both into ``src/proteus`` so combine
+          # COULD work cross-OS, but for v1 we stay Linux-only on the
+          # canonical combined report. macOS per-shard XMLs remain in
+          # the artifact bundle for visibility.
+          #
+          # Important: ``coverage combine`` reads its configuration
+          # (including [tool.coverage.paths]) from the rcfile that lives
+          # next to the invocation's cwd. We stay in the repo root so
+          # pyproject.toml is found and the paths mapping is applied;
+          # the .coverage.* files are passed by explicit path.
+          mkdir -p combine_in
+          find artifacts -name '.coverage.*ubuntu-latest' -exec cp {} combine_in/ \;
+          if [ -z "$(ls -A combine_in 2>/dev/null)" ]; then
+            echo "::warning::No Linux .coverage files to combine; emitting empty report"
+            python -c "import json; open('coverage-branch-nightly.json','w').write(json.dumps({'totals': {'percent_covered': 0, 'covered_lines': 0, 'num_statements': 0}}))"
+            cat > coverage.xml <<'EOF'
+          <?xml version="1.0" ?>
+          <coverage version="0" line-rate="0" lines-covered="0" lines-valid="0" branch-rate="0"/>
+          EOF
+            exit 0
+          fi
+          ls combine_in
+          # Run combine from the repo root so pyproject.toml is the
+          # active rcfile and the [tool.coverage.paths] mapping takes
+          # effect. Pass the .coverage files by explicit path.
+          COVERAGE_FILE=.coverage coverage combine --keep combine_in/.coverage.*
+          coverage xml -o coverage.xml
+          coverage json -o coverage-branch-nightly.json
+      - name: Per-tier / per-shard summary
+        run: |
+          UNIT_XMLS=$(find artifacts -name 'coverage-unit-*.xml' -o -name 'coverage-smoke-*.xml' | tr '\n' ' ')
+          INT_XMLS=$(find artifacts -name 'coverage-int-*.xml' | tr '\n' ' ')
+          SLOW_XMLS=$(find artifacts -name 'coverage-slow-*.xml' | tr '\n' ' ')
+          python tools/coverage_by_type.py \
+            --combined coverage.xml \
+            --unit ${UNIT_XMLS:-} \
+            --integration ${INT_XMLS:-} \
+            --slow ${SLOW_XMLS:-} \
+            --pyproject pyproject.toml \
+            --out coverage-by-type.json
+          # Legacy filenames consumed by ci-pr-checks.yml. The
+          # ``coverage-integration-only.json`` name predates the
+          # restructuring and now reflects the combined coverage
+          # (everything that ran up to and including slow tier on
+          # Linux); the name is preserved for backwards compatibility
+          # with the PR-CI flow.
+          cp coverage-by-type.json coverage-integration-only.json
+          python -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())" > nightly-timestamp.txt
+      - name: Nightly summary
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, sys
+          import xml.etree.ElementTree as ET
+
+          summary = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY", "/tmp/summary.md"))
+          failed: list[tuple[str, str, str]] = []
+          tot = 0
+          ok = 0
+          junits = sorted(pathlib.Path("artifacts").rglob("junit-*.xml"))
+          for p in junits:
+              try:
+                  root = ET.parse(p).getroot()
+              except ET.ParseError:
+                  continue
+              for ts in root.findall(".//testsuite"):
+                  total = int(ts.get("tests", 0))
+                  fails = int(ts.get("failures", 0))
+                  errs = int(ts.get("errors", 0))
+                  sks = int(ts.get("skipped", 0))
+                  tot += total
+                  ok += total - fails - errs - sks
+                  for tc in ts.findall("testcase"):
+                      f = tc.find("failure")
+                      e = tc.find("error")
+                      if f is not None or e is not None:
+                          msg = (f.get("message", "") if f is not None
+                                 else e.get("message", ""))
+                          failed.append(
+                              (p.stem, f"{tc.get('classname','')}::{tc.get('name','')}",
+                               (msg or "Unknown failure")[:180])
+                          )
+          with summary.open("w") as f:
+              f.write("# Nightly Science Validation\n\n")
+              if pathlib.Path("coverage-branch-nightly.json").exists():
+                  data = json.loads(pathlib.Path("coverage-branch-nightly.json").read_text())
+                  t = data.get("totals", {})
+                  f.write(
+                      f"## Coverage\n\n"
+                      f"- Combined: {t.get('percent_covered', 0):.2f}% "
+                      f"({t.get('covered_lines', 0)}/"
+                      f"{t.get('num_statements', 0)})\n\n"
+                  )
+              f.write(f"## Tests\n\n- Total: {tot}, Passed: {ok}, Failed: {len(failed)}\n\n")
+              if failed:
+                  f.write("### Failed tests\n\n")
+                  for src, name, reason in failed:
+                      f.write(f"- **{src}**: `{name}` -- {reason}\n")
+                  f.write("\n")
+          if failed:
+              sys.exit(1)
+          PY
+      - name: Upload to Codecov
+        if: env.CODECOV_TOKEN != ''
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.xml
+          flags: nightly
+          name: nightly-full-suite
+      - name: Upload nightly-coverage artifact
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: nightly-coverage
           path: |
             coverage.xml
-            htmlcov/
             coverage-branch-nightly.json
-            coverage-integration-only.json
             coverage-by-type.json
+            coverage-integration-only.json
             nightly-timestamp.txt
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 30
 
-  # --------------------------------------------------------------------
-  # macOS: same test surface as Linux, no coverage gating / artifact.
-  # Catches Apple Silicon / dyld / brew issues on the same cadence as
-  # Linux. Hard gate from day 1 (Decision 8).
-  # --------------------------------------------------------------------
-  nightly-macos:
-    name: Nightly Full Suite (macOS)
-    runs-on: macos-latest
-    timeout-minutes: 180
-    env:
-      PROTEUS_CI_NIGHTLY: "1"
-
+  # ============================================================
+  # Status job: enforces "any tier failure = nightly fails".
+  # Reads the conclusion of each prior job from the ``needs``
+  # context and fails if any is not ``success``. Even though the
+  # matrix already propagates per-job failures up to the matrix
+  # job's overall conclusion, this explicit status job ensures the
+  # workflow concludes failure rather than skipping over the
+  # aggregator's ``if: always()`` success.
+  # ============================================================
+  nightly-status:
+    name: Nightly status
+    needs: [unit-tier, integration-tier, slow-tier, coverage-aggregate]
+    if: always()
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up PROTEUS environment
-        uses: ./.github/actions/setup-proteus
-        with:
-          full-data: 'true'
-
-      - name: Run unit tests
-        continue-on-error: true
+      - name: Report tier conclusions
         run: |
-          pytest -m "unit and not skip and not slow and not integration" \
-            --ignore=tests/examples \
-            -p no:faulthandler \
-            --junitxml=/tmp/junit-unit.xml \
-            -v --tb=short 2>&1 | tee /tmp/unit-output-macos.txt
-
-      - name: Run smoke tests
-        continue-on-error: true
-        run: |
-          pytest -m smoke \
-            -p no:faulthandler \
-            --junitxml=/tmp/junit-smoke.xml \
-            -v --tb=short 2>&1 | tee /tmp/smoke-output-macos.txt
-
-      - name: Run integration (not slow)
-        continue-on-error: true
-        run: |
-          pytest tests/integration \
-            -m "integration and not slow" \
-            -p no:faulthandler \
-            --junitxml=/tmp/junit-integration.xml \
-            -v --tb=short 2>&1 | tee /tmp/integration-output-macos.txt || true
-
-      - name: Run slow integration tests
-        continue-on-error: true
-        # Match the Linux slow-tier cap so the two jobs share a budget;
-        # macOS arm64 typically finishes the aragog tests in 5-10 min
-        # and won't approach this ceiling.
-        timeout-minutes: 120
-        run: |
-          set -euo pipefail
-          pytest -m "slow and not unit and not smoke and not integration" \
-            tests/config/test_config_schema_invariants.py \
-            tests/integration/test_smoke_hypothesis.py \
-            tests/integration/test_integration_dummy.py \
-            tests/integration/test_slow_aragog_calliope.py \
-            tests/integration/test_slow_aragog_atmodeller.py \
-            tests/integration/test_slow_zalmoxis_dummy.py \
-            tests/integration/test_slow_zalmoxis_aragog_calliope.py \
-            tests/integration/test_slow_janus_aragog.py \
-            tests/inference/test_bo_convergence.py \
-            tests/inference/test_inference.py \
-            tests/helpers/test_smoke_invariants.py \
-            -p no:faulthandler \
-            --junit-xml=/tmp/junit-slow.xml \
-            --log-cli-level=INFO \
-            --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
-            -v --tb=short 2>&1 | tee /tmp/slow-output-macos.txt
-
-      - name: Upload macOS junit + logs
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: nightly-macos-logs
-          path: |
-            /tmp/junit-*.xml
-            /tmp/*-output-macos.txt
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Aggregate macOS results
-        if: always()
-        run: |
-          python - <<'PY'
-          import os, pathlib, sys
-          import xml.etree.ElementTree as ET
-
-          summary = pathlib.Path(os.environ.get("GITHUB_STEP_SUMMARY","/tmp/summary.md"))
-          junits = {'unit':'/tmp/junit-unit.xml','smoke':'/tmp/junit-smoke.xml',
-                    'integration':'/tmp/junit-integration.xml','slow':'/tmp/junit-slow.xml'}
-          failed = []
-          tot, ok = 0, 0
-          for cat, p in junits.items():
-              if not pathlib.Path(p).exists():
-                  continue
-              for ts in ET.parse(p).getroot().findall('testsuite'):
-                  total = int(ts.get('tests', 0))
-                  fail = int(ts.get('failures', 0))
-                  err = int(ts.get('errors', 0))
-                  sk = int(ts.get('skipped', 0))
-                  tot += total
-                  ok += total - fail - err - sk
-                  for tc in ts.findall('testcase'):
-                      f = tc.find('failure')
-                      e = tc.find('error')
-                      if f is not None or e is not None:
-                          msg = (f.get('message','') if f is not None else e.get('message',''))
-                          failed.append((cat, f"{tc.get('classname','')}::{tc.get('name','')}", msg[:180]))
-
-          with summary.open("a") as out:
-              out.write("\n# macOS Nightly Results\n\n")
-              out.write(f"Total: {tot}, Passed: {ok}, Failed: {len(failed)}\n\n")
-              if failed:
-                  out.write("## Failed tests on macOS\n\n")
-                  for cat, name, reason in failed:
-                      out.write(f"- **{cat}**: `{name}` — {reason}\n")
-                  out.write("\n")
-
-          if failed:
-              sys.exit(1)
-          PY
+          UNIT='${{ needs.unit-tier.result }}'
+          INT='${{ needs.integration-tier.result }}'
+          SLOW='${{ needs.slow-tier.result }}'
+          AGG='${{ needs.coverage-aggregate.result }}'
+          echo "unit-tier: $UNIT"
+          echo "integration-tier: $INT"
+          echo "slow-tier: $SLOW"
+          echo "coverage-aggregate: $AGG"
+          if [ "$UNIT" != "success" ] || [ "$INT" != "success" ] || \
+             [ "$SLOW" != "success" ] || [ "$AGG" != "success" ]; then
+            echo "::error::Nightly tier reported non-success; failing overall"
+            exit 1
+          fi
+          echo "All nightly tiers green"

@@ -146,6 +146,19 @@ omit = [
     "*/conftest.py",
 ]
 
+[tool.coverage.paths]
+# Path equivalence map so ``coverage combine`` can union .coverage
+# files produced on different runners (local dev, Linux GHA at
+# /home/runner/work/..., macOS GHA at /Users/runner/work/...) under
+# a single canonical source path. Without this section, line entries
+# with different absolute paths are not recognised as the same file
+# and the union would double-count or miss lines.
+source = [
+    "src/proteus",
+    "*/src/proteus",
+    "*/PROTEUS/src/proteus",
+]
+
 [tool.pytest.ini_options]
 minversion = "8.1"
 addopts = [
