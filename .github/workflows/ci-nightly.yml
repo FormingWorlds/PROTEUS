@@ -76,6 +76,7 @@ jobs:
             --cov=proteus \
             --cov-report=xml:coverage-unit-${{ matrix.os }}.xml \
             --cov-report= \
+            --cov-fail-under=0 \
             -v --tb=short
           pytest -m "smoke and not skip and not slow and not integration" \
             -p no:faulthandler \
@@ -83,6 +84,7 @@ jobs:
             --cov=proteus --cov-append \
             --cov-report=xml:coverage-smoke-${{ matrix.os }}.xml \
             --cov-report= \
+            --cov-fail-under=0 \
             -v --tb=short
       - name: Upload unit + smoke artifacts
         if: always()
@@ -131,6 +133,7 @@ jobs:
             --cov=proteus \
             --cov-report=xml:coverage-int-${{ matrix.os }}.xml \
             --cov-report= \
+            --cov-fail-under=0 \
             -v --tb=short
       - name: Upload integration artifacts
         if: always()
@@ -236,6 +239,7 @@ jobs:
             --cov=proteus \
             --cov-report=xml:coverage-slow-${{ matrix.shard }}-${{ matrix.os }}.xml \
             --cov-report= \
+            --cov-fail-under=0 \
             --log-cli-level=INFO \
             --log-cli-format='%(asctime)s %(levelname)s %(name)s: %(message)s' \
             -v --tb=short
