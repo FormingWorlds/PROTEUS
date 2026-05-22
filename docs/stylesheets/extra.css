@@ -12,3 +12,8 @@
 [data-md-color-scheme="slate"] .arch-diagram--dark {
   display: block;
 }
+
+/* Remove underline from links that contain only an image */
+.md-typeset p a:has(> img) {
+  text-decoration: none;
+}
