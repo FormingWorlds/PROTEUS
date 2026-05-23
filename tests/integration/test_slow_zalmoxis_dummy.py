@@ -60,15 +60,21 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-# Linux exercises the production Zalmoxis path end-to-end (passes in
-# ~27 min). On macOS arm64 the same test hits pytest-timeout at 3600 s
-# because the JAX + diffrax PALEOS solver path takes markedly longer
-# than on Linux x86. Until the macOS / JAX / diffrax slowness is
-# investigated and fixed at the wrapper or library level (TODO), this
-# test is restricted to Linux so the slow tier on macOS is not blocked.
+# Linux exercises the production Zalmoxis path end-to-end. On GitHub
+# Actions ubuntu-latest the run lands around 60 min because the
+# inner solver triggers multiple "Accepting timeout solution"
+# retries inside zalmoxis.solver during each outer Newton iteration;
+# the test-level cap is set to 7200 s to match the sister test
+# test_slow_zalmoxis_aragog_calliope.py and keep ~10 min headroom
+# below the slow-tier shard cap of 130 min.
+#
+# On macOS arm64 the same test path takes markedly longer (JAX +
+# diffrax PALEOS solve is far slower on Apple Silicon); the test is
+# skipif(darwin) until the macOS / JAX / diffrax slowness is
+# investigated at the wrapper or library level (TODO).
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.timeout(3600),
+    pytest.mark.timeout(7200),
     pytest.mark.skipif(
         sys.platform == 'darwin',
         reason='Zalmoxis + JAX PALEOS solve is markedly slower on macOS arm64; Linux covers production path',
