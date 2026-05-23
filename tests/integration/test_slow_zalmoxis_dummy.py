@@ -56,6 +56,7 @@ import numpy as np
 import pytest
 
 from tests.integration.conftest import (
+    minimal_zalmoxis_overrides,
     validate_mass_conservation,
     validate_stability,
 )
@@ -111,38 +112,17 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     - R_int stable across rows (no spurious refresh).
     - Cross-cutting mass + stability helpers.
     """
-    # The test needs only the IC structure solve. Two extra solve
-    # sources fire by default and must be disabled:
-    #
-    # 1. `equilibrate_initial_state` iterates CALLIOPE + Zalmoxis up
-    #    to 15 times before the main loop. With dummy outgas the
-    #    P_surf relative change never converges (P stays near zero),
-    #    so the loop runs to the iteration cap and burns the wall
-    #    time. `equilibrate_init=False` skips the loop entirely.
-    #
-    # 2. `update_structure_from_interior` runs once per main-loop
-    #    iteration when `update_interval > 0`. The composition
-    #    trigger inside it (`d_w_H2O >= 0.05`) is hardcoded and
-    #    cannot be raised from config, so the only way to keep the
-    #    main loop quiet with dummy outgas is to set
-    #    `update_interval=0`, which short-circuits the wrapper
-    #    before any trigger is evaluated.
-    #
-    # The other refresh triggers (`update_dtmagma_frac`,
-    # `update_dphi_abs`, `update_stale_ceiling`) become unreachable
-    # once `update_interval=0` returns no_update, but the test still
-    # passes the high thresholds for defence-in-depth.
+    # Restrict Zalmoxis to the single IC solve. The helper covers the
+    # equilibration-loop and per-iteration refresh paths together; see
+    # tests/integration/conftest.py:minimal_zalmoxis_overrides for the
+    # full rationale.
     runner = proteus_multi_timestep_run(
         config_path='input/dummy.toml',
         num_timesteps=2,
         max_time=1e3,
         min_time=1e2,
         interior_struct__module='zalmoxis',
-        interior_struct__zalmoxis__equilibrate_init=False,
-        interior_struct__zalmoxis__update_interval=0,
-        interior_struct__zalmoxis__update_dtmagma_frac=0.999,
-        interior_struct__zalmoxis__update_dphi_abs=0.999,
-        interior_struct__zalmoxis__update_stale_ceiling=0,
+        **minimal_zalmoxis_overrides(),
     )
 
     hf = runner.hf_all

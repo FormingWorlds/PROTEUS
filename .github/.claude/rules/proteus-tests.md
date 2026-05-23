@@ -387,6 +387,7 @@ These are real patterns that have shipped in the past. The lint script catches s
 | Optional dep imported unconditionally | `import hypothesis` at module top | Docker `--no-deps` build skips the optional install | `pytest.importorskip('hypothesis')` at module top |
 | Stale marker after refactor | File moved from `interior/` to `interior_energetics/`, kept `@pytest.mark.unit` but missing the module-level `pytestmark` | CI marker filter still passed because of per-function markers; coverage tier became invisible | Add module-level `pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]` |
 | Trivially-true on implicit None | `def fixture(): pass`; `def test_x(fixture): assert fixture is None` | Fixture returned None implicitly; test passes for the wrong reason | Delete the test |
+| Hidden Zalmoxis equilibration loop | Slow-tier test pairs `interior_struct.module='zalmoxis'` with dummy outgas and exceeds its wall-time budget by 50-100x | `equilibrate_initial_state` defaults to True; iterates CALLIOPE + Zalmoxis up to 15 times before the main loop. Dummy outgas keeps `P_surf ≈ 0`, so `dP/P` never converges and the loop runs to the cap. Plus the per-iteration `update_structure_from_interior` composition trigger fires every iteration on dummy outgas. | Use `**minimal_zalmoxis_overrides()` from `tests/integration/conftest.py` to disable both code paths together. The helper sets `equilibrate_init=False`, `update_interval=0`, and the three refresh-trigger thresholds to 0.999 / 0 for defence-in-depth. |
 
 When you spot a new variant of these, add it here.
 

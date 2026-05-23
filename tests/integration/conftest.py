@@ -176,6 +176,51 @@ def proteus_multi_timestep_run():
     return _run_proteus
 
 
+def minimal_zalmoxis_overrides() -> dict:
+    """Override block restricting Zalmoxis to the single IC structure solve.
+
+    Several slow-tier tests pair ``interior_struct.module='zalmoxis'`` with
+    dummy outgas (or any outgas backend that does not converge the init
+    equilibration loop) and want exactly one Zalmoxis call across the run.
+    Two upstream code paths fire by default and must be silenced together:
+
+    1. ``equilibrate_initial_state`` (interior_energetics/wrapper.py)
+       iterates CALLIOPE + Zalmoxis up to ``equilibrate_max_iter=15``
+       times before the main loop. With dummy outgas the convergence
+       check on ``dP/P`` never drops below ``equilibrate_tol=0.01``
+       because ``P_surf`` stays near zero, so the loop runs to the
+       iteration cap at ~10 minutes per iteration on GHA Linux x86.
+
+    2. ``update_structure_from_interior`` runs once per main-loop
+       iteration when ``update_interval > 0``. Setting
+       ``update_interval=0`` short-circuits the wrapper before any
+       refresh trigger evaluation.
+
+    The four ``update_*`` knobs become unreachable once
+    ``update_interval=0`` returns no_update, but the overrides stay
+    in the block for defence-in-depth against future code-path
+    changes. ``update_dw_comp_abs`` is the dissolved-volatile
+    composition trigger exposed in config schema commit b6a8 (post
+    PR #678); it pairs with ``update_dphi_abs`` and
+    ``update_dtmagma_frac`` as the third per-iteration refresh
+    trigger.
+
+    Returns
+    -------
+    dict
+        Keyword override block ready to splat into
+        ``proteus_multi_timestep_run(..., **minimal_zalmoxis_overrides())``.
+    """
+    return {
+        'interior_struct__zalmoxis__equilibrate_init': False,
+        'interior_struct__zalmoxis__update_interval': 0,
+        'interior_struct__zalmoxis__update_dphi_abs': 0.999,
+        'interior_struct__zalmoxis__update_dtmagma_frac': 0.999,
+        'interior_struct__zalmoxis__update_dw_comp_abs': 0.999,
+        'interior_struct__zalmoxis__update_stale_ceiling': 0,
+    }
+
+
 def validate_energy_conservation(
     hf_all: 'DataFrame',
     tolerance: float = 0.1,

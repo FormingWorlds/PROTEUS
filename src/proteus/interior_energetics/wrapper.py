@@ -1690,10 +1690,11 @@ def update_structure_from_interior(
                 w_old = dirs.get(f'_last_w_{species}_liquid', w_new)
                 if w_old > 1e-6:
                     dw = abs(w_new - w_old) / w_old
-                    if dw >= 0.05:
+                    dw_threshold = config.interior_struct.zalmoxis.update_dw_comp_abs
+                    if dw >= dw_threshold:
                         triggered = True
                         comp_changed = True
-                        reason = f'd_w_{species}={dw:.3f} >= 0.05'
+                        reason = f'd_w_{species}={dw:.3f} >= {dw_threshold}'
                         break
 
     if not triggered:
