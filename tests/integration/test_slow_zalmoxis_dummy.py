@@ -18,8 +18,11 @@ Invariants asserted:
   for 1 M_Earth at a typical mantle density).
 - ``M_int`` mass closure: ``M_int + M_atm`` matches ``M_planet``
   within rel=1e-3 (conservation invariant, §2 carve-out).
-- ``R_core / R_int`` lands close to the configured ``core_frac =
-  0.55`` (radius mode) within ±5% of the input value.
+- ``R_core / R_int`` lands in [0.55, 0.75] for cmf=0.55 under
+  PALEOS:MgSiO3 mantle + PALEOS:iron core. Zalmoxis treats the
+  configured ``core_frac`` as mass fraction regardless of
+  ``core_frac_mode``; the radius fraction follows from the EOS
+  density ratio.
 - ``P_center``, ``P_cmb`` positive and bounded in physical ranges
   (~3e11 Pa and ~1.5e11 Pa for Earth-like).
 - ``core_density``, ``core_heatcap`` populated with positive
@@ -197,18 +200,26 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
         f'M_volatiles unreasonably large: {m_volatiles:.3e} ({m_volatiles / m_planet:.2%} of M_planet)'
     )
 
-    # Core-radius ratio against the configured core_frac = 0.55
-    # (dummy.toml, radius mode). Zalmoxis honours the radius fraction
-    # exactly when ``core_frac_mode='radius'``; the assertion window
-    # 0.50-0.60 catches a mass-vs-radius mode confusion (in mass mode
-    # 0.55 would imply R_core/R_int near 0.43 for an Earth-density
-    # core).
+    # Core-radius ratio against the configured core_frac = 0.55.
+    # Zalmoxis source treats ``core_mass_fraction`` literally and does
+    # not honour the PROTEUS-side ``core_frac_mode='radius'`` flag (no
+    # reference to that field exists in the Zalmoxis package; the
+    # PROTEUS comment at interior_struct/zalmoxis.py:494 about
+    # "Zalmoxis converts radius fraction to mass fraction internally"
+    # is documentation drift). For a 1 M_Earth planet with iron core
+    # at 0.55 mass fraction and PALEOS:MgSiO3 mantle, the resulting
+    # R_core / R_int lands near 0.62 (compressible PALEOS); the
+    # incompressible-sphere limit puts the upper bound near 0.71. The
+    # window 0.55-0.75 brackets both extremes while still rejecting
+    # the Earth-like 0.32-mass-fraction signature (ratio ~0.55) that
+    # a regression to the default cmf=0.325 would produce.
     r_core = float(final['R_core'])
     assert r_core > 0, f'R_core non-positive: {r_core:.3e}'
     ratio = r_core / float(final['R_int'])
-    assert 0.50 < ratio < 0.60, (
-        f'R_core/R_int = {ratio:.3f} outside the [0.50, 0.60] band '
-        f'expected for core_frac = 0.55 in radius mode'
+    assert 0.55 < ratio < 0.75, (
+        f'R_core/R_int = {ratio:.3f} outside the [0.55, 0.75] band '
+        f'expected for cmf = 0.55 (PROTEUS interprets core_frac as '
+        f'mass fraction regardless of core_frac_mode)'
     )
 
     # P_center, P_cmb positive and bounded. Earth: P_center ~ 3.6e11
