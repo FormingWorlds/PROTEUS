@@ -42,6 +42,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_fixed_surface():
     """Test dummy atmosphere with fixed surface temperature (surf_state='fixed').
 
@@ -530,6 +531,7 @@ def test_rundummyatm_albedo_calculation():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_rundummyatm_output_keys():
     """Test that all expected output keys are present in returned dictionary.
 
@@ -632,8 +634,8 @@ def test_rundummyatm_fixed_flux_bypasses_grey_body_computation():
     # the scattered shortwave contribution.
     assert output['F_atm'] == pytest.approx(250.0, rel=1e-12)
     assert output['F_olr'] == pytest.approx(250.0, rel=1e-12)
-    assert output['F_sct'] == 0.0
-    assert output['albedo'] == 0.0
+    assert output['F_sct'] == pytest.approx(0.0, abs=1e-15)
+    assert output['albedo'] == pytest.approx(0.0, abs=1e-15)
     # Discrimination guard: a regression that fell through to the
     # grey-body branch on this config (e.g. by checking the wrong
     # attribute name) would compute F_olr via sigma * T^4 and land
@@ -650,7 +652,10 @@ def test_rundummyatm_fixed_flux_bypasses_grey_body_computation():
     assert hf_row['CO2_vmr_xuv'] == pytest.approx(0.5, rel=1e-12)
     # An untouched species defaults to zero, not the MagicMock that a
     # raw .get on the missing key would otherwise return.
-    assert hf_row['N2_vmr_xuv'] == 0.0
+    assert hf_row['N2_vmr_xuv'] == pytest.approx(0.0, abs=1e-15)
+    # Type guard: a regression that returned MagicMock here would not
+    # be a plain float.
+    assert isinstance(hf_row['N2_vmr_xuv'], float)
 
 
 @pytest.mark.unit

@@ -188,7 +188,7 @@ def test_init_atm_unknown_overlap_method_raises(mock_read, mock_atmos):
     mock_atmos.return_value = MagicMock()
 
     cfg = _build_overlap_config('rrr')
-    with pytest.raises(ValueError, match='Invalid overlap method'):
+    with pytest.raises(ValueError, match='Invalid overlap method selected for SOCRATES/JANUS!'):
         InitAtm({'output': '/tmp/run/'}, cfg)
 
 
@@ -253,9 +253,12 @@ def test_update_state_atm_warns_on_rock_vapours(caplog):
     """Rock-vapour warning fires only when ``vap_list`` species exceed
     1e-5 mixing ratio.
 
-    The threshold is the limit-input behaviour; pick 2e-5 (above) and
-    verify the warning fires. The complementary 0.0 case is covered
-    by other tests where the warning is silent.
+    The threshold is the limit-input behaviour. The test pairs two
+    cases inside one function as a threshold-discrimination guard:
+    first the above-threshold value 2e-5 must trigger exactly one
+    warning record; then 0.0 must not. Splitting the pair into two
+    tests would let a regression that fires the warning
+    unconditionally pass the above-threshold half silently.
     """
     import logging
 
