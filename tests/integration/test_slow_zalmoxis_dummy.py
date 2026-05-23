@@ -158,33 +158,44 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
             f'max rel drift = {rel_drift:.3e}'
         )
 
-    # Mass closure: M_int + (volatile mass in atmosphere) = M_planet
-    # minus the volatile mass dissolved in the mantle. Zalmoxis runs
-    # with dry_mantle=True (the production default), so the structure-
-    # derived M_int excludes dissolved volatiles; the closure deficit
-    # therefore equals the mantle volatile inventory, of order 1-2
-    # percent for the dummy.toml IC. The rel=3e-2 tolerance accepts
-    # this systematic gap while still catching a major mass-
-    # conservation regression (10 percent or more would fail).
+    # Mass closure: M_int + M_volatiles = M_planet, the production-side
+    # bookkeeping that interior_struct/zalmoxis.py:447-475 uses to feed
+    # Zalmoxis a dry-mass target (planet_mass = total_planet_mass -
+    # M_volatiles). Zalmoxis runs with dry_mantle=True by default so
+    # M_int is the dry interior; the full closure must therefore add
+    # ALL free-volatile element masses (atmospheric plus mantle
+    # dissolved plus mantle solid), not just the atmospheric ones. The
+    # element set matches utils.constants.element_list, which spans
+    # H, O, C, N, S plus the rock-vapour elements Si, Mg, Fe, Na that
+    # contribute to atmospheric vapours like SiO, SiO2, MgO, FeO2.
+    # Mantle Fe / Mg / Si bound chemically in silicates remains inside
+    # M_int via the PALEOS density tables (no double-count, per the
+    # production source comment).
+    from proteus.utils.constants import element_list
+
     final = hf.iloc[-1]
     m_int = float(final['M_int'])
     m_planet = float(final['M_planet'])
-    m_atm = 0.0
-    for elt in ('H', 'O', 'C', 'N', 'S'):
-        col = f'{elt}_kg_atm'
+    m_volatiles = 0.0
+    for elt in element_list:
+        col = f'{elt}_kg_total'
         if col in final:
-            m_atm += float(final[col])
+            m_volatiles += float(final[col])
     assert m_int > 0, f'M_int non-positive: {m_int:.3e}'
     assert m_planet > 0, f'M_planet non-positive: {m_planet:.3e}'
-    assert m_int + m_atm == pytest.approx(m_planet, rel=3e-2), (
-        f'mass closure broken: M_int + M_atm = {m_int + m_atm:.3e}, M_planet = {m_planet:.3e}'
+    assert m_int + m_volatiles == pytest.approx(m_planet, rel=1e-3), (
+        f'mass closure broken: M_int + M_volatiles = {m_int + m_volatiles:.3e}, '
+        f'M_planet = {m_planet:.3e}, M_volatiles = {m_volatiles:.3e}'
     )
-    # Sign + scale guards: the gap above stays in the 1-2 percent band
-    # for dummy.toml. A larger gap signals a deeper inconsistency
-    # (negative reservoirs, M_planet drift, or a Zalmoxis volatile-
-    # profile regression).
-    gap_rel = abs(m_planet - (m_int + m_atm)) / m_planet
-    assert gap_rel < 0.025, f'mass-closure gap too wide: {gap_rel:.3%}'
+    # Sign + scale guards on the volatile budget. Earth-scale dummy.toml
+    # produces M_volatiles of order 1 percent of M_planet (3000 ppmw H
+    # plus fO2-buffered O, plus rock-vapour Si / Mg / Fe / Na that may
+    # be tiny or zero on the IC). A zero or negative M_volatiles, or
+    # one above 10 percent, signals a bookkeeping regression.
+    assert m_volatiles > 0, f'M_volatiles non-positive: {m_volatiles:.3e}'
+    assert m_volatiles < 0.1 * m_planet, (
+        f'M_volatiles unreasonably large: {m_volatiles:.3e} ({m_volatiles / m_planet:.2%} of M_planet)'
+    )
 
     # Core-radius ratio against the configured core_frac = 0.55
     # (dummy.toml, radius mode). Zalmoxis honours the radius fraction
