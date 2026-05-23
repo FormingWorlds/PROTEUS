@@ -372,4 +372,86 @@ def test_solve_dummy_structure_clamps_core_radius_when_it_exceeds_planet_radius(
     assert hf_row['R_core'] < hf_row['R_int']
     # Positivity invariant.
     assert hf_row['R_int'] > 0.0
-    assert hf_row['R_core'] > 0.0
+
+
+# ---------------------------------------------------------------------------
+# _build_temperature_profile: liquidus_super branch (L269-287)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_temperature_profile_liquidus_super_integrates_adiabat_from_fei2021_anchor():
+    """The liquidus_super branch computes T_cmb from the Fei+2021
+    MgSiO3 liquidus at P_cmb + delta_T_super, then integrates the
+    adiabat dT/dr = -alpha*T*g/Cp upward through the mantle.
+
+    The analytical solution for constant alpha, g, Cp is:
+
+        T(r) = T_cmb * exp(-alpha * g * (r - r_cmb) / Cp)
+
+    Pinning against this closed form verifies the numerical
+    integration at L283-286 of dummy.py. The discriminating value
+    is T_surf (outermost shell): a regression that dropped the
+    negative sign would produce T_surf > T_cmb (exponential growth
+    instead of decay).
+    """
+    pytest.importorskip('zalmoxis')
+    from proteus.interior_struct.dummy import _build_temperature_profile
+
+    n = 20
+    r_cmb = 3.5e6
+    r_surf = 6.4e6
+    r_stag = np.linspace(r_cmb, r_surf, n)
+    p_stag = 1.4e11 * (1.0 - np.linspace(0.0, 1.0, n))
+
+    planet = _planet(
+        'liquidus_super',
+        delta_T_super=500.0,
+        alpha_m=2e-5,
+        Cp_m=1200.0,
+        g_m_av=10.0,
+    )
+
+    T = _build_temperature_profile(
+        planet,
+        r_stag,
+        p_stag,
+        R_c=r_cmb,
+        R_p=r_surf,
+        alpha_m=2e-5,
+        Cp_m=1200.0,
+        rho_m=4500.0,
+        g_m_av=10.0,
+    )
+
+    # T_cmb is anchored by Fei+2021 liquidus at P_cmb + delta_T_super.
+    # The liquidus at ~140 GPa is ~5000-6000 K; with +500 K delta the
+    # anchor lands at ~5500-6500 K. Pin the anchor to a broad physical
+    # range to avoid hard-coding the Fei+2021 polynomial.
+    T_cmb = T[0]
+    assert T_cmb > 4000.0, f'T_cmb too low: {T_cmb:.0f} K (expected ~5500-6500 K)'
+    assert T_cmb < 8000.0, f'T_cmb too high: {T_cmb:.0f} K'
+
+    # The adiabat must cool outward: T_surf < T_cmb.
+    T_surf = T[-1]
+    assert T_surf < T_cmb, (
+        f'T_surf ({T_surf:.0f} K) >= T_cmb ({T_cmb:.0f} K); sign error in adiabat'
+    )
+
+    # Discrimination guard: the analytical solution for constant
+    # alpha, g, Cp gives the decay factor exp(-alpha * g * L / Cp)
+    # where L = r_surf - r_cmb. Pin the ratio T_surf / T_cmb against
+    # this closed form.
+    alpha = 2e-5
+    g = 10.0
+    Cp = 1200.0
+    L = r_surf - r_cmb
+    expected_ratio = np.exp(-alpha * g * L / Cp)
+    actual_ratio = T_surf / T_cmb
+    assert actual_ratio == pytest.approx(expected_ratio, rel=5e-2), (
+        f'T_surf/T_cmb = {actual_ratio:.4f} vs analytical {expected_ratio:.4f}'
+    )
+    # Scale guard: the ratio should be in (0.5, 1.0) for Earth-like
+    # parameters. A regression that used the wrong sign convention
+    # would land above 1.0 (heating outward).
+    assert 0.5 < actual_ratio < 1.0

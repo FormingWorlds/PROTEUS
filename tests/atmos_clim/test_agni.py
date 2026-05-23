@@ -685,3 +685,41 @@ def test_summarise_diagnostics_emits_nan_when_no_level_is_convective():
     import math
 
     assert math.isnan(ratio)
+
+
+# ---------------------------------------------------------------------------
+# init_agni_atmos: spectral file + surface material validation branches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_init_agni_spectral_file_path_not_found_raises(monkeypatch, tmp_path):
+    """A user-provided spectral_file path that does not exist on disk
+    must raise FileNotFoundError with a diagnostic message, not
+    silently fall through to AGNI's internal copy path.
+
+    The adjacent-valid case (spectral_file='greygas') is covered by
+    the greygas tests above; this pins the error-contract branch for
+    a non-greygas path that points to a missing file.
+    """
+    fake_agni = _FakeAGNI()
+    fake_jl = SimpleNamespace(AGNI=fake_agni, Dict=dict, Char=str)
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+
+    config = _build_greygas_config()
+    config.atmos_clim.agni.spectral_file = '/nonexistent/path/to/spec.sf'
+
+    dirs = {'output': str(tmp_path), 'fwl': '/fake/fwl', 'agni': '/fake/agni'}
+    hf_row = {'T_surf': 1500.0, 'P_surf': 100.0}
+
+    with pytest.raises(FileNotFoundError, match='AGNI spectral file not found'):
+        init_agni_atmos(dirs, config, hf_row)
+
+    # NOTE: tests for the surf_material FileNotFoundError (L536-540) and
+    # the ini_profile ValueError (L649-651) are deferred because they
+    # require mocking deep into the Julia init path of init_agni_atmos
+    # (past Atmos_t construction, spectral file dispatch, gas dict
+    # population, and schema check). The existing greygas tests cover
+    # the Julia mocking surface; extending them for these two branches
+    # is a follow-up when the _FakeAGNI scaffold gains the missing
+    # attributes (vol_mixing, gas_names, aerosol setup).

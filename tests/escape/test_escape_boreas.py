@@ -90,3 +90,104 @@ def test_boreas_params(boreas_config):
     # check it is setup property
     assert params.FXUV == hf_row['F_xuv'] * 1e3
     assert params.albedo == 0.0
+
+
+# ---------------------------------------------------------------------------
+# RunBOREAS: unit conversions, error handling, fractionation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_boreas_unit_conversions_and_fractionation(boreas_config, monkeypatch):
+    """RunBOREAS converts BOREAS CGS outputs to SI and stores them in
+    hf_row. The conversion factors are the physics contract:
+
+    - Mdot: g/s -> kg/s (factor 1e-3)
+    - cs: cm/s -> m/s (factor 1e-2)
+    - RXUV: cm -> m (factor 1e-2)
+    - per-element flux: atoms/cm^2/s -> kg/m^2/s via atomic mass
+      then global rate via 4 pi R_xuv^2.
+
+    The test mocks the BOREAS library to return known CGS values and
+    verifies the SI outputs land at the right order of magnitude.
+    """
+    from unittest.mock import MagicMock
+
+    import boreas as boreas_lib
+
+    from proteus.escape.boreas import run_boreas
+
+    hf_row = _make_minimal_hf_row()
+
+    # Mock MassLoss + Fractionation
+    mock_ml = MagicMock()
+    mock_ml.compute_mass_loss_parameters.return_value = [
+        {'regime': 'EL', 'RXUV': 7e8, 'Mdot': 1e10, 'cs': 1e6}  # CGS
+    ]
+    mock_frac = MagicMock()
+    mock_frac.execute.return_value = [
+        {
+            'regime': 'EL',
+            'Mdot': 1e10,  # g/s
+            'cs': 1e6,  # cm/s
+            'RXUV': 7e8,  # cm
+            'phi_H_num': 1e12,  # atoms/cm^2/s
+            'phi_O_num': 5e10,
+            'phi_C_num': 0.0,
+            'phi_N_num': 0.0,
+            'phi_S_num': 0.0,
+            'x_O': 0.05,
+            'x_C': 0.0,
+            'x_N': 0.0,
+            'x_S': 0.0,
+        }
+    ]
+
+    monkeypatch.setattr(boreas_lib, 'MassLoss', lambda params: mock_ml)
+    monkeypatch.setattr(boreas_lib, 'Fractionation', lambda params: mock_frac)
+
+    # Enable fractionation so the per-element branch is exercised
+    boreas_config.escape.boreas.fractionate = True
+
+    dirs = {'output': '/tmp'}
+    run_boreas(boreas_config, hf_row, dirs)
+
+    # Bulk conversions: g/s -> kg/s, cm/s -> m/s, cm -> m
+    assert hf_row['esc_rate_total'] == pytest.approx(1e10 * 1e-3, rel=1e-12)
+    assert hf_row['cs_xuv'] == pytest.approx(1e6 * 1e-2, rel=1e-12)
+    assert hf_row['R_xuv'] == pytest.approx(7e8 * 1e-2, rel=1e-12)
+    # Discrimination guard: a regression that forgot the 1e-3 factor
+    # would land at 1e10 (not 1e7); a regression that used 1e-6 would
+    # land at 1e4. The three-order-of-magnitude gap is well above any
+    # tolerance.
+    assert hf_row['esc_rate_total'] > 1e5
+    assert hf_row['esc_rate_total'] < 1e9
+    # Per-element escape rates: H must be nonzero
+    assert hf_row['esc_rate_H'] > 0
+    # Elements with zero flux get zero rate
+    assert hf_row['esc_rate_C'] == pytest.approx(0.0, abs=1e-30)
+
+
+@pytest.mark.unit
+def test_run_boreas_raises_on_solver_failure(boreas_config, monkeypatch):
+    """When the BOREAS mass-loss solver raises internally, RunBOREAS
+    must catch the exception, update the statusfile to code 28, and
+    reraise as RuntimeError. This pins the error-propagation contract
+    at L131-134.
+    """
+    from unittest.mock import MagicMock
+
+    import boreas as boreas_lib
+
+    from proteus.escape.boreas import run_boreas
+
+    hf_row = _make_minimal_hf_row()
+
+    mock_ml = MagicMock()
+    mock_ml.compute_mass_loss_parameters.side_effect = ValueError('solver diverged')
+    monkeypatch.setattr(boreas_lib, 'MassLoss', lambda params: mock_ml)
+
+    dirs = {'output': '/tmp'}
+    with pytest.raises(RuntimeError, match='Encountered problem when running BOREAS'):
+        run_boreas(boreas_config, hf_row, dirs)
