@@ -200,8 +200,7 @@ def minimal_zalmoxis_overrides() -> dict:
     ``update_interval=0`` returns no_update, but the overrides stay
     in the block for defence-in-depth against future code-path
     changes. ``update_dw_comp_abs`` is the dissolved-volatile
-    composition trigger exposed in config schema commit b6a8 (post
-    PR #678); it pairs with ``update_dphi_abs`` and
+    composition trigger; it pairs with ``update_dphi_abs`` and
     ``update_dtmagma_frac`` as the third per-iteration refresh
     trigger.
 

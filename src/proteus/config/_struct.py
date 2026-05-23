@@ -141,9 +141,7 @@ class Zalmoxis:
     # Dissolved-volatile composition trigger: fires when the relative
     # change in H2O or H2 mass fraction in the liquid mantle exceeds
     # this threshold between consecutive iterations. Pairs with the
-    # T_magma and Phi triggers above. Default 0.05 (5 percent)
-    # matches the historical hardcoded value at
-    # interior_energetics/wrapper.py:1693.
+    # T_magma and Phi triggers above.
     update_dw_comp_abs: float = field(default=0.05, validator=(gt(0), lt(1)))
     # T1.5: stale-aware ceiling on time since the last *successful*
     # Zalmoxis re-solve (vs `update_interval` which counts since the
