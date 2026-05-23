@@ -585,3 +585,148 @@ def test_rundummyatm_output_keys():
     assert output['T_surf'] > 0.0
     assert output['R_obs'] > 0.0
     assert output['P_surf_clim'] > 0.0
+
+
+# =======================================================================================
+# SECTION: RunDummyAtm() fixed_flux bypass mode
+# =======================================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_rundummyatm_fixed_flux_bypasses_grey_body_computation():
+    """``config.atmos_clim.dummy.fixed_flux > 0`` short-circuits the
+    full grey-body chain and returns the supplied flux directly.
+
+    Physical scenario: forcing the atmosphere flux to a prescribed
+    value, useful for parameter sweeps where the radiative response
+    is held at a fixed offset. The wrapper must not call the Stefan-
+    Boltzmann path; the returned ``F_atm`` and ``F_olr`` are exactly
+    the configured flux and ``F_sct`` collapses to zero.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+    from proteus.utils.constants import gas_list
+
+    config = MagicMock()
+    config.atmos_clim.dummy.fixed_flux = 250.0  # W/m^2
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.atmos_clim.surf_state = 'fixed'  # irrelevant in this branch
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1800.0,
+        'P_surf': 1e5,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'albedo_pl': 0.3,
+    }
+    for g in gas_list:
+        hf_row[f'{g}_vmr'] = 0.0
+    hf_row['H2O_vmr'] = 0.5
+    hf_row['CO2_vmr'] = 0.5
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # The fixed-flux mode pins F_atm and F_olr to the input and zeroes
+    # the scattered shortwave contribution.
+    assert output['F_atm'] == pytest.approx(250.0, rel=1e-12)
+    assert output['F_olr'] == pytest.approx(250.0, rel=1e-12)
+    assert output['F_sct'] == 0.0
+    assert output['albedo'] == 0.0
+    # Discrimination guard: a regression that fell through to the
+    # grey-body branch on this config (e.g. by checking the wrong
+    # attribute name) would compute F_olr via sigma * T^4 and land
+    # around 5.95e5 W/m^2 for T_magma = 1800 K, three orders of
+    # magnitude above the configured 250.
+    assert output['F_olr'] < 1e3
+    # T_surf must equal the magma temperature in this branch.
+    assert output['T_surf'] == pytest.approx(1800.0, rel=1e-12)
+    # Scale-height path is still taken: R_obs > R_int.
+    assert output['R_obs'] > hf_row['R_int']
+    # The XUV mixing ratios were copied from the volatile mixing
+    # ratios. H2O and CO2 were set above; verify the pass-through.
+    assert hf_row['H2O_vmr_xuv'] == pytest.approx(0.5, rel=1e-12)
+    assert hf_row['CO2_vmr_xuv'] == pytest.approx(0.5, rel=1e-12)
+    # An untouched species defaults to zero, not the MagicMock that a
+    # raw .get on the missing key would otherwise return.
+    assert hf_row['N2_vmr_xuv'] == 0.0
+
+
+@pytest.mark.unit
+def test_rundummyatm_fixed_flux_ignored_when_value_non_positive():
+    """``fixed_flux <= 0`` (the default sentinel) must fall through to
+    the grey-body computation. Pinning fixed_flux = -1.0 confirms the
+    sentinel is treated as a flag and not as a real flux value.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.fixed_flux = -1.0  # sentinel
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.interior_energetics.module = 'aragog'  # anything other than 'boundary'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 1800.0,
+        'albedo_pl': 0.3,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # OLR must be the Stefan-Boltzmann value, not the sentinel.
+    # sigma * (T - gamma*T)**4 = sigma * (T*0.5)**4 at gamma=0.5.
+    assert output['F_olr'] > 0.0
+    assert output['F_olr'] != pytest.approx(-1.0)
+    # F_sct in the grey-body path is non-zero (zenith=0, albedo_s=0.1).
+    assert output['F_sct'] > 0.0
+
+
+@pytest.mark.unit
+def test_rundummyatm_boundary_module_keeps_existing_t_surf():
+    """When ``interior_energetics.module = 'boundary'`` and surf_state
+    is ``'fixed'``, the dummy atmosphere must read the surface
+    temperature from ``hf_row['T_surf']`` (already advanced by the
+    boundary backend) rather than from ``hf_row['T_magma']``.
+    """
+    from proteus.atmos_clim.dummy import RunDummyAtm
+
+    config = MagicMock()
+    config.atmos_clim.dummy.fixed_flux = -1.0
+    config.atmos_clim.dummy.gamma = 0.5
+    config.atmos_clim.dummy.height_factor = 1.0
+    config.orbit.zenith_angle = 0.0
+    config.orbit.s0_factor = 1.0
+    config.atmos_clim.surf_greyalbedo = 0.1
+    config.atmos_clim.surf_state = 'fixed'
+    config.interior_energetics.module = 'boundary'
+    config.planet.prevent_warming = False
+
+    hf_row = {
+        'T_magma': 2000.0,
+        'T_surf': 1450.0,  # distinct from T_magma to discriminate
+        'albedo_pl': 0.3,
+        'F_ins': 1361.0,
+        'atm_kg_per_mol': 0.029,
+        'gravity': 9.8,
+        'R_int': 6.371e6,
+        'P_surf': 1e5,
+    }
+
+    output = RunDummyAtm({}, config, hf_row)
+
+    # In the boundary branch, T_surf is honoured as-is.
+    assert output['T_surf'] == pytest.approx(1450.0, rel=1e-12)
+    # Discrimination guard: a regression that always reads T_magma
+    # would land at 2000 K, 550 K above the boundary-advanced value.
+    assert output['T_surf'] < 1800.0
