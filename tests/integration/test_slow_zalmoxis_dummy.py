@@ -60,14 +60,13 @@ from tests.integration.conftest import (
     validate_stability,
 )
 
-# Linux exercises the production Zalmoxis path end-to-end. On GitHub
-# Actions ubuntu-latest the test consistently runs past 120 min,
-# because each timestep drives the zalmoxis structure solver through
-# many inner "Accepting timeout solution" retries inside every outer
-# Newton iteration. The per-test cap is set to 10800 s (3 h) to give
-# the two-timestep run room to finish; the slow-tier shard cap was
-# raised to 200 min in lockstep. The actual solver slowness is a
-# separate TODO at the zalmoxis library level.
+# Linux exercises the production Zalmoxis path end-to-end. The IC
+# solve via `solve_structure` is the only Zalmoxis call exercised
+# in this test; the test overrides below disable the
+# `equilibrate_initial_state` loop (up to 15 more solves) and the
+# per-iteration `update_structure_from_interior` refresh. With those
+# off the test lands well inside the standard 3600 s slow-tier
+# budget on GHA ubuntu-latest.
 #
 # On macOS arm64 the same test path is markedly slower (JAX +
 # diffrax PALEOS solve runs far slower on Apple Silicon); the test
@@ -75,7 +74,7 @@ from tests.integration.conftest import (
 # investigated at the wrapper or library level (TODO).
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.timeout(10800),
+    pytest.mark.timeout(3600),
     pytest.mark.skipif(
         sys.platform == 'darwin',
         reason='Zalmoxis + JAX PALEOS solve is markedly slower on macOS arm64; Linux covers production path',
@@ -112,21 +111,35 @@ def test_zalmoxis_dummy_two_timesteps(proteus_multi_timestep_run):
     - R_int stable across rows (no spurious refresh).
     - Cross-cutting mass + stability helpers.
     """
-    # With interior_energetics=dummy the loop runs many iterations
-    # (no thermal inertia, no convergence criterion beyond stop.time),
-    # so the default Zalmoxis update triggers
-    # (``update_dtmagma_frac=0.05``, ``update_dphi_abs=0.05``,
-    # ``update_stale_ceiling=2.5e4 yr``) would fire on every iteration
-    # and call the slow PALEOS solver each time. Disable them so the
-    # IC solve is the only Zalmoxis call. The 1 Gyr ``update_interval``
-    # then sets the only refresh ceiling, which a 1e3 yr run never
-    # crosses.
+    # The test needs only the IC structure solve. Two extra solve
+    # sources fire by default and must be disabled:
+    #
+    # 1. `equilibrate_initial_state` iterates CALLIOPE + Zalmoxis up
+    #    to 15 times before the main loop. With dummy outgas the
+    #    P_surf relative change never converges (P stays near zero),
+    #    so the loop runs to the iteration cap and burns the wall
+    #    time. `equilibrate_init=False` skips the loop entirely.
+    #
+    # 2. `update_structure_from_interior` runs once per main-loop
+    #    iteration when `update_interval > 0`. The composition
+    #    trigger inside it (`d_w_H2O >= 0.05`) is hardcoded and
+    #    cannot be raised from config, so the only way to keep the
+    #    main loop quiet with dummy outgas is to set
+    #    `update_interval=0`, which short-circuits the wrapper
+    #    before any trigger is evaluated.
+    #
+    # The other refresh triggers (`update_dtmagma_frac`,
+    # `update_dphi_abs`, `update_stale_ceiling`) become unreachable
+    # once `update_interval=0` returns no_update, but the test still
+    # passes the high thresholds for defence-in-depth.
     runner = proteus_multi_timestep_run(
         config_path='input/dummy.toml',
         num_timesteps=2,
         max_time=1e3,
         min_time=1e2,
         interior_struct__module='zalmoxis',
+        interior_struct__zalmoxis__equilibrate_init=False,
+        interior_struct__zalmoxis__update_interval=0,
         interior_struct__zalmoxis__update_dtmagma_frac=0.999,
         interior_struct__zalmoxis__update_dphi_abs=0.999,
         interior_struct__zalmoxis__update_stale_ceiling=0,

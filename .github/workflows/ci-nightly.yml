@@ -228,7 +228,7 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/helpers/test_smoke_invariants.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 200   # per-shard cap; zalmoxis-dummy/ubuntu legitimately needs >2 h on GHA, others use a fraction
+    timeout-minutes: 130   # per-shard cap with headroom for the longest expected shard (zalmoxis-coupled/ubuntu ~100 min)
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
       USER: "ci-runner"
