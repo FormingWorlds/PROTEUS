@@ -42,6 +42,36 @@ runs:
   using: composite
   steps:
     # ------------------------------------------------------------------
+    # 0. Reclaim disk on Linux runners
+    # ------------------------------------------------------------------
+    # GHA ubuntu-latest images ship with ~14 GB free and most of that
+    # gets eaten by Android SDK + .NET + ghc + CodeQL + Haskell tools
+    # that PROTEUS does not use. The aragog + atmodeller + Julia +
+    # FWL_DATA + SOCRATES install chain has been observed to push the
+    # remaining headroom to ~61 MB on integration-tier runs, which
+    # then trips Errno 28 during a downstream pip install. Pruning the
+    # unused preinstalled toolchains up front buys ~25 GB. macOS is
+    # untouched (different image layout, smaller pip wheels, and no
+    # observed disk pressure on this branch).
+    - name: Free disk space on Linux
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo "Before cleanup:"
+        df -h /
+        sudo rm -rf /usr/share/dotnet \
+                    /usr/local/lib/android \
+                    /opt/ghc \
+                    /opt/hostedtoolcache/CodeQL \
+                    /opt/hostedtoolcache/go \
+                    /opt/hostedtoolcache/PyPy \
+                    /opt/hostedtoolcache/Ruby \
+                    /usr/local/share/boost \
+                    "$AGENT_TOOLSDIRECTORY/Ruby" 2>/dev/null || true
+        echo "After cleanup:"
+        df -h /
+
+    # ------------------------------------------------------------------
     # 1. System packages
     # ------------------------------------------------------------------
     - name: Install system packages
