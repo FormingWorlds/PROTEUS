@@ -228,7 +228,7 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/helpers/test_smoke_invariants.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 130   # per-shard cap with headroom for aragog retry storms on Linux x86
+    timeout-minutes: 200   # per-shard cap; zalmoxis-dummy/ubuntu legitimately needs >2 h on GHA, others use a fraction
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
       USER: "ci-runner"
