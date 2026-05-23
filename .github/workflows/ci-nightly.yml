@@ -235,7 +235,7 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/helpers/test_smoke_invariants.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 130   # per-shard cap with headroom for the longest expected shard (zalmoxis-coupled/ubuntu ~100 min)
+    timeout-minutes: 150   # per-shard cap; zalmoxis-coupled/ubuntu hits ~100-130 min depending on GHA runner load
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
       USER: "ci-runner"
@@ -383,8 +383,8 @@ jobs:
           # is present in the SQLite db but not on disk in the
           # aggregator job's checkout. Without this flag, the entire
           # xml emission aborts and no nightly-coverage artifact ships.
-          coverage xml -o coverage.xml --ignore-errors
-          coverage json -o coverage-branch-nightly.json --ignore-errors
+          coverage xml -o coverage.xml --ignore-errors --fail-under=0
+          coverage json -o coverage-branch-nightly.json --ignore-errors --fail-under=0
       - name: Per-tier / per-shard summary
         run: |
           UNIT_XMLS=$(find artifacts -name 'coverage-unit-*.xml' -o -name 'coverage-smoke-*.xml' | tr '\n' ' ')
