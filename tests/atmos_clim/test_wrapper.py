@@ -1,10 +1,10 @@
 """Unit tests for the pure-Python helpers in ``proteus.atmos_clim.wrapper``.
 
-Covers ``update_wtg_surf`` (weak-temperature-gradient surface parameter)
-and ``update_bolometry`` (transit + eclipse depth closed-form
-relations). Heavy dispatch helpers like ``run_atmosphere`` and
-``ShallowMixedOceanLayer`` are exercised by integration tests in
-nightly tier.
+Covers ``update_wtg_surf`` (weak-temperature-gradient surface parameter),
+``update_bolometry`` (transit + eclipse depth closed-form relations),
+and ``ShallowMixedOceanLayer`` (thin-ocean thermal evolution via
+scipy.solve_ivp). The heavy ``run_atmosphere`` dispatch is exercised
+by integration tests in nightly tier.
 
 Testing standards:
   - docs/How-to/test_infrastructure.md
@@ -179,3 +179,70 @@ def test_update_bolometry_eclipse_depth_scales_with_flux_excess():
     # flip on F_sct or F_olr).
     assert hf_base['eclipse_depth'] > 0
     assert hf_hot['eclipse_depth'] > hf_base['eclipse_depth']
+
+
+# ---------------------------------------------------------------------------
+# ShallowMixedOceanLayer: thin-ocean thermal evolution
+# ---------------------------------------------------------------------------
+
+
+def test_shallow_mixed_ocean_layer_cools_under_positive_net_flux():
+    """A positive ``F_net`` (upward) draws heat out of the ocean layer.
+
+    The function solves dT/dt = -F_net / mu where mu = c_p * rho * d =
+    1000 * 3000 * 1000 = 3e9 J K-1 m-2. With F_net = 100 W m-2 over
+    1 year (3.154e7 s) the analytical drop is 100 * 3.154e7 / 3e9 =
+    1.0513 K. The implementation feeds this ODE to scipy.solve_ivp;
+    the discretisation has its own truncation error but the answer
+    must sit close to the closed-form value.
+    """
+    hf_pre = {'Time': 0.0, 'T_surf': 300.0}
+    hf_cur = {'Time': 1.0, 'F_net': 100.0}
+
+    T_cur = atmos_wrapper.ShallowMixedOceanLayer(hf_cur, hf_pre)
+
+    expected_drop = 100.0 * 3.154e7 / 3e9
+    assert T_cur == pytest.approx(300.0 - expected_drop, rel=5e-2)
+    # Sign guard: positive F_net cools the layer; T_cur < T_pre.
+    assert T_cur < 300.0
+    # Scale guard: the drop is roughly 1 K, not 0.001 K (forgotten
+    # year-to-second conversion) and not 1000 K (missing mu).
+    drop = 300.0 - T_cur
+    assert 0.5 < drop < 5.0
+
+
+def test_shallow_mixed_ocean_layer_warms_under_negative_net_flux():
+    """Negative ``F_net`` (downward heating) raises the layer's
+    temperature. The sign behaviour pins that F_net is treated as an
+    outgoing flux convention; a regression that flipped the sign of
+    the RHS would cool the layer here instead of warming it.
+    """
+    hf_pre = {'Time': 0.0, 'T_surf': 250.0}
+    hf_cur = {'Time': 1.0, 'F_net': -50.0}
+
+    T_cur = atmos_wrapper.ShallowMixedOceanLayer(hf_cur, hf_pre)
+
+    expected_rise = 50.0 * 3.154e7 / 3e9
+    assert T_cur == pytest.approx(250.0 + expected_rise, rel=5e-2)
+    # Sign guard: negative F_net warms the layer; T_cur > T_pre.
+    assert T_cur > 250.0
+    # Scale guard: same magnitude as the cooling test by symmetry.
+    rise = T_cur - 250.0
+    assert 0.1 < rise < 2.0
+
+
+def test_shallow_mixed_ocean_layer_zero_flux_keeps_temperature_constant():
+    """F_net = 0 is the conservative-isolated-layer limit: dT/dt = 0,
+    so T_cur must equal T_pre to machine precision. This pins the
+    structural correctness of the ODE setup independent of mu.
+    """
+    hf_pre = {'Time': 0.0, 'T_surf': 1500.0}
+    hf_cur = {'Time': 1.0, 'F_net': 0.0}
+
+    T_cur = atmos_wrapper.ShallowMixedOceanLayer(hf_cur, hf_pre)
+
+    assert T_cur == pytest.approx(1500.0, abs=1e-6)
+    # Sign guard: with zero forcing the temperature must not drift in
+    # either direction. A regression that introduced a constant offset
+    # would surface here.
+    assert abs(T_cur - 1500.0) < 1e-3
