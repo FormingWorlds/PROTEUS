@@ -325,6 +325,7 @@ jobs:
           python <<'PY'
           import pathlib
           import sqlite3
+          import sys
           kept = []
           dropped = []
           for path in sorted(pathlib.Path("combine_in").glob(".coverage.*")):
@@ -342,6 +343,18 @@ jobs:
               print(f"  kept: {path}")
           for path, reason in dropped:
               print(f"::warning::Dropped corrupt coverage SQLite {path}: {reason}")
+          # When every collected SQLite is corrupt the underlying shards
+          # uploaded artefacts but the data is unusable. The "no files
+          # found at all" case below still falls through to the empty
+          # report; this branch trips only when there is a real signal
+          # to investigate.
+          if not kept and dropped:
+              print(
+                  "::error::All Linux .coverage SQLite files were "
+                  "rejected as corrupt; nightly coverage cannot be "
+                  "computed."
+              )
+              sys.exit(1)
           PY
           if [ -z "$(ls -A combine_in 2>/dev/null)" ]; then
             echo "::warning::No Linux .coverage files to combine; emitting empty report"
