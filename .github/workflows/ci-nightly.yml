@@ -175,18 +175,25 @@ jobs:
             files: >-
               tests/integration/test_slow_aragog_calliope.py
               tests/integration/test_slow_aragog_atmodeller.py
-          # ---- shard: zalmoxis (real Zalmoxis structure stack) ----
-          - shard: zalmoxis
-            tier: critical
+          # ---- shard: zalmoxis-dummy (real Zalmoxis + dummy
+          # everything else; Linux-only because the test is
+          # skipif(darwin) on macOS) ----
+          - shard: zalmoxis-dummy
+            tier: extended
             os: ubuntu-latest
             files: >-
               tests/integration/test_slow_zalmoxis_dummy.py
+          # ---- shard: zalmoxis-coupled (real Zalmoxis + real
+          # Aragog + real CALLIOPE) ----
+          - shard: zalmoxis-coupled
+            tier: critical
+            os: ubuntu-latest
+            files: >-
               tests/integration/test_slow_zalmoxis_aragog_calliope.py
-          - shard: zalmoxis
+          - shard: zalmoxis-coupled
             tier: critical
             os: macos-latest
             files: >-
-              tests/integration/test_slow_zalmoxis_dummy.py
               tests/integration/test_slow_zalmoxis_aragog_calliope.py
           # ---- shard: janus-inference (JANUS + BO + inference) ----
           - shard: janus-inference
@@ -221,7 +228,7 @@ jobs:
               tests/integration/test_integration_dummy.py
               tests/helpers/test_smoke_invariants.py
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 130   # per-shard cap; raised from 75 to accommodate heavy zalmoxis_aragog_calliope shard which can take ~80 min Linux + aragog retry storms
+    timeout-minutes: 130   # per-shard cap with headroom for aragog retry storms on Linux x86
     env:
       COVERAGE_FILE: .coverage.slow.${{ matrix.shard }}.${{ matrix.os }}
       USER: "ci-runner"
@@ -306,7 +313,36 @@ jobs:
           # pyproject.toml is found and the paths mapping is applied;
           # the .coverage.* files are passed by explicit path.
           mkdir -p combine_in
-          find artifacts -name '.coverage.*ubuntu-latest' -exec cp {} combine_in/ \;
+          # Copy only non-empty .coverage files. A cancelled shard
+          # uploads an artifact via ``if: always()`` but the SQLite
+          # may be zero bytes or partially written.
+          find artifacts -name '.coverage.*ubuntu-latest' -size +0 -exec cp {} combine_in/ \;
+          # Drop SQLite files that fail to open or are missing the
+          # coverage.py ``meta`` table. ``coverage combine`` aborts the
+          # whole job on the first malformed file, so a single
+          # cancelled shard would lose the entire nightly coverage
+          # number. Filtering one level up keeps the surviving shards.
+          python <<'PY'
+          import pathlib
+          import sqlite3
+          kept = []
+          dropped = []
+          for path in sorted(pathlib.Path("combine_in").glob(".coverage.*")):
+              try:
+                  con = sqlite3.connect(path)
+                  con.execute("SELECT count(*) FROM meta").fetchone()
+                  con.close()
+              except (sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
+                  dropped.append((str(path), str(exc)))
+                  path.unlink(missing_ok=True)
+                  continue
+              kept.append(str(path))
+          print(f"Coverage SQLite files kept: {len(kept)}, dropped: {len(dropped)}")
+          for path in kept:
+              print(f"  kept: {path}")
+          for path, reason in dropped:
+              print(f"::warning::Dropped corrupt coverage SQLite {path}: {reason}")
+          PY
           if [ -z "$(ls -A combine_in 2>/dev/null)" ]; then
             echo "::warning::No Linux .coverage files to combine; emitting empty report"
             python -c "import json; open('coverage-branch-nightly.json','w').write(json.dumps({'totals': {'percent_covered': 0, 'covered_lines': 0, 'num_statements': 0}}))"
