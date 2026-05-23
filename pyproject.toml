@@ -200,7 +200,7 @@ markers = [
 # Auto-ratcheted by tools/update_coverage_threshold.py; never manually decrease.
 # See docs/How-to/test_categorization.md and .github/.claude/rules/proteus-tests.md
 # section 15 for the contract.
-fail_under = 59
+fail_under = 90
 show_missing = true
 precision = 2
 exclude_lines = [
@@ -280,7 +280,7 @@ sha256 = ""
 # responsibility (PR unit/smoke union with the nightly artifact, see
 # [tool.coverage.report]).
 # Auto-ratcheted by tools/update_coverage_threshold.py; never manually decrease.
-fail_under = 44.45
+fail_under = 90
 
 [tool.ruff]
 line-length = 96

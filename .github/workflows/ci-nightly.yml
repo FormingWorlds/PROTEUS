@@ -195,6 +195,13 @@ jobs:
             os: macos-latest
             files: >-
               tests/integration/test_slow_zalmoxis_aragog_calliope.py
+          # ---- shard: agni (real AGNI grey-gas + real Aragog;
+          # Linux-only because macOS arm64 path is not yet validated) ----
+          - shard: agni
+            tier: extended
+            os: ubuntu-latest
+            files: >-
+              tests/integration/test_slow_agni_aragog.py
           # ---- shard: janus-inference (JANUS + BO + inference) ----
           - shard: janus-inference
             tier: critical
