@@ -615,9 +615,7 @@ def test_atmodeller_returns_early_when_t_magma_below_floor(caplog):
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
     # The model is constructed for species-network setup before the
     # T_floor check, but model.solve must NOT have been called.
-    assert fake_model.solve.call_count == 0, (
-        'solve() must not run when T_magma < T_floor'
-    )
+    assert fake_model.solve.call_count == 0, 'solve() must not run when T_magma < T_floor'
     # P_surf should NOT have been added under the early-return path.
     assert 'P_surf' not in hf_row, 'P_surf must not appear when T_magma < T_floor'
     # Snapshot guard: hf_row stays untouched by this branch.
