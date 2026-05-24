@@ -18,7 +18,6 @@
   <a href="https://app.codecov.io/gh/FormingWorlds/PROTEUS/tree/main">
     <img src="https://codecov.io/gh/FormingWorlds/PROTEUS/branch/main/graph/badge.svg">
   </a>
-  <a href="https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2024JE008576"><img src="https://img.shields.io/badge/DOI-10.1029%2F2024JE008576-blue"></a>
   <br/>
   <a href="https://opensource.org/licenses/Apache-2.0">
     <img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg">
