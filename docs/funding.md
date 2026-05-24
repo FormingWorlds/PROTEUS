@@ -60,7 +60,7 @@
   <a href="https://www.ast.cam.ac.uk/" target="_blank">
     <img src="assets/logos/Cambridge.png"
          alt="University of Cambridge logo"
-         style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
+         style="max-width: 220px; max-height: 120px; width: auto; height: auto; background: white; padding: 8px; border-radius: 4px;">
   </a>
 
 </div>
