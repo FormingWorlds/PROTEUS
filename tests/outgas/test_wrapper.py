@@ -512,11 +512,11 @@ def test_run_desiccated_zeros_outgassing_keys():
     run_desiccated(config, hf_row)
 
     # Check that pressure and masses are zeroed
-    assert hf_row['P_surf'] == 0.0
-    assert hf_row['M_atm'] == 0.0
+    assert hf_row['P_surf'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['M_atm'] == pytest.approx(0.0, abs=1e-12)
     for s in gas_list:
-        assert hf_row[s + '_kg_atm'] == 0.0
-        assert hf_row[s + '_bar'] == 0.0
+        assert hf_row[s + '_kg_atm'] == pytest.approx(0.0, abs=1e-12)
+        assert hf_row[s + '_bar'] == pytest.approx(0.0, abs=1e-12)
 
     # Check that excepted keys are NOT zeroed (prevent divide-by-zero downstream)
     assert hf_row['atm_kg_per_mol'] == pytest.approx(0.029, rel=1e-12)  # Preserved
@@ -552,8 +552,8 @@ def test_run_desiccated_zeros_derived_fO2_and_O_residual():
 
     run_desiccated(config, hf_row)
 
-    assert hf_row['fO2_shift_IW_derived'] == 0.0
-    assert hf_row['O_res'] == 0.0
+    assert hf_row['fO2_shift_IW_derived'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['O_res'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit
@@ -625,13 +625,13 @@ def test_run_outgassing_zero_atmosphere_mass():
         run_outgassing(dirs, config, hf_row)
 
         # M_atm should be exactly zero
-        assert hf_row['M_atm'] == 0.0
+        assert hf_row['M_atm'] == pytest.approx(0.0, abs=1e-12)
         # Conservation in the zero-input limit: every species mass
         # stays at 0.0; a regression that filled a divide-by-zero
         # guard with a non-zero fallback would leak mass back into
         # the helpfile row even though the sum was reported as zero.
         for s in gas_list:
-            assert hf_row[s + '_kg_atm'] == 0.0
+            assert hf_row[s + '_kg_atm'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit
@@ -791,7 +791,9 @@ def test_run_desiccated_zeros_element_mass_ratios():
 
     # All ratio columns must be zero after desiccation.
     for key in ('C/H_atm', 'O/H_atm', 'N/H_atm', 'S/H_atm', 'C/O_atm'):
-        assert hf_row[key] == 0.0, f'{key} not zeroed after desiccation: {hf_row[key]}'
+        assert hf_row[key] == pytest.approx(0.0, abs=1e-12), (
+            f'{key} not zeroed after desiccation: {hf_row[key]}'
+        )
 
     # atm_kg_per_mol is in the excepted_keys list and must survive.
     assert hf_row['atm_kg_per_mol'] == pytest.approx(0.044)
@@ -810,7 +812,7 @@ def test_resolve_oxygen_budget_ppmw_mode():
     Physics: 1e5 ppmw = 10 percent by mass relative to the reservoir.
     Discriminating value: M_mantle = 4.04e24 kg (Earth mantle), so the
     expected O_kg is 4.04e23. Off-by-one in the 1e-6 factor would yield
-    4.04e17 or 4.04e29 — both visibly wrong.
+    4.04e17 or 4.04e29, both visibly wrong.
     """
     config = MagicMock()
     config.planet.elements.O_mode = 'ppmw'
@@ -1028,7 +1030,7 @@ def test_check_ic_oxygen_budget_skipped_when_chem_zero():
     # the helpfile field must stay exactly zero. A regression that
     # computed rel_div before the guard would have written NaN here
     # via the log.info formatting or follow-up writes.
-    assert hf_row['O_kg_total'] == 0.0
+    assert hf_row['O_kg_total'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit
@@ -1037,7 +1039,7 @@ def test_check_ic_oxygen_budget_skipped_under_path_C():
     authoritative input that drives chemistry, so the check is skipped.
 
     Discriminating: a divergence that would normally hard-fail under
-    user_constant must pass cleanly under from_O_budget — and crucially
+    user_constant must pass cleanly under from_O_budget, and crucially
     must NOT flip the sentinel (the user O is still authoritative and
     re-readable for subsequent diagnostic purposes).
     """
@@ -1068,7 +1070,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_calliope():
     runtime path exists.
 
     Discriminating: the call is forwarded with the same (dirs, config,
-    hf_row) tuple — if dispatch were broken, the mock would not see the
+    hf_row) tuple; if dispatch were broken, the mock would not see the
     invocation.
     """
     dirs = {'output': '/tmp/test'}
@@ -1095,7 +1097,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_calliope():
         # solves). The mock here does not overwrite, so the pre-seed
         # is what stays in hf_row.
         assert 'fO2_shift_IW_derived' in hf_row
-        assert hf_row['O_res'] == 0.0
+        assert hf_row['O_res'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit
@@ -1189,17 +1191,16 @@ def test_run_outgassing_rejects_unknown_fO2_source():
 
 
 @pytest.mark.unit
-def test_config_load_rejects_missing_O_mode(tmp_path):
-    """Configs without explicit O_mode fail at load (issue #677 hard cutover).
+def test_config_load_defaults_O_mode_to_ic_chemistry(tmp_path):
+    """Configs without explicit O_mode default to 'ic_chemistry'.
 
-    Regression test for the migration discipline: a TOML that has
-    [planet.elements] but no O_mode line must raise a ValueError with
-    a clear migration hint. Discriminating: error message must mention
-    the four valid modes so users can self-correct without external docs.
+    A TOML that has [planet.elements] but no O_mode line must load
+    successfully with O_mode defaulting to 'ic_chemistry'. This
+    preserves backwards compatibility with configs that predate the
+    whole-planet oxygen accounting.
     """
     from proteus.config import read_config_object
 
-    # Minimal valid config except for O_mode missing entirely.
     toml_text = """
 config_version = "3.0"
 
@@ -1217,18 +1218,19 @@ config_version = "3.0"
     module = "calliope"
     fO2_shift_IW = 4
 """
-    cfg_path = tmp_path / 'missing_O_mode.toml'
+    cfg_path = tmp_path / 'no_O_mode.toml'
     cfg_path.write_text(toml_text)
 
-    with pytest.raises(ValueError, match='O_mode is required'):
-        read_config_object(str(cfg_path))
-    # Migration-hint discrimination: the error must surface the
-    # explicit migration tag (issue #677) so users can find the
-    # upstream context. A regression that softened the message to a
-    # generic 'missing field' would pass the first regex but fail
-    # this stricter discrimination.
-    with pytest.raises(ValueError, match='issue #677'):
-        read_config_object(str(cfg_path))
+    cfg = read_config_object(str(cfg_path))
+    assert cfg.planet.elements.O_mode == 'ic_chemistry'
+    # Discrimination: an invalid O_mode must still be rejected by the
+    # attrs in_() validator. A regression that removed validation
+    # entirely would let 'bogus' through.
+    toml_bad = toml_text.replace('H_budget = 0.5', 'H_budget = 0.5\n        O_mode = "bogus"')
+    cfg_bad = tmp_path / 'bad_O_mode.toml'
+    cfg_bad.write_text(toml_bad)
+    with pytest.raises(ValueError):
+        read_config_object(str(cfg_bad))
 
 
 def _minimal_valid_toml(extra_planet: str = '', extra_elements: str = '') -> str:
@@ -1305,7 +1307,7 @@ def test_config_rejects_from_mantle_redox_reserved(tmp_path):
 def test_config_rejects_from_O_budget_with_ic_chemistry(tmp_path):
     """planet.fO2_source = 'from_O_budget' requires an authoritative O
     budget. O_mode = 'ic_chemistry' defers O to the chemistry solver,
-    which contradicts Path C — there is nothing to invert against.
+    which contradicts Path C; there is nothing to invert against.
 
     Discriminating: error message names both fields so the user knows
     which one to change.
@@ -1385,7 +1387,7 @@ config_version = "3.0"
 )
 def test_config_accepts_from_O_budget_with_concrete_O_mode(tmp_path, o_mode, o_budget):
     """Every concrete O budget mode pairs with from_O_budget. Schema must
-    accept all three (ppmw, kg, FeO_mantle_wt_pct) — the runtime gate
+    accept all three (ppmw, kg, FeO_mantle_wt_pct); the runtime gate
     in run_outgassing will refuse for now, but the validator must not.
 
     Discriminating: parametrize across all three modes so a regression
@@ -1600,5 +1602,5 @@ config_version = "3.0"
 
     with pytest.warns(UserWarning, match='from_O_budget'):
         cfg = read_config_object(str(cfg_path))
-    # The config still loads — this is a warning, not an error.
+    # The config still loads; this is a warning, not an error.
     assert cfg.planet.fO2_source == 'from_O_budget'

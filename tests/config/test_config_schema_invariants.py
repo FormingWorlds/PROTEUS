@@ -403,17 +403,15 @@ def test_planet_mass_valid_accepts_in_range(mass):
 
 
 @pytest.mark.unit
-def test_planet_mass_valid_rejects_unset():
-    """planet.mass_tot = None raises with the 'must be set' message."""
-    instance = _make_config_instance(**{'planet.mass_tot': None})
-    with pytest.raises(ValueError, match=r'mass_tot.*must be set') as excinfo:
+def test_planet_mass_valid_rejects_non_positive_zero():
+    """planet.mass_tot = 0 raises with the '> 0' message."""
+    instance = _make_config_instance(**{'planet.mass_tot': 0.0})
+    with pytest.raises(ValueError, match=r'must be > 0'):
         planet_mass_valid(instance, None, None)
-    # Discrimination: the unset branch fires before the '> 0' and '< 20' range
-    # branches; the message must NOT mention the numeric bounds. A regression
-    # that reordered the branches and reached the '> 0' check first would land
-    # on a different message.
-    msg = str(excinfo.value)
-    assert '> 0' not in msg and '< 20' not in msg
+    # Discrimination: a valid mass (1.0) must pass silently. A regression
+    # that always raised would fail this call.
+    instance_ok = _make_config_instance(**{'planet.mass_tot': 1.0})
+    assert planet_mass_valid(instance_ok, None, None) is None
 
 
 @pytest.mark.unit
@@ -451,21 +449,22 @@ def test_planet_mass_valid_rejects_above_upper(big_mass):
 # planet_oxygen_mode_explicit: issue #677 hard cutover
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
-def test_planet_oxygen_mode_explicit_rejects_required_sentinel():
-    """The 'REQUIRED' sentinel default means the user did not set O_mode;
-    validator must reject it with a migration hint listing the four valid
-    modes (issue #677 hard cutover).
+def test_planet_oxygen_mode_defaults_to_ic_chemistry():
+    """O_mode defaults to 'ic_chemistry' when not set in config.
+
+    Validates that omitting O_mode from a config file no longer raises
+    an error (it used to require explicit setting). The default must be
+    'ic_chemistry' for backwards compatibility.
     """
-    instance = _make_config_instance(**{'planet.elements': SimpleNamespace(O_mode='REQUIRED')})
-    with pytest.raises(ValueError, match=r'O_mode is required') as excinfo:
-        planet_oxygen_mode_explicit(instance, None, None)
-    # Discrimination: the migration hint must enumerate ALL four documented
-    # modes so users can fix the config without grep'ing source. A regression
-    # that shortened the hint to "set O_mode" without listing the modes would
-    # fail this check.
-    msg = str(excinfo.value)
-    assert 'ic_chemistry' in msg and 'ppmw' in msg
-    assert 'kg' in msg and 'FeO_mantle_wt_pct' in msg
+    instance = _make_config_instance(
+        **{'planet.elements': SimpleNamespace(O_mode='ic_chemistry')}
+    )
+    # Must not raise
+    assert planet_oxygen_mode_explicit(instance, None, None) is None
+    # Discrimination: other valid modes must also pass. A regression that
+    # hardcoded acceptance of only 'ic_chemistry' would fail on 'ppmw'.
+    instance_ppmw = _make_config_instance(**{'planet.elements': SimpleNamespace(O_mode='ppmw')})
+    assert planet_oxygen_mode_explicit(instance_ppmw, None, None) is None
 
 
 @pytest.mark.unit

@@ -83,14 +83,9 @@ class Elements:
     S_mode: str = field(default='S/H', validator=in_(('S/H', 'ppmw', 'kg')))
     S_budget: float = field(default=0.0, validator=ge(0))
 
-    # Default 'REQUIRED' is a sentinel that the Config-level validator
-    # planet_oxygen_mode_explicit (in _config.py) rejects with a migration
-    # hint. The hard-cutover policy (issue #677) means a user must set
-    # O_mode in every config; the default exists only so attrs can
-    # construct an Elements instance during validation.
     O_mode: str = field(
-        default='REQUIRED',
-        validator=in_(('REQUIRED', 'ppmw', 'kg', 'FeO_mantle_wt_pct', 'ic_chemistry')),
+        default='ic_chemistry',
+        validator=in_(('ppmw', 'kg', 'FeO_mantle_wt_pct', 'ic_chemistry')),
     )
     O_budget: float = field(default=0.0, validator=ge(0))
 
@@ -244,10 +239,7 @@ class Planet:
         Enforced in all atmosphere modules and termination checks.
     """
 
-    mass_tot = field(
-        default='none',
-        converter=none_if_none,
-    )
+    mass_tot: float = field(default=1.0, validator=gt(0))
 
     # Initial temperature profile. Default 'adiabatic_from_cmb' anchors
     # the adiabat at T = tcmb_init at the core-mantle boundary and

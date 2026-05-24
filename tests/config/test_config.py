@@ -1636,12 +1636,12 @@ def test_planet_mass_valid_accepts_positive():
 
 
 @pytest.mark.unit
-def test_planet_mass_valid_rejects_none():
-    """Test planet_mass_valid validator rejects None."""
+def test_planet_mass_valid_rejects_zero():
+    """Test planet_mass_valid validator rejects zero mass."""
     from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=None))
-    with pytest.raises(ValueError, match='must be set'):
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=0.0))
+    with pytest.raises(ValueError, match='must be > 0'):
         planet_mass_valid(instance, SimpleNamespace(), None)
 
     # Discrimination: providing a valid positive mass (1 M_earth) must take
@@ -1696,21 +1696,19 @@ def test_struct_zalmoxis_module_skip():
 
 
 @pytest.mark.unit
-def test_planet_mass_required_for_zalmoxis():
-    """Test planet_mass_valid rejects None mass (required for Zalmoxis)."""
+def test_planet_mass_valid_rejects_above_upper():
+    """Test planet_mass_valid rejects mass above 20 M_earth."""
     from proteus.config._config import planet_mass_valid
 
-    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=None))
-    with pytest.raises(ValueError, match='must be set'):
+    instance = SimpleNamespace(planet=SimpleNamespace(mass_tot=25.0))
+    with pytest.raises(ValueError, match='< 20'):
         planet_mass_valid(instance, SimpleNamespace(), None)
 
-    # Discrimination: the literal string 'none' must also be rejected via the
-    # none_if_none converter the validator applies before its checks. A
-    # regression that compared the raw value against ``None`` without the
-    # converter would let the string slip through.
-    instance.planet.mass_tot = 'none'
-    with pytest.raises(ValueError, match='must be set'):
-        planet_mass_valid(instance, SimpleNamespace(), None)
+    # Discrimination: exactly 20 M_earth must be accepted (the check is
+    # mass_tot > 20, not >=). A regression that used >= would reject
+    # boundary values unnecessarily.
+    instance.planet.mass_tot = 20.0
+    assert planet_mass_valid(instance, SimpleNamespace(), None) is None
 
 
 @pytest.mark.unit

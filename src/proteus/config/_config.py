@@ -155,13 +155,8 @@ def janus_escape_atmosphere(instance, attribute, value):
 
 
 def planet_mass_valid(instance, attribute, value):
-    """Validate that mass_tot is set and within range."""
-    from ._converters import none_if_none
-
-    mass_tot = none_if_none(instance.planet.mass_tot)
-
-    if mass_tot is None:
-        raise ValueError('`planet.mass_tot` must be set')
+    """Validate that mass_tot is within range."""
+    mass_tot = instance.planet.mass_tot
     if mass_tot <= 0:
         raise ValueError('The total planet mass must be > 0')
     if mass_tot > 20:
@@ -169,34 +164,16 @@ def planet_mass_valid(instance, attribute, value):
 
 
 def planet_oxygen_mode_explicit(instance, attribute, value):
-    """Require explicit O_mode in planet.elements (issue #677 hard cutover).
+    """Validate O_mode in planet.elements.
 
-    Whole-planet oxygen accounting (issue #677) requires every config to
-    declare how the IC O budget is interpreted. The 'REQUIRED' sentinel
-    default in Elements.O_mode means the user did not set it in the TOML;
-    we reject that with a migration hint listing the four valid modes.
-
-    Configs that pre-date the issue #677 fix can be migrated in one step
-    by adding to their `[planet.elements]` block:
-
-        O_mode   = "ic_chemistry"  # use CALLIOPE IC equilibrium
-        O_budget = 0.0             # ignored under ic_chemistry
-
-    This preserves the legacy "buffered fO2 + CALLIOPE-derived O" behaviour.
-    Petrologists who prefer to specify the inventory directly can use
-    O_mode = "ppmw" / "kg" / "FeO_mantle_wt_pct" instead.
+    Whole-planet oxygen accounting requires every config to declare how
+    the IC O budget is interpreted. Valid modes: 'ic_chemistry' (default,
+    defer to CALLIOPE equilibrium), 'ppmw', 'kg', 'FeO_mantle_wt_pct'.
     """
-    if instance.planet.elements.O_mode == 'REQUIRED':
-        raise ValueError(
-            'planet.elements.O_mode is required (issue #677 hard cutover). '
-            'Add to [planet.elements] one of: '
-            'O_mode = "ic_chemistry" (defer to CALLIOPE equilibrium at IC, '
-            'legacy-compatible), '
-            'O_mode = "ppmw" with O_budget in ppmw of M_mantle (or M_int '
-            'depending on planet.volatile_reservoir), '
-            'O_mode = "kg" with O_budget in kg, or '
-            'O_mode = "FeO_mantle_wt_pct" with O_budget in mantle FeO wt%.'
-        )
+    # O_mode is now validated by the attrs in_() validator on the field
+    # itself. This function remains as a hook for cross-field checks
+    # (e.g. fO2_source compatibility) that reference O_mode.
+    pass
 
 
 def planet_fO2_source_compat(instance, attribute, value):
