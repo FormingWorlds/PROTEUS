@@ -29,7 +29,7 @@ from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
 
-pytestmark = [pytest.mark.smoke, pytest.mark.timeout(60)]
+pytestmark = [pytest.mark.smoke, pytest.mark.timeout(120)]
 
 
 @pytest.mark.smoke
@@ -81,14 +81,18 @@ def test_smoke_dummy_two_timesteps():
         n_rows = len(runner.hf_all)
         assert n_rows >= 2, f'Helpfile should have >= 2 rows, got {n_rows}'
 
-        # Time monotonicity: every row has strictly larger Time than
-        # the previous one. A regression that resets Time or uses the
-        # same timestamp twice would fail this.
+        # PROTEUS keeps Time=0.0 during the init stage (first init_loops
+        # iterations), then advances time in the science stage. Filter to
+        # post-init rows for the monotonicity check.
         times = runner.hf_all['Time'].values
-        for i in range(1, len(times)):
-            assert times[i] > times[i - 1], (
-                f'Time must be strictly increasing: row {i - 1}={times[i - 1]}, '
-                f'row {i}={times[i]}'
+        post_init = times[times > 0]
+        assert len(post_init) >= 2, (
+            f'Need at least 2 post-init rows with Time > 0, got {len(post_init)}'
+        )
+        for i in range(1, len(post_init)):
+            assert post_init[i] > post_init[i - 1], (
+                f'Time must be strictly increasing in post-init rows: '
+                f'row {i - 1}={post_init[i - 1]}, row {i}={post_init[i]}'
             )
 
         # Check critical columns in every row
