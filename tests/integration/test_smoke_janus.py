@@ -95,14 +95,14 @@ def test_smoke_janus_dummy_single_timestep():
         assert not np.isinf(t_surf), 'T_surf should not be Inf'
         assert 100 < t_surf < 10000, f'T_surf should be physical, got {t_surf}'
 
-        # F_atm: non-negative and finite
+        # F_atm: finite and bounded in magnitude. F_atm can be negative
+        # when the atmosphere drives net heat downward (greenhouse forcing
+        # exceeds OLR), which is physical with dummy interior modules.
         assert 'F_atm' in final_row, 'F_atm should be in helpfile'
         f_atm = final_row['F_atm']
         assert not np.isnan(f_atm), 'F_atm should not be NaN'
         assert not np.isinf(f_atm), 'F_atm should not be Inf'
-        assert f_atm >= 0, f'F_atm should be non-negative, got {f_atm}'
-        # Scale guard: magma-ocean-era F_atm is typically 1e2 to 1e6 W/m^2
-        assert f_atm < 1e7, f'F_atm should be < 1e7 W/m^2, got {f_atm}'
+        assert abs(f_atm) < 1e7, f'|F_atm| should be < 1e7 W/m^2, got {f_atm}'
 
         # P_surf: positive and finite
         if 'P_surf' in final_row:
