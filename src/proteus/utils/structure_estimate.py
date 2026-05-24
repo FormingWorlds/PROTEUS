@@ -22,7 +22,7 @@ import numpy as np
 
 from proteus.utils.constants import M_earth, const_G
 
-logger = logging.getLogger('fwl.' + __name__)
+log = logging.getLogger('fwl.' + __name__)
 
 
 def iron_fractions(

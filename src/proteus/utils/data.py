@@ -2027,7 +2027,7 @@ def load_melting_curve(melt_file):
         )
         return interp_func
     except Exception as e:
-        print(f'Error loading melting curve data: {e}')
+        log.error('Error loading melting curve data: %s', e)
         return None
 
 

@@ -24,7 +24,7 @@ from proteus.utils.structure_estimate import iron_fractions as _iron_fractions
 if TYPE_CHECKING:
     from proteus.config import Config
 
-logger = logging.getLogger('fwl.' + __name__)
+log = logging.getLogger('fwl.' + __name__)
 
 # Earth mass in kg (for scaling law normalization)
 M_EARTH_KG = M_earth
@@ -76,7 +76,7 @@ def solve_dummy_structure(
     # Clamp core radius to be smaller than planet radius
     if R_c >= R_p:
         R_c = 0.9 * R_p
-        logger.warning('Core radius clamped to 0.9 * R_p (%.0f km)', R_c / 1e3)
+        log.warning('Core radius clamped to 0.9 * R_p (%.0f km)', R_c / 1e3)
 
     # Eq. 11: Average core density [kg/m^3]
     rho_c = x_cmf * M_p / (4.0 / 3.0 * np.pi * R_c**3)
@@ -109,7 +109,7 @@ def solve_dummy_structure(
     cfg_heatcap = config.interior_struct.core_heatcap
     core_heatcap = 450.0 if cfg_heatcap == 'self' else float(cfg_heatcap)
 
-    logger.info(
+    log.info(
         'Dummy structure (Noack & Lasbleis 2020): '
         'R_p=%.0f km, R_c=%.0f km, M_p=%.2e kg, X_CMF=%.3f, X_Fe=%.3f',
         R_p_km,
@@ -118,7 +118,7 @@ def solve_dummy_structure(
         x_cmf,
         x_fe,
     )
-    logger.info(
+    log.info(
         '  rho_core=%.0f kg/m^3, rho_mantle=%.0f kg/m^3, g_surf=%.2f m/s^2, P_cmb=%.1f GPa',
         rho_c,
         rho_m,
@@ -169,7 +169,7 @@ def solve_dummy_structure(
     output_file = os.path.join(data_dir, 'zalmoxis_output.dat')
     data = np.column_stack([r_stag, P_stag, rho_stag, g_stag, T_stag])
     np.savetxt(output_file, data, fmt='%.17e', header='r[m] P[Pa] rho[kg/m3] g[m/s2] T[K]')
-    logger.info('Dummy structure output: %s', output_file)
+    log.info('Dummy structure output: %s', output_file)
 
     # zalmoxis_output_temp.txt: temperature on Aragog mesh
     temp_file = os.path.join(data_dir, 'zalmoxis_output_temp.txt')
@@ -270,7 +270,7 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
         T_liq = float(paleos_liquidus(P_cmb))
         delta = float(config.planet.delta_T_super)
         T_cmb = T_liq + delta
-        logger.info(
+        log.info(
             'Dummy liquidus_super: P_cmb=%.2e Pa -> T_liq_Fei2021=%.0f K '
             '+ delta_T_super=%.0f K = T_cmb=%.0f K',
             P_cmb,
@@ -301,7 +301,7 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
             dTdr = -alpha_m * T[i - 1] * g_m_av / Cp_m
             T[i] = T[i - 1] + dTdr * dr  # T decreases outward
         # Store computed T_surf for downstream use
-        logger.info(
+        log.info(
             'Dummy accretion mode: T_cmb=%.0f K, T_surf=%.0f K (from CMB melting curve)',
             T_cmb,
             T[-1],
@@ -360,5 +360,5 @@ def _write_spider_mesh(data_dir, r_stag, P_stag, rho_stag, g_stag, R_c, R_p, num
                 f'{rho_stag_spider[i]:.17e} {g_stag_spider[i]:.17e}\n'
             )
 
-    logger.info('Dummy SPIDER mesh: %s (%d basic + %d staggered nodes)', mesh_file, N, N - 1)
+    log.info('Dummy SPIDER mesh: %s (%d basic + %d staggered nodes)', mesh_file, N, N - 1)
     return mesh_file

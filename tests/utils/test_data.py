@@ -4639,17 +4639,17 @@ def test_load_melting_curve_returns_interpolator(tmp_path):
 
 
 @pytest.mark.unit
-def test_load_melting_curve_returns_none_on_bad_file(tmp_path, capsys):
+def test_load_melting_curve_returns_none_on_bad_file(tmp_path, caplog):
     """load_melting_curve returns None when the file cannot be parsed."""
+    import logging
+
     from proteus.utils.data import load_melting_curve
 
     missing = tmp_path / 'no_such_file.dat'
-    result = load_melting_curve(missing)
+    with caplog.at_level(logging.ERROR, logger='fwl'):
+        result = load_melting_curve(missing)
     assert result is None
-    # Discrimination: the function prints an "Error loading" line so the
-    # user is notified; capture stdout to confirm.
-    captured = capsys.readouterr()
-    assert 'Error loading melting curve data' in captured.out
+    assert 'Error loading melting curve data' in caplog.text
 
 
 @pytest.mark.unit

@@ -297,13 +297,15 @@ def test_offchem_slice_grid_keeps_only_matching_grid_points():
     # (beta only, 1 row) would fail the shape check above.
 
 
-def test_offchem_slice_grid_warns_when_filter_excludes_every_point(capsys):
+def test_offchem_slice_grid_warns_when_filter_excludes_every_point(caplog):
     """An overly-strict filter that excludes every grid point must
-    print a warning and return empty arrays.
+    log a warning and return empty arrays.
 
     Edge: limit-input case. Discriminating: pin both the warning
-    appearance in stdout and the zero-length result.
+    in the log and the zero-length result.
     """
+    import logging
+
     import numpy as np
 
     from proteus.utils.plot_offchem import offchem_slice_grid
@@ -311,15 +313,15 @@ def test_offchem_slice_grid_warns_when_filter_excludes_every_point(capsys):
     years = np.array([[100], [200]], dtype=int)
     opts = np.array([{'name': 'alpha'}, {'name': 'beta'}], dtype=dict)
     data = np.array([[{'x': 1}], [{'x': 2}]], dtype=dict)
-    s_years, s_opts, s_data = offchem_slice_grid(
-        years, opts, data, cvar_filter={'name': 'no-such-value'}
-    )
-    captured = capsys.readouterr()
-    assert 'No grid points left after slicing' in captured.out
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        s_years, s_opts, s_data = offchem_slice_grid(
+            years, opts, data, cvar_filter={'name': 'no-such-value'}
+        )
+    assert 'No grid points left after slicing' in caplog.text
     assert s_opts.shape == (0,)
 
 
-def test_offchem_slice_grid_warns_on_filter_key_not_in_options(capsys):
+def test_offchem_slice_grid_warns_on_filter_key_not_in_options(caplog):
     """A filter key absent from a grid point's options must trigger
     a warning. The point itself is then included (the source's
     `continue` skips the exclusion check for unknown keys).
@@ -328,6 +330,8 @@ def test_offchem_slice_grid_warns_on_filter_key_not_in_options(capsys):
     name) AND the inclusion behaviour. A regression that excluded on
     missing keys would land at zero matches.
     """
+    import logging
+
     import numpy as np
 
     from proteus.utils.plot_offchem import offchem_slice_grid
@@ -335,12 +339,12 @@ def test_offchem_slice_grid_warns_on_filter_key_not_in_options(capsys):
     years = np.array([[100]], dtype=int)
     opts = np.array([{'name': 'alpha'}], dtype=dict)
     data = np.array([[{'x': 1}]], dtype=dict)
-    s_years, s_opts, s_data = offchem_slice_grid(
-        years, opts, data, cvar_filter={'unknown_key': 'whatever'}
-    )
-    captured = capsys.readouterr()
-    assert "'unknown_key'" in captured.out
-    assert 'is not present in OPTIONS' in captured.out
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        s_years, s_opts, s_data = offchem_slice_grid(
+            years, opts, data, cvar_filter={'unknown_key': 'whatever'}
+        )
+    assert "'unknown_key'" in caplog.text
+    assert 'is not present in OPTIONS' in caplog.text
     # The single grid point survives because the unknown filter key
     # is treated as a no-op exclusion check.
     assert s_opts.shape == (1,)

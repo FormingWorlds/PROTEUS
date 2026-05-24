@@ -25,6 +25,8 @@ from proteus.utils.helper import get_proteus_dir, recursive_setattr
 
 PROTEUS_DIR = get_proteus_dir()
 
+log = logging.getLogger('fwl.' + __name__)
+
 
 # Custom logger instance
 def setup_logger(logpath: str = 'new.log', level=1, logterm=True):
@@ -170,8 +172,6 @@ class Grid:
 
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir, 'manager.log'), logterm=True, level=1)
-        global log
-        log = logging.getLogger(__name__)
 
         log.info("Grid '%s' initialised empty" % self.name)
 

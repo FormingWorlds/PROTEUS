@@ -240,7 +240,7 @@ def plot_interior_entry(handler: Proteus):
         log.warning(f"Cannot make interior plot for module '{module}'")
         return
     plot_times, _ = sample_output(handler, extension=extension, tmin=1e3)
-    print('Snapshots:', plot_times)
+    log.info('Snapshots: %s', plot_times)
 
     data = read_interior_data(handler.directories['output'], module, plot_times)
 

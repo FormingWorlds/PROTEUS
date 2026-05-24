@@ -1,11 +1,14 @@
 # Check the status of a PROTEUS parameter grid's cases
 from __future__ import annotations
 
+import logging
 import os
 from glob import glob
 from pathlib import Path
 from shutil import copyfile, rmtree
 from zipfile import ZIP_DEFLATED, ZipFile
+
+log = logging.getLogger('fwl.' + __name__)
 
 
 def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = True):
@@ -14,10 +17,10 @@ def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = Tru
         raise FileNotFoundError("Invalid path '%s'" % grid)
 
     grid = os.path.abspath(grid)
-    print(f'Grid dir: {grid}')
+    log.info('Grid dir: %s', grid)
 
     pack = os.path.join(grid, 'pack')
-    print(f'Pack dir: {pack}')
+    log.info('Pack dir: %s', pack)
     rmtree(pack, ignore_errors=True)
     os.mkdir(pack)
 
@@ -27,15 +30,15 @@ def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = Tru
         raise FileNotFoundError('Cannot find any subfolders containing grid cases!')
 
     # copy top-level files in grid output folder
-    print('Copy top-level files...')
+    log.info('Copy top-level files...')
     for tf in ['manager.log', 'ref_config.toml', 'copy.grid.toml']:
         copyfile(os.path.join(grid, tf), os.path.join(pack, tf))
 
     # copy per-case data
-    print('Copy results for each grid point...')
-    print(f'Found {len(case_dirs)} subfolders')
+    log.info('Copy results for each grid point...')
+    log.info('Found %d subfolders', len(case_dirs))
     for case in case_dirs:
-        print('   ' + os.path.basename(case))
+        log.info('   %s', os.path.basename(case))
         dest = os.path.join(pack, os.path.basename(case))
         os.mkdir(dest)
 
@@ -56,7 +59,7 @@ def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = Tru
     # create zip at grid/pack.zip containing "pack/..."
     if zip:
         zip_path = os.path.join(grid, 'pack.zip')
-        print(f'Make zip: {zip_path}')
+        log.info('Make zip: %s', zip_path)
         if os.path.isfile(zip_path):
             os.remove(zip_path)
         with ZipFile(zip_path, 'w', compression=ZIP_DEFLATED) as zf:
@@ -69,7 +72,7 @@ def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = Tru
                     zf.write(file_path, arcname)
 
         # give size of file
-        print(f'Archive size is {os.path.getsize(zip_path) / 1e6:.1f} MB')
+        log.info('Archive size is %.1f MB', os.path.getsize(zip_path) / 1e6)
 
         # remove `pack` folder now that we have zipped it
         if rmdir_pack:

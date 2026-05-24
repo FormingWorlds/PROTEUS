@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 
 import numpy as np
 
 from proteus.utils.helper import CommentFromStatus
+
+log = logging.getLogger('fwl.' + __name__)
 
 
 def summarise(pgrid_dir: str, tgt_status: str = None):
@@ -25,11 +28,11 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
     pgrid_dir = os.path.abspath(pgrid_dir)
     case_dirs = glob.glob(pgrid_dir + '/case_*')
     N = len(case_dirs)
-    print("Found %d cases in '%s'" % (N, pgrid_dir))
+    log.info("Found %d cases in '%s'", N, pgrid_dir)
 
     # Statuses
     # Check `utils.helper.CommentFromStatus` for information on error codes
-    print('Checking statuses...')
+    log.info('Checking statuses...')
     status = np.full(N, -1, dtype=int)
     cmmnts = np.full(N, '', dtype=str)
     for i in range(N):
@@ -42,7 +45,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         cmmnts[i] = str(lines[1])
 
     # Statistics
-    print('Statistics:')
+    log.info('Statistics:')
     for i in range(-1, 100):
         count = np.count_nonzero(status == i)
         if count == 0:
@@ -52,7 +55,7 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         else:
             comment = CommentFromStatus(i)
         pct = float(count) / N * 100.0
-        print('  %-5d (%2d%%) %s' % (count, pct, comment))
+        log.info('  %-5d (%2d%%) %s', count, pct, comment)
 
     # Check options
     gen_cases = {
@@ -81,33 +84,33 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
     for g in gen_cases.keys():  # for each general case
         if tgt_status == g.lower():
             matched = True
-            print('%s cases:' % g)
+            log.info('%s cases:', g)
             e_any = False
             for i in range(N):  # for each grid point
                 for s in gen_cases[g]:  # for each case within this general case
                     if status[i] == s:
                         e_any = True
-                        print('  Case %-5d : Code %-2d - %s' % (i, s, CommentFromStatus(s)))
+                        log.info('  Case %-5d : Code %-2d - %s', i, s, CommentFromStatus(s))
                         break
             if not e_any:
-                print('  (None)')
+                log.info('  (None)')
 
     # code cases
     tgt_status = tgt_status.replace('status=', 'code=')
     if 'code' in tgt_status:
         matched = True
         code = int(tgt_status.replace(' ', '').split('=')[-1])
-        print('Code %d cases:' % code)
+        log.info('Code %d cases:', code)
         e_any = False
         for i in range(N):
             if status[i] == code:
                 e_any = True
-                print('  Case %-5d : Code %-2d - %s' % (i, code, CommentFromStatus(code)))
+                log.info('  Case %-5d : Code %-2d - %s', i, code, CommentFromStatus(code))
         if not e_any:
-            print('  (None)')
+            log.info('  (None)')
 
     if not matched:
-        print("Invalid status category '%s'" % tgt_status)
-        print('Run `proteus grid-summarise --help` for info on using this command')
+        log.warning("Invalid status category '%s'", tgt_status)
+        log.info('Run `proteus grid-summarise --help` for info on using this command')
 
     return matched

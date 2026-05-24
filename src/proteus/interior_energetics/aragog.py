@@ -34,7 +34,7 @@ from proteus.interior_energetics.timestep import next_step
 from proteus.interior_energetics.wrapper import get_core_density, get_core_heatcap
 from proteus.utils.constants import radnuc_data
 
-logger = logging.getLogger('fwl.' + __name__)
+log = logging.getLogger('fwl.' + __name__)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -157,7 +157,7 @@ def _maybe_log_solver_environment(config: Config) -> None:
             jax_version = f'<import-failed: {exc}>'
 
         cfg = config.interior_energetics.aragog
-        logger.info(
+        log.info(
             'aragog diag: machine=%s system=%s cpu=%s | jax=%s backend=%s devices=%s '
             'JAX_PLATFORMS=%s XLA_FLAGS=%s | aragog.backend=%s ode_method=%s '
             'atol_T=%s rtol=%s surface_bc=%s core_bc=%s',
@@ -177,7 +177,7 @@ def _maybe_log_solver_environment(config: Config) -> None:
             cfg.core_bc,
         )
     except Exception as exc:
-        logger.warning('aragog diag env log failed: %s', exc)
+        log.warning('aragog diag env log failed: %s', exc)
 
 
 def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
@@ -225,14 +225,14 @@ def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
         try:
             rho_core_mesh = derive_core_density_from_mesh(mesh_file, M_core)
         except (ValueError, FileNotFoundError, OSError) as exc:
-            logger.debug('Aragog core_density echo-back skipped: %s', exc)
+            log.debug('Aragog core_density echo-back skipped: %s', exc)
             return rho_core
         if not _is_plausible_core_density(rho_core_mesh):
             # Likely cause: file-write race during a Zalmoxis re-solve on a
             # network filesystem. The first row was readable but truncated
             # to a non-physical R_cmb. Fall back rather than feed a junk
             # density into the energy-balance core BC.
-            logger.warning(
+            log.warning(
                 'Aragog core_density echo-back skipped: mesh-derived '
                 'rho_core=%.2f kg/m^3 outside plausible range '
                 '[%.0f, %.0f]; cached hf_row[core_density]=%.2f kept.',
@@ -242,7 +242,7 @@ def resolve_core_density(config: Config, hf_row: dict, outdir: str) -> float:
                 rho_core,
             )
             return rho_core
-        logger.debug(
+        log.debug(
             'Aragog core_density echo-back: %.2f -> %.2f kg/m^3 '
             '(M_core=%.4e kg, mesh-derived R_cmb)',
             rho_core,
@@ -364,7 +364,7 @@ class AragogRunner:
             AragogRunner._maybe_install_jax_cvode_factory(config, interior_o)
             _t_after_factory = time.perf_counter()
             if os.environ.get('PROTEUS_CI_NIGHTLY') == '1':
-                logger.info(
+                log.info(
                     'aragog diag: first-call phases setup=%.2fs initialize=%.2fs '
                     'jax_cvode_factory=%.2fs',
                     _t_init - _t_setup,
@@ -391,7 +391,7 @@ class AragogRunner:
             # wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS budget.
             if hf_row.get('_structure_stale', False):
                 interior_o._stale_struct_steps += 1
-                logger.info(
+                log.info(
                     'Aragog re-running on stale Zalmoxis structure '
                     '(consecutive stale steps = %d, R_int=%.4e m, '
                     'M_int=%.4e kg from last successful re-solve)',
@@ -448,7 +448,7 @@ class AragogRunner:
         # Validation lives on the attrs schema (config._interior.Aragog).
         core_bc_str = config.interior_energetics.aragog.core_bc
         if core_bc_str not in ('quasi_steady', 'energy_balance', 'gradient', 'bower2018'):
-            logger.warning(
+            log.warning(
                 'Unknown core_bc=%r, falling back to quasi_steady',
                 core_bc_str,
             )
@@ -603,7 +603,7 @@ class AragogRunner:
         tsurf_init = config.planet.tsurf_init
         T_surface_computed = hf_row.get('T_surface_initial', 0)
         if T_surface_computed and T_surface_computed > 0:
-            logger.info(
+            log.info(
                 'Overriding tsurf_init with self-consistent thermal state: %.0f K -> %.0f K',
                 tsurf_init,
                 T_surface_computed,
@@ -708,9 +708,7 @@ class AragogRunner:
                 if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
                     from zalmoxis.eos_export import generate_aragog_pt_tables_2phase
 
-                    logger.info(
-                        'Generating phase-specific Aragog P-T tables from PALEOS-2phase'
-                    )
+                    log.info('Generating phase-specific Aragog P-T tables from PALEOS-2phase')
                     generate_aragog_pt_tables_2phase(
                         solid_eos_file=solid_eos,
                         liquid_eos_file=liquid_eos,
@@ -720,7 +718,7 @@ class AragogRunner:
                         output_dir=LOOK_UP_DIR,
                     )
                 else:
-                    logger.info('PALEOS-2phase tables already exist, skipping generation')
+                    log.info('PALEOS-2phase tables already exist, skipping generation')
             elif not has_2phase:
                 # Fall back to unified table (identical solid/melt files)
                 from zalmoxis.eos_export import generate_aragog_pt_tables
@@ -745,7 +743,7 @@ class AragogRunner:
                         )
 
                     if not (LOOK_UP_DIR / 'density_melt.dat').is_file():
-                        logger.warning(
+                        log.warning(
                             'PALEOS-2phase tables not found, falling back to '
                             'unified table (entropy near melting curve may be '
                             'unreliable)'
@@ -760,7 +758,7 @@ class AragogRunner:
                             output_dir=LOOK_UP_DIR,
                         )
             else:
-                logger.warning(
+                log.warning(
                     'PALEOS EOS file not found (%s), falling back to legacy tables',
                     paleos_eos_file,
                 )
@@ -836,7 +834,7 @@ class AragogRunner:
                 liq_data = np.column_stack([P_arr, [l_fn(P) for P in P_arr]])
                 np.savetxt(str(sol_file), sol_data, header='pressure temperature', comments='#')
                 np.savetxt(str(liq_file), liq_data, header='pressure temperature', comments='#')
-                logger.info('Generated PALEOS melting curves for Aragog: %s', paleos_melt_dir)
+                log.info('Generated PALEOS melting curves for Aragog: %s', paleos_melt_dir)
 
             solidus_path = sol_file
             liquidus_path = liq_file
@@ -863,9 +861,9 @@ class AragogRunner:
         entropy_melt_arg = str(entropy_melt) if entropy_melt.is_file() else ''
         entropy_solid_arg = str(entropy_solid) if entropy_solid.is_file() else ''
         if entropy_melt_arg:
-            logger.info('Entropy tables found: enabling entropy-conserving adiabat IC')
+            log.info('Entropy tables found: enabling entropy-conserving adiabat IC')
         else:
-            logger.info('No entropy tables: Aragog will use single-phase dTdPs adiabat')
+            log.info('No entropy tables: Aragog will use single-phase dTdPs adiabat')
 
         phase_liquid = _PhaseParameters(
             density=LOOK_UP_DIR / 'density_melt.dat',
@@ -960,7 +958,7 @@ class AragogRunner:
         _t_pre_eos = time.perf_counter()
         if config.interior_energetics.const_properties:
             entropy_eos = None
-            logger.info('const_properties=True: skipping EOS table loading')
+            log.info('const_properties=True: skipping EOS table loading')
         else:
             spider_eos_dir = interior_o._spider_eos_dir
             if spider_eos_dir and os.path.isdir(spider_eos_dir):
@@ -978,7 +976,7 @@ class AragogRunner:
         interior_o.aragog_solver = EntropySolver(param, entropy_eos)
         _t_post_solver = time.perf_counter()
         if nightly_strict:
-            logger.info(
+            log.info(
                 'aragog diag: setup_solver phases entropy_eos=%.2fs entropy_solver=%.2fs',
                 _t_post_eos - _t_pre_eos,
                 _t_post_solver - _t_post_eos,
@@ -1014,7 +1012,7 @@ class AragogRunner:
             msg = "backend='jax' but aragog_solver is None; skipping factory install."
             if nightly_strict:
                 raise RuntimeError(msg)
-            logger.warning(msg)
+            log.warning(msg)
             return
 
         # Pre-initialise the discrimination counter so a test that fails to
@@ -1035,7 +1033,7 @@ class AragogRunner:
             )
             if nightly_strict:
                 raise RuntimeError(msg) from exc
-            logger.warning(msg)
+            log.warning(msg)
             return
 
         try:
@@ -1044,7 +1042,7 @@ class AragogRunner:
             eos_jax = _cached_entropy_eos_jax(str(eos_dir))
             _t_post_jax_eos = time.perf_counter()
             if nightly_strict:
-                logger.info(
+                log.info(
                     'aragog diag: jax_cvode_factory phases entropy_eos_jax=%.2fs',
                     _t_post_jax_eos - _t_pre_jax_eos,
                 )
@@ -1079,7 +1077,7 @@ class AragogRunner:
             _t_post_mesh = time.perf_counter()
             n_stag = solver._n_stag
             if nightly_strict:
-                logger.info(
+                log.info(
                     'aragog diag: jax_cvode_factory phases params_jax+mesh=%.2fs',
                     _t_post_mesh - _t_post_jax_eos,
                 )
@@ -1165,7 +1163,7 @@ class AragogRunner:
                 return rhs_fn, jac_fn
 
             solver.set_jax_cvode_factory(factory)
-            logger.info(
+            log.info(
                 'Option Z: JAX CVODE factory installed on aragog solver '
                 '(core_bc=%s, n_stag=%d).',
                 solver._core_bc,
@@ -1175,7 +1173,7 @@ class AragogRunner:
             msg = f'Option Z factory install failed ({exc}); falling back to FD Jacobian.'
             if nightly_strict:
                 raise RuntimeError(msg) from exc
-            logger.warning(msg)
+            log.warning(msg)
 
     @staticmethod
     def _set_entropy_ic(
@@ -1253,14 +1251,14 @@ class AragogRunner:
             if len(r_stag) == N:
                 r_surf = float(r_basic[-1])
                 S_init = S_init + ini_dsdr * (r_stag - r_surf)
-                logger.info(
+                log.info(
                     'Applied ini_dsdr perturbation: %.3e J/kg/K/m, '
                     'amplitude %.2f J/kg/K from surface to CMB',
                     ini_dsdr,
                     float(abs(S_init[0] - S_init[-1])),
                 )
             else:
-                logger.warning(
+                log.warning(
                     'ini_dsdr perturbation skipped: r_stag length %d != '
                     'staggered nodes %d. Using uniform S_target.',
                     len(r_stag),
@@ -1268,7 +1266,7 @@ class AragogRunner:
                 )
 
         solver.set_initial_entropy(S_init)
-        logger.info(
+        log.info(
             'Aragog entropy IC set from compute_initial_entropy: '
             'S_target=%.1f J/kg/K (uniform baseline, %d staggered nodes)',
             float(S_target),
@@ -1321,7 +1319,7 @@ class AragogRunner:
                 ('PALEOS:', 'PALEOS-2phase:', 'PALEOS-API:', 'PALEOS-API-2phase:')
             )
         ):
-            logger.debug(
+            log.debug(
                 'Entropy IC cross-check skipped: not zalmoxis+PALEOS '
                 "(interior_struct.module='%s')",
                 config.interior_struct.module,
@@ -1354,7 +1352,7 @@ class AragogRunner:
             eos_entry = mat_dicts.get(mantle_eos, {})
             paleos_eos_file = eos_entry.get('eos_file', '') or solid_eos or ''
             if not paleos_eos_file or not os.path.isfile(paleos_eos_file):
-                logger.debug(
+                log.debug(
                     'Entropy IC cross-check skipped: PALEOS file not found (%s)',
                     paleos_eos_file,
                 )
@@ -1449,7 +1447,7 @@ class AragogRunner:
             else:
                 verdict = 'FAIL'
 
-            logger.info(
+            log.info(
                 'Entropy IC cross-check (Aragog): max T diff = %.1f K (%.2f%%), '
                 'mean = %.3f%%, verdict = %s',
                 max_diff,
@@ -1472,7 +1470,7 @@ class AragogRunner:
             )
 
             if verdict == 'WARN':
-                logger.warning(
+                log.warning(
                     'Entropy IC full-profile cross-check > %.1f%% '
                     '(max %.1f K / %.2f%% at depth). Diagnostic only; '
                     'not overriding the IC. See pitfall 50 in memory: '
@@ -1493,7 +1491,7 @@ class AragogRunner:
                 # If you want a stricter safety net, use the surface-only
                 # scalar check in _set_entropy_ic (T_check log line at
                 # line ~600) which is always reliable.
-                logger.warning(
+                log.warning(
                     'Entropy IC full-profile cross-check > %.1f%% '
                     '(max %.1f K / %.2f%% at depth). Diagnostic only; '
                     'NOT raising because this reflects known PALEOS '
@@ -1524,7 +1522,7 @@ class AragogRunner:
             #   SPIDER twin in common.py has the same guard; without this we
             #   crash hot-initial-condition runs (e.g. earthlike_*_dry at
             #   tsurf_init = 4000 K, which reaches T ~ 8000 K at the CMB).
-            logger.warning('Entropy IC cross-check skipped (expected error: %s)', e)
+            log.warning('Entropy IC cross-check skipped (expected error: %s)', e)
 
     @staticmethod
     def update_solver(dt: float, hf_row: dict, interior_o: Interior_t, output_dir: str = None):
@@ -1624,13 +1622,13 @@ class AragogRunner:
             try:
                 rho_core_mesh = derive_core_density_from_mesh(eos_file, M_core)
             except (ValueError, FileNotFoundError, OSError) as exc:
-                logger.debug('Aragog core_density echo-back skipped at update: %s', exc)
+                log.debug('Aragog core_density echo-back skipped at update: %s', exc)
             else:
                 if not _is_plausible_core_density(rho_core_mesh):
                     # File-write race during a Zalmoxis re-solve. Keep the
                     # previous live core_density and warn so the symptom
                     # is observable in proteus_00.log.
-                    logger.warning(
+                    log.warning(
                         'Aragog core_density echo-back skipped at update: '
                         'mesh-derived rho_core=%.2f kg/m^3 outside '
                         '[%.0f, %.0f]; live solver value preserved.',
@@ -1643,7 +1641,7 @@ class AragogRunner:
                     solver.parameters.mesh.core_density = rho_core_mesh
                     hf_row['core_density'] = rho_core_mesh
                     if abs(rho_core_mesh - prev_rho) > 1e-6 * max(prev_rho, 1.0):
-                        logger.debug(
+                        log.debug(
                             'Aragog core_density echo-back at update: '
                             '%.2f -> %.2f kg/m^3 (M_core=%.4e kg)',
                             prev_rho,
@@ -1667,7 +1665,7 @@ class AragogRunner:
             dR_int = R_int_new - prev[1]
             dR_core = R_core_new - prev[2]
             dg = g_new - prev[3]
-            logger.info(
+            log.info(
                 'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  '
                 'g=%.4f m/s^2  dR_int=%+.3e  dR_core=%+.3e  dg=%+.4f',
                 t_new,
@@ -1679,7 +1677,7 @@ class AragogRunner:
                 dg,
             )
         else:
-            logger.info(
+            log.info(
                 'Aragog update_structure: t=%.3e yr  R_int=%.5e m  R_core=%.5e m  '
                 'g=%.4f m/s^2  (first call)',
                 t_new,
@@ -1831,7 +1829,7 @@ class AragogRunner:
                 _solve_wall = time.perf_counter() - _t0
                 out = solver.get_state()
                 if _diag_on:
-                    logger.info(
+                    log.info(
                         'aragog diag: solve() attempt=%d dt=%.3e yr wall=%.2fs '
                         'status=%d t=%.3e yr',
                         attempt,
@@ -1856,7 +1854,7 @@ class AragogRunner:
                     T_core_post = float(out.T_core)
                     dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
                     if dT > sanity_dT_core:
-                        logger.warning(
+                        log.warning(
                             'Aragog attempt %d returned status=0 but T_core '
                             'jumped %.1f K (>%.0f K threshold). Treating as '
                             'failure and continuing retry ladder.',
@@ -1867,7 +1865,7 @@ class AragogRunner:
                         # Fall through to the retry/exhaustion branch below
                     else:
                         if attempt > 1:
-                            logger.info(
+                            log.info(
                                 'Aragog retry succeeded on attempt %d '
                                 '(dt=%.3e yr, atol_sf=%.1fx; '
                                 'was dt=%.3e yr, atol_sf=1.0x at attempt 1)',
@@ -1879,7 +1877,7 @@ class AragogRunner:
                         return out
 
                 if attempt >= max_attempts:
-                    logger.error(
+                    log.error(
                         'Aragog solver failed after %d attempts (final status=%d). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',
                         attempt,
@@ -1897,7 +1895,7 @@ class AragogRunner:
                 # tolerance.
                 dt_new = dt_requested * (0.5**attempt)
                 atol_sf_new = min(atol_sf_max, 1.0 + (atol_sf_max - 1.0) * (attempt / 2.0))
-                logger.warning(
+                log.warning(
                     'Aragog solver failed at t=%.3e yr (status=%d, attempt %d/%d). '
                     'Retrying with dt=%.3e yr, atol_sf=%.1fx (was dt=%.3e yr).',
                     hf_row.get('Time', 0.0),
@@ -1957,7 +1955,7 @@ class AragogRunner:
             computed from the tidal array (matching SPIDER's
             Htidal_s * mass_s / area convention).
         """
-        logger.info(
+        log.info(
             'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, status=%d',
             out.T_magma,
             out.T_core,
@@ -2140,7 +2138,7 @@ def read_last_Sfield(output_dir: str, time: float):
         S_stag = np.array(ds['entropy_s'][:])
     except (KeyError, IndexError):
         # Fallback: older output format without entropy; read T and convert
-        logger.warning('No entropy_s in %s; falling back to temp_s', fpath)
+        log.warning('No entropy_s in %s; falling back to temp_s', fpath)
         S_stag = np.array(ds.get('temp_s', ds.get('temp_b', [3200.0]))[:])
     ds.close()
     return S_stag

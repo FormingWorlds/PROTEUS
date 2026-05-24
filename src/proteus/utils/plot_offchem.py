@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import pickle as pkl
 import re
@@ -10,6 +11,8 @@ import re
 import numpy as np
 
 from proteus.config import read_config
+
+log = logging.getLogger('fwl.' + __name__)
 
 
 def offchem_read_year(
@@ -205,7 +208,7 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
         for k in cvar_filter.keys():
             # Mismatching keys (this can just be ignored I think?)
             if k not in gp_opts.keys():
-                print("WARNING: filter key '%s' is not present in OPTIONS" % k)
+                log.warning("Filter key '%s' is not present in OPTIONS", k)
                 continue
 
             # Does not match
@@ -224,6 +227,6 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
     slice_data = np.array(slice_data, dtype=dict)
 
     if np.shape(slice_opts)[0] == 0:
-        print('WARNING: No grid points left after slicing')
+        log.warning('No grid points left after slicing')
 
     return slice_years, slice_opts, slice_data

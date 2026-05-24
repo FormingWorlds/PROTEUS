@@ -161,7 +161,7 @@ def plot_structure(
 
 def plot_structure_entry(handler: Proteus):
     plot_times, _ = sample_output(handler, extension='_atm.nc', tmin=1e3)
-    print('Snapshots:', plot_times)
+    log.info('Snapshots: %s', plot_times)
 
     # read helpfile
     hf_all = pd.read_csv(

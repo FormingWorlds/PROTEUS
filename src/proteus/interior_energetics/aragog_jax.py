@@ -24,7 +24,7 @@ from proteus.interior_energetics.common import Interior_t
 
 jax.config.update('jax_enable_x64', True)
 
-logger = logging.getLogger('fwl.' + __name__)
+log = logging.getLogger('fwl.' + __name__)
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -124,7 +124,7 @@ class AragogJAXRunner:
             tfac_core_avg=getattr(bc_cfg, 'tfac_core_avg', 1.147),
         )
 
-        logger.info('JAX Aragog components built')
+        log.info('JAX Aragog components built')
 
     def _build_mesh_arrays(self):
         """Convert numpy mesh to JAX arrays."""
@@ -185,7 +185,7 @@ class AragogJAXRunner:
         atol = float(self._config.interior_energetics.aragog.atol_temperature_equivalent)
         rtol = float(self._config.interior_energetics.rtol)
 
-        logger.info(
+        log.info(
             'JAX Aragog: integrating [%.2e, %.2e] yr, N=%d',
             t_start,
             t_end,
@@ -320,7 +320,7 @@ class AragogJAXRunner:
         interior_o.temp = T
         interior_o.pres = np.asarray(P)
 
-        logger.info(
+        log.info(
             'JAX Aragog: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, steps=%d',
             T_magma,
             T_core,

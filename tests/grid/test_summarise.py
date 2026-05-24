@@ -12,6 +12,8 @@ Testing standards:
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 import proteus.grid.summarise as summarise_mod
@@ -44,15 +46,16 @@ def _make_grid(tmp_path, statuses):
 # ---------------------------------------------------------------------------
 
 
-def test_summarise_raises_when_grid_directory_missing(tmp_path, capsys):
+def test_summarise_raises_when_grid_directory_missing(tmp_path, caplog):
     """A non-existent grid path raises FileNotFoundError. A regression
     that returned silently would mask user typos and waste time.
-    Discrimination: nothing must be printed to stdout before the
-    raise (no "Statistics" header from a partially-executed path).
+    Discrimination: nothing must be logged before the raise (no
+    "Statistics" header from a partially-executed path).
     """
-    with pytest.raises(FileNotFoundError, match='Invalid path'):
-        summarise_mod.summarise(str(tmp_path / 'missing'))
-    assert 'Statistics' not in capsys.readouterr().out
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        with pytest.raises(FileNotFoundError, match='Invalid path'):
+            summarise_mod.summarise(str(tmp_path / 'missing'))
+    assert 'Statistics' not in caplog.text
 
 
 def test_summarise_raises_when_case_status_file_missing(tmp_path):
@@ -75,23 +78,21 @@ def test_summarise_raises_when_case_status_file_missing(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_summarise_returns_true_when_no_tgt_status(tmp_path, capsys):
-    """With tgt_status=None, summarise prints statistics for each present
+def test_summarise_returns_true_when_no_tgt_status(tmp_path, caplog):
+    """With tgt_status=None, summarise logs statistics for each present
     status code and returns True (no filter applied).
 
-    Discrimination: the stdout must include the count line (count + pct
+    Discrimination: the log must include the count line (count + pct
     + comment); a regression that skipped the statistics loop would
-    leave stdout empty.
+    leave the log empty.
     """
     grid = _make_grid(tmp_path, statuses=[0, 10, 10, 20])
-    result = summarise_mod.summarise(str(grid))
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        result = summarise_mod.summarise(str(grid))
 
-    out = capsys.readouterr().out
     assert result is True
-    # Discrimination: stats section header must be present
-    assert 'Statistics:' in out
-    # Discrimination: at least one count line was printed (we have 4 cases)
-    assert 'Found 4 cases' in out
+    assert 'Statistics:' in caplog.text
+    assert 'Found 4 cases' in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -99,51 +100,47 @@ def test_summarise_returns_true_when_no_tgt_status(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 
-def test_summarise_lists_running_cases_for_running_category(tmp_path, capsys):
+def test_summarise_lists_running_cases_for_running_category(tmp_path, caplog):
     """tgt_status='Running' (range 0-9) lists every case in that range
     and returns True. Discrimination: only the matching cases must be
-    printed; completed (10) and error (20) cases must not appear.
+    logged; completed (10) and error (20) cases must not appear.
     """
     grid = _make_grid(tmp_path, statuses=[0, 5, 10, 20])
-    result = summarise_mod.summarise(str(grid), tgt_status='Running')
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        result = summarise_mod.summarise(str(grid), tgt_status='Running')
 
-    out = capsys.readouterr().out
     assert result is True
-    assert 'Running cases:' in out
-    # Discrimination: cases 0 and 1 (codes 0, 5) ARE running; cases 2 and 3
-    # (codes 10, 20) are NOT and must not be listed under Running.
-    assert 'Case 0    ' in out
-    assert 'Case 1    ' in out
-    # The completed/error cases must not appear in the Running section.
-    # Since each case is printed only when matched, the absence of the
-    # exact line for case 2 / 3 with codes 10 / 20 confirms the filter.
-    assert 'Code 10 -' not in out.split('Running cases:')[1]
+    assert 'Running cases:' in caplog.text
+    assert 'Case 0    ' in caplog.text
+    assert 'Case 1    ' in caplog.text
+    running_section = caplog.text.split('Running cases:')[1]
+    assert 'Code 10 -' not in running_section
 
 
-def test_summarise_lists_completed_cases_for_complete_alias(tmp_path, capsys):
+def test_summarise_lists_completed_cases_for_complete_alias(tmp_path, caplog):
     """tgt_status='complete' (an alias for 'completed') matches the
     Completed general category. Discrimination: the alias rewrite at
     line 75-76 must convert it.
     """
     grid = _make_grid(tmp_path, statuses=[10, 11, 20])
-    result = summarise_mod.summarise(str(grid), tgt_status='complete')
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        result = summarise_mod.summarise(str(grid), tgt_status='complete')
 
-    out = capsys.readouterr().out
     assert result is True
-    assert 'Completed cases:' in out
+    assert 'Completed cases:' in caplog.text
 
 
-def test_summarise_prints_none_for_empty_general_category(tmp_path, capsys):
+def test_summarise_prints_none_for_empty_general_category(tmp_path, caplog):
     """When no cases match the requested general category, the function
-    prints '(None)'. Discrimination: a regression that omitted the
+    logs '(None)'. Discrimination: a regression that omitted the
     sentinel would leave the section empty.
     """
     grid = _make_grid(tmp_path, statuses=[10, 11])  # all Completed
-    summarise_mod.summarise(str(grid), tgt_status='Error')
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        summarise_mod.summarise(str(grid), tgt_status='Error')
 
-    out = capsys.readouterr().out
-    assert 'Error cases:' in out
-    assert '(None)' in out
+    assert 'Error cases:' in caplog.text
+    assert '(None)' in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -151,26 +148,24 @@ def test_summarise_prints_none_for_empty_general_category(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 
-def test_summarise_lists_cases_by_explicit_code(tmp_path, capsys):
+def test_summarise_lists_cases_by_explicit_code(tmp_path, caplog):
     """tgt_status='code=10' lists only cases whose status is exactly 10.
     Discrimination: a regression that interpreted code=10 as a range
     would also match codes 11..19.
     """
     grid = _make_grid(tmp_path, statuses=[10, 11, 10, 12])
-    result = summarise_mod.summarise(str(grid), tgt_status='code=10')
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        result = summarise_mod.summarise(str(grid), tgt_status='code=10')
 
-    out = capsys.readouterr().out
     assert result is True
-    assert 'Code 10 cases:' in out
-    # Discrimination: cases 0 and 2 (code 10) listed; cases 1 and 3 not
-    code10_section = out.split('Code 10 cases:')[1]
+    assert 'Code 10 cases:' in caplog.text
+    code10_section = caplog.text.split('Code 10 cases:')[1]
     assert 'Case 0    ' in code10_section
     assert 'Case 2    ' in code10_section
-    # No case 1 (code 11) line in the code=10 section
     assert 'Case 1    ' not in code10_section
 
 
-def test_summarise_treats_status_equals_as_code_equals(tmp_path, capsys):
+def test_summarise_treats_status_equals_as_code_equals(tmp_path, caplog):
     """tgt_status='status=10' is converted to 'code=10' before dispatch.
     Backwards-compatibility alias; a regression that dropped the
     replacement would treat status=10 as unmatched. Discrimination:
@@ -178,11 +173,11 @@ def test_summarise_treats_status_equals_as_code_equals(tmp_path, capsys):
     emitted by the fall-through branch if the alias rewrite failed).
     """
     grid = _make_grid(tmp_path, statuses=[10])
-    summarise_mod.summarise(str(grid), tgt_status='status=10')
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        summarise_mod.summarise(str(grid), tgt_status='status=10')
 
-    out = capsys.readouterr().out
-    assert 'Code 10 cases:' in out
-    assert 'Invalid status category' not in out
+    assert 'Code 10 cases:' in caplog.text
+    assert 'Invalid status category' not in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -190,15 +185,15 @@ def test_summarise_treats_status_equals_as_code_equals(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 
-def test_summarise_prints_help_message_for_unmatched_status(tmp_path, capsys):
+def test_summarise_prints_help_message_for_unmatched_status(tmp_path, caplog):
     """An unrecognised tgt_status falls through both the general-category
-    and code= branches and prints a help message. Discrimination: a
-    regression that crashed on unmatched input would not produce the
-    'Invalid status category' message.
+    and code= branches and logs a warning. Discrimination: a regression
+    that crashed on unmatched input would not produce the 'Invalid
+    status category' message.
     """
     grid = _make_grid(tmp_path, statuses=[0])
-    result = summarise_mod.summarise(str(grid), tgt_status='nonsense-category')
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        result = summarise_mod.summarise(str(grid), tgt_status='nonsense-category')
 
-    out = capsys.readouterr().out
     assert result is False
-    assert 'Invalid status category' in out
+    assert 'Invalid status category' in caplog.text
