@@ -23,6 +23,7 @@ authors = [
     {name="Stef Smeets",             email="s.smeets@esciencecenter.nl"},
     {name="Robb Calder",             email="rdc49@cam.ac.uk"},
     {name="Raymond T. Pierrehumbert",email="raymond.pierrehumbert@physics.ox.ac.uk"},
+    {name="Karen Stuitje",           email= "stuitje@proton.me"}
 ]
 keywords = [
     "Astronomy",
@@ -118,7 +119,7 @@ develop = [
 ]
 
 docs = [
-    "zensical",
+    "zensical==0.0.39",
     "mkdocs-material",
     "markdown-include",
     "mkdocs",

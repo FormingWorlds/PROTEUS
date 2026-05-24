@@ -35,6 +35,7 @@ nav:
 
   - Explanations:
       - Model description: Explanations/model.md
+      - Code architecture: Explanations/code_architecture.md
 
   - Reference:
       - Reference data: Reference/data.md
@@ -157,6 +158,7 @@ extra_javascript:
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/proteus_theme.css
 
 plugins:
   - search
