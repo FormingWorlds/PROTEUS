@@ -54,6 +54,10 @@ config_version = "3.0"
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
         rtol                  = 0.10         # step size relative tolerance (adaptive method)
+        scale_incr            = 1.6          # growth factor on successful adaptive step
+        scale_decr            = 0.8          # shrink factor on rejected adaptive step
+        window                = 3            # lookback window for adaptive comparison [steps]
+        max_growth_factor     = 0.0          # cap on dt growth ratio between consecutive steps; 0 = disabled
         mushy_maximum         = 0.0          # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper; 0 = disabled
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
@@ -106,8 +110,13 @@ config_version = "3.0"
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
     delta_T_super             = 500.0        # superliquidus offset at CMB [K] (liquidus_super only)
+    ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
+    ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)
     f_differentiation         = 0.50         # differentiation heat retention [0-1] (accretion only)
+
+    # Redox and oxygen budget
+    fO2_source                = "user_constant"  # user_constant | from_O_budget (authoritative O accounting)
 
     # Initial volatile inventory
     volatile_mode             = 'elements'   # set volatile inventory by: 'elements' | 'gas_prs'
@@ -230,11 +239,22 @@ config_version = "3.0"
         # Grid
         num_levels            = 150          # radial grid levels (full interior)
 
-        # Solver tuning (iterative structure solver)
+        # Outer mass-radius solver
+        outer_solver          = "newton"     # newton (Newton + brentq bracketing) | picard (damped fixed-point)
+        use_jax               = true         # JAX path for structure solver
+        use_anderson           = false       # Anderson Type-II Picard acceleration on density loop
+
+        # Solver tolerances
         solver_tol_outer      = 3e-3         # relative tolerance for mass convergence
         solver_tol_inner      = 1e-4         # relative tolerance for density convergence
         solver_max_iter_outer = 100          # max iterations for mass convergence
         solver_max_iter_inner = 100          # max iterations for density convergence
+
+        # Newton solver tuning (only used when outer_solver = "newton")
+        newton_max_iter       = 30           # max Newton iterations
+        newton_tol            = 1.0e-4       # Newton convergence tolerance
+        newton_relative_tolerance = 1.0e-9   # integrator rtol for Newton path
+        newton_absolute_tolerance = 1.0e-10  # integrator atol for Newton path
 
         # Structure update triggers
         update_dphi_abs       = 0.05         # primary trigger: absolute melt fraction change
@@ -336,7 +356,9 @@ config_version = "3.0"
     [interior_energetics.aragog]
         mass_coordinates              = true     # mass coordinate mesh spacing
         backend                       = "jax"    # jax (CVODE + analytic Jacobian) | numpy (CVODE + FD Jacobian)
+        solver_method                 = "cvode"  # cvode (SUNDIALS) | radau (scipy) | bdf (scipy)
         atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
+        phase_smoothing               = "tanh"   # phase-boundary smoothing: tanh | cubic_hermite
 
     # SPIDER-only parameters
     [interior_energetics.spider]
@@ -375,6 +397,7 @@ config_version = "3.0"
         eta_melt_const            = 1.0e2        # melt-end viscosity for aggregate model [Pa s]
         dynamic_viscosity         = 3.8e9        # Arrhenius solid reference dynamic viscosity [Pa s]
         activation_energy         = 3.5e5        # Arrhenius solid activation energy [J/mol]
+        creep_parameter           = 26.0         # Arrhenius creep parameter
         viscosity_prefactor       = 2.4e-4       # VFT magma-ocean prefactor [Pa s]
         viscosity_activation_temp = 4600.0       # VFT magma-ocean activation temperature [K]
         logging                   = false        # write Boundary diagnostic CSVs
