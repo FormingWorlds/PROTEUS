@@ -54,8 +54,7 @@ config_version = "3.0"
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
         rtol                  = 0.10         # step size relative tolerance (adaptive method)
-        # Stiffness-aware adaptive extensions (2026-04-09). Both
-        # default to OFF here so existing configs are unchanged.
+        # Stiffness-aware adaptive time-stepping
         mushy_maximum         = 0.0          # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper; 0 = disabled
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
@@ -119,7 +118,7 @@ config_version = "3.0"
 
     # Element abundances (used when volatile_mode = 'elements')
     [planet.elements]
-        O_mode   = "ic_chemistry"  # Issue #677: use CALLIOPE IC equilibrium to derive O budget
+        O_mode   = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
         O_budget = 0.0           # ignored for ic_chemistry mode
         H_mode                = "oceans"     # oceans | ppmw | kg
         H_budget              = 1.0          # unit defined by H_mode
@@ -237,18 +236,7 @@ config_version = "3.0"
         solver_max_iter_outer = 100          # max iterations for mass convergence
         solver_max_iter_inner = 100          # max iterations for density convergence
 
-        # Structure update triggers. The defaults below disable live re-solves
-        # (update_interval = 1e9 yr never fires via the ceiling + dPhi = 0.05
-        # needs at least one Phi crossing). Stage 1a runs use this. For the
-        # Stage 1b live-coupled configuration, override with:
-        #   update_interval       = 5e4         # 50 kyr ceiling: one update per cooling decade at minimum
-        #   update_min_interval   = 1e2         # 100 yr floor: prevents thrashing when Phi crosses fast
-        #   update_dphi_abs       = 0.05        # primary trigger (default): ~18 updates over a CHILI run
-        #   update_dtmagma_frac   = 0.05        # secondary trigger (default)
-        # These numbers are the recommended Stage 1b cadence from the
-        # UnifyCoupling plan (~/.claude/plans/stage1-aragog-zalmoxis-coupling.md
-        # step 1b.1). Tune update_dphi_abs down (0.02-0.03) for higher
-        # structural fidelity at the cost of more Zalmoxis wall time.
+        # Structure update triggers
         update_dphi_abs       = 0.05         # primary trigger: absolute melt fraction change
         update_dtmagma_frac   = 0.05         # secondary trigger: relative T_magma change
         update_interval       = 1e9          # max time between updates [yr]; 0 = init only
@@ -276,13 +264,11 @@ config_version = "3.0"
 
     # Grid and solver tolerances (shared by Aragog + SPIDER; ignored for dummy)
     num_levels                = 80           # radial grid levels (energetics domain only)
-    rtol                      = 1.0e-10      # relative ODE solver tolerance (was Spider.tolerance_rel / num_tolerance)
-    atol                      = 1.0e-10      # absolute ODE solver tolerance (new in Tier 4)
+    rtol                      = 1.0e-10      # relative ODE solver tolerance
+    atol                      = 1.0e-10      # absolute ODE solver tolerance
     flux_guess                = -1           # initial F_atm guess [W/m2]; <0 = sigma*T_magma^4
 
-    # Constant-properties mode: bypass EOS tables, use analytical T(S)
-    # T = T_ref * exp((S - S_ref) / Cp). Both SPIDER and Aragog.
-    # For controlled parity tests with dummy structure + atmosphere.
+    # Constant-properties mode: bypass EOS tables, use analytical T(S) = T_ref * exp((S - S_ref) / Cp)
     const_properties          = false
     const_rho                 = 4000.0       # constant density [kg/m3]
     const_Cp                  = 1000.0       # constant heat capacity [J/kg/K]
@@ -323,13 +309,12 @@ config_version = "3.0"
     param_utbl                = false        # enable UTBL
     param_utbl_const          = 1e-7         # UTBL scaling constant [K-1]
 
-    # Hydrostatic EOS (Adams-Williamson). Used by SPIDER (-adams_williamson_*)
-    # and Aragog (_MeshParameters.surface_density / adiabatic_bulk_modulus).
+    # Hydrostatic EOS (Adams-Williamson)
     adams_williamson_rhos     = 4078.95095544      # surface density [kg/m^3]
     adams_williamson_beta     = 1.1115348931e-07   # density gradient [1/m]
-    adiabatic_bulk_modulus    = 260.0e9            # [Pa] (Aragog only; SPIDER derives internally)
+    adiabatic_bulk_modulus    = 260.0e9            # adiabatic bulk modulus [Pa]
 
-    # Phase material properties (previously hardcoded in Aragog and SPIDER wrappers).
+    # Phase material properties
     melt_log10visc            = 2.0          # log10 molten-silicate viscosity [Pa s]
     solid_log10visc           = 22.0         # log10 solid-silicate viscosity [Pa s]
     melt_cond                 = 4.0          # molten-silicate thermal conductivity [W/m/K]
@@ -337,17 +322,14 @@ config_version = "3.0"
     eddy_diffusivity_thermal  = 1.0          # scaling on MLT thermal kappa
     eddy_diffusivity_chemical = 1.0          # scaling on MLT chemical kappa
 
-    # Phase transition thermodynamics (Aragog _PhaseMixedParameters)
+    # Phase transition thermodynamics
     latent_heat_of_fusion     = 4.0e6        # silicate latent heat of fusion [J/kg]
     phase_transition_width    = 0.1          # width of the mushy-zone blend [melt fraction]
 
     # Core thermal model (Bower+2018 Table 2)
     core_tfac_avg             = 1.147        # T_avg/T_cmb ratio from adiabatic gradient
 
-    # Diagnostic: save per-component flux decomposition (Jcond_b, Jconv_b,
-    # Jgrav_b, Jmix_b) and basic-node state (dSdr_b, eddy_diff_b,
-    # phi_basic_b, T/cp/rho_basic_b) to Aragog NetCDF output. Used for
-    # T_core CMB closure investigation (2026-04-14). Default off.
+    # Save per-component flux decomposition to Aragog NetCDF output
     write_flux_diagnostics    = false
 
     # Aragog-only parameters
