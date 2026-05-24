@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import logging
 import warnings
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
-
-log = logging.getLogger('fwl.' + __name__)
 
 
 def valid_spider(instance, attribute, value):

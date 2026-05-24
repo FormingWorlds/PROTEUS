@@ -16,13 +16,9 @@ by the dummy structure module.
 
 from __future__ import annotations
 
-import logging
-
 import numpy as np
 
 from proteus.utils.constants import M_earth, const_G
-
-log = logging.getLogger('fwl.' + __name__)
 
 
 def iron_fractions(

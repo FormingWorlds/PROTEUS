@@ -3,13 +3,9 @@
 
 from __future__ import annotations
 
-import logging
-
 import numpy as np
 
 from proteus.utils.constants import const_c, const_h, const_k
-
-log = logging.getLogger('fwl.' + __name__)
 
 
 def planck_wav(tmp: float, wav: float):

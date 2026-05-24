@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import logging
 import os
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
 
 from ._converters import lowercase, none_if_none
-
-log = logging.getLogger('fwl.' + __name__)
 
 
 def warn_if_dummy(instance, attribute, value):

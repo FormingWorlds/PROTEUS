@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import logging
-
 from attrs import define, field
 from attrs.validators import in_
 
 from ._converters import none_if_none
-
-log = logging.getLogger('fwl.' + __name__)
 
 
 @define
