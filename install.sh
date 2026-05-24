@@ -393,8 +393,7 @@ phase 4 "SOCRATES"
 
 socrates_compiled=false
 if [ -n "${RAD_DIR:-}" ] && [ -d "${RAD_DIR}" ]; then
-    # Check for compiled binaries (radlib.a or Cl_run)
-    if [ -f "${RAD_DIR}/bin/Cl_run" ] || find "${RAD_DIR}" -name 'radlib.a' -print -quit 2>/dev/null | grep -q .; then
+    if [ -f "${RAD_DIR}/bin/radlib.a" ]; then
         socrates_compiled=true
     fi
 fi
@@ -404,8 +403,8 @@ if [ "$socrates_compiled" = "true" ]; then
 else
     info "Installing SOCRATES..."
     bash tools/get_socrates.sh
-    # Verify compilation succeeded
-    if [ -d "$SCRIPT_DIR/socrates" ] && [ -f "$SCRIPT_DIR/socrates/bin/Cl_run" ]; then
+    # Verify compilation succeeded (radlib.a is the primary build artifact)
+    if [ -d "$SCRIPT_DIR/socrates" ] && [ -f "$SCRIPT_DIR/socrates/bin/radlib.a" ]; then
         export RAD_DIR="$SCRIPT_DIR/socrates"
         append_export_to_rc "RAD_DIR" "$SCRIPT_DIR/socrates" "$RC_FILE"
         info "SOCRATES installed, RAD_DIR=$RAD_DIR"
