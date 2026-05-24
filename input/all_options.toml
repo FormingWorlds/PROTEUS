@@ -54,7 +54,6 @@ config_version = "3.0"
         propconst             = 52.0         # proportionality constant (proportional method)
         atol                  = 0.02         # step size absolute tolerance (adaptive method)
         rtol                  = 0.10         # step size relative tolerance (adaptive method)
-        # Stiffness-aware adaptive time-stepping
         mushy_maximum         = 0.0          # max dt [yr] while stop.solid.phi_crit < Phi < mushy_upper; 0 = disabled
         mushy_upper           = 0.99         # mushy regime upper bound (melt fraction)
         hysteresis_iters      = 0            # suppress speed-up for N iters after a slow-down; 0 = disabled
@@ -249,11 +248,11 @@ config_version = "3.0"
         equilibrate_max_iter  = 15           # max equilibration iterations
         equilibrate_tol       = 0.01         # equilibration convergence tolerance
 
-        # P-S lookup table resolution (generated from PALEOS for SPIDER + Aragog)
-        lookup_nP             = 1350         # pressure points in P-S lookup tables (native PALEOS: 1352)
-        lookup_nS             = 280          # entropy points in P-S lookup tables (native PALEOS: 280)
+        # P-S entropy lookup table resolution (derived from PALEOS EOS at runtime, cached)
+        lookup_nP             = 1350         # pressure grid points
+        lookup_nS             = 280          # entropy grid points
 
-        # Miscibility (H2-silicate binodal)
+        # Miscibility (H2-silicate binodal; experimental, not production-ready)
         global_miscibility    = false        # enable binodal-aware radial structure
         miscibility_max_iter  = 10           # max miscibility iterations
         miscibility_tol       = 0.01         # miscibility convergence tolerance
@@ -283,7 +282,16 @@ config_version = "3.0"
     trans_convection          = true         # convective heat transfer (MLT)
     trans_grav_sep            = true         # gravitational separation (Stokes settling)
     trans_mixing              = true         # chemical mixing flux
+
+    # Heating
     heat_tidal                = false        # tidal heating (requires orbit.module != "none")
+    heat_radiogenic           = true         # radiogenic heating
+    radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
+    radio_Al                  = 0.0          # 26Al [ppmw]; 1.23 = canonical (26Al/27Al = 5.25e-5)
+    radio_Fe                  = 0.0          # 60Fe [ppmw]; 6.3e-4 = canonical (60Fe/56Fe = 1e-8)
+    radio_K                   = 310.0        # 40K [ppmw of element]; BSE value
+    radio_U                   = 0.031        # U [ppmw of element]; BSE value
+    radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
 
     # Rheology and convection
     rfront_loc                = 0.50         # rheological front centre [melt fraction]
@@ -296,16 +304,7 @@ config_version = "3.0"
     tmagma_atol               = 20.0         # absolute limit [K]
     tmagma_rtol               = 0.02         # relative limit
 
-    # Radiogenic heating
-    heat_radiogenic           = true         # enable radiogenic heating
-    radio_tref                = 4.567        # reference age for concentrations [Gyr]; 4.567 = present-day BSE
-    radio_Al                  = 0.0          # 26Al [ppmw]; 1.23 = canonical (26Al/27Al = 5.25e-5)
-    radio_Fe                  = 0.0          # 60Fe [ppmw]; 6.3e-4 = canonical (60Fe/56Fe = 1e-8)
-    radio_K                   = 310.0        # 40K [ppmw of element]; BSE value
-    radio_U                   = 0.031        # U [ppmw of element]; BSE value
-    radio_Th                  = 0.124        # Th [ppmw of element]; BSE value
-
-    # Ultra-thin boundary layer parameterization (Bower+2018 Eq.18)
+    # Ultra-thin boundary layer parameterization
     param_utbl                = false        # enable UTBL
     param_utbl_const          = 1e-7         # UTBL scaling constant [K-1]
 
@@ -326,17 +325,17 @@ config_version = "3.0"
     latent_heat_of_fusion     = 4.0e6        # silicate latent heat of fusion [J/kg]
     phase_transition_width    = 0.1          # width of the mushy-zone blend [melt fraction]
 
-    # Core thermal model (Bower+2018 Table 2)
+    # Core thermal model
     core_tfac_avg             = 1.147        # T_avg/T_cmb ratio from adiabatic gradient
 
-    # Save per-component flux decomposition to Aragog NetCDF output
-    write_flux_diagnostics    = false
+    # Diagnostics
+    write_flux_diagnostics    = true         # save per-component flux decomposition to Aragog NetCDF
 
     # Aragog-only parameters
     [interior_energetics.aragog]
-        mass_coordinates              = true    # mass coordinate mesh spacing
-        jax                           = false   # JAX/diffrax solver (requires jax, equinox, diffrax)
-        atol_temperature_equivalent   = 1.0e-8  # CVODE atol [K]; matches SPIDER atol=rtol
+        mass_coordinates              = true     # mass coordinate mesh spacing
+        backend                       = "jax"    # jax (CVODE + analytic Jacobian) | numpy (CVODE + FD Jacobian)
+        atol_temperature_equivalent   = 1.0e-8   # CVODE atol [K]
 
     # SPIDER-only parameters
     [interior_energetics.spider]
