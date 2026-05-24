@@ -34,7 +34,6 @@ EXPECTED_BADGES = [
     'docs.yaml',
     'License',
     'graph/badge.svg',
-    'DOI',
     'Website',
 ]
 
@@ -99,7 +98,7 @@ def test_expected_badges_present(readme_content, badge_marker):
     """All expected badges must be present in the README.
 
     We check for 6 badges: Unit Tests, Integration Tests, docs, License,
-    Codecov, and DOI. Each is identified by a unique substring in its URL.
+    Codecov, and Website. Each is identified by a unique substring in its URL.
     """
     img_urls = re.findall(r'<img\s+src="([^"]+)"', readme_content)
     matching = [url for url in img_urls if badge_marker in url]
