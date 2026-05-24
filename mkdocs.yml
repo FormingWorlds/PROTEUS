@@ -24,20 +24,36 @@ nav:
           - Run on Snellius: How-to/snellius_cluster_guide.md
           - Run on Habrok: How-to/habrok_cluster_guide.md
       - Development:
-          - Testing infrastructure: How-to/test_infrastructure.md
-          - Test categorization: How-to/test_categorization.md
-          - Test building: How-to/test_building.md
+          - Testing: How-to/testing.md
+          - Development standards: How-to/development_standards.md
           - Developing documentation: How-to/documentation.md
-          - AI-assisted development: How-to/ai_usage.md
 
   - Tutorials:
-      - First PROTEUS run: How-to/usage.md
+      - Quick start (all-dummy): Tutorials/quick_start_dummy.md
+      - Earth analogue: Tutorials/earth_analogue.md
+      - Hot rocky super-Earth: Tutorials/hot_super_earth.md
+      - Reduced H2-rich world: Tutorials/reduced_h2_world.md
+      - Sub-Neptune: Tutorials/sub_neptune.md
+      - Parameter grid sweep: Tutorials/parameter_grid.md
 
   - Explanations:
-      - Model description: Explanations/model.md
-      - Code architecture: Explanations/code_architecture.md
+      - Scientific background:
+          - Model description: Explanations/model.md
+          - Coupling loop: Explanations/coupling_loop.md
+      - Software design:
+          - Code architecture: Explanations/code_architecture.md
+          - Test framework: Explanations/test_framework.md
 
   - Reference:
+      - Configuration:
+          - Execution and output: Reference/config/params.md
+          - Planet and volatiles: Reference/config/planet.md
+          - Star and orbit: Reference/config/star_orbit.md
+          - Interior structure and energetics: Reference/config/interior.md
+          - Atmosphere and chemistry: Reference/config/atmosphere.md
+          - Escape and outgassing: Reference/config/escape_outgas.md
+          - Observations: Reference/config/observe.md
+      - Output format: Reference/output.md
       - Reference data: Reference/data.md
       - Bibliography: Reference/bibliography.md
       - API:
