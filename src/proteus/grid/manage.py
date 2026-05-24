@@ -192,6 +192,12 @@ class Grid:
             raise Exception("Dimension '%s' cannot be added twice" % name)
 
         log.info("Added new dimension '%s' " % name)
+        log.debug(
+            "Dimension '%s' maps to parameter '%s' (total dims: %d)",
+            name,
+            var,
+            len(self.dim_names) + 1,
+        )
         self.dim_names.append(name)
         self.dim_param.append(var)
         self.dim_avars[name] = None
@@ -205,6 +211,9 @@ class Grid:
     def set_dimension_linspace(self, name: str, start: float, stop: float, count: int):
         self.dim_avars[name] = list(np.linspace(start, stop, count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' linspace: %d points in [%.6g, %.6g]", name, count, start, stop
+        )
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self, name: str, start: float, stop: float, step: float):
@@ -212,11 +221,22 @@ class Grid:
         if not np.isclose(self.dim_avars[name][-1], stop):
             self.dim_avars[name].append(stop)
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' arange: %d points in [%.6g, %.6g] (step=%.6g)",
+            name,
+            len(self.dim_avars[name]),
+            start,
+            stop,
+            step,
+        )
 
     # Set a dimension by logspace
     def set_dimension_logspace(self, name: str, start: float, stop: float, count: int):
         self.dim_avars[name] = list(np.logspace(np.log10(start), np.log10(stop), count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+        log.debug(
+            "Dimension '%s' logspace: %d points in [%.6g, %.6g]", name, count, start, stop
+        )
 
     # Set a dimension directly
     def set_dimension_direct(self, name: str, values: list, sort: bool = True):
@@ -224,6 +244,12 @@ class Grid:
         if (not isinstance(values[0], str)) and sort:  # sort if numeric
             the_list = sorted(the_list)
         self.dim_avars[name] = the_list
+        log.debug(
+            "Dimension '%s' direct: %d values (deduplicated from %d)",
+            name,
+            len(the_list),
+            len(values),
+        )
 
     # Print current setup
     def print_setup(self):
@@ -266,6 +292,10 @@ class Grid:
         for v in values:
             self.size *= len(v)
         log.info('    %d points expected' % self.size)
+        log.debug(
+            'Grid size breakdown: %s',
+            ' x '.join('%s(%d)' % (n, len(self.dim_avars[n])) for n in self.dim_names),
+        )
 
         # Create flattened parameter grid
         flat_values = list(itertools.product(*values))
@@ -338,6 +368,12 @@ class Grid:
 
         # do not use more threads than are available
         num_threads = min(num_threads, os.cpu_count())
+        log.debug(
+            'Thread pool: %d threads (grid_size=%d, cpu_count=%d)',
+            num_threads,
+            self.size,
+            os.cpu_count(),
+        )
 
         # Print warning
         if not test_run:
@@ -451,6 +487,7 @@ class Grid:
                     if status[i] == 0:
                         status[i] = 1
                         start_new = False
+                        log.debug('Dispatching case %06d (step %d)', i, step)
                         threads[i].start()
                         break
 

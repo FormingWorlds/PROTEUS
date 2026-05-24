@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import tomllib
 from pathlib import Path
 
@@ -7,11 +8,15 @@ import cattrs
 
 from ._config import Config
 
+log = logging.getLogger('fwl.' + __name__)
+
 
 def read_config(path: Path | str) -> dict:
     """Read config file from path"""
+    log.debug('Reading config from %s', path)
     with open(path, 'rb') as f:
         config = tomllib.load(f)
+    log.debug('TOML sections loaded: %s', sorted(config.keys()))
     return config
 
 
@@ -19,7 +24,17 @@ def read_config_object(path: Path | str) -> Config:
     """Read and validate config into Config object."""
     cfg = read_config(path)
     try:
-        return cattrs.structure(cfg, Config)
+        obj = cattrs.structure(cfg, Config)
+        log.debug(
+            'Config structured: star.module=%s, interior_energetics.module=%s, '
+            'outgas.module=%s, atmos_clim.module=%s, escape.module=%s',
+            obj.star.module,
+            obj.interior_energetics.module,
+            obj.outgas.module,
+            obj.atmos_clim.module,
+            obj.escape.module,
+        )
+        return obj
     except cattrs.errors.ClassValidationError as e:
         # Extract actionable error messages from the nested exception group
         messages = []

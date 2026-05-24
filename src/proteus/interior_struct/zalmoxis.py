@@ -468,6 +468,13 @@ def load_zalmoxis_configuration(
         M_volatiles += float(hf_row.get(e + '_kg_total', 0.0))
 
     log.info(f'Volatile mass: {M_volatiles} kg')
+    log.debug(
+        'Mass budget: total=%.6e kg (%.4f M_earth), volatiles=%.6e kg (%.2f%%)',
+        total_planet_mass,
+        config.planet.mass_tot,
+        M_volatiles,
+        100.0 * M_volatiles / total_planet_mass if total_planet_mass > 0 else 0,
+    )
 
     # Calculate the target planet mass (dry mass) by subtracting the mass of volatiles from the total planet mass
     planet_mass = total_planet_mass - M_volatiles
@@ -574,6 +581,18 @@ def load_zalmoxis_configuration(
             else {}
         ),
     }
+
+    zc = config.interior_struct.zalmoxis
+    log.debug(
+        'Zalmoxis config: num_layers=%d, outer_solver=%s, tol_outer=%.1e, '
+        'tol_inner=%.1e, use_jax=%s, use_anderson=%s',
+        zc.num_levels,
+        zc.outer_solver,
+        zc.solver_tol_outer,
+        zc.solver_tol_inner,
+        zc.use_jax,
+        zc.use_anderson,
+    )
 
 
 def load_zalmoxis_material_dictionaries():

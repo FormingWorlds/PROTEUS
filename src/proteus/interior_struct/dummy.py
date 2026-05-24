@@ -62,6 +62,13 @@ def solve_dummy_structure(
         config.interior_struct.core_frac,
         config.interior_struct.core_frac_mode,
     )
+    log.debug(
+        'Dummy structure: M_p=%.4f M_earth, core_frac=%.3f (%s), x_cmf=%.3f',
+        m_ratio,
+        config.interior_struct.core_frac,
+        config.interior_struct.core_frac_mode,
+        x_cmf,
+    )
 
     # --- Noack & Lasbleis (2020) scaling laws ---
 
