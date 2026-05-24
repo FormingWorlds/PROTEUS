@@ -14,10 +14,10 @@ exercising the production-default structure solver.
 Complements:
 
 - ``test_slow_aragog_calliope.py`` (real aragog + real calliope,
-  dummy structure) — exercises Aragog + CALLIOPE without booting
+  dummy structure), which exercises Aragog + CALLIOPE without booting
   Zalmoxis.
 - ``test_slow_zalmoxis_dummy.py`` (real zalmoxis, dummy everything
-  else) — exercises Zalmoxis without the coupling load from Aragog
+  else), which exercises Zalmoxis without the coupling load from Aragog
   or CALLIOPE.
 
 This file is the union: every code path that runs in either of the

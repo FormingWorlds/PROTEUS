@@ -19,7 +19,7 @@ import pytest
 
 from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 @pytest.mark.unit

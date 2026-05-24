@@ -563,7 +563,7 @@ def test_get_tools_subcommands_call_setup(monkeypatch, subcommand, target):
 def test_start_help_lists_deterministic_flag():
     """The --deterministic flag must be visible in `proteus start --help`,
     so users discover it without reading source. The help text must explain
-    WHEN to use it (numerical fragility), not just WHAT it does — that's the
+    WHEN to use it (numerical fragility), not just WHAT it does; that is the
     whole point of exposing this flag."""
     res = runner.invoke(cli.start, ['--help'])
     assert res.exit_code == 0
@@ -607,7 +607,7 @@ def test_should_apply_deterministic_decision_table():
 def test_apply_deterministic_env_appends_xla_flags():
     """XLA_FLAGS may already carry user-set debugging flags. We must APPEND
     --xla_cpu_enable_fast_math=false, not overwrite, otherwise we'd silently
-    drop the user's debugging context. Also: idempotent — calling twice must
+    drop the user's debugging context. Also: idempotent, calling twice must
     not duplicate the flag."""
     # Existing XLA_FLAGS preserved + extended
     env = {'XLA_FLAGS': '--xla_dump_to=/tmp/xla'}

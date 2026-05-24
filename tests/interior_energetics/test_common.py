@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior_energetics.common module — Interior_t lookup table loading.
+Unit tests for proteus.interior_energetics.common module: Interior_t lookup table loading.
 
 Tests the _load_ps_table() method which loads SPIDER's P-S lookup tables
 (density_melt, heat_capacity_solid, heat_capacity_melt) with FWL_DATA
@@ -184,7 +184,7 @@ def test_load_ps_table_scaling(tmp_path):
     np.testing.assert_allclose(table[0, 0, 0], 0.1 * P_scale, rtol=1e-10)
     np.testing.assert_allclose(table[0, 0, 1], 0.2 * S_scale, rtol=1e-10)
     np.testing.assert_allclose(table[0, 0, 2], 0.5 * val_scale, rtol=1e-10)
-    # Last entry differs from first along both axes — guards against
+    # Last entry differs from first along both axes; guards against
     # transposition / reshape ordering bugs.
     np.testing.assert_allclose(table[1, 1, 0], 0.3 * P_scale, rtol=1e-10)
     np.testing.assert_allclose(table[1, 1, 1], 0.8 * S_scale, rtol=1e-10)
@@ -292,7 +292,7 @@ def test_interior_t_stale_struct_steps_init():
     """
     interior_o = Interior_t(50)
     assert hasattr(interior_o, '_stale_struct_steps'), (
-        'Interior_t must expose _stale_struct_steps for T1.1 visibility'
+        'Interior_t must expose _stale_struct_steps for stale-mesh tracking'
     )
     assert interior_o._stale_struct_steps == 0
     assert isinstance(interior_o._stale_struct_steps, int)
@@ -469,8 +469,8 @@ def test_resume_tides_missing_file_emits_warning_and_does_not_mutate_state(tmp_p
         interior.resume_tides(str(tmp_path))
     assert any('Cannot find tides file' in r.message for r in caplog.records)
     # State unchanged: zeros preserved (no array growth, no NaN injection).
-    assert np.all(interior.phi == 0.0)
-    assert np.all(interior.tides == 0.0)
+    np.testing.assert_allclose(interior.phi, 0.0, atol=1e-12)
+    np.testing.assert_allclose(interior.tides, 0.0, atol=1e-12)
 
 
 def test_resume_tides_length_mismatch_logs_error_but_does_not_raise(tmp_path, caplog):
@@ -521,7 +521,7 @@ def test_update_rheology_fills_shear_and_bulk_arrays_skip_viscosity_by_default()
     # have very different dotl reference scales.
     assert np.all(np.diff(interior.shear) <= 0.0)
     # Viscosity left untouched (still zeros from constructor).
-    assert np.all(interior.visc == 0.0)
+    np.testing.assert_allclose(interior.visc, 0.0, atol=1e-12)
 
 
 @pytest.mark.physics_invariant

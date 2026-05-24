@@ -114,6 +114,9 @@ def test_aragog_zephyrus_rejects_dummy_star_at_spada_zephyrus_layer():
     )
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), **kwargs)
+    # Selectivity: escape=dummy with same star must construct cleanly.
+    cfg_ok = Config(escape=Escape(module='dummy'), **kwargs)
+    assert cfg_ok.escape.module == 'dummy'
 
 
 def test_aragog_zephyrus_rejects_baraffe_tracks_at_spada_zephyrus_layer():
@@ -135,6 +138,12 @@ def test_aragog_zephyrus_rejects_baraffe_tracks_at_spada_zephyrus_layer():
     )
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), **kwargs)
+    # Adjacent-valid: mors+spada with zephyrus must construct cleanly.
+    from proteus.config._star import Mors as MorsSpada
+
+    kwargs_spada = {**kwargs, 'star': Star(module='mors', mors=MorsSpada(tracks='spada'))}
+    cfg_ok = Config(escape=Escape(module='zephyrus'), **kwargs_spada)
+    assert cfg_ok.star.mors.tracks == 'spada'
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +230,7 @@ def test_zephyrus_efficiency_endpoints_round_trip_under_aragog_pair():
             **_base_config_kwargs(),
         )
         assert cfg.escape.zephyrus.efficiency == pytest.approx(boundary, abs=1e-12)
+        assert cfg.escape.module == 'zephyrus'
 
 
 # ---------------------------------------------------------------------------

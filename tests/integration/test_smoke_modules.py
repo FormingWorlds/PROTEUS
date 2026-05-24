@@ -123,7 +123,7 @@ def test_smoke_escape_dummy_atmos():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
-            # Conservation invariants — applied to every smoke test so a
+            # Conservation invariants, applied to every smoke test so a
             # bookkeeping regression in any module surfaces here, not
             # in a quiet helpfile drift months later.
             assert_smoke_conservation_invariants(runner.hf_all)
@@ -231,7 +231,7 @@ def test_smoke_star_instellation():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
-            # Conservation invariants — applied to every smoke test so a
+            # Conservation invariants, applied to every smoke test so a
             # bookkeeping regression in any module surfaces here, not
             # in a quiet helpfile drift months later.
             assert_smoke_conservation_invariants(runner.hf_all)
@@ -334,7 +334,7 @@ def test_smoke_orbit_heat_tidaling():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
-            # Conservation invariants — applied to every smoke test so a
+            # Conservation invariants, applied to every smoke test so a
             # bookkeeping regression in any module surfaces here, not
             # in a quiet helpfile drift months later.
             assert_smoke_conservation_invariants(runner.hf_all)
@@ -445,7 +445,7 @@ def test_smoke_outgas_atmos_volatiles():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
-            # Conservation invariants — applied to every smoke test so a
+            # Conservation invariants, applied to every smoke test so a
             # bookkeeping regression in any module surfaces here, not
             # in a quiet helpfile drift months later.
             assert_smoke_conservation_invariants(runner.hf_all)
@@ -552,7 +552,7 @@ def test_smoke_dummy_full_chain():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
-            # Conservation invariants — applied to every smoke test so a
+            # Conservation invariants, applied to every smoke test so a
             # bookkeeping regression in any module surfaces here, not
             # in a quiet helpfile drift months later.
             assert_smoke_conservation_invariants(runner.hf_all)

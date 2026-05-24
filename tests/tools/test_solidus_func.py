@@ -73,13 +73,13 @@ wolf_bower_2018 = _solidus_func.wolf_bower_2018
 
 @pytest.fixture
 def pressure_grid():
-    """Standard pressure grid for testing (0–1000 GPa, 100 points)."""
+    """Standard pressure grid for testing (0-1000 GPa, 100 points)."""
     return np.linspace(0.0, 1000.0, 100)
 
 
 @pytest.fixture
 def small_pressure_grid():
-    """Small pressure grid for quick smoke tests (0–100 GPa, 10 points)."""
+    """Small pressure grid for quick smoke tests (0-100 GPa, 10 points)."""
     return np.linspace(0.0, 100.0, 10)
 
 
@@ -129,7 +129,7 @@ class TestMakePressureGrid:
         """Creates a 500-point grid from 0 to 1000 GPa (default)."""
         P = make_pressure_grid()
         assert len(P) == 500
-        assert P[0] == 0.0
+        assert P[0] == pytest.approx(0.0, abs=1e-12)
         assert P[-1] == pytest.approx(1000.0, rel=1e-10)
         assert np.all(np.diff(P) > 0), 'Pressure grid must be monotonically increasing'
 
@@ -503,7 +503,7 @@ class TestMonteux2016:
 
 @pytest.mark.unit
 class TestHirschmann2000:
-    """Test Hirschmann (2000) melting curve (low pressure, ~0–10 GPa)."""
+    """Test Hirschmann (2000) melting curve (low pressure, ~0-10 GPa)."""
 
     def test_solidus_basic_shape(self):
         """Solidus returns correct shape."""

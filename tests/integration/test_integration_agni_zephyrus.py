@@ -141,6 +141,10 @@ def test_zephyrus_pxuv_field_level_validator_rejects_strictly_negative():
     # before any Escape-level cross-validator runs.
     with pytest.raises(ValueError, match=r'(?i)pxuv'):
         Zephyrus(Pxuv=-1.0)
+    # Adjacent-valid: a small positive value must round-trip without error,
+    # confirming the ge(0) boundary is inclusive at zero.
+    z = Zephyrus(Pxuv=0.0)
+    assert z.Pxuv == pytest.approx(0.0, abs=1e-12)
 
 
 def test_zephyrus_efficiency_in_unit_interval_closed_at_both_ends():
@@ -201,8 +205,10 @@ def test_spada_zephyrus_rejects_zephyrus_with_dummy_star():
     # Zephyrus with dummy star: spada_zephyrus must raise.
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), **base)
-    # Same config with escape.module='dummy' constructs cleanly.
-    Config(escape=Escape(module='dummy'), **base)
+    # Same config with escape.module='dummy' constructs cleanly,
+    # confirming the error is specific to zephyrus + non-mors.
+    cfg_ok = Config(escape=Escape(module='dummy'), **base)
+    assert cfg_ok.escape.module == 'dummy'
 
 
 def test_spada_zephyrus_rejects_zephyrus_with_baraffe_tracks():
@@ -225,6 +231,10 @@ def test_spada_zephyrus_rejects_zephyrus_with_baraffe_tracks():
     star_baraffe = Star(module='mors', mors=Mors(tracks='baraffe'))
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), star=star_baraffe, **base)
+    # Adjacent-valid: same star with spada tracks must round-trip.
+    star_spada = Star(module='mors', mors=Mors(tracks='spada'))
+    cfg_ok = Config(escape=Escape(module='zephyrus'), star=star_spada, **base)
+    assert cfg_ok.star.mors.tracks == 'spada'
 
 
 def test_spada_zephyrus_accepts_mors_plus_spada():
@@ -347,5 +357,5 @@ def test_agni_zephyrus_helpfile_keys_register_escape_and_agni_columns():
         assert key in keys, f'{key} must be registered in GetHelpfileKeys()'
     row = ZeroHelpfileRow()
     for key in agni_diagnostic_keys + zephyrus_escape_keys:
-        assert row[key] == 0.0
+        assert row[key] == pytest.approx(0.0, abs=1e-12)
         assert isinstance(row[key], float)

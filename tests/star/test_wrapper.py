@@ -198,7 +198,7 @@ def test_update_instellation_baraffe_branch_uses_baraffesolarconstant_and_zeros_
     track.BaraffeSolarConstant.assert_called_once_with(4.567e9, 1.0)
     assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
     # XUV explicitly zero for Baraffe (no XUV in those tracks).
-    assert hf_row['F_xuv'] == 0.0
+    assert hf_row['F_xuv'] == pytest.approx(0.0, abs=1e-12)
 
 
 def test_update_instellation_dummy_branch_zeroes_fxuv_and_computes_finstellation():
@@ -224,7 +224,7 @@ def test_update_instellation_dummy_branch_zeroes_fxuv_and_computes_finstellation
         update_instellation(hf_row, config)
     mock_inst.assert_called_once_with(5778.0, 6.957e8, 1.496e11)
     assert hf_row['F_ins'] == pytest.approx(1361.0, rel=1e-12)
-    assert hf_row['F_xuv'] == 0.0
+    assert hf_row['F_xuv'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.physics_invariant

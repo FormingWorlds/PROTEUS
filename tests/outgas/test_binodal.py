@@ -172,8 +172,8 @@ def test_solid_h2_reservoir_is_always_zero():
     hf_row = _make_hf_row(extra={'H2_kg_solid': 1e20})  # stale junk to be cleared
     with patch('zalmoxis.binodal.rogers2025_suppression_weight', return_value=0.3):
         apply_binodal_h2(hf_row, cfg)
-    assert hf_row['H2_kg_solid'] == 0.0
-    assert hf_row['H2_mol_solid'] == 0.0
+    assert hf_row['H2_kg_solid'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['H2_mol_solid'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -226,7 +226,9 @@ def test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025():
     # Sign guards on reservoirs.
     assert hf_row['H2_kg_atm'] >= 0.0
     assert hf_row['H2_kg_liquid'] >= 0.0
-    assert hf_row['H2_kg_solid'] == 0.0  # H2 has no solid silicate sink
+    assert hf_row['H2_kg_solid'] == pytest.approx(
+        0.0, abs=1e-12
+    )  # H2 has no solid silicate sink
 
 
 # ---------------------------------------------------------------------------

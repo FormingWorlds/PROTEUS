@@ -102,7 +102,7 @@ def test_atmodeller_solver_mode_enum_is_robust_or_basic():
 
 def test_atmodeller_solver_step_and_multistart_must_be_positive():
     """``solver_max_steps`` and ``solver_multistart`` are
-    ``validators.gt(0)`` — strictly positive integers.
+    ``validators.gt(0)``, i.e. strictly positive integers.
 
     Edge: limit-input case (0 and -1 raise). Documented defaults
     (256, 10) round-trip. Discrimination guard: a regression that
@@ -299,5 +299,5 @@ def test_agni_atmodeller_helpfile_keys_register_path_c_columns():
     row = ZeroHelpfileRow()
     for key in agni_diagnostic_keys + atmodeller_path_c_keys + pressure_keys:
         assert key in row
-        assert row[key] == 0.0
+        assert row[key] == pytest.approx(0.0, abs=1e-12)
         assert isinstance(row[key], float)

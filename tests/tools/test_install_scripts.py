@@ -3,15 +3,15 @@ Unit tests for PETSc/SPIDER installation shell scripts.
 
 Tests the reusable shell logic extracted from ``tools/get_petsc.sh`` and
 ``tools/get_spider.sh``:
-- ``portable_realpath()`` — cross-platform path resolution
-- ERR trap — exit-code and step-name capture
-- Platform detection — PETSC_ARCH assignment
-- Homebrew prefix fallback — architecture-aware default
-- Workpath argument handling — ``$1`` override vs default
-- PETSc library detection — versioned ``.so``, ``.dylib``, missing
+- ``portable_realpath()``: cross-platform path resolution
+- ERR trap: exit-code and step-name capture
+- Platform detection: PETSC_ARCH assignment
+- Homebrew prefix fallback: architecture-aware default
+- Workpath argument handling: ``$1`` override vs default
+- PETSc library detection: versioned ``.so``, ``.dylib``, missing
 
-Each test runs an isolated bash snippet via ``subprocess.run()`` — no
-network access, no real builds.
+Each test runs an isolated bash snippet via ``subprocess.run()``, with no
+network access and no real builds.
 
 See also:
 - docs/test_infrastructure.md
@@ -116,7 +116,7 @@ def test_portable_realpath_python_fallback(tmp_path):
     target = tmp_path / 'target'
     target.mkdir()
 
-    # Build a PATH with *only* python3 — no realpath anywhere.
+    # Build a PATH with *only* python3, no realpath anywhere.
     python_bin = sys.executable
     safe_bin = tmp_path / 'safe_bin'
     safe_bin.mkdir()

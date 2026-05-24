@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.proteus module — Zalmoxis mesh restoration on resume.
+Unit tests for proteus.proteus module: Zalmoxis mesh restoration on resume.
 
 Tests the resume code path in Proteus.start() that restores the Zalmoxis
 mesh file path when resuming a SPIDER interior simulation.
@@ -248,6 +248,7 @@ def test_check_atmosphere_deadlock_resets_counter_when_solve_converged(tmp_path)
     p.agni_deadlock_count = 2
     p._check_atmosphere_deadlock()
     assert p.agni_deadlock_count == 0
+    assert p.agni_deadlock_count != 2  # guard: reset happened, not no-op
 
 
 def test_check_atmosphere_deadlock_does_not_fire_on_first_iteration(tmp_path):
@@ -265,6 +266,7 @@ def test_check_atmosphere_deadlock_does_not_fire_on_first_iteration(tmp_path):
     )
     p._check_atmosphere_deadlock()
     assert p.agni_deadlock_count == 0
+    assert p.hf_all is None  # hf_all untouched
 
 
 def test_check_atmosphere_deadlock_resets_when_interior_state_moved(tmp_path):
@@ -284,6 +286,7 @@ def test_check_atmosphere_deadlock_resets_when_interior_state_moved(tmp_path):
     p.agni_deadlock_count = 1
     p._check_atmosphere_deadlock()
     assert p.agni_deadlock_count == 0
+    assert p.agni_deadlock_count != 1  # guard: reset happened
 
 
 def test_check_atmosphere_deadlock_increments_when_interior_frozen(tmp_path, caplog):
@@ -630,6 +633,8 @@ def test_proteus_resume_too_short_raises(tmp_path):
 
         with pytest.raises(RuntimeError, match='too short to be resumed'):
             p.start(resume=True, offline=True)
+        # The short helpfile itself is still valid (1 row); the error is about length
+        assert len(short_df) == 1
 
 
 # ---------------------------------------------------------------------------

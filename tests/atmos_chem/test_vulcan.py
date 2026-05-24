@@ -317,12 +317,12 @@ def test_run_vulcan_online_make_funs_once(
     if hasattr(run_vulcan, '_made'):
         del run_vulcan._made
 
-    # First call — should compile network
+    # First call: should compile network
     run_vulcan(dirs, config, hf_row, online=True)
     assert mock_vulcan_package.make_chem_funs.make_all.call_count == 1
     assert hasattr(run_vulcan, '_made')
 
-    # Second call — should NOT recompile
+    # Second call: should NOT recompile
     mock_vulcan_package.make_chem_funs.make_all.reset_mock()
 
     hf_row2 = _make_mock_hf_row(year=200.0)

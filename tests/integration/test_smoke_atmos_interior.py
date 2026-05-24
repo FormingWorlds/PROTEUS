@@ -122,7 +122,7 @@ def test_smoke_dummy_atmos_dummy_interior_flux_exchange():
             assert 'Time' in final_row, 'Time should be in helpfile'
             assert final_row['Time'] > 0, 'Time should have progressed'
 
-            # Conservation invariants — applied to every smoke test so a
+            # Conservation invariants, applied to every smoke test so a
             # bookkeeping regression in any module surfaces here, not
             # in a quiet helpfile drift months later.
             assert_smoke_conservation_invariants(runner.hf_all)

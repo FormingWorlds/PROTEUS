@@ -86,6 +86,7 @@ def test_platon_method_is_xsec():
     from proteus.observe.platon import PLATON_METHOD
 
     assert PLATON_METHOD == 'xsec'
+    assert isinstance(PLATON_METHOD, str)
 
 
 def test_platon_gases_documented_set_and_count():

@@ -2160,7 +2160,7 @@ def test_config_janus_escape_atmosphere_non_janus_skip():
 
 
 # ----------------------------------------------------------------------
-# liquidus_super temperature_mode + delta_T_super (Stage 4 IC anchor)
+# liquidus_super temperature_mode + delta_T_super (IC anchor validation)
 # ----------------------------------------------------------------------
 
 

@@ -202,7 +202,7 @@ def test_spider_defaults():
     s = Spider()
     assert s.solver_type == 'bdf'
     # Deprecation alias sentinel (not set)
-    assert s.tolerance_rel == -1.0
+    assert s.tolerance_rel == pytest.approx(-1.0, abs=1e-12)
     # Real SPIDER-only field (post 2026-04-09)
     assert s.matprop_smooth_width == pytest.approx(1e-2)
 

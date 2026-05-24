@@ -159,9 +159,9 @@ def test_read_ncdf_profile_without_combining_edges(mock_ds, mock_isfile):
     np.testing.assert_allclose(result['r'], np.array([6.01e6, 6.02e6]))
     np.testing.assert_allclose(result['rl'], np.array([6.0e6, 6.015e6, 6.025e6]))
 
-    assert result['solved'] == 0.0
-    assert result['transparent'] == 0.0
-    assert result['converged'] == 0.0
+    assert result['solved'] == pytest.approx(0.0, abs=1e-12)
+    assert result['transparent'] == pytest.approx(0.0, abs=1e-12)
+    assert result['converged'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit

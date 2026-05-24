@@ -1,17 +1,14 @@
-"""Unit tests for the Aragog/SPIDER config-parity refactor (Tier 1-4, 2026-04-08).
+"""Unit tests for Aragog/SPIDER config parity and P-S table handling.
 
-These tests cover the new / refactored pieces introduced by the
-parity commits `52138bc8` through `47711120` on `tl/interior-refactor`:
+Covers:
 
-- `interior_energetics.wrapper._is_spider_ps_format` - P-S format sniff
-- `interior_energetics.wrapper._rectangularize_spider_ps_file` -
+- ``interior_energetics.wrapper._is_spider_ps_format``: P-S format sniff
+- ``interior_energetics.wrapper._rectangularize_spider_ps_file``:
   normalization of SPIDER's quasi-regular P-S tables
-- `config._interior.Interior.__attrs_post_init__` - Tier 4 deprecation
-  alias resolution (num_tolerance, spider.tolerance_rel). The
-  matprop_smooth_width alias was removed on 2026-04-09 when the knob
-  reverted to SPIDER-only after Aragog's Jgrav smoothing was made
-  parameter-free.
-- `config._interior` - Tier 3 physics-constant fields default values
+- ``config._interior.Interior.__attrs_post_init__``: deprecation alias
+  resolution (num_tolerance, spider.tolerance_rel)
+- ``config._interior``: physics-constant field defaults unified across
+  Aragog and SPIDER
 
 All tests are pure-Python: no Julia, no SOCRATES, no SPIDER binary.
 They use tmp_path fixtures for file-system checks and mock the
@@ -25,7 +22,7 @@ import warnings
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # =====================================================================
@@ -222,7 +219,7 @@ def test_rectangularize_rejects_header_row_count_mismatch(tmp_path):
 
 
 # =====================================================================
-# Tier 4 deprecation alias resolution
+# Deprecation alias resolution
 # =====================================================================
 
 
@@ -283,15 +280,13 @@ def test_tier4_spider_tolerance_rel_alias_copies_to_rtol():
 
 
 def test_spider_matprop_smooth_width_is_real_field():
-    """Spider.matprop_smooth_width is a real SPIDER-only field after
-    the 2026-04-09 Aragog Jgrav fix. It was briefly a deprecation
-    alias under Tier 4 (copied to Interior.matprop_smooth_width),
-    but that top-level field no longer exists; the knob is SPIDER-
-    specific again and sets no alias.
+    """Spider.matprop_smooth_width is a SPIDER-only field (Aragog's
+    Jgrav smoothing is parameter-free). No top-level Interior alias
+    exists for this knob.
 
     A user who sets it should get the value they asked for with no
     DeprecationWarning, and the Interior wrapper should NOT expose a
-    top-level `matprop_smooth_width` attribute.
+    top-level ``matprop_smooth_width`` attribute.
     """
     from proteus.config._interior import Interior, Spider
 
@@ -324,7 +319,7 @@ def test_tier4_spider_tolerance_rel_conflict_raises():
 
 
 # =====================================================================
-# Tier 3 physics-constant defaults match SPIDER exactly
+# Physics-constant defaults match SPIDER exactly
 # =====================================================================
 
 
@@ -354,8 +349,8 @@ def test_tier3_adams_williamson_rhos_default_matches_spider():
 
 
 def test_tier3_physics_constants_all_set_to_spider_defaults():
-    """Every Tier 3 field resolves to the SPIDER-matching default
-    the refactor promises."""
+    """Every shared physics-constant field resolves to the
+    SPIDER-matching default."""
     from proteus.config._interior import Interior
 
     ie = Interior()

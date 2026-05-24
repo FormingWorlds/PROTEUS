@@ -75,6 +75,7 @@ def test_perihelion_is_sma_times_one_minus_eccentricity():
     assert 0.0 < hf_row['perihelion'] <= hf_row['semimajorax']
 
 
+@pytest.mark.physics_invariant
 def test_perigee_passes_through_satellite_sma():
     """Periapsis around the planet is currently the satellite SMA
     (circular-orbit approximation). The value must pass through
@@ -322,6 +323,7 @@ def test_init_orbit_short_circuits_when_module_is_none_string():
     with patch('proteus.orbit.lovepy.import_lovepy') as mock_import:
         init_orbit(handler)
     assert mock_import.call_count == 0
+    assert handler.config.orbit.module == 'None'  # config untouched
 
 
 def test_init_orbit_invokes_lovepy_import_when_module_is_lovepy():
@@ -443,7 +445,7 @@ def test_run_orbit_no_module_sets_imk2_to_zero():
         run_orbit(hf_row, config, dirs={}, interior_o=interior_o)
     # The no-module branch sets Imk2 to exactly 0.0 and does NOT
     # call run_dummy_orbit.
-    assert hf_row['Imk2'] == 0.0
+    assert hf_row['Imk2'] == pytest.approx(0.0, abs=1e-12)
     assert mock_dummy.call_count == 0
     # axial_period was specified in hours; confirm conversion to s.
     from proteus.utils.constants import secs_per_hour

@@ -70,6 +70,7 @@ def _make_synthetic_mantle_profiles(
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_write_spider_mesh_file(tmp_path):
     """Verify SPIDER mesh file from synthetic Earth-like mantle profiles.
 
@@ -284,7 +285,7 @@ def test_solidus_liquidus_rtpress():
 
 
 # ============================================================================
-# T1.3: zalmoxis_output.dat schema check at file handover boundary
+# zalmoxis_output.dat schema check at file handover boundary
 # ============================================================================
 
 
@@ -363,7 +364,7 @@ def test_validate_zalmoxis_output_schema_mass_mismatch(tmp_path):
     sources: (a) integrator-method difference between Zalmoxis' RK45
     ODE-state mass and grid-trapezoidal shell-sum (~0.8-2 %), and
     (b) blend_mesh_files post-write modification of the file (up to
-    ~5 % drift from unblended hf_row, see T2.5). Genuine corruption
+    ~5 % drift from unblended hf_row). Genuine corruption
     (column swap, truncation) shows up at >>5 %.
 
     Edge cases covered:
@@ -443,4 +444,4 @@ def test_validate_zalmoxis_output_schema_skips_when_hf_row_unset(tmp_path):
     # Discriminating check: R_int matches the file top while masses are zero;
     # only the mass-skip branch can produce a silent pass on the second call.
     assert hf_row_no_mass['R_int'] == R_int_top
-    assert hf_row_no_mass['M_int'] == 0.0
+    assert hf_row_no_mass['M_int'] == pytest.approx(0.0, abs=1e-12)

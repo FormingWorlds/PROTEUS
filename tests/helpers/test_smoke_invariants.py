@@ -30,7 +30,7 @@ from _smoke_invariants import (
     assert_temperatures_positive,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # ---------------------------------------------------------------------------

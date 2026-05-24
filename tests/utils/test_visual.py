@@ -116,6 +116,7 @@ def test_xyz_to_rgb_zero_input_returns_zero_without_division_by_zero():
     """
     rgb = cs_srgb.xyz_to_rgb(np.zeros(3))
     np.testing.assert_array_equal(rgb, np.zeros(3))
+    assert rgb.shape == (3,)  # structural: output shape matches input
 
 
 def test_xyz_to_rgb_html_format_returns_seven_char_hex_string():
@@ -168,6 +169,7 @@ def test_spec_to_xyz_zero_spectrum_returns_unnormalised_zero_triple():
     """
     xyz = cs_srgb.spec_to_xyz(np.zeros(cmf.shape[0]))
     np.testing.assert_array_equal(xyz, np.zeros(3))
+    assert not np.any(np.isnan(xyz))  # no NaN propagation from 0/0
 
 
 def test_spec_to_rgb_uniform_spectrum_returns_finite_rgb_with_max_one():

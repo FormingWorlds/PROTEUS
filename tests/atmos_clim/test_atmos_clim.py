@@ -37,7 +37,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # =======================================================================================
-# SECTION: RunDummyAtm() — Fixed surface temperature mode
+# SECTION: RunDummyAtm(), fixed surface temperature mode
 # =======================================================================================
 
 
@@ -192,7 +192,7 @@ def test_rundummyatm_opaque_atmosphere():
 
 
 # =======================================================================================
-# SECTION: RunDummyAtm() — Conductive boundary layer (skin) mode
+# SECTION: RunDummyAtm(), conductive boundary layer (skin) mode
 # =======================================================================================
 
 
@@ -287,7 +287,7 @@ def test_rundummyatm_skin_convergence():
 
 
 # =======================================================================================
-# SECTION: RunDummyAtm() — Flux physics and edge cases
+# SECTION: RunDummyAtm(), flux physics and edge cases
 # =======================================================================================
 
 

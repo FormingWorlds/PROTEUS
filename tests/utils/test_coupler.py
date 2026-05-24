@@ -757,6 +757,8 @@ def test_get_git_revision_with_mock():
             result = _get_git_revision(tmpdir)
 
             assert result == 'abc123def456789'
+            # Return value must be a plain string, not bytes.
+            assert isinstance(result, str)
             mock_check_output.assert_called_once_with(
                 ['git', 'rev-parse', 'HEAD'],
                 stderr=subprocess.DEVNULL,
@@ -834,6 +836,7 @@ def test_get_julia_version_with_mock():
         version = _get_julia_version()
 
         assert version == '1.9.3'
+        assert isinstance(version, str)
         mock_check_output.assert_called_once_with(['julia', '--version'])
 
 
@@ -1316,7 +1319,7 @@ def test_populate_energy_residual_ignores_instantaneous_F_cmb_spike():
         time_yr=10.0,
         E_state_cons_J=E0 + physical_delta,
         step_dE_F_int_J=physical_delta,
-        # Catastrophic instantaneous spike — must be IGNORED.
+        # Catastrophic instantaneous spike; must be IGNORED.
         F_cmb=1.0e23,
     )
     _populate_energy_residual(hf, row1)
@@ -1383,7 +1386,7 @@ def test_populate_energy_residual_residual_detects_missing_source():
     expected_residual = actual_dE - reported_step_delta  # = +8e29 J
     assert row1['dE_predicted_cons_J'] == pytest.approx(reported_step_delta, rel=1e-12)
     assert row1['E_residual_cons_J'] == pytest.approx(expected_residual, rel=1e-12)
-    # E_residual_cons_frac should be O(1) — residual is comparable to actual.
+    # E_residual_cons_frac should be O(1); residual is comparable to actual.
     assert abs(row1['E_residual_cons_frac']) > 0.5
 
 
@@ -1478,14 +1481,14 @@ def test_assert_mass_conservation_passes_when_invariants_hold():
 def test_assert_mass_conservation_fails_when_M_atm_exceeds_M_planet():
     """assert_mass_conservation hard-fails when M_atm > M_planet (the issue #677 symptom).
 
-    Discriminating: M_atm = 7.2e24 vs M_planet = 5.97e24 — a 21 percent
+    Discriminating: M_atm = 7.2e24 vs M_planet = 5.97e24, a 21 percent
     excess, well above the 1e-6 tolerance. Must raise RuntimeError with
     a message naming the M_atm and M_planet values.
     """
     from proteus.utils.coupler import assert_mass_conservation
 
     hf_row = {
-        'M_atm': 7.2e24,  # Atmosphere exceeds planet — the exact issue #677 symptom
+        'M_atm': 7.2e24,  # Atmosphere exceeds planet (the issue #677 symptom)
         'M_planet': 5.97e24,
     }
     for s_idx in range(15):
@@ -1510,7 +1513,7 @@ def test_assert_mass_conservation_fails_when_species_sum_disagrees():
 
     Edge case: per-species kg_atm values are stale or a species is missing
     from the M_atm sum loop. Discriminating: sum = 4.0e24 but M_atm = 4.6e24
-    — a 15 percent disagreement.
+    (a 15 percent disagreement).
     """
     from proteus.utils.constants import gas_list
     from proteus.utils.coupler import assert_mass_conservation
@@ -1602,6 +1605,7 @@ def test_get_git_revision_returns_unknown_on_subprocess_failure():
         with patch('subprocess.check_output', side_effect=FileNotFoundError('git not found')):
             result = _get_git_revision(tmpdir)
     assert result == 'unknown'
+    assert isinstance(result, str)
 
 
 def test_get_git_revision_returns_unknown_on_subprocess_timeout():
@@ -1619,6 +1623,7 @@ def test_get_git_revision_returns_unknown_on_subprocess_timeout():
         ):
             result = _get_git_revision(tmpdir)
     assert result == 'unknown'
+    assert isinstance(result, str)
 
 
 def _all_dummy_modules_config():

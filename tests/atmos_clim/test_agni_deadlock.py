@@ -82,7 +82,7 @@ def test_converged_flag_pop_pattern():
     assert converged_fail is False
     assert 'agni_converged' not in atm_output_fail
 
-    # Case 3: dummy atmosphere — no `agni_converged` key. Default must be True
+    # Case 3: dummy atmosphere, no `agni_converged` key. Default must be True
     # so the deadlock detector does not fire spuriously.
     atm_output_dummy = {'F_atm': 100.0}
     converged_dummy = bool(atm_output_dummy.pop('agni_converged', True))
@@ -205,7 +205,7 @@ def test_deadlock_counter_resets_on_phi_change_only():
     counter, _ = _frozen_step(False, base, base, counter, threshold)
     assert counter == 2
 
-    # Phi changed — must reset (intentional bit-exact comparison)
+    # Phi changed: must reset (intentional bit-exact comparison)
     counter, _ = _frozen_step(False, base, {**base, 'Phi_global': 0.7649}, counter, threshold)
     assert counter == 0
 

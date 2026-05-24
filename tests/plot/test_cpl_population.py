@@ -33,7 +33,7 @@ from proteus.plot.cpl_population import (
     plot_population_time_density,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # ---------------------------------------------------------------------------

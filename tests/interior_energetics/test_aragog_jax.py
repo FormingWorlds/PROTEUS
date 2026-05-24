@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior_energetics.aragog_jax — research-only diffrax
+Unit tests for proteus.interior_energetics.aragog_jax: research-only diffrax
 JAX entropy solver runner.
 
 The diffrax solver path itself is currently paused (kvaerno3 stalls on the
@@ -215,7 +215,7 @@ def test_extract_output_mass_closure(tmp_path):
     coincidence of a symmetric profile. With the chosen asymmetric
     profile, swapping yields a different result than the correct one
     by ~`(2*phi - 1) * mass` summed per cell, several percent of
-    M_mantle — easily resolved against the rel=1e-12 tolerance.
+    M_mantle, easily resolved against the rel=1e-12 tolerance.
 
     Also verifies:
     - T_magma > 0 (sign guard).
@@ -282,7 +282,7 @@ def test_extract_output_mass_closure(tmp_path):
     # Discrimination: with the asymmetric phi profile + uniform mass, the
     # mass-weighted mean Phi_global = mean(phi) = 0.5 exactly. The volume-
     # weighted mean (which would be the regression target) is also 0.5
-    # here because volume is uniform — choose this carefully: the test
+    # here because volume is uniform; choose this carefully: the test
     # below pins the value at 0.5 ± 1e-12. A regression to a different
     # weighting (e.g. radial weighting) would shift the value.
     assert out['Phi_global'] == pytest.approx(0.5, abs=1e-12)

@@ -712,8 +712,13 @@ def test_init_agni_spectral_file_path_not_found_raises(monkeypatch, tmp_path):
     dirs = {'output': str(tmp_path), 'fwl': '/fake/fwl', 'agni': '/fake/agni'}
     hf_row = {'T_surf': 1500.0, 'P_surf': 100.0}
 
-    with pytest.raises(FileNotFoundError, match='AGNI spectral file not found'):
+    with pytest.raises(FileNotFoundError, match='AGNI spectral file not found') as excinfo:
         init_agni_atmos(dirs, config, hf_row)
+
+    # The error message must name the missing file path so the operator
+    # can locate the gap. A regression that emitted a bare error without
+    # interpolation would match the regex but lose the diagnostic.
+    assert '/nonexistent/path/to/spec.sf' in str(excinfo.value)
 
     # NOTE: tests for the surf_material FileNotFoundError (L536-540) and
     # the ini_profile ValueError (L649-651) are deferred because they
@@ -1103,7 +1108,7 @@ def test_run_agni_ocean_output_keys_populated(monkeypatch):
     # Gases NOT in gas_names get 0.0
     for g in agni_mod.gas_list:
         if g not in ['H2O', 'CO2']:
-            assert output[g + '_ocean'] == 0.0
+            assert output[g + '_ocean'] == pytest.approx(0.0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -1255,6 +1260,9 @@ def test_sync_log_files_returns_empty_on_missing_logfile(tmp_path):
     """
     result = agni_mod.sync_log_files(str(tmp_path))
     assert result == []
+    # Type guard: a regression returning None would also satisfy
+    # `== []` as False, but not isinstance.
+    assert isinstance(result, list)
 
 
 # ---------------------------------------------------------------------------

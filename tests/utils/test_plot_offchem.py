@@ -202,6 +202,7 @@ def test_offchem_read_grid_raises_when_folder_is_empty(tmp_path):
 
     with pytest.raises(Exception, match='no grid points were found'):
         offchem_read_grid(str(tmp_path))
+    assert tmp_path.is_dir()  # directory not deleted by the function
 
 
 def test_offchem_read_grid_aggregates_year_data_across_cases(tmp_path, monkeypatch):

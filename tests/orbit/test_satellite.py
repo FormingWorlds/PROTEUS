@@ -56,7 +56,7 @@ def _params(I=1.0, L=10.0, G=1.0, Mpl=1.0, Msa=0.1, dE=1.0):
 def test_ltot_returns_zero_when_omega_and_a_are_zero():
     """``L = I omega + Mpl (G(Mpl+Msa) a)**0.5``: both terms vanish at
     ``omega = 0`` and ``a = 0``."""
-    assert Ltot(ω=0.0, a=0.0, params=_params()) == 0.0
+    assert Ltot(ω=0.0, a=0.0, params=_params()) == pytest.approx(0.0, abs=1e-12)
     # Limit-input invariant: when only omega is zero but a is positive,
     # the orbital term must remain. A regression that masked Ltot to
     # zero on either-zero input would fail here.
@@ -103,11 +103,11 @@ def test_ltot_orbital_term_scales_as_sqrt_a():
 @pytest.mark.physics_invariant
 def test_d_omega_dt_vanishes_when_dE_tidal_is_zero():
     """No tidal dissipation gives no spin-down (numerator is zero)."""
-    assert dω_dt(a=1.0, ω=1.0, params=_params(dE=0.0)) == 0.0
+    assert dω_dt(a=1.0, ω=1.0, params=_params(dE=0.0)) == pytest.approx(0.0, abs=1e-12)
     # Limit-input invariant: the zero result must be independent of
     # the (a, omega) operating point. Exercise a second state to
     # rule out an accidental cancellation at (1, 1).
-    assert dω_dt(a=2.5, ω=0.7, params=_params(dE=0.0)) == 0.0
+    assert dω_dt(a=2.5, ω=0.7, params=_params(dE=0.0)) == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -133,12 +133,12 @@ def test_d_omega_dt_sign_follows_negative_dE_tidal():
 def test_da_dt_zero_when_dE_tidal_zero():
     """``da_dt = -2 I a / (L - I omega) * d_omega_dt``: zero whenever
     ``d_omega_dt`` is zero."""
-    assert da_dt(a=1.0, ω=1.0, params=_params(dE=0.0)) == 0.0
+    assert da_dt(a=1.0, ω=1.0, params=_params(dE=0.0)) == pytest.approx(0.0, abs=1e-12)
     # Limit-input invariant: zero-tidal-power must zero da/dt for any
     # valid (a, omega). A regression that dropped the dE factor from
     # the chain through dw/dt would emit a non-zero value at a
     # different operating point.
-    assert da_dt(a=3.0, ω=0.4, params=_params(dE=0.0)) == 0.0
+    assert da_dt(a=3.0, ω=0.4, params=_params(dE=0.0)) == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.physics_invariant

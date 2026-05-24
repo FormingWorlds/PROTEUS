@@ -94,6 +94,7 @@ def test_import_lovepy_calls_jl_seval_with_using_lovepy(monkeypatch):
     monkeypatch.setattr(lovepy_mod, 'jl', fake_jl)
     lovepy_mod.import_lovepy()
     fake_jl.seval.assert_called_once_with('using LovePy')
+    assert fake_jl.seval.call_count == 1  # exactly one import, not repeated
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +182,7 @@ def test_run_lovepy_dummy_returns_zero_when_top_cell_below_visc_thresh(monkeypat
 
     out = lovepy_mod.run_lovepy(hf_row, dirs={}, interior_o=interior_o, config=cfg)
 
-    assert out == 0.0
+    assert out == pytest.approx(0.0, abs=1e-12)
     fake_jl.calc_lovepy_tides.assert_not_called()
 
 
@@ -211,7 +212,7 @@ def test_run_lovepy_aragog_returns_zero_when_full_mantle_below_visc_thresh(monke
     hf_row = {'orbital_period': 1e7, 'eccentricity': 0.0}
 
     out = lovepy_mod.run_lovepy(hf_row, dirs={}, interior_o=interior_o, config=cfg)
-    assert out == 0.0
+    assert out == pytest.approx(0.0, abs=1e-12)
     fake_jl.calc_lovepy_tides.assert_not_called()
 
 

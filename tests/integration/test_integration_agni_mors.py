@@ -348,5 +348,5 @@ def test_agni_mors_helpfile_keys_register_stellar_and_agni_columns():
         assert key in keys, f'{key} must be registered in GetHelpfileKeys()'
     row = ZeroHelpfileRow()
     for key in agni_diagnostic_keys + mors_stellar_keys:
-        assert row[key] == 0.0
+        assert row[key] == pytest.approx(0.0, abs=1e-12)
         assert isinstance(row[key], float)

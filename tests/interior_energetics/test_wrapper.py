@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior_energetics.wrapper module — structure update triggers.
+Unit tests for proteus.interior_energetics.wrapper module: structure update triggers.
 
 Tests the dynamic trigger logic in update_structure_from_interior() that
 decides when to re-run Zalmoxis with SPIDER's evolved temperature profile.
@@ -1043,7 +1043,7 @@ def test_structure_stale_flag_cleared_on_zalmoxis_success(tmp_path):
     # Flag must be present and False after a successful call.
     assert '_structure_stale' in hf_row_A, 'flag must be set, not absent'
     assert hf_row_A['_structure_stale'] is False, (
-        'flag must be cleared (False) on Zalmoxis success — was %r'
+        'flag must be cleared (False) on Zalmoxis success, was %r'
         % hf_row_A['_structure_stale']
     )
 

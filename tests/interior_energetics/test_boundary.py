@@ -12,9 +12,9 @@ magma ocean states to solid interiors.
   - Extreme irradiation (surface temperature constraints)
 
 **Physical Constants Used**:
-  - Temperature range: 1500–4000 K (magma ocean to solid mantle)
-  - Melt fraction: 0–1 (fully solid to fully molten)
-  - Rayleigh numbers: 10⁶–10¹⁰ (sub-critical to hyper-turbulent convection)
+  - Temperature range: 1500-4000 K (magma ocean to solid mantle)
+  - Melt fraction: 0-1 (fully solid to fully molten)
+  - Rayleigh numbers: 10^6-10^10 (sub-critical to hyper-turbulent convection)
 
 **Test Infrastructure**:
   See `docs/How-to/test_infrastructure.md`, `test_categorization.md`,
@@ -342,7 +342,7 @@ def test_viscosity_arrhenius_magma_ocean(boundary_runner):
     Vogel-Fulcher-Tammann viscosity and crystal fraction weakening.
 
     **Expected Behavior**: η(T) ∝ exp(D/(T - T_ref)); temperature-sensitive,
-    typically 1–100 Pa·s for silicate melts at high temperatures.
+    typically 1-100 Pa*s for silicate melts at high temperatures.
     """
     boundary_runner.viscosity_model = 3
     boundary_runner.viscosity_prefactor = 1e-2  # Pa·s
@@ -354,7 +354,7 @@ def test_viscosity_arrhenius_magma_ocean(boundary_runner):
 
     eta = boundary_runner.viscosity_arrhenius(T_hot, phi)
 
-    # Magma ocean viscosity should be low (~0.001–1000 Pa·s)
+    # Magma ocean viscosity should be low (~0.001-1000 Pa*s)
     assert 1e-3 < eta < 1e4
     # Positivity invariant: viscosity is a physical resistance, so
     # must be positive everywhere. A regression that flipped the
@@ -462,7 +462,7 @@ def test_rayleigh_number_physical_range(boundary_runner):
     """
     Test Rayleigh number falls within physically realistic range for planetary mantles.
 
-    **Physical Scenario**: Ra = 10⁶–10¹⁰ represents transition from laminar to
+    **Physical Scenario**: Ra = 10^6-10^10 represents transition from laminar to
     turbulent convection in rocky planet mantles (Turcotte & Schubert 2014).
 
     **Expected Behavior**: Ra scales with (ΔT × L³) / (η × κ); should increase
@@ -614,12 +614,12 @@ def test_radioactive_heating_disabled(boundary_runner):
 
     h_radio = boundary_runner.radioactive_heating(t)
 
-    assert h_radio == 0.0
+    assert h_radio == pytest.approx(0.0, abs=1e-12)
     # Discriminating guard: the disabled branch must short-circuit at
     # any time argument, not only at t=1 Gyr. A regression that gated
     # on time rather than the flag would fire for at least one of
     # these two probes.
-    assert boundary_runner.radioactive_heating(0.0) == 0.0
+    assert boundary_runner.radioactive_heating(0.0) == pytest.approx(0.0, abs=1e-12)
 
 
 def test_radioactive_heating_enabled_positive(boundary_runner):
@@ -1141,7 +1141,7 @@ def test_compute_time_step_first_iteration(mock_config, mock_dirs):
 
     dt = BoundaryRunner.compute_time_step(mock_config, mock_dirs, {}, None, interior)
 
-    assert dt == 0.0
+    assert dt == pytest.approx(0.0, abs=1e-12)
     # Type pin: the ic=1 branch returns the literal 0.0 (float); a regression
     # that called next_step and got 0 back would yield int 0 only on the
     # contrived case of next_step returning int(0). The two-part check

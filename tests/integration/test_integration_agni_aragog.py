@@ -212,7 +212,7 @@ def test_agni_aragog_wrapper_merge_propagates_optical_depth_keys_to_hf_row():
         'agni_t_conv_over_t_rad',
     ):
         assert key in row
-        assert row[key] == 0.0
+        assert row[key] == pytest.approx(0.0, abs=1e-12)
         assert isinstance(row[key], float)
 
 

@@ -29,7 +29,7 @@ from botorch.exceptions.warnings import OptimizationWarning
 from proteus.inference import BO as bo_mod
 from proteus.inference.utils import get_kernel_w_prior
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(3600)]
 
 
 # ---------------------------------------------------------------------------

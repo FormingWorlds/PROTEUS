@@ -122,8 +122,8 @@ def test_update_planet_mass_includes_oxygen():
 
     Uses asymmetric per-element values so an off-by-one element bug
     or a wrong-element-skipped bug would surface in the M_ele total.
-    Includes O = 4.0e23 kg — comparable in magnitude to the H/C
-    inventory under the issue #677 reproduction regime — to ensure
+    Includes O = 4.0e23 kg, comparable in magnitude to the H/C
+    inventory under the issue #677 reproduction regime, to ensure
     the assertion fails loudly if O is silently dropped.
     """
     hf_row = {}
@@ -351,7 +351,7 @@ def test_run_dummy_int_initialization():
 
     assert output['T_magma'] == pytest.approx(3000.0)
     assert output['T_pot'] == pytest.approx(3000.0)
-    assert sim_time == 0.0  # dt=0 on initialization
+    assert sim_time == pytest.approx(0.0, abs=1e-12)  # dt=0 on initialization
 
 
 @pytest.mark.unit
@@ -749,7 +749,7 @@ def test_interior_t_update_rheology_solid():
     assert all(interior.shear > 0)
     assert all(interior.bulk > 0)
     # Viscosity should not be updated when visc=False
-    assert interior.visc[0] == 0.0
+    assert interior.visc[0] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit
@@ -808,13 +808,13 @@ def test_interior_t_resume_tides_file_missing(tmp_path):
     interior.resume_tides(outdir)
 
     # Tides should remain zero from initialization
-    assert interior.tides[0] == 0.0
+    assert interior.tides[0] == pytest.approx(0.0, abs=1e-12)
     # Discrimination: the entire pre-allocated tides array (nlev_s=2
     # slots for nlev_b=3) must remain at the zero-IC. A regression
     # that partially overwrote the array on the missing-file path
     # would leave one slot non-zero.
     assert len(interior.tides) == 2
-    assert all(float(t) == 0.0 for t in interior.tides)
+    assert all(float(t) == pytest.approx(0.0, abs=1e-12) for t in interior.tides)
 
 
 @pytest.mark.unit

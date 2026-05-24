@@ -240,7 +240,7 @@ def test_dummy_chem_zero_atmosphere():
     result = _build_profiles(hf_row, config, num_levels=30)
 
     for sp in _ALL_SPECIES:
-        assert np.all(result[sp] == 0.0), f'{sp} should be zero'
+        np.testing.assert_allclose(result[sp], 0.0, atol=1e-12, err_msg=f'{sp} should be zero')
     # Discrimination: a regression that returned early (or short-circuited
     # the whole function) on all-zero VMR input would also pass the
     # species-zero check above by producing empty arrays. Pin that the

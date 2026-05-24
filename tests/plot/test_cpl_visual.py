@@ -84,7 +84,7 @@ def _make_ncdf_dict(n_lev: int = 4, n_band: int = 6) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# plot_visual – format validation
+# plot_visual - format validation
 # ---------------------------------------------------------------------------
 
 
@@ -129,7 +129,7 @@ def test_plot_visual_accepts_raster_format(fmt, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# plot_visual – osamp clamping
+# plot_visual - osamp clamping
 # ---------------------------------------------------------------------------
 
 
@@ -151,7 +151,7 @@ def test_plot_visual_osamp_minimum(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# plot_visual – missing data paths
+# plot_visual - missing data paths
 # ---------------------------------------------------------------------------
 
 
@@ -217,7 +217,7 @@ def test_plot_visual_returns_false_missing_key(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# plot_visual – full render path (all matplotlib mocked)
+# plot_visual - full render path (all matplotlib mocked)
 # ---------------------------------------------------------------------------
 
 

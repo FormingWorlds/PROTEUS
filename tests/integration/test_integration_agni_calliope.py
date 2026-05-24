@@ -264,5 +264,5 @@ def test_agni_calliope_wrapper_merge_includes_calliope_pressure_keys():
     # ZeroHelpfileRow seeds every key with a float zero.
     row = ZeroHelpfileRow()
     for key in agni_diagnostic_keys + calliope_per_gas_keys:
-        assert row[key] == 0.0
+        assert row[key] == pytest.approx(0.0, abs=1e-12)
         assert isinstance(row[key], float)

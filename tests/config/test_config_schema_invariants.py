@@ -66,7 +66,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 # own tier decorator; review for missing marks at PR time.
 
 # ---------------------------------------------------------------------------
-# Schema enum inventory — kept here so a schema change that adds a backend
+# Schema enum inventory: kept here so a schema change that adds a backend
 # without updating these lists fails test_module_field_inventory_matches_schema
 # loudly, rather than silently skipping the new backend in the cross-product.
 # ---------------------------------------------------------------------------
@@ -340,7 +340,7 @@ def test_check_module_dependencies_skips_unselected_backends():
 
 
 # ---------------------------------------------------------------------------
-# boreas_requires_atmosphere — positive + negative
+# boreas_requires_atmosphere: positive + negative
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 def test_boreas_requires_atmosphere_rejects_dummy_atmos():
@@ -387,7 +387,7 @@ def test_boreas_requires_atmosphere_skips_when_not_boreas():
 
 
 # ---------------------------------------------------------------------------
-# planet_mass_valid — positive + negative for the four documented bands
+# planet_mass_valid: positive + negative for the four documented bands
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 @pytest.mark.parametrize('mass', [0.5, 1.0, 5.0, 19.99])
@@ -448,7 +448,7 @@ def test_planet_mass_valid_rejects_above_upper(big_mass):
 
 
 # ---------------------------------------------------------------------------
-# planet_oxygen_mode_explicit — issue #677 hard cutover
+# planet_oxygen_mode_explicit: issue #677 hard cutover
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 def test_planet_oxygen_mode_explicit_rejects_required_sentinel():
@@ -483,7 +483,7 @@ def test_planet_oxygen_mode_explicit_accepts_all_four_documented_modes(mode):
 
 
 # ---------------------------------------------------------------------------
-# planet_fO2_source_compat — four rejection rules + one warning
+# planet_fO2_source_compat: four rejection rules + one warning
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 def test_fO2_source_user_constant_accepts_all_O_modes():
@@ -605,6 +605,8 @@ def test_fO2_source_from_O_budget_warns_when_fO2_shift_IW_set():
     )
     with pytest.warns(UserWarning, match=r'will be ignored at runtime') as warns:
         planet_fO2_source_compat(instance, None, None)
+    # Exactly one warning must fire (not two, not zero).
+    assert len(warns) == 1
     # Discrimination: the warning must echo the offending numeric value so the
     # user can locate it in their TOML. A regression that emitted a generic
     # "fO2_shift_IW will be ignored" without the value would fail.
@@ -632,7 +634,7 @@ def test_fO2_source_from_O_budget_silent_when_fO2_shift_IW_zero():
     # Discriminating check: fO2_shift_IW must be exactly zero. Any non-zero value
     # under Path C would have produced the 'will be ignored at runtime' UserWarning
     # (which `simplefilter('error')` would have re-raised).
-    assert instance.outgas.fO2_shift_IW == 0.0
+    assert instance.outgas.fO2_shift_IW == pytest.approx(0.0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------

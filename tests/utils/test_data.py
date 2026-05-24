@@ -173,7 +173,7 @@ def test_download_zenodo_folder_success(mock_getfwl, mock_run, tmp_path):
     call_count = 0
 
     # Mock subprocess.run to emulate zenodo-get without real network calls.
-    # No actual download occurs — the side_effect creates local files to
+    # No actual download occurs; the side_effect creates local files to
     # simulate a successful download.
     def side_effect(*args, **kwargs):
         nonlocal call_count
@@ -2371,7 +2371,7 @@ def test_get_spider_calls_get_petsc_first(
 
 
 # ============================================================================
-# test _get_sufficient — Zalmoxis EOS branches
+# test _get_sufficient: Zalmoxis EOS branches
 # ============================================================================
 
 

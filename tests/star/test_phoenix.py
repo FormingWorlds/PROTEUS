@@ -186,5 +186,9 @@ def test_get_phoenix_modern_spectrum_raises_when_params_incomplete():
 
     handler = _build_handler_with_track()
     # No stellar track and no Teff override -> Teff stays None.
+    hf_row_before = dict(handler.hf_row) if hasattr(handler, 'hf_row') else {}
     with pytest.raises(ValueError, match='Teff, radius and log g'):
         get_phoenix_modern_spectrum(handler, stellar_track=None, age_yr=4.567e9)
+    # ValueError is clean; no partial state written
+    if hf_row_before:
+        assert handler.hf_row == hf_row_before

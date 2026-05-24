@@ -274,8 +274,7 @@ class TestDownloadOSFFolder:
             # or an unrelated tmp path) would still pass `called` but the
             # specific path argument would not match.
             assert any(
-                str(existing_file) in str(call_args)
-                for call_args in mock_rm.call_args_list
+                str(existing_file) in str(call_args) for call_args in mock_rm.call_args_list
             )
 
 

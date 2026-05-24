@@ -19,7 +19,7 @@ import pytest
 
 from proteus.config._struct import Zalmoxis
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # ----------------------------------------------------------------------

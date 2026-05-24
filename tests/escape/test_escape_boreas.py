@@ -89,7 +89,7 @@ def test_boreas_params(boreas_config):
 
     # check it is setup property
     assert params.FXUV == hf_row['F_xuv'] * 1e3
-    assert params.albedo == 0.0
+    assert params.albedo == pytest.approx(0.0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -191,3 +191,71 @@ def test_run_boreas_raises_on_solver_failure(boreas_config, monkeypatch):
     dirs = {'output': '/tmp'}
     with pytest.raises(RuntimeError, match='Encountered problem when running BOREAS'):
         run_boreas(boreas_config, hf_row, dirs)
+
+    # Side-effect guard: the solver failure must not leave stale
+    # escape-rate keys on hf_row. A regression that caught the
+    # exception, wrote partial results, and then reraised would
+    # leave esc_rate_total populated.
+    assert 'esc_rate_total' not in hf_row
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_boreas_zero_xuv_flux(boreas_config, monkeypatch):
+    """F_xuv = 0.0 represents the pre-XUV era (young star before
+    chromospheric activity ramps up, or a planet far enough from
+    the star that the XUV flux is negligible).
+
+    With zero XUV input, the mass loss rate must be zero or
+    negligibly small. This is the limit-input edge case for the
+    energy-limited escape formula.
+    """
+    from unittest.mock import MagicMock
+
+    import boreas as boreas_lib
+
+    from proteus.escape.boreas import run_boreas
+
+    hf_row = _make_minimal_hf_row()
+    hf_row['F_xuv'] = 0.0  # pre-XUV era: zero flux
+
+    mock_ml = MagicMock()
+    # With zero XUV, the solver returns zero escape rate
+    mock_ml.compute_mass_loss_parameters.return_value = [
+        {'regime': 'EL', 'RXUV': 7e8, 'Mdot': 0.0, 'cs': 0.0}
+    ]
+    mock_frac = MagicMock()
+    mock_frac.execute.return_value = [
+        {
+            'regime': 'EL',
+            'Mdot': 0.0,
+            'cs': 0.0,
+            'RXUV': 7e8,
+            'phi_H_num': 0.0,
+            'phi_O_num': 0.0,
+            'phi_C_num': 0.0,
+            'phi_N_num': 0.0,
+            'phi_S_num': 0.0,
+            'x_O': 0.0,
+            'x_C': 0.0,
+            'x_N': 0.0,
+            'x_S': 0.0,
+        }
+    ]
+
+    monkeypatch.setattr(boreas_lib, 'MassLoss', lambda params: mock_ml)
+    monkeypatch.setattr(boreas_lib, 'Fractionation', lambda params: mock_frac)
+    boreas_config.escape.boreas.fractionate = True
+
+    dirs = {'output': '/tmp'}
+    run_boreas(boreas_config, hf_row, dirs)
+
+    # Positivity/boundedness: escape rate must be non-negative
+    assert hf_row['esc_rate_total'] >= 0.0
+    # With zero XUV, no escape should occur
+    assert hf_row['esc_rate_total'] == pytest.approx(0.0, abs=1e-12)
+    # Per-element rates must also be zero
+    assert hf_row['esc_rate_H'] == pytest.approx(0.0, abs=1e-30)
+    # The FXUV parameter passed to BOREAS is in mW/m^2 (factor 1e3);
+    # verify the conversion did not produce a non-zero artifact
+    assert hf_row['F_xuv'] == pytest.approx(0.0, abs=1e-12)

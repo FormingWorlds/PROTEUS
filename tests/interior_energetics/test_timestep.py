@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ class TestMushyCap:
             interior_o=_make_interior_o(),
         )
         # Cap not active because Phi = 0.02 <= phi_crit = 0.05.
-        # But dt is still limited by the termination estimator — grab
+        # But dt is still limited by the termination estimator; grab
         # its contribution by running with cap disabled for comparison.
         config_no_cap = _make_config(
             mushy_maximum=0.0,

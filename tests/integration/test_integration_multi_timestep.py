@@ -7,7 +7,7 @@ for multiple timesteps with dummy modules and checking:
 - Mass conservation (elemental inventories)
 - Stability (no runaway temperatures/pressures)
 
-**Purpose**: Foundation test for Phase 2 of test building strategy
+**Purpose**: Foundation test for multi-timestep integration
 - Validates integration test infrastructure (fixtures and helpers)
 - Tests multi-timestep coupling with minimal physics (dummy modules)
 - Establishes pattern for future integration tests

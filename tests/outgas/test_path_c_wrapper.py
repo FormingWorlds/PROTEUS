@@ -199,7 +199,7 @@ def test_path_c_dispatches_to_authoritative_O_entry_point():
     ``equilibrium_atmosphere_authoritative_O``, not
     ``equilibrium_atmosphere``. A regression that flipped the branch
     would silently produce buffered-fO2 chemistry instead of
-    authoritative-O chemistry — the symptom is invisible from the helpfile
+    authoritative-O chemistry; the symptom is invisible from the helpfile
     columns alone.
     """
     dirs = {'output': '/tmp/test'}
@@ -349,7 +349,7 @@ def test_path_c_preserves_authoritative_O_kg_total():
     config = _make_path_c_config()
     hf_row = _earth_hf_row(O_kg_total=1.0e22)
 
-    # Simulate the solver landing 5% off — much larger than realistic
+    # Simulate the solver landing 5% off, much larger than realistic
     # convergence drift, but the point is to detect any non-zero drift.
     fake = _make_solvevol_result(O_kg_total_out=1.05e22)
 
@@ -443,7 +443,7 @@ def test_smoke_path_c_round_trip_through_wrapper(dIW):
 def test_smoke_path_c_residual_bounded_by_tolerance():
     """Under Path C the wrapper writes the 5th residual into ``O_res``.
     With a converged solve the absolute residual must be well below the
-    target — otherwise the chemistry would silently mis-conserve O across
+    target; otherwise the chemistry would silently mis-conserve O across
     iterations. Discriminating: a value above ``target_O * 1e-3`` (0.1%)
     would indicate the per-element tolerance gate is broken.
     """
@@ -500,5 +500,5 @@ def test_smoke_path_c_mass_conservation_invariant():
     assert M_atm > 0, 'sanity: outgassing produced a non-empty atmosphere'
     assert M_atm <= M_planet_lb, (
         f'Path C atmosphere ({M_atm:.3e} kg) exceeds tracked planet '
-        f'mass lower bound ({M_planet_lb:.3e} kg) — issue #677 regression?'
+        f'mass lower bound ({M_planet_lb:.3e} kg), issue #677 regression?'
     )

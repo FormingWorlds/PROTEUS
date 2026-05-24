@@ -224,6 +224,9 @@ def test_mors_age_now_positivity_at_valid_mors_layer():
     for bad in (0.0, -1.0, None):
         with pytest.raises(ValueError, match=r'(?i)age_now'):
             Star(module='mors', mors=Mors(age_now=bad))
+    # Adjacent-valid: a positive age_now must round-trip.
+    s = Star(module='mors', mors=Mors(age_now=4.6))
+    assert s.mors.age_now == pytest.approx(4.6, rel=1e-12)
 
 
 # ---------------------------------------------------------------------------

@@ -171,4 +171,6 @@ def test_integration_dummy_radio_heating_disabled(proteus_multi_timestep_run):
     assert len(hf) >= 3
     assert 'F_radio' in hf.columns
     f_radio = hf['F_radio'].values
-    assert np.all(f_radio == 0.0), 'F_radio must be zero when heat_radiogenic is disabled'
+    assert np.allclose(f_radio, 0.0, atol=1e-12), (
+        'F_radio must be zero when heat_radiogenic is disabled'
+    )

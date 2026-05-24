@@ -83,7 +83,7 @@ def test_all_badge_image_urls_are_valid_https(readme_content):
 def test_all_badge_links_are_valid_https(readme_content):
     """All badge <a href='...'> URLs must use HTTPS.
 
-    Badges link to GitHub Actions, documentation, and external services —
+    Badges link to GitHub Actions, documentation, and external services,
     all of which should be accessed over HTTPS.
     """
     href_urls = re.findall(r'<a\s+href="([^"]+)"', readme_content)

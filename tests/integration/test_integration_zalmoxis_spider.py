@@ -398,6 +398,9 @@ def test_field_level_zalmoxis_validators_fire_independently_of_module():
 
     with pytest.raises(ValueError, match=r'(?i)mushy_zone_factor'):
         Zalmoxis(mushy_zone_factor=0.5)
+    # Adjacent-valid: the lower bound 0.7 must round-trip.
+    z = Zalmoxis(mushy_zone_factor=0.7)
+    assert z.mushy_zone_factor == pytest.approx(0.7, rel=1e-12)
 
 
 # ---------------------------------------------------------------------------

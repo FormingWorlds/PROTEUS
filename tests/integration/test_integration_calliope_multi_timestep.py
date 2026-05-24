@@ -5,7 +5,7 @@ This test validates multi-timestep coupling with CALLIOPE (real outgassing modul
 and dummy atmosphere/interior modules. Tests the integration infrastructure with
 a real physics module while maintaining reasonable runtime.
 
-**Purpose**: Intermediate integration test for Phase 2
+**Purpose**: Intermediate integration test with real outgassing
 - Validates integration infrastructure with real module (CALLIOPE)
 - Tests multi-timestep volatile outgassing and atmosphere coupling
 - Establishes pattern for future real-module integration tests

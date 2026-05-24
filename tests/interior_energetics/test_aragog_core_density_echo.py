@@ -33,7 +33,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _write_mantle_mesh(target: Path, R_cmb: float = 3.480e6) -> Path:
@@ -535,7 +535,7 @@ def test_resolve_falls_back_when_derived_density_too_low(tmp_path):
     Simulates a partial-write race on a network filesystem where the
     first row is readable but the radius column has been truncated /
     re-padded to a non-physical value (here, R_cmb = 9.0e6 m for an
-    Earth-mass planet, giving rho_core ~ 600 kg/m^3 — physically
+    Earth-mass planet, giving rho_core ~ 600 kg/m^3 (physically
     impossible for any iron-bearing core).
     """
     from proteus.interior_energetics.aragog import resolve_core_density

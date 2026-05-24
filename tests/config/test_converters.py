@@ -69,7 +69,7 @@ class TestZeroIfNone:
     @pytest.mark.unit
     def test_converts_none_string_to_zero(self):
         """'none' string converts to 0.0 for optional numeric parameters."""
-        assert zero_if_none('none') == 0.0
+        assert zero_if_none('none') == pytest.approx(0.0, abs=1e-12)
         # Discrimination: case-sensitive on lowercase 'none' only. A
         # regression that called `.lower()` on the input first would
         # collapse 'None' to 0.0 too and silently coerce any string a

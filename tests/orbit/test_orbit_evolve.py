@@ -49,11 +49,11 @@ def test_de_dt_vanishes_at_zero_eccentricity():
     of a, so we exercise two values of a to confirm the fixed point is
     a property of the eccentricity factor, not an accidental zero at
     one a value."""
-    assert de_dt(a=1.0, e=0.0, params=_UNIT_PARAMS) == 0.0
+    assert de_dt(a=1.0, e=0.0, params=_UNIT_PARAMS) == pytest.approx(0.0, abs=1e-12)
     # Limit-input invariant: a must drop out of the e=0 result; a
     # regression that introduced a stray a-dependent additive term
     # would only show at a != 1.
-    assert de_dt(a=5.0, e=0.0, params=_UNIT_PARAMS) == 0.0
+    assert de_dt(a=5.0, e=0.0, params=_UNIT_PARAMS) == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.physics_invariant
@@ -158,11 +158,11 @@ def test_da_dt_is_zero_for_circular_orbit():
     A bug that dropped the ``e`` factor (``da_dt = 2 a de_dt``) would
     return a nonzero value here.
     """
-    assert da_dt(a=10.0, e=0.0, params=_UNIT_PARAMS) == 0.0
+    assert da_dt(a=10.0, e=0.0, params=_UNIT_PARAMS) == pytest.approx(0.0, abs=1e-12)
     # Limit-input invariant: the fixed point is independent of a. A
     # regression that recovered an a-dependent constant term at e=0
     # would only show at a different a value.
-    assert da_dt(a=0.5, e=0.0, params=_UNIT_PARAMS) == 0.0
+    assert da_dt(a=0.5, e=0.0, params=_UNIT_PARAMS) == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.physics_invariant

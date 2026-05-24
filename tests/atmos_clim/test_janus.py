@@ -191,6 +191,13 @@ def test_init_atm_unknown_overlap_method_raises(mock_read, mock_atmos):
     with pytest.raises(ValueError, match='Invalid overlap method selected for SOCRATES/JANUS!'):
         InitAtm({'output': '/tmp/run/'}, cfg)
 
+    # Discrimination: switching to a valid overlap method on the same
+    # config scaffold must succeed. Rules out a regression that
+    # hard-raises regardless of the method string.
+    cfg_valid = _build_overlap_config('ro')
+    result = InitAtm({'output': '/tmp/run/'}, cfg_valid)
+    assert result is not None
+
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant

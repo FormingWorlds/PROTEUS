@@ -270,7 +270,7 @@ def test_blend_mesh_no_old_file(spider_json_dir):
         content_before = f.read()
 
     actual_shift = blend_mesh_files(old_path, new_path, max_shift=0.05)
-    assert actual_shift == 0.0
+    assert actual_shift == pytest.approx(0.0, abs=1e-12)
 
     with open(new_path) as f:
         content_after = f.read()
@@ -900,7 +900,7 @@ def test_check_eos_range_parse_failure(spider_json_dir):
         f.write('not a valid header\n')
     with open(os.path.join(eos_dir, 'density_melt.dat'), 'w') as f:
         f.write('also garbage\n')
-    # Should not crash — hits the except (ValueError, IndexError, IOError) path
+    # Should not crash; hits the except (ValueError, IndexError, IOError) path
     result = _check_eos_table_range(eos_dir, None, 500e9)
     assert result is None  # contract: parse-failure path returns None silently
     # Discriminating check: the EOS files exist but their content is unparseable;
@@ -962,10 +962,8 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     (mc_dir / 'solidus_P-S.dat').write_text('dummy')
 
     config = MagicMock()
-    # Tier 4 (2026-04-08): rtol/atol are top-level interior_energetics
-    # fields. matprop_smooth_width was briefly top-level too but moved
-    # back to the spider subsection on 2026-04-09 after Aragog's Jgrav
-    # smoothing was made parameter-free.
+    # Unified tolerance fields (rtol/atol at top level).
+    # matprop_smooth_width is SPIDER-specific (spider subsection).
     config.interior_energetics.rtol = 1e-4
     config.interior_energetics.atol = 1e-4
     config.interior_energetics.spider.tolerance_rel = 1e-4
@@ -984,7 +982,7 @@ def _setup_spider_env(tmp_path, *, with_mesh=False):
     config.interior_energetics.rfront_loc = 0.4
     config.interior_energetics.rfront_wid = 0.15
     config.interior_energetics.num_levels = 50
-    # Tier 3 parity fields (previously hardcoded in spider.py)
+    # Physics-constant fields shared across Aragog and SPIDER
     config.interior_energetics.melt_log10visc = 2.0
     config.interior_energetics.solid_log10visc = 22.0
     config.interior_energetics.melt_cond = 4.0
@@ -1356,7 +1354,7 @@ def test_blend_mesh_malformed_file(spider_json_dir):
     with open(new_path) as f:
         new_content_before = f.read()
     result = blend_mesh_files(old_path, new_path, max_shift=0.05)
-    assert result == 0.0
+    assert result == pytest.approx(0.0, abs=1e-12)
     # Discrimination: the parse-failure branch must abort before any
     # blend/write occurs, so the new file is byte-identical afterwards.
     # A regression that wrote a partially-parsed mesh would change the
@@ -1995,7 +1993,7 @@ def test_blend_mesh_node_count_mismatch(spider_json_dir, caplog):
     with caplog.at_level(logging.WARNING, logger='fwl.proteus.interior_energetics.spider'):
         result = blend_mesh_files(old_path, new_path, max_shift=0.05)
 
-    assert result == 0.0
+    assert result == pytest.approx(0.0, abs=1e-12)
     assert 'node count changed' in caplog.text.lower()
 
 

@@ -146,6 +146,9 @@ def test_atmodeller_zephyrus_rejects_dummy_star_at_spada_zephyrus_layer():
     )
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), **kwargs)
+    # Selectivity: escape=dummy with same star must construct cleanly.
+    cfg_ok = Config(escape=Escape(module='dummy'), **kwargs)
+    assert cfg_ok.escape.module == 'dummy'
 
 
 def test_atmodeller_zephyrus_rejects_baraffe_tracks_at_spada_zephyrus_layer():
@@ -173,6 +176,10 @@ def test_atmodeller_zephyrus_rejects_baraffe_tracks_at_spada_zephyrus_layer():
     )
     with pytest.raises(ValueError, match=r'(?i)(MORS|spada)'):
         Config(escape=Escape(module='zephyrus'), **kwargs)
+    # Adjacent-valid: mors+spada with zephyrus must construct cleanly.
+    kwargs_spada = {**kwargs, 'star': Star(module='mors', mors=Mors(tracks='spada'))}
+    cfg_ok = Config(escape=Escape(module='zephyrus'), **kwargs_spada)
+    assert cfg_ok.star.mors.tracks == 'spada'
 
 
 # ---------------------------------------------------------------------------

@@ -385,7 +385,7 @@ def validate_stability(
 
     Checks that key physical variables stay within reasonable bounds and don't
     show unbounded growth. Note: this does *not* test for runaway greenhouse
-    physics — it only checks for unphysically large or small values.
+    physics; it only checks for unphysically large or small values.
 
     **Physical Basis**:
     - Temperatures should be finite and within physical bounds (0 < T < max_temp)

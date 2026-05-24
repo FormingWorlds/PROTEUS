@@ -1,5 +1,5 @@
 """
-Unit tests for proteus.interior_energetics.aragog module — Zalmoxis integration paths.
+Unit tests for proteus.interior_energetics.aragog module: Zalmoxis integration paths.
 
 Tests the Zalmoxis-specific branches in AragogRunner.setup_solver() that set
 inner_radius from zalmoxis_solver and configure temperature-dependent initial
@@ -50,12 +50,12 @@ def _make_aragog_config(*, struct_module='spider', mantle_eos='Seager2007:silica
     config.interior_energetics.heat_radiogenic = False
     config.interior_energetics.heat_tidal = False
     config.planet.tsurf_init = 4000.0
-    # Tier 4: num_tolerance -> rtol/atol
+    # Unified tolerance fields (rtol/atol at top level)
     config.interior_energetics.rtol = 1e-4
     config.interior_energetics.atol = 1e-4
     config.interior_energetics.tmagma_atol = 100.0
     config.interior_energetics.tmagma_rtol = 0.02
-    # Tier 3 parity fields (hardcoded values promoted to config)
+    # Physics-constant fields shared across Aragog and SPIDER
     config.interior_energetics.adams_williamson_rhos = 4078.95095544
     config.interior_energetics.adiabatic_bulk_modulus = 260e9
     config.interior_energetics.melt_log10visc = 2.0
@@ -260,11 +260,9 @@ def test_setup_solver_eos_not_found(tmp_path):
 
 @pytest.mark.unit
 class TestUpdateStructureZalmoxisRefresh:
-    """Regression guard for Stage 1b.2: when the structure module is
-    Zalmoxis and Zalmoxis re-solves mid-run, Aragog's inner_radius must
-    track R_core from hf_row on every coupling step. Prior to the Stage 1b.2
-    fix, update_structure only refreshed inner_radius on the spider / dummy
-    branches and left the Zalmoxis branch pinned at its init-time value.
+    """Verify that when the structure module is Zalmoxis and Zalmoxis
+    re-solves mid-run, Aragog's inner_radius tracks R_core from hf_row
+    on every coupling step, not just at init time.
     """
 
     def _make_solver(self, outer=6.4e6, inner=3.6e6, gravity=7.9):
@@ -344,7 +342,7 @@ class TestUpdateStructureZalmoxisRefresh:
 
     def test_spider_branch_unchanged(self):
         """The existing spider / dummy branch continues to refresh
-        inner_radius from hf_row['R_core'] — regression guard."""
+        inner_radius from hf_row['R_core']."""
         from proteus.interior_energetics.aragog import AragogRunner
 
         solver, interior_o = self._make_solver(inner=3.2e6)

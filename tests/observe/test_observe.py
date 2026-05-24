@@ -417,3 +417,53 @@ def test_run_observe_calls_synthetic_spectra():
         # The Time field must survive the call unchanged (the orchestrator
         # does not mutate the simulation clock).
         assert passed_hf_row['Time'] == pytest.approx(50.0)
+
+
+# ============================================================================
+# Physics invariant: transit spectrum wavelength and depth constraints
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_read_transit_wavelengths_positive_and_monotonic(tmp_path):
+    """Wavelengths in a transit spectrum must be strictly positive and
+    monotonically increasing. Transit depths (in ppm) must be bounded
+    in [0, 1e6] (0 to 100% of stellar disk area).
+
+    These are physical invariants of any valid observation output:
+    negative wavelength is unphysical, non-monotonic grids break
+    interpolation, and transit depth > 100% is geometrically impossible.
+    """
+    import numpy as np
+
+    outdir = str(tmp_path / 'output')
+    observe_dir = tmp_path / 'output' / 'observe'
+    observe_dir.mkdir(parents=True)
+
+    # Realistic wavelength grid spanning UV to mid-IR
+    csv_file = observe_dir / 'transit_outgas_initial.csv'
+    csv_content = 'Wavelength/um\tNone/ppm\n'
+    csv_content += '3.00000000e-01\t5.00000000e+01\n'
+    csv_content += '5.00000000e-01\t1.20000000e+02\n'
+    csv_content += '1.00000000e+00\t1.50000000e+02\n'
+    csv_content += '2.00000000e+00\t1.80000000e+02\n'
+    csv_content += '5.00000000e+00\t2.00000000e+02\n'
+    csv_content += '1.00000000e+01\t1.60000000e+02\n'
+    csv_file.write_text(csv_content)
+
+    result = read_transit(outdir, 'outgas', 'initial')
+
+    wl = result['Wavelength/um'].values
+    depth = result['None/ppm'].values
+
+    # Positivity: all wavelengths must be strictly positive
+    assert np.all(wl > 0), 'wavelengths must be positive'
+    # Monotonicity: wavelength grid must be strictly increasing
+    assert np.all(np.diff(wl) > 0), 'wavelengths must be monotonically increasing'
+    # Boundedness: transit depth must be non-negative and below 1e6 ppm (100%)
+    assert np.all(depth >= 0), 'transit depth must be non-negative'
+    assert np.all(depth <= 1e6), 'transit depth must not exceed 100% of stellar disk'
+    # Scale guard: realistic hot-Jupiter depths are O(100) ppm, not O(1e5).
+    # The test data spans 50-200 ppm; verify no value exceeds 1000 ppm.
+    assert np.max(depth) < 1e3

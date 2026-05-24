@@ -10,6 +10,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import numpy as np
 import pytest
 
 import proteus.star.dummy as star
@@ -81,10 +82,11 @@ def test_generate_spectrum_shape():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_generate_spectrum_zero_temp():
     """Zero temperature produces all-zero flux (star is off)."""
     wl, fl = star.generate_spectrum(0.0, 1.0)
-    assert all(f == 0.0 for f in fl)
+    np.testing.assert_allclose(fl, 0.0, atol=1e-12)
     assert len(wl) == len(fl)
 
 
@@ -93,7 +95,7 @@ def test_generate_spectrum_zero_temp():
 def test_generate_spectrum_below_min_temp():
     """Below PLANCK_MIN_TEMPERATURE produces all-zero flux."""
     wl, fl = star.generate_spectrum(0.01, 1.0)
-    assert all(f == 0.0 for f in fl)
+    np.testing.assert_allclose(fl, 0.0, atol=1e-12)
     # Wavelength array is still populated even when the gate cuts off
     # the flux. A regression that returned an empty wavelength grid on
     # the below-min branch would fail this length check.
@@ -179,6 +181,7 @@ def test_calc_star_luminosity_below_min_temp():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
 def test_calc_star_luminosity_scales_with_temp():
     """Luminosity increases steeply with temperature (T^4)."""
     l1 = star.calc_star_luminosity(5000.0, 1.0 * R_sun)

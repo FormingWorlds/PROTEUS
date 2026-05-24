@@ -32,7 +32,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # ----------------------------------------------------------------------
@@ -164,6 +164,7 @@ class TestResolveZalmoxisCMBTemperature:
         T_liq_135 = 6000.0 * (135.0 / 140.0) ** 0.26
         assert abs(T - T_liq_135) > 1000.0
 
+    @pytest.mark.physics_invariant
     def test_liquidus_super_uses_hf_row_p_cmb_at_135_gpa(self):
         """At P=135 GPa, Fei+2021 gives T_liq ~ 5935 K. With
         delta_T_super=500 K, the anchor should be ~6435 K.
@@ -191,6 +192,7 @@ class TestResolveZalmoxisCMBTemperature:
         assert T > 0.0
         assert 5000.0 < T < 10000.0
 
+    @pytest.mark.physics_invariant
     def test_liquidus_super_zero_offset_lands_on_liquidus(self):
         """delta_T_super = 0 K -> anchor exactly on the Fei liquidus.
         This is the boundary physical case (validator allows ge(0)).
@@ -219,6 +221,7 @@ class TestResolveZalmoxisCMBTemperature:
         )
         assert T_offset - T == pytest.approx(500.0, rel=1e-9)
 
+    @pytest.mark.physics_invariant
     def test_liquidus_super_super_earth_pressure(self):
         """At P=400 GPa (3 M_E typical), T_liq ~ 7716 K, anchor with
         delta=500 K ~ 8216 K. Verifies the high-pressure Fei+2021 branch
@@ -244,6 +247,7 @@ class TestResolveZalmoxisCMBTemperature:
         )
         assert T > T_135
 
+    @pytest.mark.physics_invariant
     def test_liquidus_super_low_pressure_belonoshko_branch(self):
         """At P=1 GPa, the piecewise fit drops to the Belonoshko+2005
         branch: T = 1831 * (1 + 1/4.6)**0.33 ~ 1942 K. With delta=500 K
@@ -251,7 +255,7 @@ class TestResolveZalmoxisCMBTemperature:
 
         Discriminating: 1 GPa is below the 2.55 GPa crossover, so this
         test fails if we accidentally use the Fei branch on the whole
-        domain. Fei at 1 GPa would give ~3148 K — very different.
+        domain. Fei at 1 GPa would give ~3148 K, which is very different.
         """
         from proteus.interior_struct.zalmoxis import (
             _resolve_zalmoxis_cmb_temperature,
@@ -548,6 +552,8 @@ class TestPaleosLiquidusSourceOfTruth:
     and the IC mode must be re-validated.
     """
 
+    @pytest.mark.physics_invariant
+    @pytest.mark.reference_pinned
     def test_paleos_liquidus_135gpa(self):
         """Pin the Fei+2021 value at 135 GPa: T_liq ~ 5944 K.
 
@@ -570,6 +576,7 @@ class TestPaleosLiquidusSourceOfTruth:
         wrong_exp = 6000.0 * (135.0 / 140.0) ** 0.5
         assert abs(T - wrong_exp) > 30.0
 
+    @pytest.mark.physics_invariant
     def test_paleos_liquidus_continuous_at_crossover(self):
         """Crossover at 2.5517 GPa: Belonoshko and Fei branches must meet."""
         from zalmoxis.melting_curves import paleos_liquidus
@@ -587,6 +594,7 @@ class TestPaleosLiquidusSourceOfTruth:
         assert T_above > 0.0
         assert 1500.0 < T_below < 2500.0
 
+    @pytest.mark.physics_invariant
     def test_paleos_liquidus_monotonic(self):
         """Liquidus must increase with pressure across the magma-ocean range."""
         from zalmoxis.melting_curves import paleos_liquidus

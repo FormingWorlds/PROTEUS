@@ -50,6 +50,9 @@ nav:
               - Orbit module wrapper (wrapper.py): Validation/orbit/wrapper.md
           - Outgas:
               - H2-MgSiO3 binodal (binodal.py): Validation/outgas/binodal.md
+          - Star:
+              - Stellar luminosity and instellation (star.py): Validation/star/star.md
+              - Stellar wrapper dispatch (wrapper.py): Validation/star/wrapper.md
 
   - Community:
       - Contact: Community/contact.md

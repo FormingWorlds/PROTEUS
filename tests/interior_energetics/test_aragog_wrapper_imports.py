@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def test_aragog_wrapper_module_imports():
