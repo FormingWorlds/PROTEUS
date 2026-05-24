@@ -723,3 +723,554 @@ def test_init_agni_spectral_file_path_not_found_raises(monkeypatch, tmp_path):
     # the Julia mocking surface; extending them for these two branches
     # is a follow-up when the _FakeAGNI scaffold gains the missing
     # attributes (vol_mixing, gas_names, aerosol setup).
+
+
+# ---------------------------------------------------------------------------
+# _validate_agni_state: post-solve struct validation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_validate_agni_state_accepts_valid_struct():
+    """A physically valid struct passes validation.
+
+    Discrimination: pin that (ok=True, reason='') and confirm the check
+    actually inspected the fields (not a no-op returning True).
+    """
+    atmos = _build_complete_atmos_stub()
+    atmos.tmp_surf = 1500.0
+    atmos.flux_tot = [100.0, 200.0, 150.0]
+    atmos.is_converged = True
+    ok, reason = agni_mod._validate_agni_state(atmos)
+    assert ok is True
+    assert reason == ''
+    # Scale guard: positive T_surf is accepted
+    assert atmos.tmp_surf > 0
+
+
+@pytest.mark.physics_invariant
+def test_validate_agni_state_rejects_non_converged():
+    """When is_converged is False despite solver returning True, the
+    struct is contradictory and must be rejected.
+
+    Discrimination: the specific reason string identifies the field,
+    not a generic 'validation failed'.
+    """
+    atmos = _build_complete_atmos_stub()
+    atmos.is_converged = False
+    atmos.tmp_surf = 1500.0
+    atmos.flux_tot = [100.0, 200.0]
+    ok, reason = agni_mod._validate_agni_state(atmos)
+    assert ok is False
+    assert 'is_converged' in reason
+    # Adjacent-valid: same struct with is_converged=True passes
+    atmos.is_converged = True
+    ok2, reason2 = agni_mod._validate_agni_state(atmos)
+    assert ok2 is True
+    assert reason2 == ''
+
+
+def test_validate_agni_state_rejects_nan_tmp_surf():
+    """A NaN tmp_surf must fail validation (non-finite or <= 0 guard).
+
+    Edge: observed in CHILI sweep R12/R17 where line-search collapse
+    left NaN on the struct after is_converged=True.
+    """
+    atmos = _build_complete_atmos_stub()
+    atmos.is_converged = True
+    atmos.tmp_surf = float('nan')
+    atmos.flux_tot = [100.0]
+    ok, reason = agni_mod._validate_agni_state(atmos)
+    assert ok is False
+    assert 'tmp_surf' in reason
+
+
+def test_validate_agni_state_rejects_zero_tmp_surf():
+    """T_surf = 0 K is unphysical and must be rejected.
+
+    Discrimination: the guard is '<= 0', not '< 0', so 0.0 must fail.
+    A regression that used '< 0' would pass 0.0 through.
+    """
+    atmos = _build_complete_atmos_stub()
+    atmos.is_converged = True
+    atmos.tmp_surf = 0.0
+    atmos.flux_tot = [100.0]
+    ok, reason = agni_mod._validate_agni_state(atmos)
+    assert ok is False
+    assert 'tmp_surf' in reason
+    # Adjacent-valid: T = 1 K is positive and passes
+    atmos.tmp_surf = 1.0
+    ok2, _ = agni_mod._validate_agni_state(atmos)
+    assert ok2 is True
+
+
+def test_validate_agni_state_rejects_nonfinite_flux_tot():
+    """Non-finite elements in flux_tot must fail validation.
+
+    Edge: a single NaN in the flux array poisons the downstream
+    F_atm = tot_flux[0] assignment in run_agni.
+    """
+    atmos = _build_complete_atmos_stub()
+    atmos.is_converged = True
+    atmos.tmp_surf = 1500.0
+    atmos.flux_tot = [100.0, float('inf'), 200.0]
+    ok, reason = agni_mod._validate_agni_state(atmos)
+    assert ok is False
+    assert 'non-finite' in reason
+    # Pin the count: exactly 1 bad element out of 3
+    assert '1' in reason
+
+
+def test_validate_agni_state_rejects_empty_flux_tot():
+    """Empty flux_tot must be rejected (size == 0 guard).
+
+    Discrimination: a regression that skipped the size check and went
+    straight to np.all(np.isfinite([])) would get True (vacuous truth).
+    """
+    atmos = _build_complete_atmos_stub()
+    atmos.is_converged = True
+    atmos.tmp_surf = 1500.0
+    atmos.flux_tot = []
+    ok, reason = agni_mod._validate_agni_state(atmos)
+    assert ok is False
+    assert 'empty' in reason
+
+
+def test_validate_agni_state_handles_missing_tmp_surf_attr():
+    """When tmp_surf attribute is absent, the except clause returns
+    False with a 'could not be read' reason.
+    """
+    from types import SimpleNamespace
+
+    atmos = SimpleNamespace(is_converged=True, flux_tot=[100.0])
+    ok, reason = agni_mod._validate_agni_state(atmos)
+    assert ok is False
+    assert 'could not be read' in reason
+
+
+# ---------------------------------------------------------------------------
+# _summarise_tau_band: transposed (nbands, nlev_c) layout
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.physics_invariant
+def test_summarise_tau_band_handles_transposed_layout():
+    """When tau_band is stored as (nbands, nlev_c) instead of
+    (nlev_c, nbands), the summariser detects the transposition
+    and swaps the indexing axis.
+
+    Discrimination: a regression that always assumed (nlev_c, nbands)
+    would read the wrong axis and swap TOA/surface values.
+    """
+    atmos = SimpleNamespace(
+        nlev_c=3,
+        nbands=2,
+        tau_band=[[0.0, 1.0, 4.0], [0.1, 1.2, 5.0]],
+    )
+    toa, surf = agni_mod._summarise_tau_band(atmos)
+    assert toa == pytest.approx(0.05, rel=1e-6)
+    assert surf == pytest.approx(4.5, rel=1e-6)
+    assert toa < surf
+
+
+def test_summarise_tau_band_unexpected_shape_returns_nan():
+    """A shape that matches neither (nlev_c, nbands) nor (nbands, nlev_c)
+    must return NaN for both values and log a warning.
+
+    Edge: a future AGNI change could reshape the array to 3D.
+    """
+    import math
+
+    atmos = SimpleNamespace(
+        nlev_c=3,
+        nbands=2,
+        tau_band=[[[0.0]], [[0.1]]],
+    )
+    toa, surf = agni_mod._summarise_tau_band(atmos)
+    assert math.isnan(toa)
+    assert math.isnan(surf)
+
+
+# ---------------------------------------------------------------------------
+# run_agni: transparent + opaque + prevent_warming + ocean output
+# ---------------------------------------------------------------------------
+
+
+def _make_run_agni_atmos(*, transparent=False):
+    """Build an atmos stub for run_agni exercising the parse-results block."""
+    atmos = _FakeAtmosphere()
+    atmos.transparent = transparent
+    atmos.tmp_surf = 1500.0
+    atmos.tmp_magma = 1500.0
+    atmos.p_boa = 1.0e5
+    atmos.transspec_p = 1.0e4
+    atmos.transspec_r = 6.4e6
+    atmos.transspec_tmp = 280.0
+    atmos.flux_tot = [150.0, 200.0, 100.0]
+    atmos.flux_u_lw = [120.0]
+    atmos.flux_u_sw = [20.0]
+    atmos.flux_d_sw = [100.0]
+    atmos.ocean_areacov = 0.5
+    atmos.ocean_maxdepth = 3000.0
+    atmos.ocean_tot = {g: (1e20 if g == 'H2O' else 0.0) for g in agni_mod.gas_list}
+    atmos.gas_names = ['H2O', 'CO2']
+    atmos.gas_vmr = {'H2O': [0.9, 0.8], 'CO2': [0.1, 0.2]}
+    atmos.gas_ovmr = {'H2O': [0.9], 'CO2': [0.1]}
+    atmos.p = [1e3, 1e5]
+    atmos.r = [6.5e6, 6.4e6]
+    atmos.is_converged = True
+    atmos.tau_band = [[0.01, 0.02], [0.5, 0.6]]
+    atmos.diagnostic_Ra = [0.1, 5.0]
+    atmos.timescale_conv = [1e3, 2e3]
+    atmos.timescale_rad = [1e6, 1e5]
+    atmos.mask_c = [False, True]
+    atmos.nlev_c = 2
+    atmos.nbands = 2
+    return atmos
+
+
+def _make_run_agni_config(
+    *, solve_energy=True, prevent_warming=False, oceans=False, xuv_defined_by_radius=False
+):
+    """Build the config namespace run_agni reads."""
+    return SimpleNamespace(
+        atmos_clim=SimpleNamespace(
+            p_obs=1e-3,
+            p_top=1e-5,
+            agni=SimpleNamespace(
+                solve_energy=solve_energy,
+                oceans=oceans,
+                rainout=False,
+                chemistry='none',
+                psurf_thresh=1e-4,
+                solution_atol=1e-3,
+                solution_rtol=1e-3,
+                ls_default=1,
+                dx_max=100.0,
+                perturb_all=False,
+                verbosity=0,
+            ),
+            surf_state_int=1,
+        ),
+        planet=SimpleNamespace(prevent_warming=prevent_warming),
+        escape=SimpleNamespace(xuv_defined_by_radius=xuv_defined_by_radius),
+        params=SimpleNamespace(
+            out=SimpleNamespace(
+                logging='WARNING',
+                plot_mod=None,
+                plot_fmt='png',
+            )
+        ),
+    )
+
+
+@pytest.mark.physics_invariant
+def test_run_agni_transparent_returns_R_obs_equal_R_int(monkeypatch):
+    """In transparent mode, R_obs = R_int (no atmosphere adds radius).
+
+    Discrimination: in the opaque branch, R_obs comes from
+    atmos.transspec_r, which is typically larger than R_int.
+    """
+    atmos = _make_run_agni_atmos(transparent=True)
+    config = _make_run_agni_config(solve_energy=True)
+    hf_row = {
+        'P_surf': 1e-5,
+        'R_int': 6.371e6,
+        'R_xuv': 6.5e6,
+        'p_xuv': 1e-3,
+        'Time': 0.0,
+    }
+    for g in ['H2O', 'CO2']:
+        hf_row[g + '_vmr'] = 0.5
+
+    dirs = {'output': '/tmp/fake_output', 'output/plots': '/tmp/fake_plots'}
+
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(calc_observed_rho_b=lambda a: None),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            solver=SimpleNamespace(solve_transparent_b=lambda *a, **kw: None),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+    monkeypatch.setattr(agni_mod, 'get_oarr_from_parr', lambda p_arr, r_arr, val: (0, val))
+
+    _, output = agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    assert output['R_obs'] == pytest.approx(6.371e6, rel=1e-12)
+    assert output['T_obs'] == pytest.approx(atmos.tmp_surf, rel=1e-12)
+    # Opaque branch would give transspec_r = 6.4e6; pin the difference
+    assert abs(output['R_obs'] - 6.4e6) > 1e3
+    assert output['agni_converged'] is True
+
+
+@pytest.mark.physics_invariant
+def test_run_agni_prevent_warming_clamps_negative_flux(monkeypatch):
+    """When prevent_warming is True and F_atm < 0, the output F_atm
+    is clamped to 1e-8 W/m^2 (no planet warming from negative net flux).
+
+    Discrimination: without the clamp, F_atm would be -50.0. The
+    difference (1e-8 vs -50) is unambiguous.
+    """
+    atmos = _make_run_agni_atmos(transparent=False)
+    atmos.flux_tot = [-50.0, 200.0]
+    config = _make_run_agni_config(solve_energy=False, prevent_warming=True)
+    hf_row = {
+        'P_surf': 100.0,
+        'p_xuv': 1e-3,
+        'R_xuv': 6.5e6,
+        'Time': 100.0,
+    }
+    for g in ['H2O', 'CO2']:
+        hf_row[g + '_vmr'] = 0.5
+
+    dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(calc_observed_rho_b=lambda a: None),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=lambda a: None,
+                saturation_b=lambda a, g: None,
+                stratosphere_b=lambda a, v: None,
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=lambda a, **kw: None,
+                fill_Kzz_b=lambda a: None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+    monkeypatch.setattr(agni_mod, 'get_oarr_from_parr', lambda p_arr, r_arr, val: (0, val))
+
+    _, output = agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    assert output['F_atm'] == pytest.approx(1e-8, rel=1e-6)
+    # Without prevent_warming, F_atm would be -50.0
+    assert output['F_atm'] > 0
+
+
+def test_run_agni_ocean_output_keys_populated(monkeypatch):
+    """When oceans=True in config, the output dict must contain
+    ocean_areacov, ocean_maxdepth, and per-gas ocean totals.
+
+    Edge: tests the gas-in-gas_names vs gas-not-in-gas_names branching.
+    """
+    atmos = _make_run_agni_atmos(transparent=False)
+    config = _make_run_agni_config(solve_energy=False, oceans=True)
+    hf_row = {
+        'P_surf': 100.0,
+        'p_xuv': 1e-3,
+        'R_xuv': 6.5e6,
+        'Time': 100.0,
+    }
+    for g in ['H2O', 'CO2']:
+        hf_row[g + '_vmr'] = 0.5
+
+    dirs = {'output': '/tmp/fake', 'output/plots': '/tmp/fake_plots'}
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            atmosphere=SimpleNamespace(calc_observed_rho_b=lambda a: None),
+            save=SimpleNamespace(write_ncdf=lambda a, p: None),
+            plotting=SimpleNamespace(plot_contfunc1=lambda a, p: None),
+            chemistry=SimpleNamespace(calc_composition_b=lambda *a: False),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=lambda a: None,
+                saturation_b=lambda a, g: None,
+                stratosphere_b=lambda a, v: None,
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=lambda a, **kw: None,
+                fill_Kzz_b=lambda a: None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+    monkeypatch.setattr(agni_mod, 'sync_log_files', lambda *a: [])
+    monkeypatch.setattr(agni_mod, 'get_oarr_from_parr', lambda p_arr, r_arr, val: (0, val))
+
+    _, output = agni_mod.run_agni(atmos, 1, dirs, config, hf_row)
+
+    assert output['ocean_areacov'] == pytest.approx(0.5, rel=1e-12)
+    assert output['ocean_maxdepth'] == pytest.approx(3000.0, rel=1e-12)
+    # H2O is in gas_names -> reads from atmos.ocean_tot dict
+    assert output['H2O_ocean'] == pytest.approx(1e20, rel=1e-6)
+    # Gases NOT in gas_names get 0.0
+    for g in agni_mod.gas_list:
+        if g not in ['H2O', 'CO2']:
+            assert output[g + '_ocean'] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _solve_transparent: transparent solver dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_solve_transparent_passes_config_tolerances(monkeypatch):
+    """_solve_transparent must pass solution_atol and solution_rtol
+    from config to AGNI's solve_transparent_b.
+
+    Discrimination: pin the kwargs of the Julia call. A regression
+    that hardcoded atol/rtol would not match the config values.
+    """
+    captured = {}
+
+    def fake_solve_transparent_b(atmos, **kwargs):
+        captured.update(kwargs)
+
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            solver=SimpleNamespace(solve_transparent_b=fake_solve_transparent_b),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+
+    config = _make_run_agni_config()
+    config.atmos_clim.agni.solution_atol = 1e-4
+    config.atmos_clim.agni.solution_rtol = 1e-5
+    config.atmos_clim.surf_state_int = 2
+
+    atmos = _make_run_agni_atmos(transparent=True)
+    result = agni_mod._solve_transparent(atmos, config)
+
+    assert captured['conv_atol'] == pytest.approx(1e-4, rel=1e-12)
+    assert captured['conv_rtol'] == pytest.approx(1e-5, rel=1e-12)
+    assert captured['sol_type'] == 2
+    assert captured['max_steps'] == 120
+    assert result is atmos
+
+
+# ---------------------------------------------------------------------------
+# _solve_once: prescribed T(p) solver
+# ---------------------------------------------------------------------------
+
+
+def test_solve_once_calls_composition_and_fluxes(monkeypatch):
+    """_solve_once must call calc_composition_b, dry_adiabat_b,
+    calc_fluxes_b, and fill_Kzz_b in sequence.
+
+    Discrimination: track call order. A regression that skipped
+    the flux calculation would show as a missing call.
+    """
+    call_order = []
+
+    def _track(name):
+        def _fn(*args, **kwargs):
+            call_order.append(name)
+            return False
+
+        return _fn
+
+    fake_jl = SimpleNamespace(
+        AGNI=SimpleNamespace(
+            chemistry=SimpleNamespace(calc_composition_b=_track('composition')),
+            setpt=SimpleNamespace(
+                dry_adiabat_b=_track('dry_adiabat'),
+                saturation_b=_track('saturation'),
+                stratosphere_b=_track('stratosphere'),
+            ),
+            energy=SimpleNamespace(
+                calc_fluxes_b=_track('calc_fluxes'),
+                fill_Kzz_b=_track('fill_Kzz'),
+            ),
+        ),
+    )
+    monkeypatch.setattr(agni_mod, 'jl', fake_jl)
+
+    config = _make_run_agni_config(solve_energy=False)
+    config.atmos_clim.agni.oceans = False
+    config.atmos_clim.agni.rainout = False
+
+    atmos = _make_run_agni_atmos()
+    result = agni_mod._solve_once(atmos, config)
+
+    assert result is atmos
+    assert 'composition' in call_order
+    assert 'dry_adiabat' in call_order
+    assert 'calc_fluxes' in call_order
+    assert 'fill_Kzz' in call_order
+    # Rainout disabled => no saturation call
+    assert 'saturation' not in call_order
+
+
+# ---------------------------------------------------------------------------
+# _construct_voldict: VMR assembly from hf_row
+# ---------------------------------------------------------------------------
+
+
+def test_construct_voldict_raises_on_zero_vmr(monkeypatch):
+    """When all volatile VMRs sum to < 1e-4, _construct_voldict must raise
+    ValueError and call UpdateStatusfile with code 20.
+
+    Discrimination: the error string must mention 'zero'. A regression
+    that raised on threshold=1e-2 instead of 1e-4 would pass a
+    sum=1e-3 input; test with sum=0 for the clear-cut case.
+    """
+    hf_row = {}
+    for g in agni_mod.gas_list:
+        hf_row[g + '_vmr'] = 0.0
+
+    update_calls = []
+    monkeypatch.setattr(
+        agni_mod, 'UpdateStatusfile', lambda dirs, code: update_calls.append(code)
+    )
+
+    with pytest.raises(ValueError, match='zero'):
+        agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+
+    assert update_calls == [20]
+
+
+def test_construct_voldict_returns_vmr_dict():
+    """_construct_voldict returns a dict of {gas: vmr} and the sum is
+    above the threshold.
+
+    Discrimination: the returned dict must have exactly the gas_list
+    keys, not a subset or superset.
+    """
+    hf_row = {}
+    for g in agni_mod.gas_list:
+        hf_row[g + '_vmr'] = 0.01
+
+    vol_dict = agni_mod._construct_voldict(hf_row, {'output': '/tmp'})
+    assert set(vol_dict.keys()) == set(agni_mod.gas_list)
+    assert sum(vol_dict.values()) == pytest.approx(0.01 * len(agni_mod.gas_list), rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# sync_log_files: logfile content migration
+# ---------------------------------------------------------------------------
+
+
+def test_sync_log_files_returns_empty_on_missing_logfile(tmp_path):
+    """When the AGNI logfile does not exist, sync_log_files returns []
+    without crashing.
+
+    Edge: first iteration before AGNI writes anything.
+    """
+    result = agni_mod.sync_log_files(str(tmp_path))
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# _determine_condensates: single-gas warning path (line 397-399)
+# ---------------------------------------------------------------------------
+
+
+def test_determine_condensates_single_gas_returns_empty():
+    """With only one gas, condensation is impossible (no dry gas backup).
+
+    Discrimination: the single-gas guard returns [] directly, not the
+    filtered list. A regression that removed the guard would return
+    ['H2O'] for a condensable single gas.
+    """
+    result = agni_mod._determine_condensates(['H2O'])
+    assert result == []
+    # Adjacent-valid: two gases (one dry, one condensable) works
+    result2 = agni_mod._determine_condensates(['H2O', 'N2'])
+    assert result2 == ['H2O']

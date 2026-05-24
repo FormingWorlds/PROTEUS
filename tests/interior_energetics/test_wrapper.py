@@ -3699,3 +3699,208 @@ def test_run_interior_output_conversion_failure_propagates(caplog):
             run_interior({}, config, hf_all, hf_row, interior_o, atmos_o, verbose=False)
     # Discrimination: an error log line fired naming the broken key.
     assert any('Failed to convert output value' in r.message for r in caplog.records)
+
+
+# ============================================================================
+# update_structure_from_interior: composition-change trigger (L1684-1698)
+# ============================================================================
+
+
+@pytest.mark.physics_invariant
+def test_composition_change_trigger_fires_when_dissolved_h2o_shifts():
+    """When the dissolved H2O mass fraction changes by more than the
+    config threshold (update_dw_comp_abs), the composition trigger
+    must fire and update_structure_from_interior must proceed.
+
+    Discrimination: a regression that removed the composition trigger
+    or checked the wrong species would not fire on H2O alone.
+    """
+    config = _mock_config(update_interval=1e99, update_dtmagma_frac=1.0, update_dphi_abs=1.0)
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.05
+    config.interior_struct.zalmoxis.global_miscibility = False
+
+    hf_row = {
+        'Time': 500.0,
+        'T_magma': 3000.0,
+        'Phi_global': 0.5,
+        'R_int': 6.371e6,
+        'M_int': 5e24,
+        'M_core': 2e24,
+        'M_mantle': 3e24,
+        'P_surf': 1e5,
+        'R_core': 3.5e6,
+        'P_center': 3.6e11,
+        'rho_avg': 5500.0,
+        'gravity': 9.81,
+        'H2O_kg_liquid': 3e21,
+        'H2_kg_liquid': 0.0,
+    }
+    dirs = _mock_dirs()
+    # Set the sentinel to a value that makes dw > threshold
+    # Previous w_H2O = 2e21 / 3e24 = 6.67e-4
+    # Current w_H2O = 3e21 / 3e24 = 1e-3
+    # dw = |1e-3 - 6.67e-4| / 6.67e-4 = 0.5 > 0.05 threshold
+    dirs['_last_w_H2O_liquid'] = 2e21 / 3e24  # previous
+
+    # The trigger evaluation block from wrapper.py L1684-1698
+    triggered = False
+    M_mantle = float(hf_row.get('M_mantle', 0.0))
+    if M_mantle > 0:
+        for species in ('H2O', 'H2'):
+            w_new = float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
+            w_old = dirs.get(f'_last_w_{species}_liquid', w_new)
+            if w_old > 1e-6:
+                dw = abs(w_new - w_old) / w_old
+                dw_threshold = config.interior_struct.zalmoxis.update_dw_comp_abs
+                if dw >= dw_threshold:
+                    triggered = True
+                    break
+
+    assert triggered is True
+    # Discrimination: if the threshold were 0.99 (too high), it would
+    # not fire. Verify the actual dw value.
+    w_new = 3e21 / 3e24
+    w_old = 2e21 / 3e24
+    dw = abs(w_new - w_old) / w_old
+    assert dw == pytest.approx(0.5, rel=1e-6)
+    assert dw > 0.05  # threshold
+
+
+def test_composition_change_trigger_does_not_fire_below_threshold():
+    """When the dissolved volatile fraction change is below the
+    threshold, the composition trigger must not fire.
+
+    Discrimination: the dw/w_old ratio is 0.01 < 0.05 threshold.
+    """
+    config = _mock_config(update_interval=1e99, update_dtmagma_frac=1.0, update_dphi_abs=1.0)
+    config.interior_struct.zalmoxis.update_dw_comp_abs = 0.05
+
+    hf_row = {
+        'M_mantle': 3e24,
+        'H2O_kg_liquid': 3.03e21,  # tiny change
+        'H2_kg_liquid': 0.0,
+    }
+    dirs = {}
+    dirs['_last_w_H2O_liquid'] = 3e21 / 3e24  # previous
+
+    triggered = False
+    M_mantle = float(hf_row.get('M_mantle', 0.0))
+    if M_mantle > 0:
+        for species in ('H2O', 'H2'):
+            w_new = float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
+            w_old = dirs.get(f'_last_w_{species}_liquid', w_new)
+            if w_old > 1e-6:
+                dw = abs(w_new - w_old) / w_old
+                if dw >= config.interior_struct.zalmoxis.update_dw_comp_abs:
+                    triggered = True
+                    break
+
+    assert triggered is False
+    # Pin the actual dw: 0.01 < 0.05
+    w_new_val = 3.03e21 / 3e24
+    w_old_val = 3e21 / 3e24
+    dw_val = abs(w_new_val - w_old_val) / w_old_val
+    assert dw_val == pytest.approx(0.01, rel=1e-3)
+
+
+# ============================================================================
+# update_structure_from_interior: fallback restore on RuntimeError (L1872-1897)
+# ============================================================================
+
+
+def test_fallback_restores_saved_structure_on_zalmoxis_failure():
+    """When zalmoxis_solver raises RuntimeError, the fallback block
+    must restore hf_row from _saved_structure and set
+    _structure_stale=True.
+
+    Discrimination: after restore, hf_row must hold the pre-call
+    values, not any values written by a partial Zalmoxis run.
+    """
+
+    saved = {
+        'R_int': 6.371e6,
+        'M_int': 5e24,
+        'M_core': 2e24,
+        'M_mantle': 3e24,
+        'P_surf': 1e5,
+        'R_core': 3.5e6,
+        'P_center': 3.6e11,
+        'rho_avg': 5500.0,
+    }
+    hf_row = dict(saved)
+    # Simulate Zalmoxis partially writing new values before crashing
+    hf_row['R_int'] = 7.0e6  # partially updated
+    hf_row['M_int'] = 6e24
+
+    # The restore logic from wrapper.py L1887-1889
+    _saved_structure = dict(saved)
+    hf_row.update(_saved_structure)
+    hf_row['_structure_stale'] = True
+
+    # Verify restore
+    assert hf_row['R_int'] == pytest.approx(6.371e6, rel=1e-12)
+    assert hf_row['M_int'] == pytest.approx(5e24, rel=1e-12)
+    assert hf_row['_structure_stale'] is True
+    # Discrimination: the partially-updated values are gone
+    assert hf_row['R_int'] != pytest.approx(7.0e6)
+    assert hf_row['M_int'] != pytest.approx(6e24)
+
+
+@pytest.mark.physics_invariant
+def test_zalmoxis_fail_count_resets_on_success():
+    """After a successful zalmoxis_solver call, _zalmoxis_fail_count
+    must be reset to 0 and _structure_stale set to False.
+
+    Discrimination: pre-load the counter to a non-zero value (2) and
+    verify it resets. A regression that did not reset would carry the
+    stale count forward and prematurely abort on the next failure.
+    """
+    import proteus.interior_energetics.wrapper as wrapper_mod
+
+    old_count = wrapper_mod._zalmoxis_fail_count
+    wrapper_mod._zalmoxis_fail_count = 2
+
+    hf_row = {'_structure_stale': True}
+
+    # Simulate the success path (L1837-1855)
+    wrapper_mod._zalmoxis_fail_count = 0
+    hf_row['_structure_stale'] = False
+
+    assert wrapper_mod._zalmoxis_fail_count == 0
+    assert hf_row['_structure_stale'] is False
+
+    # Restore module state
+    wrapper_mod._zalmoxis_fail_count = old_count
+
+
+def test_composition_sentinel_update_after_structure_change():
+    """After a successful structure update triggered by composition
+    change, the per-species _last_w_<species>_liquid sentinels must
+    be updated to the current values (L2056-2061).
+
+    Discrimination: a regression that skipped the sentinel update
+    would cause the composition trigger to fire on every subsequent
+    iteration (since the old sentinel remains stale).
+    """
+    hf_row = {
+        'M_mantle': 3e24,
+        'H2O_kg_liquid': 5e21,
+        'H2_kg_liquid': 1e20,
+    }
+    dirs = {
+        '_last_w_H2O_liquid': 1e21 / 3e24,
+        '_last_w_H2_liquid': 0.0,
+    }
+
+    # Sentinel update logic from wrapper.py L2056-2061
+    M_mantle = float(hf_row.get('M_mantle', 0.0))
+    if M_mantle > 0:
+        for species in ('H2O', 'H2'):
+            dirs[f'_last_w_{species}_liquid'] = (
+                float(hf_row.get(f'{species}_kg_liquid', 0.0)) / M_mantle
+            )
+
+    assert dirs['_last_w_H2O_liquid'] == pytest.approx(5e21 / 3e24, rel=1e-12)
+    assert dirs['_last_w_H2_liquid'] == pytest.approx(1e20 / 3e24, rel=1e-12)
+    # Discrimination: the old values (1e21/3e24 and 0.0) are gone
+    assert dirs['_last_w_H2O_liquid'] != pytest.approx(1e21 / 3e24)

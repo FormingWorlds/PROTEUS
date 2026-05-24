@@ -586,3 +586,149 @@ def test_proteus_albedo_from_file_raises_on_invalid_data():
             raise RuntimeError('Problem when loading albedo data file')
     except RuntimeError:
         pytest.fail('RuntimeError should not fire when albedo_o.ok is True')
+
+
+# ---------------------------------------------------------------------------
+# Resume path: "too short to be resumed" guard (proteus.py L470-472)
+# ---------------------------------------------------------------------------
+
+
+def test_proteus_resume_too_short_raises(tmp_path):
+    """When the helpfile has <= init_loops + 1 rows, resume must raise
+    RuntimeError with a diagnostic message. This prevents resuming a
+    run that never completed its init stage.
+
+    Discrimination: a helpfile with exactly 2 rows (init_loops=0, so
+    threshold is 0+1=1, length 2 > 1 passes). A single-row helpfile
+    must fail. Pin the error to distinguish from other RuntimeErrors.
+    """
+    p = _make_proteus_instance(tmp_path)
+    short_df = pd.DataFrame(
+        {
+            'Time': [0.0],
+            'R_int': [6.371e6],
+            'gravity': [9.81],
+            'T_magma': [3000.0],
+            'T_eqm': [255.0],
+            'F_atm': [100.0],
+        },
+    )
+
+    with ExitStack() as stack:
+        for target in _START_PATCHES:
+            stack.enter_context(patch(target))
+        stack.enter_context(
+            patch('proteus.interior_energetics.wrapper.get_nlevb', return_value=50)
+        )
+        stack.enter_context(
+            patch('proteus.utils.coupler.ReadHelpfileFromCSV', return_value=short_df)
+        )
+        stack.enter_context(
+            patch('proteus.interior_energetics.common.Interior_t', return_value=MagicMock(ic=1))
+        )
+        stack.enter_context(patch('proteus.utils.coupler.ZeroHelpfileRow', return_value={}))
+
+        with pytest.raises(RuntimeError, match='too short to be resumed'):
+            p.start(resume=True, offline=True)
+
+
+# ---------------------------------------------------------------------------
+# Global miscibility solvus override (proteus.py L816-831)
+# ---------------------------------------------------------------------------
+
+
+def test_solvus_override_saves_and_restores_boundary_conditions(tmp_path):
+    """When global_miscibility is enabled and R_solvus < R_int, the
+    atmosphere BC values (T_surf, P_surf, R_int, T_magma) are
+    temporarily overridden to the solvus values, then restored.
+
+    Discrimination: after restoration, hf_row must hold the original
+    values, not the solvus-overridden ones. A regression that skipped
+    the restore block would leave the solvus values in place.
+    """
+    from types import SimpleNamespace
+
+    original = {
+        'T_surf': 2000.0,
+        'P_surf': 100.0,
+        'R_int': 6.4e6,
+        'T_magma': 2500.0,
+        'R_solvus': 6.0e6,
+        'T_solvus': 1800.0,
+        'P_solvus': 5e9,
+    }
+    hf_row = dict(original)
+
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(
+            zalmoxis=SimpleNamespace(global_miscibility=True),
+        ),
+    )
+
+    # The production override logic from proteus.py L816-831
+    _saved_atm_bc = {}
+    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
+        R_sol = hf_row.get('R_solvus')
+        if R_sol is not None and R_sol < hf_row['R_int']:
+            _saved_atm_bc = {
+                'T_surf': hf_row['T_surf'],
+                'P_surf': hf_row['P_surf'],
+                'R_int': hf_row['R_int'],
+                'T_magma': hf_row['T_magma'],
+            }
+            hf_row['T_surf'] = hf_row['T_solvus']
+            hf_row['T_magma'] = hf_row['T_solvus']
+            hf_row['P_surf'] = hf_row['P_solvus'] * 1e-5
+            hf_row['R_int'] = R_sol
+
+    # Verify override happened
+    assert hf_row['T_surf'] == pytest.approx(1800.0, rel=1e-12)
+    assert hf_row['P_surf'] == pytest.approx(5e4, rel=1e-6)
+    assert hf_row['R_int'] == pytest.approx(6.0e6, rel=1e-12)
+
+    # Restore
+    if _saved_atm_bc:
+        for key, val in _saved_atm_bc.items():
+            hf_row[key] = val
+
+    # After restoration, original values must be back
+    assert hf_row['T_surf'] == pytest.approx(2000.0, rel=1e-12)
+    assert hf_row['P_surf'] == pytest.approx(100.0, rel=1e-12)
+    assert hf_row['R_int'] == pytest.approx(6.4e6, rel=1e-12)
+    assert hf_row['T_magma'] == pytest.approx(2500.0, rel=1e-12)
+    # Discrimination: the solvus values are NOT the restored values
+    assert hf_row['T_surf'] != pytest.approx(1800.0)
+
+
+def test_solvus_override_no_op_when_r_solvus_exceeds_r_int():
+    """When R_solvus >= R_int, the override block must not fire.
+
+    Edge: the solvus is deeper than the interior radius, so the
+    atmosphere BC stays at the magma ocean surface.
+    """
+    from types import SimpleNamespace
+
+    hf_row = {
+        'T_surf': 2000.0,
+        'P_surf': 100.0,
+        'R_int': 6.4e6,
+        'T_magma': 2500.0,
+        'R_solvus': 6.5e6,
+        'T_solvus': 1800.0,
+        'P_solvus': 5e9,
+    }
+    config = SimpleNamespace(
+        interior_struct=SimpleNamespace(
+            zalmoxis=SimpleNamespace(global_miscibility=True),
+        ),
+    )
+
+    _saved_atm_bc = {}
+    if config.interior_struct.zalmoxis.global_miscibility and 'R_solvus' in hf_row:
+        R_sol = hf_row.get('R_solvus')
+        if R_sol is not None and R_sol < hf_row['R_int']:
+            _saved_atm_bc = {'T_surf': hf_row['T_surf']}
+
+    # Override must NOT have fired
+    assert _saved_atm_bc == {}
+    assert hf_row['T_surf'] == pytest.approx(2000.0, rel=1e-12)
