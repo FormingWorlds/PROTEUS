@@ -24,78 +24,64 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 INSTALL_SH = PROTEUS_ROOT / 'install.sh'
 
 
-def _run_installer(args=None, env_override=None, input_text=None, timeout=15):
-    """Run install.sh in a subprocess with controlled environment.
-
-    Parameters
-    ----------
-    args : list or None
-        Extra arguments to pass to install.sh.
-    env_override : dict or None
-        Environment variable overrides. Merged with a minimal base env.
-    input_text : str or None
-        Text to pipe to stdin (for interactive prompts).
-    timeout : int
-        Subprocess timeout in seconds.
-
-    Returns
-    -------
-    subprocess.CompletedProcess
-        Completed process with stdout/stderr captured.
-    """
-    cmd = ['bash', str(INSTALL_SH)]
-    if args:
-        cmd.extend(args)
-
-    env = os.environ.copy()
-    # Remove CONDA_DEFAULT_ENV to test the check (unless overridden)
-    if env_override is not None:
-        env.update(env_override)
-
-    return subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        input=input_text,
-        env=env,
-        cwd=str(PROTEUS_ROOT),
-    )
-
-
 class TestInstallerArgParsing:
     """Verify argument parsing and help output."""
 
     def test_help_flag_exits_zero(self):
         """--help prints usage and exits with code 0."""
-        result = _run_installer(['--help'])
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--help'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         assert result.returncode == 0
         assert 'Usage' in result.stdout
         assert '--all-data' in result.stdout
+        assert '--yes' in result.stdout
 
     def test_h_flag_exits_zero(self):
         """Short -h flag also works."""
-        result = _run_installer(['-h'])
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '-h'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         assert result.returncode == 0
         assert 'Usage' in result.stdout
 
     def test_unknown_arg_exits_nonzero(self):
         """Unknown arguments cause a non-zero exit with error message."""
-        result = _run_installer(['--bogus-flag'])
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--bogus-flag'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         assert result.returncode != 0
-        assert 'Unknown argument' in result.stdout or 'Unknown argument' in result.stderr
+        output = result.stdout + result.stderr
+        assert 'Unknown argument' in output
+
+    def test_yes_flag_accepted(self):
+        """--yes flag is accepted without error (parsed before pre-flight)."""
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--yes', '--help'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0
 
 
 class TestPreflightChecks:
     """Verify pre-flight check failure modes."""
 
     def test_fails_without_conda_env(self):
-        """Without CONDA_DEFAULT_ENV set, the installer must fail with
-        clear instructions to create a conda environment.
+        """Without CONDA_DEFAULT_ENV, the installer fails with conda instructions.
 
-        Discrimination: the error message must mention 'conda' so the
-        user knows what to do. A generic 'environment error' would not
-        be actionable.
+        Discrimination: the error must mention 'conda' so users know what
+        to do. A generic error would not be actionable.
         """
         env = os.environ.copy()
         env.pop('CONDA_DEFAULT_ENV', None)
@@ -111,12 +97,15 @@ class TestPreflightChecks:
         assert result.returncode != 0
         output = result.stdout + result.stderr
         assert 'conda' in output.lower()
+        assert 'conda create' in output
 
     def test_fails_outside_proteus_repo(self, tmp_path):
-        """Running install.sh from outside the PROTEUS repo must fail
-        because pyproject.toml is not found.
+        """Running install.sh from outside the PROTEUS repo fails because
+        pyproject.toml is not found.
+
+        Discrimination: the error must mention pyproject.toml or
+        'repository root' so the user understands the problem.
         """
-        # Copy install.sh to a temp dir without pyproject.toml
         install_copy = tmp_path / 'install.sh'
         install_copy.write_text(INSTALL_SH.read_text())
         result = subprocess.run(
@@ -132,20 +121,8 @@ class TestPreflightChecks:
         assert 'pyproject.toml' in output or 'repository root' in output.lower()
 
 
-class TestShellRcDetection:
-    """Verify shell rc file detection logic."""
-
-    def test_bash_shell_gives_bashrc(self):
-        """When SHELL=/bin/bash, detect_shell_rc returns ~/.bashrc."""
-        result = subprocess.run(
-            ['bash', '-c', 'source install.sh --help 2>/dev/null; true'],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=str(PROTEUS_ROOT),
-        )
-        # The --help flag exits before rc detection, but the script parses
-        assert result.returncode == 0
+class TestBashSyntax:
+    """Verify the script is valid bash."""
 
     def test_installer_is_valid_bash(self):
         """install.sh parses without syntax errors."""
@@ -157,63 +134,119 @@ class TestShellRcDetection:
         )
         assert result.returncode == 0, f'Bash syntax error: {result.stderr}'
 
+    def test_no_echo_e_usage(self):
+        """Script uses printf instead of echo -e for portability.
+
+        Discrimination: echo -e is not POSIX; printf is. The script
+        should not use echo -e outside of comments.
+        """
+        content = INSTALL_SH.read_text()
+        lines = content.split('\n')
+        echo_e_lines = [
+            i + 1
+            for i, line in enumerate(lines)
+            if 'echo -e' in line and not line.strip().startswith('#')
+        ]
+        assert echo_e_lines == [], f'echo -e found on lines: {echo_e_lines}'
+
 
 class TestIdempotency:
     """Verify the installer is safe to re-run."""
 
-    def test_append_to_rc_is_idempotent(self, tmp_path):
-        """append_to_rc must not duplicate lines on repeated calls.
+    def test_append_export_is_idempotent(self, tmp_path):
+        """append_export_to_rc replaces existing lines rather than duplicating.
 
-        Discrimination: running the append twice must result in exactly
-        one copy of the line. A naive implementation that always appends
-        would produce duplicates.
+        Discrimination: running the function 3 times must result in
+        exactly one copy. A naive append would produce 3 copies.
         """
         rc_file = tmp_path / '.testrc'
-        rc_file.write_text('# existing content\n')
-        test_line = 'export TEST_VAR="/some/path"'
+        rc_file.write_text('# existing content\nexport OTHER_VAR=hello\n')
 
-        # Simulate append_to_rc by running bash inline
         for _ in range(3):
             subprocess.run(
                 [
                     'bash',
                     '-c',
                     f"""
-                    append_to_rc() {{
-                        local line="$1" rc_file="$2"
-                        if ! grep -qF "$line" "$rc_file" 2>/dev/null; then
-                            echo "$line" >> "$rc_file"
+                    append_export_to_rc() {{
+                        local var_name="$1" var_value="$2" rc_file="$3"
+                        local safe_value
+                        safe_value=$(printf '%q' "$var_value")
+                        local line="export ${{var_name}}=${{safe_value}}"
+                        if [ -f "$rc_file" ]; then
+                            grep -v "^export ${{var_name}}=" "$rc_file" > "${{rc_file}}.tmp" 2>/dev/null || true
+                            mv "${{rc_file}}.tmp" "$rc_file"
                         fi
+                        echo "$line" >> "$rc_file"
                     }}
-                    append_to_rc '{test_line}' '{rc_file}'
-                """,
+                    append_export_to_rc 'TEST_VAR' '/some/path' '{rc_file}'
+                    """,
                 ],
                 check=True,
                 timeout=10,
             )
 
         content = rc_file.read_text()
-        count = content.count(test_line)
+        count = content.count('export TEST_VAR=')
         assert count == 1, f'Line appears {count} times (expected 1)'
+        assert 'export OTHER_VAR=hello' in content
+
+    def test_append_export_handles_spaces_in_path(self, tmp_path):
+        """Paths with spaces are safely quoted via printf %q.
+
+        Discrimination: the written RC line must be valid shell that
+        sets the variable to the exact path including spaces.
+        """
+        rc_file = tmp_path / '.testrc'
+        rc_file.write_text('')
+        path_with_spaces = '/home/user name/FWL DATA'
+
+        subprocess.run(
+            [
+                'bash',
+                '-c',
+                f"""
+                append_export_to_rc() {{
+                    local var_name="$1" var_value="$2" rc_file="$3"
+                    local safe_value
+                    safe_value=$(printf '%q' "$var_value")
+                    local line="export ${{var_name}}=${{safe_value}}"
+                    if [ -f "$rc_file" ]; then
+                        grep -v "^export ${{var_name}}=" "$rc_file" > "${{rc_file}}.tmp" 2>/dev/null || true
+                        mv "${{rc_file}}.tmp" "$rc_file"
+                    fi
+                    echo "$line" >> "$rc_file"
+                }}
+                append_export_to_rc 'FWL_DATA' '{path_with_spaces}' '{rc_file}'
+                """,
+            ],
+            check=True,
+            timeout=10,
+        )
+
+        content = rc_file.read_text()
+        assert 'export FWL_DATA=' in content
+        # Verify the written line is valid shell that produces the correct value
+        result = subprocess.run(
+            ['bash', '-c', f'source {rc_file} && echo "$FWL_DATA"'],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.stdout.strip() == path_with_spaces
 
 
 class TestDiskSpaceCheck:
     """Verify disk space detection."""
 
-    def test_available_disk_gb_returns_integer(self):
-        """available_disk_gb must return a positive integer on any platform."""
+    def test_available_disk_gb_returns_positive_integer(self):
+        """POSIX df -k based disk check returns a positive integer.
+
+        Discrimination: the result must be > 0; a broken command would
+        return 0 or fail. We test the actual command used by install.sh.
+        """
         result = subprocess.run(
-            [
-                'bash',
-                '-c',
-                """
-                if [[ "$OSTYPE" == "darwin"* ]]; then
-                    df -g . | awk 'NR==2 {print $4}'
-                else
-                    df --output=avail -BG . | awk 'NR==2 {gsub(/G/,""); print $1}'
-                fi
-            """,
-            ],
+            ['bash', '-c', 'df -k . | awk \'NR==2 {printf "%d\\n", $4/1024/1024}\''],
             capture_output=True,
             text=True,
             timeout=10,
@@ -221,3 +254,29 @@ class TestDiskSpaceCheck:
         assert result.returncode == 0
         gb = int(result.stdout.strip())
         assert gb > 0, f'Disk space check returned {gb} GB'
+
+
+class TestNonInteractive:
+    """Verify non-interactive mode behavior."""
+
+    def test_non_interactive_does_not_block_on_stdin(self):
+        """With --yes flag, the script does not read from stdin.
+
+        Passes /dev/null as stdin; without --yes this would cause
+        the conda check to fail differently (EOF on read).
+        """
+        env = os.environ.copy()
+        env.pop('CONDA_DEFAULT_ENV', None)
+        result = subprocess.run(
+            ['bash', str(INSTALL_SH), '--yes'],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            stdin=subprocess.DEVNULL,
+            env=env,
+            cwd=str(PROTEUS_ROOT),
+        )
+        # Should fail at conda check, not block on stdin
+        assert result.returncode != 0
+        output = result.stdout + result.stderr
+        assert 'conda' in output.lower()

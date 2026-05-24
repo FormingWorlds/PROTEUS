@@ -5,11 +5,12 @@
 #   bash install.sh              # Essential install (spectral + stellar data)
 #   bash install.sh --all-data   # Full install (all reference data)
 #   bash install.sh --no-data    # Skip data downloads
+#   bash install.sh --yes        # Non-interactive mode (accept all defaults)
 #   bash install.sh --help       # Show usage
 #
 # Prerequisites:
 #   - conda environment with Python 3.12 must be active
-#   - System packages (gfortran, netcdf) must be installed
+#   - System packages (gfortran >= 9, netcdf) must be installed
 #   - Internet connection for downloads
 #
 # This script is idempotent: safe to re-run after a failure or update.
@@ -25,7 +26,6 @@ REQUIRED_PYTHON_MINOR=12
 REQUIRED_JULIA_MAJOR=1
 REQUIRED_JULIA_MINOR=11
 MIN_DISK_GB=10
-LOGFILE="install_$(date +%Y%m%d_%H%M%S).log"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,22 +38,31 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-fail()  { echo -e "${RED}[FAIL]${NC}  $*"; }
-phase() { echo -e "\n${CYAN}${BOLD}=== Phase $1: $2 ===${NC}"; }
+info()  { printf "${GREEN}[INFO]${NC}  %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC}  %s\n" "$*"; }
+fail()  { printf "${RED}[FAIL]${NC}  %s\n" "$*"; }
+phase() { printf "\n${CYAN}${BOLD}=== Phase %s: %s ===${NC}\n" "$1" "$2"; }
 
 die() {
     fail "$1"
     echo ""
     echo "Installation failed at Phase $CURRENT_PHASE."
-    echo "See $LOGFILE for details."
+    if [ -n "${LOGFILE:-}" ] && [ -f "${LOGFILE:-}" ]; then
+        echo "See $LOGFILE for details."
+    fi
     echo "Fix the issue above, then re-run: bash install.sh"
     exit 1
 }
 
 prompt_yn() {
     local msg="$1" default="${2:-y}"
+    if [ "$NON_INTERACTIVE" = "true" ]; then
+        return 0
+    fi
+    if [ ! -t 0 ]; then
+        warn "Non-interactive shell detected, assuming yes for: $msg"
+        return 0
+    fi
     if [ "$default" = "y" ]; then
         read -r -p "$msg [Y/n] " response
         response="${response:-y}"
@@ -64,6 +73,16 @@ prompt_yn() {
     [[ "$response" =~ ^[Yy] ]]
 }
 
+read_with_default() {
+    local prompt="$1" default="$2"
+    if [ "$NON_INTERACTIVE" = "true" ] || [ ! -t 0 ]; then
+        echo "$default"
+        return
+    fi
+    read -r -p "$prompt" response
+    echo "${response:-$default}"
+}
+
 command_exists() { command -v "$1" &>/dev/null; }
 
 # Detect the shell rc file for the current user
@@ -72,31 +91,37 @@ detect_shell_rc() {
     shell_name="$(basename "${SHELL:-/bin/bash}")"
     case "$shell_name" in
         zsh)  echo "$HOME/.zshrc" ;;
-        fish) echo "$HOME/.config/fish/config.fish" ;;
-        *)    echo "$HOME/.bashrc" ;;
+        bash) echo "$HOME/.bashrc" ;;
+        *)
+            warn "Unsupported shell '$shell_name' for auto-configuration; writing to ~/.bashrc"
+            echo "$HOME/.bashrc"
+            ;;
     esac
 }
 
-# Append a line to the shell rc file if not already present
-append_to_rc() {
-    local line="$1" rc_file="$2"
-    if ! grep -qF "$line" "$rc_file" 2>/dev/null; then
-        echo "$line" >> "$rc_file"
-        info "Added to $rc_file: $line"
+# Safely append an export line to the shell rc file
+append_export_to_rc() {
+    local var_name="$1" var_value="$2" rc_file="$3"
+    local safe_value
+    safe_value=$(printf '%q' "$var_value")
+    local line="export ${var_name}=${safe_value}"
+    # Remove any existing line for this variable before appending
+    if [ -f "$rc_file" ]; then
+        grep -v "^export ${var_name}=" "$rc_file" > "${rc_file}.tmp" 2>/dev/null || true
+        mv "${rc_file}.tmp" "$rc_file"
     fi
+    echo "$line" >> "$rc_file"
+    info "Set in $rc_file: export ${var_name}=${var_value}"
 }
 
-# Get available disk space in GB (cross-platform)
+# Get available disk space in GB (POSIX-portable)
 available_disk_gb() {
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        df -g . | awk 'NR==2 {print $4}'
-    else
-        df --output=avail -BG . | awk 'NR==2 {gsub(/G/,""); print $1}'
-    fi
+    df -k . | awk 'NR==2 {printf "%d\n", $4/1024/1024}'
 }
 
 CURRENT_PHASE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NON_INTERACTIVE="false"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -107,6 +132,7 @@ for arg in "$@"; do
     case "$arg" in
         --all-data) DATA_MODE="all" ;;
         --no-data)  DATA_MODE="none" ;;
+        --yes|-y)   NON_INTERACTIVE="true" ;;
         --help|-h)
             echo "PROTEUS unified installer"
             echo ""
@@ -115,6 +141,7 @@ for arg in "$@"; do
             echo "Options:"
             echo "  --all-data   Download all reference data (~10-20 GB)"
             echo "  --no-data    Skip data downloads entirely"
+            echo "  --yes, -y    Non-interactive mode (accept all defaults)"
             echo "  --help       Show this message"
             echo ""
             echo "Default: download essential data (~2 GB)"
@@ -129,12 +156,16 @@ for arg in "$@"; do
 done
 
 # Start logging
+LOGFILE="$SCRIPT_DIR/install_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee -a "$LOGFILE") 2>&1
 
 echo ""
-echo -e "${BOLD}PROTEUS Installer${NC}"
+printf "${BOLD}PROTEUS Installer${NC}\n"
 echo "Log: $LOGFILE"
 echo "Data mode: $DATA_MODE"
+if [ "$NON_INTERACTIVE" = "true" ]; then
+    echo "Mode: non-interactive (--yes)"
+fi
 echo ""
 
 # ===================================================================
@@ -150,11 +181,16 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     OS="macos"
     info "Detected macOS ($ARCH)"
 elif [[ "$OSTYPE" == "linux"* ]]; then
+    # WSL2 detection
+    if uname -r 2>/dev/null | grep -qi microsoft; then
+        warn "WSL2 detected. PROTEUS is tested on native Linux; WSL2 may have quirks."
+    fi
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         case "$ID" in
             ubuntu|debian|pop|linuxmint) OS="debian" ;;
             fedora|rhel|centos|rocky|alma) OS="fedora" ;;
+            alpine) OS="alpine" ;;
             *) OS="linux-other" ;;
         esac
         info "Detected Linux: $PRETTY_NAME ($ARCH)"
@@ -207,6 +243,11 @@ missing_deps=()
 
 if ! command_exists gfortran; then
     missing_deps+=("gfortran")
+else
+    gf_version=$(gfortran -dumpversion 2>/dev/null | cut -d. -f1)
+    if [ -n "$gf_version" ] && [ "$gf_version" -lt 9 ] 2>/dev/null; then
+        warn "gfortran $gf_version detected; SOCRATES requires >= 9. You may see build failures."
+    fi
 fi
 if ! command_exists git; then
     missing_deps+=("git")
@@ -219,9 +260,7 @@ if ! command_exists curl; then
 fi
 
 # NetCDF (needed for SOCRATES)
-has_netcdf=true
 if ! command_exists nc-config && ! command_exists nf-config; then
-    has_netcdf=false
     missing_deps+=("netcdf-dev")
 fi
 
@@ -238,6 +277,9 @@ if [ ${#missing_deps[@]} -gt 0 ]; then
             ;;
         fedora)
             echo "  sudo dnf install gcc-gfortran netcdf-fortran-devel make curl git"
+            ;;
+        alpine)
+            echo "  apk add gfortran netcdf-fortran-dev make curl git"
             ;;
         *)
             echo "  Install: ${missing_deps[*]}"
@@ -259,7 +301,10 @@ CURRENT_PHASE=2
 phase 2 "Julia"
 
 if command_exists julia; then
-    julia_version=$(julia --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    julia_version=$(julia --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1)
+    if [ -z "$julia_version" ]; then
+        die "Could not parse Julia version from 'julia --version' output."
+    fi
     julia_major=$(echo "$julia_version" | cut -d. -f1)
     julia_minor=$(echo "$julia_version" | cut -d. -f2)
     info "Julia found: $julia_version"
@@ -283,7 +328,11 @@ else
     info "Julia not found."
     if prompt_yn "Install Julia via juliaup (official installer)?"; then
         info "Installing Julia..."
-        curl -fsSL https://install.julialang.org | sh -s -- --yes 2>&1
+        # Download to temp file for auditability
+        julia_installer=$(mktemp /tmp/juliaup-install-XXXXXX.sh)
+        curl -fsSL https://install.julialang.org -o "$julia_installer"
+        bash "$julia_installer" --yes 2>&1
+        rm -f "$julia_installer"
         # Source the juliaup env for the current shell
         if [ -f "$HOME/.juliaup/bin/juliaup" ]; then
             export PATH="$HOME/.juliaup/bin:$PATH"
@@ -312,26 +361,27 @@ CURRENT_PHASE=3
 phase 3 "Environment variables"
 
 RC_FILE=$(detect_shell_rc)
+# Ensure parent directory exists (e.g. ~/.config/fish/)
+mkdir -p "$(dirname "$RC_FILE")"
 info "Shell config: $RC_FILE"
 
 # FWL_DATA
 if [ -z "${FWL_DATA:-}" ]; then
     default_fwl="$HOME/FWL_DATA"
     info "FWL_DATA is not set."
-    read -r -p "Data directory [$default_fwl]: " fwl_path
-    fwl_path="${fwl_path:-$default_fwl}"
+    fwl_path=$(read_with_default "Data directory [$default_fwl]: " "$default_fwl")
     export FWL_DATA="$fwl_path"
 else
     fwl_path="$FWL_DATA"
     info "FWL_DATA already set: $FWL_DATA"
 fi
 mkdir -p "$fwl_path"
-append_to_rc "export FWL_DATA=\"$fwl_path\"" "$RC_FILE"
+append_export_to_rc "FWL_DATA" "$fwl_path" "$RC_FILE"
 
 # PYTHON_JULIAPKG_EXE
 julia_exe="$(which julia)"
 export PYTHON_JULIAPKG_EXE="$julia_exe"
-append_to_rc "export PYTHON_JULIAPKG_EXE=\"$julia_exe\"" "$RC_FILE"
+append_export_to_rc "PYTHON_JULIAPKG_EXE" "$julia_exe" "$RC_FILE"
 
 info "Environment variables configured"
 
@@ -341,18 +391,26 @@ info "Environment variables configured"
 CURRENT_PHASE=4
 phase 4 "SOCRATES"
 
-if [ -n "${RAD_DIR:-}" ] && [ -d "${RAD_DIR}" ] && [ -f "${RAD_DIR}/../build_code" ]; then
+socrates_compiled=false
+if [ -n "${RAD_DIR:-}" ] && [ -d "${RAD_DIR}" ]; then
+    # Check for compiled binaries (radlib.a or Cl_run)
+    if [ -f "${RAD_DIR}/bin/Cl_run" ] || find "${RAD_DIR}" -name 'radlib.a' -print -quit 2>/dev/null | grep -q .; then
+        socrates_compiled=true
+    fi
+fi
+
+if [ "$socrates_compiled" = "true" ]; then
     info "SOCRATES already installed at $RAD_DIR"
 else
     info "Installing SOCRATES..."
     bash tools/get_socrates.sh
-    # Set RAD_DIR from the installed location
-    if [ -d "$SCRIPT_DIR/socrates" ]; then
+    # Verify compilation succeeded
+    if [ -d "$SCRIPT_DIR/socrates" ] && [ -f "$SCRIPT_DIR/socrates/bin/Cl_run" ]; then
         export RAD_DIR="$SCRIPT_DIR/socrates"
-        append_to_rc "export RAD_DIR=\"$SCRIPT_DIR/socrates\"" "$RC_FILE"
+        append_export_to_rc "RAD_DIR" "$SCRIPT_DIR/socrates" "$RC_FILE"
         info "SOCRATES installed, RAD_DIR=$RAD_DIR"
     else
-        die "SOCRATES installation failed. Check $LOGFILE for build errors."
+        die "SOCRATES compilation failed. Check $LOGFILE for build errors."
     fi
 fi
 
@@ -362,15 +420,13 @@ fi
 CURRENT_PHASE=5
 phase 5 "AGNI"
 
-if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Project.toml" ]; then
-    info "AGNI already cloned at $SCRIPT_DIR/AGNI"
-    info "Updating AGNI Julia packages..."
-    bash tools/get_agni.sh 0 2>&1 || warn "AGNI update had warnings (may be OK)"
+if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
+    info "AGNI already installed at $SCRIPT_DIR/AGNI"
 else
     info "Installing AGNI..."
     bash tools/get_agni.sh 0 2>&1
-    if [ ! -d "$SCRIPT_DIR/AGNI" ]; then
-        die "AGNI installation failed. Check $LOGFILE for details."
+    if [ ! -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
+        die "AGNI installation failed (Julia packages not resolved). Check $LOGFILE for details."
     fi
     info "AGNI installed"
 fi
@@ -382,7 +438,7 @@ CURRENT_PHASE=6
 phase 6 "Python packages"
 
 info "Installing PROTEUS and dependencies..."
-pip install -e ".[develop]" 2>&1
+pip install -e ".[develop]"
 
 info "Setting up pre-commit hooks..."
 pre-commit install -f 2>&1 || warn "pre-commit install failed (non-critical)"
@@ -436,7 +492,7 @@ echo ""
 # Done
 # ===================================================================
 echo ""
-echo -e "${GREEN}${BOLD}Installation complete!${NC}"
+printf "${GREEN}${BOLD}Installation complete!${NC}\n"
 echo ""
 echo "Next steps:"
 echo "  1. Source your shell config:  source $RC_FILE"
