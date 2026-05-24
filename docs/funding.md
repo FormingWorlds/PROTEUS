@@ -58,8 +58,8 @@
   </a>
 
   <a href="https://www.ast.cam.ac.uk/" target="_blank">
-    <img src="assets/logos/Cambridge_IoA.png"
-         alt="Institute of Astronomy, University of Cambridge logo"
+    <img src="assets/logos/Cambridge.png"
+         alt="University of Cambridge logo"
          style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
   </a>
 

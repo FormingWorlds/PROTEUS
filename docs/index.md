@@ -34,13 +34,57 @@ title: PROTEUS
   </a>
 </p>
 
-<b>PROTEUS</b> (/ˈproʊtiəs, PROH-tee-əs) is a modular Python framework that simulates the coupled evolution of the atmospheres and interiors of rocky planets and exoplanets. Inspired by the Greek god of elusive sea change, who could change his form at will, PROTEUS is designed to be flexible and adaptable to a wide range of planetary environments. It can foretell the future, but answers only to those who are capable of asking the right questions.<br>
+**PROTEUS** is a modular Python framework that simulates the coupled evolution
+of rocky planet atmospheres and interiors. It connects interior thermal
+evolution, volatile outgassing, atmospheric radiative transfer, atmospheric
+escape, and stellar evolution into a self-consistent time-stepping loop,
+tracking the planet from a molten magma ocean to a solidified surface over
+billions of years.
 
 <object type="image/svg+xml" data="../assets/proteus_modules_schematic.svg" class="arch-diagram arch-diagram--light"></object>
 <object type="image/svg+xml" data="../assets/proteus_modules_schematic_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
 
 <p style="text-align: center;"><strong>Schematic of PROTEUS components and corresponding modules.</strong></p>
 
+## Key features
+
+- **Modular architecture**: each physical domain (interior, atmosphere,
+  escape, outgassing, stellar, orbit) has multiple interchangeable backends
+  with a common interface
+- **Coupled evolution**: modules exchange boundary conditions through a
+  shared data bus at each timestep, enforcing mass and energy conservation
+  across the full planet system
+- **Adaptive time-stepping**: the simulation automatically adjusts its
+  timestep to resolve rapid transitions (magma ocean solidification, escape
+  episodes) while stepping efficiently through quasi-steady phases
+- **Parameter studies**: built-in support for Cartesian parameter grid sweeps
+  and asynchronous Bayesian optimization for inverse problems
+- **Synthetic observations**: forward models for transit and eclipse spectra
+  from the simulated atmospheric state
+
+## Get started
+
+<div class="grid cards" markdown>
+
+-   :material-school: **New to PROTEUS?**
+
+    Start with the quick-start tutorial using all-dummy backends (no external
+    solvers needed, runs in under a minute).
+
+    [Quick start tutorial](Tutorials/quick_start_dummy.md){ .md-button .md-button--primary }
+
+-   :material-earth: **Ready for science?**
+
+    Follow the Earth analogue tutorial for a full production run with real
+    physics modules.
+
+    [Earth analogue tutorial](Tutorials/earth_analogue.md){ .md-button }
+
+</div>
+
 ## Citation and credit
 
-If you make use of PROTEUS, please reference scientific manuscripts outlined in [Bibliography](Reference/bibliography.md), state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](Community/CONTRIBUTING.md#licensing-and-credit).
+If you make use of PROTEUS, please reference the scientific manuscripts
+outlined in the [Bibliography](Reference/bibliography.md), state the code
+version used, and include an acknowledgement. We provide a suggested
+acknowledgement in the [contributing page](Community/CONTRIBUTING.md#licensing-and-credit).
