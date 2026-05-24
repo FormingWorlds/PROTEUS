@@ -2,6 +2,9 @@
 ############
 *.pyc
 
+# Installer logs
+install_*.log
+
 # Model files
 #############
 current.*
