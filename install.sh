@@ -466,7 +466,7 @@ case "$DATA_MODE" in
         proteus get spectral 2>&1 || warn "Spectral data download had issues"
         proteus get stellar 2>&1 || warn "Stellar data download had issues"
         proteus get muscles --all 2>&1 || warn "MUSCLES download had issues"
-        proteus get phoenix 2>&1 || warn "PHOENIX download had issues"
+        proteus get phoenix --feh 0.0 --alpha 0.0 2>&1 || warn "PHOENIX download had issues"
         proteus get reference 2>&1 || warn "Reference data download had issues"
         proteus get interiordata 2>&1 || warn "Interior data download had issues"
         info "All data downloaded"
