@@ -325,7 +325,7 @@ git clone git@github.com:FormingWorlds/JANUS
 python -m pip install -e JANUS/.
 
 # CALLIOPE (volatile in-/outgassing)
-git clone git@github.com:FormingWorlds/CALLIOPE
+git clone -b tl/fo2-source-framework git@github.com:FormingWorlds/CALLIOPE
 python -m pip install -e CALLIOPE/.
 
 # ZEPHYRUS (atmospheric escape)

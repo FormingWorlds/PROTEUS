@@ -474,15 +474,20 @@ else
     info "GitHub SSH access: not available, using HTTPS"
 fi
 
-# Clone and install a submodule as editable if not already present
+# Clone and install a submodule as editable if not already present.
+# Optional 4th arg: branch to checkout (defaults to repo default branch).
 clone_and_install() {
-    local name="$1" org="$2" repo="$3"
+    local name="$1" org="$2" repo="$3" branch="${4:-}"
     local dest="$SCRIPT_DIR/$repo"
     if [ -d "$dest" ]; then
         info "$name already cloned at $dest"
     else
         info "Cloning $name..."
-        git clone "${GH_PREFIX}${org}/${repo}.git" "$dest"
+        if [ -n "$branch" ]; then
+            git clone -b "$branch" "${GH_PREFIX}${org}/${repo}.git" "$dest"
+        else
+            git clone "${GH_PREFIX}${org}/${repo}.git" "$dest"
+        fi
     fi
     info "Installing $name (editable)..."
     pip install -e "$dest/." 2>&1
@@ -490,7 +495,10 @@ clone_and_install() {
 
 clone_and_install "MORS"     "FormingWorlds" "MORS"
 clone_and_install "JANUS"    "FormingWorlds" "JANUS"
-clone_and_install "CALLIOPE" "FormingWorlds" "CALLIOPE"
+# CALLIOPE: pyproject.toml pins the tl/fo2-source-framework branch until
+# PR #20 merges and a PyPI release is cut. The editable install from this
+# branch provides equilibrium_atmosphere_authoritative_O which PROTEUS imports.
+clone_and_install "CALLIOPE" "FormingWorlds" "CALLIOPE" "tl/fo2-source-framework"
 clone_and_install "ZEPHYRUS" "FormingWorlds" "ZEPHYRUS"
 
 # Aragog and Zalmoxis use dedicated setup scripts
