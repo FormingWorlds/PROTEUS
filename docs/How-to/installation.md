@@ -239,7 +239,7 @@ conda activate proteus
 
 ### 5. Install SOCRATES (radiative transfer)
 
-SOCRATES is a Fortran spectral radiative transfer code used by AGNI and JANUS.
+[SOCRATES](https://github.com/FormingWorlds/SOCRATES) is a Fortran spectral radiative transfer code used by [AGNI](https://www.h-nicholls.space/AGNI/) and [JANUS](https://proteus-framework.org/JANUS/).
 
 !!! note "Fortran compiler and NetCDF"
     SOCRATES requires `gfortran` (version 9+) and the NetCDF Fortran
@@ -271,10 +271,9 @@ Set `RAD_DIR` to point to the SOCRATES installation:
     source "$HOME/.zshrc"
     ```
 
-### 6. Install AGNI (radiative-convective atmosphere model)
+### 6. Install AGNI and FastChem
 
-AGNI solves the atmospheric energy balance using Julia. Installation steps
-are also documented at the [AGNI wiki](https://www.h-nicholls.space/AGNI/dev/howto/getting_started/).
+[AGNI](https://www.h-nicholls.space/AGNI/) solves the atmospheric energy balance using Julia and the [SOCRATES](https://github.com/FormingWorlds/SOCRATES) spectral library. [FastChem](https://github.com/exoclime/FastChem) provides equilibrium chemistry for AGNI. Installation steps are also documented at the [AGNI wiki](https://www.h-nicholls.space/AGNI/dev/howto/getting_started/).
 
 !!! note
     This step requires `make`, `unzip`, and `cmake`. Check with:
@@ -316,26 +315,26 @@ Set the FastChem environment variable:
 Clone and install each submodule in editable mode:
 
 ```console
-# MORS (stellar evolution)
+# MORS - stellar evolution (https://proteus-framework.org/MORS/)
 git clone git@github.com:FormingWorlds/MORS
 python -m pip install -e MORS/.
 
-# JANUS (1D convective atmosphere)
+# JANUS - 1D convective atmosphere (https://proteus-framework.org/JANUS/)
 git clone git@github.com:FormingWorlds/JANUS
 python -m pip install -e JANUS/.
 
-# CALLIOPE (volatile in-/outgassing)
+# CALLIOPE - volatile outgassing (https://proteus-framework.org/CALLIOPE/)
 git clone -b tl/fo2-source-framework git@github.com:FormingWorlds/CALLIOPE
 python -m pip install -e CALLIOPE/.
 
-# ZEPHYRUS (atmospheric escape)
+# ZEPHYRUS - atmospheric escape (https://github.com/FormingWorlds/ZEPHYRUS)
 git clone git@github.com:FormingWorlds/ZEPHYRUS
 python -m pip install -e ZEPHYRUS/.
 
-# Aragog (interior thermal evolution)
+# Aragog - interior thermal evolution (https://proteus-framework.org/aragog/)
 bash tools/get_aragog.sh
 
-# Zalmoxis (planetary interior structure)
+# Zalmoxis - planetary interior structure (https://proteus-framework.org/Zalmoxis/)
 bash tools/get_zalmoxis.sh
 ```
 

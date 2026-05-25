@@ -5,6 +5,12 @@ PROTEUS separates the interior into two coupled subsystems: **structure**
 (thermal evolution, melt fraction, heat flux). Each has its own module
 selection and parameters.
 
+Submodule documentation:
+[Aragog](https://proteus-framework.org/aragog/) |
+[SPIDER](https://proteus-framework.org/SPIDER/) |
+[Zalmoxis](https://proteus-framework.org/Zalmoxis/).
+See also [Model description](../../Explanations/model.md#interior-energetics-aragog-spider-boundary).
+
 ## Interior structure `[interior_struct]`
 
 The structure module computes the planet's density profile, radius, and

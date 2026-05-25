@@ -1,24 +1,26 @@
 # Configuration file
 
 PROTEUS uses [TOML](https://toml.io/en/) to structure its configuration files.
+This page lists all parameters with their types, defaults, and descriptions.
+For topic-specific parameter guides, see the **configuration reference** pages:
 
-All of the parameters required to run the model are
-listed below with short explanations of their purpose and the values
-they accept. Configuration files can contain blank lines. Comments are
-indicated with a `#` symbol. Whitespace indentation is purely stylistic.
+- [Execution and output](../Reference/config/params.md)
+- [Planet and volatiles](../Reference/config/planet.md)
+- [Star and orbit](../Reference/config/star_orbit.md)
+- [Interior structure and energetics](../Reference/config/interior.md)
+- [Atmosphere and chemistry](../Reference/config/atmosphere.md)
+- [Escape and outgassing](../Reference/config/escape_outgas.md)
+- [Synthetic observations](../Reference/config/observe.md)
 
-Many of the parameters have default values, meaning that you do not have to provide them in
-the file. Some parameters are conditionally required. For example, if you use the `mors`
-stellar evolution module (i.e. `star.module == 'mors'`), then you are required to also set
-the variable `star.mors.age_now`. However, if you instead decided to use the `dummy`
-stellar evolution module then the `age_now` parameter is not required.
+For worked examples, see the [Tutorials](../Tutorials/quick_start_dummy.md).
 
-See the [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/all_options.toml) configuration for a comprehensive example of all possible parameters.
+Many parameters have default values, so you do not have to provide them in
+the file. Some parameters are conditionally required. For example, if you use
+the `mors` stellar evolution module (`star.module = 'mors'`), then you must
+also set `star.mors.age_now`. If you use the `dummy` module instead, that
+parameter is not required.
 
-### Examples
-
-Have a look at the [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input)
-for ideas of how to set up your config in practice.
+See [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/all_options.toml) for a comprehensive example. Have a look at the other [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input) for ideas of how to set up your config in practice.
 
 ## Root parameters
 

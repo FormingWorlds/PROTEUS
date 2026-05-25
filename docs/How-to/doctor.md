@@ -30,7 +30,7 @@ command you can run manually or let `proteus update` handle.
 |-------|-----------------|----------------|
 | `FWL_DATA` | Environment variable is set and the directory exists | Not set, or path missing |
 | `RAD_DIR` | Set, directory exists, and `bin/radlib.a` is present | Not set, path missing, or SOCRATES not compiled |
-| `FC_DIR` | Set and directory exists | Not set (FastChem not installed) |
+| `FC_DIR` | Set and directory exists | Not set (only required when AGNI chemistry is enabled) |
 | `PYTHON_JULIAPKG_EXE` | Set | Not set |
 | `julia` | Julia is on PATH and version is 1.11.x | Missing or wrong version |
 

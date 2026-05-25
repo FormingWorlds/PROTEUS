@@ -361,3 +361,32 @@ This will compute all parametrizations, convert them to P–T and P–S space, a
 ```console
 $FWL_DATA/interior_lookup_tables/Melting_curves/
 ```
+
+## Installation management
+
+PROTEUS provides CLI commands for installing and updating submodules:
+
+### Install all submodules
+
+```console
+proteus install-all
+```
+
+Installs PROTEUS, all required submodules (SOCRATES, AGNI), and downloads
+reference data. Checks for sufficient disk space (5 GB minimum), creates
+`FWL_DATA` if needed, and sets environment variables. Pass `--export-env`
+to write environment variables to your shell rc file.
+
+### Update all submodules
+
+```console
+proteus update-all
+```
+
+Updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
+AGNI, and refreshes reference data. Verifies environment variables and
+disk space before proceeding. Pass `--export-env` to re-export environment
+variables.
+
+For finer-grained diagnostics and targeted fixes, use
+[`proteus doctor` and `proteus update`](doctor.md).

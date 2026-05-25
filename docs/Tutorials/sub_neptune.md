@@ -1,10 +1,10 @@
 # Sub-Neptune
 
 This tutorial simulates a sub-Neptune-class planet using the boundary
-interior module coupled with Aragog. Sub-Neptunes have thick
-hydrogen/helium envelopes atop a rocky core; the boundary module
-provides a parameterised thermal evolution for the envelope while
-Aragog handles the rocky interior.
+interior module coupled with [Aragog](https://proteus-framework.org/aragog/).
+Sub-Neptunes have thick hydrogen/helium envelopes atop a rocky core;
+the boundary module provides a parameterised thermal evolution for the
+envelope while Aragog handles the rocky interior.
 
 ## Configuration
 

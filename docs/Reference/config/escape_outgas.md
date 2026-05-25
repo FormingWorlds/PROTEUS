@@ -4,6 +4,12 @@ The `[escape]` section configures atmospheric escape (mass loss to space).
 The `[outgas]` section configures volatile outgassing (partitioning between
 interior and atmosphere).
 
+Submodule documentation:
+[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS) |
+[CALLIOPE](https://proteus-framework.org/CALLIOPE/) |
+[atmodeller](https://github.com/djbower/atmodeller).
+See also [Model description](../../Explanations/model.md#atmospheric-escape-zephyrus-boreas).
+
 ## Atmospheric escape `[escape]`
 
 | Parameter | Type | Default | Description |

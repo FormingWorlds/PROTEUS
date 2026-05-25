@@ -4,6 +4,12 @@ The `[atmos_clim]` section configures the atmospheric climate module (radiative-
 structure and surface energy balance). The `[atmos_chem]` section configures
 atmospheric chemistry (photochemical kinetics).
 
+Submodule documentation:
+[AGNI](https://www.h-nicholls.space/AGNI/) |
+[JANUS](https://proteus-framework.org/JANUS/) |
+[VULCAN](https://github.com/FormingWorlds/VULCAN).
+See also [Model description](../../Explanations/model.md#atmosphere-climate-agni-janus).
+
 ## Atmosphere climate `[atmos_clim]`
 
 | Parameter | Type | Default | Description |

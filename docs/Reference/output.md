@@ -226,12 +226,29 @@ For each element (H, C, N, O, S):
 | `albedo_pl` | 1 | Planetary albedo |
 | `bond_albedo` | 1 | Bond albedo |
 
+### Solvus and miscibility (when `global_miscibility` is enabled)
+
+| Column | Units | Description |
+|--------|-------|-------------|
+| `R_solvus` | m | Solvus radius (H$_2$-silicate miscibility gap boundary) |
+| `P_solvus` | Pa | Pressure at the solvus |
+| `T_solvus` | K | Temperature at the solvus |
+| `X_H2_int` | 1 | H$_2$ mass fraction in the interior |
+
+### Accretion mode columns (when `temperature_mode = 'accretion'`)
+
+| Column | Units | Description |
+|--------|-------|-------------|
+| `T_surf_accr` | K | Surface temperature from accretion energy balance |
+| `DeltaT_accretion` | K | Accretion-energy temperature contribution |
+
 ### Energy conservation diagnostics (Aragog only)
 
 | Column | Units | Description |
 |--------|-------|-------------|
 | `E_state_J` | J | Total thermal energy of mantle |
 | `E_state_cons_J` | J | Conservative thermal energy (frozen-mass frame) |
+| `dE_predicted_cons_J` | J | Cumulative predicted energy change from flux integrals |
 | `E_residual_cons_J` | J | Cumulative energy residual |
 | `E_residual_cons_frac` | 1 | Fractional energy residual |
 | `Q_radio_W` | W | Instantaneous radiogenic power |

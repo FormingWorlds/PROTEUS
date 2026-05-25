@@ -4,6 +4,11 @@ The `[star]` section configures the host star model and spectral properties.
 The `[orbit]` section configures the planetary orbit, tidal evolution, and
 any satellite.
 
+Submodule documentation:
+[MORS](https://proteus-framework.org/MORS/) |
+[Obliqua](https://github.com/FormingWorlds/Obliqua).
+See also [Model description](../../Explanations/model.md#stellar-evolution-mors).
+
 ## Stellar model `[star]`
 
 | Parameter | Type | Default | Description |

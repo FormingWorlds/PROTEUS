@@ -2,9 +2,11 @@
 
 This tutorial simulates the thermal and atmospheric evolution of an
 Earth-mass rocky planet at 1 AU from a Sun-like star. It uses the
-production-quality module combination: Aragog (interior energetics),
-Zalmoxis (interior structure), CALLIOPE (outgassing), and AGNI
-(atmosphere climate).
+production-quality module combination:
+[Aragog](https://proteus-framework.org/aragog/) (interior energetics),
+[Zalmoxis](https://proteus-framework.org/Zalmoxis/) (interior structure),
+[CALLIOPE](https://proteus-framework.org/CALLIOPE/) (outgassing), and
+[AGNI](https://www.h-nicholls.space/AGNI/) (atmosphere climate).
 
 ## Prerequisites
 
