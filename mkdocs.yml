@@ -13,6 +13,7 @@ nav:
   - How-to guides:
       - Getting started:
           - Install PROTEUS: How-to/installation.md
+          - Diagnose and update: How-to/doctor.md
           - Configure PROTEUS: How-to/config.md
           - Usage: How-to/usage.md
           - Troubleshooting: How-to/troubleshooting.md
