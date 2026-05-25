@@ -81,19 +81,13 @@ The installer runs through the following phases automatically:
 3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
 4. SOCRATES compilation and `RAD_DIR` setup
 5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
-6. Python package installation (PROTEUS + all dependencies from PyPI)
+6. Python packages (editable installs of all submodules + PROTEUS itself)
 7. Reference data downloads
 8. Verification via `proteus doctor`
 
 Each phase is idempotent: if the installer fails partway through, fix the
 reported issue and re-run `bash install.sh`. It will skip already-completed
 phases.
-
-!!! note "Automated vs manual install"
-    The automated installer pulls Python submodules (MORS, JANUS, CALLIOPE,
-    Aragog, Zalmoxis, etc.) from PyPI as released packages. If you need
-    editable checkouts for development, use the
-    [manual installation](#manual-installation) instead.
 
 **Installer options:**
 

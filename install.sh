@@ -459,12 +459,48 @@ if [ -d "$SCRIPT_DIR/AGNI/fastchem" ]; then
 fi
 
 # ===================================================================
-# Phase 6: Python packages
+# Phase 6: Python submodules (editable installs)
 # ===================================================================
 CURRENT_PHASE=6
-phase 6 "Python packages"
+phase 6 "Python submodules"
 
-info "Installing PROTEUS and dependencies..."
+# Detect SSH access to GitHub (exit code 1 = authenticated, other = no SSH)
+ssh -T git@github.com 2>/dev/null
+if [ $? -eq 1 ]; then
+    GH_PREFIX="git@github.com:"
+    info "GitHub SSH access: OK"
+else
+    GH_PREFIX="https://github.com/"
+    info "GitHub SSH access: not available, using HTTPS"
+fi
+
+# Clone and install a submodule as editable if not already present
+clone_and_install() {
+    local name="$1" org="$2" repo="$3"
+    local dest="$SCRIPT_DIR/$repo"
+    if [ -d "$dest" ]; then
+        info "$name already cloned at $dest"
+    else
+        info "Cloning $name..."
+        git clone "${GH_PREFIX}${org}/${repo}.git" "$dest"
+    fi
+    info "Installing $name (editable)..."
+    pip install -e "$dest/." 2>&1
+}
+
+clone_and_install "MORS"     "FormingWorlds" "MORS"
+clone_and_install "JANUS"    "FormingWorlds" "JANUS"
+clone_and_install "CALLIOPE" "FormingWorlds" "CALLIOPE"
+clone_and_install "ZEPHYRUS" "FormingWorlds" "ZEPHYRUS"
+
+# Aragog and Zalmoxis use dedicated setup scripts
+info "Setting up Aragog..."
+bash tools/get_aragog.sh 2>&1
+info "Setting up Zalmoxis..."
+bash tools/get_zalmoxis.sh 2>&1
+
+# Install PROTEUS itself
+info "Installing PROTEUS and remaining dependencies..."
 pip install -e ".[develop]"
 
 info "Setting up pre-commit hooks..."
