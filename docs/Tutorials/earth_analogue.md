@@ -1,8 +1,10 @@
 # Earth analogue
 
 This tutorial simulates the thermal and atmospheric evolution of an
-Earth-mass rocky planet at 1 AU from a Sun-like star. It uses the
-production-quality module combination:
+Earth-mass planet at 1 AU from a Sun-like star, reproducing the nominal
+Earth case from the CHILI intercomparison[^cite-lichtenberg2026].
+
+It uses the production-quality module combination:
 [Aragog](https://proteus-framework.org/aragog/) (interior energetics),
 [Zalmoxis](https://proteus-framework.org/Zalmoxis/) (interior structure),
 [CALLIOPE](https://proteus-framework.org/CALLIOPE/) (outgassing), and
@@ -13,163 +15,107 @@ production-quality module combination:
 - Full PROTEUS installation with AGNI and SOCRATES compiled
 - `FWL_DATA` and `RAD_DIR` environment variables set
 - Spectral files downloaded (`proteus get spectral`)
-- Stellar spectra downloaded (`proteus get phoenix`)
+- Solar spectrum downloaded (`proteus get stellar`)
 
-## Configuration
+## Physical setup
 
-Create a file `input/tutorial_earth.toml`:
+This case follows Table 2 of the CHILI protocol paper:
 
-```toml
-config_version = "3.0"
+| Parameter | Value |
+|-----------|-------|
+| Planet mass | 1 M$_\oplus$ |
+| Core radius fraction | 0.55 |
+| Stellar mass | 1 M$_\odot$ |
+| Starting stellar age | 50 Myr |
+| Semi-major axis | 1 AU |
+| Bond albedo | 0.1 |
+| Oxygen fugacity | IW+4 |
+| Hydrogen inventory | 4.7 $\times$ 10$^{20}$ kg (3 Earth oceans H$_2$O) |
+| Carbon inventory | 2.73 $\times$ 10$^{20}$ kg (10$^{21}$ kg CO$_2$) |
+| Initial thermal state | Fully molten (S = 3900 J/kg/K) |
+| Termination | Melt fraction $\Phi$ < 5% |
 
-[params.out]
-    path    = "tutorial_earth"
-    logging = "INFO"
+The planet starts fully molten and cools through a magma ocean stage.
+Volatiles partition between the atmosphere and silicate melt as the mantle
+solidifies. The atmosphere is solved self-consistently at each timestep
+using correlated-k radiative transfer (AGNI). Atmospheric escape is
+energy-limited (ZEPHYRUS, 30% efficiency).
 
-[params.dt]
-    initial = 1e2
-    minimum = 1e3
-    maximum = 1e7
-
-    [params.stop.time]
-        maximum = 5e9
-
-[star]
-    module  = "mors"
-    mass    = 1.0
-    age_ini = 0.1
-    [star.mors]
-        tracks          = "spada"
-        spectrum_source = "phoenix"
-
-[orbit]
-    semimajoraxis = 1.0
-
-[planet]
-    mass_tot         = 1.0
-    temperature_mode = "liquidus_super"
-    delta_T_super    = 500.0
-    volatile_mode    = "elements"
-    [planet.elements]
-        H_mode   = "oceans"
-        H_budget = 1.0
-        C_mode   = "C/H"
-        C_budget = 1.0
-        N_mode   = "N/H"
-        N_budget = 0.5
-        S_mode   = "S/H"
-        S_budget = 1.0
-
-[interior_struct]
-    module    = "zalmoxis"
-    core_frac = 0.325
-
-[interior_energetics]
-    module = "aragog"
-
-[outgas]
-    module       = "calliope"
-    fO2_shift_IW = 4
-
-[atmos_clim]
-    module = "agni"
-
-[escape]
-    module = "zephyrus"
-```
-
-### What this configuration does
-
-- **Planet**: 1 M$_\oplus$, starts fully molten (liquidus + 500 K at the CMB),
-  1 Earth ocean equivalent of hydrogen, solar-ratio C/N/S
-- **Star**: Solar-mass star on Spada[^cite-spada2013] evolutionary tracks, starting at 100 Myr
-- **Orbit**: 1 AU, no tidal heating
-- **Interior**: Zalmoxis computes the hydrostatic density profile with PALEOS
-  EOS tables; Aragog solves the mantle thermal evolution with CVODE + JAX
-  analytic Jacobian
-- **Outgassing**: CALLIOPE computes the gas-melt equilibrium at fO$_2$ = IW+4
-  (moderately oxidised, Earth-like)
-- **Atmosphere**: AGNI solves the radiative-convective structure with
-  SOCRATES radiative transfer
-- **Escape**: ZEPHYRUS energy-limited escape driven by stellar XUV flux
-
-## Running
+## Running the simulation
 
 ```bash
 conda activate proteus
-proteus start --offline -c input/tutorial_earth.toml
+nohup proteus start --offline -c input/tutorial_earth.toml \
+    > output/tutorial_earth/launch.log 2>&1 & disown
 ```
 
-!!! note
-    This run takes approximately 30 minutes to 2 hours depending on hardware.
-    For long runs, launch in the background:
-    ```bash
-    nohup proteus start --offline -c input/tutorial_earth.toml \
-        > output/tutorial_earth/launch.log 2>&1 & disown
-    ```
+!!! warning "Runtime"
+    This run takes 30 minutes to several hours depending on your machine.
+    The initial Zalmoxis structure solve (~10-20 min) is the slowest phase.
+    Monitor progress with `tail -f output/tutorial_earth/proteus_00.log`.
 
-## Interpreting the results
+## Configuration
 
-### Thermal evolution
+The config at `input/tutorial_earth.toml` sets:
 
-Open `output/tutorial_earth/plots/plot_global.png`. The top panel shows
-the evolution of key temperatures:
+- **Star**: Sun on Spada[^cite-spada2013] tracks starting at 50 Myr. The solar
+  spectrum is used for radiative transfer. Stellar luminosity, radius, and
+  XUV flux evolve with age.
+- **Interior**: Aragog solves the mantle energy equation on an 80-node radial
+  grid using SUNDIALS CVODE with JAX Jacobian. Zalmoxis computes the
+  hydrostatic structure using PALEOS EOS tables.
+- **Outgassing**: CALLIOPE partitions H$_2$O, CO$_2$, H$_2$, CH$_4$, and CO
+  between atmosphere and melt at the fO$_2$ = IW+4 buffer.
+- **Atmosphere**: AGNI solves the radiative-convective equilibrium with
+  Dayspring 48-band correlated-k opacities, a conductive skin layer at the
+  surface, and real-gas corrections.
+- **Escape**: ZEPHYRUS computes energy-limited mass loss at 30% efficiency,
+  distributing the bulk escape rate across elements proportionally.
 
-- **T_magma** starts near 4500 K (fully molten) and cools over ~100 Myr
-  to below the solidus (~1700 K)
-- **T_surf** tracks T_magma initially (the magma ocean surface radiates
-  directly) but decouples once a thick atmosphere builds up
-- **Phi_global** (melt fraction) decreases from ~1 to 0 as the mantle
-  solidifies; the transition through the mushy zone is the most
-  scientifically interesting phase
+## Expected output
 
-### Atmospheric evolution
+The simulation should produce:
 
-- **P_surf** builds up as volatiles outgas from the cooling magma ocean,
-  reaching tens to hundreds of bar
-- **H2O and CO2 partial pressures** show the dominant atmospheric species
-- After solidification, atmospheric escape slowly strips the atmosphere
-  over Gyr timescales
+- **Solidification time**: ~0.5 to 4 Myr (consistent with CHILI models)
+- **Surface temperature**: cooling from ~3500 K to ~1700 K (solidus)
+- **Melt fraction**: decreasing from 1.0 to 0.05 (termination threshold)
+- **Surface pressure**: increasing from ~100 to ~500 bar as volatiles outgas
+- **Atmospheric composition**: initially CO/CO$_2$-dominated, transitioning to
+  H$_2$O-dominated as the mantle solidifies
 
-### Interior structure
+After the run completes, generate plots:
 
-Check `plots/plot_interior.png` for radial profiles of temperature,
-viscosity, and melt fraction at selected snapshots. The rheological
-front (transition from liquid to solid) migrates inward as the mantle
-cools.
+```bash
+proteus plot -c input/tutorial_earth.toml all
+```
 
-### Energy balance
+## Comparison with CHILI models
 
-`plots/plot_fluxes_global.png` shows the competition between interior
-heat flux (F_int, cooling the mantle) and atmospheric outgoing radiation
-(F_atm). When F_int > F_atm, the surface heats up; when F_atm > F_int,
-it cools. Radiative equilibrium marks the end of the magma ocean phase.
+The CHILI intercomparison compares PROTEUS against seven other
+atmosphere-interior evolution codes (GOOEY, NEONGOOEY, PACMAN, CAMO,
+LINCS, MOAI, PlanAtMO). For the nominal Earth case, all models
+predict solidification within 4 Myr, with PROTEUS predicting the
+lowest surface temperatures at high melt fractions due to its
+mixing-length treatment of mantle convection.
 
-## Exercises
+For a detailed comparison including the Venus case and the
+Earth volatile grid, see the
+[CHILI intercomparison tutorial](chili_intercomparison.md).
 
-1. **Change the volatile inventory**: Double `H_budget` to 2.0 oceans.
-   How does the thicker steam atmosphere affect the cooling timescale?
+## Things to try
 
-2. **Change the redox state**: Set `fO2_shift_IW = -2` for a reduced
-   mantle. How does the atmospheric composition change (more H$_2$ and
-   CO, less H$_2$O and CO$_2$)?
-
-3. **Move the planet closer**: Set `semimajoraxis = 0.3` AU. How does
-   the higher instellation affect the surface temperature and escape?
-
-4. **Change the star**: Use `tracks = "baraffe"` with `mass = 0.3` for
-   an M-dwarf host star. Download MUSCLES spectra for TRAPPIST-1 and
-   set `spectrum_source = "muscles"`, `star_name = "trappist-1"`.
-
-## Next tutorials
-
-- [Hot rocky super-Earth](hot_super_earth.md): high irradiation, rapid escape
-- [Reduced H$_2$-rich world](reduced_h2_world.md): low fO$_2$ chemistry
-- [Sub-Neptune](sub_neptune.md): boundary interior module
-- [Parameter grid sweep](parameter_grid.md): ensemble runs
+- **Venus analogue**: change `planet.mass_tot = 0.815`,
+  `orbit.semimajoraxis = 0.723` to simulate Venus. Expect longer
+  solidification times due to higher instellation.
+- **Volatile sensitivity**: vary `H_budget` between 1.6e20 and 1.6e21 kg
+  to explore the effect of hydrogen inventory on cooling time.
+- **Reduced mantle**: set `outgas.fO2_shift_IW = -2` to simulate a
+  reduced mantle producing H$_2$-rich instead of H$_2$O-rich atmospheres.
 
 ---
 
 **See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
+
+[^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmosHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
 
 [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
