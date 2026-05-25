@@ -26,7 +26,7 @@ Although PROTEUS aims to treat the problem of *planetary* evolution, it must nec
 | Atmosphere (climate) | [AGNI](https://www.h-nicholls.space/AGNI/), [JANUS](https://proteus-framework.org/JANUS/), dummy | Radiative-convective profile |
 | Atmosphere (chemistry) | [VULCAN](https://github.com/FormingWorlds/VULCAN), dummy | Chemical kinetics |
 | Star | [MORS](https://proteus-framework.org/MORS/), dummy | Stellar evolution and spectrum |
-| Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), [BOREAS](https://github.com/ExoInteriors/BOREAS), dummy | Atmospheric escape |
+| Escape | [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS), dummy | Atmospheric escape |
 | Outgassing | [CALLIOPE](https://proteus-framework.org/CALLIOPE/), [atmodeller](https://github.com/djbower/atmodeller), dummy | Volatile exchange between interior and atmosphere |
 | Orbit | [Obliqua](https://github.com/FormingWorlds/Obliqua), dummy | Orbital evolution and tidal heating |
 
@@ -76,13 +76,11 @@ Config section: `[atmos_chem]`. Reference: [Atmosphere configuration](../Referen
 
 Config section: `[star]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
 
-## Atmospheric escape: ZEPHYRUS, BOREAS
+## Atmospheric escape: ZEPHYRUS
 
 The escape module computes atmospheric mass loss rates driven by the stellar XUV flux.
 
 **[ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS)** (Python) implements energy-limited escape, computing a bulk mass loss rate from the XUV flux, planet mass, and XUV absorption radius. The bulk rate is then distributed across elements proportionally to their atmospheric abundance (unfractionated escape). ZEPHYRUS also provides a tidal correction factor for planets in close-in orbits.
-
-**[BOREAS](https://github.com/ExoInteriors/BOREAS)** (Python) is a hydrodynamic escape model that solves for the upper atmosphere structure and distinguishes between energy-limited, recombination-limited, and diffusion-limited regimes. It supports fractionated escape, where light species (H, He) escape preferentially over heavier species (O, C). This is physically important for determining the long-term oxygen buildup in secondary atmospheres.
 
 Config section: `[escape]`. Reference: [Escape and outgassing configuration](../Reference/config/escape_outgas.md).
 
@@ -101,6 +99,29 @@ Config section: `[outgas]`. Reference: [Escape and outgassing configuration](../
 **[Obliqua](https://github.com/FormingWorlds/Obliqua)** (Julia) evolves the orbital semi-major axis and eccentricity under the influence of tidal dissipation. The tidal response of the planet is computed from its interior structure and rheology using a viscoelastic love-number solver (LovePy). Tidal heating power is distributed radially across the mantle and fed back into the interior energy equation. Obliqua also computes the spin-orbit evolution and checks for dynamical stability (Roche limit, Hill sphere).
 
 Config section: `[orbit]`. Reference: [Star and orbit configuration](../Reference/config/star_orbit.md).
+
+## Dummy modules
+
+Every module slot has a **dummy** implementation for testing, debugging, and
+hierarchical modelling. Dummy modules replace the full physics with minimal
+parameterisations that capture qualitative behaviour at negligible
+computational cost. They require no external solvers, no compiled code, and
+no reference data, making them suitable for verifying the coupling
+architecture and for quick parameter exploration.
+
+| Module | Dummy behaviour |
+|--------|----------------|
+| Structure | Noack & Lasbleis (2020)[^cite-noack2020] analytical scaling laws for interior radius, density, and gravity as a function of planet mass and iron content |
+| Interior energetics | Prescribed solidus/liquidus with parameterised cooling; no radial grid or ODE solver |
+| Atmosphere climate | Grey-body opacity: $F_\mathrm{OLR} = \sigma T_\mathrm{surf}^4 (1 - \gamma)$ with a tunable opacity factor $\gamma$. Optionally a fixed-flux mode that bypasses all radiative computation |
+| Atmosphere chemistry | Returns the input composition unchanged (no chemical processing) |
+| Star | Fixed effective temperature and luminosity; Planck-function spectrum at a user-specified $T_\mathrm{eff}$ |
+| Escape | Constant bulk mass loss rate (user-specified kg/s), distributed proportionally across elements |
+| Outgassing | Fixed volatile partitioning between atmosphere and interior, no equilibrium chemistry |
+| Orbit | Fixed semi-major axis and eccentricity; no tidal evolution |
+
+The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS
+with all modules set to dummy.
 
 ---
 
@@ -146,3 +167,5 @@ Only the interior and star modules have an explicit notion of time-evolution. Al
 [^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
 
 [^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).
+
+[^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).

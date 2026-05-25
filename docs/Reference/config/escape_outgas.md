@@ -8,13 +8,13 @@ Submodule documentation:
 [ZEPHYRUS](https://github.com/FormingWorlds/ZEPHYRUS) |
 [CALLIOPE](https://proteus-framework.org/CALLIOPE/) |
 [atmodeller](https://github.com/djbower/atmodeller).
-See also [Model description](../../Explanations/model.md#atmospheric-escape-zephyrus-boreas).
+See also [Model description](../../Explanations/model.md#atmospheric-escape-zephyrus).
 
 ## Atmospheric escape `[escape]`
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `module` | str or none | `"zephyrus"` | Escape module: `zephyrus` (energy-limited), `boreas` (hydrodynamic), `dummy` (fixed rate), `none` (disabled) |
+| `module` | str or none | `"zephyrus"` | Escape module: `zephyrus` (energy-limited), `dummy` (fixed rate), `none` (disabled) |
 | `reservoir` | str | `"outgas"` | Composition reservoir for escaping gas: `outgas`, `bulk`, `pxuv` |
 
 ### ZEPHYRUS `[escape.zephyrus]`
@@ -35,42 +35,6 @@ A fixed bulk escape rate, useful for testing and parameter studies.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `rate` | float | `0.0` | Bulk escape rate [kg s$^{-1}$] |
-
-### BOREAS `[escape.boreas]`
-
-Hydrodynamic escape with element-specific fractionation based on
-diffusion-limited outflow.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `fractionate` | bool | `true` | Enable fractionated (element-specific) outflow |
-| `efficiency` | float | `0.1` | Escape efficiency [0, 1] |
-
-**XUV absorption cross-sections per element** [cm$^2$]
-
-| Parameter | Default | Element |
-|-----------|---------|---------|
-| `sigma_H` | `1.89e-18` | Hydrogen |
-| `sigma_O` | `2.00e-18` | Oxygen |
-| `sigma_C` | `2.50e-18` | Carbon |
-| `sigma_N` | `3.00e-18` | Nitrogen |
-| `sigma_S` | `6.00e-18` | Sulfur |
-
-**IR grey opacities per species** [cm$^2$ g$^{-1}$]
-
-| Parameter | Default | Species |
-|-----------|---------|---------|
-| `kappa_H2` | `0.01` | H$_2$ |
-| `kappa_H2O` | `1.0` | H$_2$O |
-| `kappa_O2` | `1.0` | O$_2$ |
-| `kappa_CO2` | `1.0` | CO$_2$ |
-| `kappa_CO` | `1.0` | CO |
-| `kappa_CH4` | `1.0` | CH$_4$ |
-| `kappa_N2` | `1.0` | N$_2$ |
-| `kappa_NH3` | `1.0` | NH$_3$ |
-| `kappa_H2S` | `1.0` | H$_2$S |
-| `kappa_SO2` | `1.0` | SO$_2$ |
-| `kappa_S2` | `1.0` | S$_2$ |
 
 ---
 
@@ -148,4 +112,4 @@ real-gas equations of state.
 
 ---
 
-**See also:** [Escape modules](../../Explanations/model.md#atmospheric-escape-zephyrus-boreas) | [Outgassing modules](../../Explanations/model.md#volatile-outgassing-calliope-atmodeller)
+**See also:** [Escape modules](../../Explanations/model.md#atmospheric-escape-zephyrus) | [Outgassing modules](../../Explanations/model.md#volatile-outgassing-calliope-atmodeller)

@@ -535,7 +535,7 @@ config_version = "3.0"
 
 # Atmospheric escape
 [escape]
-    module                    = "zephyrus"   # zephyrus | dummy | boreas
+    module                    = "zephyrus"   # zephyrus | dummy
     reservoir                 = "outgas"     # reservoir setting escaping composition
 
     [escape.zephyrus]
@@ -545,30 +545,6 @@ config_version = "3.0"
 
     [escape.dummy]
         rate                  = 0.0          # bulk escape rate [kg s-1]
-
-    [escape.boreas]
-        fractionate           = true         # fractionated (element-specific) outflow
-        efficiency            = 0.1          # escape efficiency
-
-        # XUV absorption cross-sections per element [cm2]
-        sigma_H               = 1.89e-18
-        sigma_O               = 2.00e-18
-        sigma_C               = 2.50e-18
-        sigma_N               = 3.00e-18
-        sigma_S               = 6.00e-18
-
-        # IR grey opacities per species [cm2/g]
-        kappa_H2              = 0.01
-        kappa_H2O             = 1.0
-        kappa_O2              = 1.0
-        kappa_CO2             = 1.0
-        kappa_CO              = 1.0
-        kappa_CH4             = 1.0
-        kappa_N2              = 1.0
-        kappa_NH3             = 1.0
-        kappa_H2S             = 1.0
-        kappa_SO2             = 1.0
-        kappa_S2              = 1.0
 
 # Late accretion
 [accretion]
