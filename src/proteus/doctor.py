@@ -1,17 +1,25 @@
+"""PROTEUS installation diagnostics.
+
+Structured check system for ``proteus doctor``. Each check returns a
+typed result (pass/warn/fail) with a human-readable message and an
+optional fix command. The ``proteus update`` command collects all fix
+commands and offers to run them.
+"""
+
 from __future__ import annotations
 
 import importlib.metadata
 import json
 import os
 import subprocess
-from functools import partial
+import tomllib
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError
-from typing import Callable
+from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import click
-import requests
-from attr import dataclass
+from packaging.requirements import Requirement
 from packaging.version import Version
 
 from proteus.utils.coupler import (
@@ -20,69 +28,91 @@ from proteus.utils.coupler import (
     get_proteus_directories,
 )
 
-DIRS = get_proteus_directories()
+# ─── Check result types ──────────────────────────────────────────────
 
-HEADER_STYLE = {'fg': 'yellow', 'underline': True, 'bold': True}
-OK_STYLE = {'fg': 'green'}
-ERROR_STYLE = {'fg': 'red'}
-DEFAULT_STYLE = {'fg': 'yellow'}
+PASS = 'pass'
+WARN = 'warn'
+FAIL = 'fail'
+
+_STYLE = {
+    PASS: {'fg': 'green'},
+    WARN: {'fg': 'yellow'},
+    FAIL: {'fg': 'red'},
+}
+
+_ICON = {PASS: 'ok', WARN: 'warn', FAIL: 'FAIL'}
 
 
 @dataclass
-class BasePackage:
+class CheckResult:
+    """One diagnostic check result."""
+
     name: str
+    category: str
+    status: str
+    message: str
+    fix_cmd: str | None = None
 
-    def current_version(self) -> Version: ...
+    def echo(self):
+        icon = click.style(f'[{_ICON[self.status]}]', **_STYLE[self.status])
+        name = click.style(self.name, bold=True)
+        click.echo(f'  {icon} {name}: {self.message}')
+        if self.fix_cmd and self.status != PASS:
+            click.echo(f'       fix: {click.style(self.fix_cmd, fg="cyan")}')
 
-    def latest_version(self) -> Version: ...
+    def to_dict(self) -> dict:
+        return {
+            'name': self.name,
+            'category': self.category,
+            'status': self.status,
+            'message': self.message,
+            'fix_cmd': self.fix_cmd,
+        }
 
-    def get_status_message(self) -> str:
+
+# ─── Helpers ──────────────────────────────────────────────────────────
+
+
+def _repo_root() -> Path:
+    """Find the PROTEUS repo root by walking up from this file."""
+    here = Path(__file__).resolve().parent
+    for candidate in (here, *here.parents):
+        if (candidate / 'pyproject.toml').is_file():
+            return candidate
+    return here
+
+
+def _read_pyproject() -> dict:
+    """Parse pyproject.toml from the repo root."""
+    path = _repo_root() / 'pyproject.toml'
+    if not path.is_file():
+        return {}
+    return tomllib.loads(path.read_text())
+
+
+def _module_pins() -> dict[str, dict]:
+    """Return [tool.proteus.modules] from pyproject.toml."""
+    cfg = _read_pyproject()
+    return cfg.get('tool', {}).get('proteus', {}).get('modules', {})
+
+
+def _dependency_specs() -> dict[str, Requirement]:
+    """Return [project] dependencies as {name: Requirement} for FWL packages."""
+    cfg = _read_pyproject()
+    deps = cfg.get('project', {}).get('dependencies', [])
+    result = {}
+    for dep_str in deps:
         try:
-            current_version = self.current_version()
-            latest_version = self.latest_version()
-
-        except BaseException as exc:
-            message = click.style(f'{exc.__class__.__name__} - {exc}', **ERROR_STYLE)
-
-        else:
-            if latest_version > current_version:
-                message = click.style(
-                    f'Update available {current_version} -> {latest_version}', fg='yellow'
-                )
-            elif latest_version < current_version:
-                message = click.style(
-                    (
-                        f'Local version {current_version} is newer than latest release '
-                        f'{latest_version}'
-                    ),
-                    **DEFAULT_STYLE,
-                )
-            else:
-                message = click.style('ok', **OK_STYLE)
-
-        name = click.style(self.name, **OK_STYLE)
-        return f'{name}: {message}'
+            req = Requirement(dep_str)
+        except Exception:
+            continue
+        if 'fwl-' in req.name:
+            result[req.name] = req
+    return result
 
 
 def _editable_checkout_path(dist_name: str) -> str | None:
-    """Return the local path of an editable install, or None.
-
-    pip records editable installs in ``direct_url.json`` (PEP 610) inside
-    the distribution's ``.dist-info/`` directory. When the package is
-    installed via ``pip install -e <path>``, ``dir_info.editable`` is
-    True and ``url`` is a ``file://`` URL pointing at the checkout.
-
-    Parameters
-    ----------
-    dist_name : str
-        The distribution name (e.g. ``"fwl-aragog"``).
-
-    Returns
-    -------
-    str or None
-        Absolute path to the editable checkout, or ``None`` if the
-        package is installed from a wheel or not installed at all.
-    """
+    """Return the local path of an editable install, or None."""
     try:
         dist = importlib.metadata.distribution(dist_name)
     except PackageNotFoundError:
@@ -102,149 +132,413 @@ def _editable_checkout_path(dist_name: str) -> str | None:
     return unquote(urlparse(url).path)
 
 
-def _git_checkout_state(path: str) -> tuple[str, bool] | None:
-    """Return ``(short_hash, dirty)`` for a git checkout, or None.
-
-    Reads ``git rev-parse --short HEAD`` and ``git status --porcelain``.
-    Returns ``None`` when ``path`` is not a git checkout or git is
-    unavailable.
-
-    Parameters
-    ----------
-    path : str
-        Absolute path to a directory expected to contain a git working
-        tree.
-
-    Returns
-    -------
-    tuple[str, bool] or None
-        ``(short_commit_hash, is_dirty)``. ``is_dirty`` is True when the
-        working tree has uncommitted modifications.
-    """
+def _git_head(path: str) -> str | None:
+    """Return the full HEAD commit hash for a git checkout, or None."""
     try:
-        short_hash = subprocess.check_output(
+        return subprocess.check_output(
+            ['git', '-C', path, 'rev-parse', 'HEAD'],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+
+def _git_short_head(path: str) -> str | None:
+    """Return the short HEAD commit hash for a git checkout, or None."""
+    try:
+        return subprocess.check_output(
             ['git', '-C', path, 'rev-parse', '--short', 'HEAD'],
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
-        porcelain = subprocess.check_output(
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+
+
+def _git_dirty(path: str) -> bool:
+    """Return True if the git working tree has uncommitted changes."""
+    try:
+        out = subprocess.check_output(
             ['git', '-C', path, 'status', '--porcelain'],
             text=True,
             stderr=subprocess.DEVNULL,
         )
+        return bool(out.strip())
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+
+
+def _julia_version() -> str | None:
+    """Return the installed Julia version string, or None."""
+    try:
+        out = subprocess.check_output(
+            ['julia', '--version'], text=True, stderr=subprocess.DEVNULL
+        )
+        return out.strip().split()[-1]
     except (FileNotFoundError, subprocess.CalledProcessError):
         return None
-    return short_hash, bool(porcelain.strip())
 
 
-class PythonPackage(BasePackage):
-    def current_version(self) -> Version:
-        return Version(importlib.metadata.version(self.name))
+# ─── Check implementations ───────────────────────────────────────────
 
-    def latest_version(self) -> Version:
-        response = requests.get(f'https://pypi.org/pypi/{self.name}/json')
-        response.raise_for_status()
-        return Version(response.json()['info']['version'])
 
-    def editable_annotation(self) -> str | None:
-        """Return a human-readable annotation for an editable install.
+def check_env_var(
+    name: str, *, validate_path: bool = True, required_file: str | None = None
+) -> CheckResult:
+    """Check that an environment variable is set and its path is valid."""
+    val = os.environ.get(name)
+    if not val:
+        return CheckResult(
+            name=name,
+            category='environment',
+            status=FAIL,
+            message='not set',
+            fix_cmd=f'export {name}=<path>  # add to your shell rc file',
+        )
+    if validate_path and not os.path.exists(val):
+        return CheckResult(
+            name=name,
+            category='environment',
+            status=WARN,
+            message=f'set to {val} but path does not exist',
+        )
+    if required_file and not os.path.isfile(os.path.join(val, required_file)):
+        return CheckResult(
+            name=name,
+            category='environment',
+            status=WARN,
+            message=f'path exists but {required_file} is missing',
+        )
+    return CheckResult(
+        name=name,
+        category='environment',
+        status=PASS,
+        message=val,
+    )
 
-        Format: ``"editable @ <basename> -> <hash>"`` or
-        ``"editable @ <basename> -> <hash> (dirty)"``. Returns ``None``
-        when the package is installed from a wheel.
-        """
-        checkout = _editable_checkout_path(self.name)
-        if checkout is None:
-            return None
-        state = _git_checkout_state(checkout)
-        basename = os.path.basename(checkout.rstrip('/'))
-        if state is None:
-            return f'editable @ {basename}'
-        short_hash, dirty = state
+
+def check_fwl_data() -> list[CheckResult]:
+    """Check FWL_DATA contents for required data sets."""
+    results = []
+    fwl = os.environ.get('FWL_DATA')
+    if not fwl or not os.path.isdir(fwl):
+        return results
+
+    expected = {
+        'spectral_files': 'proteus get spectral',
+        'stellar_spectra': 'proteus get stellar',
+    }
+    for subdir, fix in expected.items():
+        path = os.path.join(fwl, subdir)
+        if os.path.isdir(path) and os.listdir(path):
+            results.append(
+                CheckResult(
+                    name=f'FWL_DATA/{subdir}',
+                    category='data',
+                    status=PASS,
+                    message='present',
+                )
+            )
+        else:
+            results.append(
+                CheckResult(
+                    name=f'FWL_DATA/{subdir}',
+                    category='data',
+                    status=WARN,
+                    message='missing or empty',
+                    fix_cmd=fix,
+                )
+            )
+    return results
+
+
+def check_julia() -> CheckResult:
+    """Check Julia version."""
+    ver = _julia_version()
+    if ver is None:
+        return CheckResult(
+            name='julia',
+            category='environment',
+            status=FAIL,
+            message='not found on PATH',
+            fix_cmd='curl -fsSL https://install.julialang.org | sh',
+        )
+    parts = ver.split('.')
+    if len(parts) >= 2 and parts[0] == '1' and parts[1] == '11':
+        return CheckResult(
+            name='julia',
+            category='environment',
+            status=PASS,
+            message=f'{ver}',
+        )
+    return CheckResult(
+        name='julia',
+        category='environment',
+        status=WARN,
+        message=f'{ver} (1.11.x required)',
+        fix_cmd='juliaup add 1.11 && juliaup default 1.11',
+    )
+
+
+def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
+    """Check a Python package against the pyproject.toml version spec."""
+    try:
+        installed = Version(importlib.metadata.version(name))
+    except PackageNotFoundError:
+        fix = f'pip install {name}'
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=FAIL,
+            message='not installed',
+            fix_cmd=fix,
+        )
+
+    # Build status message with editable annotation
+    checkout = _editable_checkout_path(name)
+    annotation = ''
+    if checkout:
+        short = _git_short_head(checkout)
+        dirty = _git_dirty(checkout)
+        base = os.path.basename(checkout.rstrip('/'))
         marker = ' (dirty)' if dirty else ''
-        return f'editable @ {basename} -> {short_hash}{marker}'
+        annotation = f' [editable @ {base} -> {short}{marker}]'
 
-    def get_status_message(self) -> str:
-        base_message = super().get_status_message()
-        annotation = self.editable_annotation()
-        if annotation is None:
-            return base_message
-        return f'{base_message} [{click.style(annotation, fg="cyan")}]'
+    # Check against pyproject.toml minimum bound
+    if spec and spec.specifier:
+        if installed not in spec.specifier:
+            fix = f'pip install -U "{spec}"'
+            if checkout:
+                fix = f'cd {checkout} && git pull && pip install -e .'
+            return CheckResult(
+                name=name,
+                category='versions',
+                status=FAIL,
+                message=f'{installed} (requires {spec.specifier}){annotation}',
+                fix_cmd=fix,
+            )
 
-
-@dataclass
-class GitPackage(BasePackage):
-    owner: str
-    version_getter: Callable
-
-    def current_version(self) -> Version:
-        try:
-            return Version(self.version_getter())
-        except FileNotFoundError as exc:
-            raise PackageNotFoundError(f'{self.name} is not installed.') from exc
-
-    def latest_version(self) -> Version:
-        # Prefer GitHub's "latest formal release" endpoint, but some
-        # FWL repos (e.g. SOCRATES) only ship tags. Fall back to the
-        # tags list when releases/latest returns 404.
-        base = f'https://api.github.com/repos/{self.owner}/{self.name}'
-        response = requests.get(f'{base}/releases/latest')
-        if response.status_code == 404:
-            tags_response = requests.get(f'{base}/tags')
-            tags_response.raise_for_status()
-            tags = tags_response.json()
-            if not tags:
-                raise RuntimeError(f'{self.name}: no releases or tags found on GitHub')
-            # /tags returns most-recent-first; first entry's name is the
-            # latest tag string.
-            return Version(tags[0]['name'])
-        response.raise_for_status()
-        return Version(response.json()['tag_name'])
+    # Package satisfies the pin
+    return CheckResult(
+        name=name,
+        category='versions',
+        status=PASS,
+        message=f'{installed}{annotation}',
+    )
 
 
-PACKAGES = (
-    PythonPackage(name='fwl-aragog'),
-    PythonPackage(name='fwl-calliope'),
-    PythonPackage(name='fwl-janus'),
-    PythonPackage(name='fwl-proteus'),
-    PythonPackage(name='fwl-mors'),
-    PythonPackage(name='fwl-vulcan'),
-    PythonPackage(name='fwl-zephyrus'),
-    PythonPackage(name='fwl-zalmoxis'),
-    GitPackage(name='AGNI', owner='nichollsh', version_getter=partial(_get_agni_version, DIRS)),
-    GitPackage(
-        name='SOCRATES', owner='FormingWorlds', version_getter=partial(_get_socrates_version)
-    ),
-)
+def check_git_module(name: str, dirs: dict) -> CheckResult:
+    """Check a git-pinned module (AGNI, SOCRATES) against pyproject.toml ref."""
+    pins = _module_pins()
+    pin = pins.get(name.lower(), {})
+    pinned_ref = pin.get('ref')
 
-
-def get_env_var_status_message(var: str) -> str:
-    if os.environ.get(var):
-        message = click.style('ok', **OK_STYLE)
+    # Determine the checkout path
+    dir_key = name.lower()
+    if dir_key == 'socrates':
+        path = os.environ.get('RAD_DIR', '')
     else:
-        message = click.style('Variable not set.', **ERROR_STYLE)
+        path = dirs.get(dir_key, '')
 
-    name = click.style(var, **OK_STYLE)
-    return f'{name}: {message}'
+    if not path or not os.path.isdir(path):
+        setup_script = f'bash tools/get_{name.lower()}.sh'
+        return CheckResult(
+            name=name,
+            category='versions',
+            status=FAIL,
+            message='not installed',
+            fix_cmd=setup_script,
+        )
+
+    # Get current version
+    try:
+        if name == 'AGNI':
+            ver = _get_agni_version(dirs)
+        elif name == 'SOCRATES':
+            ver = _get_socrates_version()
+        else:
+            ver = '?'
+    except Exception:
+        ver = '?'
+
+    # Check HEAD against pinned ref
+    head = _git_head(path)
+    if pinned_ref and head:
+        if head == pinned_ref:
+            return CheckResult(
+                name=name,
+                category='versions',
+                status=PASS,
+                message=f'{ver} ({head[:8]})',
+            )
+        else:
+            return CheckResult(
+                name=name,
+                category='versions',
+                status=WARN,
+                message=(f'{ver} ({head[:8]}) differs from pin ({pinned_ref[:8]})'),
+                fix_cmd=f'bash tools/get_{name.lower()}.sh',
+            )
+
+    return CheckResult(
+        name=name,
+        category='versions',
+        status=PASS,
+        message=f'{ver}',
+    )
 
 
-VARIABLES = (
-    'FWL_DATA',
-    'RAD_DIR',
-    'ZALMOXIS_ROOT',
-    'FC_DIR',
-    'PYTHON_JULIAPKG_EXE',
-    'LA_DIR',
-)
+# ─── Main entry points ──────────────────────────────────────────────
 
 
-def doctor_entry():
-    click.secho('Environment variables', **HEADER_STYLE)
-    for var in VARIABLES:
-        message = get_env_var_status_message(var)
-        click.echo(message)
+ENVIRONMENT_VARS = [
+    ('FWL_DATA', True, None),
+    ('RAD_DIR', True, 'bin/radlib.a'),
+    ('FC_DIR', True, None),
+    ('PYTHON_JULIAPKG_EXE', False, None),
+]
 
-    click.secho('\nPackages', **HEADER_STYLE)
-    for package in PACKAGES:
-        message = package.get_status_message()
-        click.echo(message)
+PYTHON_PACKAGES = [
+    'fwl-proteus',
+    'fwl-aragog',
+    'fwl-calliope',
+    'fwl-janus',
+    'fwl-mors',
+    'fwl-vulcan',
+    'fwl-zephyrus',
+    'fwl-zalmoxis',
+]
+
+GIT_MODULES = ['AGNI', 'SOCRATES']
+
+
+def run_all_checks() -> list[CheckResult]:
+    """Run all diagnostic checks. Returns a flat list of results."""
+    dirs = get_proteus_directories()
+    specs = _dependency_specs()
+    results: list[CheckResult] = []
+
+    # Environment
+    for var, validate_path, req_file in ENVIRONMENT_VARS:
+        results.append(check_env_var(var, validate_path=validate_path, required_file=req_file))
+    results.append(check_julia())
+
+    # Data
+    results.extend(check_fwl_data())
+
+    # Python package versions (against pyproject.toml pins)
+    for pkg in PYTHON_PACKAGES:
+        results.append(check_python_package(pkg, specs.get(pkg)))
+
+    # Git module versions (against pyproject.toml commit pins)
+    for mod in GIT_MODULES:
+        results.append(check_git_module(mod, dirs))
+
+    return results
+
+
+def doctor_entry(output_json: bool = False):
+    """Run diagnostics and print results.
+
+    Parameters
+    ----------
+    output_json : bool
+        If True, print JSON instead of human-readable output.
+    """
+    results = run_all_checks()
+
+    if output_json:
+        import json as _json
+
+        click.echo(_json.dumps([r.to_dict() for r in results], indent=2))
+        return
+
+    # Group by category
+    categories = {}
+    for r in results:
+        categories.setdefault(r.category, []).append(r)
+
+    category_labels = {
+        'environment': 'Environment',
+        'data': 'Reference data',
+        'versions': 'Package versions',
+    }
+
+    for cat in ('environment', 'data', 'versions'):
+        checks = categories.get(cat, [])
+        if not checks:
+            continue
+        click.secho(
+            f'\n{category_labels.get(cat, cat)}', fg='yellow', underline=True, bold=True
+        )
+        for r in checks:
+            r.echo()
+
+    # Summary
+    n_fail = sum(1 for r in results if r.status == FAIL)
+    n_warn = sum(1 for r in results if r.status == WARN)
+    fixable = [r for r in results if r.fix_cmd and r.status != PASS]
+
+    click.echo()
+    if n_fail == 0 and n_warn == 0:
+        click.secho('All checks passed.', fg='green', bold=True)
+    else:
+        parts = []
+        if n_fail:
+            parts.append(click.style(f'{n_fail} failed', fg='red'))
+        if n_warn:
+            parts.append(click.style(f'{n_warn} warnings', fg='yellow'))
+        click.echo(', '.join(parts))
+        if fixable:
+            click.echo(
+                f'\nRun {click.style("proteus update", bold=True)} to fix '
+                f'{len(fixable)} issue(s) automatically.'
+            )
+
+
+def update_entry(dry_run: bool = False):
+    """Run diagnostics and execute fix commands for failing checks.
+
+    Parameters
+    ----------
+    dry_run : bool
+        If True, show what would be done without executing.
+    """
+    results = run_all_checks()
+    fixable = [r for r in results if r.fix_cmd and r.status != PASS]
+
+    if not fixable:
+        click.secho('Nothing to update. All checks passed.', fg='green')
+        return
+
+    click.secho(f'{len(fixable)} issue(s) to fix:\n', bold=True)
+    for r in fixable:
+        icon = click.style(f'[{_ICON[r.status]}]', **_STYLE[r.status])
+        click.echo(f'  {icon} {r.name}: {r.message}')
+        click.echo(f'       {click.style(r.fix_cmd, fg="cyan")}')
+
+    if dry_run:
+        click.echo(f'\n{click.style("Dry run", bold=True)}: no changes made.')
+        return
+
+    click.echo()
+    for r in fixable:
+        click.secho(f'Fixing: {r.name}', bold=True)
+        click.echo(f'  $ {r.fix_cmd}')
+        try:
+            subprocess.run(
+                r.fix_cmd,
+                shell=True,
+                check=True,
+                cwd=str(_repo_root()),
+            )
+            click.secho('  done', fg='green')
+        except subprocess.CalledProcessError as exc:
+            click.secho(f'  command failed (exit {exc.returncode})', fg='red')
+            click.echo('  Run the command manually to investigate.')
+
+    # Re-run checks after fixes
+    click.echo()
+    click.secho('Re-checking...', bold=True)
+    doctor_entry()

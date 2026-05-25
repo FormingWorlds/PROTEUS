@@ -541,14 +541,35 @@ get.add_command(spider)
 
 
 @click.command()
-def doctor():
-    """Diagnose your PROTEUS installation"""
+@click.option('--json', 'output_json', is_flag=True, help='Output results as JSON.')
+def doctor(output_json: bool):
+    """Diagnose your PROTEUS installation.
+
+    Checks environment variables, reference data, Python package versions,
+    and git module pins. Each check reports pass/warn/fail with a fix
+    command where applicable.
+    """
     from .doctor import doctor_entry
 
-    doctor_entry()
+    doctor_entry(output_json=output_json)
+
+
+@click.command()
+@click.option('--dry-run', is_flag=True, help='Show what would be done without executing.')
+def update(dry_run: bool):
+    """Update PROTEUS and its submodules.
+
+    Runs the same checks as ``proteus doctor``, then executes the
+    suggested fix commands for any failing or warning checks. Use
+    ``--dry-run`` to preview without making changes.
+    """
+    from .doctor import update_entry
+
+    update_entry(dry_run=dry_run)
 
 
 cli.add_command(doctor)
+cli.add_command(update)
 
 # ----------------
 # 'archive' commands
