@@ -390,12 +390,12 @@ proteus start --offline -c input/dummy.toml
 
 ## Optional modules
 
-### SPIDER and PETSc (entropy-formulation interior) {#11-optional-setup-petsc}
+### SPIDER and PETSc {#11-optional-setup-petsc}
 
-SPIDER is a C-based interior thermal evolution solver that uses the entropy
-formulation (T-S). It requires PETSc (a numerical computing library). Most
-configurations use Aragog (T-P formulation) instead; install SPIDER if you
-need entropy-based interior evolution.
+SPIDER is a C-based interior thermal evolution solver. It requires PETSc
+(a numerical computing library) and a C compiler. Most configurations use
+Aragog instead, which is written in Python/JAX and has no compiled
+dependencies beyond a Fortran compiler for SOCRATES.
 
 !!! warning
     PETSc requires Python <= 3.12. Make sure your conda environment uses
