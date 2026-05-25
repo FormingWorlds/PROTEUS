@@ -1,0 +1,57 @@
+config_version = "3.0"
+
+[params.out]
+    path = "tutorial_hot_se"
+
+[params.dt]
+    initial = 1e2
+    minimum = 1e2
+    maximum = 1e7
+
+    [params.stop.time]
+        maximum = 5e9
+
+[star]
+    module  = "mors"
+    mass    = 0.3
+    age_ini = 0.01
+    [star.mors]
+        tracks          = "baraffe"
+        spectrum_source = "phoenix"
+
+[orbit]
+    semimajoraxis = 0.05
+
+[planet]
+    mass_tot         = 3.0
+    temperature_mode = "liquidus_super"
+    delta_T_super    = 500.0
+    volatile_mode    = "elements"
+    [planet.elements]
+        H_mode   = "oceans"
+        H_budget = 3.0
+        C_mode   = "C/H"
+        C_budget = 1.0
+        N_mode   = "N/H"
+        N_budget = 0.5
+        S_mode   = "S/H"
+        S_budget = 1.0
+
+[interior_struct]
+    module    = "zalmoxis"
+    core_frac = 0.35
+
+[interior_energetics]
+    module = "aragog"
+
+[outgas]
+    module       = "calliope"
+    fO2_shift_IW = 3
+
+[atmos_clim]
+    module = "agni"
+
+[escape]
+    module = "zephyrus"
+    [escape.zephyrus]
+        efficiency = 0.15

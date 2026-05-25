@@ -136,8 +136,21 @@ Key columns to look for:
    The atmospheric mass changes as volatiles escape, but the total planet
    mass is conserved.
 
-4. **Plots**: Check `plots/plot_global.png` for a multi-panel overview of
-   the evolution.
+4. **Plots**: Check `plots/plot_global_log.png` for a multi-panel overview of
+   the evolution. Your output should look similar to this:
+
+<figure markdown="span">
+  ![Dummy tutorial output](../assets/tutorials/dummy_global_log.avif){ width="100%" }
+  <figcaption>Expected output from the all-dummy tutorial: magma ocean cooling
+  from ~2700 K to solidus, melt fraction decreasing to zero, atmospheric
+  pressure evolving with outgassing, and energy flux balance.</figcaption>
+</figure>
+
+To regenerate this plot from your own output:
+
+```python
+proteus plot -c input/dummy.toml all
+```
 
 ## Next steps
 
