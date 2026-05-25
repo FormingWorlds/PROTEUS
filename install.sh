@@ -258,6 +258,12 @@ fi
 if ! command_exists curl; then
     missing_deps+=("curl")
 fi
+if ! command_exists cmake; then
+    missing_deps+=("cmake")
+fi
+if ! command_exists unzip; then
+    missing_deps+=("unzip")
+fi
 
 # NetCDF (needed for SOCRATES)
 if ! command_exists nc-config && ! command_exists nf-config; then
@@ -270,16 +276,16 @@ if [ ${#missing_deps[@]} -gt 0 ]; then
     echo "Install them with:"
     case "$OS" in
         macos)
-            echo "  brew install gcc netcdf netcdf-fortran wget"
+            echo "  brew install gcc netcdf netcdf-fortran wget cmake"
             ;;
         debian)
-            echo "  sudo apt install gfortran libnetcdff-dev build-essential curl git"
+            echo "  sudo apt install gfortran libnetcdff-dev build-essential curl git cmake unzip"
             ;;
         fedora)
-            echo "  sudo dnf install gcc-gfortran netcdf-fortran-devel make curl git"
+            echo "  sudo dnf install gcc-gfortran netcdf-fortran-devel make curl git cmake unzip"
             ;;
         alpine)
-            echo "  apk add gfortran netcdf-fortran-dev make curl git"
+            echo "  apk add gfortran netcdf-fortran-dev make curl git cmake unzip"
             ;;
         *)
             echo "  Install: ${missing_deps[*]}"
@@ -414,10 +420,10 @@ else
 fi
 
 # ===================================================================
-# Phase 5: AGNI (Julia atmosphere model)
+# Phase 5: AGNI + FastChem (Julia atmosphere model + equilibrium chemistry)
 # ===================================================================
 CURRENT_PHASE=5
-phase 5 "AGNI"
+phase 5 "AGNI + FastChem"
 
 if [ -d "$SCRIPT_DIR/AGNI" ] && [ -f "$SCRIPT_DIR/AGNI/Manifest.toml" ]; then
     info "AGNI already installed at $SCRIPT_DIR/AGNI"
@@ -428,6 +434,28 @@ else
         die "AGNI installation failed (Julia packages not resolved). Check $LOGFILE for details."
     fi
     info "AGNI installed"
+fi
+
+# FastChem (equilibrium chemistry solver used by AGNI)
+if [ -d "$SCRIPT_DIR/AGNI/fastchem" ] && [ -f "$SCRIPT_DIR/AGNI/fastchem/fastchem" ]; then
+    info "FastChem already installed at $SCRIPT_DIR/AGNI/fastchem"
+else
+    info "Installing FastChem..."
+    cd "$SCRIPT_DIR/AGNI"
+    bash src/get_fastchem.sh 2>&1
+    cd "$SCRIPT_DIR"
+    if [ ! -d "$SCRIPT_DIR/AGNI/fastchem" ]; then
+        warn "FastChem installation failed. AGNI chemistry features will not work."
+        warn "Install manually: cd AGNI && bash src/get_fastchem.sh"
+    else
+        info "FastChem installed"
+    fi
+fi
+
+# FC_DIR
+if [ -d "$SCRIPT_DIR/AGNI/fastchem" ]; then
+    export FC_DIR="$SCRIPT_DIR/AGNI/fastchem"
+    append_export_to_rc "FC_DIR" "$SCRIPT_DIR/AGNI/fastchem" "$RC_FILE"
 fi
 
 # ===================================================================

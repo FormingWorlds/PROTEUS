@@ -18,7 +18,7 @@ Once you have followed these steps, go back to the main [installation](installat
     **[Homebrew](https://brew.sh/)** (recommended)
 
     ```console
-    brew install netcdf netcdf-fortran wget gcc open-mpi
+    brew install netcdf netcdf-fortran wget gcc open-mpi cmake
     ```
 
     **[MacPorts](https://www.macports.org/)**
@@ -37,7 +37,7 @@ Once you have followed these steps, go back to the main [installation](installat
 Install `gfortran` and the NetCDF libraries via your package manager:
 
 ```console
-sudo apt install libnetcdff-dev gfortran
+sudo apt install libnetcdff-dev gfortran build-essential cmake unzip
 ```
 
 ## Fedora / RedHat Linux

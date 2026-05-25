@@ -34,19 +34,19 @@ Install the required system libraries for your platform. See the
 
     ```console
     xcode-select --install
-    brew install gcc netcdf netcdf-fortran wget open-mpi
+    brew install gcc netcdf netcdf-fortran wget open-mpi cmake
     ```
 
 === "Debian / Ubuntu"
 
     ```console
-    sudo apt install gfortran libnetcdff-dev build-essential curl git
+    sudo apt install gfortran libnetcdff-dev build-essential curl git cmake unzip
     ```
 
 === "Fedora / RHEL"
 
     ```console
-    sudo dnf install gcc-gfortran netcdf-fortran-devel make curl git
+    sudo dnf install gcc-gfortran netcdf-fortran-devel make curl git cmake unzip
     ```
 
 **Compute clusters**: use the dedicated guides instead
@@ -78,16 +78,22 @@ The installer runs through the following phases automatically:
 
 1. Pre-flight checks (OS, disk space, Python version, system dependencies)
 2. Julia installation and version pinning (1.11)
-3. Environment variables (`FWL_DATA`, `RAD_DIR`, `PYTHON_JULIAPKG_EXE`)
-4. SOCRATES compilation (Fortran radiative transfer)
-5. AGNI setup (Julia atmosphere model)
-6. Python package installation (PROTEUS + all submodules)
+3. Environment variables (`FWL_DATA`, `PYTHON_JULIAPKG_EXE`)
+4. SOCRATES compilation and `RAD_DIR` setup
+5. AGNI and FastChem setup (Julia atmosphere model + equilibrium chemistry)
+6. Python package installation (PROTEUS + all dependencies from PyPI)
 7. Reference data downloads
 8. Verification via `proteus doctor`
 
 Each phase is idempotent: if the installer fails partway through, fix the
 reported issue and re-run `bash install.sh`. It will skip already-completed
 phases.
+
+!!! note "Automated vs manual install"
+    The automated installer pulls Python submodules (MORS, JANUS, CALLIOPE,
+    Aragog, Zalmoxis, etc.) from PyPI as released packages. If you need
+    editable checkouts for development, use the
+    [manual installation](#manual-installation) instead.
 
 **Installer options:**
 
@@ -103,7 +109,7 @@ After the installer finishes, source your shell configuration and run the
 quick-start test:
 
 ```console
-source ~/.zshrc   # or ~/.bashrc
+source ~/.zshrc   # or ~/.bashrc, depending on your shell
 conda activate proteus
 proteus start --offline -c input/dummy.toml
 ```
@@ -113,8 +119,9 @@ See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for
 a guided walkthrough.
 
 !!! note "SPIDER (optional)"
-    The installer does not include SPIDER or PETSc. If you need the legacy
-    interior module, install them separately after the main installation:
+    The installer does not include SPIDER or PETSc. If you need the
+    entropy-formulation interior module, install them separately after
+    the main installation:
 
     ```console
     bash tools/get_petsc.sh
@@ -389,12 +396,12 @@ proteus start --offline -c input/dummy.toml
 
 ## Optional modules
 
-### SPIDER and PETSc (legacy interior module) {#11-optional-setup-petsc}
+### SPIDER and PETSc (entropy-formulation interior) {#11-optional-setup-petsc}
 
 SPIDER is a C-based interior thermal evolution solver that uses the entropy
-formulation. It requires PETSc (a numerical computing library). Most users
-can use Aragog instead; SPIDER is needed only for specific entropy-based
-interior configurations.
+formulation (T-S). It requires PETSc (a numerical computing library). Most
+configurations use Aragog (T-P formulation) instead; install SPIDER if you
+need entropy-based interior evolution.
 
 !!! warning
     PETSc requires Python <= 3.12. Make sure your conda environment uses
