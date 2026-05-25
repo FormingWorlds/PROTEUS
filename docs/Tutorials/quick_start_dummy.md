@@ -15,84 +15,27 @@ No external solvers, spectral files, or EOS data are required.
 
 ## The configuration file
 
-PROTEUS ships with an all-dummy config at `input/dummy.toml`. Here is what
-it sets:
+PROTEUS ships with an all-dummy config at `input/dummy.toml`. The key
+settings are:
 
-```toml
-config_version = "3.0"
-
-[params.out]
-    path = "auto"
-
-[params.dt]
-    initial  = 1e2
-    minimum  = 1e2
-    maximum  = 3e7
-
-    [params.stop.time]
-        maximum = 1e9
-    [params.stop.solid]
-        enabled = true
-    [params.stop.escape]
-        enabled = false
-    [params.stop.radeqm]
-        enabled = false
-
-[star]
-    module = "dummy"
-
-[orbit]
-    module        = "dummy"
-    semimajoraxis = 0.5
-
-[planet]
-    mass_tot      = 1.0
-    volatile_mode = "elements"
-    [planet.elements]
-        H_mode   = "ppmw"
-        H_budget = 3e3
-        N_budget = 0.0
-
-[interior_struct]
-    module         = "dummy"
-    core_frac      = 0.55
-    core_frac_mode = "radius"
-
-[interior_energetics]
-    module = "dummy"
-
-[outgas]
-    fO2_shift_IW = 2
-    module       = "dummy"
-
-[atmos_clim]
-    module     = "dummy"
-    surf_state = "fixed"
-    rayleigh   = false
-    albedo_pl  = 0.1
-    [atmos_clim.dummy]
-        gamma = 0.3
-
-[escape]
-    module = "dummy"
-    [escape.dummy]
-        rate = 0.0
-
-[atmos_chem]
-    module = "dummy"
-    when   = "offline"
-```
-
-Every module is set to `"dummy"`, meaning:
-
-- **Star**: fixed solar luminosity, no evolution
+- **Planet**: 1 M$_\oplus$, starting fully molten (T$_\mathrm{magma}$ = 4000 K,
+  $\Phi$ = 1). Volatile budget of 10,000 ppmw H, 1000 ppmw C, 500 ppmw N,
+  500 ppmw S.
+- **Star**: fixed solar luminosity (no evolution)
 - **Orbit**: 0.5 AU, weak tidal heating
-- **Interior structure**: Noack & Lasbleis (2020)[^cite-noack2020] scaling laws
-- **Interior energetics**: parameterised cooling with prescribed solidus/liquidus
-- **Outgassing**: fixed composition partitioning
-- **Atmosphere**: grey-body opacity ($\gamma = 0.3$, moderately transparent)
-- **Escape**: disabled (rate = 0) so the run reaches solidification
-- **Chemistry**: fixed composition
+- **Interior structure**: Noack & Lasbleis (2020)[^cite-noack2020] analytical
+  scaling laws
+- **Interior energetics**: heat-capacity integrator with prescribed solidus
+  (1700 K) and liquidus (2700 K)
+- **Outgassing**: melt-fraction-dependent partitioning; 10% of volatiles are
+  always in the atmosphere (finite solubility floor), with the atmospheric
+  fraction increasing as the mantle solidifies
+- **Atmosphere**: grey-body opacity ($\gamma$ = 0.5)
+- **Escape**: disabled (rate = 0), so the run reaches solidification
+- **Chemistry**: parameterised vertical profiles (offline)
+
+The simulation terminates when the global melt fraction drops below the
+solidification threshold.
 
 ## Running the simulation
 
@@ -102,70 +45,86 @@ proteus start --offline -c input/dummy.toml
 ```
 
 The `--offline` flag skips data downloads. The run should complete in
-30-60 seconds.
+under 30 seconds.
 
-## Understanding the output
+## Expected output
 
-The run creates a directory inside `output/` with a timestamped name.
-Open `runtime_helpfile.csv` to see the time series:
-
-```bash
-cd output/run_*
-head -5 runtime_helpfile.csv
-```
-
-Key columns to look for:
-
-- `Time`: simulation time [yr]; stays at 0 for the first 3 iterations
-  (initialisation stage), then advances
-- `T_magma`: mantle potential temperature [K]; should decrease over time
-- `T_surf`: surface temperature [K]; tracks `T_magma` since `surf_state = "fixed"`
-- `Phi_global`: global melt fraction; decreases as the mantle cools
-- `F_atm`: outgoing atmospheric flux [W/m$^2$]
-- `F_int`: interior heat flux [W/m$^2$]
-- `P_surf`: surface pressure [bar]
-- `esc_rate_total`: escape rate [kg/s]; zero in this tutorial
-
-## What to look for
-
-1. **Time evolution**: After the 3 init iterations, `Time` should increase
-   from zero and the timestep should grow adaptively.
-
-2. **Cooling**: `T_magma` decreases monotonically. When it crosses the
-   solidus (~1700 K), `Phi_global` drops to zero and the run terminates.
-
-3. **Mass conservation**: `M_planet` should remain constant (within rounding).
-   The atmospheric mass changes as volatiles escape, but the total planet
-   mass is conserved.
-
-4. **Plots**: Check `plots/plot_global_lin.png` for a multi-panel overview of
-   the evolution. Your output should look similar to this:
+The run creates a directory inside `output/` named with a timestamp.
+Check `plots/plot_global_lin.png` for a multi-panel overview. Your
+output should look similar to this:
 
 <figure markdown="span">
   ![Dummy tutorial output](../assets/tutorials/dummy_global_lin.avif){ width="100%" }
-  <figcaption>Expected output from the all-dummy tutorial: magma ocean cooling
-  from 4000 K to solidus (~1700 K), melt fraction decreasing from 1 to
-  zero, surface partial pressures increasing as volatiles outgas from the
-  solidifying mantle, and energy flux balance.</figcaption>
+  <figcaption>All-dummy tutorial output. (a) Heat fluxes: the interior and
+  atmospheric fluxes track each other as the planet cools; absorbed stellar
+  flux (ASF) is constant. (b) Surface partial pressures: H<sub>2</sub>O dominates
+  (~10<sup>4</sup> bar), with CO<sub>2</sub>, N<sub>2</sub>, and SO<sub>2</sub> as minor species; pressures
+  increase as solidification forces dissolved volatiles into the atmosphere.
+  (c) Surface temperature: monotonic cooling from 4000 K to ~1700 K (solidus).
+  (d) Atmospheric mole fractions: H<sub>2</sub>O at ~95%, stable throughout.
+  (e) Mantle evolution: melt fraction drops from 1 (fully molten) to ~0
+  (solidified) over ~23,000 yr; the rheological front (orange) tracks the
+  melt fraction. (f) Volatile partitioning: dissolved fraction decreases from
+  ~90% to ~0% as the melt fraction drops, transferring volatiles from the
+  interior to the atmosphere.</figcaption>
 </figure>
 
-To regenerate this plot from your own output:
+To regenerate these plots from your own output:
 
-```python
+```bash
 proteus plot -c input/dummy.toml all
 ```
 
+## Understanding the helpfile
+
+Open `runtime_helpfile.csv` in the output directory to see the full time
+series. Key columns:
+
+| Column | Units | What to expect |
+|--------|-------|----------------|
+| `Time` | yr | Stays at 0 for the first 3 iterations (init stage), then advances to ~23,000 yr |
+| `T_magma` | K | Decreases monotonically from 4000 to ~1700 |
+| `Phi_global` | 1 | Drops from 1.0 to ~0.01, triggering the solidification stop |
+| `P_surf` | bar | Increases from ~7,000 to ~70,000 as volatiles outgas |
+| `F_atm` | W m$^{-2}$ | Outgoing longwave radiation; decreases as the surface cools |
+| `F_int` | W m$^{-2}$ | Interior heat flux; tracks `F_atm` in the dummy coupling |
+| `M_planet` | kg | Constant throughout (mass conservation) |
+
+## What to look for
+
+1. **Cooling and solidification**: `T_magma` decreases smoothly from 4000 K.
+   When it crosses the solidus (~1700 K), `Phi_global` approaches zero and
+   the run terminates with "Planet solidified!!".
+
+2. **Outgassing**: as the melt fraction drops, volatiles transfer from the
+   interior to the atmosphere. `P_surf` increases and the dissolved fraction
+   in panel (f) decreases. This is the core coupling feedback that the
+   production modules (CALLIOPE, Aragog) compute with full thermodynamics.
+
+3. **Energy balance**: the OLR (red line in panel a) and interior flux
+   (orange dashed) track each other because the dummy atmosphere directly
+   couples `F_int = F_atm`. The absorbed stellar flux (blue dashed) is
+   constant because the star is fixed.
+
+4. **Mass conservation**: `M_planet` should remain constant within rounding.
+   No atmospheric escape occurs in this configuration.
+
 ## Next steps
 
-- Try changing `H_budget` to see how the volatile inventory affects
-  the atmospheric evolution
-- Increase `escape.dummy.rate` to see faster atmospheric loss
-- Change `atmos_clim.dummy.gamma` to vary the greenhouse effect
-- Move on to the [Earth analogue tutorial](earth_analogue.md) for a
-  production-quality run with real physics modules
+- **Vary the greenhouse effect**: increase `atmos_clim.dummy.gamma` toward
+  1.0 to slow cooling (more opaque atmosphere traps more heat) or decrease
+  it toward 0 for faster cooling (more transparent)
+- **Enable escape**: set `escape.dummy.rate = 1e4` and
+  `params.stop.escape.enabled = true` to see atmospheric mass loss
+- **Change volatile inventory**: increase `H_budget` to 50,000 ppmw for a
+  thicker steam atmosphere, or decrease it to 1,000 ppmw for faster
+  solidification
+- **Move to production modules**: the [Earth analogue tutorial](earth_analogue.md)
+  uses Aragog, Zalmoxis, CALLIOPE, and AGNI for a quantitatively meaningful
+  simulation
 
 ---
 
-**See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
+**See also:** [Model description](../Explanations/model.md) | [Dummy modules](../Explanations/dummy_modules.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
 
 [^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
