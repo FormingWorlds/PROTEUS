@@ -3,6 +3,7 @@
 !!! info "Prerequisites"
     - macOS (Intel or Apple Silicon) or Linux
     - ~20 GB disk space (conda, Julia, reference data, submodules)
+    - Standard command-line tools: `curl`, `wget`
     - Git with SSH key configured ([GitHub SSH setup](https://docs.github.com/en/authentication/connecting-to-github-with-ssh))
     - Internet connection for initial setup and data downloads
     - Allow ~60 minutes for a full installation including all submodules
@@ -289,6 +290,10 @@ bash src/get_fastchem.sh
 cd ../
 ```
 
+Use `get_agni.sh` to keep AGNI and its data files up to date. AGNI must be
+available at `./AGNI/` inside your PROTEUS folder (either a symbolic link or
+the true location).
+
 Set the FastChem environment variable:
 
 === "bash"
@@ -312,19 +317,19 @@ Clone and install each submodule in editable mode:
 ```console
 # MORS (stellar evolution)
 git clone git@github.com:FormingWorlds/MORS
-pip install -e MORS/.
+python -m pip install -e MORS/.
 
 # JANUS (1D convective atmosphere)
 git clone git@github.com:FormingWorlds/JANUS
-pip install -e JANUS/.
+python -m pip install -e JANUS/.
 
 # CALLIOPE (volatile in-/outgassing)
 git clone git@github.com:FormingWorlds/CALLIOPE
-pip install -e CALLIOPE/.
+python -m pip install -e CALLIOPE/.
 
 # ZEPHYRUS (atmospheric escape)
 git clone git@github.com:FormingWorlds/ZEPHYRUS
-pip install -e ZEPHYRUS/.
+python -m pip install -e ZEPHYRUS/.
 
 # Aragog (interior thermal evolution)
 bash tools/get_aragog.sh
@@ -343,7 +348,7 @@ bash tools/get_zalmoxis.sh
 ### 8. Install PROTEUS
 
 ```console
-pip install -e ".[develop]"
+python -m pip install -e ".[develop]"
 ```
 
 ### 9. Enable pre-commit hooks
