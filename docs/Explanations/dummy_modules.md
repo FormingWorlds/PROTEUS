@@ -47,11 +47,14 @@ energetics module, the entire interior is analytically specified.
 ### Interior energetics: dummy (`interior_energetics.module = 'dummy'`)
 
 A parameterised cooling model with prescribed solidus and liquidus
-temperatures. The mantle is treated as a single isothermal reservoir that
-cools radiatively. The melt fraction is computed from a linear
-interpolation between the solidus (default 1700 K) and liquidus
-(default 2700 K). No radial grid, no ODE solver, no phase-dependent
-material properties.
+temperatures. The mantle is treated as a single thermal reservoir whose
+temperature evolves by integrating a heat-capacity ODE:
+$dT/dt = -(F_\mathrm{int} - F_\mathrm{tidal} - F_\mathrm{radio}) \cdot A / C_p$.
+The interior heat flux is set equal to the atmospheric heat flux from the
+previous iteration, so the cooling rate is driven by whatever the
+atmosphere module computes. The melt fraction is a linear interpolation
+between the solidus (default 1700 K) and liquidus (default 2700 K).
+No radial grid, no phase-dependent material properties.
 
 This module is useful for verifying that the coupling loop handles the
 melt-fraction-to-outgassing feedback correctly: as the dummy cools and
@@ -60,14 +63,14 @@ decreasing atmospheric partial pressures.
 
 ### Atmosphere climate: dummy (`atmos_clim.module = 'dummy'`)
 
-A grey-body opacity model for the atmospheric radiative properties.
-The outgoing longwave radiation (OLR) is:
+A grey-body model for the atmospheric radiative properties. The upward
+longwave flux is:
 
-$$F_\mathrm{OLR} = \sigma T_\mathrm{surf}^4 \, (1 - \gamma)$$
+$$F_\mathrm{OLR} = \sigma \bigl[T_\mathrm{surf} (1 - \gamma)\bigr]^4$$
 
-where $\gamma$ is a tunable opacity factor (0 = transparent atmosphere,
-1 = perfectly opaque). The transit radius is estimated from a single
-scale height above the surface.
+where $\gamma$ reduces the effective radiating temperature
+(0 = transparent atmosphere, 1 = perfectly opaque). The transit radius
+is estimated from a single scale height above the surface.
 
 An alternative **fixed-flux mode** (`dummy.fixed_flux > 0`) bypasses
 the grey-body computation entirely and returns a constant atmospheric
@@ -76,17 +79,26 @@ prescribed boundary condition.
 
 ### Atmosphere chemistry: dummy (`atmos_chem.module = 'dummy'`)
 
-Returns the input atmospheric composition unchanged. No photochemical
-kinetics, no equilibrium chemistry, no species network. The atmosphere's
-mixing ratios are whatever the outgassing module produced.
+A parameterised vertical composition model. The dummy chemistry module
+builds vertical profiles for all tracked species across the atmosphere's
+pressure levels. It applies a Clausius-Clapeyron cold trap to H$_2$O,
+generates approximate photolysis products (O, OH, H, HCN, NO, C$_2$H$_2$)
+that increase exponentially toward the top of the atmosphere, and
+renormalises all volume mixing ratios to sum to unity at each level.
+Output is written in VULCAN-compatible CSV format.
+
+Unlike the other dummy modules, this one produces non-trivial vertical
+structure. It is useful for testing the observation pipeline (transit
+spectra, emission spectra) with a physically plausible composition
+profile without running the full VULCAN photochemistry solver.
 
 ### Star: dummy (`star.module = 'dummy'`)
 
 A fixed star with no time evolution. The effective temperature
 (`dummy.Teff`) and luminosity are constant; the spectrum is a Planck
 function at that temperature, scaled to the planet-star separation.
-The stellar radius is either set explicitly or computed from
-$L = 4\pi R^2 \sigma T_\mathrm{eff}^4$.
+The stellar radius is either set explicitly or derived from an
+empirical mass-radius relation (Demircan & Kahraman 1991).
 
 Useful for isolating the planetary evolution from stellar evolution
 effects: the instellation stays constant, so all atmospheric and
@@ -121,10 +133,13 @@ of a Gibbs minimisation or real-gas solver.
 
 ### Orbit: dummy (`orbit.module = 'dummy'`)
 
-Fixed semi-major axis and eccentricity with no tidal evolution. The
-orbital period is computed from Kepler's third law. No tidal heating,
-no spin-orbit coupling, no satellite dynamics. The planet-star
-separation is constant throughout the simulation.
+No orbital evolution: semi-major axis and eccentricity remain at their
+initial values throughout the simulation. The orbital period is computed
+from Kepler's third law. A configurable tidal heating amplitude
+(`H_tide`) is applied to mantle layers where the melt fraction exceeds
+a threshold (`Phi_tide`), providing a simple parameterised heat source
+for testing the interior module's response to tidal power without
+running the full LovePy viscoelastic solver.
 
 ---
 

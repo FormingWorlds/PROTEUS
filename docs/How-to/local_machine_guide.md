@@ -30,24 +30,53 @@ Once you have followed these steps, go back to the main [installation](installat
     !!! note "Apple Silicon (M1/M2/M3/Ultra)"
         The `gcc` and `open-mpi` packages are required for compiling PETSc on Apple Silicon Macs. If you skip these, you may encounter compilation errors during the PETSc installation step. See the [Troubleshooting](troubleshooting.md#petsc-compilation-fails-on-apple-silicon) page for details.
 
-3. macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout the installation instructions if you are using the default shell.
+3. Install [miniforge](https://github.com/conda-forge/miniforge) (recommended for Apple Silicon):
+
+    ```console
+    curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+    bash Miniforge3-$(uname)-$(uname -m).sh
+    ```
+
+    Follow the prompts, then restart your terminal or run `source ~/.zshrc`.
+
+4. macOS Catalina (10.15) and later uses `zsh` as the default shell. Replace `.bashrc` with `.zshrc` throughout the installation instructions if you are using the default shell.
 
 ## Debian / Ubuntu Linux
 
-Install `gfortran` and the NetCDF libraries via your package manager:
+1. Install `gfortran` and the NetCDF libraries via your package manager:
 
-```console
-sudo apt install libnetcdff-dev gfortran build-essential cmake unzip
-```
+    ```console
+    sudo apt install libnetcdff-dev gfortran build-essential cmake unzip
+    ```
+
+2. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux):
+
+    ```console
+    mkdir -p ~/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+    bash ~/miniconda3/miniconda.sh
+    rm ~/miniconda3/miniconda.sh
+    ```
+
+    Choose an install folder where you have plenty of disk space. Follow the prompts, then restart your terminal or run `source ~/.bashrc`.
 
 ## Fedora / RedHat Linux
 
-Install the required libraries via your package manager:
+1. Install the required libraries via your package manager:
 
-```console
-sudo dnf install gcc gcc-gfortran gcc-c++ netcdf netcdf-fortran netcdf-fortran-devel \
-    lapack lapack-devel lapack-static sundials-mpich openmpi openmpi-devel f2c f2c-libs
-```
+    ```console
+    sudo dnf install gcc gcc-gfortran gcc-c++ netcdf netcdf-fortran netcdf-fortran-devel \
+        lapack lapack-devel lapack-static sundials-mpich openmpi openmpi-devel f2c f2c-libs
+    ```
+
+2. Install [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux):
+
+    ```console
+    mkdir -p ~/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+    bash ~/miniconda3/miniconda.sh
+    rm ~/miniconda3/miniconda.sh
+    ```
 
 ## Microsoft Windows
 

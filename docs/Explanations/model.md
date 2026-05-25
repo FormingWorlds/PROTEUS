@@ -112,13 +112,13 @@ architecture and for quick parameter exploration.
 | Module | Dummy behaviour |
 |--------|----------------|
 | Structure | Noack & Lasbleis (2020)[^cite-noack2020] analytical scaling laws for interior radius, density, and gravity as a function of planet mass and iron content |
-| Interior energetics | Prescribed solidus/liquidus with parameterised cooling; no radial grid or ODE solver |
-| Atmosphere climate | Grey-body opacity: $F_\mathrm{OLR} = \sigma T_\mathrm{surf}^4 (1 - \gamma)$ with a tunable opacity factor $\gamma$. Optionally a fixed-flux mode that bypasses all radiative computation |
-| Atmosphere chemistry | Returns the input composition unchanged (no chemical processing) |
+| Interior energetics | Heat-capacity integrator with prescribed solidus/liquidus; cooling driven by atmospheric flux |
+| Atmosphere climate | Grey-body model: $F_\mathrm{OLR} = \sigma [T_\mathrm{surf}(1-\gamma)]^4$. Optionally a fixed-flux mode |
+| Atmosphere chemistry | Parameterised vertical profiles with cold trap and approximate photolysis products |
 | Star | Fixed effective temperature and luminosity; Planck-function spectrum at a user-specified $T_\mathrm{eff}$ |
 | Escape | Constant bulk mass loss rate (user-specified kg/s), distributed proportionally across elements |
-| Outgassing | Fixed volatile partitioning between atmosphere and interior, no equilibrium chemistry |
-| Orbit | Fixed semi-major axis and eccentricity; no tidal evolution |
+| Outgassing | Melt-fraction-dependent volatile partitioning with fixed stoichiometry, no equilibrium chemistry |
+| Orbit | Fixed semi-major axis and eccentricity; configurable parameterised tidal heating |
 
 The [Quick start tutorial](../Tutorials/quick_start_dummy.md) runs PROTEUS
 with all modules set to dummy.
