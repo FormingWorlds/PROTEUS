@@ -1,1 +1,4 @@
-{}
+{
+  "single_assert": 16,
+  "weak_assert_is_none_or_not_none": 4
+}

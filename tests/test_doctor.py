@@ -218,30 +218,33 @@ class TestCheckPythonPackage:
         assert 'd051902' in r.message
 
 
+def _init_test_repo(path):
+    """Create a git repo with one commit at the given path.
+
+    Sets local user.name/user.email so commits work on CI runners
+    that have no global git config.
+    """
+    p = str(path)
+    subprocess.run(['git', 'init', p], check=True, capture_output=True)
+    subprocess.run(
+        ['git', '-C', p, 'config', 'user.name', 'Test'], check=True, capture_output=True
+    )
+    subprocess.run(
+        ['git', '-C', p, 'config', 'user.email', 'test@test.com'],
+        check=True,
+        capture_output=True,
+    )
+    (path / 'f.txt').write_text('x')
+    subprocess.run(['git', '-C', p, 'add', '.'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', p, 'commit', '-m', 'init'], check=True, capture_output=True)
+
+
 class TestGitHelpers:
     """Git helper functions."""
 
     def test_git_head_returns_hash(self, tmp_path):
         """Returns full hash for a real git repo."""
-        subprocess.run(['git', 'init', str(tmp_path)], check=True, capture_output=True)
-        (tmp_path / 'f.txt').write_text('x')
-        subprocess.run(
-            ['git', '-C', str(tmp_path), 'add', '.'], check=True, capture_output=True
-        )
-        subprocess.run(
-            [
-                'git',
-                '-C',
-                str(tmp_path),
-                'commit',
-                '-m',
-                'init',
-                '--author',
-                'Test <test@test.com>',
-            ],
-            check=True,
-            capture_output=True,
-        )
+        _init_test_repo(tmp_path)
         h = _git_head(str(tmp_path))
         assert h is not None
         assert len(h) == 40
@@ -252,48 +255,12 @@ class TestGitHelpers:
 
     def test_git_dirty_false_for_clean_repo(self, tmp_path):
         """Clean repo returns False."""
-        subprocess.run(['git', 'init', str(tmp_path)], check=True, capture_output=True)
-        (tmp_path / 'f.txt').write_text('x')
-        subprocess.run(
-            ['git', '-C', str(tmp_path), 'add', '.'], check=True, capture_output=True
-        )
-        subprocess.run(
-            [
-                'git',
-                '-C',
-                str(tmp_path),
-                'commit',
-                '-m',
-                'init',
-                '--author',
-                'Test <test@test.com>',
-            ],
-            check=True,
-            capture_output=True,
-        )
+        _init_test_repo(tmp_path)
         assert _git_dirty(str(tmp_path)) is False
 
     def test_git_dirty_true_for_modified_file(self, tmp_path):
         """Modified tracked file makes repo dirty."""
-        subprocess.run(['git', 'init', str(tmp_path)], check=True, capture_output=True)
-        (tmp_path / 'f.txt').write_text('x')
-        subprocess.run(
-            ['git', '-C', str(tmp_path), 'add', '.'], check=True, capture_output=True
-        )
-        subprocess.run(
-            [
-                'git',
-                '-C',
-                str(tmp_path),
-                'commit',
-                '-m',
-                'init',
-                '--author',
-                'Test <test@test.com>',
-            ],
-            check=True,
-            capture_output=True,
-        )
+        _init_test_repo(tmp_path)
         (tmp_path / 'f.txt').write_text('changed')
         assert _git_dirty(str(tmp_path)) is True
 
