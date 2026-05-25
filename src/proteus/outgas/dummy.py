@@ -74,21 +74,29 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
     R_int = float(hf_row.get('R_int', 6.371e6))
     area = 4.0 * np.pi * R_int**2
 
+    # Save element totals before zeroing output keys (they are inputs)
+    saved_element_kg = {}
+    for element in element_list:
+        saved_element_kg[element] = float(hf_row.get(f'{element}_kg_total', 0.0))
+
     # Initialize all expected keys to zero (M_atm is set by wrapper)
     for key in expected_keys():
         if key != 'M_atm':
             hf_row[key] = 0.0
 
-    # Partition coefficient: fraction dissolved in melt
-    # Phi=1 (fully molten) -> most volatiles dissolved
-    # Phi=0 (fully solid) -> all volatiles outgassed
-    f_dissolved = max(0.0, min(Phi_global, 1.0))
-    f_atm = 1.0 - f_dissolved
+    # Partition coefficient: fraction in atmosphere vs dissolved in melt.
+    # Even at Phi=1 (fully molten), a fraction of volatiles is in the
+    # atmosphere (solubility is finite). f_atm_floor ensures the
+    # atmosphere is always non-empty so the coupling loop has a surface
+    # pressure to work with.
+    f_atm_floor = 0.1
+    f_atm = f_atm_floor + (1.0 - f_atm_floor) * (1.0 - max(0.0, min(Phi_global, 1.0)))
+    f_dissolved = 1.0 - f_atm
 
     # Convert elemental budgets to species masses
     species_kg_total = {}
     for element, (species, mass_frac) in _ELEMENT_TO_SPECIES.items():
-        e_kg = float(hf_row.get(f'{element}_kg_total', 0.0))
+        e_kg = saved_element_kg.get(element, 0.0)
         if e_kg > 0 and mass_frac > 0:
             species_kg_total[species] = e_kg / mass_frac  # kg of species
 
@@ -153,7 +161,13 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
             hf_row[f'{e}_kg_atm'] += f_atm * kg_total * frac
             hf_row[f'{e}_kg_liquid'] += f_dissolved * kg_total * frac
 
-    # Oxygen total (owned by outgas, set by fO2 buffer approximation)
+    # Restore element totals (these are inputs, not outputs; the zeroing
+    # above wiped them because expected_keys() includes _kg_total columns)
+    for element, kg in saved_element_kg.items():
+        if element != 'O':
+            hf_row[f'{element}_kg_total'] = kg
+
+    # Oxygen total (derived from stoichiometric O in outgassed species)
     hf_row['O_kg_total'] = hf_row.get('O_kg_atm', 0.0) + hf_row.get('O_kg_liquid', 0.0)
 
     log.info(

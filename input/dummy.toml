@@ -37,16 +37,21 @@ config_version = "3.0"
         H_tide = 1e-9            # tidal power density [W/kg]
         Imk2   = -0.01           # Im(k2) love number
 
-# Planet: 1 Earth mass, 3000 ppmw H
+# Planet: 1 Earth mass
 [planet]
     mass_tot      = 1.0              # [M_earth]
     volatile_mode = "elements"
     [planet.elements]
-        O_mode   = "ic_chemistry"  # ic_chemistry | ppmw | kg | FeO_mantle_wt_pct
-        O_budget = 0.0           # ignored for ic_chemistry mode
+        O_mode   = "ic_chemistry"
+        O_budget = 0.0
         H_mode   = "ppmw"
-        H_budget = 3e3
-        N_budget = 0.0
+        H_budget = 1e4
+        C_mode   = "ppmw"
+        C_budget = 1e3
+        N_mode   = "ppmw"
+        N_budget = 500
+        S_mode   = "ppmw"
+        S_budget = 500
 
 # Interior structure: scaling laws (no external solver)
 [interior_struct]
@@ -57,6 +62,10 @@ config_version = "3.0"
 # Interior energetics: parameterized cooling
 [interior_energetics]
     module = "dummy"
+    [interior_energetics.dummy]
+        mantle_tliq = 2700.0
+        mantle_tsol = 1700.0
+        mantle_cp   = 5000.0     # higher heat capacity = slower cooling
 
 # Outgassing: parameterized partitioning (no thermodynamic solver)
 [outgas]
@@ -70,7 +79,7 @@ config_version = "3.0"
     rayleigh   = false
     albedo_pl  = 0.1
     [atmos_clim.dummy]
-        gamma = 0.3              # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
+        gamma = 0.5              # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
 
 # Escape: fixed bulk rate
 [escape]
