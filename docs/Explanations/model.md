@@ -12,10 +12,25 @@ George Box famously put that "all models are wrong, but some are useful". PROTEU
 
 Although PROTEUS aims to treat the problem of *planetary* evolution, it must necessarily also handle external processes which act upon the planet (e.g. tidal heating). The framework therefore models the combined system of a planet, its orbital mechanics, and the evolution of its host star. The planet itself is conceptually sub-divided into a vaporised *atmosphere* component above an *interior* component containing a silicate mantle and metallic core. PROTEUS facilitates communication between individual software *modules* which each implement a model for a specific part of the overall system. Conceptually, PROTEUS modules (e.g. the interior) are 'slots' which are filled by specific implementations: the 'models' (e.g. Aragog).
 
-<p align="center">
-      <img src="../assets/schematic.png" style="max-width: 90%; height: auto;"></br>
-      <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
-</p>
+<figure markdown="span">
+<object type="image/svg+xml" data="../assets/proteus_modules_schematic.svg" class="arch-diagram arch-diagram--light"></object>
+<object type="image/svg+xml" data="../assets/proteus_modules_schematic_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
+<figcaption>Schematic of the PROTEUS modular architecture. The planet is
+divided into radial domains: a metallic core, a silicate mantle (solid
+and partially molten), a surface boundary layer, and a volatile atmosphere.
+Each domain is handled by one or more interchangeable modules (labelled
+boxes). The star and orbit provide external forcing (instellation, XUV
+flux, tidal heating). Arrows indicate the flow of physical quantities
+between modules at each coupling timestep: the interior module passes
+the surface temperature and heat flux upward to the atmosphere, which
+returns the outgoing longwave radiation; the outgassing module partitions
+volatiles between the melt and the atmosphere based on the current
+temperature and melt fraction; and the escape module removes mass from
+the top of the atmosphere driven by the stellar XUV flux. Multiple
+implementations are available for each slot (e.g. Aragog or SPIDER for
+the interior, AGNI or JANUS for the atmosphere), enabling hierarchical
+model intercomparison.</figcaption>
+</figure>
 
 ### Module overview
 
