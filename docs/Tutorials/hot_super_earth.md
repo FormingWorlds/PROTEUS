@@ -115,3 +115,7 @@ nohup proteus start --offline -c input/tutorial_hot_se.toml \
    does the atmosphere strip?
 4. Enable tidal heating: set `orbit.module = "dummy"` with
    `orbit.dummy.H_tide = 1e-7`.
+
+---
+
+**See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)

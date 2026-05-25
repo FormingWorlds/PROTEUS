@@ -129,3 +129,7 @@ nohup proteus start --offline -c input/tutorial_sub_neptune.toml \
    `interior_struct.zalmoxis.global_miscibility = true` and
    `outgas.h2_binodal = true`. How does H$_2$ dissolution into the
    magma affect the envelope mass?
+
+---
+
+**See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)

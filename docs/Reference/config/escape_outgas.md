@@ -139,3 +139,7 @@ real-gas equations of state.
 | `eos_H2` | `"none"` | H$_2$ EOS |
 | `eos_CH4` | `"none"` | CH$_4$ EOS |
 | `eos_CO` | `"none"` | CO EOS |
+
+---
+
+**See also:** [Escape modules](../../Explanations/model.md#atmospheric-escape-zephyrus-boreas) | [Outgassing modules](../../Explanations/model.md#volatile-outgassing-calliope-atmodeller)

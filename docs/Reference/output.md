@@ -100,7 +100,7 @@ are grouped by category below.
 |--------|-------|-------------|
 | `R_int` | m | Interior (surface) radius |
 | `R_core` | m | Core radius |
-| `M_int` | m | Interior dry mass (mantle + core) |
+| `M_int` | kg | Interior dry mass (mantle + core) |
 | `M_planet` | kg | Total planet mass (interior + volatiles) |
 | `M_core` | kg | Core mass |
 | `M_mantle` | kg | Mantle mass (solid + liquid) |

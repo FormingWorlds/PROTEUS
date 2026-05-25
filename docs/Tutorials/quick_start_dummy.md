@@ -147,3 +147,7 @@ Key columns to look for:
 - Change `atmos_clim.dummy.gamma` to vary the greenhouse effect
 - Move on to the [Earth analogue tutorial](earth_analogue.md) for a
   production-quality run with real physics modules
+
+---
+
+**See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)

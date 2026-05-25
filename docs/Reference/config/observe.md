@@ -33,3 +33,7 @@ are available:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `module` | str or none | `none` | Late accretion module (reserved for future implementation) |
+
+---
+
+**See also:** [Model description](../../Explanations/model.md)

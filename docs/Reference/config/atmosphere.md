@@ -155,3 +155,7 @@ steady-state mixing ratios from a chemical reaction network.
 | `clip_fl` | float | `1e-20` | Stellar flux floor [erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$] |
 | `clip_vmr` | float | `1e-10` | Neglect species below this VMR |
 | `save_frames` | bool | `false` | Save plot frames during iterations |
+
+---
+
+**See also:** [Atmosphere modules](../../Explanations/model.md#atmosphere-climate-agni-janus) | [Earth analogue tutorial](../../Tutorials/earth_analogue.md)

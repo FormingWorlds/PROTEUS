@@ -165,3 +165,7 @@ it cools. Radiative equilibrium marks the end of the magma ocean phase.
 - [Reduced H$_2$-rich world](reduced_h2_world.md): low fO$_2$ chemistry
 - [Sub-Neptune](sub_neptune.md): boundary interior module
 - [Parameter grid sweep](parameter_grid.md): ensemble runs
+
+---
+
+**See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)

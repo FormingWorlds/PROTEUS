@@ -279,3 +279,7 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 | `viscosity_prefactor` | float | `2.4e-4` | VFT magma-ocean prefactor [Pa s] |
 | `viscosity_activation_temp` | float | `4600.0` | VFT magma-ocean activation temperature [K] |
 | `logging` | bool | `false` | Write diagnostic CSV files |
+
+---
+
+**See also:** [Interior modules](../../Explanations/model.md#interior-energetics-aragog-spider-boundary) | [Structure module](../../Explanations/model.md#interior-structure-zalmoxis)

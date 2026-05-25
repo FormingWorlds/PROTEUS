@@ -141,3 +141,7 @@ plt.savefig('redox_comparison.pdf')
 
 - [Sub-Neptune](sub_neptune.md): boundary interior module with thick H/He envelope
 - [Parameter grid sweep](parameter_grid.md): systematically explore fO$_2$ and H budget
+
+---
+
+**See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)

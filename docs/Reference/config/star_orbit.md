@@ -96,3 +96,7 @@ the interior rheological profile.
 |-----------|------|---------|-------------|
 | `visc_thresh` | float | `1e9` | Minimum viscosity for tidal heating calculation [Pa s] |
 | `ncalc` | int | `1000` | Number of interior grid points for tidal calculation |
+
+---
+
+**See also:** [Stellar module](../../Explanations/model.md#stellar-evolution-mors) | [Orbit module](../../Explanations/model.md#orbital-evolution-obliqua)

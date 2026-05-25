@@ -101,3 +101,7 @@ by surface partial pressure for each gas species.
 | `H2` | float | `0.0` | [bar] |
 | `CH4` | float | `0.0` | [bar] |
 | `CO` | float | `0.0` | [bar] |
+
+---
+
+**See also:** [Model description](../../Explanations/model.md) | [Earth analogue tutorial](../../Tutorials/earth_analogue.md)
