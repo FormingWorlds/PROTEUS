@@ -36,6 +36,7 @@ nav:
       - Reduced H2-rich world: Tutorials/reduced_h2_world.md
       - Sub-Neptune: Tutorials/sub_neptune.md
       - Parameter grid sweep: Tutorials/parameter_grid.md
+      - CHILI intercomparison: Tutorials/chili_intercomparison.md
 
   - Explanations:
       - Scientific background:
