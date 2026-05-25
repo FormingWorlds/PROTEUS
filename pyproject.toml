@@ -121,7 +121,6 @@ develop = [
 docs = [
     "zensical==0.0.39",
     "mkdocs-material",
-    "mkdocs-macros-plugin",
     "markdown-include",
     "mkdocs",
     "mkdocstrings[python]",
