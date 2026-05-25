@@ -95,7 +95,7 @@ phases.
 |---|---|
 | `--all-data` | Download all reference data (~10-20 GB) instead of the essential set (~2 GB) |
 | `--no-data` | Skip data downloads entirely (download later with `proteus get`) |
-| `--yes` / `-y` | Non-interactive mode, accept all defaults |
+| `-i` / `--interactive` | Interactive mode (prompt for choices; default is non-interactive) |
 
 ### 4. Verify and run
 
@@ -113,9 +113,9 @@ See the [Quick start tutorial](../Tutorials/quick_start_dummy.md) for
 a guided walkthrough.
 
 !!! note "SPIDER (optional)"
-    The installer does not include SPIDER or PETSc. If you need the
-    entropy-formulation interior module, install them separately after
-    the main installation:
+    The installer does not include SPIDER or PETSc. If you need SPIDER
+    as an alternative interior energetics solver, install it separately
+    after the main installation:
 
     ```console
     bash tools/get_petsc.sh

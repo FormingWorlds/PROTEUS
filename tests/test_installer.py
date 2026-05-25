@@ -38,7 +38,7 @@ class TestInstallerArgParsing:
         assert result.returncode == 0
         assert 'Usage' in result.stdout
         assert '--all-data' in result.stdout
-        assert '--yes' in result.stdout
+        assert '--interactive' in result.stdout
 
     def test_h_flag_exits_zero(self):
         """Short -h flag also works."""
@@ -63,10 +63,10 @@ class TestInstallerArgParsing:
         output = result.stdout + result.stderr
         assert 'Unknown argument' in output
 
-    def test_yes_flag_accepted(self):
-        """--yes flag is accepted without error (parsed before pre-flight)."""
+    def test_interactive_flag_accepted(self):
+        """--interactive flag is accepted without error (parsed before pre-flight)."""
         result = subprocess.run(
-            ['bash', str(INSTALL_SH), '--yes', '--help'],
+            ['bash', str(INSTALL_SH), '--interactive', '--help'],
             capture_output=True,
             text=True,
             timeout=10,
@@ -259,16 +259,16 @@ class TestDiskSpaceCheck:
 class TestNonInteractive:
     """Verify non-interactive mode behavior."""
 
-    def test_non_interactive_does_not_block_on_stdin(self):
-        """With --yes flag, the script does not read from stdin.
+    def test_default_non_interactive_does_not_block_on_stdin(self):
+        """Default mode (non-interactive) does not read from stdin.
 
-        Passes /dev/null as stdin; without --yes this would cause
-        the conda check to fail differently (EOF on read).
+        Passes /dev/null as stdin. The script should reach the conda
+        pre-flight check and fail there, not block waiting for input.
         """
         env = os.environ.copy()
         env.pop('CONDA_DEFAULT_ENV', None)
         result = subprocess.run(
-            ['bash', str(INSTALL_SH), '--yes'],
+            ['bash', str(INSTALL_SH)],
             capture_output=True,
             text=True,
             timeout=15,

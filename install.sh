@@ -5,7 +5,7 @@
 #   bash install.sh              # Essential install (spectral + stellar data)
 #   bash install.sh --all-data   # Full install (all reference data)
 #   bash install.sh --no-data    # Skip data downloads
-#   bash install.sh --yes        # Non-interactive mode (accept all defaults)
+#   bash install.sh -i           # Interactive mode (prompt for choices)
 #   bash install.sh --help       # Show usage
 #
 # Prerequisites:
@@ -56,11 +56,7 @@ die() {
 
 prompt_yn() {
     local msg="$1" default="${2:-y}"
-    if [ "$NON_INTERACTIVE" = "true" ]; then
-        return 0
-    fi
-    if [ ! -t 0 ]; then
-        warn "Non-interactive shell detected, assuming yes for: $msg"
+    if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ]; then
         return 0
     fi
     if [ "$default" = "y" ]; then
@@ -75,7 +71,7 @@ prompt_yn() {
 
 read_with_default() {
     local prompt="$1" default="$2"
-    if [ "$NON_INTERACTIVE" = "true" ] || [ ! -t 0 ]; then
+    if [ "$INTERACTIVE" != "true" ] || [ ! -t 0 ]; then
         echo "$default"
         return
     fi
@@ -121,7 +117,7 @@ available_disk_gb() {
 
 CURRENT_PHASE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NON_INTERACTIVE="false"
+INTERACTIVE="false"
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -132,7 +128,7 @@ for arg in "$@"; do
     case "$arg" in
         --all-data) DATA_MODE="all" ;;
         --no-data)  DATA_MODE="none" ;;
-        --yes|-y)   NON_INTERACTIVE="true" ;;
+        --interactive|-i) INTERACTIVE="true" ;;
         --help|-h)
             echo "PROTEUS unified installer"
             echo ""
@@ -141,7 +137,7 @@ for arg in "$@"; do
             echo "Options:"
             echo "  --all-data   Download all reference data (~10-20 GB)"
             echo "  --no-data    Skip data downloads entirely"
-            echo "  --yes, -y    Non-interactive mode (accept all defaults)"
+            echo "  -i, --interactive  Interactive mode (prompt for choices)"
             echo "  --help       Show this message"
             echo ""
             echo "Default: download essential data (~2 GB)"
@@ -163,8 +159,8 @@ echo ""
 printf "${BOLD}PROTEUS Installer${NC}\n"
 echo "Log: $LOGFILE"
 echo "Data mode: $DATA_MODE"
-if [ "$NON_INTERACTIVE" = "true" ]; then
-    echo "Mode: non-interactive (--yes)"
+if [ "$INTERACTIVE" = "true" ]; then
+    echo "Mode: interactive (-i)"
 fi
 echo ""
 
