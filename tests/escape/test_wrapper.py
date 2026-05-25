@@ -7,7 +7,7 @@ This module tests atmospheric escape functionality including:
 - calc_new_elements(): Elemental inventory updates after unfractionated escape
 
 Physics tested:
-- Escape flux conservation (kg/s → kg/yr conversions)
+- Escape flux conservation (kg/s to kg/yr conversions)
 - Elemental mass ratio preservation during unfractionated escape
 - Reservoir selection (bulk, outgas, pxuv)
 - Minimum threshold enforcement for desiccated planets
@@ -29,11 +29,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytest.importorskip('zephyrus')
+
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # =======================================================================================
-# SECTION: run_escape() — Generic escape orchestrator
+# SECTION: run_escape(), generic escape orchestrator
 # =======================================================================================
 
 
@@ -301,7 +303,7 @@ def test_run_escape_baseline_persists_across_calls():
     assert baseline_iter1 == pytest.approx(1e21, rel=1e-10)
     cum_iter1 = hf_row['esc_kg_cumulative']
 
-    # Iteration 2 — H_kg_total has shrunk, but baseline must be unchanged
+    # Iteration 2: H_kg_total has shrunk, but baseline must be unchanged
     run_escape(config, hf_row, dt=1000.0, stellar_track=None)
     assert hf_row['M_vol_initial'] == pytest.approx(baseline_iter1, rel=1e-12), (
         'M_vol_initial must NOT be overwritten by subsequent escape calls'
@@ -357,7 +359,7 @@ def test_run_escape_resets_baseline_if_corrupt():
 
 
 # =======================================================================================
-# SECTION: run_zephyrus() — Energy-limited escape
+# SECTION: run_zephyrus(), energy-limited escape
 # =======================================================================================
 
 
@@ -448,7 +450,7 @@ def test_run_zephyrus_with_tidal(mock_el_escape):
 
 
 # =======================================================================================
-# SECTION: calc_new_elements() — Elemental inventory updates
+# SECTION: calc_new_elements(), elemental inventory updates
 # =======================================================================================
 
 
@@ -823,7 +825,7 @@ def test_run_escape_recomputes_baseline_when_m_vol_initial_is_unparseable():
     # would have left M_vol_initial == 'corrupted' (type str), not float.
     assert isinstance(hf_row['M_vol_initial'], float)
     # Reset alongside baseline; the prior counter of 17.0 must NOT survive.
-    assert hf_row['esc_kg_cumulative'] == 0.0
+    assert hf_row['esc_kg_cumulative'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit
@@ -867,10 +869,12 @@ def test_run_escape_dummy_zeroes_elemental_rates_when_unfract_raises():
     # Every element's escape rate must have been clamped to 0.0 by the
     # except branch (run_dummy lines 151-153).
     for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'):
-        assert hf_row[f'esc_rate_{e}'] == 0.0, f'{e} should have been zeroed'
+        assert hf_row[f'esc_rate_{e}'] == pytest.approx(0.0, abs=1e-12), (
+            f'{e} should have been zeroed'
+        )
     # Side-effect guard: the dummy-rate dispatch still ran, so
     # esc_rate_total reflects config.escape.dummy.rate (0.0 here).
-    assert hf_row['esc_rate_total'] == 0.0
+    assert hf_row['esc_rate_total'] == pytest.approx(0.0, abs=1e-12)
 
 
 @pytest.mark.unit
@@ -924,7 +928,9 @@ def test_run_escape_zephyrus_zeroes_elemental_rates_when_unfract_raises():
     # per-element cleanup means esc_rate_total survives the except branch.
     assert hf_row['esc_rate_total'] == pytest.approx(1.234e5, rel=1e-12)
     for e in ('H', 'O', 'C', 'N', 'S', 'Si', 'Mg', 'Fe', 'Na'):
-        assert hf_row[f'esc_rate_{e}'] == 0.0, f'{e} should have been zeroed'
+        assert hf_row[f'esc_rate_{e}'] == pytest.approx(0.0, abs=1e-12), (
+            f'{e} should have been zeroed'
+        )
     # Scale guard: 1.234e5 kg/s is a plausible XUV-limited MLR (~kg/s for
     # an Earth-like XUV setup), not 1.234e+15 (units flipped) or 0.0.
     assert 1e3 < hf_row['esc_rate_total'] < 1e7
