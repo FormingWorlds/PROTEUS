@@ -43,6 +43,7 @@ nav:
           - Coupling loop: Explanations/coupling_loop.md
       - Software design:
           - Code architecture: Explanations/code_architecture.md
+          - Dummy modules: Explanations/dummy_modules.md
           - Test framework: Explanations/test_framework.md
 
   - Reference:

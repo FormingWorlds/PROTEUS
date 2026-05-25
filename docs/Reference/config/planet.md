@@ -106,4 +106,4 @@ by surface partial pressure for each gas species.
 
 **See also:** [Model description](../../Explanations/model.md) | [Earth analogue tutorial](../../Tutorials/earth_analogue.md)
 
-[^cite-fei2021]: Fei, H., Faul, U.H., & Katsura, T., *[The grain growth kinetics of bridgmanite at the topmost lower mantle](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 1–8, 2021. [SciX](https://scixplorer.org/abs/2021NatCo..12..592F/abstract).
+[^cite-fei2021]: Fei, Y., Seagle, C.T., Townsend, J.P., et al., *[Melting and density of MgSiO3 determined by shock compression of bridgmanite to 1254 GPa](https://doi.org/10.1038/s41467-021-21170-y)*, Nature Communications, 12, 876, 2021. [SciX](https://scixplorer.org/abs/2021NatCo..12..876F/abstract).
