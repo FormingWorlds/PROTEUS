@@ -56,10 +56,12 @@ Install the required system libraries for your platform. See the
 
 ### 2. Clone PROTEUS and create conda environment
 
-If you do not have conda installed, get
-[miniforge](https://github.com/conda-forge/miniforge) (macOS, recommended) or
+Conda (via miniforge or miniconda) is required. If you followed the
+[Local machine guide](local_machine_guide.md) it is already installed.
+If not, install
+[miniforge](https://github.com/conda-forge/miniforge) (macOS) or
 [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)
-(Linux).
+(Linux) before proceeding.
 
 ```console
 git clone git@github.com:FormingWorlds/PROTEUS.git

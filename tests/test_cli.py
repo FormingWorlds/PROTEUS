@@ -27,7 +27,7 @@ def test_doctor():
     assert response.exit_code == 0
 
     # contains information we expect
-    assert 'Packages' in response.output
+    assert 'Package versions' in response.output
     assert 'AGNI' in response.output
     assert 'fwl-mors' in response.output
 

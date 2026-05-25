@@ -51,7 +51,15 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     cd /dataserver/users/formingworlds/<username>
     ```
 
-4. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit for your user by adding to your shell rc file (e.g., '~/.bashrc'):
+4. Configure the system environment. The Kapteyn cluster provides NetCDF
+   and other libraries via the module system. Add the following to your
+   `~/.bashrc` so the correct modules are loaded on every login:
+    ```console
+    echo "module purge" >> "$HOME/.bashrc"
+    echo "module load netcdf-fortran" >> "$HOME/.bashrc"
+    ```
+
+5. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit:
     ```console
     echo "ulimit -Sn 4000000" >> "$HOME/.bashrc"
     echo "ulimit -Hn 5000000" >> "$HOME/.bashrc"
@@ -61,7 +69,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-5. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
+6. You can now follow the usual installation steps [here](installation.md), but, since your home folder is capped
    at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
     ### Julia considerations
     If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
