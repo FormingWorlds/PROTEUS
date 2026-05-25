@@ -32,6 +32,8 @@ config_version = "3.0"
     [params.stop.time]
         maximum = 1e9
     [params.stop.solid]
+        enabled = true
+    [params.stop.escape]
         enabled = false
     [params.stop.radeqm]
         enabled = false
@@ -69,12 +71,12 @@ config_version = "3.0"
     rayleigh   = false
     albedo_pl  = 0.1
     [atmos_clim.dummy]
-        gamma = 0.7
+        gamma = 0.3
 
 [escape]
     module = "dummy"
     [escape.dummy]
-        rate = 1e6
+        rate = 0.0
 
 [atmos_chem]
     module = "dummy"
@@ -88,8 +90,8 @@ Every module is set to `"dummy"`, meaning:
 - **Interior structure**: Noack & Lasbleis (2020)[^cite-noack2020] scaling laws
 - **Interior energetics**: parameterised cooling with prescribed solidus/liquidus
 - **Outgassing**: fixed composition partitioning
-- **Atmosphere**: grey-body opacity ($T_\mathrm{rad} = T_\mathrm{surf} \cdot (1 - \gamma)$)
-- **Escape**: constant bulk rate of $10^6$ kg/s
+- **Atmosphere**: grey-body opacity ($\gamma = 0.3$, moderately transparent)
+- **Escape**: disabled (rate = 0) so the run reaches solidification
 - **Chemistry**: fixed composition
 
 ## Running the simulation
@@ -122,7 +124,7 @@ Key columns to look for:
 - `F_atm`: outgoing atmospheric flux [W/m$^2$]
 - `F_int`: interior heat flux [W/m$^2$]
 - `P_surf`: surface pressure [bar]
-- `esc_rate_total`: escape rate [kg/s]; constant at $10^6$ kg/s
+- `esc_rate_total`: escape rate [kg/s]; zero in this tutorial
 
 ## What to look for
 

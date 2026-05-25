@@ -16,6 +16,8 @@ config_version = "3.0"
         [params.stop.time]
             maximum = 1e9        # stop time [yr]
         [params.stop.solid]
+            enabled = true
+        [params.stop.escape]
             enabled = false
         [params.stop.radeqm]
             enabled = false
@@ -68,13 +70,13 @@ config_version = "3.0"
     rayleigh   = false
     albedo_pl  = 0.1
     [atmos_clim.dummy]
-        gamma = 0.7              # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
+        gamma = 0.3              # T_rad = T_surf * (1 - gamma); 0 = transparent, 1 = zero OLR
 
 # Escape: fixed bulk rate
 [escape]
     module = "dummy"
     [escape.dummy]
-        rate = 1e6               # bulk escape rate [kg/s]
+        rate = 0.0               # no escape, so the run reaches solidification
 
 [atmos_chem]
     module = "dummy"
