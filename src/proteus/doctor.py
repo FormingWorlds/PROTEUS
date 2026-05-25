@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import os
+import shlex
 import subprocess
 import tomllib
 from dataclasses import dataclass
@@ -96,15 +97,26 @@ def _module_pins() -> dict[str, dict]:
     return cfg.get('tool', {}).get('proteus', {}).get('modules', {})
 
 
-def _dependency_specs() -> dict[str, Requirement]:
-    """Return [project] dependencies as {name: Requirement} for FWL packages."""
+def _dependency_specs() -> dict[str, Requirement | None]:
+    """Return [project] dependencies as {name: Requirement|None} for FWL packages.
+
+    PEP 508 URL requirements (``name @ git+https://...``) parse into a
+    Requirement with an empty specifier set. We still record them so that
+    ``check_python_package`` knows the package is tracked (and can report
+    "installed" vs "not installed") even when no version bound applies.
+    """
     cfg = _read_pyproject()
     deps = cfg.get('project', {}).get('dependencies', [])
-    result = {}
+    result: dict[str, Requirement | None] = {}
     for dep_str in deps:
         try:
             req = Requirement(dep_str)
         except Exception:
+            # PEP 508 URL form may fail in older packaging versions.
+            # Extract the package name from the "name @ url" form.
+            name = dep_str.split('@')[0].strip().replace('_', '-').lower()
+            if 'fwl-' in name:
+                result[name] = None
             continue
         if 'fwl-' in req.name:
             result[req.name] = req
@@ -310,7 +322,7 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
         if installed not in spec.specifier:
             fix = f'pip install -U "{spec}"'
             if checkout:
-                fix = f'cd {checkout} && git pull && pip install -e .'
+                fix = f'cd {shlex.quote(checkout)} && git pull && pip install -e .'
             return CheckResult(
                 name=name,
                 category='versions',
@@ -414,26 +426,95 @@ GIT_MODULES = ['AGNI', 'SOCRATES']
 
 
 def run_all_checks() -> list[CheckResult]:
-    """Run all diagnostic checks. Returns a flat list of results."""
-    dirs = get_proteus_directories()
-    specs = _dependency_specs()
+    """Run all diagnostic checks. Returns a flat list of results.
+
+    Individual check failures are caught so one broken check does not
+    prevent the rest from running.
+    """
     results: list[CheckResult] = []
+
+    try:
+        dirs = get_proteus_directories()
+    except Exception as exc:
+        dirs = {}
+        results.append(
+            CheckResult(
+                name='proteus-dirs',
+                category='environment',
+                status=FAIL,
+                message=f'Cannot resolve PROTEUS directories: {exc}',
+            )
+        )
+
+    specs = _dependency_specs()
 
     # Environment
     for var, validate_path, req_file in ENVIRONMENT_VARS:
-        results.append(check_env_var(var, validate_path=validate_path, required_file=req_file))
-    results.append(check_julia())
+        try:
+            results.append(
+                check_env_var(var, validate_path=validate_path, required_file=req_file)
+            )
+        except Exception as exc:
+            results.append(
+                CheckResult(
+                    name=var,
+                    category='environment',
+                    status=FAIL,
+                    message=f'check error: {exc}',
+                )
+            )
+    try:
+        results.append(check_julia())
+    except Exception as exc:
+        results.append(
+            CheckResult(
+                name='julia',
+                category='environment',
+                status=FAIL,
+                message=f'check error: {exc}',
+            )
+        )
 
     # Data
-    results.extend(check_fwl_data())
+    try:
+        results.extend(check_fwl_data())
+    except Exception as exc:
+        results.append(
+            CheckResult(
+                name='FWL_DATA',
+                category='data',
+                status=FAIL,
+                message=f'check error: {exc}',
+            )
+        )
 
     # Python package versions (against pyproject.toml pins)
     for pkg in PYTHON_PACKAGES:
-        results.append(check_python_package(pkg, specs.get(pkg)))
+        try:
+            results.append(check_python_package(pkg, specs.get(pkg)))
+        except Exception as exc:
+            results.append(
+                CheckResult(
+                    name=pkg,
+                    category='versions',
+                    status=FAIL,
+                    message=f'check error: {exc}',
+                )
+            )
 
     # Git module versions (against pyproject.toml commit pins)
     for mod in GIT_MODULES:
-        results.append(check_git_module(mod, dirs))
+        try:
+            results.append(check_git_module(mod, dirs))
+        except Exception as exc:
+            results.append(
+                CheckResult(
+                    name=mod,
+                    category='versions',
+                    status=FAIL,
+                    message=f'check error: {exc}',
+                )
+            )
 
     return results
 
@@ -522,6 +603,16 @@ def update_entry(dry_run: bool = False):
         click.echo(f'\n{click.style("Dry run", bold=True)}: no changes made.')
         return
 
+    root = _repo_root()
+    if not (root / 'tools').is_dir():
+        click.secho(
+            'Cannot run fix commands: no tools/ directory found.\n'
+            'proteus update requires a source install (git clone), '
+            'not a wheel install.',
+            fg='red',
+        )
+        return
+
     click.echo()
     for r in fixable:
         click.secho(f'Fixing: {r.name}', bold=True)
@@ -531,7 +622,7 @@ def update_entry(dry_run: bool = False):
                 r.fix_cmd,
                 shell=True,
                 check=True,
-                cwd=str(_repo_root()),
+                cwd=str(root),
             )
             click.secho('  done', fg='green')
         except subprocess.CalledProcessError as exc:
