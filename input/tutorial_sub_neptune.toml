@@ -40,7 +40,7 @@ config_version = "3.0"
         S_budget = 0.5
 
 [interior_struct]
-    module    = "zalmoxis"
+    module    = "dummy"
     core_frac = 0.30
 
 [interior_energetics]

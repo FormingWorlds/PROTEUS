@@ -53,7 +53,7 @@ config_version = "3.0"
         S_budget = 0.5
 
 [interior_struct]
-    module    = "zalmoxis"
+    module    = "dummy"
     core_frac = 0.30
 
 [interior_energetics]
@@ -82,9 +82,10 @@ config_version = "3.0"
   computationally lighter than Aragog for sub-Neptune-class planets
   where the detailed interior radial structure matters less than the
   envelope evolution.
-- **Interior structure**: Zalmoxis still computes the hydrostatic
-  density profile with PALEOS EOS, providing the planet radius and
-  core-mantle boundary conditions
+- **Interior structure**: The dummy structure module uses Noack & Lasbleis
+  (2020) scaling laws, providing the planet radius and core-mantle
+  boundary conditions. The boundary energetics module requires the dummy
+  structure module (Zalmoxis is not compatible with the boundary module)
 - **Atmosphere**: `surf_state = "fixed"` locks the surface temperature
   to the interior magma temperature, appropriate when the envelope is
   thick enough to suppress surface-atmosphere decoupling

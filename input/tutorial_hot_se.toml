@@ -16,7 +16,7 @@ config_version = "3.0"
     mass    = 0.3
     age_ini = 0.01
     [star.mors]
-        tracks          = "baraffe"
+        tracks          = "spada"
         spectrum_source = "phoenix"
 
 [orbit]
