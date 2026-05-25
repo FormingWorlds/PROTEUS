@@ -82,7 +82,7 @@ config_version = "3.0"
 
 - **Planet**: 1 M$_\oplus$, starts fully molten (liquidus + 500 K at the CMB),
   1 Earth ocean equivalent of hydrogen, solar-ratio C/N/S
-- **Star**: Solar-mass star on Spada evolutionary tracks, starting at 100 Myr
+- **Star**: Solar-mass star on Spada[^cite-spada2013] evolutionary tracks, starting at 100 Myr
 - **Orbit**: 1 AU, no tidal heating
 - **Interior**: Zalmoxis computes the hydrostatic density profile with PALEOS
   EOS tables; Aragog solves the mantle thermal evolution with CVODE + JAX
@@ -171,3 +171,5 @@ it cools. Radiative equilibrium marks the end of the magma ocean phase.
 ---
 
 **See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
+
+[^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).

@@ -71,7 +71,7 @@ config_version = "3.0"
 
 ### Key differences from the Earth analogue
 
-- **Star**: 0.3 M$_\odot$ M-dwarf on Baraffe tracks, starting at 10 Myr
+- **Star**: 0.3 M$_\odot$ M-dwarf on Baraffe[^cite-baraffe2015] tracks, starting at 10 Myr
   (young, XUV-bright)
 - **Orbit**: 0.05 AU (receives ~100x Earth's instellation)
 - **Planet**: 3 M$_\oplus$ with larger core fraction and higher hydrogen
@@ -119,3 +119,5 @@ nohup proteus start --offline -c input/tutorial_hot_se.toml \
 ---
 
 **See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
+
+[^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).

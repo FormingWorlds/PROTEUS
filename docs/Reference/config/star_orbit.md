@@ -22,8 +22,8 @@ See also [Model description](../../Explanations/model.md#stellar-evolution-mors)
 
 The MORS module interpolates stellar radius, effective temperature,
 luminosity, and XUV flux from pre-computed evolutionary tracks as a function
-of stellar age. Two track families are available: Spada (solar-type) and
-Baraffe (low-mass M-dwarfs).
+of stellar age. Two track families are available: Spada[^cite-spada2013] (solar-type) and
+Baraffe[^cite-baraffe2015] (low-mass M-dwarfs).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -105,3 +105,7 @@ the interior rheological profile.
 ---
 
 **See also:** [Stellar module](../../Explanations/model.md#stellar-evolution-mors) | [Orbit module](../../Explanations/model.md#orbital-evolution-obliqua)
+
+[^cite-spada2013]: Spada, F., Demarque, P., Kim, Y.C. & Sills, A., *[The radius discrepancy in low-mass stars: single versus binaries](https://doi.org/10.1088/0004-637X/776/2/87)*, The Astrophysical Journal, 776, 87, 2013. [SciX](https://scixplorer.org/abs/2013ApJ...776...87S/abstract).
+
+[^cite-baraffe2015]: Baraffe, I., Homeier, D., Allard, F. & Chabrier, G., *[New evolutionary models for pre-main sequence and main sequence low-mass stars down to the hydrogen-burning limit](https://doi.org/10.1051/0004-6361/201425481)*, Astronomy & Astrophysics, 577, A42, 2015. [SciX](https://scixplorer.org/abs/2015A%26A...577A..42B/abstract).

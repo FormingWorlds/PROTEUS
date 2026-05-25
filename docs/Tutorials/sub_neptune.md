@@ -78,7 +78,7 @@ config_version = "3.0"
 - **Planet**: 5 M$_\oplus$ with 10 ocean equivalents of hydrogen, creating
   a massive volatile envelope
 - **Interior energetics**: The `boundary` module uses a 0-D box model
-  (Schaefer et al. 2016) for the mantle thermal evolution. This is
+  (Schaefer et al. 2016)[^cite-schaefer2016] for the mantle thermal evolution. This is
   computationally lighter than Aragog for sub-Neptune-class planets
   where the detailed interior radial structure matters less than the
   envelope evolution.
@@ -133,3 +133,5 @@ nohup proteus start --offline -c input/tutorial_sub_neptune.toml \
 ---
 
 **See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
+
+[^cite-schaefer2016]: Schaefer, L., Wordsworth, R.D., Berta-Thompson, Z. & Sasselov, D., *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).

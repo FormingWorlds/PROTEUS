@@ -233,7 +233,7 @@ Jacobians for robust convergence.
 ### SPIDER `[interior_energetics.spider]`
 
 SPIDER is the legacy C interior module. It requires PETSc and produces
-results consistent with Bower et al. (2018).
+results consistent with Bower et al. (2018)[^cite-bower2018].
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -254,7 +254,7 @@ A parameterised cooling model with prescribed solidus and liquidus.
 
 ### Boundary `[interior_energetics.boundary]`
 
-A 0-D box model for the mantle thermal evolution based on Schaefer et al. (2016),
+A 0-D box model for the mantle thermal evolution based on Schaefer et al. (2016)[^cite-schaefer2016],
 with prescribed solidus and liquidus and parameterised convective heat transport.
 
 | Parameter | Type | Default | Description |
@@ -289,3 +289,7 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 ---
 
 **See also:** [Interior modules](../../Explanations/model.md#interior-energetics-aragog-spider-boundary) | [Structure module](../../Explanations/model.md#interior-structure-zalmoxis)
+
+[^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
+
+[^cite-schaefer2016]: Schaefer, L., Wordsworth, R.D., Berta-Thompson, Z. & Sasselov, D., *[Predictions of the atmospheric composition of GJ 1132b](https://doi.org/10.3847/0004-637X/829/2/63)*, The Astrophysical Journal, 829, 63, 2016. [SciX](https://scixplorer.org/abs/2016ApJ...829...63S/abstract).

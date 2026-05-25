@@ -85,7 +85,7 @@ Every module is set to `"dummy"`, meaning:
 
 - **Star**: fixed solar luminosity, no evolution
 - **Orbit**: 0.5 AU, weak tidal heating
-- **Interior structure**: Noack and Lasbleis (2020) scaling laws
+- **Interior structure**: Noack & Lasbleis (2020)[^cite-noack2020] scaling laws
 - **Interior energetics**: parameterised cooling with prescribed solidus/liquidus
 - **Outgassing**: fixed composition partitioning
 - **Atmosphere**: grey-body opacity ($T_\mathrm{rad} = T_\mathrm{surf} \cdot (1 - \gamma)$)
@@ -151,3 +151,5 @@ Key columns to look for:
 ---
 
 **See also:** [Model description](../Explanations/model.md) | [Coupling loop](../Explanations/coupling_loop.md) | [Configuration reference](../Reference/config/params.md) | [Output format](../Reference/output.md)
+
+[^cite-noack2020]: Noack, L. & Lasbleis, M., *[Parameterisations of interior properties of rocky planets](https://doi.org/10.1051/0004-6361/202037723)*, Astronomy & Astrophysics, 638, A129, 2020. [SciX](https://scixplorer.org/abs/2020A%26A...638A.129N/abstract).
