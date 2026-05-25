@@ -54,6 +54,7 @@ nav:
           - Atmosphere and chemistry: Reference/config/atmosphere.md
           - Escape and outgassing: Reference/config/escape_outgas.md
           - Observations: Reference/config/observe.md
+      - Module versions: Reference/module_versions.md
       - Output format: Reference/output.md
       - Reference data: Reference/data.md
       - Bibliography: Reference/bibliography.md
