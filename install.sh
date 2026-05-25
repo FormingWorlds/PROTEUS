@@ -298,6 +298,23 @@ if [ ${#missing_deps[@]} -gt 0 ]; then
 fi
 info "System dependencies: OK"
 
+# HPC / NFS-home detection. On clusters like Kapteyn the home directory is
+# small (< 10 GB) and pip/Julia caches must be redirected to a data volume.
+HOME_SMALL=false
+home_gb=$(df -k "$HOME" | awk 'NR==2 {printf "%d\n", $2/1024/1024}')
+if [ "$home_gb" -lt 20 ] 2>/dev/null; then
+    HOME_SMALL=true
+    warn "Small home directory detected (${home_gb} GB total)."
+    warn "pip and Julia caches may exceed this quota."
+    # Redirect pip cache if not already set
+    if [ -z "${PIP_CACHE_DIR:-}" ]; then
+        pip_cache="$SCRIPT_DIR/.pip-cache"
+        mkdir -p "$pip_cache"
+        export PIP_CACHE_DIR="$pip_cache"
+        info "Set PIP_CACHE_DIR=$pip_cache (avoids filling home quota)"
+    fi
+fi
+
 info "Pre-flight checks passed"
 
 # ===================================================================
@@ -408,7 +425,25 @@ if [ "$socrates_compiled" = "true" ]; then
     info "SOCRATES already installed at $RAD_DIR"
 else
     info "Installing SOCRATES..."
+    # On HPC clusters, conda's netcdf can shadow the system netcdf and
+    # cause SOCRATES to link against the wrong libraries. Temporarily
+    # hide the conda lib/ from the linker so gfortran finds the system
+    # netcdf-fortran. The conda env stays active for Python; only the
+    # Fortran linker path is adjusted.
+    _saved_conda_prefix="${CONDA_PREFIX:-}"
+    if [ -n "$_saved_conda_prefix" ] && [ -d "$_saved_conda_prefix/lib" ]; then
+        _saved_ld="${LD_LIBRARY_PATH:-}"
+        export LD_LIBRARY_PATH=$(echo "${LD_LIBRARY_PATH:-}" | tr ':' '\n' | grep -v "$_saved_conda_prefix" | tr '\n' ':' | sed 's/:$//')
+        _saved_library="${LIBRARY_PATH:-}"
+        export LIBRARY_PATH=$(echo "${LIBRARY_PATH:-}" | tr ':' '\n' | grep -v "$_saved_conda_prefix" | tr '\n' ':' | sed 's/:$//')
+        info "Temporarily hiding conda lib paths from Fortran linker"
+    fi
     bash tools/get_socrates.sh
+    # Restore conda paths
+    if [ -n "$_saved_conda_prefix" ] && [ -d "$_saved_conda_prefix/lib" ]; then
+        export LD_LIBRARY_PATH="$_saved_ld"
+        export LIBRARY_PATH="$_saved_library"
+    fi
     # Verify compilation succeeded (radlib.a is the primary build artifact)
     if [ -d "$SCRIPT_DIR/socrates" ] && [ -f "$SCRIPT_DIR/socrates/bin/radlib.a" ]; then
         export RAD_DIR="$SCRIPT_DIR/socrates"
@@ -437,14 +472,24 @@ else
 fi
 
 # FastChem (equilibrium chemistry solver used by AGNI)
-if [ -d "$SCRIPT_DIR/AGNI/fastchem" ] && [ -f "$SCRIPT_DIR/AGNI/fastchem/fastchem" ]; then
-    info "FastChem already installed at $SCRIPT_DIR/AGNI/fastchem"
+# Resolve the real AGNI path: on clusters AGNI may be a symlink to NFS,
+# and git operations on NFS can fail with index.lock errors. We resolve
+# the symlink so paths are canonical and NFS locking is less likely to
+# trip on path mismatches.
+AGNI_REAL=$(cd "$SCRIPT_DIR/AGNI" 2>/dev/null && pwd -P)
+if [ -d "$AGNI_REAL/fastchem" ] && [ -f "$AGNI_REAL/fastchem/fastchem" ]; then
+    info "FastChem already installed at $AGNI_REAL/fastchem"
 else
     info "Installing FastChem..."
-    cd "$SCRIPT_DIR/AGNI"
+    cd "$AGNI_REAL"
+    # If a previous NFS-failed clone left a partial fastchem dir, clean it
+    if [ -d "$AGNI_REAL/fastchem/.git" ] && [ ! -f "$AGNI_REAL/fastchem/CMakeLists.txt" ]; then
+        warn "Cleaning up partial FastChem clone from a previous failed attempt"
+        rm -rf "$AGNI_REAL/fastchem"
+    fi
     bash src/get_fastchem.sh 2>&1
     cd "$SCRIPT_DIR"
-    if [ ! -d "$SCRIPT_DIR/AGNI/fastchem" ]; then
+    if [ ! -d "$AGNI_REAL/fastchem" ]; then
         warn "FastChem installation failed. AGNI chemistry features will not work."
         warn "Install manually: cd AGNI && bash src/get_fastchem.sh"
     else
@@ -452,10 +497,10 @@ else
     fi
 fi
 
-# FC_DIR
-if [ -d "$SCRIPT_DIR/AGNI/fastchem" ]; then
-    export FC_DIR="$SCRIPT_DIR/AGNI/fastchem"
-    append_export_to_rc "FC_DIR" "$SCRIPT_DIR/AGNI/fastchem" "$RC_FILE"
+# FC_DIR (use resolved AGNI path so the env var survives symlink changes)
+if [ -d "$AGNI_REAL/fastchem" ]; then
+    export FC_DIR="$AGNI_REAL/fastchem"
+    append_export_to_rc "FC_DIR" "$AGNI_REAL/fastchem" "$RC_FILE"
 fi
 
 # ===================================================================

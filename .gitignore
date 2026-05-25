@@ -308,3 +308,4 @@ src/proteus/_version.py
 
 # Editor / IDE
 .vscode/
+.pip-cache
