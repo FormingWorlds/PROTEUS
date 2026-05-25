@@ -394,8 +394,8 @@ proteus start --offline -c input/dummy.toml
 
 SPIDER is a C-based interior thermal evolution solver. It requires PETSc
 (a numerical computing library) and a C compiler. Most configurations use
-Aragog instead, which is written in Python/JAX and has no compiled
-dependencies beyond a Fortran compiler for SOCRATES.
+Aragog instead, which is written in Python/JAX and needs no additional
+compiled dependencies.
 
 !!! warning
     PETSc requires Python <= 3.12. Make sure your conda environment uses
