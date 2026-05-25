@@ -107,27 +107,29 @@ def test_dummy_outgas_sets_all_expected_keys():
 
 @pytest.mark.unit
 def test_dummy_outgas_partitioning_half_molten():
-    """Phi_global=0.5 splits mass 50/50 between melt and atmosphere."""
+    """Phi_global=0.5: f_atm = 0.1 + 0.9*(1-0.5) = 0.55."""
     H_kg = 1e20
     hf_row = _make_hf_row(H_kg=H_kg, Phi_global=0.5)
     _run(hf_row)
 
     _, H2O_kg = _expected_species_kg(H_kg, 'H')
-    expected_half = 0.5 * H2O_kg
-    assert hf_row['H2O_kg_atm'] == pytest.approx(expected_half, rel=1e-10)
-    assert hf_row['H2O_kg_liquid'] == pytest.approx(expected_half, rel=1e-10)
+    f_atm = 0.1 + 0.9 * 0.5
+    assert hf_row['H2O_kg_atm'] == pytest.approx(f_atm * H2O_kg, rel=1e-10)
+    assert hf_row['H2O_kg_liquid'] == pytest.approx((1.0 - f_atm) * H2O_kg, rel=1e-10)
 
 
 @pytest.mark.unit
 def test_dummy_outgas_fully_molten():
-    """Phi_global=1.0: all volatiles dissolved, zero atmosphere."""
+    """Phi_global=1.0: f_atm_floor=0.1, so 10% of volatiles in atmosphere."""
     hf_row = _make_hf_row(H_kg=1e20, C_kg=1e19, Phi_global=1.0)
     _run(hf_row)
 
-    assert hf_row['P_surf'] == pytest.approx(0.0, abs=1e-30)
+    assert hf_row['P_surf'] > 0.0
     for s in gas_list:
-        assert hf_row[f'{s}_kg_atm'] == pytest.approx(0.0, abs=1e-30)
-        assert hf_row[f'{s}_bar'] == pytest.approx(0.0, abs=1e-30)
+        kg_total = hf_row.get(f'{s}_kg_total', 0.0)
+        if kg_total > 0:
+            assert hf_row[f'{s}_kg_atm'] == pytest.approx(0.1 * kg_total, rel=1e-10)
+            assert hf_row[f'{s}_bar'] > 0.0
 
 
 @pytest.mark.unit
@@ -378,9 +380,10 @@ def test_dummy_outgas_mol_keys_set():
 
     _, H2O_kg = _expected_species_kg(1e20, 'H')
     expected_mol = H2O_kg / _MMW['H2O']
+    f_atm = 0.1 + 0.9 * 0.5
     assert hf_row['H2O_mol_total'] == pytest.approx(expected_mol, rel=1e-8)
-    assert hf_row['H2O_mol_atm'] == pytest.approx(0.5 * expected_mol, rel=1e-8)
-    assert hf_row['H2O_mol_liquid'] == pytest.approx(0.5 * expected_mol, rel=1e-8)
+    assert hf_row['H2O_mol_atm'] == pytest.approx(f_atm * expected_mol, rel=1e-8)
+    assert hf_row['H2O_mol_liquid'] == pytest.approx((1.0 - f_atm) * expected_mol, rel=1e-8)
     assert hf_row['H2O_mol_solid'] == pytest.approx(0.0, abs=1e-30)
 
 
