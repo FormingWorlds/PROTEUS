@@ -9,7 +9,7 @@ behaviour differs.
 
 ## Configuration
 
-Create `input/tutorial_reduced.toml`:
+The config file is at `input/tutorial_reduced.toml`:
 
 ```toml
 config_version = "3.0"

@@ -216,7 +216,7 @@ def RunJANUS(
         atol = 1.0e-5
 
         # Done with initial loops
-        if time > 0:
+        if time > 0 and hf_all is not None and len(hf_all) > 0:
             # Get previous temperature as initial guess
             T_surf_old = hf_all.iloc[-1]['T_surf']
 

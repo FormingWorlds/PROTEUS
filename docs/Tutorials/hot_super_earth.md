@@ -7,7 +7,7 @@ between intense stellar heating and interior cooling.
 
 ## Configuration
 
-Create `input/tutorial_hot_se.toml`:
+The config file is at `input/tutorial_hot_se.toml`:
 
 ```toml
 config_version = "3.0"

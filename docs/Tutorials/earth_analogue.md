@@ -76,12 +76,11 @@ The config at `input/tutorial_earth.toml` sets:
 
 The simulation should produce:
 
-- **Solidification time**: ~0.5 to 4 Myr (consistent with CHILI models)
-- **Surface temperature**: cooling from ~3500 K to ~1700 K (solidus)
+- **Solidification time**: ~1.3 Myr (consistent with CHILI models, 0.5-4 Myr range)
+- **Surface temperature**: cooling from ~4300 K to ~1860 K (solidus)
 - **Melt fraction**: decreasing from 1.0 to 0.05 (termination threshold)
-- **Surface pressure**: increasing from ~100 to ~500 bar as volatiles outgas
-- **Atmospheric composition**: initially CO/CO$_2$-dominated, transitioning to
-  H$_2$O-dominated as the mantle solidifies
+- **Surface pressure**: evolving from ~280 bar at Phi = 0.95 to ~440 bar at solidification
+- **Atmospheric composition**: H$_2$O/CO$_2$-dominated throughout
 
 After the run completes, generate plots:
 
@@ -89,14 +88,35 @@ After the run completes, generate plots:
 proteus plot -c input/tutorial_earth.toml all
 ```
 
+<figure markdown="span">
+  ![Earth tutorial output](../assets/tutorials/earth_global_log.png){ width="100%" }
+  <figcaption>Earth analogue tutorial output (log scale). (a) Heat fluxes:
+  interior flux (F_int) and atmospheric outgoing flux (F_atm) track the
+  cooling trajectory. (b) Surface partial pressures of outgassed species.
+  (c) Melt fraction decreasing from 1.0 to 0.05 over 1.3 Myr. (d) Magma
+  temperature cooling from ~4300 K to ~1860 K at solidification.</figcaption>
+</figure>
+
 ## Comparison with CHILI models
 
-The CHILI intercomparison compares PROTEUS against seven other
-atmosphere-interior evolution codes (GOOEY, NEONGOOEY, PACMAN, CAMO,
+The CHILI intercomparison compares PROTEUS against six other
+atmosphere-interior evolution codes (GOOEY, NEONGOOEY, PACMAN,
 LINCS, MOAI, PlanAtMO). For the nominal Earth case, all models
-predict solidification within 4 Myr, with PROTEUS predicting the
-lowest surface temperatures at high melt fractions due to its
-mixing-length treatment of mantle convection.
+predict solidification within 4 Myr.
+
+<figure markdown="span">
+  ![CHILI melt fraction comparison](../assets/tutorials/earth_chili_melt_fraction.png){ width="80%" }
+  <figcaption>Melt fraction evolution for the CHILI Nominal Earth case.
+  PROTEUS (black, thick) overlaid on six intercomparison models. Solid
+  lines: Earth. All models predict solidification within 4 Myr.</figcaption>
+</figure>
+
+<figure markdown="span">
+  ![CHILI T_surf vs Phi comparison](../assets/tutorials/earth_chili_tsurf_vs_phi.png){ width="80%" }
+  <figcaption>Surface temperature vs melt fraction for the CHILI Nominal
+  Earth case. PROTEUS (black, thick) compared against six
+  intercomparison models.</figcaption>
+</figure>
 
 For a detailed comparison including the Venus case and the
 Earth volatile grid, see the

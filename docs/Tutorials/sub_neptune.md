@@ -8,7 +8,7 @@ envelope while Aragog handles the rocky interior.
 
 ## Configuration
 
-Create `input/tutorial_sub_neptune.toml`:
+The config file is at `input/tutorial_sub_neptune.toml`:
 
 ```toml
 config_version = "3.0"
@@ -123,12 +123,13 @@ nohup proteus start --offline -c input/tutorial_sub_neptune.toml \
    lose its envelope and become a super-Earth?
 2. Move the planet to 0.03 AU. How does the stronger irradiation and
    escape affect the final state?
-3. Switch to `interior_energetics.module = "aragog"` for a comparison.
-   The run will be slower but provides detailed radial temperature and
-   melt fraction profiles.
-4. Enable the H$_2$-silicate miscibility model: set
-   `interior_struct.zalmoxis.global_miscibility = true` and
-   `outgas.h2_binodal = true`. How does H$_2$ dissolution into the
+3. Switch to `interior_energetics.module = "aragog"` and
+   `interior_struct.module = "zalmoxis"` for a comparison. Aragog
+   requires Zalmoxis for the radial structure. The run will be slower
+   but provides detailed temperature and melt fraction profiles.
+4. With Aragog/Zalmoxis enabled (exercise 3), try the H$_2$-silicate
+   miscibility model: set `interior_struct.zalmoxis.global_miscibility = true`
+   and `outgas.h2_binodal = true`. How does H$_2$ dissolution into the
    magma affect the envelope mass?
 
 ---

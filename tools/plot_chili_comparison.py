@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """Plot PROTEUS output overlaid on CHILI intercomparison data.
 
-Downloads comparison data from the CHILI GitHub repository and creates
-multi-model comparison plots mirroring the figures from the CHILI
-intercomparison papers.
+Mirrors the figures from Nicholls et al. (in prep) using the Wong
+colorblind-friendly palette. Overlays the current PROTEUS run on the
+CHILI v2 submission and all other intercomparison models.
 
 Usage:
-    python tools/plot_chili_comparison.py \\
-        --proteus-earth output/tutorial_earth/ \\
-        --proteus-venus output/tutorial_venus/ \\
-        --chili-repo /tmp/chili \\
+    python tools/plot_chili_comparison.py \
+        --proteus-earth output/tutorial_earth/ \
+        --chili-repo /tmp/chili \
         --output output_files/chili_plots/
-
-If --chili-repo is not specified, the script will clone the repo to /tmp/chili.
 """
 
 from __future__ import annotations
@@ -21,25 +18,91 @@ import argparse
 import subprocess
 from pathlib import Path
 
+import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 CHILI_REPO_URL = 'https://github.com/projectcuisines/chili.git'
 
+WONG = [
+    '#000000',
+    '#E69F00',
+    '#56B4E9',
+    '#009E73',
+    '#F0E442',
+    '#0072B2',
+    '#D55E00',
+    '#CC79A7',
+]
+
 MODELS = {
-    'gooey': {'color': '#e6194b', 'label': 'GOOEY'},
-    'neongooey': {'color': '#f58231', 'label': 'NEONGOOEY'},
-    'pacman': {'color': '#3cb44b', 'label': 'PACMAN'},
-    'lincs': {'color': '#4363d8', 'label': 'LINCS'},
-    'moai': {'color': '#911eb4', 'label': 'MOAI'},
-    'planatmo': {'color': '#42d4f4', 'label': 'PlanAtMO'},
+    'gooey': {'color': WONG[1], 'label': 'GOOEY'},
+    'proteus': {'color': WONG[0], 'label': 'PROTEUS CHILI', 'ls': '--', 'lw': 1.5},
+    'neongooey': {'color': WONG[2], 'label': 'NEONGOOEY'},
+    'pacman': {'color': WONG[3], 'label': 'PACMAN'},
+    'lincs': {'color': WONG[5], 'label': 'LINCS'},
+    'moai': {'color': WONG[6], 'label': 'MOAI'},
+    'planatmo': {'color': WONG[7], 'label': 'PlanAtMO'},
 }
 
-PROTEUS_STYLE = {'color': '#000000', 'linewidth': 2.5, 'label': 'PROTEUS (this run)'}
+GAS_SPECIES = ['H2O', 'CO2', 'CO', 'H2', 'CH4', 'N2', 'S2', 'SO2', 'H2S']
+GAS_COLORS = {
+    'H2O': '#2196F3',
+    'CO2': '#FF5722',
+    'CO': '#FF9800',
+    'H2': '#9C27B0',
+    'CH4': '#4CAF50',
+    'N2': '#795548',
+    'S2': '#FFC107',
+    'SO2': '#607D8B',
+    'H2S': '#E91E63',
+}
+
+# ── Shared style ──────────────────────────────────────────────────────
+matplotlib.rcParams.update(
+    {
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Helvetica', 'Arial', 'DejaVu Sans'],
+        'font.size': 11,
+        'axes.labelsize': 12,
+        'axes.titlesize': 13,
+        'legend.fontsize': 8,
+        'xtick.direction': 'in',
+        'ytick.direction': 'in',
+        'xtick.top': True,
+        'ytick.right': True,
+        'axes.linewidth': 0.8,
+        'xtick.major.width': 0.8,
+        'ytick.major.width': 0.8,
+    }
+)
 
 
-def _load_chili_csv(path: Path) -> pd.DataFrame | None:
-    """Load a CHILI intercomparison CSV, handling missing files."""
+def _get_proteus_sha():
+    try:
+        r = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent,
+        )
+        return r.stdout.strip()
+    except Exception:
+        return '?'
+
+
+def _new_style():
+    sha = _get_proteus_sha()
+    return {
+        'color': '#D55E00',
+        'linewidth': 2.5,
+        'label': f'PROTEUS ({sha})',
+        'zorder': 10,
+    }
+
+
+def _load_chili_csv(path):
     if not path.is_file():
         return None
     try:
@@ -48,8 +111,7 @@ def _load_chili_csv(path: Path) -> pd.DataFrame | None:
         return None
 
 
-def _load_proteus_helpfile(output_dir: Path) -> pd.DataFrame | None:
-    """Load PROTEUS runtime_helpfile.csv."""
+def _load_proteus_helpfile(output_dir):
     hf = output_dir / 'runtime_helpfile.csv'
     if not hf.is_file():
         return None
@@ -57,252 +119,594 @@ def _load_proteus_helpfile(output_dir: Path) -> pd.DataFrame | None:
         header = f.readline().strip().split()
     df = pd.read_csv(hf, sep=r'\s+', header=None, skiprows=1)
     df.columns = header
-    return df[df['Time'] > 0]
+    df = df[df['Time'] > 0]
+    df.attrs['_profiles'] = _extract_profiles(output_dir, df)
+    return df
 
 
-def ensure_chili_repo(chili_path: Path) -> Path:
-    """Clone the CHILI repo if not already present."""
+def _extract_profiles(output_dir, hf):
+    import netCDF4 as nc
+
+    data_dir = output_dir / 'data'
+    phi_crit = 0.4
+    results = {'Phi_global': [], 'R_rheo': [], 'visc_avg': []}
+
+    for _, row in hf.iterrows():
+        t = int(round(row['Time']))
+        ncf = data_dir / f'{t}_int.nc'
+        if not ncf.is_file():
+            for c in data_dir.glob('*_int.nc'):
+                try:
+                    ct = int(c.stem.split('_')[0])
+                    if abs(ct - t) < 10:
+                        ncf = c
+                        break
+                except ValueError:
+                    continue
+        if not ncf.is_file():
+            continue
+        try:
+            ds = nc.Dataset(str(ncf))
+            phi_s = ds.variables['phi_s'][:]
+            r_s = ds.variables['radius_s'][:]
+            visc_s = ds.variables['log10visc_s'][:]
+            phi_g = float(ds.variables['phi_global'][:])
+            ds.close()
+            solid = phi_s < phi_crit
+            if solid.any() and not solid.all():
+                r_rheo = r_s[solid][-1] * 1e3
+            elif solid.all():
+                r_rheo = r_s[-1] * 1e3
+            else:
+                r_rheo = r_s[0] * 1e3
+            visc_avg = 10 ** np.mean(visc_s)
+            results['Phi_global'].append(phi_g)
+            results['R_rheo'].append(r_rheo)
+            results['visc_avg'].append(visc_avg)
+        except Exception:
+            continue
+    for k in results:
+        results[k] = np.array(results[k])
+    return results
+
+
+def _get_col(df, *candidates):
+    for cand in candidates:
+        for c in df.columns:
+            if cand.lower() == c.lower().split('(')[0]:
+                return df[c]
+    for cand in candidates:
+        for c in df.columns:
+            if cand.lower() in c.lower():
+                return df[c]
+    return None
+
+
+def _get_phi(df):
+    col = _get_col(df, 'phi', 'melt')
+    if col is None:
+        return None
+    if col.max() > 1:
+        col = col / 100
+    return col
+
+
+def _plot_model(ax, x, y, style, default_ls='-', default_lw=1.2):
+    ax.plot(
+        x,
+        y,
+        linestyle=style.get('ls', default_ls),
+        color=style['color'],
+        linewidth=style.get('lw', default_lw),
+        alpha=style.get('alpha', 0.8),
+        label=style['label'],
+        zorder=style.get('zorder', 2),
+    )
+
+
+def ensure_chili_repo(chili_path):
     if chili_path.is_dir() and (chili_path / 'intercomparison').is_dir():
         return chili_path
-    print(f'Cloning CHILI repository to {chili_path}...')
     subprocess.run(
-        ['git', 'clone', '--depth', '1', CHILI_REPO_URL, str(chili_path)],
-        check=True,
+        ['git', 'clone', '--depth', '1', CHILI_REPO_URL, str(chili_path)], check=True
     )
     return chili_path
 
 
-def plot_melt_fraction_evolution(
-    chili_path: Path,
-    proteus_earth: pd.DataFrame | None,
-    proteus_venus: pd.DataFrame | None,
-    output_dir: Path,
-):
-    """CHILI Fig 1: melt fraction vs time for all models."""
-    fig, ax = plt.subplots(figsize=(8, 6))
+# ── Fig 1: Melt fraction vs time ──────────────────────────────────────
+def plot_fig1(chili, pe, pv, out):
+    NS = _new_style()
+    fig, ax = plt.subplots(figsize=(7, 5))
+    intercomp = chili / 'intercomparison' / 'outputs'
 
-    intercomp = chili_path / 'intercomparison' / 'outputs'
-
-    for model_key, style in MODELS.items():
+    for mk, st in MODELS.items():
         for planet, ls in [('earth', '-'), ('venus', '--')]:
-            csv = intercomp / model_key / f'evolution-{model_key}-{planet}-data.csv'
-            df = _load_chili_csv(csv)
+            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-{planet}-data.csv')
             if df is None:
                 continue
-            t_col = [
-                c
-                for c in df.columns
-                if 't' in c.lower() and 'yr' in c.lower() or c.lower() in ('t', 'time', 't_yr')
-            ]
-            phi_col = [c for c in df.columns if 'phi' in c.lower() or 'melt' in c.lower()]
-            if not t_col or not phi_col:
+            t = _get_col(df, 't', 'time')
+            phi = _get_phi(df)
+            if t is None or phi is None:
                 continue
-            t = df[t_col[0]] / 1e6
-            phi = df[phi_col[0]]
-            if phi.max() > 1:
-                phi = phi / 100
-            label = style['label'] if planet == 'earth' else None
-            ax.plot(t, phi, ls, color=style['color'], alpha=0.7, linewidth=1.2, label=label)
+            label = st['label'] if planet == 'earth' else None
+            ax.plot(
+                t / 1e6,
+                phi,
+                ls,
+                color=st['color'],
+                linewidth=st.get('lw', 1.2),
+                alpha=0.8,
+                label=label,
+            )
 
-    if proteus_earth is not None:
-        t = proteus_earth['Time'] / 1e6
+    if pe is not None:
         ax.plot(
-            t,
-            proteus_earth['Phi_global'],
+            pe['Time'] / 1e6,
+            pe['Phi_global'],
             '-',
-            color=PROTEUS_STYLE['color'],
-            linewidth=PROTEUS_STYLE['linewidth'],
-            label='PROTEUS Earth (this run)',
+            color=NS['color'],
+            linewidth=NS['linewidth'],
+            label=NS['label'],
+            zorder=NS['zorder'],
         )
-
-    if proteus_venus is not None:
-        t = proteus_venus['Time'] / 1e6
+    if pv is not None:
         ax.plot(
-            t,
-            proteus_venus['Phi_global'],
+            pv['Time'] / 1e6,
+            pv['Phi_global'],
             '--',
-            color=PROTEUS_STYLE['color'],
-            linewidth=PROTEUS_STYLE['linewidth'],
-            label='PROTEUS Venus (this run)',
+            color=NS['color'],
+            linewidth=NS['linewidth'],
+            label=NS['label'] + ' Venus',
+            zorder=NS['zorder'],
         )
 
-    ax.set_xlabel('Time [Myr]')
-    ax.set_ylabel('Melt fraction')
+    ax.set_xlabel('Time (Myr)')
+    ax.set_ylabel('Melt fraction (by volume)')
     ax.set_xscale('log')
-    ax.set_xlim(1e-3, 1e3)
+    ax.set_xlim(1e-3, 1e1)
     ax.set_ylim(0, 1.05)
-    ax.legend(fontsize=8, ncol=2, loc='upper right')
-    ax.set_title('Cooling and solidification: Earth (solid) and Venus (dashed)')
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_dir / 'chili_fig1_melt_fraction.pdf', dpi=150, bbox_inches='tight')
-    fig.savefig(output_dir / 'chili_fig1_melt_fraction.png', dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f'Saved: {output_dir / "chili_fig1_melt_fraction.pdf"}')
+    ax.legend(fontsize=8, ncol=2, loc='upper right', framealpha=0.9)
+    _save(fig, out, 'chili_fig1_melt_fraction')
 
 
-def plot_olr_vs_phi(
-    chili_path: Path,
-    proteus_earth: pd.DataFrame | None,
-    output_dir: Path,
-):
-    """CHILI Fig 7a: OLR vs melt fraction for Earth."""
-    fig, ax = plt.subplots(figsize=(6, 5))
+# ── Fig 2: Solidification milestones ──────────────────────────────────
+def plot_fig2(chili, pe, out):
+    NS = _new_style()
+    milestones = [0.95, 0.40, 0.05]
+    fig, ax = plt.subplots(figsize=(7, 5))
+    intercomp = chili / 'intercomparison' / 'outputs'
 
-    intercomp = chili_path / 'intercomparison' / 'outputs'
-
-    for model_key, style in MODELS.items():
-        csv = intercomp / model_key / f'evolution-{model_key}-earth-data.csv'
-        df = _load_chili_csv(csv)
+    for mk, st in MODELS.items():
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
         if df is None:
             continue
-        phi_col = [c for c in df.columns if 'phi' in c.lower() or 'melt' in c.lower()]
-        olr_col = [c for c in df.columns if 'olr' in c.lower() or 'f_olr' in c.lower()]
-        if not phi_col or not olr_col:
+        t = _get_col(df, 't', 'time')
+        phi = _get_phi(df)
+        if t is None or phi is None:
             continue
-        phi = df[phi_col[0]]
-        if phi.max() > 1:
-            phi = phi / 100
+        times = []
+        for m in milestones:
+            idx = phi <= m
+            times.append(float(t[idx].iloc[0]) / 1e3 if idx.any() else np.nan)
         ax.plot(
-            phi * 100,
-            df[olr_col[0]],
-            '-',
-            color=style['color'],
-            alpha=0.7,
-            linewidth=1.2,
-            label=style['label'],
+            milestones,
+            times,
+            'o-',
+            color=st['color'],
+            label=st['label'],
+            markersize=5,
+            linewidth=st.get('lw', 1.2),
+            alpha=0.8,
         )
 
-    if proteus_earth is not None:
+    if pe is not None:
+        times = []
+        for m in milestones:
+            idx = pe['Phi_global'] <= m
+            times.append(float(pe['Time'][idx].iloc[0]) / 1e3 if idx.any() else np.nan)
         ax.plot(
-            proteus_earth['Phi_global'] * 100,
-            proteus_earth['F_olr'],
-            '-',
-            color=PROTEUS_STYLE['color'],
-            linewidth=PROTEUS_STYLE['linewidth'],
-            label='PROTEUS (this run)',
+            milestones,
+            times,
+            's-',
+            color=NS['color'],
+            linewidth=NS['linewidth'],
+            markersize=7,
+            label=NS['label'],
+            zorder=NS['zorder'],
         )
 
-    ax.set_xlabel('Melt fraction [vol%]')
-    ax.set_ylabel('Outgoing LW radiation [W m$^{-2}$]')
+    ax.set_xlabel(r'Melt fraction milestone ($\Phi$)')
+    ax.set_ylabel('Time to reach milestone (kyr)')
     ax.set_yscale('log')
-    ax.set_xlim(100, 0)
-    ax.legend(fontsize=8)
-    ax.set_title('Outgoing longwave radiation: Nominal Earth')
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_dir / 'chili_fig7a_olr_vs_phi.pdf', dpi=150, bbox_inches='tight')
-    fig.savefig(output_dir / 'chili_fig7a_olr_vs_phi.png', dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    print(f'Saved: {output_dir / "chili_fig7a_olr_vs_phi.pdf"}')
+    ax.set_xlim(1.0, 0.0)
+    ax.legend(fontsize=8, ncol=2, framealpha=0.9)
+    _save(fig, out, 'chili_fig2_milestones')
 
 
-def plot_tsurf_vs_phi(
-    chili_path: Path,
-    proteus_earth: pd.DataFrame | None,
-    output_dir: Path,
-):
-    """CHILI Fig 8a: T_surf vs melt fraction for Earth."""
-    fig, ax = plt.subplots(figsize=(6, 5))
+# ── Fig 3: Atmospheric composition ────────────────────────────────────
+def plot_fig3(chili, pe, out):
+    NS = _new_style()
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+    intercomp = chili / 'intercomparison' / 'outputs'
+    phi_targets = [0.95, 0.05]
 
-    intercomp = chili_path / 'intercomparison' / 'outputs'
+    for ax, phi_tgt, title in zip(axes, phi_targets, [r'$\Phi$ = 95%', r'$\Phi$ = 5%']):
+        model_names = []
+        gas_data = {g: [] for g in GAS_SPECIES}
 
-    for model_key, style in MODELS.items():
-        csv = intercomp / model_key / f'evolution-{model_key}-earth-data.csv'
-        df = _load_chili_csv(csv)
+        for mk, st in MODELS.items():
+            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+            if df is None:
+                continue
+            phi = _get_phi(df)
+            if phi is None:
+                continue
+            idx = phi <= phi_tgt
+            if not idx.any():
+                continue
+            row = df[idx].iloc[0]
+            model_names.append(st['label'])
+            for g in GAS_SPECIES:
+                col = _get_col(df, f'p_{g}')
+                gas_data[g].append(
+                    float(row[col.name]) if col is not None and col.name in row.index else 0
+                )
+
+        if pe is not None:
+            idx = pe['Phi_global'] <= phi_tgt
+            if idx.any():
+                row = pe[idx].iloc[0]
+                model_names.append(NS['label'])
+                for g in GAS_SPECIES:
+                    gas_data[g].append(float(row.get(f'{g}_bar', 0)))
+
+        if not model_names:
+            continue
+        x = np.arange(len(model_names))
+        bottom = np.zeros(len(model_names))
+        for g in GAS_SPECIES:
+            vals = np.array(gas_data[g])
+            if vals.sum() > 0:
+                ax.bar(
+                    x,
+                    vals,
+                    bottom=bottom,
+                    color=GAS_COLORS[g],
+                    label=g,
+                    width=0.6,
+                    edgecolor='white',
+                    linewidth=0.3,
+                )
+                bottom += vals
+        ax.set_xticks(x)
+        ax.set_xticklabels(model_names, fontsize=7, rotation=45, ha='right')
+        ax.set_ylabel('Partial pressure (bar)')
+        ax.set_title(title, fontsize=12)
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=0.01)
+
+    axes[0].legend(fontsize=7, ncol=3, loc='upper left', framealpha=0.9)
+    fig.tight_layout()
+    _save(fig, out, 'chili_fig3_atm_composition')
+
+
+# ── Fig 4: H, C mass budgets ─────────────────────────────────────────
+def plot_fig4(chili, pe, out):
+    NS = _new_style()
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+    intercomp = chili / 'intercomparison' / 'outputs'
+    reservoirs = ['atm', 'melt', 'solid']
+    res_colors = {'atm': WONG[2], 'melt': WONG[6], 'solid': WONG[3]}
+
+    for ax, element in zip(axes, ['H', 'C']):
+        model_names = []
+        res_data = {r: [] for r in reservoirs}
+
+        for mk, st in MODELS.items():
+            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+            if df is None:
+                continue
+            phi = _get_phi(df)
+            if phi is None:
+                continue
+            row = df[phi <= 0.05].iloc[0] if (phi <= 0.05).any() else df.iloc[-1]
+            model_names.append(st['label'])
+            for r in reservoirs:
+                col = _get_col(df, f'mass{element}_{r}')
+                res_data[r].append(float(row[col.name]) if col is not None else 0)
+
+        if pe is not None:
+            row = (
+                pe[pe['Phi_global'] <= 0.05].iloc[0]
+                if (pe['Phi_global'] <= 0.05).any()
+                else pe.iloc[-1]
+            )
+            model_names.append(NS['label'])
+            for r in reservoirs:
+                hf_r = 'liquid' if r == 'melt' else r
+                res_data[r].append(float(row.get(f'{element}_kg_{hf_r}', 0)))
+
+        if not model_names:
+            continue
+        x = np.arange(len(model_names))
+        width = 0.25
+        for i, r in enumerate(reservoirs):
+            vals = np.array(res_data[r], dtype=float)
+            vals[vals <= 0] = np.nan
+            ax.bar(
+                x + (i - 1) * width,
+                vals,
+                color=res_colors[r],
+                label=r.capitalize(),
+                width=width,
+                edgecolor='white',
+                linewidth=0.3,
+            )
+        ax.set_xticks(x)
+        ax.set_xticklabels(model_names, fontsize=7, rotation=45, ha='right')
+        ax.set_ylabel(f'{element} mass (kg)')
+        ax.set_title(f'{element} budget at solidification', fontsize=12)
+        ax.set_yscale('log')
+
+    axes[0].legend(fontsize=8, framealpha=0.9)
+    fig.tight_layout()
+    _save(fig, out, 'chili_fig4_mass_budgets')
+
+
+# ── Fig 6: fO2 vs temperature ────────────────────────────────────────
+def plot_fig6(chili, pe, out):
+    NS = _new_style()
+    fig, ax = plt.subplots(figsize=(7, 5))
+    intercomp = chili / 'intercomparison' / 'outputs'
+
+    for mk, st in MODELS.items():
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
         if df is None:
             continue
-        phi_col = [c for c in df.columns if 'phi' in c.lower() or 'melt' in c.lower()]
-        ts_col = [
-            c
-            for c in df.columns
-            if 'surf' in c.lower() and 'temp' in c.lower() or c.lower() in ('t_surf', 'tsurf')
-        ]
-        if not phi_col or not ts_col:
+        ts = _get_col(df, 'T_surf', 'Tsurf')
+        fO2 = _get_col(df, 'fO2_melt', 'fO2')
+        if ts is None or fO2 is None:
             continue
-        phi = df[phi_col[0]]
-        if phi.max() > 1:
-            phi = phi / 100
+        valid = fO2 > 0
+        if not valid.any():
+            continue
         ax.plot(
-            phi * 100,
-            df[ts_col[0]],
-            '-',
-            color=style['color'],
-            alpha=0.7,
-            linewidth=1.2,
-            label=style['label'],
+            ts[valid],
+            np.log10(fO2[valid]),
+            linestyle=st.get('ls', '-'),
+            color=st['color'],
+            linewidth=st.get('lw', 1.2),
+            alpha=0.8,
+            label=st['label'],
         )
 
-    if proteus_earth is not None:
+    if pe is not None:
+        T = pe['T_surf'].values
+        log10_fO2_IW = 6.57 - 27215.0 / T
+        iw_shift = (
+            pe['fO2_shift_IW_derived'].values if 'fO2_shift_IW_derived' in pe.columns else 4.0
+        )
+        log10_fO2 = log10_fO2_IW + iw_shift
         ax.plot(
-            proteus_earth['Phi_global'] * 100,
-            proteus_earth['T_surf'],
+            T,
+            log10_fO2,
             '-',
-            color=PROTEUS_STYLE['color'],
-            linewidth=PROTEUS_STYLE['linewidth'],
-            label='PROTEUS (this run)',
+            color=NS['color'],
+            linewidth=NS['linewidth'],
+            label=NS['label'],
+            zorder=NS['zorder'],
         )
 
-    ax.set_xlabel('Melt fraction [vol%]')
-    ax.set_ylabel('Surface temperature [K]')
-    ax.set_xlim(100, 0)
-    ax.legend(fontsize=8)
-    ax.set_title('Surface temperature vs melt fraction: Nominal Earth')
+    ax.set_xlabel('Surface temperature (K)')
+    ax.set_ylabel(r'log$_{10}$(fO$_2$) (bar)')
+    ax.legend(fontsize=8, ncol=2, framealpha=0.9)
+    _save(fig, out, 'chili_fig6_fO2_vs_T')
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_dir / 'chili_fig8a_tsurf_vs_phi.pdf', dpi=150, bbox_inches='tight')
-    fig.savefig(output_dir / 'chili_fig8a_tsurf_vs_phi.png', dpi=150, bbox_inches='tight')
+
+# ── Fig 7: OLR ───────────────────────────────────────────────────────
+def plot_fig7(chili, pe, out):
+    NS = _new_style()
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    intercomp = chili / 'intercomparison' / 'outputs'
+
+    for mk, st in MODELS.items():
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+        if df is None:
+            continue
+        phi = _get_phi(df)
+        olr = _get_col(df, 'flux_OLR', 'OLR', 'F_olr')
+        ts = _get_col(df, 'T_surf', 'Tsurf')
+        if phi is None or olr is None:
+            continue
+        kw = dict(
+            linestyle=st.get('ls', '-'),
+            color=st['color'],
+            linewidth=st.get('lw', 1.2),
+            alpha=0.8,
+            label=st['label'],
+        )
+        axes[0].plot(phi * 100, olr, **kw)
+        if ts is not None:
+            axes[1].plot(ts, olr, **kw)
+
+    if pe is not None:
+        kw = dict(
+            color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
+        )
+        axes[0].plot(pe['Phi_global'] * 100, pe['F_olr'], '-', **kw)
+        axes[1].plot(pe['T_surf'], pe['F_olr'], '-', **kw)
+
+    for i, (xl, tl) in enumerate(
+        [
+            ('Melt fraction (vol%)', '(a) OLR vs melt fraction'),
+            ('Surface temperature (K)', '(b) OLR vs surface temperature'),
+        ]
+    ):
+        axes[i].set_xlabel(xl)
+        axes[i].set_ylabel(r'OLR (W m$^{-2}$)')
+        axes[i].set_yscale('log')
+        axes[i].set_title(tl, fontsize=12)
+        axes[i].legend(fontsize=7, ncol=2, framealpha=0.9)
+    axes[0].set_xlim(100, 0)
+    fig.tight_layout()
+    _save(fig, out, 'chili_fig7_olr')
+
+
+# ── Fig 8: Geodynamics (T_surf, R_solid, viscosity) ──────────────────
+def plot_fig8(chili, pe, out):
+    NS = _new_style()
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    intercomp = chili / 'intercomparison' / 'outputs'
+    panels = [
+        ('T_surf', 'Tsurf', 'Surface temperature (K)', False),
+        ('R_solid', 'R_solid', 'Rheological front (m)', False),
+        ('viscosity', 'visc', r'Viscosity (Pa$\cdot$s)', True),
+    ]
+
+    for ax, (c1, c2, yl, logsc) in zip(axes, panels):
+        for mk, st in MODELS.items():
+            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+            if df is None:
+                continue
+            phi = _get_phi(df)
+            val = _get_col(df, c1, c2)
+            if phi is None or val is None:
+                continue
+            valid = val > 0 if logsc else val.notna()
+            if not valid.any():
+                continue
+            ax.plot(
+                phi[valid] * 100,
+                val[valid],
+                linestyle=st.get('ls', '-'),
+                color=st['color'],
+                linewidth=st.get('lw', 1.2),
+                alpha=0.8,
+                label=st['label'],
+            )
+
+        if pe is not None:
+            profs = pe.attrs.get('_profiles', {})
+            if c1 == 'T_surf' and 'T_surf' in pe.columns:
+                ax.plot(
+                    pe['Phi_global'] * 100,
+                    pe['T_surf'],
+                    '-',
+                    color=NS['color'],
+                    linewidth=NS['linewidth'],
+                    label=NS['label'],
+                    zorder=NS['zorder'],
+                )
+            elif c1 == 'R_solid' and len(profs.get('R_rheo', [])) > 0:
+                ax.plot(
+                    profs['Phi_global'] * 100,
+                    profs['R_rheo'],
+                    '-',
+                    color=NS['color'],
+                    linewidth=NS['linewidth'],
+                    label=NS['label'],
+                    zorder=NS['zorder'],
+                )
+            elif c1 == 'viscosity' and len(profs.get('visc_avg', [])) > 0:
+                ax.plot(
+                    profs['Phi_global'] * 100,
+                    profs['visc_avg'],
+                    '-',
+                    color=NS['color'],
+                    linewidth=NS['linewidth'],
+                    label=NS['label'],
+                    zorder=NS['zorder'],
+                )
+
+        ax.set_xlabel('Melt fraction (vol%)')
+        ax.set_ylabel(yl)
+        ax.set_xlim(100, 0)
+        if logsc:
+            ax.set_yscale('log')
+        ax.legend(fontsize=6, ncol=2, framealpha=0.9)
+
+    fig.tight_layout()
+    _save(fig, out, 'chili_fig8_geodynamics')
+
+
+# ── Surface pressure vs time ─────────────────────────────────────────
+def plot_psurf(chili, pe, out):
+    NS = _new_style()
+    fig, ax = plt.subplots(figsize=(7, 5))
+    intercomp = chili / 'intercomparison' / 'outputs'
+
+    for mk, st in MODELS.items():
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+        if df is None:
+            continue
+        t = _get_col(df, 't', 'time')
+        p = _get_col(df, 'p_surf', 'P_surf')
+        if t is None or p is None:
+            continue
+        ax.plot(
+            t / 1e6,
+            p,
+            linestyle=st.get('ls', '-'),
+            color=st['color'],
+            linewidth=st.get('lw', 1.2),
+            alpha=0.8,
+            label=st['label'],
+        )
+
+    if pe is not None:
+        ax.plot(
+            pe['Time'] / 1e6,
+            pe['P_surf'],
+            '-',
+            color=NS['color'],
+            linewidth=NS['linewidth'],
+            label=NS['label'],
+            zorder=NS['zorder'],
+        )
+
+    ax.set_xlabel('Time (Myr)')
+    ax.set_ylabel('Surface pressure (bar)')
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlim(1e-3, 1e1)
+    ax.legend(fontsize=8, ncol=2, framealpha=0.9)
+    _save(fig, out, 'chili_psurf_vs_time')
+
+
+def _save(fig, out, name):
+    out.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out / f'{name}.pdf', dpi=200, bbox_inches='tight')
+    fig.savefig(out / f'{name}.png', dpi=200, bbox_inches='tight')
     plt.close(fig)
-    print(f'Saved: {output_dir / "chili_fig8a_tsurf_vs_phi.pdf"}')
+    print(f'Saved: {name}')
 
 
 def main():
     parser = argparse.ArgumentParser(description='Plot PROTEUS vs CHILI comparison')
-    parser.add_argument(
-        '--proteus-earth',
-        type=Path,
-        default=None,
-        help='PROTEUS output directory for Earth case',
-    )
-    parser.add_argument(
-        '--proteus-venus',
-        type=Path,
-        default=None,
-        help='PROTEUS output directory for Venus case',
-    )
-    parser.add_argument(
-        '--chili-repo',
-        type=Path,
-        default=Path('/tmp/chili'),
-        help='Path to CHILI repository (cloned if missing)',
-    )
-    parser.add_argument(
-        '--output',
-        type=Path,
-        default=Path('output_files/chili_plots'),
-        help='Output directory for plots',
-    )
+    parser.add_argument('--proteus-earth', type=Path, default=None)
+    parser.add_argument('--proteus-venus', type=Path, default=None)
+    parser.add_argument('--chili-repo', type=Path, default=Path('/tmp/chili'))
+    parser.add_argument('--output', type=Path, default=Path('output_files/chili_plots'))
     args = parser.parse_args()
 
     chili = ensure_chili_repo(args.chili_repo)
+    pe = _load_proteus_helpfile(args.proteus_earth) if args.proteus_earth else None
+    pv = _load_proteus_helpfile(args.proteus_venus) if args.proteus_venus else None
 
-    earth_df = _load_proteus_helpfile(args.proteus_earth) if args.proteus_earth else None
-    venus_df = _load_proteus_helpfile(args.proteus_venus) if args.proteus_venus else None
-
-    if earth_df is not None:
+    if pe is not None:
         print(
-            f'Loaded PROTEUS Earth: {len(earth_df)} rows, '
-            f'T={earth_df["T_magma"].max():.0f}->{earth_df["T_magma"].min():.0f} K'
-        )
-    if venus_df is not None:
-        print(
-            f'Loaded PROTEUS Venus: {len(venus_df)} rows, '
-            f'T={venus_df["T_magma"].max():.0f}->{venus_df["T_magma"].min():.0f} K'
+            f'Loaded PROTEUS Earth: {len(pe)} rows, '
+            f'T={pe["T_magma"].max():.0f}->{pe["T_magma"].min():.0f} K'
         )
 
-    plot_melt_fraction_evolution(chili, earth_df, venus_df, args.output)
-    plot_olr_vs_phi(chili, earth_df, args.output)
-    plot_tsurf_vs_phi(chili, earth_df, args.output)
+    plot_fig1(chili, pe, pv, args.output)
+    plot_fig2(chili, pe, args.output)
+    plot_fig3(chili, pe, args.output)
+    plot_fig4(chili, pe, args.output)
+    plot_fig6(chili, pe, args.output)
+    plot_fig7(chili, pe, args.output)
+    plot_fig8(chili, pe, args.output)
+    plot_psurf(chili, pe, args.output)
 
     print(f'\nAll plots saved to {args.output}/')
 

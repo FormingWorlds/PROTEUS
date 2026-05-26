@@ -3,7 +3,9 @@
 # Reproduces the nominal Venus case from the CHILI intercomparison
 # (Lichtenberg et al. 2026, PSJ 7:108, Table 2).
 #
-# Identical to Nominal Earth except: mass=0.815, radius=0.95, orbit=0.723 AU.
+# Identical to Nominal Earth except: mass=0.815 M_Earth, orbit=0.723 AU.
+# Higher instellation delays solidification; some models predict Type II
+# radiative equilibrium.
 #
 # Run: proteus start --offline -c input/tutorial_venus.toml
 
@@ -14,12 +16,13 @@ config_version = "3.0"
     logging = "INFO"
 
 [params.dt]
-    method  = "adaptive"
-    initial = 10.0
-    minimum = 100.0
-    maximum = 1e7
-    atol    = 0.04
-    rtol    = 0.11
+    method        = "adaptive"
+    initial       = 10.0
+    minimum       = 100.0
+    maximum       = 1e7
+    starspec      = 1e9
+    atol          = 0.04
+    rtol          = 0.11
     mushy_maximum = 4e3
     mushy_upper   = 0.99
 
@@ -48,10 +51,9 @@ config_version = "3.0"
 
 [planet]
     mass_tot         = 0.815
-    prevent_warming  = true
-    temperature_mode = "isentropic"
-    ini_entropy      = 3900.0
-    ini_dsdr         = -4.698e-6
+    prevent_warming  = false
+    temperature_mode = "liquidus_super"
+    delta_T_super    = 500.0
     volatile_mode    = "elements"
     [planet.elements]
         O_mode   = "ic_chemistry"
@@ -67,10 +69,17 @@ config_version = "3.0"
 
 [interior_struct]
     module         = "zalmoxis"
-    core_frac      = 0.55
-    core_frac_mode = "radius"
-    core_density   = 10738.33
-    core_heatcap   = 880.0
+    core_frac      = 0.325
+    core_frac_mode = "mass"
+
+    [interior_struct.zalmoxis]
+        core_eos          = "PALEOS:iron"
+        mantle_eos        = "PALEOS-2phase:MgSiO3"
+        mushy_zone_factor = 0.8
+        num_levels        = 150
+        dry_mantle        = true
+        use_jax           = true
+        update_interval   = 0.0
 
 [interior_energetics]
     module           = "aragog"
@@ -89,24 +98,33 @@ config_version = "3.0"
     grain_size       = 0.1
     mixing_length    = "constant"
 
+    [interior_energetics.aragog]
+        mass_coordinates = true
+        core_bc          = "energy_balance"
+        phase_smoothing  = "tanh"
+        solver_method    = "cvode"
+        backend          = "jax"
+
 [outgas]
     module       = "calliope"
     fO2_shift_IW = 4.0
     [outgas.calliope]
         include_H2O = true
         include_CO2 = true
+        include_N2  = true
+        include_S2  = true
         include_H2  = true
         include_CH4 = true
         include_CO  = true
         solubility  = true
 
 [atmos_clim]
-    module     = "agni"
-    surf_state = "skin"
-    surface_d  = 0.01
-    surface_k  = 2.0
-    rayleigh   = false
-    albedo_pl  = 0.1
+    module         = "agni"
+    surf_state     = "skin"
+    surface_d      = 0.01
+    surface_k      = 2.0
+    rayleigh       = false
+    albedo_pl      = 0.1
     spectral_group = "Dayspring"
     spectral_bands = "48"
     num_levels     = 45
