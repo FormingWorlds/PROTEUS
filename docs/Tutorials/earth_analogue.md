@@ -81,7 +81,7 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 ```
 
 <figure markdown="span">
-  ![Earth tutorial output](../assets/tutorials/earth_global_log.png){ width="100%" }
+  ![Earth tutorial output](../assets/tutorials/earth_global_log.avif){ width="100%" }
   <figcaption>Multi-panel overview of the PROTEUS Earth analogue tutorial run.
   (a) Upward heat flux components: radiogenic heating (purple, ~8 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid orange), OLR (dashed green), and absorbed stellar flux (ASF, dashed blue, ~300 W m<sup>-2</sup>). The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over 1.3 Myr.
   (b) Surface partial pressures: CO<sub>2</sub> (orange) dominates early at ~80 bar; H<sub>2</sub>O (blue) starts at ~4 bar and rises to ~360 bar as it exsolves during solidification. CO (dark yellow) and H<sub>2</sub> (green) remain minor.
