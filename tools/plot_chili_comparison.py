@@ -712,6 +712,11 @@ def main():
             f'Loaded PROTEUS Earth: {len(pe)} rows, '
             f'T={pe["T_magma"].max():.0f}->{pe["T_magma"].min():.0f} K'
         )
+    if pv is not None:
+        print(
+            f'Loaded PROTEUS Venus: {len(pv)} rows, '
+            f'T={pv["T_magma"].max():.0f}->{pv["T_magma"].min():.0f} K'
+        )
 
     plot_fig1(chili, pe, pv, args.output)
     plot_fig2(chili, pe, args.output)

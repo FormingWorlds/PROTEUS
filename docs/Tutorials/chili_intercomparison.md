@@ -1,12 +1,15 @@
 # CHILI intercomparison
 
-This advanced tutorial reproduces the full CHILI (Coupled atmosHere
-Interior modeL Intercomparison) test suite[^cite-lichtenberg2026] and
-compares PROTEUS results against seven other coupled evolution codes.
+The CHILI (Coupled atmosHere Interior modeL Intercomparison) is a
+community benchmark for magma ocean evolution
+codes[^cite-lichtenberg2026]. This tutorial reproduces the CHILI test
+suite with PROTEUS and compares results against six other coupled
+atmosphere-interior models: GOOEY, NEONGOOEY, PACMAN, LINCS, MOAI,
+and PlanAtMO[^cite-nicholls2026].
 
 ## Overview
 
-The CHILI intercomparison defines three solar system cases:
+The CHILI intercomparison defines three solar system test cases:
 
 | Case | Planet | Key difference from Earth |
 |------|--------|--------------------------|
@@ -18,51 +21,36 @@ All cases start fully molten at 50 Myr stellar age with BSE composition,
 fO$_2$ = IW+4, and Bond albedo = 0.1. Simulations run until the melt
 fraction drops below 5%.
 
-The intercomparison data from the other codes (GOOEY, NEONGOOEY, PACMAN,
-LINCS, MOAI, PlanAtMO) is publicly available at the
-[CHILI GitHub repository](https://github.com/projectcuisines/chili).
-
 ## Prerequisites
 
 - Full PROTEUS installation (see [Installation](../How-to/installation.md))
 - AGNI, SOCRATES, and all reference data
 - `git` (to clone the CHILI comparison data)
-- Allow 1-3 hours per run (Earth ~30 min, Venus ~1-3 hours)
+- Allow 1-3 hours per run (Earth ~1.5 hr, Venus ~3 hr)
 
-## Step 1: Run the Nominal Earth case
-
-```bash
-proteus start --offline -c input/tutorials/tutorial_earth.toml
-```
-
-This is the same run as the [Earth analogue tutorial](earth_analogue.md).
-Monitor with `tail -f output/tutorial_earth/proteus_00.log`.
-
-## Step 2: Run the Nominal Venus case
+## Step 1: Run the nominal cases
 
 ```bash
-proteus start --offline -c input/tutorials/tutorial_venus.toml
+conda activate proteus
+
+# Earth (see also the Earth analogue tutorial for detailed analysis)
+nohup proteus start --offline -c input/tutorials/tutorial_earth.toml \
+    > output/tutorial_earth/launch.log 2>&1 & disown
+
+# Venus
+nohup proteus start --offline -c input/tutorials/tutorial_venus.toml \
+    > output/tutorial_venus/launch.log 2>&1 & disown
 ```
 
-Venus has higher instellation (1760 vs 920 W m$^{-2}$), which delays
-solidification. Some models predict Venus entering a "Type II"
-radiative equilibrium state where the magma ocean is sustained for
-tens of millions of years by the balance between stellar heating and
-atmospheric escape.
+## Step 2: Download comparison data
 
-## Step 3: Download comparison data
-
-Clone the CHILI repository to access the comparison data from the other
-codes:
+Clone the CHILI repository to access results from the other codes:
 
 ```bash
 git clone https://github.com/projectcuisines/chili.git /tmp/chili
 ```
 
-## Step 4: Generate comparison plots
-
-Use the CHILI comparison plotting script to overlay PROTEUS output on the
-other codes:
+## Step 3: Generate comparison plots
 
 ```bash
 python tools/plot_chili_comparison.py \
@@ -72,39 +60,71 @@ python tools/plot_chili_comparison.py \
     --output output_files/chili_plots/
 ```
 
-This generates the following plots, mirroring the figures from the CHILI
-intercomparison paper[^cite-nicholls2026]:
+All plots use the Wong colorblind-friendly palette. The previous PROTEUS
+submission to the CHILI intercomparison appears as a dashed black line
+("PROTEUS CHILI"), while the current PROTEUS run appears in vermillion
+with the git commit SHA in the legend.
 
-### Melt fraction evolution (cf. CHILI Fig. 1)
+## Melt fraction evolution (Fig. 1)
 
-Each model's melt fraction vs time, with Earth (solid) and Venus (dashed).
-Your PROTEUS output is overlaid as a thick line on top of the comparison
-data.
+<figure markdown="span">
+  ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.png){ width="100%" }
+  <figcaption>Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. All seven models start fully molten and solidify within 0.1 to 4 Myr for Earth. Venus solidifies later due to higher instellation at 0.723 AU. PROTEUS predicts solidification at 1.34 Myr for Earth and 2.22 Myr for Venus, within the model ensemble range. The spread among models reflects differences in atmospheric opacity, mantle convection treatment, and volatile partitioning.</figcaption>
+</figure>
 
-### Time to solidification milestones (cf. CHILI Fig. 2)
+## Solidification milestones (Fig. 2)
 
-Time to reach $\Phi$ = 95%, 40%, and 5% for the Earth grid cases.
-Connected scatter points show how cooling timescales vary with H and C
-inventory.
+<figure markdown="span">
+  ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.png){ width="100%" }
+  <figcaption>Time to reach melt fraction milestones (95%, 40%, and 5%) for the Nominal Earth case. Each line connects the three milestones for one model. PROTEUS (vermillion squares) reaches 95% at 14 kyr, 40% at 434 kyr, and 5% at 1.34 Myr. The spread across models is roughly one order of magnitude at each milestone.</figcaption>
+</figure>
 
-### Atmospheric composition (cf. CHILI Figs. 3, 5)
+## Atmospheric composition (Fig. 3)
 
-Stacked bar charts of gas partial pressures at $\Phi$ = 95% and $\Phi$ = 5%
-for nominal Earth and Venus, comparing all models side by side.
+<figure markdown="span">
+  ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.png){ width="100%" }
+  <figcaption>Atmospheric partial pressures at two solidification stages for the Nominal Earth case. Left: at 95% melt fraction (early). Right: at 5% melt fraction (solidification). Bars show partial pressures of H<sub>2</sub>O, CO<sub>2</sub>, CO, H<sub>2</sub>, CH<sub>4</sub>, and other species. At early times, CO<sub>2</sub> dominates for PROTEUS. At solidification, H<sub>2</sub>O has exsolved from the mantle and dominates the atmosphere at ~360 bar.</figcaption>
+</figure>
 
-### Outgoing longwave radiation (cf. CHILI Fig. 7)
+## H and C mass budgets (Fig. 4)
 
-OLR as a function of melt fraction and surface temperature, comparing the
-radiative-convective response of each atmosphere model.
+<figure markdown="span">
+  ![CHILI Fig 4](../assets/tutorials/chili/fig4_mass_budgets.png){ width="100%" }
+  <figcaption>Hydrogen (left) and carbon (right) mass budgets at solidification, partitioned into atmosphere, melt, and solid reservoirs. For PROTEUS, most hydrogen resides in the atmosphere at solidification (the melt reservoir is nearly empty), while carbon is split between atmosphere and solid mantle. Models that track fewer volatile species (e.g. GOOEY reports no carbon) show gaps.</figcaption>
+</figure>
 
-### Geodynamics diagnostics (cf. CHILI Fig. 8)
+## fO$_2$ vs degassing temperature (Fig. 6)
 
-Surface temperature, solidification radius, and mantle viscosity as
-functions of melt fraction. Shaded envelopes show the spread across models.
+<figure markdown="span">
+  ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.png){ width="100%" }
+  <figcaption>Oxygen fugacity vs surface temperature during magma ocean evolution. PROTEUS tracks along the IW+4 buffer (Fischer et al. 2011 parameterization) as specified by the CHILI protocol. The absolute fO<sub>2</sub> decreases with temperature following the thermodynamic IW equilibrium. Models that track photochemical oxygen evolution show departures from the prescribed buffer at low temperatures.</figcaption>
+</figure>
 
-## Step 5: Run the Earth volatile grid (optional)
+## Outgoing longwave radiation (Fig. 7)
 
-The full CHILI Earth grid varies H and C inventories across 9 combinations:
+<figure markdown="span">
+  ![CHILI Fig 7](../assets/tutorials/chili/fig7_olr.png){ width="100%" }
+  <figcaption>Outgoing longwave radiation (OLR) as a function of melt fraction (left) and surface temperature (right) for the Nominal Earth case. OLR controls the cooling rate: higher OLR means faster solidification. PROTEUS shows a monotonic decrease in OLR with decreasing melt fraction, from ~2 x 10<sup>5</sup> W m<sup>-2</sup> at full melt to ~240 W m<sup>-2</sup> at solidification. The OLR-temperature relationship reveals differences in atmospheric opacity treatment across models.</figcaption>
+</figure>
+
+## Geodynamics diagnostics (Fig. 8)
+
+<figure markdown="span">
+  ![CHILI Fig 8](../assets/tutorials/chili/fig8_geodynamics.png){ width="100%" }
+  <figcaption>Surface temperature (left), rheological front radius (center), and mantle viscosity (right) as functions of melt fraction. The rheological front is the radius where the local melt fraction crosses the critical value of 0.4, marking the transition from convective melt to viscous solid. It propagates outward from the CMB as solidification proceeds. PROTEUS rheological front and viscosity are extracted from the Aragog interior profiles at each timestep.</figcaption>
+</figure>
+
+## Surface pressure evolution
+
+<figure markdown="span">
+  ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.png){ width="100%" }
+  <figcaption>Surface pressure vs time for all models. PROTEUS surface pressure evolves from ~80 bar initially to ~430 bar at solidification for the Earth case, driven by H<sub>2</sub>O exsolution from the crystallizing mantle. Models differ in the timing and magnitude of the pressure increase, reflecting different volatile solubility treatments.</figcaption>
+</figure>
+
+## Earth volatile grid (optional)
+
+The full CHILI Earth grid varies H and C inventories across 9
+combinations:
 
 | | C$_\mathrm{low}$ (1.36$\times$10$^{20}$ kg) | C$_\mathrm{mid}$ (2.73$\times$10$^{20}$ kg) | C$_\mathrm{high}$ (5.44$\times$10$^{20}$ kg) |
 |---|---|---|---|
@@ -112,38 +132,42 @@ The full CHILI Earth grid varies H and C inventories across 9 combinations:
 | **H$_\mathrm{mid}$** (7.8$\times$10$^{20}$ kg) | 5 EO, low C | 5 EO, mid C | 5 EO, high C |
 | **H$_\mathrm{high}$** (16.0$\times$10$^{20}$ kg) | 10 EO, low C | 10 EO, mid C | 10 EO, high C |
 
-To run the grid using PROTEUS's grid manager:
+Grid configs are in `input/tutorials/chili_grid/`. Run all 9 cases:
 
 ```bash
-proteus grid -c input/tutorial_chili_grid.toml
+for cfg in input/tutorials/chili_grid/*.toml; do
+    nohup proteus start --offline -c "$cfg" \
+        > "output/$(basename $cfg .toml)/launch.log" 2>&1 & disown
+done
 ```
 
-This submits 9 runs in parallel (controlled by `max_jobs`). Each run
-takes 30 minutes to several hours depending on the volatile inventory
-(high-H cases take longest due to thicker atmospheres and slower cooling).
+Low-H cases solidify in ~0.5 Myr; high-H cases take several Myr due
+to thicker, more opaque atmospheres that slow radiative cooling.
 
-## Interpreting the results
+## Key findings
 
-Key findings from the CHILI intercomparison:
+1. **Earth solidifies within 4 Myr across all models**, consistent with
+   geological constraints from the oldest zircons. PROTEUS predicts
+   1.34 Myr.
 
-1. **All models predict Earth solidification within 4 Myr**, consistent with
-   geological constraints from the oldest zircons.
+2. **Venus solidifies ~50-70% slower than Earth** due to the higher
+   instellation at 0.723 AU. PROTEUS predicts 2.22 Myr for Venus vs
+   1.34 Myr for Earth.
 
-2. **Venus solidification is model-dependent**: some models (LINCS, PROTEUS,
-   PlanAtMO) predict Type II behaviour where Venus enters a prolonged
-   radiative equilibrium. Others (GOOEY, PACMAN) predict direct cooling.
-
-3. **Cooling timescales correlate with hydrogen inventory**: higher H budgets
-   produce thicker, more opaque atmospheres that slow cooling.
+3. **Cooling timescales correlate with hydrogen inventory**: higher H
+   budgets produce thicker, more opaque steam atmospheres that slow
+   radiative cooling. The low-H grid cases solidify in ~0.5 Myr, while
+   the high-H cases take several Myr.
 
 4. **Model differences arise from**: gas chemistry (which species are
-   tracked), volatile partitioning (solubility vs melt trapping),
-   radiative transfer (mixing length vs boundary layer), and melting
-   curve prescriptions.
+   tracked and whether equilibrium or kinetic), volatile partitioning
+   (solubility laws), radiative transfer (correlated-k vs grey), mantle
+   convection (mixing length vs parameterized), and melting curve
+   prescriptions.
 
 ---
 
-**See also:** [Earth analogue](earth_analogue.md) | [Model description](../Explanations/model.md) | [Module versions](../Reference/module_versions.md) | [Output format](../Reference/output.md)
+**See also:** [Earth analogue](earth_analogue.md) | [Model description](../Explanations/model.md) | [Output format](../Reference/output.md)
 
 [^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmosHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
 
