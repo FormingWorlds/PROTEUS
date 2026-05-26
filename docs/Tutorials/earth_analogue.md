@@ -45,7 +45,7 @@ energy-limited (ZEPHYRUS, 30% efficiency).
 
 ```bash
 conda activate proteus
-nohup proteus start --offline -c input/tutorial_earth.toml \
+nohup proteus start --offline -c input/tutorials/tutorial_earth.toml \
     > output/tutorial_earth/launch.log 2>&1 & disown
 ```
 
@@ -56,7 +56,7 @@ nohup proteus start --offline -c input/tutorial_earth.toml \
 
 ## Configuration
 
-The config at `input/tutorial_earth.toml` sets:
+The config at `input/tutorials/tutorial_earth.toml` sets:
 
 - **Star**: Sun on Spada[^cite-spada2013] tracks starting at 50 Myr. The solar
   spectrum is used for radiative transfer. Stellar luminosity, radius, and
@@ -85,37 +85,33 @@ The simulation should produce:
 After the run completes, generate plots:
 
 ```bash
-proteus plot -c input/tutorial_earth.toml all
+proteus plot -c input/tutorials/tutorial_earth.toml all
 ```
 
 <figure markdown="span">
   ![Earth tutorial output](../assets/tutorials/earth_global_log.png){ width="100%" }
-  <figcaption>Earth analogue tutorial output (log scale). (a) Heat fluxes:
-  interior flux (F_int) and atmospheric outgoing flux (F_atm) track the
-  cooling trajectory. (b) Surface partial pressures of outgassed species.
-  (c) Melt fraction decreasing from 1.0 to 0.05 over 1.3 Myr. (d) Magma
-  temperature cooling from ~4300 K to ~1860 K at solidification.</figcaption>
+  <figcaption>PROTEUS Earth analogue tutorial output (log time scale). Panel (a) shows the interior heat flux (F_int, blue) and the outgoing atmospheric flux (F_atm, orange) declining over ~1.3 Myr as the magma ocean cools. Panel (b) shows the outgassed surface partial pressures; CO2 dominates at high melt fractions, with H2O becoming the primary species as the mantle solidifies. Panel (c) tracks the global melt fraction from 1.0 (fully molten) to 0.05 (solidification threshold). Panel (d) shows the magma temperature decreasing from ~4300 K to ~1860 K at the solidus.</figcaption>
 </figure>
 
 ## Comparison with CHILI models
 
-The CHILI intercomparison compares PROTEUS against six other
-atmosphere-interior evolution codes (GOOEY, NEONGOOEY, PACMAN,
-LINCS, MOAI, PlanAtMO). For the nominal Earth case, all models
-predict solidification within 4 Myr.
+The CHILI intercomparison[^cite-lichtenberg2026] compares PROTEUS
+against six other atmosphere-interior evolution codes: GOOEY, NEONGOOEY,
+PACMAN, LINCS, MOAI, and PlanAtMO[^cite-nicholls2026]. For the nominal
+Earth case, all models predict solidification within 4 Myr. The plots
+below use the Wong colorblind-friendly palette. The previous PROTEUS
+submission to the CHILI intercomparison is shown as a dashed black line
+("PROTEUS CHILI"), while the current PROTEUS run is shown in vermillion
+with the git commit SHA in the legend.
 
 <figure markdown="span">
-  ![CHILI melt fraction comparison](../assets/tutorials/earth_chili_melt_fraction.png){ width="80%" }
-  <figcaption>Melt fraction evolution for the CHILI Nominal Earth case.
-  PROTEUS (black, thick) overlaid on six intercomparison models. Solid
-  lines: Earth. All models predict solidification within 4 Myr.</figcaption>
+  ![CHILI melt fraction comparison](../assets/tutorials/earth_chili_melt_fraction.png){ width="100%" }
+  <figcaption>Melt fraction vs time for the CHILI Nominal Earth case, comparing seven coupled atmosphere-interior evolution models. Each model starts fully molten (melt fraction = 1) and solidifies to below 5% within 0.1 to 4 Myr, depending on the model's treatment of mantle convection, radiative transfer, and volatile partitioning. The PROTEUS CHILI submission (dashed black) and the current PROTEUS tutorial run (vermillion) are overlaid on the six comparison models using the Wong colorblind-friendly palette.</figcaption>
 </figure>
 
 <figure markdown="span">
-  ![CHILI T_surf vs Phi comparison](../assets/tutorials/earth_chili_tsurf_vs_phi.png){ width="80%" }
-  <figcaption>Surface temperature vs melt fraction for the CHILI Nominal
-  Earth case. PROTEUS (black, thick) compared against six
-  intercomparison models.</figcaption>
+  ![CHILI T_surf vs Phi comparison](../assets/tutorials/earth_chili_tsurf_vs_phi.png){ width="100%" }
+  <figcaption>Surface temperature vs melt fraction for the CHILI Nominal Earth case. As the mantle solidifies (melt fraction decreasing from left to right), the surface temperature drops from ~3000-3500 K to ~1700-2000 K at the solidus. The spread among models reflects differences in atmospheric opacity, convective heat transport, and the coupling between interior and atmosphere. PROTEUS CHILI (dashed black) and the current PROTEUS run (vermillion) bracket the model ensemble.</figcaption>
 </figure>
 
 For a detailed comparison including the Venus case and the

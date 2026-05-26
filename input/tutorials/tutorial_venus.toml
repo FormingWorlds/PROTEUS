@@ -7,7 +7,7 @@
 # Higher instellation delays solidification; some models predict Type II
 # radiative equilibrium.
 #
-# Run: proteus start --offline -c input/tutorial_venus.toml
+# Run: proteus start --offline -c input/tutorials/tutorial_venus.toml
 
 config_version = "3.0"
 

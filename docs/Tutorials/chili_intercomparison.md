@@ -32,7 +32,7 @@ LINCS, MOAI, PlanAtMO) is publicly available at the
 ## Step 1: Run the Nominal Earth case
 
 ```bash
-proteus start --offline -c input/tutorial_earth.toml
+proteus start --offline -c input/tutorials/tutorial_earth.toml
 ```
 
 This is the same run as the [Earth analogue tutorial](earth_analogue.md).
@@ -41,7 +41,7 @@ Monitor with `tail -f output/tutorial_earth/proteus_00.log`.
 ## Step 2: Run the Nominal Venus case
 
 ```bash
-proteus start --offline -c input/tutorial_venus.toml
+proteus start --offline -c input/tutorials/tutorial_venus.toml
 ```
 
 Venus has higher instellation (1760 vs 920 W m$^{-2}$), which delays

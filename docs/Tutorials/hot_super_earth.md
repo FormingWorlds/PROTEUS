@@ -7,7 +7,7 @@ between intense stellar heating and interior cooling.
 
 ## Configuration
 
-The config file is at `input/tutorial_hot_se.toml`:
+The config file is at `input/tutorials/tutorial_hot_se.toml`:
 
 ```toml
 config_version = "3.0"
@@ -83,7 +83,7 @@ config_version = "3.0"
 
 ```bash
 conda activate proteus
-nohup proteus start --offline -c input/tutorial_hot_se.toml \
+nohup proteus start --offline -c input/tutorials/tutorial_hot_se.toml \
     > output/tutorial_hot_se/launch.log 2>&1 & disown
 ```
 

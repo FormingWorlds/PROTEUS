@@ -8,7 +8,7 @@ envelope while Aragog handles the rocky interior.
 
 ## Configuration
 
-The config file is at `input/tutorial_sub_neptune.toml`:
+The config file is at `input/tutorials/tutorial_sub_neptune.toml`:
 
 ```toml
 config_version = "3.0"
@@ -94,7 +94,7 @@ config_version = "3.0"
 
 ```bash
 conda activate proteus
-nohup proteus start --offline -c input/tutorial_sub_neptune.toml \
+nohup proteus start --offline -c input/tutorials/tutorial_sub_neptune.toml \
     > output/tutorial_sub_neptune/launch.log 2>&1 & disown
 ```
 

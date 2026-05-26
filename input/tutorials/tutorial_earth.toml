@@ -13,7 +13,7 @@
 #
 # Expected: solidification in ~0.5-4 Myr, consistent with CHILI models.
 #
-# Run: proteus start --offline -c input/tutorial_earth.toml
+# Run: proteus start --offline -c input/tutorials/tutorial_earth.toml
 
 config_version = "3.0"
 
