@@ -82,50 +82,62 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 
 <figure markdown="span">
   ![Earth tutorial output](../assets/tutorials/earth_global_log.png){ width="100%" }
-  <figcaption>Multi-panel overview of the PROTEUS Earth analogue tutorial run. Panel (a) shows the radiative heat fluxes: the interior flux F_int (blue) and the atmospheric outgoing longwave radiation F_atm (orange) both decrease as the magma ocean cools, declining from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over ~1.3 Myr. Panel (b) shows the surface partial pressures of outgassed species: CO<sub>2</sub> (orange) dominates the early atmosphere at ~100 bar, while H<sub>2</sub>O (blue) increases as solubility decreases with cooling, reaching ~300 bar at solidification. CO and H<sub>2</sub> are minor species. Panel (c) shows the core-mantle boundary radius (dashed purple), the rheological front (orange), and the melt fraction (dotted black) as fractions of the planet radius. The rheological front propagates outward as the mantle solidifies from the base up. Panel (d) shows the interior volatile partitioning: H<sub>2</sub>O transitions from mostly dissolved in the melt (~80%) to mostly in the atmosphere as the melt fraction drops below ~10%.</figcaption>
+  <figcaption>Multi-panel overview of the PROTEUS Earth analogue tutorial run. (a) Components of the upward heat flux: radiogenic heating (purple), net interior flux (dashed orange), net atmospheric flux (solid orange), outgoing longwave radiation (OLR, dashed green), and absorbed stellar flux (ASF, dashed blue). The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over ~1.3 Myr as the magma ocean cools. (b) Surface partial pressures of outgassed species: H<sub>2</sub>O (blue) and CO<sub>2</sub> (orange) are both ~100 bar initially, with H<sub>2</sub>O rising to ~300 bar and CO<sub>2</sub> remaining at ~100 bar at solidification. CO (dark yellow) and H<sub>2</sub> (green) are minor species at the IW+4 redox buffer. (c) Surface temperature T<sub>s</sub> declining from ~4000 K to ~2000 K at the solidus. (d) Surface gas mole fractions: H<sub>2</sub>O (blue) dominates early at ~90 mol%, then CO<sub>2</sub> (orange) grows as H<sub>2</sub>O partitions into the solidifying mantle; they cross at ~10<sup>5</sup> yr. (e) Mantle evolution showing the core-mantle boundary (dashed purple) at ~0.33 planet fraction, the rheological front (orange solid) propagating outward from the CMB to the surface as the mantle solidifies, and the global melt fraction (dotted black) decreasing from 1.0 to 0.05. (f) Volatile partitioning into the interior: H<sub>2</sub>O (blue) starts ~80% dissolved in the melt and drops to near 0% as the melt fraction approaches zero, releasing volatiles into the atmosphere. CO<sub>2</sub> (orange) follows a similar but less pronounced trend (~15% interior initially).</figcaption>
 </figure>
 
-### Thermal evolution
+### Thermal evolution (panels a, c)
 
-The planet starts fully molten at T$_\mathrm{magma}$ $\approx$ 4300 K.
-The magma ocean radiates intensely through a thick steam/CO$_2$ atmosphere,
-with the outgoing longwave radiation (OLR) reaching ~2 $\times$ 10$^5$
-W m$^{-2}$ initially. This is well above the Nakajima limit
-($\sim$280 W m$^{-2}$), so the planet cools rapidly.
+The planet starts fully molten at T$_\mathrm{s}$ $\approx$ 4000 K.
+The magma ocean radiates through a thick steam/CO$_2$ atmosphere with the
+net interior and atmospheric fluxes reaching ~10$^5$ W m$^{-2}$ initially
+(panel a). Radiogenic heating (purple) provides a constant ~10$^4$
+W m$^{-2}$ baseline throughout. The absorbed stellar flux (ASF, dashed
+blue) is ~300 W m$^{-2}$ at 1 AU, negligible compared to the interior
+heat loss.
 
-As the mantle crystallizes, latent heat is released, buffering the
-cooling rate. The solidification front propagates from the base of the
-mantle (high pressure, higher melting point) outward. By the time the
-global melt fraction drops to 5%, T$_\mathrm{magma}$ has decreased to
-~1860 K (near the solidus) and the total solidification time is ~1.3 Myr.
+The surface temperature (panel c) decreases from ~4000 K to ~2000 K at
+the solidus over ~1.3 Myr. The decline slows around 10$^5$ yr as the
+mantle enters the mushy zone and latent heat release buffers the cooling.
 
-### Atmospheric evolution
+### Atmospheric evolution (panels b, d)
 
-The atmosphere evolves in two stages:
+The atmosphere evolves in composition as the mantle solidifies:
 
-1. **Early phase** ($\Phi$ > 0.5): CO$_2$ dominates the atmosphere
-   because its solubility in silicate melt is low. H$_2$O is mostly
-   dissolved in the magma. The total surface pressure is ~280 bar.
+1. **Early phase** (t < 10$^5$ yr): Both H$_2$O and CO$_2$ are present at
+   comparable partial pressures (~100 bar each, panel b). In terms of
+   mole fraction (panel d), H$_2$O dominates at ~90 mol% because of its
+   lower molecular weight. Most of the H$_2$O is dissolved in the melt
+   (~80%, panel f), with only ~20% in the atmosphere.
 
-2. **Late phase** ($\Phi$ < 0.5): As the melt fraction decreases,
-   H$_2$O exsolves rapidly because its solubility depends on melt
-   fraction. The atmosphere becomes H$_2$O-dominated, reaching ~300 bar
-   of steam at solidification. The total surface pressure increases to
-   ~440 bar.
+2. **Late phase** (t > 10$^5$ yr): As the melt fraction drops, H$_2$O
+   exsolves from the crystallizing mantle and the atmospheric H$_2$O
+   partial pressure increases to ~300 bar. In mole fraction, CO$_2$ grows
+   relative to H$_2$O as the crossover occurs around 10$^5$ yr (panel d).
+   The total surface pressure rises to ~440 bar at solidification.
 
-H$_2$ and CO are minor species throughout, consistent with the oxidizing
-conditions (IW+4). Atmospheric escape removes a small fraction of the
-hydrogen inventory over the 1.3 Myr solidification timescale.
+CO and H$_2$ remain minor species throughout (~1-10 bar), consistent
+with the oxidizing conditions (IW+4). CH$_4$ is negligible.
 
-### Interior structure
+### Mantle evolution (panels e, f)
 
 The Zalmoxis structure solver computes a self-consistent hydrostatic
 profile at initialization: R$_\mathrm{planet}$ = 6.5 Mm (1.02
 R$_\oplus$), core radius = 3.5 Mm (0.55 R$_\oplus$), CMB pressure =
 92 GPa, center pressure = 478 GPa, average density = 5300 kg m$^{-3}$.
-The rheological front (where $\Phi$ crosses the critical melt fraction of
-0.4) propagates from the CMB outward, reaching the surface when
-$\Phi_\mathrm{global}$ = 0.05.
+
+Panel (e) shows the mantle solidification: the core-mantle boundary
+(dashed purple) sits at ~0.33 of the planet radius. The rheological
+front (orange), defined as the radius where $\Phi$ = 0.4, propagates
+outward from the CMB as the mantle crystallizes from the base up. The
+global melt fraction (dotted black) decreases from 1.0 to 0.05, at
+which point the run terminates.
+
+Panel (f) shows the volatile partitioning: H$_2$O (blue) starts with
+~80% of its mass dissolved in the interior melt and drops to near 0%
+as the melt fraction approaches zero, releasing the volatiles into the
+atmosphere. CO$_2$ (orange) follows a similar trend but with a smaller
+interior fraction (~15% initially) because of its lower solubility in
+silicate melt at IW+4.
 
 ## Next steps
 
