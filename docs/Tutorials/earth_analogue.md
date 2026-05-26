@@ -24,7 +24,7 @@ This case follows Table 2 of the CHILI protocol paper:
 | Parameter | Value |
 |-----------|-------|
 | Planet mass | 1 M$_\oplus$ |
-| Core radius fraction | 0.55 |
+| Core mass fraction | 0.325 |
 | Stellar mass | 1 M$_\odot$ |
 | Starting stellar age | 50 Myr |
 | Semi-major axis | 1 AU |

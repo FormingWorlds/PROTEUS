@@ -92,12 +92,14 @@ def _get_proteus_sha():
         return '?'
 
 
+_CACHED_SHA = _get_proteus_sha()
+
+
 def _new_style():
-    sha = _get_proteus_sha()
     return {
         'color': '#D55E00',
         'linewidth': 2.5,
-        'label': f'PROTEUS ({sha})',
+        'label': f'PROTEUS ({_CACHED_SHA})',
         'zorder': 10,
     }
 
@@ -115,11 +117,13 @@ def _load_proteus_helpfile(output_dir):
     hf = output_dir / 'runtime_helpfile.csv'
     if not hf.is_file():
         return None
-    with open(hf) as f:
-        header = f.readline().strip().split()
-    df = pd.read_csv(hf, sep=r'\s+', header=None, skiprows=1)
-    df.columns = header
+    try:
+        df = pd.read_csv(hf, sep=r'\s+', engine='python')
+    except Exception:
+        return None
     df = df[df['Time'] > 0]
+    if df.empty:
+        return None
     df.attrs['_profiles'] = _extract_profiles(output_dir, df)
     return df
 
@@ -131,19 +135,23 @@ def _extract_profiles(output_dir, hf):
     phi_crit = 0.4
     results = {'Phi_global': [], 'R_rheo': [], 'visc_avg': []}
 
+    nc_index = {}
+    if data_dir.is_dir():
+        for c in data_dir.glob('*_int.nc'):
+            try:
+                nc_index[int(c.stem.split('_')[0])] = c
+            except ValueError:
+                continue
+
     for _, row in hf.iterrows():
         t = int(round(row['Time']))
-        ncf = data_dir / f'{t}_int.nc'
-        if not ncf.is_file():
-            for c in data_dir.glob('*_int.nc'):
-                try:
-                    ct = int(c.stem.split('_')[0])
-                    if abs(ct - t) < 10:
-                        ncf = c
-                        break
-                except ValueError:
-                    continue
-        if not ncf.is_file():
+        ncf = nc_index.get(t)
+        if ncf is None:
+            for ct, cp in nc_index.items():
+                if abs(ct - t) < 10:
+                    ncf = cp
+                    break
+        if ncf is None:
             continue
         try:
             ds = nc.Dataset(str(ncf))
@@ -152,28 +160,33 @@ def _extract_profiles(output_dir, hf):
             visc_s = ds.variables['log10visc_s'][:]
             phi_g = float(ds.variables['phi_global'][:])
             ds.close()
-            solid = phi_s < phi_crit
-            if solid.any() and not solid.all():
-                r_rheo = r_s[solid][-1] * 1e3
-            elif solid.all():
-                r_rheo = r_s[-1] * 1e3
-            else:
-                r_rheo = r_s[0] * 1e3
-            visc_avg = 10 ** np.mean(visc_s)
-            results['Phi_global'].append(phi_g)
-            results['R_rheo'].append(r_rheo)
-            results['visc_avg'].append(visc_avg)
-        except Exception:
+        except (KeyError, IndexError, OSError) as e:
+            print(f'Warning: skipping {ncf.name}: {e}')
             continue
+
+        solid = phi_s < phi_crit
+        if solid.any() and not solid.all():
+            r_rheo = r_s[solid][-1] * 1e3
+        elif solid.all():
+            r_rheo = r_s[-1] * 1e3
+        else:
+            r_rheo = r_s[0] * 1e3
+        visc_avg = 10 ** np.mean(visc_s)
+        results['Phi_global'].append(phi_g)
+        results['R_rheo'].append(r_rheo)
+        results['visc_avg'].append(visc_avg)
+
     for k in results:
         results[k] = np.array(results[k])
+    if len(results['Phi_global']) == 0:
+        print('Warning: no interior profiles loaded')
     return results
 
 
 def _get_col(df, *candidates):
     for cand in candidates:
         for c in df.columns:
-            if cand.lower() == c.lower().split('(')[0]:
+            if cand.lower() == c.lower().split('(')[0].strip():
                 return df[c]
     for cand in candidates:
         for c in df.columns:
@@ -482,7 +495,8 @@ def plot_fig6(chili, pe, out):
 
     if pe is not None:
         T = pe['T_surf'].values
-        log10_fO2_IW = 6.57 - 27215.0 / T
+        # Fischer et al. (2011) IW buffer, matching CALLIOPE's default
+        log10_fO2_IW = 6.94059 - 28180.8 / T
         iw_shift = (
             pe['fO2_shift_IW_derived'].values if 'fO2_shift_IW_derived' in pe.columns else 4.0
         )
