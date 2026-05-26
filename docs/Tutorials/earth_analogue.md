@@ -32,7 +32,7 @@ This case follows Table 2 of the CHILI protocol paper:
 | Oxygen fugacity | IW+4 |
 | Hydrogen inventory | 4.7 $\times$ 10$^{20}$ kg (3 Earth oceans H$_2$O) |
 | Carbon inventory | 2.73 $\times$ 10$^{20}$ kg (10$^{21}$ kg CO$_2$) |
-| Initial thermal state | Fully molten (S = 3900 J/kg/K) |
+| Initial thermal state | Fully molten |
 | Termination | Melt fraction $\Phi$ < 5% |
 
 The planet starts fully molten and cools through a magma ocean stage.
@@ -72,15 +72,7 @@ The config at `input/tutorials/tutorial_earth.toml` sets:
 - **Escape**: ZEPHYRUS computes energy-limited mass loss at 30% efficiency,
   distributing the bulk escape rate across elements proportionally.
 
-## Expected output
-
-The simulation should produce:
-
-- **Solidification time**: ~1.3 Myr (consistent with CHILI models, 0.5-4 Myr range)
-- **Surface temperature**: cooling from ~4300 K to ~1860 K (solidus)
-- **Melt fraction**: decreasing from 1.0 to 0.05 (termination threshold)
-- **Surface pressure**: evolving from ~280 bar at Phi = 0.95 to ~440 bar at solidification
-- **Atmospheric composition**: H$_2$O/CO$_2$-dominated throughout
+## Results
 
 After the run completes, generate plots:
 
@@ -90,43 +82,66 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 
 <figure markdown="span">
   ![Earth tutorial output](../assets/tutorials/earth_global_log.png){ width="100%" }
-  <figcaption>PROTEUS Earth analogue tutorial output (log time scale). Panel (a) shows the interior heat flux (F_int, blue) and the outgoing atmospheric flux (F_atm, orange) declining over ~1.3 Myr as the magma ocean cools. Panel (b) shows the outgassed surface partial pressures; CO2 dominates at high melt fractions, with H2O becoming the primary species as the mantle solidifies. Panel (c) tracks the global melt fraction from 1.0 (fully molten) to 0.05 (solidification threshold). Panel (d) shows the magma temperature decreasing from ~4300 K to ~1860 K at the solidus.</figcaption>
+  <figcaption>Multi-panel overview of the PROTEUS Earth analogue tutorial run. Panel (a) shows the radiative heat fluxes: the interior flux F_int (blue) and the atmospheric outgoing longwave radiation F_atm (orange) both decrease as the magma ocean cools, declining from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over ~1.3 Myr. Panel (b) shows the surface partial pressures of outgassed species: CO<sub>2</sub> (orange) dominates the early atmosphere at ~100 bar, while H<sub>2</sub>O (blue) increases as solubility decreases with cooling, reaching ~300 bar at solidification. CO and H<sub>2</sub> are minor species. Panel (c) shows the core-mantle boundary radius (dashed purple), the rheological front (orange), and the melt fraction (dotted black) as fractions of the planet radius. The rheological front propagates outward as the mantle solidifies from the base up. Panel (d) shows the interior volatile partitioning: H<sub>2</sub>O transitions from mostly dissolved in the melt (~80%) to mostly in the atmosphere as the melt fraction drops below ~10%.</figcaption>
 </figure>
 
-## Comparison with CHILI models
+### Thermal evolution
 
-The CHILI intercomparison[^cite-lichtenberg2026] compares PROTEUS
-against six other atmosphere-interior evolution codes: GOOEY, NEONGOOEY,
-PACMAN, LINCS, MOAI, and PlanAtMO[^cite-nicholls2026]. For the nominal
-Earth case, all models predict solidification within 4 Myr. The plots
-below use the Wong colorblind-friendly palette. The previous PROTEUS
-submission to the CHILI intercomparison is shown as a dashed black line
-("PROTEUS CHILI"), while the current PROTEUS run is shown in vermillion
-with the git commit SHA in the legend.
+The planet starts fully molten at T$_\mathrm{magma}$ $\approx$ 4300 K.
+The magma ocean radiates intensely through a thick steam/CO$_2$ atmosphere,
+with the outgoing longwave radiation (OLR) reaching ~2 $\times$ 10$^5$
+W m$^{-2}$ initially. This is well above the Nakajima limit
+($\sim$280 W m$^{-2}$), so the planet cools rapidly.
 
-<figure markdown="span">
-  ![CHILI melt fraction comparison](../assets/tutorials/earth_chili_melt_fraction.png){ width="100%" }
-  <figcaption>Melt fraction vs time for the CHILI Nominal Earth case, comparing seven coupled atmosphere-interior evolution models. Each model starts fully molten (melt fraction = 1) and solidifies to below 5% within 0.1 to 4 Myr, depending on the model's treatment of mantle convection, radiative transfer, and volatile partitioning. The PROTEUS CHILI submission (dashed black) and the current PROTEUS tutorial run (vermillion) are overlaid on the six comparison models using the Wong colorblind-friendly palette.</figcaption>
-</figure>
+As the mantle crystallizes, latent heat is released, buffering the
+cooling rate. The solidification front propagates from the base of the
+mantle (high pressure, higher melting point) outward. By the time the
+global melt fraction drops to 5%, T$_\mathrm{magma}$ has decreased to
+~1860 K (near the solidus) and the total solidification time is ~1.3 Myr.
 
-<figure markdown="span">
-  ![CHILI T_surf vs Phi comparison](../assets/tutorials/earth_chili_tsurf_vs_phi.png){ width="100%" }
-  <figcaption>Surface temperature vs melt fraction for the CHILI Nominal Earth case. As the mantle solidifies (melt fraction decreasing from left to right), the surface temperature drops from ~3000-3500 K to ~1700-2000 K at the solidus. The spread among models reflects differences in atmospheric opacity, convective heat transport, and the coupling between interior and atmosphere. PROTEUS CHILI (dashed black) and the current PROTEUS run (vermillion) bracket the model ensemble.</figcaption>
-</figure>
+### Atmospheric evolution
 
-For a detailed comparison including the Venus case and the
-Earth volatile grid, see the
-[CHILI intercomparison tutorial](chili_intercomparison.md).
+The atmosphere evolves in two stages:
 
-## Things to try
+1. **Early phase** ($\Phi$ > 0.5): CO$_2$ dominates the atmosphere
+   because its solubility in silicate melt is low. H$_2$O is mostly
+   dissolved in the magma. The total surface pressure is ~280 bar.
 
-- **Venus analogue**: change `planet.mass_tot = 0.815`,
-  `orbit.semimajoraxis = 0.723` to simulate Venus. Expect longer
-  solidification times due to higher instellation.
-- **Volatile sensitivity**: vary `H_budget` between 1.6e20 and 1.6e21 kg
-  to explore the effect of hydrogen inventory on cooling time.
-- **Reduced mantle**: set `outgas.fO2_shift_IW = -2` to simulate a
+2. **Late phase** ($\Phi$ < 0.5): As the melt fraction decreases,
+   H$_2$O exsolves rapidly because its solubility depends on melt
+   fraction. The atmosphere becomes H$_2$O-dominated, reaching ~300 bar
+   of steam at solidification. The total surface pressure increases to
+   ~440 bar.
+
+H$_2$ and CO are minor species throughout, consistent with the oxidizing
+conditions (IW+4). Atmospheric escape removes a small fraction of the
+hydrogen inventory over the 1.3 Myr solidification timescale.
+
+### Interior structure
+
+The Zalmoxis structure solver computes a self-consistent hydrostatic
+profile at initialization: R$_\mathrm{planet}$ = 6.5 Mm (1.02
+R$_\oplus$), core radius = 3.5 Mm (0.55 R$_\oplus$), CMB pressure =
+92 GPa, center pressure = 478 GPa, average density = 5300 kg m$^{-3}$.
+The rheological front (where $\Phi$ crosses the critical melt fraction of
+0.4) propagates from the CMB outward, reaching the surface when
+$\Phi_\mathrm{global}$ = 0.05.
+
+## Next steps
+
+- **Venus analogue**: Run the Venus tutorial
+  (`input/tutorials/tutorial_venus.toml`) with `planet.mass_tot = 0.815`
+  and `orbit.semimajoraxis = 0.723` to explore the effect of higher
+  instellation on solidification.
+- **CHILI comparison**: See the
+  [CHILI intercomparison tutorial](chili_intercomparison.md) for
+  multi-model comparison plots.
+- **Volatile sensitivity**: Vary `H_budget` between 1.6$\times$10$^{20}$
+  and 1.6$\times$10$^{21}$ kg to explore the effect of hydrogen inventory
+  on cooling time.
+- **Reduced mantle**: Set `outgas.fO2_shift_IW = -2` to simulate a
   reduced mantle producing H$_2$-rich instead of H$_2$O-rich atmospheres.
+  See the [Reduced H$_2$-rich world](reduced_h2_world.md) tutorial.
 
 ---
 

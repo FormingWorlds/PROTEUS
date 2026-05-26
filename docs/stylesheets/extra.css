@@ -17,3 +17,11 @@
 .md-typeset p a:has(> img) {
   text-decoration: none;
 }
+
+/* Figure captions: justified, full width, slightly smaller */
+.md-typeset figcaption {
+  text-align: justify;
+  max-width: 100%;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
