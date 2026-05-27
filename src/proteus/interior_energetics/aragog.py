@@ -372,15 +372,39 @@ class AragogRunner:
                     _t_after_factory - _t_after_init,
                 )
             if config.params.resume and getattr(interior_o, '_last_entropy', None) is not None:
-                # Restore the evolved entropy field saved by update_solver
-                # from the last NetCDF snapshot. Without this, _set_entropy_ic
-                # overwrites the solver with the t=0 isentrope, causing the
-                # mantle to remelt from scratch on resume.
-                interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
-                log.info(
-                    'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
-                    float(np.mean(interior_o._last_entropy)),
-                )
+                # Restore the evolved entropy field and CMB boundary state
+                # from the last NetCDF snapshot. Two pieces must be set:
+                #  1. S(r) profile on staggered nodes
+                #  2. dSdr_cmb for the energy_balance core BC
+                # Without this, _set_entropy_ic overwrites the solver with
+                # the t=0 isentrope, causing remelting on resume.
+                solver = interior_o.aragog_solver
+                S_snap = interior_o._last_entropy
+                n_stag = getattr(solver, '_n_stag', len(S_snap))
+                core_bc = getattr(solver, '_core_bc', 'quasi_steady')
+
+                if core_bc == 'energy_balance' and n_stag >= 2:
+                    r_stag = np.asarray(solver._r_stag_flat, dtype=float)
+                    dr = max(float(r_stag[1] - r_stag[0]), 1.0)
+                    dSdr_cmb = (float(S_snap[1]) - float(S_snap[0])) / dr
+
+                    S0 = np.empty(n_stag + 1)
+                    S0[:n_stag] = S_snap[:n_stag]
+                    S0[n_stag] = dSdr_cmb
+                    solver._S0 = S0
+                    log.info(
+                        'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K, '
+                        'dSdr_cmb=%.3e J/kg/K/m (dr=%.1f m)',
+                        float(np.mean(S_snap)),
+                        dSdr_cmb,
+                        dr,
+                    )
+                else:
+                    solver.set_initial_entropy(S_snap)
+                    log.info(
+                        'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
+                        float(np.mean(S_snap)),
+                    )
             else:
                 # Fresh run: set entropy IC from Zalmoxis T(r) profile
                 AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
