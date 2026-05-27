@@ -110,8 +110,7 @@ def run_atmosphere(
 
         # Run JANUS
         no_atm = bool(atmos_o._atm is None)
-        # Enforce surface temperature at first iteration
-        if no_atm:
+        if no_atm and not config.params.resume:
             hf_row['T_surf'] = hf_row['T_magma']
 
         # Init atm object if first iteration or change in stellar spectrum
@@ -154,8 +153,8 @@ def run_atmosphere(
             # first run?
             if no_atm:
                 activate_julia(dirs, config.atmos_clim.agni.verbosity)
-                # surface temperature guess
-                hf_row['T_surf'] = hf_row['T_magma']
+                if not config.params.resume:
+                    hf_row['T_surf'] = hf_row['T_magma']
             else:
                 # Remove old spectral file if it exists
                 safe_rm(spfile_path)

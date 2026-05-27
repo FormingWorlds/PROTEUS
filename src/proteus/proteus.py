@@ -548,6 +548,13 @@ class Proteus:
             self.last_struct_Tmagma = self.hf_row.get('T_magma', np.inf)
             self.last_struct_Phi = self.hf_row.get('Phi_global', np.inf)
 
+            # Save the coupled T_surf for the first resumed atmosphere solve.
+            # Aragog's first step outputs an adiabatic T_magma ~30-50 K above
+            # the coupled T_surf because the conductive skin layer is an AGNI
+            # construct that Aragog does not model. Anchoring AGNI's first
+            # solve at the coupled T_surf prevents the skin-layer transient.
+            self._resume_T_surf = self.hf_row.get('T_surf')
+
         log.info(' ')
 
         # Prepare star stuff
@@ -630,6 +637,34 @@ class Proteus:
             )
             if _IT_TIMING_ENABLED:
                 _t_mod['interior'] = time.perf_counter() - _t0
+
+            # After resume, Aragog's T_magma output reflects the adiabatic
+            # surface temperature, which is ~30-50 K above the coupled
+            # T_surf (the AGNI skin layer is not yet re-established).
+            # Blend T_magma toward the coupled value over a few steps
+            # until AGNI's skin layer reconverges.
+            resume_anchor = getattr(self, '_resume_T_surf', None)
+            if resume_anchor is not None:
+                T_adiab = self.hf_row.get('T_magma', 0.0)
+                skin_delta = T_adiab - resume_anchor
+                if skin_delta > 5.0:
+                    self.hf_row['T_magma'] = resume_anchor
+                    log.info(
+                        'Resume: anchoring T_magma at coupled T_surf '
+                        '(%.1f K -> %.1f K, skin delta %.1f K)',
+                        T_adiab,
+                        resume_anchor,
+                        skin_delta,
+                    )
+                    # Track the coupled value forward: after each AGNI
+                    # solve, update the anchor with the new T_surf so
+                    # subsequent steps use the evolving coupled value.
+                else:
+                    log.info(
+                        'Resume: skin layer converged (delta %.1f K), releasing anchor',
+                        skin_delta,
+                    )
+                    self._resume_T_surf = None
 
             # Advance current time in main loop according to interior step
             self.hf_row['Time'] += self.interior_o.dt  # in years
@@ -846,6 +881,12 @@ class Proteus:
             if _saved_atm_bc:
                 for key, val in _saved_atm_bc.items():
                     self.hf_row[key] = val
+
+            # Update the resume T_surf anchor with the new coupled value
+            # from this AGNI solve, so the next step's anchoring tracks
+            # the evolving surface temperature.
+            if getattr(self, '_resume_T_surf', None) is not None:
+                self._resume_T_surf = self.hf_row.get('T_surf', self._resume_T_surf)
 
             # Atmosphere-interior coupling deadlock detection.
             # If the atmosphere solver failed AND the interior state has

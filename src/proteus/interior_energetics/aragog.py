@@ -1773,6 +1773,7 @@ class AragogRunner:
                 write_diagnostics=getattr(
                     self._config.interior_energetics, 'write_flux_diagnostics', False
                 ),
+                T_surf_coupled=hf_row.get('T_surf'),
             )
 
         return sim_time, output
@@ -2105,6 +2106,7 @@ class AragogRunner:
         time: float,
         out: SolverOutput,
         write_diagnostics: bool = False,
+        T_surf_coupled: float | None = None,
     ):
         """Write entropy solver output to NetCDF using SolverOutput.
 
@@ -2114,6 +2116,10 @@ class AragogRunner:
             When True, append per-component flux decomposition and
             basic-node state to the NetCDF. See
             ``config.interior_energetics.write_flux_diagnostics``.
+        T_surf_coupled : float or None
+            PROTEUS-coupled surface temperature (post AGNI skin-layer
+            correction). Stored alongside Aragog's adiabatic temp_s so
+            resume can initialize AGNI at the correct T_surf.
         """
         fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
         ds = nc.Dataset(fpath, mode='w')
@@ -2161,6 +2167,11 @@ class AragogRunner:
         ds.createVariable('phi_global', np.float64)
         ds['phi_global'][0] = out.Phi_global
 
+        if T_surf_coupled is not None:
+            ds.createVariable('T_surf_coupled', np.float64)
+            ds['T_surf_coupled'][0] = float(T_surf_coupled)
+            ds['T_surf_coupled'].units = 'K'
+
         ds.close()
 
 
@@ -2176,6 +2187,20 @@ def read_last_Sfield(output_dir: str, time: float):
         S_stag = np.array(ds.get('temp_s', ds.get('temp_b', [3200.0]))[:])
     ds.close()
     return S_stag
+
+
+def read_T_surf_coupled(output_dir: str, time: float) -> float | None:
+    """Read the coupled surface temperature from an Aragog NetCDF snapshot.
+
+    Returns None if the variable is absent (pre-fix snapshots).
+    """
+    fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
+    if not os.path.isfile(fpath):
+        return None
+    with nc.Dataset(fpath) as ds:
+        if 'T_surf_coupled' in ds.variables:
+            return float(ds['T_surf_coupled'][0])
+    return None
 
 
 def get_all_output_times(output_dir: str):
