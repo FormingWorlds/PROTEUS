@@ -1,9 +1,9 @@
 # PROTEUS CHILI Grid: Hhigh Clow
 #
-# Reproduces the nominal Earth case from the CHILI intercomparison
-# (Lichtenberg et al. 2026, PSJ 7:108, Table 2).
+# CHILI Earth grid case (H=1.60e+21 kg, C=1.36e+20 kg)
+# Lichtenberg et al. 2026, PSJ 7:108, Table 3.
 #
-# Planet: 1 M_Earth, BSE composition, 3 Earth oceans of H2O + 1e21 kg CO2
+# Planet: 1 M_Earth, BSE composition, fO2 = IW+4
 # Star: Sun at 50 Myr (Spada tracks, solar spectrum)
 # Orbit: 1 AU, no tides
 # Interior: Aragog + Zalmoxis (PALEOS EOS)
@@ -13,7 +13,7 @@
 #
 # Expected: solidification in ~0.5-4 Myr, consistent with CHILI models.
 #
-# Run: proteus start --offline -c input/tutorials/tutorial_earth.toml
+# Run: proteus start --offline -c input/tutorials/chili_grid/earth_Hhigh_Clow.toml
 
 config_version = "3.0"
 

@@ -25,8 +25,10 @@ fraction drops below 5%.
 
 - Full PROTEUS installation (see [Installation](../How-to/installation.md))
 - AGNI, SOCRATES, and all reference data
+- Spectral files downloaded (`proteus get spectral`)
+- Solar spectrum downloaded (`proteus get stellar`)
 - `git` (to clone the CHILI comparison data)
-- Allow 2-5 hours per run (Earth ~2 hr, Venus ~5 hr)
+- Allow 30 min to several hours per run depending on hardware
 
 ## Step 1: Run the nominal cases
 
@@ -34,13 +36,18 @@ fraction drops below 5%.
 conda activate proteus
 
 # Earth (see also the Earth analogue tutorial for detailed analysis)
+mkdir -p output/tutorial_earth
 nohup proteus start --offline -c input/tutorials/tutorial_earth.toml \
-    > output/tutorial_earth/launch.log 2>&1 & disown
+    > /tmp/proteus_earth_launch.log 2>&1 & disown
 
 # Venus
+mkdir -p output/tutorial_venus
 nohup proteus start --offline -c input/tutorials/tutorial_venus.toml \
-    > output/tutorial_venus/launch.log 2>&1 & disown
+    > /tmp/proteus_venus_launch.log 2>&1 & disown
 ```
+
+Monitor progress with `tail -f output/tutorial_earth/proteus_00.log`
+(the log appears once PROTEUS has initialized).
 
 ## Step 2: Download comparison data
 
@@ -107,7 +114,7 @@ in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif){ width="100%" }
-  <figcaption>Atmospheric partial pressures for the Nominal Venus case at two solidification stages. Left: at 95% melt fraction (early). Right: at 5% melt fraction (near solidification, Phi = 5.2%). Stacked bars show contributions from H<sub>2</sub>O, CO<sub>2</sub>, CO, H<sub>2</sub>, and CH<sub>4</sub>. PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar. The spread across models is comparable to the Earth case, though Venus atmospheres are generally thicker due to slower solidification at higher instellation.</figcaption>
+  <figcaption>Atmospheric partial pressures for the Nominal Venus case at two solidification stages. Left: at 95% melt fraction (early). Right: at 5% melt fraction (near solidification, Phi = 5.2%). Grouped bars show individual species contributions for each model. PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar. The dashed black "PROTEUS CHILI" bars are the original CHILI submission; the vermillion bars are the current run.</figcaption>
 </figure>
 
 ## fO$_2$ vs surface temperature (Fig. 6)
@@ -146,7 +153,7 @@ timescale:
 
 | | C$_\mathrm{low}$ (1.36$\times$10$^{20}$ kg) | C$_\mathrm{mid}$ (2.73$\times$10$^{20}$ kg) | C$_\mathrm{high}$ (5.44$\times$10$^{20}$ kg) |
 |---|---|---|---|
-| **H$_\mathrm{low}$** (1.6$\times$10$^{20}$ kg) | 0.5 EO, low C | 0.5 EO, mid C | 0.5 EO, high C |
+| **H$_\mathrm{low}$** (1.6$\times$10$^{20}$ kg) | 1 EO, low C | 1 EO, mid C | 1 EO, high C |
 | **H$_\mathrm{mid}$** (7.8$\times$10$^{20}$ kg) | 5 EO, low C | 5 EO, mid C | 5 EO, high C |
 | **H$_\mathrm{high}$** (16.0$\times$10$^{20}$ kg) | 10 EO, low C | 10 EO, mid C | 10 EO, high C |
 
@@ -155,9 +162,18 @@ Grid configs are in `input/tutorials/chili_grid/`. Run all 9 cases:
 ```bash
 for cfg in input/tutorials/chili_grid/*.toml; do
     name=$(basename "$cfg" .toml)
-    mkdir -p "output/chili_grid_earth_${name#earth_}"
+    outdir="output/chili_grid_earth_${name#earth_}"
+    mkdir -p "$outdir"
     nohup proteus start --offline -c "$cfg" \
-        > "output/chili_grid_earth_${name#earth_}/launch.log" 2>&1 & disown
+        > "/tmp/proteus_grid_${name}.log" 2>&1 & disown
+done
+```
+
+Check status of running grid cases:
+
+```bash
+for d in output/chili_grid_earth_*/; do
+    printf "%-40s %s\n" "$(basename $d)" "$(cat $d/status 2>/dev/null || echo 'not started')"
 done
 ```
 
@@ -173,15 +189,18 @@ Solidification times for the completed grid cases:
 
 | | C$_\mathrm{low}$ | C$_\mathrm{mid}$ | C$_\mathrm{high}$ |
 |---|---|---|---|
-| **H$_\mathrm{low}$** (0.5 EO) | 0.49 Myr | 0.53 Myr | 0.61 Myr |
+| **H$_\mathrm{low}$** (1 EO) | 0.49 Myr | 0.53 Myr | 0.61 Myr |
 | **H$_\mathrm{mid}$** (5 EO) | 2.72 Myr | 2.55 Myr | 2.42 Myr |
 | **H$_\mathrm{high}$** (10 EO) | TBD | TBD | TBD |
 
 Hydrogen inventory is the primary control on solidification timescale:
-a 5x increase in H budget (0.5 to 5 EO) delays solidification by a
-factor of ~5. The carbon effect is secondary and non-monotonic: at
-mid-H, higher C slightly shortens the solidification time because the
-CO$_2$ opacity contribution saturates earlier.
+a ~5x increase in H budget (1 to 5 EO) delays solidification by a
+factor of ~5. The carbon effect is secondary and non-monotonic. At
+low H, more CO$_2$ adds greenhouse opacity and slows cooling (0.49
+to 0.61 Myr). At mid-H, the effect reverses: more CO$_2$ raises
+P$_\mathrm{surf}$, which via Henry's law enhances H$_2$O dissolution
+in the silicate melt, reducing the atmospheric H$_2$O greenhouse and
+allowing higher OLR (2.72 to 2.42 Myr).
 
 ## Key findings
 
@@ -195,8 +214,8 @@ CO$_2$ opacity contribution saturates earlier.
 
 3. **Cooling timescales correlate with hydrogen inventory**: higher H
    budgets produce thicker, more opaque steam atmospheres that slow
-   radiative cooling. The low-H grid cases solidify in ~0.5 Myr, while
-   the high-H cases take several Myr.
+   radiative cooling. The low-H grid cases (1 EO) solidify in ~0.5 Myr,
+   while the high-H cases (10 EO) take several Myr.
 
 4. **Model differences arise from**: gas chemistry (which species are
    tracked and whether equilibrium or kinetic), volatile partitioning

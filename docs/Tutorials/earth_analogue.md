@@ -45,14 +45,17 @@ energy-limited (ZEPHYRUS, 30% efficiency).
 
 ```bash
 conda activate proteus
+mkdir -p output/tutorial_earth
 nohup proteus start --offline -c input/tutorials/tutorial_earth.toml \
-    > output/tutorial_earth/launch.log 2>&1 & disown
+    > /tmp/proteus_earth_launch.log 2>&1 & disown
 ```
 
 !!! warning "Runtime"
-    This run takes 30 minutes to several hours depending on your machine.
-    The initial Zalmoxis structure solve (~10-20 min) is the slowest phase.
-    Monitor progress with `tail -f output/tutorial_earth/proteus_00.log`.
+    This run takes 30 minutes to several hours depending on hardware.
+    The initial Zalmoxis structure solve (~10-20 min) is the slowest
+    phase. Monitor progress with
+    `tail -f output/tutorial_earth/proteus_00.log` (the log appears
+    once PROTEUS has initialized).
 
 ## Configuration
 
@@ -83,7 +86,7 @@ proteus plot -c input/tutorials/tutorial_earth.toml all
 <figure markdown="span">
   ![Earth tutorial output](../assets/tutorials/earth_global_log.avif){ width="100%" }
   <figcaption>Multi-panel overview of the PROTEUS Earth analogue tutorial run.
-  (a) Upward heat flux components: radiogenic heating (purple, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid orange), OLR (dashed green), and absorbed stellar flux (ASF, dashed blue, ~1005 W m<sup>-2</sup>). The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over 1.3 Myr.
+  (a) Upward heat flux components: radiogenic heating (purple, ~0.2 W m<sup>-2</sup>), net interior flux (dashed orange), net atmospheric flux (solid orange), OLR (dashed green), and absorbed stellar flux (ASF, dashed blue, ~226 W m<sup>-2</sup>). The net fluxes decline from ~10<sup>5</sup> W m<sup>-2</sup> to ~10<sup>2</sup> W m<sup>-2</sup> over 1.3 Myr.
   (b) Surface partial pressures: CO<sub>2</sub> (orange) dominates early at ~88 bar; H<sub>2</sub>O (blue) starts at ~5 bar and rises to ~368 bar as it exsolves during solidification. CO (dark yellow) and H<sub>2</sub> (green) remain minor.
   (c) Surface temperature declining from ~3300 K to ~1860 K at the solidus.
   (d) Surface gas mole fractions: CO<sub>2</sub> (orange) dominates early; H<sub>2</sub>O (blue) rises from near zero to dominate late, crossing CO<sub>2</sub> around 10<sup>5</sup> yr.
@@ -98,8 +101,9 @@ The magma ocean radiates through a thick CO$_2$/steam atmosphere, with
 the net interior and atmospheric fluxes reaching ~10$^5$ W m$^{-2}$
 initially (a). Radiogenic heating (purple) provides a constant ~0.2
 W m$^{-2}$ baseline, negligible compared to the interior cooling flux.
-The absorbed stellar flux (ASF, dashed blue) is ~1005 W m$^{-2}$ at 1 AU
-(S$_\odot$ $\times$ (1 - A) $\times$ geometry factor, with A = 0.1).
+The absorbed stellar flux (ASF, dashed blue) is ~226 W m$^{-2}$ at 1 AU
+(instellation F$_\mathrm{ins}$ $\approx$ 1005 W m$^{-2}$ at 50 Myr,
+reduced by the geometry factor, Bond albedo, and zenith angle).
 
 The surface temperature (c) decreases from ~3300 K to ~1860 K at the
 solidus over ~1.3 Myr. The decline slows around 10$^5$ yr as the mantle

@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -82,24 +83,35 @@ GAS_COLORS = {
     'H2S': '#E91E63',
 }
 
-# ── Shared style ──────────────────────────────────────────────────────
-matplotlib.rcParams.update(
-    {
-        'font.family': 'sans-serif',
-        'font.sans-serif': ['Helvetica', 'Arial', 'DejaVu Sans'],
-        'font.size': 11,
-        'axes.labelsize': 12,
-        'axes.titlesize': 13,
-        'legend.fontsize': 8,
-        'xtick.direction': 'in',
-        'ytick.direction': 'in',
-        'xtick.top': True,
-        'ytick.right': True,
-        'axes.linewidth': 0.8,
-        'xtick.major.width': 0.8,
-        'ytick.major.width': 0.8,
-    }
-)
+_PLOT_STYLE = {
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['Helvetica', 'Arial', 'DejaVu Sans'],
+    'font.size': 11,
+    'axes.labelsize': 12,
+    'axes.titlesize': 13,
+    'legend.fontsize': 8,
+    'xtick.direction': 'in',
+    'ytick.direction': 'in',
+    'xtick.top': True,
+    'ytick.right': True,
+    'axes.linewidth': 0.8,
+    'xtick.major.width': 0.8,
+    'ytick.major.width': 0.8,
+}
+
+GRID_H = {
+    'Hlow': 1.6e20,
+    'Hmid': 7.8e20,
+    'Hhigh': 16.0e20,
+}
+GRID_H_LABELS = {'Hlow': '1 EO', 'Hmid': '5 EO', 'Hhigh': '10 EO'}
+GRID_C_LABELS = {
+    'Clow': r'C$_\mathrm{low}$',
+    'Cmid': r'C$_\mathrm{mid}$',
+    'Chigh': r'C$_\mathrm{high}$',
+}
+
+PHI_RELAX = 0.01
 
 
 def _get_proteus_sha():
@@ -115,16 +127,43 @@ def _get_proteus_sha():
         return '?'
 
 
-_CACHED_SHA = _get_proteus_sha()
-
-
-def _new_style():
+def _new_style(sha):
     return {
         'color': '#D55E00',
         'linewidth': 2.5,
-        'label': f'PROTEUS ({_CACHED_SHA})',
+        'label': f'PROTEUS ({sha})',
         'zorder': 10,
     }
+
+
+def _get_col(df, *candidates):
+    """Match column by exact stem (before parenthesised units). No substring fallback."""
+    for cand in candidates:
+        for c in df.columns:
+            if cand.lower() == c.lower().split('(')[0].strip():
+                return df[c]
+    return None
+
+
+def _get_phi(df):
+    col = _get_col(df, 'phi', 'phi_global', 'melt_fraction', 'melt')
+    if col is None:
+        return None
+    if col.max() > 1:
+        col = col / 100
+    return col
+
+
+def _find_row_at_phi(df, phi_target, phi_col='Phi_global', relax=PHI_RELAX):
+    """Find the first row where phi <= target, with optional relaxation."""
+    idx = df[phi_col] <= phi_target
+    if idx.any():
+        return df[idx].iloc[0]
+    idx = df[phi_col] <= phi_target + relax
+    if idx.any():
+        print(f'  Warning: relaxed Phi threshold from {phi_target} to {phi_target + relax}')
+        return df[idx].iloc[0]
+    return None
 
 
 def _load_chili_csv(path):
@@ -132,7 +171,8 @@ def _load_chili_csv(path):
         return None
     try:
         return pd.read_csv(path, comment='#')
-    except Exception:
+    except (pd.errors.ParserError, FileNotFoundError, PermissionError):
+        print(f'Warning: could not parse {path}')
         return None
 
 
@@ -142,7 +182,8 @@ def _load_proteus_helpfile(output_dir):
         return None
     try:
         df = pd.read_csv(hf, sep=r'\s+', engine='python')
-    except Exception:
+    except (pd.errors.ParserError, FileNotFoundError, PermissionError):
+        print(f'Warning: could not parse {hf}')
         return None
     df = df[df['Time'] > 0]
     if df.empty:
@@ -152,7 +193,11 @@ def _load_proteus_helpfile(output_dir):
 
 
 def _extract_profiles(output_dir, hf):
-    import netCDF4 as nc
+    try:
+        import netCDF4 as nc
+    except ImportError:
+        print('Warning: netCDF4 not installed, skipping interior profile extraction (Fig 8)')
+        return {'Phi_global': np.array([]), 'R_rheo': np.array([]), 'visc_avg': np.array([])}
 
     data_dir = output_dir / 'data'
     phi_crit = 0.4
@@ -177,12 +222,11 @@ def _extract_profiles(output_dir, hf):
         if ncf is None:
             continue
         try:
-            ds = nc.Dataset(str(ncf))
-            phi_s = ds.variables['phi_s'][:]
-            r_s = ds.variables['radius_s'][:]
-            visc_s = ds.variables['log10visc_s'][:]
-            phi_g = float(ds.variables['phi_global'][:])
-            ds.close()
+            with nc.Dataset(str(ncf)) as ds:
+                phi_s = ds.variables['phi_s'][:]
+                r_s = ds.variables['radius_s'][:]
+                visc_s = ds.variables['log10visc_s'][:]
+                phi_g = float(ds.variables['phi_global'][:])
         except (KeyError, IndexError, OSError) as e:
             print(f'Warning: skipping {ncf.name}: {e}')
             continue
@@ -206,54 +250,19 @@ def _extract_profiles(output_dir, hf):
     return results
 
 
-def _get_col(df, *candidates):
-    for cand in candidates:
-        for c in df.columns:
-            if cand.lower() == c.lower().split('(')[0].strip():
-                return df[c]
-    for cand in candidates:
-        for c in df.columns:
-            if cand.lower() in c.lower():
-                return df[c]
-    return None
-
-
-def _get_phi(df):
-    col = _get_col(df, 'phi', 'melt')
-    if col is None:
-        return None
-    if col.max() > 1:
-        col = col / 100
-    return col
-
-
-def _plot_model(ax, x, y, style, default_ls='-', default_lw=1.2):
-    ax.plot(
-        x,
-        y,
-        linestyle=style.get('ls', default_ls),
-        color=style['color'],
-        linewidth=style.get('lw', default_lw),
-        alpha=style.get('alpha', 0.8),
-        label=style['label'],
-        zorder=style.get('zorder', 2),
-    )
-
-
 def ensure_chili_repo(chili_path):
-    if chili_path.is_dir() and (chili_path / 'intercomparison').is_dir():
-        return chili_path
+    outputs = chili_path / 'intercomparison' / 'outputs'
+    if chili_path.is_dir() and outputs.is_dir():
+        return outputs
     subprocess.run(
         ['git', 'clone', '--depth', '1', CHILI_REPO_URL, str(chili_path)], check=True
     )
-    return chili_path
+    return chili_path / 'intercomparison' / 'outputs'
 
 
 # ── Fig 1: Melt fraction vs time ──────────────────────────────────────
-def plot_fig1(chili, pe, pv, out):
-    NS = _new_style()
+def plot_fig1(intercomp, pe, pv, NS, out):
     fig, ax = plt.subplots(figsize=(7, 5))
-    intercomp = chili / 'intercomparison' / 'outputs'
 
     for mk, st in MODELS.items():
         for planet, ls in [('earth', '-'), ('venus', '--')]:
@@ -306,11 +315,9 @@ def plot_fig1(chili, pe, pv, out):
 
 
 # ── Fig 2: Solidification milestones ──────────────────────────────────
-def plot_fig2(chili, pe, out):
-    NS = _new_style()
+def plot_fig2(intercomp, pe, NS, out):
     milestones = [0.95, 0.40, 0.05]
     fig, ax = plt.subplots(figsize=(7, 5))
-    intercomp = chili / 'intercomparison' / 'outputs'
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
@@ -359,19 +366,22 @@ def plot_fig2(chili, pe, out):
     _save(fig, out, 'chili_fig2_milestones')
 
 
-# ── Fig 3: Atmospheric composition ────────────────────────────────────
-def plot_fig3(chili, pe, out):
-    NS = _new_style()
+# ── Figs 3 & 5: Atmospheric composition (grouped bars) ───────────────
+def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
+    """Grouped bar chart of partial pressures at Phi=95% and 5%."""
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
-    intercomp = chili / 'intercomparison' / 'outputs'
     phi_targets = [0.95, 0.05]
+    planet_cap = planet.capitalize()
+    titles = [rf'{planet_cap} $\Phi$ = 95%', rf'{planet_cap} $\Phi$ = 5%']
 
-    for ax, phi_tgt, title in zip(axes, phi_targets, [r'$\Phi$ = 95%', r'$\Phi$ = 5%']):
+    active_species = []
+
+    for ax, phi_tgt, title in zip(axes, phi_targets, titles):
         model_names = []
         gas_data = {g: [] for g in GAS_SPECIES}
 
         for mk, st in MODELS.items():
-            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-{planet}-data.csv')
             if df is None:
                 continue
             phi = _get_phi(df)
@@ -384,36 +394,42 @@ def plot_fig3(chili, pe, out):
             model_names.append(st['label'])
             for g in GAS_SPECIES:
                 col = _get_col(df, f'p_{g}')
-                gas_data[g].append(
-                    float(row[col.name]) if col is not None and col.name in row.index else 0
-                )
+                val = float(row[col.name]) if col is not None and col.name in row.index else 0
+                gas_data[g].append(val if not np.isnan(val) else 0)
 
-        if pe is not None:
-            idx = pe['Phi_global'] <= phi_tgt
-            if idx.any():
-                row = pe[idx].iloc[0]
+        if proteus_df is not None:
+            row = _find_row_at_phi(proteus_df, phi_tgt)
+            if row is not None:
                 model_names.append(NS['label'])
                 for g in GAS_SPECIES:
                     gas_data[g].append(float(row.get(f'{g}_bar', 0)))
 
         if not model_names:
             continue
-        x = np.arange(len(model_names))
-        bottom = np.zeros(len(model_names))
-        for g in GAS_SPECIES:
+
+        present = [g for g in GAS_SPECIES if np.array(gas_data[g]).sum() > 0]
+        for g in present:
+            if g not in active_species:
+                active_species.append(g)
+
+        n_models = len(model_names)
+        n_species = len(present)
+        if n_species == 0:
+            continue
+        bar_width = 0.7 / n_species
+        x = np.arange(n_models)
+        for i, g in enumerate(present):
             vals = np.array(gas_data[g])
-            if vals.sum() > 0:
-                ax.bar(
-                    x,
-                    vals,
-                    bottom=bottom,
-                    color=GAS_COLORS[g],
-                    label=g,
-                    width=0.6,
-                    edgecolor='white',
-                    linewidth=0.3,
-                )
-                bottom += vals
+            vals[vals <= 0] = np.nan
+            ax.bar(
+                x + (i - n_species / 2 + 0.5) * bar_width,
+                vals,
+                color=GAS_COLORS[g],
+                label=g,
+                width=bar_width,
+                edgecolor='white',
+                linewidth=0.3,
+            )
         ax.set_xticks(x)
         ax.set_xticklabels(model_names, fontsize=7, rotation=45, ha='right')
         ax.set_ylabel('Partial pressure (bar)')
@@ -423,85 +439,20 @@ def plot_fig3(chili, pe, out):
 
     axes[0].legend(fontsize=7, ncol=3, loc='upper left', framealpha=0.9)
     fig.tight_layout()
-    _save(fig, out, 'chili_fig3_atm_composition')
+    _save(fig, out, fig_name)
 
 
-# ── Fig 5: Venus atmospheric composition at solidification ──────────
-def plot_fig5(chili, pv, out):
-    NS = _new_style()
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
-    intercomp = chili / 'intercomparison' / 'outputs'
-    phi_targets = [0.95, 0.05]
+def plot_fig3(intercomp, pe, NS, out):
+    _plot_atm_composition(intercomp, pe, 'earth', NS, out, 'chili_fig3_atm_composition')
 
-    for ax, phi_tgt, title in zip(
-        axes, phi_targets, [r'Venus $\Phi$ = 95%', r'Venus $\Phi$ = 5%']
-    ):
-        model_names = []
-        gas_data = {g: [] for g in GAS_SPECIES}
 
-        for mk, st in MODELS.items():
-            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-venus-data.csv')
-            if df is None:
-                continue
-            phi = _get_phi(df)
-            if phi is None:
-                continue
-            idx = phi <= phi_tgt
-            if not idx.any():
-                continue
-            row = df[idx].iloc[0]
-            model_names.append(st['label'])
-            for g in GAS_SPECIES:
-                col = _get_col(df, f'p_{g}')
-                gas_data[g].append(
-                    float(row[col.name]) if col is not None and col.name in row.index else 0
-                )
-
-        if pv is not None:
-            idx = pv['Phi_global'] <= phi_tgt
-            if not idx.any():
-                idx = pv['Phi_global'] <= phi_tgt + 0.01
-            if idx.any():
-                row = pv[idx].iloc[0]
-                model_names.append(NS['label'])
-                for g in GAS_SPECIES:
-                    gas_data[g].append(float(row.get(f'{g}_bar', 0)))
-
-        if not model_names:
-            continue
-        x = np.arange(len(model_names))
-        bottom = np.zeros(len(model_names))
-        for g in GAS_SPECIES:
-            vals = np.array(gas_data[g])
-            if vals.sum() > 0:
-                ax.bar(
-                    x,
-                    vals,
-                    bottom=bottom,
-                    color=GAS_COLORS[g],
-                    label=g,
-                    width=0.6,
-                    edgecolor='white',
-                    linewidth=0.3,
-                )
-                bottom += vals
-        ax.set_xticks(x)
-        ax.set_xticklabels(model_names, fontsize=7, rotation=45, ha='right')
-        ax.set_ylabel('Partial pressure (bar)')
-        ax.set_title(title, fontsize=12)
-        ax.set_yscale('log')
-        ax.set_ylim(bottom=0.01)
-
-    axes[0].legend(fontsize=7, ncol=3, loc='upper left', framealpha=0.9)
-    fig.tight_layout()
-    _save(fig, out, 'chili_fig5_venus_atm')
+def plot_fig5(intercomp, pv, NS, out):
+    _plot_atm_composition(intercomp, pv, 'venus', NS, out, 'chili_fig5_venus_atm')
 
 
 # ── Fig 4: H, C mass budgets ─────────────────────────────────────────
-def plot_fig4(chili, pe, out):
-    NS = _new_style()
+def plot_fig4(intercomp, pe, NS, out):
     fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
-    intercomp = chili / 'intercomparison' / 'outputs'
     reservoirs = ['atm', 'melt', 'solid']
     res_colors = {'atm': WONG[2], 'melt': WONG[6], 'solid': WONG[3]}
 
@@ -523,11 +474,9 @@ def plot_fig4(chili, pe, out):
                 res_data[r].append(float(row[col.name]) if col is not None else 0)
 
         if pe is not None:
-            row = (
-                pe[pe['Phi_global'] <= 0.05].iloc[0]
-                if (pe['Phi_global'] <= 0.05).any()
-                else pe.iloc[-1]
-            )
+            row = _find_row_at_phi(pe, 0.05)
+            if row is None:
+                row = pe.iloc[-1]
             model_names.append(NS['label'])
             for r in reservoirs:
                 hf_r = 'liquid' if r == 'melt' else r
@@ -561,10 +510,8 @@ def plot_fig4(chili, pe, out):
 
 
 # ── Fig 6: fO2 vs temperature ────────────────────────────────────────
-def plot_fig6(chili, pe, out):
-    NS = _new_style()
+def plot_fig6(intercomp, pe, NS, out):
     fig, ax = plt.subplots(figsize=(7, 5))
-    intercomp = chili / 'intercomparison' / 'outputs'
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
@@ -589,7 +536,8 @@ def plot_fig6(chili, pe, out):
 
     if pe is not None:
         T = pe['T_surf'].values
-        # Fischer et al. (2011) IW buffer, matching CALLIOPE's default
+        # Fischer et al. (2011) IW buffer: log10(fO2) = a + b/T
+        # Coefficients match CALLIOPE's calliope.oxygen_fugacity module
         log10_fO2_IW = 6.94059 - 28180.8 / T
         iw_shift = (
             pe['fO2_shift_IW_derived'].values if 'fO2_shift_IW_derived' in pe.columns else 4.0
@@ -612,17 +560,15 @@ def plot_fig6(chili, pe, out):
 
 
 # ── Fig 7: OLR ───────────────────────────────────────────────────────
-def plot_fig7(chili, pe, out):
-    NS = _new_style()
+def plot_fig7(intercomp, pe, NS, out):
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
-    intercomp = chili / 'intercomparison' / 'outputs'
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
         if df is None:
             continue
         phi = _get_phi(df)
-        olr = _get_col(df, 'flux_OLR', 'OLR', 'F_olr')
+        olr = _get_col(df, 'flux_OLR', 'F_olr')
         ts = _get_col(df, 'T_surf', 'Tsurf')
         if phi is None or olr is None:
             continue
@@ -661,10 +607,8 @@ def plot_fig7(chili, pe, out):
 
 
 # ── Fig 8: Geodynamics (T_surf, R_solid, viscosity) ──────────────────
-def plot_fig8(chili, pe, out):
-    NS = _new_style()
+def plot_fig8(intercomp, pe, NS, out):
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    intercomp = chili / 'intercomparison' / 'outputs'
     panels = [
         ('T_surf', 'Tsurf', 'Surface temperature (K)', False),
         ('R_solid', 'R_solid', 'Rheological front (m)', False),
@@ -738,10 +682,8 @@ def plot_fig8(chili, pe, out):
 
 
 # ── Surface pressure vs time ─────────────────────────────────────────
-def plot_psurf(chili, pe, out):
-    NS = _new_style()
+def plot_psurf(intercomp, pe, NS, out):
     fig, ax = plt.subplots(figsize=(7, 5))
-    intercomp = chili / 'intercomparison' / 'outputs'
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
@@ -782,24 +724,6 @@ def plot_psurf(chili, pe, out):
 
 
 # ── Grid solidification timescales ──────────────────────────────────
-GRID_H = {
-    'Hlow': 1.6e20,
-    'Hmid': 7.8e20,
-    'Hhigh': 16.0e20,
-}
-GRID_C = {
-    'Clow': 1.36e20,
-    'Cmid': 2.73e20,
-    'Chigh': 5.44e20,
-}
-GRID_H_LABELS = {'Hlow': '0.5 EO', 'Hmid': '5 EO', 'Hhigh': '10 EO'}
-GRID_C_LABELS = {
-    'Clow': r'C$_\mathrm{low}$',
-    'Cmid': r'C$_\mathrm{mid}$',
-    'Chigh': r'C$_\mathrm{high}$',
-}
-
-
 def plot_grid_timescales(grid_dir, out):
     fig, ax = plt.subplots(figsize=(8, 5.5))
     c_markers = {'Clow': 'o', 'Cmid': 's', 'Chigh': 'D'}
@@ -816,12 +740,10 @@ def plot_grid_timescales(grid_dir, out):
             df = _load_proteus_helpfile(run)
             if df is None:
                 continue
-            idx = df['Phi_global'] <= 0.05
-            if not idx.any():
-                idx = df['Phi_global'] <= 0.06
-            if not idx.any():
+            row = _find_row_at_phi(df, 0.05)
+            if row is None:
                 continue
-            t_sol = float(df['Time'][idx].iloc[0]) / 1e6
+            t_sol = float(row['Time']) / 1e6
             h_vals.append(GRID_H[hl])
             t_vals.append(t_sol)
 
@@ -891,38 +813,48 @@ def main():
     )
     args = parser.parse_args()
 
-    chili = ensure_chili_repo(args.chili_repo)
+    matplotlib.rcParams.update(_PLOT_STYLE)
+
+    intercomp = ensure_chili_repo(args.chili_repo)
+    sha = _get_proteus_sha()
+    NS = _new_style(sha)
     pe = _load_proteus_helpfile(args.proteus_earth) if args.proteus_earth else None
     pv = _load_proteus_helpfile(args.proteus_venus) if args.proteus_venus else None
 
     if pe is not None:
-        phi_min = pe['Phi_global'].min()
         print(
             f'Loaded PROTEUS Earth: {len(pe)} rows, '
             f'T={pe["T_magma"].max():.0f}->{pe["T_magma"].min():.0f} K, '
-            f'Phi_min={phi_min:.3f}'
+            f'Phi_min={pe["Phi_global"].min():.3f}'
         )
-    else:
-        print('No PROTEUS Earth data (Figs 2-4, 6-8 will show CHILI models only)')
+    elif args.proteus_earth:
+        print(
+            f'WARNING: --proteus-earth given but no data found in {args.proteus_earth}',
+            file=sys.stderr,
+        )
+        print('Figs 2-4, 6-8 will show CHILI models only')
     if pv is not None:
-        phi_min = pv['Phi_global'].min()
         print(
             f'Loaded PROTEUS Venus: {len(pv)} rows, '
             f'T={pv["T_magma"].max():.0f}->{pv["T_magma"].min():.0f} K, '
-            f'Phi_min={phi_min:.3f}'
+            f'Phi_min={pv["Phi_global"].min():.3f}'
         )
-    else:
-        print('No PROTEUS Venus data (Fig 1 Venus and Fig 5 will show CHILI models only)')
+    elif args.proteus_venus:
+        print(
+            f'WARNING: --proteus-venus given but no data found in {args.proteus_venus}',
+            file=sys.stderr,
+        )
+        print('Fig 1 Venus and Fig 5 will show CHILI models only')
 
-    plot_fig1(chili, pe, pv, args.output)
-    plot_fig2(chili, pe, args.output)
-    plot_fig3(chili, pe, args.output)
-    plot_fig4(chili, pe, args.output)
-    plot_fig5(chili, pv, args.output)
-    plot_fig6(chili, pe, args.output)
-    plot_fig7(chili, pe, args.output)
-    plot_fig8(chili, pe, args.output)
-    plot_psurf(chili, pe, args.output)
+    plot_fig1(intercomp, pe, pv, NS, args.output)
+    plot_fig2(intercomp, pe, NS, args.output)
+    plot_fig3(intercomp, pe, NS, args.output)
+    plot_fig4(intercomp, pe, NS, args.output)
+    plot_fig5(intercomp, pv, NS, args.output)
+    plot_fig6(intercomp, pe, NS, args.output)
+    plot_fig7(intercomp, pe, NS, args.output)
+    plot_fig8(intercomp, pe, NS, args.output)
+    plot_psurf(intercomp, pe, NS, args.output)
 
     if args.grid_dir is not None:
         plot_grid_timescales(args.grid_dir, args.output)
