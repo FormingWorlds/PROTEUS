@@ -371,15 +371,25 @@ class AragogRunner:
                     _t_after_init - _t_init,
                     _t_after_factory - _t_after_init,
                 )
-            # Set entropy IC from Zalmoxis T(r) profile via PALEOS inversion
-            AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
-            # Verify and correct IC if table resolution causes > 1% T mismatch
-            AragogRunner._verify_entropy_ic(
-                config,
-                interior_o,
-                dirs['output'],
-                hf_row=hf_row,
-            )
+            if config.params.resume and getattr(interior_o, '_last_entropy', None) is not None:
+                # Restore the evolved entropy field saved by update_solver
+                # from the last NetCDF snapshot. Without this, _set_entropy_ic
+                # overwrites the solver with the t=0 isentrope, causing the
+                # mantle to remelt from scratch on resume.
+                interior_o.aragog_solver.set_initial_entropy(interior_o._last_entropy)
+                log.info(
+                    'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
+                    float(np.mean(interior_o._last_entropy)),
+                )
+            else:
+                # Fresh run: set entropy IC from Zalmoxis T(r) profile
+                AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
+                AragogRunner._verify_entropy_ic(
+                    config,
+                    interior_o,
+                    dirs['output'],
+                    hf_row=hf_row,
+                )
         else:
             # T1.1 (2026-04-26 coupling audit): track how long Aragog has
             # been integrating on a stale Zalmoxis structure. The
