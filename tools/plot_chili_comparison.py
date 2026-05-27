@@ -409,8 +409,8 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None, proteus_grid=None):
                     0,
                     'x',
                     color=NS['color'],
-                    markersize=9,
-                    markeredgewidth=2.5,
+                    markersize=11,
+                    markeredgewidth=3.0,
                     zorder=10,
                 )
 
@@ -437,8 +437,10 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None, proteus_grid=None):
                         'o-',
                         color=NS['color'],
                         alpha=C_ALPHAS[cl],
-                        markersize=8,
-                        linewidth=NS['linewidth'],
+                        markersize=9,
+                        linewidth=3.0,
+                        markeredgecolor='black',
+                        markeredgewidth=0.6,
                         label=label,
                         zorder=10,
                     )
@@ -454,7 +456,7 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None, proteus_grid=None):
         ax.grid(axis='x', alpha=0.15)
 
     axes[-1].set_xlabel('Earth simulated time [Myr]')
-    axes[0].legend(fontsize=7, ncol=3, loc='upper left', framealpha=0.9)
+    axes[0].legend(fontsize=7, ncol=3, loc='lower right', framealpha=0.9)
     fig.tight_layout()
     _save(fig, out, 'chili_fig2_milestones')
 
