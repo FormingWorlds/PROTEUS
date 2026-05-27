@@ -758,6 +758,70 @@ def plot_psurf(chili, pe, out):
     _save(fig, out, 'chili_psurf_vs_time')
 
 
+# ── Grid solidification timescales ──────────────────────────────────
+GRID_H = {
+    'Hlow': 1.6e20,
+    'Hmid': 7.8e20,
+    'Hhigh': 16.0e20,
+}
+GRID_C = {
+    'Clow': 1.36e20,
+    'Cmid': 2.73e20,
+    'Chigh': 5.44e20,
+}
+GRID_H_LABELS = {'Hlow': '0.5 EO', 'Hmid': '5 EO', 'Hhigh': '10 EO'}
+GRID_C_LABELS = {
+    'Clow': r'C$_\mathrm{low}$',
+    'Cmid': r'C$_\mathrm{mid}$',
+    'Chigh': r'C$_\mathrm{high}$',
+}
+
+
+def plot_grid_timescales(grid_dir, out):
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+    c_markers = {'Clow': 'o', 'Cmid': 's', 'Chigh': 'D'}
+    c_colors = {'Clow': WONG[5], 'Cmid': WONG[6], 'Chigh': WONG[3]}
+
+    for cl in ['Clow', 'Cmid', 'Chigh']:
+        h_vals = []
+        t_vals = []
+        for hl in ['Hlow', 'Hmid', 'Hhigh']:
+            run = grid_dir / f'chili_grid_earth_{hl}_{cl}'
+            hf = run / 'runtime_helpfile.csv'
+            if not hf.is_file():
+                continue
+            df = _load_proteus_helpfile(run)
+            if df is None:
+                continue
+            idx = df['Phi_global'] <= 0.05
+            if not idx.any():
+                idx = df['Phi_global'] <= 0.06
+            if not idx.any():
+                continue
+            t_sol = float(df['Time'][idx].iloc[0]) / 1e6
+            h_vals.append(GRID_H[hl])
+            t_vals.append(t_sol)
+
+        if h_vals:
+            ax.plot(
+                np.array(h_vals) / 1e20,
+                t_vals,
+                marker=c_markers[cl],
+                color=c_colors[cl],
+                linewidth=2,
+                markersize=8,
+                label=GRID_C_LABELS[cl],
+            )
+
+    ax.set_xlabel(r'H inventory ($\times 10^{20}$ kg)')
+    ax.set_ylabel('Solidification time (Myr)')
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.legend(fontsize=10, framealpha=0.9)
+    ax.set_title('CHILI Earth grid: solidification vs H inventory')
+    _save(fig, out, 'chili_grid_solidification')
+
+
 def _save(fig, out, name):
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / f'{name}.pdf', dpi=200, bbox_inches='tight')
@@ -771,6 +835,7 @@ def main():
     parser.add_argument('--proteus-earth', type=Path, default=None)
     parser.add_argument('--proteus-venus', type=Path, default=None)
     parser.add_argument('--chili-repo', type=Path, default=Path('/tmp/chili'))
+    parser.add_argument('--grid-dir', type=Path, default=None)
     parser.add_argument('--output', type=Path, default=Path('output_files/chili_plots'))
     args = parser.parse_args()
 
@@ -798,6 +863,9 @@ def main():
     plot_fig7(chili, pe, args.output)
     plot_fig8(chili, pe, args.output)
     plot_psurf(chili, pe, args.output)
+
+    if args.grid_dir is not None:
+        plot_grid_timescales(args.grid_dir, args.output)
 
     print(f'\nAll plots saved to {args.output}/')
 
