@@ -85,63 +85,63 @@ and the git commit SHA in the legend.
 ## Melt fraction evolution
 
 <figure markdown="span">
-  ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.avif){ width="100%" }
+  ![CHILI Fig 1](../assets/tutorials/chili/fig1_melt_fraction.png){ width="100%" }
   <figcaption>Melt fraction vs time for the CHILI Nominal Earth (solid lines) and Nominal Venus (dashed lines) cases. All seven models start fully molten and solidify within 0.1 to 4 Myr for Earth. Venus solidifies later due to higher instellation at 0.723 AU. PROTEUS predicts solidification at 1.34 Myr for Earth and 2.22 Myr for Venus, within the model ensemble range. The spread among models reflects differences in atmospheric opacity, mantle convection treatment, and volatile partitioning.</figcaption>
 </figure>
 
 ## Solidification milestones
 
 <figure markdown="span">
-  ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.avif){ width="100%" }
+  ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.png){ width="100%" }
   <figcaption>Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. The y-axis spans H inventories from the Nominal case (bottom) to H<sub>high</sub> (10 EO, top). C inventory is encoded as marker opacity (light = C<sub>low</sub>, medium = C<sub>mid</sub>, dark = C<sub>high</sub>). Connected scatter points trace the three H levels for each model at a given C level. The current PROTEUS run (vermillion, thick lines, black-edged markers) stands out from the CHILI intercomparison ensemble. Nominal Earth cases appear as crosses at the bottom of each panel.</figcaption>
 </figure>
 
 ## Atmospheric composition
 
 <figure markdown="span">
-  ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.avif){ width="100%" }
+  ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.png){ width="100%" }
   <figcaption>Atmospheric compositions for the Nominal Earth case at (a) 95% and (b) 5% melt fraction. Stacked bars show gas partial pressures [bar] for each model; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the original CHILI submission for direct comparison. At 95% melt fraction, atmospheres are CO<sub>2</sub>-dominated; by 5%, H<sub>2</sub>O has exsolved from the crystallizing mantle and dominates at ~368 bar for PROTEUS. Both panels share the same y-axis range to highlight the pressure increase during solidification.</figcaption>
 </figure>
 
 ## H and C mass budgets
 
 <figure markdown="span">
-  ![CHILI Fig 4](../assets/tutorials/chili/fig4_mass_budgets.avif){ width="100%" }
+  ![CHILI Fig 4](../assets/tutorials/chili/fig4_mass_budgets.png){ width="100%" }
   <figcaption>Hydrogen (left) and carbon (right) mass budgets at solidification, partitioned into atmosphere, melt, and solid reservoirs. For PROTEUS, most hydrogen resides in the atmosphere at solidification (the melt reservoir is nearly empty), while carbon is split between atmosphere and solid mantle. Models that track fewer volatile species (e.g. GOOEY reports no carbon) show gaps.</figcaption>
 </figure>
 
 ## Venus atmospheric composition
 
 <figure markdown="span">
-  ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif){ width="100%" }
+  ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.png){ width="100%" }
   <figcaption>Atmospheric compositions for the Nominal Venus case at (a) 95% and (b) 5% melt fraction, following the same layout as the Earth figure. Stacked bars show gas partial pressures [bar]; grey stars mark surface temperature (right axis). PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
 </figure>
 
 ## fO$_2$ vs surface temperature
 
 <figure markdown="span">
-  ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.avif){ width="100%" }
+  ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.png){ width="100%" }
   <figcaption>Oxygen fugacity vs surface temperature during magma ocean evolution. PROTEUS tracks along the IW+4 buffer (Fischer et al. 2011 parameterization) as specified by the CHILI protocol. The absolute fO<sub>2</sub> decreases with temperature following the thermodynamic IW equilibrium. Models that track photochemical oxygen evolution show departures from the prescribed buffer at low temperatures.</figcaption>
 </figure>
 
 ## Outgoing longwave radiation
 
 <figure markdown="span">
-  ![CHILI Fig 7](../assets/tutorials/chili/fig7_olr.avif){ width="100%" }
+  ![CHILI Fig 7](../assets/tutorials/chili/fig7_olr.png){ width="100%" }
   <figcaption>Outgoing longwave radiation (OLR) as a function of melt fraction (left) and surface temperature (right) for the Nominal Earth case. OLR controls the cooling rate: higher OLR means faster solidification. PROTEUS OLR decreases from ~2 x 10<sup>5</sup> W m<sup>-2</sup> at full melt to ~466 W m<sup>-2</sup> at solidification. The OLR-temperature relationship reveals differences in atmospheric opacity treatment across models.</figcaption>
 </figure>
 
 ## Geodynamics diagnostics
 
 <figure markdown="span">
-  ![CHILI Fig 8](../assets/tutorials/chili/fig8_geodynamics.avif){ width="100%" }
+  ![CHILI Fig 8](../assets/tutorials/chili/fig8_geodynamics.png){ width="100%" }
   <figcaption>Surface temperature (left), rheological front radius (center), and mantle viscosity (right) as functions of melt fraction. The rheological front is the radius where the local melt fraction crosses the critical value of 0.4, marking the transition from convective melt to viscous solid. It propagates outward from the CMB as solidification proceeds. PROTEUS rheological front and viscosity are extracted from the Aragog interior profiles at each timestep.</figcaption>
 </figure>
 
 ## Surface pressure evolution
 
 <figure markdown="span">
-  ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.avif){ width="100%" }
+  ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.png){ width="100%" }
   <figcaption>Surface pressure vs time for all models. PROTEUS surface pressure starts high (~10<sup>4</sup> bar during the brief fully molten phase), drops to a minimum of ~117 bar as CO<sub>2</sub> partitions between atmosphere and melt, then rises to ~438 bar at solidification as H<sub>2</sub>O exsolves from the crystallizing mantle. Models differ in the timing and magnitude of the pressure evolution, reflecting different volatile solubility treatments.</figcaption>
 </figure>
 
