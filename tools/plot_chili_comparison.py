@@ -985,8 +985,8 @@ def plot_grid_timescales(grid_dir, out):
 
 def _save(fig, out, name):
     out.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out / f'{name}.pdf', dpi=200, bbox_inches='tight')
-    fig.savefig(out / f'{name}.png', dpi=200, bbox_inches='tight')
+    fig.savefig(out / f'{name}.pdf', dpi=300, bbox_inches='tight')
+    fig.savefig(out / f'{name}.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f'Saved: {name}')
 
