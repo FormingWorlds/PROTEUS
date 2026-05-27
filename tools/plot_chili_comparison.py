@@ -461,78 +461,199 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None, proteus_grid=None):
     _save(fig, out, 'chili_fig2_milestones')
 
 
-# ── Figs 3 & 5: Atmospheric composition (grouped bars) ───────────────
+# ── Figs 3 & 5: Atmospheric composition (stacked bars + T_surf stars) ─
+def _collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS):
+    """Collect bar data and T_surf for one panel of the atmospheric composition plot.
+
+    Returns bars ordered so that PROTEUS CHILI and the current PROTEUS run are adjacent.
+    """
+    pre_proteus = []
+    proteus_pair = []
+    post_proteus = []
+    seen_chili_proteus = False
+
+    for mk, st in MODELS.items():
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-{planet}-data.csv')
+        if df is None:
+            continue
+        phi = _get_phi(df)
+        if phi is None:
+            continue
+        idx = phi <= phi_tgt + 2 * PHI_RELAX
+        if not idx.any():
+            continue
+        row = df[idx].iloc[0]
+        entry = {
+            'name': st['label'],
+            'is_proteus': False,
+            'gas': {},
+            't_surf': np.nan,
+        }
+        for g in GAS_SPECIES:
+            col = _get_col(df, f'p_{g}')
+            val = float(row[col.name]) if col is not None and col.name in row.index else 0
+            entry['gas'][g] = val if not np.isnan(val) else 0
+        t_col = _get_col(df, 'T_surf')
+        if t_col is not None:
+            entry['t_surf'] = float(row[t_col.name])
+
+        if mk == 'proteus':
+            seen_chili_proteus = True
+            proteus_pair.append(entry)
+        elif seen_chili_proteus:
+            post_proteus.append(entry)
+        else:
+            pre_proteus.append(entry)
+
+    if proteus_df is not None:
+        row = _find_row_at_phi(proteus_df, phi_tgt)
+        if row is not None:
+            entry = {
+                'name': NS['label'],
+                'is_proteus': True,
+                'gas': {},
+                't_surf': float(row.get('T_surf', np.nan)),
+            }
+            for g in GAS_SPECIES:
+                entry['gas'][g] = float(row.get(f'{g}_bar', 0))
+            proteus_pair.append(entry)
+
+    ordered = pre_proteus + proteus_pair + post_proteus
+    model_names = [e['name'] for e in ordered]
+    gas_data = {g: [e['gas'].get(g, 0) for e in ordered] for g in GAS_SPECIES}
+    t_surf_vals = [e['t_surf'] for e in ordered]
+    is_proteus = [e['is_proteus'] for e in ordered]
+
+    return model_names, gas_data, t_surf_vals, is_proteus
+
+
 def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
-    """Grouped bar chart of partial pressures at Phi=95% and 5%."""
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+    """Stacked bar chart of partial pressures at Phi=95% and 5%, matching Nicholls+ layout."""
     phi_targets = [0.95, 0.05]
     planet_cap = planet.capitalize()
-    titles = [rf'{planet_cap} $\Phi$ = 95%', rf'{planet_cap} $\Phi$ = 5%']
+    panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$']
+    titles = [
+        rf'Nominal-{planet_cap} atmosphere at $\phi$ = 95%',
+        rf'Nominal-{planet_cap} atmosphere at $\phi$ = 5%',
+    ]
 
-    active_species = []
+    raw_panels = []
+    for phi_tgt in phi_targets:
+        raw_panels.append(_collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS))
 
-    for ax, phi_tgt, title in zip(axes, phi_targets, titles):
-        model_names = []
-        gas_data = {g: [] for g in GAS_SPECIES}
+    all_names = []
+    for names, _, _, _ in raw_panels:
+        for n in names:
+            if n not in all_names:
+                all_names.append(n)
+    n_slots = len(all_names)
+    is_proteus_global = [
+        any(e[3][e[0].index(n)] for e in raw_panels if n in e[0]) for n in all_names
+    ]
 
-        for mk, st in MODELS.items():
-            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-{planet}-data.csv')
-            if df is None:
-                continue
-            phi = _get_phi(df)
-            if phi is None:
-                continue
-            idx = phi <= phi_tgt
-            if not idx.any():
-                continue
-            row = df[idx].iloc[0]
-            model_names.append(st['label'])
-            for g in GAS_SPECIES:
-                col = _get_col(df, f'p_{g}')
-                val = float(row[col.name]) if col is not None and col.name in row.index else 0
-                gas_data[g].append(val if not np.isnan(val) else 0)
-
-        if proteus_df is not None:
-            row = _find_row_at_phi(proteus_df, phi_tgt)
-            if row is not None:
-                model_names.append(NS['label'])
+    panels = []
+    all_species = []
+    max_bar = 0.0
+    max_t = 0.0
+    min_t = np.inf
+    for names, gas, tsv, isp in raw_panels:
+        name_to_idx = {n: i for i, n in enumerate(names)}
+        gas_aligned = {g: [0.0] * n_slots for g in GAS_SPECIES}
+        tsv_aligned = [np.nan] * n_slots
+        isp_aligned = [False] * n_slots
+        for j, slot_name in enumerate(all_names):
+            if slot_name in name_to_idx:
+                src = name_to_idx[slot_name]
                 for g in GAS_SPECIES:
-                    gas_data[g].append(float(row.get(f'{g}_bar', 0)))
+                    gas_aligned[g][j] = gas[g][src]
+                tsv_aligned[j] = tsv[src]
+                isp_aligned[j] = isp[src]
 
-        if not model_names:
-            continue
-
-        present = [g for g in GAS_SPECIES if np.array(gas_data[g]).sum() > 0]
+        present = [g for g in GAS_SPECIES if np.array(gas_aligned[g]).sum() > 0]
         for g in present:
-            if g not in active_species:
-                active_species.append(g)
+            if g not in all_species:
+                all_species.append(g)
+        totals = np.zeros(n_slots)
+        for g in present:
+            totals += np.array(gas_aligned[g], dtype=float).clip(min=0)
+        if n_slots > 0:
+            max_bar = max(max_bar, totals.max())
+        valid_t = [t for t in tsv_aligned if not np.isnan(t)]
+        if valid_t:
+            max_t = max(max_t, max(valid_t))
+            min_t = min(min_t, min(valid_t))
+        panels.append((gas_aligned, tsv_aligned, isp_aligned, present))
 
-        n_models = len(model_names)
-        n_species = len(present)
-        if n_species == 0:
-            continue
-        bar_width = 0.7 / n_species
-        x = np.arange(n_models)
-        for i, g in enumerate(present):
-            vals = np.array(gas_data[g])
-            vals[vals <= 0] = np.nan
+    fig, axes = plt.subplots(2, 1, figsize=(8, 10))
+    bar_ylim = max_bar * 1.15
+    t_pad = (max_t - min_t) * 0.15
+    t_ylim = (min_t - t_pad, max_t + t_pad)
+    x = np.arange(n_slots)
+    bar_width = 0.6
+
+    for ax, (gas, tsv, isp, present), title, plabel in zip(axes, panels, titles, panel_labels):
+        bottom = np.zeros(n_slots)
+        for g in present:
+            vals = np.array(gas[g], dtype=float).clip(min=0)
+            edgecolors = ['black' if ip else 'white' for ip in isp]
+            edgewidths = [2.0 if ip else 0.5 for ip in isp]
             ax.bar(
-                x + (i - n_species / 2 + 0.5) * bar_width,
+                x,
                 vals,
+                bottom=bottom,
                 color=GAS_COLORS[g],
                 label=g,
                 width=bar_width,
-                edgecolor='white',
-                linewidth=0.3,
+                edgecolor=edgecolors,
+                linewidth=edgewidths,
             )
-        ax.set_xticks(x)
-        ax.set_xticklabels(model_names, fontsize=7, rotation=45, ha='right')
-        ax.set_ylabel('Partial pressure (bar)')
-        ax.set_title(title, fontsize=12)
-        ax.set_yscale('log')
-        ax.set_ylim(bottom=0.01)
+            bottom += vals
 
-    axes[0].legend(fontsize=7, ncol=3, loc='upper left', framealpha=0.9)
+        ax.set_xticks(x)
+        tick_labels = []
+        for n, ip in zip(all_names, is_proteus_global):
+            if ip:
+                tick_labels.append(rf'$\bf{{{n}}}$')
+            else:
+                tick_labels.append(n)
+        ax.set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
+        for tl, ip in zip(ax.get_xticklabels(), is_proteus_global):
+            if ip:
+                tl.set_color(NS['color'])
+        ax.set_ylabel('Partial pressure [bar]')
+        ax.set_title(title, fontsize=12)
+        ax.set_ylim(0, bar_ylim)
+        ax.set_xlim(-0.5, n_slots - 0.5)
+        ax.text(0.02, 0.93, plabel, transform=ax.transAxes, fontsize=14, va='top')
+
+        ax2 = ax.twinx()
+        for i, (t, ip) in enumerate(zip(tsv, isp)):
+            if not np.isnan(t):
+                ax2.plot(
+                    i,
+                    t,
+                    marker='*',
+                    color=NS['color'] if ip else 'grey',
+                    markersize=16 if ip else 12,
+                    markeredgecolor='black' if ip else 'none',
+                    markeredgewidth=0.8 if ip else 0,
+                    zorder=10,
+                    linestyle='none',
+                )
+        ax2.set_ylabel(r'$T_\mathrm{surf}$ [K]')
+        ax2.set_ylim(*t_ylim)
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    seen = set()
+    unique = [(h, la) for h, la in zip(handles, labels) if la not in seen and not seen.add(la)]
+    axes[0].legend(
+        [u[0] for u in unique],
+        [u[1] for u in unique],
+        fontsize=8,
+        ncol=3,
+        loc='upper right',
+        framealpha=0.9,
+    )
     fig.tight_layout()
     _save(fig, out, fig_name)
 

@@ -100,7 +100,7 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.avif){ width="100%" }
-  <figcaption>Atmospheric partial pressures at two solidification stages for the Nominal Earth case. Left: at 95% melt fraction (early). Right: at 5% melt fraction (solidification). Bars show partial pressures of H<sub>2</sub>O, CO<sub>2</sub>, CO, H<sub>2</sub>, CH<sub>4</sub>, and other species. At early times, CO<sub>2</sub> dominates for PROTEUS. At solidification, H<sub>2</sub>O has exsolved from the mantle and dominates the atmosphere at ~368 bar.</figcaption>
+  <figcaption>Atmospheric compositions for the Nominal Earth case at (a) 95% and (b) 5% melt fraction. Stacked bars show gas partial pressures [bar] for each model; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the original CHILI submission for direct comparison. At 95% melt fraction, atmospheres are CO<sub>2</sub>-dominated; by 5%, H<sub>2</sub>O has exsolved from the crystallizing mantle and dominates at ~368 bar for PROTEUS. Both panels share the same y-axis range to highlight the pressure increase during solidification.</figcaption>
 </figure>
 
 ## H and C mass budgets
@@ -114,7 +114,7 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif){ width="100%" }
-  <figcaption>Atmospheric partial pressures for the Nominal Venus case at two solidification stages. Left: at 95% melt fraction (early). Right: at 5% melt fraction (near solidification, Phi = 5.2%). Grouped bars show individual species contributions for each model. PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar. The dashed black "PROTEUS CHILI" bars are the original CHILI submission; the vermillion bars are the current run.</figcaption>
+  <figcaption>Atmospheric compositions for the Nominal Venus case at (a) 95% and (b) 5% melt fraction, following the same layout as the Earth figure. Stacked bars show gas partial pressures [bar]; grey stars mark surface temperature (right axis). PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
 </figure>
 
 ## fO$_2$ vs surface temperature
