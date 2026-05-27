@@ -372,34 +372,27 @@ class AragogRunner:
                     _t_after_factory - _t_after_init,
                 )
             if config.params.resume and getattr(interior_o, '_last_entropy', None) is not None:
-                # Restore the evolved entropy field and CMB boundary state
-                # from the last NetCDF snapshot. Two pieces must be set:
-                #  1. S(r) profile on staggered nodes
-                #  2. dSdr_cmb for the energy_balance core BC
-                # Without this, _set_entropy_ic overwrites the solver with
-                # the t=0 isentrope, causing remelting on resume.
+                # Restore the evolved entropy field from the last NetCDF
+                # snapshot. Without this, _set_entropy_ic overwrites the
+                # solver with the t=0 isentrope, causing remelting.
                 solver = interior_o.aragog_solver
                 S_snap = interior_o._last_entropy
                 n_stag = getattr(solver, '_n_stag', len(S_snap))
-                core_bc = getattr(solver, '_core_bc', 'quasi_steady')
 
-                if core_bc == 'energy_balance' and n_stag >= 2:
-                    r_stag = np.asarray(solver._r_stag_flat, dtype=float)
-                    dr = max(float(r_stag[1] - r_stag[0]), 1.0)
-                    dSdr_cmb = (float(S_snap[1]) - float(S_snap[0])) / dr
-
-                    S0 = np.empty(n_stag + 1)
-                    S0[:n_stag] = S_snap[:n_stag]
-                    S0[n_stag] = dSdr_cmb
-                    solver._S0 = S0
-                    log.info(
-                        'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K, '
-                        'dSdr_cmb=%.3e J/kg/K/m (dr=%.1f m)',
-                        float(np.mean(S_snap)),
-                        dSdr_cmb,
-                        dr,
+                if len(S_snap) != n_stag:
+                    log.error(
+                        'Entropy snapshot length %d != mesh staggered nodes %d. '
+                        'The mesh changed between the original run and resume. '
+                        'Falling back to fresh IC.',
+                        len(S_snap),
+                        n_stag,
                     )
+                    AragogRunner._set_entropy_ic(config, interior_o, dirs['output'], hf_row)
                 else:
+                    # Clear stale dSdr_cmb so set_initial_entropy recomputes
+                    # it from the restored profile via finite differences.
+                    if hasattr(solver, '_dSdr_cmb_init'):
+                        solver._dSdr_cmb_init = None
                     solver.set_initial_entropy(S_snap)
                     log.info(
                         'Restored entropy IC from snapshot: S_mean=%.1f J/kg/K',
@@ -2187,20 +2180,6 @@ def read_last_Sfield(output_dir: str, time: float):
         S_stag = np.array(ds.get('temp_s', ds.get('temp_b', [3200.0]))[:])
     ds.close()
     return S_stag
-
-
-def read_T_surf_coupled(output_dir: str, time: float) -> float | None:
-    """Read the coupled surface temperature from an Aragog NetCDF snapshot.
-
-    Returns None if the variable is absent (pre-fix snapshots).
-    """
-    fpath = os.path.join(output_dir, 'data', '%d_int.nc' % time)
-    if not os.path.isfile(fpath):
-        return None
-    with nc.Dataset(fpath) as ds:
-        if 'T_surf_coupled' in ds.variables:
-            return float(ds['T_surf_coupled'][0])
-    return None
 
 
 def get_all_output_times(output_dir: str):
