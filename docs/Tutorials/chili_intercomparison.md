@@ -114,28 +114,35 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.png){ width="100%" }
-  <figcaption>Atmospheric compositions for the Nominal Venus case at (a) 95% and (b) 5% melt fraction, following the same layout as the Earth figure. Stacked bars show gas partial pressures [bar]; grey stars mark surface temperature (right axis). PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
+  <figcaption>Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures [bar]; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the original CHILI submission. PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
 </figure>
 
-## fO$_2$ vs surface temperature
+## Oxygen fugacity
 
 <figure markdown="span">
   ![CHILI Fig 6](../assets/tutorials/chili/fig6_fO2_vs_T.png){ width="100%" }
-  <figcaption>Oxygen fugacity vs surface temperature during magma ocean evolution. PROTEUS tracks along the IW+4 buffer (Fischer et al. 2011 parameterization) as specified by the CHILI protocol. The absolute fO<sub>2</sub> decreases with temperature following the thermodynamic IW equilibrium. Models that track photochemical oxygen evolution show departures from the prescribed buffer at low temperatures.</figcaption>
+  <figcaption>Oxygen fugacity from each model's Nominal Venus simulation, plotted as a function of degassing temperature. (a) Absolute fO<sub>2</sub> compared to the iron-wustite buffer parameterizations of Fischer et al. (2011, dotted) and O'Neill & Eggins (2002, dashed). (b) Relative fO<sub>2</sub> as delta-IW referenced to O'Neill+02. Circular markers indicate 5% melt fraction. The current PROTEUS run (vermillion, thick line, black-edged marker) tracks along IW+4 as prescribed by the CHILI protocol.</figcaption>
+</figure>
+
+## Volatile retention
+
+<figure markdown="span">
+  ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles.png){ width="100%" }
+  <figcaption>Relative amounts of the initial inventories of (a) hydrogen and (b) carbon retained by the Nominal Venus scenario as a function of simulation time. Atoms are lost from the planet due to hydrodynamic escape. Crosses mark 95% melt fraction; circles mark 5% melt fraction. PROTEUS shows significant H loss over the extended Venus cooling timescale.</figcaption>
 </figure>
 
 ## Outgoing longwave radiation
 
 <figure markdown="span">
-  ![CHILI Fig 7](../assets/tutorials/chili/fig7_olr.png){ width="100%" }
-  <figcaption>Outgoing longwave radiation (OLR) as a function of melt fraction (left) and surface temperature (right) for the Nominal Earth case. OLR controls the cooling rate: higher OLR means faster solidification. PROTEUS OLR decreases from ~2 x 10<sup>5</sup> W m<sup>-2</sup> at full melt to ~466 W m<sup>-2</sup> at solidification. The OLR-temperature relationship reveals differences in atmospheric opacity treatment across models.</figcaption>
+  ![CHILI Fig 8](../assets/tutorials/chili/fig8_olr.png){ width="100%" }
+  <figcaption>Outgoing longwave radiation flux from Nominal Earth, plotted as a function of (a) melt fraction and (b) surface temperature. The dashed line marks the absorbed stellar radiation (ASR = 208 W/m<sup>2</sup>) at 50 Myr stellar age with the CHILI protocol parameters. The dash-dot line marks the Nakajima et al. (1992) pure-steam runaway limit (282 W/m<sup>2</sup>). OLR controls the cooling rate; PROTEUS OLR decreases from ~2 x 10<sup>5</sup> W/m<sup>2</sup> at full melt to ~466 W/m<sup>2</sup> at solidification.</figcaption>
 </figure>
 
 ## Geodynamics diagnostics
 
 <figure markdown="span">
-  ![CHILI Fig 8](../assets/tutorials/chili/fig8_geodynamics.png){ width="100%" }
-  <figcaption>Surface temperature (left), rheological front radius (center), and mantle viscosity (right) as functions of melt fraction. The rheological front is the radius where the local melt fraction crosses the critical value of 0.4, marking the transition from convective melt to viscous solid. It propagates outward from the CMB as solidification proceeds. PROTEUS rheological front and viscosity are extracted from the Aragog interior profiles at each timestep.</figcaption>
+  ![CHILI Fig 9](../assets/tutorials/chili/fig9_geodynamics.png){ width="100%" }
+  <figcaption>Geodynamics diagnostics as functions of melt fraction for the Nominal Earth case. (a) Surface temperature. (b) Rheological front radius normalized to planet radius; the dashed line marks the core-mantle boundary at 0.55 R<sub>p</sub>. (c) Effective mantle viscosity; the dashed line marks solid Earth mantle viscosity (5 x 10<sup>22</sup> Pa s), and the dotted line marks water STP viscosity (10<sup>-3</sup> Pa s). PROTEUS values are extracted from Aragog interior profiles at each timestep.</figcaption>
 </figure>
 
 ## Surface pressure evolution

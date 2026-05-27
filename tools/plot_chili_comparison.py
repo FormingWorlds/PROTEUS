@@ -7,13 +7,14 @@ on the CHILI v2 submission and all other intercomparison models.
 
 Figures produced:
     Fig 1 - Melt fraction vs time (Earth + Venus)
-    Fig 2 - Solidification milestones (Earth)
+    Fig 2 - Solidification milestones (Earth grid)
     Fig 3 - Atmospheric composition at Phi=95% and 5% (Earth)
     Fig 4 - H and C mass budgets at solidification (Earth)
-    Fig 5 - Atmospheric composition at Phi=95% and 5% (Venus)
-    Fig 6 - fO2 vs surface temperature (Earth)
-    Fig 7 - OLR vs melt fraction and surface temperature (Earth)
-    Fig 8 - T_surf, rheological front, viscosity vs Phi (Earth)
+    Fig 5 - Atmospheric composition at Phi=5% (Venus, single panel)
+    Fig 6 - fO2 vs degassing temperature (Venus, absolute + relative)
+    Fig 7 - Volatile retention vs time (Venus)
+    Fig 8 - OLR vs melt fraction and surface temperature (Earth)
+    Fig 9 - T_surf, R_RF/R_p, viscosity vs Phi (Earth)
     P_surf - Surface pressure vs time (Earth)
     Grid   - Solidification time vs H inventory (requires --grid-dir)
 
@@ -156,6 +157,8 @@ def _get_phi(df):
 
 def _find_row_at_phi(df, phi_target, phi_col='Phi_global', relax=PHI_RELAX):
     """Find the first row where phi <= target, with optional relaxation."""
+    if phi_col not in df.columns:
+        return None
     idx = df[phi_col] <= phi_target
     if idx.any():
         return df[idx].iloc[0]
@@ -196,7 +199,7 @@ def _extract_profiles(output_dir, hf):
     try:
         import netCDF4 as nc
     except ImportError:
-        print('Warning: netCDF4 not installed, skipping interior profile extraction (Fig 8)')
+        print('Warning: netCDF4 not installed, skipping interior profile extraction (Fig 9)')
         return {'Phi_global': np.array([]), 'R_rheo': np.array([]), 'visc_avg': np.array([])}
 
     data_dir = output_dir / 'data'
@@ -340,7 +343,7 @@ def _milestone_time_proteus(df, phi_target):
     return float(row['Time']) / 1e6
 
 
-def plot_fig2(intercomp, pe, NS, out, grid_dir=None, proteus_grid=None):
+def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
     milestones = [0.95, 0.40, 0.05]
     titles = [
         r'$\mathbf{(a)}$ Time to reach $\phi$ = 95%',
@@ -664,7 +667,76 @@ def plot_fig3(intercomp, pe, NS, out):
 
 
 def plot_fig5(intercomp, pv, NS, out):
-    _plot_atm_composition(intercomp, pv, 'venus', NS, out, 'chili_fig5_venus_atm')
+    """Venus atmospheric composition at phi=5% only (single panel), matching Nicholls+ Fig 5."""
+    phi_tgt = 0.05
+    names, gas, tsv, isp = _collect_atm_panel(intercomp, pv, 'venus', phi_tgt, NS)
+    if not names:
+        print('Warning: no Venus data for Fig 5')
+        return
+
+    present = [g for g in GAS_SPECIES if np.array(gas[g]).sum() > 0]
+    n = len(names)
+    x = np.arange(n)
+    is_proteus_global = [ip for ip in isp]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    bottom = np.zeros(n)
+    bar_width = 0.6
+
+    for g in present:
+        vals = np.array(gas[g], dtype=float).clip(min=0)
+        edgecolors = ['black' if ip else 'white' for ip in isp]
+        edgewidths = [2.0 if ip else 0.5 for ip in isp]
+        ax.bar(
+            x,
+            vals,
+            bottom=bottom,
+            color=GAS_COLORS[g],
+            label=g,
+            width=bar_width,
+            edgecolor=edgecolors,
+            linewidth=edgewidths,
+        )
+        bottom += vals
+
+    ax.set_xticks(x)
+    tick_labels = [rf'$\bf{{{n}}}$' if ip else n for n, ip in zip(names, is_proteus_global)]
+    ax.set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
+    for tl, ip in zip(ax.get_xticklabels(), is_proteus_global):
+        if ip:
+            tl.set_color(NS['color'])
+    ax.set_ylabel('Partial pressure [bar]')
+    ax.set_title(r'Nominal-Venus atmosphere at $\phi$ = 5%', fontsize=12)
+
+    ax2 = ax.twinx()
+    for i, (t, ip) in enumerate(zip(tsv, isp)):
+        if not np.isnan(t):
+            ax2.plot(
+                i,
+                t,
+                marker='*',
+                color=NS['color'] if ip else 'grey',
+                markersize=16 if ip else 12,
+                markeredgecolor='black' if ip else 'none',
+                markeredgewidth=0.8 if ip else 0,
+                zorder=10,
+                linestyle='none',
+            )
+    ax2.set_ylabel(r'$T_\mathrm{surf}$ [K]')
+
+    handles, labels = ax.get_legend_handles_labels()
+    seen = set()
+    unique = [(h, la) for h, la in zip(handles, labels) if la not in seen and not seen.add(la)]
+    ax.legend(
+        [u[0] for u in unique],
+        [u[1] for u in unique],
+        fontsize=8,
+        ncol=3,
+        loc='upper right',
+        framealpha=0.9,
+    )
+    fig.tight_layout()
+    _save(fig, out, 'chili_fig5_venus_atm')
 
 
 # ── Fig 4: H, C mass budgets ─────────────────────────────────────────
@@ -827,58 +899,250 @@ def plot_fig4(intercomp, pe, NS, out):
 
 
 # ── Fig 6: fO2 vs temperature ────────────────────────────────────────
-def plot_fig6(intercomp, pe, NS, out):
-    fig, ax = plt.subplots(figsize=(7, 5))
+def _iw_fischer11(T):
+    """Fischer et al. (2011) IW buffer: log10(fO2/bar)."""
+    return 6.94059 - 28180.8 / T
+
+
+def _iw_oneill02(T):
+    """O'Neill & Eggins (2002) IW buffer: log10(fO2/bar).
+
+    Includes heat-capacity term; matches CALLIOPE's oxygen_fugacity module.
+    """
+    return 2.0 * (-244118.0 + 115.559 * T - 8.474 * T * np.log(T)) / (np.log(10) * 8.31441 * T)
+
+
+def plot_fig6(intercomp, pv, NS, out):
+    """fO2 vs degassing temperature (Venus): (a) absolute, (b) relative to IW, matching Nicholls+ Fig 6."""
+    fig, axes = plt.subplots(2, 1, figsize=(7, 9), sharex=True)
+    ax_abs, ax_rel = axes
+
+    T_ref = np.linspace(1400, 4000, 200)
+    ax_abs.plot(
+        T_ref, _iw_fischer11(T_ref), ':', color='grey', linewidth=1.5, label='Fischer+11'
+    )
+    ax_abs.plot(
+        T_ref, _iw_oneill02(T_ref), '--', color='grey', linewidth=1.5, label="O'Neill+02"
+    )
+    ax_rel.axhline(0, color='grey', linestyle='--', linewidth=1.0)
 
     for mk, st in MODELS.items():
-        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-venus-data.csv')
         if df is None:
             continue
         ts = _get_col(df, 'T_surf', 'Tsurf')
         fO2 = _get_col(df, 'fO2_melt', 'fO2')
-        if ts is None or fO2 is None:
+        phi = _get_phi(df)
+        if ts is None or fO2 is None or phi is None:
             continue
         valid = fO2 > 0
         if not valid.any():
             continue
-        ax.plot(
-            ts[valid],
-            np.log10(fO2[valid]),
-            linestyle=st.get('ls', '-'),
-            color=st['color'],
-            linewidth=st.get('lw', 1.2),
-            alpha=0.8,
-            label=st['label'],
-        )
+        log_fO2 = np.log10(fO2[valid])
+        T_v = ts[valid].values
+        kw = dict(color=st['color'], linewidth=st.get('lw', 1.2), alpha=0.8, label=st['label'])
+        ax_abs.plot(T_v, log_fO2, linestyle=st.get('ls', '-'), **kw)
+        delta_iw = log_fO2.values - _iw_oneill02(T_v)
+        ax_rel.plot(T_v, delta_iw, linestyle=st.get('ls', '-'), **kw)
 
-    if pe is not None:
-        T = pe['T_surf'].values
-        # Fischer et al. (2011) IW buffer: log10(fO2) = a + b/T
-        # Coefficients match CALLIOPE's calliope.oxygen_fugacity module
-        log10_fO2_IW = 6.94059 - 28180.8 / T
+        idx5 = phi <= 0.05 + 2 * PHI_RELAX
+        if idx5.any():
+            subset = df[idx5]
+            r5 = subset.loc[(phi[subset.index] - 0.05).abs().idxmin()]
+            fO2_5 = float(fO2.loc[r5.name])
+            T_5 = float(ts.loc[r5.name])
+            if fO2_5 > 0:
+                ax_abs.plot(
+                    T_5, np.log10(fO2_5), 'o', color=st['color'], markersize=8, zorder=5
+                )
+                ax_rel.plot(
+                    T_5,
+                    np.log10(fO2_5) - _iw_oneill02(T_5),
+                    'o',
+                    color=st['color'],
+                    markersize=8,
+                    zorder=5,
+                )
+
+    if pv is not None:
+        T = pv['T_surf'].values
+        log10_fO2_IW = _iw_fischer11(T)
         iw_shift = (
-            pe['fO2_shift_IW_derived'].values if 'fO2_shift_IW_derived' in pe.columns else 4.0
+            pv['fO2_shift_IW_derived'].values if 'fO2_shift_IW_derived' in pv.columns else 4.0
         )
         log10_fO2 = log10_fO2_IW + iw_shift
-        ax.plot(
-            T,
-            log10_fO2,
-            '-',
-            color=NS['color'],
-            linewidth=NS['linewidth'],
-            label=NS['label'],
-            zorder=NS['zorder'],
+        kw = dict(
+            color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
         )
+        ax_abs.plot(T, log10_fO2, '-', **kw)
+        delta_iw = log10_fO2 - _iw_oneill02(T)
+        ax_rel.plot(T, delta_iw, '-', **kw)
 
-    ax.set_xlabel('Surface temperature (K)')
-    ax.set_ylabel(r'log$_{10}$(fO$_2$) (bar)')
-    ax.legend(fontsize=8, ncol=2, framealpha=0.9)
+        row5 = _find_row_at_phi(pv, 0.05)
+        if row5 is not None:
+            T5 = float(row5['T_surf'])
+            log_f5 = _iw_fischer11(T5) + float(row5.get('fO2_shift_IW_derived', 4.0))
+            ax_abs.plot(
+                T5,
+                log_f5,
+                'o',
+                color=NS['color'],
+                markersize=10,
+                markeredgecolor='black',
+                markeredgewidth=1.0,
+                zorder=15,
+            )
+            ax_rel.plot(
+                T5,
+                log_f5 - _iw_oneill02(T5),
+                'o',
+                color=NS['color'],
+                markersize=10,
+                markeredgecolor='black',
+                markeredgewidth=1.0,
+                zorder=15,
+            )
+
+    ax_abs.set_ylabel(r'$\log_{10}(f\mathrm{O}_2 / \mathrm{bar})$')
+    ax_abs.text(
+        0.02,
+        0.93,
+        r'$\mathbf{(a)}$ Absolute $f$O$_2$',
+        transform=ax_abs.transAxes,
+        fontsize=12,
+        va='top',
+    )
+    ax_abs.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
+    ax_abs.invert_xaxis()
+    ax_abs.grid(alpha=0.15)
+
+    ax_rel.set_xlabel('Degassing temperature [K]')
+    ax_rel.set_ylabel(r"$\Delta$IW (O'Neill+02)")
+    ax_rel.text(
+        0.02,
+        0.93,
+        r'$\mathbf{(b)}$ Relative $f$O$_2$',
+        transform=ax_rel.transAxes,
+        fontsize=12,
+        va='top',
+    )
+    ax_rel.legend(fontsize=7, ncol=2, loc='upper left', framealpha=0.9)
+    ax_rel.grid(alpha=0.15)
+
+    fig.tight_layout()
     _save(fig, out, 'chili_fig6_fO2_vs_T')
 
 
-# ── Fig 7: OLR ───────────────────────────────────────────────────────
-def plot_fig7(intercomp, pe, NS, out):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+# ── Fig 7: Volatile retention (Venus) ──────────────────────────────
+def plot_fig7(intercomp, pv, NS, out):
+    """Volatile retention % vs time for Venus, matching Nicholls+ Fig 7."""
+    fig, axes = plt.subplots(2, 1, figsize=(8, 8), sharex=True)
+    ax_h, ax_c = axes
+    panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$']
+
+    for mk, st in MODELS.items():
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-venus-data.csv')
+        if df is None:
+            continue
+        t = _get_col(df, 't')
+        phi = _get_phi(df)
+        if t is None or phi is None:
+            continue
+        t_myr = t / 1e6
+        for ax, element in zip(axes, ['H', 'C']):
+            kw = dict(
+                color=st['color'],
+                linewidth=st.get('lw', 1.2),
+                alpha=0.8,
+                label=st['label'] if element == 'H' else None,
+            )
+            total_cols = [f'mass{element}_atm', f'mass{element}_melt', f'mass{element}_solid']
+            total = np.zeros(len(df))
+            for tc in total_cols:
+                col = _get_col(df, tc)
+                if col is not None:
+                    total += col.values.astype(float)
+            if total.max() <= 0:
+                continue
+            first_nonzero = np.argmax(total > 0)
+            retained = total / total[first_nonzero] * 100
+            retained = np.clip(retained, 0, 100)
+            ax.plot(t_myr, retained, linestyle=st.get('ls', '-'), **kw)
+
+            for phi_tgt, marker in [(0.95, 'x'), (0.05, 'o')]:
+                idx = phi <= phi_tgt + 2 * PHI_RELAX
+                if not idx.any():
+                    continue
+                subset = df[idx]
+                r = subset.loc[(phi[subset.index] - phi_tgt).abs().idxmin()]
+                ri = r.name
+                iloc_ri = df.index.get_loc(ri)
+                ax.plot(
+                    float(t_myr.iloc[iloc_ri]),
+                    float(retained[iloc_ri]),
+                    marker=marker,
+                    color=st['color'],
+                    markersize=8,
+                    zorder=5,
+                    markeredgewidth=1.5 if marker == 'x' else 1.0,
+                    linestyle='none',
+                )
+
+    if pv is not None:
+        t_myr = pv['Time'].values / 1e6
+        for ax, element in zip(axes, ['H', 'C']):
+            kw = dict(
+                color=NS['color'],
+                linewidth=NS['linewidth'],
+                zorder=NS['zorder'],
+                label=NS['label'] if element == 'H' else None,
+            )
+            total_col = f'{element}_kg_total'
+            if total_col not in pv.columns:
+                continue
+            total = pv[total_col].values
+            if total.max() <= 0:
+                continue
+            first_nonzero = np.argmax(total > 0)
+            retained = total / total[first_nonzero] * 100
+            ax.plot(t_myr, retained, '-', **kw)
+            for phi_tgt, marker in [(0.95, 'x'), (0.05, 'o')]:
+                row = _find_row_at_phi(pv, phi_tgt)
+                if row is not None:
+                    ti = float(row['Time']) / 1e6
+                    ri = float(row[total_col]) / total[0] * 100
+                    ax.plot(
+                        ti,
+                        ri,
+                        marker=marker,
+                        color=NS['color'],
+                        markersize=10,
+                        markeredgecolor='black',
+                        markeredgewidth=1.5 if marker == 'x' else 1.0,
+                        zorder=15,
+                        linestyle='none',
+                    )
+
+    for ax, ylabel, plabel in zip(axes, ['Hydrogen', 'Carbon'], panel_labels):
+        ax.set_ylabel(ylabel)
+        ax.set_ylim(-2, 105)
+        ax.set_xscale('log')
+        ax.grid(alpha=0.15)
+        ax.text(0.95, 0.08, plabel, transform=ax.transAxes, fontsize=14, ha='right')
+
+    ax_c.set_xlabel('Simulated time [Myr]')
+    ax_h.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
+    fig.suptitle('Nominal-Venus volatiles retained [%]', fontsize=13)
+    fig.tight_layout()
+    _save(fig, out, 'chili_fig7_volatiles')
+
+
+# ── Fig 8: OLR ───────────────────────────────────────────────────────
+def plot_fig8(intercomp, pe, NS, out):
+    """OLR vs melt fraction and T_surf, matching Nicholls+ Fig 8."""
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+    asr_val = 208.0  # 50 Myr ASR: L_sun(50Myr)/(4pi*1AU^2) * (1-0.1) * 0.375 * cos(48.19)
+    sn_limit = 282.0  # Nakajima+1992 pure-steam runaway limit
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
@@ -889,16 +1153,10 @@ def plot_fig7(intercomp, pe, NS, out):
         ts = _get_col(df, 'T_surf', 'Tsurf')
         if phi is None or olr is None:
             continue
-        kw = dict(
-            linestyle=st.get('ls', '-'),
-            color=st['color'],
-            linewidth=st.get('lw', 1.2),
-            alpha=0.8,
-            label=st['label'],
-        )
-        axes[0].plot(phi * 100, olr, **kw)
+        kw = dict(color=st['color'], linewidth=st.get('lw', 1.2), alpha=0.8, label=st['label'])
+        axes[0].plot(phi * 100, olr, linestyle=st.get('ls', '-'), **kw)
         if ts is not None:
-            axes[1].plot(ts, olr, **kw)
+            axes[1].plot(ts, olr, linestyle=st.get('ls', '-'), **kw)
 
     if pe is not None:
         kw = dict(
@@ -907,95 +1165,123 @@ def plot_fig7(intercomp, pe, NS, out):
         axes[0].plot(pe['Phi_global'] * 100, pe['F_olr'], '-', **kw)
         axes[1].plot(pe['T_surf'], pe['F_olr'], '-', **kw)
 
-    for i, (xl, tl) in enumerate(
-        [
-            ('Melt fraction (vol%)', '(a) OLR vs melt fraction'),
-            ('Surface temperature (K)', '(b) OLR vs surface temperature'),
-        ]
-    ):
-        axes[i].set_xlabel(xl)
-        axes[i].set_ylabel(r'OLR (W m$^{-2}$)')
-        axes[i].set_yscale('log')
-        axes[i].set_title(tl, fontsize=12)
-        axes[i].legend(fontsize=7, ncol=2, framealpha=0.9)
+    for ax in axes:
+        ax.axhline(asr_val, color='black', linestyle='--', linewidth=1.0)
+        ax.axhline(sn_limit, color='black', linestyle='-.', linewidth=1.0)
+        ax.set_ylabel(r'Outgoing LW radiation [W/m$^2$]')
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=100)
+        ax.grid(alpha=0.15)
+
+    axes[0].text(
+        0.02, 0.93, r'$\mathbf{(a)}$', transform=axes[0].transAxes, fontsize=14, va='top'
+    )
+    axes[0].text(
+        0.5,
+        0.06,
+        f'50 Myr ASR\n({asr_val} W/m$^2$)',
+        transform=axes[0].transAxes,
+        fontsize=8,
+        va='bottom',
+        bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.8),
+    )
+    axes[0].set_xlabel('Melt fraction [vol%]')
     axes[0].set_xlim(100, 0)
+    axes[0].legend(fontsize=7, ncol=2, loc='upper left', framealpha=0.9)
+
+    axes[1].text(
+        0.02, 0.93, r'$\mathbf{(b)}$', transform=axes[1].transAxes, fontsize=14, va='top'
+    )
+    axes[1].text(
+        0.5,
+        0.06,
+        f'SN limit\n({sn_limit} W/m$^2$)',
+        transform=axes[1].transAxes,
+        fontsize=8,
+        va='bottom',
+        bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.8),
+    )
+    axes[1].set_xlabel(r'$T_\mathrm{surf}$ [K]')
+    axes[1].invert_xaxis()
+
     fig.tight_layout()
-    _save(fig, out, 'chili_fig7_olr')
+    _save(fig, out, 'chili_fig8_olr')
 
 
-# ── Fig 8: Geodynamics (T_surf, R_solid, viscosity) ──────────────────
-def plot_fig8(intercomp, pe, NS, out):
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-    panels = [
-        ('T_surf', 'Tsurf', 'Surface temperature (K)', False),
-        ('R_solid', 'R_solid', 'Rheological front (m)', False),
-        ('viscosity', 'visc', r'Viscosity (Pa$\cdot$s)', True),
-    ]
+# ── Fig 9: Geodynamics (T_surf, R_RF, viscosity vs phi) ──────────────
+def plot_fig9(intercomp, pe, NS, out):
+    """3-panel geodynamics: T_surf, R_RF/R_p, viscosity vs phi, matching Nicholls+ Fig 9."""
+    R_planet = 6.371e6  # IUGG mean Earth radius [m]
+    R_cmb_frac = 0.55  # core-mantle boundary radius fraction (Lodders & Fegley 1998)
+    visc_solid = 5e22  # solid Earth mantle viscosity [Pa s] (Peltier+1981, McKenzie 1967)
+    visc_water = 1e-3  # water viscosity at STP [Pa s]
 
-    for ax, (c1, c2, yl, logsc) in zip(axes, panels):
-        for mk, st in MODELS.items():
-            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
-            if df is None:
-                continue
-            phi = _get_phi(df)
-            val = _get_col(df, c1, c2)
-            if phi is None or val is None:
-                continue
-            valid = val > 0 if logsc else val.notna()
-            if not valid.any():
-                continue
-            ax.plot(
-                phi[valid] * 100,
-                val[valid],
-                linestyle=st.get('ls', '-'),
-                color=st['color'],
-                linewidth=st.get('lw', 1.2),
-                alpha=0.8,
-                label=st['label'],
+    fig, axes = plt.subplots(3, 1, figsize=(7, 11), sharex=True)
+    ax_t, ax_r, ax_v = axes
+    panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$', r'$\mathbf{(c)}$']
+
+    for mk, st in MODELS.items():
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+        if df is None:
+            continue
+        phi = _get_phi(df)
+        if phi is None:
+            continue
+        phi_pct = phi * 100
+        kw = dict(color=st['color'], linewidth=st.get('lw', 1.2), alpha=0.8, label=st['label'])
+
+        ts = _get_col(df, 'T_surf', 'Tsurf')
+        if ts is not None:
+            ax_t.plot(phi_pct, ts, linestyle=st.get('ls', '-'), **kw)
+
+        r_sol = _get_col(df, 'R_solid', 'R_trans')
+        if r_sol is not None:
+            valid = r_sol > 0
+            r_frac = r_sol[valid] / R_planet
+            ax_r.plot(phi_pct[valid], r_frac, linestyle=st.get('ls', '-'), **kw)
+
+        visc = _get_col(df, 'viscosity', 'visc')
+        if visc is not None:
+            valid = visc > 0
+            if valid.any():
+                ax_v.plot(phi_pct[valid], visc[valid], linestyle=st.get('ls', '-'), **kw)
+
+    if pe is not None:
+        profs = pe.attrs.get('_profiles', {})
+        kw = dict(
+            color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
+        )
+        if 'T_surf' in pe.columns:
+            ax_t.plot(pe['Phi_global'] * 100, pe['T_surf'], '-', **kw)
+        if len(profs.get('R_rheo', [])) > 0:
+            ax_r.plot(
+                profs['Phi_global'] * 100, np.array(profs['R_rheo']) / R_planet, '-', **kw
             )
+        if len(profs.get('visc_avg', [])) > 0:
+            ax_v.plot(profs['Phi_global'] * 100, profs['visc_avg'], '-', **kw)
 
-        if pe is not None:
-            profs = pe.attrs.get('_profiles', {})
-            if c1 == 'T_surf' and 'T_surf' in pe.columns:
-                ax.plot(
-                    pe['Phi_global'] * 100,
-                    pe['T_surf'],
-                    '-',
-                    color=NS['color'],
-                    linewidth=NS['linewidth'],
-                    label=NS['label'],
-                    zorder=NS['zorder'],
-                )
-            elif c1 == 'R_solid' and len(profs.get('R_rheo', [])) > 0:
-                ax.plot(
-                    profs['Phi_global'] * 100,
-                    profs['R_rheo'],
-                    '-',
-                    color=NS['color'],
-                    linewidth=NS['linewidth'],
-                    label=NS['label'],
-                    zorder=NS['zorder'],
-                )
-            elif c1 == 'viscosity' and len(profs.get('visc_avg', [])) > 0:
-                ax.plot(
-                    profs['Phi_global'] * 100,
-                    profs['visc_avg'],
-                    '-',
-                    color=NS['color'],
-                    linewidth=NS['linewidth'],
-                    label=NS['label'],
-                    zorder=NS['zorder'],
-                )
+    ax_r.axhline(R_cmb_frac, color='black', linestyle='--', linewidth=1.0)
+    ax_r.text(50, R_cmb_frac + 0.01, 'Core-mantle boundary', fontsize=8, va='bottom')
+    ax_v.axhline(visc_solid, color='black', linestyle='--', linewidth=1.0)
+    ax_v.text(50, visc_solid * 2, 'Solid mantle viscosity', fontsize=8, va='bottom')
+    ax_v.axhline(visc_water, color='black', linestyle=':', linewidth=1.0)
+    ax_v.text(50, visc_water * 3, 'Water STP viscosity', fontsize=8, va='bottom')
 
-        ax.set_xlabel('Melt fraction (vol%)')
-        ax.set_ylabel(yl)
+    ax_t.set_ylabel(r'$T_\mathrm{surf}$ [K]')
+    ax_r.set_ylabel(r'$R_\mathrm{RF} / R_\mathrm{p}$')
+    ax_r.set_ylim(0.55, 1.02)
+    ax_v.set_ylabel(r'$\eta$ [Pa s]')
+    ax_v.set_yscale('log')
+    ax_v.set_xlabel('Melt fraction [vol%]')
+
+    for ax, plabel in zip(axes, panel_labels):
         ax.set_xlim(100, 0)
-        if logsc:
-            ax.set_yscale('log')
-        ax.legend(fontsize=6, ncol=2, framealpha=0.9)
+        ax.grid(alpha=0.15)
+        ax.text(0.02, 0.93, plabel, transform=ax.transAxes, fontsize=14, va='top')
 
+    ax_t.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
     fig.tight_layout()
-    _save(fig, out, 'chili_fig8_geodynamics')
+    _save(fig, out, 'chili_fig9_geodynamics')
 
 
 # ── Surface pressure vs time ─────────────────────────────────────────
@@ -1149,7 +1435,7 @@ def main():
             f'WARNING: --proteus-earth given but no data found in {args.proteus_earth}',
             file=sys.stderr,
         )
-        print('Figs 2-4, 6-8 will show CHILI models only')
+        print('Figs 2-4, 8-9 will show CHILI models only')
     if pv is not None:
         print(
             f'Loaded PROTEUS Venus: {len(pv)} rows, '
@@ -1161,16 +1447,17 @@ def main():
             f'WARNING: --proteus-venus given but no data found in {args.proteus_venus}',
             file=sys.stderr,
         )
-        print('Fig 1 Venus and Fig 5 will show CHILI models only')
+        print('Figs 1, 5-7 (Venus) will show CHILI models only')
 
     plot_fig1(intercomp, pe, pv, NS, args.output)
     plot_fig2(intercomp, pe, NS, args.output, grid_dir=args.grid_dir)
     plot_fig3(intercomp, pe, NS, args.output)
     plot_fig4(intercomp, pe, NS, args.output)
     plot_fig5(intercomp, pv, NS, args.output)
-    plot_fig6(intercomp, pe, NS, args.output)
-    plot_fig7(intercomp, pe, NS, args.output)
+    plot_fig6(intercomp, pv, NS, args.output)
+    plot_fig7(intercomp, pv, NS, args.output)
     plot_fig8(intercomp, pe, NS, args.output)
+    plot_fig9(intercomp, pe, NS, args.output)
     plot_psurf(intercomp, pe, NS, args.output)
 
     if args.grid_dir is not None:
