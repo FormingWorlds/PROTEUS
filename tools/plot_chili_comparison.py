@@ -1,15 +1,38 @@
 #!/usr/bin/env python3
 """Plot PROTEUS output overlaid on CHILI intercomparison data.
 
-Mirrors the figures from Nicholls et al. (in prep) using the Wong
-colorblind-friendly palette. Overlays the current PROTEUS run on the
-CHILI v2 submission and all other intercomparison models.
+Generates comparison figures mirroring Nicholls et al. (in prep) using
+the Wong colorblind-friendly palette. Overlays the current PROTEUS run
+on the CHILI v2 submission and all other intercomparison models.
+
+Figures produced:
+    Fig 1 - Melt fraction vs time (Earth + Venus)
+    Fig 2 - Solidification milestones (Earth)
+    Fig 3 - Atmospheric composition at Phi=95% and 5% (Earth)
+    Fig 4 - H and C mass budgets at solidification (Earth)
+    Fig 5 - Atmospheric composition at Phi=95% and 5% (Venus)
+    Fig 6 - fO2 vs surface temperature (Earth)
+    Fig 7 - OLR vs melt fraction and surface temperature (Earth)
+    Fig 8 - T_surf, rheological front, viscosity vs Phi (Earth)
+    P_surf - Surface pressure vs time (Earth)
+    Grid   - Solidification time vs H inventory (requires --grid-dir)
 
 Usage:
-    python tools/plot_chili_comparison.py \
-        --proteus-earth output/tutorial_earth/ \
-        --chili-repo /tmp/chili \
+    # Nominal cases only
+    python tools/plot_chili_comparison.py \\
+        --proteus-earth output/tutorial_earth/ \\
+        --proteus-venus output/tutorial_venus/ \\
         --output output_files/chili_plots/
+
+    # With the 3x3 Earth volatile grid
+    python tools/plot_chili_comparison.py \\
+        --proteus-earth output/tutorial_earth/ \\
+        --proteus-venus output/tutorial_venus/ \\
+        --grid-dir output/ \\
+        --output output_files/chili_plots/
+
+The CHILI comparison data is cloned automatically from GitHub if
+--chili-repo does not point to an existing checkout.
 """
 
 from __future__ import annotations
@@ -831,12 +854,41 @@ def _save(fig, out, name):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Plot PROTEUS vs CHILI comparison')
-    parser.add_argument('--proteus-earth', type=Path, default=None)
-    parser.add_argument('--proteus-venus', type=Path, default=None)
-    parser.add_argument('--chili-repo', type=Path, default=Path('/tmp/chili'))
-    parser.add_argument('--grid-dir', type=Path, default=None)
-    parser.add_argument('--output', type=Path, default=Path('output_files/chili_plots'))
+    parser = argparse.ArgumentParser(
+        description='Plot PROTEUS output overlaid on CHILI intercomparison data.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='See docs/Tutorials/chili_intercomparison.md for the full tutorial.',
+    )
+    parser.add_argument(
+        '--proteus-earth',
+        type=Path,
+        default=None,
+        help='Path to PROTEUS Nominal Earth output directory (e.g. output/tutorial_earth/)',
+    )
+    parser.add_argument(
+        '--proteus-venus',
+        type=Path,
+        default=None,
+        help='Path to PROTEUS Nominal Venus output directory (e.g. output/tutorial_venus/)',
+    )
+    parser.add_argument(
+        '--chili-repo',
+        type=Path,
+        default=Path('/tmp/chili'),
+        help='Path to CHILI repository checkout (cloned automatically if missing)',
+    )
+    parser.add_argument(
+        '--grid-dir',
+        type=Path,
+        default=None,
+        help='Parent directory containing chili_grid_earth_* output directories',
+    )
+    parser.add_argument(
+        '--output',
+        type=Path,
+        default=Path('output_files/chili_plots'),
+        help='Output directory for plots (default: output_files/chili_plots/)',
+    )
     args = parser.parse_args()
 
     chili = ensure_chili_repo(args.chili_repo)
@@ -844,15 +896,23 @@ def main():
     pv = _load_proteus_helpfile(args.proteus_venus) if args.proteus_venus else None
 
     if pe is not None:
+        phi_min = pe['Phi_global'].min()
         print(
             f'Loaded PROTEUS Earth: {len(pe)} rows, '
-            f'T={pe["T_magma"].max():.0f}->{pe["T_magma"].min():.0f} K'
+            f'T={pe["T_magma"].max():.0f}->{pe["T_magma"].min():.0f} K, '
+            f'Phi_min={phi_min:.3f}'
         )
+    else:
+        print('No PROTEUS Earth data (Figs 2-4, 6-8 will show CHILI models only)')
     if pv is not None:
+        phi_min = pv['Phi_global'].min()
         print(
             f'Loaded PROTEUS Venus: {len(pv)} rows, '
-            f'T={pv["T_magma"].max():.0f}->{pv["T_magma"].min():.0f} K'
+            f'T={pv["T_magma"].max():.0f}->{pv["T_magma"].min():.0f} K, '
+            f'Phi_min={phi_min:.3f}'
         )
+    else:
+        print('No PROTEUS Venus data (Fig 1 Venus and Fig 5 will show CHILI models only)')
 
     plot_fig1(chili, pe, pv, args.output)
     plot_fig2(chili, pe, args.output)
@@ -866,6 +926,8 @@ def main():
 
     if args.grid_dir is not None:
         plot_grid_timescales(args.grid_dir, args.output)
+    else:
+        print('Skipping grid plot (pass --grid-dir to enable)')
 
     print(f'\nAll plots saved to {args.output}/')
 

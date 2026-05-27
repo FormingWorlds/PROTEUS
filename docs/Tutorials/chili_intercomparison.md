@@ -53,17 +53,27 @@ git clone https://github.com/projectcuisines/chili.git /tmp/chili
 ## Step 3: Generate comparison plots
 
 ```bash
+# Nominal cases only
 python tools/plot_chili_comparison.py \
     --proteus-earth output/tutorial_earth/ \
     --proteus-venus output/tutorial_venus/ \
     --chili-repo /tmp/chili \
     --output output_files/chili_plots/
+
+# With the Earth volatile grid (after running the grid cases)
+python tools/plot_chili_comparison.py \
+    --proteus-earth output/tutorial_earth/ \
+    --proteus-venus output/tutorial_venus/ \
+    --grid-dir output/ \
+    --chili-repo /tmp/chili \
+    --output output_files/chili_plots/
 ```
 
-All plots use the Wong colorblind-friendly palette. The previous PROTEUS
-submission to the CHILI intercomparison appears as a dashed black line
-("PROTEUS CHILI"), while the current PROTEUS run appears in vermillion
-with the git commit SHA in the legend.
+All plots use the Wong colorblind-friendly palette and are saved as
+both PDF (vector) and PNG. The previous PROTEUS submission to the CHILI
+intercomparison appears as a dashed black line ("PROTEUS CHILI"), while
+the current PROTEUS run appears in vermillion with the git commit SHA
+in the legend.
 
 ## Melt fraction evolution (Fig. 1)
 
@@ -128,10 +138,11 @@ with the git commit SHA in the legend.
   <figcaption>Surface pressure vs time for all models. PROTEUS surface pressure starts high (~10<sup>4</sup> bar during the brief fully molten phase), drops to a minimum of ~117 bar as CO<sub>2</sub> partitions between atmosphere and melt, then rises to ~438 bar at solidification as H<sub>2</sub>O exsolves from the crystallizing mantle. Models differ in the timing and magnitude of the pressure evolution, reflecting different volatile solubility treatments.</figcaption>
 </figure>
 
-## Earth volatile grid (optional)
+## Earth volatile grid
 
-The full CHILI Earth grid varies H and C inventories across 9
-combinations:
+The CHILI Earth grid varies H and C inventories across 9
+combinations to explore how volatile budgets control solidification
+timescale:
 
 | | C$_\mathrm{low}$ (1.36$\times$10$^{20}$ kg) | C$_\mathrm{mid}$ (2.73$\times$10$^{20}$ kg) | C$_\mathrm{high}$ (5.44$\times$10$^{20}$ kg) |
 |---|---|---|---|
@@ -143,15 +154,34 @@ Grid configs are in `input/tutorials/chili_grid/`. Run all 9 cases:
 
 ```bash
 for cfg in input/tutorials/chili_grid/*.toml; do
+    name=$(basename "$cfg" .toml)
+    mkdir -p "output/chili_grid_earth_${name#earth_}"
     nohup proteus start --offline -c "$cfg" \
-        > "output/$(basename $cfg .toml)/launch.log" 2>&1 & disown
+        > "output/chili_grid_earth_${name#earth_}/launch.log" 2>&1 & disown
 done
 ```
 
-Low-H cases (0.5 EO) solidify in 0.49 to 0.61 Myr; mid-H cases
-(5 EO) solidify in 2.42 to 2.72 Myr; high-H cases (10 EO) take
-the longest due to thicker, more opaque steam atmospheres that slow
-radiative cooling.
+!!! warning "Runtime"
+    Low-H cases finish in ~1 hour. Mid-H cases take ~3-5 hours. High-H
+    cases (10 Earth oceans) may take 12+ hours because the thick steam
+    atmosphere reduces OLR to a few hundred W m$^{-2}$ in the late
+    mushy zone.
+
+### Grid results
+
+Solidification times for the completed grid cases:
+
+| | C$_\mathrm{low}$ | C$_\mathrm{mid}$ | C$_\mathrm{high}$ |
+|---|---|---|---|
+| **H$_\mathrm{low}$** (0.5 EO) | 0.49 Myr | 0.53 Myr | 0.61 Myr |
+| **H$_\mathrm{mid}$** (5 EO) | 2.72 Myr | 2.55 Myr | 2.42 Myr |
+| **H$_\mathrm{high}$** (10 EO) | TBD | TBD | TBD |
+
+Hydrogen inventory is the primary control on solidification timescale:
+a 5x increase in H budget (0.5 to 5 EO) delays solidification by a
+factor of ~5. The carbon effect is secondary and non-monotonic: at
+mid-H, higher C slightly shortens the solidification time because the
+CO$_2$ opacity contribution saturates earlier.
 
 ## Key findings
 
