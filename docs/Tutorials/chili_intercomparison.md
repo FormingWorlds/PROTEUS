@@ -93,7 +93,7 @@ in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.avif){ width="100%" }
-  <figcaption>Time to reach melt fraction milestones (95%, 40%, and 5%) for the Nominal Earth case. Each line connects the three milestones for one model. PROTEUS (vermillion squares) reaches 95% at 14 kyr, 40% at 438 kyr, and 5% at 1.34 Myr. The spread across models is roughly one order of magnitude at each milestone.</figcaption>
+  <figcaption>Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. Cooling timescales are sensitive to H inventory (y-axis) and C inventory (marker opacity: light = C<sub>low</sub>, medium = C<sub>mid</sub>, dark = C<sub>high</sub>). Connected scatter points span the three H inventories for each model at a given C level. Nominal Earth cases are shown as crosses at the bottom of each panel.</figcaption>
 </figure>
 
 ## Atmospheric composition (Fig. 3)

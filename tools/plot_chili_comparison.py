@@ -314,55 +314,148 @@ def plot_fig1(intercomp, pe, pv, NS, out):
     _save(fig, out, 'chili_fig1_melt_fraction')
 
 
-# ── Fig 2: Solidification milestones ──────────────────────────────────
-def plot_fig2(intercomp, pe, NS, out):
+# ── Fig 2: Solidification milestones (3-panel, Nicholls+ style) ──────
+H_LEVELS = ['Nmnl', 'Hlow', 'Hmid', 'Hhigh']
+C_LEVELS = ['Clow', 'Cmid', 'Chigh']
+C_ALPHAS = {'Clow': 0.45, 'Cmid': 0.7, 'Chigh': 1.0}
+
+
+def _milestone_time(df, phi_target):
+    """Return the time (Myr) at which phi first drops below phi_target."""
+    t = _get_col(df, 't', 'time')
+    phi = _get_phi(df)
+    if t is None or phi is None:
+        return np.nan
+    idx = phi <= phi_target
+    if not idx.any():
+        return np.nan
+    return float(t[idx].iloc[0]) / 1e6
+
+
+def _milestone_time_proteus(df, phi_target):
+    """Return time (Myr) from a PROTEUS helpfile dataframe."""
+    row = _find_row_at_phi(df, phi_target)
+    if row is None:
+        return np.nan
+    return float(row['Time']) / 1e6
+
+
+def plot_fig2(intercomp, pe, NS, out, grid_dir=None, proteus_grid=None):
     milestones = [0.95, 0.40, 0.05]
-    fig, ax = plt.subplots(figsize=(7, 5))
+    titles = [
+        r'$\mathbf{(a)}$ Time to reach $\phi$ = 95%',
+        r'$\mathbf{(b)}$ Time to reach $\phi$ = 40%',
+        r'$\mathbf{(c)}$ Time to reach $\phi$ = 5%',
+    ]
+    fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
 
-    for mk, st in MODELS.items():
-        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
-        if df is None:
-            continue
-        t = _get_col(df, 't', 'time')
-        phi = _get_phi(df)
-        if t is None or phi is None:
-            continue
-        times = []
-        for m in milestones:
-            idx = phi <= m
-            times.append(float(t[idx].iloc[0]) / 1e3 if idx.any() else np.nan)
-        ax.plot(
-            milestones,
-            times,
-            'o-',
-            color=st['color'],
-            label=st['label'],
-            markersize=5,
-            linewidth=st.get('lw', 1.2),
-            alpha=0.8,
+    for ax, phi_tgt, title in zip(axes, milestones, titles):
+        for mk, st in MODELS.items():
+            # Nominal Earth (x marker at y=Nmnl)
+            df_nom = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+            t_nom = _milestone_time(df_nom, phi_tgt) if df_nom is not None else np.nan
+
+            if not np.isnan(t_nom):
+                ax.plot(
+                    t_nom,
+                    0,
+                    'x',
+                    color=st['color'],
+                    markersize=7,
+                    markeredgewidth=1.5,
+                    zorder=5,
+                )
+
+            # Grid cases: connected lines per C level
+            for ci, cl in enumerate(C_LEVELS):
+                y_vals = []
+                t_vals = []
+                for hi, hl in enumerate(['Hlow', 'Hmid', 'Hhigh']):
+                    # Try H-C naming first, then H-only (GOOEY/LINCS)
+                    df = _load_chili_csv(
+                        intercomp / mk / f'evolution-{mk}-earth-grid-{hl}-{cl}-data.csv'
+                    )
+                    if df is None and ci == 0:
+                        df = _load_chili_csv(
+                            intercomp / mk / f'evolution-{mk}-earth-grid-{hl}-data.csv'
+                        )
+                    if df is None:
+                        continue
+                    t_m = _milestone_time(df, phi_tgt)
+                    if not np.isnan(t_m):
+                        y_vals.append(hi + 1)
+                        t_vals.append(t_m)
+
+                if t_vals:
+                    label = st['label'] if ci == 1 and ax is axes[0] else None
+                    ax.plot(
+                        t_vals,
+                        y_vals,
+                        'o-',
+                        color=st['color'],
+                        alpha=C_ALPHAS[cl],
+                        markersize=6,
+                        linewidth=st.get('lw', 1.2),
+                        label=label,
+                        zorder=3,
+                    )
+
+        # Current PROTEUS run: nominal
+        if pe is not None:
+            t_nom = _milestone_time_proteus(pe, phi_tgt)
+            if not np.isnan(t_nom):
+                ax.plot(
+                    t_nom,
+                    0,
+                    'x',
+                    color=NS['color'],
+                    markersize=9,
+                    markeredgewidth=2.5,
+                    zorder=10,
+                )
+
+        # Current PROTEUS run: grid cases
+        if grid_dir is not None:
+            for ci, cl in enumerate(C_LEVELS):
+                y_vals = []
+                t_vals = []
+                for hi, hl in enumerate(['Hlow', 'Hmid', 'Hhigh']):
+                    run = grid_dir / f'chili_grid_earth_{hl}_{cl}'
+                    df = _load_proteus_helpfile(run) if run.is_dir() else None
+                    if df is None:
+                        continue
+                    t_m = _milestone_time_proteus(df, phi_tgt)
+                    if not np.isnan(t_m):
+                        y_vals.append(hi + 1)
+                        t_vals.append(t_m)
+
+                if t_vals:
+                    label = NS['label'] if ci == 1 and ax is axes[0] else None
+                    ax.plot(
+                        t_vals,
+                        y_vals,
+                        'o-',
+                        color=NS['color'],
+                        alpha=C_ALPHAS[cl],
+                        markersize=8,
+                        linewidth=NS['linewidth'],
+                        label=label,
+                        zorder=10,
+                    )
+
+        ax.set_xscale('log')
+        ax.set_xlim(1e-3, 300)
+        ax.set_yticks(range(len(H_LEVELS)))
+        ax.set_yticklabels(
+            [r'Nmnl', r'H$_\mathrm{low}$', r'H$_\mathrm{mid}$', r'H$_\mathrm{high}$']
         )
+        ax.set_ylim(-0.5, 3.5)
+        ax.set_title(title, fontsize=12, loc='left')
+        ax.grid(axis='x', alpha=0.15)
 
-    if pe is not None:
-        times = []
-        for m in milestones:
-            idx = pe['Phi_global'] <= m
-            times.append(float(pe['Time'][idx].iloc[0]) / 1e3 if idx.any() else np.nan)
-        ax.plot(
-            milestones,
-            times,
-            's-',
-            color=NS['color'],
-            linewidth=NS['linewidth'],
-            markersize=7,
-            label=NS['label'],
-            zorder=NS['zorder'],
-        )
-
-    ax.set_xlabel(r'Melt fraction milestone ($\Phi$)')
-    ax.set_ylabel('Time to reach milestone (kyr)')
-    ax.set_yscale('log')
-    ax.set_xlim(1.0, 0.0)
-    ax.legend(fontsize=8, ncol=2, framealpha=0.9)
+    axes[-1].set_xlabel('Earth simulated time [Myr]')
+    axes[0].legend(fontsize=7, ncol=3, loc='upper left', framealpha=0.9)
+    fig.tight_layout()
     _save(fig, out, 'chili_fig2_milestones')
 
 
@@ -847,7 +940,7 @@ def main():
         print('Fig 1 Venus and Fig 5 will show CHILI models only')
 
     plot_fig1(intercomp, pe, pv, NS, args.output)
-    plot_fig2(intercomp, pe, NS, args.output)
+    plot_fig2(intercomp, pe, NS, args.output, grid_dir=args.grid_dir)
     plot_fig3(intercomp, pe, NS, args.output)
     plot_fig4(intercomp, pe, NS, args.output)
     plot_fig5(intercomp, pv, NS, args.output)
