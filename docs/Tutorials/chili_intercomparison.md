@@ -76,11 +76,11 @@ python tools/plot_chili_comparison.py \
     --output output_files/chili_plots/
 ```
 
-All plots use the Wong colorblind-friendly palette and are saved as
-both PDF (vector) and PNG. The previous PROTEUS submission to the CHILI
-intercomparison appears as a dashed black line ("PROTEUS CHILI"), while
-the current PROTEUS run appears in vermillion with the git commit SHA
-in the legend.
+All plots use the Wong colorblind-friendly palette and are saved as both
+PDF (vector) and PNG. The previous PROTEUS submission to the CHILI intercomparison
+appears as a thin black line ("PROTEUS CHILI"), while the current
+PROTEUS run appears in vermillion with thick lines, black-edged markers,
+and the git commit SHA in the legend.
 
 ## Melt fraction evolution (Fig. 1)
 
@@ -93,7 +93,7 @@ in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.avif){ width="100%" }
-  <figcaption>Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. Cooling timescales are sensitive to H inventory (y-axis) and C inventory (marker opacity: light = C<sub>low</sub>, medium = C<sub>mid</sub>, dark = C<sub>high</sub>). Connected scatter points span the three H inventories for each model at a given C level. Nominal Earth cases are shown as crosses at the bottom of each panel.</figcaption>
+  <figcaption>Time to reach melt fraction milestones for all Earth scenarios. (a) 95%, (b) 40%, (c) 5% melt fraction. The y-axis spans H inventories from the Nominal case (bottom) to H<sub>high</sub> (10 EO, top). C inventory is encoded as marker opacity (light = C<sub>low</sub>, medium = C<sub>mid</sub>, dark = C<sub>high</sub>). Connected scatter points trace the three H levels for each model at a given C level. The current PROTEUS run (vermillion, thick lines, black-edged markers) stands out from the CHILI intercomparison ensemble. Nominal Earth cases appear as crosses at the bottom of each panel.</figcaption>
 </figure>
 
 ## Atmospheric composition (Fig. 3)
