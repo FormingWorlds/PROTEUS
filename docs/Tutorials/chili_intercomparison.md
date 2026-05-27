@@ -76,14 +76,14 @@ with the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 2](../assets/tutorials/chili/fig2_milestones.avif){ width="100%" }
-  <figcaption>Time to reach melt fraction milestones (95%, 40%, and 5%) for the Nominal Earth case. Each line connects the three milestones for one model. PROTEUS (vermillion squares) reaches 95% at 14 kyr, 40% at 434 kyr, and 5% at 1.34 Myr. The spread across models is roughly one order of magnitude at each milestone.</figcaption>
+  <figcaption>Time to reach melt fraction milestones (95%, 40%, and 5%) for the Nominal Earth case. Each line connects the three milestones for one model. PROTEUS (vermillion squares) reaches 95% at 14 kyr, 40% at 438 kyr, and 5% at 1.34 Myr. The spread across models is roughly one order of magnitude at each milestone.</figcaption>
 </figure>
 
 ## Atmospheric composition (Fig. 3)
 
 <figure markdown="span">
   ![CHILI Fig 3](../assets/tutorials/chili/fig3_atm_composition.avif){ width="100%" }
-  <figcaption>Atmospheric partial pressures at two solidification stages for the Nominal Earth case. Left: at 95% melt fraction (early). Right: at 5% melt fraction (solidification). Bars show partial pressures of H<sub>2</sub>O, CO<sub>2</sub>, CO, H<sub>2</sub>, CH<sub>4</sub>, and other species. At early times, CO<sub>2</sub> dominates for PROTEUS. At solidification, H<sub>2</sub>O has exsolved from the mantle and dominates the atmosphere at ~360 bar.</figcaption>
+  <figcaption>Atmospheric partial pressures at two solidification stages for the Nominal Earth case. Left: at 95% melt fraction (early). Right: at 5% melt fraction (solidification). Bars show partial pressures of H<sub>2</sub>O, CO<sub>2</sub>, CO, H<sub>2</sub>, CH<sub>4</sub>, and other species. At early times, CO<sub>2</sub> dominates for PROTEUS. At solidification, H<sub>2</sub>O has exsolved from the mantle and dominates the atmosphere at ~368 bar.</figcaption>
 </figure>
 
 ## H and C mass budgets (Fig. 4)
@@ -97,7 +97,7 @@ with the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif){ width="100%" }
-  <figcaption>Atmospheric partial pressures for the Nominal Venus case at two solidification stages. Left: at 95% melt fraction (early). Right: at 5% melt fraction (solidification). Stacked bars show contributions from H<sub>2</sub>O, CO<sub>2</sub>, CO, H<sub>2</sub>, and CH<sub>4</sub>. PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> at solidification, for a total surface pressure of ~441 bar. The spread across models is comparable to the Earth case, though Venus atmospheres are generally thicker due to slower solidification at higher instellation.</figcaption>
+  <figcaption>Atmospheric partial pressures for the Nominal Venus case at two solidification stages. Left: at 95% melt fraction (early). Right: at 5% melt fraction (near solidification, Phi = 5.2%). Stacked bars show contributions from H<sub>2</sub>O, CO<sub>2</sub>, CO, H<sub>2</sub>, and CH<sub>4</sub>. PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar. The spread across models is comparable to the Earth case, though Venus atmospheres are generally thicker due to slower solidification at higher instellation.</figcaption>
 </figure>
 
 ## fO$_2$ vs surface temperature (Fig. 6)
@@ -111,7 +111,7 @@ with the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 7](../assets/tutorials/chili/fig7_olr.avif){ width="100%" }
-  <figcaption>Outgoing longwave radiation (OLR) as a function of melt fraction (left) and surface temperature (right) for the Nominal Earth case. OLR controls the cooling rate: higher OLR means faster solidification. PROTEUS OLR decreases from ~6 x 10<sup>5</sup> W m<sup>-2</sup> at full melt to ~480 W m<sup>-2</sup> at solidification. The OLR-temperature relationship reveals differences in atmospheric opacity treatment across models.</figcaption>
+  <figcaption>Outgoing longwave radiation (OLR) as a function of melt fraction (left) and surface temperature (right) for the Nominal Earth case. OLR controls the cooling rate: higher OLR means faster solidification. PROTEUS OLR decreases from ~2 x 10<sup>5</sup> W m<sup>-2</sup> at full melt to ~466 W m<sup>-2</sup> at solidification. The OLR-temperature relationship reveals differences in atmospheric opacity treatment across models.</figcaption>
 </figure>
 
 ## Geodynamics diagnostics (Fig. 8)
@@ -125,7 +125,7 @@ with the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.avif){ width="100%" }
-  <figcaption>Surface pressure vs time for all models. PROTEUS surface pressure evolves from ~80 bar initially to ~430 bar at solidification for the Earth case, driven by H<sub>2</sub>O exsolution from the crystallizing mantle. Models differ in the timing and magnitude of the pressure increase, reflecting different volatile solubility treatments.</figcaption>
+  <figcaption>Surface pressure vs time for all models. PROTEUS surface pressure starts high (~10<sup>4</sup> bar during the brief fully molten phase), drops to a minimum of ~117 bar as CO<sub>2</sub> partitions between atmosphere and melt, then rises to ~438 bar at solidification as H<sub>2</sub>O exsolves from the crystallizing mantle. Models differ in the timing and magnitude of the pressure evolution, reflecting different volatile solubility treatments.</figcaption>
 </figure>
 
 ## Earth volatile grid (optional)
@@ -148,8 +148,10 @@ for cfg in input/tutorials/chili_grid/*.toml; do
 done
 ```
 
-Low-H cases solidify in ~0.5 Myr; high-H cases take several Myr due
-to thicker, more opaque atmospheres that slow radiative cooling.
+Low-H cases (0.5 EO) solidify in 0.49 to 0.61 Myr; mid-H cases
+(5 EO) solidify in 2.42 to 2.72 Myr; high-H cases (10 EO) take
+the longest due to thicker, more opaque steam atmospheres that slow
+radiative cooling.
 
 ## Key findings
 
