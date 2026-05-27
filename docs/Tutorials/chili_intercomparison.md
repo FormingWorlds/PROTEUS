@@ -198,16 +198,23 @@ Solidification times for the completed grid cases:
 |---|---|---|---|
 | **H$_\mathrm{low}$** (1 EO) | 0.49 Myr | 0.53 Myr | 0.61 Myr |
 | **H$_\mathrm{mid}$** (5 EO) | 2.72 Myr | 2.55 Myr | 2.42 Myr |
-| **H$_\mathrm{high}$** (10 EO) | TBD | TBD | TBD |
+| **H$_\mathrm{high}$** (10 EO) | 8.85 Myr | 8.45 Myr | 7.78 Myr |
 
 Hydrogen inventory is the primary control on solidification timescale:
 a ~5x increase in H budget (1 to 5 EO) delays solidification by a
-factor of ~5. The carbon effect is secondary and non-monotonic. At
-low H, more CO$_2$ adds greenhouse opacity and slows cooling (0.49
-to 0.61 Myr). At mid-H, the effect reverses: more CO$_2$ raises
-P$_\mathrm{surf}$, which via Henry's law enhances H$_2$O dissolution
-in the silicate melt, reducing the atmospheric H$_2$O greenhouse and
-allowing higher OLR (2.72 to 2.42 Myr).
+factor of ~5, and a further 2x increase (5 to 10 EO) adds another
+factor of ~3 (2.5 to 8.5 Myr). The carbon effect is secondary and
+non-monotonic. At low H, more CO$_2$ adds greenhouse opacity and
+slows cooling (0.49 to 0.61 Myr). At mid and high H, the effect
+reverses: more CO$_2$ raises P$_\mathrm{surf}$, which via Henry's
+law enhances H$_2$O dissolution in the silicate melt, reducing the
+atmospheric H$_2$O greenhouse and allowing higher OLR (2.72 to
+2.42 Myr at mid-H; 8.85 to 7.78 Myr at high-H).
+
+<figure markdown="span">
+  ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification.png){ width="80%" }
+  <figcaption>Solidification time as a function of hydrogen inventory for the three carbon levels. The near-linear scaling on the log-log axes reflects the blanketing effect of the steam atmosphere on OLR. The carbon-inventory dependence reverses sign between low-H and high-H cases (see text).</figcaption>
+</figure>
 
 ## Key findings
 

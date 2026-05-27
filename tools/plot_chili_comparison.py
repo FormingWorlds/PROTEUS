@@ -72,6 +72,17 @@ MODELS = {
 }
 
 GAS_SPECIES = ['H2O', 'CO2', 'CO', 'H2', 'CH4', 'N2', 'S2', 'SO2', 'H2S']
+GAS_LABELS = {
+    'H2O': r'H$_2$O',
+    'CO2': r'CO$_2$',
+    'CO': 'CO',
+    'H2': r'H$_2$',
+    'CH4': r'CH$_4$',
+    'N2': r'N$_2$',
+    'S2': r'S$_2$',
+    'SO2': r'SO$_2$',
+    'H2S': r'H$_2$S',
+}
 GAS_COLORS = {
     'H2O': '#2196F3',
     'CO2': '#FF5722',
@@ -606,7 +617,7 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
                 vals,
                 bottom=bottom,
                 color=GAS_COLORS[g],
-                label=g,
+                label=GAS_LABELS.get(g, g),
                 width=bar_width,
                 edgecolor=edgecolors,
                 linewidth=edgewidths,
@@ -692,7 +703,7 @@ def plot_fig5(intercomp, pv, NS, out):
             vals,
             bottom=bottom,
             color=GAS_COLORS[g],
-            label=g,
+            label=GAS_LABELS.get(g, g),
             width=bar_width,
             edgecolor=edgecolors,
             linewidth=edgewidths,
@@ -1005,15 +1016,18 @@ def plot_fig6(intercomp, pv, NS, out):
 
     ax_abs.set_ylabel(r'$\log_{10}(f\mathrm{O}_2 / \mathrm{bar})$')
     ax_abs.text(
-        0.02,
-        0.93,
+        0.98,
+        0.95,
         r'$\mathbf{(a)}$ Absolute $f$O$_2$',
         transform=ax_abs.transAxes,
         fontsize=12,
         va='top',
+        ha='right',
     )
     ax_abs.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
     ax_abs.invert_xaxis()
+    ax_abs.set_xlim(3300, None)
+    ax_abs.set_ylim(-10, None)
     ax_abs.grid(alpha=0.15)
 
     ax_rel.set_xlabel('Degassing temperature [K]')
@@ -1026,7 +1040,9 @@ def plot_fig6(intercomp, pv, NS, out):
         fontsize=12,
         va='top',
     )
-    ax_rel.legend(fontsize=7, ncol=2, loc='upper left', framealpha=0.9)
+    ax_rel.set_xlim(3300, None)
+    ax_rel.set_ylim(bottom=0)
+    ax_rel.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
     ax_rel.grid(alpha=0.15)
 
     fig.tight_layout()
