@@ -93,6 +93,13 @@ with the git commit SHA in the legend.
   <figcaption>Hydrogen (left) and carbon (right) mass budgets at solidification, partitioned into atmosphere, melt, and solid reservoirs. For PROTEUS, most hydrogen resides in the atmosphere at solidification (the melt reservoir is nearly empty), while carbon is split between atmosphere and solid mantle. Models that track fewer volatile species (e.g. GOOEY reports no carbon) show gaps.</figcaption>
 </figure>
 
+## Venus atmospheric composition (Fig. 5)
+
+<figure markdown="span">
+  ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.avif){ width="100%" }
+  <figcaption>Atmospheric partial pressures for the Nominal Venus case at two solidification stages. Left: at 95% melt fraction (early). Right: at 5% melt fraction (solidification). Stacked bars show contributions from H<sub>2</sub>O, CO<sub>2</sub>, CO, H<sub>2</sub>, and CH<sub>4</sub>. PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> at solidification, for a total surface pressure of ~441 bar. The spread across models is comparable to the Earth case, though Venus atmospheres are generally thicker due to slower solidification at higher instellation.</figcaption>
+</figure>
+
 ## fO$_2$ vs surface temperature (Fig. 6)
 
 <figure markdown="span">

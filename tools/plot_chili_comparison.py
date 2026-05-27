@@ -403,6 +403,77 @@ def plot_fig3(chili, pe, out):
     _save(fig, out, 'chili_fig3_atm_composition')
 
 
+# ── Fig 5: Venus atmospheric composition at solidification ──────────
+def plot_fig5(chili, pv, out):
+    NS = _new_style()
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+    intercomp = chili / 'intercomparison' / 'outputs'
+    phi_targets = [0.95, 0.05]
+
+    for ax, phi_tgt, title in zip(
+        axes, phi_targets, [r'Venus $\Phi$ = 95%', r'Venus $\Phi$ = 5%']
+    ):
+        model_names = []
+        gas_data = {g: [] for g in GAS_SPECIES}
+
+        for mk, st in MODELS.items():
+            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-venus-data.csv')
+            if df is None:
+                continue
+            phi = _get_phi(df)
+            if phi is None:
+                continue
+            idx = phi <= phi_tgt
+            if not idx.any():
+                continue
+            row = df[idx].iloc[0]
+            model_names.append(st['label'])
+            for g in GAS_SPECIES:
+                col = _get_col(df, f'p_{g}')
+                gas_data[g].append(
+                    float(row[col.name]) if col is not None and col.name in row.index else 0
+                )
+
+        if pv is not None:
+            idx = pv['Phi_global'] <= phi_tgt
+            if not idx.any():
+                idx = pv['Phi_global'] <= phi_tgt + 0.01
+            if idx.any():
+                row = pv[idx].iloc[0]
+                model_names.append(NS['label'])
+                for g in GAS_SPECIES:
+                    gas_data[g].append(float(row.get(f'{g}_bar', 0)))
+
+        if not model_names:
+            continue
+        x = np.arange(len(model_names))
+        bottom = np.zeros(len(model_names))
+        for g in GAS_SPECIES:
+            vals = np.array(gas_data[g])
+            if vals.sum() > 0:
+                ax.bar(
+                    x,
+                    vals,
+                    bottom=bottom,
+                    color=GAS_COLORS[g],
+                    label=g,
+                    width=0.6,
+                    edgecolor='white',
+                    linewidth=0.3,
+                )
+                bottom += vals
+        ax.set_xticks(x)
+        ax.set_xticklabels(model_names, fontsize=7, rotation=45, ha='right')
+        ax.set_ylabel('Partial pressure (bar)')
+        ax.set_title(title, fontsize=12)
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=0.01)
+
+    axes[0].legend(fontsize=7, ncol=3, loc='upper left', framealpha=0.9)
+    fig.tight_layout()
+    _save(fig, out, 'chili_fig5_venus_atm')
+
+
 # ── Fig 4: H, C mass budgets ─────────────────────────────────────────
 def plot_fig4(chili, pe, out):
     NS = _new_style()
@@ -722,6 +793,7 @@ def main():
     plot_fig2(chili, pe, args.output)
     plot_fig3(chili, pe, args.output)
     plot_fig4(chili, pe, args.output)
+    plot_fig5(chili, pv, args.output)
     plot_fig6(chili, pe, args.output)
     plot_fig7(chili, pe, args.output)
     plot_fig8(chili, pe, args.output)
