@@ -62,8 +62,8 @@ WONG = [
 
 MODELS = {
     'gooey': {'color': WONG[1], 'label': 'GOOEY'},
-    'proteus': {'color': WONG[0], 'label': 'PROTEUS CHILI', 'ls': '--', 'lw': 1.5},
     'neongooey': {'color': WONG[2], 'label': 'NEONGOOEY'},
+    'proteus': {'color': WONG[0], 'label': 'PROTEUS CHILI', 'ls': '--', 'lw': 1.5},
     'pacman': {'color': WONG[3], 'label': 'PACMAN'},
     'lincs': {'color': WONG[5], 'label': 'LINCS'},
     'moai': {'color': WONG[6], 'label': 'MOAI'},
@@ -482,7 +482,8 @@ def _collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS):
         idx = phi <= phi_tgt + 2 * PHI_RELAX
         if not idx.any():
             continue
-        row = df[idx].iloc[0]
+        subset = df[idx]
+        row = subset.loc[(phi[subset.index] - phi_tgt).abs().idxmin()]
         entry = {
             'name': st['label'],
             'is_proteus': False,
@@ -668,59 +669,159 @@ def plot_fig5(intercomp, pv, NS, out):
 
 # ── Fig 4: H, C mass budgets ─────────────────────────────────────────
 def plot_fig4(intercomp, pe, NS, out):
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+    """H and C mass budgets in 3 reservoirs, matching Nicholls+ Fig 4 layout."""
     reservoirs = ['atm', 'melt', 'solid']
-    res_colors = {'atm': WONG[2], 'melt': WONG[6], 'solid': WONG[3]}
+    res_titles = {
+        'atm': 'Outgassed to atm.',
+        'melt': 'Dissolved in melt',
+        'solid': 'Stored in solid',
+    }
+    res_hatches = {'atm': '', 'melt': '..', 'solid': '//'}
+    h_color = '#009E73'
+    c_color = '#CC3311'
+    panel_labels = [r'$\mathbf{(a)}$', r'$\mathbf{(b)}$', r'$\mathbf{(c)}$']
 
-    for ax, element in zip(axes, ['H', 'C']):
-        model_names = []
-        res_data = {r: [] for r in reservoirs}
+    model_names = []
+    is_proteus = []
+    data = {}
+    seen_chili_proteus = False
+    pre, pair, post = [], [], []
 
-        for mk, st in MODELS.items():
-            df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
-            if df is None:
-                continue
-            phi = _get_phi(df)
-            if phi is None:
-                continue
-            row = df[phi <= 0.05].iloc[0] if (phi <= 0.05).any() else df.iloc[-1]
-            model_names.append(st['label'])
-            for r in reservoirs:
-                col = _get_col(df, f'mass{element}_{r}')
-                res_data[r].append(float(row[col.name]) if col is not None else 0)
-
-        if pe is not None:
-            row = _find_row_at_phi(pe, 0.05)
-            if row is None:
-                row = pe.iloc[-1]
-            model_names.append(NS['label'])
-            for r in reservoirs:
-                hf_r = 'liquid' if r == 'melt' else r
-                res_data[r].append(float(row.get(f'{element}_kg_{hf_r}', 0)))
-
-        if not model_names:
+    for mk, st in MODELS.items():
+        df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
+        if df is None:
             continue
-        x = np.arange(len(model_names))
-        width = 0.25
-        for i, r in enumerate(reservoirs):
-            vals = np.array(res_data[r], dtype=float)
-            vals[vals <= 0] = np.nan
-            ax.bar(
-                x + (i - 1) * width,
-                vals,
-                color=res_colors[r],
-                label=r.capitalize(),
-                width=width,
-                edgecolor='white',
-                linewidth=0.3,
-            )
-        ax.set_xticks(x)
-        ax.set_xticklabels(model_names, fontsize=7, rotation=45, ha='right')
-        ax.set_ylabel(f'{element} mass (kg)')
-        ax.set_title(f'{element} budget at solidification', fontsize=12)
-        ax.set_yscale('log')
+        phi = _get_phi(df)
+        if phi is None:
+            continue
+        idx = phi <= 0.05 + 2 * PHI_RELAX
+        if idx.any():
+            subset = df[idx]
+            row = subset.loc[(phi[subset.index] - 0.05).abs().idxmin()]
+        else:
+            row = df.iloc[-1]
+        entry = {'name': st['label'], 'is_proteus': False}
+        for r in reservoirs:
+            for el in ['H', 'C']:
+                col = _get_col(df, f'mass{el}_{r}')
+                entry[f'{el}_{r}'] = float(row[col.name]) if col is not None else 0
+        if mk == 'proteus':
+            seen_chili_proteus = True
+            pair.append(entry)
+        elif seen_chili_proteus:
+            post.append(entry)
+        else:
+            pre.append(entry)
 
-    axes[0].legend(fontsize=8, framealpha=0.9)
+    if pe is not None:
+        row = _find_row_at_phi(pe, 0.05)
+        if row is None:
+            row = pe.iloc[-1]
+        entry = {'name': NS['label'], 'is_proteus': True}
+        for r in reservoirs:
+            hf_r = 'liquid' if r == 'melt' else r
+            for el in ['H', 'C']:
+                entry[f'{el}_{r}'] = float(row.get(f'{el}_kg_{hf_r}', 0))
+        pair.append(entry)
+
+    ordered = pre + pair + post
+    model_names = [e['name'] for e in ordered]
+    is_proteus = [e['is_proteus'] for e in ordered]
+    for e in ordered:
+        for key in e:
+            if key not in ('name', 'is_proteus'):
+                data.setdefault(key, []).append(e[key])
+
+    n = len(model_names)
+    x = np.arange(n)
+    width = 0.35
+
+    max_val = 0.0
+    for r in reservoirs:
+        for el in ['H', 'C']:
+            vals = np.array(data.get(f'{el}_{r}', [0] * n), dtype=float)
+            vals[vals < 0] = 0
+            if len(vals) > 0:
+                max_val = max(max_val, vals.max())
+
+    fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
+    ylim_top = max_val * 1.15 / 1e20
+
+    for ax, r, plabel in zip(axes, reservoirs, panel_labels):
+        h_vals = np.array(data.get(f'H_{r}', [0] * n), dtype=float).clip(min=0) / 1e20
+        c_vals = np.array(data.get(f'C_{r}', [0] * n), dtype=float).clip(min=0) / 1e20
+
+        for i in range(n):
+            ec_h = 'black' if is_proteus[i] else 'white'
+            ew_h = 2.0 if is_proteus[i] else 0.5
+            ec_c = 'black' if is_proteus[i] else 'white'
+            ew_c = 2.0 if is_proteus[i] else 0.5
+            ax.bar(
+                x[i] - width / 2,
+                h_vals[i],
+                color=h_color,
+                width=width,
+                hatch=res_hatches[r],
+                edgecolor=ec_h,
+                linewidth=ew_h,
+            )
+            ax.bar(
+                x[i] + width / 2,
+                c_vals[i],
+                color=c_color,
+                width=width,
+                hatch=res_hatches[r],
+                edgecolor=ec_c,
+                linewidth=ew_c,
+            )
+            if r == 'atm' and h_vals[i] > 0:
+                ax.text(
+                    x[i] - width / 2,
+                    h_vals[i] * 0.35,
+                    'H',
+                    ha='center',
+                    va='center',
+                    fontsize=7,
+                    fontweight='bold',
+                    color='white',
+                )
+            if r == 'atm' and c_vals[i] > 0:
+                ax.text(
+                    x[i] + width / 2,
+                    c_vals[i] * 0.35,
+                    'C',
+                    ha='center',
+                    va='center',
+                    fontsize=7,
+                    fontweight='bold',
+                    color='white',
+                )
+
+        ax.set_ylim(0, ylim_top)
+        ax.set_ylabel(r'$10^{20}$ kg')
+        ax.text(
+            0.02,
+            0.92,
+            f'{plabel} {res_titles[r]}',
+            transform=ax.transAxes,
+            fontsize=12,
+            va='top',
+        )
+        ax.grid(axis='y', alpha=0.2)
+
+    axes[-1].set_xticks(x)
+    tick_labels = []
+    for nm, ip in zip(model_names, is_proteus):
+        if ip:
+            tick_labels.append(rf'$\bf{{{nm}}}$')
+        else:
+            tick_labels.append(nm)
+    axes[-1].set_xticklabels(tick_labels, fontsize=9, rotation=45, ha='right')
+    for tl, ip in zip(axes[-1].get_xticklabels(), is_proteus):
+        if ip:
+            tl.set_color(NS['color'])
+
+    fig.suptitle(r'Nominal-Earth H,C inventories at $\phi$ = 5%', fontsize=13)
     fig.tight_layout()
     _save(fig, out, 'chili_fig4_mass_budgets')
 

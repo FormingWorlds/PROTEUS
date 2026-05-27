@@ -107,7 +107,7 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 4](../assets/tutorials/chili/fig4_mass_budgets.png){ width="100%" }
-  <figcaption>Hydrogen (left) and carbon (right) mass budgets at solidification, partitioned into atmosphere, melt, and solid reservoirs. For PROTEUS, most hydrogen resides in the atmosphere at solidification (the melt reservoir is nearly empty), while carbon is split between atmosphere and solid mantle. Models that track fewer volatile species (e.g. GOOEY reports no carbon) show gaps.</figcaption>
+  <figcaption>Hydrogen (green) and carbon (red) mass budgets at 5% melt fraction, distributed across three reservoirs: (a) outgassed to atmosphere, (b, dotted) dissolved in the remnant magma ocean, (c, hatched) stored in solidified mantle. The current PROTEUS run (vermillion label, black-edged bars) is placed next to the original CHILI submission. GOOEY and LINCS do not simulate carbon. MOAI and PACMAN store significant H in the solid mantle, while most other models retain H in the atmosphere or melt.</figcaption>
 </figure>
 
 ## Venus atmospheric composition
