@@ -1,6 +1,6 @@
 # Solar System CHILI intercomparison
 
-The CHILI (Coupled atmospHere Interior modeL Intercomparison) is a
+The CHILI (Coupled atmospHere Interior modeL Intercomparison) project is a
 community benchmark that fixes shared initial and boundary conditions for
 magma ocean evolution codes[^cite-lichtenberg2026]. Its first
 intercomparison applies that protocol to the inner Solar System,
@@ -14,6 +14,14 @@ PROTEUS run on the results submitted by every participating model. Those
 submitted results, and the figure layouts they follow, are drawn from the
 Solar System CHILI intercomparison paper (Nicholls et al. 2026, in
 prep.)[^cite-nicholls2026].
+
+!!! info "CHILI data and code"
+    The simulation output of every participating model is openly available
+    in the CHILI repository on GitHub:
+    [**github.com/projectcuisines/chili**](https://github.com/projectcuisines/chili).
+    The plotting script used below downloads this data automatically, and
+    you can also clone the repository yourself (see Step 2) to inspect or
+    re-plot the submitted results.
 
 ## Overview
 
