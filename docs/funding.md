@@ -68,12 +68,12 @@ style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 alt="European Research Council logo"
 style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 </a>
-<a href="https://www.ukri.org/" target="_blank">
-<img src="assets/logos/UKRI.png" class="logo-light"
-alt="European Research Council logo"
+<a href="https://www.ukri.org/councils/stfc/" target="_blank">
+<img src="assets/logos/UKRI_STFC.png" class="logo-light"
+alt="UK Research and Innovation (STFC) logo"
 style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
-<img src="assets/logos/UKRI_white.png" class="logo-dark"
-alt="UK Research and Innovation logo"
+<img src="assets/logos/UKRI_STFC_white.png" class="logo-dark"
+alt="UK Research and Innovation (STFC) logo"
 style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 </a>
 </div>
