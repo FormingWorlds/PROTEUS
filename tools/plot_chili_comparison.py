@@ -47,6 +47,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 
 CHILI_REPO_URL = 'https://github.com/projectcuisines/chili.git'
 
@@ -1143,11 +1144,54 @@ def plot_fig7(intercomp, pv, NS, out):
         ax.set_ylabel(ylabel)
         ax.set_ylim(-2, 105)
         ax.set_xscale('log')
+        ax.set_xlim(1e-3, 300)
         ax.grid(alpha=0.15)
-        ax.text(0.95, 0.08, plabel, transform=ax.transAxes, fontsize=14, ha='right')
+        ax.text(
+            0.96,
+            0.93,
+            plabel,
+            transform=ax.transAxes,
+            fontsize=14,
+            ha='right',
+            va='top',
+            fontweight='bold',
+        )
 
     ax_c.set_xlabel('Simulated time [Myr]')
-    ax_h.legend(fontsize=7, ncol=2, loc='lower left', framealpha=0.9)
+
+    # Single combined legend on the carbon panel: every code plus a
+    # melt-fraction marker key (x at phi=95%, o at phi=5%).
+    handles, labels = ax_h.get_legend_handles_labels()
+    marker_key = [
+        Line2D(
+            [],
+            [],
+            marker='x',
+            color='0.25',
+            linestyle='none',
+            markersize=8,
+            markeredgewidth=1.5,
+            label=r'$\phi = 95\%$',
+        ),
+        Line2D(
+            [],
+            [],
+            marker='o',
+            color='0.25',
+            linestyle='none',
+            markersize=8,
+            label=r'$\phi = 5\%$',
+        ),
+    ]
+    ax_c.legend(
+        handles + marker_key,
+        labels + [h.get_label() for h in marker_key],
+        fontsize=7,
+        ncol=2,
+        loc='lower left',
+        framealpha=0.9,
+    )
+
     fig.suptitle('Nominal-Venus volatiles retained [%]', fontsize=13)
     fig.tight_layout()
     _save(fig, out, 'chili_fig7_volatiles')

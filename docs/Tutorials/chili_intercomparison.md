@@ -128,7 +128,7 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 7](../assets/tutorials/chili/fig7_volatiles.png){ width="100%" }
-  <figcaption>Relative amounts of the initial inventories of (a) hydrogen and (b) carbon retained by the Nominal Venus scenario as a function of simulation time. Atoms are lost from the planet due to hydrodynamic escape. Crosses mark 95% melt fraction; circles mark 5% melt fraction. PROTEUS shows significant H loss over the extended Venus cooling timescale.</figcaption>
+  <figcaption>Relative amounts of the initial (a) hydrogen and (b) carbon inventories retained in the Nominal Venus case as a function of simulation time, with atoms lost from the planet by hydrodynamic escape. Crosses mark 95% melt fraction and circles mark 5% melt fraction. The submitted PROTEUS CHILI run (black dashed) extends to ~39 Myr and retains 63% of its hydrogen and 28% of its carbon by the time it reaches 5% melt fraction. The current PROTEUS run (vermillion, labelled with its git commit SHA) stops at solidification near 2.2 Myr, before hydrodynamic escape becomes significant, and so retains 99.7% of its hydrogen and 97.9% of its carbon.</figcaption>
 </figure>
 
 ## Outgoing longwave radiation
