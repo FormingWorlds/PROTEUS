@@ -135,7 +135,7 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 8](../assets/tutorials/chili/fig8_olr.png){ width="100%" }
-  <figcaption>Outgoing longwave radiation flux from Nominal Earth, plotted as a function of (a) melt fraction and (b) surface temperature. The dashed line marks the absorbed stellar radiation (ASR = 208 W/m<sup>2</sup>) at 50 Myr stellar age with the CHILI protocol parameters. The dash-dot line marks the Nakajima et al. (1992) pure-steam runaway limit (282 W/m<sup>2</sup>). OLR controls the cooling rate; PROTEUS OLR decreases from ~2 x 10<sup>5</sup> W/m<sup>2</sup> at full melt to ~466 W/m<sup>2</sup> at solidification.</figcaption>
+  <figcaption>Outgoing longwave radiation flux from Nominal Earth, plotted as a function of (a) melt fraction and (b) surface temperature. In panel (a) the dashed line marks the absorbed stellar radiation (ASR = 208 W/m<sup>2</sup>) at 50 Myr stellar age with the CHILI protocol parameters. In panel (b) the dash-dot line marks the Simpson-Nakajima steam runaway limit (293 W/m<sup>2</sup>; Nakajima et al. 1992). OLR controls the cooling rate; PROTEUS OLR decreases from ~2 x 10<sup>5</sup> W/m<sup>2</sup> at full melt to ~466 W/m<sup>2</sup> at solidification. The current PROTEUS curve is lightly smoothed with a centered rolling mean to suppress per-timestep solver jitter; the intercomparison models are shown as submitted.</figcaption>
 </figure>
 
 ## Geodynamics diagnostics

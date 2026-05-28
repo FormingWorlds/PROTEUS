@@ -167,6 +167,33 @@ def _get_phi(df):
     return col
 
 
+def _smooth(y, window=9, log=False):
+    """Light centered rolling mean to damp per-timestep solver jitter.
+
+    Applied only to the current PROTEUS trajectory; the submitted
+    intercomparison data is always plotted unsmoothed. Both coordinates are
+    smoothed so the line does not fold back on itself where the solver
+    briefly reverses (T_surf has small step-to-step reversals). Quantities
+    spanning several decades on a log axis (OLR) are averaged in log space.
+    Endpoints are preserved exactly so the solidification value is not
+    shifted.
+    """
+    y = np.asarray(y, dtype=float)
+    if len(y) < 3:
+        return y
+    if log:
+        if (y <= 0).any():
+            return y
+        z = np.log10(y)
+    else:
+        z = y
+    s = pd.Series(z).rolling(window=window, center=True, min_periods=1).mean().to_numpy()
+    out = 10**s if log else s
+    out[0] = y[0]
+    out[-1] = y[-1]
+    return out
+
+
 def _find_row_at_phi(df, phi_target, phi_col='Phi_global', relax=PHI_RELAX):
     """Find the first row where phi <= target, with optional relaxation."""
     if phi_col not in df.columns:
@@ -1200,9 +1227,9 @@ def plot_fig7(intercomp, pv, NS, out):
 # ── Fig 8: OLR ───────────────────────────────────────────────────────
 def plot_fig8(intercomp, pe, NS, out):
     """OLR vs melt fraction and T_surf, matching Nicholls+ Fig 8."""
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+    fig, axes = plt.subplots(1, 2, figsize=(8, 6), sharey=True)
     asr_val = 208.0  # 50 Myr ASR: L_sun(50Myr)/(4pi*1AU^2) * (1-0.1) * 0.375 * cos(48.19)
-    sn_limit = 282.0  # Nakajima+1992 pure-steam runaway limit
+    sn_limit = 293.0  # Simpson-Nakajima steam runaway limit (Nakajima+1992)
 
     for mk, st in MODELS.items():
         df = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
@@ -1222,47 +1249,56 @@ def plot_fig8(intercomp, pe, NS, out):
         kw = dict(
             color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
         )
-        axes[0].plot(pe['Phi_global'] * 100, pe['F_olr'], '-', **kw)
-        axes[1].plot(pe['T_surf'], pe['F_olr'], '-', **kw)
+        olr_smooth = _smooth(pe['F_olr'].values, log=True)
+        phi_smooth = _smooth(pe['Phi_global'].values * 100)
+        tsurf_smooth = _smooth(pe['T_surf'].values)
+        axes[0].plot(phi_smooth, olr_smooth, '-', **kw)
+        axes[1].plot(tsurf_smooth, olr_smooth, '-', **kw)
 
     for ax in axes:
-        ax.axhline(asr_val, color='black', linestyle='--', linewidth=1.0)
-        ax.axhline(sn_limit, color='black', linestyle='-.', linewidth=1.0)
-        ax.set_ylabel(r'Outgoing LW radiation [W/m$^2$]')
         ax.set_yscale('log')
-        ax.set_ylim(bottom=100)
+        ax.set_ylim(1e2, 5e5)
         ax.grid(alpha=0.15)
 
+    axes[0].set_ylabel(r'Outgoing LW radiation [W/m$^2$]')
+
+    # ASR reference on panel (a), Simpson-Nakajima limit on panel (b):
+    # one reference line per panel, matching the paper layout.
+    axes[0].axhline(asr_val, color='black', linestyle='--', linewidth=1.0)
     axes[0].text(
-        0.02, 0.93, r'$\mathbf{(a)}$', transform=axes[0].transAxes, fontsize=14, va='top'
-    )
-    axes[0].text(
-        0.5,
-        0.06,
-        f'50 Myr ASR\n({asr_val} W/m$^2$)',
-        transform=axes[0].transAxes,
+        0.03,
+        asr_val * 1.6,
+        f'50 Myr ASR\n({asr_val:.0f} W/m$^2$)',
+        transform=axes[0].get_yaxis_transform(),
         fontsize=8,
+        fontweight='bold',
         va='bottom',
-        bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.8),
+        ha='left',
+    )
+    axes[1].axhline(sn_limit, color='black', linestyle='-.', linewidth=1.0)
+    axes[1].text(
+        0.03,
+        sn_limit * 1.6,
+        f'SN limit\n({sn_limit:.0f} W/m$^2$)',
+        transform=axes[1].get_yaxis_transform(),
+        fontsize=8,
+        fontweight='bold',
+        va='bottom',
+        ha='left',
+    )
+
+    axes[0].text(
+        0.03, 0.96, r'$\mathbf{(a)}$', transform=axes[0].transAxes, fontsize=14, va='top'
     )
     axes[0].set_xlabel('Melt fraction [vol%]')
     axes[0].set_xlim(100, 0)
-    axes[0].legend(fontsize=7, ncol=2, loc='upper left', framealpha=0.9)
+    axes[0].legend(fontsize=7, ncol=1, loc='upper right', framealpha=0.9)
 
     axes[1].text(
-        0.02, 0.93, r'$\mathbf{(b)}$', transform=axes[1].transAxes, fontsize=14, va='top'
-    )
-    axes[1].text(
-        0.5,
-        0.06,
-        f'SN limit\n({sn_limit} W/m$^2$)',
-        transform=axes[1].transAxes,
-        fontsize=8,
-        va='bottom',
-        bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.8),
+        0.03, 0.96, r'$\mathbf{(b)}$', transform=axes[1].transAxes, fontsize=14, va='top'
     )
     axes[1].set_xlabel(r'$T_\mathrm{surf}$ [K]')
-    axes[1].invert_xaxis()
+    axes[1].set_xlim(3400, 1400)
 
     fig.tight_layout()
     _save(fig, out, 'chili_fig8_olr')
