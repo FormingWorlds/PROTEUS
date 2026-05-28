@@ -258,13 +258,9 @@ stellar age[^cite-lichtenberg2026]. What differs is the interior machinery.
 The PROTEUS results submitted to the intercomparison were computed with an
 earlier version of PROTEUS, not the configuration documented here. That
 version used **SPIDER** for the interior thermal evolution and an
-Adams-Williamson integration for the interior structure. SPIDER advances
-the magma ocean in an entropy (temperature-entropy) formulation with
-mixing-length convection, gravitational settling of cumulates, latent
-heat, and conduction; the interior density and radius follow from
-integrating the Adams-Williamson equation under adiabatic
-self-compression. It also fixed oxygen fugacity relative to the
-iron-wustite buffer and did not store volatiles in the solid mantle.
+Adams-Williamson integration for the interior structure. See Lichtenberg
+et al. (2026)[^cite-lichtenberg2026] and Nicholls et al. (2026, in
+prep.)[^cite-nicholls2026] for further details.
 
 The configuration documented on this page uses **Aragog** for the
 interior thermal evolution and **Zalmoxis** for the interior structure.
