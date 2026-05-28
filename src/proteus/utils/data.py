@@ -1769,7 +1769,7 @@ def download_Seager_EOS():
 # so that every file ends up at a predictable path.
 #
 # ``download_zalmoxis_eos()`` is the top-level dispatcher called from
-# ``_get_sufficient()`` — it inspects the mantle/core EOS config and
+# ``_get_sufficient()``; it inspects the mantle/core EOS config and
 # downloads only the datasets required for the current run.
 # ─────────────────────────────────────────────────────────────────────
 

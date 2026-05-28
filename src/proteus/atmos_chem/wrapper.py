@@ -61,8 +61,8 @@ def run_chemistry(dirs: dict, config: Config, hf_row: dict) -> pd.DataFrame:
     log.info(f'    Using {module} module, {when}')
 
     # Dispatch based on scheduling mode:
-    #   'offline' — run once after the simulation step, on the final state
-    #   'online'  — run at every snapshot during the main simulation loop
+    #   'offline': run once after the simulation step, on the final state
+    #   'online':  run at every snapshot during the main simulation loop
     filename = None
     if when == 'offline':
         log.debug('Running atmospheric chemistry in OFFLINE mode')

@@ -931,7 +931,7 @@ class Proteus:
             # Guard: hf_all is None until the first row is appended at the
             # bottom of the loop body. On a fresh run's first iteration
             # there is no "previous" row to compare against, so the
-            # deadlock detector cannot fire yet — count the failure but do
+            # deadlock detector cannot fire yet, so count the failure but do
             # not abort.
             self._check_atmosphere_deadlock()
 

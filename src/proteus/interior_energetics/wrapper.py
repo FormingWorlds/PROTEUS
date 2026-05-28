@@ -580,8 +580,10 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     solvers need at runtime (10 phase-property files + 2 P-S melting
     curves). This is the PROTEUS-side data-resolution layer that lets
     ``interior_energetics.module = "aragog"`` work with
-    ``interior_struct.module = "spider"``. Aragog requires the P-S
-    tables to be produced for it; this helper produces them.
+    ``interior_struct.module = "spider"``. In that combination no other
+    code path produces the P-S tables Aragog needs at runtime, so this
+    helper is their sole producer; without it the combination raises
+    ``FileNotFoundError`` at solver setup.
 
     Resolution order (first available wins):
 

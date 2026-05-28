@@ -182,9 +182,9 @@ def _agni_setup_accepts_aerosol_species() -> bool:
     every ``atmosphere.jl`` under AGNI/src for a kwarg-list reference of
     the form ``aerosol_species ::`` or ``aerosol_species =``.
 
-    AGNI moved ``atmosphere.jl`` from ``src/`` to ``src/state/`` in a
-    layout refactor; this helper tolerates both paths so PROTEUS does
-    not have to be kept in lockstep with AGNI's directory structure.
+    ``atmosphere.jl`` lives under ``src/`` or ``src/state/`` depending
+    on the AGNI version; this helper tolerates both paths so PROTEUS
+    does not have to be kept in lockstep with AGNI's directory structure.
 
     Returns ``False`` when AGNI is not on the conventional sibling path
     or when no ``atmosphere.jl`` can be located.

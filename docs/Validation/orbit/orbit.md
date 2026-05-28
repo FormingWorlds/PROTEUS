@@ -2,9 +2,7 @@
 
 This page tracks the `@pytest.mark.reference_pinned` tests that anchor the
 behaviour of `proteus.orbit.orbit` against a published source or analytical
-limit. The marker is defined in
-[`.github/.claude/rules/proteus-tests.md`](../../../.github/.claude/rules/proteus-tests.md)
-section 3.
+limit. The marker is registered in `pyproject.toml`.
 
 | Test id | Reference | Source page | Scope |
 |---|---|---|---|

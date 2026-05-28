@@ -42,8 +42,9 @@ class Spider:
     ``solver_type`` is the SUNDIALS integrator choice.
     ``tolerance_rel`` is a deprecated alias for the top-level
     ``[interior_energetics].rtol``; set ``rtol`` instead.
-    ``matprop_smooth_width`` is the SPIDER-only smoothing width for
-    material-property blending across the solidus/liquidus.
+    ``matprop_smooth_width`` sets the smoothing width for
+    material-property blending across the solidus/liquidus, read by
+    both SPIDER and Aragog.
 
     Attributes
     ----------
@@ -53,9 +54,10 @@ class Spider:
         Deprecated alias for ``Interior.rtol``. Set
         ``interior_energetics.rtol`` at the top level instead.
     matprop_smooth_width: float
-        Melt-fraction window width for smoothing SPIDER's material
-        properties across the solidus/liquidus. Passed to SPIDER as
-        ``-matprop_smooth_width``. Unused by Aragog.
+        Melt-fraction window width for smoothing material properties
+        across the solidus/liquidus. Passed to SPIDER as
+        ``-matprop_smooth_width`` and to Aragog via
+        ``_PhaseMixedParameters``.
     """
 
     solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
@@ -375,7 +377,7 @@ class Interior:
 
     # Unified ODE tolerance: both SPIDER and Aragog read from here.
     # num_tolerance is a deprecated alias (emits DeprecationWarning).
-    # matprop_smooth_width is SPIDER-only (on the Spider subclass).
+    # matprop_smooth_width lives on the Spider subclass but is read by both solvers.
     rtol: float = field(default=1e-10, validator=gt(0))
     """Relative numerical tolerance for the interior ODE solver.
     SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling).
@@ -495,7 +497,8 @@ class Interior:
     solid_log10visc: float = field(default=22.0)
     """log10 viscosity of solid silicate [Pa s]. Matches SPIDER
     -solid_log10visc (22.0 = 1e22 Pa s). Shared by SPIDER and Aragog so
-    both apply the same solid-phase rheology."""
+    both apply the same solid-phase rheology; a mis-set value diverges
+    both solvers' solid-phase rheology by the same factor."""
 
     # Phase thermal conductivity [W/m/K].
     melt_cond: float = field(default=4.0, validator=gt(0))

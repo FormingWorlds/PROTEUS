@@ -552,8 +552,8 @@ def load_zalmoxis_configuration(
         # `Zalmoxis.use_anderson` in proteus.config._struct.
         'use_jax': config.interior_struct.zalmoxis.use_jax,
         'use_anderson': config.interior_struct.zalmoxis.use_anderson,
-        # outer mass-radius solver dispatch ('picard' default |
-        # 'newton'). When 'newton', Zalmoxis uses Newton + brentq
+        # outer mass-radius solver dispatch ('newton' default |
+        # 'picard'). When 'newton', Zalmoxis uses Newton + brentq
         # bracketing on f(R) = M(R) - M_target instead of the
         # damped-Picard fixed-point loop. Newton requires tight
         # integrator tolerances; we auto-apply newton_relative_tolerance
@@ -1334,8 +1334,8 @@ def zalmoxis_solver(
         config_params['wall_timeout'] = 3600.0
 
     # JAX structure path gate: the JAX wrapper's P-indexed adiabat
-    # tabulation collapses for P-ignoring callables (see Zalmoxis
-    # commit aa3d0b8 and tools/benchmarks/bench_coupled_tempfunc.py).
+    # tabulation collapses for P-ignoring callables (see
+    # tools/benchmarks/bench_coupled_tempfunc.py).
     # The fix is to pass ``temperature_arrays=(r_arr, T_arr)`` instead,
     # which routes the RHS to the r-indexed branch. We have arrays from
     # ``update_structure_from_interior`` but NOT from PROTEUS init or
@@ -1349,8 +1349,8 @@ def zalmoxis_solver(
             log.info(
                 'Zalmoxis call has no temperature_function or '
                 'temperature_arrays: disabling use_jax and use_anderson '
-                'for this call (internal T-dispatch still hits the '
-                'P-indexed collapse bug; see Zalmoxis aa3d0b8).'
+                'for this call (the internal T-dispatch path collapses '
+                'for P-ignoring callables).'
             )
             config_params['use_jax'] = False
             config_params['use_anderson'] = False

@@ -17,7 +17,7 @@ os.environ['VECLIB_MAXIMUM_THREADS'] = '1'  # noqa
 # coupled runs that fail on noise-floor floating-point divergence. Activated
 # by passing --deterministic on any subcommand. We intercept it here in raw
 # sys.argv (before click parses it) because JAX/XLA env vars must be set
-# BEFORE any module that imports JAX is imported — and `from proteus import
+# BEFORE any module that imports JAX is imported, and `from proteus import
 # Proteus` below transitively imports JAX via Aragog.
 _PROTEUS_DETERMINISTIC_SENTINEL = 'PROTEUS_DETERMINISTIC_APPLIED'
 _DETERMINISTIC_XLA_FLAG = '--xla_cpu_enable_fast_math=false'

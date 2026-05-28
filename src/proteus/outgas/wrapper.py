@@ -256,7 +256,7 @@ def check_desiccation(config: Config, hf_row: dict) -> bool:
     # as well, on the grounds that an atmosphere with substantial O is not
     # meaningfully "desiccated" even if H/C/N/S are depleted. In practice
     # CALLIOPE drives O_kg_total to near-zero once H/C/N/S vanish, so this
-    # change rarely affects the desiccation timing — but it keeps the
+    # change rarely affects the desiccation timing, but it keeps the
     # semantics honest under whole-planet O accounting.
     for e in element_list:
         if float(hf_row.get(e + '_kg_total', 0.0)) > config.outgas.mass_thresh:

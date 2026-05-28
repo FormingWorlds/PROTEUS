@@ -305,8 +305,8 @@ and theoretical parametrizations of silicate melting. These curves define the
 temperatures at which a silicate material begins to melt (solidus) and becomes
 fully molten (liquidus) as a function of pressure.
 
-The melting-curve exporter generates lookup tables in both pressure–temperature
-(P–T) and pressure–entropy (P–S) space for several literature parametrizations
+The melting-curve exporter generates lookup tables in both pressure-temperature
+(P-T) and pressure-entropy (P-S) space for several literature parametrizations
 of peridotite / silicate melting.
 
 ### What the exporter does
@@ -321,10 +321,10 @@ These tables provide temperature as a function of entropy and pressure,
  on structured grids. The exporter therefore performs the following
 steps:
 
-1. Build solidus and liquidus curves in P–T space from literature fits.
-2. Convert those curves into P–S space by inverting the EOS relation \(T(S, P)\).
+1. Build solidus and liquidus curves in P-T space from literature fits.
+2. Convert those curves into P-S space by inverting the EOS relation \(T(S, P)\).
 3. Resample the solidus and liquidus entropy curves onto a common pressure grid.
-4. Save both the P–T and P–S versions to disk for later use by PROTEUS.
+4. Save both the P-T and P-S versions to disk for later use by PROTEUS.
 
 ### Available parametrizations
 
@@ -356,7 +356,7 @@ python tools/solidus_func.py --all
 
 Alternatively, you can generate a single parametrization using a specific flag (e.g.--katz2003, --lin2024).
 
-This will compute all parametrizations, convert them to P–T and P–S space, and store them in:
+This will compute all parametrizations, convert them to P-T and P-S space, and store them in:
 
 ```console
 $FWL_DATA/interior_lookup_tables/Melting_curves/
