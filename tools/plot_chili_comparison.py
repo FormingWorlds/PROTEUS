@@ -363,16 +363,24 @@ C_LEVELS = ['Clow', 'Cmid', 'Chigh']
 C_ALPHAS = {'Clow': 0.45, 'Cmid': 0.7, 'Chigh': 1.0}
 
 
-def _milestone_time(df, phi_target):
-    """Return the time (Myr) at which phi first drops below phi_target."""
+def _milestone_time(df, phi_target, fallback_last=False):
+    """Return the time (Myr) at which phi first drops below phi_target.
+
+    If fallback_last is True and phi never reaches the target, return the
+    time of the final snapshot (the closest the run got to the target)
+    instead of NaN. Used for the submitted PROTEUS CHILI runs, whose
+    archived output stops just above 5% melt by volume.
+    """
     t = _get_col(df, 't', 'time')
     phi = _get_phi(df)
     if t is None or phi is None:
         return np.nan
     idx = phi <= phi_target
-    if not idx.any():
-        return np.nan
-    return float(t[idx].iloc[0]) / 1e6
+    if idx.any():
+        return float(t[idx].iloc[0]) / 1e6
+    if fallback_last:
+        return float(t.iloc[-1]) / 1e6
+    return np.nan
 
 
 def _milestone_time_proteus(df, phi_target):
@@ -396,7 +404,12 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
         for mk, st in MODELS.items():
             # Nominal Earth (x marker at y=Nmnl)
             df_nom = _load_chili_csv(intercomp / mk / f'evolution-{mk}-earth-data.csv')
-            t_nom = _milestone_time(df_nom, phi_tgt) if df_nom is not None else np.nan
+            use_last = mk == 'proteus'
+            t_nom = (
+                _milestone_time(df_nom, phi_tgt, fallback_last=use_last)
+                if df_nom is not None
+                else np.nan
+            )
 
             if not np.isnan(t_nom):
                 ax.plot(
@@ -424,7 +437,7 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
                         )
                     if df is None:
                         continue
-                    t_m = _milestone_time(df, phi_tgt)
+                    t_m = _milestone_time(df, phi_tgt, fallback_last=use_last)
                     if not np.isnan(t_m):
                         y_vals.append(hi + 1)
                         t_vals.append(t_m)
@@ -489,7 +502,7 @@ def plot_fig2(intercomp, pe, NS, out, grid_dir=None):
                     )
 
         ax.set_xscale('log')
-        ax.set_xlim(1e-3, 300)
+        ax.set_xlim(1e-3, 500)
         ax.set_yticks(range(len(H_LEVELS)))
         ax.set_yticklabels(
             [r'Nmnl', r'H$_\mathrm{low}$', r'H$_\mathrm{mid}$', r'H$_\mathrm{high}$']
