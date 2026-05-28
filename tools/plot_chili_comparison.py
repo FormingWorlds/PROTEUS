@@ -48,6 +48,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.ticker import NullFormatter, ScalarFormatter
 
 CHILI_REPO_URL = 'https://github.com/projectcuisines/chili.git'
 
@@ -1267,7 +1268,7 @@ def plot_fig8(intercomp, pe, NS, out):
     axes[0].axhline(asr_val, color='black', linestyle='--', linewidth=1.0)
     axes[0].text(
         0.03,
-        asr_val * 1.6,
+        asr_val * 1.1,
         f'50 Myr ASR\n({asr_val:.0f} W/m$^2$)',
         transform=axes[0].get_yaxis_transform(),
         fontsize=8,
@@ -1278,7 +1279,7 @@ def plot_fig8(intercomp, pe, NS, out):
     axes[1].axhline(sn_limit, color='black', linestyle='-.', linewidth=1.0)
     axes[1].text(
         0.03,
-        sn_limit * 1.6,
+        sn_limit * 1.1,
         f'SN limit\n({sn_limit:.0f} W/m$^2$)',
         transform=axes[1].get_yaxis_transform(),
         fontsize=8,
@@ -1353,18 +1354,61 @@ def plot_fig9(intercomp, pe, NS, out):
             color=NS['color'], linewidth=NS['linewidth'], label=NS['label'], zorder=NS['zorder']
         )
         if 'T_surf' in pe.columns:
-            ax_t.plot(pe['Phi_global'] * 100, pe['T_surf'], '-', **kw)
+            ax_t.plot(
+                _smooth(pe['Phi_global'].values * 100),
+                _smooth(pe['T_surf'].values),
+                '-',
+                **kw,
+            )
         if len(profs.get('R_rheo', [])) > 0:
-            ax_r.plot(profs['Phi_global'] * 100, np.array(profs['R_rheo']) / 1e6, '-', **kw)
+            ax_r.plot(
+                _smooth(profs['Phi_global'] * 100),
+                _smooth(np.array(profs['R_rheo']) / 1e6),
+                '-',
+                **kw,
+            )
         if len(profs.get('visc_avg', [])) > 0:
-            ax_v.plot(profs['Phi_global'] * 100, profs['visc_avg'], '-', **kw)
+            ax_v.plot(
+                _smooth(profs['Phi_global'] * 100),
+                _smooth(profs['visc_avg'], log=True),
+                '-',
+                **kw,
+            )
 
+    _anno_box = dict(boxstyle='round,pad=0.2', fc='white', ec='none', alpha=0.85)
     ax_r.axhline(R_cmb_Mm, color='black', linestyle='--', linewidth=1.0)
-    ax_r.text(50, R_cmb_Mm + 0.05, 'Core-mantle boundary (PROTEUS)', fontsize=8, va='bottom')
+    ax_r.text(
+        0.98,
+        R_cmb_Mm,
+        'Core-mantle boundary (PROTEUS)',
+        transform=ax_r.get_yaxis_transform(),
+        fontsize=8,
+        va='top',
+        ha='right',
+        bbox=_anno_box,
+    )
     ax_v.axhline(visc_solid, color='black', linestyle='--', linewidth=1.0)
-    ax_v.text(50, visc_solid * 2, 'Solid mantle viscosity', fontsize=8, va='bottom')
+    ax_v.text(
+        0.5,
+        visc_solid,
+        'Solid mantle viscosity',
+        transform=ax_v.get_yaxis_transform(),
+        fontsize=8,
+        va='bottom',
+        ha='center',
+        bbox=_anno_box,
+    )
     ax_v.axhline(visc_water, color='black', linestyle=':', linewidth=1.0)
-    ax_v.text(50, visc_water * 3, 'Water STP viscosity', fontsize=8, va='bottom')
+    ax_v.text(
+        0.98,
+        visc_water,
+        'Water STP viscosity',
+        transform=ax_v.get_yaxis_transform(),
+        fontsize=8,
+        va='bottom',
+        ha='right',
+        bbox=_anno_box,
+    )
 
     ax_t.set_ylabel(r'$T_\mathrm{surf}$ [K]')
     ax_r.set_ylabel(r'$R_\mathrm{RF}$ [Mm]')
@@ -1421,34 +1465,64 @@ def plot_psurf(intercomp, pe, NS, out):
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(1e-3, 1e1)
+    # Bound the y-axis to the physical pressure range; one model reports a
+    # spurious near-zero initial point that would otherwise stretch the axis
+    # across 20 empty decades.
+    ax.set_ylim(1e1, 1e5)
     ax.legend(fontsize=8, ncol=2, framealpha=0.9)
     _save(fig, out, 'chili_psurf_vs_time')
 
 
 # ── Grid solidification timescales ──────────────────────────────────
-def plot_grid_timescales(grid_dir, out):
+def plot_grid_timescales(intercomp, grid_dir, NS, out):
     fig, ax = plt.subplots(figsize=(8, 5.5))
     c_markers = {'Clow': 'o', 'Cmid': 's', 'Chigh': 'D'}
     c_colors = {'Clow': WONG[5], 'Cmid': WONG[6], 'Chigh': WONG[3]}
+    h_levels = ['Hlow', 'Hmid', 'Hhigh']
+    plotted_chili = False
 
     for cl in ['Clow', 'Cmid', 'Chigh']:
+        # Submitted PROTEUS CHILI grid: dashed line, open markers.
+        h_sub = []
+        t_sub = []
+        for hl in h_levels:
+            df = _load_chili_csv(
+                intercomp / 'proteus' / f'evolution-proteus-earth-grid-{hl}-{cl}-data.csv'
+            )
+            if df is None:
+                continue
+            t_sol = _milestone_time(df, 0.05)
+            if np.isnan(t_sol):
+                continue
+            h_sub.append(GRID_H[hl])
+            t_sub.append(t_sol)
+        if h_sub:
+            plotted_chili = True
+            ax.plot(
+                np.array(h_sub) / 1e20,
+                t_sub,
+                marker=c_markers[cl],
+                color=c_colors[cl],
+                linestyle='--',
+                linewidth=1.5,
+                markersize=8,
+                markerfacecolor='white',
+                zorder=4,
+            )
+
+        # Current PROTEUS run: solid line, filled markers.
         h_vals = []
         t_vals = []
-        for hl in ['Hlow', 'Hmid', 'Hhigh']:
+        for hl in h_levels:
             run = grid_dir / f'chili_grid_earth_{hl}_{cl}'
-            hf = run / 'runtime_helpfile.csv'
-            if not hf.is_file():
-                continue
-            df = _load_proteus_helpfile(run)
+            df = _load_proteus_helpfile(run) if run.is_dir() else None
             if df is None:
                 continue
             row = _find_row_at_phi(df, 0.05)
             if row is None:
                 continue
-            t_sol = float(row['Time']) / 1e6
             h_vals.append(GRID_H[hl])
-            t_vals.append(t_sol)
-
+            t_vals.append(float(row['Time']) / 1e6)
         if h_vals:
             ax.plot(
                 np.array(h_vals) / 1e20,
@@ -1457,14 +1531,61 @@ def plot_grid_timescales(grid_dir, out):
                 color=c_colors[cl],
                 linewidth=2,
                 markersize=8,
-                label=GRID_C_LABELS[cl],
+                zorder=6,
             )
+
+    # Legend: carbon level by colour and marker, data source by line style.
+    c_handles = [
+        Line2D(
+            [],
+            [],
+            color=c_colors[cl],
+            marker=c_markers[cl],
+            linestyle='-',
+            markersize=8,
+            label=GRID_C_LABELS[cl],
+        )
+        for cl in ['Clow', 'Cmid', 'Chigh']
+    ]
+    src_handles = [
+        Line2D(
+            [],
+            [],
+            color='0.4',
+            linestyle='-',
+            linewidth=2,
+            marker='o',
+            markersize=7,
+            label=NS['label'],
+        ),
+    ]
+    # Only advertise PROTEUS CHILI in the legend if at least one submitted
+    # point cleared the solidification threshold and was plotted.
+    if plotted_chili:
+        src_handles.append(
+            Line2D(
+                [],
+                [],
+                color='0.4',
+                linestyle='--',
+                linewidth=1.5,
+                marker='o',
+                markersize=7,
+                markerfacecolor='white',
+                label='PROTEUS CHILI',
+            )
+        )
+    ax.legend(handles=c_handles + src_handles, fontsize=9, framealpha=0.9)
 
     ax.set_xlabel(r'H inventory ($\times 10^{20}$ kg)')
     ax.set_ylabel('Solidification time (Myr)')
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.legend(fontsize=10, framealpha=0.9)
+    ax.set_xticks([2, 3, 5, 7, 10, 15])
+    ax.set_yticks([0.5, 0.7, 1, 2, 3, 5, 8])
+    for axis in (ax.xaxis, ax.yaxis):
+        axis.set_major_formatter(ScalarFormatter())
+        axis.set_minor_formatter(NullFormatter())
     ax.set_title('CHILI Earth grid: solidification vs H inventory')
     _save(fig, out, 'chili_grid_solidification')
 
@@ -1560,7 +1681,7 @@ def main():
     plot_psurf(intercomp, pe, NS, args.output)
 
     if args.grid_dir is not None:
-        plot_grid_timescales(args.grid_dir, args.output)
+        plot_grid_timescales(intercomp, args.grid_dir, NS, args.output)
     else:
         print('Skipping grid plot (pass --grid-dir to enable)')
 
