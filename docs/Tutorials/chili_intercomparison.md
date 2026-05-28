@@ -1,6 +1,6 @@
 # CHILI intercomparison
 
-The CHILI (Coupled atmosHere Interior modeL Intercomparison) is a
+The CHILI (Coupled atmospHere Interior modeL Intercomparison) is a
 community benchmark for magma ocean evolution
 codes[^cite-lichtenberg2026]. This tutorial reproduces the CHILI test
 suite with PROTEUS and compares results against six other coupled
@@ -355,6 +355,6 @@ configures.
 
 **See also:** [Earth analogue](earth_analogue.md) | [Model description](../Explanations/model.md) | [Output format](../Reference/output.md)
 
-[^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmosHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
+[^cite-lichtenberg2026]: Lichtenberg, T., Schaefer, L., Krissansen-Totton, J., et al., *[Coupled atmospHere Interior modeL Intercomparison (CHILI): Protocol Version 1.0](https://doi.org/10.3847/PSJ/ae593b)*, The Planetary Science Journal, 7, 108, 2026. [SciX](https://scixplorer.org/abs/2026PSJ.....7..108L/abstract).
 
 [^cite-nicholls2026]: Nicholls, H. et al., *Coupled atmospHere Interior modeL Intercomparison (CHILI). I. Evolutionary Modelling: Primordial Magma Oceans of Earth and Venus*, in preparation, 2026.
