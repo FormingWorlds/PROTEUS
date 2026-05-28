@@ -255,10 +255,9 @@ protocol fixes the inputs that both share: a bulk-silicate-Earth
 composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
 stellar age[^cite-lichtenberg2026]. What differs is the interior machinery.
 
-The PROTEUS results submitted to the intercomparison[^cite-nicholls2026]
-were computed with an earlier version of PROTEUS (Lichtenberg et al.
-2021), not the configuration documented here. That version used
-**SPIDER** (Bower et al. 2018) for the interior thermal evolution and an
+The PROTEUS results submitted to the intercomparison were computed with an
+earlier version of PROTEUS, not the configuration documented here. That
+version used **SPIDER** for the interior thermal evolution and an
 Adams-Williamson integration for the interior structure. SPIDER advances
 the magma ocean in an entropy (temperature-entropy) formulation with
 mixing-length convection, gravitational settling of cumulates, latent
