@@ -17,3 +17,8 @@
 .md-typeset p a:has(> img) {
   text-decoration: none;
 }
+
+/* Funding logos dark switch */
+.logo-dark { display: none; }
+[data-md-color-scheme="slate"] .logo-light { display: none; }
+[data-md-color-scheme="slate"] .logo-dark { display: inline; }
