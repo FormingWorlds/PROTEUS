@@ -56,7 +56,7 @@ style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 <img src="assets/logos/Oxford.png" class="logo-light"
 alt="University of Oxford logo"
 style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
-<img src="assets/logos/Oxford_white.png" class="logo-dark"
+<img src="assets/logos/Oxford.png" class="logo-dark"
 alt="University of Oxford logo"
 style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 </a>
