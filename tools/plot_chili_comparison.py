@@ -536,10 +536,13 @@ def _collect_atm_panel(intercomp, proteus_df, planet, phi_tgt, NS):
         if phi is None:
             continue
         idx = phi <= phi_tgt + 2 * PHI_RELAX
-        if not idx.any():
-            continue
-        subset = df[idx]
-        row = subset.loc[(phi[subset.index] - phi_tgt).abs().idxmin()]
+        if idx.any():
+            subset = df[idx]
+            row = subset.loc[(phi[subset.index] - phi_tgt).abs().idxmin()]
+        else:
+            # Run never reaches the target melt fraction; use its closest
+            # approach (final snapshot) so the model still appears.
+            row = df.loc[phi.idxmin()]
         entry = {
             'name': st['label'],
             'is_proteus': False,
@@ -692,8 +695,8 @@ def _plot_atm_composition(intercomp, proteus_df, planet, NS, out, fig_name):
                     marker='*',
                     color=NS['color'] if ip else 'grey',
                     markersize=16 if ip else 12,
-                    markeredgecolor='black' if ip else 'none',
-                    markeredgewidth=0.8 if ip else 0,
+                    markeredgecolor='white',
+                    markeredgewidth=1.0,
                     zorder=10,
                     linestyle='none',
                 )
@@ -760,6 +763,8 @@ def plot_fig5(intercomp, pv, NS, out):
             tl.set_color(NS['color'])
     ax.set_ylabel('Partial pressure [bar]')
     ax.set_title(r'Nominal-Venus atmosphere at $\phi$ = 5%', fontsize=12)
+    # Adopt the same axis limits as the Nominal Earth panel (Figure 3b).
+    ax.set_ylim(0, 650)
 
     ax2 = ax.twinx()
     for i, (t, ip) in enumerate(zip(tsv, isp)):
@@ -770,12 +775,13 @@ def plot_fig5(intercomp, pv, NS, out):
                 marker='*',
                 color=NS['color'] if ip else 'grey',
                 markersize=16 if ip else 12,
-                markeredgecolor='black' if ip else 'none',
-                markeredgewidth=0.8 if ip else 0,
+                markeredgecolor='white',
+                markeredgewidth=1.0,
                 zorder=10,
                 linestyle='none',
             )
     ax2.set_ylabel(r'$T_\mathrm{surf}$ [K]')
+    ax2.set_ylim(1500, 4000)
 
     handles, labels = ax.get_legend_handles_labels()
     seen = set()
