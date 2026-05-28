@@ -25,6 +25,52 @@ Key conventions:
 - **Type hints**: standard Python type hints on function signatures
 - **Docstrings**: NumPy-style with Parameters, Returns, Raises sections
 
+## Code organization
+
+PROTEUS is developed by many contributors in parallel. Code is organised to
+keep changes local, so that two people adding features rarely edit the same
+lines. The targets below are advisory, not enforced gates.
+
+**File size**
+
+- Aim to keep a new module under 500 lines.
+- When a file grows past roughly 800 lines, split it along concern boundaries
+  before adding more to it.
+
+**Function and method size**
+
+- Aim to keep a function or method under 50 lines.
+- Past roughly 80 lines, extract named helper functions.
+- Express long orchestration as a sequence of named stage functions that the
+  top-level routine calls, not as one inline body.
+
+**Module layout**
+
+Each physics module follows a consistent three-part layout:
+
+- `wrapper.py` holds the public entry point and dispatches to the selected backend.
+- `<backend>.py` (for example `aragog.py`, `spider.py`) implements one backend each.
+- `common.py` holds helpers shared across backends.
+
+Add a new backend as a new `<backend>.py` file plus a dispatch branch in
+`wrapper.py`. Do not append a second backend's logic into an existing backend file.
+
+**Append-friendly registries**
+
+Central lists that every module contributes to (the output-schema keys, config
+field sets) are written one entry per line with a trailing comma, grouped by
+module under a header comment, and ordered alphabetically within each group.
+This keeps two independent additions on different lines so they merge cleanly.
+
+**Editing shared files**
+
+- When adding to the main coupling loop, add a stage function and call it rather
+  than inlining logic into a shared method.
+- When adding an output column, place it in its module's group, not at the end
+  of the global list.
+- Prefer short-lived branches and frequent small merges, and give collaborators
+  a heads-up before a large edit to a known shared file.
+
 ## Physical correctness
 
 PROTEUS is scientific simulation software where incorrect results are worse

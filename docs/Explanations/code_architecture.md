@@ -46,3 +46,21 @@ or any loop block to jump to the relevant section of [`proteus.py`](https://gith
 
 <object type="image/svg+xml" data="../assets/proteus_architecture.svg" class="arch-diagram arch-diagram--light"></object>
 <object type="image/svg+xml" data="../assets/proteus_architecture_darkmode.svg" class="arch-diagram arch-diagram--dark"></object>
+
+## Organising changes for parallel development
+
+PROTEUS is edited by many contributors at once, so the structure is chosen to
+keep changes local. The source tree is sliced vertically by physical domain:
+a change to atmospheric escape lives in `escape/`, a change to outgassing lives
+in `outgas/`, and the two rarely touch the same file. Within a module, the
+`wrapper.py` / `<backend>.py` / `common.py` split means adding or modifying one
+backend leaves the others untouched.
+
+The files that every contributor must touch are the coupling glue: the main
+loop in `proteus.py`, the shared helpers in `utils/`, and the central registries
+of output columns and configuration fields. These are the places where parallel
+edits are most likely to collide. Keeping individual functions small, adding new
+loop steps as named stage functions, and writing shared registries one entry per
+line (grouped by module) keeps most additions on distinct lines, so independent
+work merges without conflict. The practical targets are in
+[Development standards](../How-to/development_standards.md#code-organization).
