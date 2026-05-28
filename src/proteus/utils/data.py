@@ -441,8 +441,7 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     '1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018_1TPa': {
         # Zenodo 19473625: complete P-S format tables (10 phase-property files
         # + 2 P-S melting curves + README + md5sums). Used by BOTH SPIDER and
-        # Aragog at runtime. Supersedes the earlier partial P-T format record
-        # 17417017, which is kept alive for backwards compatibility only.
+        # Aragog at runtime.
         'zenodo_id': '19473625',
         'osf_id': 'phsxf',
         'osf_project': 'phsxf',
@@ -487,9 +486,8 @@ DATA_SOURCE_MAP: dict[str, dict[str, str]] = {
     # Zalmoxis EOS: RTPress 100 TPa extended melt
     'EOS_RTPress_melt_100TPa': {'zenodo_id': '18819027'},
     # Zalmoxis EOS: PALEOS 2-phase MgSiO3 (separate solid/liquid).
-    # Zenodo 19680050 (2026-04-27) supersedes 18924171 as the
-    # ecosystem-wide PALEOS reference; ships 150 + 600 pts/decade
-    # tables for both phases.
+    # Zenodo 19680050: ecosystem-wide PALEOS reference; ships 150 + 600
+    # pts/decade tables for both phases.
     'EOS_PALEOS_MgSiO3': {'zenodo_id': '19680050'},
     # Zalmoxis EOS: PALEOS unified tables (iron, MgSiO3, H2O share Zenodo 19000316)
     'EOS_PALEOS_iron': {'zenodo_id': '19000316'},
@@ -1287,9 +1285,8 @@ def download_melting_curves(config: Config, clean: bool = False):
     )
 
     # ------------------------------------------------------------------
-    # Legacy compatibility:
-    # - if download contains solidus.dat / liquidus.dat, treat them as P-T
-    #   and create canonical *_P-T.dat copies
+    # If the download contains solidus.dat / liquidus.dat, treat them as
+    # P-T and create canonical *_P-T.dat copies.
     # ------------------------------------------------------------------
     for stem in ('solidus', 'liquidus'):
         legacy = folder_dir / f'{stem}.dat'
@@ -1659,7 +1656,7 @@ def get_spider(dirs=None):
 def download_eos_static():
     """Download static (Zalmoxis-only) EOS files.
 
-    Downloads Seager et al. (2007) EOS into the legacy location
+    Downloads Seager et al. (2007) EOS into
     ``FWL_DATA/EOS_material_properties/EOS_Seager2007/``.
     Code in ``get_zalmoxis_EOS()`` falls back to this path when the
     unified ``EOS/static/Seager2007/`` folder is not yet populated.
@@ -1749,7 +1746,7 @@ def download_eos_dynamic(eos_dir: str = 'WolfBower2018_MgSiO3'):
 
 
 def download_Seager_EOS():
-    """Download Seager EOS to the legacy EOS_material_properties location."""
+    """Download Seager EOS to the EOS_material_properties location."""
     folder = 'EOS_Seager2007'
     source_info = get_data_source_info(folder)
     if not source_info:
@@ -2073,7 +2070,7 @@ def get_zalmoxis_EOS():
     like Seager2007 live in ``EOS/static/``, while dynamic EOS like
     Wolf & Bower 2018 live in ``EOS/dynamic/WolfBower2018_MgSiO3/P-T/``.
 
-    Falls back to legacy paths if the new structure is not yet populated.
+    Falls back to the EOS_material_properties paths if the unified structure is not yet populated.
 
     The folder name matches the Zalmoxis ``mantle_eos`` source string
     (``WolfBower2018_MgSiO3``), not ``struct.eos_dir``.
@@ -2087,7 +2084,7 @@ def get_zalmoxis_EOS():
     """
     eos_base = FWL_DATA_DIR / 'interior_lookup_tables' / 'EOS'
 
-    # Seager2007: try new location, fall back to legacy
+    # Seager2007: try the unified location, fall back to EOS_material_properties
     seager_folder = eos_base / 'static' / 'Seager2007'
     if not seager_folder.exists():
         seager_folder = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'

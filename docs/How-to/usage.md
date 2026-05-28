@@ -311,7 +311,7 @@ of peridotite / silicate melting.
 
 ### What the exporter does
 
-The script `tools/solidus_func.py` is designed to work with the legacy EOS lookup
+The script `tools/solidus_func.py` is designed to work with the EOS lookup
 tables:
 
 - `temperature_solid.dat`

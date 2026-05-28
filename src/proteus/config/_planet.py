@@ -35,8 +35,8 @@ class Elements:
         'ic_chemistry': do not pre-populate O_kg_total; let the first
             outgas call (CALLIOPE / atmodeller) populate it from the
             fO2-buffered equilibrium given the H/C/N/S budgets at IC.
-            This mode preserves legacy behaviour for configs that
-            predate the issue #677 fix.
+            The O inventory is then defined entirely by the chemistry
+            solver rather than a user-supplied budget.
 
     use_metallicity: when True, C/N/S are scaled from solar metallicity
     relative to H, overriding C_mode/N_mode/S_mode settings.
@@ -207,7 +207,7 @@ class Planet:
         How to set the initial volatile inventory: 'elements' or 'gas_prs'.
     volatile_reservoir: str
         Interior mass reference for ppmw calculations.
-        'mantle': M_mantle = M_int - M_core (default, backward compatible).
+        'mantle': M_mantle = M_int - M_core (default).
         'mantle+core': M_int = M_mantle + M_core (total dry interior).
     elements: Elements
         Element abundance parameters (used when volatile_mode = 'elements').
@@ -216,12 +216,11 @@ class Planet:
     fO2_source: str
         How the chemistry solver treats atmospheric fO2.
 
-        'user_constant' (default, legacy-compatible): fO2 is buffered to
-            the iron-wustite offset set by ``outgas.fO2_shift_IW``;
-            atmospheric and dissolved O are derived from the equilibrium
-            chemistry at that fO2. This is the behaviour PROTEUS has
-            shipped to date.
-        'from_O_budget' (Path C): the user O budget (from
+        'user_constant' (default): fO2 is buffered to the iron-wustite
+            offset set by ``outgas.fO2_shift_IW``; atmospheric and
+            dissolved O are derived from the equilibrium chemistry at
+            that fO2.
+        'from_O_budget': the user O budget (from
             ``planet.elements.O_mode``/``O_budget``) is authoritative;
             fO2 is *derived* by the chemistry solver as the IW-buffer
             offset that produces the supplied O inventory. Use this when
@@ -286,11 +285,11 @@ class Planet:
     elements: Elements = field(factory=Elements)
     gas_prs: GasPrs = field(factory=GasPrs)
 
-    # fO2 source. Default 'user_constant' preserves the legacy behaviour
-    # where outgas.fO2_shift_IW buffers atmospheric fO2 and the chemistry
-    # solver returns the implied O inventory. 'from_O_budget' inverts the
-    # roles (Path C); 'from_mantle_redox' is reserved for issue #653 and
-    # rejected by the config-level validator below until that work lands.
+    # fO2 source. Default 'user_constant': outgas.fO2_shift_IW buffers
+    # atmospheric fO2 and the chemistry solver returns the implied O
+    # inventory. 'from_O_budget' inverts the roles (O budget drives fO2);
+    # 'from_mantle_redox' is reserved for issue #653 and rejected by the
+    # config-level validator below until that work lands.
     fO2_source: str = field(
         default='user_constant',
         validator=in_(('user_constant', 'from_O_budget', 'from_mantle_redox')),

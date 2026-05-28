@@ -165,8 +165,8 @@ class TimeStepParams:
     initial: float = field(default=3e1, validator=gt(0))
 
     # Stiffness-aware adaptive time-stepping extensions.
-    # Defaults OFF (mushy_maximum=0, hysteresis_iters=0) for
-    # backwards compatibility; enable via positive config values.
+    # Defaults OFF (mushy_maximum=0, hysteresis_iters=0); enable via
+    # positive config values.
     mushy_maximum: float = field(default=0.0, validator=ge(0))
     mushy_upper: float = field(default=0.99, validator=(gt(0), lt(1)))
     hysteresis_iters: int = field(default=0, validator=ge(0))
@@ -175,8 +175,8 @@ class TimeStepParams:
     # Cap on dt growth ratio between consecutive steps. Bounds
     # dtswitch / dtprev to at most max_growth_factor, preventing
     # large dt jumps that can push stiff solvers past their error-test
-    # margin. Default 0.0 = disabled (preserves legacy behaviour).
-    # Typical value for stability-sensitive runs is 3.0; CHILI Aragog
+    # margin. Default 0.0 = disabled. Typical value for
+    # stability-sensitive runs is 3.0; CHILI Aragog
     # sets this to smooth the initial 10x dt jump that can wedge CVODE.
     max_growth_factor: float = field(default=0.0, validator=ge(0))
 

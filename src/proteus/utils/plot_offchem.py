@@ -38,11 +38,10 @@ def offchem_read_year(
         mx_clip_max=1.0 : float
             Mixing ratio ceiling
         read_const=False : bool
-            Retained for backwards compatibility. The per-year
-            ``vulcan_cfg.py`` dump is no longer emitted; reading
-            initial-composition mixing ratios from this output is
-            unsupported and raises ``NotImplementedError``. Pull the
-            ``<vol>_vmr`` columns from ``runtime_helpfile.csv`` instead.
+            Deprecated and unsupported. The per-year ``vulcan_cfg.py``
+            dump is not emitted, so reading initial-composition mixing
+            ratios from this output raises ``NotImplementedError``. Pull
+            the ``<vol>_vmr`` columns from ``runtime_helpfile.csv`` instead.
 
     Returns
     ----------

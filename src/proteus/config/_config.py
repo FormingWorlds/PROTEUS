@@ -185,18 +185,18 @@ def planet_fO2_source_compat(instance, attribute, value):
     1. ``fO2_source = "from_mantle_redox"`` is a reserved enum value for
        the radial Fe3+/Fe2+ fO2 framework (issue #653, Schaefer et al.
        2024). The runtime path for it does not exist yet; reject the
-       config so users don't silently fall through to legacy behaviour.
+       config so users do not silently fall through to the default behaviour.
 
     2. ``fO2_source = "from_O_budget"`` requires the O budget to be
        authoritative. ``O_mode = "ic_chemistry"`` defers the O inventory
-       to the chemistry solver, which contradicts Path C — there is
-       nothing to invert against. Require a concrete O budget
+       to the chemistry solver, so there is nothing to invert against.
+       Require a concrete O budget
        ("ppmw" / "kg" / "FeO_mantle_wt_pct") instead.
 
     3. ``fO2_source = "from_O_budget"`` requires the volatile budget to
        be set element-wise. ``volatile_mode = "gas_prs"`` supplies
        partial pressures directly and makes ``planet.elements.O_mode``
-       inoperative; Path C has nothing to invert against. Switch
+       inoperative, so there is nothing to invert against. Switch
        ``volatile_mode`` to ``"elements"`` or pick a different fO2_source.
 
     4. ``fO2_source = "from_O_budget"`` requires an outgassing backend
@@ -208,12 +208,12 @@ def planet_fO2_source_compat(instance, attribute, value):
        and structure setup before hitting the wall.
 
     ``fO2_source = "user_constant"`` (default) accepts every O_mode and
-    every volatile_mode (legacy behaviour, no change).
+    every volatile_mode.
 
     Warning rule:
 
     - ``fO2_source = "from_O_budget"`` with a non-default
-      ``outgas.fO2_shift_IW`` emits a UserWarning. Under Path C the
+      ``outgas.fO2_shift_IW`` emits a UserWarning. With this source the
       buffer offset is *derived*, so a user-supplied value is silently
       ignored. The warning surfaces the misconfiguration without
       blocking the run.
@@ -226,8 +226,8 @@ def planet_fO2_source_compat(instance, attribute, value):
         raise ValueError(
             'planet.fO2_source = "from_mantle_redox" is reserved for the '
             'radial Fe3+/Fe2+ tracking framework (issue #653) and is not '
-            'yet wired into the runtime. Use "user_constant" (legacy '
-            'fO2 buffered by outgas.fO2_shift_IW) or "from_O_budget" '
+            'yet wired into the runtime. Use "user_constant" (fO2 '
+            'buffered by outgas.fO2_shift_IW) or "from_O_budget" '
             '(authoritative O budget, fO2 derived) instead.'
         )
 
@@ -247,7 +247,7 @@ def planet_fO2_source_compat(instance, attribute, value):
             'derived from planet.elements.O_budget. Under '
             'volatile_mode = "gas_prs" the user supplies partial '
             'pressures directly and the element budgets are inert, so '
-            'Path C has no O target to invert against. Either switch '
+            'there is no O target to invert against. Either switch '
             'volatile_mode to "elements" or set fO2_source back to '
             '"user_constant".'
         )
@@ -259,8 +259,8 @@ def planet_fO2_source_compat(instance, attribute, value):
                 'planet.fO2_source = "from_O_budget" requires an '
                 'outgassing backend with an authoritative-O '
                 'implementation. outgas.module = "dummy" has no '
-                'chemistry to invert against, so Path C has nothing '
-                'to compute. Switch outgas.module to "calliope" or '
+                'chemistry to invert against. Switch outgas.module to '
+                '"calliope" or '
                 '"atmodeller", or set fO2_source back to '
                 '"user_constant".'
             )

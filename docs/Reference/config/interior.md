@@ -19,7 +19,7 @@ with an equation of state (EOS).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `module` | str | `"zalmoxis"` | Structure solver: `zalmoxis` (full EOS), `dummy` (scaling laws), `spider` (legacy) |
+| `module` | str | `"zalmoxis"` | Structure solver: `zalmoxis` (full EOS), `dummy` (scaling laws), `spider` (SPIDER internal) |
 | `core_frac` | float | `0.325` | Core fraction (meaning depends on `core_frac_mode`) |
 | `core_frac_mode` | str | `"mass"` | How `core_frac` is interpreted: `mass` (mass fraction) or `radius` (radius fraction) |
 | `core_density` | float or "self" | `"self"` | Core density [kg m$^{-3}$]; `"self"` = computed by the structure solver |
@@ -48,7 +48,7 @@ Chabrier, or Seager 2007). It supports 2-layer (core + mantle) and 3-layer
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `num_levels` | int | `150` | Number of radial grid levels |
-| `outer_solver` | str | `"newton"` | Outer mass-radius solver: `newton` (recommended) or `picard` (legacy) |
+| `outer_solver` | str | `"newton"` | Outer mass-radius solver: `newton` (recommended) or `picard` (alternative) |
 | `use_jax` | bool | `true` | Use JAX backend for the structure solver |
 | `use_anderson` | bool | `false` | Anderson Type-II Picard acceleration on the density loop |
 | `solver_tol_outer` | float | `3e-3` | Relative tolerance for mass convergence |
@@ -232,7 +232,7 @@ Jacobians for robust convergence.
 
 ### SPIDER `[interior_energetics.spider]`
 
-SPIDER is the legacy C interior module. It requires PETSc and produces
+SPIDER is the C interior module. It requires PETSc and produces
 results consistent with Bower et al. (2018)[^cite-bower2018].
 
 | Parameter | Type | Default | Description |
