@@ -334,7 +334,7 @@ def plot_fig1(intercomp, pe, pv, NS, out):
             '-',
             color=NS['color'],
             linewidth=NS['linewidth'],
-            label=NS['label'],
+            label=NS['label'] + ' Earth',
             zorder=NS['zorder'],
         )
     if pv is not None:
