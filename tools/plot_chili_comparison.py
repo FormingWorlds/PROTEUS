@@ -1088,12 +1088,13 @@ def plot_fig6(intercomp, pv, NS, out):
     ax_rel.set_xlabel('Degassing temperature [K]')
     ax_rel.set_ylabel(r"$\Delta$IW (O'Neill+02)")
     ax_rel.text(
-        0.02,
-        0.93,
+        0.98,
+        0.95,
         r'$\mathbf{(b)}$ Relative $f$O$_2$',
         transform=ax_rel.transAxes,
         fontsize=12,
         va='top',
+        ha='right',
     )
     ax_rel.set_xlim(3300, None)
     ax_rel.set_ylim(bottom=0)
