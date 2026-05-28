@@ -256,7 +256,7 @@ Access the atmospheric postprocessing functionality via the command line interfa
 ```console
 julia tools/multiprofile_postprocess.jl output/[outputdir] 0,36,45,89
 ```
-This example finds results for 4 zenith angles, namely [0,36,45,89], but the script works for any number of zenith angles and creates a new `..._atm_z{angle}.nc` file in the `data` directory, within the output directory, for each angle.
+This example finds results for 4 zenith angles, namely \[0,36,45,89\], but the script works for any number of zenith angles and creates a new `..._atm_z{angle}.nc` file in the `data` directory, within the output directory, for each angle.
 
 ## Archiving output files
 

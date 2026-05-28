@@ -139,7 +139,7 @@ See [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/inpu
 
     1. Decide on a good parameter name (*e.g.* `my_star_var`), and under which section to place it (*e.g.* `star`).
        Add the new variable to the [config submodule](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/config/_star.py).
-    2. Add the type for your variable, *e.g.* [float][], [int][], [str][].
+    2. Add the type for your variable, *e.g.* [`float`](https://docs.python.org/3/library/functions.html#float), [`int`](https://docs.python.org/3/library/functions.html#int), [`str`](https://docs.python.org/3/library/stdtypes.html#str).
        You can also add complex types, please check the [code](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/config) for inspiration.
     3. Add a [validator](https://www.attrs.org/en/stable/api.html#module-attrs.validators)!
        If your variable has a maximum value (*e.g.* 10), you can add a validator to make sure
