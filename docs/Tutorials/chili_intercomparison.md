@@ -164,7 +164,7 @@ reproducible without editing the script.
 
 <figure markdown="span">
   ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.png){ width="100%" }
-  <figcaption>Surface pressure vs time for all models. The current PROTEUS run starts near 2x10<sup>4</sup> bar during the brief fully molten phase. This early peak is almost entirely molecular oxygen: the surface pressure sums all gas partial pressures including O<sub>2</sub>, the CHILI protocol pins the oxygen fugacity at IW+4, and the imposed O<sub>2</sub> partial pressure equals that fugacity. At the initial magma temperature (~4290 K) the iron-wustite buffer places fO<sub>2</sub>, and hence pO<sub>2</sub>, near 2x10<sup>4</sup> bar (about 99.6% of the surface pressure). As the surface cools below ~3000 K the buffer falls steeply, pO<sub>2</sub> collapses by several orders of magnitude, and the pressure drops to a minimum of ~117 bar set by CO<sub>2</sub> partitioning before rising to ~438 bar at solidification as H<sub>2</sub>O exsolves from the crystallizing mantle. The submitted PROTEUS CHILI run also counts O<sub>2</sub> in its surface pressure (about 124 of its initial 258 bar), but it begins from a cooler magma surface (~3126 K), so its early pO<sub>2</sub> is roughly two orders of magnitude lower and no comparable spike appears. The early-time offset between the two PROTEUS curves is therefore set by their different initial magma temperatures acting through the steeply temperature-dependent IW+4 buffer, not by a difference in which species are counted. Other models differ in the timing and magnitude of the pressure evolution, reflecting their volatile solubility and oxygen treatments.</figcaption>
+  <figcaption>Surface pressure vs time for all models. The current PROTEUS run starts near 2x10<sup>4</sup> bar during the brief fully molten phase. This early peak is almost entirely molecular oxygen. CALLIOPE, the outgassing and gas-speciation module, solves the equilibrium atmospheric composition at the imposed oxygen fugacity, and because O<sub>2</sub> is one of the equilibrium species its partial pressure equals that fugacity. The CHILI protocol pins fO<sub>2</sub> at IW+4, and the iron-wustite buffer is steeply temperature-dependent, so at the magma temperature of the fully molten surface (~4290 K) it places fO<sub>2</sub>, and hence pO<sub>2</sub>, near 2x10<sup>4</sup> bar, about 99.6% of the total surface pressure. The magnitude comes from two compounding factors: the +4 dex offset multiplies the buffer value by 10<sup>4</sup>, and the high temperature already raises the iron-wustite fO<sub>2</sub> itself to a few bar. As the surface cools below ~3000 K the buffer falls by several orders of magnitude, oxygen becomes negligible, and the pressure drops to a minimum of ~117 bar set by CO<sub>2</sub> partitioning before rising to ~438 bar at solidification as H<sub>2</sub>O exsolves from the crystallizing mantle. The submitted PROTEUS CHILI run reaches a cooler molten surface (~3126 K) where the same IW+4 buffer gives only ~124 bar of O<sub>2</sub>, so no comparable spike appears. The early-time offset between the two PROTEUS curves is therefore set by the magma temperature at which CALLIOPE evaluates the buffer, not by which species are counted. Other models differ in the timing and magnitude of the pressure evolution, reflecting their volatile solubility and oxygen treatments.</figcaption>
 </figure>
 
 ## Earth volatile grid
@@ -297,6 +297,22 @@ These differences leave clear fingerprints in the figures:
   its volatile retention stays near 100% in Figure 7. Comparing
   long-timescale escape directly would require integrating the current run
   past solidification.
+
+- **Early surface pressure (surface-pressure figure).** During the fully
+  molten phase the current run's surface pressure exceeds 10<sup>4</sup>
+  bar, far above the rest of the ensemble. This is molecular oxygen.
+  CALLIOPE solves the gas-melt equilibrium at the imposed oxygen fugacity,
+  and the protocol pins fO<sub>2</sub> at IW+4, so the equilibrium oxygen
+  partial pressure equals the buffer value. The iron-wustite buffer rises
+  steeply with temperature, so evaluating it at the hot molten surface
+  (~4290 K) places pO<sub>2</sub> near 2x10<sup>4</sup> bar and oxygen
+  carries about 99.6% of the surface pressure. The submitted run reaches a
+  cooler molten surface (~3126 K), where the same buffer yields only
+  ~124 bar of oxygen, so the magnitude of the early offset between the two
+  PROTEUS curves is governed by the temperature at which CALLIOPE evaluates
+  the IW+4 buffer rather than by any difference in bookkeeping. Once the
+  surface cools below ~3000 K the buffer collapses and oxygen leaves the
+  pressure budget.
 
 Because the current run terminates at 5% melt, the late-time behaviour
 carried by the submitted "PROTEUS CHILI" curve (the extended escape in
