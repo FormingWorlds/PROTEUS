@@ -1,11 +1,19 @@
-# CHILI intercomparison
+# Solar System CHILI intercomparison
 
 The CHILI (Coupled atmospHere Interior modeL Intercomparison) is a
-community benchmark for magma ocean evolution
-codes[^cite-lichtenberg2026]. This tutorial reproduces the CHILI test
-suite with PROTEUS and compares results against six other coupled
-atmosphere-interior models: GOOEY, NEONGOOEY, PACMAN, LINCS, MOAI,
-and PlanAtMO[^cite-nicholls2026].
+community benchmark that fixes shared initial and boundary conditions for
+magma ocean evolution codes[^cite-lichtenberg2026]. Its first
+intercomparison applies that protocol to the inner Solar System,
+modelling the primordial magma oceans of Earth and Venus.
+
+This tutorial reproduces the Solar System CHILI test suite with PROTEUS
+and compares the result against six other coupled atmosphere-interior
+models: GOOEY, NEONGOOEY, PACMAN, LINCS, MOAI, and PlanAtMO. The figures
+below reproduce the intercomparison plots: each one overlays the current
+PROTEUS run on the results submitted by every participating model. Those
+submitted results, and the figure layouts they follow, are drawn from the
+Solar System CHILI intercomparison paper (Nicholls et al. 2026, in
+prep.)[^cite-nicholls2026].
 
 ## Overview
 
