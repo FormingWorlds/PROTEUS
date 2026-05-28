@@ -213,10 +213,17 @@ def _load_chili_csv(path):
     if not path.is_file():
         return None
     try:
-        return pd.read_csv(path, comment='#')
+        df = pd.read_csv(path, comment='#')
     except (pd.errors.ParserError, FileNotFoundError, PermissionError):
         print(f'Warning: could not parse {path}')
         return None
+    # Drop the t=0 initialization row. Some models report a melt fraction of
+    # zero there before the run starts, which otherwise places a spurious
+    # point at full solidification and corrupts melt-fraction milestones.
+    tcol = _get_col(df, 't', 'time')
+    if tcol is not None:
+        df = df[tcol > 0].reset_index(drop=True)
+    return df
 
 
 def _load_proteus_helpfile(output_dir):
