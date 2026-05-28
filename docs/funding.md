@@ -68,4 +68,12 @@ style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 alt="European Research Council logo"
 style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
 </a>
+<a href="https://www.ukri.org/" target="_blank">
+<img src="assets/logos/UKRI.png" class="logo-light"
+alt="European Research Council logo"
+style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
+<img src="assets/logos/UKRI_white.png" class="logo-dark"
+alt="UK Research and Innovation logo"
+style="max-width: 220px; max-height: 120px; width: auto; height: auto;">
+</a>
 </div>
