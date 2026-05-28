@@ -269,101 +269,27 @@ formulation, and Zalmoxis solves the layered interior structure (mass,
 radius, density profile, and core-mantle-boundary radius) directly rather
 than from the Adams-Williamson approximation.
 
-These differences leave clear fingerprints in the figures:
+## Takeaways
 
-- **Surface temperature at high melt fraction (Figure 9a).** In the
-  submission, the mixing-length scheme in SPIDER partially cancels upward
-  convective heat transport against downward transport from cumulate
-  settling and gravitational potential-energy release, which suppresses
-  cooling and gives PROTEUS the lowest surface temperature of any model at
-  95% melt (2266 K; data from Nicholls et al. 2026, in prep.). The current Aragog run reaches
-  2924 K at the same melt fraction, sitting within the model ensemble
-  rather than at its floor.
+Earth and Venus begin from the same fully molten state and diverge as they
+cool. Across the model ensemble both solidify on million-year timescales,
+with Venus lagging Earth because its higher instellation slows radiative
+cooling, and the spread between codes at any given moment reflects genuine
+differences in how each treats atmospheric opacity, volatile partitioning,
+and interior convection. PROTEUS captures this evolution by coupling a
+radiative-convective atmosphere, equilibrium outgassing, and a 1D interior
+solver, advancing the magma ocean from melt through solidification while
+tracking the volatiles exchanged between the mantle and the atmosphere.
 
-- **Cooling timescale (Figures 1 and 2).** The submission was the slowest
-  model to reach 95% melt, partly because its solidus and liquidus curves
-  carry the lowest core-mantle-boundary temperatures of the ensemble, so
-  the deep mantle must cool further before freezing begins (Nicholls et al. 2026, in prep.). The current
-  run solidifies at 1.34 Myr (Earth) and about 2.2 Myr (Venus), inside the
-  ensemble spread.
-
-- **Effective viscosity (Figure 9c).** SPIDER computes a 1D
-  self-consistent viscosity that spans a wide, structured range across the
-  freezing interval (Nicholls et al. 2026, in prep.). The current Aragog viscosity also
-  climbs by many orders of magnitude as the mantle solidifies, over a
-  comparable melt-fraction interval.
-
-- **Interior structure (Figure 9b).** The core-mantle-boundary radius and
-  the advance of the rheological front depend on the interior-structure
-  model. Zalmoxis places the current core-mantle boundary at 3.39 Mm
-  (R<sub>core</sub>/R<sub>p</sub> = 0.49); the submitted curve uses the
-  Adams-Williamson radii. The two configurations therefore differ in their
-  absolute radius scale as well as in how quickly the rheological front
-  advances outward.
-
-- **Volatile budgets and retention (Figures 4 and 7).** The submission
-  does not store volatiles in the solid mantle, so its hydrogen remains in
-  the melt and atmosphere and builds a steam-dominated, hydrogen-rich
-  envelope; over the long Venus cooling tail this drives large
-  hydrodynamic loss, leaving 63% of the hydrogen and 28% of the carbon by
-  5% melt (Nicholls et al. 2026, in prep.). The current run stops at solidification
-  (about 2.2 Myr for Venus), upstream of that escape-dominated regime, so
-  its volatile retention stays near 100% in Figure 7. Comparing
-  long-timescale escape directly would require integrating the current run
-  past solidification.
-
-- **Early surface pressure (Figure 10).** During the fully
-  molten phase the current run's surface pressure exceeds 10<sup>4</sup>
-  bar, far above the rest of the ensemble. This is molecular oxygen.
-  CALLIOPE solves the gas-melt equilibrium at the imposed oxygen fugacity,
-  and the protocol pins fO<sub>2</sub> at IW+4, so the equilibrium oxygen
-  partial pressure equals the buffer value. The iron-wustite buffer rises
-  steeply with temperature, so evaluating it at the hot molten surface
-  (~4290 K) places pO<sub>2</sub> near 2x10<sup>4</sup> bar and oxygen
-  carries about 99.6% of the surface pressure. The submitted run reaches a
-  cooler molten surface (~3126 K), where the same buffer yields only
-  ~124 bar of oxygen, so the magnitude of the early offset between the two
-  PROTEUS curves is governed by the temperature at which CALLIOPE evaluates
-  the IW+4 buffer rather than by any difference in bookkeeping. Once the
-  surface cools below ~3000 K the buffer collapses and oxygen leaves the
-  pressure budget.
-
-Because the current run terminates at 5% melt, the late-time behaviour
-carried by the submitted "PROTEUS CHILI" curve (the extended escape in
-Figure 7, the low-melt tail in Figure 9) is not reproduced by the
-vermillion curve. This is expected rather than a discrepancy: the two
-curves answer different questions, the submission over the full evolution
-and the current run over the magma-ocean stage that this tutorial
-configures.
-
-## Key findings
-
-1. **Earth solidifies within 4 Myr across all models** (Figure 1),
-   consistent with geological constraints from the oldest zircons. PROTEUS
-   predicts 1.34 Myr.
-
-2. **Venus solidifies ~1.7x slower than Earth** (Figure 1) due to the
-   higher instellation at 0.723 AU. PROTEUS predicts 2.22 Myr for Venus vs
-   1.34 Myr for Earth.
-
-3. **Cooling timescales correlate with hydrogen inventory**: higher H
-   budgets produce thicker, more opaque steam atmospheres that slow
-   radiative cooling (Figure 11). The low-H grid cases (1 EO) solidify in
-   ~0.5 Myr, while the high-H cases (10 EO) take several Myr.
-
-4. **Model differences arise from**: gas chemistry (which species are
-   tracked and whether equilibrium or kinetic), volatile partitioning
-   (solubility laws and whether volatiles are stored in the solid mantle),
-   radiative transfer (correlated-k vs grey), interior convection (mixing
-   length vs parameterized), and melting-curve prescriptions.
-
-5. **The current PROTEUS and the submitted PROTEUS CHILI results differ
-   measurably**, driven by the interior solver and structure model (Aragog
-   and Zalmoxis here, SPIDER and an Adams-Williamson interior in the
-   submission). The clearest signatures are the surface temperature at 95%
-   melt (2924 K now against 2266 K submitted) and the late-time behaviour
-   that only the full-evolution submission resolves. See the section above
-   for a figure-by-figure breakdown.
+The point of this tutorial is to place the current PROTEUS against that
+published ensemble on demand. The comparison figures are regenerated from
+your own checkout and labelled with its git commit, so re-running the
+plotting command benchmarks whatever version of PROTEUS you are running
+against the fixed literature values from the CHILI papers. It is therefore
+an always-current intercomparison: a quick way to confirm that a new
+PROTEUS release still reproduces the established Earth and Venus
+solidification behaviour, and to see where it sits relative to the other
+community codes.
 
 ---
 
