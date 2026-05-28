@@ -76,11 +76,26 @@ python tools/plot_chili_comparison.py \
     --output output_files/chili_plots/
 ```
 
-All plots use the Wong colorblind-friendly palette and are saved as both
-PDF (vector) and PNG. The previous PROTEUS submission to the CHILI intercomparison
-appears as a thin black line ("PROTEUS CHILI"), while the current
-PROTEUS run appears in vermillion with thick lines, black-edged markers,
-and the git commit SHA in the legend.
+`tools/plot_chili_comparison.py` writes every figure on this page to the
+`--output` directory (here `output_files/chili_plots/`, which is
+gitignored) as both PDF (vector) and PNG, using the Wong
+colorblind-friendly palette. The script is self-contained and
+version-general:
+
+- It clones the CHILI comparison data automatically if `--chili-repo`
+  does not already point to a checkout, so Step 2 is optional.
+- It reads the current git commit SHA and labels the active run with it,
+  so every figure records the exact code version that produced it.
+- `--proteus-earth` and `--proteus-venus` are optional; omit either to
+  plot the intercomparison models alone.
+
+Two PROTEUS curves appear on each plot. The results submitted to the
+intercomparison (Nicholls et al.) are drawn as a thin black dashed line
+labelled "PROTEUS CHILI". The run from your own checkout is drawn in
+vermillion with thick lines, black-edged markers, and its git SHA in the
+legend. Re-running the command on a future PROTEUS version regenerates
+every figure with that version's SHA, so the comparison stays
+reproducible without editing the script.
 
 ## Melt fraction evolution
 
@@ -114,7 +129,7 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 5](../assets/tutorials/chili/fig5_venus_atm.png){ width="100%" }
-  <figcaption>Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures [bar]; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the original CHILI submission. PROTEUS predicts ~371 bar H<sub>2</sub>O and ~63 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
+  <figcaption>Atmospheric composition for the Nominal Venus case at 5% melt fraction. Stacked bars show gas partial pressures [bar]; grey stars mark surface temperature (right axis). The current PROTEUS run (vermillion label, black-edged bar) is placed next to the submitted PROTEUS CHILI result. The current run predicts ~397 bar H<sub>2</sub>O and ~62 bar CO<sub>2</sub> near solidification, for a total surface pressure of ~467 bar.</figcaption>
 </figure>
 
 ## Oxygen fugacity
@@ -142,14 +157,14 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 9](../assets/tutorials/chili/fig9_geodynamics.png){ width="100%" }
-  <figcaption>Geodynamics diagnostics as functions of melt fraction for the Nominal Earth case. (a) Surface temperature. (b) Rheological front radius in megameters; the dashed line marks the PROTEUS core-mantle boundary at 3.39 Mm (R<sub>core</sub>/R<sub>p</sub> = 0.49). (c) Effective mantle viscosity; the dashed line marks solid Earth mantle viscosity (5 x 10<sup>22</sup> Pa s), and the dotted line marks water STP viscosity (10<sup>-3</sup> Pa s). PROTEUS values are extracted from Aragog interior profiles at each timestep.</figcaption>
+  <figcaption>Geodynamics diagnostics as functions of melt fraction for the Nominal Earth case. (a) Surface temperature. (b) Rheological front radius in megameters; the dashed line marks the PROTEUS core-mantle boundary at 3.39 Mm (R<sub>core</sub>/R<sub>p</sub> = 0.49). (c) Effective mantle viscosity; the dashed line marks solid Earth mantle viscosity (5 x 10<sup>22</sup> Pa s), and the dotted line marks water STP viscosity (10<sup>-3</sup> Pa s). Current PROTEUS values are extracted from Aragog interior profiles at each timestep. The current PROTEUS curves are lightly smoothed with a centered rolling mean to suppress per-timestep solver jitter; the intercomparison models are shown as submitted.</figcaption>
 </figure>
 
 ## Surface pressure evolution
 
 <figure markdown="span">
   ![CHILI P_surf](../assets/tutorials/chili/psurf_vs_time.png){ width="100%" }
-  <figcaption>Surface pressure vs time for all models. PROTEUS surface pressure starts high (~10<sup>4</sup> bar during the brief fully molten phase), drops to a minimum of ~117 bar as CO<sub>2</sub> partitions between atmosphere and melt, then rises to ~438 bar at solidification as H<sub>2</sub>O exsolves from the crystallizing mantle. Models differ in the timing and magnitude of the pressure evolution, reflecting different volatile solubility treatments.</figcaption>
+  <figcaption>Surface pressure vs time for all models. The current PROTEUS run starts near 2x10<sup>4</sup> bar during the brief fully molten phase. This early peak is almost entirely molecular oxygen: the surface pressure sums all gas partial pressures including O<sub>2</sub>, the CHILI protocol pins the oxygen fugacity at IW+4, and the imposed O<sub>2</sub> partial pressure equals that fugacity. At the initial magma temperature (~4290 K) the iron-wustite buffer places fO<sub>2</sub>, and hence pO<sub>2</sub>, near 2x10<sup>4</sup> bar (about 99.6% of the surface pressure). As the surface cools below ~3000 K the buffer falls steeply, pO<sub>2</sub> collapses by several orders of magnitude, and the pressure drops to a minimum of ~117 bar set by CO<sub>2</sub> partitioning before rising to ~438 bar at solidification as H<sub>2</sub>O exsolves from the crystallizing mantle. The submitted PROTEUS CHILI run also counts O<sub>2</sub> in its surface pressure (about 124 of its initial 258 bar), but it begins from a cooler magma surface (~3126 K), so its early pO<sub>2</sub> is roughly two orders of magnitude lower and no comparable spike appears. The early-time offset between the two PROTEUS curves is therefore set by their different initial magma temperatures acting through the steeply temperature-dependent IW+4 buffer, not by a difference in which species are counted. Other models differ in the timing and magnitude of the pressure evolution, reflecting their volatile solubility and oxygen treatments.</figcaption>
 </figure>
 
 ## Earth volatile grid
@@ -213,8 +228,83 @@ atmospheric H$_2$O greenhouse and allowing higher OLR (2.72 to
 
 <figure markdown="span">
   ![CHILI grid solidification](../assets/tutorials/chili/grid_solidification.png){ width="80%" }
-  <figcaption>Solidification time as a function of hydrogen inventory for the three carbon levels. The near-linear scaling on the log-log axes reflects the blanketing effect of the steam atmosphere on OLR. The carbon-inventory dependence reverses sign between low-H and high-H cases (see text).</figcaption>
+  <figcaption>Solidification time of the current PROTEUS grid runs (solid lines, filled markers) as a function of hydrogen inventory for the three carbon levels. Where the submitted PROTEUS CHILI grid runs reach 5% melt by volume they are overlaid as dashed lines with open markers; the runs archived in the comparison repository stop just above that threshold, so no submitted points appear here. The near-linear scaling on the log-log axes reflects the blanketing effect of the steam atmosphere on OLR. The carbon-inventory dependence reverses sign between low-H and high-H cases (see text).</figcaption>
 </figure>
+
+## Current PROTEUS configuration vs the CHILI submission
+
+Every figure shows two PROTEUS curves, and the gap between them is itself
+informative because the two come from different model configurations. The
+protocol fixes the inputs that both share: a bulk-silicate-Earth
+composition, oxygen fugacity at IW+4, a Bond albedo of 0.1, and a 50 Myr
+stellar age[^cite-lichtenberg2026]. What differs is the interior machinery.
+
+The results submitted to the intercomparison[^cite-nicholls2026] were
+produced with **SPIDER** (Bower et al. 2018) for the interior thermal
+evolution and an Adams-Williamson integration for the interior structure.
+SPIDER advances the magma ocean in an entropy (temperature-entropy)
+formulation with mixing-length convection, gravitational settling of
+cumulates, latent heat, and conduction; the interior density and radius
+follow from integrating the Adams-Williamson equation under adiabatic
+self-compression.
+
+The configuration documented on this page uses **Aragog** for the
+interior thermal evolution and **Zalmoxis** for the interior structure.
+Aragog advances the same magma ocean in a temperature-pressure
+formulation, and Zalmoxis solves the layered interior structure (mass,
+radius, density profile, and core-mantle-boundary radius) directly rather
+than from the Adams-Williamson approximation.
+
+These differences leave clear fingerprints in the figures:
+
+- **Surface temperature at high melt fraction (Figure 9a).** In the
+  submission, the mixing-length scheme in SPIDER partially cancels upward
+  convective heat transport against downward transport from cumulate
+  settling and gravitational potential-energy release, which suppresses
+  cooling and gives PROTEUS the lowest surface temperature of any model at
+  95% melt (2266 K; Nicholls et al.). The current Aragog run reaches
+  2924 K at the same melt fraction, sitting within the model ensemble
+  rather than at its floor.
+
+- **Cooling timescale (Figures 1 and 2).** The submission was the slowest
+  model to reach 95% melt, partly because its solidus and liquidus curves
+  carry the lowest core-mantle-boundary temperatures of the ensemble, so
+  the deep mantle must cool further before freezing begins. The current
+  run solidifies at 1.34 Myr (Earth) and about 2.2 Myr (Venus), inside the
+  ensemble spread.
+
+- **Effective viscosity (Figure 9c).** SPIDER computes a 1D
+  self-consistent viscosity that spans a wide, structured range across the
+  freezing interval (Nicholls et al.). The current Aragog viscosity also
+  climbs by many orders of magnitude as the mantle solidifies, over a
+  comparable melt-fraction interval.
+
+- **Interior structure (Figure 9b).** The core-mantle-boundary radius and
+  the advance of the rheological front depend on the interior-structure
+  model. Zalmoxis places the current core-mantle boundary at 3.39 Mm
+  (R<sub>core</sub>/R<sub>p</sub> = 0.49); the submitted curve uses the
+  Adams-Williamson radii. The two configurations therefore differ in their
+  absolute radius scale as well as in how quickly the rheological front
+  advances outward.
+
+- **Volatile budgets and retention (Figures 4 and 7).** The submission
+  does not store volatiles in the solid mantle, so its hydrogen remains in
+  the melt and atmosphere and builds a steam-dominated, hydrogen-rich
+  envelope; over the long Venus cooling tail this drives large
+  hydrodynamic loss, leaving 63% of the hydrogen and 28% of the carbon by
+  5% melt (Nicholls et al.). The current run stops at solidification
+  (about 2.2 Myr for Venus), upstream of that escape-dominated regime, so
+  its volatile retention stays near 100% in Figure 7. Comparing
+  long-timescale escape directly would require integrating the current run
+  past solidification.
+
+Because the current run terminates at 5% melt, the late-time behaviour
+carried by the submitted "PROTEUS CHILI" curve (the extended escape in
+Figure 7, the low-melt tail in Figure 9) is not reproduced by the
+vermillion curve. This is expected rather than a discrepancy: the two
+curves answer different questions, the submission over the full evolution
+and the current run over the magma-ocean stage that this tutorial
+configures.
 
 ## Key findings
 
@@ -233,9 +323,17 @@ atmospheric H$_2$O greenhouse and allowing higher OLR (2.72 to
 
 4. **Model differences arise from**: gas chemistry (which species are
    tracked and whether equilibrium or kinetic), volatile partitioning
-   (solubility laws), radiative transfer (correlated-k vs grey), mantle
-   convection (mixing length vs parameterized), and melting curve
-   prescriptions.
+   (solubility laws and whether volatiles are stored in the solid mantle),
+   radiative transfer (correlated-k vs grey), interior convection (mixing
+   length vs parameterized), and melting-curve prescriptions.
+
+5. **The current PROTEUS and the submitted PROTEUS CHILI results differ
+   measurably**, driven by the interior solver and structure model (Aragog
+   and Zalmoxis here, SPIDER and an Adams-Williamson interior in the
+   submission). The clearest signatures are the surface temperature at 95%
+   melt (2924 K now against 2266 K submitted) and the late-time behaviour
+   that only the full-evolution submission resolves. See the section above
+   for a figure-by-figure breakdown.
 
 ---
 
