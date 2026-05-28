@@ -142,7 +142,7 @@ and the git commit SHA in the legend.
 
 <figure markdown="span">
   ![CHILI Fig 9](../assets/tutorials/chili/fig9_geodynamics.png){ width="100%" }
-  <figcaption>Geodynamics diagnostics as functions of melt fraction for the Nominal Earth case. (a) Surface temperature. (b) Rheological front radius normalized to planet radius; the dashed line marks the core-mantle boundary at 0.55 R<sub>p</sub>. (c) Effective mantle viscosity; the dashed line marks solid Earth mantle viscosity (5 x 10<sup>22</sup> Pa s), and the dotted line marks water STP viscosity (10<sup>-3</sup> Pa s). PROTEUS values are extracted from Aragog interior profiles at each timestep.</figcaption>
+  <figcaption>Geodynamics diagnostics as functions of melt fraction for the Nominal Earth case. (a) Surface temperature. (b) Rheological front radius in megameters; the dashed line marks the PROTEUS core-mantle boundary at 3.39 Mm (R<sub>core</sub>/R<sub>p</sub> = 0.49). (c) Effective mantle viscosity; the dashed line marks solid Earth mantle viscosity (5 x 10<sup>22</sup> Pa s), and the dotted line marks water STP viscosity (10<sup>-3</sup> Pa s). PROTEUS values are extracted from Aragog interior profiles at each timestep.</figcaption>
 </figure>
 
 ## Surface pressure evolution

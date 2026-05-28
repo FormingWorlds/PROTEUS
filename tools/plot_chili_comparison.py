@@ -1227,8 +1227,13 @@ def plot_fig8(intercomp, pe, NS, out):
 # ── Fig 9: Geodynamics (T_surf, R_RF, viscosity vs phi) ──────────────
 def plot_fig9(intercomp, pe, NS, out):
     """3-panel geodynamics: T_surf, R_RF/R_p, viscosity vs phi, matching Nicholls+ Fig 9."""
-    R_planet = 6.371e6  # IUGG mean Earth radius [m]
-    R_cmb_frac = 0.55  # core-mantle boundary radius fraction (Lodders & Fegley 1998)
+    # Radii are plotted in absolute units (Mm). The CHILI CSVs report R_solid /
+    # R_trans in metres and carry no planet-radius column, so a fractional axis
+    # would require a per-model surface radius that is not available; absolute
+    # radius is the faithful representation of the shared quantity.
+    R_cmb_Mm = 3.385  # PROTEUS Earth-case core radius (core mass fraction 0.325)
+    if pe is not None and 'R_core' in getattr(pe, 'columns', []) and len(pe):
+        R_cmb_Mm = float(pe['R_core'].iloc[0]) / 1e6
     visc_solid = 5e22  # solid Earth mantle viscosity [Pa s] (Peltier+1981, McKenzie 1967)
     visc_water = 1e-3  # water viscosity at STP [Pa s]
 
@@ -1253,8 +1258,8 @@ def plot_fig9(intercomp, pe, NS, out):
         r_sol = _get_col(df, 'R_solid', 'R_trans')
         if r_sol is not None:
             valid = r_sol > 0
-            r_frac = r_sol[valid] / R_planet
-            ax_r.plot(phi_pct[valid], r_frac, linestyle=st.get('ls', '-'), **kw)
+            r_Mm = r_sol[valid] / 1e6
+            ax_r.plot(phi_pct[valid], r_Mm, linestyle=st.get('ls', '-'), **kw)
 
         visc = _get_col(df, 'viscosity', 'visc')
         if visc is not None:
@@ -1270,22 +1275,20 @@ def plot_fig9(intercomp, pe, NS, out):
         if 'T_surf' in pe.columns:
             ax_t.plot(pe['Phi_global'] * 100, pe['T_surf'], '-', **kw)
         if len(profs.get('R_rheo', [])) > 0:
-            ax_r.plot(
-                profs['Phi_global'] * 100, np.array(profs['R_rheo']) / R_planet, '-', **kw
-            )
+            ax_r.plot(profs['Phi_global'] * 100, np.array(profs['R_rheo']) / 1e6, '-', **kw)
         if len(profs.get('visc_avg', [])) > 0:
             ax_v.plot(profs['Phi_global'] * 100, profs['visc_avg'], '-', **kw)
 
-    ax_r.axhline(R_cmb_frac, color='black', linestyle='--', linewidth=1.0)
-    ax_r.text(50, R_cmb_frac + 0.01, 'Core-mantle boundary', fontsize=8, va='bottom')
+    ax_r.axhline(R_cmb_Mm, color='black', linestyle='--', linewidth=1.0)
+    ax_r.text(50, R_cmb_Mm + 0.05, 'Core-mantle boundary (PROTEUS)', fontsize=8, va='bottom')
     ax_v.axhline(visc_solid, color='black', linestyle='--', linewidth=1.0)
     ax_v.text(50, visc_solid * 2, 'Solid mantle viscosity', fontsize=8, va='bottom')
     ax_v.axhline(visc_water, color='black', linestyle=':', linewidth=1.0)
     ax_v.text(50, visc_water * 3, 'Water STP viscosity', fontsize=8, va='bottom')
 
     ax_t.set_ylabel(r'$T_\mathrm{surf}$ [K]')
-    ax_r.set_ylabel(r'$R_\mathrm{RF} / R_\mathrm{p}$')
-    ax_r.set_ylim(0.55, 1.02)
+    ax_r.set_ylabel(r'$R_\mathrm{RF}$ [Mm]')
+    ax_r.set_ylim(2.9, 7.2)
     ax_v.set_ylabel(r'$\eta$ [Pa s]')
     ax_v.set_yscale('log')
     ax_v.set_xlabel('Melt fraction [vol%]')
