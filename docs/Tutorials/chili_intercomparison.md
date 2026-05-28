@@ -264,10 +264,13 @@ prep.)[^cite-nicholls2026] for further details.
 
 The configuration documented on this page uses **Aragog** for the
 interior thermal evolution and **Zalmoxis** for the interior structure.
-Aragog advances the same magma ocean in a temperature-pressure
-formulation, and Zalmoxis solves the layered interior structure (mass,
-radius, density profile, and core-mantle-boundary radius) directly rather
-than from the Adams-Williamson approximation.
+Aragog is the Python reimplementation of SPIDER and integrates the same
+specific-entropy equation for a two-phase, partially molten mantle with a
+mixing-length convective closure. The main change is on the structure
+side: Zalmoxis replaces the Adams-Williamson approximation, solving the
+layered interior (mass, radius, density profile, and core-mantle-boundary
+radius) directly and supplying the pressure-entropy equation-of-state
+tables that Aragog reads.
 
 ## Takeaways
 
