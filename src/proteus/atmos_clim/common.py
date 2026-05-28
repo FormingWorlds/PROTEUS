@@ -270,11 +270,10 @@ def get_oarr_from_parr(p_arr: list, o_arr: list, p_tgt: float) -> tuple:
 
 
 def get_radius_from_pressure(p_arr: list, r_arr: list, p_tgt: float) -> tuple[float, float]:
-    """Backwards-compatible helper: return radius at a target pressure.
+    """Return the radius at a target pressure.
 
-    Historically PROTEUS exposed `get_radius_from_pressure(p_arr, r_arr, p_tgt)`.
-    Newer code uses the generic `get_oarr_from_parr`. Keep this wrapper so older
-    call-sites (and tests) continue to work.
+    Thin wrapper around the generic ``get_oarr_from_parr`` for the
+    pressure-to-radius case.
     """
     return get_oarr_from_parr(p_arr, r_arr, p_tgt)
 

@@ -108,8 +108,8 @@ def _cached_entropy_eos_jax(eos_dir_str: str):
 
 # Research-only flag. Flip to True to enable the diffrax direct-JAX
 # integration path (`aragog_jax.AragogJAXRunner`). Not production-viable
-# on CHILI Earth runs as of 2026-04-09 (kvaerno3 stalls on first
-# crystallization step). Reserved for autodiff development.
+# on CHILI Earth runs (kvaerno3 stalls on the first crystallization
+# step). Reserved for autodiff development.
 _DIFFRAX_RESEARCH_ONLY = False
 
 # Physically plausible bulk-core density bounds [kg m^-3] used as a
@@ -302,8 +302,7 @@ class AragogRunner:
         # Diffrax direct-JAX integration is research-only (autodiff
         # development). It is NOT exposed in the user-facing schema; flip
         # the constant below to enable for development. The CHILI
-        # crystallization step still defeats kvaerno3 (see
-        # aragog_jax_status memory, 2026-04-09) so production runs must
+        # crystallization step defeats kvaerno3, so production runs must
         # use the CVODE path via `[interior_energetics.aragog] backend`.
         self._use_jax = _DIFFRAX_RESEARCH_ONLY
 
@@ -408,12 +407,11 @@ class AragogRunner:
                     hf_row=hf_row,
                 )
         else:
-            # T1.1 (2026-04-26 coupling audit): track how long Aragog has
-            # been integrating on a stale Zalmoxis structure. The
-            # _structure_stale flag is set by the wrapper's fall-back
-            # path on Zalmoxis non-convergence and cleared on the next
-            # successful Zalmoxis call. Surfacing this counter at INFO
-            # makes the silent-stale-mesh window visible in
+            # Track how long Aragog has been integrating on a stale
+            # Zalmoxis structure. The _structure_stale flag is set by the
+            # wrapper's fall-back path on Zalmoxis non-convergence and
+            # cleared on the next successful Zalmoxis call. Surfacing this
+            # counter at INFO makes the silent-stale-mesh window visible in
             # proteus_00.log; the hard-fail policy lives in the
             # wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS budget.
             if hf_row.get('_structure_stale', False):
@@ -504,7 +502,7 @@ class AragogRunner:
             # ultra-thin boundary layer parameterization (Bower et al. 2018, Eq. 18)
             param_utbl=config.interior_energetics.param_utbl,
             param_utbl_const=config.interior_energetics.param_utbl_const,
-            # core BC mode (v5 Path A adds 'energy_balance')
+            # core BC mode (the 'energy_balance' option is available)
             core_bc=core_bc_str,
         )
 
@@ -551,9 +549,7 @@ class AragogRunner:
             mass_coordinates=config.interior_energetics.aragog.mass_coordinates,
             # Atmospheric overburden as the upper BC for the Adams-Williamson
             # P(r) integration. hf_row['P_surf'] is in bar; Aragog wants Pa.
-            # Defaults to 0 at init when no atmosphere step has run yet
-            # (matches the previous hardcoded value, so init-only Stage 1a
-            # runs are bit-identical with respect to the mesh build).
+            # Defaults to 0 at init when no atmosphere step has run yet.
             surface_pressure=float(hf_row.get('P_surf', 0.0)) * 1e5,
         )
 
@@ -687,11 +683,11 @@ class AragogRunner:
 
             mass_tot = config.planet.mass_tot or 1.0
             # P_max for the Aragog phase-boundary + lookup table grid.
-            # Original formula was min(200 GPa, 50*mass_tot + 100 GPa), which
-            # hard-capped at 200 GPa regardless of mass. For 5 M_Earth the
-            # actual P_cmb is ~670 GPa (see stage1c_5me_super_earth_progress),
-            # so 70% of the mantle was reading an extrapolated phase boundary
-            # at the 200 GPa table edge. The PALEOS-2phase EOS tables extend
+            # The grid must reach the planet's CMB pressure so the mantle
+            # does not read an extrapolated phase boundary at the table
+            # edge. For 5 M_Earth the actual P_cmb is ~670 GPa, so a flat
+            # 200 GPa cap would leave ~70% of the mantle on an
+            # extrapolated boundary. The PALEOS-2phase EOS tables extend
             # to 100 TPa (header, paleos_mgsio3_tables_pt_proteus_*.dat); the
             # Fei+2021 melting curve is fit up to ~1 TPa but the functional
             # form (Simon-Glatzel power law) extrapolates smoothly higher.
@@ -786,7 +782,7 @@ class AragogRunner:
                         )
             else:
                 log.warning(
-                    'PALEOS EOS file not found (%s), falling back to legacy tables',
+                    'PALEOS EOS file not found (%s), falling back to the shipped EOS tables',
                     paleos_eos_file,
                 )
                 LOOK_UP_DIR = (
@@ -796,7 +792,7 @@ class AragogRunner:
                     / 'MgSiO3_Wolf_Bower_2018_1TPa'
                 )
         else:
-            # Legacy shipped tables; used when interior_struct.eos_dir is
+            # Shipped EOS tables; used when interior_struct.eos_dir is
             # None (no dynamic EOS selected) or when the dynamic path
             # does not resolve to a populated directory. The "EOS/dynamic"
             # tree is only materialised when zalmoxis pre-generates
@@ -1115,17 +1111,14 @@ class AragogRunner:
                 # consumed the analytic Jacobian rather than silently falling
                 # back to the FD path.
                 solver._jax_factory_call_count += 1
-                # OQ3 option C: ``scales`` is now an
-                # aragog.jax.nondim.NonDimScales single source of truth.
-                # The legacy 4-arg (state_scale, rhs_scale, t_ref,
-                # core_bc_mode) positional triplet was retired.
+                # ``scales`` is an aragog.jax.nondim.NonDimScales single
+                # source of truth.
                 # Rebuild BoundaryParams from live solver state every
                 # solve() call. PROTEUS updates outer_boundary_value
                 # (F_atm), equilibrium_temperature, and inner_boundary_value
                 # between coupling steps; capturing them once at factory-
                 # install time would freeze the interior to the initial
-                # F_atm and halt cooling (observed: Phi_global stuck at
-                # 1.0 for >1.7 Myr in chili_v_test).
+                # F_atm and halt cooling (Phi_global stuck at 1.0).
                 bc_cfg = solver.parameters.boundary_conditions
                 bc_jax_live = BoundaryParams(
                     outer_bc_type=bc_cfg.outer_boundary_condition,
@@ -1214,7 +1207,7 @@ class AragogRunner:
 
         - ``temperature_mode = "isentropic"`` -> return
           ``planet.ini_entropy`` verbatim (no EOS lookup). This is the
-          CHILI protocol path used by the R8 baseline.
+          CHILI protocol path.
         - Otherwise: invert the P-S temperature table at (P=1 bar,
           tsurf_init) using the Aragog EntropyEOS on the same tables the
           solver integrates with.
@@ -1228,7 +1221,7 @@ class AragogRunner:
         ``config.planet.ini_dsdr`` is non-zero. This matches SPIDER's
         ``-ic_dsdr`` flag, which is the numerical perturbation SPIDER's
         BDF solver needs for stability on a uniform isentropic IC
-        (the R8 CHILI baseline sets ``ini_dsdr = -4.698e-6 J/kg/K/m``).
+        (the CHILI protocol sets ``ini_dsdr = -4.698e-6 J/kg/K/m``).
 
         Parameters
         ----------
@@ -1237,7 +1230,7 @@ class AragogRunner:
         interior_o : Interior_t
             Interior object with initialized EntropySolver.
         outdir : str
-            Output directory (unused; kept for API compatibility).
+            Output directory. Accepted for call-signature compatibility; unused.
         hf_row : dict, optional
             Helpfile row. Passed through to compute_initial_entropy so
             it can honour Zalmoxis's accretion-mode T_surface_initial
@@ -1259,10 +1252,10 @@ class AragogRunner:
         # add a linear radial perturbation anchored at the surface
         # (S_init[i] = S_target + ini_dsdr * (r_stag[i] - r_surf)) so the
         # perturbation is exactly zero at the top cell and grows toward
-        # the CMB. This matches SPIDER's -ic_dsdr semantic — a small
+        # the CMB. This matches SPIDER's -ic_dsdr semantic: a small
         # perturbation used purely to break degeneracy in the BDF
         # solver; the physical magnitude is negligible
-        # (~ -14 J/kg/K over 3e6 m for the R8 default of -4.698e-6).
+        # (~ -14 J/kg/K over 3e6 m for the CHILI default of -4.698e-6).
         P_stag = solver._P_stag_flat
         N = len(P_stag)
         S_init = np.full(N, float(S_target))
@@ -1316,20 +1309,6 @@ class AragogRunner:
         P-S EOS tables. A mismatch > 1% triggers an override: the entropy
         profile is replaced with values inverted from the adiabat's T profile.
         A mismatch > 5% is raised as a ``RuntimeError`` (true code-path drift).
-
-        Notes
-        -----
-        History: this function was dead code between commits 63df1b1d
-        (when it was introduced) and the fix that references ``solver._S0``
-        / ``solver._P_stag_flat``. The original implementation referenced
-        ``solver.evaluator.initial_condition.temperature``, an attribute
-        of the old T-based Aragog solver that does not exist on the
-        lightweight ``_EntropyEvaluator`` from the entropy rewrite. The
-        resulting ``AttributeError`` was silently swallowed by a broad
-        ``except Exception``. Every run since 63df1b1d logged
-        "Entropy IC verification failed: '_EntropyEvaluator' object has
-        no attribute 'initial_condition'" as a warning and proceeded
-        without any cross-check.
 
         Parameters
         ----------
@@ -1500,7 +1479,7 @@ class AragogRunner:
                 log.warning(
                     'Entropy IC full-profile cross-check > %.1f%% '
                     '(max %.1f K / %.2f%% at depth). Diagnostic only; '
-                    'not overriding the IC. See pitfall 50 in memory: '
+                    'not overriding the IC. '
                     'PALEOS P-T and regenerated P-S tables disagree at '
                     'high P / high T because the table regeneration '
                     'involves bilinear interpolation across non-converged '
@@ -1616,7 +1595,7 @@ class AragogRunner:
                     config.interior_struct.core_frac * hf_row['R_int']
                 )
         elif config.interior_struct.module == 'zalmoxis':
-            # Stage 1b.2: refresh inner_radius from hf_row on every coupling
+            # Refresh inner_radius from hf_row on every coupling
             # step so Zalmoxis re-solves that shift R_core propagate into
             # the Aragog mesh. Matches the setup_solver convention
             # (aragog.py:234-237). Without this the mesh domain's inner
@@ -1676,13 +1655,12 @@ class AragogRunner:
                             M_core,
                         )
 
-        # Lightweight trace so Stage 1b three-way validation can check that
+        # Lightweight trace so validation can check that
         # the mesh scalars track the Zalmoxis re-solve cadence. The d*
         # fields are the change since the previous update, computed from
         # cached prior values stored on solver. Oscillation in dR_int
         # across consecutive updates is the canonical signature of a
-        # Zalmoxis↔Aragog fixed-point loop going unstable (Stage 1b.5
-        # watch-for condition).
+        # Zalmoxis↔Aragog fixed-point loop going unstable.
         prev = getattr(solver, '_prev_struct_log', None)
         R_int_new = float(solver.parameters.mesh.outer_radius)
         R_core_new = float(solver.parameters.mesh.inner_radius)
@@ -1739,10 +1717,10 @@ class AragogRunner:
         # Store arrays on interior object for inter-module access.
         # Radius is stored in metres (SI), matching SPIDER's convention
         # (spider.py:1185 reads radius_b directly from the SPIDER JSON
-        # in metres). Previously Aragog stored km, which silently broke
-        # update_structure_from_interior (wrapper.py:795) whenever
-        # Zalmoxis update_interval > 0: the r <= _R_cmb comparison and
-        # the downstream np.interp would use mixed units.
+        # in metres). update_structure_from_interior (wrapper.py:795)
+        # requires metres: its r <= _R_cmb comparison and downstream
+        # np.interp would use mixed units if km were stored here, which
+        # matters whenever Zalmoxis update_interval > 0.
         interior_o.phi = out.phi_stag
         interior_o.visc = out.visc_stag
         interior_o.density = out.rho_stag
@@ -1800,16 +1778,13 @@ class AragogRunner:
         # the IC transient in T_core is O(100 K); at 5 M_Earth with per-node
         # gravity the same transient is O(2-3 kK) because core heat extraction
         # scales with CMB gravity and core-mantle area (g_cmb^2 * R_core^2).
-        # A flat 1500 K threshold was calibrated for 1 M_Earth Run A/B and
+        # A flat 1500 K threshold is calibrated for 1 M_Earth and
         # wrongly rejects physical transients on super-Earth runs, driving the
         # retry ladder to exhaustion. Linear-in-mass scaling is defensible:
         # for rocky planets the product (g_cmb * M_core * C_p_core) rises
         # approximately linearly with planet mass, and the first-step
         # dT_core/dt scales with that product. At 5 M_Earth this gives a
         # 7500 K ceiling, ~2.5x headroom above the observed 2700 K jump.
-        # Observed 2026-04-21 on chili_dry_coupled_v3f_1c_5me_full (per-node
-        # gravity) retry-ladder exhaustion at t=5 yr; see the project memory
-        # stage1c_5me_super_earth_progress for the diagnostic trail.
         mass_tot = float(getattr(self._config.planet, 'mass_tot', 1.0) or 1.0)
         sanity_dT_core = 1500.0 * max(
             1.0, mass_tot
@@ -1832,8 +1807,7 @@ class AragogRunner:
         # and uses it as the IC for the next retry, producing a
         # positive-feedback loop in which each retry drives dSdr_cmb
         # further from the pre-solve value and T_core jumps grow
-        # unbounded. Observed in the 5 M_Earth dry CHILI super-Earth
-        # runs (proteus stage1c_5me_super_earth_progress memory, 2026-04-21).
+        # unbounded. Seen on the 5 M_Earth dry CHILI super-Earth runs.
         # Prefer the Aragog getter; fall back to the private override
         # attribute when present (e.g. when a previous call forced it).
         dSdr_snapshot = None

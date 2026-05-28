@@ -32,8 +32,8 @@ def _resolve_oxygen_budget(config: Config, hf_row: dict) -> float | None:
     Returns ``None`` when ``O_mode == 'ic_chemistry'``, signalling that
     PROTEUS should NOT pre-populate O_kg_total and instead let CALLIOPE
     (or atmodeller) supply the equilibrium-derived value on the first
-    outgas call. This preserves legacy behaviour for configs that pre-date
-    the whole-planet O accounting.
+    outgas call. This is the default and defers the IC O budget to the
+    fO2-buffered equilibrium.
 
     Modes:
         'ppmw' : O_kg = O_budget * 1e-6 * M_reservoir, where M_reservoir
@@ -82,7 +82,7 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     O_budget settings (unless O_mode == 'ic_chemistry', in which case the
     first outgas call sets it). The atmosphere+dissolved O thus enters
     the M_ele aggregation and the Zalmoxis dry-mass subtraction, closing
-    the bookkeeping asymmetry that previously let M_atm > M_planet.
+    the bookkeeping asymmetry that can let M_atm exceed M_planet.
     """
 
     # zero by default, in case not included
@@ -109,8 +109,8 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
         # ic_chemistry mode: leave O_kg_total at 0; first CALLIOPE call writes it.
         hf_row['O_kg_user_ic'] = -1.0  # sentinel: no user budget supplied
 
-    # Update total mass of tracked elements. Issue #677 fix: O is now
-    # included in M_ele (no longer skipped). M_planet = M_int + M_ele
+    # Update total mass of tracked elements. Issue #677 fix: O is
+    # included in M_ele. M_planet = M_int + M_ele
     # therefore reflects the atmospheric+dissolved O mass that CALLIOPE
     # produces from the fO2 buffer, closing the asymmetry. Defensive
     # .get() default lets the sum survive pre-IC hf_row states.
@@ -144,8 +144,9 @@ def check_ic_oxygen_budget(
     corrupting the trajectory.
 
     Skipped when:
-      - ``planet.fO2_source != "user_constant"``. Under Path C the user
-        O budget is the *authoritative* input that drives the chemistry,
+      - ``planet.fO2_source != "user_constant"``. When
+        fO2_source = 'from_O_budget' the user O budget is the
+        *authoritative* input that drives the chemistry,
         so any "divergence" between it and the derived O inventory is
         zero by construction. The check is meaningful only when fO2 is
         the input and O is the output.
@@ -169,8 +170,8 @@ def check_ic_oxygen_budget(
     ValueError
         If divergence exceeds ``threshold_frac``.
     """
-    # Gate on fO2_source. Path C makes user O authoritative so there is
-    # no divergence to flag.
+    # Gate on fO2_source. The 'from_O_budget' source makes user O
+    # authoritative so there is no divergence to flag.
     if config.planet.fO2_source != 'user_constant':
         return
 
@@ -314,8 +315,9 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     """
 
     # planet.fO2_source dispatch. Two runtime paths are wired today:
-    # 'user_constant' (legacy buffered-fO2 chemistry) for every backend,
-    # and 'from_O_budget' (authoritative-O chemistry) for the CALLIOPE
+    # 'user_constant' (fO2 buffered to the configured IW offset) for
+    # every backend, and 'from_O_budget' (authoritative-O chemistry)
+    # for the CALLIOPE
     # and atmodeller backends. The Config-level validator
     # (planet_fO2_source_compat) rejects 'from_mantle_redox' and the
     # from_O_budget + dummy combo at config-load, so this guard is

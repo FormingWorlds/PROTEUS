@@ -445,7 +445,7 @@ def compute_initial_entropy(
 
         if S_target is not None:
             # Cross-check against an independent PALEOS adiabat. Raises
-            # RuntimeError on FAIL (> 5% disagreement) — that is a genuine
+            # RuntimeError on FAIL (> 5% disagreement); that is a genuine
             # code-path divergence and MUST propagate up the stack. Do
             # NOT catch this inside the inversion try block, or FAIL
             # verdicts get silently demoted to warnings.
@@ -543,7 +543,7 @@ class Interior_t:
         # during retries.
         self._spider_cumulative_time = 0.0
 
-        # Stiffness-aware adaptive time-step state (2026-04-09).
+        # Stiffness-aware adaptive time-step state.
         #
         # When the interior solver reports a "slow down" decision
         # (or a solver retry), ``dt_hysteresis_remaining`` is set to
@@ -580,22 +580,20 @@ class Interior_t:
         # set by a Zalmoxis fall-back). Resets to 0 on every successful
         # structure refresh. Used by setup_or_update_solver to log how
         # long Aragog has been running on a frozen mesh, surfacing the
-        # silent-stale-mesh failure mode flagged in the 2026-04-26
-        # coupling audit. The hard-fail threshold lives separately in
-        # the wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS budget; this
-        # counter is for visibility, not enforcement.
+        # silent-stale-mesh failure mode. The hard-fail threshold lives
+        # separately in the wrapper's _ZALMOXIS_MAX_CONSECUTIVE_FAILS
+        # budget; this counter is for visibility, not enforcement.
         self._stale_struct_steps = 0
 
-        # T1.5 (2026-04-26 coupling audit): simulation-time of the last
-        # SUCCESSFUL Zalmoxis structure refresh. Distinct from the
-        # main-loop's `last_struct_time` (which is reset on every
-        # call regardless of success). Drives the stale-aware ceiling
-        # trigger in update_structure_from_interior, which fires when
+        # Simulation-time of the last SUCCESSFUL Zalmoxis structure
+        # refresh. Distinct from the main-loop's `last_struct_time`
+        # (which is reset on every call regardless of success). Drives
+        # the stale-aware ceiling trigger in
+        # update_structure_from_interior, which fires when
         # Time - last_successful_struct_time >= update_stale_ceiling.
         # Without this tracker, a fall-back keeps the trigger clock
         # ticking past the next ceiling and Aragog can advance through
-        # an entire structure-update window with a frozen mesh (the 51
-        # kyr stretch observed in the 2026-04-26 Step D run). Set to
+        # an entire structure-update window with a frozen mesh. Set to
         # -inf at __init__; updated to hf_row['Time'] on every Zalmoxis
         # success (wrapper.py).
         self.last_successful_struct_time = float('-inf')

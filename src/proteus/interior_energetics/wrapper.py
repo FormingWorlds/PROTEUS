@@ -29,28 +29,23 @@ if TYPE_CHECKING:
 # failure could then trigger the abort threshold. `reset_run_state()` below
 # clears the counter and must be called from the PROTEUS run-init path.
 _zalmoxis_fail_count = 0
-# Raised from 5 to 8 on 2026-04-26 after the chili_dry_coupled_stage2_ab_smoothstep
-# crash at iter ~134 and the pre-fix run at iter ~135 both died on consecutive
-# `pressure=False, density=False, mass=False` streaks. The optimised B-side run
-# survived the same failure mode by luck of intermixing successes; raising the
-# cap gives recoverable streaks more room without hiding a genuine deadlock.
-# See session_2026_04_25_to_26_perf_summary.md.
+# Allow up to 8 consecutive Zalmoxis failures before aborting. Consecutive
+# `pressure=False, density=False, mass=False` streaks can occur transiently;
+# 8 retries give recoverable streaks room to recover without hiding a genuine
+# deadlock.
 _ZALMOXIS_MAX_CONSECUTIVE_FAILS = 8
 
-# T1.2 (2026-04-26 coupling audit): post-acceptance mass-anchor
-# tolerance enforced on every Zalmoxis-success boundary in
-# update_structure_from_interior. Zalmoxis' internal
+# Post-acceptance mass-anchor tolerance enforced on every Zalmoxis-success
+# boundary in update_structure_from_interior. Zalmoxis' internal
 # solver_tol_outer (default 3e-3) is a numerical convergence target,
 # not a coupling contract: it leaves room for ~0.3 % drift between
 # hf_row['M_int'] and the dry mass target. This wrapper-level guard
-# tightens the contract to 3e-3 (0.3 %), matching Zalmoxis' own
-# tolerance_outer noise floor on hot mantle profiles. The original
-# target of 1e-3 collided with Zalmoxis' fixed-point band (Run T1
-# 2026-04-26 aborted 8/8 with M only 0.18-0.28 % off target — see
-# session_2026_04_26_t1_2_contract_collision.md). The genuine <0.1 %
-# mass conservation contract is delivered by T2.1 (Newton + brentq
-# bracketing in Zalmoxis' outer loop), not by this wrapper guard.
-# T1.2 here remains a safety net against G4-basin attractor results
+# sets the contract to 3e-3 (0.3 %), matching Zalmoxis' own
+# tolerance_outer noise floor on hot mantle profiles. A tighter 1e-3
+# target collides with Zalmoxis' fixed-point band, so it is not used here.
+# The <0.1 % mass conservation contract is delivered by the Newton + brentq
+# bracketing in Zalmoxis' outer loop, not by this wrapper guard.
+# This guard remains a safety net against off-attractor results
 # (9-15 % off target) and gross corruption.
 _ZALMOXIS_MASS_ANCHOR_TOL = 3e-3
 
@@ -139,17 +134,16 @@ def update_planet_mass(hf_row: dict):
     Whole-planet oxygen accounting (issue #677): M_ele sums over ALL
     elements in ``element_list``, including O. The atmospheric and
     dissolved O mass produced by CALLIOPE (under the fO2 buffer) is
-    therefore counted in M_planet = M_int + M_ele, closing the
-    bookkeeping asymmetry that previously let M_atm > M_planet at
+    therefore counted in M_planet = M_int + M_ele, keeping the
+    bookkeeping symmetric so M_atm cannot exceed M_planet at
     high H budgets.
 
     Mantle FeO-bound oxygen remains implicit in the PALEOS density
     tables that drive ``M_int``; we don't double-count it here.
     """
 
-    # Update total element mass. O is included alongside H/C/N/S since
-    # issue #677 (it was previously skipped because PROTEUS treated it
-    # as an infinite-reservoir buffered element). .get() default of 0.0
+    # Update total element mass. O is included alongside H/C/N/S
+    # (issue #677). .get() default of 0.0
     # makes the sum safe for pre-IC hf_row states where some element
     # columns may not have been initialised yet.
     hf_row['M_ele'] = 0.0
@@ -193,7 +187,7 @@ _SPIDER_EOS_PHASE_FILES = (
 
 # P-S melting curves. Aragog's `_load_spider_phase_boundary` hardcodes
 # these filenames. SPIDER's bundled lookup_data ships them under the
-# legacy `{solidus,liquidus}_A11_H13.dat` names; we rename on copy so a
+# `{solidus,liquidus}_A11_H13.dat` names; we rename on copy so a
 # single canonical layout satisfies both solvers.
 _SPIDER_EOS_MELTING_CURVES = ('solidus_P-S.dat', 'liquidus_P-S.dat')
 
@@ -331,11 +325,10 @@ def _derive_ps_melting_curve(
 
     Why this exists
     ---------------
-    The v2 paper-comparison runs (2026-04-29) revealed that the WB17
-    pipeline's runtime entropy-solver melting curve was byte-copied
-    from the upstream WB+2018 distribution rather than derived from
-    the user-configured ``interior_struct.melting_dir`` P-T file. This
-    helper closes the bookkeeping leak: after the fix, both the
+    The WB17 pipeline's runtime entropy-solver melting curve must be
+    derived from the user-configured ``interior_struct.melting_dir``
+    P-T file, not byte-copied from the upstream WB+2018 distribution.
+    This helper keeps the bookkeeping consistent: both the
     lever-rule mushy-zone path (in aragog.py) and the entropy-form
     integrator (via Aragog's EntropyEOS) read from the same canonical
     P-T specification.
@@ -492,7 +485,7 @@ def _override_melting_curves_from_pt(
     """Replace existing P-S melting curves in ``eos_dir`` with derivations
     from the configured P-T file.
 
-    This is the v2.1 single-source-of-truth glue: regardless of whether
+    This is the single-source-of-truth glue: regardless of whether
     the P-S melting curves were byte-copied from the WB+2018 distribution
     (Case 2), inherited from the SPIDER submodule fallback (Case 3), or
     auto-generated by Zalmoxis (Case 1, PALEOS path), we overwrite them
@@ -564,8 +557,8 @@ def _is_spider_ps_format(path: str) -> bool:
     """Cheap first-line sniff to distinguish P-S tables from P-T tables.
 
     SPIDER's canonical P-S format starts with ``# 5 <n_S> <n_P>`` (5 is
-    the number of header lines the loader expects). The legacy P-T
-    format (shipped in Zenodo 17417017) starts with
+    the number of header lines the loader expects). The P-T
+    format (shipped in the Zenodo 17417017 record) starts with
     ``#pressure temperature density``. Both formats use the same
     filenames, so a content sniff is the only way to distinguish them
     when populating spider_eos_dir from FWL_DATA.
@@ -587,33 +580,32 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     solvers need at runtime (10 phase-property files + 2 P-S melting
     curves). This is the PROTEUS-side data-resolution layer that lets
     ``interior_energetics.module = "aragog"`` work with
-    ``interior_struct.module = "spider"`` — the historical pattern used
-    by the R8 CHILI baseline, which previously hard-failed under Aragog
-    because no caller produced the P-S tables.
+    ``interior_struct.module = "spider"``. Aragog requires the P-S
+    tables to be produced for it; this helper produces them.
 
     Resolution order (first available wins):
 
-    1. **Already populated** — if ``dirs['spider_eos_dir']`` is set and
+    1. **Already populated**: if ``dirs['spider_eos_dir']`` is set and
        the target directory already contains the 12 expected files, do
        nothing. This keeps Zalmoxis's ``generate_spider_tables()``
        output path and cache semantics untouched.
 
-    2. **FWL_DATA (Zenodo 19473625)** — if the canonical Zenodo download
+    2. **FWL_DATA (Zenodo 19473625)**: if the canonical Zenodo download
        target exists and is complete, copy the 12 files into the output
        directory. This is the self-sufficient path: once the user runs
        ``proteus get all`` (or any non-offline start), the Zenodo record
        populates FWL_DATA and subsequent runs find the complete set
        here.
 
-    3. **SPIDER submodule fallback** — if FWL_DATA is incomplete but the
+    3. **SPIDER submodule fallback**: if FWL_DATA is incomplete but the
        SPIDER git submodule is cloned at ``dirs['spider']/lookup_data/``,
-       copy the 10 phase files verbatim and rename the legacy
+       copy the 10 phase files verbatim and rename the
        ``{solidus,liquidus}_A11_H13.dat`` melting curves to
-       ``{solidus,liquidus}_P-S.dat``. This keeps the pre-Zenodo
-       workflow alive for users who have the submodule but haven't
+       ``{solidus,liquidus}_P-S.dat``. This supports the
+       workflow for users who have the submodule but haven't
        refreshed their FWL_DATA tree.
 
-    4. **Hard failure** — if neither source yields a complete set, raise
+    4. **Hard failure**: if neither source yields a complete set, raise
        ``FileNotFoundError`` with a clear message pointing the user at
        ``proteus get all`` or the Zenodo record.
 
@@ -622,15 +614,14 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
     """
     target_dir = os.path.join(outdir, 'data', 'spider_eos')
 
-    # v2.1 single-source-of-truth: when `interior_struct.melting_dir` is
+    # Single source of truth: when `interior_struct.melting_dir` is
     # set in config, the runtime entropy-solver melting curves
     # (data/spider_eos/{solidus,liquidus}_P-S.dat) are *derived* from
     # that P-T file via the EoS's own T(P,S) lookup, rather than
     # byte-copied from the upstream WB+2018 distribution or auto-
-    # generated by Zalmoxis. This closes the v2-paper bookkeeping leak
-    # where WB17 runs configured with `melting_dir = "PALEOS-Fei2021"`
-    # were silently using WB+2018 P-S curves at runtime. See
-    # finding_2026_04_29_v2_melting_curve_mismatch.md.
+    # generated by Zalmoxis. This keeps WB17 runs configured with
+    # `melting_dir = "PALEOS-Fei2021"` using the configured P-S curves
+    # at runtime instead of the WB+2018 curves.
     melting_dir = getattr(config.interior_struct, 'melting_dir', None)
     derive_melting = melting_dir is not None
     if derive_melting:
@@ -691,12 +682,12 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
 
     # Case 2: FWL_DATA (Zenodo 19473625) complete set.
     # We check BOTH that all 12 files exist AND that density_melt.dat
-    # is in the canonical SPIDER P-S format (not the legacy P-T format
-    # from the older Zenodo 17417017 record, which shipped under the
-    # same filenames). Without this content check a stale FWL_DATA tree
-    # from before the Zenodo 19473625 release would be silently accepted
-    # and Aragog's EntropyEOS would then crash trying to parse the P-T
-    # file as a P-S table. See chili_earth_spider_sweep.md migration note.
+    # is in the canonical SPIDER P-S format (not the P-T format
+    # from the Zenodo 17417017 record, which ships under the
+    # same filenames). Without this content check a FWL_DATA tree
+    # holding the Zenodo 17417017 (P-T format) record would be silently
+    # accepted and Aragog's EntropyEOS would then crash trying to parse
+    # the P-T file as a P-S table.
     zenodo_files = list(_SPIDER_EOS_PHASE_FILES) + list(_SPIDER_EOS_MELTING_CURVES)
     zenodo_missing = [f for f in zenodo_files if not (zenodo_root / f).is_file()]
     zenodo_format_ok = not zenodo_missing and _is_spider_ps_format(
@@ -706,7 +697,7 @@ def _provide_spider_eos_tables(config: Config, outdir: str, dirs: dict) -> None:
         log.warning(
             'FWL_DATA EOS tables at %s exist but density_melt.dat is not '
             'in SPIDER P-S format. This usually means the directory was '
-            'populated by the legacy Zenodo 17417017 record (P-T format). '
+            'populated by the Zenodo 17417017 record (P-T format). '
             'Falling through to the SPIDER submodule. Refresh FWL_DATA '
             'with `proteus get all` to fetch Zenodo 19473625.',
             zenodo_root,
@@ -1526,8 +1517,8 @@ def run_interior(
         # 2. Solver rollback: SPIDER rolls back to a state before the
         #    current hf_row['Time'] (rare, implies a stale JSON directory).
         # In both cases, fall back to dtswitch so the main loop doesn't
-        # stall or go backwards. This is a milder version of the original
-        # desync (one step of dtswitch instead of accumulating), but should
+        # stall or go backwards. This bounds the desync to one step of
+        # dtswitch instead of accumulating, and should
         # not trigger in normal evolution.
         from proteus.interior_energetics.timestep import next_step
 
@@ -1602,7 +1593,7 @@ def update_structure_from_interior(
     Returns
     -------
     tuple[float, float, float]
-        (last_struct_time, last_Tmagma, last_Phi) — updated to current
+        (last_struct_time, last_Tmagma, last_Phi), updated to current
         values if an update occurred, otherwise returned unchanged.
     """
     no_update = (last_struct_time, last_Tmagma, last_Phi)
@@ -1637,13 +1628,13 @@ def update_structure_from_interior(
         triggered = True
         reason = f'ceiling ({elapsed:.1f} yr >= {config.interior_struct.zalmoxis.update_interval:.1f} yr)'
 
-    # T1.5 stale-aware ceiling: trigger if elapsed time since the LAST
+    # Stale-aware ceiling: trigger if elapsed time since the LAST
     # SUCCESSFUL structure refresh (not the last call) exceeds
     # update_stale_ceiling. Without this, a sequence of failed
     # re-solves resets `last_struct_time` to the failure time and
     # the next ceiling waits a full update_interval, meaning Aragog
     # can integrate through an entire window with a frozen mesh
-    # (51 kyr observed in the 2026-04-26 Step D run). Bypasses the
+    # (tens of kyr). Bypasses the
     # update_min_interval floor for the same reason as the
     # mesh-converging trigger: this is a recovery path, not a
     # routine refresh.
@@ -1782,15 +1773,15 @@ def update_structure_from_interior(
     # Also hand the (r, T) arrays to Zalmoxis explicitly. The JAX path
     # needs them in r-indexed form because the default P-indexed
     # tabulation in jax_eos/wrapper.py collapses for this closure
-    # (T_asc varies with r and ignores P); see Zalmoxis commit
-    # aa3d0b8 for the fix and the bench_coupled_tempfunc.py reproducer.
+    # (T_asc varies with r and ignores P).
     # The numpy path ignores temperature_arrays and uses the callable.
     # Force strict ascending sort by r: jnp.interp requires monotonic
     # increasing xp, and ``r_ascending = r_stag[::-1]`` above can end up
     # descending depending on Aragog's per-call radius ordering. An
     # explicit argsort is cheap (~150 elements) and removes the
-    # convention-dependence. 2026-04-24 smoke found the array arrived
-    # as [surface, ..., CMB], producing ``Final M=0`` failures in JAX.
+    # convention-dependence. A descending array arriving as
+    # [surface, ..., CMB] would otherwise produce ``Final M=0``
+    # failures in JAX.
     _r_for_arrays = np.asarray(_r_asc, dtype=float)
     _T_for_arrays = np.asarray(_T_asc, dtype=float)
     _order = np.argsort(_r_for_arrays)
@@ -1810,9 +1801,9 @@ def update_structure_from_interior(
             temperature_arrays=(_r_for_arrays, _T_for_arrays),
         )
         _zalmoxis_wall = _zalmoxis_time.monotonic() - _zalmoxis_wall_t0
-        # T1.2 mass-anchor check: enforce |M_int / M_int_target - 1| <
+        # Mass-anchor check: enforce |M_int / M_int_target - 1| <
         # _ZALMOXIS_MASS_ANCHOR_TOL after every successful Zalmoxis call.
-        # Raise RuntimeError on violation so the existing except-block
+        # Raise RuntimeError on violation so the except-block
         # fall-back path runs (restore _saved_structure, set
         # _structure_stale=True, increment _zalmoxis_fail_count). This
         # treats a too-loose-converged Zalmoxis result the same as a
@@ -1846,24 +1837,21 @@ def update_structure_from_interior(
                 reason,
             )
         _zalmoxis_fail_count = 0  # Reset on success
-        # T1.1 (2026-04-26 coupling audit): clear the stale-structure
-        # flag so downstream consumers (Aragog setup_or_update_solver)
-        # can rely on it. Previously _structure_stale was set to True
-        # on fall-back but never cleared; the flag was effectively dead
-        # and Aragog had no way to know whether it was running on a
-        # fresh or stale mesh. Clearing here closes the contract.
+        # Clear the stale-structure flag so downstream consumers
+        # (Aragog setup_or_update_solver) can rely on it. The flag is
+        # set to True on fall-back and cleared here on success, so
+        # Aragog can tell whether it is running on a fresh or stale mesh.
         hf_row['_structure_stale'] = False
-        # T1.5: anchor the stale-aware ceiling on the last SUCCESSFUL
+        # Anchor the stale-aware ceiling on the last SUCCESSFUL
         # re-solve (vs `last_struct_time` which is reset on every
         # call regardless of success).
         try:
             interior_o.last_successful_struct_time = float(current_time)
         except AttributeError:
-            # Legacy / mock callers without Interior_t: best-effort no-op.
+            # Mock callers without Interior_t: best-effort no-op.
             pass
-        # Stage 1b.5: per-re-solve wall-time trace for the convergence
-        # harness. Logged at INFO so the three-way validation can ingest
-        # the cadence cost from proteus_00.log.
+        # Per-re-solve wall-time trace logged at INFO so the
+        # convergence cadence cost can be read from proteus_00.log.
         log.info(
             'Zalmoxis re-solve wall: %.2f s (trigger: %s)',
             _zalmoxis_wall,
@@ -1895,21 +1883,21 @@ def update_structure_from_interior(
         # snapshot was saved).
         spider_mesh_file = prev_path or dirs.get('spider_mesh')
         _cmb_radius = float(hf_row.get('R_core', 0.0))
-        # T1.2 fix (2026-04-26): also restore zalmoxis_output.dat from
+        # Also restore zalmoxis_output.dat from
         # its .prev backup when the wrapper-level mass-anchor check (or
         # any other post-zalmoxis_solver wrapper RuntimeError) raises.
-        # zalmoxis_solver itself created the .prev backup atomically
-        # inside its T1.3 fix-2 path, but if the raise happens AFTER
-        # zalmoxis_solver returns successfully (e.g. T1.2 mass-anchor)
-        # the new file is on disk and Aragog will crash on the next
-        # iter with EOS-vs-mesh inconsistency unless we roll back here.
+        # zalmoxis_solver creates the .prev backup atomically, but if
+        # the raise happens AFTER zalmoxis_solver returns successfully
+        # (e.g. the mass-anchor check), the new file is on disk and
+        # Aragog will crash on the next iter with EOS-vs-mesh
+        # inconsistency unless we roll back here.
         try:
             _output_zalmoxis = os.path.join(outdir, 'data', 'zalmoxis_output.dat')
             _output_prev = _output_zalmoxis + '.prev'
             if os.path.isfile(_output_prev):
                 shutil.copy2(_output_prev, _output_zalmoxis)
                 log.info(
-                    'T1.2/T1.3 fall-back: restored %s from %s',
+                    'Fall-back: restored %s from %s',
                     _output_zalmoxis,
                     _output_prev,
                 )
@@ -1965,10 +1953,10 @@ def update_structure_from_interior(
         # Update .prev for next iteration. Skip the copy when src and dst
         # already point to the same file, which happens on the
         # Zalmoxis-failure fallback path: the fallback sets
-        # `spider_mesh_file = prev_path` at line ~1326 (introduced in
-        # bc5b7265), so the usual "save current to .prev" becomes a self
-        # copy and shutil.copy2 raises SameFileError (observed on SPIDER
-        # Run C, 2026-04-21, chili_dry_coupled_v3f_1b_spider_full).
+        # `spider_mesh_file = prev_path`, so the usual "save current to
+        # .prev" becomes a self copy and shutil.copy2 raises
+        # SameFileError. The abspath guard below skips the copy in that
+        # case.
         if not prev_path:
             prev_path = spider_mesh_file + '.prev'
             dirs['spider_mesh_prev'] = prev_path
@@ -2009,7 +1997,7 @@ def update_structure_from_interior(
                     radius_phys=remap_radius,
                 )
     else:
-        # No mesh file produced — reset convergence state
+        # No mesh file produced: reset convergence state
         dirs['mesh_shift_active'] = False
         dirs['mesh_convergence_steps'] = 0
 
@@ -2018,23 +2006,21 @@ def update_structure_from_interior(
     gc.collect()
 
     # Regenerate SPIDER-format P-S EOS tables when composition changed
-    # substantially. For dry 1 M_Earth CHILI (Stage 1a / 1b paper target)
-    # this never fires: pure MgSiO3 is a planet-state-invariant material
-    # EOS, so the pre-built tables are stable for the entire evolution.
-    # The comp_changed path is reached in wet runs where binodal redistribution
-    # or degassing shifts mantle volatile fractions by > 5% (SPIDER reads
-    # the fresh file on next call; Aragog's in-memory EntropyEOS, built
-    # once during AragogRunner.setup_solver, is NOT invalidated here, so
-    # Aragog would silently use the stale in-memory tables).
+    # substantially. For dry 1 M_Earth CHILI this never fires: pure
+    # MgSiO3 is a planet-state-invariant material EOS, so the pre-built
+    # tables are stable for the entire evolution. The comp_changed path
+    # is reached in wet runs where binodal redistribution or degassing
+    # shifts mantle volatile fractions by > 5% (SPIDER reads the fresh
+    # file on next call; Aragog's in-memory EntropyEOS, built once during
+    # AragogRunner.setup_solver, is NOT invalidated here, so Aragog would
+    # silently use the stale in-memory tables).
     #
-    # KNOWN GAP (Stage 1b.3 audit, 2026-04-20): for Aragog + wet runs we
-    # would need to (i) reload EntropyEOS from the regenerated files,
-    # (ii) re-install the JAX CVODE factory so its captured eos_jax
-    # pytree matches the new tables, (iii) bounds-check the cached
-    # _last_entropy against the new [S_min, S_max] range. This is not
-    # required for the Stage 1b paper scope (dry). It is a precondition
-    # for wet-run quantitative work in Stage 5. See UnifyCoupling plan
-    # step 1b.3 for the full checklist.
+    # KNOWN GAP: for Aragog + wet runs we would need to (i) reload
+    # EntropyEOS from the regenerated files, (ii) re-install the JAX
+    # CVODE factory so its captured eos_jax pytree matches the new
+    # tables, (iii) bounds-check the cached _last_entropy against the
+    # new [S_min, S_max] range. Dry runs do not need this; it is a
+    # precondition for quantitative wet-run work.
     if comp_changed and config.interior_energetics.module in ('spider', 'aragog'):
         from proteus.interior_struct.zalmoxis import generate_spider_tables
 
@@ -2048,8 +2034,7 @@ def update_structure_from_interior(
                 log.warning(
                     'Aragog: regenerated P-S tables on composition change, '
                     'but Aragog in-memory EntropyEOS is not refreshed. '
-                    'Stage 1b.3 known gap; see UnifyCoupling plan 1b.3. '
-                    'Dry runs are not affected.'
+                    'Known gap for wet runs. Dry runs are not affected.'
                 )
 
     # Update composition sentinels for next trigger check

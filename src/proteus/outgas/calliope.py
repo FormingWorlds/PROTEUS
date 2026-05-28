@@ -276,8 +276,9 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     opts = construct_options(dirs, config, hf_row)
 
     # convert masses to dict for calliope. Under planet.fO2_source =
-    # "from_O_budget" (Path C) we additionally pass the running O budget
-    # so the authoritative-O entry point can invert against it. Path C
+    # "from_O_budget" we additionally pass the running O budget
+    # so the authoritative-O entry point can invert against it. The
+    # 'from_O_budget' source
     # requires hf_row['O_kg_total'] to be populated by
     # calc_target_elemental_inventories (IC) and maintained by the escape
     # debits (subsequent iterations); the Config-level validator already
@@ -308,7 +309,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
     # Dispatch on planet.fO2_source. The two entry points share the
     # output-dict schema (volatile partial pressures, per-species reservoir
     # masses, elemental totals, atmospheric diagnostics) so downstream
-    # consumers are agnostic; Path C adds two extra keys
+    # consumers are agnostic; the 'from_O_budget' source adds two extra keys
     # (fO2_shift_derived, O_res) that we plumb into hf_row below.
     try:
         if config.planet.fO2_source == 'from_O_budget':
@@ -348,7 +349,8 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
 
-    # Path C invariant: the user-supplied O budget is the authoritative
+    # Invariant for the 'from_O_budget' source: the user-supplied O budget
+    # is the authoritative
     # input, not an output for the solver to perturb. The solver's
     # output O_kg_total is mass_atm['O'] + mass_int['O'] which equals
     # target['O'] only up to the solver residual; letting that contaminate
@@ -359,8 +361,9 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         hf_row['O_kg_total'] = float(target['O'])
 
     # Plumb the derived IW-buffer offset and O-mass residual into hf_row.
-    # Under Path C the solver returns these as part of solvevol_result;
-    # under the legacy path the buffer offset is the user-supplied
+    # For the 'from_O_budget' source the solver returns these as part of
+    # solvevol_result;
+    # for the user_constant path the buffer offset is the user-supplied
     # config.outgas.fO2_shift_IW (echoed for column uniformity) and there
     # is no O residual (O is an output, not a constraint).
     if config.planet.fO2_source == 'from_O_budget':

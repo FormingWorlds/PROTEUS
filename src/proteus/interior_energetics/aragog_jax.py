@@ -1,14 +1,13 @@
 # JAX Aragog interior module (research-only)
 #
 # Direct-JAX integration via diffrax. NOT production-ready: the kvaerno3
-# integrator stalls on the first crystallization step in CHILI Earth runs
-# (see aragog_jax_status memory, 2026-04-09). Reserved for autodiff
-# development.
+# integrator stalls on the first crystallization step in CHILI Earth runs.
+# Reserved for autodiff development.
 #
 # Not exposed in the user-facing TOML schema; gated on the module-level
 # `_DIFFRAX_RESEARCH_ONLY` flag in `proteus.interior_energetics.aragog`.
 # For production JAX use, set `[interior_energetics.aragog] backend = "jax"`
-# which selects the CVODE Option-Z path (JAX RHS + JAX analytic Jacobian).
+# which selects the CVODE path (JAX RHS + JAX analytic Jacobian).
 from __future__ import annotations
 
 import logging
@@ -38,7 +37,7 @@ class AragogJAXRunner:
     in the user-facing TOML schema. Not production-ready (kvaerno3 stalls on
     first crystallization step in CHILI Earth runs).
 
-    For production JAX use, the entry point is the CVODE Option-Z path,
+    For production JAX use, the entry point is the CVODE path,
     selected by ``[interior_energetics.aragog] backend = "jax"``.
     """
 
@@ -180,8 +179,8 @@ class AragogJAXRunner:
         heating = jnp.asarray(heating_np)
         self._last_heating = heating_np  # store for _extract_output
 
-        # Solve. Tier 4: rtol/atol come from the top-level
-        # interior_energetics fields (formerly num_tolerance alias).
+        # Solve. rtol/atol come from the top-level
+        # interior_energetics fields.
         atol = float(self._config.interior_energetics.aragog.atol_temperature_equivalent)
         rtol = float(self._config.interior_energetics.rtol)
 
@@ -262,10 +261,10 @@ class AragogJAXRunner:
         M_mantle = float(mass.sum())
         # Mass-weighted melt fraction = M_mantle_liquid / M_mantle.
         # Matches the formulation in aragog/src/aragog/solver/
-        # entropy_solver.py:get_state(); volume-weighting silently
-        # froze Phi_global in mass-coordinate meshes (verified
-        # 2026-05-02 in output/verify_dilon_phicap005.v3_helpfile_
-        # frozen) and broke PROTEUS's stop / structure-update logic.
+        # entropy_solver.py:get_state(). Mass-weighting (not
+        # volume-weighting) is required so Phi_global stays responsive in
+        # mass-coordinate meshes and PROTEUS's stop / structure-update
+        # logic tracks the true liquid fraction.
         Phi_global = (
             float(np.dot(phi, mass) / mass.sum()) if mass.sum() > 0.0 else float(phi.mean())
         )
@@ -285,17 +284,14 @@ class AragogJAXRunner:
         RF_depth = 1.0 - rf / R_outer if R_outer > 0 else 0.0
 
         # Compute phase properties for stored arrays, Cp_eff, and E_th.
-        # Use the real EOS Cp(P, S) (was hardcoded 1200 J/kg/K until
-        # 2026-04-09; see the matching scipy fix in
-        # aragog/solver/entropy_solver.py and the parity analysis in
-        # memory/aragog_jgrav_cmb_drain.md).
+        # Use the real EOS Cp(P, S); this matches the scipy path in
+        # aragog/solver/entropy_solver.py.
         from aragog.jax.phase import evaluate_phase
 
         props = evaluate_phase(eos, self._params_jax, P, S)
         visc = np.asarray(props.viscosity)
         Cp_arr = np.asarray(props.heat_capacity)
-        # Mass-weighted mean Cp (used to be sum(rho*T*vol)/M, which
-        # silently reduced to mean(T) — fixed alongside the E_th fix.)
+        # Mass-weighted mean Cp = sum(mass_i * Cp_i) / M_mantle.
         Cp_eff = float(np.sum(mass * Cp_arr)) / max(M_mantle, 1.0)
 
         # Thermal energy: E_th = sum(mass_i * Cp_i * T_i)

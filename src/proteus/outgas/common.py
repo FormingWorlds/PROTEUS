@@ -29,8 +29,8 @@ def expected_keys():
     # EXCEPT oxygen. For O, the chemistry solver's output partitions
     # atm+liquid+solid into a fresh total each iteration; the calliope
     # wrapper restores hf_row['O_kg_total'] to the authoritative input
-    # immediately after this copy under Path C (fO2_source =
-    # "from_O_budget"), so the escape debit chain is preserved across
+    # immediately after this copy when fO2_source =
+    # "from_O_budget", so the escape debit chain is preserved across
     # iterations. Under user_constant the solver's O_kg_total IS the
     # authoritative value, so the copy is the correct write.
     for e in element_list:

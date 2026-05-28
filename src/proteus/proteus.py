@@ -535,7 +535,6 @@ class Proteus:
             # `FileNotFoundError: interior_struct.eos_dir must be set when
             # no Zalmoxis-generated EOS tables are available`. Same issue
             # bites Aragog when it needs the P-S tables at re-init.
-            # Observed 2026-04-21 on SPIDER Run C resume.
             eos_dir_restored = os.path.join(self.directories['output'], 'data', 'spider_eos')
             if os.path.isdir(eos_dir_restored):
                 self.directories['spider_eos_dir'] = eos_dir_restored
@@ -835,8 +834,9 @@ class Proteus:
                 # set to -1 and skip). Compares the user-supplied O_budget
                 # against CALLIOPE's equilibrium-derived O_kg_total; hard-
                 # fails on >50% divergence. Skipped when O_mode='ic_chemistry'
-                # or when planet.fO2_source != 'user_constant' (Path C
-                # makes user O authoritative so there is no divergence).
+                # or when planet.fO2_source != 'user_constant' (a derived
+                # fO2 makes the user O budget authoritative, so there is
+                # no divergence).
                 from proteus.outgas.wrapper import check_ic_oxygen_budget
 
                 check_ic_oxygen_budget(self.config, self.hf_row)
@@ -847,7 +847,7 @@ class Proteus:
             # Issue #677 mass-conservation invariant: M_atm <= M_planet
             # and sum(s_kg_atm) == M_atm. Cheap end-of-outgas guardrail
             # that hard-fails if any future change re-introduces the
-            # O-skipping asymmetry that originally let M_atm exceed
+            # O-skipping asymmetry that could let M_atm exceed
             # M_planet at high H_ppmw.
             assert_mass_conservation(self.hf_row)
 

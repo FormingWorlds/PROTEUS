@@ -150,9 +150,8 @@ def next_step(
             Interior object used to persist stiffness-aware adaptive
             state (hysteresis counter) across calls. When ``None``,
             the hysteresis and stiffness logging features are
-            disabled and the controller reduces to its pre-2026-04-09
-            behaviour. All call sites should now pass ``interior_o``
-            when available.
+            disabled and the controller runs without hysteresis. Pass
+            ``interior_o`` when available.
 
     Returns
     -----------
@@ -160,8 +159,8 @@ def next_step(
             Optimal step size [years].
     """
 
-    # Adaptive-controller knobs (config-driven; defaults match the legacy
-    # hardcoded values LBAVG=3, SFINC=1.6, SFDEC=0.8).
+    # Adaptive-controller knobs (config-driven; defaults are
+    # LBAVG=3, SFINC=1.6, SFDEC=0.8).
     dt_window = int(config.params.dt.window)
     dt_sfinc = float(config.params.dt.scale_incr)
     dt_sfdec = float(config.params.dt.scale_decr)
@@ -269,7 +268,7 @@ def next_step(
             UpdateStatusfile(dirs, 20)
             raise ValueError(f'Invalid time-stepping method: {config.params.dt.method}')
 
-        # Min step size (adaptive branch only — the static and initial
+        # Min step size (adaptive branch only; the static and initial
         # branches set dt from explicit config values and should not be
         # floored to dt.minimum before the retry scaling is applied).
         dtminimum = config.params.dt.minimum  # absolute
@@ -277,9 +276,9 @@ def next_step(
         dtswitch = max(dtswitch, dtminimum)
 
     # Apply the SPIDER-retry step scale factor uniformly to all branches.
-    # This fixes a bug where "static" (Time < 2 yr) and "initial" retries
-    # silently ignored step_sf, so each retry tried the same macro step
-    # and only tightened tolerances — never actually shrinking dt. See
+    # In the "static" (Time < 2 yr) and "initial" branches, step_sf is
+    # applied so each retry actually shrinks dt rather than reusing the
+    # same macro step with only tightened tolerances. See
     # next_step_retry notes in spider.py (max_attempts = 8).
     dtswitch *= step_sf
 
@@ -326,7 +325,7 @@ def next_step(
                 dtswitch = mushy_max
 
     # On retries (step_sf < 1) in the static/initial branches we
-    # deliberately allow dt to fall below dt.minimum — the whole point of
+    # deliberately allow dt to fall below dt.minimum; the whole point of
     # a retry is to shrink the step below what would otherwise be allowed.
     # In the adaptive branch, min has already been enforced before retry
     # scaling, so there is no additional floor to apply here.

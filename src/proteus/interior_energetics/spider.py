@@ -113,8 +113,8 @@ def _check_eos_table_range(eos_dir: str, mesh_file: str | None, P_cmb: float):
     # lookups that may produce negative thermal expansion.
     if s_max_solid < s_max_melt:
         log.warning(
-            'Solid-phase EOS table entropy range (%.0f–%.0f J/kg/K) is narrower '
-            'than the melt-phase range (%.0f–%.0f J/kg/K). '
+            'Solid-phase EOS table entropy range (%.0f to %.0f J/kg/K) is narrower '
+            'than the melt-phase range (%.0f to %.0f J/kg/K). '
             'If the initial adiabat entropy exceeds %.0f J/kg/K at partially-solid '
             'nodes (high CMB pressure), the solid-phase lookup will be clamped, '
             'potentially producing unphysical material properties.',
@@ -879,7 +879,7 @@ def _try_spider(
             )
         eos_dir = os.path.join(EOS_DYNAMIC_DIR, config.interior_struct.eos_dir, 'P-S')
         if not os.path.isdir(eos_dir):
-            # Fall back to SPIDER's local lookup_data (uses legacy directory name)
+            # Fall back to SPIDER's local lookup_data directory
             eos_dir = os.path.join(dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free')
         if not os.path.isdir(eos_dir):
             raise FileNotFoundError(
@@ -890,8 +890,7 @@ def _try_spider(
     # Resolve melting curve S(P) files: prefer generated paths, then FWL_DATA,
     # then SPIDER's bundled lookup_data as a final fallback. The bundled
     # lookup_data ships P-S melting curves (Andrault+2011 / Hirschmann+2013)
-    # that PROTEUS-main and the CHILI intercomparison run used directly
-    # without Zalmoxis pre-processing.
+    # usable directly without Zalmoxis pre-processing.
     if dirs.get('spider_liquidus_ps') and os.path.isfile(dirs['spider_liquidus_ps']):
         liquidus_ps = dirs['spider_liquidus_ps']
         solidus_ps = dirs['spider_solidus_ps']
@@ -902,9 +901,8 @@ def _try_spider(
         solidus_ps = os.path.join(mc_dir, 'solidus_P-S.dat')
         if not (os.path.isfile(liquidus_ps) and os.path.isfile(solidus_ps)):
             # Fall back to SPIDER's bundled lookup_data (P-S, ships with the
-            # SPIDER source tree). The legacy file names are A11_H13 after
-            # Andrault+2011 (solidus) and Hirschmann+2013 (liquidus). This is
-            # the path PROTEUS-main + CHILI used.
+            # SPIDER source tree). The A11_H13 file names are after
+            # Andrault+2011 (solidus) and Hirschmann+2013 (liquidus).
             spider_local_eos = os.path.join(
                 dirs['spider'], 'lookup_data', '1TPa-dK09-elec-free'
             )
@@ -1270,9 +1268,9 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
 
     # Use the precise time from inside the JSON (not the llround'd filename).
     # SPIDER stores full-precision time as 'time_years'. The filename is
-    # llround(time_years), which loses sub-year precision and caused the
-    # desync bug where PROTEUS advanced by dtswitch while SPIDER only
-    # evolved to the poststep-change truncation point.
+    # llround(time_years), which loses sub-year precision; using it would
+    # desync PROTEUS (advancing by dtswitch) from SPIDER (which evolves
+    # only to the poststep-change truncation point).
     sim_time = float(json_file.get_dict(['time_years']))
 
     # read scalars
@@ -1415,9 +1413,9 @@ def ReadSPIDER(dirs: dict, config: Config, R_int: float, interior_o: Interior_t)
         output['E_th_mantle'] = 0.0
         output['Cp_eff'] = 1200.0
 
-    # The F_int positivity clamp under planet.prevent_warming was
-    # centralised in interior_energetics.wrapper.run_interior so all
-    # backends share one limiter path.
+    # The F_int positivity clamp under planet.prevent_warming lives in
+    # interior_energetics.wrapper.run_interior so all backends share one
+    # limiter path.
 
     # Boundary layer thickness (constant value from config)
     output['boundary_layer_thickness'] = config.atmos_clim.surface_d

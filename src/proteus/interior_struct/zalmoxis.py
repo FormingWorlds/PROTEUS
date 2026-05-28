@@ -77,9 +77,9 @@ def validate_zalmoxis_output_schema(
     """Verify zalmoxis_output.dat is consistent with hf_row scalars.
 
     The file is the contract Aragog reads inside ``solver.reset()``
-    (eos_method=2). Pre-T1.3 there was no consistency check that the
-    file's last r matched ``hf_row['R_int']``, or that the file's
-    integrated mantle mass matched ``hf_row['M_int'] - hf_row['M_core']``.
+    (eos_method=2). This check confirms the file's last r matches
+    ``hf_row['R_int']``, and that the file's integrated mantle mass
+    matches ``hf_row['M_int'] - hf_row['M_core']``.
     Catches file I/O corruption, column-order mistakes, truncation,
     encoding drift, and Aragog/Zalmoxis schema desync at the file
     handover boundary.
@@ -92,7 +92,7 @@ def validate_zalmoxis_output_schema(
         PROTEUS hf_row holding the scalar truth (R_int, M_int, M_core).
     rtol_radius : float
         Relative tolerance for the top-of-mantle vs. R_int check.
-        Default 1e-6 -- the file's last r and ``hf_row['R_int']`` come
+        Default 1e-6: the file's last r and ``hf_row['R_int']`` come
         from the same variable in zalmoxis_solver, so equality is
         exact modulo float-string round-trip noise. Tight tolerance
         catches truncation, last-line corruption, and column-swap
@@ -105,17 +105,16 @@ def validate_zalmoxis_output_schema(
         is the ODE state from RK45 with sub-grid substepping, while
         the schema check re-integrates via a grid-trapezoidal
         shell-sum. On stiff CHILI density profiles this shows
-        ~0.8-2.0 %.
+        about 0.8 to 2.0 %.
         (b) ``blend_mesh_files`` post-write modifies the file in
-        place but does NOT update hf_row scalars (T2.5 — known
-        latent bug). When blending fires with alpha < 1 (capping
-        large R-shifts), the file's integrated mass drifts up to
-        ~5% from the unblended hf_row['M_int']. Until T2.5 closes
-        that gap, T1.3 has to tolerate it.
-        5e-2 keeps a >2x margin over the worst observed legitimate
-        noise while still catching gross corruption (column swap,
+        place but does not update hf_row scalars. When blending fires
+        with alpha < 1 (capping large R-shifts), the file's integrated
+        mass can drift up to about 5% from the unblended
+        hf_row['M_int'], so this check has to tolerate it.
+        5e-2 keeps a >2x margin over the worst legitimate noise
+        while still catching gross corruption (column swap,
         truncation, byte-flip) at >>5 %. **The tight mass-conservation
-        contract (<0.1 %) lives in T1.2's wrapper-level mass-anchor
+        contract (<0.1 %) lives in the wrapper-level mass-anchor
         check on hf_row['M_int'] / hf_row['M_int_target']**, not here.
 
     Raises
@@ -553,19 +552,19 @@ def load_zalmoxis_configuration(
         # `Zalmoxis.use_anderson` in proteus.config._struct.
         'use_jax': config.interior_struct.zalmoxis.use_jax,
         'use_anderson': config.interior_struct.zalmoxis.use_anderson,
-        # T2.1: outer mass-radius solver dispatch ('picard' default |
+        # outer mass-radius solver dispatch ('picard' default |
         # 'newton'). When 'newton', Zalmoxis uses Newton + brentq
-        # bracketing on f(R) = M(R) - M_target instead of the legacy
+        # bracketing on f(R) = M(R) - M_target instead of the
         # damped-Picard fixed-point loop. Newton requires tight
         # integrator tolerances; we auto-apply newton_relative_tolerance
         # / newton_absolute_tolerance when the Newton path is selected.
         'outer_solver': config.interior_struct.zalmoxis.outer_solver,
         # Newton-specific knobs (newton_max_iter, newton_tol) AND
         # tightened integrator tolerances are passed ONLY when the
-        # Newton path is selected. Default-Picard runs see the dict
-        # bit-identically to pre-T2.1 builds (no Newton keys, no
-        # tightened tolerances), so a future Zalmoxis guard against
-        # unknown keys would not break Picard callers.
+        # Newton path is selected. Picard runs see the dict without
+        # any Newton keys and without tightened tolerances, so a
+        # future Zalmoxis guard against unknown keys would not break
+        # Picard callers.
         **(
             {
                 'newton_max_iter': (config.interior_struct.zalmoxis.newton_max_iter),
@@ -612,7 +611,7 @@ def load_zalmoxis_material_dictionaries():
     """
     eos_base = get_zalmoxis_eos_dir()
 
-    # Seager2007 paths (also in legacy EOS_material_properties location)
+    # Seager2007 paths (also in the EOS_material_properties location)
     seager_dir = eos_base / 'EOS_Seager2007'
     if not seager_dir.exists():
         seager_dir = FWL_DATA_DIR / 'EOS_material_properties' / 'EOS_Seager2007'
@@ -1140,11 +1139,10 @@ def generate_spider_tables(config: Config, outdir: str):
     # Determine pressure range from planet mass (higher mass needs wider range)
     mass_tot = config.planet.mass_tot or 1.0
     # P_max for the SPIDER P-S lookup grid. Must cover the actual P_cmb
-    # of the planet; original 200 GPa cap was too low for mass_tot > ~2.
-    # Cap raised to 10 TPa to cover very massive rocky planets without
-    # hitting the table edge. See interior_energetics/aragog.py for the
-    # matching bump and the comment on EOS / melting-curve calibration
-    # ranges.
+    # of the planet; the 10 TPa cap covers very massive rocky planets
+    # (mass_tot well above 2) without hitting the table edge. See
+    # interior_energetics/aragog.py for the matching cap and the
+    # comment on EOS / melting-curve calibration ranges.
     P_max = min(1.0e13, 150e9 * mass_tot + 200e9)
 
     if solid_eos and liquid_eos:
@@ -1284,8 +1282,8 @@ def zalmoxis_solver(
 
     # Build volatile profile from dissolved volatile masses (if available).
     # This enables phi(r)-weighted volatile blending inside the Zalmoxis ODE.
-    # Skipped when dry_mantle=True (Stage 1 phase-aware coupling): the
-    # structure solver then uses only the canonical mantle EOS tables.
+    # Skipped when dry_mantle=True: the structure solver then uses only
+    # the canonical mantle EOS tables.
     mantle_eos = config.interior_struct.zalmoxis.mantle_eos
     if config.interior_struct.zalmoxis.dry_mantle:
         volatile_profile = None
@@ -1427,17 +1425,13 @@ def zalmoxis_solver(
         # Dropping the callable makes Zalmoxis fall back to its
         # internal linear T profile for Picard, which converges
         # quickly while the JAX integration still uses the accurate
-        # array-based T(r). Verified 2026-04-24: bench-inside-proteus
-        # BENCH-config run = 5.9 s, PROTEUS-config-with-function = 156 s,
-        # PROTEUS-config-without-function = 2 s (all same JAX arrays).
-        # Warm-starts also disabled on the JAX path: they drove Anderson
-        # into oscillation (structure=871 s, converged=False at iter 5
-        # with warm-start). 2026-04-25 bench probe: enabling warm-start
-        # for JAX+no-Anderson is empirically neutral on both easy
-        # (0.83-1.16x) and hard (0.98x) profiles. Inner Picard plateau
-        # at diff=0.1 is set by the lever-rule EOS kink, not by initial
-        # density quality, so warm-start cannot collapse the bail count.
-        # See session_2026_04_25_warm_start_negative.md.
+        # array-based T(r). Passing the callable instead of dropping it
+        # costs roughly two orders of magnitude more wall time at the
+        # same JAX arrays. Warm-starts are also disabled on the JAX
+        # path: they drive Anderson into oscillation and do not help
+        # otherwise, because the inner Picard plateau at diff=0.1 is set
+        # by the lever-rule EOS kink, not by initial density quality, so
+        # warm-start cannot collapse the bail count.
         _use_jax_active = bool(config_params.get('use_jax'))
         _tf_effective = (
             None
@@ -1472,21 +1466,16 @@ def zalmoxis_solver(
     converged_mass = model_results['converged_mass']
 
     # Adaptive retry: if the primary call did not converge, retry once with
-    # relaxed tolerances. The original guard limited retries to the case
-    # where pressure AND density converged but mass did not; the
-    # 2026-04-26 smoothstep crash showed that on hot-shifted re-solves the
-    # primary attempt can return all three flags False (e.g. timeout while
-    # the outer mass loop is still drifting), bypassing the retry entirely.
-    # Allowing retry on any non-converged result gives a clean second
-    # attempt from fresh initial conditions; the wall_timeout cap still
-    # bounds worst-case wall.
+    # relaxed tolerances. Retry fires on any non-converged result, including
+    # the case where pressure, density, and mass flags are all False (e.g. a
+    # timeout while the outer mass loop is still drifting), giving a clean
+    # second attempt from fresh initial conditions; the wall_timeout cap
+    # still bounds worst-case wall.
     #
-    # P1.2 (2026-04-27): if the primary's best_mass_error already exceeds
-    # 5 % we skip the retry entirely. Live coupled validation (Run A + Run B,
-    # 2026-04-26) showed 0/4 retry successes when primary's best_mass_error
-    # was at the structural-Picard plateau (7-10 %); looser tolerance does
-    # not rescue a structurally-unsupported configuration. Retry remains
-    # useful for transient flickers near the original tolerance edge.
+    # If the primary's best_mass_error already exceeds 5 % the retry is
+    # skipped entirely: at the structural-Picard plateau (7-10 %) looser
+    # tolerance does not rescue a structurally-unsupported configuration.
+    # Retry remains useful for transient flickers near the tolerance edge.
     primary_best_mass_error = model_results.get('best_mass_error')
     skip_retry_high_error = (
         primary_best_mass_error is not None and primary_best_mass_error > 0.05
@@ -1518,12 +1507,11 @@ def zalmoxis_solver(
         config_params_retry = dict(config_params)
         config_params_retry['tolerance_outer'] = retry_tol
         config_params_retry['max_iterations_outer'] = retry_iter
-        # P1.1 (2026-04-27): cap retry wall_timeout at 600 s. The JAX-path
-        # primary uses 3600 s (line ~1185) which is appropriate for a
-        # successful first solve, but the retry is a 2nd-chance attempt
-        # under relaxed tolerances; if it has not converged within 10 min
-        # of fresh outer iters it is unlikely to succeed at any wall.
-        # Saves up to 50 min wall per failure event vs the inherited 3600 s.
+        # Cap retry wall_timeout at 600 s. The JAX-path primary uses
+        # 3600 s, which is appropriate for a successful first solve, but
+        # the retry is a second-chance attempt under relaxed tolerances;
+        # if it has not converged within 10 min of fresh outer iters it
+        # is unlikely to succeed at any wall.
         config_params_retry['wall_timeout'] = 600.0
 
         # Same temperature_function gate as the primary call path.
@@ -1876,9 +1864,9 @@ def zalmoxis_solver(
         hf_row['T_surf'] = temperature[-1]
     hf_row['P_center'] = model_results.get('p_center')
     hf_row['P_cmb'] = float(pressure[cmb_index])
-    # T1.2 (2026-04-26 coupling audit): expose the dry mass target Zalmoxis
-    # converged toward, so the wrapper can enforce a mass-anchor
-    # contract |M_int / M_int_target - 1| < _MASS_ANCHOR_TOL post-acceptance.
+    # Expose the dry mass target Zalmoxis converged toward, so the
+    # wrapper can enforce a mass-anchor contract
+    # |M_int / M_int_target - 1| < _MASS_ANCHOR_TOL post-acceptance.
     # Zalmoxis' internal solver_tol_outer (default 3e-3) is a numerical
     # tolerance, not a coupling contract: it leaves room for ~0.3 % drift
     # between hf_row['M_int'] and the conserved planet mass. The wrapper
@@ -1916,35 +1904,31 @@ def zalmoxis_solver(
         os.path.join(outdir, 'data', 'zalmoxis_output_temp.txt'), mantle_temperature_scaled
     )
 
-    # Stage 1c.4 scalar-g control knob: when
+    # Scalar-g control knob: when
     # ``interior_energetics.aragog.scalar_gravity_override`` is True,
     # collapse the radial gravity array into a uniform scalar (the
     # surface value from hf_row['gravity']) for the files Aragog and
     # SPIDER both read. Aragog's per-node path at solver.reset() then
-    # interpolates to that constant everywhere, which is functionally
-    # identical to the pre-1c.1 scalar-g code path. Avoids having to
-    # pin the aragog submodule back to 8fc5072 for a scalar-g control
-    # run.
+    # interpolates to that constant everywhere, giving a constant-gravity
+    # interior structure.
     scalar_g_override = config.interior_energetics.aragog.scalar_gravity_override
     if scalar_g_override:
         g_scalar = float(hf_row.get('gravity', 9.81))
         mantle_gravity_out = np.full_like(mantle_gravity, g_scalar)
         log.info(
             'scalar_gravity_override=True: collapsing zalmoxis_output.dat + '
-            'spider_mesh.dat gravity column to uniform %.4f m/s^2 '
-            '(Stage 1c.4 control run)',
+            'spider_mesh.dat gravity column to uniform %.4f m/s^2',
             g_scalar,
         )
     else:
         mantle_gravity_out = mantle_gravity
 
-    # T1.3 fix-2 (2026-04-26): backup the existing zalmoxis_output.dat
-    # before overwriting, so a schema-violation raise can restore the
-    # last-good file. Without this, the wrapper's fall-back path
-    # reverts hf_row but leaves the just-written (failing-schema)
-    # file on disk, and the next Aragog setup_or_update_solver crashes
-    # on EOS-vs-mesh inconsistency. Backup is in-place adjacent to the
-    # primary file so the .prev copy lives alongside it.
+    # Backup the existing zalmoxis_output.dat before overwriting, so a
+    # schema-violation raise can restore the last-good file. Without this,
+    # the wrapper's fall-back path reverts hf_row but leaves the
+    # just-written (failing-schema) file on disk, and the next Aragog
+    # setup_or_update_solver crashes on EOS-vs-mesh inconsistency. The
+    # .prev copy lives alongside the primary file.
     import shutil as _shutil
 
     _output_prev = output_zalmoxis + '.prev'
@@ -1965,10 +1949,10 @@ def zalmoxis_solver(
                 f'{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity_out[i]:.17e} {mantle_temperature[i]:.17e}\n'
             )
 
-    # T1.3 (2026-04-26 coupling audit): schema check at the
-    # Zalmoxis -> Aragog file-handover boundary. On violation: restore
-    # the .prev backup (so Aragog reads consistent state on the next
-    # iteration via the wrapper's fall-back) and raise RuntimeError.
+    # Schema check at the Zalmoxis -> Aragog file-handover boundary. On
+    # violation: restore the .prev backup (so Aragog reads consistent
+    # state on the next iteration via the wrapper's fall-back) and raise
+    # RuntimeError.
     try:
         validate_zalmoxis_output_schema(output_zalmoxis, hf_row)
     except RuntimeError:
@@ -1976,13 +1960,13 @@ def zalmoxis_solver(
             try:
                 _shutil.copy2(_output_prev, output_zalmoxis)
                 log.warning(
-                    'T1.3 schema violation: restored %s from %s before re-raise',
+                    'Schema violation: restored %s from %s before re-raise',
                     output_zalmoxis,
                     _output_prev,
                 )
             except Exception as _restore_exc:
                 log.warning(
-                    'T1.3 schema violation: could not restore %s from %s: %s',
+                    'Schema violation: could not restore %s from %s: %s',
                     output_zalmoxis,
                     _output_prev,
                     _restore_exc,
