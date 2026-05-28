@@ -475,6 +475,21 @@ When testing new routines, reviewing behavior, or investigating edge cases acros
 
 **Pre-commit**: Runs `ruff check` and `ruff format` automatically. Fix issues before committing.
 
+### Code organization
+
+PROTEUS is edited by many contributors in parallel; organise code so changes
+stay local. Full conventions: `docs/How-to/development_standards.md`.
+
+- Files: aim < 500 lines; split past ~800 along concern boundaries.
+- Functions/methods: aim < 50 lines; extract helpers past ~80. Express long
+  orchestration as named stage functions, not one inline body.
+- New backend: add a new `<backend>.py` plus a dispatch branch in `wrapper.py`;
+  never append a second backend into an existing backend file.
+- Central registries (output-schema keys, config fields): one entry per line,
+  trailing comma, grouped by module, alphabetical within group.
+- Add to shared files narrowly: a stage function over an inline edit; a column
+  in its module's group over the end of the global list.
+
 ## Common Workflows
 
 ### Making a Code Change
@@ -593,7 +608,7 @@ Resume requires `len(hf_all) > init_loops + 1` and the archived `<iter>_int.nc` 
 
 ---
 
-> **⚠️ FILE SIZE LIMIT: This file must stay below 500 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-instructions.md`.
+> **⚠️ FILE SIZE LIMIT: This file must stay below 750 lines.** Enforced by pre-commit hook (`tools/check_file_sizes.sh`). File located at `.github/copilot-instructions.md`.
 
 **When approaching the limit, refactor by asking:**
 1. **Is this still accurate?** Remove outdated commands, deprecated workflows, or superseded patterns.
