@@ -35,6 +35,7 @@ nav:
 
   - Explanations:
       - Model description: Explanations/model.md
+      - Code architecture: Explanations/code_architecture.md
       - Docker CI architecture: Explanations/docker_ci_architecture.md
 
   - Reference:
@@ -144,6 +145,7 @@ extra_javascript:
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/proteus_theme.css
 
 plugins:
   - search

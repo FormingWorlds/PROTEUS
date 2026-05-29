@@ -73,16 +73,6 @@ curl -fsSL https://install.julialang.org | sh
 !!! warning "Do **not** use your package manager"
     You should **only obtain Julia using the official installer**: package managers often do not install the correct version of Julia. If you previously installed Julia by another method, uninstall the old version first and remove any old Julia entries from your `PATH` to avoid version conflicts.
 
-
-
-!!! warning "Pin Julia to version 1.11"
-    Julia 1.12+ is **not yet supported** due to OpenSSL library incompatibilities with Python. After installing Julia, pin it to version 1.11:
-
-    ```console
-    juliaup add 1.11
-    juliaup default 1.11
-    ```
-
 Set the Julia environment variable:
 
 === "bash"
@@ -170,7 +160,7 @@ The environment variable `RAD_DIR` must always point to the SOCRATES installatio
 
 ## 8. Install AGNI (radiative-convective atmosphere model)
 
-Installation steps can be found at the [AGNI wiki](https://h-nicholls.space/AGNI/dev/setup/). They are also reproduced below.
+Installation steps can be found at the [AGNI wiki](https://www.h-nicholls.space/AGNI/dev/howto/getting_started/). They are also reproduced below.
 
 !!! note
     This step requires `make` and `unzip` to be available on your system. Check with:

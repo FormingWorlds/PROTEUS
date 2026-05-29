@@ -3,6 +3,9 @@
 # Set seed for reproducibility
 seed = 1
 
+# Logging level ("DEBUG", "INFO", "WARNING", "ERROR")
+logging = "INFO"
+
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
 output = "dummy_inference"
 

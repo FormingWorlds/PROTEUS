@@ -130,21 +130,24 @@ def determine_interior_radius(dirs: dict, config: Config, hf_all: pd.DataFrame, 
     # Set tolerance
     match config.interior.module:
         case 'aragog':
-            rtol = config.interior.aragog.tolerance
+            rtol = config.interior.aragog.tolerance_rel
+            atol = config.interior.aragog.tolerance_struct
         case 'spider':
-            rtol = config.interior.spider.tolerance
+            rtol = config.interior.spider.tolerance_rel
+            atol = config.interior.spider.tolerance_struct
         case _:
             rtol = 1e-7
+            atol = 1e2
 
     # Find the radius
     r = optimise.root_scalar(
         _resid,
         method='secant',
-        xtol=1e3,
+        xtol=atol,
         rtol=rtol,
-        maxiter=10,
+        maxiter=20,
         x0=hf_row['R_int'],
-        x1=hf_row['R_int'] * 1.02,
+        x1=hf_row['R_int'] * 1.5,
     )
     hf_row['R_int'] = float(r.root)
     calculate_core_mass(hf_row, config)
@@ -396,10 +399,13 @@ def run_interior(
     if hf_row['Time'] > 0:
         # Prevent increasing melt fraction, if enabled
         T_magma_prev = float(hf_all.iloc[-1]['T_magma'])
+        T_surf_prev = float(hf_all.iloc[-1]['T_surf'])
         Phi_global_prev = float(hf_all.iloc[-1]['Phi_global'])
         if config.atmos_clim.prevent_warming and (interior_o.ic == 2):
             hf_row['Phi_global'] = min(hf_row['Phi_global'], Phi_global_prev)
             hf_row['T_magma'] = min(hf_row['T_magma'], T_magma_prev)
+            hf_row['T_surf'] = min(hf_row['T_surf'], T_surf_prev)
+            hf_row['F_int'] = max(1.0e-8, min(hf_row['F_int'], hf_all.iloc[-1]['F_int']))
 
         # Do not allow massive increases to T_surf, always
         # Use module-appropriate tolerances for the T_magma limiter
@@ -408,14 +414,22 @@ def run_interior(
             dT_delta += config.interior.spider.tsurf_rtol * T_magma_prev
         elif config.interior.module == 'aragog':
             dT_delta = float(config.interior.aragog.tsurf_poststep_change)
+        elif config.interior.module == 'boundary':
+            dT_delta = float(config.interior.boundary.Tsurf_event_change)
         else:
             dT_delta = config.interior.dummy.tmagma_atol
             dT_delta += config.interior.dummy.tmagma_rtol * T_magma_prev
+
         if hf_row['T_magma'] > T_magma_prev + dT_delta:
             log.warning('Prevented large increase to T_magma!')
             log.warning('   Clipped from %.2f K' % hf_row['T_magma'])
             hf_row['T_magma'] = T_magma_prev + dT_delta
             hf_row['Phi_global'] = Phi_global_prev
+
+        if hf_row['T_surf'] > T_surf_prev + dT_delta:
+            log.warning('Prevented large increase to T_surf!')
+            log.warning('   Clipped from %.2f K' % hf_row['T_surf'])
+            hf_row['T_surf'] = T_surf_prev + dT_delta
 
     # Print result of interior module
     if verbose:

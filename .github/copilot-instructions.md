@@ -323,7 +323,7 @@ pre-commit install -f
 - Variables/functions: `snake_case`
 - Constants: `UPPER_CASE`
 - Type hints: Standard Python type hints
-- Docstrings: Brief descriptions of physical scenarios
+- Docstrings: Brief descriptions of physical scenarios. These include "Parameters" and "Returns" sections for functions. The variables are then included as bullet points.
 
 **Pre-commit**: Runs `ruff check` and `ruff format` automatically. Fix issues before committing.
 

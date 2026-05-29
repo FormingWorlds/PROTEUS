@@ -15,12 +15,15 @@ Usage:
 
 from __future__ import annotations
 
+import logging
+
 import torch
 from botorch.utils.transforms import unnormalize
 
 from proteus.inference.objective import prot_builder, run_proteus
 
 dtype = torch.double
+log = logging.getLogger('fwl.' + __name__)
 # Fix random seed for reproducibility
 torch.manual_seed(1)
 
@@ -28,7 +31,7 @@ torch.manual_seed(1)
 ref = 'input/demos/dummy.toml'
 output = 'output/inference/'
 
-print('\nperform sanity check')
+log.info('perform sanity check')
 
 # Define parameter bounds matching prot_builder setup
 params = {
@@ -53,7 +56,7 @@ x = torch.rand(1, d, dtype=dtype)
 # Unnormalize to raw parameter values for display
 bounds = torch.tensor([[params[k][0] for k in keys], [params[k][1] for k in keys]], dtype=dtype)
 raw_x = unnormalize(x, bounds).flatten()
-print('\nrandom inputs (raw):', raw_x)
+log.info(f'random inputs (raw): {raw_x}')
 
 # Build raw parameter dict for direct simulator invocation
 rand_par = {keys[i]: raw_x[i].item() for i in range(d)}
@@ -61,7 +64,7 @@ rand_par = {keys[i]: raw_x[i].item() for i in range(d)}
 rand_obs = run_proteus(
     parameters=rand_par, observables=obs, worker=0, iter=0, output=output, ref_config=ref
 ).to_dict()
-print('\nsimulated observables:', rand_obs)
+log.info(f'simulated observables: {rand_obs}')
 
 # Build prot_builder objective function
 f = prot_builder(
@@ -75,4 +78,4 @@ f = prot_builder(
 
 # Compute objective at random input
 y = f(x)
-print('\nobjective value at random input (should be optimal, i.e., 10.0):', y.item())
+log.info(f'objective value at random input (should be optimal, i.e., 10.0): {y.item()}')
