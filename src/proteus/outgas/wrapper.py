@@ -8,9 +8,9 @@ import numpy as np
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
-from proteus.outgas.lavatmos import compute_silicate_outgassing
 
 #from proteus.outgas.lavatmos_v2 import compute_silicate_outgassing
+from proteus.outgas.lavatmos import compute_silicate_outgassing
 from proteus.utils.constants import element_list, vap_list, vol_list
 
 if TYPE_CHECKING:
@@ -208,5 +208,7 @@ def lavatmos_calliope_run(dirs: dict, config: Config, hf_row: dict):
             #log.info('Lavatmos directory found: %s' % lavadir)
         #else:
             #log.warning('Lavatmos directory not found, did you set the LAVATMOS_DIR environment variable?')
-
-        compute_silicate_outgassing(config, hf_row)
+        if hf_row['Phi_global'] > 0.00:
+            compute_silicate_outgassing(config, hf_row)
+        else:
+            log.info('planet has solidified, no silicate outgassing occurs')

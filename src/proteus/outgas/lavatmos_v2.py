@@ -386,12 +386,12 @@ def compute_silicate_outgassing(config: Config, hf_row: dict):
     for e in input_eles:
         if total_mols > 0:
             if e=='H':
-                nfrac[e] = max(molfracs[e],1e-6) #avoid that hydrogen has 0 abundance
+                nfrac[e] = max(molfracs[e]/total_mols,1e-9) #avoid that hydrogen has 0 abundance
             else:
                 nfrac[e]= molfracs[e]/total_mols
         else:
             if e=='H':
-                nfrac[e] = 1e-6
+                nfrac[e] = 1e-9
             else:
                 nfrac[e] = 0.0
     log.info('volatile element fractions going as input to lavatmos : %s',nfrac)

@@ -12,7 +12,7 @@ def param_edit(inputfile,fO2,orbdist,Hocean,CHratio,silicates:bool):
         data = parse(f.read())
 
     #modify lines in input file
-    data["params"]["out"]["path"] = 'small_grid_{}IW_{}AU_{}Hocean_{}CH_{}'.format(fO2,orbdist,Hocean,CHratio,silicates)
+    data["params"]["out"]["path"] = 'grid_9Mearth_{}IW_{}AU_{}Hocean_{}CH_{}'.format(fO2,orbdist,Hocean,CHratio,silicates)
     #data["params"]["out"]["path"] = 'testrun_element_updating'
     data["orbit"]["semimajoraxis"] = float(orbdist)
     data["outgas"]["fO2_shift_IW"] = float(fO2)
