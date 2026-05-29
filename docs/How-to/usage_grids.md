@@ -1,5 +1,8 @@
 # Parameter grids (ensembles)
 
+!!! tip "Worked example"
+    For a runnable, end-to-end walkthrough (a fast all-dummy grid over planet mass, orbital distance, and hydrogen budget, with plots), see the [parameter grid sweep tutorial](../Tutorials/parameter_grid.md).
+
 It is often useful to run grids of forward models, where each point in a grid represents a different set of parameters. This is done with the `proteus grid` command:
 
 ```console
