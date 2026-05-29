@@ -105,11 +105,11 @@ config_version = "3.0"
     mass_tot                  = 1.0          # total initial planet mass [M_earth]
 
     # Initial temperature profile
-    temperature_mode          = "adiabatic_from_cmb"  # isothermal | linear | adiabatic | adiabatic_from_cmb | liquidus_super | accretion | isentropic
+    temperature_mode          = "liquidus_super"  # default; other modes: isothermal | linear | adiabatic | adiabatic_from_cmb | accretion | isentropic
     tsurf_init                = 4000         # surface temperature [K] (isothermal, linear, adiabatic)
     tcmb_init                 = 6000         # CMB temperature [K] (adiabatic_from_cmb)
     tcenter_init              = 6000         # center temperature [K] (linear only)
-    delta_T_super             = 500.0        # superliquidus offset at CMB [K] (liquidus_super only)
+    delta_T_super             = 500.0        # superliquidus offset at CMB [K] (liquidus_super)
     ini_entropy               = 3900.0       # initial specific entropy [J/kg/K] (isentropic only)
     ini_dsdr                  = -4.698e-6    # initial entropy gradient [J/kg/K/m] (isentropic only)
     f_accretion               = 0.04         # accretion heat retention [0-1] (accretion only)

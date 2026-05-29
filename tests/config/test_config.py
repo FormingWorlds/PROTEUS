@@ -2173,8 +2173,24 @@ def test_planet_temperature_mode_accepts_liquidus_super():
     """
     p = Planet(temperature_mode='liquidus_super')
     assert p.temperature_mode == 'liquidus_super'
-    # negative discrimination: must not collapse to default
+    # negative discrimination: liquidus_super must stay distinct from the
+    # fixed-T_cmb adiabat, not coerce to it
     assert p.temperature_mode != 'adiabatic_from_cmb'
+
+
+@pytest.mark.unit
+def test_planet_temperature_mode_default_is_liquidus_super():
+    """A Planet built without an explicit mode uses the liquidus_super IC.
+
+    Pins the schema default so a refactor cannot silently revert it to a
+    fixed-T_cmb or surface-anchored mode, which would change the initial
+    condition of every config that omits temperature_mode.
+    """
+    p = Planet()
+    assert p.temperature_mode == 'liquidus_super'
+    # Discrimination: the default must not be the fixed-T_cmb adiabat or any
+    # surface-anchored mode; either would change the default IC trajectory.
+    assert p.temperature_mode not in ('adiabatic_from_cmb', 'adiabatic', 'isothermal')
 
 
 @pytest.mark.unit

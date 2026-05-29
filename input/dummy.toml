@@ -40,6 +40,9 @@ config_version = "3.0"
 # Planet: 1 Earth mass
 [planet]
     mass_tot      = 1.0              # [M_earth]
+    # adiabatic_from_cmb keeps the all-dummy path free of the silicate
+    # liquidus lookup, so this config runs without any external solver.
+    temperature_mode = "adiabatic_from_cmb"
     volatile_mode = "elements"
     [planet.elements]
         O_mode   = "ic_chemistry"

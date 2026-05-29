@@ -164,7 +164,7 @@ class Planet:
             ini_entropy + ini_dsdr (bypasses PALEOS lookup; matches the
             CHILI intercomparison protocol). The interior solver maps the
             entropy IC to T(P) via its own EOS table.
-        'liquidus_super': anchor the adiabat at T = T_liq(P_cmb) +
+        'liquidus_super' (default): anchor the adiabat at T = T_liq(P_cmb) +
             delta_T_super at the core-mantle boundary, where T_liq is
             the Fei et al. (2021, PRL 127, 135701) MgSiO3 melting curve
             (piecewise Simon-Glatzel, with the Belonoshko et al. 2005
@@ -240,14 +240,15 @@ class Planet:
 
     mass_tot: float = field(default=1.0, validator=gt(0))
 
-    # Initial temperature profile. Default 'adiabatic_from_cmb' anchors
-    # the adiabat at T = tcmb_init at the core-mantle boundary and
-    # integrates upward to the surface; this is the canonical starting
-    # state across the codebase. The other six modes cover isothermal,
-    # linear, surface-anchored adiabatic, accretion (White & Li 2025),
-    # isentropic (CHILI protocol), and liquidus-anchored ICs.
+    # Initial temperature profile. Default 'liquidus_super' anchors the
+    # adiabat at the core-mantle boundary at T = T_liq_Fei2021(P_cmb) +
+    # delta_T_super and integrates upward to the surface, giving an
+    # EOS-agnostic, fully molten initial state. The other six modes cover
+    # the fixed-T_cmb adiabat (adiabatic_from_cmb), surface-anchored
+    # adiabatic, isothermal, linear, accretion (White & Li 2025), and
+    # isentropic (CHILI protocol) ICs.
     temperature_mode: str = field(
-        default='adiabatic_from_cmb',
+        default='liquidus_super',
         validator=in_(
             (
                 'isothermal',

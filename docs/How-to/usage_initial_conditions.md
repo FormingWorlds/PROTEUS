@@ -43,8 +43,8 @@ parameter:
 
 | Mode | Anchored at | Companion parameter(s) |
 |------|-------------|------------------------|
-| `adiabatic_from_cmb` (default) | core-mantle boundary | `tcmb_init` |
-| `liquidus_super` | core-mantle boundary, above the liquidus | `delta_T_super` |
+| `liquidus_super` (default) | core-mantle boundary, above the liquidus | `delta_T_super` |
+| `adiabatic_from_cmb` | core-mantle boundary, fixed temperature | `tcmb_init` |
 | `adiabatic` | surface | `tsurf_init` |
 | `isothermal` | uniform | `tsurf_init` |
 | `linear` | surface and centre | `tsurf_init`, `tcenter_init` |
@@ -57,7 +57,46 @@ opposite, anchoring at the surface and integrating downward. The remaining
 modes set the profile from accretion energetics (White and Li, 2025) or from
 the specific entropy itself.
 
-A minimal CMB-anchored setup looks like this:
+The default needs nothing beyond the mode name, because `delta_T_super` already
+defaults to 500 K:
+
+```toml
+[planet]
+    temperature_mode = "liquidus_super"   # the default; shown here for clarity
+    delta_T_super    = 500.0              # [K] above the liquidus at the core-mantle boundary
+```
+
+## What to favour
+
+**Use the default `liquidus_super` for most runs.** It anchors the CMB
+temperature a fixed margin above the silicate liquidus:
+
+$$T_\mathrm{cmb} = T_\mathrm{liq}(P_\mathrm{cmb}) + \Delta T_\mathrm{super}$$
+
+where $T_\mathrm{liq}$ is the Fei et al. (2021) MgSiO$_3$ melting curve and
+$\Delta T_\mathrm{super}$ is the superliquidus offset (`delta_T_super`, in K).
+Anchoring at the core-mantle boundary, where the pressure and therefore the
+melting temperature are highest, and integrating the adiabat upward guarantees
+that the whole mantle column starts molten. Because the anchor is set by a
+third-party melting curve rather than by a fixed temperature, the mode is
+EOS-agnostic: it does not bake in a particular entropy convention. That makes
+it robust both for cross-code comparisons and for larger super-Earths, where a
+fixed CMB temperature may not clear the elevated high-pressure liquidus.
+
+The default `delta_T_super = 500` K places the entire mantle comfortably above
+the liquidus for Earth-mass and super-Earth planets. Setting
+`delta_T_super = 0` anchors the initial adiabat exactly on the liquidus, the
+coolest fully molten start.
+
+!!! note "Requires the silicate liquidus"
+    `liquidus_super` evaluates the Fei et al. (2021) liquidus through the
+    interior structure module (Zalmoxis), which is part of the standard
+    installation. For a run built only from placeholder modules, use
+    `adiabatic_from_cmb` instead, which needs no melting-curve lookup.
+
+**Use `adiabatic_from_cmb` for a fixed CMB temperature.** This mode is identical
+to `liquidus_super` except that the anchor is the user-set `tcmb_init` rather
+than a liquidus-relative value:
 
 ```toml
 [planet]
@@ -65,56 +104,21 @@ A minimal CMB-anchored setup looks like this:
     tcmb_init        = 6000.0   # [K] adiabat anchor at the core-mantle boundary
 ```
 
-## What to favour
+It needs no melting curve, so it is also the mode used by the all-dummy
+quick-start configuration, which runs without any external structure solver.
 
-**Favour a CMB-anchored, fully molten start.** The default
-`adiabatic_from_cmb` is the canonical choice and is recommended for most runs.
-Anchoring at the core-mantle boundary, where the pressure and therefore the
-melting temperature are highest, and integrating upward guarantees that the
-whole mantle column starts molten. Surface-anchored modes (`adiabatic`,
-`isothermal`) carry the opposite risk: under the current equation of state, an
-adiabat pinned at the surface can drop the deep mantle below its liquidus at
-`t = 0`, leaving a partially solid base that is not a clean magma-ocean start.
-
-**For an explicitly superliquidus start, use `liquidus_super`.** This mode
-anchors the CMB temperature a fixed margin above the silicate liquidus:
-
-$$T_\mathrm{cmb} = T_\mathrm{liq}(P_\mathrm{cmb}) + \Delta T_\mathrm{super}$$
-
-where $T_\mathrm{liq}$ is the Fei et al. (2021) MgSiO$_3$ melting curve and
-$\Delta T_\mathrm{super}$ is the user-controlled superliquidus offset
-(`delta_T_super`, in K). Because the anchor is set by a third-party melting
-curve rather than by a fixed temperature, this mode is EOS-agnostic: it does
-not bake in a particular entropy convention, which makes it the right choice
-for cross-code comparisons and for guaranteeing a fully molten mantle on
-larger super-Earths, where a fixed `tcmb_init` may not clear the elevated
-high-pressure liquidus.
-
-```toml
-[planet]
-    temperature_mode = "liquidus_super"
-    delta_T_super    = 500.0   # [K] above the liquidus at the core-mantle boundary
-```
-
-The default `delta_T_super = 500` K places the entire mantle comfortably above
-the liquidus for Earth-mass and super-Earth planets. Setting
-`delta_T_super = 0` anchors the initial adiabat exactly on the liquidus, which
-is useful when you want the coolest fully molten start rather than a hot one.
+**Avoid the surface-anchored modes unless you have a specific reason.** Under
+the current equation of state, an adiabat pinned at the surface (`adiabatic`,
+`isothermal`) can drop the deep mantle below its liquidus at `t = 0`, leaving a
+partially solid base that is not a clean magma-ocean start. The CMB-anchored
+modes avoid this by construction. The `linear` mode is likewise intended for
+controlled tests where you set the surface and centre temperatures directly.
 
 !!! note "Matching a published interior protocol"
     The `isentropic` mode sets the initial specific entropy directly through
     `ini_entropy` and `ini_dsdr`, bypassing the melting-curve lookup. Use it
     when reproducing a reference protocol that specifies the entropy IC, such
     as the [Solar System CHILI intercomparison](../Tutorials/chili_intercomparison.md).
-
-## Choosing the surface modes
-
-The surface-anchored and uniform modes (`adiabatic`, `isothermal`, `linear`)
-remain available for controlled tests and for cases where you want to specify
-the surface temperature directly through `tsurf_init`. They are not the default
-because of the deep-mantle mushy-zone risk described above. Reach for them when
-you have a specific reason to fix the surface state rather than the base of the
-mantle.
 
 ---
 
