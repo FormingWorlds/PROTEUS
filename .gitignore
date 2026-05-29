@@ -15,8 +15,6 @@ socrates_star.txt
 radiation_code.lock
 screenlog.0
 chili.csv
-input/tutorials/chili_intercomp/*.toml
-!input/tutorials/chili_intercomp/_*
 
 # Output files
 old/
@@ -88,18 +86,6 @@ __pycache__
 !output/.gitkeep
 nogit*
 data/
-
-# Local CHILI configs and dev-session debris (never tracked)
-input/chili/chili_aragog_*.toml
-input/chili/chili_paleos_*.toml
-input/chili/energy_*.toml
-input/chili/evolution-proteus-earth-config.toml
-input/chili/exp*.toml
-input/chili/nightly_*.toml
-input/chili/paper_eos_compare_*.toml
-input/chili/smoke_*.toml
-input/chili/stage_*.toml
-input/chili/verify_*.toml
 
 # Local integration fixtures materialised at test time (never tracked)
 input/tests/zalmoxis_spider.toml
