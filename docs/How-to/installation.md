@@ -25,6 +25,15 @@ The fastest way to get a working PROTEUS installation is the unified installer
 script. It handles Julia, SOCRATES, AGNI, all Python submodules, environment
 variables, and reference data downloads in a single command.
 
+!!! note "CLI alternative: `proteus install-all`"
+    If PROTEUS is already importable in your environment, `proteus install-all`
+    performs the same setup from the CLI: it installs PROTEUS and the required
+    submodules (SOCRATES, AGNI), downloads reference data, checks for sufficient
+    disk space (5 GB minimum), creates `FWL_DATA` if needed, and sets the
+    environment variables. Pass `--export-env` to write the environment
+    variables to your shell rc file. To refresh an existing installation later,
+    use `proteus update-all` (see [Diagnose and update](doctor.md)).
+
 ### 1. System packages
 
 Install the required system libraries for your platform. See the

@@ -176,6 +176,22 @@ This lists the fixable issues and their commands but does not execute anything.
     is not available and fix commands that reference it will not work. The
     command detects this and exits with a message.
 
+## proteus update-all
+
+Where `proteus update` applies targeted fixes for the specific issues the doctor
+finds, `proteus update-all` performs a full refresh of the whole stack:
+
+```console
+proteus update-all
+```
+
+It updates the PROTEUS Python package, recompiles SOCRATES, pulls the latest
+AGNI, and refreshes the reference data, verifying environment variables and disk
+space before proceeding. Pass `--export-env` to re-export the environment
+variables to your shell rc file. Use this after pulling new code when several
+components may have moved at once; use `proteus update` when you want to apply
+only the fixes the doctor has flagged.
+
 ---
 
 ## Typical workflows

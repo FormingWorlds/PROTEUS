@@ -15,7 +15,11 @@ nav:
           - Install PROTEUS: How-to/installation.md
           - Diagnose and update: How-to/doctor.md
           - Configure PROTEUS: How-to/config.md
-          - Usage: How-to/usage.md
+          - Usage:
+              - Overview: How-to/usage.md
+              - Running and output: How-to/usage_running.md
+              - Parameter grids: How-to/usage_grids.md
+              - Postprocessing and chemistry: How-to/usage_postprocessing.md
           - Troubleshooting: How-to/troubleshooting.md
           - Run on a local machine: How-to/local_machine_guide.md
       - Advanced usage:
@@ -53,6 +57,7 @@ nav:
           - Atmosphere and chemistry: Reference/config/atmosphere.md
           - Escape and outgassing: Reference/config/escape_outgas.md
           - Observations: Reference/config/observe.md
+      - Melting curves: Reference/melting_curves.md
       - Module versions: Reference/module_versions.md
       - Output format: Reference/output.md
       - Reference data: Reference/data.md

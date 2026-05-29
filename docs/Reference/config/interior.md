@@ -288,7 +288,7 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 
 ---
 
-**See also:** [Interior modules](../../Explanations/model.md#interior-energetics-aragog-spider-boundary) | [Structure module](../../Explanations/model.md#interior-structure-zalmoxis)
+**See also:** [Interior modules](../../Explanations/model.md#interior-energetics-aragog-spider-boundary) | [Structure module](../../Explanations/model.md#interior-structure-zalmoxis) | [Melting curves](../melting_curves.md)
 
 [^cite-bower2018]: Bower, D.J., Sanan, P. & Wolf, A.S., *[Numerical solution of a non-linear conservation law applicable to the interior dynamics of partially molten planets](https://doi.org/10.1016/j.pepi.2017.11.004)*, Physics of the Earth and Planetary Interiors, 274, 49-62, 2018. [SciX](https://scixplorer.org/abs/2018PEPI..274...49B/abstract).
 
