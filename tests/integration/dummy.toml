@@ -99,6 +99,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [planet]
     mass_tot = 1.0       # M_earth
+    # pinned: keep this all-dummy fixture free of the silicate liquidus lookup
+    temperature_mode = "adiabatic_from_cmb"
     volatile_mode = 'elements'        # "elements" | "volatiles"
 
     prevent_warming = true      # do not allow the planet to heat up

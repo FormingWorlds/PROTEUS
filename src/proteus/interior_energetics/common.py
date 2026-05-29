@@ -16,6 +16,11 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('fwl.' + __name__)
 
+# Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting temperature is
+# calibrated to ~500 GPa. Above this pressure the liquidus_super CMB anchor
+# relies on extrapolation of the high-pressure power-law branch.
+FEI2021_LIQUIDUS_P_CALIB_PA = 500e9
+
 
 @dataclass
 class rheo_t:
@@ -298,7 +303,7 @@ def compute_initial_entropy(
         # Compute the CMB anchor temperature.
         #   adiabatic_from_cmb: tcmb_init is user-set absolute K.
         #   liquidus_super:     T_liq_Fei2021(P_cmb) + delta_T_super.
-        # The Fei+2021 (PRL 127, 135701) MgSiO3 liquidus is a third-party
+        # The Fei+2021 (Nat. Commun. 12, 876) MgSiO3 liquidus is a third-party
         # calibration shared between PALEOS and external references, so
         # neither the WB17 nor the PALEOS S_0 anchoring choice biases the
         # IC. The piecewise Simon-Glatzel fit is implemented in Zalmoxis
@@ -312,6 +317,15 @@ def compute_initial_entropy(
                     f'liquidus_super mode requires Zalmoxis '
                     f'(zalmoxis.melting_curves.paleos_liquidus); '
                     f'import failed: {e}'
+                )
+            if P_cmb > FEI2021_LIQUIDUS_P_CALIB_PA:
+                log.warning(
+                    'liquidus_super: P_cmb=%.0f GPa exceeds the Fei+2021 '
+                    'MgSiO3 melting-curve calibration (~%.0f GPa); the CMB '
+                    'anchor temperature is an extrapolation and the initial '
+                    'condition is uncertain at this planet mass.',
+                    P_cmb / 1e9,
+                    FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
                 )
             T_liq = float(paleos_liquidus(P_cmb))
             delta = float(config.planet.delta_T_super)
@@ -335,6 +349,17 @@ def compute_initial_entropy(
                 from aragog.eos.entropy import EntropyEOS
 
                 eos = EntropyEOS(spider_eos_dir)
+                if P_cmb > eos.P_max:
+                    log.warning(
+                        'CMB-anchored IC: P_cmb=%.0f GPa exceeds the entropy '
+                        'table maximum (%.0f GPa). invert_temperature clamps P '
+                        'to the table edge, so the returned entropy reproduces '
+                        'tcmb at %.0f GPa, not at the true P_cmb. The initial '
+                        'condition is approximate at this planet mass.',
+                        P_cmb / 1e9,
+                        eos.P_max / 1e9,
+                        eos.P_max / 1e9,
+                    )
                 S_target = float(eos.invert_temperature(P_cmb, tcmb))
                 log.info(
                     'Initial entropy from CMB-anchored P-S inversion: '

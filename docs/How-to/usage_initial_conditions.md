@@ -83,8 +83,8 @@ EOS-agnostic: it does not bake in a particular entropy convention. That makes
 it robust both for cross-code comparisons and for larger super-Earths, where a
 fixed CMB temperature may not clear the elevated high-pressure liquidus.
 
-The default `delta_T_super = 500` K places the entire mantle comfortably above
-the liquidus for Earth-mass and super-Earth planets. Setting
+The default `delta_T_super = 500` K is a heuristic margin that places the CMB
+anchor above the liquidus for Earth-mass to few-Earth-mass mantles. Setting
 `delta_T_super = 0` anchors the initial adiabat exactly on the liquidus, the
 coolest fully molten start.
 
@@ -93,6 +93,12 @@ coolest fully molten start.
     interior structure module (Zalmoxis), which is part of the standard
     installation. For a run built only from placeholder modules, use
     `adiabatic_from_cmb` instead, which needs no melting-curve lookup.
+
+!!! warning "Large super-Earths"
+    The Fei et al. (2021) liquidus is calibrated to about 500 GPa. For large
+    super-Earths whose core-mantle-boundary pressure exceeds that, the anchor
+    relies on extrapolation and PROTEUS logs a warning; treat the initial
+    condition as approximate in that regime.
 
 **Use `adiabatic_from_cmb` for a fixed CMB temperature.** This mode is identical
 to `liquidus_super` except that the anchor is the user-set `tcmb_init` rather

@@ -2188,9 +2188,36 @@ def test_planet_temperature_mode_default_is_liquidus_super():
     """
     p = Planet()
     assert p.temperature_mode == 'liquidus_super'
-    # Discrimination: the default must not be the fixed-T_cmb adiabat or any
-    # surface-anchored mode; either would change the default IC trajectory.
-    assert p.temperature_mode not in ('adiabatic_from_cmb', 'adiabatic', 'isothermal')
+    # Exhaustive discrimination: the default must be none of the six other
+    # modes; any of them would change the IC of every config that omits the field.
+    assert p.temperature_mode not in (
+        'isothermal',
+        'linear',
+        'adiabatic',
+        'adiabatic_from_cmb',
+        'accretion',
+        'isentropic',
+    )
+
+
+@pytest.mark.unit
+def test_dummy_config_pins_solver_free_temperature_mode():
+    """input/dummy.toml pins adiabatic_from_cmb so the all-dummy quick-start
+    runs without the silicate liquidus lookup.
+
+    The schema default is liquidus_super, which routes the dummy interior
+    structure through the Zalmoxis melting-curve lookup. The explicit pin in
+    dummy.toml keeps the all-dummy path free of any external structure solver.
+    This guard fails if the pin is dropped and dummy.toml silently inherits the
+    liquidus_super default.
+    """
+    from proteus.config import read_config_object
+
+    cfg = read_config_object(PROTEUS_ROOT / 'input' / 'dummy.toml')
+    assert cfg.planet.temperature_mode == 'adiabatic_from_cmb'
+    # Discrimination: must not have inherited the liquidus_super default, which
+    # would pull the Zalmoxis liquidus lookup into the all-dummy path.
+    assert cfg.planet.temperature_mode != 'liquidus_super'
 
 
 @pytest.mark.unit

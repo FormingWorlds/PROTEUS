@@ -29,6 +29,10 @@ log = logging.getLogger('fwl.' + __name__)
 # Earth mass in kg (for scaling law normalization)
 M_EARTH_KG = M_earth
 
+# Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting temperature is
+# calibrated to ~500 GPa; above this the liquidus_super anchor extrapolates.
+FEI2021_LIQUIDUS_P_CALIB_PA = 500e9
+
 
 def solve_dummy_structure(
     config: Config,
@@ -271,9 +275,25 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
         # only a coarse adiabat from constant alpha/Cp/g; the
         # production path (zalmoxis + Aragog) computes the same anchor
         # against the converged structure-solve P_cmb.
-        from zalmoxis.melting_curves import paleos_liquidus
+        try:
+            from zalmoxis.melting_curves import paleos_liquidus
+        except (ImportError, ModuleNotFoundError) as e:
+            raise RuntimeError(
+                'liquidus_super mode requires Zalmoxis '
+                '(zalmoxis.melting_curves.paleos_liquidus); import failed: '
+                f"{e}. Use temperature_mode='adiabatic_from_cmb' for a "
+                'structure-solver-free initial condition.'
+            )
 
         P_cmb = float(P_stag[0])
+        if P_cmb > FEI2021_LIQUIDUS_P_CALIB_PA:
+            log.warning(
+                'Dummy liquidus_super: P_cmb=%.0f GPa exceeds the Fei+2021 '
+                'MgSiO3 melting-curve calibration (~%.0f GPa); the CMB anchor '
+                'is an extrapolation at this planet mass.',
+                P_cmb / 1e9,
+                FEI2021_LIQUIDUS_P_CALIB_PA / 1e9,
+            )
         T_liq = float(paleos_liquidus(P_cmb))
         delta = float(config.planet.delta_T_super)
         T_cmb = T_liq + delta
@@ -291,6 +311,21 @@ def _build_temperature_profile(config, r_stag, P_stag, R_c, R_p, alpha_m, Cp_m, 
             dr = r_stag[i] - r_stag[i - 1]
             dTdr = -alpha_m * T[i - 1] * g_m_av / Cp_m
             T[i] = T[i - 1] + dTdr * dr  # T decreases outward
+        # The constant-coefficient linearized adiabat can overshoot downward
+        # over a deep, high-gravity mantle and dip below the liquidus toward
+        # the surface. Clamp to the local liquidus so the profile stays molten,
+        # consistent with the superliquidus intent of this mode.
+        T_liq_profile = paleos_liquidus(P_stag)
+        undershoot = T < T_liq_profile
+        if np.any(undershoot):
+            log.warning(
+                'Dummy liquidus_super: linearized adiabat dipped below the '
+                'liquidus at %d of %d levels; clamping those to the local '
+                'liquidus to keep the initial profile molten.',
+                int(np.count_nonzero(undershoot)),
+                N,
+            )
+            T = np.maximum(T, T_liq_profile)
         return T
 
     elif mode == 'accretion':

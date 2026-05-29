@@ -166,7 +166,7 @@ class Planet:
             entropy IC to T(P) via its own EOS table.
         'liquidus_super' (default): anchor the adiabat at T = T_liq(P_cmb) +
             delta_T_super at the core-mantle boundary, where T_liq is
-            the Fei et al. (2021, PRL 127, 135701) MgSiO3 melting curve
+            the Fei et al. (2021, Nat. Commun. 12, 876) MgSiO3 melting curve
             (piecewise Simon-Glatzel, with the Belonoshko et al. 2005
             low-pressure branch below 2.55 GPa, exactly matching the
             PALEOS internal liquidus). The adiabat is then integrated
@@ -199,10 +199,14 @@ class Planet:
     delta_T_super: float
         Superliquidus offset [K] at the core-mantle boundary
         (liquidus_super mode only). The CMB anchor temperature is
-        T_cmb = T_liq_Fei2021(P_cmb) + delta_T_super. Default 500 K
-        gives a fully molten initial state across the full mantle for
-        Earth-mass and super-Earth planets. Setting delta_T_super = 0
-        anchors the IC adiabat exactly at the liquidus.
+        T_cmb = T_liq_Fei2021(P_cmb) + delta_T_super. The default 500 K
+        is a heuristic margin that places the anchor above the liquidus
+        for Earth-mass to few-Earth-mass mantles; it does not guarantee
+        a fully molten column at every mass. The Fei+2021 liquidus is
+        calibrated to ~500 GPa, so for large super-Earths (P_cmb above
+        that) the anchor relies on extrapolation and a warning is
+        emitted. Setting delta_T_super = 0 anchors the IC adiabat
+        exactly at the liquidus.
     volatile_mode: str
         How to set the initial volatile inventory: 'elements' or 'gas_prs'.
     volatile_reservoir: str
@@ -275,9 +279,10 @@ class Planet:
 
     # Superliquidus offset at the CMB for temperature_mode = 'liquidus_super'.
     # T_cmb anchor is T_liq_Fei2021(P_cmb) + delta_T_super; the adiabat is
-    # then integrated upward to the surface. Default 500 K guarantees a
-    # fully molten state across Earth-mass and super-Earth mantles. Setting
-    # delta_T_super = 0 places the IC adiabat exactly on the liquidus.
+    # then integrated upward to the surface. The default 500 K is a heuristic
+    # margin tuned for Earth-mass to few-Earth-mass mantles; the Fei+2021
+    # liquidus is calibrated to ~500 GPa, so at higher P_cmb the anchor is an
+    # extrapolation. Setting delta_T_super = 0 places the adiabat on the liquidus.
     delta_T_super: float = field(default=500.0, validator=ge(0))
 
     # Initial volatile inventory

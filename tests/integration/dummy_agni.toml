@@ -55,6 +55,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [planet]
     mass_tot = 2.14       # M_earth
+    # pinned: keep the dummy interior structure free of the silicate liquidus lookup
+    temperature_mode = "adiabatic_from_cmb"
     volatile_mode = 'elements'        # "elements" | "volatiles"
 
 [interior_struct]

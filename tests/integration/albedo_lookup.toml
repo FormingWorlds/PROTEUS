@@ -33,6 +33,8 @@ config_version = "3.0"
 
 [planet]
     mass_tot = 1.0           # [M_earth]
+    # pinned: keep the dummy interior structure free of the silicate liquidus lookup
+    temperature_mode = "adiabatic_from_cmb"
     volatile_mode = 'elements'        # Which initial inventory to use?
 
     prevent_warming = false
