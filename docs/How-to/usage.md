@@ -19,6 +19,7 @@ In all cases you configure the model through a configuration file, described in 
 | Page | What it covers |
 |---|---|
 | [Running and output](usage_running.md) | Launching a single run from the terminal, running on remote machines, where results are written, and archiving output. |
+| [Initial thermal conditions](usage_initial_conditions.md) | Setting the mantle's starting temperature profile, what the initial state controls, and which option to favour. |
 | [Parameter grids](usage_grids.md) | Defining and dispatching ensembles of simulations, with or without Slurm. |
 | [Postprocessing and chemistry](usage_postprocessing.md) | Atmospheric chemistry with VULCAN, synthetic observations, and multi-angle thermal profiles. |
 | [Bayesian inference](inference.md) | Using PROTEUS as the forward model in a Bayesian-optimisation retrieval. |

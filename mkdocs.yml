@@ -18,6 +18,7 @@ nav:
           - Usage:
               - Overview: How-to/usage.md
               - Running and output: How-to/usage_running.md
+              - Initial thermal conditions: How-to/usage_initial_conditions.md
               - Parameter grids: How-to/usage_grids.md
               - Postprocessing and chemistry: How-to/usage_postprocessing.md
           - Troubleshooting: How-to/troubleshooting.md

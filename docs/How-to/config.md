@@ -14,11 +14,36 @@ For topic-specific parameter guides, see the **configuration reference** pages:
 
 For worked examples, see the [Tutorials](../Tutorials/quick_start_dummy.md).
 
-Many parameters have default values, so you do not have to provide them in
-the file. Some parameters are conditionally required. For example, if you use
-the `mors` stellar evolution module (`star.module = 'mors'`), then you must
-also set `star.mors.age_now`. If you use the `dummy` module instead, that
-parameter is not required.
+## Defaults and required parameters
+
+**Every parameter has a built-in default.** The defaults are defined in the
+configuration schema in
+[`src/proteus/config/`](https://github.com/FormingWorlds/PROTEUS/tree/main/src/proteus/config),
+so a configuration file only needs to set the parameters whose defaults you
+want to change. Empty sections can be omitted entirely. The
+[`minimal.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/minimal.toml)
+example shows how little a working file needs: a few science-critical choices
+(planet mass, orbit, volatiles, redox), with everything else left at its
+default.
+
+**Where to find the default for each parameter.** The configuration reference
+pages listed above give the default value of every parameter in their
+`Default` column, alongside its type and description. The auto-generated
+listing further down this page is built from the same schema and shows each
+parameter's source definition, including the coded default value.
+
+**To see exactly which defaults applied to a run**, open the
+`init_coupler.toml` file in that run's output folder. It is a completed copy of
+the configuration with every parameter resolved, including all the defaults
+that were filled in for the options you did not set. This is the
+fully-expanded configuration the simulation actually used.
+
+**Some parameters are conditionally required.** A parameter that is only
+meaningful for one module is required when that module is selected. For
+example, the `mors` stellar evolution module (`star.module = 'mors'`) requires
+`star.mors.age_now`, whereas the `dummy` module does not. The configuration
+loader reports an error at startup if a required parameter is missing for the
+chosen modules.
 
 See [`all_options.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/input/all_options.toml) for a comprehensive example. Have a look at the other [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input) for ideas of how to set up your config in practice.
 
