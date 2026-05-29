@@ -37,7 +37,7 @@ GIT_META = {
              'https://www.h-nicholls.space/AGNI/', 'Docs'),
     'socrates': ('SOCRATES', 'Spectral radiative transfer (Fortran)',
                  'https://github.com/FormingWorlds/SOCRATES',
-                 'https://github.com/FormingWorlds/SOCRATES', 'GitHub'),
+                 'https://proteus-framework.org/SOCRATES/', 'Docs'),
     'spider': ('SPIDER', 'Interior evolution (C, requires PETSc)',
                'https://github.com/FormingWorlds/SPIDER',
                'https://proteus-framework.org/SPIDER/', 'Docs'),
@@ -113,7 +113,7 @@ def _build_optional_table() -> str:
         if pin_val and color and pin_link:
             badge = _badge(name, pin_val, color, pin_link)
         else:
-            badge = '—'
+            badge = 'n/a'
         rows.append(f'| {name} | {role} | {badge} | [{doc_label}]({doc_url}) |')
     return '| Module | Role | Pin | Docs |\n|--------|------|-----|------|\n' + '\n'.join(rows)
 
