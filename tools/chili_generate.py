@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Script to generate PROTEUS config files for the CHILI intercomparison project.
-# See `input/chili/readme.txt` for more information.
+# The base configuration lives in `input/tutorials/chili_intercomp/`.
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ use_scratch = True  # Store output in scratch folder
 
 # Folder containing configuration files
 intercomp = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..', 'input', 'chili', 'intercomp')
+    os.path.join(os.path.dirname(__file__), '..', 'input', 'tutorials', 'chili_intercomp')
 )
 
 # Load base config
@@ -71,7 +71,7 @@ for p in ('earth', 'venus'):
     grd[p] = deepcopy(grd['base'])
     grd[p]['output'] = 'scratch/' if use_scratch else ''
     grd[p]['output'] += f'chili_{p}_grid/'
-    grd[p]['ref_config'] = f'input/chili/intercomp/{p}.toml'
+    grd[p]['ref_config'] = f'input/tutorials/chili_intercomp/{p}.toml'
 
 # ------------------------
 # TRAPPIST-1 b/e/alpha (Table 4 of protocol paper)

@@ -2412,7 +2412,7 @@ def test_no_input_toml_uses_bare_interior_section():
     silently demotes module=spider runs to the factory default
     (aragog) without any error.
 
-    This bit ``input/chili/intercomp/_base.toml`` after PR #659:
+    This bit ``input/tutorials/chili_intercomp/_base.toml`` after PR #659:
     every CHILI sweep launched from that config ran Aragog
     regardless of the configured backend.
     """

@@ -1,6 +1,6 @@
 output = "chili_base_grid/"
 symlink = ""
-ref_config = "input/chili/intercomp/_base.toml"
+ref_config = "input/tutorials/chili_intercomp/_base.toml"
 use_slurm = true
 
 max_jobs = 9       # maximum number of concurrent tasks (e.g. 500 on Habrok)

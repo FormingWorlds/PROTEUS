@@ -125,7 +125,7 @@ class TimeStepParams:
         contrast). Set to 0 (default) to disable the mushy-regime
         cap, in which case ``maximum`` applies throughout. A
         typical value for Aragog at 1 M_E is ~4e3 yr; see
-        ``input/chili/evolution-proteus-earth-aragog-config.toml``.
+        ``input/tutorials/tutorial_earth.toml``.
     mushy_upper: float
         Upper bound of the mushy regime [dimensionless melt
         fraction]. When ``Phi_global < mushy_upper`` AND
