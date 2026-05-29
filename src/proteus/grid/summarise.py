@@ -26,28 +26,41 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
 
     # Find folders
     pgrid_dir = os.path.abspath(pgrid_dir)
-    case_dirs = glob.glob(pgrid_dir + '/case_*')
-    N = len(case_dirs)
-    log.info("Found %d cases in '%s'", N, pgrid_dir)
+    case_dirs = sorted(glob.glob(pgrid_dir + '/case_*'))
+    log.info("Found %d cases in '%s'", len(case_dirs), pgrid_dir)
 
-    # Statuses
-    # Check `utils.helper.CommentFromStatus` for information on error codes
+    # Read each case's status code, keyed by the folder index parsed from
+    # its name. Keying by the real index means a non-contiguous set of case
+    # folders (for example after a failed case has been deleted) is handled
+    # correctly, rather than assuming the folders are numbered 0..N-1.
+    # Check `utils.helper.CommentFromStatus` for information on error codes.
     log.info('Checking statuses...')
-    status = np.full(N, -1, dtype=int)
-    cmmnts = np.full(N, '', dtype=str)
-    for i in range(N):
-        status_path = os.path.join(pgrid_dir, 'case_%06d' % i, 'status')
+    case_status = {}
+    for case_dir in case_dirs:
+        name = os.path.basename(case_dir)
+        try:
+            idx = int(name.rsplit('_', 1)[-1])
+        except ValueError:
+            log.warning("Ignoring folder with unexpected name '%s'", name)
+            continue
+        status_path = os.path.join(case_dir, 'status')
         if not os.path.exists(status_path):
             raise FileNotFoundError("Cannot find status file at '%s'" % status_path)
         with open(status_path, 'r') as hdl:
             lines = hdl.readlines()
-        status[i] = int(lines[0])
-        cmmnts[i] = str(lines[1])
+        if not lines:
+            raise ValueError("Status file is empty: '%s'" % status_path)
+        case_status[idx] = int(lines[0].strip())
+
+    # Sorted indices and the matching array of status codes
+    indices = sorted(case_status.keys())
+    codes = np.array([case_status[i] for i in indices], dtype=int)
+    N = len(indices)
 
     # Statistics
     log.info('Statistics:')
     for i in range(-1, 100):
-        count = np.count_nonzero(status == i)
+        count = int(np.count_nonzero(codes == i))
         if count == 0:
             continue
         if i == -1:
@@ -86,11 +99,11 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
             matched = True
             log.info('%s cases:', g)
             e_any = False
-            for i in range(N):  # for each grid point
+            for idx in indices:  # for each grid point
                 for s in gen_cases[g]:  # for each case within this general case
-                    if status[i] == s:
+                    if case_status[idx] == s:
                         e_any = True
-                        log.info('  Case %-5d : Code %-2d - %s', i, s, CommentFromStatus(s))
+                        log.info('  Case %-5d : Code %-2d - %s', idx, s, CommentFromStatus(s))
                         break
             if not e_any:
                 log.info('  (None)')
@@ -102,10 +115,10 @@ def summarise(pgrid_dir: str, tgt_status: str = None):
         code = int(tgt_status.replace(' ', '').split('=')[-1])
         log.info('Code %d cases:', code)
         e_any = False
-        for i in range(N):
-            if status[i] == code:
+        for idx in indices:
+            if case_status[idx] == code:
                 e_any = True
-                log.info('  Case %-5d : Code %-2d - %s', i, code, CommentFromStatus(code))
+                log.info('  Case %-5d : Code %-2d - %s', idx, code, CommentFromStatus(code))
         if not e_any:
             log.info('  (None)')
 

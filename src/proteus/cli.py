@@ -636,11 +636,18 @@ cli.add_command(observe)
 
 @click.command()
 @config_option
-def grid(config_path: Path):
+@click.option(
+    '--dry-run',
+    is_flag=True,
+    default=False,
+    help='Generate the grid and write per-case config files without launching '
+    'PROTEUS simulations. Useful for validating a grid before spending compute.',
+)
+def grid(config_path: Path, dry_run: bool):
     """Run GridPROTEUS to generate a grid of forward models"""
     from proteus.grid.manage import grid_from_config
 
-    grid_from_config(config_path)
+    grid_from_config(config_path, test_run=dry_run)
 
 
 @click.command()

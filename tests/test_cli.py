@@ -1041,14 +1041,15 @@ def test_observe_invokes_observe(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_grid_calls_grid_from_config(monkeypatch, tmp_path):
-    """``proteus grid -c cfg`` dispatches to grid_from_config with the config path."""
+    """``proteus grid -c cfg`` dispatches to grid_from_config with the config
+    path and, with no flag, a default test_run=False so real simulations run."""
     cfg = tmp_path / 'cfg.toml'
     cfg.write_text('# stub\n')
 
     received = []
 
-    def fake_grid_from_config(path):
-        received.append(Path(path))
+    def fake_grid_from_config(path, test_run=False):
+        received.append((Path(path), test_run))
 
     import proteus.grid.manage as gmanage
 
@@ -1058,7 +1059,32 @@ def test_grid_calls_grid_from_config(monkeypatch, tmp_path):
     assert res.exit_code == 0
     # Discrimination: exactly one call, with the resolved config path.
     assert len(received) == 1
-    assert received[0].name == 'cfg.toml'
+    assert received[0][0].name == 'cfg.toml'
+    # Without --dry-run the dispatch must request a real run, not a stubbed one.
+    assert received[0][1] is False
+
+
+def test_grid_dry_run_passes_test_run_flag(monkeypatch, tmp_path):
+    """``proteus grid -c cfg --dry-run`` flips test_run to True so the grid is
+    generated without launching PROTEUS. Discrimination: the only difference
+    from the default invocation is the test_run value, so a regression that
+    ignored the flag would leave it False and silently start real runs."""
+    cfg = tmp_path / 'cfg.toml'
+    cfg.write_text('# stub\n')
+
+    received = []
+
+    def fake_grid_from_config(path, test_run=False):
+        received.append((Path(path), test_run))
+
+    import proteus.grid.manage as gmanage
+
+    monkeypatch.setattr(gmanage, 'grid_from_config', fake_grid_from_config)
+
+    res = runner.invoke(cli.grid, ['-c', str(cfg), '--dry-run'])
+    assert res.exit_code == 0
+    assert len(received) == 1
+    assert received[0][1] is True
 
 
 @pytest.mark.unit

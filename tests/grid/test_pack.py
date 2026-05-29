@@ -13,6 +13,7 @@ Testing standards:
 
 from __future__ import annotations
 
+import logging
 from zipfile import ZipFile
 
 import pytest
@@ -209,3 +210,57 @@ def test_pack_replaces_existing_zip_on_rerun(tmp_path):
     assert new_size > old_size + 100
     with ZipFile(old_zip, 'r') as zf:
         assert len(zf.namelist()) > 0
+
+
+# ---------------------------------------------------------------------------
+# pack: robustness to incomplete grids and many restart logs
+# ---------------------------------------------------------------------------
+
+
+def test_pack_tolerates_missing_top_level_file(tmp_path, caplog):
+    """A grid that is missing one top-level file (here copy.grid.toml, which
+    is only written when a grid config was supplied) must still pack: the
+    missing file is skipped with a warning, the rest are copied.
+
+    Discrimination: a regression without the guard would raise
+    FileNotFoundError on the absent file and produce no pack/ contents at
+    all; here the two present top-level files must still be copied.
+    """
+    grid = _make_grid_with_cases(tmp_path, n_cases=1)
+    (grid / 'copy.grid.toml').unlink()  # simulate a grid run without a grid config
+
+    with caplog.at_level(logging.WARNING, logger='fwl'):
+        result = pack_mod.pack(str(grid), zip=False)
+
+    pack_dir = grid / 'pack'
+    assert result is True
+    # The present top-level files are still copied...
+    assert (pack_dir / 'manager.log').exists()
+    assert (pack_dir / 'ref_config.toml').exists()
+    # ...the missing one is absent and a warning names it.
+    assert not (pack_dir / 'copy.grid.toml').exists()
+    assert 'copy.grid.toml' in caplog.text
+
+
+def test_pack_copies_all_proteus_segment_logs(tmp_path):
+    """Every proteus_*.log segment is packed, regardless of how many restarts
+    a case went through. A run with 100+ segments produces three-digit names
+    (proteus_100.log) that a fixed two-digit range(100) sweep would miss.
+
+    Discrimination: assert that both a single-digit-padded early log and a
+    three-digit late log are copied; the old hardcoded list would copy the
+    former but never the latter.
+    """
+    grid = _make_grid_with_cases(tmp_path, n_cases=1, with_plots=False)
+    case = grid / 'case_000000'
+    # case already has proteus_00.log; add a late, three-digit segment.
+    (case / 'proteus_05.log').write_text('seg-5', encoding='utf-8')
+    (case / 'proteus_100.log').write_text('seg-100', encoding='utf-8')
+
+    pack_mod.pack(str(grid), zip=False)
+
+    case_dest = grid / 'pack' / 'case_000000'
+    assert (case_dest / 'proteus_00.log').exists()
+    assert (case_dest / 'proteus_05.log').exists()
+    # The three-digit segment must be present: this is the bug the glob fixes.
+    assert (case_dest / 'proteus_100.log').exists()

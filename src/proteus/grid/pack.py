@@ -1,4 +1,4 @@
-# Check the status of a PROTEUS parameter grid's cases
+# Package the most important results of a PROTEUS parameter grid into one archive
 from __future__ import annotations
 
 import logging
@@ -32,7 +32,10 @@ def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = Tru
     # copy top-level files in grid output folder
     log.info('Copy top-level files...')
     for tf in ['manager.log', 'ref_config.toml', 'copy.grid.toml']:
-        copyfile(os.path.join(grid, tf), os.path.join(pack, tf))
+        try:
+            copyfile(os.path.join(grid, tf), os.path.join(pack, tf))
+        except FileNotFoundError:
+            log.warning("Top-level file '%s' not found; skipping", tf)
 
     # copy per-case data
     log.info('Copy results for each grid point...')
@@ -44,12 +47,15 @@ def pack(grid: str, plots: bool = True, zip: bool = True, rmdir_pack: bool = Tru
 
         # lower level files
         llfs = ['runtime_helpfile.csv', 'init_coupler.toml', 'status']
-        llfs.extend([f'proteus_{i:02d}.log' for i in range(100)])
         for lf in llfs:
             try:
                 copyfile(os.path.join(case, lf), os.path.join(dest, lf))
             except FileNotFoundError:
                 pass
+
+        # proteus segment logs (any number of restarts, not just the first 100)
+        for lf in glob('proteus_*.log', root_dir=case):
+            copyfile(os.path.join(case, lf), os.path.join(dest, lf))
 
         # plots directory
         if plots:

@@ -197,3 +197,51 @@ def test_summarise_prints_help_message_for_unmatched_status(tmp_path, caplog):
 
     assert result is False
     assert 'Invalid status category' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Robustness: non-contiguous case folders and malformed status files
+# ---------------------------------------------------------------------------
+
+
+def test_summarise_handles_noncontiguous_case_folders(tmp_path, caplog):
+    """Case folders need not be numbered 0..N-1: after a failed case is
+    deleted the remaining folders have gaps (here 0, 2, 5). summarise must
+    read the folders that exist and report cases by their real index.
+
+    Discrimination: a regression that reconstructed paths as case_%06d for
+    i in range(N) would raise FileNotFoundError on the absent case_000001,
+    and would mislabel the error case (real index 5) as index 2.
+    """
+    grid = tmp_path / 'grid'
+    grid.mkdir()
+    for idx, code in [(0, 10), (2, 11), (5, 20)]:
+        case = grid / f'case_{idx:06d}'
+        case.mkdir()
+        (case / 'status').write_text(f'{code}\nsome-comment\n', encoding='utf-8')
+
+    with caplog.at_level(logging.INFO, logger='fwl'):
+        result = summarise_mod.summarise(str(grid), tgt_status='code=20')
+
+    assert result is True
+    assert 'Found 3 cases' in caplog.text
+    code20_section = caplog.text.split('Code 20 cases:')[1]
+    # The error case is at real index 5, never at a contiguous index 2.
+    assert 'Case 5    ' in code20_section
+    assert 'Case 2    ' not in code20_section
+
+
+def test_summarise_raises_on_empty_status_file(tmp_path):
+    """A present-but-empty status file (a truncated or partial write) raises
+    ValueError, distinct from the FileNotFoundError raised when the file is
+    absent entirely. Discrimination: reading lines[0] of an empty file would
+    otherwise raise an opaque IndexError rather than a named condition.
+    """
+    grid = tmp_path / 'grid'
+    grid.mkdir()
+    (grid / 'case_000000').mkdir()
+    (grid / 'case_000000' / 'status').write_text('', encoding='utf-8')
+
+    with pytest.raises(ValueError, match='Status file is empty') as exc:
+        summarise_mod.summarise(str(grid))
+    assert 'case_000000' in str(exc.value)
