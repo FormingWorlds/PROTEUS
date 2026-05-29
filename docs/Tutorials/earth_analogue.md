@@ -160,7 +160,6 @@ because of its lower solubility in silicate melt at IW+4.
   on cooling time.
 - **Reduced mantle**: Set `outgas.fO2_shift_IW = -2` to simulate a
   reduced mantle producing H$_2$-rich instead of H$_2$O-rich atmospheres.
-  See the [Reduced H$_2$-rich world](reduced_h2_world.md) tutorial.
 
 ---
 

@@ -32,9 +32,6 @@ nav:
   - Tutorials:
       - Quick start (all-dummy): Tutorials/quick_start_dummy.md
       - Earth analogue: Tutorials/earth_analogue.md
-      - Hot rocky super-Earth: Tutorials/hot_super_earth.md
-      - Reduced H2-rich world: Tutorials/reduced_h2_world.md
-      - Sub-Neptune: Tutorials/sub_neptune.md
       - Parameter grid sweep: Tutorials/parameter_grid.md
       - Solar System CHILI intercomparison: Tutorials/chili_intercomparison.md
 
