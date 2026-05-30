@@ -183,6 +183,7 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
     config.interior_energetics = MagicMock()
     config.interior_energetics.module = 'dummy'
     config.interior_struct = MagicMock()
+    config.interior_struct.core_frac_mode = 'radius'
     config.planet.mass_tot = 1.0  # 1 Earth mass target
     config.planet.R_int_override = None  # no manual radius override
     config.interior_energetics.spider = MagicMock()
@@ -220,11 +221,27 @@ def test_determine_interior_radius_calls_calc_target_elemental_inventories(tmp_p
         hf_row_arg['M_planet'] = hf_row_arg['M_int']  # no elements added in this fake run
         return 0.0, {'M_mantle': hf_row_arg['M_mantle'], 'M_core': hf_row_arg['M_core']}
 
+    # Patch the secant solver to exercise the residual once (so the
+    # structure-solve side effects run) and return a converged root, matching
+    # the test's intent of avoiding heavy iteration. fake_run_interior holds
+    # M_planet constant, so the real residual has no root and would not
+    # converge.
+    def fake_root_scalar(resid_func, **kwargs):
+        resid_func(kwargs['x0'])
+        result = MagicMock()
+        result.root = float(R_earth)
+        result.converged = True
+        return result
+
     with (
         patch(
             'proteus.interior_energetics.wrapper.run_interior', side_effect=fake_run_interior
         ) as mock_run,
         patch('proteus.outgas.calliope.calc_target_masses') as mock_calc_masses,
+        patch(
+            'proteus.interior_energetics.wrapper.optimise.root_scalar',
+            side_effect=fake_root_scalar,
+        ),
     ):
         # Call the function under test
         determine_interior_radius(dirs, config, hf_all, hf_row, str(tmp_path))
@@ -319,6 +336,7 @@ def _create_mock_config(
     config.interior_energetics.tmagma_rtol = tmagma_rtol
     config.interior_energetics.tmagma_atol = tmagma_atol
     config.interior_struct.core_frac = core_frac
+    config.interior_struct.core_frac_mode = 'radius'
     config.interior_struct.core_heatcap = core_heatcap
     config.interior_energetics.heat_tidal = heat_tidal
     return config

@@ -471,13 +471,11 @@ class AragogRunner:
         #   'gradient'       (gradient-based state)
         #   'bower2018'      (EXPERIMENTAL, not recommended)
         # Validation lives on the attrs schema (config._interior.Aragog).
+        # The attrs schema (config._interior.Aragog) already restricts
+        # core_bc to the four valid modes, so it is consumed directly here
+        # rather than re-checked with a silent fallback that could swap in a
+        # different core model.
         core_bc_str = config.interior_energetics.aragog.core_bc
-        if core_bc_str not in ('quasi_steady', 'energy_balance', 'gradient', 'bower2018'):
-            log.warning(
-                'Unknown core_bc=%r, falling back to quasi_steady',
-                core_bc_str,
-            )
-            core_bc_str = 'quasi_steady'
 
         boundary_conditions = _BoundaryConditionsParameters(
             # 4 = prescribed heat flux (PROTEUS coupling mode, from hf_row['F_atm'])
@@ -1712,6 +1710,7 @@ class AragogRunner:
             hf_row,
             interior_o=interior_o,
             surface_d=self._config.atmos_clim.surface_d,
+            surface_bc_mode=self._config.interior_energetics.surface_bc_mode,
         )
 
         # Store arrays on interior object for inter-module access.
@@ -1854,6 +1853,9 @@ class AragogRunner:
                     # Either way, we want to reject the result and retry
                     # with a smaller dt.
                     T_core_post = float(out.T_core)
+                    # T_core_pre is 0 only on the very first solve, before any
+                    # converged core temperature exists to compare against, so
+                    # the jump guard is necessarily inactive on that one step.
                     dT = abs(T_core_post - T_core_pre) if T_core_pre > 0 else 0.0
                     if dT > sanity_dT_core:
                         log.warning(
@@ -1879,14 +1881,24 @@ class AragogRunner:
                         return out
 
                 if attempt >= max_attempts:
+                    # status==0 here means CVODE accepted every step but each
+                    # result was rejected for an over-threshold T_core jump, so
+                    # report that reason rather than the misleading status=0.
+                    if out.status == 0:
+                        reason = (
+                            'status=0 but the T_core jump exceeded the '
+                            f'{sanity_dT_core:.0f} K sanity threshold on every attempt'
+                        )
+                    else:
+                        reason = f'CVODE status={out.status}'
                     log.error(
-                        'Aragog solver failed after %d attempts (final status=%d). '
+                        'Aragog solver failed after %d attempts (%s). '
                         'Raising RuntimeError so wrapper can apply skip-step fallback.',
                         attempt,
-                        out.status,
+                        reason,
                     )
                     raise RuntimeError(
-                        f'Aragog retry ladder exhausted: status={out.status} '
+                        f'Aragog retry ladder exhausted: {reason} '
                         f'after {attempt} attempts at t={hf_row.get("Time", 0.0):.3e} yr'
                     )
 
@@ -1943,6 +1955,7 @@ class AragogRunner:
         hf_row: dict,
         interior_o=None,
         surface_d: float = 0.0,
+        surface_bc_mode: str = 'flux',
     ) -> dict:
         """Build the PROTEUS helpfile dict from SolverOutput.
 
@@ -1956,6 +1969,14 @@ class AragogRunner:
             Interior object. When provided, tidal heating flux is
             computed from the tidal array (matching SPIDER's
             Htidal_s * mass_s / area convention).
+        surface_d : float, optional
+            Surface depth offset passed through to the output dict.
+        surface_bc_mode : str, optional
+            Interior surface boundary condition. In ``'flux'`` mode Aragog
+            is driven by ``F_atm``, so its integrated surface flux equals
+            ``F_atm``. In ``'grey_body'`` mode Aragog computes its own
+            surface flux, so ``F_int`` is taken from the surface heat-flux
+            node instead.
         """
         log.info(
             'Aragog entropy: T_surf=%.0f K, T_cmb=%.0f K, Phi=%.3f, status=%d',
@@ -2007,7 +2028,16 @@ class AragogRunner:
             'T_magma': out.T_magma,
             'Phi_global': out.Phi_global,
             'RF_depth': out.RF_depth,
-            'F_int': hf_row['F_atm'],
+            # In flux mode Aragog is driven by F_atm, so its integrated
+            # surface flux equals F_atm. In grey_body mode Aragog computes
+            # its own surface flux from emissivity*sigma*(T_surf^4 - T_eqm^4);
+            # report the surface basic-node heat flux it actually integrated
+            # so this column reflects the interior solver rather than the
+            # atmosphere. out.heat_flux is positive-outward (W/m^2), the same
+            # sign convention as F_atm.
+            'F_int': (
+                float(out.heat_flux[-1]) if surface_bc_mode == 'grey_body' else hf_row['F_atm']
+            ),
             'M_mantle_liquid': out.M_mantle_liquid,
             'M_mantle_solid': out.M_mantle_solid,
             'Phi_global_vol': out.Phi_global_vol,

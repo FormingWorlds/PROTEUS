@@ -2152,6 +2152,7 @@ def test_calculate_core_mass_matches_rho_v_for_known_rho_and_radius():
         interior_struct=SimpleNamespace(
             core_density=rho_core,
             core_frac=core_frac,
+            core_frac_mode='radius',
         )
     )
     hf_row = {'R_int': R_int}
@@ -2775,6 +2776,7 @@ def test_determine_interior_radius_uses_r_int_override(tmp_path):
     config.planet.mass_tot = 1.0
     config.interior_struct.core_density = 10738.0
     config.interior_struct.core_frac = 0.3
+    config.interior_struct.core_frac_mode = 'radius'
 
     hf_row = {'M_int': 4e24, 'R_int': 6.371e6, 'gravity': 9.81}
     dirs = {}
@@ -2818,12 +2820,14 @@ def test_determine_interior_radius_runs_secant_solver_without_override(tmp_path)
     config.planet.mass_tot = 1.0
     config.interior_struct.core_density = 10738.0
     config.interior_struct.core_frac = 0.3
+    config.interior_struct.core_frac_mode = 'radius'
 
     hf_row = {'M_int': 4e24, 'M_planet': 0.0, 'R_int': 6.371e6, 'gravity': 9.81}
     dirs = {}
 
     fake_root = MagicMock()
     fake_root.root = 6.5e6
+    fake_root.converged = True
 
     with (
         _patch('proteus.interior_energetics.wrapper._provide_spider_eos_tables'),

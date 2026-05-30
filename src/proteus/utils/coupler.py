@@ -925,7 +925,15 @@ def _populate_energy_residual(current_hf: pd.DataFrame, new_row: dict) -> None:
     dE_pred_cons_prev = float(prev.get('dE_predicted_cons_J', 0.0))
     dE_pred_cons_now = dE_pred_cons_prev + dE_inc_cons
 
-    e_state_cons_anchor = float(current_hf['E_state_cons_J'].iloc[0])
+    # Anchor the cumulative actual-energy change on the first populated
+    # E_state_cons_J. A 0.0 entry marks a row written before this column
+    # existed; anchoring on it would fold the entire absolute mantle enthalpy
+    # into the residual.
+    e_state_series = current_hf['E_state_cons_J']
+    valid_anchor = e_state_series[(e_state_series != 0.0) & np.isfinite(e_state_series)]
+    e_state_cons_anchor = float(
+        valid_anchor.iloc[0] if len(valid_anchor) > 0 else e_state_series.iloc[0]
+    )
     dE_actual_cons_now = e_state_cons_now - e_state_cons_anchor
     residual_cons_now = dE_actual_cons_now - dE_pred_cons_now
 

@@ -106,17 +106,23 @@ def _estimate_escape(hf_all: pd.DataFrame, i1: int, i2: int) -> float:
     p1 = h1['P_surf']
     p2 = h2['P_surf']
 
-    # Change in time and global melt frac
-    dt = h2['Time'] - h1['Time']
-    dp = p2 - p1
-
-    # Estimate how long Δt until p=0
-    if abs(dp / p2) < SMALL:
-        # already escaped
+    # Check if the atmosphere has already escaped (guards the dp/p2 division
+    # below, which is 0/0 -> nan when P_surf reaches exactly zero).
+    if p2 < SMALL:
         dt_escape = np.inf
+
     else:
-        #  dp/dt * Δt + p2 = 0    ->   Δt = -p2/(dp/dt)
-        dt_escape = abs(-1.0 * p2 / (dp / dt))
+        # Change in time and surface pressure
+        dt = h2['Time'] - h1['Time']
+        dp = p2 - p1
+
+        # Estimate how long Δt until p=0
+        if abs(dp / p2) < SMALL:
+            # already escaped
+            dt_escape = np.inf
+        else:
+            #  dp/dt * Δt + p2 = 0    ->   Δt = -p2/(dp/dt)
+            dt_escape = abs(-1.0 * p2 / (dp / dt))
 
     log.debug('Escape expected in %.3e yrs' % dt_escape)
 

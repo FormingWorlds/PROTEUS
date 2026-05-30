@@ -116,7 +116,21 @@ def _prevent_warming_clamp_active(config: Config) -> bool:
 def calculate_core_mass(hf_row: dict, config: Config):
     """
     Calculate the core mass of the planet.
+
+    ``core_frac`` is cubed as a fraction of the planet radius, so this is
+    only valid when ``core_frac_mode == 'radius'``. The only structure
+    path that reaches this function is ``interior_struct.module ==
+    'spider'``, for which the config validator rejects
+    ``core_frac_mode = 'mass'``. The guard below makes that dependency
+    explicit so a relaxed validator cannot silently cube a mass fraction
+    as a radius fraction.
     """
+    if config.interior_struct.core_frac_mode != 'radius':
+        raise RuntimeError(
+            'calculate_core_mass cubes core_frac as a radius fraction, but '
+            'core_frac_mode=%r; this path requires radius mode.'
+            % config.interior_struct.core_frac_mode
+        )
     rho_core = get_core_density(config, hf_row)
     hf_row['M_core'] = (
         rho_core
@@ -917,6 +931,15 @@ def determine_interior_radius(
         x0=hf_row['R_int'],
         x1=hf_row['R_int'] * 1.5,
     )
+    # A non-converged secant (flat residual, EOS clamp, or NaN inside _resid)
+    # would otherwise propagate a garbage radius into calculate_core_mass and
+    # the rest of the trajectory. Hard-fail instead, as the Zalmoxis path does
+    # on a mass-anchor violation.
+    if not r.converged or not np.isfinite(r.root) or r.root <= 0.0:
+        raise RuntimeError(
+            'Interior radius secant solve failed: converged=%s, root=%r, flag=%r'
+            % (r.converged, r.root, getattr(r, 'flag', None))
+        )
     hf_row['R_int'] = float(r.root)
     calculate_core_mass(hf_row, config)
     run_interior(dirs, config, hf_all, hf_row, int_o)

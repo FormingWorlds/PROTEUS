@@ -164,20 +164,26 @@ class AragogJAXRunner:
                 tfac_core_avg=bc.tfac_core_avg,
             )
 
-        # Heating (radionuclide + tidal, computed from numpy solver's config)
+        # Heating (radionuclide + tidal), accumulated separately so the
+        # output can report F_radio and F_tidal as distinct surface fluxes
+        # rather than folding tidal heating into the radiogenic column.
         n_stag = len(S0)
-        heating_np = np.zeros(n_stag)
+        radio_np = np.zeros(n_stag)
+        tidal_np = np.zeros(n_stag)
         if self._config.interior_energetics.heat_radiogenic:
             for r in solver.parameters.radionuclides:
-                heating_np += r.get_heating(t_start)
+                radio_np += r.get_heating(t_start)
         if self._config.interior_energetics.heat_tidal:
             tides = getattr(interior_o, 'tides', [0.0])
             if len(tides) == 1:
-                heating_np += tides[0]
+                tidal_np += tides[0]
             elif len(tides) == n_stag:
-                heating_np += np.array(tides)
+                tidal_np += np.array(tides)
+        heating_np = radio_np + tidal_np
         heating = jnp.asarray(heating_np)
-        self._last_heating = heating_np  # store for _extract_output
+        self._last_heating = heating_np  # combined, used by _write_ncdf
+        self._last_radio = radio_np  # stored for _extract_output
+        self._last_tidal = tidal_np
 
         # Solve. rtol/atol come from the top-level
         # interior_energetics fields.
@@ -297,14 +303,17 @@ class AragogJAXRunner:
         # Thermal energy: E_th = sum(mass_i * Cp_i * T_i)
         E_th = float(np.sum(mass * Cp_arr * T))
 
-        # Heating flux (radionuclide + tidal combined)
-        heating_np = (
-            np.asarray(self._last_heating)
-            if hasattr(self, '_last_heating')
-            else np.zeros_like(T)
+        # Heating fluxes (radiogenic and tidal), reported as separate
+        # surface-equivalent fluxes [W/m^2].
+        radio_np = (
+            np.asarray(self._last_radio) if hasattr(self, '_last_radio') else np.zeros_like(T)
+        )
+        tidal_np = (
+            np.asarray(self._last_tidal) if hasattr(self, '_last_tidal') else np.zeros_like(T)
         )
         area_surf = 4 * np.pi * float(r_basic[-1]) ** 2
-        F_heat_total = float(np.dot(heating_np, mass)) / area_surf
+        F_radio = float(np.dot(radio_np, mass)) / area_surf
+        F_tidal = float(np.dot(tidal_np, mass)) / area_surf
 
         # Store arrays on interior_o. Radius in metres (SI), matching
         # SPIDER's convention. See aragog.py:971 for the rationale.
@@ -337,8 +346,8 @@ class AragogJAXRunner:
             'T_core': T_core,
             'E_th_mantle': E_th,
             'Cp_eff': Cp_eff,
-            'F_radio': F_heat_total,
-            'F_tidal': 0.0,
+            'F_radio': F_radio,
+            'F_tidal': F_tidal,
         }
 
     def _write_ncdf(self, output_dir: str, time: float, result):
