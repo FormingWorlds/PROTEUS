@@ -866,6 +866,11 @@ def determine_interior_radius(
         hf_row['gravity'] = 9.81
         run_interior(dirs, config, hf_all, hf_row, int_o)
         update_gravity(hf_row)
+        # Refresh the volatile inventory and total planet mass so the override
+        # path leaves hf_row in the same state as the root-finder and the dummy
+        # and Zalmoxis structure paths, which all populate M_ele and M_planet.
+        calc_target_elemental_inventories(dirs, config, hf_row)
+        update_planet_mass(hf_row)
         log.info('R_int: %.1e m  = %.3f R_earth', hf_row['R_int'], hf_row['R_int'] / R_earth)
         return
 

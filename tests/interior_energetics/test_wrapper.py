@@ -2787,11 +2787,16 @@ def test_determine_interior_radius_uses_r_int_override(tmp_path):
         ) as mock_provide,
         _patch('proteus.interior_energetics.wrapper.run_interior'),
         _patch('proteus.interior_energetics.wrapper.update_gravity'),
+        _patch('proteus.interior_energetics.wrapper.calc_target_elemental_inventories'),
+        _patch('proteus.interior_energetics.wrapper.update_planet_mass') as mock_mass,
     ):
         determine_interior_radius(dirs, config, None, hf_row, str(tmp_path))
 
     # R_int_override pinned the radius.
     assert hf_row['R_int'] == pytest.approx(5.5e6, rel=1e-12)
+    # The override path refreshes the planet mass like the other structure
+    # paths, rather than leaving M_ele / M_planet stale.
+    mock_mass.assert_called_once()
     # Aragog dispatch invoked the EOS-table provider.
     mock_provide.assert_called_once()
     # Discrimination: a regression that ignored R_int_override would have

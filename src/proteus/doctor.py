@@ -9,6 +9,7 @@ commands and offers to run them.
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
 import json
 import os
 import shlex
@@ -142,6 +143,43 @@ def _editable_checkout_path(dist_name: str) -> str | None:
     if not url.startswith('file://'):
         return None
     return unquote(urlparse(url).path)
+
+
+def _imported_package_dir(dist_name: str) -> str | None:
+    """Return the directory of the package that ``import`` would actually load
+    for a distribution, or None if it cannot be resolved.
+
+    Uses ``importlib.util.find_spec`` so the module is located on ``sys.path``
+    without being imported (no side effects, no heavy submodule init). This
+    lets the editable-install annotation be cross-checked against the package
+    that is really on the path: a later ``pip install <pin>`` can shadow an
+    editable sibling while leaving its ``direct_url.json`` metadata in place.
+    """
+    import_name = None
+    try:
+        top = importlib.metadata.distribution(dist_name).read_text('top_level.txt')
+        if top:
+            import_name = top.strip().splitlines()[0].strip()
+    except (PackageNotFoundError, OSError):
+        return None
+    if not import_name:
+        # Fall back to the reverse import-name -> distribution map.
+        try:
+            for imp, dists in importlib.metadata.packages_distributions().items():
+                if dist_name in dists:
+                    import_name = imp
+                    break
+        except Exception:
+            return None
+    if not import_name:
+        return None
+    try:
+        spec = importlib.util.find_spec(import_name)
+    except (ImportError, ValueError, ModuleNotFoundError):
+        return None
+    if spec is None or not spec.origin:
+        return None
+    return os.path.dirname(spec.origin)
 
 
 def _git_head(path: str) -> str | None:
@@ -323,6 +361,21 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
         else:
             marker = ''
         annotation = f' [editable @ {base} -> {short}{marker}]'
+        # Cross-check that the editable checkout is the package actually on
+        # sys.path. A later `pip install <pin>` can shadow the editable sibling
+        # while leaving its direct_url metadata in place, so the checkout
+        # annotation would otherwise describe a tree that is not imported.
+        imported_dir = _imported_package_dir(name)
+        if imported_dir:
+            real_imported = os.path.realpath(imported_dir)
+            real_checkout = os.path.realpath(checkout)
+            under_checkout = real_imported == real_checkout or real_imported.startswith(
+                real_checkout + os.sep
+            )
+            if not under_checkout:
+                annotation = (
+                    f' [editable record @ {base}{marker}, but importing from {imported_dir}]'
+                )
 
     # Check against pyproject.toml minimum bound
     if spec and spec.specifier:

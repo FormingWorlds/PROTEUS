@@ -45,7 +45,15 @@ def _should_apply_deterministic(argv, environ) -> bool:
 
 if _should_apply_deterministic(sys.argv, os.environ):
     _apply_deterministic_env(os.environ)
-    os.execvp(sys.argv[0], sys.argv)
+    # Re-exec so the env vars take effect before JAX is imported. The form
+    # depends on how PROTEUS was launched: the `proteus` console script puts
+    # an executable launcher in argv[0] that can be re-run directly, whereas
+    # `python -m proteus.cli` runs this file as __main__ with the module path
+    # in argv[0], which is not directly executable and must be re-run via -m.
+    if __name__ == '__main__':
+        os.execv(sys.executable, [sys.executable, '-m', 'proteus.cli', *sys.argv[1:]])
+    else:
+        os.execvp(sys.argv[0], sys.argv)
 
 import shutil  # noqa: E402
 import subprocess  # noqa: E402

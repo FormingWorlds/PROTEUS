@@ -211,11 +211,47 @@ class TestCheckPythonPackage:
             ),
             patch('proteus.doctor._git_short_head', return_value='d051902'),
             patch('proteus.doctor._git_dirty', return_value=False),
+            # Imported package lives under the editable checkout, so the
+            # annotation keeps the checkout/hash form.
+            patch(
+                'proteus.doctor._imported_package_dir',
+                return_value='/tmp/aragog/aragog',
+            ),
         ):
             r = check_python_package('fwl-aragog', spec)
         assert r.status == PASS
         assert 'editable' in r.message
         assert 'd051902' in r.message
+        # The import matches the checkout, so no shadow warning is shown.
+        assert 'importing from' not in r.message
+
+    def test_editable_annotation_flags_shadowed_import(self):
+        """When a non-editable install shadows the editable sibling on the
+        import path, the annotation reports the imported location instead of
+        silently trusting the editable checkout metadata."""
+        from packaging.requirements import Requirement
+
+        spec = Requirement('fwl-aragog>=26.05.13')
+        with (
+            patch('proteus.doctor.importlib.metadata.version', return_value='26.5.13'),
+            patch(
+                'proteus.doctor._editable_checkout_path',
+                return_value='/tmp/aragog',
+            ),
+            patch('proteus.doctor._git_short_head', return_value='d051902'),
+            patch('proteus.doctor._git_dirty', return_value=False),
+            # Imported package is in site-packages, NOT under the checkout.
+            patch(
+                'proteus.doctor._imported_package_dir',
+                return_value='/usr/lib/python3.12/site-packages/aragog',
+            ),
+        ):
+            r = check_python_package('fwl-aragog', spec)
+        assert r.status == PASS
+        assert 'importing from' in r.message
+        assert 'site-packages/aragog' in r.message
+        # The misleading checkout->hash form is replaced, not appended.
+        assert 'editable @' not in r.message
 
 
 def _init_test_repo(path):
