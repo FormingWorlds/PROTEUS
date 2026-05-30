@@ -5,6 +5,21 @@ import warnings
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
+# Default relative tolerance for the interior ODE solver. ``rtol`` and its
+# deprecated alias ``num_tolerance`` default to a sentinel so that "left at
+# the default" can be told apart from "explicitly set to the default value";
+# both resolve to this in Interior.__attrs_post_init__ when unset.
+_DEFAULT_RTOL = 1e-10
+_TOL_UNSET = -1.0
+
+
+def _gt0_or_unset(instance, attribute, value):
+    """Allow the unset sentinel; otherwise require a positive value."""
+    if value == _TOL_UNSET:
+        return
+    if value <= 0:
+        raise ValueError(f'`{attribute.name}` must be greater than 0, got {value}')
+
 
 def valid_spider(instance, attribute, value):
     if instance.module != 'spider':
@@ -378,11 +393,16 @@ class Interior:
     # Unified ODE tolerance: both SPIDER and Aragog read from here.
     # num_tolerance is a deprecated alias (emits DeprecationWarning).
     # matprop_smooth_width lives on the Spider subclass but is read by both solvers.
-    rtol: float = field(default=1e-10, validator=gt(0))
+    #
+    # rtol and num_tolerance default to a sentinel so that an explicit
+    # value equal to the resolved default is not mistaken for "unset".
+    # Both resolve to _DEFAULT_RTOL in __attrs_post_init__.
+    rtol: float = field(default=_TOL_UNSET, validator=_gt0_or_unset)
     """Relative numerical tolerance for the interior ODE solver.
     SPIDER: -ts_sundials_rtol (used internally via atol_sf scaling).
     Aragog: scipy solve_ivp rtol. The deprecated aliases num_tolerance and
-    [interior_energetics.spider].tolerance_rel copy into this field."""
+    [interior_energetics.spider].tolerance_rel copy into this field.
+    Resolves to 1e-10 when left unset."""
 
     atol: float = field(default=1e-10, validator=gt(0))
     """Absolute numerical tolerance for the interior ODE solver.
@@ -392,8 +412,8 @@ class Interior:
     a direct entropy-scale atol would be unintuitive to tune."""
 
     # Deprecated alias for rtol. Emits DeprecationWarning when set to a
-    # non-default value; will be removed in a future release.
-    num_tolerance: float = field(default=1e-10, validator=gt(0))
+    # positive value; will be removed in a future release.
+    num_tolerance: float = field(default=_TOL_UNSET, validator=_gt0_or_unset)
 
     trans_conduction: bool = field(default=True)
     trans_convection: bool = field(default=True)
@@ -588,20 +608,25 @@ class Interior:
           and a ``DeprecationWarning`` is emitted.
         - If both are set to the same value, the alias is silently
           ignored (the user is in a clean state).
-        - If both are set to DISTINCT non-default values, ``ValueError``
-          is raised because we cannot guess which one the user meant.
+        - If both are set to DISTINCT values, ``ValueError`` is raised
+          because we cannot guess which one the user meant.
+
+        "Set" is detected via a sentinel default, so an explicit value
+        equal to the resolved default still counts as set and is not
+        overridden by an alias.
 
         All aliases will be removed in a future release.
         """
-        _default_rtol = 1e-10
+        # Whether each field was supplied is tracked via the sentinel
+        # default, not by value-comparison against the resolved default.
+        num_tol_set = self.num_tolerance != _TOL_UNSET
+        rtol_set = self.rtol != _TOL_UNSET
 
         # --- num_tolerance (top-level) -> rtol ---
-        num_tol_set = self.num_tolerance != _default_rtol
-        rtol_set = self.rtol != _default_rtol
         if num_tol_set and rtol_set and self.num_tolerance != self.rtol:
             raise ValueError(
                 'interior_energetics.num_tolerance and .rtol are both '
-                'set to distinct non-default values '
+                'set to distinct values '
                 f'(num_tolerance={self.num_tolerance}, rtol={self.rtol}). '
                 'num_tolerance is deprecated; set rtol only.'
             )
@@ -617,7 +642,7 @@ class Interior:
             rtol_set = True
 
         # --- spider.tolerance_rel -> rtol ---
-        spider_tol = float(getattr(self.spider, 'tolerance_rel', -1.0))
+        spider_tol = float(getattr(self.spider, 'tolerance_rel', _TOL_UNSET))
         if spider_tol > 0:
             if rtol_set and spider_tol != self.rtol:
                 raise ValueError(
@@ -627,12 +652,20 @@ class Interior:
                     f'{self.rtol}). Remove the [interior_energetics.spider] '
                     'section and set rtol at the top level.'
                 )
-            warnings.warn(
-                'interior_energetics.spider.tolerance_rel is deprecated; '
-                'use interior_energetics.rtol at the top level instead. '
-                'The value is copied to rtol. This alias will be removed '
-                'in a future release.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
+            # Only warn and copy when the alias actually changes rtol;
+            # an alias equal to an explicit rtol is a silent no-op.
+            if not (rtol_set and spider_tol == self.rtol):
+                warnings.warn(
+                    'interior_energetics.spider.tolerance_rel is deprecated; '
+                    'use interior_energetics.rtol at the top level instead. '
+                    'The value is copied to rtol. This alias will be removed '
+                    'in a future release.',
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
             object.__setattr__(self, 'rtol', spider_tol)
+            rtol_set = True
+
+        # Resolve the sentinel to the real default if nothing set rtol.
+        if not rtol_set:
+            object.__setattr__(self, 'rtol', _DEFAULT_RTOL)
