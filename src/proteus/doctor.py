@@ -168,8 +168,10 @@ def _git_short_head(path: str) -> str | None:
         return None
 
 
-def _git_dirty(path: str) -> bool:
-    """Return True if the git working tree has uncommitted changes."""
+def _git_dirty(path: str) -> bool | None:
+    """Return True if the git working tree has uncommitted changes, False if it
+    is clean, or None if the git status could not be determined (not a git
+    repository, git missing, or a git error)."""
     try:
         out = subprocess.check_output(
             ['git', '-C', path, 'status', '--porcelain'],
@@ -178,7 +180,7 @@ def _git_dirty(path: str) -> bool:
         )
         return bool(out.strip())
     except (FileNotFoundError, subprocess.CalledProcessError):
-        return False
+        return None
 
 
 def _julia_version() -> str | None:
@@ -314,7 +316,12 @@ def check_python_package(name: str, spec: Requirement | None) -> CheckResult:
         short = _git_short_head(checkout)
         dirty = _git_dirty(checkout)
         base = os.path.basename(checkout.rstrip('/'))
-        marker = ' (dirty)' if dirty else ''
+        if dirty is None:
+            marker = ' (git status unknown)'
+        elif dirty:
+            marker = ' (dirty)'
+        else:
+            marker = ''
         annotation = f' [editable @ {base} -> {short}{marker}]'
 
     # Check against pyproject.toml minimum bound

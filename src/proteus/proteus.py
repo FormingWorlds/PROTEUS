@@ -883,27 +883,30 @@ class Proteus:
                     self.hf_row['P_surf'] = self.hf_row['P_solvus'] * 1e-5  # Pa -> bar
                     self.hf_row['R_int'] = R_sol
 
-            run_atmosphere(
-                self.atmos_o,
-                self.config,
-                self.directories,
-                self.loops,
-                self.star_wl,
-                self.star_fl,
-                update_stellar_spectrum,
-                self.hf_all,
-                self.hf_row,
-            )
+            try:
+                run_atmosphere(
+                    self.atmos_o,
+                    self.config,
+                    self.directories,
+                    self.loops,
+                    self.star_wl,
+                    self.star_fl,
+                    update_stellar_spectrum,
+                    self.hf_all,
+                    self.hf_row,
+                )
+            finally:
+                # Restore the overridden hf_row values even if the atmosphere
+                # step raises, so a caught exception cannot leave the row in
+                # the solvus frame for the rest of the iteration.
+                if _saved_atm_bc:
+                    for key, val in _saved_atm_bc.items():
+                        self.hf_row[key] = val
 
-            # Restore original boundary values if they were overridden
-            if _saved_atm_bc:
-                for key, val in _saved_atm_bc.items():
-                    self.hf_row[key] = val
-
-            # Restore raw T_magma if it was overridden for the atmosphere
-            T_raw = self.hf_row.pop('_T_magma_raw', None)
-            if T_raw is not None:
-                self.hf_row['T_magma'] = T_raw
+                # Restore raw T_magma if it was overridden for the atmosphere
+                T_raw = self.hf_row.pop('_T_magma_raw', None)
+                if T_raw is not None:
+                    self.hf_row['T_magma'] = T_raw
 
             # Update the resume T_surf anchor with the new coupled value,
             # unless the solvus override was active (in which case T_surf

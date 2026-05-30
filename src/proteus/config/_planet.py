@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attr.validators import ge, gt, in_
+from attr.validators import ge, gt, in_, optional
 from attrs import define, field
 
 from ._converters import none_if_none
@@ -305,8 +305,9 @@ class Planet:
     # Needed for SPIDER/Aragog parity runs where the two energetics
     # modules have different Adams-Williamson density implementations.
     # Set to the SPIDER run's R_int (in meters) to force both codes
-    # onto the same mesh. Default None = use the root finder.
-    R_int_override = field(default='none', converter=none_if_none)
+    # onto the same mesh. Default None = use the root finder. A supplied
+    # value must be a positive radius in metres.
+    R_int_override = field(default='none', converter=none_if_none, validator=optional(gt(0)))
 
     # Cooling constraint
     prevent_warming: bool = field(default=False)

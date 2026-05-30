@@ -738,7 +738,7 @@ def update_agni_atmos(atmos, hf_row: dict, dirs: dict, config: Config):
     # ---------------------
     # Update surface pressure [Pa] and generate new grid
     atmos.p_oboa = 1.0e5 * float(hf_row['P_surf'])
-    atmos.p_boa = atmos.p_boa
+    atmos.p_boa = atmos.p_oboa
     jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
     # ---------------------
@@ -1097,7 +1097,9 @@ def run_agni(atmos, loops_total: int, dirs: dict, config: Config, hf_row: dict):
     LW_flux_up = np.array(atmos.flux_u_lw)
     SW_flux_up = np.array(atmos.flux_u_sw)
     SW_flux_down = np.array(atmos.flux_d_sw)
-    albedo = SW_flux_up[0] / SW_flux_down[0]
+    # Guard against zero instellation (nightside or F_ins=0), where there is no
+    # downward shortwave flux to reflect and the albedo ratio is undefined.
+    albedo = SW_flux_up[0] / SW_flux_down[0] if SW_flux_down[0] > 0.0 else 0.0
     if bool(atmos.transparent):
         R_obs = float(hf_row['R_int'])
         T_obs = float(atmos.tmp_surf)

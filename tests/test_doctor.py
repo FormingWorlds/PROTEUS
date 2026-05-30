@@ -264,6 +264,11 @@ class TestGitHelpers:
         (tmp_path / 'f.txt').write_text('changed')
         assert _git_dirty(str(tmp_path)) is True
 
+    def test_git_dirty_none_for_non_repo(self, tmp_path):
+        """Non-repo path returns None so the caller can mark the dirty state
+        as unknown rather than silently reporting a clean tree."""
+        assert _git_dirty(str(tmp_path)) is None
+
 
 class TestEditableCheckoutPath:
     """PEP 610 editable install detection."""

@@ -139,7 +139,11 @@ def _build_profiles(hf_row, config, num_levels=50):
         # Subtract from parent to conserve atoms (approximate)
         profiles[parent] = np.maximum(profiles[parent] - photo_vmr, 0.0)
 
-    # Normalize VMRs to sum to 1 at each level
+    # Normalize VMRs to sum to 1 at each level. This renormalization is the
+    # authoritative final step and partially rescales the cold-trap reduction
+    # and the photolysis atom-subtraction above, so those are qualitative
+    # shape adjustments for this parameterised model rather than conserved
+    # physics.
     total = np.zeros(num_levels)
     for sp in _ALL_SPECIES:
         total += profiles[sp]
