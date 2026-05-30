@@ -117,6 +117,12 @@ config_version = "3.0"
 
     # Redox and oxygen budget
     fO2_source                = "user_constant"  # user_constant | from_O_budget (authoritative O accounting)
+    # fO2_source = "from_O_budget" makes the O budget authoritative and
+    # derives the IW offset from it. It requires planet.elements.O_mode in
+    # {ppmw, kg, FeO_mantle_wt_pct} with a nonzero O_budget, volatile_mode
+    # = "elements", and outgas.module in {calliope, atmodeller} (not
+    # dummy). With this source, outgas.fO2_shift_IW is consumed only as
+    # the solver's initial fO2 guess.
 
     # Initial volatile inventory
     volatile_mode             = 'elements'   # set volatile inventory by: 'elements' | 'gas_prs'

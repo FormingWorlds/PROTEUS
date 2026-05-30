@@ -523,7 +523,7 @@ def test_fO2_source_from_mantle_redox_rejected_as_reserved():
 
 @pytest.mark.unit
 def test_fO2_source_from_O_budget_rejects_ic_chemistry():
-    """Path C (from_O_budget) cannot use O_mode = ic_chemistry because
+    """from_O_budget (from_O_budget) cannot use O_mode = ic_chemistry because
     ic_chemistry defers O to the chemistry solver, leaving nothing to
     invert against.
     """
@@ -545,8 +545,8 @@ def test_fO2_source_from_O_budget_rejects_ic_chemistry():
 
 @pytest.mark.unit
 def test_fO2_source_from_O_budget_rejects_gas_prs_volatile_mode():
-    """Path C requires volatile_mode = "elements"; gas_prs makes the
-    element budgets inert and Path C has no target to invert against.
+    """from_O_budget requires volatile_mode = "elements"; gas_prs makes the
+    element budgets inert and from_O_budget has no target to invert against.
     """
     instance = _make_config_instance(
         **{
@@ -568,7 +568,7 @@ def test_fO2_source_from_O_budget_rejects_gas_prs_volatile_mode():
 
 @pytest.mark.unit
 def test_fO2_source_from_O_budget_rejects_dummy_outgas():
-    """Path C requires an outgassing backend with an authoritative-O
+    """from_O_budget requires an outgassing backend with an authoritative-O
     implementation; dummy has no chemistry to invert against.
     """
     instance = _make_config_instance(
@@ -590,9 +590,10 @@ def test_fO2_source_from_O_budget_rejects_dummy_outgas():
 
 @pytest.mark.unit
 def test_fO2_source_from_O_budget_warns_when_fO2_shift_IW_set():
-    """Path C derives the buffer offset from the O budget, so a
-    user-supplied fO2_shift_IW is silently ignored at runtime; surface
-    this as a UserWarning at config load.
+    """from_O_budget derives the buffer offset from the O budget, so a
+    user-supplied fO2_shift_IW is used only as the solver's initial
+    guess, not as the buffered offset; surface this as a UserWarning at
+    config load.
     """
     instance = _make_config_instance(
         **{
@@ -602,20 +603,20 @@ def test_fO2_source_from_O_budget_warns_when_fO2_shift_IW_set():
             'outgas.fO2_shift_IW': 4.0,
         }
     )
-    with pytest.warns(UserWarning, match=r'will be ignored at runtime') as warns:
+    with pytest.warns(UserWarning, match=r'used only as the solver initial fO2 guess') as warns:
         planet_fO2_source_compat(instance, None, None)
     # Exactly one warning must fire (not two, not zero).
     assert len(warns) == 1
     # Discrimination: the warning must echo the offending numeric value so the
     # user can locate it in their TOML. A regression that emitted a generic
-    # "fO2_shift_IW will be ignored" without the value would fail.
+    # message without the value would fail.
     msg = str(warns[0].message)
     assert '4.0' in msg or '4.000' in msg
 
 
 @pytest.mark.unit
 def test_fO2_source_from_O_budget_silent_when_fO2_shift_IW_zero():
-    """Default fO2_shift_IW = 0 under Path C is silent (no spurious warning)."""
+    """Default fO2_shift_IW = 0 under from_O_budget is silent (no spurious warning)."""
     import warnings
 
     instance = _make_config_instance(
@@ -629,9 +630,11 @@ def test_fO2_source_from_O_budget_silent_when_fO2_shift_IW_zero():
     with warnings.catch_warnings():
         warnings.simplefilter('error')  # any warning becomes an error
         result = planet_fO2_source_compat(instance, None, None)
-    assert result is None  # contract: Path C + zero shift is silent (no warning, no raise)
+    assert (
+        result is None
+    )  # contract: from_O_budget + zero shift is silent (no warning, no raise)
     # Discriminating check: fO2_shift_IW must be exactly zero. Any non-zero value
-    # under Path C would have produced the 'will be ignored at runtime' UserWarning
+    # under from_O_budget would have produced the solver-initial-guess UserWarning
     # (which `simplefilter('error')` would have re-raised).
     assert instance.outgas.fO2_shift_IW == pytest.approx(0.0, abs=1e-12)
 

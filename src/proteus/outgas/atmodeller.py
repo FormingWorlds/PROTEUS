@@ -230,6 +230,12 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
 
     if not mass_constraints:
         log.warning('No volatile element budgets above threshold; skipping atmodeller')
+        if fO2_source == 'from_O_budget':
+            # No solve ran, so the derived buffer offset is undefined.
+            # Leaving the user pre-seed in place would misrecord a skipped
+            # solve as "equilibrated at the user offset".
+            hf_row['fO2_shift_IW_derived'] = float('nan')
+            hf_row['O_res'] = float('nan')
         return
 
     if fO2_source == 'from_O_budget' and 'O' not in mass_constraints:
@@ -247,6 +253,11 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
             T_magma,
             config.outgas.T_floor,
         )
+        if fO2_source == 'from_O_budget':
+            # No solve ran; mark the derived offset undefined rather than
+            # leaving the user pre-seed (see the no-volatiles branch above).
+            hf_row['fO2_shift_IW_derived'] = float('nan')
+            hf_row['O_res'] = float('nan')
         return
 
     log.info(
@@ -424,7 +435,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
                     e,
                     hf_row.get('fO2_shift_IW_derived', float('nan')),
                 )
-        # O mass-balance residual: target - (atmospheric O + dissolved O).
+        # O mass-balance residual: (atmospheric O + dissolved O) - target.
         # atmodeller's element_residual output is per-element relative
         # error; we report kg here to match CALLIOPE's H/C/N/S/O_res
         # convention. Atomic-O mass fractions are derived from the
@@ -447,7 +458,7 @@ def calc_surface_pressures_atmodeller(dirs: dict, config: Config, hf_row: dict):
         for sp, frac in o_mass_frac.items():
             atm_O += float(hf_row.get(f'{sp}_kg_atm', 0.0)) * frac
             liq_O += float(hf_row.get(f'{sp}_kg_liquid', 0.0)) * frac
-        hf_row['O_res'] = float(target_O_kg) - (atm_O + liq_O)
+        hf_row['O_res'] = (atm_O + liq_O) - float(target_O_kg)
 
         # Restore the authoritative user O budget. atmodeller's solver
         # may have converged to atom_O + liq_O slightly off from

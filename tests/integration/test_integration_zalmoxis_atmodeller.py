@@ -8,7 +8,7 @@ exercises the same dry-mass propagation contract as the (zalmoxis,
 calliope) pair (issue #677: whole-planet ``element_list`` includes
 O so the Zalmoxis dry-mass subtraction reserves space for the O
 atmodeller places in H2O, CO2, SO2, etc.), but through the
-atmodeller-specific Path-C derivation of ``fO2_shift_IW_derived``.
+atmodeller-specific from_O_budget derivation of ``fO2_shift_IW_derived``.
 
 Integration-tier scope:
 
@@ -36,7 +36,7 @@ Integration-tier scope:
   subtraction. Pin the equilibrate_max_iter and equilibrate_tol
   validators under this pair so a regression that broke the floors
   surfaces here in addition to the calliope pair.
-- The wrapper merge contract: atmodeller's Path-C columns
+- The wrapper merge contract: atmodeller's from_O_budget columns
   (``fO2_shift_IW_derived``, ``O_res``) and the per-gas pressures
   (``H2O_bar``, ``CO2_bar``, ``H2_bar``, ``CO_bar``, ``N2_bar``)
   are registered in ``GetHelpfileKeys``; the per-element total
@@ -301,12 +301,12 @@ def test_atmodeller_whole_element_totals_in_hf_row_schema_under_zalmoxis():
 
 
 # ---------------------------------------------------------------------------
-# Wrapper-merge contract: atmodeller Path-C columns + per-gas pressures.
+# Wrapper-merge contract: atmodeller from_O_budget columns + per-gas pressures.
 # ---------------------------------------------------------------------------
 
 
-def test_atmodeller_path_c_and_pressure_keys_under_zalmoxis_pair():
-    """atmodeller's Path C derives ``fO2_shift_IW_derived`` from the
+def test_atmodeller_from_o_budget_and_pressure_keys_under_zalmoxis_pair():
+    """atmodeller's from_O_budget derives ``fO2_shift_IW_derived`` from the
     O budget and writes it to ``hf_row``. ``O_res`` is the residual
     O the solver could not place into condensed phases. Per-gas
     partial pressures (``<species>_bar``) flow into the surface-
@@ -318,11 +318,11 @@ def test_atmodeller_path_c_and_pressure_keys_under_zalmoxis_pair():
     from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
 
     keys = GetHelpfileKeys()
-    path_c_keys = ('fO2_shift_IW_derived', 'O_res')
+    from_o_budget_keys = ('fO2_shift_IW_derived', 'O_res')
     pressure_keys = ('H2O_bar', 'CO2_bar', 'H2_bar', 'CO_bar', 'N2_bar')
-    for key in path_c_keys + pressure_keys:
+    for key in from_o_budget_keys + pressure_keys:
         assert key in keys, f'{key} must be registered in GetHelpfileKeys()'
     row = ZeroHelpfileRow()
-    for key in path_c_keys + pressure_keys:
+    for key in from_o_budget_keys + pressure_keys:
         assert row[key] == pytest.approx(0.0, abs=1e-30)
         assert isinstance(row[key], float)

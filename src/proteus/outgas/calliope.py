@@ -289,6 +289,13 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
         if e != 'O':
             target[e] = hf_row[e + '_kg_total']
     if config.planet.fO2_source == 'from_O_budget':
+        if 'O_kg_total' not in hf_row:
+            raise ValueError(
+                'planet.fO2_source = "from_O_budget" requires '
+                'hf_row["O_kg_total"]. It is written by '
+                'calc_target_elemental_inventories on a fresh run and must '
+                'be present in runtime_helpfile.csv on a resume.'
+            )
         target['O'] = hf_row['O_kg_total']
 
     # construct guess for CALLIOPE
@@ -323,6 +330,12 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 nguess=config.outgas.calliope.nguess,
                 nsolve=config.outgas.calliope.nsolve,
                 p_guess=p_guess,
+                # Fixed seed so the Monte-Carlo restart draws are
+                # reproducible run to run. Without it the first-iteration
+                # cold solve (no p_guess) and any restart draw from the
+                # global RNG, so the derived IC redox state varies between
+                # identical runs and cannot be pinned by --deterministic.
+                random_seed=42,
                 print_result=False,
                 opt_solver=False,
             )

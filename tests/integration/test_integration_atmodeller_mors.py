@@ -34,7 +34,7 @@ Integration-tier scope:
   is pinned end-to-end: both rot fields set raises, neither set
   raises, negative period raises, percentile out of ``[0, 100]``
   raises.
-- The wrapper merge guard pins atmodeller Path-C columns
+- The wrapper merge guard pins atmodeller from_O_budget columns
   (``fO2_shift_IW_derived``, ``O_res``), per-gas pressures, AND
   MORS stellar columns (``T_star``, ``R_star``, ``M_star``,
   ``F_ins``, ``F_xuv``) in ``GetHelpfileKeys`` so per-iteration
@@ -347,15 +347,15 @@ def test_valid_mors_rotation_constraints_under_atmodeller_pair():
 
 
 # ---------------------------------------------------------------------------
-# Wrapper-merge contract: Path-C atmodeller + per-gas + MORS stellar columns.
+# Wrapper-merge contract: from_O_budget atmodeller + per-gas + MORS stellar columns.
 # ---------------------------------------------------------------------------
 
 
-def test_atmodeller_mors_helpfile_keys_register_path_c_and_stellar_columns():
+def test_atmodeller_mors_helpfile_keys_register_from_o_budget_and_stellar_columns():
     """The wrapper merge propagates per-iteration columns from both
     sides into ``hf_row``. The schema MUST register:
 
-    - Path C atmodeller columns: ``fO2_shift_IW_derived``, ``O_res``.
+    - from_O_budget atmodeller columns: ``fO2_shift_IW_derived``, ``O_res``.
     - Per-gas pressures: ``H2O_bar``, ``CO2_bar``, ``H2_bar``,
       ``CO_bar``, ``N2_bar``.
     - MORS stellar columns: ``T_star``, ``R_star``, ``M_star``,
@@ -368,13 +368,13 @@ def test_atmodeller_mors_helpfile_keys_register_path_c_and_stellar_columns():
     from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
 
     keys = GetHelpfileKeys()
-    atmodeller_path_c_keys = ('fO2_shift_IW_derived', 'O_res')
+    atmodeller_from_o_budget_keys = ('fO2_shift_IW_derived', 'O_res')
     pressure_keys = ('H2O_bar', 'CO2_bar', 'H2_bar', 'CO_bar', 'N2_bar')
     stellar_keys = ('T_star', 'R_star', 'M_star', 'F_ins', 'F_xuv')
-    for key in atmodeller_path_c_keys + pressure_keys + stellar_keys:
+    for key in atmodeller_from_o_budget_keys + pressure_keys + stellar_keys:
         assert key in keys, f'{key} must be registered in GetHelpfileKeys()'
     row = ZeroHelpfileRow()
-    for key in atmodeller_path_c_keys + pressure_keys + stellar_keys:
+    for key in atmodeller_from_o_budget_keys + pressure_keys + stellar_keys:
         # ZeroHelpfileRow seeds keys as float(0.0); relative form of
         # pytest.approx is undefined at zero, so use absolute.
         assert row[key] == pytest.approx(0.0, abs=1e-30)

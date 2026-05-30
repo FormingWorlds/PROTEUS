@@ -84,10 +84,10 @@ class AragogJAXRunner:
         # `bottom_up_grav_sep=True` enables the SPIDER-analogue cubic
         # Hermite Jgrav smoothing (see aragog/jax/phase.py::compute_fluxes
         # and aragog/solver/entropy_state.py for the scipy path
-        # equivalent). Without it, the JAX path reproduces the
-        # pre-fix CMB drain at first crystallisation. There is no
-        # PROTEUS config knob to turn this off in production; the
-        # flag exists only so regression tests can reproduce the bug.
+        # equivalent). With it off, the JAX path shows a spurious CMB
+        # drain at first crystallisation. There is no PROTEUS config knob
+        # to disable it in production; the flag exists only so regression
+        # tests can exercise the uncorrected behaviour.
         interior_o._jax_params = PhaseParams(
             phi_rheo=config.interior_energetics.rfront_loc,
             phi_width=config.interior_energetics.rfront_wid,

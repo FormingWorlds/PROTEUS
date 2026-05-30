@@ -1034,7 +1034,7 @@ def test_check_ic_oxygen_budget_skipped_when_chem_zero():
 
 
 @pytest.mark.unit
-def test_check_ic_oxygen_budget_skipped_under_path_C():
+def test_check_ic_oxygen_budget_skipped_under_from_o_budget():
     """Under planet.fO2_source != 'user_constant' the user O is the
     authoritative input that drives chemistry, so the check is skipped.
 
@@ -1054,7 +1054,7 @@ def test_check_ic_oxygen_budget_skipped_under_path_C():
     assert hf_row['O_kg_user_ic'] == pytest.approx(1.0e23)
     # Cross-check: flipping fO2_source back to user_constant on the
     # same hf_row must raise. Without this guard a regression that
-    # accidentally widened the path-C skip to all sources would still
+    # accidentally widened the from_o_budget skip to all sources would still
     # pass the sentinel-unchanged assertion above.
     config.planet.fO2_source = 'user_constant'
     with pytest.raises(ValueError, match='IC oxygen budget mismatch'):
@@ -1090,7 +1090,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_calliope():
     with patch('proteus.outgas.calliope.calc_surface_pressures') as mock_calc:
         run_outgassing(dirs, config, hf_row)
         mock_calc.assert_called_once_with(dirs, config, hf_row)
-        # Pre-seed invariant under Path C: run_outgassing must set
+        # Pre-seed invariant under from_O_budget: run_outgassing must set
         # fO2_shift_IW_derived to the configured buffer value before
         # dispatch (CALLIOPE overrides it with the solver-derived
         # number, but the pre-seed is the safety net for skipped
@@ -1102,7 +1102,7 @@ def test_run_outgassing_from_O_budget_dispatches_to_calliope():
 
 @pytest.mark.unit
 def test_run_outgassing_from_O_budget_dispatches_to_atmodeller():
-    """Path C now has a runtime path for atmodeller too. The wrapper
+    """from_O_budget now has a runtime path for atmodeller too. The wrapper
     must forward to ``calc_surface_pressures_atmodeller`` without
     raising, matching the calliope-backend dispatch behaviour.
 
@@ -1307,7 +1307,7 @@ def test_config_rejects_from_mantle_redox_reserved(tmp_path):
 def test_config_rejects_from_O_budget_with_ic_chemistry(tmp_path):
     """planet.fO2_source = 'from_O_budget' requires an authoritative O
     budget. O_mode = 'ic_chemistry' defers O to the chemistry solver,
-    which contradicts Path C; there is nothing to invert against.
+    which contradicts from_O_budget; there is nothing to invert against.
 
     Discriminating: error message names both fields so the user knows
     which one to change.
@@ -1337,7 +1337,7 @@ def test_config_rejects_from_O_budget_with_gas_prs(tmp_path):
     planet.volatile_mode = 'elements' so the O inventory is derivable
     from planet.elements.O_budget. Under volatile_mode = 'gas_prs' the
     user supplies partial pressures directly and the element budgets
-    are inert, so Path C has no O target to invert against.
+    are inert, so from_O_budget has no O target to invert against.
 
     Discriminating: error message must name volatile_mode and gas_prs
     so the user knows which field to change.

@@ -13,18 +13,11 @@ def calc_unfract_fluxes(hf_row: dict, reservoir: str, min_thresh: float):
 
     Updates the elemental escape fluxes in hf_row.
 
-    Under the issue #677 fix (whole-planet O accounting), O is now part
-    of the partitioning denominator and gets its own ``esc_rate_O``.
-    Pre-fix code skipped O on the grounds that its mass was buffered
-    from an "infinite" mantle FeO reservoir; the consequence was that
-    ``esc_rate_total`` (Zephyrus's bulk MLR, which physically includes
-    the O atoms leaving in H2O / CO2 / SO2) got attributed 100 percent
-    to H+C+N+S, over-debiting those elements by a factor of up to ~8x
-    at high H_ppmw with oxidising fO2.
-
-    The fix is conceptually simple: distribute ``esc_rate_total`` over
-    ALL element mass fractions (including O) so the per-element rates
-    sum back to the bulk MLR.
+    Whole-planet O accounting (issue #677): O is part of the partitioning
+    denominator and carries its own ``esc_rate_O``. ``esc_rate_total``
+    (Zephyrus's bulk MLR) physically includes the O atoms leaving in
+    H2O / CO2 / SO2, so it is distributed over all element mass fractions
+    (O included) and the per-element rates sum back to the bulk MLR.
 
     Parameters
     ----------

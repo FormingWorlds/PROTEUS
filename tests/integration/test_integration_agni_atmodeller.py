@@ -16,14 +16,14 @@ integration-tier portions of that boundary:
   monotonic profile from TOA to surface; the matrix design lock
   requires every AGNI x X integration to assert
   ``tau_atm_TOA < 0.5 * tau_atm_surface``.
-- The Path-C wrapper merge propagates both the AGNI 1.10.2
+- The from_O_budget wrapper merge propagates both the AGNI 1.10.2
   diagnostic keys AND the atmodeller-side fO2 + O residual keys
   into hf_row through the registered helpfile columns.
 
 atmodeller is an optional dependency (the docker-retired CI image
 installs it; bare PR-CI conda envs need not). The module-top
 ``pytest.importorskip('atmodeller')`` follows the existing
-``test_path_c_atmodeller.py`` pattern.
+``test_from_o_budget_atmodeller.py`` pattern.
 
 The full two-timestep AGNI + atmodeller coupled run with real Julia
 + real JAX sits well above the slow-tier per-step budget on Linux
@@ -259,12 +259,12 @@ def test_agni_atmodeller_optical_depth_bounded_below_by_zero():
 
 
 # ---------------------------------------------------------------------------
-# Wrapper merge: the Path C atmodeller-derived fO2 + O residual flow.
+# Wrapper merge: the from_O_budget atmodeller-derived fO2 + O residual flow.
 # ---------------------------------------------------------------------------
 
 
-def test_agni_atmodeller_helpfile_keys_register_path_c_columns():
-    """Path C atmodeller writes ``fO2_shift_IW_derived``, ``O_res``,
+def test_agni_atmodeller_helpfile_keys_register_from_o_budget_columns():
+    """from_O_budget atmodeller writes ``fO2_shift_IW_derived``, ``O_res``,
     and the per-gas pressure columns into hf_row. The wrapper merge
     guard depends on every key being registered in
     ``GetHelpfileKeys()``.
@@ -283,7 +283,7 @@ def test_agni_atmodeller_helpfile_keys_register_path_c_columns():
         'agni_Ra_max',
         'agni_t_conv_over_t_rad',
     )
-    atmodeller_path_c_keys = (
+    atmodeller_from_o_budget_keys = (
         'fO2_shift_IW_derived',
         'O_res',
     )
@@ -294,10 +294,10 @@ def test_agni_atmodeller_helpfile_keys_register_path_c_columns():
         'CO_bar',
         'N2_bar',
     )
-    for key in agni_diagnostic_keys + atmodeller_path_c_keys + pressure_keys:
+    for key in agni_diagnostic_keys + atmodeller_from_o_budget_keys + pressure_keys:
         assert key in keys, f'{key} must be registered in GetHelpfileKeys()'
     row = ZeroHelpfileRow()
-    for key in agni_diagnostic_keys + atmodeller_path_c_keys + pressure_keys:
+    for key in agni_diagnostic_keys + atmodeller_from_o_budget_keys + pressure_keys:
         assert key in row
         assert row[key] == pytest.approx(0.0, abs=1e-12)
         assert isinstance(row[key], float)

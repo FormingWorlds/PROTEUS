@@ -273,8 +273,9 @@ def planet_fO2_source_compat(instance, attribute, value):
             warnings.warn(
                 'outgas.fO2_shift_IW = %.3f is set but '
                 'planet.fO2_source = "from_O_budget" derives the buffer '
-                'offset from the O budget; the configured value will be '
-                'ignored at runtime.' % fO2_shift_IW,
+                'offset from the O budget. The configured value is used '
+                'only as the solver initial fO2 guess, not as the buffered '
+                'offset.' % fO2_shift_IW,
                 UserWarning,
                 stacklevel=2,
             )

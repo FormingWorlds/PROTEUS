@@ -69,7 +69,7 @@ def test_expected_keys_contains_element_reservoir_keys():
     solid reservoirs for all elements, plus _kg_total only for O.
 
     Under the O-accounting fix, O_kg_total is written by the chemistry
-    solver (Path C restores it to the authoritative value after copy);
+    solver (from_O_budget restores it to the authoritative value after copy);
     other elements' _kg_total is owned by escape and must NOT be in
     this list.
     """

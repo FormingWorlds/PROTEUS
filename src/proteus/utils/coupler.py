@@ -495,13 +495,12 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
     """Runtime invariant: M_atm <= M_planet and sum of per-species kg_atm
     matches M_atm.
 
-    Issue #677 fix guardrail. The diagnosis showed that the pre-fix code
-    let M_atm exceed M_planet at high H_ppmw because atmospheric oxygen
-    contributed to M_atm (sum over gas_list of *_kg_atm, includes H2O /
-    CO2 / SO2 O atoms) but never to M_planet = M_int + M_ele (M_ele
-    explicitly skipped O). With whole-planet O accounting in place,
-    M_atm <= M_planet must hold by construction; this assertion catches
-    any future regression that re-introduces the asymmetry.
+    Issue #677 invariant. M_atm sums atmospheric oxygen (over gas_list of
+    *_kg_atm, including the O atoms in H2O / CO2 / SO2), and M_planet =
+    M_int + M_ele counts the same oxygen in M_ele, so whole-planet O
+    accounting keeps the two sides symmetric and M_atm <= M_planet holds
+    by construction. This assertion catches any regression that
+    re-introduces an asymmetry by dropping O from one side.
 
     Parameters
     ----------
@@ -763,8 +762,9 @@ def GetHelpfileKeys():
         'fO2_shift_IW_derived',  # equilibrated IW-buffer offset [log10]
         'O_res',                 # O mass-balance residual [kg]
 
-        # Desiccation escape-balance gate. M_vol_initial is the sum of
-        # non-oxygen *_kg_total captured on the first escape call, used
+        # Desiccation escape-balance gate. M_vol_initial is the sum over
+        # all elements (oxygen included) of *_kg_total captured on the
+        # first escape call, used
         # as the reference point for `outgas.wrapper.check_desiccation`'s
         # "is the loss accounted for by escape?" sanity check.
         # esc_kg_cumulative is the running sum of esc_rate_total * dt

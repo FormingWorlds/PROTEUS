@@ -39,7 +39,7 @@ Integration-tier scope:
 - ``Zephyrus.efficiency`` closed-interval endpoints round-trip;
   field-level ``le(1)`` rejects the just-above-unit case AND
   round-trips an adjacent-valid below-unit value.
-- The wrapper merge guard pins atmodeller Path-C columns
+- The wrapper merge guard pins atmodeller from_O_budget columns
   (``fO2_shift_IW_derived``, ``O_res``), per-gas pressures, AND
   zephyrus escape columns (``esc_rate_total``,
   ``esc_kg_cumulative``, ``M_vol_initial``) in
@@ -443,15 +443,15 @@ def test_zephyrus_efficiency_above_unit_rejected_field_layer_with_selectivity():
 
 
 # ---------------------------------------------------------------------------
-# Wrapper-merge contract: Path-C atmodeller + per-gas + zephyrus escape columns.
+# Wrapper-merge contract: from_O_budget atmodeller + per-gas + zephyrus escape columns.
 # ---------------------------------------------------------------------------
 
 
-def test_atmodeller_zephyrus_helpfile_keys_register_path_c_pressures_and_escape():
+def test_atmodeller_zephyrus_helpfile_keys_register_from_o_budget_pressures_and_escape():
     """The wrapper merge propagates per-iteration columns from both
     sides into ``hf_row``. The schema MUST register:
 
-    - Path C atmodeller columns: ``fO2_shift_IW_derived``, ``O_res``.
+    - from_O_budget atmodeller columns: ``fO2_shift_IW_derived``, ``O_res``.
     - Per-gas pressures: ``H2O_bar``, ``CO2_bar``, ``H2_bar``,
       ``CO_bar``, ``N2_bar``.
     - Zephyrus escape columns: ``esc_rate_total``,
@@ -464,13 +464,13 @@ def test_atmodeller_zephyrus_helpfile_keys_register_path_c_pressures_and_escape(
     from proteus.utils.coupler import GetHelpfileKeys, ZeroHelpfileRow
 
     keys = GetHelpfileKeys()
-    atmodeller_path_c_keys = ('fO2_shift_IW_derived', 'O_res')
+    atmodeller_from_o_budget_keys = ('fO2_shift_IW_derived', 'O_res')
     pressure_keys = ('H2O_bar', 'CO2_bar', 'H2_bar', 'CO_bar', 'N2_bar')
     escape_keys = ('esc_rate_total', 'esc_kg_cumulative', 'M_vol_initial')
-    for key in atmodeller_path_c_keys + pressure_keys + escape_keys:
+    for key in atmodeller_from_o_budget_keys + pressure_keys + escape_keys:
         assert key in keys, f'{key} must be registered in GetHelpfileKeys()'
     row = ZeroHelpfileRow()
-    for key in atmodeller_path_c_keys + pressure_keys + escape_keys:
+    for key in atmodeller_from_o_budget_keys + pressure_keys + escape_keys:
         # ZeroHelpfileRow seeds keys as float(0.0); the relative
         # form of pytest.approx is undefined at zero, so use abs.
         assert row[key] == pytest.approx(0.0, abs=1e-30)

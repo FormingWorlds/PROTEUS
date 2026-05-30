@@ -274,9 +274,10 @@ def next_step(
             UpdateStatusfile(dirs, 20)
             raise ValueError(f'Invalid time-stepping method: {config.params.dt.method}')
 
-        # Min step size (adaptive branch only; the static and initial
-        # branches set dt from explicit config values and should not be
-        # floored to dt.minimum before the retry scaling is applied).
+        # Minimum step size. Applies to every dynamic-stepping method
+        # (proportional, adaptive, maximum); the static (Time < 2 yr) and
+        # initial branches keep their explicit config value and are not
+        # floored to dt.minimum before the retry scaling is applied.
         dtminimum = config.params.dt.minimum  # absolute
         dtminimum += config.params.dt.minimum_rel * hf_row['Time']  # allow small steps
         dtswitch = max(dtswitch, dtminimum)

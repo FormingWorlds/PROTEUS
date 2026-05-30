@@ -1,4 +1,4 @@
-"""Tests for the PROTEUS-side Path C CALLIOPE wrapper.
+"""Tests for the PROTEUS-side from_O_budget CALLIOPE wrapper.
 
 Covers the dispatch logic added to ``proteus.outgas.calliope`` and
 ``proteus.outgas.wrapper`` when ``planet.fO2_source == 'from_O_budget'``:
@@ -8,9 +8,9 @@ Covers the dispatch logic added to ``proteus.outgas.calliope`` and
 * Helpfile plumbing of ``fO2_shift_IW_derived`` and ``O_res`` under both
   ``user_constant`` and ``from_O_budget``.
 * ``O_kg_total`` is preserved as the authoritative user input under
-  Path C even though the solver's output dict reports its own value.
+  from_O_budget even though the solver's output dict reports its own value.
 * Smoke-tier round-trip through the real CALLIOPE solver.
-* End-to-end Path C invariants: ``M_atm <= M_planet`` and the
+* End-to-end from_O_budget invariants: ``M_atm <= M_planet`` and the
   ``GetHelpfileKeys()`` schema carries the two new columns.
 """
 
@@ -48,7 +48,7 @@ def _make_solvevol_result(
     """Build a fake CALLIOPE output dict shaped like the real one.
 
     Populates the keys that the wrapper copies into hf_row plus the two
-    Path C extras. ``O_kg_total_out`` lets a caller simulate the solver
+    from_O_budget extras. ``O_kg_total_out`` lets a caller simulate the solver
     drifting from its input target by a small residual.
     """
     out: dict = {
@@ -91,8 +91,8 @@ def _make_solvevol_result(
     return out
 
 
-def _make_path_c_config(fO2_shift_IW: float = 4.0):
-    """Build a MagicMock Config consistent with Path C dispatch.
+def _make_from_o_budget_config(fO2_shift_IW: float = 4.0):
+    """Build a MagicMock Config consistent with from_O_budget dispatch.
 
     Only the fields the wrapper reaches into are populated; everything
     else inherits the MagicMock default (auto-attribute) and is irrelevant
@@ -162,9 +162,9 @@ def _earth_hf_row(O_kg_total: float = 1.0e22) -> dict:
 
 @pytest.mark.unit
 def test_helpfile_schema_includes_fO2_shift_IW_derived():
-    """The derived IW-buffer offset is the *scientific* output of Path C;
+    """The derived IW-buffer offset is the *scientific* output of from_O_budget;
     if it isn't in the schema, the CSV would silently drop it and any
-    Path C run would be unreproducible from the helpfile alone.
+    from_O_budget run would be unreproducible from the helpfile alone.
     """
     keys = GetHelpfileKeys()
     assert 'fO2_shift_IW_derived' in keys
@@ -189,12 +189,12 @@ def test_helpfile_schema_keys_unique():
 
 
 # ---------------------------------------------------------------------------
-# Dispatch: Path C routes to authoritative-O entry point
+# Dispatch: from_O_budget routes to authoritative-O entry point
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_path_c_dispatches_to_authoritative_O_entry_point():
+def test_from_o_budget_dispatches_to_authoritative_O_entry_point():
     """Under fO2_source = 'from_O_budget' the wrapper calls
     ``equilibrium_atmosphere_authoritative_O``, not
     ``equilibrium_atmosphere``. A regression that flipped the branch
@@ -203,7 +203,7 @@ def test_path_c_dispatches_to_authoritative_O_entry_point():
     columns alone.
     """
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row()
 
     fake = _make_solvevol_result(fO2_derived=2.5, O_res=42.0)
@@ -219,7 +219,7 @@ def test_path_c_dispatches_to_authoritative_O_entry_point():
         mock_new.assert_called_once()
         mock_legacy.assert_not_called()
 
-        # Inspect the call arguments to verify Path C contract.
+        # Inspect the call arguments to verify from_O_budget contract.
         # target dict carries every element_list slot (legacy behaviour)
         # plus the new authoritative 'O' key sourced from hf_row.
         call = mock_new.call_args
@@ -237,13 +237,13 @@ def test_path_c_dispatches_to_authoritative_O_entry_point():
 
 @pytest.mark.unit
 def test_legacy_dispatches_to_legacy_entry_point():
-    """Mirror of the Path C test: when fO2_source = 'user_constant' the
+    """Mirror of the from_O_budget test: when fO2_source = 'user_constant' the
     wrapper must call ``equilibrium_atmosphere`` and NOT the new
     authoritative-O entry point. The target dict must have 4 keys
     (no 'O'), preserving the legacy contract bit-for-bit.
     """
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     config.planet.fO2_source = 'user_constant'
     hf_row = _earth_hf_row()
 
@@ -288,7 +288,7 @@ def test_legacy_path_echoes_configured_fO2_shift_IW():
     config input.
     """
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config(fO2_shift_IW=-2.5)
+    config = _make_from_o_budget_config(fO2_shift_IW=-2.5)
     config.planet.fO2_source = 'user_constant'
     hf_row = _earth_hf_row()
 
@@ -304,15 +304,15 @@ def test_legacy_path_echoes_configured_fO2_shift_IW():
 
 
 @pytest.mark.unit
-def test_path_c_writes_solver_derived_fO2_to_helpfile():
-    """Under Path C the wrapper must write the solver-derived offset
+def test_from_o_budget_writes_solver_derived_fO2_to_helpfile():
+    """Under from_O_budget the wrapper must write the solver-derived offset
     into ``fO2_shift_IW_derived`` and the 5th residual into ``O_res``.
 
     Discriminating: a wrong key (``fO2_shift_derived`` from CALLIOPE's
     naming, no IW prefix) would leave the helpfile column unset.
     """
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row()
 
     fake = _make_solvevol_result(fO2_derived=-1.3, O_res=125.0)
@@ -333,8 +333,8 @@ def test_path_c_writes_solver_derived_fO2_to_helpfile():
 
 
 @pytest.mark.unit
-def test_path_c_preserves_authoritative_O_kg_total():
-    """The user-supplied O_kg_total is authoritative under Path C. The
+def test_from_o_budget_preserves_authoritative_O_kg_total():
+    """The user-supplied O_kg_total is authoritative under from_O_budget. The
     solver's output O_kg_total (which equals input minus residual) must
     not be allowed to drift the helpfile value, because the escape
     pipeline reads ``hf_row['O_kg_total']`` to compute the next debit and
@@ -346,7 +346,7 @@ def test_path_c_preserves_authoritative_O_kg_total():
     value; with the restore, it carries the authoritative input.
     """
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row(O_kg_total=1.0e22)
 
     # Simulate the solver landing 5% off, much larger than realistic
@@ -375,7 +375,7 @@ def test_legacy_path_lets_solver_set_O_kg_total():
     would break the legacy contract.
     """
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     config.planet.fO2_source = 'user_constant'
     hf_row = _earth_hf_row(O_kg_total=0.0)  # pre-chem the slot is empty
 
@@ -387,7 +387,7 @@ def test_legacy_path_lets_solver_set_O_kg_total():
 
     assert hf_row['O_kg_total'] == pytest.approx(3.3e22, rel=1e-12)
     # Discrimination: the solver's value must overwrite the empty input. A
-    # regression that preserved the user input (correct under Path C but
+    # regression that preserved the user input (correct under from_O_budget but
     # wrong under legacy) would leave hf_row['O_kg_total'] at 0.0.
     assert hf_row['O_kg_total'] > 0.0
 
@@ -401,22 +401,15 @@ def test_legacy_path_lets_solver_set_O_kg_total():
 @pytest.mark.parametrize(
     'dIW',
     [
-        pytest.param(
-            -2.0,
-            marks=pytest.mark.xfail(
-                reason='CALLIOPE solver convergence is non-deterministic at extreme reducing conditions',
-                strict=False,
-                raises=RuntimeError,
-            ),
-        ),
+        -2.0,
         0.0,
         2.0,
         4.0,
     ],
 )
-def test_smoke_path_c_round_trip_through_wrapper(dIW):
+def test_smoke_from_o_budget_round_trip_through_wrapper(dIW):
     """Round-trip: run the wrapper in legacy mode at ``fO2_shift_IW = dIW``
-    to derive the implied O budget, then re-run in Path C mode with that
+    to derive the implied O budget, then re-run in from_O_budget mode with that
     budget and verify ``fO2_shift_IW_derived ≈ dIW``.
 
     Mirrors the CALLIOPE Stage 2 ``TestRoundTrip`` pattern but exercises
@@ -428,7 +421,7 @@ def test_smoke_path_c_round_trip_through_wrapper(dIW):
     dirs = {'output': '/tmp/test'}
 
     # Legacy leg
-    config_legacy = _make_path_c_config(fO2_shift_IW=dIW)
+    config_legacy = _make_from_o_budget_config(fO2_shift_IW=dIW)
     config_legacy.planet.fO2_source = 'user_constant'
     hf_row_legacy = _earth_hf_row()
     calc_surface_pressures(dirs, config_legacy, hf_row_legacy)
@@ -437,8 +430,8 @@ def test_smoke_path_c_round_trip_through_wrapper(dIW):
     assert target_O > 0, 'legacy run must produce a positive O budget'
     assert hf_row_legacy['fO2_shift_IW_derived'] == pytest.approx(dIW)
 
-    # Path C leg, feeding the implied O budget back in
-    config_path_c = _make_path_c_config(fO2_shift_IW=dIW)
+    # from_O_budget leg, feeding the implied O budget back in
+    config_path_c = _make_from_o_budget_config(fO2_shift_IW=dIW)
     hf_row_path_c = _earth_hf_row(O_kg_total=target_O)
     calc_surface_pressures(dirs, config_path_c, hf_row_path_c)
 
@@ -450,23 +443,23 @@ def test_smoke_path_c_round_trip_through_wrapper(dIW):
     # target['O'] source) would push delta well past 0.1 dex.
     assert delta < 0.05, f'wrapper round-trip failed at dIW={dIW}: derived={derived:.4f}'
 
-    # Path C must preserve the authoritative O budget across the call.
+    # from_O_budget must preserve the authoritative O budget across the call.
     assert hf_row_path_c['O_kg_total'] == pytest.approx(target_O, rel=1e-12)
 
 
 @pytest.mark.smoke
-def test_smoke_path_c_residual_bounded_by_tolerance():
-    """Under Path C the wrapper writes the 5th residual into ``O_res``.
+def test_smoke_from_o_budget_residual_bounded_by_tolerance():
+    """Under from_O_budget the wrapper writes the 5th residual into ``O_res``.
     With a converged solve the absolute residual must be well below the
     target; otherwise the chemistry would silently mis-conserve O across
     iterations. Discriminating: a value above ``target_O * 1e-3`` (0.1%)
     would indicate the per-element tolerance gate is broken.
     """
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config(fO2_shift_IW=2.0)
+    config = _make_from_o_budget_config(fO2_shift_IW=2.0)
 
     # Bootstrap the O budget from a legacy run so it's by-construction reachable.
-    cfg_seed = _make_path_c_config(fO2_shift_IW=2.0)
+    cfg_seed = _make_from_o_budget_config(fO2_shift_IW=2.0)
     cfg_seed.planet.fO2_source = 'user_constant'
     seed_hf = _earth_hf_row()
     calc_surface_pressures(dirs, cfg_seed, seed_hf)
@@ -480,9 +473,9 @@ def test_smoke_path_c_residual_bounded_by_tolerance():
 
 
 @pytest.mark.smoke
-def test_smoke_path_c_mass_conservation_invariant():
+def test_smoke_from_o_budget_mass_conservation_invariant():
     """End-to-end check that issue #677's mass-conservation invariant
-    holds under Path C: M_atm <= M_planet (which here is approximated
+    holds under from_O_budget: M_atm <= M_planet (which here is approximated
     by M_int + sum of element budgets, since the wrapper does not run
     update_planet_mass).
 
@@ -492,9 +485,9 @@ def test_smoke_path_c_mass_conservation_invariant():
     M_atm exceed this bound at high H budgets.
     """
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config(fO2_shift_IW=4.0)
+    config = _make_from_o_budget_config(fO2_shift_IW=4.0)
 
-    cfg_seed = _make_path_c_config(fO2_shift_IW=4.0)
+    cfg_seed = _make_from_o_budget_config(fO2_shift_IW=4.0)
     cfg_seed.planet.fO2_source = 'user_constant'
     seed_hf = _earth_hf_row()
     calc_surface_pressures(dirs, cfg_seed, seed_hf)
@@ -514,6 +507,6 @@ def test_smoke_path_c_mass_conservation_invariant():
 
     assert M_atm > 0, 'sanity: outgassing produced a non-empty atmosphere'
     assert M_atm <= M_planet_lb, (
-        f'Path C atmosphere ({M_atm:.3e} kg) exceeds tracked planet '
+        f'from_O_budget atmosphere ({M_atm:.3e} kg) exceeds tracked planet '
         f'mass lower bound ({M_planet_lb:.3e} kg), issue #677 regression?'
     )

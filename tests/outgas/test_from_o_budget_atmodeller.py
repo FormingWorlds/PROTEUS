@@ -1,10 +1,10 @@
-"""Tests for the PROTEUS-side Path C atmodeller wrapper.
+"""Tests for the PROTEUS-side from_O_budget atmodeller wrapper.
 
 Covers the dispatch logic added to ``proteus.outgas.atmodeller`` when
 ``planet.fO2_source == 'from_O_budget'``:
 
 * The wrapper builds a 5-key mass_constraints dict (H/C/N/S/O sourced
-  from ``hf_row``) and an empty fugacity_constraints dict under Path C.
+  from ``hf_row``) and an empty fugacity_constraints dict under from_O_budget.
 * The wrapper preserves the legacy contract under user_constant (4-key
   mass_constraints, IronWustiteBuffer fugacity constraint).
 * After the solve, the wrapper writes ``fO2_shift_IW_derived`` from
@@ -30,7 +30,7 @@ import pytest
 # when a test builds a Config with outgas.module = "atmodeller".
 pytest.importorskip(
     'atmodeller',
-    reason='atmodeller package not installed; Path C atmodeller wrapper tests skipped',
+    reason='atmodeller package not installed; from_O_budget atmodeller wrapper tests skipped',
 )
 
 from proteus.utils.constants import element_list, gas_list  # noqa: E402
@@ -41,9 +41,9 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 logging.getLogger('atmodeller').setLevel(logging.WARNING)
 
 
-def _make_path_c_config():
+def _make_from_o_budget_config():
     """Build a MagicMock Config consistent with the atmodeller backend
-    under Path C dispatch."""
+    under from_O_budget dispatch."""
     config = MagicMock()
     config.outgas.module = 'atmodeller'
     config.outgas.fO2_shift_IW = 4.0
@@ -119,15 +119,15 @@ def _fake_atmodeller_output(log10dIW: float = -0.1):
 
 
 # ---------------------------------------------------------------------------
-# Dispatch: Path C builds the 5-key mass_constraints
+# Dispatch: from_O_budget builds the 5-key mass_constraints
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_path_c_builds_5_element_mass_constraints():
+def test_from_o_budget_builds_5_element_mass_constraints():
     """Under fO2_source = 'from_O_budget' atmodeller must receive O as
     an element-mass constraint. The legacy path constrained only
-    H/C/N/S; Path C adds the user O budget.
+    H/C/N/S; from_O_budget adds the user O budget.
 
     Discriminating: the call_args's mass_constraints dict carries the
     'O' key with the value from hf_row['O_kg_total']. A regression that
@@ -137,7 +137,7 @@ def test_path_c_builds_5_element_mass_constraints():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row(O_kg_total=1.0e22)
 
     fake_model = MagicMock()
@@ -156,9 +156,9 @@ def test_path_c_builds_5_element_mass_constraints():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_path_c_drops_O2_fugacity_constraint():
+def test_from_o_budget_drops_O2_fugacity_constraint():
     """The IronWustiteBuffer fugacity constraint must not be passed
-    under Path C. atmodeller would otherwise over-constrain the system
+    under from_O_budget. atmodeller would otherwise over-constrain the system
     (5 mass equations + 1 fugacity = 6 constraints on 5 elements).
 
     Discriminating: the call_args's fugacity_constraints dict is empty.
@@ -166,7 +166,7 @@ def test_path_c_drops_O2_fugacity_constraint():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row()
 
     fake_model = MagicMock()
@@ -177,20 +177,20 @@ def test_path_c_drops_O2_fugacity_constraint():
 
     fug_kwargs = fake_model.solve.call_args.kwargs['fugacity_constraints']
     assert fug_kwargs == {}
-    # Constraint-count invariant: Path C uses 5 element-mass constraints
+    # Constraint-count invariant: from_O_budget uses 5 element-mass constraints
     # (H/C/N/S/O) and zero fugacity constraints. A regression that
     # added O to mass_constraints but forgot to drop the IW buffer
     # would over-constrain the system (5 mass + 1 fugacity > 5 unknowns).
     mass_kwargs = fake_model.solve.call_args.kwargs['mass_constraints']
     assert len(mass_kwargs) + len(fug_kwargs) == 5
-    # Discrimination: 'O' must be in mass_constraints (the Path C
+    # Discrimination: 'O' must be in mass_constraints (the from_O_budget
     # invariant), not silently dropped from both.
     assert 'O' in mass_kwargs
 
 
 @pytest.mark.unit
 def test_legacy_path_keeps_4_element_mass_constraints_and_fO2_buffer():
-    """Mirror of the Path C tests: under fO2_source = 'user_constant'
+    """Mirror of the from_O_budget tests: under fO2_source = 'user_constant'
     the wrapper passes H/C/N/S (no O) and a single IW fugacity
     constraint. A regression that swapped which path got the buffer
     would silently invert the legacy chemistry.
@@ -200,7 +200,7 @@ def test_legacy_path_keeps_4_element_mass_constraints_and_fO2_buffer():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     config.planet.fO2_source = 'user_constant'
     hf_row = _earth_hf_row()
 
@@ -225,10 +225,10 @@ def test_legacy_path_keeps_4_element_mass_constraints_and_fO2_buffer():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_path_c_writes_solver_derived_fO2_to_helpfile():
-    """Under Path C the wrapper must read atmodeller's back-computed
+def test_from_o_budget_writes_solver_derived_fO2_to_helpfile():
+    """Under from_O_budget the wrapper must read atmodeller's back-computed
     log10dIW_1_bar from ``output.asdict()`` and write it to
-    ``hf_row['fO2_shift_IW_derived']``. This is the Path C scientific
+    ``hf_row['fO2_shift_IW_derived']``. This is the from_O_budget scientific
     output.
 
     Discriminating: the fake output reports an offset of -2.7. A
@@ -239,7 +239,7 @@ def test_path_c_writes_solver_derived_fO2_to_helpfile():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row()
 
     fake_model = MagicMock()
@@ -279,7 +279,7 @@ def test_legacy_path_preserves_pre_dispatch_fO2_echo():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     config.planet.fO2_source = 'user_constant'
     hf_row = _earth_hf_row()
     hf_row['fO2_shift_IW_derived'] = config.outgas.fO2_shift_IW  # pre-seed
@@ -321,7 +321,7 @@ def test_atmodeller_maintains_per_species_kg_total_invariant():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row()
 
     fake_model = MagicMock()
@@ -361,7 +361,7 @@ def test_atmodeller_kg_total_not_stale_after_call():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row()
     for sp in ('H2O', 'CO2', 'N2', 'S2'):
         hf_row[f'{sp}_kg_total'] = 1.0e30  # impossible value
@@ -388,8 +388,8 @@ def test_atmodeller_kg_total_not_stale_after_call():
 
 @pytest.mark.unit
 @pytest.mark.physics_invariant
-def test_path_c_preserves_authoritative_O_kg_total():
-    """Under Path C the user O budget is authoritative. atmodeller's
+def test_from_o_budget_preserves_authoritative_O_kg_total():
+    """Under from_O_budget the user O budget is authoritative. atmodeller's
     converged element_density at iteration N is mass_atm + mass_dissolved
     which differs from the target by the solver's residual. Letting
     that drift contaminate ``hf_row['O_kg_total']`` would cascade into
@@ -404,7 +404,7 @@ def test_path_c_preserves_authoritative_O_kg_total():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row(O_kg_total=1.0e22)
 
     fake_model = MagicMock()
@@ -435,7 +435,7 @@ def test_legacy_path_does_not_overwrite_O_kg_total():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     config.planet.fO2_source = 'user_constant'
     hf_row = _earth_hf_row(O_kg_total=5.5e21)
 
@@ -455,13 +455,13 @@ def test_legacy_path_does_not_overwrite_O_kg_total():
 
 
 # ---------------------------------------------------------------------------
-# Edge: O below mass threshold under Path C must fail loudly
+# Edge: O below mass threshold under from_O_budget must fail loudly
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_path_c_with_O_below_threshold_raises():
-    """Path C cannot work if the user O budget falls below the mass
+def test_from_o_budget_with_O_below_threshold_raises():
+    """from_O_budget cannot work if the user O budget falls below the mass
     threshold (no constraint to invert against). The wrapper must fail
     with a clear ValueError rather than silently producing chemistry
     that ignores the O input.
@@ -471,16 +471,16 @@ def test_path_c_with_O_below_threshold_raises():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     # mass_thresh = 1e8 by config; set O budget well below it.
     hf_row = _earth_hf_row(O_kg_total=1.0)
 
     with pytest.raises(ValueError, match='from_O_budget'):
         calc_surface_pressures_atmodeller(dirs, config, hf_row)
     # Boundary discrimination: an O budget comfortably above the
-    # mass_thresh of 1e8 kg on the same Path C config must NOT raise.
-    # The rejection is driven by the threshold, not by Path C itself.
-    # A regression that hard-raised on every Path C call would fail
+    # mass_thresh of 1e8 kg on the same from_O_budget config must NOT raise.
+    # The rejection is driven by the threshold, not by from_O_budget itself.
+    # A regression that hard-raised on every from_O_budget call would fail
     # this.
     hf_row_ok = _earth_hf_row(O_kg_total=1.0e22)
     fake_model = MagicMock()
@@ -496,8 +496,8 @@ def test_path_c_with_O_below_threshold_raises():
 
 
 @pytest.mark.unit
-def test_path_c_writes_finite_O_residual():
-    """Under Path C the wrapper must compute and write ``O_res`` from
+def test_from_o_budget_writes_finite_O_residual():
+    """Under from_O_budget the wrapper must compute and write ``O_res`` from
     target - (atmospheric_O + dissolved_O). A finite, bounded residual
     is the strongest assertion available without the real solver; the
     fake output's hand-built numbers give us a deterministic check.
@@ -505,7 +505,7 @@ def test_path_c_writes_finite_O_residual():
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     target_O = 1.0e22
     hf_row = _earth_hf_row(O_kg_total=target_O)
 
@@ -525,7 +525,7 @@ def test_path_c_writes_finite_O_residual():
 # ---------------------------------------------------------------------------
 # Branch coverage: unknown solubility/EOS keys, T_floor early return,
 # solver exception, zero P_total VMR fallback. These exercise paths the
-# main Path C tests above do not reach because their config uses
+# main from_O_budget tests above do not reach because their config uses
 # valid keys, a high enough T_magma, and a successful fake solve.
 # ---------------------------------------------------------------------------
 
@@ -542,7 +542,7 @@ def test_atmodeller_warns_when_solubility_key_unknown(caplog):
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     config.outgas.atmodeller.solubility_H2O = 'totally_not_a_real_law'
     hf_row = _earth_hf_row()
     fake_model = MagicMock()
@@ -573,7 +573,7 @@ def test_atmodeller_warns_when_eos_key_unknown(caplog):
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     config.outgas.atmodeller.eos_H2O = 'phantom_eos_v999'
     hf_row = _earth_hf_row()
     fake_model = MagicMock()
@@ -602,7 +602,7 @@ def test_atmodeller_returns_early_when_t_magma_below_floor(caplog):
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     config.outgas.T_floor = 2000.0  # above the hf_row T_magma of 1800 K
     hf_row = _earth_hf_row()
     snapshot = dict(hf_row)
@@ -618,8 +618,17 @@ def test_atmodeller_returns_early_when_t_magma_below_floor(caplog):
     assert fake_model.solve.call_count == 0, 'solve() must not run when T_magma < T_floor'
     # P_surf should NOT have been added under the early-return path.
     assert 'P_surf' not in hf_row, 'P_surf must not appear when T_magma < T_floor'
-    # Snapshot guard: hf_row stays untouched by this branch.
-    assert hf_row == snapshot
+    # Under from_O_budget the early return marks the derived offset and O
+    # residual undefined (no solve ran), and leaves everything else
+    # untouched. A regression that recorded the user pre-seed as if the
+    # chemistry had equilibrated would leave a finite value here.
+    assert np.isnan(hf_row['fO2_shift_IW_derived'])
+    assert np.isnan(hf_row['O_res'])
+    rest = {k: v for k, v in hf_row.items() if k not in ('fO2_shift_IW_derived', 'O_res')}
+    rest_snap = {
+        k: v for k, v in snapshot.items() if k not in ('fO2_shift_IW_derived', 'O_res')
+    }
+    assert rest == rest_snap
     # Warning fired.
     assert any('T_floor' in rec.message for rec in caplog.records)
 
@@ -636,7 +645,7 @@ def test_atmodeller_propagates_solver_exception(caplog):
     from proteus.outgas.atmodeller import calc_surface_pressures_atmodeller
 
     dirs = {'output': '/tmp/test'}
-    config = _make_path_c_config()
+    config = _make_from_o_budget_config()
     hf_row = _earth_hf_row()
     fake_model = MagicMock()
     fake_model.solve.side_effect = RuntimeError('contrived solver failure')
