@@ -167,8 +167,15 @@ def calc_surface_pressures_dummy(dirs: dict, config: Config, hf_row: dict):
         if element != 'O':
             hf_row[f'{element}_kg_total'] = kg
 
-    # Oxygen total (derived from stoichiometric O in outgassed species)
-    hf_row['O_kg_total'] = hf_row.get('O_kg_atm', 0.0) + hf_row.get('O_kg_liquid', 0.0)
+    # Oxygen total. When the user supplied an O budget (O_mode != "ic_chemistry")
+    # it is an input like the other elements and is restored verbatim; under
+    # ic_chemistry there is no user O budget, so derive it from the
+    # stoichiometric O in the outgassed species.
+    saved_O = saved_element_kg.get('O', 0.0)
+    if saved_O > 0.0:
+        hf_row['O_kg_total'] = saved_O
+    else:
+        hf_row['O_kg_total'] = hf_row.get('O_kg_atm', 0.0) + hf_row.get('O_kg_liquid', 0.0)
 
     log.info(
         'Dummy outgas: P_surf=%.2f bar, Phi=%.3f, f_atm=%.3f, %d species',

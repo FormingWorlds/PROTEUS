@@ -95,6 +95,16 @@ def apply_binodal_h2(hf_row: dict, config: Config) -> None:
     # Solid H2 is zero (H2 does not partition into solid silicate)
     hf_row['H2_kg_solid'] = 0.0
 
+    # The element-level hydrogen totals that the outgassing module wrote
+    # before binodal partitioning must follow the H2 just moved. H2 is pure
+    # hydrogen by mass (M_H2 = 2 M_H), so the hydrogen mass shifted equals the
+    # H2 mass shifted. Without this the *_kg_atm element ratios would still
+    # count the relocated hydrogen in the atmosphere.
+    dH_atm = H2_kg_atm_new - H2_kg_atm_old
+    dH_liquid = H2_kg_liquid_new - H2_kg_liquid_old
+    hf_row['H_kg_atm'] = float(hf_row.get('H_kg_atm', 0.0)) + dH_atm
+    hf_row['H_kg_liquid'] = float(hf_row.get('H_kg_liquid', 0.0)) + dH_liquid
+
     # Recompute H2 partial pressure from atmospheric mass
     # P_H2 = m_H2 * g / (4 * pi * R^2)
     import math

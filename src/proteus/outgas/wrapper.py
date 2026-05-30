@@ -104,7 +104,12 @@ def calc_target_elemental_inventories(dirs: dict, config: Config, hf_row: dict):
     o_kg_user = _resolve_oxygen_budget(config, hf_row)
     if o_kg_user is not None:
         hf_row['O_kg_total'] = o_kg_user
-        hf_row['O_kg_user_ic'] = o_kg_user
+        # Stash the user budget as the one-shot IC-check baseline, but do not
+        # re-arm the check once it has fired. check_ic_oxygen_budget resets
+        # this to the -1.0 sentinel after it runs; re-stashing on every init
+        # iteration would otherwise make the check fire repeatedly.
+        if float(hf_row.get('O_kg_user_ic', 0.0)) >= 0.0:
+            hf_row['O_kg_user_ic'] = o_kg_user
     else:
         # ic_chemistry mode: leave O_kg_total at 0; first CALLIOPE call writes it.
         hf_row['O_kg_user_ic'] = -1.0  # sentinel: no user budget supplied

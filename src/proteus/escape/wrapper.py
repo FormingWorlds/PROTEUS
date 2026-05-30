@@ -148,7 +148,18 @@ def run_dummy(config: Config, hf_row: dict):
                 reservoir=reservoir,
                 min_thresh=config.outgas.mass_thresh,
             )
-    except (KeyError, ValueError, TypeError):
+    except (KeyError, ValueError, TypeError) as exc:
+        # calc_unfract_fluxes needs a fully-populated hf_row; a partial row
+        # (e.g. in a unit test) can raise. Zero the per-element rates to keep
+        # the row well-formed, but warn: esc_rate_total is left unchanged, so
+        # sum(esc_rate_e) no longer matches it.
+        log.warning(
+            'calc_unfract_fluxes failed (%s); zeroing per-element escape rates. '
+            'esc_rate_total=%.3e is unchanged, so the per-element sum no longer '
+            'matches it.',
+            exc,
+            float(hf_row.get('esc_rate_total', 0.0)),
+        )
         for e in element_list:
             hf_row[f'esc_rate_{e}'] = 0.0
 
@@ -197,7 +208,18 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
                 reservoir=reservoir,
                 min_thresh=config.outgas.mass_thresh,
             )
-    except (KeyError, ValueError, TypeError):
+    except (KeyError, ValueError, TypeError) as exc:
+        # calc_unfract_fluxes needs a fully-populated hf_row; a partial row
+        # (e.g. in a unit test) can raise. Zero the per-element rates to keep
+        # the row well-formed, but warn: esc_rate_total is left unchanged, so
+        # sum(esc_rate_e) no longer matches it.
+        log.warning(
+            'calc_unfract_fluxes failed (%s); zeroing per-element escape rates. '
+            'esc_rate_total=%.3e is unchanged, so the per-element sum no longer '
+            'matches it.',
+            exc,
+            float(hf_row.get('esc_rate_total', 0.0)),
+        )
         for e in element_list:
             hf_row[f'esc_rate_{e}'] = 0.0
 

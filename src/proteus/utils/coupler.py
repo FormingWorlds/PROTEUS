@@ -542,7 +542,9 @@ def assert_mass_conservation(hf_row: dict, atol_frac: float = 1e-6) -> None:
             f'calc_target_elemental_inventories, and load_zalmoxis_configuration.'
         )
 
-    # Invariant 2: per-species kg_atm sum equals M_atm.
+    # Invariant 2: M_atm stays in sync with the per-species kg_atm fields it
+    # is summed from. This guards against a future reordering that mutates a
+    # species kg_atm after M_atm is computed without refreshing M_atm.
     summed = sum(float(hf_row.get(s + '_kg_atm', 0.0)) for s in gas_list)
     if M_atm > 0.0:
         rel = abs(summed - M_atm) / M_atm
