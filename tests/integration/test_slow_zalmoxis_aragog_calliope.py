@@ -22,8 +22,10 @@ Complements:
 
 This file is the union: every code path that runs in either of the
 two complementary tests is exercised here under the production
-coupling cadence (Zalmoxis at IC + after structure-refresh
-triggers; Aragog at every iteration; CALLIOPE at every iteration).
+coupling cadence (Zalmoxis at the initial condition; Aragog at
+every iteration; CALLIOPE at every iteration). The structure is
+solved once and held fixed (``update_interval = 0``), isolating the
+interior + outgas coupling from structure-refresh transients.
 
 Invariants asserted:
 
@@ -43,15 +45,17 @@ Invariants asserted:
 - Cross-step continuity on T_magma (|dT| < 1000 K rejects an
   entropy-solver runaway) and Phi_global (|dphi| < 0.5 rejects an
   unphysical melt-fraction jump).
-- R_int constant across rows under the default update_interval =
-  1 Gyr (catches a spurious structure refresh).
+- R_int constant across rows with structure refresh disabled
+  (``update_interval = 0``; catches a spurious structure refresh).
 - Earth-scale R_int (5.5e6-6.5e6 m for 1 M_Earth).
 - Cross-cutting mass + stability helpers.
 
 Runtime budget: ~6 min macOS GHA (~3 min Zalmoxis setup + EOS load,
 ~2 min Aragog setup, ~1 min coupled iteration), ~25 min Linux GHA
 (JAX/CVode setup tax on x86 plus Zalmoxis EOS table load). The
-3600 s timeout stays well inside the slow-tier 120 min step cap.
+single IC-only structure solve keeps the run well inside the
+7200 s timeout; the per-row dynamic refresh path is exercised
+separately by the structure-update unit tests.
 
 See also:
 - docs/How-to/test_infrastructure.md
@@ -78,8 +82,9 @@ def test_zalmoxis_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     """Two-step PROTEUS run with real Zalmoxis + Aragog + CALLIOPE on
     the Earth-IC fiducial.
 
-    Physical scenario: 1 M_Earth, 0.5 AU, IW+2 fO2 shift, 3000 ppmw
-    H budget (from ``input/dummy.toml``). The real Zalmoxis solver
+    Physical scenario: 1 M_Earth, 0.5 AU, IW+2 fO2 shift, with an
+    H-C-N-S volatile inventory (from the test-owned config
+    ``zalmoxis_aragog_calliope.toml``). The real Zalmoxis solver
     sets up the mass-radius profile at IC; Aragog steps the entropy
     ODE on the mantle (backend='jax'); CALLIOPE partitions
     volatiles at the new T, P state every iteration. The three real
@@ -103,17 +108,15 @@ def test_zalmoxis_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     - ``Phi_global`` in [0, 1].
     - Cross-step continuity: |dT_magma| < 1000 K, |dPhi_global| <
       0.5.
-    - R_int stable across rows (default update_interval = 1 Gyr).
+    - R_int stable across rows (structure refresh disabled,
+      update_interval = 0).
     - Cross-cutting mass + stability helpers.
     """
     runner = proteus_multi_timestep_run(
-        config_path='input/dummy.toml',
+        config_path='tests/integration/zalmoxis_aragog_calliope.toml',
         num_timesteps=2,
         max_time=1e3,
         min_time=1e2,
-        interior_struct__module='zalmoxis',
-        interior_energetics__module='aragog',
-        outgas__module='calliope',
     )
 
     hf = runner.hf_all
@@ -153,12 +156,14 @@ def test_zalmoxis_aragog_calliope_two_timesteps(proteus_multi_timestep_run):
     assert np.all(r_int > 5.5e6), f'R_int below Earth scale: min={r_int.min():.3e} m'
     assert np.all(r_int < 6.5e6), f'R_int above Earth scale: max={r_int.max():.3e} m'
 
-    # R_int stable across rows (update_interval = 1 Gyr fires only
-    # at IC over the 1e3 yr run).
+    # R_int stable across rows: structure refresh is disabled
+    # (update_interval = 0), so Zalmoxis solves once at IC and the
+    # radius is held fixed. Any cross-row variation is a spurious
+    # re-solve.
     if len(r_int) >= 2:
         rel_drift = np.max(np.abs(np.diff(r_int))) / r_int[0]
         assert rel_drift < 1e-6, (
-            f'R_int drifted across rows despite update_interval = 1 Gyr; '
+            f'R_int drifted across rows despite update_interval = 0; '
             f'max rel drift = {rel_drift:.3e}'
         )
 
