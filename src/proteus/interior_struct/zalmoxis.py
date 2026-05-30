@@ -442,6 +442,18 @@ def load_zalmoxis_configuration(
         dict: A dictionary containing the Zalmoxis configuration parameters.
     """
 
+    # The Zalmoxis solver consumes core_frac as a mass fraction and does
+    # not read core_frac_mode. Warn if a radius fraction was requested, so
+    # the user is not surprised by the mass-fraction interpretation.
+    if config.interior_struct.core_frac_mode == 'radius':
+        log.warning(
+            'interior_struct.core_frac_mode = "radius" has no effect with the '
+            'zalmoxis module: core_frac (%.3f) is interpreted as a mass '
+            'fraction. Use core_frac_mode = "mass", or switch to the dummy or '
+            'spider module if a radius fraction is intended.',
+            config.interior_struct.core_frac,
+        )
+
     # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
     total_planet_mass = config.planet.mass_tot * M_earth
 
@@ -497,9 +509,12 @@ def load_zalmoxis_configuration(
         'PALEOS:H2O': mzf,
     }
 
-    # Core fraction: value from config, interpretation from core_frac_mode.
-    # When mode is "mass", this is the true mass fraction.
-    # When mode is "radius", Zalmoxis converts radius fraction to mass fraction internally.
+    # Core fraction. The Zalmoxis solver consumes `core_mass_fraction`
+    # literally as a mass fraction and does not read `core_frac_mode`, so
+    # `core_frac` is always interpreted as a mass fraction here regardless
+    # of the mode. `core_frac_mode = "radius"` is only honoured by the
+    # dummy and spider structure modules; a warning is emitted above when
+    # it is combined with zalmoxis.
     return {
         'planet_mass': planet_mass,
         'core_mass_fraction': config.interior_struct.core_frac,

@@ -161,7 +161,7 @@ class TimeStepParams:
     minimum: float = field(default=1e4, validator=gt(0))
     minimum_rel: float = field(default=1e-5, validator=gt(0))
     maximum: float = field(default=1e7, validator=gt(0))
-    maximum_rel: float = field(default=1.0, validator=gt(0))
+    maximum_rel: float = field(default=1.0, validator=ge(0))
     initial: float = field(default=3e1, validator=gt(0))
 
     # Stiffness-aware adaptive time-stepping extensions.

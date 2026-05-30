@@ -42,11 +42,11 @@ else
     uri="https://github.com/FormingWorlds/Zalmoxis.git"
 fi
 echo "    $uri -> $workpath"
-git clone "$uri" "$workpath"
+git clone "$uri" "$workpath" || { echo "ERROR: git clone failed" >&2; exit 1; }
 
 # Install zalmoxis package as editable
-cd "$workpath"
-pip install -U -e .
+cd "$workpath" || { echo "ERROR: cannot enter $workpath" >&2; exit 1; }
+pip install -U -e . || { echo "ERROR: editable install failed" >&2; exit 1; }
 
 # Back to old folder
 cd $root
