@@ -116,19 +116,15 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     Alternatively, you can set default paths upfront for miniconda:
     ```console
     mkdir -p /dataserver/users/formingworlds/<username>/miniconda3
-    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O
-        /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
-    bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p
-        /dataserver/users/formingworlds/<username>/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
+    bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p /dataserver/users/formingworlds/<username>/miniconda3
     rm /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
     ```
     and similarly for conda-forge:
     ```console
     mkdir -p /dataserver/users/formingworlds/${USER}/miniforge3
-    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O
-        /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
-    bash /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh -b -p
-        /dataserver/users/formingworlds/${USER}/miniforge3
+    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
+    bash /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh -b -p /dataserver/users/formingworlds/${USER}/miniforge3
     rm /dataserver/users/formingworlds/${USER}/miniforge3/miniforge.sh
     ```
     For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
@@ -162,17 +158,17 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 
 - You can copy and paste the example submit script below (to start a single PROTEUS simulation) and modify it according to your needs.
 
-```console
-    getenv = True
-    universe = vanilla
-    executable = /dataserver/users/formingworlds/${USER}/miniconda3/bin/conda
-    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/dummy.toml
-    log = condor_outputs/log/logfile.$(PROCESS)
-    output = condor_outputs/output/outfile.$(PROCESS)
-    error = condor_outputs/output/errfile.$(PROCESS)
-    notify_user = <your-email>@astro.rug.nl
-    Requirements = (Cluster == "normas")
-    queue 1
+```text
+getenv = True
+universe = vanilla
+executable = /dataserver/users/formingworlds/${USER}/miniconda3/bin/conda
+arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/${USER}/PROTEUS/input/dummy.toml
+log = condor_outputs/log/logfile.$(PROCESS)
+output = condor_outputs/output/outfile.$(PROCESS)
+error = condor_outputs/output/errfile.$(PROCESS)
+notify_user = <your-email>@astro.rug.nl
+Requirements = (Cluster == "normas")
+queue 1
 ```
 
 To exit nano, press `Ctrl+X`, then press `Enter` when prompted to save the file.

@@ -42,8 +42,11 @@ The following example sweeps planet mass and hydrogen inventory:
 ```toml
 ref_config = "input/dummy.toml"
 output     = "auto"
+symlink    = ""
 use_slurm  = false
 max_jobs   = 10
+max_days   = 1
+max_mem    = 12
 
 # Planet mass [M_earth]: four explicit values
 ["planet.mass_tot"]
@@ -91,7 +94,7 @@ In this case, you will need to make sure that PROTEUS stays open in order to man
 
 ### With Slurm
 
-Alternatively, you can access high performance compute nodes through the Slurm workload manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm = true` in your grid's configuration file. Then set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation). These values are nominally 3 GB and 2 days. Ensure that these values are within the limits of the server you are working on.
+Alternatively, you can access high performance compute nodes through the Slurm workload manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm = true` in your grid's configuration file. Then set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation). The shipped example uses 12 GB and 1 day. Ensure that these values are within the limits of the server you are working on.
 
 With these options enabled, running PROTEUS will produce a script called `slurm_dispatch.sh` in the specified output folder, as well as write the required configuration files to a subfolder called `cfgs/`.
 

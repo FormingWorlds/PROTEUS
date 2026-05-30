@@ -102,7 +102,7 @@ up to `max_jobs` at a time, and reports progress until every case has stopped.
 
 Each case runs until one of two conditions is met, whichever comes first:
 
-- **Solidification**: the global melt fraction drops below `phi_crit` (0.05).
+- **Solidification**: the global melt fraction drops below `phi_crit` (0.01).
   This is enabled in the base config.
 - **Energy balance**: the net surface flux becomes small (radiative
   equilibrium). The grid file turns this on for every case via the
@@ -213,7 +213,7 @@ max_mem   = 12       # memory per CPU [GB]
 
 The grid manager then writes a Slurm job-array script and prints the `sbatch`
 command to submit it. Each case runs as an independent array task. See the
-cluster guides ([Habrok](habrok_cluster_guide.md), [Snellius](snellius_cluster_guide.md)).
+cluster guides ([Habrok](../How-to/habrok_cluster_guide.md), [Snellius](../How-to/snellius_cluster_guide.md)).
 
 ## Caveats: this is the dummy model
 

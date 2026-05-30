@@ -78,5 +78,5 @@ See the [parameter grids guide](usage_grids.md) for how to submit grids to the n
 
 You can also submit single PROTEUS runs to the nodes. For example:
 ```console
-sbatch --mem-per-cpu=3G --time=1440 --wrap "proteus start -oc input/all_options.toml"
+sbatch --mem-per-cpu=3G --time=1440 --wrap "proteus start --offline -c input/all_options.toml"
 ```

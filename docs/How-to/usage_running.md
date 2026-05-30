@@ -16,7 +16,7 @@ where `[cfgfile]` is the path to the configuration file. A good first test is th
 proteus start -c input/all_options.toml
 ```
 
-This writes its results to `output/all_options/` inside your PROTEUS directory. See the [configuration guide](config.md) for how to edit configuration files and an explanation of their structure.
+This writes its results to a timestamped `output/run_<timestamp>_xxxx/` folder inside your PROTEUS directory, because the config sets `params.out.path = "auto"`. Set `path` to a fixed string in the config to choose the folder name instead. See the [configuration guide](config.md) for how to edit configuration files and an explanation of their structure.
 
 The most useful flags for `proteus start` are:
 
@@ -33,7 +33,7 @@ By default PROTEUS checks whether any lookup tables or data need to be downloade
     A coupled simulation can run for hours. Detach it from the terminal so it survives disconnects, for example with `nohup`:
 
     ```console
-    nohup proteus start --offline -c input/all_options.toml > output/all_options/launch.log 2>&1 &
+    nohup proteus start --offline -c input/all_options.toml > output/launch.log 2>&1 &
     ```
 
     On a remote machine, `tmux` is usually more convenient (see below).
@@ -62,10 +62,10 @@ For site-specific instructions, see the cluster guides: [Kapteyn](kapteyn_cluste
 
 ## Output and results
 
-A PROTEUS simulation creates several types of output file. For the `all_options` example the results are at `output/all_options/`. The tree below outlines the purpose of the main files and subfolders:
+A PROTEUS simulation creates several types of output file. With `params.out.path = "auto"` (as in the `all_options` example) the results land in a timestamped `output/run_<timestamp>_xxxx/` folder. The tree below outlines the purpose of the main files and subfolders:
 
 ```text
-all_options/
+run_<timestamp>_xxxx/
  ├─runtime_helpfile.csv         <---- table containing the main simulation results
  ├─proteus_00.log               <---- the log file from the simulation
  ├─init_coupler.toml            <---- a completed copy of the configuration file

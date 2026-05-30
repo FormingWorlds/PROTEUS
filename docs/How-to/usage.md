@@ -12,7 +12,7 @@ In all cases you configure the model through a configuration file, described in 
     ```console
     proteus start -c input/all_options.toml
     ```
-    Results appear in `output/all_options/`. See [Running and output](usage_running.md#output-and-results) for details.
+    Results appear in a timestamped `output/run_<timestamp>_xxxx/` folder (this config sets `params.out.path = "auto"`). See [Running and output](usage_running.md#output-and-results) for details.
 
 ## Where to go next
 
