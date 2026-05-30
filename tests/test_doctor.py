@@ -286,8 +286,14 @@ class TestGitHelpers:
         assert len(h) == 40
 
     def test_git_head_returns_none_for_non_repo(self, tmp_path):
-        """Non-repo path returns None."""
+        """A non-repo path returns None (unknown), distinct from the
+        40-char hash a real repo yields."""
         assert _git_head(str(tmp_path)) is None
+        # Contrast: the same helper on an initialised repo returns a hash,
+        # so None is a genuine "not a repo" signal, not a constant return.
+        _init_test_repo(tmp_path)
+        head = _git_head(str(tmp_path))
+        assert head is not None and len(head) == 40
 
     def test_git_dirty_false_for_clean_repo(self, tmp_path):
         """Clean repo returns False."""
@@ -304,6 +310,10 @@ class TestGitHelpers:
         """Non-repo path returns None so the caller can mark the dirty state
         as unknown rather than silently reporting a clean tree."""
         assert _git_dirty(str(tmp_path)) is None
+        # Contrast: an initialised clean repo returns False, not None, so
+        # None genuinely distinguishes "not a repo" from "clean tree".
+        _init_test_repo(tmp_path)
+        assert _git_dirty(str(tmp_path)) is False
 
 
 class TestEditableCheckoutPath:
@@ -316,15 +326,23 @@ class TestEditableCheckoutPath:
         with patch(
             'proteus.doctor.importlib.metadata.distribution',
             side_effect=PackageNotFoundError('x'),
-        ):
-            assert _editable_checkout_path('x') is None
+        ) as mock_dist:
+            result = _editable_checkout_path('x')
+        assert result is None
+        # Discrimination: the helper attempted the metadata lookup and
+        # swallowed PackageNotFoundError, rather than returning None blind.
+        assert mock_dist.call_count == 1
 
     def test_returns_none_for_wheel_install(self):
         """Wheel installs have no direct_url.json."""
         dist = Mock()
         dist.read_text.return_value = None
         with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
-            assert _editable_checkout_path('x') is None
+            result = _editable_checkout_path('x')
+        assert result is None
+        # Discrimination: the helper consulted direct_url.json (absent for
+        # a wheel) rather than returning None without inspecting it.
+        assert dist.read_text.call_count == 1
 
     def test_returns_path_for_editable_install(self):
         """Editable installs return the decoded file path."""
@@ -341,7 +359,11 @@ class TestEditableCheckoutPath:
         dist = Mock()
         dist.read_text.return_value = '{not json'
         with patch('proteus.doctor.importlib.metadata.distribution', return_value=dist):
-            assert _editable_checkout_path('x') is None
+            result = _editable_checkout_path('x')
+        assert result is None
+        # Discrimination: malformed JSON is swallowed (returns None) only
+        # after the helper read and tried to parse direct_url.json.
+        assert dist.read_text.call_count == 1
 
 
 class TestRunAllChecks:
