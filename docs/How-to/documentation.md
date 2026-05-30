@@ -79,7 +79,7 @@ The current `docs/` folder structure is shown below:
 
 The main directories and files are used as follows:
 
-- `Tutorials/`: contains tutorials (currently still empty).
+- `Tutorials/`: contains tutorials.
 - `How-to/`: contains how-to guides.
 - `Explanations/`: contains explanation pages.
 - `Reference/`: contains reference information.

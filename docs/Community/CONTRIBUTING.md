@@ -88,9 +88,9 @@ Once your new data is uploaded on Zenodo, do not forget to also upload it on the
 Linting is a term for static code analysis to flag programming errors,
 bugs, stylistic errors and suspicious constructs [[ref]](https://en.wikipedia.org/wiki/Lint_(software)).
 
-PROTEUS uses [`ruff`](https://astral.sh/ruff) for linting. The linting [rules](https://docs.astral.sh/ruff/rules/) are defined in [`pyproject.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/pyproject.toml). This check are run automatically via a Github Action: [codestyle](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/codestyle.yaml).
+PROTEUS uses [`ruff`](https://astral.sh/ruff) for linting. The linting [rules](https://docs.astral.sh/ruff/rules/) are defined in [`pyproject.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/pyproject.toml). This check is run automatically via a Github Action: [code-style](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/code-style.yaml).
 
-You can `ruff` on locally using one of these commands:
+You can run `ruff` locally using one of these commands:
 
 ```console
 ruff check start_proteus.py  # single file

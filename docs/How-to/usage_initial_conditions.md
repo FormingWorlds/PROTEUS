@@ -54,7 +54,7 @@ parameter:
 The two core-mantle-boundary (CMB) modes anchor the adiabat at the base of the
 mantle and integrate it upward to the surface. The surface modes do the
 opposite, anchoring at the surface and integrating downward. The remaining
-modes set the profile from accretion energetics (White and Li, 2025) or from
+modes set the profile from accretion energetics (White & Li, 2025) or from
 the specific entropy itself.
 
 The default needs nothing beyond the mode name, because `delta_T_super` already

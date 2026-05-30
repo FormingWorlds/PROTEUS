@@ -88,7 +88,7 @@ def test_stefan_boltzmann_flux():
     """Verify F = sigma * T^4 at T = 300 K."""
     T = 300.0
     sigma = 5.670374419e-8
-    expected = sigma * T**4  # 459.27 W/m^2
+    expected = sigma * T**4  # 459.30 W/m^2
 
     result = compute_flux(T)
     assert result == pytest.approx(expected, rel=1e-6)
