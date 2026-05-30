@@ -128,6 +128,10 @@ def test_integration_calliope_high_carbon_budget(proteus_multi_timestep_run):
         outgas__module='calliope',
         outgas__fO2_shift_IW=0.0,
         planet__tsurf_init=2000.0,
+        # Set C as a mass ratio to H so the budget means C/H = 2.0
+        # regardless of the base config's C_mode (dummy.toml pins
+        # C_mode = 'ppmw', under which C_budget = 2.0 would be 2 ppmw).
+        planet__elements__C_mode='C/H',
         planet__elements__C_budget=2.0,
     )
 
