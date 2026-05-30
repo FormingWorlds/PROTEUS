@@ -34,7 +34,12 @@ from proteus import Proteus
 
 pytest.importorskip('janus')
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
+# Higher timeout than the 300 s integration default: a real JANUS
+# radiative-transfer solve takes tens of seconds and the coupled loop runs
+# it several times (init loops plus a step), so the bounded run needs more
+# headroom than a mocked integration test. The local run is ~6 min; the
+# wider ceiling absorbs the slower CI runners.
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(900)]
 
 
 @pytest.mark.integration
@@ -71,9 +76,27 @@ def test_smoke_janus_dummy_single_timestep():
         # Moderate initial temperature to keep JANUS in a convergent regime
         runner.config.planet.tsurf_init = 2000.0
 
-        # Single timestep
-        runner.config.params.stop.time.minimum = 1e2
-        runner.config.params.stop.time.maximum = 1e3
+        # Keep the atmosphere thin so the SOCRATES radiative-transfer
+        # solve stays within the smoke wall-time budget. The base config
+        # carries a heavy volatile inventory for the outgas demo, which
+        # makes the moist-adiabat radiation step slow; this smoke test
+        # only needs JANUS to initialise and run one step, not a thick
+        # atmosphere. Set all four volatiles to a trace ppmw budget so the
+        # dummy outgas produces a low surface pressure.
+        for _elem in ('H', 'C', 'N', 'S'):
+            setattr(runner.config.planet.elements, f'{_elem}_mode', 'ppmw')
+            setattr(runner.config.planet.elements, f'{_elem}_budget', 1.0)
+
+        # The dummy interior does not advance model time, so the
+        # maximum-time stop never fires. Cap the loop iteration count so
+        # the run terminates after the init loops plus one step instead of
+        # running to the 9000-iteration safety ceiling, which would call
+        # the JANUS radiative-transfer solver thousands of times. This is
+        # a smoke test of JANUS initialisation and a single coupled step.
+        runner.config.params.stop.time.minimum = 1.0
+        runner.config.params.stop.time.maximum = 2.0
+        runner.config.params.stop.iters.minimum = 1
+        runner.config.params.stop.iters.maximum = 5
 
         # Disable plotting and archiving for speed
         runner.config.params.out.plot_mod = 0
