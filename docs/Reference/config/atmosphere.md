@@ -97,7 +97,17 @@ interior heat flux.
 | `perturb_all` | bool | `false` | Recompute full Jacobian each iteration |
 | `ini_profile` | str | `"isothermal"` | Initial T(p) guess: `isothermal`, `loglinear`, `dry_adiabat`, `analytic` |
 | `ls_default` | int | `2` | Linesearch method: 0 (none), 1 (golden section), 2 (backtracking) |
+| `fdo` | int | `2` | Finite-difference order for the numerical Jacobian: `2` or `4` |
 | `verbosity` | int | `1` | AGNI log level: 0 (silent), 1 (info), 2 (debug) |
+
+**Spectral and gas allocation**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `spectral_file` | str or none | `none` | Path to an AGNI spectral file, or `"greygas"` for the grey-gas scheme; `none` uses `spectral_group`/`spectral_bands` |
+| `grey_opacity_lw` | float | `10` | Grey longwave opacity [m$^2$ kg$^{-1}$], used when `spectral_file = "greygas"` |
+| `grey_opacity_sw` | float | `1e-4` | Grey shortwave opacity [m$^2$ kg$^{-1}$], used when `spectral_file = "greygas"` |
+| `check_safe_gas` | bool | `true` | Require at least one "safe" gas (dry, with opacity and thermodynamic data) when allocating the atmosphere |
 
 **FastChem equilibrium chemistry** (used when `chemistry = "eq"`)
 

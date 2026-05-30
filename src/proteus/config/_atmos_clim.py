@@ -134,7 +134,7 @@ class Agni:
         Characteristic surface wind speed [m/s].
     phs_timescale: float
         Relaxation timescale for phase changes (condensation/evaporation) [seconds].
-    evap_efficiency: bool
+    evap_efficiency: float
         Efficiency of raindrop re-evaporation (0 to 1).
     rainout: bool
         Enable volatile condensation and evaporation in the atmosphere.

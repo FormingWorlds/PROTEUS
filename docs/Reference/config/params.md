@@ -33,6 +33,7 @@ problems; maximum gives a fixed step.
 | `minimum` | float | `1e4` | Minimum allowed time step [yr] |
 | `minimum_rel` | float | `1e-5` | Minimum relative time step (fraction of current time) |
 | `maximum` | float | `1e7` | Maximum allowed time step [yr] |
+| `maximum_rel` | float | `1.0` | Relative cap on the maximum step; the effective maximum is `maximum + maximum_rel * Time`. Set `0.0` for a fixed maximum |
 
 ### Adaptive method parameters
 

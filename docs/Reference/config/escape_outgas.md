@@ -14,7 +14,7 @@ See also [Model description](../../Explanations/model.md#atmospheric-escape-zeph
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `module` | str or none | `"zephyrus"` | Escape module: `zephyrus` (energy-limited), `dummy` (fixed rate), `none` (disabled) |
+| `module` | str or none | `"zephyrus"` | Escape module: `zephyrus` (energy-limited), `boreas` (hydrodynamic), `dummy` (fixed rate), `none` (disabled) |
 | `reservoir` | str | `"outgas"` | Composition reservoir for escaping gas: `outgas`, `bulk`, `pxuv` |
 
 ### ZEPHYRUS `[escape.zephyrus]`
@@ -35,6 +35,42 @@ A fixed bulk escape rate, useful for testing and parameter studies.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `rate` | float | `0.0` | Bulk escape rate [kg s$^{-1}$] |
+
+### BOREAS `[escape.boreas]`
+
+Hydrodynamic escape. BOREAS computes both the XUV opacity level and the
+escape radius internally, and can fractionate the outflow by element.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `fractionate` | bool | `true` | Enable elemental fractionation in the outflow |
+| `efficiency` | float | `0.1` | Energy efficiency factor [0, 1] |
+
+**XUV absorption cross-sections** [cm$^2$]
+
+| Parameter | Default | Species |
+|-----------|---------|---------|
+| `sigma_H` | `1.89e-18` | H |
+| `sigma_O` | `2.00e-18` | O |
+| `sigma_C` | `2.50e-18` | C |
+| `sigma_N` | `3.00e-18` | N |
+| `sigma_S` | `6.00e-18` | S |
+
+**Grey IR opacities** [cm$^2$ g$^{-1}$]
+
+| Parameter | Default | Species |
+|-----------|---------|---------|
+| `kappa_H2` | `1e-2` | H$_2$ |
+| `kappa_H2O` | `1.0` | H$_2$O |
+| `kappa_O2` | `1.0` | O$_2$ |
+| `kappa_CO2` | `1.0` | CO$_2$ |
+| `kappa_CO` | `1.0` | CO |
+| `kappa_CH4` | `1.0` | CH$_4$ |
+| `kappa_N2` | `1.0` | N$_2$ |
+| `kappa_NH3` | `1.0` | NH$_3$ |
+| `kappa_H2S` | `1.0` | H$_2$S |
+| `kappa_SO2` | `1.0` | SO$_2$ |
+| `kappa_S2` | `1.0` | S$_2$ |
 
 ---
 
@@ -75,6 +111,13 @@ fO$_2$ buffering.
 | `include_CH4` | `true` | CH$_4$ |
 | `include_CO` | `true` | CO |
 | `solubility` | `true` | Enable melt-gas partitioning (`false` = all volatiles in atmosphere) |
+
+**Solver**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `nguess` | int | `1000` | Maximum number of initial-guess samples for the equilibrium solver |
+| `nsolve` | int | `3000` | Maximum number of solver iterations per call |
 
 ### Atmodeller `[outgas.atmodeller]`
 

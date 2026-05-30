@@ -192,5 +192,6 @@ accumulated over each solver call.
 
 The diagnostic columns `E_residual_cons_J` and `E_residual_cons_frac` in
 the helpfile quantify the residual. Typical values are below 5% of the
-total cooling over multi-Myr runs. These diagnostics are enabled by default
-(`write_flux_diagnostics = true`).
+total cooling over multi-Myr runs. These columns are written on every run.
+For a finer per-component flux decomposition in the Aragog NetCDF output,
+set `write_flux_diagnostics = true` (disabled by default).

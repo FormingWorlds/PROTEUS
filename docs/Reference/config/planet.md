@@ -10,6 +10,7 @@ for the coupled evolution.
 |-----------|------|---------|-------------|
 | `mass_tot` | float | `1.0` | Total initial planet mass [M$_\oplus$] |
 | `prevent_warming` | bool | `false` | Require monotonic cooling (clamp $T_\mathrm{magma}$ to previous value if it increases) |
+| `R_int_override` | float or none | `none` | Advanced: bypass the radius root finder and force a fixed interior radius [m]; `none` uses the root finder. Used for SPIDER/Aragog parity runs |
 
 ## Initial temperature profile
 
@@ -51,6 +52,8 @@ When `fO2_source = "user_constant"`, the atmospheric fO$_2$ is buffered at the
 iron-wustite offset set by `outgas.fO2_shift_IW`. When `fO2_source = "from_O_budget"`,
 the O budget from `planet.elements.O_mode`/`O_budget` is authoritative and the
 chemistry solver derives the fO$_2$ that produces the supplied O inventory.
+A third value, `from_mantle_redox`, is reserved for a future release and is
+rejected at config-load until that work lands.
 
 ## Volatile inventory
 

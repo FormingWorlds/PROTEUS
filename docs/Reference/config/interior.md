@@ -42,6 +42,7 @@ Chabrier, or Seager 2007). It supports 2-layer (core + mantle) and 3-layer
 | `ice_layer_eos` | str or none | `none` | Ice/water layer EOS; `none` = 2-layer model |
 | `mushy_zone_factor` | float | `0.8` | Solidus/liquidus depression factor [0.7, 1.0] (PALEOS only) |
 | `mantle_mass_fraction` | float | `0` | Mantle mass fraction for 3-layer models; `0` = auto ($1 - \mathrm{core\_frac}$) |
+| `dry_mantle` | bool | `true` | Structure EOS assumes a dry mantle; `false` enables melt-fraction-aware dissolved-volatile mixing in the mantle density |
 
 **Grid and solver**
 
@@ -74,8 +75,10 @@ loop. The structure is recomputed when any of these conditions are met:
 |-----------|------|---------|-------------|
 | `update_dphi_abs` | float | `0.05` | Trigger when melt fraction changes by this amount |
 | `update_dtmagma_frac` | float | `0.05` | Trigger when $T_\mathrm{magma}$ changes by this fraction |
+| `update_dw_comp_abs` | float | `0.05` | Trigger when the relative dissolved-volatile (H$_2$O or H$_2$) mantle mass fraction changes by this amount |
 | `update_interval` | float | `1e9` | Maximum time between updates [yr]; effectively disabled at default |
 | `update_min_interval` | float | `0` | Minimum time between updates [yr] (prevents thrashing) |
+| `update_stale_ceiling` | float | `2.5e4` | Time since last successful re-solve that refires a trigger [yr]; `0` disables |
 | `mesh_max_shift` | float | `0.05` | Maximum fractional radius shift per update |
 | `mesh_convergence_interval` | float | `10.0` | Convergence relaxation time after mesh update [yr] |
 
@@ -120,6 +123,7 @@ atmospheric evolution.
 | `rtol` | float | `1e-10` | ODE solver relative tolerance |
 | `atol` | float | `1e-10` | ODE solver absolute tolerance |
 | `flux_guess` | float | `-1` | Initial heat flux guess [W m$^{-2}$]; negative = compute as $\sigma T_\mathrm{magma}^4$ |
+| `surface_bc_mode` | str | `"flux"` | Surface BC for SPIDER/Aragog: `flux` (prescribed $F_\mathrm{atm}$ from the atmosphere module) or `grey_body` (native grey-body BC computed inside the interior solver) |
 
 **Transport physics**
 
@@ -198,7 +202,7 @@ atmospheric evolution.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `write_flux_diagnostics` | bool | `true` | Save per-component flux decomposition to Aragog NetCDF output |
+| `write_flux_diagnostics` | bool | `false` | Save per-component flux decomposition to Aragog NetCDF output |
 
 **Constant-properties mode**
 
@@ -229,6 +233,10 @@ Jacobians for robust convergence.
 | `solver_method` | str | `"cvode"` | ODE solver: `cvode` (SUNDIALS), `radau` (scipy), `bdf` (scipy) |
 | `atol_temperature_equivalent` | float | `1e-8` | Effective temperature-scale absolute tolerance [K] |
 | `phase_smoothing` | str | `"tanh"` | Phase-boundary smoothing: `tanh` or `cubic_hermite` |
+| `core_bc` | str | `"energy_balance"` | Core-mantle boundary condition: `energy_balance` (SPIDER bit-parity), `quasi_steady`, `gradient`, or `bower2018` (experimental) |
+| `tolerance_struct` | float | `100` | Absolute mass tolerance [kg] for the interior-radius secant solver |
+| `scalar_gravity_override` | bool | `false` | Overwrite the mesh gravity column with a uniform surface scalar; set `true` only for paired scalar-gravity comparisons |
+| `phi_step_cap` | float | `0.0` | Per-call melt-fraction step cap; `0.0` disables, `> 0` clamps the integration window so projected $|\Delta\Phi|$ stays within the cap |
 
 ### SPIDER `[interior_energetics.spider]`
 
@@ -239,6 +247,8 @@ results consistent with Bower et al. (2018)[^cite-bower2018].
 |-----------|------|---------|-------------|
 | `solver_type` | str | `"bdf"` | SUNDIALS method: `adams` or `bdf` |
 | `matprop_smooth_width` | float | `0.01` | Melt-fraction smoothing window across solidus/liquidus |
+| `tolerance_struct` | float | `100` | Absolute mass tolerance [kg] for the interior-radius secant solver |
+| `log_output` | bool | `true` | Write SPIDER solver log output |
 
 ### Dummy `[interior_energetics.dummy]`
 
@@ -259,8 +269,8 @@ with prescribed solidus and liquidus and parameterised convective heat transport
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `rtol` | float | `1e-4` | ODE solver relative tolerance |
-| `atol` | float | `1e-8` | ODE solver absolute tolerance |
+| `rtol` | float | `1e-6` | ODE solver relative tolerance |
+| `atol` | float | `1e-9` | ODE solver absolute tolerance |
 | `T_p_0` | float | `3500.0` | Initial potential temperature [K] (if Zalmoxis is not active) |
 | `T_solidus` | float | `1420.0` | Mantle solidus [K] |
 | `T_liquidus` | float | `2020.0` | Mantle liquidus [K] |
