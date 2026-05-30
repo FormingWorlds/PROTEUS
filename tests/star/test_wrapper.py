@@ -234,7 +234,7 @@ def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form():
 
     Discriminating: at S = 1361 W/m^2 and albedo = 0.3 the closed-form
     T_eqm is ~254 K. A regression to the wrong exponent (Stefan-
-    Boltzmann is T^4, not T^3 or T^5) would land at ~720 K or ~96 K
+    Boltzmann is T^4, not T^3 or T^5) would land at ~1613 K or ~84 K
     respectively. Pin the value to 254 K with a clear tolerance and
     add explicit exponent guards.
     """
@@ -255,8 +255,8 @@ def test_update_equilibrium_temperature_pins_stefan_boltzmann_closed_form():
     assert hf_row['T_eqm'] == pytest.approx(expected, rel=1e-12)
     # Closed-form value pin: ~254 K for Earth-like albedo + insolation.
     assert hf_row['T_eqm'] == pytest.approx(254.0, abs=2.0)
-    # Exponent guard: T^4 -> ~254 K. T^3 would give ~720 K; T^5
-    # would give ~96 K. Both are well outside any plausible tolerance.
+    # Exponent guard: T^4 -> ~254 K. T^3 would give ~1613 K; T^5
+    # would give ~84 K. Both are well outside any plausible tolerance.
     wrong_cube_root = (F_asf / const_sigma) ** (1.0 / 3.0)
     wrong_fifth_root = (F_asf / const_sigma) ** (1.0 / 5.0)
     assert abs(hf_row['T_eqm'] - wrong_cube_root) > 50

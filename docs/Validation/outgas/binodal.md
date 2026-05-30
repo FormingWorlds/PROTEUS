@@ -1,12 +1,12 @@
 # Validation: `src/proteus/outgas/binodal.py`
 
 This page tracks the `@pytest.mark.reference_pinned` tests that anchor the
-behaviour of `proteus.outgas.binodal` against the Rogers et al. (2025)
-H2-MgSiO3 miscibility model.
+behaviour of `proteus.outgas.binodal` against the Rogers, Young &
+Schlichting (2025) H2-MgSiO3 miscibility model.
 
-| Test id | Reference | Source page | Scope |
-|---|---|---|---|
-| `tests/outgas/test_binodal.py::test_h2_mass_is_conserved_per_rogers2025_partition` | Rogers et al. (2025), preprint arXiv:2502.xxxxx, Section 3.2 | Pre-print | Pins mass conservation across the binodal partition: for any suppression weight `sigma` returned by `zalmoxis.binodal.rogers2025_suppression_weight`, the post-partition reservoirs (atm + liquid + solid) must sum to `H2_kg_total`. Asserts each reservoir is non-negative and bounded above by the total. |
+| Test id | Reference | Scope |
+|---|---|---|
+| `tests/outgas/test_binodal.py::test_h2_mole_total_uses_h2_molecular_mass_per_rogers2025` | Rogers, Young & Schlichting (2025), MNRAS, 544, 3496 (doi:10.1093/mnras/staf1940) | Pins the molar-mass conversion the binodal partition applies to every H2 reservoir against an independent computation using `scipy.constants.Avogadro` and `M(H2) = 2.016e-3` kg/mol. The kg-closure `atm + liquid + solid = total` is structurally trivial for the `sigma * T + (1 - sigma) * T + 0` assignment, so the discriminating assertion is the molar-mass pin (`rel=1e-12`): a regression mistaking `M(H2)` for the atomic mass `M(H) = 1.008e-3` kg/mol would inflate the mole total by a factor of two and be caught. |
 
 ## Re-derivation note
 
@@ -22,9 +22,11 @@ H2_kg_solid  = 0  # H2 does not partition into solid silicate
 ```
 
 By construction the three reservoirs sum to `H2_kg_total` for any `sigma`
-in [0, 1]. The test patches `rogers2025_suppression_weight` to a specific
-value (0.4) to exercise the partition arithmetic without depending on the
-upstream Zalmoxis implementation.
+in [0, 1], so the kg-closure is structurally trivial. The discriminating
+check is instead the molar-mass conversion: the reference-pinned test patches
+`rogers2025_suppression_weight` to a specific value (0.4), then verifies that
+`H2_mol_total = H2_kg_total / M(H2) / N_av` uses the molecular mass
+`M(H2) = 2.016e-3` kg/mol rather than the atomic mass `M(H)`.
 
 ## Pending verification
 

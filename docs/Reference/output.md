@@ -40,10 +40,10 @@ description. The codes are:
 | 0 | Started |
 | 1 | Running |
 | 10 | Completed: mantle solidified |
-| 11 | Completed: maximum iterations reached |
-| 12 | Completed: maximum time reached |
-| 13 | Completed: target flux reached |
-| 14 | Completed: radiative equilibrium |
+| 11 | Unused |
+| 12 | Completed: maximum iterations reached |
+| 13 | Completed: target time reached |
+| 14 | Completed: net flux is small (radiative equilibrium) |
 | 15 | Completed: atmosphere escaped |
 | 16 | Completed: planet disintegrated |
 | 20 | Error: configuration |

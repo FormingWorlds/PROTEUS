@@ -68,6 +68,8 @@ nav:
           - Interior structure config: Reference/api/config_struct.md
           - Interior energetics wrapper: Reference/api/interior_energetics_wrapper.md
       - Validation:
+          - Interior structure:
+              - Liquidus-super IC anchor (zalmoxis.py): Validation/interior_struct/zalmoxis.md
           - Orbit:
               - Orbital evolution (orbit.py): Validation/orbit/orbit.md
               - Satellite angular momentum (satellite.py): Validation/orbit/satellite.md

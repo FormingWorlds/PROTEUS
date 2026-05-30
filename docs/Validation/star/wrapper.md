@@ -14,7 +14,7 @@
 The test verifies the closed-form equilibrium temperature calculation against
 the analytical Stefan-Boltzmann relation. Discrimination guards assert that a
 wrong exponent (cube root or fifth root instead of fourth root) would land at
-~720 K or ~96 K, both well outside the tolerance band around the correct
+~1613 K or ~84 K, both well outside the tolerance band around the correct
 ~254 K value.
 
 ## Last verified
