@@ -25,8 +25,36 @@ log = logging.getLogger('fwl.' + __name__)
 
 # Module-level cache for density seeding between Zalmoxis calls.
 # Stores the last successful density profile so the next call can
-# use it as a starting point for the Picard iteration.
-_density_cache = {'density': None, 'radii': None}
+# use it as a starting point for the Picard iteration. The cache only
+# seeds the iterative solver; it never changes the converged result.
+# `key` records which planet the seed belongs to so an in-process
+# multi-planet driver does not seed one planet from another.
+_density_cache = {'density': None, 'radii': None, 'key': None}
+
+
+def _structure_cache_key(config):
+    """Signature identifying the planet that owns a cached density seed.
+
+    Parameters
+    ----------
+    config : Config
+        Active configuration object.
+
+    Returns
+    -------
+    tuple
+        Structural determinants of the interior solve. Built from the
+        total planet mass and core/mantle fractions, all of which are
+        fixed for a given planet across a trajectory, so the seed is
+        reused within one planet's evolution but never shared between
+        two different planets solved in the same process.
+    """
+    return (
+        config.planet.mass_tot,
+        config.interior_struct.core_frac,
+        config.interior_struct.zalmoxis.mantle_mass_fraction,
+    )
+
 
 # Mapping from PROTEUS volatile species to Zalmoxis EOS component names.
 # Only species with Zalmoxis EOS tables are included.
@@ -370,10 +398,10 @@ def _resolve_zalmoxis_cmb_temperature(config: Config, hf_row: dict, mode: str) -
 
     For 'liquidus_super', returns paleos_liquidus(P_cmb) + delta_T_super,
     using hf_row['P_cmb'] when populated (subsequent timesteps) or a
-    135 GPa Earth-like fallback on the very first call. The energetics
-    IC step (compute_initial_entropy) re-derives the same anchor against
-    the converged Zalmoxis P_cmb, so any first-call P_cmb mismatch is
-    self-correcting after one round-trip.
+    Noack & Lasbleis (2020) mass-aware P_cmb estimate on the very first
+    call. The energetics IC step (compute_initial_entropy) re-derives the
+    same anchor against the converged Zalmoxis P_cmb, so any first-call
+    P_cmb mismatch is self-correcting after one round-trip.
 
     For all other modes, returns config.planet.tcmb_init verbatim.
     """
@@ -533,9 +561,10 @@ def load_zalmoxis_configuration(
         # matching the entropy that the energetics solver receives via
         # compute_initial_entropy. 'liquidus_super' maps to
         # 'adiabatic_from_cmb' here, with cmb_temperature derived from the
-        # Fei+2021 liquidus at the converged P_cmb (or a 135 GPa fallback
-        # on the very first call before Zalmoxis has populated P_cmb)
-        # plus delta_T_super. The energetics IC step recomputes this
+        # Fei+2021 liquidus at the converged P_cmb (or a Noack & Lasbleis
+        # (2020) mass-aware P_cmb estimate on the very first call before
+        # Zalmoxis has populated P_cmb) plus delta_T_super. The energetics
+        # IC step recomputes this
         # exact same anchor against the converged P_cmb, so the structure
         # solve and the entropy IC stay in agreement after the first
         # round-trip. temperature_mode_override lets SPIDER coupling force
@@ -1176,9 +1205,11 @@ def generate_spider_tables(config: Config, outdir: str):
         with open(cache_marker) as f:
             existing_key = f.read().strip()
         if existing_key == cache_key:
-            # Tables are up to date
-            solidus_path = os.path.join(spider_eos_dir, 'solidus.dat')
-            liquidus_path = os.path.join(spider_eos_dir, 'liquidus.dat')
+            # Tables are up to date. File names must match the writer in
+            # zalmoxis.eos_export.generate_spider_phase_boundaries, which
+            # emits solidus_P-S.dat / liquidus_P-S.dat.
+            solidus_path = os.path.join(spider_eos_dir, 'solidus_P-S.dat')
+            liquidus_path = os.path.join(spider_eos_dir, 'liquidus_P-S.dat')
             if os.path.isfile(solidus_path) and os.path.isfile(liquidus_path):
                 log.info(
                     'Reusing cached PALEOS-derived P-S entropy tables (P_max=%.2e, %dx%d)',
@@ -1453,6 +1484,14 @@ def zalmoxis_solver(
             if (_use_jax_active and temperature_arrays is not None)
             else temperature_function
         )
+        # Reuse the cached density profile as a Picard seed only when it
+        # belongs to this same planet; otherwise start cold. Seeding never
+        # changes the converged result, only the iteration count.
+        _seed_match = not _use_jax_active and _density_cache.get('key') == _structure_cache_key(
+            config
+        )
+        _seed_density = _density_cache['density'] if _seed_match else None
+        _seed_radii = _density_cache['radii'] if _seed_match else None
         model_results = main(
             config_params,
             material_dictionaries=mat_dicts,
@@ -1462,8 +1501,8 @@ def zalmoxis_solver(
             temperature_function=_tf_effective,
             temperature_arrays=temperature_arrays,
             p_center_hint=None if _use_jax_active else hf_row.get('P_center'),
-            initial_density=None if _use_jax_active else _density_cache.get('density'),
-            initial_radii=None if _use_jax_active else _density_cache.get('radii'),
+            initial_density=_seed_density,
+            initial_radii=_seed_radii,
         )
 
     # Extract results from the model
@@ -1703,6 +1742,7 @@ def zalmoxis_solver(
     # oscillates, see the warm-start gate above).
     _density_cache['density'] = density.copy()
     _density_cache['radii'] = np.asarray(radii).copy()
+    _density_cache['key'] = _structure_cache_key(config)
 
     # Final results of the Zalmoxis interior model
     log.info('Found solution for interior structure with Zalmoxis')
