@@ -65,6 +65,7 @@ from proteus import Proteus  # noqa: E402
 from proteus import __version__ as proteus_version  # noqa: E402
 from proteus.config import read_config_object  # noqa: E402
 from proteus.utils.data import download_sufficient_data  # noqa: E402
+from proteus.utils.helper import resolve_fwl_data_dir  # noqa: E402
 from proteus.utils.logs import setup_logger  # noqa: E402
 
 config_option = click.option(
@@ -710,15 +711,6 @@ def grid_pack(output_path: Path):
 # ----------------
 # installer
 # ----------------
-
-
-def resolve_fwl_data_dir() -> Path:
-    """Return the FWL_DATA path (env or default)."""
-    if 'FWL_DATA' in os.environ:
-        return Path(os.environ['FWL_DATA'])
-    else:
-        # Return a default path to install FWL data.
-        return Path(__file__).resolve().parent.parent / 'FWL_DATA'
 
 
 def append_to_shell_rc(var: str, value: str, shell: str | None = None) -> Path | None:

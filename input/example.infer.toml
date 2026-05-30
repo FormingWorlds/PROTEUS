@@ -27,6 +27,11 @@ kernel     = "MAT3/2"               # GP kernel: RBF | MAT1/2 | MAT3/2 | MAT5/2
 acqf       = "LogEI"                # acquisition function: UCB | LogEI | E-LogEI
 n_steps    = 50                      # total BO evaluations
 
+# Per-child PROTEUS run timeout in seconds (optional). Bounds a single forward
+# model so one wedged run cannot hang the batch. Default 21600 (6 h); set to 0
+# to disable.
+child_timeout_s = 21600
+
 # Parameters to optimize [min, max]
 [parameters]
 "planet.mass_tot"        = [0.7, 3.0]

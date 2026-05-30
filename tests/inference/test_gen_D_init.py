@@ -186,9 +186,16 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-        def starmap(self, func, args):
+        def starmap_async(self, func, args):
             captured['task_count'] = len(args)
-            return [torch.tensor([[0.2]], dtype=torch.double) for _ in args]
+            results = [torch.tensor([[0.2]], dtype=torch.double) for _ in args]
+
+            class _AsyncResult:
+                def get(self, timeout=None):
+                    captured['pool_timeout'] = timeout
+                    return results
+
+            return _AsyncResult()
 
     monkeypatch.setattr(init_mod.os, 'cpu_count', lambda: 4)
     monkeypatch.setattr(init_mod, 'Halton', FakeHalton)
@@ -218,3 +225,7 @@ def test_sample_from_bounds_caps_workers_and_saves(monkeypatch, tmp_path):
     assert captured['task_count'] == 2
     assert captured['saved_shape'] == ((2, 1), (2, 1))
     assert captured['saved_path'].endswith('init.csv')
+    # The batch is bounded so a wedged worker cannot hang it indefinitely:
+    # the default per-child timeout (6 h) yields a positive, finite pool cap.
+    assert captured['pool_timeout'] is not None
+    assert captured['pool_timeout'] > 0

@@ -13,19 +13,18 @@ from time import sleep
 from typing import TYPE_CHECKING
 
 import numpy as np
-import platformdirs
 from osfclient.api import OSF
 from scipy.interpolate import interp1d
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.utils.helper import safe_rm
+from proteus.utils.helper import resolve_fwl_data_dir, safe_rm
 from proteus.utils.phoenix_helper import phoenix_param
 
 log = logging.getLogger('fwl.' + __name__)
 
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
+FWL_DATA_DIR = resolve_fwl_data_dir()
 MAX_ATTEMPTS = 3
 MAX_DLTIME = 120.0  # seconds
 RETRY_WAIT = 5.0  # seconds

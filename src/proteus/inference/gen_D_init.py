@@ -21,7 +21,7 @@ import torch
 from botorch.utils.transforms import normalize
 from scipy.stats.qmc import Halton
 
-from proteus.inference.objective import eval_obj, prot_builder
+from proteus.inference.objective import child_timeout_s, eval_obj, prot_builder
 from proteus.inference.utils import save_dataset_csv
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import recursive_get
@@ -189,6 +189,20 @@ def f_aug(x, iter, builder_args):
     return f(x)
 
 
+def _pool_timeout(n_tasks: int, n_workers: int) -> float | None:
+    """Total timeout for the initial-sampling pool, or None when disabled.
+
+    Each worker runs about ``ceil(n_tasks / n_workers)`` child PROTEUS runs in
+    sequence, each bounded by the per-child timeout, so the batch is allowed
+    that long plus a fixed margin.
+    """
+    per_child = child_timeout_s()
+    if per_child is None:
+        return None
+    per_worker = int(np.ceil(n_tasks / max(n_workers, 1)))
+    return per_worker * per_child + 300.0
+
+
 def sample_from_bounds(
     output: str,
     ref_config: str,
@@ -251,7 +265,11 @@ def sample_from_bounds(
 
     t0 = time.perf_counter()
     with Pool(processes=n_workers) as pool:
-        results = pool.starmap(f_aug, aug_args)
+        async_result = pool.starmap_async(f_aug, aug_args)
+        # Bound the whole batch so a worker that wedges outside the per-child
+        # subprocess timeout cannot hang the run indefinitely. Leaving the Pool
+        # context terminates any still-running workers if this raises.
+        results = async_result.get(timeout=_pool_timeout(len(aug_args), n_workers))
     t1 = time.perf_counter()
 
     log.info(f'Initial sampling took {t1 - t0:.2f}s')
