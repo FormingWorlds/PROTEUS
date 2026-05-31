@@ -41,9 +41,10 @@ class Calliope:
         solver per call. Default 3000.
     p_guess_max: float
         Upper bound [bar] of the CALLIOPE Monte-Carlo cold-start surface-
-        pressure draw. Raise it above the default for high-pressure (e.g.
-        sub-Neptune) cases whose surface pressure can exceed the default; the
-        CALLIOPE solver box is unchanged. Default 1e5.
+        pressure draw. Sets where the cold start samples, so raising it helps
+        the solver find a high-pressure (e.g. sub-Neptune) basin faster. It
+        does NOT raise the maximum pressure the solver can accept (CALLIOPE's
+        fixed 1e7 bar box), so it is bounded to (0, 1e7]. Default 1e5.
     """
 
     include_H2O: bool = field(default=True)
@@ -59,7 +60,13 @@ class Calliope:
     solubility: bool = field(default=True)
     nguess: int = field(default=int(1e3), validator=validators.gt(0))
     nsolve: int = field(default=int(3e3), validator=validators.gt(0))
-    p_guess_max: float = field(default=1.0e5, validator=validators.gt(0))
+    # Default 1e5 bar mirrors CALLIOPE's P_GUESS_MAX_BAR (so the default leaves
+    # the cold-start draw unchanged); the 1e7 upper bound mirrors CALLIOPE's
+    # P_CEILING_BAR solver box, above which a raised ceiling is unreachable
+    # (the solver rejects roots beyond the box). The le() bound also rejects inf.
+    p_guess_max: float = field(
+        default=1.0e5, validator=validators.and_(validators.gt(0), validators.le(1.0e7))
+    )
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""

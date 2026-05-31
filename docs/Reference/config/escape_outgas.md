@@ -118,6 +118,7 @@ fO$_2$ buffering.
 |-----------|------|---------|-------------|
 | `nguess` | int | `1000` | Maximum number of initial-guess samples for the equilibrium solver |
 | `nsolve` | int | `3000` | Maximum number of solver iterations per call |
+| `p_guess_max` | float | `1e5` | Upper bound [bar] of the cold-start surface-pressure draw, in `(0, 1e7]`; raise it to seed the solver higher for high-pressure (e.g. sub-Neptune) cases |
 
 ### Atmodeller `[outgas.atmodeller]`
 

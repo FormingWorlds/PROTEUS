@@ -330,7 +330,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 nguess=config.outgas.calliope.nguess,
                 nsolve=config.outgas.calliope.nsolve,
                 p_guess=p_guess,
-                p_max=config.outgas.calliope.p_guess_max,
+                p_guess_max=config.outgas.calliope.p_guess_max,
                 # Fixed seed so the Monte-Carlo restart draws are
                 # reproducible run to run. Without it the first-iteration
                 # cold solve (no p_guess) and any restart draw from the
@@ -350,7 +350,7 @@ def calc_surface_pressures(dirs: dict, config: Config, hf_row: dict):
                 nguess=config.outgas.calliope.nguess,
                 nsolve=config.outgas.calliope.nsolve,
                 p_guess=p_guess,
-                p_max=config.outgas.calliope.p_guess_max,
+                p_guess_max=config.outgas.calliope.p_guess_max,
                 print_result=False,
                 opt_solver=False,
             )

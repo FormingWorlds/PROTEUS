@@ -29,19 +29,21 @@ def test_calliope_defaults():
 
 @pytest.mark.unit
 def test_calliope_p_guess_max_validator_and_override():
-    """p_guess_max accepts a raised positive value (sub-Neptune use) and
-    rejects a non-positive ceiling, which would invert the log-uniform draw
-    range and make every cold-start guess invalid."""
+    """p_guess_max accepts a raised ceiling within CALLIOPE's solver box and
+    rejects values outside (0, 1e7]: a non-positive ceiling would invert the
+    log-uniform draw range, and a ceiling above the 1e7 bar box is unreachable
+    (the solver rejects roots beyond the box), so it must fail loudly."""
     from proteus.config._outgas import Calliope
 
-    # A raised ceiling is accepted and stored verbatim.
-    c = Calliope(p_guess_max=1.0e8)
-    assert c.p_guess_max == pytest.approx(1.0e8)
+    # A raised ceiling within the box is accepted and stored verbatim.
+    c = Calliope(p_guess_max=5.0e6)
+    assert c.p_guess_max == pytest.approx(5.0e6)
     # Discrimination: the override is honoured, not silently reset to the default.
     assert c.p_guess_max != pytest.approx(1.0e5)
 
-    # Non-positive ceilings are rejected by the gt(0) validator.
-    for bad in (0.0, -1.0e5):
+    # Out-of-range ceilings are rejected: non-positive, above the 1e7 box, and
+    # the non-finite inf that a bare gt(0) would have let through.
+    for bad in (0.0, -1.0e5, 1.0e8, float('inf')):
         with pytest.raises(ValueError):
             Calliope(p_guess_max=bad)
 

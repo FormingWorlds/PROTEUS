@@ -293,9 +293,9 @@ def test_p_guess_max_forwarded_to_calliope_both_dispatch_branches():
         patch('proteus.outgas.calliope.equilibrium_atmosphere'),
     ):
         calc_surface_pressures(dirs, config, _earth_hf_row())
-        assert mock_new.call_args.kwargs['p_max'] == pytest.approx(expected_p_max)
+        assert mock_new.call_args.kwargs['p_guess_max'] == pytest.approx(expected_p_max)
         # Discrimination: not CALLIOPE's 1e5 default (a dropped forward).
-        assert mock_new.call_args.kwargs['p_max'] != pytest.approx(1.0e5)
+        assert mock_new.call_args.kwargs['p_guess_max'] != pytest.approx(1.0e5)
 
     # user_constant -> legacy entry point
     config = _make_from_o_budget_config()
@@ -308,8 +308,8 @@ def test_p_guess_max_forwarded_to_calliope_both_dispatch_branches():
         patch('proteus.outgas.calliope.equilibrium_atmosphere_authoritative_O'),
     ):
         calc_surface_pressures(dirs, config, _earth_hf_row())
-        assert mock_legacy.call_args.kwargs['p_max'] == pytest.approx(expected_p_max)
-        assert mock_legacy.call_args.kwargs['p_max'] != pytest.approx(1.0e5)
+        assert mock_legacy.call_args.kwargs['p_guess_max'] == pytest.approx(expected_p_max)
+        assert mock_legacy.call_args.kwargs['p_guess_max'] != pytest.approx(1.0e5)
 
 
 # ---------------------------------------------------------------------------
