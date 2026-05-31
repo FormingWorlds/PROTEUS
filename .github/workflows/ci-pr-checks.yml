@@ -159,16 +159,15 @@ jobs:
       - name: Decide whether to collect coverage
         run: |
           # Coverage instrumentation (pytest-cov + JAX tracing) inflates
-          # Linux unit tests substantially. Coverage only feeds the
-          # diff-cover gate, codecov upload, and the ratchet, all of
-          # which only matter when a PR is genuinely up for review.
-          if [ "${{ github.event_name }}" = "pull_request" ] && \
-             [ "${{ github.event.pull_request.draft }}" != "true" ]; then
+          # Linux unit tests, so it runs on pull requests only, not on every
+          # branch push. Draft PRs are included so the estimated-total,
+          # diff-cover, and codecov numbers are visible during development.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "RUN_COVERAGE=true" >> $GITHUB_ENV
-            echo "Coverage instrumentation: ON (ready-for-review PR)"
+            echo "Coverage instrumentation: ON (pull request)"
           else
             echo "RUN_COVERAGE=false" >> $GITHUB_ENV
-            echo "Coverage instrumentation: OFF (draft PR or branch push)"
+            echo "Coverage instrumentation: OFF (branch push)"
           fi
 
       - name: Run unit tests
@@ -430,7 +429,7 @@ jobs:
           print(f"Threshold: {full_threshold}%  drop={drop:+.2f}  status={status}")
           PY
 
-      - name: Diff coverage on changed lines (fast suite)
+      - name: Diff coverage on changed lines (fast union nightly)
         id: diff-cover
         if: env.RUN_COVERAGE == 'true'
         env:
@@ -438,7 +437,20 @@ jobs:
         run: |
           git fetch --no-tags --prune --depth=100 origin "${BASE_REF}"
           git diff "origin/${BASE_REF}...HEAD" > /tmp/pr-changes.diff
-          diff-cover coverage.xml --diff-file /tmp/pr-changes.diff --fail-under=80
+          # Union the fast-suite coverage with the latest nightly coverage:
+          # a changed line counts as covered if either report covers it. The
+          # fast suite cannot exercise the binary-dependent wrapper code
+          # (SOCRATES, AGNI, SPIDER), which the nightly tiers do, so gating
+          # diff-cover on the fast suite alone understates real coverage.
+          # This matches the estimated-total philosophy used above.
+          COV_REPORTS="coverage.xml"
+          if [ -f nightly-coverage/coverage.xml ]; then
+            COV_REPORTS="$COV_REPORTS nightly-coverage/coverage.xml"
+            echo "diff-cover: unioning fast coverage with nightly coverage."
+          else
+            echo "diff-cover: nightly coverage.xml not found; using the fast suite only."
+          fi
+          diff-cover $COV_REPORTS --diff-file /tmp/pr-changes.diff --fail-under=80
 
       - name: Post coverage warning comment on PR
         if: env.RUN_COVERAGE == 'true' && github.event_name == 'pull_request' && steps.coverage-validation.outputs.coverage_status == 'warn'

@@ -249,7 +249,7 @@ pre-commit install -f
 1. **Unit tests**: `pytest -m "unit and not skip" --cov=src --cov-fail-under=$FAST_COV_FAIL_UNDER` (CI reads the current fast threshold from `pyproject.toml` `[tool.proteus.coverage_fast]`; auto-ratcheted, capped at 90%)
 2. **Smoke tests**: `pytest -m "smoke and not skip"`
 3. **Lint**: `ruff check src/ tests/` and `ruff format --check src/ tests/`
-4. **Diff-cover**: 80% coverage on changed lines (enforced)
+4. **Diff-cover**: 80% on changed lines, fast-suite coverage unioned with the latest nightly coverage (enforced)
 5. **Test structure**: `bash tools/validate_test_structure.sh`
 
 **All must pass** before merge. Coverage thresholds auto-ratchet upward (never decrease).
@@ -440,7 +440,7 @@ PROTEUS uses two gates with explicit sub-targets:
 | Fast gate (`tool.proteus.coverage_fast.fail_under`) | unit + smoke | Ratcheting toward **90%** (expected plateau ~60-75%) | Every PR |
 | Estimated total (PR unit/smoke union with latest nightly artifact) | unit + smoke + integration | **90%** (the PROTEUS-ecosystem ceiling) | Every PR |
 | Full gate (`tool.coverage.report.fail_under`) | unit + smoke + integration + slow | **90%** | Nightly only |
-| Diff-cover | changed lines only | 80% (hard-coded) | Every PR |
+| Diff-cover | changed lines (fast + nightly union) | 80% (hard-coded) | Every PR |
 
 **What this means for contributors**: 90% is the PROTEUS-ecosystem coverage ceiling and it applies EVERYWHERE. Both gates ratchet toward 90, capped at 90 (`tools/update_coverage_threshold.py` enforces `ECOSYSTEM_CEILING = 90.0`); neither gate ratchets above the ceiling and neither may be manually decreased. Unit tests alone are not expected to actually REACH 90 because wrapper code that requires real binaries (SOCRATES, AGNI, SPIDER) is exercised by smoke + integration tests in nightly; the fast gate will plateau wherever unit + smoke coverage actually lands (typically 60-75%). The 90% target is reached via the estimated-total: the PR's unit/smoke coverage is unioned with the latest nightly artifact and compared against the full gate.
 
