@@ -1604,3 +1604,101 @@ config_version = "3.0"
         cfg = read_config_object(str(cfg_path))
     # The config still loads; this is a warning, not an error.
     assert cfg.planet.fO2_source == 'from_O_budget'
+
+
+# ============================================================================
+# run_crystallized: escape erodes the frozen-mantle atmosphere
+# ============================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_crystallized_escape_debits_atmosphere():
+    """With a frozen mantle and active escape, run_crystallized scales the
+    atmospheric reservoirs down by the escaped fraction, so escape actually
+    removes atmosphere rather than only debiting the element totals.
+    Composition is preserved (frozen chemistry) and M_atm stays equal to the
+    summed species masses (mass closure)."""
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import secs_per_year
+
+    dt = 1.0  # yr
+    m_atm = 100.0
+    # esc_rate chosen so the step loss is exactly 10 kg -> retain 0.90.
+    esc_rate = 10.0 / (secs_per_year * dt)
+    hf_row = {
+        'M_atm': m_atm,
+        'esc_rate_total': esc_rate,
+        'H2O_kg_atm': 80.0,
+        'H2O_bar': 8.0,
+        'H2O_vmr': 0.8,
+        'CO2_kg_atm': 20.0,
+        'CO2_bar': 2.0,
+        'CO2_vmr': 0.2,
+        'P_surf': 10.0,
+        'atm_kg_per_mol': 0.025,
+    }
+    run_crystallized(MagicMock(), hf_row, dt)
+
+    # 10 kg of 100 escaped -> 90 retained.
+    assert hf_row['M_atm'] == pytest.approx(90.0, rel=1e-9)
+    # Discrimination: a no-op (the old reservoirs-preserved behaviour) would
+    # leave M_atm at 100; the gap to the correct 90 is far outside tolerance.
+    assert abs(hf_row['M_atm'] - 100.0) > 1.0
+    # Mass closure: M_atm equals the summed species atmospheric masses.
+    summed = hf_row['H2O_kg_atm'] + hf_row['CO2_kg_atm']
+    assert summed == pytest.approx(hf_row['M_atm'], rel=1e-9)
+    # Per-species mass and pressure scale by the same 0.90 factor.
+    assert hf_row['H2O_kg_atm'] == pytest.approx(72.0, rel=1e-9)
+    assert hf_row['P_surf'] == pytest.approx(9.0, rel=1e-9)
+    # Composition preserved: VMRs and mmw are untouched by the uniform scaling.
+    assert hf_row['H2O_vmr'] == pytest.approx(0.8)
+    assert hf_row['atm_kg_per_mol'] == pytest.approx(0.025)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_crystallized_without_escape_preserves_atmosphere():
+    """With escape inactive (esc_rate_total = 0) the frozen-mantle atmosphere is
+    preserved unchanged; nothing is removed."""
+    from proteus.outgas.wrapper import run_crystallized
+
+    hf_row = {
+        'M_atm': 50.0,
+        'esc_rate_total': 0.0,
+        'H2O_kg_atm': 50.0,
+        'H2O_bar': 5.0,
+        'P_surf': 5.0,
+    }
+    run_crystallized(MagicMock(), hf_row, dt=1.0)
+    # Discrimination: the retained fraction is exactly 1, so reservoirs are
+    # identical to before (the escape branch was not entered).
+    assert hf_row['M_atm'] == pytest.approx(50.0)
+    assert hf_row['H2O_kg_atm'] == pytest.approx(50.0)
+    assert hf_row['P_surf'] == pytest.approx(5.0)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_crystallized_escape_exceeding_atmosphere_clamps_to_zero():
+    """If a step's escape would exceed the atmospheric mass, the retained
+    fraction clamps to zero rather than driving reservoirs negative; the
+    desiccation gate handles the fully-eroded case."""
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import secs_per_year
+
+    dt = 1.0
+    m_atm = 10.0
+    esc_rate = 25.0 / (secs_per_year * dt)  # would remove 25 kg from 10 kg
+    hf_row = {
+        'M_atm': m_atm,
+        'esc_rate_total': esc_rate,
+        'H2O_kg_atm': 10.0,
+        'H2O_bar': 1.0,
+        'P_surf': 1.0,
+    }
+    run_crystallized(MagicMock(), hf_row, dt)
+    # Boundedness: the atmosphere is fully eroded, not driven negative.
+    assert hf_row['M_atm'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['H2O_kg_atm'] >= 0.0
+    assert hf_row['P_surf'] == pytest.approx(0.0, abs=1e-12)

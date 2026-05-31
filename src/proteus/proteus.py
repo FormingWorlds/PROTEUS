@@ -825,7 +825,7 @@ class Proteus:
             if self.desiccated:
                 run_desiccated(self.config, self.hf_row)
             elif self.crystallized:
-                run_crystallized(self.config, self.hf_row)
+                run_crystallized(self.config, self.hf_row, self.interior_o.dt)
             else:
                 run_outgassing(self.directories, self.config, self.hf_row)
 

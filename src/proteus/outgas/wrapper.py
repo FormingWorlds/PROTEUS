@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import element_list, element_mmw, gas_list
+from proteus.utils.constants import element_list, element_mmw, gas_list, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -421,29 +421,62 @@ def run_outgassing(dirs: dict, config: Config, hf_row: dict):
     log.info('    mmw        = %-9.5f g mol-1' % (hf_row['atm_kg_per_mol'] * 1e3))
 
 
-def run_crystallized(config: Config, hf_row: dict):
-    """Handle crystallized mantle: no volatile exchange but preserve reservoirs.
+def run_crystallized(config: Config, hf_row: dict, dt: float):
+    """Handle a crystallized mantle: volatile exchange frozen, but escape
+    still erodes the atmosphere.
 
     After the mantle solidifies (Phi_global < phi_crit), volatiles can no
-    longer exchange between the mantle and atmosphere. Dissolved volatiles
-    are trapped in the solid mantle. The atmosphere retains its current
-    composition but does not gain or lose volatiles.
+    longer exchange between mantle and atmosphere: dissolved volatiles are
+    trapped in the solid and outgassing no longer replenishes the atmosphere.
 
-    Unlike run_desiccated() which zeros all reservoirs, this function
-    preserves them so they continue to influence the structure calculation
-    and can be tracked in the helpfile.
+    Escape, however, continues. ``run_escape`` runs earlier in the main loop
+    and debits the whole-planet element totals (``*_kg_total``) for the step.
+    With the mantle frozen, that lost mass must come from the atmosphere (the
+    trapped solid cannot resupply it), so the atmospheric reservoirs are scaled
+    down by the escaped fraction here. The chemistry is frozen, so the scaling
+    is composition-preserving (partial-pressure ratios, VMRs, and the mean
+    molecular weight are unchanged); this is exact for the unfractionated
+    escape currently used. Without this step the element totals would record
+    the loss while the atmosphere kept its pre-escape pressures, so escape
+    would be reported but never actually remove atmosphere.
 
     Parameters
     ----------
     config : Config
-        Configuration object
+        Configuration object.
     hf_row : dict
-        Dictionary of helpfile variables, at this iteration only
+        Dictionary of helpfile variables, at this iteration only.
+    dt : float
+        Length of the current step [yr], used to size the escaped mass.
     """
-    log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
-    # No changes to hf_row: all reservoirs (atm, liquid, solid) stay as-is.
-    # The atmosphere module will still compute radiative transfer with
-    # the existing atmospheric composition, but no new outgassing occurs.
+    m_atm = float(hf_row.get('M_atm', 0.0))
+    esc_rate = float(hf_row.get('esc_rate_total', 0.0))
+
+    if m_atm <= 0.0 or esc_rate <= 0.0 or dt <= 0.0:
+        # No atmosphere or no active escape: reservoirs stay as-is.
+        log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
+        return
+
+    # Mass lost to escape over this step (esc_rate is kg s-1, dt is yr). With
+    # the mantle frozen it comes entirely out of the atmosphere.
+    esc_step_kg = esc_rate * secs_per_year * dt
+    retained = max(0.0, (m_atm - esc_step_kg) / m_atm)
+
+    # Scale the atmospheric reservoirs by the retained fraction. Uniform
+    # scaling preserves composition, so `*_vmr` and `atm_kg_per_mol` (mmw)
+    # are left unchanged.
+    for s in gas_list:
+        hf_row[f'{s}_kg_atm'] = hf_row.get(f'{s}_kg_atm', 0.0) * retained
+        hf_row[f'{s}_bar'] = hf_row.get(f'{s}_bar', 0.0) * retained
+    hf_row['P_surf'] = hf_row.get('P_surf', 0.0) * retained
+    hf_row['M_atm'] = m_atm * retained
+
+    log.info(
+        'Crystallized mantle: volatile exchange frozen; escape removed '
+        '%.3e kg from the atmosphere (retained fraction %.4f)',
+        m_atm - hf_row['M_atm'],
+        retained,
+    )
 
 
 def run_desiccated(config: Config, hf_row: dict):
