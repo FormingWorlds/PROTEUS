@@ -138,7 +138,7 @@ runs:
     # ------------------------------------------------------------------
     - name: Cache Homebrew downloads (macOS)
       if: runner.os == 'macOS'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ~/Library/Caches/Homebrew/downloads
@@ -198,7 +198,7 @@ runs:
     # ------------------------------------------------------------------
     - name: Cache SOCRATES build
       id: cache-socrates
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: socrates/
         key: socrates-${{ runner.os }}-${{ runner.arch }}-${{ steps.pins.outputs.socrates_ref }}-${{ hashFiles('tools/get_socrates.sh') }}
@@ -220,7 +220,7 @@ runs:
     # ------------------------------------------------------------------
     - name: Cache AGNI clone
       id: cache-agni
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: AGNI/
         key: agni-clone-${{ runner.os }}-${{ steps.pins.outputs.agni_ref }}
@@ -256,7 +256,7 @@ runs:
     # ------------------------------------------------------------------
     - name: Cache Julia depot
       id: cache-julia
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.julia
         key: julia-${{ runner.os }}-${{ runner.arch }}-${{ inputs.julia-version }}-${{ steps.pins.outputs.agni_ref }}-${{ hashFiles('AGNI/Project.toml','AGNI/Manifest.toml') }}
@@ -308,7 +308,7 @@ runs:
     # 9. FWL_DATA cache + smoke / full data download
     # ------------------------------------------------------------------
     - name: Cache FWL_DATA
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/fwl_data
         key: fwl-data-${{ runner.os }}-${{ hashFiles('.github/data-manifest.yaml') }}
