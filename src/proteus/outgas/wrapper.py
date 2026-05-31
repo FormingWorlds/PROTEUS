@@ -430,29 +430,51 @@ def run_crystallized(config: Config, hf_row: dict, dt: float):
     trapped in the solid and outgassing no longer replenishes the atmosphere.
 
     Escape, however, continues. ``run_escape`` runs earlier in the main loop
-    and debits the whole-planet element totals (``*_kg_total``) for the step.
-    With the mantle frozen, that lost mass must come from the atmosphere (the
-    trapped solid cannot resupply it), so the atmospheric reservoirs are scaled
-    down by the escaped fraction here. The chemistry is frozen, so the scaling
-    is composition-preserving (partial-pressure ratios, VMRs, and the mean
-    molecular weight are unchanged); this is exact for the unfractionated
-    escape currently used. Without this step the element totals would record
-    the loss while the atmosphere kept its pre-escape pressures, so escape
-    would be reported but never actually remove atmosphere.
+    with ``atmosphere_only=True`` in this regime, so it debits the whole-planet
+    element totals (``*_kg_total``) proportional to atmospheric abundance. The
+    same escaped mass is removed from the atmospheric reservoirs here by scaling
+    them with the retained fraction. Because the chemistry is frozen and the
+    escape is unfractionated, the scaling is composition-preserving: partial-
+    pressure ratios, VMRs, and the mean molecular weight are unchanged. Sizing
+    the loss from the atmosphere in both places keeps the per-element
+    ``*_kg_total`` and the atmospheric reservoirs mutually consistent for every
+    ``escape.reservoir`` setting.
 
     Parameters
     ----------
     config : Config
-        Configuration object.
+        Configuration object. Used to confirm the escape model is unfractionated.
     hf_row : dict
         Dictionary of helpfile variables, at this iteration only.
     dt : float
         Length of the current step [yr], used to size the escaped mass.
     """
+    # Uniform scaling is valid only while escape removes atmospheric species in
+    # proportion to their abundance. A fractionating model would change the
+    # composition and require per-species debiting, so refuse it explicitly at
+    # the point that relies on the assumption.
+    reservoir = getattr(config.escape, 'reservoir', 'outgas')
+    if reservoir not in ('outgas', 'bulk'):
+        raise NotImplementedError(
+            f'run_crystallized assumes unfractionated escape; escape.reservoir='
+            f"'{reservoir}' is not supported once the mantle has solidified."
+        )
+
     m_atm = float(hf_row.get('M_atm', 0.0))
     esc_rate = float(hf_row.get('esc_rate_total', 0.0))
 
-    if m_atm <= 0.0 or esc_rate <= 0.0 or dt <= 0.0:
+    if dt <= 0.0:
+        # A non-positive step is a coupling error, not a benign no-op: surface it
+        # so a regression that stalls the clock here does not look like "escape
+        # silently stopped removing atmosphere".
+        log.warning(
+            'Crystallized mantle: non-positive dt=%.3e yr; skipping atmospheric '
+            'escape debit this step.',
+            dt,
+        )
+        return
+
+    if m_atm <= 0.0 or esc_rate <= 0.0:
         # No atmosphere or no active escape: reservoirs stay as-is.
         log.info('Crystallized mantle: volatile exchange frozen, reservoirs preserved')
         return

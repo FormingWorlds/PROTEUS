@@ -120,6 +120,78 @@ def test_run_escape_dummy():
 
 
 @pytest.mark.unit
+@pytest.mark.physics_invariant
+def test_run_escape_atmosphere_only_sources_loss_from_atmosphere():
+    """Once the mantle is crystallized the atmosphere is the only escapable
+    reservoir, so run_escape(atmosphere_only=True) sizes the per-element loss
+    from *_kg_atm regardless of the configured 'bulk' reservoir.
+
+    Physical scenario: an element (Fe) is held almost entirely in the frozen
+    interior (huge *_kg_total, negligible *_kg_atm) while H sits in the
+    atmosphere. The bulk and atmospheric distributions then diverge sharply:
+    under 'bulk' the interior-heavy element dominates the loss; under
+    atmosphere_only the atmosphere-heavy element does. The total escaped mass is
+    identical either way (conservation)."""
+    from proteus.escape.wrapper import run_escape
+    from proteus.utils.constants import element_list, secs_per_year
+
+    dt = 1000.0  # yr
+    rate = 1e5  # kg/s
+
+    def _cfg():
+        config = MagicMock()
+        config.escape.module = 'dummy'
+        config.escape.dummy.rate = rate
+        config.escape.reservoir = 'bulk'  # configured (interior-inclusive) reservoir
+        config.outgas.mass_thresh = 1.0  # kg, low enough that nothing is zeroed
+        return config
+
+    def _row():
+        # Fe almost entirely interior; H entirely atmospheric; others absent.
+        row = {f'{e}_kg_total': 0.0 for e in element_list}
+        row.update({f'{e}_kg_atm': 0.0 for e in element_list})
+        row['H_kg_total'] = 2e20
+        row['H_kg_atm'] = 2e20
+        row['Fe_kg_total'] = 2e22
+        row['Fe_kg_atm'] = 1e10
+        return row
+
+    esc_mass = rate * secs_per_year * dt  # total kg removed over the step
+
+    # Configured 'bulk' reservoir: loss tracks whole-planet abundance, so the
+    # interior-heavy Fe dominates the per-element debit.
+    row_bulk = _row()
+    run_escape(_cfg(), row_bulk, dt=dt, atmosphere_only=False)
+    loss_fe_bulk = 2e22 - row_bulk['Fe_kg_total']
+    loss_h_bulk = 2e20 - row_bulk['H_kg_total']
+    assert loss_fe_bulk > loss_h_bulk  # Fe dominates under the bulk reservoir
+    assert loss_fe_bulk == pytest.approx(esc_mass * 2e22 / 2.02e22, rel=1e-3)
+
+    # atmosphere_only: loss tracks atmospheric abundance, so H dominates and Fe
+    # (frozen in the interior) is barely touched, the opposite ordering.
+    row_atm = _row()
+    run_escape(_cfg(), row_atm, dt=dt, atmosphere_only=True)
+    loss_fe_atm = 2e22 - row_atm['Fe_kg_total']
+    loss_h_atm = 2e20 - row_atm['H_kg_total']
+    assert loss_h_atm > loss_fe_atm  # H dominates under the atmospheric reservoir
+    assert loss_h_atm == pytest.approx(esc_mass, rel=1e-3)
+    # Discrimination: the configured 'bulk' value was overridden; Fe loses
+    # many orders of magnitude less when sourced from the atmosphere.
+    assert loss_fe_atm < loss_fe_bulk / 1e5
+
+    # Conservation: the total removed is the same esc_mass under both reservoirs.
+    initial = {'H': 2e20, 'Fe': 2e22}
+    total_loss_bulk = sum(
+        initial.get(e, 0.0) - row_bulk.get(f'{e}_kg_total', 0.0) for e in element_list
+    )
+    total_loss_atm = sum(
+        initial.get(e, 0.0) - row_atm.get(f'{e}_kg_total', 0.0) for e in element_list
+    )
+    assert total_loss_bulk == pytest.approx(esc_mass, rel=1e-3)
+    assert total_loss_atm == pytest.approx(esc_mass, rel=1e-3)
+
+
+@pytest.mark.unit
 @patch('zephyrus.escape.EL_escape')
 def test_run_escape_zephyrus(mock_el_escape):
     """Test escape using ZEPHYRUS energy-limited model.
@@ -183,6 +255,58 @@ def test_run_escape_zephyrus(mock_el_escape):
 
     # Verify escape rate matches mock return value
     assert hf_row['esc_rate_total'] == pytest.approx(1e7, rel=1e-8)
+
+
+@pytest.mark.unit
+@pytest.mark.physics_invariant
+@patch('zephyrus.escape.EL_escape')
+def test_run_escape_zephyrus_atmosphere_only_overrides_bulk(mock_el_escape):
+    """The crystallized-mantle override applies to the ZEPHYRUS path too: with
+    a configured 'bulk' reservoir but atmosphere_only=True, the per-element loss
+    is sized from the atmosphere, so an interior-heavy element (Fe) is barely
+    touched while the atmospheric element (H) absorbs the loss."""
+    from proteus.escape.wrapper import run_escape
+    from proteus.utils.constants import element_list, secs_per_year
+
+    rate = 1e7  # kg/s
+    dt = 1000.0  # yr
+    mock_el_escape.return_value = rate
+
+    config = MagicMock()
+    config.escape.module = 'zephyrus'
+    config.escape.zephyrus.tidal = False
+    config.escape.zephyrus.efficiency = 0.15
+    config.escape.zephyrus.Pxuv = 5e-5
+    config.escape.reservoir = 'bulk'  # configured reservoir, to be overridden
+    config.outgas.mass_thresh = 1.0
+    config.star.mass = 1.0e30
+
+    row = {f'{e}_kg_total': 0.0 for e in element_list}
+    row.update({f'{e}_kg_atm': 0.0 for e in element_list})
+    row.update(
+        {
+            'semimajorax': 0.05 * 1.496e11,
+            'eccentricity': 0.01,
+            'M_planet': 1.898e27,
+            'R_int': 7.0e7,
+            'R_xuv': 8.0e7,
+            'F_xuv': 1e4,
+            'H_kg_total': 2e22,
+            'H_kg_atm': 2e22,
+            'Fe_kg_total': 2e24,  # almost entirely frozen in the interior
+            'Fe_kg_atm': 1e12,
+        }
+    )
+
+    run_escape(config, row, dt=dt, stellar_track=MagicMock(), atmosphere_only=True)
+
+    esc_mass = rate * secs_per_year * dt
+    loss_h = 2e22 - row['H_kg_total']
+    loss_fe = 2e24 - row['Fe_kg_total']
+    # Atmosphere-sourced: H (atmospheric) dominates, Fe (frozen) is negligible.
+    assert loss_h > loss_fe
+    assert loss_h == pytest.approx(esc_mass, rel=1e-3)
+    assert loss_fe < loss_h / 1e5
 
 
 @pytest.mark.unit

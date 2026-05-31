@@ -1611,6 +1611,14 @@ config_version = "3.0"
 # ============================================================================
 
 
+def _cryst_cfg(reservoir='outgas'):
+    """Minimal config stub for run_crystallized: only ``escape.reservoir`` is
+    read (to confirm the escape model is unfractionated)."""
+    cfg = MagicMock()
+    cfg.escape.reservoir = reservoir
+    return cfg
+
+
 @pytest.mark.unit
 @pytest.mark.physics_invariant
 def test_run_crystallized_escape_debits_atmosphere():
@@ -1638,12 +1646,12 @@ def test_run_crystallized_escape_debits_atmosphere():
         'P_surf': 10.0,
         'atm_kg_per_mol': 0.025,
     }
-    run_crystallized(MagicMock(), hf_row, dt)
+    run_crystallized(_cryst_cfg(), hf_row, dt)
 
     # 10 kg of 100 escaped -> 90 retained.
     assert hf_row['M_atm'] == pytest.approx(90.0, rel=1e-9)
-    # Discrimination: a no-op (the old reservoirs-preserved behaviour) would
-    # leave M_atm at 100; the gap to the correct 90 is far outside tolerance.
+    # Discrimination: a no-op (the reservoirs-preserved branch) would leave
+    # M_atm at 100; the gap to the correct 90 is far outside tolerance.
     assert abs(hf_row['M_atm'] - 100.0) > 1.0
     # Mass closure: M_atm equals the summed species atmospheric masses.
     summed = hf_row['H2O_kg_atm'] + hf_row['CO2_kg_atm']
@@ -1670,7 +1678,7 @@ def test_run_crystallized_without_escape_preserves_atmosphere():
         'H2O_bar': 5.0,
         'P_surf': 5.0,
     }
-    run_crystallized(MagicMock(), hf_row, dt=1.0)
+    run_crystallized(_cryst_cfg(), hf_row, dt=1.0)
     # Discrimination: the retained fraction is exactly 1, so reservoirs are
     # identical to before (the escape branch was not entered).
     assert hf_row['M_atm'] == pytest.approx(50.0)
@@ -1697,8 +1705,78 @@ def test_run_crystallized_escape_exceeding_atmosphere_clamps_to_zero():
         'H2O_bar': 1.0,
         'P_surf': 1.0,
     }
-    run_crystallized(MagicMock(), hf_row, dt)
+    run_crystallized(_cryst_cfg(), hf_row, dt)
     # Boundedness: the atmosphere is fully eroded, not driven negative.
     assert hf_row['M_atm'] == pytest.approx(0.0, abs=1e-12)
-    assert hf_row['H2O_kg_atm'] >= 0.0
+    # The species reservoir is pinned to zero too: asserting only `>= 0` would
+    # pass even if the per-species scaling were skipped (leaving 10 kg), so pin
+    # the value and the M_atm closure together.
+    assert hf_row['H2O_kg_atm'] == pytest.approx(0.0, abs=1e-12)
+    assert hf_row['H2O_kg_atm'] == pytest.approx(hf_row['M_atm'], abs=1e-12)
     assert hf_row['P_surf'] == pytest.approx(0.0, abs=1e-12)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ('hf_over', 'dt', 'label'),
+    [
+        ({'M_atm': 100.0, 'esc_rate_total': 1.0e12}, 0.0, 'zero_dt'),
+        ({'M_atm': 100.0, 'esc_rate_total': 1.0e12}, -1.0, 'negative_dt'),
+        ({'M_atm': 0.0, 'esc_rate_total': 1.0e12}, 1.0, 'no_atmosphere'),
+        ({'M_atm': 100.0, 'esc_rate_total': -5.0}, 1.0, 'negative_esc_rate'),
+    ],
+)
+def test_run_crystallized_guard_branches_preserve_reservoirs(hf_over, dt, label):
+    """Each early-return guard leaves the atmospheric reservoirs untouched and
+    never divides by zero. A non-positive dt, an already-empty atmosphere, and a
+    non-positive escape rate are all no-ops on the reservoirs. The negative-dt
+    case is the discriminating one: without the guard the retained fraction would
+    exceed 1 and the atmosphere would grow instead of staying fixed; the
+    empty-atmosphere case would raise ZeroDivisionError without the m_atm guard."""
+    from proteus.outgas.wrapper import run_crystallized
+
+    hf_row = {
+        'M_atm': 100.0,
+        'esc_rate_total': 0.0,
+        'H2O_kg_atm': 80.0,
+        'H2O_bar': 8.0,
+        'P_surf': 10.0,
+    }
+    hf_row.update(hf_over)
+    snapshot = dict(hf_row)
+
+    run_crystallized(_cryst_cfg(), hf_row, dt)
+
+    # No reservoir is modified by any guard branch, and no exception is raised.
+    assert hf_row['M_atm'] == pytest.approx(snapshot['M_atm'])
+    assert hf_row['H2O_kg_atm'] == pytest.approx(snapshot['H2O_kg_atm'])
+    assert hf_row['P_surf'] == pytest.approx(snapshot['P_surf'])
+
+
+@pytest.mark.unit
+def test_run_crystallized_rejects_fractionated_escape():
+    """A fractionating escape reservoir would change the atmospheric composition
+    and break the composition-preserving uniform scaling, so run_crystallized
+    refuses it. The unfractionated 'bulk' and 'outgas' reservoirs are accepted
+    and actually debit the atmosphere."""
+    from proteus.outgas.wrapper import run_crystallized
+    from proteus.utils.constants import secs_per_year
+
+    dt = 1.0
+    base = {
+        'M_atm': 100.0,
+        'esc_rate_total': 10.0 / (secs_per_year * dt),
+        'H2O_kg_atm': 100.0,
+        'H2O_bar': 10.0,
+        'P_surf': 10.0,
+    }
+    # A fractionating reservoir is an explicit, documented refusal.
+    with pytest.raises(NotImplementedError, match='unfractionated'):
+        run_crystallized(_cryst_cfg('pxuv'), dict(base), dt)
+
+    # 'bulk' is unfractionated and accepted: the atmosphere is actually debited
+    # (90 kg retained), not passed through unchanged.
+    hf_bulk = dict(base)
+    run_crystallized(_cryst_cfg('bulk'), hf_bulk, dt)
+    assert hf_bulk['M_atm'] == pytest.approx(90.0, rel=1e-9)
+    assert hf_bulk['M_atm'] < base['M_atm'] - 1.0

@@ -21,6 +21,7 @@ def run_escape(
     dirs: dict | None = None,
     dt: float = 0.0,
     stellar_track=None,
+    atmosphere_only: bool = False,
 ) -> None:
     """Run Escape submodule.
 
@@ -36,6 +37,11 @@ def run_escape(
             Dictionary of directories
         dt : float
             Time interval over which escape is occuring [yr]
+        atmosphere_only : bool
+            If True, size the per-element loss from the atmospheric reservoir
+            regardless of ``config.escape.reservoir``. Set once the mantle has
+            solidified: dissolved volatiles are then frozen into the solid and
+            the atmosphere is the only reservoir that can supply escape.
     """
     dirs = dirs or {}
 
@@ -71,10 +77,10 @@ def run_escape(
         hf_row['esc_kg_cumulative'] = 0.0
 
     if config.escape.module == 'dummy':
-        run_dummy(config, hf_row)
+        run_dummy(config, hf_row, atmosphere_only=atmosphere_only)
 
     elif config.escape.module == 'zephyrus':
-        run_zephyrus(config, hf_row, stellar_track)
+        run_zephyrus(config, hf_row, stellar_track, atmosphere_only=atmosphere_only)
 
     elif config.escape.module == 'boreas':
         from proteus.escape.boreas import run_boreas
@@ -99,11 +105,18 @@ def run_escape(
     if np.isfinite(esc_step_kg) and esc_step_kg > 0.0:
         hf_row['esc_kg_cumulative'] = float(hf_row.get('esc_kg_cumulative', 0.0)) + esc_step_kg
 
+    # Reservoir the per-element loss is drawn from. With a solidified mantle
+    # the atmosphere is the only escapable reservoir, so the loss is sized from
+    # `*_kg_atm` (atmospheric abundance). This keeps the per-element `*_kg_total`
+    # debit proportional to the atmosphere, matching the uniform atmospheric
+    # scaling that `outgas.wrapper.run_crystallized` applies in the same step.
+    reservoir = 'outgas' if atmosphere_only else config.escape.reservoir
+
     # calculate new elemental inventories from loss over duration `dt`
     solvevol_target = calc_new_elements(
         hf_row,
         dt,
-        config.escape.reservoir,
+        reservoir,
         min_thresh=config.outgas.mass_thresh,
     )
 
@@ -112,7 +125,7 @@ def run_escape(
         hf_row[f'{e}_kg_total'] = mass
 
 
-def run_dummy(config: Config, hf_row: dict):
+def run_dummy(config: Config, hf_row: dict, atmosphere_only: bool = False):
     """Run dummy escape model.
 
     Uses a fixed mass loss rate and does not fractionate.
@@ -123,6 +136,9 @@ def run_dummy(config: Config, hf_row: dict):
             Configuration options for the escape module
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        atmosphere_only : bool
+            If True, size the per-element fluxes from the atmospheric reservoir
+            (used once the mantle has solidified).
     """
 
     # Set sound speed to zero
@@ -142,6 +158,8 @@ def run_dummy(config: Config, hf_row: dict):
     # Always unfractionating (best-effort: unit tests may not populate all keys)
     try:
         reservoir = getattr(config.escape, 'reservoir', None)
+        if atmosphere_only and isinstance(reservoir, str):
+            reservoir = 'outgas'
         if isinstance(reservoir, str):
             calc_unfract_fluxes(
                 hf_row,
@@ -164,7 +182,9 @@ def run_dummy(config: Config, hf_row: dict):
             hf_row[f'esc_rate_{e}'] = 0.0
 
 
-def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
+def run_zephyrus(
+    config: Config, hf_row: dict, stellar_track=None, atmosphere_only: bool = False
+) -> float:
     """Run ZEPHYRUS escape model.
 
     Calculates the bulk mass loss rate of all elements.
@@ -175,6 +195,9 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        atmosphere_only : bool
+            If True, size the per-element fluxes from the atmospheric reservoir
+            (used once the mantle has solidified).
     """
 
     from zephyrus.escape import EL_escape
@@ -202,6 +225,8 @@ def run_zephyrus(config: Config, hf_row: dict, stellar_track=None) -> float:
     # Always unfractionating - escaping in bulk
     try:
         reservoir = getattr(config.escape, 'reservoir', None)
+        if atmosphere_only and isinstance(reservoir, str):
+            reservoir = 'outgas'
         if isinstance(reservoir, str):
             calc_unfract_fluxes(
                 hf_row,

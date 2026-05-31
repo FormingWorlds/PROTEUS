@@ -782,7 +782,13 @@ class Proteus:
             if (self.loops['total'] > self.loops['init_loops'] + 2) and (not self.desiccated):
                 PrintHalfSeparator()
                 _t0 = time.perf_counter() if _IT_TIMING_ENABLED else 0.0
-                run_escape(self.config, self.hf_row, self.directories, self.interior_o.dt)
+                run_escape(
+                    self.config,
+                    self.hf_row,
+                    self.directories,
+                    self.interior_o.dt,
+                    atmosphere_only=self.crystallized,
+                )
                 if _IT_TIMING_ENABLED:
                     _t_mod['escape'] = time.perf_counter() - _t0
 
