@@ -278,8 +278,13 @@ jobs:
           NIGHTLY_STALE=false
           NIGHTLY_MISSING=false
 
-          if [ -f nightly-coverage/coverage-integration-only.json ]; then
-            cp nightly-coverage/coverage-integration-only.json .
+          if [ -f nightly-coverage/coverage-branch-nightly.json ]; then
+            # coverage-branch-nightly.json is the nightly coverage.py JSON
+            # (totals + per-file executed/missing lines) used to estimate the
+            # union total. coverage-integration-only.json is a legacy alias for
+            # the per-tier summary and has no per-file data.
+            cp nightly-coverage/coverage-branch-nightly.json .
+            cp nightly-coverage/coverage-integration-only.json . 2>/dev/null || true
             cp nightly-coverage/nightly-timestamp.txt . 2>/dev/null || true
             cp nightly-coverage/coverage-by-type.json . 2>/dev/null || true
 
@@ -373,10 +378,13 @@ jobs:
           except (json.JSONDecodeError, OSError):
               pass
 
+          # The nightly coverage.py JSON (totals + per-file executed/missing
+          # lines). coverage-integration-only.json is a legacy per-tier summary
+          # without per-file data, so the union must read this file instead.
           i_data = {}
           try:
-              if pathlib.Path("coverage-integration-only.json").exists():
-                  i_data = json.loads(pathlib.Path("coverage-integration-only.json").read_text())
+              if pathlib.Path("coverage-branch-nightly.json").exists():
+                  i_data = json.loads(pathlib.Path("coverage-branch-nightly.json").read_text())
           except (json.JSONDecodeError, OSError):
               pass
 
